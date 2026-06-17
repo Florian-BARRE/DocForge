@@ -1,0 +1,53 @@
+# ── Python ────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+.eggs/
+
+# ── Virtual environments ───────────────────────────────────
+.venv/
+venv/
+env/
+ENV/
+
+# ── uv ────────────────────────────────────────────────────
+.uv/
+
+# ── Secrets / credentials ─────────────────────────────────
+services/**/.env
+*.env
+!services/**/.env.example
+!.env.example
+
+# ── Logs ──────────────────────────────────────────────────
+logs/
+*.log
+
+# ── Frontend build artifacts ──────────────────────────────
+src/docforge/frontend/dist/
+src/docforge/frontend/node_modules/
+
+# ── IDE / OS ──────────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# ── Claude Code ───────────────────────────────────────────
+.claude/projects/
+
+# ── Alembic / migrations (keep structure, not generated) ──
+# src/docforge/migrations/versions/*.py  # comment in to exclude
+
+# ── Test artifacts ────────────────────────────────────────
+.pytest_cache/
+.coverage
+htmlcov/

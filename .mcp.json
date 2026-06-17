@@ -1,0 +1,30 @@
+{
+  "mcpServers": {
+    "docforge": {
+      "command": "python",
+      "args": ["src/docforge/mcp_server.py"],
+      "env": {
+        "DOCFORGE_API_URL": "http://localhost:8000"
+      },
+      "description": "DocForge document intelligence — search, ingest, collections"
+    },
+    "memory": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-memory"],
+      "env": {
+        "MEMORY_FILE_PATH": ".claude/knowledge-graph.json"
+      },
+      "description": "Persistent knowledge graph — DocForge decisions, patterns, entities, relations"
+    },
+    "context7": {
+      "command": "npx",
+      "args": ["-y", "@upstash/context7-mcp@latest"],
+      "description": "Up-to-date library docs — FastAPI, SQLAlchemy, Qdrant, Pydantic, arq, BGE-M3, React"
+    },
+    "deepwiki": {
+      "command": "npx",
+      "args": ["-y", "deepwiki-mcp@latest"],
+      "description": "Deep understanding of any GitHub repository"
+    }
+  }
+}

@@ -1,0 +1,85 @@
+# DocForge — development overrides.
+# Use with:
+#   podman-compose -f docker-compose.yml -f docker-compose.dev.yml up
+#
+# What this file changes vs production:
+# - DocForge source is volume-mounted → code edits are reflected without rebuild.
+# - uvicorn runs with --reload, watching /app/docforge for changes.
+# - FASTAPI_DEBUG_MODE=true → 500 responses include full tracebacks (never in prod).
+# - DEV_MODE=true → enables the early debug logger in runtime_config.py.
+# - PostgreSQL port is published for direct DB inspection during development.
+
+services:
+
+  docforge:
+    # Rebuild the image on dev start to ensure dependencies are up to date.
+    # The volume mount below overlays the source with the local working tree.
+    build:
+      context: src
+      dockerfile: docforge/Dockerfile
+    volumes:
+      # Mount the local source tree over the container copy.
+      # :z relabels the volume with the container's SELinux context (required on RHEL/Podman).
+      # Edits are reflected immediately; only dependency changes require a rebuild.
+      - ./src/docforge:/app/docforge:z
+    environment:
+      - FASTAPI_DEBUG_MODE=true
+      - DEV_MODE=true
+      - LOGGING_CONSOLE_LEVEL=DEBUG
+      - LOGGING_LPP_FORMAT=DebugFormat
+      # Ensure Python resolves `config`, `backend`, `libs` from the app root.
+      # Needed in dev mode because uvicorn is started from /app/docforge via
+      # the volume-mounted source tree (not an installed package).
+      - PYTHONPATH=/app/docforge
+    command: >
+      uvicorn entrypoint:app
+      --host 0.0.0.0
+      --port 8000
+      --reload
+      --reload-dir /app/docforge
+
+  # Vite development server for the React frontend.
+  # Serves the frontend on :5173 with HMR (hot module replacement).
+  # The /api proxy forwards all API calls to the FastAPI backend on :8000.
+  frontend:
+    image: node:22-bookworm-slim
+    working_dir: /app
+    volumes:
+      # Mount the frontend source directly for instant HMR on file save.
+      # :z relabels the volume with the container's SELinux context (required on RHEL/Podman).
+      - ./src/docforge/frontend:/app:z
+    ports:
+      - "10023:5173"          # Vite dev server (HMR) — firewall: only 10000-11000 open
+    environment:
+      # Point Vite's /api proxy to the backend container name (not localhost,
+      # which would resolve to the frontend container itself inside the network).
+      - VITE_PROXY_TARGET=http://docforge:8000
+      # Corporate proxy for npm package downloads (only needed if node_modules are missing).
+      - HTTP_PROXY=http://proxy.afd.fr:8080
+      - HTTPS_PROXY=http://proxy.afd.fr:8080
+      - NO_PROXY=localhost,127.0.0.1,docforge
+    networks:
+      - docforge_net
+    # Run Vite dev server listening on all interfaces (required inside container).
+    # Only run npm ci when node_modules is missing — avoids network round-trips
+    # on every restart when dependencies are already installed.
+    # Use npm install (not npm ci) — no package-lock.json on first run.
+    # Once a lock file is generated, this will still work correctly.
+    command: ["/bin/sh", "-c", "[ -d node_modules ] || npm install && npm run dev -- --host"]
+    depends_on:
+      - docforge
+
+  postgres:
+    ports:
+      # Publish Postgres port for direct inspection via psql or DB GUI tools.
+      - "10024:5432"          # Postgres dev access — firewall: only 10000-11000 open
+
+  worker:
+    # Volume-mount source so code changes are picked up without rebuilding.
+    volumes:
+      - ./src/docforge:/app/docforge:z
+    environment:
+      - DEV_MODE=true
+      - LOGGING_CONSOLE_LEVEL=DEBUG
+      - LOGGING_LPP_FORMAT=DebugFormat
+      - PYTHONPATH=/app/docforge

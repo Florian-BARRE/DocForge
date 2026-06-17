@@ -1,0 +1,142 @@
+# DocForge — production compose file.
+# Run with:
+#   podman-compose up -d
+#
+# All services communicate on the internal `docforge_net` network.
+# External ports are exposed only where operator access is needed (API, Postgres).
+
+services:
+
+  # ── DocForge FastAPI application ─────────────────────────────────────────────
+  docforge:
+    build:
+      context: src            # Build context: the src/ directory (per docker.md rules)
+      dockerfile: docforge/Dockerfile
+    image: docforge:latest
+    ports:
+      - "10020:8000"          # FastAPI — public API endpoint (firewall: only 10000-11000 open)
+    env_file:
+      - services/docforge/.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      seaweedfs:
+        condition: service_started   # SeaweedFS has no healthcheck; started is sufficient
+      gotenberg:
+        condition: service_started
+      redis:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - docforge_net
+
+  # ── PostgreSQL 16 — relational catalogue & job store ─────────────────────────
+  postgres:
+    image: postgres:16-bookworm
+    env_file:
+      - services/postgres/.env
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - docforge_net
+
+  # ── SeaweedFS — S3-compatible object store (replaces MinIO) ──────────────────
+  # chrislusf/seaweedfs: open-source, S3-compatible, actively maintained.
+  # `weed server` starts master + volume + filer + S3 gateway in one process.
+  # S3 API is available on port 8333; master on 9333; volume on 8080.
+  seaweedfs:
+    image: chrislusf/seaweedfs:latest
+    command: >
+      server
+      -dir=/data
+      -s3
+      -s3.port=8333
+      -master.volumeSizeLimitMB=256
+      -volume.max=0
+    ports:
+      - "10021:8333"          # SeaweedFS S3 API — DocForge accesses via internal network (8333); 10021 for direct inspection
+      - "10022:9333"          # SeaweedFS master UI (firewall: only 10000-11000 open)
+    volumes:
+      - seaweedfs_data:/data
+      # s3_config.json is kept for reference but not loaded — running without S3 auth is safe on
+      # the internal podman network (port 10021 is for operator inspection only, not external access)
+    restart: unless-stopped
+    networks:
+      - docforge_net
+
+  # ── Gotenberg 8 — document format conversion (LibreOffice + Chromium) ────────
+  # Only converter in DocForge (spec ADR-3). Converts office formats → PDF.
+  gotenberg:
+    image: gotenberg/gotenberg:8
+    env_file:
+      - services/gotenberg/.env
+    restart: unless-stopped
+    networks:
+      - docforge_net
+
+  # ── Redis — arq job queue backend ────────────────────────────────────────────
+  redis:
+    image: redis:7-bookworm
+    env_file:
+      - services/redis/.env
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    networks:
+      - docforge_net
+
+  # ── Qdrant — vector database (dense + sparse multi-vector collections) ───────
+  # Used by S6 (embedding + indexing) and hybrid search (RRF fusion).
+  # Data is persisted in a named volume so collections survive container restarts.
+  qdrant:
+    image: qdrant/qdrant:latest
+    ports:
+      - "10025:6333"              # Qdrant REST API — for operator inspection
+    volumes:
+      - qdrant_data:/qdrant/storage
+    restart: unless-stopped
+    networks:
+      - docforge_net
+
+  # ── arq pipeline worker ────────────────────────────────────────────────────
+  # Runs the same Docker image as the API but executes arq tasks (S0→S1 pipeline).
+  # Workers pull jobs from Redis and process documents independently of the API.
+  worker:
+    build:
+      context: src
+      dockerfile: docforge/Dockerfile
+    image: docforge:latest      # Same image as the API — reuses cached layer
+    env_file:
+      - services/docforge/.env
+    # arq CLI: `arq <module>.<WorkerSettings class>` run from WORKDIR /app/docforge
+    command: arq arq_worker.WorkerSettings
+    depends_on:
+      postgres:
+        condition: service_healthy
+      seaweedfs:
+        condition: service_started
+      gotenberg:
+        condition: service_started
+      redis:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - docforge_net
+
+# ── Named volumes ─────────────────────────────────────────────────────────────
+volumes:
+  postgres_data:    # PostgreSQL WAL + data files
+  seaweedfs_data:   # SeaweedFS chunk data (originals + derived artifacts)
+  redis_data:       # Redis persistence (arq job queue)
+  qdrant_data:      # Qdrant vector collections (dense + sparse indexes)
+
+# ── Internal network ──────────────────────────────────────────────────────────
+networks:
+  docforge_net:
+    driver: bridge
