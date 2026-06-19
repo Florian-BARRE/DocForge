@@ -24,6 +24,19 @@ class ChunkRepository(LoggerClass):
 
     All methods accept an ``AsyncSession`` injected by the caller — the repository
     never opens its own connection (follows the Unit-of-Work pattern).
+
+    Split decision (P4 god-class review):
+        DOCUMENTED EXCEPTION — no ``ChunkRepoHelpers`` extracted.
+
+        Rationale: every method in this class is session-bound and issues SQL via
+        ``AsyncSession.execute(text(...))``.  The only non-trivial pure logic is the
+        row-dict comprehension and sort in ``bulk_insert`` (~10 lines).  Extracting
+        those into a static helper would create an artificial boundary with no
+        meaningful cohesion benefit and would add indirection without reducing
+        complexity.  The file sits at 284 lines — above the 200-line soft limit but
+        within the 300-line threshold that warrants a real split.  All methods belong
+        to a single, well-defined responsibility (chunk persistence).  Leave as one
+        file.
     """
 
     def __init__(self) -> None:
