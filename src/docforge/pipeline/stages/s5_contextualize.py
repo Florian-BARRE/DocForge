@@ -34,24 +34,36 @@ class S5Result:
 
 class S5ContextualizeStage(LoggerClass):
     """
-    S5 — Chunk contextualization.
+    S5 — Chunk contextualization with configurable header template.
 
     For every chunk produced by S4, builds ``embed_text`` by prepending the document
     title and the heading breadcrumb trail at the point where the chunk starts.
 
-    embed_text template:
-        <doc_title>
-        <H1 > H2 > H3>
+    Default embed_text template (when both flags are on)::
+
+        <doc_title> > <H1> > <H2>
+
         <chunk_body>
 
-    ``chunk_body`` is always the chunk's ``raw_text`` — S4 assembles the right body per chunk
-    kind (text sections, and figure/table chunks with their caption + OCR/description/chart
-    data co-located), so contextualization is uniform across strategies.
+    The stage carries a ``ContextualizeConfig`` so operators can toggle the title /
+    breadcrumb and tune the separators per collection.  ``chunk_body`` is always the
+    chunk's ``raw_text`` — S4 assembles the right body per chunk kind (text sections,
+    figure/table chunks with co-located caption + OCR/description/chart data), so
+    contextualization stays uniform across strategies.
     """
 
-    def __init__(self) -> None:
-        """Initialize the contextualization stage."""
+    def __init__(self, config: Any = None) -> None:
+        """
+        Initialize the contextualization stage.
+
+        Args:
+            config (ContextualizeConfig | None): Header-template controls.  When None,
+                a default-constructed ``ContextualizeConfig`` is used (current behaviour).
+        """
         LoggerClass.__init__(self)
+        # Lazy import — pipeline_config imports this module transitively in some paths.
+        from pipeline.pipeline_config import ContextualizeConfig
+        self._cfg = config if config is not None else ContextualizeConfig()
 
     async def run(
         self,
@@ -106,20 +118,22 @@ class S5ContextualizeStage(LoggerClass):
         Returns:
             str: The embed_text string.
         """
-        # 1. Section breadcrumb (precomputed by S4)
+        cfg = self._cfg
+
+        # 1. Section breadcrumb (precomputed by S4) — only used when include_breadcrumb=True
         breadcrumb = ""
-        if isinstance(chunk.prov, dict):
+        if cfg.include_breadcrumb and isinstance(chunk.prov, dict):
             breadcrumb = str(chunk.prov.get("heading_path", "")).strip()
 
-        # 2. Prepend the doc title only when it is not already the breadcrumb's first segment
+        # 2. Prepend the doc title only when enabled AND not already the breadcrumb's first segment
         prefix_parts: list[str] = []
-        first_crumb = breadcrumb.split(" > ", 1)[0] if breadcrumb else ""
-        if doc_title and doc_title != first_crumb:
+        first_crumb = breadcrumb.split(cfg.breadcrumb_separator, 1)[0] if breadcrumb else ""
+        if cfg.include_doc_title and doc_title and doc_title != first_crumb:
             prefix_parts.append(doc_title)
         if breadcrumb:
             prefix_parts.append(breadcrumb)
 
-        # 3. Assemble — context header on one line, body separated by a blank line
-        header = " > ".join(prefix_parts) if prefix_parts else ""
+        # 3. Assemble — context header on one line, body separated per config
+        header = cfg.breadcrumb_separator.join(prefix_parts) if prefix_parts else ""
         parts = [p for p in [header, chunk.raw_text] if p.strip()]
-        return "\n\n".join(parts)
+        return cfg.header_body_separator.join(parts)

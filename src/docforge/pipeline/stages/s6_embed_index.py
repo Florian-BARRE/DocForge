@@ -7,7 +7,7 @@
 # ====== Standard Library Imports ======
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 # ====== Third-Party Library Imports ======
@@ -16,7 +16,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 # ====== Internal Project Imports ======
 from ir.chunk import Chunk
-from providers.embed.local.tei import TeiEmbedProvider
+from ir.models import ChainAttemptIR, ChainTrace
+from providers.chain import Chain, chain_outcome_to_attempt_dicts
 from retrieval.field_index import (
     CONTENT_DENSE,
     CONTENT_SPARSE,
@@ -37,6 +38,8 @@ class S6Result:
         n_inserted_postgres (int): Number of chunk rows inserted into Postgres.
         collection_name (str): Qdrant collection name used for the upsert.
         n_field_vectors (int): Number of per-field named vectors materialized.
+        chain_traces (list[ChainTrace]): Per-batch embed chain traces; the engine
+            appends them onto ``DocumentIR.chain_traces`` for full lineage.
     """
 
     n_embedded: int
@@ -44,6 +47,7 @@ class S6Result:
     n_inserted_postgres: int
     collection_name: str
     n_field_vectors: int = 0
+    chain_traces: list[ChainTrace] = field(default_factory=list)
 
 
 class S6EmbedIndexStage(LoggerClass):
@@ -60,7 +64,7 @@ class S6EmbedIndexStage(LoggerClass):
 
     def __init__(
         self,
-        embed_provider: TeiEmbedProvider,
+        embed_chain: "Chain[Any, Any]",
         qdrant: QdrantStorageClient,
         chunk_repo: ChunkRepository,
         embed_batch_size: int = 64,
@@ -69,16 +73,29 @@ class S6EmbedIndexStage(LoggerClass):
         Initialize S6.
 
         Args:
-            embed_provider (TeiEmbedProvider): BGE-M3 TEI embedding provider.
+            embed_chain (Chain[EmbedProvider, EmbedResult]): Ordered embed chain.
+                Index 0 is tried first; the gate escalates when a provider raises.
             qdrant (QdrantStorageClient): Async Qdrant client.
             chunk_repo (ChunkRepository): Postgres chunk repository.
-            embed_batch_size (int): Texts sent to TEI per HTTP request.
+            embed_batch_size (int): Texts sent per chain attempt.
         """
         LoggerClass.__init__(self)
-        self._embed = embed_provider
+        self._embed_chain = embed_chain
         self._qdrant = qdrant
         self._chunk_repo = chunk_repo
         self._embed_batch_size = embed_batch_size
+        self._batch_traces: list[ChainTrace] = []
+
+    @property
+    def embed_chain(self) -> "Chain[Any, Any]":
+        """Expose the chain so the engine can fingerprint its signature."""
+        return self._embed_chain
+
+    @property
+    def dimension(self) -> int:
+        """Return the dimension of the first embed provider (used by ensure_collection)."""
+        first = self._embed_chain.providers[0] if self._embed_chain.providers else None
+        return int(getattr(first, "dimension", 0))
 
     async def run(
         self,
@@ -104,6 +121,9 @@ class S6EmbedIndexStage(LoggerClass):
         self.logger.info(f"S6 started: chunks={len(chunks)} collection={collection_name!r}")
         if not chunks:
             return S6Result(0, 0, 0, collection_name)
+
+        # Reset per-run trace accumulator; each batch contributes one ChainTrace.
+        self._batch_traces = []
 
         doc_meta = doc_meta or {}
         plan = FieldIndexHelpers.derive_vector_plan(metadata_fields or [])
@@ -133,7 +153,7 @@ class S6EmbedIndexStage(LoggerClass):
         # 3. Ensure the collection carries every named vector the schema needs
         await self._qdrant.ensure_collection(
             collection_name,
-            dense_dim=self._embed.dimension,
+            dense_dim=self.dimension,
             field_dense_names=plan.dense_vector_names,
             field_sparse_names=plan.sparse_vector_names,
         )
@@ -164,18 +184,41 @@ class S6EmbedIndexStage(LoggerClass):
             f"S6 done: embedded={len(index_chunks)} qdrant={n_upserted} persisted={len(chunks)} "
             f"field_vectors={n_field_vectors} collection={collection_name!r}"
         )
-        return S6Result(len(index_chunks), n_upserted, len(chunks), collection_name, n_field_vectors)
+        return S6Result(
+            len(index_chunks), n_upserted, len(chunks), collection_name, n_field_vectors,
+            chain_traces=list(self._batch_traces),
+        )
 
     # ─── Internal ─────────────────────────────────────────────────────────────
 
     async def _embed_texts(
         self, texts: list[str]
     ) -> tuple[list[list[float]], list[dict[int, float]] | None]:
-        """Embed a list of texts (batched), returning dense + optional sparse vectors."""
+        """
+        Embed a list of texts via the embed chain, batched per ``embed_batch_size``.
+
+        Each batch contributes one ``ChainTrace`` to ``self._batch_traces``; the engine
+        flushes them onto the document IR after the stage returns.
+
+        Raises:
+            RuntimeError: When the chain exhausts every provider for a batch.
+        """
         all_dense: list[list[float]] = []
         all_sparse: list[dict[int, float]] | None = None
         for i in range(0, len(texts), self._embed_batch_size):
-            res = await self._embed.embed(texts[i : i + self._embed_batch_size])
+            batch = texts[i : i + self._embed_batch_size]
+            outcome = await self._embed_chain.call(lambda p: p.embed(batch))
+            self._batch_traces.append(ChainTrace(
+                stage="embed",
+                attempts=[ChainAttemptIR(**d) for d in chain_outcome_to_attempt_dicts(outcome)],
+                final_provider=outcome.final_provider,
+            ))
+            if outcome.result is None:
+                raise RuntimeError(
+                    f"S6 embed chain exhausted for batch of {len(batch)} texts — "
+                    f"{len(outcome.attempts)} provider(s) attempted, none returned vectors."
+                )
+            res = outcome.result
             all_dense.extend(res.vectors)
             if res.sparse is not None:
                 if all_sparse is None:

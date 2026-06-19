@@ -26,8 +26,9 @@
       "Bash(* git clean -f*)",
       "Bash(git clean -f*)",
       "Bash(alembic downgrade*)",
-      "Bash(podman system prune*)",
-      "Bash(podman-compose down*)"
+      "Bash(docker system prune*)",
+      "Bash(docker compose down*)",
+      "Bash(docker-compose down*)"
     ]
   },
 

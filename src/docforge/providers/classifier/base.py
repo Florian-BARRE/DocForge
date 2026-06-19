@@ -17,6 +17,10 @@ class ClassificationResult:
     kind: FigureKind
     confidence: float  # [0.0, 1.0] — classifier certainty in the predicted kind
 
+    def score(self) -> float | None:
+        """ScoredResult — classifier escalation gates on the prediction confidence."""
+        return self.confidence
+
 
 class FigureClassifier(ABC):
     """

@@ -60,7 +60,7 @@ REST API (FastAPI) ──→ arq workers (P2+)
 | Vector DB | Qdrant (named dense + sparse BM25) |
 | Conversion | Gotenberg (LibreOffice + Chromium, HTTP API) |
 | Hash | blake3 (fingerprints), sha256 (content-addressing) |
-| Conteneurs | **Podman + podman-compose** |
+| Conteneurs | **Docker + docker compose** |
 
 ## GPU Strategy
 
@@ -82,7 +82,7 @@ src/docforge/          # Source app (fastapi.md layout, dans WORKDIR /app/docfor
   backend/             # FastAPI app, CONTEXT, lifespan, routers
   migrations/          # Alembic
 services/              # .env par service (docforge, postgres, minio, gotenberg, redis)
-docker-compose.yml     # Production (Podman-compatible)
+docker-compose.yml     # Production
 docker-compose.dev.yml # Dev overrides (volumes + --reload)
 ```
 
@@ -91,4 +91,4 @@ docker-compose.dev.yml # Dev overrides (volumes + --reload)
 - `general.md` : OOP, English, docstrings Google-style, type hints partout
 - `python.md` : uv, loggerplusplus, configplusplus, LoggerClass, import order
 - `fastapi.md` : CONTEXT, lifespan, `@auto_handle_errors`, structure routers
-- `docker.md` : multi-stage, **Podman**, Dockerfiles entièrement commentés en anglais
+- `docker.md` : multi-stage, **Docker**, Dockerfiles entièrement commentés en anglais

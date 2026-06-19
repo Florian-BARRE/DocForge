@@ -4,7 +4,7 @@
 # Build note:
 # Built from the repository root with the src/ directory as context.
 # Example:
-#   podman build -f src/docforge/Dockerfile -t docforge:latest src
+#   docker build -f src/docforge/Dockerfile -t docforge:latest src
 #
 # WORKDIR is set to /app/docforge (not /app) so that Python's CWD is at the
 # package root — this makes `from config import RUNTIME_CONFIG` resolve to
@@ -30,7 +30,7 @@ WORKDIR /workspace
 ENV UV_PROJECT_ENVIRONMENT=/opt/venv
 
 # Copy only the lock metadata first.
-# Docker/Podman caches this layer independently of application code changes.
+# Docker caches this layer independently of application code changes.
 # Dependency install is re-triggered only when pyproject.toml or uv.lock changes.
 COPY docforge/pyproject.toml docforge/uv.lock /workspace/docforge/
 
@@ -81,7 +81,7 @@ FROM python:3.12-slim-bookworm AS runtime
 # PYTHONDONTWRITEBYTECODE: prevents .pyc bytecode files from being written to disk.
 #   Reduces container image bloat; Python will recompile from .py at startup (fast).
 # PYTHONUNBUFFERED: forces stdout/stderr to flush immediately.
-#   Ensures container logs are visible in real time via `podman logs`.
+#   Ensures container logs are visible in real time via `docker logs`.
 # PATH: prepend the uv-built venv so its Python + executables are used by default.
 # QT_QPA_PLATFORM=offscreen: prevents OpenCV/Qt from trying to connect to X11 (libxcb.so.1).
 #   Docling imports OpenCV which bundles Qt plugins; without a display, the xcb platform

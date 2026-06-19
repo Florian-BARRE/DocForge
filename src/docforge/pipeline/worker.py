@@ -103,21 +103,25 @@ async def startup(ctx: dict) -> None:
         runtime_config=RUNTIME_CONFIG,
     )
 
-    # 6. Build S2/S4/S5 stages from default PipelineConfig
+    # 6. Build parse chain + S2/S4/S5 stages from the default PipelineConfig
     default_pipeline = build_default_pipeline(RUNTIME_CONFIG)
+    default_parse_chain = registry._build_parser_chain(
+        default_pipeline.parse.chain, default_pipeline.parse.gate,
+    )
     s2_stage, s4_stage, s5_stage = registry.build_enrich_and_chunk_stages(default_pipeline)
     _logger.info(
-        f"Worker: S2/S4/S5 ready via registry "
-        f"(classifier={default_pipeline.enrich.classifier.id}, "
-        f"ocr={'yes' if default_pipeline.enrich.ocr_chain else 'no'}, "
-        f"vlm={'yes' if default_pipeline.enrich.vlm else 'no'}, "
+        f"Worker: S1/S2/S4/S5 ready via registry "
+        f"(parse_chain={default_parse_chain.signature()}, "
+        f"classifier_chain=len{len(default_pipeline.enrich.classifier_chain)}, "
+        f"ocr_chain=len{len(default_pipeline.enrich.ocr_chain)}, "
+        f"vlm_chain=len{len(default_pipeline.enrich.vlm_chain)}, "
         f"split={default_pipeline.chunk.split_method.id})"
     )
 
     # 7. Connect to Qdrant (vector store infrastructure).
-    # The actual S6 embed provider is built per-job from the collection's embed config
-    # (see StageEngine._build_s6_from_config) — it may be TeiEmbedProvider or
-    # OpenAIEmbedProvider depending on collection.pipeline.embed.provider.id.
+    # The actual S6 embed chain is built per-job from the collection's embed config
+    # (see StageEngine._build_s6_from_config) — providers in the chain may be
+    # TeiEmbedProvider or OpenAIEmbedProvider depending on collection.pipeline.embed.chain.
     # The Qdrant client is shared across all jobs; the embed provider is job-scoped.
     qdrant: QdrantStorageClient | None = None
     s6_stage: S6EmbedIndexStage | None = None
@@ -143,7 +147,7 @@ async def startup(ctx: dict) -> None:
     # 8. Assemble the stage engine
     engine = StageEngine(
         s0=S0IngestStage(s3=s3, converter=converter),
-        s1=S1ParseStage(parser=parser, s3=s3),
+        s1=S1ParseStage(parse_chain=default_parse_chain, s3=s3),
         s3=s3,
         postgres=postgres,
         node_cache=node_cache,

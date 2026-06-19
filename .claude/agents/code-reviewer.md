@@ -3,7 +3,7 @@ name: code-reviewer
 description: >-
   Review DocForge code changes for correctness, performance, rule adherence (python.md,
   fastapi.md, docker.md, general.md), and DocForge-specific invariants (IR canonical,
-  Protocol interfaces, CONTEXT service locator, Podman/SeaweedFS). Use after significant
+  Protocol interfaces, CONTEXT service locator, Docker/SeaweedFS). Use after significant
   changes to any module or before declaring a feature done.
 tools:
   - "Read"
@@ -46,7 +46,7 @@ catch correctness bugs, rule violations, and DocForge-specific anti-patterns.
 - [ ] Schema changes have an Alembic migration in `migrations/versions/`
 - [ ] New pipeline stages are wired as DAG nodes in `libs/pipeline/engine.py`
 - [ ] No MinIO references (SeaweedFS only, port 8333)
-- [ ] No `docker` or `docker-compose` (use `podman`/`podman-compose`)
+- [ ] Container CLI uses `docker compose` (v2 syntax, no hyphen) — never `podman` or legacy `docker-compose`
 
 ## Output format
 

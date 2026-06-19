@@ -87,6 +87,15 @@ export const getDiscovery = (collectionId?: string): Promise<DiscoveryResponse> 
 export const listCollections = (): Promise<CollectionListResponse> =>
   request<CollectionListResponse>('/collections/list')
 
+// Single collection lookup — useful when the inspector needs the persisted
+// resolved pipeline (collection.pipeline) without going through config_state.
+export const getCollection = async (id: string): Promise<import('./types').Collection> => {
+  const list = await listCollections()
+  const found = list.collections.find(c => c.id === id)
+  if (!found) throw new Error(`Collection ${id} not found`)
+  return found
+}
+
 export const createCollection = (body: Record<string, unknown>): Promise<ConfigState> =>
   request<ConfigState>('/collections/create', {
     method: 'POST',

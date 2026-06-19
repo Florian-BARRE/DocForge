@@ -1,20 +1,27 @@
 // ====== Code Summary ======
-// Search mode — collection picker + hybrid search bar + ranked result list.
-// Shows score bars and chunk provenance (doc filename, pages).
+// Search mode — collection picker + discovery-driven hybrid search form (query + top_k
+// + filters + weights) + ranked result list.  All inputs are derived from /api/v1/discovery
+// via <RequestForm>: filters and weights overlays come from the SearchRequest dynamic_fields,
+// query and top_k come from the SearchRequest input schema.
 
-import { useState, useEffect } from 'react'
-import type { Collection, SearchResultItem, Document } from '../../api/types'
-import { listCollections, listDocuments, searchDocuments } from '../../api/client'
+import { useState, useEffect, useMemo } from 'react'
+import type {
+  Collection, DiscoveryResponse, Document, EndpointDescriptor, SearchResultItem,
+} from '../../api/types'
+import {
+  getDiscovery, listCollections, listDocuments, searchDocuments,
+} from '../../api/client'
+import { RequestForm } from '../ui/RequestForm'
 
 /**
- * Hybrid search view. Users pick a collection, enter a query, select top-k,
- * and view ranked chunks with score bars and provenance metadata.
+ * Hybrid search view.  The host owns the collection picker and the result list;
+ * everything between (the search body form) is generated from /api/v1/discovery.
  */
 export function SearchView() {
   const [collections, setCollections] = useState<Collection[]>([])
   const [collectionId, setCollectionId] = useState<string>('')
-  const [query, setQuery] = useState('')
-  const [topK, setTopK] = useState(10)
+  const [discovery, setDiscovery] = useState<DiscoveryResponse | null>(null)
+  const [body, setBody] = useState<Record<string, unknown>>({})
   const [results, setResults] = useState<SearchResultItem[]>([])
   const [docMap, setDocMap] = useState<Record<string, Document>>({})
   const [searching, setSearching] = useState(false)
@@ -33,7 +40,7 @@ export function SearchView() {
       .catch(() => { /* ignore */ })
   }, [])
 
-  // 2. Pre-fetch document list for current collection to resolve filenames.
+  // 2. Pre-fetch documents to resolve filenames in the result list.
   useEffect(() => {
     if (!collectionId) return
     listDocuments(collectionId, { limit: 200 })
@@ -45,19 +52,39 @@ export function SearchView() {
       .catch(() => { /* non-critical */ })
   }, [collectionId])
 
-  // 3. Execute search.
+  // 3. Re-fetch scoped discovery whenever the selected collection changes — the filters
+  // and weights overlays are collection-scoped (they need the metadata schema to resolve
+  // their choices).
+  useEffect(() => {
+    if (!collectionId) { setDiscovery(null); return }
+    getDiscovery(collectionId)
+      .then(setDiscovery)
+      .catch(() => { /* non-critical */ })
+  }, [collectionId])
+
+  const searchEndpoint: EndpointDescriptor | undefined = useMemo(
+    () => discovery?.endpoints.find(e => e.route_name === 'search_collection'),
+    [discovery],
+  )
+
+  // 4. Execute search.
   async function handleSearch(e?: React.FormEvent) {
     e?.preventDefault()
-    if (!collectionId || !query.trim()) return
+    const query = String(body.query ?? '').trim()
+    if (!collectionId || !query) return
     setSearching(true)
     setError(null)
     setResults([])
     setNote(undefined)
     setSearched(false)
     try {
-      const res = await searchDocuments(collectionId, query.trim(), { top_k: topK })
+      const res = await searchDocuments(collectionId, query, {
+        top_k: typeof body.top_k === 'number' ? (body.top_k as number) : undefined,
+        filters: (body.filters as Record<string, unknown> | undefined) ?? undefined,
+        weights: (body.weights as Record<string, number> | undefined) ?? undefined,
+      })
       setResults(res.results)
-      setNote(res.note)
+      setNote(res.note ?? undefined)
       setSearched(true)
     } catch (err) {
       setError(String(err))
@@ -69,12 +96,11 @@ export function SearchView() {
   function toggleResult(id: string) {
     setExpanded(prev => {
       const next = new Set(prev)
-      if (next.has(id)) { next.delete(id) } else { next.add(id) }
+      if (next.has(id)) next.delete(id); else next.add(id)
       return next
     })
   }
 
-  // Compute max score for normalizing the score bar.
   const maxScore = results.length > 0
     ? Math.max(...results.map(r => r.score))
     : 1
@@ -103,40 +129,28 @@ export function SearchView() {
         </select>
       </div>
 
-      {/* Search bar */}
+      {/* Discovery-driven search body */}
       <form onSubmit={handleSearch}>
-        <div className="search-bar">
-          <input
-            className="input search-input"
-            type="text"
-            placeholder="Search documents…"
-            value={query}
-            onChange={e => setQuery(e.target.value)}
-            autoFocus
+        {searchEndpoint && discovery && (
+          <RequestForm
+            endpoint={searchEndpoint}
+            discovery={discovery}
+            body={body}
+            query={{}}
+            onBodyChange={setBody}
+            onQueryChange={() => {}}
           />
+        )}
+
+        <div className="row-end" style={{ marginTop: 12 }}>
           <button
             type="submit"
             className="btn btn-primary"
-            disabled={searching || !collectionId || !query.trim()}
+            disabled={searching || !collectionId || !String(body.query ?? '').trim()}
           >
             {searching ? <span className="spin">⟳</span> : null}
             {searching ? ' Searching…' : 'Search'}
           </button>
-        </div>
-
-        {/* top-k selector */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-          <span className="text-muted" style={{ fontSize: 12 }}>Top-k:</span>
-          {[5, 10, 20, 50].map(k => (
-            <button
-              key={k}
-              type="button"
-              className={`chip ${topK === k ? 'chip-active' : ''}`}
-              onClick={() => setTopK(k)}
-            >
-              {k}
-            </button>
-          ))}
         </div>
       </form>
 
@@ -165,7 +179,8 @@ export function SearchView() {
           {results.map((item, idx) => {
             const isOpen = expanded.has(item.chunk_id)
             const relScore = maxScore > 0 ? item.score / maxScore : 0
-            const docFilename = docMap[item.document_id]?.filename ?? item.document_id.slice(0, 12) + '…'
+            const docFilename = docMap[item.document_id]?.filename
+              ?? item.document_id.slice(0, 12) + '…'
 
             return (
               <div key={item.chunk_id} className="result-card">

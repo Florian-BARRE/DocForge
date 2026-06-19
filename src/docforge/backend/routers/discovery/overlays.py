@@ -90,9 +90,21 @@ def build_dynamic_fields(
 # ─── Pipeline (deployment-scoped) ──────────────────────────────────────────────
 
 def _pipeline_dynamic_fields(stages: list[dict[str, Any]], prefix: str) -> list[DynamicField]:
-    """One DynamicField per stage provider/method group, re-keyed onto the pipeline body path."""
+    """
+    Emit one DynamicField per pipeline knob, re-keyed onto the body path.
+
+    Two kinds are emitted so the UI can surface *every* tunable param:
+
+    - ``kind`` from the group (``single``/``multi``/``optional``) — provider/method picker.
+    - ``kind="scalar"`` — a single typed scalar (bool / int / float / str) for stage-level
+      params such as ``enrich.chart_to_data`` or ``chunk.reinject_breadcrumb``.  These are
+      surfaced as overlays so the frontend can iterate ``endpoint.dynamic_fields`` and find
+      every adjustable knob in one pass, instead of having to fetch a separate ``stages``
+      payload for the scalars.
+    """
     out: list[DynamicField] = []
     for stage in stages:
+        # 1. Provider / method groups → choice picker
         for group in stage.get("groups", []):
             out.append(DynamicField(
                 field_path=f"{prefix}{group['key']}",
@@ -101,6 +113,30 @@ def _pipeline_dynamic_fields(stages: list[dict[str, Any]], prefix: str) -> list[
                 scope="deployment",
                 resolved=True,
                 choices=[_provider_choice(p) for p in group.get("providers", [])],
+            ))
+        # 2. Stage-level scalar params (chart_to_data, max_budget_usd, reinject_breadcrumb, …)
+        for param in stage.get("params", []):
+            # The registry historically emits scalar entries with ``name`` (dot-path) +
+            # ``type``/``default``/``description``.  Wrap them into a single Choice so the
+            # ChoicePicker scalar branch can render a FieldInput from ``choices[0].fields[0]``
+            # without inventing a new transport shape.
+            try:
+                spec = ParamSchema.model_validate({
+                    "name": param.get("name") or param.get("key"),
+                    "type": param.get("type", "str"),
+                    "label": param.get("label", ""),
+                    "default": param.get("default"),
+                    "description": param.get("description") or param.get("note") or "",
+                })
+            except Exception:
+                continue
+            out.append(DynamicField(
+                field_path=f"{prefix}{spec.name}",
+                capability=f"pipeline_param:{spec.type}",
+                kind="scalar",
+                scope="deployment",
+                resolved=True,
+                choices=[Choice(id=spec.name, label=spec.label or spec.name, fields=[spec])],
             ))
     return out
 

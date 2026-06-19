@@ -14,11 +14,11 @@ metadata:
 | S6 skips Qdrant | `collection_id=None` in `arq_pool.enqueue_job()` | `documents/router.py` — pass `collection_id=str(collection_id)` |
 | Chunk count = 0 | `S4_ENABLED=false` | Set `S4_ENABLED=true` in `services/docforge/.env` |
 | S2 silently skips all figures | `S2_ENRICH_ENABLED=false` | Set `S2_ENRICH_ENABLED=true` |
-| TEI unreachable | Wrong `TEI_BASE_URL` or container down | Check `services/docforge/.env` + `podman-compose ps` |
+| TEI unreachable | Wrong `TEI_BASE_URL` or container down | Check `services/docforge/.env` + `docker compose ps` |
 | Qdrant collection missing | `ensure_collection()` failed | Check `QDRANT_HOST`/`QDRANT_PORT` connectivity |
 | SeaweedFS 403 on upload | Bucket not initialized | Call `POST /api/v1/collections` to provision the bucket |
-| Docling parse returns empty IR | Corrupted PDF or Gotenberg timeout | Check Gotenberg logs: `podman logs docforge-gotenberg` |
-| arq job stuck in `running` | Worker crashed during stage | Check `podman logs docforge-worker --tail=100` |
+| Docling parse returns empty IR | Corrupted PDF or Gotenberg timeout | Check Gotenberg logs: `docker compose logs gotenberg` |
+| arq job stuck in `running` | Worker crashed during stage | Check `docker compose logs worker --tail=100` |
 
 ## Service endpoints (dev)
 

@@ -40,13 +40,31 @@ class OcrResult(BaseModel):
     confidence: float  # [0, 1] — used to decide escalation in the provider chain
     language: str | None = None
 
+    def score(self) -> float | None:
+        """ScoredResult — OCR escalation uses the provider's avg per-character confidence."""
+        return self.confidence
+
 
 class VlmResult(BaseModel):
-    """Output of a VLM description call."""
+    """
+    Output of a VLM description call.
+
+    The ``quality`` field encodes the in-adapter heuristic used by the chain gate:
+      • ``1.0`` — structured output was requested and is present + non-empty
+      • ``0.5`` — only a description was returned (no schema / partial structured output)
+      • ``0.0`` — the provider raised (the chain wrapper captures this case before
+        the result is constructed; ``0.0`` is reserved as a sentinel)
+
+    See ``providers/vlm/base.py`` for the helper that computes the value.
+    """
 
     description: str
-    # Structured output when schema was requested (e.g. chart-to-data)
     structured: dict[str, Any] | None = None
+    quality: float = 0.5
+
+    def score(self) -> float | None:
+        """ScoredResult — heuristic quality estimate populated by the adapter."""
+        return self.quality
 
 
 class EmbedResult(BaseModel):
@@ -55,6 +73,11 @@ class EmbedResult(BaseModel):
     vectors: list[list[float]]              # one dense vector per input text
     sparse: list[dict[int, float]] | None = None  # one BM25 sparse map per text (token_id → weight)
     model: str
+    quality: float = 1.0  # embeddings are binary success/fail — gate escalation flows via attempt.error
+
+    def score(self) -> float | None:
+        """ScoredResult — embed success is binary; a successful call returns 1.0."""
+        return self.quality
 
 
 class RerankResult(BaseModel):

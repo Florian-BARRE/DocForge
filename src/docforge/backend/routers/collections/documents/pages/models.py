@@ -8,6 +8,9 @@ import uuid
 # ====== Third-Party Library Imports ======
 from pydantic import BaseModel
 
+# ====== Internal Project Imports ======
+from ir.models import ChainTrace
+
 
 class PageInfo(BaseModel):
     """Per-page summary derived from the document's blocks + chunks."""
@@ -36,7 +39,12 @@ class BlockInfo(BaseModel):
     page: int
     text: str | None = None
     bbox: list[float] = []
-    type_data: dict | None = None  # FIGURE: kind/crop_key/relevance/ocr_text/description/data_table; TABLE: cells/n_rows/n_cols
+    # FIGURE: kind/crop_key/relevance/ocr_text/description/data_table + chain_traces
+    # TABLE:  cells/n_rows/n_cols
+    type_data: dict | None = None
+    # Per-block chain lineage extracted from type_data so the UI doesn't have to
+    # know that figure provenance is nested inside the enrichment payload.
+    chain_traces: list[ChainTrace] = []
 
 
 class PageDetailResponse(BaseModel):

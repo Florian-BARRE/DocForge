@@ -27,7 +27,10 @@ export function FieldInput({ schema, value, onChange, disabled }: Props) {
           disabled={disabled}
           title={description}
         >
-          {opts.map(o => <option key={o} value={o}>{o}</option>)}
+          {opts.map(o => {
+            const s = String(o)
+            return <option key={s} value={s}>{s}</option>
+          })}
         </select>
       </label>
     )
@@ -55,15 +58,15 @@ export function FieldInput({ schema, value, onChange, disabled }: Props) {
         <span className="field-label">
           {displayLabel}
           {(min != null || max != null) && (
-            <span className="field-bounds">{min ?? '−∞'} – {max ?? '∞'}</span>
+            <span className="field-bounds">{String(min ?? '−∞')} – {String(max ?? '∞')}</span>
           )}
         </span>
         <input
           className="input"
           type="number"
-          value={current as number ?? ''}
-          min={min ?? undefined}
-          max={max ?? undefined}
+          value={(current as number | undefined) ?? ''}
+          min={min as number | undefined}
+          max={max as number | undefined}
           step={type === 'float' || type === 'number' ? 0.1 : 1}
           onChange={e => {
             const v = type === 'float' || type === 'number'

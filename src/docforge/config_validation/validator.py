@@ -120,16 +120,22 @@ class ConfigValidator:
                 ))
 
         # 3. A VLM pointed at a remote endpoint is forbidden (local vLLM URL is fine)
-        if pipeline.enrich.vlm is not None:
-            base_url = str(pipeline.enrich.vlm.params.get("base_url", ""))
+        for vlm in pipeline.enrich.vlm_chain:
+            base_url = str(getattr(vlm, "base_url", "") or "")
             if cls._is_remote_url(base_url):
                 issues.append(cls._issue(
-                    "locality.remote_vlm", "error", "enrich.vlm",
+                    "locality.remote_vlm", "error", "enrich.vlm_chain",
                     f"VLM endpoint {base_url!r} is remote, forbidden by on_premise_only.",
                 ))
 
-        # 4. A remote embedding endpoint is forbidden
-        embed_url = str(pipeline.embed.provider.params.get("base_url", ""))
+        # 4. A remote embedding endpoint is forbidden — apply to every provider in the chain
+        for embed in pipeline.embed.chain:
+            embed_url = str(getattr(embed, "base_url", "") or "")
+            if cls._is_remote_url(embed_url):
+                issues.append(cls._issue(
+                    "locality.remote_embed", "error", "embed.chain",
+                    f"Embedding endpoint {embed_url!r} is remote, forbidden by on_premise_only.",
+                ))
         if cls._is_remote_url(embed_url):
             issues.append(cls._issue(
                 "locality.remote_embed", "error", "embed.provider",
@@ -144,26 +150,22 @@ class ConfigValidator:
         issues: list[dict[str, Any]],
     ) -> None:
         """Check every selected provider is selectable; warn when not yet available."""
-        # 1. Parse provider
-        cls._check_one("parse", pipeline.parse.provider.id, pipeline.parse.provider.params, index, issues)
+        # 1. Parse chain — every provider in declaration order
+        for parse in pipeline.parse.chain:
+            cls._check_one("parse", parse.id, cls._params_dict(parse), index, issues)
         # 1b. Chunk split method (decision-tree-by-method): unknown id → error; semantic needs TEI
-        cls._check_one(
-            "chunk_strategy",
-            pipeline.chunk.split_method.id,
-            pipeline.chunk.split_method.params,
-            index,
-            issues,
-        )
-        # 2. S2 enrichment providers — always checked (S2 always runs)
-        cls._check_one("classifier", pipeline.enrich.classifier.id,
-                       pipeline.enrich.classifier.params, index, issues)
+        split = pipeline.chunk.split_method
+        cls._check_one("split_method", split.id, cls._params_dict(split), index, issues)
+        # 2. S2 enrichment chains — classifier / ocr / vlm
+        for classifier in pipeline.enrich.classifier_chain:
+            cls._check_one("classifier", classifier.id, cls._params_dict(classifier), index, issues)
         for spec in pipeline.enrich.ocr_chain:
-            cls._check_one("ocr", spec.id, spec.params, index, issues)
-        if pipeline.enrich.vlm is not None:
-            cls._check_one("vlm", pipeline.enrich.vlm.id, pipeline.enrich.vlm.params, index, issues)
-        # 3. Embedding provider (always part of the pipeline)
-        cls._check_one("embed", pipeline.embed.provider.id,
-                       pipeline.embed.provider.params, index, issues)
+            cls._check_one("ocr", spec.id, cls._params_dict(spec), index, issues)
+        for vlm in pipeline.enrich.vlm_chain:
+            cls._check_one("vlm", vlm.id, cls._params_dict(vlm), index, issues)
+        # 3. Embedding chain
+        for embed in pipeline.embed.chain:
+            cls._check_one("embed", embed.id, cls._params_dict(embed), index, issues)
 
     @classmethod
     def _check_one(
@@ -233,6 +235,25 @@ class ConfigValidator:
                 ))
 
     # ─── Private utilities ──────────────────────────────────────────────────────
+
+    @staticmethod
+    def _params_dict(provider: Any) -> dict[str, Any]:
+        """
+        Return the provider's params as a plain dict, agnostic of the post-refactor flat shape.
+
+        Typed Pydantic provider configs (DoclingConfig, TeiEmbedConfig, …) carry their params as
+        flat top-level fields with ``id`` as the discriminator — ``model_dump(exclude={"id"})``
+        yields the dict the rest of the validator (and _check_one) expects. The fallback handles
+        the legacy ProviderSpec(id, params) shape still kept in pipeline_config for compat.
+        """
+        # 1. Typed Pydantic v2 config → flat dict excluding the discriminator
+        if hasattr(provider, "model_dump"):
+            try:
+                return provider.model_dump(exclude={"id"})
+            except Exception:  # noqa: BLE001 — fall back to attribute access on a stale model
+                pass
+        # 2. Legacy ProviderSpec(id, params) — kept for backward compat
+        return dict(getattr(provider, "params", {}) or {})
 
     @staticmethod
     def _provider_index(stages: list[dict[str, Any]]) -> dict[tuple[str, str], dict[str, Any]]:

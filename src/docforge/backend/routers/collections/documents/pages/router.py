@@ -167,14 +167,29 @@ def _page_text(page_blocks: list[Any]) -> str:
 
 
 def _block_info(b: Any) -> BlockInfo:
-    """Map a BlockModel to a BlockInfo, including type-specific payload."""
+    """
+    Map a BlockModel to a BlockInfo, including type-specific payload + chain lineage.
+
+    chain_traces are persisted INSIDE type_data (no schema migration needed) but the
+    response surfaces them as a top-level field so the frontend doesn't have to
+    poke into the enrichment payload to find provenance.
+    """
+    raw_type_data = b.type_data or {}
+    chain_traces = list(raw_type_data.get("chain_traces", []) or [])
+    # Strip chain_traces from the exposed type_data — keep figure/table fields clean.
+    visible_type_data: dict | None = (
+        {k: v for k, v in raw_type_data.items() if k != "chain_traces"}
+        if raw_type_data
+        else None
+    )
     return BlockInfo(
         id=b.id,
         type=b.type,
         page=b.page,
         text=b.text,
         bbox=list(b.bbox) if b.bbox else [],
-        type_data=b.type_data if b.type_data else None,
+        type_data=visible_type_data,
+        chain_traces=chain_traces,
     )
 
 

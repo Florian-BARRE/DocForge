@@ -296,15 +296,32 @@ class S3Client(LoggerClass):
 
     @staticmethod
     def key_figure_crop(source_hash: str, block_id: str) -> str:
-        """Key for a figure crop PNG.
+        """Key for a figure crop PNG (legacy, per-block layout).
 
         Docling block IDs use '#/pictures/N' format. The '#' character causes
         presigned-URL signature mismatches with SeaweedFS (boto3 encodes it as '%23'
         in the URL but the SigV2 canonical path differs). We strip '#' and replace
         '/' with '_' so the resulting S3 key only contains URL-safe characters.
+
+        Kept for backward compatibility with IR rows persisted before content-
+        addressed crops were introduced.  New uploads use
+        :meth:`key_figure_crop_by_hash` so a repeating logo / page header lands
+        in a single PNG shared across every block (and every document) that
+        contains the same pixels.
         """
         safe_id = block_id.replace("#", "").replace("/", "_").strip("_")
         return f"derived/{source_hash}/figures/{safe_id}.png"
+
+    @staticmethod
+    def key_figure_crop_by_hash(crop_hash: str) -> str:
+        """Content-addressed key for a figure crop PNG.
+
+        ``crop_hash`` is ``sha256(crop_bytes).hexdigest()`` — identical pixel
+        bytes yield identical keys, so a logo that repeats across every slide of
+        a deck (or every document of a collection) is stored as a single PNG.
+        The 2-char prefix avoids piling 100k objects into one S3 "directory".
+        """
+        return f"figures/by-hash/{crop_hash[:2]}/{crop_hash}.png"
 
     @staticmethod
     def key_ir(source_hash: str, parse_fp: str) -> str:

@@ -64,14 +64,29 @@ class SemanticConfig(BaseModel):
     """
     Semantic (embedding-based) intra-section split method.
 
-    Config id: "semantic" — requires a reachable TEI embedding endpoint.
+    Config id: "semantic" — requires ANY embed provider reachable at build time.
     Places boundaries at points of maximum semantic distance between sentences.
+
+    The embed provider is a fully typed discriminated union (TEI / openai_compat / openai),
+    identical to the one used by S6 — so semantic chunking and indexing can share or
+    differ at will (e.g. a cheap local embed for boundary detection + a cloud embed for
+    retrieval-quality vectors at index time).
+
+    Backward-compat: a legacy ``{base_url: "..."}`` flat config is lifted to
+    ``{embed: {id: "tei", base_url: "..."}}`` so old DB rows still load.
     """
 
-    _label: ClassVar[str] = "Semantic — embedding-based boundary detection (requires TEI)"
+    _label: ClassVar[str] = "Semantic — embedding-based boundary detection (any embed provider)"
 
     id: Literal["semantic"] = "semantic"
-    base_url: str = Field(default="", description="TEI endpoint (defaults to deployment TEI when empty).")
+    embed: Any = Field(
+        default=None,
+        description=(
+            "Embed provider used for boundary detection — typed EmbedProviderConfig "
+            "(TeiEmbedConfig / LocalOpenAIEmbedConfig / OpenAIEmbedConfig).  None = "
+            "default TEI when the config is materialised."
+        ),
+    )
     max_tokens: int = Field(default=512, ge=64, le=4096, description="Hard cap per piece.")
     min_tokens: int = Field(default=128, ge=0, le=2048, description="Minimum size before a semantic cut is honoured.")
     breakpoint_percentile: int = Field(default=90, ge=50, le=99, description="Distance percentile above which a boundary is placed.")
@@ -79,41 +94,89 @@ class SemanticConfig(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def _compat(cls, v: Any) -> Any:
-        return _flatten_provider_spec(v)
+        """
+        Accept both new ``{embed: {...}}`` and legacy ``{base_url: "..."}`` shapes.
+
+        The legacy shape is lifted to a TEI embed config so old DB rows keep loading.
+        """
+        v = _flatten_provider_spec(v)
+        if isinstance(v, dict):
+            v = dict(v)
+            # Legacy: top-level base_url meant TEI
+            if "embed" not in v and "base_url" in v:
+                v["embed"] = {"id": "tei", "base_url": v.pop("base_url")}
+            # Flatten nested {id, params} on the embed sub-config
+            if isinstance(v.get("embed"), dict):
+                v["embed"] = _flatten_provider_spec(v["embed"])
+        return v
+
+    @model_validator(mode="after")
+    def _validate_embed(self) -> "SemanticConfig":
+        """Coerce ``embed`` into a typed EmbedProviderConfig instance after construction."""
+        # Lazy import — avoids a circular import at module load time.
+        from providers.embed import EmbedProviderConfig  # noqa: F401  (typing alias)
+        from providers.embed.local.tei import TeiEmbedConfig
+        from providers.embed.local.openai_compat import LocalOpenAIEmbedConfig
+        from providers.embed.external.openai_compat import OpenAIEmbedConfig
+        from pydantic import TypeAdapter
+        from typing import Annotated, Union
+        from pydantic import Field as _F
+
+        # Default to TEI when the field is None (e.g. legacy DB row without embed key).
+        if self.embed is None:
+            object.__setattr__(self, "embed", TeiEmbedConfig())
+            return self
+
+        # Already a typed instance — nothing to do.
+        if isinstance(self.embed, (TeiEmbedConfig, LocalOpenAIEmbedConfig, OpenAIEmbedConfig)):
+            return self
+
+        # Dict → validate via the same discriminated union the rest of the codebase uses.
+        Union_ = Annotated[
+            Union[TeiEmbedConfig, LocalOpenAIEmbedConfig, OpenAIEmbedConfig],
+            _F(discriminator="id"),
+        ]
+        adapter = TypeAdapter(Union_)
+        object.__setattr__(self, "embed", adapter.validate_python(self.embed))
+        return self
 
     def build(self) -> "SemanticSplitter":
-        """Instantiate SemanticSplitter with a TeiEmbedProvider for boundary detection."""
+        """Instantiate SemanticSplitter with the configured embed provider."""
         from pipeline.stages.chunking.semantic_splitter import SemanticSplitter
-        from providers.embed.local.tei import TeiEmbedProvider
-        embed = TeiEmbedProvider(
-            base_url=self.base_url,
-            batch_size=32,
-            embed_sparse=False,  # Dense only — boundary detection doesn't use sparse
-        )
+        embed_provider = self.embed.build()
         return SemanticSplitter(
-            embed_provider=embed,
+            embed_provider=embed_provider,
             max_tokens=self.max_tokens,
             min_tokens=self.min_tokens,
             breakpoint_percentile=self.breakpoint_percentile,
         )
 
     def merge_defaults(self, cfg: Any) -> "SemanticConfig":
-        return self.model_copy(update={
-            "base_url": self.base_url or getattr(cfg, "TEI_BASE_URL", ""),
-        })
+        """Merge deployment defaults into the nested embed config."""
+        merged_embed = self.embed.merge_defaults(cfg) if self.embed is not None else None
+        return self.model_copy(update={"embed": merged_embed})
 
     @classmethod
     def availability(cls, cfg: Any) -> tuple[bool, str]:
-        """Return availability status and description for this split method."""
+        """
+        Report availability of the DEFAULT semantic config (TEI on the deployment env vars).
+
+        At the per-collection level, the user picks any embed provider — its own
+        availability is reported under the embed picker.  This classmethod only describes
+        the heuristic "is the deployment-default config workable" for the discovery UI.
+        """
         import socket
         from urllib.parse import urlparse
         base_url = getattr(cfg, "TEI_BASE_URL", "http://tei:8080")
         try:
             p = urlparse(base_url)
             with socket.create_connection((p.hostname or "tei", p.port or 8080), timeout=1):
-                return True, f"Semantic boundaries via TEI · {base_url}"
+                return True, f"Semantic boundaries · default embed TEI · {base_url}"
         except OSError:
-            return False, f"Requires TEI server at {base_url}"
+            return False, (
+                f"Default TEI at {base_url} unreachable — pick another embed provider "
+                f"(openai_compat / openai) under split_method.embed."
+            )
 
 
 @register("split_method")

@@ -170,7 +170,8 @@ async def get_document(collection_id: uuid.UUID, document_id: uuid.UUID) -> Docu
     implicit = doc.implicit_meta or {}
     has_markdown = bool(implicit.get("markdown_key")) or stage_summary.get("s1") == "done"
 
-    # 4. Build enriched response
+    # 4. Build enriched response — chain lineage is extracted from implicit_meta so the
+    # frontend doesn't have to know that traces live inside the metadata blob.
     return DocumentResponse.model_validate(doc).model_copy(update={
         "chunk_count": chunk_count,
         "block_count": block_count,
@@ -179,6 +180,9 @@ async def get_document(collection_id: uuid.UUID, document_id: uuid.UUID) -> Docu
         "has_markdown": has_markdown,
         "indexed": stage_summary.get("s6") == "done",
         "pipeline_errors": pipeline_errors,
+        "quality_score": implicit.get("quality_score"),
+        "chain_traces": list(implicit.get("chain_traces", []) or []),
+        "embed_chain_traces": list(implicit.get("embed_chain_traces", []) or []),
     })
 
 

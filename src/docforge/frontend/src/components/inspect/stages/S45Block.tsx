@@ -3,8 +3,8 @@
 // Each chunk is collapsed by default; click to expand raw_text / embed_text tabs.
 
 import { useState, useEffect } from 'react'
-import type { Document, ChunkResponse } from '../../../api/types'
-import { listChunks, getBlockFigure } from '../../../api/client'
+import type { BlockInfo, ChunkResponse, Document } from '../../../api/types'
+import { getBlockFigure, getPage, listChunks } from '../../../api/client'
 import { StageBlock, docStatusToStage } from './StageBlock'
 
 interface Props {
@@ -28,6 +28,11 @@ export function S45Block({ doc, collectionId }: Props) {
 
   // Presigned URL cache for figure chunks: chunkId → url
   const [figureSrcs, setFigureSrcs] = useState<Record<string, string>>({})
+
+  // Per-page block cache so chunks that share a page reuse a single fetch.
+  //   pageNum (0-idx) → list of BlockInfo on that page
+  const [pageBlocks, setPageBlocks] = useState<Record<number, BlockInfo[]>>({})
+  const [loadingPages, setLoadingPages] = useState<Set<number>>(new Set())
 
   const stageStatus = docStatusToStage(doc.status)
 
@@ -61,6 +66,33 @@ export function S45Block({ doc, collectionId }: Props) {
     }
   }
 
+  /**
+   * Lazy-load every page the chunk references so we can resolve its block_ids
+   * to full BlockInfo objects.  Results are cached per page; chunks sharing a
+   * page reuse the same fetch.
+   */
+  async function fetchChunkPages(chunk: ChunkResponse) {
+    const pages = getPages(chunk)
+    const needed = pages.filter(p => !(p in pageBlocks) && !loadingPages.has(p))
+    if (needed.length === 0) return
+    setLoadingPages(prev => {
+      const s = new Set(prev)
+      needed.forEach(p => s.add(p))
+      return s
+    })
+    await Promise.allSettled(needed.map(async (p) => {
+      try {
+        const res = await getPage(collectionId, doc.id, p)
+        setPageBlocks(prev => ({ ...prev, [p]: res.blocks }))
+      } catch { /* leave the page unloaded; the chunk will display a fallback */ }
+    }))
+    setLoadingPages(prev => {
+      const s = new Set(prev)
+      needed.forEach(p => s.delete(p))
+      return s
+    })
+  }
+
   function toggleChunk(id: string, chunk: ChunkResponse) {
     setExpanded(prev => {
       const next = new Set(prev)
@@ -69,6 +101,7 @@ export function S45Block({ doc, collectionId }: Props) {
       } else {
         next.add(id)
         void fetchFigureSrc(chunk)
+        void fetchChunkPages(chunk)
       }
       return next
     })
@@ -197,12 +230,15 @@ export function S45Block({ doc, collectionId }: Props) {
                       {tab === 'raw' ? chunk.raw_text : chunk.embed_text}
                     </pre>
 
+                    {/* IR blocks this chunk was assembled from — full block detail
+                        with type badge, page, text and (for FIGURE/TABLE) the type_data. */}
+                    <IRBlocksList
+                      chunk={chunk}
+                      pageBlocks={pageBlocks}
+                      loadingPages={loadingPages}
+                    />
+
                     <div className="chunk-footer">
-                      {chunk.block_ids.length > 0 && (
-                        <span className="text-dim" style={{ fontSize: 10 }}>
-                          blocks: {chunk.block_ids.slice(0, 4).join(', ')}{chunk.block_ids.length > 4 ? '…' : ''}
-                        </span>
-                      )}
                       {chunk.parent_id && (
                         <span className="text-dim" style={{ fontSize: 10 }}>
                           parent: {chunk.parent_id.slice(0, 8)}…
@@ -218,4 +254,167 @@ export function S45Block({ doc, collectionId }: Props) {
       )}
     </StageBlock>
   )
+}
+
+// ── IRBlocksList — renders the IR blocks a chunk references ──────────────────
+
+function IRBlocksList({
+  chunk, pageBlocks, loadingPages,
+}: {
+  chunk: ChunkResponse
+  pageBlocks: Record<number, BlockInfo[]>
+  loadingPages: Set<number>
+}) {
+  const pages = getChunkPages(chunk)
+  const wantedIds = new Set(chunk.block_ids)
+  // Gather BlockInfo across every page in the chunk, preserve chunk.block_ids order.
+  const allLoaded = pages.every(p => p in pageBlocks)
+  const anyLoading = pages.some(p => loadingPages.has(p))
+  const byId: Record<string, BlockInfo> = {}
+  pages.forEach(p => {
+    (pageBlocks[p] ?? []).forEach(b => {
+      if (wantedIds.has(b.id)) byId[b.id] = b
+    })
+  })
+  const ordered = chunk.block_ids.map(id => byId[id]).filter(Boolean) as BlockInfo[]
+
+  return (
+    <div className="picker" style={{ marginTop: 8 }}>
+      <div className="picker-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <span>IR blocks</span>
+        <span className="text-dim mono" style={{ fontSize: 10 }}>
+          {chunk.block_ids.length}
+        </span>
+        {anyLoading && !allLoaded && (
+          <span className="text-dim" style={{ fontSize: 10 }}>
+            <span className="spin">⟳</span> loading…
+          </span>
+        )}
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        {ordered.length === 0 && !anyLoading && (
+          <span className="text-dim" style={{ fontSize: 10 }}>
+            blocks not loaded — try collapsing and re-opening the chunk.
+          </span>
+        )}
+        {ordered.map(b => <IRBlockRow key={b.id} block={b} />)}
+      </div>
+    </div>
+  )
+}
+
+function IRBlockRow({ block }: { block: BlockInfo }) {
+  const [open, setOpen] = useState(false)
+  const color = blockTypeColor(block.type)
+  const isFigure = block.type.toLowerCase() === 'figure'
+  const isTable = block.type.toLowerCase() === 'table'
+  const td = block.type_data as Record<string, unknown> | null | undefined
+  const preview = (block.text ?? '').slice(0, 90)
+
+  return (
+    <div style={{
+      border: '1px solid var(--border)', borderRadius: 4,
+      padding: 4, background: 'var(--panel-bg, transparent)',
+    }}>
+      <div
+        onClick={() => setOpen(o => !o)}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 6,
+          cursor: 'pointer', fontSize: 11, flexWrap: 'wrap',
+        }}
+      >
+        <span className="tag" style={{
+          color, borderColor: color + '40', background: color + '15',
+          fontSize: 9, padding: '1px 5px',
+        }}>{block.type}</span>
+        <span className="mono text-dim" style={{ fontSize: 10 }}>
+          p.{block.page + 1}
+        </span>
+        <span className="mono text-dim" style={{ fontSize: 10 }}>
+          {block.id.slice(0, 16)}…
+        </span>
+        {isFigure && td?.kind != null && (
+          <span className="tag" style={{ fontSize: 9, padding: '1px 5px' }}>
+            {String(td.kind)}
+          </span>
+        )}
+        <span className="text-dim" style={{ fontSize: 11, flex: 1, minWidth: 0,
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {preview || (isFigure ? '(figure)' : isTable ? '(table)' : '')}
+        </span>
+        <span className="text-dim" style={{ fontSize: 10 }}>{open ? '▲' : '▼'}</span>
+      </div>
+
+      {open && (
+        <div className="fadein" style={{ marginTop: 6, paddingTop: 6, borderTop: '1px dashed var(--border)' }}>
+          {block.bbox.length === 4 && (
+            <div style={{ fontSize: 10 }}>
+              <span className="text-dim">bbox: </span>
+              <span className="mono">[{block.bbox.map(v => v.toFixed(3)).join(', ')}]</span>
+            </div>
+          )}
+          {block.text && (
+            <pre className="chunk-pre" style={{
+              fontSize: 10, marginTop: 4, maxHeight: 160, overflow: 'auto',
+            }}>{block.text}</pre>
+          )}
+          {/* Figure / table type_data summary */}
+          {isFigure && td && (
+            <div style={{ fontSize: 10, marginTop: 4 }}>
+              {td.relevance != null && <div><span className="text-dim">relevance:</span> <span className="mono">{Number(td.relevance).toFixed(3)}</span></div>}
+              {td.ocr_text != null && <div className="text-dim" style={{ marginTop: 2 }}>ocr_text: <span className="mono">{String(td.ocr_text).slice(0, 200)}{String(td.ocr_text).length > 200 ? '…' : ''}</span></div>}
+              {td.description != null && <div className="text-dim" style={{ marginTop: 2 }}>description: <span className="mono">{String(td.description).slice(0, 200)}{String(td.description).length > 200 ? '…' : ''}</span></div>}
+              {td.data_table != null && Array.isArray(td.data_table) && (
+                <div className="text-dim" style={{ marginTop: 2 }}>
+                  data_table: {(td.data_table as string[][]).length} rows ×{' '}
+                  {((td.data_table as string[][])[0]?.length ?? 0)} cols
+                </div>
+              )}
+            </div>
+          )}
+          {isTable && td && (
+            <div style={{ fontSize: 10, marginTop: 4 }}>
+              <span className="text-dim">{(td.n_rows as number) ?? '?'}×{(td.n_cols as number) ?? '?'} table</span>
+            </div>
+          )}
+          {/* Block chain traces — classifier / OCR / VLM lineage for this block */}
+          {block.chain_traces && block.chain_traces.length > 0 && (
+            <div style={{ marginTop: 6 }}>
+              <span className="text-dim" style={{ fontSize: 10 }}>chain traces:</span>
+              {block.chain_traces.map((t, i) => {
+                const n = t.attempts?.length ?? 0
+                return (
+                  <div key={i} className="mono text-dim" style={{ fontSize: 10, marginLeft: 8 }}>
+                    {t.stage} → {t.final_provider ?? '(exhausted)'} ({n} attempt{n !== 1 ? 's' : ''})
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function blockTypeColor(type: string): string {
+  switch (type.toLowerCase()) {
+    case 'heading':       return '#a78bfa'
+    case 'paragraph':     return '#94a3b8'
+    case 'figure':        return '#6366f1'
+    case 'table':         return '#34d399'
+    case 'list_item':     return '#60a5fa'
+    case 'caption':       return '#f59e0b'
+    case 'code':          return '#f97316'
+    case 'formula':       return '#ec4899'
+    case 'header_footer': return '#64748b'
+    default:              return '#94a3b8'
+  }
+}
+
+function getChunkPages(chunk: ChunkResponse): number[] {
+  const prov = chunk.prov as Record<string, unknown>
+  const pages = prov?.pages
+  if (Array.isArray(pages)) return pages as number[]
+  return []
 }

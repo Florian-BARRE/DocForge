@@ -5,11 +5,11 @@ paths:
   - "docker-compose*.yml"
 ---
 
-# Container Project Rules — Podman
+# Container Project Rules — Docker
 
-> **CRITICAL:** This project uses **Podman + podman-compose**. Never write `docker` or
-> `docker-compose` anywhere — not in Dockerfiles, compose files, shell commands, or comments.
-> Docker is not available in this environment.
+> **CRITICAL:** This project uses **Docker + docker compose** (Docker Desktop on Windows).
+> Always use `docker build` and `docker compose` (v2 syntax, no hyphen) — never `podman` or
+> the legacy `docker-compose` binary.
 
 ---
 
@@ -20,15 +20,15 @@ paths:
 - Every Dockerfile must be **fully commented in English**, explaining each stage's goal, each `ENV`, each `COPY`, and each `RUN` command. No silent instructions.
 - Always use **multi-stage builds** to keep runtime images minimal.
 - Runtime images contain only what is strictly necessary to run the service — no build tools, no dev dependencies.
-- All CLI examples use `podman build` and `podman-compose`, never `docker build` or `docker-compose`.
+- All CLI examples use `docker build` and `docker compose` (v2 syntax).
 
 ---
 
 ## Project Structure — Combined Layouts
 
-When Podman is used, the application source tree (as defined in python.md or fastapi.md) lives inside `src/<app_name>/`. The repository root holds only orchestration files.
+When Docker is used, the application source tree (as defined in python.md or fastapi.md) lives inside `src/<app_name>/`. The repository root holds only orchestration files.
 
-### Python-only + Podman
+### Python-only + Docker
 
 ```
 project_root/
@@ -47,11 +47,11 @@ project_root/
 ├── services/
 │   └── myapp/
 │       └── .env
-├── docker-compose.yml             # Podman-compatible compose file
+├── docker-compose.yml             # Docker Compose v2
 └── docker-compose.dev.yml
 ```
 
-### FastAPI + Podman (with frontend)
+### FastAPI + Docker (with frontend)
 
 ```
 project_root/
@@ -116,8 +116,8 @@ Rules:
 
 ## Dockerfile Structure
 
-> Dockerfiles are Podman-compatible out of the box — no changes needed to the Dockerfile syntax.
-> The difference is in how you build and run them: always use `podman build` and `podman-compose`.
+> Dockerfiles use standard BuildKit syntax (`# syntax=docker/dockerfile:1.7`).
+> Build with `docker build` and orchestrate with `docker compose` (v2 syntax).
 
 ### Python-only project (two stages)
 
@@ -127,8 +127,8 @@ Rules:
 ###############################################################################
 # Build note:
 # Built from the repository root with the src/ directory as context.
-# Example (Podman):
-#   podman build -f src/myapp/Dockerfile -t myapp:latest src
+# Example (Docker):
+#   docker build -f src/myapp/Dockerfile -t myapp:latest src
 ###############################################################################
 
 ###############################################################################
@@ -199,8 +199,8 @@ CMD ["uvicorn", "myapp.entrypoint:app", "--host", "0.0.0.0", "--port", "8000"]
 ###############################################################################
 # Build note:
 # Built from the repository root with the src/ directory as context.
-# Example (Podman):
-#   podman build -f src/myapp/Dockerfile -t myapp:latest src
+# Example (Docker):
+#   docker build -f src/myapp/Dockerfile -t myapp:latest src
 ###############################################################################
 
 ###############################################################################
@@ -277,9 +277,9 @@ CMD ["uvicorn", "myapp.entrypoint:app", "--host", "0.0.0.0", "--port", "8000"]
 
 ---
 
-## `docker-compose.yml` — Production (Podman-compatible)
+## `docker-compose.yml` — Production
 
-Standard production compose file. Podman-compose reads this format without modification.
+Standard production compose file (Docker Compose v2 spec).
 All services declared, volumes and networks explicitly named, env files referenced from `services/`.
 
 ```yaml
@@ -315,13 +315,13 @@ volumes:
   postgres_data:
 ```
 
-Start with Podman:
+Start with Docker:
 ```bash
 # Production
-podman-compose -f docker-compose.yml up -d
+docker compose -f docker-compose.yml up -d
 
 # Development
-podman-compose -f docker-compose.yml -f docker-compose.dev.yml up --build -d
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build -d
 ```
 
 ---
@@ -333,7 +333,7 @@ inside containers. It uses **volume mounts** for source code and enables **hot r
 
 ```yaml
 # Development overrides — use with:
-#   podman-compose -f docker-compose.yml -f docker-compose.dev.yml up
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up
 
 services:
   myapp:

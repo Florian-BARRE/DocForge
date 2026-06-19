@@ -7,6 +7,7 @@ import type { Collection, Document } from './api/types'
 import { InspectView } from './components/inspect/InspectView'
 import { BrowseView } from './components/browse/BrowseView'
 import { SearchView } from './components/search/SearchView'
+import { ThemeToggle } from './components/ui/ThemeToggle'
 import './global.css'
 
 type Tab = 'inspect' | 'browse' | 'search'
@@ -59,6 +60,9 @@ export function App() {
             Search
           </button>
         </nav>
+        <div style={{ marginLeft: 'auto' }}>
+          <ThemeToggle />
+        </div>
       </header>
 
       {/* Active view */}

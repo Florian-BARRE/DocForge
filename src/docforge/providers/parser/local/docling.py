@@ -233,13 +233,21 @@ class DoclingBackend(ParserProvider, LoggerClass):
             or "und"
         )
 
-        # 4. Assemble the DocumentIR
+        # 4. Quality estimate consumed by the S1 parse chain's gate.
+        #    Heuristic: fraction of blocks that carry actual text content.  A scanned PDF
+        #    parsed by Docling without OCR yields mostly figure blocks with no text — the
+        #    ratio drops well below 0.5 and the chain can escalate to a heavier parser.
+        text_blocks = sum(1 for b in blocks if (b.text or "").strip())
+        quality_score = text_blocks / max(1, len(blocks)) if blocks else 0.0
+
+        # 5. Assemble the DocumentIR
         return DocumentIR(
             doc_id=doc_id,
             source_hash=source_hash,
             n_pages=n_pages,
             language=language,
             blocks=blocks,
+            quality_score=quality_score,
         )
 
     @staticmethod

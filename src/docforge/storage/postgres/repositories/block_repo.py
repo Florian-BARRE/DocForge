@@ -94,6 +94,11 @@ class BlockRepository(LoggerClass):
             type_data = block.table.model_dump()
         elif block.type == BlockType.FIGURE and block.figure is not None:
             type_data = block.figure.model_dump()
+        # 1b. Carry the chain trace lineage so the UI can render which providers
+        # (classifier / OCR / VLM) produced this block's enrichment.  Empty for
+        # blocks that no chain touched (text paragraphs etc.).
+        if block.chain_traces:
+            type_data["chain_traces"] = [t.model_dump() for t in block.chain_traces]
 
         # 2. Build the ORM row
         return BlockModel(

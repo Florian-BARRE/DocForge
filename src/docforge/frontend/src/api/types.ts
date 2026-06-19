@@ -1,317 +1,166 @@
-// ── Discovery types ────────────────────────────────────────────────────────
+// ====== Code Summary ======
+// Public API types — re-exported from the auto-generated OpenAPI schemas so the
+// frontend never drifts from the Pydantic models on the backend.
+//
+//   Regenerate with:    npm run gen:types
+//   (env: OPENAPI_URL — e.g. http://docforge:8000/openapi.json in dev container)
+//
+// This file ONLY contains:
+//   • short aliases over `components['schemas']['…']` so callsites stay terse;
+//   • literal-narrowing overlays where Pydantic loses information at the wire
+//     (e.g. the document status enum — Python uses a free str, the UI deals
+//     with a closed union);
+//   • UI-only types that have no Pydantic equivalent (filter/picker shapes
+//     internal to React components).
+//
+// Anything that ALSO exists on the backend must come from `generated.ts` —
+// adding a new hand-written interface here is a regression.
+
+import type { components } from './generated'
+
+type Schemas = components['schemas']
+
+// ── Discovery ─────────────────────────────────────────────────────────────────
+//
+// The Pydantic discovery models use ``ConfigDict(extra="allow")`` which causes
+// openapi-typescript to emit ``& { [key: string]: unknown }`` index signatures.
+// Those index signatures bleed through Omit<...> and poison every property
+// access (TS resolves `field.field_path` to `unknown` even when the schema
+// declares it as `string`).  We use ``Pick<>`` to keep only the documented
+// fields — the index signature is silently dropped — then re-add the few
+// fields we want to narrow further (chains, enums, …).
 
 export interface ParamSchema {
   name: string
   type: string
-  label?: string
+  label: string
   default?: unknown
-  description?: string
+  description: string
   min?: number | null
   max?: number | null
   enum?: string[] | null
+  [extra: string]: unknown
 }
 
 export interface Choice {
   id: string
-  label?: string
+  label: string
   available: boolean
   selectable: boolean
-  default?: boolean
-  note?: string
+  default: boolean
+  note: string
   fields: ParamSchema[]
 }
 
-export type DynamicFieldKind = 'single' | 'multi' | 'optional' | 'map' | 'weights'
-export type DynamicFieldScope = 'deployment' | 'collection'
-
 export interface DynamicField {
   field_path: string
-  capability?: string
+  capability: string
   kind: DynamicFieldKind
   scope: DynamicFieldScope
   resolved: boolean
   choices: Choice[]
-  note?: string
+  note: string
 }
 
 export interface ContractRef {
   content_type: string
-  schema_ref?: string
-  status?: string
+  schema_ref?: string | null
+  status?: string | null
 }
 
 export interface FieldDescriptor {
   name: string
-  type?: string
-  required?: boolean
+  type?: string | null
+  required: boolean
   default?: unknown
-  min?: number
-  max?: number
-  enum?: string[]
-  description?: string
+  min?: number | null
+  max?: number | null
+  enum?: string[] | null
+  description: string
 }
 
 export interface EndpointDescriptor {
-  operation: { method: string; path: string }
+  operation: Schemas['OperationRef']
   route_name: string
   tags: string[]
-  summary?: string
-  description?: string
+  summary: string
+  description: string
   path_params: FieldDescriptor[]
   query_params: FieldDescriptor[]
-  input?: ContractRef
-  output?: ContractRef
+  input?: ContractRef | null
+  output?: ContractRef | null
   dynamic_fields: DynamicField[]
 }
 
 export interface DiscoveryResponse {
   openapi_version: string
-  collection_id?: string
+  collection_id?: string | null
   endpoints: EndpointDescriptor[]
   components: { schemas: Record<string, unknown> }
 }
 
-// ── Health types ───────────────────────────────────────────────────────────
+// Discovery uses `str` for `kind` / `scope` so OpenAPI can't emit a TS union —
+// keep these closed unions in sync with `discovery/overlays.py` if you add a kind.
+export type DynamicFieldKind = 'single' | 'multi' | 'optional' | 'map' | 'weights' | 'scalar'
+export type DynamicFieldScope = 'deployment' | 'collection'
 
-export interface HealthResponse {
-  status: string
-  version: string
-  gpu_available: boolean
-  gpu_name: string | null
-}
+// ── Health ────────────────────────────────────────────────────────────────────
 
-// ── Collection types ───────────────────────────────────────────────────────
+export type HealthResponse = Schemas['HealthResponse']
 
-export interface Collection {
-  id: string
-  name: string
-  supported_formats: string[]
-  max_file_size_bytes: number
-  locality_policy: string
-  embedding_model: string
-  pipeline_version: string
-  created_at: string
-}
+// ── Chain provenance (Phase A) ────────────────────────────────────────────────
 
-export interface CollectionListResponse {
-  collections: Collection[]
-  total: number
-}
+export type ChainAttempt = Schemas['ChainAttemptIR']
+export type ChainTrace = Schemas['ChainTrace']
 
-// ── Config types ───────────────────────────────────────────────────────────
+// ── Collections ───────────────────────────────────────────────────────────────
 
-export interface MetaField {
-  field_name: string
-  field_type: string
-  required: boolean
-  filterable: boolean
-  lexical: boolean
-  semantic: boolean
-  enum_values?: string[]
-  is_system: boolean
-}
+export type Collection = Schemas['CollectionResponse']
+export type CollectionListResponse = Schemas['CollectionListResponse']
 
-export interface AppliedIssue {
-  code: string
-  field: string
-  message: string
-}
+// ── Config ────────────────────────────────────────────────────────────────────
 
-export interface ConfigState {
-  id: string
-  name: string
-  pipeline_version: string
-  needs_reindex: boolean
-  supported_formats: string[]
-  max_file_size_bytes: number
-  locality_policy: string
-  embedding_model: string
-  unknown_field_policy: string
-  pipeline: Record<string, unknown>
-  metadata_fields: MetaField[]
-  created_at?: string
-  applied?: {
-    provided: string[]
-    defaulted: string[]
-    warnings: AppliedIssue[]
-    notes: string[]
-  }
-}
+export type MetaField = Schemas['ConfigMetaField']
+export type AppliedIssue = Schemas['AppliedIssue']
+export type ConfigState = Schemas['ConfigStateResponse']
+export type ConfigSchemaResponse = Schemas['ConfigSchemaResponse']
+export type ConfigVersionSummary = Schemas['ConfigVersionSummary']
+export type ConfigHistoryResponse = Schemas['ConfigHistoryResponse']
 
-export interface ConfigSchemaResponse {
-  metadata_fields: MetaField[]
-}
+// ── Documents ─────────────────────────────────────────────────────────────────
 
-export interface ConfigVersionSummary {
-  version: number
-  pipeline_version: string
-  note: string | null
-  created_at: string
-}
-
-export interface ConfigHistoryResponse {
-  collection_id: string
-  total: number
-  versions: ConfigVersionSummary[]
-}
-
-// ── Document types ─────────────────────────────────────────────────────────
-
+// The backend normalises status at the API boundary to {pending,running,done,error}.
+// Pydantic types it as `str` though, so we narrow on the way in.
 export type DocStatus = 'pending' | 'running' | 'done' | 'error'
-
-export interface Document {
-  id: string
-  collection_id: string
-  source_hash: string
-  filename: string
-  format: string
-  language?: string
-  page_count?: number
-  file_size: number
-  status: DocStatus
-  pipeline_version: string
-  user_meta: Record<string, unknown>
-  implicit_meta: Record<string, unknown>
-  created_at: string
-  chunk_count?: number
-  block_count?: number
-  has_original?: boolean
-  has_pdf?: boolean
-  has_markdown?: boolean
-  indexed?: boolean
-  pipeline_errors?: string[]
-}
-
-export interface DocumentListResponse {
+export type Document = Omit<Schemas['DocumentResponse'], 'status'> & { status: DocStatus }
+export type DocumentListResponse = Omit<Schemas['DocumentListResponse'], 'documents'> & {
   documents: Document[]
-  total: number
-  limit: number
-  offset: number
 }
+export type IngestResponse = Schemas['IngestResponse']
+export type MetadataUpdateResponse = Schemas['MetadataUpdateResponse']
+export type ReingestResponse = Schemas['ReingestResponse']
+export type DocumentDeleteResponse = Schemas['DocumentDeleteResponse']
+export type PresignedUrlResponse = Schemas['PresignedUrlResponse']
 
-export interface IngestResponse {
-  doc_id: string
-  status: string
-  duplicate: boolean
-  job_id?: string
-}
+// ── Chunks ────────────────────────────────────────────────────────────────────
 
-export interface MetadataUpdateResponse {
-  id: string
-  user_meta: Record<string, unknown>
-  changed_fields: string[]
-  reindexed: boolean
-  index_sync: Record<string, unknown> | null
-  warning: string | null
-}
+export type ChunkResponse = Schemas['ChunkResponse']
+export type ChunkListResponse = Schemas['ChunkListResponse']
+export type ChunkUpdateResponse = Schemas['ChunkUpdateResponse']
 
-export interface ReingestResponse {
-  document_id: string
-  job_id: string
-  status: string
-}
+// ── Pages ─────────────────────────────────────────────────────────────────────
 
-export interface DocumentDeleteResponse {
-  deleted: boolean
-  id: string
-  qdrant_points_deleted: number
-  blob_deleted: boolean
-}
+export type PageInfo = Schemas['PageInfo']
+export type PageListResponse = Schemas['PageListResponse']
+export type BlockInfo = Schemas['BlockInfo']
+export type PageDetailResponse = Schemas['PageDetailResponse']
+export type PageReingestResponse = Schemas['PageReingestResponse']
 
-export interface PresignedUrlResponse {
-  url: string
-  expires_in: number
-}
+// ── Search ────────────────────────────────────────────────────────────────────
 
-// ── Chunk types ────────────────────────────────────────────────────────────
+export type SearchResultItem = Schemas['SearchResultItem']
+export type SearchResponse = Schemas['SearchResponse']
 
-export interface ChunkResponse {
-  id: string
-  document_id: string
-  config_hash: string
-  block_ids: string[]
-  raw_text: string
-  embed_text: string
-  token_count: number
-  strategy: string
-  prov: Record<string, unknown>
-  parent_id: string | null
-}
-
-export interface ChunkListResponse {
-  chunks: ChunkResponse[]
-  total: number
-  limit: number
-  offset: number
-}
-
-export interface ChunkUpdateResponse {
-  id: string
-  raw_text: string
-  embed_text: string
-  reindexed: boolean
-  warning: string | null
-}
-
-// ── Page types ─────────────────────────────────────────────────────────────
-
-export interface PageInfo {
-  page: number
-  n_blocks: number
-  n_figures: number
-  n_tables: number
-  has_text: boolean
-  n_chunks: number
-}
-
-export interface PageListResponse {
-  document_id: string
-  total_pages: number
-  pages: PageInfo[]
-}
-
-export interface BlockInfo {
-  id: string
-  type: string
-  page: number
-  text: string | null
-  bbox: number[]
-  type_data: Record<string, unknown> | null  // FIGURE: kind/crop_key/relevance/ocr_text/description/data_table
-}
-
-export interface PageDetailResponse {
-  document_id: string
-  page: number
-  n_blocks: number
-  blocks: BlockInfo[]
-  text: string
-  chunk_ids: string[]
-}
-
-export interface PageReingestResponse {
-  document_id: string
-  page: number
-  job_id: string
-  note: string
-}
-
-// ── Search types ───────────────────────────────────────────────────────────
-
-export interface SearchResultItem {
-  chunk_id: string
-  document_id: string
-  score: number
-  raw_text: string
-  strategy: string
-  token_count: number
-  pages: number[]
-  block_ids: string[]
-}
-
-export interface SearchResponse {
-  collection_id: string
-  query: string
-  total: number
-  results: SearchResultItem[]
-  note?: string
-}
+// ── Re-export everything from the generated namespace for callers that prefer
+// the verbose path (e.g. `import type { components } from '../../api/types'`).
+export type { components } from './generated'

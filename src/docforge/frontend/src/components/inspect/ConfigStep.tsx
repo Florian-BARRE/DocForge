@@ -1,34 +1,44 @@
 // ====== Code Summary ======
 // Step 2 of Inspect mode — shows and edits the pipeline config for the selected collection.
-// Form fields are derived from the scoped discovery endpoint (update_config dynamic_fields).
-// Mirrors the pattern established in the legacy ConfigPanel.tsx.
+//
+// Driven entirely by /api/v1/discovery:
+//   • `patch.pipeline.*` overlays → grouped per stage segment (parse / enrich / chunk / embed)
+//     and rendered via <ChoicePicker> (picker overlays + scalar overlays).
+//   • The non-pipeline body fields of `ConfigUpdateRequest` (note, …) are rendered via the
+//     generic <RequestForm> so any new field added server-side appears automatically.
+//
+// Stage names and the dynamic-field set are derived from discovery — no hardcoded list.
 
 import { useState, useEffect } from 'react'
-import type { Collection, ConfigState, ConfigHistoryResponse, DiscoveryResponse, DynamicField } from '../../api/types'
+import type {
+  Collection, ConfigHistoryResponse, ConfigState, DiscoveryResponse,
+} from '../../api/types'
 import {
-  getConfigState,
-  getConfigHistory,
-  getDiscovery,
-  updateConfig,
-  rollbackConfig,
+  getConfigState, getConfigHistory, getDiscovery, updateConfig, rollbackConfig,
 } from '../../api/client'
-import { ChoicePicker } from '../ui/ChoicePicker'
+import { RequestForm } from '../ui/RequestForm'
+import { DynamicFieldsGroup } from '../ui/DynamicFieldsGroup'
 
 interface Props {
   collection: Collection
-  // Called when config save results in needs_reindex=true, to surface a badge.
   onConfigSaved?: (state: ConfigState) => void
 }
 
-/**
- * Pipeline config editor driven fully by discovery dynamic_fields.
- * Groups fields by stage segment (parse, enrich, chunk, embed).
- */
+// Stage segment → human label (presentation only; the set itself comes from discovery).
+const STAGE_LABELS: Record<string, string> = {
+  parse: 'S1 · Parse',
+  enrich: 'S2 · Enrich',
+  chunk: 'S4 · Chunk',
+  embed: 'S6 · Embed',
+}
+const STAGE_ORDER = ['parse', 'enrich', 'chunk', 'embed']
+
 export function ConfigStep({ collection, onConfigSaved }: Props) {
   const [configState, setConfigState] = useState<ConfigState | null>(null)
   const [discovery, setDiscovery] = useState<DiscoveryResponse | null>(null)
   const [loading, setLoading] = useState(true)
-  const [patch, setPatch] = useState<Record<string, unknown>>({})
+  const [pipelinePatch, setPipelinePatch] = useState<Record<string, unknown>>({})
+  const [bodyPatch, setBodyPatch] = useState<Record<string, unknown>>({})
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -36,7 +46,7 @@ export function ConfigStep({ collection, onConfigSaved }: Props) {
   const [historyLoading, setHistoryLoading] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
 
-  // 1. Load config state and scoped discovery on mount or collection change.
+  // 1. Load config state + scoped discovery on mount or collection change.
   useEffect(() => {
     void loadAll()
   }, [collection.id])
@@ -50,7 +60,8 @@ export function ConfigStep({ collection, onConfigSaved }: Props) {
         getDiscovery(collection.id),
       ])
       setConfigState(cfg)
-      setPatch(cfg.pipeline as Record<string, unknown>)
+      setPipelinePatch((cfg.pipeline as Record<string, unknown>) ?? {})
+      setBodyPatch({})
       setDiscovery(disc)
     } catch (err) {
       setError(String(err))
@@ -59,45 +70,25 @@ export function ConfigStep({ collection, onConfigSaved }: Props) {
     }
   }
 
-  // 2. Extract update_config pipeline fields from scoped discovery.
+  // 2. Locate the update_config endpoint — pipeline overlays will be rendered by
+  // <DynamicFieldsGroup prefix="patch.pipeline"> below.
   const updateEndpoint = discovery?.endpoints.find(e => e.route_name === 'update_config')
-  const pipelineFields: DynamicField[] = (updateEndpoint?.dynamic_fields ?? [])
-    .filter(df => df.field_path.startsWith('patch.pipeline.'))
-    .map(df => ({ ...df, field_path: df.field_path.replace('patch.pipeline.', '') }))
-
-  // 3. Group fields by top-level stage segment.
-  const stageGroups = pipelineFields.reduce<Record<string, DynamicField[]>>((acc, df) => {
-    const stage = df.field_path.split('.')[0]
-    if (!acc[stage]) acc[stage] = []
-    acc[stage].push({ ...df, field_path: df.field_path.split('.').slice(1).join('.') || df.field_path })
-    return acc
-  }, {})
-
-  const stageOrder = ['parse', 'enrich', 'chunk', 'embed']
-  const STAGE_LABELS: Record<string, string> = {
-    parse: 'S1 · Parse',
-    enrich: 'S2 · Enrich',
-    chunk: 'S4 · Chunk',
-    embed: 'S6 · Embed',
-  }
-
-  function setStageValue(stage: string, subPath: string, value: unknown) {
-    setPatch(prev => {
-      const stageConfig = { ...(prev[stage] as Record<string, unknown> ?? {}) }
-      stageConfig[subPath] = value
-      return { ...prev, [stage]: stageConfig }
-    })
-    setSaved(false)
-  }
+  const hasFields = !!updateEndpoint && (updateEndpoint.dynamic_fields ?? [])
+    .some(df => df.field_path.startsWith('patch.pipeline.'))
 
   // 4. Save config.
   async function save() {
     setSaving(true)
     setError(null)
     try {
-      const result = await updateConfig(collection.id, { pipeline: patch })
+      const result = await updateConfig(
+        collection.id,
+        { pipeline: pipelinePatch },
+        typeof bodyPatch.note === 'string' ? (bodyPatch.note as string) : undefined,
+      )
       setConfigState(result)
-      setPatch(result.pipeline as Record<string, unknown>)
+      setPipelinePatch((result.pipeline as Record<string, unknown>) ?? {})
+      setBodyPatch({})
       setSaved(true)
       onConfigSaved?.(result)
     } catch (err) {
@@ -128,13 +119,14 @@ export function ConfigStep({ collection, onConfigSaved }: Props) {
     try {
       const result = await rollbackConfig(collection.id, version)
       setConfigState(result)
-      setPatch(result.pipeline as Record<string, unknown>)
+      setPipelinePatch((result.pipeline as Record<string, unknown>) ?? {})
       setSaved(true)
       await loadHistory()
     } catch (err) {
       setError(String(err))
     } finally {
-      setSaving(false) }
+      setSaving(false)
+    }
   }
 
   if (loading) {
@@ -144,8 +136,6 @@ export function ConfigStep({ collection, onConfigSaved }: Props) {
       </div>
     )
   }
-
-  const hasFields = pipelineFields.length > 0
 
   return (
     <div className="panel fadein">
@@ -173,25 +163,30 @@ export function ConfigStep({ collection, onConfigSaved }: Props) {
         </div>
       )}
 
-      {stageOrder.map(stage => {
-        const fields = stageGroups[stage]
-        if (!fields?.length) return null
-        const stageConfig = (patch[stage] ?? {}) as Record<string, unknown>
+      {updateEndpoint && (
+        <DynamicFieldsGroup
+          fields={updateEndpoint.dynamic_fields ?? []}
+          prefix="patch.pipeline"
+          value={pipelinePatch}
+          onChange={v => { setPipelinePatch(v); setSaved(false) }}
+          groupLabels={STAGE_LABELS}
+          groupOrder={STAGE_ORDER}
+          discovery={discovery ?? undefined}
+        />
+      )}
 
-        return (
-          <div key={stage} className="config-stage-section">
-            <div className="config-stage-label">{STAGE_LABELS[stage] ?? stage}</div>
-            {fields.map(df => (
-              <ChoicePicker
-                key={df.field_path}
-                field={df}
-                value={stageConfig[df.field_path]}
-                onChange={v => setStageValue(stage, df.field_path, v)}
-              />
-            ))}
-          </div>
-        )
-      })}
+      {/* Non-pipeline body fields (note, …) — generic via RequestForm */}
+      {updateEndpoint && discovery && (
+        <RequestForm
+          endpoint={updateEndpoint}
+          discovery={discovery}
+          body={bodyPatch}
+          query={{}}
+          onBodyChange={setBodyPatch}
+          onQueryChange={() => {}}
+          excludeBodyFields={['patch']}
+        />
+      )}
 
       {hasFields && (
         <div className="row-end" style={{ marginTop: 20 }}>
@@ -200,7 +195,12 @@ export function ConfigStep({ collection, onConfigSaved }: Props) {
           <button
             type="button"
             className="btn btn-ghost"
-            onClick={() => configState && setPatch(configState.pipeline as Record<string, unknown>)}
+            onClick={() => {
+              if (configState) {
+                setPipelinePatch((configState.pipeline as Record<string, unknown>) ?? {})
+                setBodyPatch({})
+              }
+            }}
           >
             Reset
           </button>
@@ -253,7 +253,7 @@ export function ConfigStep({ collection, onConfigSaved }: Props) {
             {(configState.applied.warnings?.length ?? 0) > 0 && (
               <div>
                 <span className="tag tag-running">warnings</span>
-                {configState.applied.warnings.map((w, i) => (
+                {(configState.applied.warnings ?? []).map((w, i) => (
                   <div key={i} className="applied-item text-muted">{w.field}: {w.message}</div>
                 ))}
               </div>
@@ -262,7 +262,7 @@ export function ConfigStep({ collection, onConfigSaved }: Props) {
               <div>
                 <span className="text-dim" style={{ fontSize: 11 }}>defaulted: </span>
                 <span className="mono text-muted" style={{ fontSize: 11 }}>
-                  {configState.applied.defaulted.join(', ')}
+                  {(configState.applied.defaulted ?? []).join(', ')}
                 </span>
               </div>
             )}

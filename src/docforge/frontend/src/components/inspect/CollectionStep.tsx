@@ -1,23 +1,35 @@
 // ====== Code Summary ======
 // Step 1 of Inspect mode — lists existing collections and provides a create form
-// driven entirely by the discovery endpoint's dynamic_fields for create_collection.
+// driven 100% by /api/v1/discovery via the <RequestForm> primitive.  No field name
+// is hardcoded: adding a Pydantic field to CreateCollectionRequest surfaces here
+// automatically the next time discovery is fetched.
 
 import { useState, useEffect } from 'react'
-import type { Collection, DiscoveryResponse, DynamicField } from '../../api/types'
+import type { Collection, DiscoveryResponse, EndpointDescriptor } from '../../api/types'
 import { listCollections, createCollection, deleteCollection, getDiscovery } from '../../api/client'
-import { ChoicePicker } from '../ui/ChoicePicker'
+import { RequestForm } from '../ui/RequestForm'
+import { DynamicFieldsGroup } from '../ui/DynamicFieldsGroup'
+
+const STAGE_LABELS: Record<string, string> = {
+  parse: 'S1 · Parse',
+  enrich: 'S2 · Enrich',
+  chunk: 'S4 · Chunk',
+  embed: 'S6 · Embed',
+}
+const STAGE_ORDER = ['parse', 'enrich', 'chunk', 'embed']
 
 interface Props {
-  // Called when the user selects a collection to continue.
   onSelect: (collection: Collection) => void
-  // Currently selected collection id (for highlighting).
   selectedId: string | null
 }
 
-/**
- * Discovery-driven collection listing and creation step.
- * Builds the create form from discovery dynamic_fields without hardcoding any field names.
- */
+// Body keys handled outside the generic loop:
+//   - `name` is the form's mandatory title field (rendered above)
+//   - `pipeline` is rendered as a stage-grouped <DynamicFieldsGroup>
+//   - `metadata_schema` is a system-managed collection of fields edited from the config editor
+const HOST_RENDERED_KEYS = ['name', 'pipeline']
+const DEFERRED_KEYS = ['metadata_schema']
+
 export function CollectionStep({ onSelect, selectedId }: Props) {
   const [collections, setCollections] = useState<Collection[]>([])
   const [loading, setLoading] = useState(true)
@@ -25,14 +37,14 @@ export function CollectionStep({ onSelect, selectedId }: Props) {
   const [showCreate, setShowCreate] = useState(false)
   const [discovery, setDiscovery] = useState<DiscoveryResponse | null>(null)
 
-  // Create form state
+  // Form state — name is mandatory; the body/query maps are owned by the RequestForm primitive.
   const [name, setName] = useState('')
-  const [pipelineValue, setPipelineValue] = useState<unknown>(undefined)
+  const [body, setBody] = useState<Record<string, unknown>>({})
   const [creating, setCreating] = useState(false)
   const [createError, setCreateError] = useState<string | null>(null)
   const [deleteId, setDeleteId] = useState<string | null>(null)
 
-  // 1. Load collections and unscoped discovery on mount.
+  // 1. Load collections + unscoped discovery on mount.
   useEffect(() => {
     void load()
     void loadDiscovery()
@@ -57,26 +69,22 @@ export function CollectionStep({ onSelect, selectedId }: Props) {
     } catch { /* non-critical */ }
   }
 
-  // 2. Extract dynamic field for pipeline from the create_collection endpoint.
-  const createEndpoint = discovery?.endpoints.find(e => e.route_name === 'create_collection')
-  const pipelineField: DynamicField | undefined = createEndpoint?.dynamic_fields.find(
-    df => df.field_path === 'pipeline'
+  // 2. Locate the create_collection endpoint in discovery; everything else is generic.
+  const createEndpoint: EndpointDescriptor | undefined = discovery?.endpoints.find(
+    e => e.route_name === 'create_collection',
   )
 
-  // 3. Submit form.
+  // 3. Submit — assemble body and POST.
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault()
     if (!name.trim()) return
     setCreating(true)
     setCreateError(null)
     try {
-      const body: Record<string, unknown> = { name: name.trim() }
-      if (pipelineValue !== undefined && pipelineValue !== null) {
-        body.pipeline = pipelineValue
-      }
-      await createCollection(body)
+      const payload: Record<string, unknown> = { name: name.trim(), ...body }
+      await createCollection(payload)
       setName('')
-      setPipelineValue(undefined)
+      setBody({})
       setShowCreate(false)
       await load()
     } catch (err) {
@@ -112,7 +120,6 @@ export function CollectionStep({ onSelect, selectedId }: Props) {
         </button>
       </div>
 
-      {/* Create form — fields derived from discovery */}
       {showCreate && (
         <form className="create-form fadein" onSubmit={handleCreate}>
           <div style={{ marginBottom: 12 }}>
@@ -127,13 +134,37 @@ export function CollectionStep({ onSelect, selectedId }: Props) {
             />
           </div>
 
-          {pipelineField && (
-            <ChoicePicker
-              field={pipelineField}
-              value={pipelineValue}
-              onChange={setPipelineValue}
-              label="Pipeline"
-            />
+          {createEndpoint && discovery && (
+            <>
+              <RequestForm
+                endpoint={createEndpoint}
+                discovery={discovery}
+                body={body}
+                query={{}}
+                onBodyChange={setBody}
+                onQueryChange={() => {}}
+                excludeBodyFields={[...HOST_RENDERED_KEYS, ...DEFERRED_KEYS]}
+              />
+
+              <div className="picker" style={{ marginTop: 8 }}>
+                <div className="picker-label">Pipeline</div>
+                <DynamicFieldsGroup
+                  fields={createEndpoint.dynamic_fields ?? []}
+                  prefix="pipeline"
+                  value={(body.pipeline as Record<string, unknown> | undefined) ?? {}}
+                  onChange={v => setBody(prev => ({ ...prev, pipeline: v }))}
+                  groupLabels={STAGE_LABELS}
+                  groupOrder={STAGE_ORDER}
+                  discovery={discovery}
+                />
+              </div>
+            </>
+          )}
+
+          {DEFERRED_KEYS.length > 0 && (
+            <div className="picker-note" style={{ marginTop: 8 }}>
+              ℹ Custom metadata fields can be added via the config editor after creation.
+            </div>
           )}
 
           {createError && <div className="error-banner">{createError}</div>}

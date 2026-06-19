@@ -433,6 +433,23 @@ class StageEngine(LoggerClass):
                         metadata_fields=metadata_fields,
                         doc_meta=doc_meta,
                     )
+
+                # Flush S6 embed-chain traces onto the document so the inspector can
+                # render the indexing lineage (which provider produced which batch).
+                if s6_result.chain_traces:
+                    async with self._postgres.session() as session:
+                        current_doc = await self._document_repo.get_by_id(session, doc_id)
+                        if current_doc is not None:
+                            current_meta = dict(current_doc.implicit_meta or {})
+                            current_meta["embed_chain_traces"] = [
+                                t.model_dump() for t in s6_result.chain_traces
+                            ]
+                            await self._document_repo.update_status(
+                                session,
+                                doc_id,
+                                current_doc.status,
+                                implicit_meta=current_meta,
+                            )
             elif collection_id is not None:
                 # collection_id is set but s6 is unavailable — fail loudly so the user sees the error
                 raise RuntimeError(
@@ -742,11 +759,11 @@ class StageEngine(LoggerClass):
         if pipeline_config is None or self._registry is None:
             return self._s0, self._s1, self._s2, self._s4, self._s5, self._s6
 
-        # 2. Resolve parser + S2/S4/S5 from config; wrap parser into an S1 stage
+        # 2. Resolve parse chain + S2/S4/S5 from config; wrap parse chain into S1.
         from pipeline.stages.s1_parse import S1ParseStage
 
         resolved = self._registry.build_stages(pipeline_config)
-        s1 = S1ParseStage(parser=resolved.parser, s3=self._s3)
+        s1 = S1ParseStage(parse_chain=resolved.parse_chain, s3=self._s3)
 
         # 3. Build a per-run S6 from the collection's embed config (overrides injected default)
         s6 = self._build_s6_from_config(pipeline_config.embed)
@@ -776,14 +793,26 @@ class StageEngine(LoggerClass):
         if self._qdrant is None or self._chunk_repo is None:
             return None
 
-        spec = embed.provider  # now a typed EmbedProviderConfig (TeiEmbedConfig | LocalOpenAIEmbedConfig | OpenAIEmbedConfig)
-        batch_size = getattr(spec, "batch_size", 32)
-
-        # Build the provider directly — config is fully populated by the time it reaches the engine
-        embed_provider = spec.build()
+        # Build the embed chain through the registry so every provider in the chain is
+        # subject to the same availability + credential checks the other stages enforce.
+        if self._registry is None:
+            # Fallback when running without a registry (legacy callers): treat the
+            # first chain entry as the single provider.
+            if not embed.chain:
+                return None
+            spec = embed.chain[0]
+            embed_provider = spec.build()
+            batch_size = getattr(spec, "batch_size", 32)
+            from providers.chain import Chain
+            from providers.chain_gate import ChainGate
+            embed_chain = Chain(stage="embed", providers=[embed_provider], gate=ChainGate(embed.gate))
+        else:
+            embed_chain = self._registry._build_embed_chain(embed.chain, embed.gate)
+            first_spec = embed.chain[0] if embed.chain else None
+            batch_size = getattr(first_spec, "batch_size", 32)
 
         return S6EmbedIndexStage(
-            embed_provider=embed_provider,
+            embed_chain=embed_chain,
             qdrant=self._qdrant,
             chunk_repo=self._chunk_repo,
             embed_batch_size=batch_size,
@@ -823,11 +852,10 @@ class StageEngine(LoggerClass):
         Returns:
             dict[str, Any]: Fingerprint parameter dict (parser name, version, GPU flag).
         """
-        parser = s1._parser
+        # Chain-aware fingerprint: the full signature covers every provider in order
+        # so adding/removing/reordering parsers invalidates the cache as expected.
         return {
-            "parser_name": getattr(parser, "name", "docling"),
-            "parser_version": getattr(parser, "version", "2"),
-            "use_gpu": getattr(parser, "_use_gpu", False),
+            "parse_chain": s1._parse_chain.signature(),
         }
 
     def _s2_params(self, s2: S2EnrichStage) -> dict[str, Any]:
@@ -887,6 +915,13 @@ class StageEngine(LoggerClass):
             "s1_fingerprint": s1_fp,
             "ir_key": ir_key,
             "markdown_key": s1_result.markdown_key,
+            # Chain lineage from S1 (parse).  Each entry is a ChainTrace dict ready for the
+            # frontend to render: stage, final_provider, attempts[].  Empty when the parse
+            # chain was a no-op (single provider, never escalated).
+            "chain_traces": [t.model_dump() for t in ir.chain_traces],
+            # Parser-side quality estimate (e.g. blocks_with_text / total_blocks).
+            # Surfaced in the inspector so operators can see why a chain escalated.
+            "quality_score": ir.quality_score,
         }
         if s2_result is not None and s2_fp is not None:
             meta["s2_fingerprint"] = s2_fp
@@ -895,4 +930,14 @@ class StageEngine(LoggerClass):
             meta["ocr_calls"] = s2_result.ocr_calls
             meta["vlm_calls"] = s2_result.vlm_calls
             meta["chart_extractions"] = s2_result.chart_extractions
+            # Provider-call cache statistics so the UI can show how often dedup
+            # saved an OCR/VLM/classifier API call across repeating crops.
+            meta["ocr_cache_hits"] = s2_result.ocr_cache_hits
+            meta["vlm_cache_hits"] = s2_result.vlm_cache_hits
+            meta["classifier_calls"] = s2_result.classifier_calls
+            meta["classifier_cache_hits"] = s2_result.classifier_cache_hits
+            # Enriched IR may have ADDITIONAL chain_traces (none today, but reserve the slot
+            # so a future S2-level stage trace can ride here without changing the schema).
+            if ir.chain_traces:
+                meta["chain_traces"] = [t.model_dump() for t in ir.chain_traces]
         return meta

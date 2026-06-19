@@ -38,7 +38,8 @@ from pipeline.stages.chunking import (
 from pipeline.stages.s2_enrich import S2EnrichStage
 from pipeline.stages.s4_chunk import S4ChunkStage
 from pipeline.stages.s5_contextualize import S5ContextualizeStage
-from providers.chain import ProviderChain
+from providers.chain import Chain
+from providers.chain_gate import ChainGate, ChainGateConfig
 from providers.classifier.local.layout_labels import LayoutLabelsClassifier
 from providers.classifier.local.vit_onnx import VitOnnxConfig, VitOnnxClassifier
 from providers.ocr.local.paddle_ocr import PaddleOcrConfig
@@ -77,16 +78,21 @@ class ResolvedStages:
     managed by the worker/app, not the registry).
 
     Attributes:
-        parser (DoclingBackend): The resolved S1 parser backend.
+        parse_chain (Chain[ParserProvider, DocumentIR]): Ordered parser chain for S1.
         s2 (S2EnrichStage): Enrichment stage — always present (pipeline is fixed S0→S6).
         s4 (S4ChunkStage): Chunking stage — always present.
         s5 (S5ContextualizeStage): Contextualization stage — always present.
     """
 
-    parser: DoclingBackend
+    parse_chain: "Chain[Any, Any]"
     s2: S2EnrichStage
     s4: S4ChunkStage
     s5: S5ContextualizeStage
+
+    @property
+    def parser(self) -> Any:
+        """Backward-compat shim — returns the FIRST provider in the parse chain."""
+        return self.parse_chain.providers[0] if self.parse_chain.providers else None
 
 
 class ProviderRegistry(LoggerClass):
@@ -150,7 +156,7 @@ class ProviderRegistry(LoggerClass):
                 else "str"
             )
             result.append({
-                "key": name,
+                "name": name,
                 "label": field_schema.get("description", name.replace("_", " ").title()),
                 "type": ui_type,
                 "default": ("•••" if is_secret and value else value),
@@ -222,46 +228,58 @@ class ProviderRegistry(LoggerClass):
                 {
                     "id": "s1", "label": "S1 · PARSE", "name": "PARSE",
                     "description": "Convert + parse the document into the canonical IR block tree.",
-                    "params": [],
+                    "params": [
+                        {"name": "parse.gate.min_score", "label": "Parse gate — min_score", "type": "float",
+                         "default": 0.5, "description": "Escalate when the parser's quality score is below this."},
+                    ],
                     "groups": [
-                        {"key": "parse.provider", "kind": "single", "capability": "parse",
-                         "label": "Parser backend",
-                         "providers": self._auto_providers("parser", "single")},
+                        {"key": "parse.chain", "kind": "multi", "capability": "parse",
+                         "label": "Parser chain (escalation order)",
+                         "providers": self._auto_providers("parser", "multi")},
                     ],
                 },
                 {
                     "id": "s2", "label": "S2 · ENRICH", "name": "ENRICH",
                     "description": "Classify figures, then route to OCR / VLM / chart-to-data.",
                     "params": [
-                        {"key": "enrich.chart_to_data", "label": "Chart → data", "type": "bool",
-                         "default": False, "note": "Extract chart series into a structured table"},
-                        {"key": "enrich.max_budget_usd", "label": "Max budget (USD)", "type": "float",
-                         "default": 0.0, "note": "Per-job spend cap; 0 = no limit"},
+                        {"name": "enrich.chart_to_data", "label": "Chart → data", "type": "bool",
+                         "default": False, "description": "Extract chart series into a structured table"},
+                        {"name": "enrich.max_budget_usd", "label": "Max budget (USD)", "type": "float",
+                         "default": 0.0, "description": "Per-job spend cap; 0 = no limit"},
+                        {"name": "enrich.classifier_gate.min_score", "label": "Classifier gate — min_score",
+                         "type": "float", "default": 0.5,
+                         "description": "Escalate the classifier chain below this confidence."},
+                        {"name": "enrich.ocr_gate.min_score", "label": "OCR gate — min_score",
+                         "type": "float", "default": 0.85,
+                         "description": "Escalate the OCR chain below this confidence."},
+                        {"name": "enrich.vlm_gate.min_score", "label": "VLM gate — min_score",
+                         "type": "float", "default": 0.5,
+                         "description": "Escalate the VLM chain below this quality score."},
                     ],
                     "groups": [
-                        {"key": "enrich.classifier", "kind": "single", "capability": "classifier",
-                         "label": "Figure classifier",
-                         "providers": self._auto_providers("classifier", "single")},
+                        {"key": "enrich.classifier_chain", "kind": "multi", "capability": "classifier",
+                         "label": "Figure classifier chain (escalation order)",
+                         "providers": self._auto_providers("classifier", "multi")},
                         {"key": "enrich.ocr_chain", "kind": "multi", "capability": "ocr",
                          "label": "OCR chain (escalation order)",
                          "providers": self._auto_providers("ocr", "multi")},
-                        {"key": "enrich.vlm", "kind": "optional", "capability": "vlm",
-                         "label": "VLM (grounded description)",
-                         "providers": self._auto_providers("vlm", "optional")},
+                        {"key": "enrich.vlm_chain", "kind": "multi", "capability": "vlm",
+                         "label": "VLM chain (escalation order; empty = disabled)",
+                         "providers": self._auto_providers("vlm", "multi")},
                     ],
                 },
                 {
                     "id": "s4", "label": "S4 · CHUNK", "name": "CHUNK",
                     "description": "Structure-aware chunking: heading skeleton + configurable intra-section split.",
                     "params": [
-                        {"key": "chunk.reinject_breadcrumb", "label": "Reinject breadcrumb", "type": "bool",
-                         "default": True, "note": "Prepend section path to embed_text"},
-                        {"key": "chunk.merge_short_sections", "label": "Merge short sections", "type": "bool",
-                         "default": True, "note": "Fold heading-only / tiny sections into neighbours"},
-                        {"key": "chunk.hierarchical", "label": "Hierarchical chunks", "type": "bool",
-                         "default": False, "note": "Emit a parent chunk per section over its children"},
-                        {"key": "chunk.cross_references", "label": "Cross-references", "type": "bool",
-                         "default": True, "note": "Detect see Figure/Article links between chunks"},
+                        {"name": "chunk.reinject_breadcrumb", "label": "Reinject breadcrumb", "type": "bool",
+                         "default": True, "description": "Prepend section path to embed_text"},
+                        {"name": "chunk.merge_short_sections", "label": "Merge short sections", "type": "bool",
+                         "default": True, "description": "Fold heading-only / tiny sections into neighbours"},
+                        {"name": "chunk.hierarchical", "label": "Hierarchical chunks", "type": "bool",
+                         "default": False, "description": "Emit a parent chunk per section over its children"},
+                        {"name": "chunk.cross_references", "label": "Cross-references", "type": "bool",
+                         "default": True, "description": "Detect see Figure/Article links between chunks"},
                     ],
                     "groups": [
                         {"key": "chunk.split_method", "kind": "single", "capability": "split_method",
@@ -271,17 +289,38 @@ class ProviderRegistry(LoggerClass):
                 },
                 {
                     "id": "s5", "label": "S5 · CONTEXTUALIZE", "name": "CONTEXTUALIZE",
-                    "description": "Inject section titles and position metadata into each chunk.",
-                    "params": [], "groups": [],
+                    "description": (
+                        "Build each chunk's embed_text header (doc title + heading "
+                        "breadcrumb) before S6 embedding."
+                    ),
+                    "params": [
+                        {"name": "contextualize.include_doc_title", "type": "bool", "default": True,
+                         "label": "Include document title",
+                         "description": "Prepend DocumentIR.title to the header unless it is already the first breadcrumb."},
+                        {"name": "contextualize.include_breadcrumb", "type": "bool", "default": True,
+                         "label": "Include heading breadcrumb",
+                         "description": "Include the H1 > H2 > H3 trail in the header."},
+                        {"name": "contextualize.breadcrumb_separator", "type": "str", "default": " > ",
+                         "label": "Breadcrumb separator",
+                         "description": "Joins title + breadcrumb segments (e.g. ' > ', ' / ', '\\n')."},
+                        {"name": "contextualize.header_body_separator", "type": "str", "default": "\n\n",
+                         "label": "Header / body separator",
+                         "description": "Joins the header line to the chunk body (default = blank line)."},
+                    ],
+                    "groups": [],
                 },
                 {
                     "id": "s6", "label": "S6 · EMBED", "name": "EMBED",
                     "description": "Embed chunks and upsert multi-vector points into Qdrant.",
-                    "params": [],
+                    "params": [
+                        {"name": "embed.gate.min_score", "label": "Embed gate — min_score", "type": "float",
+                         "default": 0.5,
+                         "description": "Escalate the embedding chain if a provider falls below this score."},
+                    ],
                     "groups": [
-                        {"key": "embed.provider", "kind": "single", "capability": "embed",
-                         "label": "Embedding provider",
-                         "providers": self._auto_providers("embed", "single")},
+                        {"key": "embed.chain", "kind": "multi", "capability": "embed",
+                         "label": "Embedding chain (escalation order)",
+                         "providers": self._auto_providers("embed", "multi")},
                     ],
                 },
             ]
@@ -342,18 +381,18 @@ class ProviderRegistry(LoggerClass):
             config (PipelineConfig): The per-run pipeline configuration.
 
         Returns:
-            ResolvedStages: Parser + S2/S4/S5 stages — always all present (S6 is owned by
-                the caller's infra as it holds a live Qdrant connection).
+            ResolvedStages: parse_chain + S2/S4/S5 stages — always all present (S6 is owned
+                by the caller's infra as it holds a live Qdrant connection).
 
         Raises:
             ProviderUnavailableError: When a requested provider cannot run here.
         """
-        parser = self._build_parser(config.parse.provider)
+        parse_chain = self._build_parser_chain(config.parse.chain, config.parse.gate)
         s2 = self._build_s2(config.enrich)
         s4 = self._build_chunk_stage(config.chunk)
-        s5 = S5ContextualizeStage()
+        s5 = S5ContextualizeStage(config=config.contextualize)
 
-        return ResolvedStages(parser=parser, s2=s2, s4=s4, s5=s5)
+        return ResolvedStages(parse_chain=parse_chain, s2=s2, s4=s4, s5=s5)
 
     def _build_chunk_stage(self, chunk: ChunkConfig) -> S4ChunkStage:
         """
@@ -401,14 +440,18 @@ class ProviderRegistry(LoggerClass):
         # 1. Merge deployment defaults into the typed config (e.g. TEI_BASE_URL for semantic)
         merged = spec.merge_defaults(self._cfg)
 
-        # 2. Semantic split requires a reachable TEI embedding endpoint — check before build()
+        # 2. Semantic split now accepts any embed provider — only a LOCAL base_url is probed
+        # for reachability; cloud HTTPS endpoints are assumed reachable and will report an
+        # actionable error at the first ``embed()`` call if they aren't.
         if isinstance(merged, SemanticParams):
-            base_url = merged.base_url or self._cfg.TEI_BASE_URL
-            if not self._endpoint_reachable(base_url):
-                raise ProviderUnavailableError(
-                    "chunk_strategy", "semantic",
-                    f"Semantic chunking needs a reachable TEI endpoint (got {base_url!r}).",
-                )
+            embed_cfg = getattr(merged, "embed", None)
+            embed_url = getattr(embed_cfg, "base_url", "") or "" if embed_cfg else ""
+            if embed_url and not embed_url.startswith("https://"):
+                if not self._endpoint_reachable(embed_url):
+                    raise ProviderUnavailableError(
+                        "split_method", "semantic",
+                        f"Semantic chunking needs a reachable embed endpoint (got {embed_url!r}).",
+                    )
 
         # 3. Delegate instantiation to the typed config (build() knows its own splitter)
         return merged.build()
@@ -416,7 +459,7 @@ class ProviderRegistry(LoggerClass):
     def build_enrich_and_chunk_stages(
         self,
         config: "PipelineConfig",
-    ) -> tuple["S2EnrichStage", "S4ChunkStage", "S5ContextualizeStage"]:
+    ) -> tuple["S2EnrichStage", "S4ChunkStage", "S5ContextualizeStage"]:  # type: ignore[name-defined]
         """
         Build S2, S4, S5 from a typed PipelineConfig — for the startup default stack.
 
@@ -430,191 +473,180 @@ class ProviderRegistry(LoggerClass):
         Returns:
             tuple: (S2EnrichStage, S4ChunkStage, S5ContextualizeStage) ready to inject.
         """
-        # 1. Build S2 components from config
-        classifier = self._build_classifier(config.enrich.classifier)
-        ocr_chain = self._build_ocr_chain(config.enrich.ocr_chain) if config.enrich.ocr_chain else None
-        vlm_chain = self._build_vlm_chain(config.enrich.vlm) if config.enrich.vlm is not None else None
-
-        s2 = S2EnrichStage(
-            classifier=classifier,
-            ocr_chain=ocr_chain,
-            vlm_chain=vlm_chain,
-            s3=self._s3,
-            provider_cache=self._provider_cache,
-            max_budget_usd=config.enrich.max_budget_usd,
-        )
+        # 1. Build S2 (every sub-stage is now a Chain[T, R]).
+        s2 = self._build_s2(config.enrich)
 
         # 2. Build S4 splitter from config
         splitter = self._build_splitter(config.chunk.split_method)
         s4 = S4ChunkStage(splitter=splitter)
 
-        # 3. S5 has no config
-        s5 = S5ContextualizeStage()
+        # 3. S5 carries its own contextualization config (header template / separators).
+        s5 = S5ContextualizeStage(config=config.contextualize)
 
         return s2, s4, s5
 
-    def _build_parser(self, spec: ProviderSpec) -> DoclingBackend:
+    # ─── Chain builders (one per stage; share the same Chain primitive) ──────
+
+    def _build_parser_chain(
+        self,
+        specs: list[ProviderSpec],
+        gate_cfg: ChainGateConfig,
+    ) -> "Chain[Any, Any]":
         """
-        Instantiate the requested parser backend, or reject if unavailable.
+        Instantiate the parser providers in declaration order and wrap them in a Chain.
 
         Args:
-            spec (ProviderSpec): Parser provider specification (typed ParserConfig union).
+            specs (list[ProviderSpec]): Typed parser configs (currently only DoclingConfig).
+            gate_cfg (ChainGateConfig): Escalation policy applied after each attempt.
 
         Returns:
-            DoclingBackend: Instantiated parser backend.
+            Chain[ParserProvider, DocumentIR]: Wired parser chain.
 
         Raises:
-            ProviderUnavailableError: When the requested parser is not installed.
+            ProviderUnavailableError: When a requested parser cannot be instantiated.
         """
-        # 1. Docling is the only installed backend — reject anything else early
-        if isinstance(spec, DoclingConfig):
-            merged = spec.merge_defaults(self._cfg)
-            return merged.build()
-        raise ProviderUnavailableError(
-            "parse", getattr(spec, "id", str(spec)),
-            "Only the Docling backend is installed in this deployment."
-        )
-
-    def _build_s2(self, enrich: EnrichConfig) -> S2EnrichStage:
-        """
-        Build the S2 enrichment stage from config.
-
-        Args:
-            enrich (EnrichConfig): Enrichment configuration block.
-
-        Returns:
-            S2EnrichStage: Wired enrichment stage (always built — pipeline is fixed S0→S6).
-        """
-        # 1. Instantiate classifier, OCR chain, and VLM chain from their individual specs
-        classifier = self._build_classifier(enrich.classifier)
-        ocr_chain = self._build_ocr_chain(enrich.ocr_chain)
-        vlm_chain = self._build_vlm_chain(enrich.vlm)
-
-        # 3. Wire all sub-providers into the S2 stage
-        return S2EnrichStage(
-            classifier=classifier,
-            ocr_chain=ocr_chain,
-            vlm_chain=vlm_chain,
-            s3=self._s3,
-            provider_cache=self._provider_cache,
-            max_budget_usd=enrich.max_budget_usd,
-        )
-
-    def _build_classifier(self, spec: ProviderSpec) -> LayoutLabelsClassifier | VitOnnxClassifier:
-        """
-        Build the figure classifier from its typed config.
-
-        Args:
-            spec (ProviderSpec): Classifier provider specification (typed ClassifierConfig union).
-
-        Returns:
-            LayoutLabelsClassifier | VitOnnxClassifier: Instantiated classifier.
-
-        Raises:
-            ProviderUnavailableError: When the ONNX model file is missing.
-        """
-        # 1. ViT ONNX classifier — merge env defaults (model_path, use_gpu) then check model file
-        if isinstance(spec, VitOnnxConfig):
-            merged = spec.merge_defaults(self._cfg)
-            if not os.path.exists(merged.model_path):
+        if not specs:
+            raise ProviderUnavailableError(
+                "parse", "none", "At least one parser must be configured.",
+            )
+        built: list[Any] = []
+        for spec in specs:
+            if not isinstance(spec, DoclingConfig):
                 raise ProviderUnavailableError(
-                    "classifier", "vit_onnx", f"ONNX model not found at {merged.model_path}."
+                    "parse", getattr(spec, "id", str(spec)),
+                    "Only the Docling backend is installed in this deployment.",
                 )
-            return merged.build()
-        # 2. Default: zero-cost heuristic classifier — merge_defaults is a no-op, build() suffices
-        merged = spec.merge_defaults(self._cfg)
-        return merged.build()
+            merged = spec.merge_defaults(self._cfg)
+            built.append(merged.build())
+        return Chain(stage="parse", providers=built, gate=ChainGate(gate_cfg))
 
-    def _build_ocr_chain(self, specs: list[ProviderSpec]) -> ProviderChain | None:
+    def _build_classifier_chain(
+        self,
+        specs: list[ProviderSpec],
+        gate_cfg: ChainGateConfig,
+    ) -> "Chain[Any, Any]":
+        """Build the figure-classifier chain (ViT and/or LayoutLabels)."""
+        if not specs:
+            raise ProviderUnavailableError(
+                "classifier", "none", "At least one classifier must be configured.",
+            )
+        built: list[Any] = []
+        for spec in specs:
+            merged = spec.merge_defaults(self._cfg)
+            if isinstance(merged, VitOnnxConfig):
+                if not os.path.exists(merged.model_path):
+                    raise ProviderUnavailableError(
+                        "classifier", "vit_onnx",
+                        f"ONNX model not found at {merged.model_path}.",
+                    )
+            built.append(merged.build())
+        return Chain(stage="classifier", providers=built, gate=ChainGate(gate_cfg))
+
+    def _build_ocr_chain(
+        self,
+        specs: list[ProviderSpec],
+        gate_cfg: ChainGateConfig,
+    ) -> "Chain[Any, Any] | None":
         """
-        Build an OCR escalation chain from provider specs (params over env defaults).
+        Build the OCR escalation chain.
 
-        Credentials supplied in the spec take precedence over deployment environment defaults,
-        allowing the playground to wire an external provider without env changes.
-
-        Args:
-            specs (list[ProviderSpec]): OCR provider specs in escalation order.
-
-        Returns:
-            ProviderChain | None: Wired OCR chain, or None when specs is empty.
-
-        Raises:
-            ProviderUnavailableError: When a provider is unavailable or misconfigured.
+        Returns None when no OCR providers are configured — the caller must guard against
+        that case and skip OCR routing.
         """
-        # 1. No OCR providers configured → S2 will skip OCR routing entirely
         if not specs:
             return None
-
-        # 2. Instantiate each provider in escalation order
-        built = []
+        built: list[Any] = []
         for spec in specs:
             merged = spec.merge_defaults(self._cfg)
             if isinstance(merged, PaddleOcrConfig):
-                # Local package — cannot run without the paddleocr import
                 try:
                     import paddleocr  # noqa: F401
                 except Exception:
                     raise ProviderUnavailableError(
-                        "ocr", "paddle_ocr", "paddleocr package is not installed."
+                        "ocr", "paddle_ocr", "paddleocr package is not installed.",
                     )
             elif isinstance(merged, MistralOcrConfig):
-                # External API — api_key required (merge_defaults pulled env default already)
                 if not merged.api_key:
                     raise ProviderUnavailableError(
                         "ocr", "mistral_ocr",
                         "No API key — fill it in the playground or set MISTRAL_OCR_API_KEY.",
                     )
             else:
-                raise ProviderUnavailableError("ocr", getattr(merged, "id", str(merged)), "Unknown OCR provider id.")
-            built.append(merged.build())
-
-        # 3. Wrap the ordered list in a chain that escalates on low confidence
-        return ProviderChain(
-            providers=built,
-            escalate_if=lambda r: r.confidence < self._cfg.OCR_CONFIDENCE_THRESHOLD,
-        )
-
-    def _build_vlm_chain(self, spec: ProviderSpec | None) -> ProviderChain | None:
-        """
-        Build a single-provider VLM chain from its spec (params over env defaults).
-
-        Args:
-            spec (ProviderSpec | None): VLM provider spec, or None to skip VLM routing.
-
-        Returns:
-            ProviderChain | None: Wired VLM chain (single provider, no escalation), or None.
-
-        Raises:
-            ProviderUnavailableError: When the provider id is unknown or base URL is missing.
-        """
-        # 1. VLM is optional — None means the stage will not attempt VLM grounding
-        if spec is None:
-            return None
-
-        # 2. Merge deployment defaults into the typed config then check availability
-        merged = spec.merge_defaults(self._cfg)
-
-        if isinstance(merged, LocalVlmConfig):
-            # Local server (vLLM, Ollama, LM Studio) — no auth required; base_url must be set
-            if not merged.base_url:
-                raise ProviderUnavailableError("vlm", "openai_compat", "No VLM base URL configured.")
-        elif isinstance(merged, OpenAIVlmConfig):
-            # External cloud API — both base_url and api_key are required
-            if not merged.base_url:
-                raise ProviderUnavailableError("vlm", "openai", "No VLM base URL configured.")
-            if not merged.api_key:
                 raise ProviderUnavailableError(
-                    "vlm", "openai",
-                    "No API key — fill it in the playground or set VLM_API_KEY.",
+                    "ocr", getattr(merged, "id", str(merged)), "Unknown OCR provider id.",
                 )
-        else:
-            raise ProviderUnavailableError(
-                "vlm", getattr(merged, "id", str(merged)),
-                "Unknown VLM provider id. Valid ids: 'openai_compat' (local server), 'openai' (cloud API)."
-            )
+            built.append(merged.build())
+        return Chain(stage="ocr", providers=built, gate=ChainGate(gate_cfg))
 
-        # 3. Wrap in a non-escalating chain (VLM is always the terminal provider)
-        return ProviderChain(providers=[merged.build()], escalate_if=lambda r: False)
+    def _build_vlm_chain(
+        self,
+        specs: list[ProviderSpec],
+        gate_cfg: ChainGateConfig,
+    ) -> "Chain[Any, Any] | None":
+        """
+        Build the VLM escalation chain.
+
+        Returns None when ``specs`` is empty — disables VLM enrichment entirely.
+        """
+        if not specs:
+            return None
+        built: list[Any] = []
+        for spec in specs:
+            merged = spec.merge_defaults(self._cfg)
+            if isinstance(merged, LocalVlmConfig):
+                if not merged.base_url:
+                    raise ProviderUnavailableError(
+                        "vlm", "openai_compat", "No VLM base URL configured.",
+                    )
+            elif isinstance(merged, OpenAIVlmConfig):
+                if not merged.base_url:
+                    raise ProviderUnavailableError(
+                        "vlm", "openai", "No VLM base URL configured.",
+                    )
+                if not merged.api_key:
+                    raise ProviderUnavailableError(
+                        "vlm", "openai",
+                        "No API key — fill it in the playground or set VLM_API_KEY.",
+                    )
+            else:
+                raise ProviderUnavailableError(
+                    "vlm", getattr(merged, "id", str(merged)),
+                    "Unknown VLM provider id. Valid ids: 'openai_compat' (local), 'openai' (cloud).",
+                )
+            built.append(merged.build())
+        return Chain(stage="vlm", providers=built, gate=ChainGate(gate_cfg))
+
+    def _build_embed_chain(
+        self,
+        specs: list[ProviderSpec],
+        gate_cfg: ChainGateConfig,
+    ) -> "Chain[Any, Any]":
+        """Build the S6 embed chain from typed EmbedProviderConfig specs."""
+        if not specs:
+            raise ProviderUnavailableError(
+                "embed", "none", "At least one embed provider must be configured.",
+            )
+        built: list[Any] = []
+        for spec in specs:
+            merged = spec.merge_defaults(self._cfg)
+            built.append(merged.build())
+        return Chain(stage="embed", providers=built, gate=ChainGate(gate_cfg))
+
+    def _build_s2(self, enrich: EnrichConfig) -> S2EnrichStage:
+        """Wire S2 with classifier / OCR / VLM chains from the enrichment config."""
+        classifier_chain = self._build_classifier_chain(
+            enrich.classifier_chain, enrich.classifier_gate,
+        )
+        ocr_chain = self._build_ocr_chain(enrich.ocr_chain, enrich.ocr_gate)
+        vlm_chain = self._build_vlm_chain(enrich.vlm_chain, enrich.vlm_gate)
+        return S2EnrichStage(
+            classifier_chain=classifier_chain,
+            ocr_chain=ocr_chain,
+            vlm_chain=vlm_chain,
+            s3=self._s3,
+            provider_cache=self._provider_cache,
+            max_budget_usd=enrich.max_budget_usd,
+        )
 
 
 # ─── Model-driven schema derivation (single source of truth = the Pydantic params models) ──────

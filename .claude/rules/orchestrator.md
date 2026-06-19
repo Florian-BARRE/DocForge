@@ -40,7 +40,7 @@ Every agent spawn MUST include all four of these:
 
 1. **Task** — precise action, not "look at the code" → "Find why S6 doesn't write to Qdrant when collection_id is None"
 2. **Context** — relevant file paths, error messages, or data already known
-3. **Constraints** — DocForge-specific invariants (Podman, SeaweedFS, LoggerClass, CONTEXT pattern)
+3. **Constraints** — DocForge-specific invariants (Docker, SeaweedFS, LoggerClass, CONTEXT pattern)
 4. **Expected output** — format: structured report / list of file:line fixes / APPROVED verdict
 
 ---
@@ -107,7 +107,7 @@ add_observations("DocForge", ["P6 done 2026-06-17", "MCP server added"])
 
 **Après un refus/correction de l'utilisateur** :
 ```
-add_observations("Constraints", ["Never docker, always podman", "Never MinIO, always SeaweedFS"])
+add_observations("Constraints", ["Docker + docker compose (Windows + Docker Desktop)", "Never MinIO, always SeaweedFS"])
 ```
 
 ### Structure du graphe recommandée

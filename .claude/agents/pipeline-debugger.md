@@ -42,30 +42,30 @@ You are a specialized agent for debugging the DocForge document processing pipel
 
 ```bash
 # Check service health
-podman-compose ps
-podman logs docforge-app --tail=50
-podman logs docforge-gotenberg --tail=20
-podman logs docforge-worker --tail=50
+docker compose ps
+docker compose logs docforge --tail=50
+docker compose logs gotenberg --tail=20
+docker compose logs worker --tail=50
 
 # Inspect DB state
-podman exec -it docforge-postgres psql -U docforge -d docforge \
+docker compose exec -T postgres psql -U docforge -d docforge \
   -c "SELECT id, status, filename FROM document ORDER BY created_at DESC LIMIT 5;"
 
 # Check chunk count for a document
-podman exec -it docforge-postgres psql -U docforge -d docforge \
+docker compose exec -T postgres psql -U docforge -d docforge \
   -c "SELECT count(*), strategy FROM chunk GROUP BY strategy;"
 
 # Check SeaweedFS bucket contents
-podman exec -it docforge-app curl -s http://seaweedfs:8888/buckets/docforge-objects/ | head -20
+docker compose exec -T docforge curl -s http://seaweedfs:8888/buckets/docforge-objects/ | head -20
 
 # Check Qdrant collection status
-curl -s http://localhost:6333/collections | python3 -m json.tool
+curl -s http://localhost:10025/collections | python3 -m json.tool
 
 # Check TEI embed service
 curl -s http://localhost:8080/health
 
 # Check job failures
-podman exec -it docforge-postgres psql -U docforge -d docforge \
+docker compose exec -T postgres psql -U docforge -d docforge \
   -c "SELECT id, status, error FROM job WHERE status='failed' ORDER BY created_at DESC LIMIT 10;"
 ```
 

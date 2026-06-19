@@ -153,11 +153,45 @@ class _OpenAICompatVlmBase(VlmProvider, LoggerClass):
                     f"(first 200 chars: {content[:200]!r})"
                 )
 
+        # 7. Adapter-side quality heuristic consumed by the VLM chain gate.
+        #    1.0 — structured output was requested AND received non-empty
+        #    0.5 — description-only path (or structured requested but invalid JSON)
+        #    Note: providers that raise are scored 0 by the chain itself (succeeded=False).
+        quality = self._heuristic_quality(description, structured, schema is not None)
+
         self.logger.debug(
             f"{self.name} done: {len(description)} chars "
-            f"structured={'yes' if structured else 'no'}"
+            f"structured={'yes' if structured else 'no'} quality={quality:.2f}"
         )
-        return VlmResult(description=description, structured=structured)
+        return VlmResult(description=description, structured=structured, quality=quality)
+
+    @staticmethod
+    def _heuristic_quality(
+        description: str,
+        structured: dict[str, Any] | None,
+        schema_requested: bool,
+    ) -> float:
+        """
+        Score a VLM response in [0.0, 1.0] using only what the adapter sees.
+
+        Args:
+            description (str): The natural-language description returned.
+            structured (dict | None): Parsed structured payload (None when schema not
+                requested or JSON parsing failed).
+            schema_requested (bool): Whether the caller asked for a structured response.
+
+        Returns:
+            float: 1.0 when structured output was requested and is non-empty;
+                0.5 when only a non-empty description was returned;
+                0.0 when neither slot carries usable content.
+        """
+        has_description = bool(description and description.strip())
+        has_structured = isinstance(structured, dict) and len(structured) > 0
+        if schema_requested and has_structured:
+            return 1.0
+        if has_description:
+            return 0.5
+        return 0.0
 
     @staticmethod
     def _build_system_prompt(grounding: str | None, schema: dict | None) -> str:

@@ -102,6 +102,7 @@ def _build_app() -> FastAPI:
         timeout_s=RUNTIME_CONFIG.GOTENBERG_TIMEOUT_S,
     )
     # use_gpu configured via env; DeviceManager.detect() runs in lifespan
+    # Kept on CONTEXT for backward compatibility — the chain owns the live instance.
     CONTEXT.parser = DoclingBackend(use_gpu=RUNTIME_CONFIG.DOCLING_USE_GPU)
 
     # 6. Instantiate P2 pipeline infrastructure
@@ -117,9 +118,12 @@ def _build_app() -> FastAPI:
         runtime_config=RUNTIME_CONFIG,
     )
 
-    # Build S2/S4/S5 stages via ProviderRegistry.build_enrich_and_chunk_stages(default_pipeline)
+    # Build the parse chain + S2/S4/S5 stages from the deployment defaults.
     from pipeline.pipeline_config import build_default_pipeline
     default_pipeline = build_default_pipeline(RUNTIME_CONFIG)
+    default_parse_chain = CONTEXT.registry._build_parser_chain(
+        default_pipeline.parse.chain, default_pipeline.parse.gate,
+    )
     s2_stage, s4_stage, s5_stage = CONTEXT.registry.build_enrich_and_chunk_stages(default_pipeline)
 
     # 8. Qdrant client + query-time embed provider (TEI, configured via RUNTIME_CONFIG).
@@ -150,7 +154,7 @@ def _build_app() -> FastAPI:
 
     CONTEXT.stage_engine = StageEngine(
         s0=S0IngestStage(s3=CONTEXT.s3, converter=CONTEXT.converter),
-        s1=S1ParseStage(parser=CONTEXT.parser, s3=CONTEXT.s3),
+        s1=S1ParseStage(parse_chain=default_parse_chain, s3=CONTEXT.s3),
         s3=CONTEXT.s3,
         postgres=CONTEXT.postgres,
         node_cache=CONTEXT.node_cache,

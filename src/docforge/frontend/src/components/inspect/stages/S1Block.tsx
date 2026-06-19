@@ -8,6 +8,7 @@ import { useState, useEffect } from 'react'
 import type { Document, PageInfo, BlockInfo } from '../../../api/types'
 import { listPages, getPage, getPageScreenshotUrl, getBlockFigure } from '../../../api/client'
 import { StageBlock, docStatusToStage } from './StageBlock'
+import { ChainTraceView } from '../ChainTraceView'
 
 interface Props {
   doc: Document
@@ -277,6 +278,15 @@ function BlockRow({ block, figureSrc }: BlockRowProps) {
           {/* Figure enrichment (S2 data from type_data) */}
           {isFigure && td && (
             <FigureDetail td={td} figureSrc={figureSrc} blockId={block.id} />
+          )}
+
+          {/* Per-block chain lineage — every classifier / OCR / VLM attempt that touched this figure */}
+          {block.chain_traces && block.chain_traces.length > 0 && (
+            <ChainTraceView
+              traces={block.chain_traces}
+              variant="compact"
+              label="Block chain lineage"
+            />
           )}
         </div>
       )}

@@ -16,7 +16,7 @@ from loggerplusplus import LoggerClass
 
 # ====== Internal Project Imports ======
 from ir.models import Block
-from providers.embed.local.tei import TeiEmbedProvider
+from providers.embed.base import EmbedProvider
 
 # ====== Local Project Imports ======
 from .base_splitter import SplitPiece
@@ -30,13 +30,17 @@ class SemanticSplitter(LoggerClass):
     Adjacent blocks are compared by cosine distance; a cut is placed where the distance exceeds
     the ``breakpoint_percentile`` of the section's distances, provided the running piece already
     meets ``min_tokens``. A hard ``max_tokens`` cap always forces a cut so pieces stay bounded.
+
+    The embed provider is the abstract ``EmbedProvider`` Protocol — TEI, OpenAI-compat (local
+    or cloud) and any future backend are all interchangeable here.  Boundary detection only
+    needs dense vectors, so ``embed_sparse`` is irrelevant for the chosen provider.
     """
 
     name: str = "semantic"
 
     def __init__(
         self,
-        embed_provider: TeiEmbedProvider,
+        embed_provider: EmbedProvider,
         max_tokens: int = 512,
         min_tokens: int = 128,
         breakpoint_percentile: int = 90,
@@ -45,7 +49,8 @@ class SemanticSplitter(LoggerClass):
         Initialize the semantic splitter.
 
         Args:
-            embed_provider (TeiEmbedProvider): Embedding provider (dense vectors suffice).
+            embed_provider (EmbedProvider): Any embedding provider (TEI / openai_compat /
+                openai) — only its dense ``embed(texts)`` output is consumed.
             max_tokens (int): Hard cap per piece — a cut is forced before overflow.
             min_tokens (int): A semantic cut is only honoured once the piece reaches this size.
             breakpoint_percentile (int): Distance percentile (50–99) above which a cut is placed.
@@ -62,12 +67,14 @@ class SemanticSplitter(LoggerClass):
         return self._max_tokens
 
     def signature(self) -> dict[str, Any]:
-        """Return the method id + params for the S4 config hash."""
+        """Return the method id + params (incl. embed provider id) for the S4 config hash."""
         return {
             "id": self.name,
             "max_tokens": self._max_tokens,
             "min_tokens": self._min_tokens,
             "breakpoint_percentile": self._percentile,
+            "embed_provider": getattr(self._embed, "name", "unknown"),
+            "embed_version": getattr(self._embed, "version", "0"),
         }
 
     async def split_section(self, blocks: list[Block]) -> list[SplitPiece]:

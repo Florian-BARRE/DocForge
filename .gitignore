@@ -32,6 +32,12 @@ logs/
 # ── Frontend build artifacts ──────────────────────────────
 src/docforge/frontend/dist/
 src/docforge/frontend/node_modules/
+# Stale .js outputs that shadow .tsx/.ts source — Vite resolves them with priority
+# and serves an old bundle.  We're TS-only; any .js in src/ is build artefact noise.
+src/docforge/frontend/src/**/*.js
+src/docforge/frontend/src/**/*.js.map
+# Auto-generated OpenAPI types — regenerated via `npm run gen:types`
+src/docforge/frontend/src/api/generated.ts
 
 # ── IDE / OS ──────────────────────────────────────────────
 .idea/

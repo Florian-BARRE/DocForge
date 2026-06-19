@@ -9,6 +9,9 @@ from typing import Any
 # ====== Third-Party Library Imports ======
 from pydantic import BaseModel, Field, field_validator
 
+# ====== Internal Project Imports ======
+from ir.models import ChainTrace
+
 
 class IngestResponse(BaseModel):
     """Returned immediately after a document is admitted for ingestion."""
@@ -44,6 +47,20 @@ class DocumentResponse(BaseModel):
     has_markdown: bool = False
     indexed: bool = False
     pipeline_errors: list[str] = Field(default_factory=list)
+    # Chain lineage — extracted from implicit_meta by the router so the frontend
+    # can render the per-stage attempt log without parsing the meta blob.
+    quality_score: float | None = Field(
+        default=None,
+        description="Parser's intrinsic quality score (blocks_with_text / total).",
+    )
+    chain_traces: list[ChainTrace] = Field(
+        default_factory=list,
+        description="Document-level chain traces (parse stage).  One entry per stage that ran.",
+    )
+    embed_chain_traces: list[ChainTrace] = Field(
+        default_factory=list,
+        description="S6 embed chain traces — one entry per batch sent to the embed provider.",
+    )
 
     model_config = {"from_attributes": True}
 

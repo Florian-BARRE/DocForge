@@ -9,7 +9,7 @@ metadata:
 
 ## Non-negotiable rules (from feedback)
 
-- **Podman only** — never write `docker`, `docker-compose`, `docker build` in any context
+- **Docker + docker compose (v2)** — `docker build`, `docker compose up`; never `podman` or legacy `docker-compose`
 - **SeaweedFS only** — never write MinIO anywhere
 - **loggerplusplus only** — no `print()`, no direct loguru import
 - **LoggerClass.__init__(self) required** — every subclass must call it explicitly
@@ -51,3 +51,65 @@ metadata:
 - Hardcoding `http://localhost:8000` instead of using `RUNTIME_CONFIG.DOCFORGE_API_URL`
 - Using `os.environ.get()` in application code — must use `RUNTIME_CONFIG` instead
 - Returning raw `dict` from a route instead of a Pydantic model
+- Accessing `.params` on a typed Pydantic provider config (DoclingConfig, TeiEmbedConfig, …) —
+  post the flat-config refactor these have **flat top-level fields**, no `.params`. Use
+  `cfg.model_dump(exclude={"id"})` to get the params dict, or `getattr(cfg, "base_url", "")`
+  for a single attribute. The legacy `ProviderSpec(id, params)` is kept only for back-compat
+  in DB loading.
+- Validator capability strings drifting from `ProviderRegistry.describe_stages()` ids
+  (seen: `chunk_strategy` vs `split_method`). Verify both sides agree before adding a
+  `_check_one("<cap>", …)` call — a mismatch makes every collection create raise
+  `Unknown <cap> provider 'token_budget'`.
+- Returning a SQLAlchemy model from a `repo.create()` without refreshing relations needed
+  outside the session — triggers `DetachedInstanceError` on lazy load. Use
+  `await session.refresh(collection, attribute_names=[...])` before returning.
+- Registry params using `"key"` instead of `"name"` (ParamSchema's required field).
+  Caused `/api/v1/discovery` to 500 silently — the UI then showed an empty form for
+  every endpoint. Always serialize provider/stage params with `{"name": ..., "type": ...}`,
+  never `{"key": ..., "note": ...}`. The discovery overlay validates via
+  `ParamSchema.model_validate()` and will fail loudly on drift.
+- Adding a pipeline param (chart_to_data, hierarchical, …) without emitting a
+  DynamicField overlay — the UI cannot surface it. `discovery/overlays.py`'s
+  `_pipeline_dynamic_fields` now emits `kind="scalar"` for every stage-level param;
+  the matching frontend branch is `ScalarPicker` in `ChoicePicker.tsx`. Both sides
+  must agree on the kind enum (DynamicFieldKind in `types.ts`).
+
+## Frontend architecture invariants
+
+- Forms are NEVER hand-coded per endpoint. The primitives are
+  `<RequestForm endpoint=… discovery=…>` (static body + query + root overlays) and
+  `<DynamicFieldsGroup fields=… prefix=…>` (nested overlays grouped by sub-path,
+  e.g. `pipeline` for create, `patch.pipeline` for update_config). Five canonical
+  consumers: CollectionStep, ConfigStep, IngestStep, SearchView, BrowseView —
+  if a new view fetches an endpoint with a body or query, it MUST go through
+  RequestForm so adding a backend Pydantic field surfaces automatically.
+- Any addition to a Pydantic request model is a UI feature: there is no separate
+  UI ticket. Verify the new field appears by reloading /discovery in the browser.
+
+## Chain framework invariants (Phase A — generalised provider chains)
+
+- Every ML stage uses `providers.chain.Chain[T, R]` — parse, classifier, OCR,
+  VLM, embed. New providers plug in by exposing `score() -> float | None` on
+  their result type (see `providers/scoring.py::ScoredResult`).
+- Pipeline config fields are ALWAYS `chain: list[…]` + `gate: ChainGateConfig`
+  (or `<stage>_chain` + `<stage>_gate` inside `EnrichConfig`). A legacy
+  `{provider: {...}}` blob is lifted via `_lift_provider_to_chain` so old
+  DB rows still load. Adding `provider:` instead of `chain:` is a regression.
+- Chain attempt traces are persisted on the IR:
+  - `DocumentIR.chain_traces` for stage-level chains (parse, embed).
+  - `Block.chain_traces` for block-scoped chains (classifier, OCR, VLM per figure).
+  - `DocumentIR.quality_score` carries the parser's intrinsic quality estimate
+    consumed by the parse chain gate.
+- Discovery emits `kind="multi"` for every chain field path and
+  `kind="scalar"` for every `<stage>.gate.min_score` (and stage-level scalar
+  params). The UI's existing `MultiPicker` + `ScalarPicker` render them for
+  free — no per-stage frontend code.
+- Logging format is canonical: `[CHAIN <stage>] attempt N/M provider=X
+  score=… duration_ms=… → escalate|final`. Any chain user MUST go through
+  `Chain.call()`; bypassing it skips traces, logs, and the gate.
+- Stage classes accept their chain instance, never a single provider:
+  `S1ParseStage(parse_chain=…)`, `S2EnrichStage(classifier_chain=…,
+  ocr_chain=…, vlm_chain=…)`, `S6EmbedIndexStage(embed_chain=…)`. The
+  registry's `_build_<stage>_chain` helpers are the single construction
+  point — entrypoint/worker MUST go through them, not instantiate
+  providers directly.

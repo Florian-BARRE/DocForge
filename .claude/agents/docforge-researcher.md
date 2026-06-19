@@ -32,7 +32,7 @@ up-to-date documentation and examples for the libraries and technologies used in
 | Object store | SeaweedFS (S3-compatible, aioboto3) |
 | Document parsing | Docling |
 | OCR | PaddleOCR / Mistral OCR API |
-| Containers | Podman + podman-compose |
+| Containers | Docker + docker compose (v2) |
 | Frontend | React 18 + Vite 5 + TypeScript |
 | MCP | FastMCP (Python MCP SDK) |
 | Logging | loggerplusplus |

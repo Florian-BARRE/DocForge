@@ -40,6 +40,7 @@ from pipeline.stages.chunking.params import (
     SentenceWindowConfig,
     SPLIT_METHOD_PARAMS,  # noqa: F401
 )
+from providers.chain_gate import ChainGateConfig
 
 # Param-name segments that mark a value as a credential — masked when the config is echoed.
 # Matched against whole `_`/`-`-separated segments (not substrings) so legitimate keys like
@@ -123,27 +124,59 @@ class ProviderSpec(BaseModel):
 
 # ====== Sub-configs ======
 
+
+def _lift_provider_to_chain(v: dict[str, Any], chain_key: str, provider_key: str) -> dict[str, Any]:
+    """
+    Backward compat for the chain refactor: lift a legacy ``{provider_key: {...}}``
+    entry to ``{chain_key: [{...}]}`` so old DB rows still deserialise after the
+    single-provider → chain transition.
+
+    Args:
+        v (dict): The sub-config dict being validated.
+        chain_key (str): Field name of the new chain list (e.g. ``"chain"``).
+        provider_key (str): Field name of the legacy single provider (e.g. ``"provider"``).
+
+    Returns:
+        dict: ``v`` with the legacy key removed and the chain populated when applicable.
+    """
+    if provider_key in v and chain_key not in v:
+        prov = v.pop(provider_key)
+        if prov:
+            v[chain_key] = [_flatten_provider_spec(prov)]
+        else:
+            v[chain_key] = []
+    elif chain_key in v and isinstance(v[chain_key], list):
+        v[chain_key] = [
+            _flatten_provider_spec(item) if isinstance(item, dict) else item
+            for item in v[chain_key]
+        ]
+    return v
+
+
 class ParseConfig(BaseModel):
     """
-    S1 parsing configuration.
+    S1 parsing configuration — ordered parser chain with gated escalation.
+
+    A legacy ``{provider: {id, params}}`` document is automatically lifted to a
+    single-entry chain so historical DB rows keep loading.
 
     Attributes:
-        provider (ParserConfig): Parser backend (discriminated by id: "docling") + typed params.
+        chain (list[ParserConfig]): Ordered parser backends; index 0 is tried first.
+            Defaults to a single Docling entry.
+        gate (ChainGateConfig): Escalation policy for this chain.
     """
 
-    provider: ParserConfig = Field(default_factory=DoclingConfig)
+    chain: list[ParserConfig] = Field(default_factory=lambda: [DoclingConfig()])
+    gate: ChainGateConfig = Field(default_factory=ChainGateConfig)
 
     @model_validator(mode="before")
     @classmethod
     def _compat(cls, v: Any) -> Any:
-        """Flatten old {provider: {id, params}} DB format."""
-        # 1. Not a dict — pass through (already a model instance)
+        """Lift legacy ``{provider: {...}}`` to ``{chain: [{...}]}`` and flatten entries."""
         if not isinstance(v, dict):
             return v
-        # 2. Flatten nested provider spec if it uses old {id, params} shape
-        if "provider" in v and isinstance(v["provider"], dict):
-            v = dict(v)
-            v["provider"] = _flatten_provider_spec(v["provider"])
+        v = dict(v)
+        v = _lift_provider_to_chain(v, chain_key="chain", provider_key="provider")
         return v
 
 
@@ -175,30 +208,52 @@ class EnrichConfig(BaseModel):
 
     chart_to_data: bool = False
     max_budget_usd: float = 0.0
-    classifier: ClassifierConfig = Field(default_factory=LayoutLabelsConfig)
-    ocr_chain: list[OcrProviderConfig] = Field(default_factory=list)
-    vlm: Optional[VlmProviderConfig] = None
+    classifier_chain: list[ClassifierConfig] = Field(
+        default_factory=lambda: [LayoutLabelsConfig()],
+        description="Ordered figure classifier chain; index 0 is tried first.",
+    )
+    classifier_gate: ChainGateConfig = Field(
+        default_factory=ChainGateConfig,
+        description="Escalation policy for the classifier chain.",
+    )
+    ocr_chain: list[OcrProviderConfig] = Field(
+        default_factory=list,
+        description="Ordered OCR providers; empty list disables OCR.",
+    )
+    ocr_gate: ChainGateConfig = Field(
+        default_factory=lambda: ChainGateConfig(min_score=0.85),
+        description="Escalation policy for the OCR chain (default min_score=0.85 preserves legacy threshold).",
+    )
+    vlm_chain: list[VlmProviderConfig] = Field(
+        default_factory=list,
+        description="Ordered VLM providers; empty list disables VLM enrichment entirely.",
+    )
+    vlm_gate: ChainGateConfig = Field(
+        default_factory=ChainGateConfig,
+        description="Escalation policy for the VLM chain.",
+    )
 
     @model_validator(mode="before")
     @classmethod
     def _compat(cls, v: Any) -> Any:
-        """Flatten old {id, params} DB format for classifier, ocr_chain entries, and vlm."""
-        # 1. Not a dict — pass through
+        """
+        Lift legacy single-provider fields to the new chain shape and flatten entries.
+
+        Old shapes handled:
+        - ``classifier: {...}``     → ``classifier_chain: [{...}]``
+        - ``vlm: {...}`` (or None)  → ``vlm_chain: [{...}]`` or ``[]``
+        - ``ocr_chain: [{id, params}]`` → flatten each entry to ``{id, ...}``
+        """
         if not isinstance(v, dict):
             return v
         v = dict(v)
-        # 2. Flatten classifier spec
-        if "classifier" in v and isinstance(v["classifier"], dict):
-            v["classifier"] = _flatten_provider_spec(v["classifier"])
-        # 3. Flatten each entry in ocr_chain
+        v = _lift_provider_to_chain(v, chain_key="classifier_chain", provider_key="classifier")
+        v = _lift_provider_to_chain(v, chain_key="vlm_chain", provider_key="vlm")
         if "ocr_chain" in v and isinstance(v["ocr_chain"], list):
             v["ocr_chain"] = [
                 _flatten_provider_spec(item) if isinstance(item, dict) else item
                 for item in v["ocr_chain"]
             ]
-        # 4. Flatten vlm spec
-        if "vlm" in v and isinstance(v["vlm"], dict):
-            v["vlm"] = _flatten_provider_spec(v["vlm"])
         return v
 
 
@@ -306,6 +361,40 @@ class ChunkConfig(BaseModel):
         return v
 
 
+class ContextualizeConfig(BaseModel):
+    """
+    S5 contextualization configuration — controls how each chunk's ``embed_text`` header
+    is assembled before the embedder sees it.
+
+    The default template is::
+
+        <doc_title> > <H1> > <H2> > <H3>
+
+        <chunk body>
+
+    Toggle ``include_doc_title`` or ``include_breadcrumb`` to flatten the header; adjust
+    ``breadcrumb_separator`` / ``header_body_separator`` to match the embedder's preferred
+    style (e.g. some BGE-M3 prompts perform better with newlines instead of " > ").
+
+    Attributes:
+        include_doc_title (bool): Prepend ``DocumentIR.title`` to the header when the
+            title is not already the first breadcrumb segment.
+        include_breadcrumb (bool): Include the heading breadcrumb (``H1 > H2 > H3``).
+            When False, only the doc title (if enabled) is prepended — the chunk body
+            stays uncontextualised, which is sometimes useful for benchmarks.
+        breadcrumb_separator (str): Joins title + breadcrumb segments
+            (default ``" > "``).  Examples: ``" / "``, ``"\\n"``, ``" >> "``.
+        header_body_separator (str): Joins the header line to the chunk body
+            (default ``"\\n\\n"``).  Use ``"\\n"`` for very long bodies if the embedder
+            tokenises blank lines as noise.
+    """
+
+    include_doc_title: bool = True
+    include_breadcrumb: bool = True
+    breadcrumb_separator: str = Field(default=" > ", min_length=1, max_length=8)
+    header_body_separator: str = Field(default="\n\n", min_length=1, max_length=8)
+
+
 class EmbedConfig(BaseModel):
     """
     S6 embedding + indexing configuration (spec §4.7).
@@ -330,19 +419,23 @@ class EmbedConfig(BaseModel):
         provider (EmbedProviderConfig): Embedding backend selection + its typed params.
     """
 
-    provider: EmbedProviderConfig = Field(default_factory=TeiEmbedConfig)
+    chain: list[EmbedProviderConfig] = Field(
+        default_factory=lambda: [TeiEmbedConfig()],
+        description="Ordered embedding backends; index 0 is tried first.",
+    )
+    gate: ChainGateConfig = Field(
+        default_factory=ChainGateConfig,
+        description="Escalation policy for the embedding chain.",
+    )
 
     @model_validator(mode="before")
     @classmethod
     def _compat(cls, v: Any) -> Any:
-        """Flatten old {provider: {id, params}} DB format."""
-        # 1. Not a dict — pass through
+        """Lift legacy ``{provider: {...}}`` to ``{chain: [{...}]}`` and flatten entries."""
         if not isinstance(v, dict):
             return v
         v = dict(v)
-        # 2. Flatten nested provider spec if it uses old {id, params} shape
-        if "provider" in v and isinstance(v["provider"], dict):
-            v["provider"] = _flatten_provider_spec(v["provider"])
+        v = _lift_provider_to_chain(v, chain_key="chain", provider_key="provider")
         return v
 
 
@@ -360,6 +453,7 @@ class PipelineConfig(BaseModel):
     parse: ParseConfig = Field(default_factory=ParseConfig)
     enrich: EnrichConfig = Field(default_factory=EnrichConfig)
     chunk: ChunkConfig = Field(default_factory=ChunkConfig)
+    contextualize: ContextualizeConfig = Field(default_factory=ContextualizeConfig)
     embed: EmbedConfig = Field(default_factory=EmbedConfig)
 
     @classmethod
@@ -425,20 +519,20 @@ def build_default_pipeline(cfg: Any) -> "PipelineConfig":
     Returns:
         PipelineConfig: Fully typed config representing the deployment's default stack.
     """
-    # 1. Parser
+    # 1. Parser chain
     parse_cfg = ParseConfig(
-        provider=DoclingConfig(use_gpu=getattr(cfg, "DOCLING_USE_GPU", False))
+        chain=[DoclingConfig(use_gpu=getattr(cfg, "DOCLING_USE_GPU", False))]
     )
 
-    # 2. Figure classifier
+    # 2. Figure classifier chain
     classifier_type = getattr(cfg, "CLASSIFIER_TYPE", "layout_labels")
     if classifier_type == "vit_onnx":
-        classifier = VitOnnxConfig(
+        classifier_chain: list = [VitOnnxConfig(
             model_path=getattr(cfg, "CLASSIFIER_ONNX_MODEL_PATH", ""),
             use_gpu=getattr(cfg, "CLASSIFIER_USE_GPU", False),
-        )
+        )]
     else:
-        classifier = LayoutLabelsConfig()
+        classifier_chain = [LayoutLabelsConfig()]
 
     # 3. OCR chain
     ocr_chain: list = []
@@ -452,22 +546,26 @@ def build_default_pipeline(cfg: Any) -> "PipelineConfig":
             timeout_s=getattr(cfg, "MISTRAL_OCR_TIMEOUT_S", 60),
         ))
 
-    # 4. VLM
-    vlm_cfg = None
+    # 4. VLM chain (empty = disabled)
+    vlm_chain: list = []
     if getattr(cfg, "VLM_ENABLED", False):
-        vlm_cfg = LocalVlmConfig(
+        vlm_chain.append(LocalVlmConfig(
             base_url=getattr(cfg, "VLM_API_BASE_URL", ""),
             api_key=getattr(cfg, "VLM_API_KEY", ""),
             model=getattr(cfg, "VLM_MODEL", ""),
             timeout_s=getattr(cfg, "VLM_TIMEOUT_S", 30),
             max_tokens=getattr(cfg, "VLM_MAX_TOKENS", 1024),
             cost_per_call=getattr(cfg, "VLM_COST_PER_CALL", 0.0),
-        )
+        ))
+
+    # OCR gate inherits the legacy threshold (default 0.85 if not present).
+    ocr_threshold = float(getattr(cfg, "OCR_CONFIDENCE_THRESHOLD", 0.85))
 
     enrich_cfg = EnrichConfig(
-        classifier=classifier,
+        classifier_chain=classifier_chain,
         ocr_chain=ocr_chain,
-        vlm=vlm_cfg,
+        ocr_gate=ChainGateConfig(min_score=ocr_threshold),
+        vlm_chain=vlm_chain,
         max_budget_usd=getattr(cfg, "ENRICH_MAX_BUDGET_USD", 0.0),
     )
 
@@ -479,12 +577,12 @@ def build_default_pipeline(cfg: Any) -> "PipelineConfig":
         )
     )
 
-    # 6. Embedding
+    # 6. Embedding chain
     embed_cfg = EmbedConfig(
-        provider=TeiEmbedConfig(
+        chain=[TeiEmbedConfig(
             base_url=getattr(cfg, "TEI_BASE_URL", "http://tei:8080"),
             batch_size=getattr(cfg, "TEI_BATCH_SIZE", 32),
-        )
+        )]
     )
 
     return PipelineConfig(parse=parse_cfg, enrich=enrich_cfg, chunk=chunk_cfg, embed=embed_cfg)

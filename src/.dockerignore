@@ -1,0 +1,32 @@
+# Build context exclusions for `docker build -f docforge/Dockerfile … src`.
+# Anything matched here is NEVER sent to the daemon, so the build sees a clean tree.
+
+# ── Frontend dev artefacts ─────────────────────────────────────────────────────
+# `npm install` runs inside the frontend dev container against the bind-mounted
+# source tree, so node_modules + Vite dist appear on the host. They contain
+# symlinks under .bin/ that BuildKit refuses ("invalid file request") and they
+# would also bust the layer cache on every install.
+**/node_modules
+**/dist
+**/.vite
+
+# ── Python build/runtime artefacts ─────────────────────────────────────────────
+**/__pycache__
+**/*.pyc
+**/*.pyo
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+**/.coverage
+**/.venv
+**/venv
+
+# ── Editor / OS ────────────────────────────────────────────────────────────────
+**/.idea
+**/.vscode
+**/.DS_Store
+**/Thumbs.db
+
+# ── Logs / local data ──────────────────────────────────────────────────────────
+**/logs
+**/*.log

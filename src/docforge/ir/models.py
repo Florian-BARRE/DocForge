@@ -9,6 +9,58 @@ from enum import StrEnum
 from pydantic import BaseModel, Field
 
 
+# ─── Chain provenance (filled by providers.chain.Chain.call) ────────────────
+
+
+class ChainAttemptIR(BaseModel):
+    """
+    Serialisable record of one provider attempt within a stage's chain.
+
+    Mirrors ``providers.chain.ChainAttempt`` so the IR can be persisted as jsonb
+    and round-tripped through Postgres without the dataclass dependency.  The
+    stage code converts each ``ChainAttempt`` into a ``ChainAttemptIR`` at the
+    boundary so the IR layer stays free of provider imports.
+
+    Attributes:
+        provider_id (str): Stable identifier of the provider (e.g. ``"docling"``).
+        score (float | None): Self-reported quality in ``[0.0, 1.0]`` or None.
+        duration_ms (int): Wall-clock duration of this attempt.
+        succeeded (bool): False when the call raised or returned None.
+        escalated (bool): True when the gate told the chain to try the next provider.
+        error (str | None): Exception summary captured when the attempt raised.
+        cost_usd (float): Provider-reported cost of this attempt (0.0 if free).
+    """
+
+    provider_id: str
+    score: float | None = None
+    duration_ms: int
+    succeeded: bool
+    escalated: bool
+    error: str | None = None
+    cost_usd: float = 0.0
+
+
+class ChainTrace(BaseModel):
+    """
+    Full audit trail of one chain invocation, stamped on the IR.
+
+    Stage-level traces (``parse``, ``embed``) live on the ``DocumentIR``; block-level
+    traces (``classifier``, ``ocr``, ``vlm``) live on the individual ``Block`` so each
+    figure carries its own lineage.
+
+    Attributes:
+        stage (str): Stage label (``"parse"``, ``"ocr"``, ``"vlm"``,
+            ``"classifier"``, ``"embed"``).
+        attempts (list[ChainAttemptIR]): One record per provider tried, in order.
+        final_provider (str | None): provider_id of the attempt whose result was
+            kept, or None when every provider escalated.
+    """
+
+    stage: str
+    attempts: list[ChainAttemptIR] = Field(default_factory=list)
+    final_provider: str | None = None
+
+
 class BlockType(StrEnum):
     """Semantic type of a document block."""
 
@@ -121,6 +173,13 @@ class Block(BaseModel):
         default=None,
         description="ISO 639-1 language code when the block differs from the document language.",
     )
+    chain_traces: list[ChainTrace] = Field(
+        default_factory=list,
+        description=(
+            "Per-stage provider chain attempts that touched THIS block "
+            "(classifier / ocr / vlm).  Empty by default so existing IR rows still load."
+        ),
+    )
 
 
 class DocumentIR(BaseModel):
@@ -152,6 +211,22 @@ class DocumentIR(BaseModel):
     blocks: list[Block] = Field(
         default_factory=list,
         description="All blocks in reading order; heading tree encoded via parent_id.",
+    )
+    quality_score: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Parser-reported quality estimate for THIS IR (e.g. textual blocks / total). "
+            "Used by the S1 parse chain's gate to decide escalation."
+        ),
+    )
+    chain_traces: list[ChainTrace] = Field(
+        default_factory=list,
+        description=(
+            "Document-level provider chain attempts (parse, embed).  Empty by "
+            "default so legacy IR rows still load."
+        ),
     )
 
     @property

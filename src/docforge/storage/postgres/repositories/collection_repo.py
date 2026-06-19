@@ -93,6 +93,10 @@ class CollectionRepository(LoggerClass):
             )
         await session.flush()
 
+        # 4. Eager-load the metadata_fields relation so callers outside the session can read it
+        # without triggering a DetachedInstanceError (the router consumes the model post-commit).
+        await session.refresh(collection, attribute_names=["metadata_fields"])
+
         self.logger.info(
             f"Created collection id={collection.id} name={name!r} "
             f"metadata_fields={len(metadata_fields or [])}"

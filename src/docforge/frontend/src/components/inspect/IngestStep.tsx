@@ -1,27 +1,32 @@
 // ====== Code Summary ======
-// Step 3 of Inspect mode — file drop zone + metadata form + polling until done.
-// Shows existing docs for the collection so user can click an existing doc directly.
+// Step 3 of Inspect mode — file drop-zone + discovery-driven body form + status polling.
+// The dropzone owns the `file` part (multipart binary); everything else (the `metadata`
+// overlay declared by /api/v1/discovery for ingest_document) is rendered by <RequestForm>.
 
 import { useState, useEffect, useRef, useCallback } from 'react'
-import type { Collection, Document, DiscoveryResponse, DynamicField } from '../../api/types'
+import type {
+  Collection, DiscoveryResponse, Document, EndpointDescriptor,
+} from '../../api/types'
 import { listDocuments, ingestDocument, getDocument, getDiscovery } from '../../api/client'
-import { ChoicePicker } from '../ui/ChoicePicker'
+import { RequestForm } from '../ui/RequestForm'
 
 interface Props {
   collection: Collection
-  // Called when an ingested (or selected) document reaches done/error or is clicked.
   onIngested: (doc: Document) => void
 }
 
 /**
- * Drop-zone ingest with discovery-driven metadata form.
- * After submitting: polls getDocument every 2s until status is done or error,
- * then calls onIngested(doc) automatically.
+ * Multipart ingest step.
+ *
+ * Body is constructed as:
+ *   • `file` → from the dropzone
+ *   • everything else (metadata overlay, any new field added server-side) → from
+ *     <RequestForm body=…> which iterates the input schema + dynamic_fields verbatim.
  */
 export function IngestStep({ collection, onIngested }: Props) {
   const [file, setFile] = useState<File | null>(null)
   const [dragOver, setDragOver] = useState(false)
-  const [metadata, setMetadata] = useState<Record<string, unknown>>({})
+  const [body, setBody] = useState<Record<string, unknown>>({})
   const [ingesting, setIngesting] = useState(false)
   const [ingestError, setIngestError] = useState<string | null>(null)
   const [pollingDocId, setPollingDocId] = useState<string | null>(null)
@@ -32,7 +37,7 @@ export function IngestStep({ collection, onIngested }: Props) {
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  // 1. Load existing docs and discovery on mount.
+  // 1. Load existing docs + scoped discovery on mount.
   useEffect(() => {
     void loadDocs()
     void loadDiscovery()
@@ -54,10 +59,9 @@ export function IngestStep({ collection, onIngested }: Props) {
     } catch { /* non-critical */ }
   }
 
-  // 2. Extract metadata dynamic field from ingest_document endpoint.
-  const ingestEndpoint = discovery?.endpoints.find(e => e.route_name === 'ingest_document')
-  const metaField: DynamicField | undefined = ingestEndpoint?.dynamic_fields.find(
-    df => df.field_path === 'metadata' || df.capability === 'metadata_write'
+  // 2. Locate the ingest endpoint.
+  const ingestEndpoint: EndpointDescriptor | undefined = discovery?.endpoints.find(
+    e => e.route_name === 'ingest_document',
   )
 
   // 3. Poll getDocument until terminal status.
@@ -92,16 +96,18 @@ export function IngestStep({ collection, onIngested }: Props) {
     if (picked) setFile(picked)
   }
 
-  // 5. Submit ingest.
+  // 5. Submit ingest.  The metadata body field is built by RequestForm via the
+  // metadata_write overlay; the api client encodes it as a JSON string for multipart.
   async function handleIngest() {
     if (!file) return
     setIngesting(true)
     setIngestError(null)
     try {
-      const meta = Object.keys(metadata).length > 0 ? metadata : undefined
-      const res = await ingestDocument(collection.id, file, meta)
+      const metadata = (body.metadata as Record<string, unknown> | undefined) ?? undefined
+      const cleanMeta = metadata && Object.keys(metadata).length > 0 ? metadata : undefined
+      const res = await ingestDocument(collection.id, file, cleanMeta)
       setFile(null)
-      setMetadata({})
+      setBody({})
       startPolling(res.doc_id)
     } catch (err) {
       setIngestError(String(err))
@@ -129,7 +135,7 @@ export function IngestStep({ collection, onIngested }: Props) {
         <div className="panel-title">Ingest document</div>
       </div>
 
-      {/* Drop zone */}
+      {/* Drop zone — owns the `file` body field */}
       <div
         className={`dropzone ${dragOver ? 'dropzone-active' : ''}`}
         onDragOver={e => { e.preventDefault(); setDragOver(true) }}
@@ -167,21 +173,23 @@ export function IngestStep({ collection, onIngested }: Props) {
         />
       </div>
 
-      {/* Metadata form from discovery */}
-      {metaField && (
+      {/* Discovery-driven body form — picks up the metadata overlay and any future field. */}
+      {ingestEndpoint && discovery && (
         <div style={{ marginTop: 14 }}>
-          <ChoicePicker
-            field={metaField}
-            value={metadata}
-            onChange={v => setMetadata(v as Record<string, unknown>)}
-            label="Metadata"
+          <RequestForm
+            endpoint={ingestEndpoint}
+            discovery={discovery}
+            body={body}
+            query={{}}
+            onBodyChange={setBody}
+            onQueryChange={() => {}}
+            excludeBodyFields={['file']}
           />
         </div>
       )}
 
       {ingestError && <div className="error-banner">{ingestError}</div>}
 
-      {/* Polling status */}
       {pollingDocId && (
         <div className="info-banner" style={{ marginTop: 10 }}>
           <span className="spin">⟳</span>

@@ -1,6 +1,6 @@
-# DocForge — production compose file.
+# DocForge — production compose file (Docker Compose v2).
 # Run with:
-#   podman-compose up -d
+#   docker compose up -d
 #
 # All services communicate on the internal `docforge_net` network.
 # External ports are exposed only where operator access is needed (API, Postgres).
@@ -65,7 +65,7 @@ services:
     volumes:
       - seaweedfs_data:/data
       # s3_config.json is kept for reference but not loaded — running without S3 auth is safe on
-      # the internal podman network (port 10021 is for operator inspection only, not external access)
+      # the internal docker network (port 10021 is for operator inspection only, not external access)
     restart: unless-stopped
     networks:
       - docforge_net
