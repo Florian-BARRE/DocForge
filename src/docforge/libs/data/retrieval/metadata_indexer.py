@@ -6,10 +6,8 @@
 # Document-level fields embed to the same value for every chunk, so one embedding is broadcast
 # across the document's points.
 #
-# SIZE NOTE: At 226 lines this file is within the ~250-line budget.  The only candidate for
-# extraction is `_value()`, which is already a `@staticmethod` on the class.  The async
-# `_sync_field` method is tightly coupled to `self._embed` and `self._qdrant` — it is not
-# stateless and cannot be moved to an external helper.  No split is warranted.
+# Per-field sync and value normalization are delegated to MetadataIndexerHelpers
+# (metadata_indexer_helpers.py) to keep this file under 200 lines.
 
 # ====== Standard Library Imports ======
 from __future__ import annotations
@@ -30,6 +28,9 @@ from libs.data.retrieval.field_index import (
 )
 from libs.data.storage.postgres.repositories.chunk_repo import ChunkRepository
 from libs.data.storage.qdrant.client import QdrantStorageClient
+
+# ====== Local Project Imports ======
+from .metadata_indexer_helpers import MetadataIndexerHelpers
 
 
 class MetadataIndexer(LoggerClass):
@@ -103,8 +104,10 @@ class MetadataIndexer(LoggerClass):
             field = schema.get(name)
             if field is None:
                 continue  # unknown field (kept by an "ignore" policy) — never indexed
-            value = self._value(doc_meta, name)
-            await self._sync_field(collection_name, point_ids, field, name, value, summary)
+            value = MetadataIndexerHelpers.value(doc_meta, name)
+            await MetadataIndexerHelpers.sync_field(
+                self._embed, self._qdrant, collection_name, point_ids, field, name, value, summary
+            )
             # Collect payload changes for a single batched call
             if FieldIndexHelpers._attr(field, "filterable", False):
                 (payload_set.__setitem__(name, value) if value is not None
@@ -159,73 +162,3 @@ class MetadataIndexer(LoggerClass):
             updated.append(CONTENT_SPARSE)
         self.logger.info(f"Re-embedded content for point={point_id} vectors={updated}")
         return {"vectors_updated": updated}
-
-    # ─── Internal ─────────────────────────────────────────────────────────────
-
-    async def _sync_field(
-        self,
-        collection_name: str,
-        point_ids: list[str],
-        field: Any,
-        name: str,
-        value: str | None,
-        summary: dict[str, Any],
-    ) -> None:
-        """
-        Re-embed (or clear) the per-field dense/sparse vectors for one changed field.
-
-        Args:
-            collection_name (str): Qdrant collection name.
-            point_ids (list[str]): All point ids belonging to the document.
-            field (Any): The schema field object (ORM row or dict).
-            name (str): Field name as stored in the schema.
-            value (str | None): New field value; None means the field was cleared.
-            summary (dict): Mutable summary dict updated in place with vector changes.
-
-        Returns:
-            None
-        """
-        semantic = FieldIndexHelpers._attr(field, "semantic", False)
-        lexical = FieldIndexHelpers._attr(field, "lexical", False)
-        if not (semantic or lexical):
-            return
-
-        # 1. Cleared field → drop its named vectors
-        if value is None:
-            names = ([FieldIndexHelpers.field_dense_name(name)] if semantic else []) + (
-                [FieldIndexHelpers.field_sparse_name(name)] if lexical else []
-            )
-            await self._qdrant.delete_points_named_vectors(collection_name, point_ids, names)
-            summary["vectors_deleted"].extend(names)
-            return
-
-        # 2. Re-embed the new value once (dense + sparse from a single TEI call)
-        result = await self._embed.embed([value])
-        dense_vec = result.vectors[0] if result.vectors else None
-        sparse_map = result.sparse[0] if result.sparse else None
-
-        # 3. Broadcast the new vector to every point of the document
-        if semantic and dense_vec is not None:
-            vname = FieldIndexHelpers.field_dense_name(name)
-            await self._qdrant.update_points_named_vector(collection_name, point_ids, vname, dense=dense_vec)
-            summary["vectors_updated"].append(vname)
-        if lexical and sparse_map:
-            vname = FieldIndexHelpers.field_sparse_name(name)
-            await self._qdrant.update_points_named_vector(collection_name, point_ids, vname, sparse=sparse_map)
-            summary["vectors_updated"].append(vname)
-
-    @staticmethod
-    def _value(doc_meta: dict[str, Any], name: str) -> str | None:
-        """
-        Normalize a document-level field value to text (mirrors resolve_field_text).
-
-        Args:
-            doc_meta (dict): The document's merged metadata dict.
-            name (str): Field name to look up.
-
-        Returns:
-            str | None: The field value cast to str, or None if absent or empty string.
-        """
-        raw = doc_meta.get(name)
-        return None if raw is None or raw == "" else str(raw)
-

@@ -1,16 +1,30 @@
 # ====== Code Summary ======
-# Pure-static helpers for HybridSearchService: vector-plan resolution and
-# chunk-row → SearchResult mapping.  No async, no I/O, no logger binding
-# (all methods are pure functions; a logger would be unused here).
+# Pure-static helpers for HybridSearchService: vector-plan resolution,
+# chunk-row → SearchResult mapping, query embedding + plan resolution,
+# and Postgres-hydration of Qdrant hits.
+#
+# embed_and_resolve and hydrate are extracted from HybridSearchService._embed_and_resolve
+# and HybridSearchService._hydrate to keep hybrid_search.py under 200 lines.
+# They accept the service's dependencies as explicit arguments so they remain
+# stateless pure functions with no I/O coupling.
 
 # ====== Standard Library Imports ======
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+# ====== Third-Party Library Imports ======
+from loggerplusplus import LoggerClass
 
 # ====== Local Project Imports ======
 from .field_index import CONTENT_DENSE, CONTENT_SPARSE, FieldIndexHelpers
 from .hybrid_search_models import SearchResult
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from libs.capabilities.embed.local.tei import TeiEmbedProvider
+    from libs.data.storage.postgres.repositories.chunk_repo import ChunkRepository
 
 
 class HybridSearchHelpers:
@@ -100,3 +114,85 @@ class HybridSearchHelpers:
             config_hash=row["config_hash"],
             block_ids=list(row["block_ids"]) if row["block_ids"] else [],
         )
+
+    @staticmethod
+    async def embed_and_resolve(
+        embed_provider: TeiEmbedProvider,
+        query: str,
+        metadata_fields: list[Any] | None,
+        weight_overrides: dict[str, float] | None,
+    ) -> tuple[list[float], dict[int, float] | None, list[str], list[str], dict[str, float]]:
+        """
+        Embed the query and resolve the per-field vector plan and fusion weights.
+
+        Shared front half of search and search_debug: a single TEI call yields the
+        dense + sparse query vectors, then the collection schema is turned into the
+        dense/sparse named-vector lists and their fusion weights.
+
+        Args:
+            embed_provider (TeiEmbedProvider): The embed provider for query encoding.
+            query (str): Natural language query string.
+            metadata_fields (list | None): Collection's metadata schema for per-field vectors.
+            weight_overrides (dict[str, float] | None): Per-vector weight overrides.
+
+        Returns:
+            tuple: ``(dense_vec, sparse_vec, dense_vectors, sparse_vectors, weights)``.
+        """
+        # 1. Embed the query — produces dense + sparse in one HTTP round-trip
+        embed_result = await embed_provider.embed([query])
+        dense_vec = embed_result.vectors[0]
+        sparse_vec = embed_result.sparse[0] if embed_result.sparse else None
+
+        # 2. Resolve the multi-field vector plan + fusion weights from the schema
+        dense_vectors, sparse_vectors, weights = HybridSearchHelpers.resolve_vector_plan(
+            metadata_fields, weight_overrides
+        )
+        return dense_vec, sparse_vec, dense_vectors, sparse_vectors, weights
+
+    @staticmethod
+    async def hydrate(
+        session: AsyncSession,
+        chunk_repo: ChunkRepository,
+        logger: LoggerClass,
+        raw_hits: list[dict[str, Any]],
+    ) -> list[SearchResult]:
+        """
+        Fetch full chunk records from Postgres for the ranked hits (source of truth).
+
+        Hierarchical mode: a hit child is rolled up to its section parent (the parent
+        carries the full-section context), and multiple children of the same parent
+        collapse to one result — the highest-ranked one wins.  Flat chunks are
+        returned as-is.
+
+        Args:
+            session (AsyncSession): Active Postgres session.
+            chunk_repo (ChunkRepository): Repository used to fetch chunk rows.
+            logger (LoggerClass): The caller's logger for warning emission.
+            raw_hits (list[dict]): Ranked hit dicts from Qdrant, each containing
+                ``id``, ``score``, and ``payload`` keys.
+
+        Returns:
+            list[SearchResult]: Hydrated results in rank order; missing/duplicate rows skipped.
+        """
+        # 1. Batch-fetch the hit rows, then the parents they roll up to
+        rows = await chunk_repo.get_by_ids(session, [hit["id"] for hit in raw_hits])
+        parent_ids = [r["parent_id"] for r in rows.values() if r.get("parent_id")]
+        parents = await chunk_repo.get_by_ids(session, parent_ids) if parent_ids else {}
+
+        # 2. Walk hits in rank order, rolling children up to their parent and deduping
+        results: list[SearchResult] = []
+        seen: set[str] = set()
+        for hit in raw_hits:
+            row = rows.get(hit["id"])
+            if row is None:
+                # Qdrant has a point that Postgres lost — skip and warn
+                logger.warning(
+                    f"HybridSearch: chunk_id={hit['id']} found in Qdrant but missing from Postgres — skipping."
+                )
+                continue
+            target = parents.get(row["parent_id"], row) if row.get("parent_id") else row
+            if target["id"] in seen:
+                continue
+            seen.add(target["id"])
+            results.append(HybridSearchHelpers.row_to_result(target, hit))
+        return results

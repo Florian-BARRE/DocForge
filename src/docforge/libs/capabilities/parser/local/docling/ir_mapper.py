@@ -2,6 +2,9 @@
 # Translates a parsed Docling document object into the canonical DocumentIR.
 # Walks Docling items in reading order, maps each element to the closest BlockType,
 # and populates Blocks with provenance, text, table, or figure data.
+#
+# Label mapping and language/quality helpers are extracted to quality_helpers.py
+# (DoclingQualityHelpers) to keep this file under 200 lines.
 
 # ====== Standard Library Imports ======
 from __future__ import annotations
@@ -26,6 +29,7 @@ from libs.core.ir.models import (
 
 # ====== Local Project Imports ======
 from .extraction_helpers import DoclingExtractionHelpers
+from .quality_helpers import DoclingQualityHelpers
 
 
 class DoclingIRMapper:
@@ -34,33 +38,12 @@ class DoclingIRMapper:
 
     Responsibilities:
     - Walk Docling items in reading order.
-    - Map Docling element labels → BlockType.
+    - Map Docling element labels → BlockType (delegated to DoclingQualityHelpers).
     - Delegate provenance and table extraction to DoclingExtractionHelpers.
     - Detect document language and compute quality score.
     """
 
     logger = loggerplusplus.bind(identifier="DoclingIRMapper")
-
-    # Mapping from Docling label strings to canonical BlockType values.
-    # Labels come from docling's DocItemLabel enum (.value).
-    _LABEL_MAP: dict[str, BlockType] = {
-        "title": BlockType.HEADING,
-        "section_header": BlockType.HEADING,
-        "text": BlockType.PARAGRAPH,
-        "paragraph": BlockType.PARAGRAPH,
-        "list_item": BlockType.LIST_ITEM,
-        "table": BlockType.TABLE,
-        # Docling 2.x labels images "picture" (the old "figure" label is kept for safety).
-        # Charts/figures are also surfaced as pictures and routed to S2 enrichment.
-        "picture": BlockType.FIGURE,
-        "figure": BlockType.FIGURE,
-        "chart": BlockType.FIGURE,
-        "caption": BlockType.CAPTION,
-        "code": BlockType.CODE,
-        "formula": BlockType.FORMULA,
-        "page_header": BlockType.HEADER_FOOTER,
-        "page_footer": BlockType.HEADER_FOOTER,
-    }
 
     def __new__(cls, *args: object, **kwargs: object) -> None:
         """Prevent instantiation — this is a static-only mapper class."""
@@ -104,7 +87,7 @@ class DoclingIRMapper:
         # 3. Detect language from the parsed text (reliable, offline); fall back to Docling's
         #    hint, then "und". Done after parsing so the detector sees the real document text.
         language = (
-            lang_detector.detect(cls._language_sample(blocks))
+            lang_detector.detect(DoclingQualityHelpers.language_sample(blocks))
             or getattr(docling_doc, "language", None)
             or "und"
         )
@@ -151,7 +134,7 @@ class DoclingIRMapper:
         label: str = raw_label.value if hasattr(raw_label, "value") else str(raw_label)
 
         # 2. Map label → BlockType (None means skip)
-        block_type = cls._label_to_block_type(label)
+        block_type = DoclingQualityHelpers.label_to_block_type(label)
         if block_type is None:
             return None
 
@@ -204,39 +187,3 @@ class DoclingIRMapper:
             table=table_data,
             figure=figure_data,
         )
-
-    @classmethod
-    def _label_to_block_type(cls, label: str) -> BlockType | None:
-        """
-        Map a Docling element label string to a BlockType, or None to skip.
-
-        Args:
-            label (str): Lowercase Docling element label string.
-
-        Returns:
-            BlockType | None: Matched block type, or None if label should be skipped.
-        """
-        return cls._LABEL_MAP.get(label.lower())
-
-    @staticmethod
-    def _language_sample(blocks: list[Block], max_chars: int = 4000) -> str:
-        """
-        Concatenate text-bearing blocks (reading order) into a sample for language detection.
-
-        Args:
-            blocks (list[Block]): Parsed blocks.
-            max_chars (int): Stop once this many characters are gathered (enough to detect).
-
-        Returns:
-            str: A text sample, possibly empty when the document carries no extractable text.
-        """
-        parts: list[str] = []
-        total = 0
-        for block in blocks:
-            if not block.text:
-                continue
-            parts.append(block.text)
-            total += len(block.text)
-            if total >= max_chars:
-                break
-        return " ".join(parts)

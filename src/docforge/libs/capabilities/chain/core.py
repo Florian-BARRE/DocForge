@@ -5,13 +5,14 @@
 # policy after each attempt.  Returns a ChainOutcome carrying the final result
 # and the full per-attempt audit log.  Thread-safe: no mutable state beyond the
 # immutable provider list set at construction time.
+#
+# Per-attempt execution, score extraction, and log emission are delegated to
+# ChainRunHelpers (run_helpers.py) to keep this file under 200 lines.
 
 # ====== Standard Library Imports ======
 from __future__ import annotations
 
-import time
 from collections.abc import Awaitable, Callable
-from typing import Any
 
 # ====== Third-Party Library Imports ======
 from loggerplusplus import LoggerClass
@@ -21,6 +22,7 @@ from libs.capabilities.chain_gate import ChainGate
 
 # ====== Local Project Imports ======
 from .models import ChainAttempt, ChainHelpers, ChainOutcome
+from .run_helpers import ChainRunHelpers
 
 
 class Chain[T, R](LoggerClass):
@@ -127,8 +129,9 @@ class Chain[T, R](LoggerClass):
 
         # 1. Iterate providers in declaration order, recording one attempt each.
         for idx, provider in enumerate(self._providers, start=1):
-            attempt, raw_result = await self._run_attempt(provider, fn)
-            self._log_attempt(idx, total, attempt)
+            provider_id = self._provider_id(provider)
+            attempt, raw_result = await ChainRunHelpers.run_attempt(provider, fn, provider_id)
+            ChainRunHelpers.log_attempt(self.logger, self._stage, idx, total, attempt)
 
             # 2. The gate decides whether the chain stops or escalates.
             should_escalate = self._gate.should_escalate(raw_result, attempt)
@@ -151,94 +154,3 @@ class Chain[T, R](LoggerClass):
             f"[CHAIN {self._stage}] exhausted — {total} provider(s) escalated or raised"
         )
         return ChainOutcome(result=None, attempts=attempts, final_provider=None)
-
-    async def _run_attempt(
-        self,
-        provider: T,
-        fn: Callable[[T], Awaitable[R]],
-    ) -> tuple[ChainAttempt, R | None]:
-        """
-        Execute a single provider call, timing it and capturing any exception.
-
-        Returns the attempt record alongside the raw result so the gate can inspect
-        it.  Returning a tuple (instead of stashing it on the chain instance) is
-        what keeps ``Chain.call`` safe to invoke concurrently.
-
-        Args:
-            provider (T): Provider instance to invoke.
-            fn (Callable[[T], Awaitable[R]]): The user's coroutine factory.
-
-        Returns:
-            tuple[ChainAttempt, R | None]: The attempt record (escalated flag is set
-                later by the caller) and the raw result (None when the call raised).
-        """
-        provider_id = self._provider_id(provider)
-        cost = float(getattr(provider, "cost_per_call", 0.0) or 0.0)
-        start = time.perf_counter()
-        try:
-            # 1. Run the provider's coroutine; record the duration in either branch.
-            result = await fn(provider)
-            duration_ms = int((time.perf_counter() - start) * 1000)
-            score = self._extract_score(result)
-            return (
-                ChainAttempt(
-                    provider_id=provider_id,
-                    score=score,
-                    duration_ms=duration_ms,
-                    succeeded=result is not None,
-                    escalated=False,
-                    error=None,
-                    cost_usd=cost,
-                ),
-                result,
-            )
-        except Exception as exc:  # noqa: BLE001 — any failure escalates to the next provider
-            # 2. Capture the exception summary; the gate will mark it as escalated.
-            duration_ms = int((time.perf_counter() - start) * 1000)
-            return (
-                ChainAttempt(
-                    provider_id=provider_id,
-                    score=None,
-                    duration_ms=duration_ms,
-                    succeeded=False,
-                    escalated=False,
-                    error=f"{type(exc).__name__}: {exc}",
-                    cost_usd=cost,
-                ),
-                None,
-            )
-
-    @staticmethod
-    def _extract_score(result: Any) -> float | None:
-        """
-        Pull score off a ScoredResult; return None when the type doesn't score.
-
-        The import is deferred inside the method to avoid a circular dependency:
-        scoring.py → (nothing in chain/); chain/ → chain_gate.py → scoring.py.
-        A top-level import of ScoredResult here would create a cycle through
-        chain_gate.py which already imports scoring.py at module level.
-        """
-        from libs.capabilities.scoring import ScoredResult  # deferred — avoids cycle
-
-        if isinstance(result, ScoredResult):
-            try:
-                return result.score()
-            except Exception:  # noqa: BLE001 — never let a buggy score() break the chain
-                return None
-        return None
-
-    def _log_attempt(self, idx: int, total: int, attempt: ChainAttempt) -> None:
-        """Emit one structured log line per attempt (operator-readable)."""
-        if attempt.succeeded:
-            self.logger.info(
-                f"[CHAIN {self._stage}] attempt {idx}/{total} "
-                f"provider={attempt.provider_id} "
-                f"score={ChainHelpers.fmt_score(attempt.score)} "
-                f"duration_ms={attempt.duration_ms}"
-            )
-        else:
-            self.logger.warning(
-                f"[CHAIN {self._stage}] attempt {idx}/{total} "
-                f"provider={attempt.provider_id} FAILED "
-                f"duration_ms={attempt.duration_ms} error={attempt.error!r}"
-            )
