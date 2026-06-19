@@ -1,4 +1,4 @@
-# ====== Code Summary ======
+﻿# ====== Code Summary ======
 # SemanticSplitter — embedding-based split method. Embeds each block, measures the semantic
 # distance between consecutive blocks, and cuts at distance peaks (a configurable percentile),
 # so a section breaks where the topic actually shifts rather than at an arbitrary token count.
@@ -21,7 +21,7 @@ from libs.domain.ir.models import Block
 
 # ====== Local Project Imports ======
 from .base_splitter import SplitPiece
-from .helpers import ChunkingHelpers
+from ..helpers.text import ChunkingHelpers
 
 
 class SemanticSplitter(LoggerClass):

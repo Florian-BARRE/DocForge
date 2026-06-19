@@ -1,4 +1,4 @@
-# ====== Code Summary ======
+﻿# ====== Code Summary ======
 # SentenceWindowSplitter — sliding-window split method. Segments a section into sentences, then
 # emits overlapping windows of N sentences advancing by a stride. Produces dense, overlapping
 # context windows (good recall for QA) while tracking every source block a window touches.
@@ -17,7 +17,7 @@ from libs.domain.ir.models import Block, BlockType
 
 # ====== Local Project Imports ======
 from .base_splitter import SplitPiece
-from .helpers import ChunkingHelpers
+from ..helpers.text import ChunkingHelpers
 
 # Block types kept whole (one "sentence") rather than sentence-segmented.
 _ATOMIC_BLOCK_TYPES = frozenset({BlockType.LIST_ITEM, BlockType.CODE, BlockType.FORMULA})

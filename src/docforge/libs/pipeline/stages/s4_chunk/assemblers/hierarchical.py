@@ -1,4 +1,4 @@
-# ====== Code Summary ======
+﻿# ====== Code Summary ======
 # HierAssemblerHelpers — static helper for hierarchical chunk assembly.
 # Extracted from ChunkAssembler to isolate the hierarchical processing path
 # (_section_with_parent, _flat_section_chunk).
@@ -12,7 +12,8 @@ from typing import Any
 # ====== Internal Project Imports ======
 from libs.domain.ir.chunk import Chunk
 
-from ..chunking import ChunkingHelpers, SectionSplitter
+from ..helpers.text import ChunkingHelpers
+from ..strategies.base import SectionSplitter
 
 # ====== Local Project Imports ======
 from .models import _PARENT_STRATEGY, _Segment

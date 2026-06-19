@@ -1,4 +1,4 @@
-# ====== Code Summary ======
+﻿# ====== Code Summary ======
 # S4ChunkStage — heading-hierarchy-aware chunking stage orchestrator.
 # Wires HeadingWalker (skeleton + caption map) and ChunkAssembler (flat / hierarchical)
 # into the run() pipeline.  Config hashing and the Merkle fingerprint helper live here
@@ -21,8 +21,10 @@ from libs.config.pipeline import AtomicConfig
 # ====== Internal Project Imports ======
 from libs.domain.ir.models import DocumentIR
 
-from ..chunking import CrossReferenceLinker, SectionSplitter, TokenBudgetSplitter
-from .chunk_assembler import ChunkAssembler
+from .helpers.linker import CrossReferenceLinker
+from .strategies.base import SectionSplitter
+from .strategies.token_budget import TokenBudgetSplitter
+from .assemblers.base import ChunkAssembler
 from .heading_walker import HeadingWalker
 
 # ====== Local Project Imports ======

@@ -1,4 +1,4 @@
-# ====== Code Summary ======
+﻿# ====== Code Summary ======
 # S6 — Embedding and Qdrant indexing stage (multi-field hybrid, spec §7.2).
 # Embeds the chunk body (content) plus one named dense vector per `semantic` metadata field
 # and one sparse vector per `lexical` field, upserts them to Qdrant, and persists chunks to
@@ -27,9 +27,9 @@ from libs.storage.postgres.repositories.chunk_repo import ChunkRepository
 from libs.storage.qdrant.client import QdrantStorageClient
 
 # ====== Local Project Imports ======
-from .s6_embedder import S6Embedder
-from .s6_helpers import S6IndexHelpers
-from .s6_result import S6Result
+from .embedder import S6Embedder
+from .helpers import S6IndexHelpers
+from .result import S6Result
 
 
 class S6EmbedIndexStage(LoggerClass):

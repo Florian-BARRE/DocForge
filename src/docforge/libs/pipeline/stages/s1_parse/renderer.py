@@ -1,4 +1,4 @@
-# ====== Code Summary ======
+﻿# ====== Code Summary ======
 # S1Renderer — figure-crop rendering + markdown serialization/upload for the S1 parse stage.
 # Owns the S3 client, the markdown serializer, and the render DPI zoom.  Extracted from
 # S1ParseStage so the stage focuses on driving the parser chain and stamping IR lineage.
@@ -24,7 +24,7 @@ from libs.domain.ir.serializer import MarkdownSerializer
 from libs.storage.s3.helpers import S3Helpers
 
 # ====== Local Project Imports ======
-from .s0_ingest import S0Result
+from ..s0_ingest import S0Result
 
 
 class S1Renderer(LoggerClass):

@@ -1,4 +1,4 @@
-# ====== Code Summary ======
+﻿# ====== Code Summary ======
 # S1 — Parse stage: Docling-or-chain → DocumentIR + figure crops → SeaweedFS.
 # S1 operates on the PDF produced by S0 and never touches the original file again.
 # The parser is delivered as a Chain[ParserProvider, DocumentIR] so the stage can
@@ -26,10 +26,10 @@ from libs.providers.chain import Chain
 from libs.domain.ir.models import DocumentIR
 
 # ====== Local Project Imports ======
-from .s0_ingest import S0Result
-from .s1_helpers import S1Helpers
-from .s1_renderer import S1Renderer
-from .s1_result import S1Result
+from ..s0_ingest import S0Result
+from .helpers import S1Helpers
+from .renderer import S1Renderer
+from .result import S1Result
 
 
 class S1ParseStage(LoggerClass):

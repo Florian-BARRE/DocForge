@@ -1,4 +1,4 @@
-# ====== Code Summary ======
+﻿# ====== Code Summary ======
 # FlatPackerHelpers — static helper for flat chunk packing and oversize section splitting.
 # Extracted from ChunkAssembler to isolate the flat processing path
 # (_pack_segments, _segments_to_chunk, _split_section_to_chunks).
@@ -18,7 +18,8 @@ from loggerplusplus import loggerplusplus
 from libs.domain.ir.chunk import Chunk
 from libs.domain.ir.models import Block
 
-from ..chunking import ChunkingHelpers, SectionSplitter
+from ..helpers.text import ChunkingHelpers
+from ..strategies.base import SectionSplitter
 
 # ====== Local Project Imports ======
 from .models import _Segment

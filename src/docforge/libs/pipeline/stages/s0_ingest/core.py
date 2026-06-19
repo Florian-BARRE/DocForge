@@ -1,4 +1,4 @@
-# ====== Code Summary ======
+﻿# ====== Code Summary ======
 # S0 — Ingestion stage: content-address the original file (sha256), convert office formats
 # to PDF via Gotenberg, detect the native/raster fork, upload artifacts to SeaweedFS.
 # S0 is the entry gate: it never touches an ML model and must stay cheap and fast.
@@ -21,8 +21,8 @@ from libs.storage.s3.client import S3Client
 from libs.storage.s3.helpers import S3Helpers
 
 # ====== Local Project Imports ======
-from .s0_helpers import S0IngestHelpers
-from .s0_result import S0Result
+from .helpers import S0IngestHelpers
+from .result import S0Result
 
 
 class S0IngestStage(LoggerClass):

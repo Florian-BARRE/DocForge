@@ -1,4 +1,4 @@
-# ====== Code Summary ======
+﻿# ====== Code Summary ======
 # ChunkAssembler — thin dispatcher that converts traversal items (_Segment / _Special) into Chunk
 # objects.  Delegates flat packing to FlatPackerHelpers (chunk_assembler_flat.py),
 # hierarchical assembly to HierAssemblerHelpers (chunk_assembler_hier.py), and the shared
@@ -16,11 +16,11 @@ from loggerplusplus import loggerplusplus
 from libs.domain.ir.chunk import Chunk
 from libs.domain.ir.models import Block
 
-from ..chunking import SectionSplitter
+from ..strategies.base import SectionSplitter
 
 # ====== Local Project Imports ======
-from .chunk_assembler_flat import FlatPackerHelpers
-from .chunk_assembler_hier import HierAssemblerHelpers
+from .flat import FlatPackerHelpers
+from .hierarchical import HierAssemblerHelpers
 from .chunk_factory import ChunkFactoryHelpers
 from .models import _Segment, _Special
 

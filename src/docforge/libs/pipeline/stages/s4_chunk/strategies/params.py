@@ -1,4 +1,4 @@
-# ====== Code Summary ======
+﻿# ====== Code Summary ======
 # Aggregator for the intra-section split-method configs.  Each split method is a typed
 # Pydantic discriminated-union member living in its own module
 # (token_budget_config / semantic_config / sentence_window_config).  Importing them here
@@ -15,9 +15,9 @@ from pydantic import BaseModel
 # NOTE: import order IS significant — it drives @register("split_method") firing order,
 # which the registry/describe surface surfaces to the UI.  Keep token_budget → semantic →
 # sentence_window to match the SPLIT_METHOD_PARAMS catalog order (asserted by a guard test).
-from .token_budget_config import TokenBudgetConfig
-from .semantic_config import SemanticConfig
-from .sentence_window_config import SentenceWindowConfig
+from ..config.token_budget import TokenBudgetConfig
+from ..config.semantic import SemanticConfig
+from ..config.sentence_window import SentenceWindowConfig
 
 # Backward-compat aliases (old name → new name)
 TokenBudgetParams = TokenBudgetConfig

@@ -71,8 +71,8 @@ Serveur-agnostique : GPU (CUDA 11.8, V100) quand disponible, fallback CPU+API.
 
 ## Structure du projet
 
-`libs/` est rangé **par concept transverse**, pas par ordre de traitement. DAG strict
-des couches : `core(0) ← capabilities(1) ← data(2) ← engine(3)` ; `governance(1) → core`.
+`libs/` est rangé **par domaine**, 6 buckets. DAG strict des couches :
+`domain(0) ← config(1) ← providers(1) ← storage(2) ← search(2) ← pipeline(3)`.
 Règle d'or : une couche n'importe jamais une couche au-dessus d'elle.
 
 ```
@@ -82,19 +82,24 @@ src/docforge/             # Source app (dans WORKDIR /app/docforge)
   mcp_server.py           # MCP server (client HTTP, aucun import domaine)
   config/runtime/         # RUNTIME_CONFIG (EnvConfigLoader) — sys.path.append(PATH_ROOT_DIR)
   libs/
-    core/                 # L0 feuille — modèles & contrats du domaine
+    domain/               # L0 feuille — modèles purs (IR, Chunk, metadata)
       ir/                 #   IR Pydantic + sérialisation markdown
       metadata/           #   schéma de champs (MetaFieldSpec, system fields)
-      contracts/          #   PipelineConfig + _registry (auto-register) + spec_utils
-    capabilities/         # L1 — capacités ML (ex-providers) : interfaces Protocol,
+    config/               # L1 — tout ce qui est config
+      pipeline/           #   PipelineConfig, _registry, spec_utils, stage configs
+        stages/           #   parse/enrich/chunk/contextualize/embed configs
+      validation/         #   ConfigValidator + explain (ex-governance/config_validation)
+      admission/          #   AdmissionValidator (ex-governance/admission)
+    providers/            # L1 — capacités ML interchangeables : interfaces Protocol,
                           #      chain, device, converter/parser/ocr/vlm/embed/classifier/lang
-    data/                 # L2 — persistance & accès
-      storage/            #   Postgres (SQLAlchemy) + Qdrant + SeaweedFS (aioboto3)
-      retrieval/          #   hybrid search, field index, metadata indexer
-    engine/               # L3 — orchestration pipeline (ex-pipeline) : StageEngine
-                          #      (orchestrator/), stages S0-S6, caches, worker, tasks,
-                          #      assembly/ (ProviderRegistry)
-    governance/           # L1 — garde-fous : admission/ + config_validation/
+    storage/              # L2 — persistance brute
+                          #      postgres/ (SQLAlchemy) + qdrant/ + s3/ (aioboto3)
+    search/               # L2 — recherche & indexation
+                          #      hybrid/ (HybridSearchService), field_index/, metadata_indexer/
+    pipeline/             # L3 — orchestration pipeline
+                          #      engine.py (StageEngine), orchestrator/, assembly/,
+                          #      stages/ (S0–S6, each a folder with core/helpers/result),
+                          #      caches/ (fingerprint/node/provider), worker/ (runner/tasks)
   backend/                # FastAPI app, CONTEXT, lifespan, routers (+ backend/libs/utils)
   migrations/             # Alembic
 services/                 # .env par service (docforge, postgres, seaweedfs, gotenberg, redis)

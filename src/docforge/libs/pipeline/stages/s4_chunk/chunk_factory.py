@@ -1,4 +1,4 @@
-# ====== Code Summary ======
+﻿# ====== Code Summary ======
 # ChunkFactoryHelpers — the shared Chunk factory and atomic special-block emitter used by
 # both the flat and hierarchical assembly paths.  make_chunk derives a deterministic UUID
 # from each chunk's content identity + ordinal; emit_special co-locates an atomic
@@ -14,7 +14,7 @@ from typing import Any
 from libs.domain.ir.chunk import Chunk
 from libs.domain.ir.models import Block
 
-from ..chunking import ChunkingHelpers
+from .helpers.text import ChunkingHelpers
 
 # ====== Local Project Imports ======
 from .models import _Special

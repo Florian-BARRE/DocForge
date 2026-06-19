@@ -1,4 +1,4 @@
-# ====== Code Summary ======
+﻿# ====== Code Summary ======
 # S5 — Contextualization stage.
 # Fills embed_text on each chunk using the document title + heading breadcrumb + chunk body.
 # The body is the chunk's raw_text, which S4 already assembled per chunk kind (text sections,
@@ -17,7 +17,7 @@ from libs.domain.ir.chunk import Chunk
 from libs.domain.ir.models import DocumentIR
 
 # ====== Local Project Imports ======
-from .s5_result import S5Result
+from .result import S5Result
 
 
 class S5ContextualizeStage(LoggerClass):

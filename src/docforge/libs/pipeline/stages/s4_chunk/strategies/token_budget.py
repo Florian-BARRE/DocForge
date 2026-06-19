@@ -1,4 +1,4 @@
-# ====== Code Summary ======
+﻿# ====== Code Summary ======
 # TokenBudgetSplitter — the default split method. Greedily packs whole content blocks until the
 # token budget would overflow, then starts a new piece (optionally repeating a few trailing
 # blocks for overlap). Never breaks immediately before a FORMULA when atomic_formulas is set, so
@@ -17,7 +17,7 @@ from libs.domain.ir.models import Block, BlockType
 
 # ====== Local Project Imports ======
 from .base_splitter import SplitPiece
-from .helpers import ChunkingHelpers
+from ..helpers.text import ChunkingHelpers
 
 
 class TokenBudgetSplitter(LoggerClass):
