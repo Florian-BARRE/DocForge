@@ -13,7 +13,7 @@ from loggerplusplus import loggerplusplus
 
 # ====== Internal Project Imports ======
 from backend.context import CONTEXT
-from admission import AdmissionValidator
+from libs.governance.admission import AdmissionValidator
 
 # Nodes re-run by an index-only reindex (chunk → contextualize → embed); parse/enrich stay cached.
 _REINDEX_NODES: list[str] = ["s4", "s5", "s6"]

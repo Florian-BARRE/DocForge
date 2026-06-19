@@ -12,8 +12,8 @@ from __future__ import annotations
 import pytest
 
 # ====== Internal Project Imports ======
-from providers.chain import Chain, ChainOutcome, ProviderChain
-from providers.chain_gate import ChainGate, ChainGateConfig
+from libs.capabilities.chain import Chain, ChainOutcome, ProviderChain
+from libs.capabilities.chain_gate import ChainGate, ChainGateConfig
 
 
 class _ScoredResult:

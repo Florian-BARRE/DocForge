@@ -12,24 +12,24 @@ from loggerplusplus import loggerplusplus
 from config import RUNTIME_CONFIG  # MUST be first — registers sys.path + configures logging
 
 from backend import CONTEXT, create_app
-from metadata.indexer import MetadataIndexer
-from pipeline.engine import StageEngine
-from retrieval.hybrid_search import HybridSearchService
-from pipeline.node_cache import NodeCache
-from pipeline.provider_cache import ProviderCallCache
-from pipeline.stages.s0_ingest import S0IngestStage
-from pipeline.stages.s1_parse import S1ParseStage
-from pipeline.stages.s2_enrich import S2EnrichStage
-from pipeline.stages.chunking import TokenBudgetSplitter
-from pipeline.stages.s4_chunk import S4ChunkStage
-from pipeline.stages.s5_contextualize import S5ContextualizeStage
-from providers.converter import GotenbergConverter
-from providers.device_manager import DeviceManager
-from providers.embed.local.tei import TeiEmbedProvider
-from providers.parser import DoclingBackend
-from providers.registry import ProviderRegistry
-from storage.postgres.client import PostgresClient
-from storage.postgres.repositories import (
+from libs.core.metadata.indexer import MetadataIndexer
+from libs.engine.engine import StageEngine
+from libs.data.retrieval.hybrid_search import HybridSearchService
+from libs.engine.node_cache import NodeCache
+from libs.engine.provider_cache import ProviderCallCache
+from libs.engine.stages.s0_ingest import S0IngestStage
+from libs.engine.stages.s1_parse import S1ParseStage
+from libs.engine.stages.s2_enrich import S2EnrichStage
+from libs.engine.stages.chunking import TokenBudgetSplitter
+from libs.engine.stages.s4_chunk import S4ChunkStage
+from libs.engine.stages.s5_contextualize import S5ContextualizeStage
+from libs.capabilities.converter import GotenbergConverter
+from libs.capabilities.device_manager import DeviceManager
+from libs.capabilities.embed.local.tei import TeiEmbedProvider
+from libs.capabilities.parser import DoclingBackend
+from libs.capabilities.registry import ProviderRegistry
+from libs.data.storage.postgres.client import PostgresClient
+from libs.data.storage.postgres.repositories import (
     BlockRepository,
     ChunkRepository,
     CollectionRepository,
@@ -37,8 +37,8 @@ from storage.postgres.repositories import (
     DocumentRepository,
     JobRepository,
 )
-from storage.qdrant.client import QdrantStorageClient
-from storage.s3.client import S3Client
+from libs.data.storage.qdrant.client import QdrantStorageClient
+from libs.data.storage.s3.client import S3Client
 
 
 def _build_app() -> FastAPI:
@@ -119,7 +119,7 @@ def _build_app() -> FastAPI:
     )
 
     # Build the parse chain + S2/S4/S5 stages from the deployment defaults.
-    from pipeline.pipeline_config import build_default_pipeline
+    from libs.engine.pipeline_config import build_default_pipeline
     default_pipeline = build_default_pipeline(RUNTIME_CONFIG)
     default_parse_chain = CONTEXT.registry._build_parser_chain(
         default_pipeline.parse.chain, default_pipeline.parse.gate,

@@ -11,15 +11,15 @@ from loggerplusplus import LoggerPlusPlus
 
 # ====== Internal Project Imports ======
 from config import RUNTIME_CONFIG
-from pipeline.engine import StageEngine
-from pipeline.node_cache import NodeCache
-from pipeline.provider_cache import ProviderCallCache
-from providers.converter import GotenbergConverter
-from providers.device_manager import DeviceManager
-from providers.parser import DoclingBackend
-from providers.registry import ProviderRegistry
-from storage.postgres.client import PostgresClient
-from storage.postgres.repositories import (
+from libs.engine.engine import StageEngine
+from libs.engine.node_cache import NodeCache
+from libs.engine.provider_cache import ProviderCallCache
+from libs.capabilities.converter import GotenbergConverter
+from libs.capabilities.device_manager import DeviceManager
+from libs.capabilities.parser import DoclingBackend
+from libs.capabilities.registry import ProviderRegistry
+from libs.data.storage.postgres.client import PostgresClient
+from libs.data.storage.postgres.repositories import (
     BlockRepository,
     ChunkRepository,
     CollectionRepository,
@@ -27,10 +27,10 @@ from storage.postgres.repositories import (
     DocumentRepository,
     JobRepository,
 )
-from metadata.indexer import MetadataIndexer
-from retrieval.hybrid_search import HybridSearchService
-from storage.qdrant.client import QdrantStorageClient
-from storage.s3.client import S3Client
+from libs.core.metadata.indexer import MetadataIndexer
+from libs.data.retrieval.hybrid_search import HybridSearchService
+from libs.data.storage.qdrant.client import QdrantStorageClient
+from libs.data.storage.s3.client import S3Client
 
 
 class CONTEXT:

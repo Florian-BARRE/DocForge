@@ -22,8 +22,8 @@ from backend.routers.collections.models import (
     CreateCollectionRequest,
     DeleteResponse,
 )
-from config_validation import ConfigDocument, ConfigExplainer, ConfigValidator
-from storage.s3.client import S3Client
+from libs.governance.config_validation import ConfigDocument, ConfigExplainer, ConfigValidator
+from libs.data.storage.s3.client import S3Client
 
 router = APIRouter(tags=["collections"])
 

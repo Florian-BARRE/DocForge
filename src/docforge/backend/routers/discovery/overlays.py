@@ -9,7 +9,7 @@
 from typing import Any
 
 # ====== Internal Project Imports ======
-from retrieval.field_index import CONTENT_DENSE, CONTENT_SPARSE, FieldIndexHelpers
+from libs.data.retrieval.field_index import CONTENT_DENSE, CONTENT_SPARSE, FieldIndexHelpers
 
 # ====== Local Project Imports ======
 from .models import Choice, DynamicField, ParamSchema

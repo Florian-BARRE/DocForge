@@ -17,7 +17,7 @@ from fastapi import FastAPI
 # ====== Internal Project Imports ======
 # RUNTIME_CONFIG is already imported in root conftest.py which runs first.
 from backend.context import CONTEXT
-from config_validation import ConfigValidator
+from libs.governance.config_validation import ConfigValidator
 from backend.routers import (
     chunks_router,
     collection_router,

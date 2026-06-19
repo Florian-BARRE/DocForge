@@ -11,7 +11,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 # ====== Internal Project Imports ======
-from metadata import MetaFieldSpec
+from libs.core.metadata import MetaFieldSpec
 
 
 class CreateCollectionRequest(BaseModel):

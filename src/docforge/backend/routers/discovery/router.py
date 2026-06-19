@@ -14,7 +14,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.routing import APIRoute
 
 # ====== Internal Project Imports ======
-from metadata import schema_field_dicts
+from libs.core.metadata import schema_field_dicts
 
 # ====== Local Project Imports ======
 from ...context import CONTEXT

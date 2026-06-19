@@ -3,7 +3,7 @@
 
 import pytest
 
-from providers.lang import LanguageDetector
+from libs.capabilities.lang import LanguageDetector
 
 
 @pytest.fixture

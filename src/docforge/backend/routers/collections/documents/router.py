@@ -27,7 +27,7 @@ from backend.routers.collections.documents.models import (
     ReingestRequest,
     ReingestResponse,
 )
-from admission import AdmissionValidator
+from libs.governance.admission import AdmissionValidator
 
 router = APIRouter(tags=["documents"])
 

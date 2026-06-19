@@ -21,7 +21,7 @@ from backend.routers.collections.config.models import (
     ConfigUpdateRequest,
     ConfigVersionSummary,
 )
-from config_validation import ConfigDocument, ConfigExplainer, ConfigValidator
+from libs.governance.config_validation import ConfigDocument, ConfigExplainer, ConfigValidator
 
 router = APIRouter(tags=["config"])
 

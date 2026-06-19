@@ -2,16 +2,16 @@
 # Drift-guard + derivation tests: the chunk split-method discovery schema must be GENERATED from
 # the Pydantic params models / SPLIT_METHODS source of truth, never hand-maintained.
 
-import pipeline.stages.chunking as _chunking_pkg  # noqa: F401 — triggers @register("split_method")
+import libs.engine.stages.chunking as _chunking_pkg  # noqa: F401 — triggers @register("split_method")
 
-from pipeline.pipeline_config import SPLIT_METHODS
-from pipeline.stages.chunking import (
+from libs.engine.pipeline_config import SPLIT_METHODS
+from libs.engine.stages.chunking import (
     SPLIT_METHOD_PARAMS,
     SemanticParams,
     TokenBudgetConfig,
 )
-from providers._registry import get_configs
-from providers.registry import _params_from_model
+from libs.capabilities._registry import get_configs
+from libs.capabilities.registry import _params_from_model
 
 
 class TestSplitMethodCatalogDrift:
@@ -36,7 +36,7 @@ class TestSplitMethodCatalogDrift:
 
     def test_semantic_availability_call_succeeds(self) -> None:
         """semantic.availability() must return a (bool, str) tuple without raising."""
-        from pipeline.stages.chunking.params import SemanticConfig
+        from libs.engine.stages.chunking.params import SemanticConfig
         available, note = SemanticConfig.availability(None)
         assert isinstance(available, bool)
         assert isinstance(note, str)

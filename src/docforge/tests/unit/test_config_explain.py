@@ -2,7 +2,7 @@
 # Unit tests for ConfigExplainer — the transparency envelope (provided/defaulted, pipeline
 # provenance, metadata accounting, overrides, warnings, needs_reindex notes).
 
-from config_validation import ConfigExplainer
+from libs.governance.config_validation import ConfigExplainer
 
 
 def _doc(metadata_fields: list[dict] | None = None) -> dict:

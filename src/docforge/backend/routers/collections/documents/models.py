@@ -10,7 +10,7 @@ from typing import Any
 from pydantic import BaseModel, Field, field_validator
 
 # ====== Internal Project Imports ======
-from ir.models import ChainTrace
+from libs.core.ir.models import ChainTrace
 
 
 class IngestResponse(BaseModel):
