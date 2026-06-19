@@ -91,7 +91,7 @@ class MetadataIndexer(LoggerClass):
             return summary  # nothing indexed yet for this document
 
         # 2. Index the changed fields that exist in the schema
-        schema = {self._attr(f, "field_name"): f for f in metadata_fields}
+        schema = {FieldIndexHelpers._attr(f, "field_name"): f for f in metadata_fields}
         payload_set: dict[str, Any] = {}
         payload_remove: list[str] = []
         for name in changed_field_names:
@@ -101,7 +101,7 @@ class MetadataIndexer(LoggerClass):
             value = self._value(doc_meta, name)
             await self._sync_field(collection_name, point_ids, field, name, value, summary)
             # Collect payload changes for a single batched call
-            if self._attr(field, "filterable", False):
+            if FieldIndexHelpers._attr(field, "filterable", False):
                 (payload_set.__setitem__(name, value) if value is not None
                  else payload_remove.append(name))
 
@@ -180,8 +180,8 @@ class MetadataIndexer(LoggerClass):
         Returns:
             None
         """
-        semantic = self._attr(field, "semantic", False)
-        lexical = self._attr(field, "lexical", False)
+        semantic = FieldIndexHelpers._attr(field, "semantic", False)
+        lexical = FieldIndexHelpers._attr(field, "lexical", False)
         if not (semantic or lexical):
             return
 
@@ -224,17 +224,3 @@ class MetadataIndexer(LoggerClass):
         raw = doc_meta.get(name)
         return None if raw is None or raw == "" else str(raw)
 
-    @staticmethod
-    def _attr(obj: Any, name: str, default: Any = None) -> Any:
-        """
-        Read a field attribute from an ORM row or a dict uniformly.
-
-        Args:
-            obj (Any): An ORM model instance or a plain dict.
-            name (str): Attribute or key name to look up.
-            default (Any): Value returned when the attribute/key is absent.
-
-        Returns:
-            Any: The attribute value, or ``default`` if not present.
-        """
-        return obj.get(name, default) if isinstance(obj, dict) else getattr(obj, name, default)

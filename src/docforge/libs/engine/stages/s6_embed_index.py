@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 # ====== Internal Project Imports ======
 from libs.core.ir.chunk import Chunk
 from libs.core.ir.models import ChainAttemptIR, ChainTrace
+from libs.core.metadata.fields import _field_attr
 from libs.capabilities.chain import Chain, chain_outcome_to_attempt_dicts
 from libs.data.retrieval.field_index import (
     CONTENT_DENSE,
@@ -248,11 +249,6 @@ class S6EmbedIndexStage(LoggerClass):
 
 
 # ─── Module-level helpers ──────────────────────────────────────────────────────
-
-
-def _field_attr(f: Any, name: str, default: Any = None) -> Any:
-    """Read a field attribute from an ORM row or a dict."""
-    return f.get(name, default) if isinstance(f, dict) else getattr(f, name, default)
 
 
 def _build_payload(chunk: Chunk, metadata_fields: list[Any], doc_meta: dict[str, Any]) -> dict[str, Any]:
