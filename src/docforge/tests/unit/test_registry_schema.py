@@ -46,11 +46,9 @@ class TestParamsDerivation:
     def test_params_carry_type_bounds_and_defaults(self) -> None:
         """Param descriptors are derived from the model's JSON schema (type + ge/le + default)."""
         params = {p["name"]: p for p in _params_from_model(SemanticParams)}
-        # SemanticConfig has: id (excluded by _params_from_model), embed, max_tokens,
-        # min_tokens, breakpoint_percentile — base_url is no longer a direct field.
-        assert "max_tokens" in params
-        assert "min_tokens" in params
-        assert "breakpoint_percentile" in params
+        # _params_from_model includes 'id' (no exclusion, unlike _params_from_instance).
+        # SemanticConfig fields: id, embed, max_tokens, min_tokens, breakpoint_percentile.
+        assert set(params) == {"id", "embed", "max_tokens", "min_tokens", "breakpoint_percentile"}
         bp = params["breakpoint_percentile"]
         assert bp["type"] == "int" and bp["min"] == 50 and bp["max"] == 99 and bp["default"] == 90
         assert params["max_tokens"]["type"] == "int"
@@ -58,7 +56,7 @@ class TestParamsDerivation:
     def test_adding_a_model_field_propagates(self) -> None:
         """A field added to the params model appears automatically (no hand list to update)."""
         names = {p["name"] for p in _params_from_model(SemanticParams)}
-        # _params_from_model reads JSON schema 'properties' — 'id' is excluded because
-        # _params_from_instance skips it; _params_from_model does not skip it, so we
-        # assert that the derived set matches the model fields (including 'id').
-        assert names == set(SemanticParams.model_fields.keys())
+        # _params_from_model does NOT exclude 'id' (unlike _params_from_instance which skips it).
+        # This explicit enumeration must be updated whenever SemanticConfig fields change —
+        # that is the point: drift causes a loud failure here.
+        assert names == {"id", "embed", "max_tokens", "min_tokens", "breakpoint_percentile"}
