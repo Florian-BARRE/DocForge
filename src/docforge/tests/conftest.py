@@ -152,10 +152,6 @@ def mock_s3() -> MagicMock:
     s3.presign_get = AsyncMock(return_value="https://example.com/presigned")
     # Async download method
     s3.download = AsyncMock(return_value=b"")
-    # Sync key helpers (pure string functions — no I/O)
-    s3.key_original = MagicMock(return_value="originals/abc123")
-    s3.key_markdown = MagicMock(return_value="markdown/abc.md")
-    s3.key_pdf = MagicMock(return_value="pdfs/abc.pdf")
     return s3
 
 

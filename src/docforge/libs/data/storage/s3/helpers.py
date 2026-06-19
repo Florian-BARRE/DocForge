@@ -6,8 +6,7 @@
 # ====== Standard Library Imports ======
 from __future__ import annotations
 
-# ====== Third-Party Library Imports ======
-from loggerplusplus import loggerplusplus
+from typing import Any
 
 
 # Object-store key conventions (content-addressed layout):
@@ -32,8 +31,6 @@ class S3Helpers:
 
     All methods are static — this class is never instantiated.
     """
-
-    logger = loggerplusplus.bind(identifier="S3Helpers")
 
     def __new__(cls, *args: object, **kwargs: object) -> None:
         """Prevent instantiation — this is a static-only utility class."""
@@ -112,8 +109,8 @@ class S3Helpers:
 
     # ─── Botocore configuration ───────────────────────────────────────────────
 
-    @classmethod
-    def boto_path_style_config(cls):
+    @staticmethod
+    def boto_path_style_config() -> Any:
         """
         Return a botocore Config enforcing path-style addressing.
 
@@ -125,5 +122,4 @@ class S3Helpers:
         """
         from botocore.config import Config
 
-        cls.logger.debug(f"Building botocore path-style config for SeaweedFS compatibility.")
         return Config(s3={"addressing_style": "path"})

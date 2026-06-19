@@ -20,7 +20,7 @@ from loggerplusplus import LoggerClass
 from libs.core.ir.models import BlockType, ChainAttemptIR, ChainTrace, DocumentIR
 from libs.core.ir.serializer import MarkdownSerializer
 from libs.capabilities.chain import Chain, chain_outcome_to_attempt_dicts
-from libs.data.storage.s3.client import S3Client
+from libs.data.storage.s3.helpers import S3Helpers
 
 # ====== Local Project Imports ======
 from .s0_ingest import S0Result
@@ -239,7 +239,7 @@ class S1ParseStage(LoggerClass):
 
                 # Content-addressed: identical pixel bytes → same S3 key.
                 crop_hash = hashlib.sha256(crop_bytes).hexdigest()
-                key = S3Client.key_figure_crop_by_hash(crop_hash)
+                key = S3Helpers.key_figure_crop_by_hash(crop_hash)
                 figure_crops.append((block.id, key, crop_bytes))
 
         return figure_crops
@@ -266,7 +266,7 @@ class S1ParseStage(LoggerClass):
         """Serialise the IR to faithful markdown and upload to SeaweedFS."""
         markdown_text = self._md_serializer.serialize(ir)
         serialize_fp = fingerprint or "s1_no_fingerprint"
-        key = S3Client.key_markdown(s0.source_hash, serialize_fp)
+        key = S3Helpers.key_markdown(s0.source_hash, serialize_fp)
         await self._s3.upload(
             key=key,
             data=markdown_text.encode("utf-8"),

@@ -27,6 +27,7 @@ from backend.routers.collections.documents.models import (
     ReingestRequest,
     ReingestResponse,
 )
+from libs.data.storage.s3.helpers import S3Helpers
 from libs.governance.admission import AdmissionValidator
 
 router = APIRouter(tags=["documents"])
@@ -80,7 +81,7 @@ async def ingest_document(
     if existing is not None:
         return IngestResponse(doc_id=existing.id, status=existing.status, duplicate=True)
 
-    await CONTEXT.s3.upload(CONTEXT.s3.key_original(source_hash), file_bytes, "application/octet-stream")
+    await CONTEXT.s3.upload(S3Helpers.key_original(source_hash), file_bytes, "application/octet-stream")
 
     async with CONTEXT.postgres.session() as session:
         doc = await CONTEXT.document_repo.create(
@@ -163,7 +164,7 @@ async def get_document(collection_id: uuid.UUID, document_id: uuid.UUID) -> Docu
     pipeline_errors = [latest_failed.error] if latest_failed and doc.status == "failed" else []
 
     # 3. PDF availability — simple content-addressed key, one S3 head-object call
-    has_pdf = await CONTEXT.s3.exists(CONTEXT.s3.key_pdf(doc.source_hash))
+    has_pdf = await CONTEXT.s3.exists(S3Helpers.key_pdf(doc.source_hash))
 
     # has_markdown: prefer implicit_meta.markdown_key (written by S1 even on node-cache hits)
     # over stage_run table (absent when the node cache served the result).

@@ -22,7 +22,7 @@ from backend.routers.collections.documents.pages.models import (
     PageListResponse,
     PageReingestResponse,
 )
-from libs.data.storage.s3.client import S3Client
+from libs.data.storage.s3.helpers import S3Helpers
 
 # Render resolution for on-the-fly page screenshots — 2× zoom matches S1 figure crop quality.
 _PAGE_RENDER_ZOOM: float = 2.0
@@ -90,7 +90,7 @@ async def get_page_screenshot(
         raise HTTPException(status_code=409, detail=f"Document {document_id} not done (status={doc.status!r}).")
 
     # 2. Download original PDF from object store
-    pdf_key = S3Client.key_original(doc.source_hash)
+    pdf_key = S3Helpers.key_original(doc.source_hash)
     if not await CONTEXT.s3.exists(pdf_key):
         raise HTTPException(status_code=404, detail="Original PDF not available in object store.")
     pdf_bytes = await CONTEXT.s3.download(pdf_key)

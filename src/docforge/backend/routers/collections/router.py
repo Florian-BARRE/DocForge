@@ -23,7 +23,7 @@ from backend.routers.collections.models import (
     DeleteResponse,
 )
 from libs.governance.config_validation import ConfigDocument, ConfigExplainer, ConfigValidator
-from libs.data.storage.s3.client import S3Client
+from libs.data.storage.s3.helpers import S3Helpers
 
 router = APIRouter(tags=["collections"])
 
@@ -133,7 +133,7 @@ async def delete_collection(collection_id: uuid.UUID) -> DeleteResponse:
     # 3. Delete S3 blobs for non-shared source_hashes (original + all derived artefacts)
     blobs_deleted = 0
     for sh in deletable:
-        await CONTEXT.s3.delete(S3Client.key_original(sh))
+        await CONTEXT.s3.delete(S3Helpers.key_original(sh))
         blobs_deleted += 1 + await CONTEXT.s3.delete_prefix(f"derived/{sh}/")
 
     # 4. Drop the Qdrant collection (named by collection id) — only if vector store is wired

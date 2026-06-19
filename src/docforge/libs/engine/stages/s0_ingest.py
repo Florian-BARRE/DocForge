@@ -20,7 +20,7 @@ from libs.capabilities.converter import (
     NATIVE_PDF_FORMATS,
     GotenbergConverter,
 )
-from libs.data.storage.s3.client import S3Client
+from libs.data.storage.s3.helpers import S3Helpers
 
 
 @dataclass(slots=True)
@@ -113,7 +113,7 @@ class S0IngestStage(LoggerClass):
         )
 
         # 3. Upload original to SeaweedFS
-        original_key = S3Client.key_original(source_hash)
+        original_key = S3Helpers.key_original(source_hash)
         await self._s3.upload(
             key=original_key,
             data=file_bytes,
@@ -141,7 +141,7 @@ class S0IngestStage(LoggerClass):
             page_count = self._count_pages_fast(pdf_bytes)
 
         # 5. Upload PDF to SeaweedFS
-        pdf_key = S3Client.key_pdf(source_hash)
+        pdf_key = S3Helpers.key_pdf(source_hash)
         await self._s3.upload(
             key=pdf_key,
             data=pdf_bytes,

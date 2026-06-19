@@ -31,7 +31,7 @@ class S3Client(LoggerClass):
 
     Key layout:
         All keys follow the content-addressed scheme defined in spec §8.
-        Use the static ``key_*`` helpers (delegating to S3Helpers) to construct keys.
+        Use ``S3Helpers.key_*`` static methods to construct keys.
     """
 
     def __init__(
@@ -274,72 +274,3 @@ class S3Client(LoggerClass):
             config=S3Helpers.boto_path_style_config(),
         )
 
-    # ─── Static key builders (forwarding to S3Helpers for public-API stability) ──
-
-    @staticmethod
-    def key_original(source_hash: str) -> str:
-        """Key for the original uploaded file."""
-        return S3Helpers.key_original(source_hash)
-
-    @staticmethod
-    def key_pdf(source_hash: str) -> str:
-        """Key for the original→PDF conversion artefact."""
-        return S3Helpers.key_pdf(source_hash)
-
-    @staticmethod
-    def key_figure_crop(source_hash: str, block_id: str) -> str:
-        """Key for a figure crop PNG (legacy, per-block layout).
-
-        Docling block IDs use '#/pictures/N' format. The '#' character causes
-        presigned-URL signature mismatches with SeaweedFS (boto3 encodes it as '%23'
-        in the URL but the SigV2 canonical path differs). We strip '#' and replace
-        '/' with '_' so the resulting S3 key only contains URL-safe characters.
-
-        Kept for backward compatibility with IR rows persisted before content-
-        addressed crops were introduced.  New uploads use
-        :meth:`key_figure_crop_by_hash` so a repeating logo / page header lands
-        in a single PNG shared across every block (and every document) that
-        contains the same pixels.
-        """
-        return S3Helpers.key_figure_crop(source_hash, block_id)
-
-    @staticmethod
-    def key_figure_crop_by_hash(crop_hash: str) -> str:
-        """Content-addressed key for a figure crop PNG.
-
-        ``crop_hash`` is ``sha256(crop_bytes).hexdigest()`` — identical pixel
-        bytes yield identical keys, so a logo that repeats across every slide of
-        a deck (or every document of a collection) is stored as a single PNG.
-        The 2-char prefix avoids piling 100k objects into one S3 "directory".
-        """
-        return S3Helpers.key_figure_crop_by_hash(crop_hash)
-
-    @staticmethod
-    def key_ir(source_hash: str, parse_fp: str) -> str:
-        """Key for the serialized DocumentIR JSON."""
-        return S3Helpers.key_ir(source_hash, parse_fp)
-
-    @staticmethod
-    def key_markdown(source_hash: str, serialize_fp: str) -> str:
-        """Key for the faithful markdown view."""
-        return S3Helpers.key_markdown(source_hash, serialize_fp)
-
-    @staticmethod
-    def key_s0_meta(source_hash: str, s0_fp: str) -> str:
-        """Key for the S0 stage output meta JSON (P2 node cache reference)."""
-        return S3Helpers.key_s0_meta(source_hash, s0_fp)
-
-    @staticmethod
-    def key_s1_meta(source_hash: str, s1_fp: str) -> str:
-        """Key for the S1 stage output meta JSON (P2 node cache reference)."""
-        return S3Helpers.key_s1_meta(source_hash, s1_fp)
-
-    @staticmethod
-    def key_ir_enriched(source_hash: str, s2_fp: str) -> str:
-        """Key for the enriched DocumentIR JSON (P3 — after S2 OCR/VLM enrichment)."""
-        return S3Helpers.key_ir_enriched(source_hash, s2_fp)
-
-    @staticmethod
-    def key_s2_meta(source_hash: str, s2_fp: str) -> str:
-        """Key for the S2 stage output meta JSON (P3 node cache reference)."""
-        return S3Helpers.key_s2_meta(source_hash, s2_fp)

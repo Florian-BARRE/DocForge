@@ -13,6 +13,7 @@ from loggerplusplus import loggerplusplus
 
 # ====== Internal Project Imports ======
 from backend.context import CONTEXT
+from libs.data.storage.s3.helpers import S3Helpers
 from libs.governance.admission import AdmissionValidator
 
 # Nodes re-run by an index-only reindex (chunk → contextualize → embed); parse/enrich stay cached.
@@ -63,7 +64,7 @@ class DocumentOps:
             await CONTEXT.document_repo.delete(session, document_id)
         blob_deleted = False
         if not shared:
-            await CONTEXT.s3.delete(CONTEXT.s3.key_original(source_hash))
+            await CONTEXT.s3.delete(S3Helpers.key_original(source_hash))
             await CONTEXT.s3.delete_prefix(f"derived/{source_hash}/")
             blob_deleted = True
 

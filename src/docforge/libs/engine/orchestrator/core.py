@@ -37,7 +37,7 @@ from libs.engine.stages.s6_embed_index import S6EmbedIndexStage, S6Result
 from libs.data.storage.postgres.client import PostgresClient
 from libs.data.storage.postgres.repositories import BlockRepository, ChunkRepository, DocumentRepository
 from libs.data.storage.qdrant.client import QdrantStorageClient
-from libs.data.storage.s3.client import S3Client
+from libs.data.storage.s3.helpers import S3Helpers
 
 # ====== Local Project Imports ======
 from .cache_io import CacheIOHelpers
@@ -203,7 +203,7 @@ class StageEngine(LoggerClass):
 
         # 2. Download original bytes if not provided (arq worker path)
         if file_bytes is None:
-            file_bytes = await self._s3.download(S3Client.key_original(source_hash))
+            file_bytes = await self._s3.download(S3Helpers.key_original(source_hash))
             self.logger.debug(f"Downloaded original from S3: key_original={source_hash[:8]}…")
 
         # 3. Run S0/S1/S2 with Merkle-DAG node caching
@@ -302,7 +302,7 @@ class StageEngine(LoggerClass):
                     await self._document_repo.update_status(session, doc_id, "failed")
             raise
 
-        s0_meta_key = S3Client.key_s0_meta(source_hash, s0_fp)
+        s0_meta_key = S3Helpers.key_s0_meta(source_hash, s0_fp)
         await self._s3.upload(s0_meta_key, CacheIOHelpers.encode_s0_meta(result), "application/json")
         await CacheIOHelpers.store(
             self._postgres, self._node_cache, doc_id, "s0", s0_fp, s0_meta_key, local_cache, dry_run
@@ -367,9 +367,9 @@ class StageEngine(LoggerClass):
             raise
 
         ir = s1_result.ir
-        ir_key = S3Client.key_ir(source_hash, s1_fp)
+        ir_key = S3Helpers.key_ir(source_hash, s1_fp)
         await self._s3.upload(ir_key, ir.model_dump_json().encode("utf-8"), "application/json")
-        s1_meta_key = S3Client.key_s1_meta(source_hash, s1_fp)
+        s1_meta_key = S3Helpers.key_s1_meta(source_hash, s1_fp)
         await self._s3.upload(
             s1_meta_key, CacheIOHelpers.encode_s1_meta(s1_result, ir_key), "application/json"
         )
@@ -432,11 +432,11 @@ class StageEngine(LoggerClass):
             raise
 
         final_ir = s2_result.ir
-        ir_enriched_key = S3Client.key_ir_enriched(source_hash, s2_fp)
+        ir_enriched_key = S3Helpers.key_ir_enriched(source_hash, s2_fp)
         await self._s3.upload(
             ir_enriched_key, final_ir.model_dump_json().encode("utf-8"), "application/json"
         )
-        s2_meta_key = S3Client.key_s2_meta(source_hash, s2_fp)
+        s2_meta_key = S3Helpers.key_s2_meta(source_hash, s2_fp)
         await self._s3.upload(
             s2_meta_key, CacheIOHelpers.encode_s2_meta(s2_result, ir_enriched_key), "application/json"
         )
@@ -502,7 +502,7 @@ class StageEngine(LoggerClass):
                     s1_result=s1_result,
                     s0_fp=s0_fp,
                     s1_fp=s1_fp,
-                    ir_key=S3Client.key_ir(source_hash, s1_fp),
+                    ir_key=S3Helpers.key_ir(source_hash, s1_fp),
                     s2_result=s2_result,
                     s2_fp=s2_fp,
                 ),
