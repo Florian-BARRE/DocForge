@@ -8,6 +8,7 @@
   "enableAllProjectMcpServers": true,
 
   "permissions": {
+    "defaultMode": "bypassPermissions",
     "allow": [
       "Bash(*)",
       "WebFetch(*)",
@@ -15,20 +16,6 @@
       "Write(*)",
       "Edit(*)",
       "Agent(*)"
-    ],
-    "ask": [
-      "Bash(* rm -rf *)",
-      "Bash(rm -rf *)",
-      "Bash(* git push --force*)",
-      "Bash(git push --force*)",
-      "Bash(* git reset --hard*)",
-      "Bash(git reset --hard*)",
-      "Bash(* git clean -f*)",
-      "Bash(git clean -f*)",
-      "Bash(alembic downgrade*)",
-      "Bash(docker system prune*)",
-      "Bash(docker compose down*)",
-      "Bash(docker-compose down*)"
     ]
   },
 
