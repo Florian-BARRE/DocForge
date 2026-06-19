@@ -21,9 +21,9 @@ from libs.core.ir.models import DocumentIR
 from libs.core.contracts.pipeline_config import AtomicConfig
 
 # ====== Local Project Imports ======
-from .models import S4Result
+from .models import S4Result, _PARENT_STRATEGY
 from .heading_walker import HeadingWalker
-from .chunk_assembler import ChunkAssembler, _PARENT_STRATEGY
+from .chunk_assembler import ChunkAssembler
 from ..chunking import CrossReferenceLinker, SectionSplitter, TokenBudgetSplitter
 
 

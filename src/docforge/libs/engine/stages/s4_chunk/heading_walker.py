@@ -143,6 +143,7 @@ class HeadingWalker:
                 cur_body.append(block)
 
         flush_segment()
+        cls.logger.debug(f"HeadingWalker: collected {len(items)} items from {len(blocks)} blocks")
         return items
 
     @staticmethod

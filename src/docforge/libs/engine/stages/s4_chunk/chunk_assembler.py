@@ -17,12 +17,8 @@ from libs.core.ir.chunk import Chunk
 from libs.core.ir.models import Block
 
 # ====== Local Project Imports ======
-from .models import _Segment, _Special
-
-# Import chunking helpers and splitter protocol from the sibling chunking package.
+from .models import _Segment, _Special, _PARENT_STRATEGY
 from ..chunking import ChunkingHelpers, SectionSplitter
-
-_PARENT_STRATEGY: str = "section_parent"
 
 
 class ChunkAssembler:
@@ -81,6 +77,7 @@ class ChunkAssembler:
         chunks.extend(
             await cls._pack_segments(pending, doc_id, counter, splitter, merge_short, config_hash)
         )
+        cls.logger.debug(f"ChunkAssembler flat: assembled {len(chunks)} chunks for doc_id={doc_id!r}")
         return chunks
 
     @classmethod

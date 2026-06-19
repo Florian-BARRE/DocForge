@@ -12,6 +12,9 @@ from libs.core.ir.chunk import Chunk
 from libs.core.ir.models import Block
 
 
+_PARENT_STRATEGY: str = "section_parent"
+
+
 @dataclass(slots=True)
 class _Segment:
     """A contiguous run of content blocks under a single heading path."""
