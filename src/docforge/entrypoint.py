@@ -12,7 +12,7 @@ from loggerplusplus import loggerplusplus
 from config import RUNTIME_CONFIG  # MUST be first — registers sys.path + configures logging
 
 from backend import CONTEXT, create_app
-from libs.core.metadata.indexer import MetadataIndexer
+from libs.data.retrieval.metadata_indexer import MetadataIndexer
 from libs.engine.engine import StageEngine
 from libs.data.retrieval.hybrid_search import HybridSearchService
 from libs.engine.node_cache import NodeCache

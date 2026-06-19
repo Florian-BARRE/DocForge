@@ -27,7 +27,7 @@ from libs.data.storage.postgres.repositories import (
     DocumentRepository,
     JobRepository,
 )
-from libs.core.metadata.indexer import MetadataIndexer
+from libs.data.retrieval.metadata_indexer import MetadataIndexer
 from libs.data.retrieval.hybrid_search import HybridSearchService
 from libs.data.storage.qdrant.client import QdrantStorageClient
 from libs.data.storage.s3.client import S3Client
