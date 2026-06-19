@@ -62,7 +62,7 @@ class S5ContextualizeStage(LoggerClass):
         """
         LoggerClass.__init__(self)
         # Lazy import — pipeline_config imports this module transitively in some paths.
-        from libs.engine.pipeline_config import ContextualizeConfig
+        from libs.core.contracts.pipeline_config import ContextualizeConfig
         self._cfg = config if config is not None else ContextualizeConfig()
 
     async def run(

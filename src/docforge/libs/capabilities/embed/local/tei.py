@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field, model_validator
 
 # ====== Internal Project Imports ======
 from typing import ClassVar
-from libs.capabilities._registry import register
+from libs.core.contracts._registry import register
 from libs.capabilities.embed.base import EmbedProvider
 from libs.capabilities.interfaces import EmbedResult
 

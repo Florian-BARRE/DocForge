@@ -23,7 +23,7 @@ from loggerplusplus import LoggerClass
 # ====== Internal Project Imports ======
 from libs.core.ir.chunk import Chunk
 from libs.core.ir.models import Block, BlockType, DocumentIR, FigureKind
-from libs.engine.pipeline_config import AtomicConfig
+from libs.core.contracts.pipeline_config import AtomicConfig
 
 # ====== Local Project Imports ======
 from .chunking import (

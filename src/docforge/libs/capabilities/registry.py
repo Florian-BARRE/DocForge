@@ -22,7 +22,7 @@ from loggerplusplus import LoggerClass
 from pydantic import BaseModel
 
 # ====== Internal Project Imports ======
-from libs.engine.pipeline_config import (
+from libs.core.contracts.pipeline_config import (
     ChunkConfig,
     EnrichConfig,
     PipelineConfig,
@@ -139,7 +139,7 @@ class ProviderRegistry(LoggerClass):
         Returns:
             list[dict]: Param descriptors for the playground UI.
         """
-        from libs.engine.pipeline_config import _is_secret_key
+        from libs.core.contracts.pipeline_config import _is_secret_key
         schema = instance.__class__.model_json_schema()
         result = []
         for name, field_schema in schema.get("properties", {}).items():
@@ -179,7 +179,7 @@ class ProviderRegistry(LoggerClass):
         Returns:
             list[dict]: Provider descriptors ready for the stage group's "providers" list.
         """
-        from libs.capabilities._registry import get_configs
+        from libs.core.contracts._registry import get_configs
         providers = []
         for config_cls in get_configs(category).values():
             available, note = config_cls.availability(self._cfg)
@@ -205,7 +205,7 @@ class ProviderRegistry(LoggerClass):
             dict: {"stages": [StageSchema, ...]} — each stage lists its groups and providers.
         """
         # Trigger auto-import for all categories so @register decorators fire.
-        from libs.capabilities._registry import auto_import
+        from libs.core.contracts._registry import auto_import
         for pkg in (
             "providers.converter",
             "providers.parser",

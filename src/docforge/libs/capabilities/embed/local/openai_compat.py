@@ -8,7 +8,7 @@ from typing import Any, ClassVar, Literal
 from pydantic import BaseModel, Field, model_validator
 
 # ====== Internal Project Imports ======
-from libs.capabilities._registry import register
+from libs.core.contracts._registry import register
 from libs.capabilities.embed._openai_compat_base import _OpenAICompatBase
 
 

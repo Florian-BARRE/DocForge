@@ -2,7 +2,7 @@
 # Auto-discover all OCR providers and build the discriminated union.
 # ─────────────────────────────────────────────────────────────────────────────
 
-from libs.capabilities._registry import auto_import, build_union, get_configs
+from libs.core.contracts._registry import auto_import, build_union, get_configs
 
 auto_import(__name__)
 

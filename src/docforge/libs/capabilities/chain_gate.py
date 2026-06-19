@@ -15,49 +15,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-# ====== Third-Party Library Imports ======
-from pydantic import BaseModel, Field
-
 # ====== Internal Project Imports ======
 from libs.capabilities.scoring import ScoredResult
+from libs.core.contracts.chain_gate_config import ChainGateConfig  # re-exported for callers
 
 # ====== Local Project Imports ======
 if TYPE_CHECKING:
     from libs.capabilities.chain import ChainAttempt
-
-
-class ChainGateConfig(BaseModel):
-    """
-    Typed configuration for a chain's escalation policy.
-
-    Attributes:
-        min_score (float): Lower bound on the result's ``score()``.  An attempt whose
-            score is strictly less than this triggers escalation.  A score of ``None``
-            (unknown) never triggers escalation on its own.
-        max_duration_ms (int | None): Soft upper bound on an attempt's wall-clock
-            duration — surfaced in the UI for future enforcement; not enforced in
-            Phase A.
-        max_cost_usd (float | None): Soft upper bound on the cumulative provider cost
-            of the chain — surfaced in the UI for future enforcement; not enforced in
-            Phase A.
-    """
-
-    min_score: float = Field(
-        default=0.5,
-        ge=0.0,
-        le=1.0,
-        description="Escalate when the result's score is strictly below this threshold.",
-    )
-    max_duration_ms: int | None = Field(
-        default=None,
-        ge=0,
-        description="Soft wall-clock budget per attempt (ms). Surfaced in UI; not enforced in Phase A.",
-    )
-    max_cost_usd: float | None = Field(
-        default=None,
-        ge=0.0,
-        description="Soft cumulative cost budget (USD). Surfaced in UI; not enforced in Phase A.",
-    )
 
 
 class ChainGate:

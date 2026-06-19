@@ -6,7 +6,7 @@
 # import params.py directly to trigger @register("split_method") decorators.
 from . import params as _params_module  # noqa: F401 — side-effect: triggers @register
 
-from libs.capabilities._registry import build_union, get_configs
+from libs.core.contracts._registry import build_union, get_configs
 
 # ------------------- Split Method Configs ------------------- #
 from .params import (

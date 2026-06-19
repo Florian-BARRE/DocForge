@@ -12,35 +12,22 @@
 # The ProviderRegistry resolves this config into concrete stages; the StageEngine honors it
 # per-run, so the playground (dry_run) tunes the exact same engine full ingestion uses.
 # The shape is described to the UI by GET /playground/stages so the configurator is generated.
+#
+# LEAF CONSTRAINT: this module imports NO other DocForge bucket (capabilities/data/engine/
+# governance) at module level.  Provider-specific types are imported lazily inside
+# build_default_pipeline() to avoid coupling at module load time.
 
 # ====== Standard Library Imports ======
 from __future__ import annotations
 
 import re
-from typing import Annotated, Any, Optional, Union
+from typing import Any
 
 # ====== Third-Party Library Imports ======
 from pydantic import BaseModel, Field, model_validator
 
-# ====== Internal Project Imports ======
-from libs.capabilities.converter.local.gotenberg import GotenbergConfig  # noqa: F401
-from libs.capabilities.parser.local.docling import DoclingConfig
-from libs.capabilities.classifier.local.layout_labels import LayoutLabelsConfig
-from libs.capabilities.classifier.local.vit_onnx import VitOnnxConfig
-from libs.capabilities.ocr.local.paddle_ocr import PaddleOcrConfig
-from libs.capabilities.ocr.external.mistral_ocr import MistralOcrConfig
-from libs.capabilities.vlm.local.openai_compat import LocalVlmConfig
-from libs.capabilities.vlm.external.openai_compat import OpenAIVlmConfig
-from libs.capabilities.embed.local.tei import TeiEmbedConfig
-from libs.capabilities.embed.local.openai_compat import LocalOpenAIEmbedConfig
-from libs.capabilities.embed.external.openai_compat import OpenAIEmbedConfig
-from libs.engine.stages.chunking.params import (
-    TokenBudgetConfig,
-    SemanticConfig,
-    SentenceWindowConfig,
-    SPLIT_METHOD_PARAMS,  # noqa: F401
-)
-from libs.capabilities.chain_gate import ChainGateConfig
+# ====== Local Project Imports ======
+from libs.core.contracts.chain_gate_config import ChainGateConfig
 
 # Param-name segments that mark a value as a credential — masked when the config is echoed.
 # Matched against whole `_`/`-`-separated segments (not substrings) so legitimate keys like
@@ -73,34 +60,19 @@ def _flatten_provider_spec(v: Any) -> Any:
 
 
 # ====== Discriminated Union Type Aliases ======
+# Typed as Any so this module remains a leaf (no capability imports at module level).
+# At runtime, Pydantic validates each list item via the discriminator="id" on the concrete
+# models; the unions are built dynamically by build_union(get_configs("category")) after
+# providers register themselves in category __init__.py files.
 
-# Only docling for now — Literal union extends naturally when marker/tika are typed.
-ParserConfig = Annotated[DoclingConfig, Field(discriminator="id")]
+ParserConfig = Any
+ClassifierConfig = Any
+OcrProviderConfig = Any
+VlmProviderConfig = Any
+EmbedProviderConfig = Any
 
-ClassifierConfig = Annotated[
-    Union[LayoutLabelsConfig, VitOnnxConfig],
-    Field(discriminator="id"),
-]
-
-OcrProviderConfig = Annotated[
-    Union[PaddleOcrConfig, MistralOcrConfig],
-    Field(discriminator="id"),
-]
-
-VlmProviderConfig = Annotated[
-    Union[LocalVlmConfig, OpenAIVlmConfig],
-    Field(discriminator="id"),
-]
-
-EmbedProviderConfig = Annotated[
-    Union[TeiEmbedConfig, LocalOpenAIEmbedConfig, OpenAIEmbedConfig],
-    Field(discriminator="id"),
-]
-
-SplitMethodConfig = Annotated[
-    Union[TokenBudgetConfig, SemanticConfig, SentenceWindowConfig],
-    Field(discriminator="id"),
-]
+# SplitMethodConfig: Any for the same leaf-constraint reason.
+SplitMethodConfig = Any
 
 
 # ====== Backward-compat ProviderSpec (kept for other modules that import it) ======
@@ -166,7 +138,7 @@ class ParseConfig(BaseModel):
         gate (ChainGateConfig): Escalation policy for this chain.
     """
 
-    chain: list[ParserConfig] = Field(default_factory=lambda: [DoclingConfig()])
+    chain: list[Any] = Field(default_factory=list)
     gate: ChainGateConfig = Field(default_factory=ChainGateConfig)
 
     @model_validator(mode="before")
@@ -178,6 +150,15 @@ class ParseConfig(BaseModel):
         v = dict(v)
         v = _lift_provider_to_chain(v, chain_key="chain", provider_key="provider")
         return v
+
+    @model_validator(mode="after")
+    def _set_default_parse_chain(self) -> "ParseConfig":
+        """Default the parser chain to [DoclingConfig()] when constructed with no chain."""
+        if not self.chain:
+            # Lazy import to preserve the leaf constraint.
+            from libs.capabilities.parser.local.docling import DoclingConfig
+            object.__setattr__(self, "chain", [DoclingConfig()])
+        return self
 
 
 class EnrichConfig(BaseModel):
@@ -208,15 +189,15 @@ class EnrichConfig(BaseModel):
 
     chart_to_data: bool = False
     max_budget_usd: float = 0.0
-    classifier_chain: list[ClassifierConfig] = Field(
-        default_factory=lambda: [LayoutLabelsConfig()],
+    classifier_chain: list[Any] = Field(
+        default_factory=list,
         description="Ordered figure classifier chain; index 0 is tried first.",
     )
     classifier_gate: ChainGateConfig = Field(
         default_factory=ChainGateConfig,
         description="Escalation policy for the classifier chain.",
     )
-    ocr_chain: list[OcrProviderConfig] = Field(
+    ocr_chain: list[Any] = Field(
         default_factory=list,
         description="Ordered OCR providers; empty list disables OCR.",
     )
@@ -224,7 +205,7 @@ class EnrichConfig(BaseModel):
         default_factory=lambda: ChainGateConfig(min_score=0.85),
         description="Escalation policy for the OCR chain (default min_score=0.85 preserves legacy threshold).",
     )
-    vlm_chain: list[VlmProviderConfig] = Field(
+    vlm_chain: list[Any] = Field(
         default_factory=list,
         description="Ordered VLM providers; empty list disables VLM enrichment entirely.",
     )
@@ -255,6 +236,15 @@ class EnrichConfig(BaseModel):
                 for item in v["ocr_chain"]
             ]
         return v
+
+    @model_validator(mode="after")
+    def _set_default_classifier_chain(self) -> "EnrichConfig":
+        """Default the classifier chain to [LayoutLabelsConfig()] when constructed with no chain."""
+        if not self.classifier_chain:
+            # Lazy import to preserve the leaf constraint.
+            from libs.capabilities.classifier.local.layout_labels import LayoutLabelsConfig
+            object.__setattr__(self, "classifier_chain", [LayoutLabelsConfig()])
+        return self
 
 
 class HeadingRule(BaseModel):
@@ -342,7 +332,7 @@ class ChunkConfig(BaseModel):
     )
     merge_short_sections: bool = True
     reinject_breadcrumb: bool = True
-    split_method: SplitMethodConfig = Field(default_factory=TokenBudgetConfig)
+    split_method: Any = Field(default=None)
     hierarchical: bool = False
     atomic: AtomicConfig = Field(default_factory=AtomicConfig)
     cross_references: bool = True
@@ -359,6 +349,42 @@ class ChunkConfig(BaseModel):
         if "split_method" in v and isinstance(v["split_method"], dict):
             v["split_method"] = _flatten_provider_spec(v["split_method"])
         return v
+
+    @model_validator(mode="after")
+    def _set_default_split_method(self) -> "ChunkConfig":
+        """
+        Coerce split_method into a typed config instance.
+
+        When None: default to TokenBudgetConfig.
+        When a dict: validate via the discriminated union (triggers @register imports).
+        """
+        # Lazy imports to preserve the leaf constraint.
+        from libs.engine.stages.chunking.params import (
+            TokenBudgetConfig,
+            SemanticConfig,
+            SentenceWindowConfig,
+        )
+        from typing import Annotated, Union
+        from pydantic import TypeAdapter, Field as _F
+
+        if self.split_method is None:
+            object.__setattr__(self, "split_method", TokenBudgetConfig())
+            return self
+
+        if isinstance(self.split_method, (TokenBudgetConfig, SemanticConfig, SentenceWindowConfig)):
+            # Already a typed instance — nothing to do.
+            return self
+
+        if isinstance(self.split_method, dict):
+            # Dict → validate via the typed discriminated union.
+            union = Annotated[
+                Union[TokenBudgetConfig, SemanticConfig, SentenceWindowConfig],
+                _F(discriminator="id"),
+            ]
+            adapter = TypeAdapter(union)
+            object.__setattr__(self, "split_method", adapter.validate_python(self.split_method))
+
+        return self
 
 
 class ContextualizeConfig(BaseModel):
@@ -419,8 +445,8 @@ class EmbedConfig(BaseModel):
         provider (EmbedProviderConfig): Embedding backend selection + its typed params.
     """
 
-    chain: list[EmbedProviderConfig] = Field(
-        default_factory=lambda: [TeiEmbedConfig()],
+    chain: list[Any] = Field(
+        default_factory=list,
         description="Ordered embedding backends; index 0 is tried first.",
     )
     gate: ChainGateConfig = Field(
@@ -437,6 +463,15 @@ class EmbedConfig(BaseModel):
         v = dict(v)
         v = _lift_provider_to_chain(v, chain_key="chain", provider_key="provider")
         return v
+
+    @model_validator(mode="after")
+    def _set_default_chain(self) -> "EmbedConfig":
+        """Default the embed chain to [TeiEmbedConfig()] when constructed with no chain."""
+        if not self.chain:
+            # Lazy import to preserve the leaf constraint.
+            from libs.capabilities.embed.local.tei import TeiEmbedConfig
+            object.__setattr__(self, "chain", [TeiEmbedConfig()])
+        return self
 
 
 class PipelineConfig(BaseModel):
@@ -519,6 +554,17 @@ def build_default_pipeline(cfg: Any) -> "PipelineConfig":
     Returns:
         PipelineConfig: Fully typed config representing the deployment's default stack.
     """
+    # Lazy imports — triggered only when this function is actually called (after providers
+    # register themselves), not at module load time.  Preserves the leaf constraint.
+    from libs.capabilities.parser.local.docling import DoclingConfig
+    from libs.capabilities.classifier.local.layout_labels import LayoutLabelsConfig
+    from libs.capabilities.classifier.local.vit_onnx import VitOnnxConfig
+    from libs.capabilities.ocr.local.paddle_ocr import PaddleOcrConfig
+    from libs.capabilities.ocr.external.mistral_ocr import MistralOcrConfig
+    from libs.capabilities.vlm.local.openai_compat import LocalVlmConfig
+    from libs.capabilities.embed.local.tei import TeiEmbedConfig
+    from libs.engine.stages.chunking.params import TokenBudgetConfig
+
     # 1. Parser chain
     parse_cfg = ParseConfig(
         chain=[DoclingConfig(use_gpu=getattr(cfg, "DOCLING_USE_GPU", False))]

@@ -15,7 +15,7 @@ from libs.capabilities.interfaces import OcrHint, OcrResult
 from libs.capabilities.ocr.base import OcrProvider
 from typing import Any, ClassVar, Literal
 from pydantic import BaseModel, Field, model_validator
-from libs.capabilities._registry import register
+from libs.core.contracts._registry import register
 
 # Approximate Mistral OCR billing rate (USD per page, subject to change)
 _MISTRAL_OCR_COST_PER_PAGE: float = 0.001

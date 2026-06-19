@@ -4,7 +4,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
 
 # ---------------------- Auto-discovery ---------------------- #
-from libs.capabilities._registry import auto_import, build_union, get_configs
+from libs.core.contracts._registry import auto_import, build_union, get_configs
 
 auto_import(__name__)  # imports local/ and external/ — triggers @register decorators
 

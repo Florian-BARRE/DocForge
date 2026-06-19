@@ -17,7 +17,7 @@ from libs.core.ir.models import (
     Provenance,
     TableData,
 )
-from libs.engine.pipeline_config import AtomicConfig, ChunkConfig, PipelineConfig
+from libs.core.contracts.pipeline_config import AtomicConfig, ChunkConfig, PipelineConfig
 from libs.engine.stages.chunking import (
     ChunkingHelpers,
     CrossReferenceLinker,

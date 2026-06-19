@@ -18,7 +18,7 @@ from loggerplusplus import LoggerClass
 from pydantic import BaseModel, Field, model_validator
 
 # ====== Internal Project Imports ======
-from libs.capabilities._registry import register
+from libs.core.contracts._registry import register
 from libs.capabilities.converter.base import ConverterProvider
 from libs.capabilities.interfaces import ConvertResult
 

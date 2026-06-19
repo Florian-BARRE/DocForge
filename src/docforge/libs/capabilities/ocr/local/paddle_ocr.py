@@ -15,7 +15,7 @@ from libs.capabilities.interfaces import OcrHint, OcrResult
 from libs.capabilities.ocr.base import OcrProvider
 from typing import Any, ClassVar, Literal
 from pydantic import BaseModel, Field, model_validator
-from libs.capabilities._registry import register
+from libs.core.contracts._registry import register
 
 
 class PaddleOcrProvider(OcrProvider, LoggerClass):

@@ -15,7 +15,7 @@ from loggerplusplus import loggerplusplus
 
 # ====== Internal Project Imports ======
 from libs.core.metadata import SYSTEM_METADATA_FIELDS, MetaFieldSpec
-from libs.engine.pipeline_config import PipelineConfig
+from libs.core.contracts.pipeline_config import PipelineConfig
 
 class ConfigDocument:
     """

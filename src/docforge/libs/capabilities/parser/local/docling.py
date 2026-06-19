@@ -32,7 +32,7 @@ from libs.core.ir.models import (
 )
 from libs.capabilities.parser.base import ParserProvider
 from libs.capabilities.lang import LanguageDetector
-from libs.capabilities._registry import register
+from libs.core.contracts._registry import register
 
 
 class DoclingBackend(ParserProvider, LoggerClass):

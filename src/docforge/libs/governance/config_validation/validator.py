@@ -17,7 +17,7 @@ from pydantic import ValidationError
 
 # ====== Internal Project Imports ======
 from libs.core.metadata import MetaFieldType
-from libs.engine.pipeline_config import PipelineConfig
+from libs.core.contracts.pipeline_config import PipelineConfig
 
 # Field types accepted in a metadata schema — derived from the canonical MetaFieldType so the
 # validator can never drift from what MetaFieldSpec actually accepts.

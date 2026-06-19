@@ -13,7 +13,7 @@ from loggerplusplus import loggerplusplus
 
 # ====== Internal Project Imports ======
 from libs.engine.engine import StageEngine
-from libs.engine.pipeline_config import PipelineConfig
+from libs.core.contracts.pipeline_config import PipelineConfig
 from libs.data.storage.postgres.client import PostgresClient
 from libs.data.storage.postgres.repositories import CollectionRepository, DocumentRepository, JobRepository
 

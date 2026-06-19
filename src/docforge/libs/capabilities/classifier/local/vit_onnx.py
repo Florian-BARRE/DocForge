@@ -14,7 +14,7 @@ from libs.core.ir.models import FigureKind
 from libs.capabilities.classifier.base import FigureClassifier, ClassificationResult
 from typing import Any, ClassVar, Literal
 from pydantic import BaseModel, Field, model_validator
-from libs.capabilities._registry import register
+from libs.core.contracts._registry import register
 
 # Expected mapping from ONNX output class index → FigureKind.
 # Must match the label order used during model training.

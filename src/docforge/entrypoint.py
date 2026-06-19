@@ -119,7 +119,7 @@ def _build_app() -> FastAPI:
     )
 
     # Build the parse chain + S2/S4/S5 stages from the deployment defaults.
-    from libs.engine.pipeline_config import build_default_pipeline
+    from libs.core.contracts.pipeline_config import build_default_pipeline
     default_pipeline = build_default_pipeline(RUNTIME_CONFIG)
     default_parse_chain = CONTEXT.registry._build_parser_chain(
         default_pipeline.parse.chain, default_pipeline.parse.gate,

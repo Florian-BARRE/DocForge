@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 
 # ====== Internal Project Imports ======
 from libs.governance.config_validation import ConfigApplied, ConfigDocument
-from libs.engine.pipeline_config import PipelineConfig
+from libs.core.contracts.pipeline_config import PipelineConfig
 
 # ─────────────────────────── Requests ───────────────────────────
 

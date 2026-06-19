@@ -7,7 +7,7 @@ from __future__ import annotations
 from libs.capabilities.vlm._openai_compat_base import _OpenAICompatVlmBase
 from typing import Any, ClassVar, Literal
 from pydantic import BaseModel, Field, model_validator
-from libs.capabilities._registry import register
+from libs.core.contracts._registry import register
 
 
 class OpenAIVlmProvider(_OpenAICompatVlmBase):

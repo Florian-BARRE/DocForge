@@ -19,7 +19,7 @@ def _flatten_provider_spec(v: Any) -> Any:
 
 
 from typing import ClassVar
-from libs.capabilities._registry import register
+from libs.core.contracts._registry import register
 
 
 @register("split_method")

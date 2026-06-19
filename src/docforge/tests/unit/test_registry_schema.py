@@ -4,13 +4,13 @@
 
 import libs.engine.stages.chunking as _chunking_pkg  # noqa: F401 — triggers @register("split_method")
 
-from libs.engine.pipeline_config import SPLIT_METHODS
+from libs.core.contracts.pipeline_config import SPLIT_METHODS
 from libs.engine.stages.chunking import (
     SPLIT_METHOD_PARAMS,
     SemanticParams,
     TokenBudgetConfig,
 )
-from libs.capabilities._registry import get_configs
+from libs.core.contracts._registry import get_configs
 from libs.capabilities.registry import _params_from_model
 
 

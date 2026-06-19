@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from libs.engine.stages.s1_parse import S1ParseStage as _S1ParseStageType
-    from libs.engine.pipeline_config import EmbedConfig
+    from libs.core.contracts.pipeline_config import EmbedConfig
     from libs.capabilities.registry import ProviderRegistry
 
 # ====== Third-Party Library Imports ======
@@ -24,7 +24,7 @@ from loggerplusplus import LoggerClass
 from libs.core.ir.models import DocumentIR
 from libs.engine.fingerprint import compute_fingerprint
 from libs.engine.node_cache import NodeCache
-from libs.engine.pipeline_config import PipelineConfig
+from libs.core.contracts.pipeline_config import PipelineConfig
 from libs.engine.provider_cache import ProviderCallCache
 from libs.engine.stages.s0_ingest import S0IngestStage, S0Result
 from libs.engine.stages.s1_parse import S1ParseStage, S1Result

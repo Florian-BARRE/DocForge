@@ -19,7 +19,7 @@ from config import RUNTIME_CONFIG  # MUST be first — registers sys.path
 # ====== Internal Project Imports ======
 from libs.engine.engine import StageEngine
 from libs.engine.node_cache import NodeCache
-from libs.engine.pipeline_config import build_default_pipeline
+from libs.core.contracts.pipeline_config import build_default_pipeline
 from libs.engine.provider_cache import ProviderCallCache
 from libs.engine.stages.s0_ingest import S0IngestStage
 from libs.engine.stages.s1_parse import S1ParseStage
