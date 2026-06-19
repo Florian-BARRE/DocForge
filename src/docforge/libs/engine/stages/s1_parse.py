@@ -4,6 +4,13 @@
 # The parser is delivered as a Chain[ParserProvider, DocumentIR] so the stage can
 # escalate to a fallback parser (MinerU/Marker — Phase B) when the first provider's
 # quality_score falls below the configured gate.
+#
+# Design note — no s1_helpers.py split attempted for _render_and_upload /
+# _render_figure_crops_sync / _upload_markdown: all three carry self.logger calls
+# (debug/info/warning) that are instance-bound and cannot be cleanly moved to a
+# static helper without either losing log context or introducing artificial coupling.
+# Pure IR transformations (chain-trace stamping, figure crop key patching) live in
+# s1_helpers.py (S1Helpers) and are called from here.
 
 # ====== Standard Library Imports ======
 from __future__ import annotations
@@ -17,13 +24,14 @@ from typing import Any
 from loggerplusplus import LoggerClass
 
 # ====== Internal Project Imports ======
-from libs.core.ir.models import BlockType, ChainAttemptIR, ChainTrace, DocumentIR
+from libs.core.ir.models import DocumentIR
+from libs.capabilities.chain import Chain
 from libs.core.ir.serializer import MarkdownSerializer
-from libs.capabilities.chain import Chain, chain_outcome_to_attempt_dicts
 from libs.data.storage.s3.helpers import S3Helpers
 
 # ====== Local Project Imports ======
 from .s0_ingest import S0Result
+from .s1_helpers import S1Helpers
 
 
 @dataclass(slots=True)
@@ -56,6 +64,14 @@ class S1ParseStage(LoggerClass):
       - No OCR, no VLM, no classification (S2 territory).
       - No chunking, no embedding (S4–S6).
       - No Postgres writes (handled by the engine).
+
+    Helper split rationale:
+      Pure IR transformations (chain-trace stamping, figure crop key patching) are
+      delegated to ``S1Helpers`` in ``s1_helpers.py``.  The remaining private methods
+      (_render_and_upload, _render_figure_crops_sync, _upload_markdown) are kept here
+      because they carry ``self.logger`` calls at debug/info/warning level; extracting
+      them to a static class would either lose log context or require logger injection
+      as a parameter, adding coupling for no structural gain.
     """
 
     _RENDER_DPI_ZOOM: float = 2.0
@@ -116,22 +132,13 @@ class S1ParseStage(LoggerClass):
         ir: DocumentIR = outcome.result
 
         # 2. Stamp the parse trace on the IR so every downstream consumer sees the lineage.
-        ir = ir.model_copy(update={
-            "chain_traces": [
-                *ir.chain_traces,
-                ChainTrace(
-                    stage="parse",
-                    attempts=[ChainAttemptIR(**d) for d in chain_outcome_to_attempt_dicts(outcome)],
-                    final_provider=outcome.final_provider,
-                ),
-            ],
-        })
+        ir = S1Helpers.stamp_parse_trace(ir, outcome)
 
         # 3. Render and upload figure crops (page screenshots are generated on the fly).
         figure_crop_keys = await self._render_and_upload(s0, ir)
 
         # 4. Patch figure blocks with their crop_key.
-        ir = self._patch_figure_crop_keys(ir, figure_crop_keys)
+        ir = S1Helpers.patch_figure_crop_keys(ir, figure_crop_keys)
 
         # 5. Serialise IR → markdown → upload.
         markdown_key = await self._upload_markdown(s0, ir, fingerprint=fingerprint)
@@ -243,22 +250,6 @@ class S1ParseStage(LoggerClass):
                 figure_crops.append((block.id, key, crop_bytes))
 
         return figure_crops
-
-    @staticmethod
-    def _patch_figure_crop_keys(
-        ir: DocumentIR, figure_crop_keys: dict[str, str]
-    ) -> DocumentIR:
-        """Return a new DocumentIR with figure blocks updated with their crop_key."""
-        updated_blocks = []
-        for block in ir.blocks:
-            if block.type == BlockType.FIGURE and block.figure is not None:
-                crop_key = figure_crop_keys.get(block.id, "")
-                updated_figure = block.figure.model_copy(update={"crop_key": crop_key})
-                updated_block = block.model_copy(update={"figure": updated_figure})
-                updated_blocks.append(updated_block)
-            else:
-                updated_blocks.append(block)
-        return ir.model_copy(update={"blocks": updated_blocks})
 
     async def _upload_markdown(
         self, s0: S0Result, ir: DocumentIR, fingerprint: str | None = None
