@@ -1,19 +1,13 @@
 # ====== Code Summary ======
 # Local OpenAI-compatible embedding provider — for self-hosted servers (vLLM, Ollama, LM Studio).
 # No API key required. Dense-only (OpenAI protocol has no sparse endpoint).
+# Config class lives in openai_compat_config.py (split to allow auto_import discovery).
 
 # ====== Standard Library Imports ======
 from __future__ import annotations
 
-from typing import Any, ClassVar, Literal
-
-from pydantic import BaseModel, Field, model_validator
-
+# ====== Local Project Imports ======
 from libs.capabilities.embed._openai_compat_base import _OpenAICompatBase
-
-# ====== Internal Project Imports ======
-from libs.core.contracts._registry import register
-from libs.core.contracts.spec_utils import flatten_provider_spec as _flatten_provider_spec
 
 
 class LocalOpenAICompatEmbedProvider(_OpenAICompatBase):
@@ -71,58 +65,3 @@ class LocalOpenAICompatEmbedProvider(_OpenAICompatBase):
             f"LocalOpenAICompatEmbedProvider: "
             f"model={self._model} dim={self._dimension} url={self._base_url}"
         )
-
-
-# ─── Config ──────────────────────────────────────────────────────────────────
-
-
-
-@register("embed")
-class LocalOpenAIEmbedConfig(BaseModel):
-    """
-    Configuration for a locally-hosted OpenAI-compatible embedding server.
-
-    Config id: "openai_compat" — vLLM, Ollama, LM Studio; no auth required.
-    Dense-only (no sparse vectors).
-
-    Attributes:
-        base_url: Server URL (e.g. http://vllm:8000/v1).
-        model: Model identifier.
-        api_key: Optional bearer token.
-        batch_size: Max texts per batch.
-        dimension: Vector dimension override (0 = auto from known model names).
-    """
-
-    _label: ClassVar[str] = "Local embed — OpenAI-compat server (vLLM / Ollama, dense only)"
-    _category: ClassVar[str] = "embed"
-
-    id: Literal["openai_compat"] = "openai_compat"
-    base_url: str = Field(default="", description="Local server URL.")
-    model: str = Field(default="text-embedding-3-large", description="Embedding model.")
-    api_key: str = Field(default="", description="Optional bearer token.")
-    batch_size: int = Field(default=32, ge=1, le=256, description="Max texts per batch.")
-    dimension: int = Field(default=0, ge=0, description="Vector dimension (0 = auto).")
-
-    @model_validator(mode="before")
-    @classmethod
-    def _compat(cls, v: Any) -> Any:
-        return _flatten_provider_spec(v)
-
-    def build(self) -> LocalOpenAICompatEmbedProvider:
-        """Instantiate LocalOpenAICompatEmbedProvider from this config."""
-        if not self.base_url:
-            raise ValueError("LocalOpenAIEmbedConfig.build(): base_url is required.")
-        return LocalOpenAICompatEmbedProvider(
-            base_url=self.base_url,
-            model=self.model,
-            api_key=self.api_key,
-            batch_size=self.batch_size,
-            dimension=self.dimension,
-        )
-
-    def merge_defaults(self, cfg: Any) -> LocalOpenAIEmbedConfig:
-        return self
-
-    @classmethod
-    def availability(cls, cfg: Any) -> tuple[bool, str]:
-        return True, "Dense only · set base_url + model to enable"

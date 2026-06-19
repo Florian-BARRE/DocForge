@@ -10,10 +10,12 @@ auto_import(__name__)
 from .base import VlmProvider
 
 # ------------------- External Providers ------------------- #
-from .external.openai_compat import OpenAIVlmConfig, OpenAIVlmProvider
+from .external.openai_compat import OpenAIVlmProvider
+from .external.openai_compat_config import OpenAIVlmConfig
 
 # ------------------- Local Providers ------------------- #
-from .local.openai_compat import LocalOpenAICompatVlmProvider, LocalVlmConfig
+from .local.openai_compat import LocalOpenAICompatVlmProvider
+from .local.openai_compat_config import LocalVlmConfig
 
 # ------------------- Discriminated Union ------------------- #
 VlmProviderConfig = build_union(get_configs("vlm"))

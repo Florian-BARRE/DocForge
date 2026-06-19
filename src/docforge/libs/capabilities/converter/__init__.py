@@ -15,9 +15,9 @@ from .base import ConverterProvider
 from .local.gotenberg import (
     GOTENBERG_FORMATS,
     NATIVE_PDF_FORMATS,
-    GotenbergConfig,
     GotenbergConverter,
 )
+from .local.gotenberg_config import GotenbergConfig
 
 # ------------------- Discriminated Union ------------------- #
 # Built dynamically from all registered converter configs.

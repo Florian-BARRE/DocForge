@@ -117,12 +117,12 @@ class EnrichConfig(BaseModel):
         from pydantic import Field as _F
         from pydantic import TypeAdapter
 
-        from libs.capabilities.classifier.local.layout_labels import LayoutLabelsConfig
-        from libs.capabilities.classifier.local.vit_onnx import VitOnnxConfig
-        from libs.capabilities.ocr.external.mistral_ocr import MistralOcrConfig
-        from libs.capabilities.ocr.local.paddle_ocr import PaddleOcrConfig
-        from libs.capabilities.vlm.external.openai_compat import OpenAIVlmConfig
-        from libs.capabilities.vlm.local.openai_compat import LocalVlmConfig
+        from libs.capabilities.classifier.local.layout_labels_config import LayoutLabelsConfig
+        from libs.capabilities.classifier.local.vit_onnx_config import VitOnnxConfig
+        from libs.capabilities.ocr.external.mistral_ocr_config import MistralOcrConfig
+        from libs.capabilities.ocr.local.paddle_ocr_config import PaddleOcrConfig
+        from libs.capabilities.vlm.external.openai_compat_config import OpenAIVlmConfig
+        from libs.capabilities.vlm.local.openai_compat_config import LocalVlmConfig
 
         # 1. Validate classifier_chain items, then default if empty.
         classifier_union = Annotated[

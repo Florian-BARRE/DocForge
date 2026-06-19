@@ -20,13 +20,7 @@ from loggerplusplus import LoggerClass
 from libs.capabilities.chain_gate import ChainGate
 
 # ====== Local Project Imports ======
-from .models import (
-    ChainAttempt,
-    ChainOutcome,
-    _default_provider_id,
-    _fmt_score,
-    _replace_escalated,
-)
+from .models import ChainAttempt, ChainHelpers, ChainOutcome
 
 
 class Chain[T, R](LoggerClass):
@@ -75,7 +69,7 @@ class Chain[T, R](LoggerClass):
         self._stage = stage
         self._providers: list[T] = providers
         self._gate = gate
-        self._provider_id: Callable[[T], str] = provider_id or _default_provider_id
+        self._provider_id: Callable[[T], str] = provider_id or ChainHelpers.default_provider_id
 
     @property
     def stage(self) -> str:
@@ -138,7 +132,7 @@ class Chain[T, R](LoggerClass):
 
             # 2. The gate decides whether the chain stops or escalates.
             should_escalate = self._gate.should_escalate(raw_result, attempt)
-            attempts.append(_replace_escalated(attempt, should_escalate))
+            attempts.append(ChainHelpers.replace_escalated(attempt, should_escalate))
 
             if not should_escalate:
                 self.logger.info(
@@ -239,7 +233,7 @@ class Chain[T, R](LoggerClass):
             self.logger.info(
                 f"[CHAIN {self._stage}] attempt {idx}/{total} "
                 f"provider={attempt.provider_id} "
-                f"score={_fmt_score(attempt.score)} "
+                f"score={ChainHelpers.fmt_score(attempt.score)} "
                 f"duration_ms={attempt.duration_ms}"
             )
         else:

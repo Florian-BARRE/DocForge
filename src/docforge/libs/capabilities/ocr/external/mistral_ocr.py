@@ -2,21 +2,17 @@
 # Mistral OCR API adapter — cloud OCR provider for high-quality text extraction.
 # Used as escalation fallback when local OCR confidence is below the chain threshold.
 # Sends the image as a base64 data-URI to the Mistral OCR REST endpoint.
-# Config id: "mistral_ocr" (external API — api_key required)
+# Config class has been extracted to mistral_ocr_config.py to avoid circular imports.
 
 from __future__ import annotations
 
 import base64
-from typing import Any, ClassVar, Literal
 
 import httpx
 from loggerplusplus import LoggerClass
-from pydantic import BaseModel, Field, model_validator
 
 from libs.capabilities.interfaces import OcrHint, OcrResult
 from libs.capabilities.ocr.base import OcrProvider
-from libs.core.contracts._registry import register
-from libs.core.contracts.spec_utils import flatten_provider_spec as _flatten_provider_spec
 
 # Approximate Mistral OCR billing rate (USD per page, subject to change)
 _MISTRAL_OCR_COST_PER_PAGE: float = 0.001
@@ -120,67 +116,3 @@ class MistralOcrProvider(OcrProvider, LoggerClass):
 
         # Confidence=1.0: no score from API; prevents further escalation in the chain
         return OcrResult(text=full_text, confidence=1.0)
-
-# ─── Config ──────────────────────────────────────────────────────────────────
-
-
-
-@register("ocr")
-class MistralOcrConfig(BaseModel):
-    """
-    Configuration for the Mistral OCR cloud API provider.
-
-    Config id: "mistral_ocr" — external cloud API, api_key required at build time.
-    Positioned as the second link in an OCR escalation chain.
-
-    Attributes:
-        api_key: Mistral API key (empty = use deployment env default at merge time).
-        base_url: Mistral API base URL.
-        model: OCR model identifier.
-        timeout_s: HTTP request timeout in seconds.
-    """
-
-    _label: ClassVar[str] = "Mistral OCR — cloud API (confidence=1.0, requires API key)"
-    _category: ClassVar[str] = "ocr"
-
-    id: Literal["mistral_ocr"] = "mistral_ocr"
-    api_key: str = Field(default="", description="Mistral API key — merged from env if empty.")
-    base_url: str = Field(default="https://api.mistral.ai/v1", description="Mistral API base URL.")
-    model: str = Field(default="mistral-ocr-latest", description="OCR model identifier.")
-    timeout_s: int = Field(default=60, ge=5, le=300, description="HTTP timeout in seconds.")
-
-    @model_validator(mode="before")
-    @classmethod
-    def _compat(cls, v: Any) -> Any:
-        return _flatten_provider_spec(v)
-
-    def build(self) -> MistralOcrProvider:
-        """Instantiate MistralOcrProvider — raises ValueError when api_key is empty."""
-        if not self.api_key:
-            raise ValueError(
-                "MistralOcrConfig.build(): api_key is required. "
-                "Call merge_defaults(cfg) first or supply the key explicitly."
-            )
-        return MistralOcrProvider(
-            api_key=self.api_key,
-            api_url=self.base_url,
-            model=self.model,
-            timeout_s=self.timeout_s,
-        )
-
-    def merge_defaults(self, cfg: Any) -> MistralOcrConfig:
-        """Merge deployment env defaults for missing credentials/endpoints."""
-        return self.model_copy(update={
-            "api_key": self.api_key or getattr(cfg, "MISTRAL_OCR_API_KEY", ""),
-            "base_url": self.base_url or getattr(cfg, "MISTRAL_OCR_API_URL", self.base_url),
-            "model": self.model or getattr(cfg, "MISTRAL_OCR_MODEL", self.model),
-            "timeout_s": self.timeout_s,
-        })
-
-    @classmethod
-    def availability(cls, cfg: Any) -> tuple[bool, str]:
-        """Always selectable — API key can be supplied on the fly from the playground."""
-        has_key = bool(getattr(cfg, "MISTRAL_OCR_API_KEY", ""))
-        if has_key:
-            return True, "Cloud API · confidence=1.0"
-        return True, "Select and paste your API key to enable on the fly"

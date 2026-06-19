@@ -6,7 +6,7 @@ from .chain import ProviderChain
 from .converter import GOTENBERG_FORMATS, NATIVE_PDF_FORMATS, GotenbergConverter
 
 # ------------------- Device Manager ------------------- #
-from .device_manager import Device, DeviceCapability, DeviceManager
+from .device import Device, DeviceCapability, DeviceManager
 from .interfaces import (
     ConverterProvider,
     ConvertResult,

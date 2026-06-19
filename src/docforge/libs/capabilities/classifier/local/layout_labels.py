@@ -6,14 +6,10 @@
 from __future__ import annotations
 
 import io
-from typing import Any, ClassVar, Literal
 
 from loggerplusplus import LoggerClass
-from pydantic import BaseModel, model_validator
 
 from libs.capabilities.classifier.base import ClassificationResult, FigureClassifier
-from libs.core.contracts._registry import register
-from libs.core.contracts.spec_utils import flatten_provider_spec as _flatten_provider_spec
 from libs.core.ir.models import FigureKind
 
 
@@ -132,36 +128,3 @@ class LayoutLabelsClassifier(FigureClassifier, LoggerClass):
             self.logger.warning(f"LayoutLabels pixel analysis failed: {exc}")
             return FigureKind.PHOTO, 0.50
 
-# ─── Config ──────────────────────────────────────────────────────────────────
-
-
-
-@register("classifier")
-class LayoutLabelsConfig(BaseModel):
-    """
-    Configuration for the heuristic layout-labels figure classifier.
-
-    Config id: "layout_labels" — zero cost, always available, uses pixel stats + parser label hints.
-    """
-
-    _label: ClassVar[str] = "layout_labels — heuristic pixel-stats + parser-label classifier (cost=0)"
-    _category: ClassVar[str] = "classifier"
-
-    id: Literal["layout_labels"] = "layout_labels"
-
-    @model_validator(mode="before")
-    @classmethod
-    def _compat(cls, v: Any) -> Any:
-        return _flatten_provider_spec(v)
-
-    def build(self) -> LayoutLabelsClassifier:
-        """Instantiate LayoutLabelsClassifier from this config."""
-        return LayoutLabelsClassifier()
-
-    def merge_defaults(self, cfg: Any) -> LayoutLabelsConfig:
-        return self
-
-    @classmethod
-    def availability(cls, cfg: Any) -> tuple[bool, str]:
-        """Always available — zero-cost heuristic, no external deps."""
-        return True, "Heuristic · cost=0 · always available"

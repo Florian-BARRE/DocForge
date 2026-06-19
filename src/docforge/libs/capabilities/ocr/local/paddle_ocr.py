@@ -2,21 +2,17 @@
 # PaddleOCR adapter — local GPU/CPU OCR provider.
 # Lazy-loads PaddleOCR models on the first extract() call to avoid slow startup.
 # Inference runs in a thread pool to avoid blocking the async event loop.
-# Config id: "paddle_ocr"
+# Config class has been extracted to paddle_ocr_config.py to avoid circular imports.
 
 from __future__ import annotations
 
 import asyncio
 import io
-from typing import Any, ClassVar, Literal
 
 from loggerplusplus import LoggerClass
-from pydantic import BaseModel, Field, model_validator
 
 from libs.capabilities.interfaces import OcrHint, OcrResult
 from libs.capabilities.ocr.base import OcrProvider
-from libs.core.contracts._registry import register
-from libs.core.contracts.spec_utils import flatten_provider_spec as _flatten_provider_spec
 
 
 class PaddleOcrProvider(OcrProvider, LoggerClass):
@@ -126,47 +122,3 @@ class PaddleOcrProvider(OcrProvider, LoggerClass):
         except Exception as exc:
             self.logger.error(f"PaddleOCR extraction failed: {exc}")
             return OcrResult(text="", confidence=0.0)
-
-# ─── Config ──────────────────────────────────────────────────────────────────
-
-
-
-@register("ocr")
-class PaddleOcrConfig(BaseModel):
-    """
-    Configuration for the PaddleOCR local provider.
-
-    Config id: "paddle_ocr" — local GPU/CPU OCR, cost = 0.0, requires paddleocr package.
-
-    Attributes:
-        use_gpu: Run PaddleOCR on GPU (CUDA) when True.
-    """
-
-    _label: ClassVar[str] = "PaddleOCR — local GPU/CPU OCR (cost=0)"
-    _category: ClassVar[str] = "ocr"
-
-    id: Literal["paddle_ocr"] = "paddle_ocr"
-    use_gpu: bool = Field(default=False, description="Use GPU (CUDA) for detection + recognition.")
-
-    @model_validator(mode="before")
-    @classmethod
-    def _compat(cls, v: Any) -> Any:
-        return _flatten_provider_spec(v)
-
-    def build(self) -> PaddleOcrProvider:
-        """Instantiate PaddleOcrProvider from this config."""
-        return PaddleOcrProvider(use_gpu=self.use_gpu)
-
-    def merge_defaults(self, cfg: Any) -> PaddleOcrConfig:
-        return self.model_copy(update={
-            "use_gpu": self.use_gpu or getattr(cfg, "OCR_PADDLE_USE_GPU", False),
-        })
-
-    @classmethod
-    def availability(cls, cfg: Any) -> tuple[bool, str]:
-        """Available when the paddleocr package is installed (local, cannot be supplied over HTTP)."""
-        try:
-            import paddleocr  # noqa: F401
-            return True, "olmOCR-2 · GPU/CPU · cost=0"
-        except ImportError:
-            return False, "paddleocr package not installed"

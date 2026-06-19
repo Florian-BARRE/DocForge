@@ -1,19 +1,13 @@
 # ====== Code Summary ======
 # External OpenAI-compatible embedding provider — for cloud APIs (OpenAI, Azure, Mistral, …).
 # API key is mandatory. Dense-only (OpenAI protocol has no sparse endpoint).
+# Config class lives in openai_compat_config.py (split to allow auto_import discovery).
 
 # ====== Standard Library Imports ======
 from __future__ import annotations
 
-from typing import Any, ClassVar, Literal
-
-from pydantic import BaseModel, Field, model_validator
-
+# ====== Local Project Imports ======
 from libs.capabilities.embed._openai_compat_base import _OpenAICompatBase
-
-# ====== Internal Project Imports ======
-from libs.core.contracts._registry import register
-from libs.core.contracts.spec_utils import flatten_provider_spec as _flatten_provider_spec
 
 
 class OpenAIEmbedProvider(_OpenAICompatBase):
@@ -79,65 +73,3 @@ class OpenAIEmbedProvider(_OpenAICompatBase):
             f"OpenAIEmbedProvider: "
             f"model={self._model} dim={self._dimension} url={self._base_url}"
         )
-
-
-# ─── Config ──────────────────────────────────────────────────────────────────
-
-
-
-@register("embed")
-class OpenAIEmbedConfig(BaseModel):
-    """
-    Configuration for an external OpenAI-compatible embedding cloud API.
-
-    Config id: "openai" — OpenAI, Azure, Mistral, Cohere; api_key REQUIRED.
-    Dense-only (no sparse vectors).
-
-    Attributes:
-        base_url: Cloud API base URL (e.g. https://api.openai.com/v1).
-        api_key: Bearer token — REQUIRED, build() raises if empty after merge.
-        model: Embedding model (default text-embedding-3-large, 3072-dim).
-        batch_size: Max texts per batch.
-        dimension: Vector dimension override (0 = auto from known model names).
-    """
-
-    _label: ClassVar[str] = "Cloud embed — OpenAI / Azure / Mistral (api_key required, dense only)"
-    _category: ClassVar[str] = "embed"
-
-    id: Literal["openai"] = "openai"
-    base_url: str = Field(default="https://api.openai.com/v1", description="Cloud API base URL.")
-    api_key: str = Field(default="", description="Bearer token — REQUIRED.")
-    model: str = Field(default="text-embedding-3-large", description="Embedding model.")
-    batch_size: int = Field(default=32, ge=1, le=256, description="Max texts per batch.")
-    dimension: int = Field(default=0, ge=0, description="Vector dimension (0 = auto).")
-
-    @model_validator(mode="before")
-    @classmethod
-    def _compat(cls, v: Any) -> Any:
-        return _flatten_provider_spec(v)
-
-    def build(self) -> OpenAIEmbedProvider:
-        """Instantiate OpenAIEmbedProvider — raises ValueError when api_key empty."""
-        if not self.api_key:
-            raise ValueError(
-                "OpenAIEmbedConfig.build(): api_key is required for external cloud APIs."
-            )
-        return OpenAIEmbedProvider(
-            base_url=self.base_url,
-            api_key=self.api_key,
-            model=self.model,
-            batch_size=self.batch_size,
-            dimension=self.dimension,
-        )
-
-    def merge_defaults(self, cfg: Any) -> OpenAIEmbedConfig:
-        return self.model_copy(update={
-            "api_key": self.api_key or getattr(cfg, "OPENAI_API_KEY", "") or getattr(cfg, "EMBED_API_KEY", ""),
-        })
-
-    @classmethod
-    def availability(cls, cfg: Any) -> tuple[bool, str]:
-        api_key = getattr(cfg, "OPENAI_API_KEY", "") or getattr(cfg, "EMBED_API_KEY", "")
-        if api_key:
-            return True, "Cloud API · dense only"
-        return True, "Set api_key to enable (OpenAI, Azure, Mistral, Cohere)"

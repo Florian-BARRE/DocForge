@@ -10,10 +10,12 @@ auto_import(__name__)
 from .base import OcrProvider
 
 # ------------------- External Providers ------------------- #
-from .external.mistral_ocr import MistralOcrConfig, MistralOcrProvider
+from .external.mistral_ocr import MistralOcrProvider
+from .external.mistral_ocr_config import MistralOcrConfig
 
 # ------------------- Local Providers ------------------- #
-from .local.paddle_ocr import PaddleOcrConfig, PaddleOcrProvider
+from .local.paddle_ocr import PaddleOcrProvider
+from .local.paddle_ocr_config import PaddleOcrConfig
 
 # ------------------- Discriminated Union ------------------- #
 OcrProviderConfig = build_union(get_configs("ocr"))

@@ -3,26 +3,21 @@
 # Gotenberg is the only converter in DocForge (spec ADR-3).
 # Supports: office formats (docx/doc/pptx/odt/rtf…) → PDF via LibreOffice.
 # PDF page count is extracted with PyMuPDF after conversion.
-# Config id: "gotenberg"
+# Config: see gotenberg_config.py (GotenbergConfig, @register("converter")).
 
 # ====== Standard Library Imports ======
 from __future__ import annotations
 
 import io
-from typing import Any, ClassVar, Literal
 
 # ====== Third-Party Library Imports ======
 import fitz  # PyMuPDF
 import httpx
 from loggerplusplus import LoggerClass
-from pydantic import BaseModel, Field, model_validator
-
-from libs.capabilities.converter.base import ConverterProvider
-from libs.capabilities.interfaces import ConvertResult
 
 # ====== Internal Project Imports ======
-from libs.core.contracts._registry import register
-from libs.core.contracts.spec_utils import flatten_provider_spec as _flatten_provider_spec
+from libs.capabilities.converter.base import ConverterProvider
+from libs.capabilities.interfaces import ConvertResult
 
 # Formats routed through Gotenberg (office → LibreOffice → PDF)
 GOTENBERG_FORMATS: frozenset[str] = frozenset(
@@ -166,48 +161,3 @@ class GotenbergConverter(ConverterProvider, LoggerClass):
         ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
         return ext in GOTENBERG_FORMATS
 
-
-# ─── Config ──────────────────────────────────────────────────────────────────
-
-
-@register("converter")
-class GotenbergConfig(BaseModel):
-    """
-    Configuration for the Gotenberg document converter.
-
-    Config id: "gotenberg" — LibreOffice + Chromium conversion via the Gotenberg HTTP API.
-
-    Attributes:
-        id: Provider discriminator — always "gotenberg".
-        base_url: Gotenberg service URL (e.g. http://gotenberg:3000).
-        timeout_s: HTTP conversion timeout in seconds.
-    """
-
-    _label: ClassVar[str] = "Gotenberg — LibreOffice + Chromium PDF/DOCX/HTML converter"
-    _category: ClassVar[str] = "converter"
-
-    id: Literal["gotenberg"] = "gotenberg"
-    base_url: str = Field(default="http://gotenberg:3000", description="Gotenberg service URL.")
-    timeout_s: int = Field(default=120, ge=10, le=600, description="HTTP timeout in seconds.")
-
-    @model_validator(mode="before")
-    @classmethod
-    def _compat(cls, v: Any) -> Any:
-        return _flatten_provider_spec(v)
-
-    def build(self) -> GotenbergConverter:
-        """Instantiate GotenbergConverter from this config."""
-        return GotenbergConverter(base_url=self.base_url, timeout_s=self.timeout_s)
-
-    def merge_defaults(self, cfg: Any) -> GotenbergConfig:
-        """Merge deployment env defaults (base_url from RUNTIME_CONFIG)."""
-        return self.model_copy(update={
-            "base_url": self.base_url or getattr(cfg, "GOTENBERG_URL", self.base_url),
-            "timeout_s": self.timeout_s,
-        })
-
-    @classmethod
-    def availability(cls, cfg: Any) -> tuple[bool, str]:
-        """Check Gotenberg availability — always available (no import check needed)."""
-        base_url = getattr(cfg, "GOTENBERG_URL", "")
-        return True, f"Gotenberg at {base_url}" if base_url else "URL configurable"

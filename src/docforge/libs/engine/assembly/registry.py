@@ -22,12 +22,12 @@ from loggerplusplus import LoggerClass
 
 from libs.capabilities.chain import Chain
 from libs.capabilities.chain_gate import ChainGate, ChainGateConfig
-from libs.capabilities.classifier.local.vit_onnx import VitOnnxConfig
-from libs.capabilities.ocr.external.mistral_ocr import MistralOcrConfig
-from libs.capabilities.ocr.local.paddle_ocr import PaddleOcrConfig
+from libs.capabilities.classifier.local.vit_onnx_config import VitOnnxConfig
+from libs.capabilities.ocr.external.mistral_ocr_config import MistralOcrConfig
+from libs.capabilities.ocr.local.paddle_ocr_config import PaddleOcrConfig
 from libs.capabilities.parser.local.docling import DoclingConfig
-from libs.capabilities.vlm.external.openai_compat import OpenAIVlmConfig
-from libs.capabilities.vlm.local.openai_compat import LocalVlmConfig
+from libs.capabilities.vlm.external.openai_compat_config import OpenAIVlmConfig
+from libs.capabilities.vlm.local.openai_compat_config import LocalVlmConfig
 
 # ====== Internal Project Imports ======
 from libs.core.contracts.pipeline_config import (

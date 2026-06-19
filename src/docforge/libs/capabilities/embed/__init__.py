@@ -10,9 +10,11 @@ auto_import(__name__)
 from .base import EmbedProvider
 
 # ------------------- External Providers ------------------- #
-from .external.openai_compat import OpenAIEmbedConfig, OpenAIEmbedProvider
+from .external.openai_compat import OpenAIEmbedProvider
+from .external.openai_compat_config import OpenAIEmbedConfig
 from .local.config import TeiEmbedConfig
-from .local.openai_compat import LocalOpenAICompatEmbedProvider, LocalOpenAIEmbedConfig
+from .local.openai_compat import LocalOpenAICompatEmbedProvider
+from .local.openai_compat_config import LocalOpenAIEmbedConfig
 
 # ------------------- Local Providers ------------------- #
 from .local.tei import TeiEmbedProvider

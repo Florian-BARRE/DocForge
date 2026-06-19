@@ -75,9 +75,9 @@ class EmbedConfig(BaseModel):
         from pydantic import Field as _F
         from pydantic import TypeAdapter
 
-        from libs.capabilities.embed.external.openai_compat import OpenAIEmbedConfig
+        from libs.capabilities.embed.external.openai_compat_config import OpenAIEmbedConfig
         from libs.capabilities.embed.local.config import TeiEmbedConfig
-        from libs.capabilities.embed.local.openai_compat import LocalOpenAIEmbedConfig
+        from libs.capabilities.embed.local.openai_compat_config import LocalOpenAIEmbedConfig
 
         if not self.chain:
             object.__setattr__(self, "chain", [TeiEmbedConfig()])

@@ -1,9 +1,9 @@
 # ====== Code Summary ======
 # Data models for the chain escalation primitive: per-attempt records and the
-# per-chain outcome envelope.  Also contains the public helper that converts a
-# ChainOutcome into the plain-dict shape expected by the IR layer.
+# per-chain outcome envelope.  Also contains ChainHelpers, a static-only class
+# grouping the internal manipulation utilities and the public IR-boundary converter.
 #
-# No I/O, no providers, no logging — pure frozen dataclasses and one free function.
+# No I/O, no providers, no logging — pure frozen dataclasses and static helpers.
 
 # ====== Standard Library Imports ======
 from __future__ import annotations
@@ -68,57 +68,106 @@ class ChainOutcome[R]:
         return sum(a.duration_ms for a in self.attempts)
 
 
-# ─── Public helper (IR boundary) ────────────────────────────────────────────
+# ─── Static helpers ──────────────────────────────────────────────────────────
 
 
-def chain_outcome_to_attempt_dicts(outcome: ChainOutcome[Any]) -> list[dict[str, Any]]:
+class ChainHelpers:
     """
-    Convert a ``ChainOutcome`` into the plain-dict shape ``ChainTraceIR.attempts`` expects.
+    Static utility helpers for the chain escalation primitive.
 
-    The IR layer does not import the providers package; constructing
-    ``ChainAttemptIR(**dict)`` at the call site keeps the two layers decoupled.
-
-    Args:
-        outcome (ChainOutcome): The chain invocation record.
-
-    Returns:
-        list[dict[str, Any]]: One dict per attempt, matching the IR ChainAttemptIR fields.
+    Groups the IR-boundary converter (public) and the internal manipulation
+    utilities used by Chain[T, R] and ProviderChain.  No instance state —
+    instantiation is blocked.
     """
-    return [
-        {
-            "provider_id": a.provider_id,
-            "score": a.score,
-            "duration_ms": a.duration_ms,
-            "succeeded": a.succeeded,
-            "escalated": a.escalated,
-            "error": a.error,
-            "cost_usd": a.cost_usd,
-        }
-        for a in outcome.attempts
-    ]
+
+    def __new__(cls, *args: object, **kwargs: object) -> None:  # type: ignore[misc]
+        raise TypeError("ChainHelpers is a static-only class and cannot be instantiated.")
+
+    @staticmethod
+    def chain_outcome_to_attempt_dicts(outcome: ChainOutcome[Any]) -> list[dict[str, Any]]:
+        """
+        Convert a ``ChainOutcome`` into the plain-dict shape ``ChainTraceIR.attempts`` expects.
+
+        The IR layer does not import the providers package; constructing
+        ``ChainAttemptIR(**dict)`` at the call site keeps the two layers decoupled.
+
+        Args:
+            outcome (ChainOutcome): The chain invocation record.
+
+        Returns:
+            list[dict[str, Any]]: One dict per attempt, matching the IR ChainAttemptIR fields.
+        """
+        return [
+            {
+                "provider_id": a.provider_id,
+                "score": a.score,
+                "duration_ms": a.duration_ms,
+                "succeeded": a.succeeded,
+                "escalated": a.escalated,
+                "error": a.error,
+                "cost_usd": a.cost_usd,
+            }
+            for a in outcome.attempts
+        ]
+
+    @staticmethod
+    def replace_escalated(attempt: ChainAttempt, escalated: bool) -> ChainAttempt:
+        """
+        Build a copy of ``attempt`` with the escalated flag overridden.
+
+        Required because ``ChainAttempt`` is a frozen dataclass — fields cannot be
+        mutated in place; a new instance must be constructed.
+
+        Args:
+            attempt (ChainAttempt): The original attempt record.
+            escalated (bool): The new value for the escalated flag.
+
+        Returns:
+            ChainAttempt: A new frozen instance identical to ``attempt`` except for
+                the ``escalated`` field.
+        """
+        return ChainAttempt(
+            provider_id=attempt.provider_id,
+            score=attempt.score,
+            duration_ms=attempt.duration_ms,
+            succeeded=attempt.succeeded,
+            escalated=escalated,
+            error=attempt.error,
+            cost_usd=attempt.cost_usd,
+        )
+
+    @staticmethod
+    def default_provider_id(provider: Any) -> str:
+        """
+        Best-effort stable identifier for a provider instance.
+
+        Prefers the ``.name`` attribute when present; falls back to ``repr(provider)``
+        so every provider always yields a non-empty string.
+
+        Args:
+            provider (Any): Any provider instance.
+
+        Returns:
+            str: A stable, non-empty identifier string.
+        """
+        return str(getattr(provider, "name", None) or repr(provider))
+
+    @staticmethod
+    def fmt_score(score: float | None) -> str:
+        """
+        Compact score formatting for structured log lines.
+
+        Args:
+            score (float | None): The quality score, or None when unavailable.
+
+        Returns:
+            str: ``"unknown"`` when ``score`` is None, otherwise ``"{score:.3f}"``.
+        """
+        return "unknown" if score is None else f"{score:.3f}"
 
 
-# ─── Internal helpers ────────────────────────────────────────────────────────
+# ─── Public module-level alias (backward compatibility) ──────────────────────
 
-
-def _replace_escalated(attempt: ChainAttempt, escalated: bool) -> ChainAttempt:
-    """Build a copy of ``attempt`` with the escalated flag set — frozen dataclass."""
-    return ChainAttempt(
-        provider_id=attempt.provider_id,
-        score=attempt.score,
-        duration_ms=attempt.duration_ms,
-        succeeded=attempt.succeeded,
-        escalated=escalated,
-        error=attempt.error,
-        cost_usd=attempt.cost_usd,
-    )
-
-
-def _default_provider_id(provider: Any) -> str:
-    """Best-effort stable id: ``.name`` attribute, else repr."""
-    return str(getattr(provider, "name", None) or repr(provider))
-
-
-def _fmt_score(score: float | None) -> str:
-    """Compact score formatting for log lines (``unknown`` when None)."""
-    return "unknown" if score is None else f"{score:.3f}"
+# Exported from chain/__init__.py — callers that import chain_outcome_to_attempt_dicts
+# directly from this module continue to work without modification.
+chain_outcome_to_attempt_dicts = ChainHelpers.chain_outcome_to_attempt_dicts
