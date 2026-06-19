@@ -33,6 +33,7 @@ from libs.core.ir.models import (
 from libs.capabilities.parser.base import ParserProvider
 from libs.capabilities.lang import LanguageDetector
 from libs.core.contracts._registry import register
+from libs.core.contracts.spec_utils import flatten_provider_spec as _flatten_provider_spec
 
 
 class DoclingBackend(ParserProvider, LoggerClass):
@@ -462,12 +463,6 @@ class DoclingBackend(ParserProvider, LoggerClass):
 
 
 # ─── Config ──────────────────────────────────────────────────────────────────
-
-
-def _flatten_provider_spec(v: Any) -> Any:
-    if isinstance(v, dict) and "params" in v and isinstance(v.get("params"), dict):
-        return {"id": v.get("id"), **v["params"]}
-    return v
 
 
 @register("parser")

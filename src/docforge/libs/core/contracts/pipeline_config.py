@@ -28,6 +28,7 @@ from pydantic import BaseModel, Field, model_validator
 
 # ====== Local Project Imports ======
 from libs.core.contracts.chain_gate_config import ChainGateConfig
+from libs.core.contracts.spec_utils import flatten_provider_spec as _flatten_provider_spec
 
 # Param-name segments that mark a value as a credential — masked when the config is echoed.
 # Matched against whole `_`/`-`-separated segments (not substrings) so legitimate keys like
@@ -39,24 +40,6 @@ def _is_secret_key(key: str) -> bool:
     """Return True when a param name denotes a credential (segment-exact match)."""
     return any(part in _SECRET_SEGMENTS for part in re.split(r"[_\-\s]+", key.lower()))
 
-
-def _flatten_provider_spec(v: Any) -> Any:
-    """
-    Backward compat: flatten old ProviderSpec {id, params} format into a flat dict.
-
-    Old DB rows store configs as ``{"id": "tei", "params": {"base_url": "http://tei:8080"}}``.
-    The new typed union members expect the flat form ``{"id": "tei", "base_url": "http://tei:8080"}``.
-    This helper is called from model_validator(mode="before") in each sub-config.
-
-    Args:
-        v (Any): Raw value coming in (dict or already-parsed model).
-
-    Returns:
-        Any: Flattened dict if it was an old-style {id, params} dict; unchanged otherwise.
-    """
-    if isinstance(v, dict) and "params" in v and isinstance(v.get("params"), dict):
-        return {"id": v.get("id"), **v["params"]}
-    return v
 
 
 # ====== Discriminated Union Type Aliases ======

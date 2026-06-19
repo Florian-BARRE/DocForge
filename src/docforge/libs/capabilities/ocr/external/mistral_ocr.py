@@ -16,6 +16,7 @@ from libs.capabilities.ocr.base import OcrProvider
 from typing import Any, ClassVar, Literal
 from pydantic import BaseModel, Field, model_validator
 from libs.core.contracts._registry import register
+from libs.core.contracts.spec_utils import flatten_provider_spec as _flatten_provider_spec
 
 # Approximate Mistral OCR billing rate (USD per page, subject to change)
 _MISTRAL_OCR_COST_PER_PAGE: float = 0.001
@@ -122,12 +123,6 @@ class MistralOcrProvider(OcrProvider, LoggerClass):
 
 # ─── Config ──────────────────────────────────────────────────────────────────
 
-
-
-def _flatten_provider_spec(v: Any) -> Any:
-    if isinstance(v, dict) and "params" in v and isinstance(v.get("params"), dict):
-        return {"id": v.get("id"), **v["params"]}
-    return v
 
 
 @register("ocr")

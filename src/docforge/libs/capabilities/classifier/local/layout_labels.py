@@ -15,6 +15,7 @@ from libs.capabilities.classifier.base import FigureClassifier, ClassificationRe
 from typing import Any, ClassVar, Literal
 from pydantic import BaseModel, Field, model_validator
 from libs.core.contracts._registry import register
+from libs.core.contracts.spec_utils import flatten_provider_spec as _flatten_provider_spec
 
 
 class LayoutLabelsClassifier(FigureClassifier, LoggerClass):
@@ -134,12 +135,6 @@ class LayoutLabelsClassifier(FigureClassifier, LoggerClass):
 
 # ─── Config ──────────────────────────────────────────────────────────────────
 
-
-
-def _flatten_provider_spec(v: Any) -> Any:
-    if isinstance(v, dict) and "params" in v and isinstance(v.get("params"), dict):
-        return {"id": v.get("id"), **v["params"]}
-    return v
 
 
 @register("classifier")

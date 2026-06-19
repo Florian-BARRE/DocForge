@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field, model_validator
 
 # ====== Internal Project Imports ======
 from libs.core.contracts._registry import register
+from libs.core.contracts.spec_utils import flatten_provider_spec as _flatten_provider_spec
 from libs.capabilities.converter.base import ConverterProvider
 from libs.capabilities.interfaces import ConvertResult
 
@@ -167,13 +168,6 @@ class GotenbergConverter(ConverterProvider, LoggerClass):
 
 
 # ─── Config ──────────────────────────────────────────────────────────────────
-
-
-def _flatten_provider_spec(v: Any) -> Any:
-    """Backward compat: accept old ProviderSpec {id, params} format."""
-    if isinstance(v, dict) and "params" in v and isinstance(v.get("params"), dict):
-        return {"id": v.get("id"), **v["params"]}
-    return v
 
 
 @register("converter")

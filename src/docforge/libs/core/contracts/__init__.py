@@ -4,6 +4,9 @@ from libs.core.contracts._registry import register, get_configs, build_union, au
 # ─────────────────── Gate Config ──────────────────────────────────── #
 from libs.core.contracts.chain_gate_config import ChainGateConfig
 
+# ─────────────────── Shared spec helper ───────────────────────────── #
+from libs.core.contracts.spec_utils import flatten_provider_spec
+
 # ─────────────────── Pipeline Contract ────────────────────────────── #
 from libs.core.contracts.pipeline_config import (
     PipelineConfig,
@@ -25,7 +28,6 @@ from libs.core.contracts.pipeline_config import (
     DEFAULT_HEADING_RULES,
     build_default_pipeline,
     _is_secret_key,
-    _flatten_provider_spec,
 )
 
 # ─────────────────── Public API ───────────────────────────────────── #
@@ -37,6 +39,8 @@ __all__ = [
     "auto_import",
     # Gate
     "ChainGateConfig",
+    # Spec helper
+    "flatten_provider_spec",
     # Pipeline contract
     "PipelineConfig",
     "ParseConfig",
@@ -57,5 +61,4 @@ __all__ = [
     "DEFAULT_HEADING_RULES",
     "build_default_pipeline",
     "_is_secret_key",
-    "_flatten_provider_spec",
 ]

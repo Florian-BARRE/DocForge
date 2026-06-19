@@ -6,19 +6,11 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, ClassVar, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
-
-def _flatten_provider_spec(v: Any) -> Any:
-    """Backward compat: accept old ProviderSpec {id, params} format."""
-    if isinstance(v, dict) and "params" in v and isinstance(v.get("params"), dict):
-        return {"id": v.get("id"), **v["params"]}
-    return v
-
-
-from typing import ClassVar
+from libs.core.contracts.spec_utils import flatten_provider_spec as _flatten_provider_spec
 from libs.core.contracts._registry import register
 
 
