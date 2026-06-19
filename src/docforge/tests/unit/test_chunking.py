@@ -291,7 +291,7 @@ class TestChunkConfig:
             {"chunk": {"split_method": {"id": "sentence_window", "params": {"window_sentences": 3}}}}
         )
         assert cfg.chunk.split_method.id == "sentence_window"
-        assert cfg.chunk.split_method.params["window_sentences"] == 3
+        assert cfg.chunk.split_method.window_sentences == 3
 
     def test_defaults(self) -> None:
         cfg = ChunkConfig()

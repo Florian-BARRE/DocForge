@@ -37,15 +37,19 @@ class TestSearchCollection:
     """POST /api/v1/collections/{collection_id}/documents/search"""
 
     @pytest.mark.asyncio
-    async def test_search_disabled_returns_503(self, client: httpx.AsyncClient) -> None:
-        """retrieval=None (S6 disabled) → 503 before any collection lookup."""
+    async def test_search_disabled_returns_empty_200(self, client: httpx.AsyncClient) -> None:
+        """retrieval=None (S6 disabled) → 200 with empty graceful-degradation response (no 503)."""
         original = CONTEXT.retrieval
         CONTEXT.retrieval = None
         try:
             response = await client.post(
                 _col_search_url(uuid.uuid4()), json={"query": "test"}
             )
-            assert response.status_code == 503
+            assert response.status_code == 200
+            body = response.json()
+            assert body["total"] == 0
+            assert body["results"] == []
+            assert "note" in body and body["note"]
         finally:
             CONTEXT.retrieval = original
 
@@ -123,15 +127,19 @@ class TestSearchWithinDocument:
     """POST /api/v1/collections/{collection_id}/documents/{document_id}/search"""
 
     @pytest.mark.asyncio
-    async def test_search_disabled_returns_503(self, client: httpx.AsyncClient) -> None:
-        """retrieval=None → 503."""
+    async def test_search_disabled_returns_empty_200(self, client: httpx.AsyncClient) -> None:
+        """retrieval=None → 200 with empty graceful-degradation response (no 503)."""
         original = CONTEXT.retrieval
         CONTEXT.retrieval = None
         try:
             response = await client.post(
                 _doc_search_url(uuid.uuid4(), uuid.uuid4()), json={"query": "test"}
             )
-            assert response.status_code == 503
+            assert response.status_code == 200
+            body = response.json()
+            assert body["total"] == 0
+            assert body["results"] == []
+            assert "note" in body and body["note"]
         finally:
             CONTEXT.retrieval = original
 

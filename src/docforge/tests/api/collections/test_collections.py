@@ -87,7 +87,7 @@ class TestCreateCollection:
         body = response.json()
         # Resolved pipeline echoed (defaults filled, not the empty {} sent)
         assert body["pipeline"]["chunk"]["split_method"]["id"] == "token_budget"
-        assert body["pipeline"]["embed"]["provider"]["id"] == "tei_bge_m3"
+        assert body["pipeline"]["embed"]["chain"][0]["id"] == "tei"
         # Transparency envelope present and coherent
         applied = body["applied"]
         assert applied is not None
