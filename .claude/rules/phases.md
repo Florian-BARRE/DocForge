@@ -1,6 +1,6 @@
 ---
 paths:
-  - "src/docforge/libs/pipeline/**"
+  - "src/docforge/libs/**"
   - "src/docforge/backend/**"
   - "src/docforge/frontend/**"
   - "src/docforge/mcp_server.py"
@@ -10,6 +10,24 @@ paths:
 
 Reference file listing every module added or modified per phase. Use to understand where
 a concept was introduced or which files are relevant to a given feature.
+
+> **⚠️ Structure refactor (2026-06-19):** `libs/` was reorganized **by concept**. The paths
+> in the per-phase sections below use the OLD flat names — translate them with this map:
+>
+> | Old path | New path |
+> |---|---|
+> | `libs/ir/` | `libs/core/ir/` |
+> | `libs/metadata/` (schema) | `libs/core/metadata/` |
+> | `libs/pipeline/pipeline_config.py` | `libs/core/contracts/pipeline_config/` (package) |
+> | `libs/providers/` | `libs/capabilities/` |
+> | `libs/providers/registry.py` | `libs/engine/assembly/registry.py` |
+> | `libs/storage/` | `libs/data/storage/` |
+> | `libs/retrieval/`, `libs/metadata/indexer.py` | `libs/data/retrieval/` |
+> | `libs/pipeline/` | `libs/engine/` (engine.py → `engine/orchestrator/`) |
+> | `libs/admission/`, `libs/config_validation/` | `libs/governance/` |
+>
+> Several large files became packages (`engine/orchestrator/`, `s4_chunk/`, `s2_enrich/`,
+> `contracts/pipeline_config/`). Imports are `from libs.<bucket>...`. See CLAUDE.md for the layer DAG.
 
 ---
 

@@ -71,20 +71,40 @@ Serveur-agnostique : GPU (CUDA 11.8, V100) quand disponible, fallback CPU+API.
 
 ## Structure du projet
 
+`libs/` est rangé **par concept transverse**, pas par ordre de traitement. DAG strict
+des couches : `core(0) ← capabilities(1) ← data(2) ← engine(3)` ; `governance(1) → core`.
+Règle d'or : une couche n'importe jamais une couche au-dessus d'elle.
+
 ```
-src/docforge/          # Source app (fastapi.md layout, dans WORKDIR /app/docforge)
-  entrypoint.py        # uvicorn target: uvicorn entrypoint:app
-  config/runtime/      # RUNTIME_CONFIG (EnvConfigLoader)
-  libs/ir/             # IR Pydantic models + sérialisation markdown
-  libs/storage/        # Postgres (SQLAlchemy) + SeaweedFS (aioboto3)
-  libs/providers/      # Interfaces Protocol + adapters (Gotenberg, Docling...)
-  libs/pipeline/       # Stages S0-S6 + StageEngine + arq tasks/worker
-  backend/             # FastAPI app, CONTEXT, lifespan, routers
-  migrations/          # Alembic
-services/              # .env par service (docforge, postgres, minio, gotenberg, redis)
-docker-compose.yml     # Production
-docker-compose.dev.yml # Dev overrides (volumes + --reload)
+src/docforge/             # Source app (dans WORKDIR /app/docforge)
+  entrypoint.py           # uvicorn target: uvicorn entrypoint:app
+  arq_worker.py           # arq target: arq arq_worker.WorkerSettings
+  mcp_server.py           # MCP server (client HTTP, aucun import domaine)
+  config/runtime/         # RUNTIME_CONFIG (EnvConfigLoader) — sys.path.append(PATH_ROOT_DIR)
+  libs/
+    core/                 # L0 feuille — modèles & contrats du domaine
+      ir/                 #   IR Pydantic + sérialisation markdown
+      metadata/           #   schéma de champs (MetaFieldSpec, system fields)
+      contracts/          #   PipelineConfig + _registry (auto-register) + spec_utils
+    capabilities/         # L1 — capacités ML (ex-providers) : interfaces Protocol,
+                          #      chain, device, converter/parser/ocr/vlm/embed/classifier/lang
+    data/                 # L2 — persistance & accès
+      storage/            #   Postgres (SQLAlchemy) + Qdrant + SeaweedFS (aioboto3)
+      retrieval/          #   hybrid search, field index, metadata indexer
+    engine/               # L3 — orchestration pipeline (ex-pipeline) : StageEngine
+                          #      (orchestrator/), stages S0-S6, caches, worker, tasks,
+                          #      assembly/ (ProviderRegistry)
+    governance/           # L1 — garde-fous : admission/ + config_validation/
+  backend/                # FastAPI app, CONTEXT, lifespan, routers (+ backend/libs/utils)
+  migrations/             # Alembic
+services/                 # .env par service (docforge, postgres, seaweedfs, gotenberg, redis)
+docker-compose.yml        # Production
+docker-compose.dev.yml    # Dev overrides (volumes + --reload)
 ```
+
+> Imports : toujours `from libs.<bucket>.<module> import …` (jamais d'import plat).
+> Fichiers >200 lignes = signal de découpage ; quelques exceptions cohésives documentées
+> subsistent (ORM models, IR schema, StageEngine orchestrator) avec justification en docstring.
 
 ## Règles
 
