@@ -3,6 +3,9 @@
 # All ML bricks implement one of these Protocols — swap backend by changing the config,
 # not the calling code.  The OpenAI-compatible chat-completions shape is the lingua franca
 # for remote VLM/LLM providers (vLLM, Ollama, TGI, OpenAI, Mistral, OpenRouter…).
+#
+# Result dataclasses live in results.py; re-exported here for backward compatibility
+# so all callers that import from libs.capabilities.interfaces continue to work unchanged.
 
 # ====== Standard Library Imports ======
 from __future__ import annotations
@@ -10,80 +13,37 @@ from __future__ import annotations
 from typing import Any, Protocol, runtime_checkable
 
 # ====== Third-Party Library Imports ======
-from pydantic import BaseModel
+# (none — Protocol and result types only need stdlib + local imports)
 
 # ====== Internal Project Imports ======
 from libs.core.ir.models import DocumentIR
 
+# ====== Local Project Imports ======
+from .results import (
+    ConvertResult,
+    EmbedResult,
+    OcrHint,
+    OcrResult,
+    RerankResult,
+    VlmResult,
+)
 
-# ─── Shared result types ────────────────────────────────────────────────────
-
-
-class ConvertResult(BaseModel):
-    """Output of a document conversion (office/web → PDF)."""
-
-    pdf_bytes: bytes
-    page_count: int
-
-
-class OcrHint(BaseModel):
-    """Context passed to an OCR provider to guide extraction."""
-
-    language: str | None = None
-    dpi: int = 300
-
-
-class OcrResult(BaseModel):
-    """Output of an OCR call on a single image region."""
-
-    text: str
-    confidence: float  # [0, 1] — used to decide escalation in the provider chain
-    language: str | None = None
-
-    def score(self) -> float | None:
-        """ScoredResult — OCR escalation uses the provider's avg per-character confidence."""
-        return self.confidence
-
-
-class VlmResult(BaseModel):
-    """
-    Output of a VLM description call.
-
-    The ``quality`` field encodes the in-adapter heuristic used by the chain gate:
-      • ``1.0`` — structured output was requested and is present + non-empty
-      • ``0.5`` — only a description was returned (no schema / partial structured output)
-      • ``0.0`` — the provider raised (the chain wrapper captures this case before
-        the result is constructed; ``0.0`` is reserved as a sentinel)
-
-    See ``providers/vlm/base.py`` for the helper that computes the value.
-    """
-
-    description: str
-    structured: dict[str, Any] | None = None
-    quality: float = 0.5
-
-    def score(self) -> float | None:
-        """ScoredResult — heuristic quality estimate populated by the adapter."""
-        return self.quality
-
-
-class EmbedResult(BaseModel):
-    """Output of a text embedding call (dense + optional sparse for hybrid search)."""
-
-    vectors: list[list[float]]              # one dense vector per input text
-    sparse: list[dict[int, float]] | None = None  # one BM25 sparse map per text (token_id → weight)
-    model: str
-    quality: float = 1.0  # embeddings are binary success/fail — gate escalation flows via attempt.error
-
-    def score(self) -> float | None:
-        """ScoredResult — embed success is binary; a successful call returns 1.0."""
-        return self.quality
-
-
-class RerankResult(BaseModel):
-    """Output of a reranking call."""
-
-    scores: list[float]  # relevance score per input document, same order as input
+# Re-export result types so existing callers (from libs.capabilities.interfaces import X)
+# continue to work without modification.
+__all__ = [
+    "ConvertResult",
+    "ConverterProvider",
+    "EmbedProvider",
+    "EmbedResult",
+    "OcrHint",
+    "OcrProvider",
+    "OcrResult",
+    "ParserProvider",
+    "RerankProvider",
+    "RerankResult",
+    "VlmProvider",
+    "VlmResult",
+]
 
 
 # ─── Provider Protocols ─────────────────────────────────────────────────────

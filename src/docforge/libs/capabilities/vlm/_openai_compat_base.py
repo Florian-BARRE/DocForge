@@ -1,30 +1,26 @@
 # ====== Code Summary ======
 # Shared OpenAI-compatible chat-completions HTTP logic for VLM providers.
 # Implements describe() — subclasses only define the constructor contract.
+# Stateless prompt builders and quality heuristic live in helpers.py.
 
+# ====== Standard Library Imports ======
 from __future__ import annotations
 
 import base64
 import json
 from typing import Any
 
+# ====== Third-Party Library Imports ======
 import httpx
 from loggerplusplus import LoggerClass
 
+# ====== Internal Project Imports ======
 from libs.capabilities.interfaces import VlmResult
 from libs.capabilities.vlm.base import VlmProvider
 
-# Chart-to-data JSON schema
-_CHART_DATA_SCHEMA: dict[str, Any] = {
-    "type": "object",
-    "properties": {
-        "description": {"type": "string", "description": "Concise description of the chart for retrieval."},
-        "table": {"type": "array", "items": {"type": "array", "items": {"type": "string"}},
-                  "description": "Row-major table of extracted data (first row = headers)."},
-    },
-    "required": ["description", "table"],
-    "additionalProperties": False,
-}
+# ====== Local Project Imports ======
+from .helpers import CHART_DATA_SCHEMA as _CHART_DATA_SCHEMA
+from .helpers import OpenAICompatVlmHelpers
 
 
 class _OpenAICompatVlmBase(VlmProvider, LoggerClass):
@@ -103,10 +99,10 @@ class _OpenAICompatVlmBase(VlmProvider, LoggerClass):
         data_uri = f"data:image/png;base64,{b64}"
 
         # 2. Build system + user messages
-        system_prompt = self._build_system_prompt(grounding, schema)
+        system_prompt = OpenAICompatVlmHelpers.build_system_prompt(grounding, schema)
         user_content: list[dict[str, Any]] = [
             {"type": "image_url", "image_url": {"url": data_uri, "detail": "high"}},
-            {"type": "text", "text": self._build_user_text(grounding, schema)},
+            {"type": "text", "text": OpenAICompatVlmHelpers.build_user_text(grounding, schema)},
         ]
 
         # 3. Build request payload
@@ -157,7 +153,7 @@ class _OpenAICompatVlmBase(VlmProvider, LoggerClass):
         #    1.0 — structured output was requested AND received non-empty
         #    0.5 — description-only path (or structured requested but invalid JSON)
         #    Note: providers that raise are scored 0 by the chain itself (succeeded=False).
-        quality = self._heuristic_quality(description, structured, schema is not None)
+        quality = OpenAICompatVlmHelpers.heuristic_quality(description, structured, schema is not None)
 
         self.logger.debug(
             f"{self.name} done: {len(description)} chars "
@@ -166,70 +162,11 @@ class _OpenAICompatVlmBase(VlmProvider, LoggerClass):
         return VlmResult(description=description, structured=structured, quality=quality)
 
     @staticmethod
-    def _heuristic_quality(
-        description: str,
-        structured: dict[str, Any] | None,
-        schema_requested: bool,
-    ) -> float:
+    def chart_schema() -> dict[str, Any]:
         """
-        Score a VLM response in [0.0, 1.0] using only what the adapter sees.
-
-        Args:
-            description (str): The natural-language description returned.
-            structured (dict | None): Parsed structured payload (None when schema not
-                requested or JSON parsing failed).
-            schema_requested (bool): Whether the caller asked for a structured response.
+        Return the JSON schema for chart-to-data structured extraction.
 
         Returns:
-            float: 1.0 when structured output was requested and is non-empty;
-                0.5 when only a non-empty description was returned;
-                0.0 when neither slot carries usable content.
+            dict: JSON schema requiring 'description' (str) and 'table' (list[list[str]]).
         """
-        has_description = bool(description and description.strip())
-        has_structured = isinstance(structured, dict) and len(structured) > 0
-        if schema_requested and has_structured:
-            return 1.0
-        if has_description:
-            return 0.5
-        return 0.0
-
-    @staticmethod
-    def _build_system_prompt(grounding: str | None, schema: dict | None) -> str:
-        """Assemble the system prompt based on grounding/schema flags."""
-        parts = [
-            "You are a document intelligence assistant.  Describe images from professional "
-            "documents (reports, presentations, research papers) in a way optimized for "
-            "information retrieval.  Include axes, units, trends, extrema, key labels, and "
-            "significant data points.  Be precise and concise."
-        ]
-        if grounding:
-            parts.append(
-                "\nIMPORTANT — Anti-hallucination constraint: the following OCR text was "
-                "extracted directly from this image.  You MUST ground your description on "
-                "this text.  Do NOT invent numbers, labels, names, or values that are absent "
-                "from the OCR text:\n"
-                f"<ocr_text>{grounding}</ocr_text>"
-            )
-        if schema:
-            parts.append(
-                "\nRespond ONLY with valid JSON matching the provided schema.  "
-                "No preamble, no markdown fencing."
-            )
-        return "\n".join(parts)
-
-    @staticmethod
-    def _build_user_text(grounding: str | None, schema: dict | None) -> str:
-        """Build the user-turn instruction."""
-        if schema:
-            return (
-                "Extract the structured data from this chart or graph.  "
-                "Return a JSON object with a 'description' string and a 'table' array."
-            )
-        if grounding:
-            return "Describe this figure for information retrieval, grounded on the OCR text."
-        return "Describe this figure for information retrieval."
-
-    @staticmethod
-    def chart_schema() -> dict[str, Any]:
-        """Return the JSON schema for chart-to-data structured extraction."""
         return _CHART_DATA_SCHEMA

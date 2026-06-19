@@ -3,6 +3,13 @@
 # Each class is a Pydantic discriminated-union member: id: Literal[...] selects the method,
 # typed params replace the old free-form dict, and build() instantiates the splitter.
 # The SPLIT_METHOD_PARAMS catalog still maps id → model for describe_stages() schema derivation.
+#
+# REFACTOR EXCEPTION (224 lines — within ≤250 tolerance):
+# Three Pydantic config models form a single discriminated union; splitting them across
+# files would break @register("split_method") auto-discovery (the __init__.py imports
+# this module as a side-effect) and introduce cross-file coupling for no readability gain.
+# Each model has validators + build() + merge_defaults() + availability() — no shared
+# stateless helpers exist to extract.
 
 from __future__ import annotations
 
@@ -107,7 +114,7 @@ class SemanticConfig(BaseModel):
         """Coerce ``embed`` into a typed EmbedProviderConfig instance after construction."""
         # Lazy import — avoids a circular import at module load time.
         from libs.capabilities.embed import EmbedProviderConfig  # noqa: F401  (typing alias)
-        from libs.capabilities.embed.local.tei import TeiEmbedConfig
+        from libs.capabilities.embed.local.config import TeiEmbedConfig
         from libs.capabilities.embed.local.openai_compat import LocalOpenAIEmbedConfig
         from libs.capabilities.embed.external.openai_compat import OpenAIEmbedConfig
         from pydantic import TypeAdapter

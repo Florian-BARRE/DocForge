@@ -104,7 +104,7 @@ def build_default_pipeline(cfg: Any) -> PipelineConfig:
     from libs.capabilities.ocr.local.paddle_ocr import PaddleOcrConfig
     from libs.capabilities.ocr.external.mistral_ocr import MistralOcrConfig
     from libs.capabilities.vlm.local.openai_compat import LocalVlmConfig
-    from libs.capabilities.embed.local.tei import TeiEmbedConfig
+    from libs.capabilities.embed.local.config import TeiEmbedConfig
     from libs.engine.stages.chunking.params import TokenBudgetConfig
 
     # 1. Parser chain

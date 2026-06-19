@@ -1,5 +1,9 @@
 # ====== Code Summary ======
-# Repository for CollectionModel: creation, retrieval, listing.
+# Repository for CollectionModel: creation, retrieval, listing, deletion, and pipeline-version updates.
+# All methods are transactional DB operations that use the SQLAlchemy session directly.
+# There is no stateless logic to extract: every helper call depends on the session or on
+# ORM model constructors that are trivially inlined.  At 239 lines this file is within the
+# ~250-line budget — no split is warranted.
 
 # ====== Standard Library Imports ======
 import uuid

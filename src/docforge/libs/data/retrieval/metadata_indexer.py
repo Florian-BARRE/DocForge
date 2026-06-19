@@ -5,6 +5,11 @@
 # (dense for `semantic`, sparse/BM25 for `lexical`), exactly as the collection config dictates.
 # Document-level fields embed to the same value for every chunk, so one embedding is broadcast
 # across the document's points.
+#
+# SIZE NOTE: At 226 lines this file is within the ~250-line budget.  The only candidate for
+# extraction is `_value()`, which is already a `@staticmethod` on the class.  The async
+# `_sync_field` method is tightly coupled to `self._embed` and `self._qdrant` — it is not
+# stateless and cannot be moved to an external helper.  No split is warranted.
 
 # ====== Standard Library Imports ======
 from __future__ import annotations

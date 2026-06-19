@@ -2,6 +2,14 @@
 # SQLAlchemy 2.0 ORM models for the DocForge Postgres schema.
 # These are the source of truth for all document catalogue data.
 # Qdrant is a derived, regenerable index — never the source of truth.
+#
+# SIZE EXCEPTION: This file is ~268 lines and slightly exceeds the ~250-line guideline.
+# Splitting ORM declarative models across multiple files is anti-idiomatic in SQLAlchemy:
+# all models must share the same `DeclarativeBase` instance, cross-table relationships
+# (e.g. CollectionModel ↔ DocumentModel ↔ BlockModel) require mutual forward references,
+# and tools like Alembic's autogenerate expect to discover all models in a single import.
+# The 9 table classes here are tightly coupled by FK constraints and cannot be
+# independently understood — keeping them co-located is the correct engineering trade-off.
 
 # ====== Standard Library Imports ======
 import uuid

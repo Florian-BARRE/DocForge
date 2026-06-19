@@ -2,6 +2,12 @@
 # NodeCache — node-level result cache for the P2 stage engine.
 # Wraps the stage_run Postgres table: each row records one pipeline node execution.
 # Cache hit condition: (document_id, node_id, fingerprint) with status='done'.
+#
+# REFACTOR EXCEPTION (262 lines > 250):
+# Every method is an async DB operation that emits log messages via self.logger —
+# no stateless logic exists to extract cleanly.  Splitting would create artificial
+# seams (e.g. a separate "query builder" file) with cross-module coupling and no
+# readability benefit.  File is cohesive by design: one class, one responsibility.
 
 # ====== Standard Library Imports ======
 from __future__ import annotations

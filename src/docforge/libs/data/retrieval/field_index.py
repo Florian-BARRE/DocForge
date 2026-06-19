@@ -3,6 +3,12 @@
 # a collection needs from its metadata schema, resolve a field's text value for a chunk, and
 # combine per-vector ranked lists with weighted Reciprocal Rank Fusion. No I/O — fully unit
 # testable and reused by S6 (indexing) and HybridSearchService (retrieval).
+#
+# SIZE NOTE: At 221 lines this file is within the ~250-line budget.  It is already a
+# single-responsibility helpers module (module-level constants + two dataclasses + one
+# static-only class).  There is no obvious seam to split on — any further split would
+# scatter tightly coupled pieces (VectorPlan relies on FieldVec; FieldIndexHelpers methods
+# cross-reference each other).  No split is warranted.
 
 # ====== Standard Library Imports ======
 from __future__ import annotations

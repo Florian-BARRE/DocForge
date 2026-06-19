@@ -8,15 +8,13 @@ from __future__ import annotations
 # ====== Third-Party Library Imports ======
 import httpx
 from loggerplusplus import LoggerClass
-from typing import Any, Literal
-from pydantic import BaseModel, Field, model_validator
 
 # ====== Internal Project Imports ======
-from typing import ClassVar
-from libs.core.contracts._registry import register
-from libs.core.contracts.spec_utils import flatten_provider_spec as _flatten_provider_spec
 from libs.capabilities.embed.base import EmbedProvider
 from libs.capabilities.interfaces import EmbedResult
+
+# ====== Local Project Imports ======
+# (none — TeiEmbedConfig lives in config.py to keep provider and config separate)
 
 
 class TeiEmbedProvider(EmbedProvider, LoggerClass):
@@ -173,64 +171,5 @@ class TeiEmbedProvider(EmbedProvider, LoggerClass):
         return dense, sparse
 
 
-# ─── Config ──────────────────────────────────────────────────────────────────
-
-
-
-@register("embed")
-class TeiEmbedConfig(BaseModel):
-    """
-    Configuration for the TEI (Text Embeddings Inference) local embedding server.
-
-    Config id: "tei" — BGE-M3, 1024-dim dense + BM25 sparse, hybrid search.
-    Requires a running TEI server (e.g. http://tei:8080).
-
-    Attributes:
-        base_url: TEI server URL.
-        model: Embedding model identifier (default BAAI/bge-m3).
-        batch_size: Max texts per batch request.
-        embed_sparse: Also produce BM25 sparse vectors (enables hybrid search).
-    """
-
-    _label: ClassVar[str] = "TEI (BGE-M3) — local dense+sparse hybrid embedding (1024-dim)"
-    _category: ClassVar[str] = "embed"
-
-    id: Literal["tei"] = "tei"
-    base_url: str = Field(default="http://tei:8080", description="TEI server URL.")
-    model: str = Field(default="BAAI/bge-m3", description="Embedding model served by TEI.")
-    batch_size: int = Field(default=32, ge=1, le=256, description="Max texts per batch.")
-    embed_sparse: bool = Field(default=True, description="Produce BM25 sparse vectors (hybrid search).")
-
-    @model_validator(mode="before")
-    @classmethod
-    def _compat(cls, v: Any) -> Any:
-        return _flatten_provider_spec(v)
-
-    def build(self) -> "TeiEmbedProvider":
-        """Instantiate TeiEmbedProvider from this config."""
-        return TeiEmbedProvider(
-            base_url=self.base_url,
-            model=self.model,
-            batch_size=self.batch_size,
-            embed_sparse=self.embed_sparse,
-        )
-
-    def merge_defaults(self, cfg: Any) -> "TeiEmbedConfig":
-        return self.model_copy(update={
-            "base_url": self.base_url or getattr(cfg, "TEI_BASE_URL", self.base_url),
-            "batch_size": self.batch_size or getattr(cfg, "TEI_BATCH_SIZE", self.batch_size),
-        })
-
-    @classmethod
-    def availability(cls, cfg: Any) -> tuple[bool, str]:
-        """Available when the TEI server is reachable."""
-        import socket
-        base_url = getattr(cfg, "TEI_BASE_URL", "http://tei:8080")
-        try:
-            from urllib.parse import urlparse
-            p = urlparse(base_url)
-            host, port = p.hostname or "tei", p.port or 8080
-            with socket.create_connection((host, port), timeout=1):
-                return True, f"BGE-M3 · 1024-dim · dense+sparse · {base_url}"
-        except OSError:
-            return False, f"TEI server not reachable at {base_url}"
+# TeiEmbedConfig (the @register-decorated Pydantic config) lives in config.py
+# to separate the provider implementation from its configuration / registry concerns.

@@ -245,7 +245,7 @@ class EmbedConfig(BaseModel):
         TypeAdapter so unknown ids raise ValidationError immediately (not at registry time).
         """
         # Lazy imports to preserve the leaf constraint.
-        from libs.capabilities.embed.local.tei import TeiEmbedConfig
+        from libs.capabilities.embed.local.config import TeiEmbedConfig
         from libs.capabilities.embed.local.openai_compat import LocalOpenAIEmbedConfig
         from libs.capabilities.embed.external.openai_compat import OpenAIEmbedConfig
         from typing import Annotated, Union

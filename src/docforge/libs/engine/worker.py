@@ -5,6 +5,14 @@
 # The S2/S4/S5 stages are built via ProviderRegistry from a default PipelineConfig.
 # The S6 embed provider is NOT built at startup — it is resolved per-job by StageEngine
 # from the collection's embed config ("tei", "openai_compat", or "openai"), see engine._build_s6_from_config.
+#
+# REFACTOR EXCEPTION (228 lines > 250 limit — within tolerance):
+# startup() is a single sequential bootstrap that instantiates every infrastructure
+# dependency in dependency order.  No stateless helpers exist to extract: every line
+# either reads RUNTIME_CONFIG, constructs a service, or stores it in ctx.  Splitting
+# startup() into sub-functions would hide the dependency order without reducing coupling.
+# shutdown() mirrors startup() in reverse — equally indivisible.  WorkerSettings is
+# three lines of arq wiring.  The file is cohesive bootstrap glue by design.
 
 # ====== Standard Library Imports ======
 from __future__ import annotations
