@@ -20,7 +20,7 @@ from libs.engine.stages.chunking import (
     TokenBudgetConfig,
 )
 from libs.core.contracts._registry import get_configs
-from libs.capabilities.registry import _params_from_model
+from libs.engine.assembly import _params_from_model
 
 
 class TestSplitMethodCatalogDrift:

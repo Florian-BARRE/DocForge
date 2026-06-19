@@ -207,12 +207,12 @@ class ProviderRegistry(LoggerClass):
         # Trigger auto-import for all categories so @register decorators fire.
         from libs.core.contracts._registry import auto_import
         for pkg in (
-            "providers.converter",
-            "providers.parser",
-            "providers.classifier",
-            "providers.ocr",
-            "providers.vlm",
-            "providers.embed",
+            "libs.capabilities.converter",
+            "libs.capabilities.parser",
+            "libs.capabilities.classifier",
+            "libs.capabilities.ocr",
+            "libs.capabilities.vlm",
+            "libs.capabilities.embed",
         ):
             auto_import(pkg)
         # split_method configs live in params.py, imported via chunking __init__

@@ -17,7 +17,7 @@ from libs.engine.provider_cache import ProviderCallCache
 from libs.capabilities.converter import GotenbergConverter
 from libs.capabilities.device_manager import DeviceManager
 from libs.capabilities.parser import DoclingBackend
-from libs.capabilities.registry import ProviderRegistry
+from libs.engine.assembly import ProviderRegistry
 from libs.data.storage.postgres.client import PostgresClient
 from libs.data.storage.postgres.repositories import (
     BlockRepository,

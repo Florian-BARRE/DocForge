@@ -27,7 +27,7 @@ from libs.engine.stages.s6_embed_index import S6EmbedIndexStage
 from libs.engine.tasks import run_pipeline_task
 from libs.capabilities.converter import GotenbergConverter
 from libs.capabilities.parser import DoclingBackend
-from libs.capabilities.registry import ProviderRegistry
+from libs.engine.assembly import ProviderRegistry
 from libs.data.storage.postgres.client import PostgresClient
 from libs.data.storage.postgres.repositories import (
     BlockRepository,

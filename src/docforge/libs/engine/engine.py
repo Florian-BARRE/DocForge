@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from libs.engine.stages.s1_parse import S1ParseStage as _S1ParseStageType
     from libs.core.contracts.pipeline_config import EmbedConfig
-    from libs.capabilities.registry import ProviderRegistry
+    from libs.engine.assembly import ProviderRegistry
 
 # ====== Third-Party Library Imports ======
 from loggerplusplus import LoggerClass
