@@ -3,57 +3,15 @@
 # a collection needs from its metadata schema, resolve a field's text value for a chunk, and
 # combine per-vector ranked lists with weighted Reciprocal Rank Fusion. No I/O — fully unit
 # testable and reused by S6 (indexing) and HybridSearchService (retrieval).
-#
-# SIZE NOTE: At 221 lines this file is within the ~250-line budget.  It is already a
-# single-responsibility helpers module (module-level constants + two dataclasses + one
-# static-only class).  There is no obvious seam to split on — any further split would
-# scatter tightly coupled pieces (VectorPlan relies on FieldVec; FieldIndexHelpers methods
-# cross-reference each other).  No split is warranted.
 
 # ====== Standard Library Imports ======
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
 from typing import Any
 
-# Canonical content vector names (always present), shared with the Qdrant client.
-CONTENT_DENSE: str = "content_dense"
-CONTENT_SPARSE: str = "content_bm25"
-
-# RRF rank constant (standard k=60; larger → flatter rank influence).
-RRF_K: int = 60
-
-
-@dataclass(slots=True)
-class FieldVec:
-    """A metadata field promoted to a vector, with its fusion weight."""
-
-    name: str          # original field name (e.g. "title")
-    vector: str        # Qdrant named-vector key (e.g. "meta_title_dense")
-    weight: float      # RRF fusion weight from the schema
-
-
-@dataclass(slots=True)
-class VectorPlan:
-    """
-    The named vectors a collection's metadata schema requires (beyond content).
-
-    Attributes:
-        dense (list[FieldVec]): One per ``semantic`` field — a dedicated named dense vector.
-        sparse (list[FieldVec]): One per ``lexical`` field — a dedicated named sparse (BM25) vector.
-    """
-
-    dense: list[FieldVec] = field(default_factory=list)
-    sparse: list[FieldVec] = field(default_factory=list)
-
-    @property
-    def dense_vector_names(self) -> list[str]:
-        return [f.vector for f in self.dense]
-
-    @property
-    def sparse_vector_names(self) -> list[str]:
-        return [f.vector for f in self.sparse]
+# ====== Local Project Imports ======
+from .models import RRF_K, FieldVec, VectorPlan
 
 
 class FieldIndexHelpers:

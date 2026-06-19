@@ -4,7 +4,6 @@
 # and the config_version audit log (snapshot / list / get) backing history + rollback.
 
 # ====== Standard Library Imports ======
-import re
 import uuid
 from typing import Any
 
@@ -15,7 +14,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 # ====== Local Project Imports ======
-from ..models import CollectionModel, ConfigVersionModel, MetadataFieldModel
+from ..models import CollectionModel, ConfigVersionModel
+from .config_repo_helpers import ConfigRepoHelpers
 
 
 class ConfigRepository(LoggerClass):
@@ -71,7 +71,9 @@ class ConfigRepository(LoggerClass):
         collection.unknown_field_policy = doc["unknown_field_policy"]
         collection.pipeline = doc["pipeline"]
         if embed_changed or pipeline_changed:
-            collection.pipeline_version = self._next_pipeline_version(collection.pipeline_version)
+            collection.pipeline_version = ConfigRepoHelpers.next_pipeline_version(
+                collection.pipeline_version
+            )
         if embed_changed:
             collection.needs_reindex = True
 
@@ -79,7 +81,7 @@ class ConfigRepository(LoggerClass):
         merged_fields = ConfigDocument.merge_metadata_schema(doc.get("metadata_fields", []))
         collection.metadata_fields.clear()
         for spec in merged_fields:
-            collection.metadata_fields.append(self._build_field(spec))
+            collection.metadata_fields.append(ConfigRepoHelpers.build_field(spec))
         await session.flush()
 
         # 5. Snapshot the applied config into the version history
@@ -172,29 +174,3 @@ class ConfigRepository(LoggerClass):
             )
         )
         return int(result.scalar() or 0) + 1
-
-    @staticmethod
-    def _next_pipeline_version(current: str) -> str:
-        """
-        Increment the trailing integer of a pipeline_version tag (``v1`` → ``v2``).
-
-        Falls back to appending ``-2`` when no trailing integer is present.
-        """
-        match = re.search(r"(\d+)$", current or "")
-        if match:
-            return f"{current[: match.start()]}{int(match.group(1)) + 1}"
-        return f"{current or 'v1'}-2"
-
-    @staticmethod
-    def _build_field(spec: dict[str, Any]) -> MetadataFieldModel:
-        """Build a MetadataFieldModel from a normalized metadata-field dict (no collection_id)."""
-        return MetadataFieldModel(
-            field_name=spec["field_name"],
-            field_type=spec.get("field_type", "string"),
-            required=bool(spec.get("required", False)),
-            filterable=bool(spec.get("filterable", False)),
-            lexical=bool(spec.get("lexical", False)),
-            semantic=bool(spec.get("semantic", False)),
-            enum_values=spec.get("enum_values"),
-            is_system=bool(spec.get("is_system", False)),
-        )

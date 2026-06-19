@@ -5,6 +5,7 @@ from .client import QdrantStorageClient
 from .collection_admin import QdrantCollectionAdmin
 from .payload import QdrantPointHelpers
 from .search import QdrantSearchHelpers
+from .upsert import QdrantUpsertHelpers
 
 # ------------------- Public API ------------------- #
 __all__ = [
@@ -12,4 +13,5 @@ __all__ = [
     "QdrantCollectionAdmin",
     "QdrantPointHelpers",
     "QdrantSearchHelpers",
+    "QdrantUpsertHelpers",
 ]

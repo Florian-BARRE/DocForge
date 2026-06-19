@@ -16,7 +16,10 @@ from loggerplusplus import loggerplusplus
 from libs.core.contracts.pipeline_config import PipelineConfig
 
 # ====== Internal Project Imports ======
-from libs.core.metadata import SYSTEM_METADATA_FIELDS, MetaFieldSpec
+from libs.core.metadata import SYSTEM_METADATA_FIELDS
+
+# ====== Local Project Imports ======
+from .document_helpers import ConfigFieldNormalizer
 
 
 class ConfigDocument:
@@ -63,7 +66,9 @@ class ConfigDocument:
             "embedding_model": collection.embedding_model,
             "unknown_field_policy": collection.unknown_field_policy,
             "pipeline": dict(collection.pipeline or {}),
-            "metadata_fields": [cls._field_to_dict(f) for f in collection.metadata_fields],
+            "metadata_fields": [
+                ConfigFieldNormalizer.to_dict(f) for f in collection.metadata_fields
+            ],
         }
 
     @classmethod
@@ -151,10 +156,10 @@ class ConfigDocument:
             list[dict]: The merged, normalized metadata schema (system fields first).
         """
         by_name: dict[str, dict[str, Any]] = {
-            f["field_name"]: cls._field_to_dict(f) for f in SYSTEM_METADATA_FIELDS
+            f["field_name"]: ConfigFieldNormalizer.to_dict(f) for f in SYSTEM_METADATA_FIELDS
         }
         for raw in custom or []:
-            spec = cls._field_to_dict(raw)
+            spec = ConfigFieldNormalizer.to_dict(raw)
             name = spec["field_name"]
             if name in by_name:
                 # Override a system field's search behavior only; keep it flagged as system.
@@ -166,36 +171,3 @@ class ConfigDocument:
                 spec["is_system"] = False
                 by_name[name] = spec
         return list(by_name.values())
-
-    # ─── Private helpers ──────────────────────────────────────────────────────────
-
-    @classmethod
-    def _field_to_dict(cls, field: Any) -> dict[str, Any]:
-        """
-        Normalize a metadata field (ORM row, Pydantic model, or dict) to the canonical keys.
-
-        Args:
-            field (Any): A MetadataFieldModel, MetaFieldSpec, or plain dict.
-
-        Returns:
-            dict: A dict with exactly the persisted metadata-field keys, defaults filled.
-        """
-        # 1. Coerce any supported source into a plain dict
-        if hasattr(field, "model_dump"):
-            src = field.model_dump()
-        elif isinstance(field, dict):
-            src = field
-        else:
-            src = {k: getattr(field, k, None) for k in MetaFieldSpec.model_fields}
-
-        # 2. Project onto the canonical key set with sensible defaults
-        return {
-            "field_name": src["field_name"],
-            "field_type": src.get("field_type", "string"),
-            "required": bool(src.get("required", False)),
-            "filterable": bool(src.get("filterable", False)),
-            "lexical": bool(src.get("lexical", False)),
-            "semantic": bool(src.get("semantic", False)),
-            "enum_values": src.get("enum_values"),
-            "is_system": bool(src.get("is_system", False)),
-        }

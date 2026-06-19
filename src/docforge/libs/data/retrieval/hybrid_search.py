@@ -88,14 +88,9 @@ class HybridSearchService(LoggerClass):
             RuntimeError: If Qdrant client is not connected.
             httpx.HTTPError: If the TEI server is unreachable.
         """
-        # 1. Embed the query — produces dense + sparse in one HTTP round-trip
-        embed_result = await self._embed.embed([query])
-        dense_vec = embed_result.vectors[0]
-        sparse_vec = embed_result.sparse[0] if embed_result.sparse else None
-
-        # 2. Resolve the multi-field vector plan + fusion weights from the schema
-        dense_vectors, sparse_vectors, weights = HybridSearchHelpers.resolve_vector_plan(
-            metadata_fields, weight_overrides
+        # 1. Embed the query + resolve the multi-field vector plan and fusion weights
+        dense_vec, sparse_vec, dense_vectors, sparse_vectors, weights = await self._embed_and_resolve(
+            query, metadata_fields, weight_overrides
         )
         self.logger.debug(
             f"HybridSearch: query={query[:60]!r}… "
@@ -150,11 +145,8 @@ class HybridSearchService(LoggerClass):
                 SearchResult objects; ``ranked``/``fused`` explain how each chunk was ranked.
         """
         # 1. Embed + resolve the plan (same as search)
-        embed_result = await self._embed.embed([query])
-        dense_vec = embed_result.vectors[0]
-        sparse_vec = embed_result.sparse[0] if embed_result.sparse else None
-        dense_vectors, sparse_vectors, weights = HybridSearchHelpers.resolve_vector_plan(
-            metadata_fields, weight_overrides
+        dense_vec, sparse_vec, dense_vectors, sparse_vectors, weights = await self._embed_and_resolve(
+            query, metadata_fields, weight_overrides
         )
 
         # 2. Debug retrieval — keep the per-vector ranked lists + fused scores
@@ -177,6 +169,38 @@ class HybridSearchService(LoggerClass):
         }
 
     # ─── Internal ─────────────────────────────────────────────────────────────
+
+    async def _embed_and_resolve(
+        self,
+        query: str,
+        metadata_fields: list[Any] | None,
+        weight_overrides: dict[str, float] | None,
+    ) -> tuple[list[float], dict[int, float] | None, list[str], list[str], dict[str, float]]:
+        """
+        Embed the query and resolve the per-field vector plan and fusion weights.
+
+        Shared front half of :meth:`search` and :meth:`search_debug`: a single TEI call
+        yields the dense + sparse query vectors, then the collection schema is turned into
+        the dense/sparse named-vector lists and their fusion weights.
+
+        Args:
+            query (str): Natural language query string.
+            metadata_fields (list | None): Collection's metadata schema for per-field vectors.
+            weight_overrides (dict[str, float] | None): Per-vector weight overrides.
+
+        Returns:
+            tuple: ``(dense_vec, sparse_vec, dense_vectors, sparse_vectors, weights)``.
+        """
+        # 1. Embed the query — produces dense + sparse in one HTTP round-trip
+        embed_result = await self._embed.embed([query])
+        dense_vec = embed_result.vectors[0]
+        sparse_vec = embed_result.sparse[0] if embed_result.sparse else None
+
+        # 2. Resolve the multi-field vector plan + fusion weights from the schema
+        dense_vectors, sparse_vectors, weights = HybridSearchHelpers.resolve_vector_plan(
+            metadata_fields, weight_overrides
+        )
+        return dense_vec, sparse_vec, dense_vectors, sparse_vectors, weights
 
     async def _hydrate(
         self, session: AsyncSession, raw_hits: list[dict[str, Any]]

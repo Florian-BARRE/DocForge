@@ -12,6 +12,9 @@ from loggerplusplus import loggerplusplus
 from qdrant_client import AsyncQdrantClient
 from qdrant_client.models import Filter, SparseVector
 
+# ====== Internal Project Imports ======
+from libs.data.retrieval.field_index import FieldIndexHelpers
+
 
 class QdrantSearchHelpers:
     """
@@ -112,3 +115,66 @@ class QdrantSearchHelpers:
             {"id": cid, "score": float(score), "payload": payload_by_id.get(cid, {})}
             for cid, score in fused
         ]
+
+    @classmethod
+    async def run_multi_search(
+        cls,
+        client: AsyncQdrantClient,
+        collection_name: str,
+        dense_query: list[float],
+        sparse_query: dict[int, float] | None,
+        dense_vectors: list[str],
+        sparse_vectors: list[str],
+        weights: dict[str, float],
+        top_k: int,
+        payload_filter: dict | None,
+    ) -> dict[str, Any]:
+        """
+        Run the full multi-field weighted-RRF search and expose the fusion internals.
+
+        Drives the shared pipeline used by both the plain and debug search entry points:
+        per-vector ranked candidate lists → weighted RRF fusion → payload hydration.
+
+        Args:
+            client (AsyncQdrantClient): Live Qdrant client.
+            collection_name (str): Target Qdrant collection.
+            dense_query (list[float]): Query dense embedding.
+            sparse_query (dict[int, float] | None): Query BM25 sparse map.
+            dense_vectors (list[str]): Dense named vectors to search (incl. content_dense).
+            sparse_vectors (list[str]): Sparse named vectors to search (incl. content_bm25).
+            weights (dict[str, float]): vector_name → fusion weight.
+            top_k (int): Number of fused results to return.
+            payload_filter (dict | None): Raw Qdrant filter dict.
+
+        Returns:
+            dict[str, Any]: ``{"ranked": {vector → [ids]}, "fused": [(id, score)],
+                "results": [{id, score, payload}], "candidate_limit": int}``.
+        """
+        candidate_limit = max(top_k * 3, 20)
+
+        # 1. Per-vector ranked candidate lists
+        ranked = await cls.ranked_lists(
+            client=client,
+            collection_name=collection_name,
+            dense_query=dense_query,
+            sparse_query=sparse_query,
+            dense_vectors=dense_vectors,
+            sparse_vectors=sparse_vectors,
+            payload_filter=payload_filter,
+            candidate_limit=candidate_limit,
+        )
+
+        # 2. Weighted RRF fusion across all ranked lists
+        fused = FieldIndexHelpers.weighted_rrf(ranked, weights, top_k=top_k)
+
+        # 3. Hydrate payloads for the fused winners (empty fused → no hydration)
+        results = (
+            await cls.hydrate_payloads(client, collection_name, fused) if fused else []
+        )
+
+        return {
+            "ranked": ranked,
+            "fused": fused,
+            "results": results,
+            "candidate_limit": candidate_limit,
+        }

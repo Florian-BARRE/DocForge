@@ -13,12 +13,13 @@ from loggerplusplus import LoggerClass
 from qdrant_client import AsyncQdrantClient
 
 # ====== Internal Project Imports ======
-from libs.data.retrieval.field_index import CONTENT_DENSE, CONTENT_SPARSE, FieldIndexHelpers
+from libs.data.retrieval.field_index import CONTENT_DENSE, CONTENT_SPARSE
 
 # ====== Local Project Imports ======
 from .collection_admin import QdrantCollectionAdmin
 from .payload import QdrantPointHelpers
 from .search import QdrantSearchHelpers
+from .upsert import QdrantUpsertHelpers
 
 # Named content vector keys (always present). Per-field vectors are named meta_<field>_dense
 # / meta_<field>_bm25 (see libs/retrieval/field_index.py — one source of truth).
@@ -263,7 +264,7 @@ class QdrantStorageClient(LoggerClass):
         Returns:
             int: Number of points upserted.
         """
-        return await QdrantPointHelpers.upsert_points(
+        return await QdrantUpsertHelpers.upsert_points(
             client=self._require_client(),
             collection_name=collection_name,
             chunk_ids=chunk_ids,
@@ -305,35 +306,24 @@ class QdrantStorageClient(LoggerClass):
         Returns:
             list[dict]: ``id``, ``score`` (fused), ``payload`` for the top_k results.
         """
-        client = self._require_client()
-        candidate_limit = max(top_k * 3, 20)
-
-        # 1. Per-vector ranked candidate lists
-        ranked = await QdrantSearchHelpers.ranked_lists(
-            client=client,
+        # 1. Run the shared search pipeline (ranked lists → RRF → hydration)
+        outcome = await QdrantSearchHelpers.run_multi_search(
+            client=self._require_client(),
             collection_name=collection_name,
             dense_query=dense_query,
             sparse_query=sparse_query,
             dense_vectors=dense_vectors,
             sparse_vectors=sparse_vectors,
+            weights=weights,
+            top_k=top_k,
             payload_filter=payload_filter,
-            candidate_limit=candidate_limit,
         )
 
-        # 2. Weighted RRF fusion across all ranked lists
-        fused = FieldIndexHelpers.weighted_rrf(ranked, weights, top_k=top_k)
-        if not fused:
-            return []
-
-        # 3. Hydrate payloads for the fused winners
-        results = await QdrantSearchHelpers.hydrate_payloads(
-            client=client,
-            collection_name=collection_name,
-            fused=fused,
-        )
+        # 2. Return only the hydrated, rank-ordered results
+        results = outcome["results"]
         self.logger.debug(
             f"Qdrant weighted-RRF search → {collection_name!r} "
-            f"vectors={len(ranked)} top_k={top_k} results={len(results)}"
+            f"vectors={len(outcome['ranked'])} top_k={top_k} results={len(results)}"
         )
         return results
 
@@ -356,30 +346,25 @@ class QdrantStorageClient(LoggerClass):
                 "candidate_limit": int}`` — the per-vector ranked lists, the fused order, and
                 the hydrated winners. Lets the UI explain *why* a chunk ranked where it did.
         """
-        client = self._require_client()
-        candidate_limit = max(top_k * 3, 20)
-
-        # 1. Per-vector ranked candidate lists
-        ranked = await QdrantSearchHelpers.ranked_lists(
-            client=client,
+        # 1. Run the shared search pipeline (ranked lists → RRF → hydration)
+        outcome = await QdrantSearchHelpers.run_multi_search(
+            client=self._require_client(),
             collection_name=collection_name,
             dense_query=dense_query,
             sparse_query=sparse_query,
             dense_vectors=dense_vectors,
             sparse_vectors=sparse_vectors,
+            weights=weights,
+            top_k=top_k,
             payload_filter=payload_filter,
-            candidate_limit=candidate_limit,
         )
 
-        # 2. Weighted RRF fusion and payload hydration
-        fused = FieldIndexHelpers.weighted_rrf(ranked, weights, top_k=top_k)
-        results = await QdrantSearchHelpers.hydrate_payloads(client, collection_name, fused) if fused else []
-
+        # 2. Reshape the fused pairs into JSON-friendly dicts for the debug view
         return {
-            "ranked": ranked,
-            "fused": [{"id": cid, "score": float(score)} for cid, score in fused],
-            "results": results,
-            "candidate_limit": candidate_limit,
+            "ranked": outcome["ranked"],
+            "fused": [{"id": cid, "score": float(score)} for cid, score in outcome["fused"]],
+            "results": outcome["results"],
+            "candidate_limit": outcome["candidate_limit"],
         }
 
     # ─── Internal ───────────────────────────────────────────────────────────

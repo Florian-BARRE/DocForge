@@ -32,6 +32,14 @@ class S3Client(LoggerClass):
     Key layout:
         All keys follow the content-addressed scheme defined in spec §8.
         Use ``S3Helpers.key_*`` static methods to construct keys.
+
+    Split decision (DOCUMENTED EXCEPTION):
+        At ~276 lines this file is above the ~200-line soft limit.  Every method is
+        connection-bound: it opens the aioboto3 client via ``self._s3()`` and operates
+        within that async context.  All stateless logic (content-addressed key builders,
+        path-style botocore config) is already extracted into :class:`S3Helpers`.  What
+        remains is a single, cohesive object-store operation surface that cannot be split
+        without fragmenting the connection lifecycle.  Leave as one file.
     """
 
     def __init__(

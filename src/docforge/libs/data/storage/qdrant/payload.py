@@ -1,6 +1,7 @@
 # ====== Code Summary ======
-# Static helpers for Qdrant point and payload operations:
-# upsert point building, payload patching, vector updates, and point deletion.
+# Static helpers for Qdrant point and payload mutation operations:
+# payload patching, named-vector updates, and point deletion. Multi-vector
+# upsert lives in upsert.py (QdrantUpsertHelpers).
 
 # ====== Standard Library Imports ======
 from __future__ import annotations
@@ -12,7 +13,6 @@ from loggerplusplus import loggerplusplus
 from qdrant_client import AsyncQdrantClient
 from qdrant_client.models import (
     PointIdsList,
-    PointStruct,
     PointVectors,
     SparseVector,
 )
@@ -20,12 +20,12 @@ from qdrant_client.models import (
 
 class QdrantPointHelpers:
     """
-    Static helpers for Qdrant point and payload operations.
+    Static helpers for Qdrant point and payload mutation operations.
 
-    Encapsulates upsert point construction, payload patching, named vector
-    updates, and point deletion.  All methods take the live
-    ``AsyncQdrantClient`` as an explicit argument so that this class carries
-    no instance state of its own.
+    Encapsulates payload patching, named vector updates, and point deletion.
+    All methods take the live ``AsyncQdrantClient`` as an explicit argument so
+    that this class carries no instance state of its own.  Multi-vector point
+    upsert is handled separately by :class:`QdrantUpsertHelpers`.
     """
 
     logger = loggerplusplus.bind(identifier="QdrantPointHelpers")
@@ -168,59 +168,3 @@ class QdrantPointHelpers:
             collection_name=collection_name, vectors=vector_names, points=point_ids
         )
         cls.logger.debug(f"Qdrant: deleted vectors {vector_names} from {len(point_ids)} point(s)")
-
-    @classmethod
-    async def upsert_points(
-        cls,
-        client: AsyncQdrantClient,
-        collection_name: str,
-        chunk_ids: list[str],
-        dense_by_vector: dict[str, list[list[float] | None]],
-        sparse_by_vector: dict[str, list[dict[int, float] | None]],
-        payloads: list[dict[str, Any]],
-    ) -> int:
-        """
-        Upsert points carrying multiple named dense + sparse vectors (spec §7.2).
-
-        Idempotent by chunk_id. Per chunk, only vectors with a non-None value are attached —
-        a chunk lacking a value for a field (e.g. an empty custom field) simply omits that
-        named vector, which Qdrant supports.
-
-        Args:
-            client (AsyncQdrantClient): Live Qdrant client.
-            collection_name (str): Target collection.
-            chunk_ids (list[str]): UUID strings used as point IDs.
-            dense_by_vector (dict): vector_name → list of dense vectors (one per chunk; None to skip).
-            sparse_by_vector (dict): vector_name → list of BM25 maps (one per chunk; None to skip).
-            payloads (list[dict]): Filterable payload per chunk.
-
-        Returns:
-            int: Number of points upserted.
-        """
-        if not chunk_ids:
-            return 0
-        n = len(chunk_ids)
-
-        # 1. Build one PointStruct per chunk, attaching only non-None named vectors
-        points: list[PointStruct] = []
-        for i, chunk_id in enumerate(chunk_ids):
-            vector: dict[str, Any] = {}
-
-            # 1a. Dense named vectors (content + per semantic field)
-            for vname, vecs in dense_by_vector.items():
-                v = vecs[i] if i < len(vecs) else None
-                if v is not None:
-                    vector[vname] = v
-
-            # 1b. Sparse named vectors (content + per lexical field)
-            for vname, maps in sparse_by_vector.items():
-                sp = maps[i] if i < len(maps) else None
-                if sp:
-                    vector[vname] = SparseVector(indices=list(sp.keys()), values=list(sp.values()))
-
-            points.append(PointStruct(id=chunk_id, vector=vector, payload=payloads[i]))
-
-        # 2. Batch upsert
-        await client.upsert(collection_name=collection_name, points=points)
-        cls.logger.debug(f"Qdrant: upserted {n} multi-vector point(s) → {collection_name!r}")
-        return n

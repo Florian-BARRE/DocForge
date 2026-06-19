@@ -1,17 +1,16 @@
 # ====== Code Summary ======
-# ConfigApplied + ConfigExplainer — the transparency envelope echoed by every config-bearing
-# endpoint (collection create / config update / rollback). It spells out exactly what the caller
-# provided, what was filled from defaults, which system metadata fields were auto-injected,
-# whether a reindex was triggered, and any non-blocking validation warnings — so the API is
-# self-explanatory and a caller can verify nothing happened implicitly behind their back.
+# ConfigExplainer — static builder for the ConfigApplied transparency envelope.
+# Turns the request inputs and the resolved config document into a self-explanatory
+# summary so a caller can verify nothing happened implicitly behind their back.
 
 # ====== Standard Library Imports ======
 from __future__ import annotations
 
 from typing import Any
 
-# ====== Third-Party Library Imports ======
-from pydantic import BaseModel, Field
+# ====== Local Project Imports ======
+from .applied_issue import AppliedIssue
+from .config_applied import ConfigApplied
 
 # Top-level editable keys of a config document (order = display order).
 _EDITABLE_KEYS: list[str] = [
@@ -20,39 +19,6 @@ _EDITABLE_KEYS: list[str] = [
 ]
 # Pipeline sub-sections reported individually as provided vs default.
 _PIPELINE_SECTIONS: list[str] = ["parse", "enrich", "chunk", "embed"]
-
-
-class AppliedIssue(BaseModel):
-    """A single non-blocking validation warning surfaced to the caller."""
-
-    code: str
-    field: str
-    message: str
-
-
-class ConfigApplied(BaseModel):
-    """
-    Transparency envelope describing how a config request was resolved.
-
-    Attributes:
-        provided (list[str]): Top-level keys the caller explicitly sent.
-        defaulted (list[str]): Editable keys filled from defaults (caller did not send them).
-        pipeline (dict[str, str]): Per stage section → ``"provided"`` or ``"default"``.
-        metadata_fields (dict[str, int]): Counts — ``system`` injected, ``custom`` added.
-        overridden_system_fields (list[str]): System fields whose flags the caller overrode.
-        needs_reindex (bool): Whether this change flagged the collection for reindex.
-        warnings (list[AppliedIssue]): Non-blocking validation warnings.
-        notes (list[str]): Human-readable summary lines of what was applied.
-    """
-
-    provided: list[str] = Field(default_factory=list)
-    defaulted: list[str] = Field(default_factory=list)
-    pipeline: dict[str, str] = Field(default_factory=dict)
-    metadata_fields: dict[str, int] = Field(default_factory=dict)
-    overridden_system_fields: list[str] = Field(default_factory=list)
-    needs_reindex: bool = False
-    warnings: list[AppliedIssue] = Field(default_factory=list)
-    notes: list[str] = Field(default_factory=list)
 
 
 class ConfigExplainer:
