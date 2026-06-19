@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
-from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -36,22 +35,7 @@ from libs.data.storage.s3.helpers import S3Helpers
 # ====== Local Project Imports ======
 from .s0_ingest import S0Result
 from .s1_helpers import S1Helpers
-
-
-@dataclass(slots=True)
-class S1Result:
-    """
-    Output artefacts produced by the S1 parsing stage.
-
-    Attributes:
-        ir (DocumentIR): The canonical IR, with the parse ChainTrace appended.
-        markdown_key (str): Object-store key for the faithful markdown view.
-        figure_crop_keys (dict[str, str]): block_id → object-store key for each figure crop.
-    """
-
-    ir: DocumentIR
-    markdown_key: str
-    figure_crop_keys: dict[str, str]
+from .s1_result import S1Result
 
 
 class S1ParseStage(LoggerClass):

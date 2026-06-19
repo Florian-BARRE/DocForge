@@ -7,7 +7,6 @@
 # ====== Standard Library Imports ======
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import Any
 
 # ====== Third-Party Library Imports ======
@@ -17,19 +16,8 @@ from loggerplusplus import LoggerClass
 from libs.core.ir.chunk import Chunk
 from libs.core.ir.models import DocumentIR
 
-
-@dataclass(slots=True)
-class S5Result:
-    """
-    Output of the S5 contextualization stage.
-
-    Attributes:
-        chunks (list[Chunk]): Chunks with embed_text populated.
-        n_contextualized (int): Number of chunks that received a non-empty embed_text.
-    """
-
-    chunks: list[Chunk]
-    n_contextualized: int
+# ====== Local Project Imports ======
+from .s5_result import S5Result
 
 
 class S5ContextualizeStage(LoggerClass):

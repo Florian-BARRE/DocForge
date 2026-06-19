@@ -4,7 +4,8 @@
 # The actual implementation lives in libs.engine.orchestrator (sub-package).
 
 # ====== Local Project Imports ======
-from .orchestrator.core import EngineResult, StageEngine
+from .orchestrator.core import StageEngine
+from .orchestrator.result import EngineResult
 
 # ------------------- Public API ------------------- #
 __all__ = [
