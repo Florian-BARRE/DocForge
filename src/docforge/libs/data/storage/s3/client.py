@@ -3,6 +3,7 @@
 # Uses aioboto3 (async boto3) targeting SeaweedFS's S3 API (default port 8333).
 # All keys are content-addressed (sha256 for originals, blake3 for derived artifacts).
 # SeaweedFS is S3-compatible: no code change vs standard S3, only the endpoint URL differs.
+# Key construction is delegated to S3Helpers (see helpers.py).
 
 # ====== Standard Library Imports ======
 from __future__ import annotations
@@ -15,18 +16,8 @@ import aioboto3
 from botocore.exceptions import ClientError
 from loggerplusplus import LoggerClass
 
-
-# Object-store key conventions (content-addressed layout):
-#   originals/{sha256}                              — original file bytes
-#   derived/{sha256}/pdf                            — original→PDF conversion
-#   derived/{sha256}/pages/{n}.png                  — page render PNG (0-indexed)
-#   derived/{sha256}/figures/{block_id}.png         — figure crop PNG
-#   derived/{sha256}/{s0_fp}/s0_meta.json           — S0 stage output metadata (P2 node cache)
-#   derived/{sha256}/{s1_fp}/ir.json                — serialized DocumentIR JSON (pre-enrichment)
-#   derived/{sha256}/{s1_fp}/s1_meta.json           — S1 stage output metadata (P2 node cache)
-#   derived/{sha256}/{s1_fp}/doc.md                 — faithful markdown view
-#   derived/{sha256}/{s2_fp}/ir_enriched.json       — enriched DocumentIR JSON (P3)
-#   derived/{sha256}/{s2_fp}/s2_meta.json           — S2 stage output metadata (P3 node cache)
+# ====== Local Project Imports ======
+from .helpers import S3Helpers
 
 
 class S3Client(LoggerClass):
@@ -40,7 +31,7 @@ class S3Client(LoggerClass):
 
     Key layout:
         All keys follow the content-addressed scheme defined in spec §8.
-        Callers should use the static ``key_*`` helpers to construct keys consistently.
+        Use the static ``key_*`` helpers (delegating to S3Helpers) to construct keys.
     """
 
     def __init__(
@@ -279,20 +270,21 @@ class S3Client(LoggerClass):
             aws_access_key_id=self._access_key,
             aws_secret_access_key=self._secret_key,
             region_name=self._region,
-            config=self._boto_path_style_config(),
+            # Path-style addressing required for SeaweedFS — see S3Helpers for details.
+            config=S3Helpers.boto_path_style_config(),
         )
 
-    # ─── Static key builders (content-addressed layout) ───────────────────────
+    # ─── Static key builders (forwarding to S3Helpers for public-API stability) ──
 
     @staticmethod
     def key_original(source_hash: str) -> str:
         """Key for the original uploaded file."""
-        return f"originals/{source_hash}"
+        return S3Helpers.key_original(source_hash)
 
     @staticmethod
     def key_pdf(source_hash: str) -> str:
         """Key for the original→PDF conversion artefact."""
-        return f"derived/{source_hash}/pdf"
+        return S3Helpers.key_pdf(source_hash)
 
     @staticmethod
     def key_figure_crop(source_hash: str, block_id: str) -> str:
@@ -309,8 +301,7 @@ class S3Client(LoggerClass):
         in a single PNG shared across every block (and every document) that
         contains the same pixels.
         """
-        safe_id = block_id.replace("#", "").replace("/", "_").strip("_")
-        return f"derived/{source_hash}/figures/{safe_id}.png"
+        return S3Helpers.key_figure_crop(source_hash, block_id)
 
     @staticmethod
     def key_figure_crop_by_hash(crop_hash: str) -> str:
@@ -321,48 +312,34 @@ class S3Client(LoggerClass):
         a deck (or every document of a collection) is stored as a single PNG.
         The 2-char prefix avoids piling 100k objects into one S3 "directory".
         """
-        return f"figures/by-hash/{crop_hash[:2]}/{crop_hash}.png"
+        return S3Helpers.key_figure_crop_by_hash(crop_hash)
 
     @staticmethod
     def key_ir(source_hash: str, parse_fp: str) -> str:
         """Key for the serialized DocumentIR JSON."""
-        return f"derived/{source_hash}/{parse_fp}/ir.json"
+        return S3Helpers.key_ir(source_hash, parse_fp)
 
     @staticmethod
     def key_markdown(source_hash: str, serialize_fp: str) -> str:
         """Key for the faithful markdown view."""
-        return f"derived/{source_hash}/{serialize_fp}/doc.md"
+        return S3Helpers.key_markdown(source_hash, serialize_fp)
 
     @staticmethod
     def key_s0_meta(source_hash: str, s0_fp: str) -> str:
         """Key for the S0 stage output meta JSON (P2 node cache reference)."""
-        return f"derived/{source_hash}/{s0_fp}/s0_meta.json"
+        return S3Helpers.key_s0_meta(source_hash, s0_fp)
 
     @staticmethod
     def key_s1_meta(source_hash: str, s1_fp: str) -> str:
         """Key for the S1 stage output meta JSON (P2 node cache reference)."""
-        return f"derived/{source_hash}/{s1_fp}/s1_meta.json"
+        return S3Helpers.key_s1_meta(source_hash, s1_fp)
 
     @staticmethod
     def key_ir_enriched(source_hash: str, s2_fp: str) -> str:
         """Key for the enriched DocumentIR JSON (P3 — after S2 OCR/VLM enrichment)."""
-        return f"derived/{source_hash}/{s2_fp}/ir_enriched.json"
+        return S3Helpers.key_ir_enriched(source_hash, s2_fp)
 
     @staticmethod
     def key_s2_meta(source_hash: str, s2_fp: str) -> str:
         """Key for the S2 stage output meta JSON (P3 node cache reference)."""
-        return f"derived/{source_hash}/{s2_fp}/s2_meta.json"
-
-    # ─── Private helpers ──────────────────────────────────────────────────────
-
-    @staticmethod
-    def _boto_path_style_config():
-        """
-        Return a botocore Config enforcing path-style addressing.
-
-        SeaweedFS does not support virtual-hosted-style (e.g. bucket.host:8333).
-        Path-style (host:8333/bucket/key) is required.
-        """
-        from botocore.config import Config
-
-        return Config(s3={"addressing_style": "path"})
+        return S3Helpers.key_s2_meta(source_hash, s2_fp)
