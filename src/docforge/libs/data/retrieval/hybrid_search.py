@@ -2,11 +2,14 @@
 # HybridSearchService: orchestrates query embedding → Qdrant hybrid RRF search →
 # Postgres chunk fetch.  Returns fully materialized SearchResult objects ready for
 # the API response.  Qdrant is the routing index; Postgres is the source of truth.
+#
+# Pure-static helpers (vector-plan resolution, row→result mapping) live in
+# hybrid_search_helpers.HybridSearchHelpers.
+# The SearchResult dataclass lives in hybrid_search_models.SearchResult.
 
 # ====== Standard Library Imports ======
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from typing import Any
 
 # ====== Third-Party Library Imports ======
@@ -15,37 +18,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 # ====== Internal Project Imports ======
 from libs.capabilities.embed.local.tei import TeiEmbedProvider
-from libs.data.retrieval.field_index import CONTENT_DENSE, CONTENT_SPARSE, FieldIndexHelpers
 from libs.data.storage.postgres.repositories.chunk_repo import ChunkRepository
 from libs.data.storage.qdrant.client import QdrantStorageClient
 
-
-@dataclass(slots=True)
-class SearchResult:
-    """
-    A single retrieval result returned by the hybrid search service.
-
-    Attributes:
-        chunk_id (str): UUID string — primary key in `chunk` table and Qdrant point.
-        document_id (str): UUID string of the owning document.
-        score (float): RRF fusion score from Qdrant (higher = more relevant).
-        raw_text (str): Faithful chunk text for display / citation.
-        strategy (str): Chunking strategy used to produce this chunk.
-        token_count (int): Estimated token count of raw_text.
-        pages (list[int]): Source page numbers (0-indexed).
-        config_hash (str): Hash of the S4 config that produced this chunk.
-        block_ids (list[str]): IR block IDs contributing to this chunk.
-    """
-
-    chunk_id: str
-    document_id: str
-    score: float
-    raw_text: str
-    strategy: str
-    token_count: int
-    pages: list[int] = field(default_factory=list)
-    config_hash: str = ""
-    block_ids: list[str] = field(default_factory=list)
+# ====== Local Project Imports ======
+from .hybrid_search_helpers import HybridSearchHelpers
+from .hybrid_search_models import SearchResult
 
 
 class HybridSearchService(LoggerClass):
@@ -59,7 +37,7 @@ class HybridSearchService(LoggerClass):
     4. Return hydrated SearchResult objects.
 
     The class is stateless beyond its injected dependencies and can be shared
-    across requests.
+    across requests.  Pure-static helpers are delegated to HybridSearchHelpers.
     """
 
     def __init__(
@@ -100,6 +78,8 @@ class HybridSearchService(LoggerClass):
             top_k (int): Maximum number of results to return.
             session (AsyncSession): Active Postgres session for chunk hydration.
             payload_filter (dict | None): Optional Qdrant payload filter dict.
+            metadata_fields (list | None): Collection's metadata schema for per-field vectors.
+            weight_overrides (dict[str, float] | None): Per-vector weight overrides.
 
         Returns:
             list[SearchResult]: Results ordered by descending RRF score.
@@ -114,7 +94,9 @@ class HybridSearchService(LoggerClass):
         sparse_vec = embed_result.sparse[0] if embed_result.sparse else None
 
         # 2. Resolve the multi-field vector plan + fusion weights from the schema
-        dense_vectors, sparse_vectors, weights = self._resolve_vectors(metadata_fields, weight_overrides)
+        dense_vectors, sparse_vectors, weights = HybridSearchHelpers.resolve_vector_plan(
+            metadata_fields, weight_overrides
+        )
         self.logger.debug(
             f"HybridSearch: query={query[:60]!r}… "
             f"dense_vecs={len(dense_vectors)} sparse_vecs={len(sparse_vectors)} top_k={top_k}"
@@ -171,7 +153,9 @@ class HybridSearchService(LoggerClass):
         embed_result = await self._embed.embed([query])
         dense_vec = embed_result.vectors[0]
         sparse_vec = embed_result.sparse[0] if embed_result.sparse else None
-        dense_vectors, sparse_vectors, weights = self._resolve_vectors(metadata_fields, weight_overrides)
+        dense_vectors, sparse_vectors, weights = HybridSearchHelpers.resolve_vector_plan(
+            metadata_fields, weight_overrides
+        )
 
         # 2. Debug retrieval — keep the per-vector ranked lists + fused scores
         debug = await self._qdrant.multi_search_debug(
@@ -193,36 +177,6 @@ class HybridSearchService(LoggerClass):
         }
 
     # ─── Internal ─────────────────────────────────────────────────────────────
-
-    def _resolve_vectors(
-        self, metadata_fields: list[Any] | None, weight_overrides: dict[str, float] | None
-    ) -> tuple[list[str], list[str], dict[str, float]]:
-        """
-        Build the searched named vectors + fusion weights from the schema (overrides win).
-
-        content_* are always searched (weight 1.0); each semantic field adds a dense named
-        vector and each lexical field a sparse one, with its schema weight (spec §9).
-
-        Args:
-            metadata_fields (list | None): Collection schema fields; empty list skips per-field vectors.
-            weight_overrides (dict[str, float] | None): Caller-supplied weight overrides (highest priority).
-
-        Returns:
-            tuple[list[str], list[str], dict[str, float]]: A triple of
-                ``(dense_vector_names, sparse_vector_names, weights)`` ready for
-                ``QdrantStorageClient.multi_search``.
-        """
-        plan = FieldIndexHelpers.derive_vector_plan(metadata_fields or [])
-        dense_vectors = [CONTENT_DENSE, *plan.dense_vector_names]
-        sparse_vectors = [CONTENT_SPARSE, *plan.sparse_vector_names]
-        weights: dict[str, float] = {CONTENT_DENSE: 1.0, CONTENT_SPARSE: 1.0}
-        for fv in plan.dense:
-            weights[fv.vector] = fv.weight
-        for fv in plan.sparse:
-            weights[fv.vector] = fv.weight
-        if weight_overrides:
-            weights.update(weight_overrides)
-        return dense_vectors, sparse_vectors, weights
 
     async def _hydrate(
         self, session: AsyncSession, raw_hits: list[dict[str, Any]]
@@ -262,22 +216,5 @@ class HybridSearchService(LoggerClass):
             if target["id"] in seen:
                 continue
             seen.add(target["id"])
-            results.append(self._to_result(target, hit))
+            results.append(HybridSearchHelpers.row_to_result(target, hit))
         return results
-
-    @staticmethod
-    def _to_result(row: dict[str, Any], hit: dict[str, Any]) -> SearchResult:
-        """Build a SearchResult from a chunk row + the hit it was matched/rolled-up from."""
-        prov = row.get("prov")
-        pages = prov.get("pages", []) if isinstance(prov, dict) else hit.get("payload", {}).get("pages", [])
-        return SearchResult(
-            chunk_id=row["id"],
-            document_id=str(row["document_id"]),
-            score=hit["score"],
-            raw_text=row["raw_text"],
-            strategy=row["strategy"],
-            token_count=row["token_count"],
-            pages=pages,
-            config_hash=row["config_hash"],
-            block_ids=list(row["block_ids"]) if row["block_ids"] else [],
-        )
