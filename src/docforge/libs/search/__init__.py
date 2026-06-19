@@ -2,10 +2,10 @@
 from .field_index import FieldIndexHelpers
 
 # ------------------- Hybrid search ------------------- #
-from .hybrid_search import HybridSearchService, SearchResult
+from .hybrid.service import HybridSearchService, SearchResult
 
 # ------------------- Metadata indexer ------------------- #
-from .metadata_indexer import MetadataIndexer
+from .metadata_indexer.indexer import MetadataIndexer
 
 # ------------------- Public API ------------------- #
 __all__ = [

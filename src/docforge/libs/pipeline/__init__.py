@@ -1,5 +1,5 @@
 # ------------------- Runner ------------------- #
-from .runner import PipelineRunner
+from .worker.runner import PipelineRunner
 
 # ------------------- Stages ------------------- #
 from .stages import (
