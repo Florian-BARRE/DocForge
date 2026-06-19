@@ -13,7 +13,7 @@ from loggerplusplus import LoggerClass
 from qdrant_client import AsyncQdrantClient
 
 # ====== Internal Project Imports ======
-from libs.data.retrieval.field_index import CONTENT_DENSE, CONTENT_SPARSE
+from libs.search.field_index import CONTENT_DENSE, CONTENT_SPARSE
 
 # ====== Local Project Imports ======
 from .collection_admin import QdrantCollectionAdmin

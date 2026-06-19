@@ -16,10 +16,10 @@ from typing import Any
 # ====== Third-Party Library Imports ======
 from loggerplusplus import LoggerClass
 
-from libs.core.contracts.pipeline_config import AtomicConfig
+from libs.config.pipeline import AtomicConfig
 
 # ====== Internal Project Imports ======
-from libs.core.ir.models import DocumentIR
+from libs.domain.ir.models import DocumentIR
 
 from ..chunking import CrossReferenceLinker, SectionSplitter, TokenBudgetSplitter
 from .chunk_assembler import ChunkAssembler

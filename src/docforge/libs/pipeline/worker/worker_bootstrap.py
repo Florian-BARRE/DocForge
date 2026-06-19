@@ -12,25 +12,25 @@ from loggerplusplus import loggerplusplus
 
 # ====== Internal Project Imports ======
 from config import RUNTIME_CONFIG
-from libs.capabilities.converter import GotenbergConverter
-from libs.core.contracts.pipeline_config import build_default_pipeline
-from libs.data.storage.postgres.client import PostgresClient
-from libs.data.storage.postgres.repositories import (
+from libs.providers.converter import GotenbergConverter
+from libs.config.pipeline import build_default_pipeline
+from libs.storage.postgres.client import PostgresClient
+from libs.storage.postgres.repositories import (
     BlockRepository,
     ChunkRepository,
     CollectionRepository,
     DocumentRepository,
     JobRepository,
 )
-from libs.data.storage.qdrant.client import QdrantStorageClient
-from libs.data.storage.s3.client import S3Client
-from libs.engine.assembly import ProviderRegistry
-from libs.engine.engine import StageEngine
-from libs.engine.node_cache import NodeCache
-from libs.engine.provider_cache import ProviderCallCache
-from libs.engine.stages.s0_ingest import S0IngestStage
-from libs.engine.stages.s1_parse import S1ParseStage
-from libs.engine.stages.s6_embed_index import S6EmbedIndexStage
+from libs.storage.qdrant.client import QdrantStorageClient
+from libs.storage.s3.client import S3Client
+from libs.pipeline.assembly import ProviderRegistry
+from libs.pipeline.engine import StageEngine
+from libs.pipeline.caches.node_cache import NodeCache
+from libs.pipeline.caches.provider_cache import ProviderCallCache
+from libs.pipeline.stages.s0_ingest.core import S0IngestStage
+from libs.pipeline.stages.s1_parse.core import S1ParseStage
+from libs.pipeline.stages.s6_embed_index.core import S6EmbedIndexStage
 
 _logger = loggerplusplus.bind(identifier="ARQ_WORKER")
 

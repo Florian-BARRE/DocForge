@@ -13,7 +13,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # ====== Internal Project Imports ======
-from libs.data.storage.postgres.models import JobModel
+from libs.storage.postgres.models import JobModel
 
 
 class JobRepository(LoggerClass):

@@ -17,9 +17,9 @@ from loggerplusplus import LoggerClass
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # ====== Internal Project Imports ======
-from libs.capabilities.embed.local.tei import TeiEmbedProvider
-from libs.data.storage.postgres.repositories.chunk_repo import ChunkRepository
-from libs.data.storage.qdrant.client import QdrantStorageClient
+from libs.providers.embed.local.tei import TeiEmbedProvider
+from libs.storage.postgres.repositories.chunk_repo import ChunkRepository
+from libs.storage.qdrant.client import QdrantStorageClient
 
 # ====== Local Project Imports ======
 from .hybrid_search_helpers import HybridSearchHelpers

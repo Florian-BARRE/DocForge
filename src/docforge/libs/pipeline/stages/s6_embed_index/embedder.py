@@ -12,10 +12,10 @@ from typing import Any
 # ====== Third-Party Library Imports ======
 from loggerplusplus import LoggerClass
 
-from libs.capabilities.chain import Chain, chain_outcome_to_attempt_dicts
+from libs.providers.chain import Chain, chain_outcome_to_attempt_dicts
 
 # ====== Internal Project Imports ======
-from libs.core.ir.models import ChainAttemptIR, ChainTrace
+from libs.domain.ir.models import ChainAttemptIR, ChainTrace
 
 
 class S6Embedder(LoggerClass):

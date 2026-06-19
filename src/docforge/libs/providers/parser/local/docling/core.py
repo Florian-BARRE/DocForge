@@ -15,11 +15,11 @@ from typing import Any
 # ====== Third-Party Library Imports ======
 from loggerplusplus import LoggerClass
 
-from libs.capabilities.lang import LanguageDetector
-from libs.capabilities.parser.base import ParserProvider
+from libs.providers.lang import LanguageDetector
+from libs.providers.parser.base import ParserProvider
 
 # ====== Internal Project Imports ======
-from libs.core.ir.models import DocumentIR
+from libs.domain.ir.models import DocumentIR
 
 # ====== Local Project Imports ======
 from .ir_mapper import DoclingIRMapper

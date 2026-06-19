@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import Any
 
 # ====== Internal Project Imports ======
-from libs.core.contracts.pipeline_config import PipelineConfig
+from libs.config.pipeline import PipelineConfig
 
 
 class ProviderChecks:

@@ -10,9 +10,9 @@ from __future__ import annotations
 from typing import Any
 
 # ====== Internal Project Imports ======
-from libs.core.contracts.pipeline_config import ChunkConfig, SplitMethodConfig
-from libs.engine.stages.chunking import SectionSplitter, SemanticParams
-from libs.engine.stages.s4_chunk import S4ChunkStage
+from libs.config.pipeline import ChunkConfig, SplitMethodConfig
+from libs.pipeline.stages.s4_chunk import SectionSplitter, SemanticParams
+from libs.pipeline.stages.s4_chunk import S4ChunkStage
 
 # ====== Local Project Imports ======
 from .availability import AvailabilityProbes, ProviderUnavailableError

@@ -13,7 +13,7 @@ from typing import Any
 from loggerplusplus import LoggerClass
 
 # ====== Internal Project Imports ======
-from libs.core.ir.models import Block, BlockType
+from libs.domain.ir.models import Block, BlockType
 
 # ====== Local Project Imports ======
 from .base_splitter import SplitPiece

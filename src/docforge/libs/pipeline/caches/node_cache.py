@@ -15,7 +15,7 @@ from loggerplusplus import LoggerClass
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # ====== Internal Project Imports ======
-from libs.data.storage.postgres.models import StageRunModel
+from libs.storage.postgres.models import StageRunModel
 
 # ====== Local Project Imports ======
 from .node_cache_ops import NodeCacheOps

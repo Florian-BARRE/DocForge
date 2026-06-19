@@ -13,15 +13,15 @@ import hashlib
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from libs.data.storage.s3.client import S3Client
+    from libs.storage.s3.client import S3Client
 
 # ====== Third-Party Library Imports ======
 from loggerplusplus import LoggerClass
 
 # ====== Internal Project Imports ======
-from libs.core.ir.models import DocumentIR
-from libs.core.ir.serializer import MarkdownSerializer
-from libs.data.storage.s3.helpers import S3Helpers
+from libs.domain.ir.models import DocumentIR
+from libs.domain.ir.serializer import MarkdownSerializer
+from libs.storage.s3.helpers import S3Helpers
 
 # ====== Local Project Imports ======
 from .s0_ingest import S0Result

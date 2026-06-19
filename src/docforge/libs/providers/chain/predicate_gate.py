@@ -12,7 +12,7 @@ from collections.abc import Callable
 from typing import Any
 
 # ====== Internal Project Imports ======
-from libs.capabilities.chain_gate import ChainGateConfig
+from libs.providers.chain_gate import ChainGateConfig
 
 # ====== Local Project Imports ======
 from .models import ChainAttempt

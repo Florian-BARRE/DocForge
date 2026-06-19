@@ -9,8 +9,8 @@ from typing import Any, ClassVar, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
-from libs.core.contracts._registry import register
-from libs.core.contracts.spec_utils import flatten_provider_spec as _flatten_provider_spec
+from libs.config.pipeline._registry import register
+from libs.config.pipeline.spec_utils import flatten_provider_spec as _flatten_provider_spec
 
 # ====== Local Project Imports ======
 from .vit_onnx import VitOnnxClassifier

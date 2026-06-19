@@ -10,11 +10,11 @@ from __future__ import annotations
 from typing import Any
 
 # ====== Third-Party Library Imports ======
-from libs.capabilities.chain import Chain
+from libs.providers.chain import Chain
 
 # ====== Internal Project Imports ======
-from libs.core.ir.models import ChainTrace, FigureKind
-from libs.engine.provider_cache import ProviderCallCache
+from libs.domain.ir.models import ChainTrace, FigureKind
+from libs.pipeline.caches.provider_cache import ProviderCallCache
 
 # ====== Local Project Imports ======
 from .cache_runner import CacheRunner

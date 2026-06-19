@@ -3,8 +3,8 @@
 # Wraps the ordered embedding-backend chain (TEI / LocalOpenAI / OpenAI) with a
 # gated escalation policy.
 #
-# LEAF CONSTRAINT: no module-level import of libs.capabilities / libs.data /
-# libs.engine / libs.governance — all concrete-provider imports stay LAZY
+# LEAF CONSTRAINT: no module-level import of libs.providers / libs.data /
+# libs.pipeline / libs.config — all concrete-provider imports stay LAZY
 # (inside model_validator bodies).
 
 # ====== Standard Library Imports ======
@@ -16,8 +16,8 @@ from typing import Any
 from pydantic import BaseModel, Field, model_validator
 
 # ====== Internal Project Imports ======
-from libs.core.contracts.chain_gate_config import ChainGateConfig
-from libs.core.contracts.pipeline_config._helpers import _lift_provider_to_chain
+from libs.config.pipeline.chain_gate_config import ChainGateConfig
+from libs.config.pipeline._helpers import _lift_provider_to_chain
 
 
 class EmbedConfig(BaseModel):
@@ -75,9 +75,9 @@ class EmbedConfig(BaseModel):
         from pydantic import Field as _F
         from pydantic import TypeAdapter
 
-        from libs.capabilities.embed.external.openai_compat_config import OpenAIEmbedConfig
-        from libs.capabilities.embed.local.config import TeiEmbedConfig
-        from libs.capabilities.embed.local.openai_compat_config import LocalOpenAIEmbedConfig
+        from libs.providers.embed.external.openai_compat_config import OpenAIEmbedConfig
+        from libs.providers.embed.local.config import TeiEmbedConfig
+        from libs.providers.embed.local.openai_compat_config import LocalOpenAIEmbedConfig
 
         if not self.chain:
             object.__setattr__(self, "chain", [TeiEmbedConfig()])

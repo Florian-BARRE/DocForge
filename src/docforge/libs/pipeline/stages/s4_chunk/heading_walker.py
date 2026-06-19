@@ -11,10 +11,10 @@ import re
 # ====== Third-Party Library Imports ======
 from loggerplusplus import loggerplusplus
 
-from libs.core.contracts.pipeline_config import AtomicConfig
+from libs.config.pipeline import AtomicConfig
 
 # ====== Internal Project Imports ======
-from libs.core.ir.models import Block, BlockType, FigureKind
+from libs.domain.ir.models import Block, BlockType, FigureKind
 
 # ====== Local Project Imports ======
 from .models import _Segment, _Special

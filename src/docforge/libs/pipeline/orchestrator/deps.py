@@ -11,15 +11,15 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from libs.data.storage.postgres.client import PostgresClient
-    from libs.data.storage.postgres.repositories import (
+    from libs.storage.postgres.client import PostgresClient
+    from libs.storage.postgres.repositories import (
         BlockRepository,
         ChunkRepository,
         DocumentRepository,
     )
-    from libs.data.storage.s3.client import S3Client
-    from libs.engine.node_cache import NodeCache
-    from libs.engine.provider_cache import ProviderCallCache
+    from libs.storage.s3.client import S3Client
+    from libs.pipeline.caches.node_cache import NodeCache
+    from libs.pipeline.caches.provider_cache import ProviderCallCache
 
 
 @dataclass(frozen=True)

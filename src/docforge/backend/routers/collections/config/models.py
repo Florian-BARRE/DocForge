@@ -10,8 +10,8 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 # ====== Internal Project Imports ======
-from libs.governance.config_validation import ConfigApplied, ConfigDocument
-from libs.core.contracts.pipeline_config import PipelineConfig
+from libs.config.validation import ConfigApplied, ConfigDocument
+from libs.config.pipeline import PipelineConfig
 
 # ─────────────────────────── Requests ───────────────────────────
 

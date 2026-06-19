@@ -10,10 +10,10 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from libs.capabilities.chain import Chain
-    from libs.engine.stages.s2_enrich import S2EnrichStage
-    from libs.engine.stages.s4_chunk import S4ChunkStage
-    from libs.engine.stages.s5_contextualize import S5ContextualizeStage
+    from libs.providers.chain import Chain
+    from libs.pipeline.stages.s2_enrich import S2EnrichStage
+    from libs.pipeline.stages.s4_chunk import S4ChunkStage
+    from libs.pipeline.stages.s5_contextualize.core import S5ContextualizeStage
 
 
 @dataclass(slots=True)

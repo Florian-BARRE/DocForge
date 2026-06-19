@@ -9,7 +9,7 @@ import uuid
 from pydantic import BaseModel
 
 # ====== Internal Project Imports ======
-from libs.core.ir.models import ChainTrace
+from libs.domain.ir.models import ChainTrace
 
 
 class PageInfo(BaseModel):

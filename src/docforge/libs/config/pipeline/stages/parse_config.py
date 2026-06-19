@@ -2,8 +2,8 @@
 # S1 ParseConfig: ingestion-side parser chain configuration for the DocForge pipeline.
 # Wraps the ordered parser chain (Docling, …) with a gated escalation policy.
 #
-# LEAF CONSTRAINT: no module-level import of libs.capabilities / libs.data /
-# libs.engine / libs.governance — all concrete-provider imports stay LAZY
+# LEAF CONSTRAINT: no module-level import of libs.providers / libs.data /
+# libs.pipeline / libs.config — all concrete-provider imports stay LAZY
 # (inside model_validator bodies).
 
 # ====== Standard Library Imports ======
@@ -15,8 +15,8 @@ from typing import Any
 from pydantic import BaseModel, Field, model_validator
 
 # ====== Internal Project Imports ======
-from libs.core.contracts.chain_gate_config import ChainGateConfig
-from libs.core.contracts.pipeline_config._helpers import _lift_provider_to_chain
+from libs.config.pipeline.chain_gate_config import ChainGateConfig
+from libs.config.pipeline._helpers import _lift_provider_to_chain
 
 
 class ParseConfig(BaseModel):
@@ -60,7 +60,7 @@ class ParseConfig(BaseModel):
         from pydantic import Field as _F
         from pydantic import TypeAdapter
 
-        from libs.capabilities.parser.local.docling import DoclingConfig
+        from libs.providers.parser.local.docling import DoclingConfig
 
         if not self.chain:
             object.__setattr__(self, "chain", [DoclingConfig()])

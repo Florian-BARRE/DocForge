@@ -106,7 +106,7 @@ class ChainRunHelpers:
         Returns:
             float | None: The quality score, or None when unavailable.
         """
-        from libs.capabilities.scoring import ScoredResult  # deferred — avoids cycle
+        from libs.providers.scoring import ScoredResult  # deferred — avoids cycle
 
         if isinstance(result, ScoredResult):
             try:

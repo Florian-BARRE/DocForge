@@ -3,24 +3,24 @@
 # the Pydantic params models / SPLIT_METHODS source of truth, never hand-maintained.
 # Also contains regression tests for discriminator validation on pipeline chain fields.
 
-import libs.engine.stages.chunking as _chunking_pkg  # noqa: F401 — triggers @register("split_method")
-import libs.capabilities.embed as _embed_pkg  # noqa: F401 — triggers @register("embed") decorators
-import libs.capabilities.parser as _parser_pkg  # noqa: F401 — triggers @register("parser") decorators
-import libs.capabilities.ocr as _ocr_pkg  # noqa: F401 — triggers @register("ocr") decorators
-import libs.capabilities.classifier as _classifier_pkg  # noqa: F401 — triggers @register("classifier") decorators
-import libs.capabilities.vlm as _vlm_pkg  # noqa: F401 — triggers @register("vlm") decorators
+import libs.pipeline.stages.s4_chunk as _chunking_pkg  # noqa: F401 — triggers @register("split_method")
+import libs.providers.embed as _embed_pkg  # noqa: F401 — triggers @register("embed") decorators
+import libs.providers.parser as _parser_pkg  # noqa: F401 — triggers @register("parser") decorators
+import libs.providers.ocr as _ocr_pkg  # noqa: F401 — triggers @register("ocr") decorators
+import libs.providers.classifier as _classifier_pkg  # noqa: F401 — triggers @register("classifier") decorators
+import libs.providers.vlm as _vlm_pkg  # noqa: F401 — triggers @register("vlm") decorators
 
 import pytest
 from pydantic import ValidationError
 
-from libs.core.contracts.pipeline_config import SPLIT_METHODS, PipelineConfig
-from libs.engine.stages.chunking import (
+from libs.config.pipeline import SPLIT_METHODS, PipelineConfig
+from libs.pipeline.stages.s4_chunk import (
     SPLIT_METHOD_PARAMS,
     SemanticParams,
     TokenBudgetConfig,
 )
-from libs.core.contracts._registry import get_configs
-from libs.engine.assembly import _params_from_model
+from libs.config.pipeline._registry import get_configs
+from libs.pipeline.assembly import _params_from_model
 
 
 class TestSplitMethodCatalogDrift:
@@ -45,7 +45,7 @@ class TestSplitMethodCatalogDrift:
 
     def test_semantic_availability_call_succeeds(self) -> None:
         """semantic.availability() must return a (bool, str) tuple without raising."""
-        from libs.engine.stages.chunking.params import SemanticConfig
+        from libs.pipeline.stages.s4_chunk.strategies.params import SemanticConfig
         available, note = SemanticConfig.availability(None)
         assert isinstance(available, bool)
         assert isinstance(note, str)

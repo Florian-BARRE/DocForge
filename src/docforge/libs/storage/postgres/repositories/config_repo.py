@@ -52,7 +52,7 @@ class ConfigRepository(LoggerClass):
         """
         # Imported lazily: config_validation pulls in libs.pipeline, which imports this storage
         # package — a module-level import here would create a circular import at startup.
-        from libs.governance.config_validation import ConfigDocument
+        from libs.config.validation import ConfigDocument
 
         # 1. Load current state (metadata_fields needed for ORM cascade replacement)
         collection = await self._get(session, collection_id)

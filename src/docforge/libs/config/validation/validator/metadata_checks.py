@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import Any, get_args
 
 # ====== Internal Project Imports ======
-from libs.core.metadata import MetaFieldType
+from libs.domain.metadata import MetaFieldType
 
 # Field types accepted in a metadata schema — derived from the canonical MetaFieldType so the
 # validator can never drift from what MetaFieldSpec actually accepts.

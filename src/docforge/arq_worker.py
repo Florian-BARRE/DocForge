@@ -8,6 +8,6 @@
 from config import RUNTIME_CONFIG  # noqa: F401 — side-effect import, registers sys.path
 
 # ====== Local Project Imports ======
-from libs.engine.worker import WorkerSettings  # noqa: F401 — arq CLI target
+from libs.pipeline.worker.worker import WorkerSettings  # noqa: F401 — arq CLI target
 
 __all__ = ["WorkerSettings"]

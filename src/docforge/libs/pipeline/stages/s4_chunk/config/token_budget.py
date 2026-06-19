@@ -12,11 +12,11 @@ from typing import TYPE_CHECKING, Any, ClassVar, Literal
 from pydantic import BaseModel, Field, model_validator
 
 # ====== Internal Project Imports ======
-from libs.core.contracts._registry import register
-from libs.core.contracts.spec_utils import flatten_provider_spec as _flatten_provider_spec
+from libs.config.pipeline._registry import register
+from libs.config.pipeline.spec_utils import flatten_provider_spec as _flatten_provider_spec
 
 if TYPE_CHECKING:
-    from libs.engine.stages.chunking.token_budget_splitter import TokenBudgetSplitter
+    from libs.pipeline.stages.s4_chunk.strategies.token_budget import TokenBudgetSplitter
 
 
 @register("split_method")
@@ -41,7 +41,7 @@ class TokenBudgetConfig(BaseModel):
 
     def build(self) -> TokenBudgetSplitter:
         """Instantiate TokenBudgetSplitter from this config."""
-        from libs.engine.stages.chunking.token_budget_splitter import TokenBudgetSplitter
+        from libs.pipeline.stages.s4_chunk.strategies.token_budget import TokenBudgetSplitter
         return TokenBudgetSplitter(max_tokens=self.max_tokens, overlap_blocks=self.overlap_blocks)
 
     def merge_defaults(self, cfg: Any) -> TokenBudgetConfig:

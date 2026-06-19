@@ -9,11 +9,11 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from libs.engine.stages.s1_parse import S1ParseStage as _S1ParseStageType
+    from libs.pipeline.stages.s1_parse.core import S1ParseStage as _S1ParseStageType
 
 # ====== Internal Project Imports ======
-from libs.engine.stages.s0_ingest import S0IngestStage
-from libs.engine.stages.s2_enrich import S2EnrichStage
+from libs.pipeline.stages.s0_ingest.core import S0IngestStage
+from libs.pipeline.stages.s2_enrich import S2EnrichStage
 
 
 class S012ParamHelpers:

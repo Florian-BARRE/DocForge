@@ -2,7 +2,7 @@
 # Auto-discover all VLM providers and build the discriminated union.
 # ─────────────────────────────────────────────────────────────────────────────
 
-from libs.core.contracts._registry import auto_import, build_union, get_configs
+from libs.config.pipeline._registry import auto_import, build_union, get_configs
 
 auto_import(__name__)
 

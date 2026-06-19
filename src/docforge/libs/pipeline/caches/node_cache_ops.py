@@ -17,7 +17,7 @@ from sqlalchemy import delete as sa_delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # ====== Internal Project Imports ======
-from libs.data.storage.postgres.models import StageRunModel
+from libs.storage.postgres.models import StageRunModel
 
 
 class NodeCacheOps:

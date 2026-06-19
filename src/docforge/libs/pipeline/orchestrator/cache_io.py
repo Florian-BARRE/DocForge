@@ -13,13 +13,13 @@ import uuid
 from loggerplusplus import loggerplusplus
 
 # ====== Internal Project Imports ======
-from libs.core.ir.models import DocumentIR
-from libs.data.storage.postgres.client import PostgresClient
-from libs.data.storage.s3.client import S3Client
-from libs.engine.node_cache import NodeCache
-from libs.engine.stages.s0_ingest import S0Result
-from libs.engine.stages.s1_parse import S1Result
-from libs.engine.stages.s2_enrich import S2Result
+from libs.domain.ir.models import DocumentIR
+from libs.storage.postgres.client import PostgresClient
+from libs.storage.s3.client import S3Client
+from libs.pipeline.caches.node_cache import NodeCache
+from libs.pipeline.stages.s0_ingest.core import S0Result
+from libs.pipeline.stages.s1_parse.core import S1Result
+from libs.pipeline.stages.s2_enrich import S2Result
 
 # ====== Local Project Imports ======
 from .cache_codec import CacheCodec

@@ -13,8 +13,8 @@ from typing import Any
 from loggerplusplus import LoggerClass
 
 # ====== Internal Project Imports ======
-from libs.core.ir.chunk import Chunk
-from libs.core.ir.models import DocumentIR
+from libs.domain.ir.chunk import Chunk
+from libs.domain.ir.models import DocumentIR
 
 # ====== Local Project Imports ======
 from .s5_result import S5Result
@@ -50,7 +50,7 @@ class S5ContextualizeStage(LoggerClass):
         """
         LoggerClass.__init__(self)
         # Lazy import — pipeline_config imports this module transitively in some paths.
-        from libs.core.contracts.pipeline_config import ContextualizeConfig
+        from libs.config.pipeline import ContextualizeConfig
         self._cfg = config if config is not None else ContextualizeConfig()
 
     async def run(

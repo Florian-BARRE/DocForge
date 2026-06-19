@@ -6,12 +6,12 @@
 # ====== Standard Library Imports ======
 from __future__ import annotations
 
-from libs.capabilities.chain import ChainOutcome, chain_outcome_to_attempt_dicts
+from libs.providers.chain import ChainOutcome, chain_outcome_to_attempt_dicts
 
 # ====== Third-Party Library Imports ======
 # (none)
 # ====== Internal Project Imports ======
-from libs.core.ir.models import BlockType, ChainAttemptIR, ChainTrace, DocumentIR
+from libs.domain.ir.models import BlockType, ChainAttemptIR, ChainTrace, DocumentIR
 
 
 class S1Helpers:

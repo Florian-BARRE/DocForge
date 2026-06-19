@@ -6,7 +6,7 @@ import uuid
 
 import pytest
 
-from libs.core.ir.models import (
+from libs.domain.ir.models import (
     Block,
     BlockType,
     DocumentIR,
@@ -15,8 +15,8 @@ from libs.core.ir.models import (
     Provenance,
     TableData,
 )
-from libs.engine.stages.chunking import TokenBudgetSplitter
-from libs.engine.stages.s4_chunk import S4ChunkStage
+from libs.pipeline.stages.s4_chunk import TokenBudgetSplitter
+from libs.pipeline.stages.s4_chunk import S4ChunkStage
 
 
 # ─── IR helpers ──────────────────────────────────────────────────────────────────

@@ -12,11 +12,11 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from libs.capabilities.embed.local.tei import TeiEmbedProvider
-    from libs.data.storage.qdrant.client import QdrantStorageClient
+    from libs.providers.embed.local.tei import TeiEmbedProvider
+    from libs.storage.qdrant.client import QdrantStorageClient
 
 # ====== Internal Project Imports ======
-from libs.data.retrieval.field_index import FieldIndexHelpers
+from libs.search.field_index import FieldIndexHelpers
 
 
 class MetadataIndexerHelpers:

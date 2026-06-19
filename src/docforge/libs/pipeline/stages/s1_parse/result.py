@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from libs.core.ir.models import DocumentIR
+    from libs.domain.ir.models import DocumentIR
 
 
 @dataclass(slots=True)

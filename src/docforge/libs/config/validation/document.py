@@ -13,10 +13,10 @@ from typing import Any
 # ====== Third-Party Library Imports ======
 from loggerplusplus import loggerplusplus
 
-from libs.core.contracts.pipeline_config import PipelineConfig
+from libs.config.pipeline import PipelineConfig
 
 # ====== Internal Project Imports ======
-from libs.core.metadata import SYSTEM_METADATA_FIELDS
+from libs.domain.metadata import SYSTEM_METADATA_FIELDS
 
 # ====== Local Project Imports ======
 from .document_helpers import ConfigFieldNormalizer

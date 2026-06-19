@@ -4,8 +4,8 @@
 # (TokenBudget / Semantic / SentenceWindow), atomic-block guarantees, hierarchical
 # chunk emission, and cross-reference detection.
 #
-# LEAF CONSTRAINT: no module-level import of libs.capabilities / libs.data /
-# libs.engine / libs.governance — all concrete-provider imports stay LAZY
+# LEAF CONSTRAINT: no module-level import of libs.providers / libs.data /
+# libs.pipeline / libs.config — all concrete-provider imports stay LAZY
 # (inside model_validator bodies).
 
 # ====== Standard Library Imports ======
@@ -17,9 +17,9 @@ from typing import Any
 from pydantic import BaseModel, Field, model_validator
 
 # ====== Local Project Imports ======
-from libs.core.contracts.pipeline_config._type_aliases import DEFAULT_HEADING_RULES
-from libs.core.contracts.pipeline_config.heading_rule import AtomicConfig, HeadingRule
-from libs.core.contracts.spec_utils import flatten_provider_spec as _flatten_provider_spec
+from libs.config.pipeline._type_aliases import DEFAULT_HEADING_RULES
+from libs.config.pipeline.stages.heading_rule import AtomicConfig, HeadingRule
+from libs.config.pipeline.spec_utils import flatten_provider_spec as _flatten_provider_spec
 
 
 class ChunkConfig(BaseModel):
@@ -83,7 +83,7 @@ class ChunkConfig(BaseModel):
         from pydantic import Field as _F
         from pydantic import TypeAdapter
 
-        from libs.engine.stages.chunking.params import (
+        from libs.pipeline.stages.s4_chunk.strategies.params import (
             SemanticConfig,
             SentenceWindowConfig,
             TokenBudgetConfig,

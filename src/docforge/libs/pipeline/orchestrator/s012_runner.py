@@ -17,17 +17,17 @@ import uuid
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from libs.engine.stages.s1_parse import S1ParseStage as _S1ParseStageType
+    from libs.pipeline.stages.s1_parse.core import S1ParseStage as _S1ParseStageType
 
 # ====== Third-Party Library Imports ======
 from loggerplusplus import LoggerClass
 
 # ====== Internal Project Imports ======
-from libs.data.storage.s3.helpers import S3Helpers
-from libs.engine.fingerprint import compute_fingerprint
-from libs.engine.stages.s0_ingest import S0IngestStage, S0Result
-from libs.engine.stages.s1_parse import S1Result
-from libs.engine.stages.s2_enrich import S2EnrichStage, S2Result
+from libs.storage.s3.helpers import S3Helpers
+from libs.pipeline.caches.fingerprint import compute_fingerprint
+from libs.pipeline.stages.s0_ingest.core import S0IngestStage, S0Result
+from libs.pipeline.stages.s1_parse.core import S1Result
+from libs.pipeline.stages.s2_enrich import S2EnrichStage, S2Result
 
 # ====== Local Project Imports ======
 from .cache_io import CacheIOHelpers

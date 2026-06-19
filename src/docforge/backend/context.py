@@ -11,15 +11,15 @@ from loggerplusplus import LoggerPlusPlus
 
 # ====== Internal Project Imports ======
 from config import RUNTIME_CONFIG
-from libs.engine.engine import StageEngine
-from libs.engine.node_cache import NodeCache
-from libs.engine.provider_cache import ProviderCallCache
-from libs.capabilities.converter import GotenbergConverter
-from libs.capabilities.device_manager import DeviceManager
-from libs.capabilities.parser import DoclingBackend
-from libs.engine.assembly import ProviderRegistry
-from libs.data.storage.postgres.client import PostgresClient
-from libs.data.storage.postgres.repositories import (
+from libs.pipeline.engine import StageEngine
+from libs.pipeline.caches.node_cache import NodeCache
+from libs.pipeline.caches.provider_cache import ProviderCallCache
+from libs.providers.converter import GotenbergConverter
+from libs.providers.device_manager import DeviceManager
+from libs.providers.parser import DoclingBackend
+from libs.pipeline.assembly import ProviderRegistry
+from libs.storage.postgres.client import PostgresClient
+from libs.storage.postgres.repositories import (
     BlockRepository,
     ChunkRepository,
     CollectionRepository,
@@ -27,10 +27,10 @@ from libs.data.storage.postgres.repositories import (
     DocumentRepository,
     JobRepository,
 )
-from libs.data.retrieval.metadata_indexer import MetadataIndexer
-from libs.data.retrieval.hybrid_search import HybridSearchService
-from libs.data.storage.qdrant.client import QdrantStorageClient
-from libs.data.storage.s3.client import S3Client
+from libs.search.metadata_indexer.indexer import MetadataIndexer
+from libs.search.hybrid.service import HybridSearchService
+from libs.storage.qdrant.client import QdrantStorageClient
+from libs.storage.s3.client import S3Client
 
 
 class CONTEXT:

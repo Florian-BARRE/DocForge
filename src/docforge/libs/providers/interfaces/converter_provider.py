@@ -10,7 +10,7 @@ from typing import Protocol, runtime_checkable
 # ====== Third-Party Library Imports ======
 # (none — Protocol and result types only)
 # ====== Internal Project Imports ======
-from libs.capabilities.results import ConvertResult
+from libs.providers.results import ConvertResult
 
 # ====== Local Project Imports ======
 # (none)

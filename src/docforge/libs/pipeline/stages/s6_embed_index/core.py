@@ -14,17 +14,17 @@ from typing import Any
 from loggerplusplus import LoggerClass
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from libs.capabilities.chain import Chain
+from libs.providers.chain import Chain
 
 # ====== Internal Project Imports ======
-from libs.core.ir.chunk import Chunk
-from libs.data.retrieval.field_index import (
+from libs.domain.ir.chunk import Chunk
+from libs.search.field_index import (
     CONTENT_DENSE,
     CONTENT_SPARSE,
     FieldIndexHelpers,
 )
-from libs.data.storage.postgres.repositories.chunk_repo import ChunkRepository
-from libs.data.storage.qdrant.client import QdrantStorageClient
+from libs.storage.postgres.repositories.chunk_repo import ChunkRepository
+from libs.storage.qdrant.client import QdrantStorageClient
 
 # ====== Local Project Imports ======
 from .s6_embedder import S6Embedder

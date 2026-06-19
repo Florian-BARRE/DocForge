@@ -1,8 +1,8 @@
 # ------------------- Protocols ------------------- #
 # ----------- Result types (re-exported) ----------- #
-# Re-exported so callers that import from libs.capabilities.interfaces continue to work
-# without modification (e.g. `from libs.capabilities.interfaces import ConvertResult`).
-from libs.capabilities.results import (
+# Re-exported so callers that import from libs.providers.interfaces continue to work
+# without modification (e.g. `from libs.providers.interfaces import ConvertResult`).
+from libs.providers.results import (
     ConvertResult,
     EmbedResult,
     OcrHint,

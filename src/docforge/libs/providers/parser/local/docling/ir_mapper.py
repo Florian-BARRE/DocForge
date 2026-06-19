@@ -15,10 +15,10 @@ from typing import Any
 # ====== Third-Party Library Imports ======
 from loggerplusplus import loggerplusplus
 
-from libs.capabilities.lang import LanguageDetector
+from libs.providers.lang import LanguageDetector
 
 # ====== Internal Project Imports ======
-from libs.core.ir.models import (
+from libs.domain.ir.models import (
     Block,
     BlockType,
     DocumentIR,

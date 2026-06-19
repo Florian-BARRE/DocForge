@@ -10,7 +10,7 @@ from typing import Protocol, runtime_checkable
 # ====== Third-Party Library Imports ======
 # (none — Protocol and result types only)
 # ====== Internal Project Imports ======
-from libs.capabilities.results import OcrHint, OcrResult
+from libs.providers.results import OcrHint, OcrResult
 
 # ====== Local Project Imports ======
 # (none)

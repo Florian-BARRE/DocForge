@@ -7,7 +7,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
-from libs.core.ir.models import FigureKind
+from libs.domain.ir.models import FigureKind
 
 
 @dataclass(slots=True)

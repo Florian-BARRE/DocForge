@@ -13,9 +13,9 @@ from typing import Any
 from loggerplusplus import LoggerClass
 
 # ====== Internal Project Imports ======
-from libs.engine.stages.s4_chunk import S4ChunkStage, S4Result
-from libs.engine.stages.s5_contextualize import S5ContextualizeStage, S5Result
-from libs.engine.stages.s6_embed_index import S6EmbedIndexStage, S6Result
+from libs.pipeline.stages.s4_chunk import S4ChunkStage, S4Result
+from libs.pipeline.stages.s5_contextualize.core import S5ContextualizeStage, S5Result
+from libs.pipeline.stages.s6_embed_index.core import S6EmbedIndexStage, S6Result
 
 # ====== Local Project Imports ======
 from .deps import StageDeps

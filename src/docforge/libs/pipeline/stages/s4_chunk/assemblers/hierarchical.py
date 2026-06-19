@@ -10,7 +10,7 @@ from collections.abc import Iterator
 from typing import Any
 
 # ====== Internal Project Imports ======
-from libs.core.ir.chunk import Chunk
+from libs.domain.ir.chunk import Chunk
 
 from ..chunking import ChunkingHelpers, SectionSplitter
 

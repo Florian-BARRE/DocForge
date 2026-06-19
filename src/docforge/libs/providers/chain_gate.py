@@ -16,12 +16,12 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 # ====== Internal Project Imports ======
-from libs.capabilities.scoring import ScoredResult
-from libs.core.contracts.chain_gate_config import ChainGateConfig  # re-exported for callers
+from libs.providers.scoring import ScoredResult
+from libs.config.pipeline.chain_gate_config import ChainGateConfig  # re-exported for callers
 
 # ====== Local Project Imports ======
 if TYPE_CHECKING:
-    from libs.capabilities.chain import ChainAttempt
+    from libs.providers.chain import ChainAttempt
 
 
 class ChainGate:

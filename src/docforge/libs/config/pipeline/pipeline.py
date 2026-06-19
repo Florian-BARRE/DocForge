@@ -10,8 +10,8 @@
 # fully-typed config; both entrypoint.py and worker.py call it instead of
 # constructing providers directly.
 #
-# LEAF CONSTRAINT: no module-level import of libs.capabilities / libs.data /
-# libs.engine / libs.governance — all concrete-provider imports stay LAZY
+# LEAF CONSTRAINT: no module-level import of libs.providers / libs.data /
+# libs.pipeline / libs.config — all concrete-provider imports stay LAZY
 # (inside the function body of build_default_pipeline).
 
 # ====== Standard Library Imports ======
@@ -23,13 +23,13 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 # ====== Local Project Imports ======
-from libs.core.contracts.chain_gate_config import ChainGateConfig
-from libs.core.contracts.pipeline_config._helpers import _redact
-from libs.core.contracts.pipeline_config.chunk_config import ChunkConfig
-from libs.core.contracts.pipeline_config.contextualize_config import ContextualizeConfig
-from libs.core.contracts.pipeline_config.embed_config import EmbedConfig
-from libs.core.contracts.pipeline_config.enrich_config import EnrichConfig
-from libs.core.contracts.pipeline_config.parse_config import ParseConfig
+from libs.config.pipeline.chain_gate_config import ChainGateConfig
+from libs.config.pipeline._helpers import _redact
+from libs.config.pipeline.stages.chunk_config import ChunkConfig
+from libs.config.pipeline.stages.contextualize_config import ContextualizeConfig
+from libs.config.pipeline.stages.embed_config import EmbedConfig
+from libs.config.pipeline.stages.enrich_config import EnrichConfig
+from libs.config.pipeline.stages.parse_config import ParseConfig
 
 
 class PipelineConfig(BaseModel):
@@ -97,14 +97,14 @@ def build_default_pipeline(cfg: Any) -> PipelineConfig:
     """
     # Lazy imports — triggered only when this function is actually called (after providers
     # register themselves), not at module load time.  Preserves the leaf constraint.
-    from libs.capabilities.classifier.local.layout_labels_config import LayoutLabelsConfig
-    from libs.capabilities.classifier.local.vit_onnx_config import VitOnnxConfig
-    from libs.capabilities.embed.local.config import TeiEmbedConfig
-    from libs.capabilities.ocr.external.mistral_ocr_config import MistralOcrConfig
-    from libs.capabilities.ocr.local.paddle_ocr_config import PaddleOcrConfig
-    from libs.capabilities.parser.local.docling import DoclingConfig
-    from libs.capabilities.vlm.local.openai_compat_config import LocalVlmConfig
-    from libs.engine.stages.chunking.params import TokenBudgetConfig
+    from libs.providers.classifier.local.layout_labels_config import LayoutLabelsConfig
+    from libs.providers.classifier.local.vit_onnx_config import VitOnnxConfig
+    from libs.providers.embed.local.config import TeiEmbedConfig
+    from libs.providers.ocr.external.mistral_ocr_config import MistralOcrConfig
+    from libs.providers.ocr.local.paddle_ocr_config import PaddleOcrConfig
+    from libs.providers.parser.local.docling import DoclingConfig
+    from libs.providers.vlm.local.openai_compat_config import LocalVlmConfig
+    from libs.pipeline.stages.s4_chunk.strategies.params import TokenBudgetConfig
 
     # 1. Parser chain
     parse_cfg = ParseConfig(

@@ -15,8 +15,8 @@ import httpx
 from loggerplusplus import LoggerClass
 
 # ====== Internal Project Imports ======
-from libs.capabilities.interfaces import VlmResult
-from libs.capabilities.vlm.base import VlmProvider
+from libs.providers.interfaces import VlmResult
+from libs.providers.vlm.base import VlmProvider
 
 # ====== Local Project Imports ======
 from .helpers import CHART_DATA_SCHEMA as _CHART_DATA_SCHEMA

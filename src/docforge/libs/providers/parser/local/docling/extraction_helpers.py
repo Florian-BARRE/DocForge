@@ -11,7 +11,7 @@ from typing import Any
 from loggerplusplus import loggerplusplus
 
 # ====== Internal Project Imports ======
-from libs.core.ir.models import Provenance, TableData
+from libs.domain.ir.models import Provenance, TableData
 
 
 class DoclingExtractionHelpers:

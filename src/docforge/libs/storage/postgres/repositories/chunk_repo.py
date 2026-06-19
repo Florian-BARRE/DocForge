@@ -15,7 +15,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # ====== Internal Project Imports ======
-from libs.core.ir.chunk import Chunk
+from libs.domain.ir.chunk import Chunk
 
 
 class ChunkRepository(LoggerClass):

@@ -8,7 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 # ====== Third-Party Library Imports ======
-from libs.core.ir.models import DocumentIR
+from libs.domain.ir.models import DocumentIR
 
 
 @dataclass(slots=True)

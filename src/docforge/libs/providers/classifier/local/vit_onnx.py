@@ -9,8 +9,8 @@ import io
 
 from loggerplusplus import LoggerClass
 
-from libs.capabilities.classifier.base import ClassificationResult, FigureClassifier
-from libs.core.ir.models import FigureKind
+from libs.providers.classifier.base import ClassificationResult, FigureClassifier
+from libs.domain.ir.models import FigureKind
 
 # Expected mapping from ONNX output class index → FigureKind.
 # Must match the label order used during model training.

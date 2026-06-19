@@ -12,17 +12,17 @@ import os
 from typing import Any
 
 # ====== Third-Party Library Imports ======
-from libs.capabilities.chain import Chain
-from libs.capabilities.chain_gate import ChainGate, ChainGateConfig
-from libs.capabilities.classifier.local.vit_onnx_config import VitOnnxConfig
-from libs.capabilities.ocr.external.mistral_ocr_config import MistralOcrConfig
-from libs.capabilities.ocr.local.paddle_ocr_config import PaddleOcrConfig
-from libs.capabilities.parser.local.docling import DoclingConfig
-from libs.capabilities.vlm.external.openai_compat_config import OpenAIVlmConfig
-from libs.capabilities.vlm.local.openai_compat_config import LocalVlmConfig
+from libs.providers.chain import Chain
+from libs.providers.chain_gate import ChainGate, ChainGateConfig
+from libs.providers.classifier.local.vit_onnx_config import VitOnnxConfig
+from libs.providers.ocr.external.mistral_ocr_config import MistralOcrConfig
+from libs.providers.ocr.local.paddle_ocr_config import PaddleOcrConfig
+from libs.providers.parser.local.docling import DoclingConfig
+from libs.providers.vlm.external.openai_compat_config import OpenAIVlmConfig
+from libs.providers.vlm.local.openai_compat_config import LocalVlmConfig
 
 # ====== Internal Project Imports ======
-from libs.core.contracts.pipeline_config import ProviderSpec
+from libs.config.pipeline import ProviderSpec
 
 # ====== Local Project Imports ======
 from .availability import ProviderUnavailableError

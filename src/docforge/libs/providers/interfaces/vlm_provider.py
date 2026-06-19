@@ -11,7 +11,7 @@ from typing import Any, Protocol, runtime_checkable
 # ====== Third-Party Library Imports ======
 # (none — Protocol and result types only)
 # ====== Internal Project Imports ======
-from libs.capabilities.results import VlmResult
+from libs.providers.results import VlmResult
 
 # ====== Local Project Imports ======
 # (none)

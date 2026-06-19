@@ -22,7 +22,7 @@ from __future__ import annotations
 from typing import Any
 
 # ====== Internal Project Imports ======
-from libs.core.contracts.pipeline_config import _is_secret_key
+from libs.config.pipeline import _is_secret_key
 
 # ====== Local Project Imports ======
 from .describe_helpers import _param, _params_from_model, _rules  # noqa: F401 (re-exported)
@@ -93,7 +93,7 @@ class DescribeSurface:
         Returns:
             list[dict]: Provider descriptors ready for the stage group's "providers" list.
         """
-        from libs.core.contracts._registry import get_configs
+        from libs.config.pipeline._registry import get_configs
 
         providers = []
         for config_cls in get_configs(category).values():
@@ -120,19 +120,19 @@ class DescribeSurface:
             dict: {"stages": [StageSchema, ...]} — each stage lists its groups and providers.
         """
         # 1. Trigger auto-import for all categories so @register decorators fire
-        from libs.core.contracts._registry import auto_import
+        from libs.config.pipeline._registry import auto_import
 
         for pkg in (
-            "libs.capabilities.converter",
-            "libs.capabilities.parser",
-            "libs.capabilities.classifier",
-            "libs.capabilities.ocr",
-            "libs.capabilities.vlm",
-            "libs.capabilities.embed",
+            "libs.providers.converter",
+            "libs.providers.parser",
+            "libs.providers.classifier",
+            "libs.providers.ocr",
+            "libs.providers.vlm",
+            "libs.providers.embed",
         ):
             auto_import(pkg)
         # split_method configs live in params.py, imported via chunking __init__
-        import libs.engine.stages.chunking as _chunking_pkg  # noqa: F401
+        import libs.pipeline.stages.s4_chunk as _chunking_pkg  # noqa: F401
 
         # 2. Build and return the full stage descriptor list (nested dict literals live in
         # StageDescriptorHelpers; provider lists come from this registry's _auto_providers).

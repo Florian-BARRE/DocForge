@@ -11,7 +11,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 # ====== Internal Project Imports ======
-from libs.core.contracts.pipeline_config import PipelineConfig
+from libs.config.pipeline import PipelineConfig
 
 # OCR providers that always call out to an external cloud API (no on-prem variant).
 _REMOTE_OCR_IDS: frozenset[str] = frozenset({"mistral_ocr"})

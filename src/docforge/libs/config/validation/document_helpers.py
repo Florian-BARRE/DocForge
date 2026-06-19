@@ -13,7 +13,7 @@ from typing import Any
 from loggerplusplus import loggerplusplus
 
 # ====== Internal Project Imports ======
-from libs.core.metadata import MetaFieldSpec
+from libs.domain.metadata import MetaFieldSpec
 
 
 class ConfigFieldNormalizer:

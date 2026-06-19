@@ -16,8 +16,8 @@ import httpx
 from loggerplusplus import LoggerClass
 
 # ====== Internal Project Imports ======
-from libs.capabilities.converter.base import ConverterProvider
-from libs.capabilities.interfaces import ConvertResult
+from libs.providers.converter.base import ConverterProvider
+from libs.providers.interfaces import ConvertResult
 
 # Formats routed through Gotenberg (office → LibreOffice → PDF)
 GOTENBERG_FORMATS: frozenset[str] = frozenset(

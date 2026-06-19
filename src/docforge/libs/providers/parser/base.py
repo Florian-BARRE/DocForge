@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from libs.core.ir.models import DocumentIR
+from libs.domain.ir.models import DocumentIR
 
 
 class ParserProvider(ABC):

@@ -6,8 +6,8 @@ import uuid
 
 import pytest
 
-from libs.core.ir.chunk import Chunk
-from libs.core.ir.models import (
+from libs.domain.ir.chunk import Chunk
+from libs.domain.ir.models import (
     Block,
     BlockType,
     DocumentIR,
@@ -16,7 +16,7 @@ from libs.core.ir.models import (
     Provenance,
     TableData,
 )
-from libs.engine.stages.s5_contextualize import S5ContextualizeStage
+from libs.pipeline.stages.s5_contextualize.core import S5ContextualizeStage
 
 
 # ─── Helpers ────────────────────────────────────────────────────────────────────

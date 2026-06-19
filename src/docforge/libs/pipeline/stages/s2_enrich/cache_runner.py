@@ -13,13 +13,13 @@ from typing import Any
 # ====== Third-Party Library Imports ======
 from loggerplusplus import loggerplusplus
 
-from libs.capabilities.chain import Chain
-from libs.capabilities.classifier.base import ClassificationResult
-from libs.capabilities.interfaces import OcrHint, OcrResult, VlmResult
+from libs.providers.chain import Chain
+from libs.providers.classifier.base import ClassificationResult
+from libs.providers.interfaces import OcrHint, OcrResult, VlmResult
 
 # ====== Internal Project Imports ======
-from libs.core.ir.models import ChainTrace, FigureKind
-from libs.engine.provider_cache import ProviderCallCache
+from libs.domain.ir.models import ChainTrace, FigureKind
+from libs.pipeline.caches.provider_cache import ProviderCallCache
 
 # ====== Local Project Imports ======
 from .call_key import CallKeyHelpers

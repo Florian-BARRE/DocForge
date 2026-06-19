@@ -11,12 +11,12 @@ from typing import Any
 # ====== Third-Party Library Imports ======
 from loggerplusplus import loggerplusplus
 
-from libs.capabilities.chain import Chain
-from libs.capabilities.interfaces import VlmResult
+from libs.providers.chain import Chain
+from libs.providers.interfaces import VlmResult
 
 # ====== Internal Project Imports ======
-from libs.core.ir.models import ChainTrace
-from libs.engine.provider_cache import ProviderCallCache
+from libs.domain.ir.models import ChainTrace
+from libs.pipeline.caches.provider_cache import ProviderCallCache
 
 # ====== Local Project Imports ======
 from .call_key import CallKeyHelpers
@@ -82,7 +82,7 @@ class VlmRunner:
             )
 
         # 3. Resolve chart schema from provider type — late import avoids a circular dep.
-        from libs.capabilities.vlm import OpenAICompatVlmProvider  # noqa: PLC0415
+        from libs.providers.vlm import OpenAICompatVlmProvider  # noqa: PLC0415
 
         schema = (
             OpenAICompatVlmProvider.chart_schema()

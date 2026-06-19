@@ -9,10 +9,10 @@ from __future__ import annotations
 from typing import Any
 
 # ====== Third-Party Library Imports ======
-from libs.capabilities.chain import Chain
+from libs.providers.chain import Chain
 
 # ====== Internal Project Imports ======
-from libs.engine.provider_cache import ProviderCallCache
+from libs.pipeline.caches.provider_cache import ProviderCallCache
 
 
 class CallKeyHelpers:

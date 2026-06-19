@@ -11,8 +11,8 @@ import base64
 import httpx
 from loggerplusplus import LoggerClass
 
-from libs.capabilities.interfaces import OcrHint, OcrResult
-from libs.capabilities.ocr.base import OcrProvider
+from libs.providers.interfaces import OcrHint, OcrResult
+from libs.providers.ocr.base import OcrProvider
 
 # Approximate Mistral OCR billing rate (USD per page, subject to change)
 _MISTRAL_OCR_COST_PER_PAGE: float = 0.001

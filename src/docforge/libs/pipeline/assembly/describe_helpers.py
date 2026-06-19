@@ -17,7 +17,7 @@ from typing import Any
 from pydantic import BaseModel
 
 # ====== Internal Project Imports ======
-from libs.core.contracts.pipeline_config import _is_secret_key
+from libs.config.pipeline import _is_secret_key
 
 # ─── JSON-Schema scalar type → UI param type understood by the configurator ───────
 _JSON_TYPE_TO_UI: dict[str, str] = {

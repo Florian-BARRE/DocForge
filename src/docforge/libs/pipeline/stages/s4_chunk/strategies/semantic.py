@@ -14,10 +14,10 @@ from typing import Any
 # ====== Third-Party Library Imports ======
 from loggerplusplus import LoggerClass
 
-from libs.capabilities.embed.base import EmbedProvider
+from libs.providers.embed.base import EmbedProvider
 
 # ====== Internal Project Imports ======
-from libs.core.ir.models import Block
+from libs.domain.ir.models import Block
 
 # ====== Local Project Imports ======
 from .base_splitter import SplitPiece

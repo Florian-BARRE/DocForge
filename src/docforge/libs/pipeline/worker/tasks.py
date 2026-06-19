@@ -11,16 +11,16 @@ import uuid
 # ====== Third-Party Library Imports ======
 from loggerplusplus import loggerplusplus
 
-from libs.core.contracts.pipeline_config import PipelineConfig
-from libs.data.storage.postgres.client import PostgresClient
-from libs.data.storage.postgres.repositories import (
+from libs.config.pipeline import PipelineConfig
+from libs.storage.postgres.client import PostgresClient
+from libs.storage.postgres.repositories import (
     CollectionRepository,
     DocumentRepository,
     JobRepository,
 )
 
 # ====== Internal Project Imports ======
-from libs.engine.engine import StageEngine
+from libs.pipeline.engine import StageEngine
 
 _logger = loggerplusplus.bind(identifier="WORKER_TASK")
 

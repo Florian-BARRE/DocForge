@@ -10,7 +10,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # ====== Internal Project Imports ======
-from libs.core.ir.models import Block, BlockType
+from libs.domain.ir.models import Block, BlockType
 
 # ====== Local Project Imports ======
 from ..models import BlockModel

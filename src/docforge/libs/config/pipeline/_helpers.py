@@ -7,8 +7,8 @@
 # PipelineConfigHelpers wraps the logic as a static-only class. Module-level
 # function names are preserved as thin wrappers for backward compat.
 #
-# LEAF CONSTRAINT: no module-level import of libs.capabilities / libs.data /
-# libs.engine / libs.governance.
+# LEAF CONSTRAINT: no module-level import of libs.providers / libs.data /
+# libs.pipeline / libs.config.
 
 # ====== Standard Library Imports ======
 from __future__ import annotations
@@ -17,7 +17,7 @@ import re
 from typing import Any
 
 # ====== Internal Project Imports ======
-from libs.core.contracts.spec_utils import flatten_provider_spec as _flatten_provider_spec
+from libs.config.pipeline.spec_utils import flatten_provider_spec as _flatten_provider_spec
 
 # Param-name segments that mark a value as a credential — masked when the config is echoed.
 # Matched against whole `_`/`-`-separated segments (not substrings) so legitimate keys like

@@ -13,7 +13,7 @@ import re
 from loggerplusplus import LoggerClass
 
 # ====== Internal Project Imports ======
-from libs.core.ir.chunk import Chunk
+from libs.domain.ir.chunk import Chunk
 
 # Reference / label grammar: a kind keyword (FR/EN) followed by a number, roman numeral, or
 # single letter. Case-insensitive; used both to extract anchors and to find references.

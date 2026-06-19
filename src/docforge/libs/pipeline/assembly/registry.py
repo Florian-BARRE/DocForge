@@ -19,20 +19,20 @@ from typing import Any
 # ====== Third-Party Library Imports ======
 from loggerplusplus import LoggerClass
 
-from libs.capabilities.chain import Chain
-from libs.capabilities.chain_gate import ChainGateConfig
+from libs.providers.chain import Chain
+from libs.providers.chain_gate import ChainGateConfig
 
 # ====== Internal Project Imports ======
-from libs.core.contracts.pipeline_config import (
+from libs.config.pipeline import (
     EnrichConfig,
     PipelineConfig,
     ProviderSpec,
 )
-from libs.data.storage.s3.client import S3Client
-from libs.engine.provider_cache import ProviderCallCache
-from libs.engine.stages.s2_enrich import S2EnrichStage
-from libs.engine.stages.s4_chunk import S4ChunkStage
-from libs.engine.stages.s5_contextualize import S5ContextualizeStage
+from libs.storage.s3.client import S3Client
+from libs.pipeline.caches.provider_cache import ProviderCallCache
+from libs.pipeline.stages.s2_enrich import S2EnrichStage
+from libs.pipeline.stages.s4_chunk import S4ChunkStage
+from libs.pipeline.stages.s5_contextualize.core import S5ContextualizeStage
 
 # ====== Local Project Imports ======
 from .chain_builders import ChainBuilderHelpers

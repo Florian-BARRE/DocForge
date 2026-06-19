@@ -12,11 +12,11 @@ from typing import TYPE_CHECKING, Any, ClassVar, Literal
 from pydantic import BaseModel, Field, model_validator
 
 # ====== Internal Project Imports ======
-from libs.core.contracts._registry import register
-from libs.core.contracts.spec_utils import flatten_provider_spec as _flatten_provider_spec
+from libs.config.pipeline._registry import register
+from libs.config.pipeline.spec_utils import flatten_provider_spec as _flatten_provider_spec
 
 if TYPE_CHECKING:
-    from libs.engine.stages.chunking.sentence_window_splitter import SentenceWindowSplitter
+    from libs.pipeline.stages.s4_chunk.strategies.sentence_window import SentenceWindowSplitter
 
 
 @register("split_method")
@@ -42,7 +42,7 @@ class SentenceWindowConfig(BaseModel):
 
     def build(self) -> SentenceWindowSplitter:
         """Instantiate SentenceWindowSplitter from this config."""
-        from libs.engine.stages.chunking.sentence_window_splitter import SentenceWindowSplitter
+        from libs.pipeline.stages.s4_chunk.strategies.sentence_window import SentenceWindowSplitter
         return SentenceWindowSplitter(
             window_sentences=self.window_sentences,
             stride_sentences=self.stride_sentences,

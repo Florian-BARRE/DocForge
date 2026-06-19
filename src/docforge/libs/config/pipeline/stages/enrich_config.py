@@ -3,8 +3,8 @@
 # Covers figure classification, OCR, and VLM enrichment — each as an
 # independently-gated provider chain.
 #
-# LEAF CONSTRAINT: no module-level import of libs.capabilities / libs.data /
-# libs.engine / libs.governance — all concrete-provider imports stay LAZY
+# LEAF CONSTRAINT: no module-level import of libs.providers / libs.data /
+# libs.pipeline / libs.config — all concrete-provider imports stay LAZY
 # (inside model_validator bodies).
 
 # ====== Standard Library Imports ======
@@ -16,9 +16,9 @@ from typing import Any
 from pydantic import BaseModel, Field, model_validator
 
 # ====== Internal Project Imports ======
-from libs.core.contracts.chain_gate_config import ChainGateConfig
-from libs.core.contracts.pipeline_config._helpers import _lift_provider_to_chain
-from libs.core.contracts.spec_utils import flatten_provider_spec as _flatten_provider_spec
+from libs.config.pipeline.chain_gate_config import ChainGateConfig
+from libs.config.pipeline._helpers import _lift_provider_to_chain
+from libs.config.pipeline.spec_utils import flatten_provider_spec as _flatten_provider_spec
 
 
 class EnrichConfig(BaseModel):
@@ -117,12 +117,12 @@ class EnrichConfig(BaseModel):
         from pydantic import Field as _F
         from pydantic import TypeAdapter
 
-        from libs.capabilities.classifier.local.layout_labels_config import LayoutLabelsConfig
-        from libs.capabilities.classifier.local.vit_onnx_config import VitOnnxConfig
-        from libs.capabilities.ocr.external.mistral_ocr_config import MistralOcrConfig
-        from libs.capabilities.ocr.local.paddle_ocr_config import PaddleOcrConfig
-        from libs.capabilities.vlm.external.openai_compat_config import OpenAIVlmConfig
-        from libs.capabilities.vlm.local.openai_compat_config import LocalVlmConfig
+        from libs.providers.classifier.local.layout_labels_config import LayoutLabelsConfig
+        from libs.providers.classifier.local.vit_onnx_config import VitOnnxConfig
+        from libs.providers.ocr.external.mistral_ocr_config import MistralOcrConfig
+        from libs.providers.ocr.local.paddle_ocr_config import PaddleOcrConfig
+        from libs.providers.vlm.external.openai_compat_config import OpenAIVlmConfig
+        from libs.providers.vlm.local.openai_compat_config import LocalVlmConfig
 
         # 1. Validate classifier_chain items, then default if empty.
         classifier_union = Annotated[

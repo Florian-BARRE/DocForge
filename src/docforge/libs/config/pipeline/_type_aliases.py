@@ -8,8 +8,8 @@
 # validates each list item via the discriminator="id" on the concrete models;
 # the unions are built dynamically by build_union(get_configs("category")).
 #
-# LEAF CONSTRAINT: no module-level import of libs.capabilities / libs.data /
-# libs.engine / libs.governance.
+# LEAF CONSTRAINT: no module-level import of libs.providers / libs.data /
+# libs.pipeline / libs.config.
 
 # ====== Standard Library Imports ======
 from __future__ import annotations

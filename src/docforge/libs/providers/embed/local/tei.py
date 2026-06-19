@@ -10,8 +10,8 @@ import httpx
 from loggerplusplus import LoggerClass
 
 # ====== Internal Project Imports ======
-from libs.capabilities.embed.base import EmbedProvider
-from libs.capabilities.interfaces import EmbedResult
+from libs.providers.embed.base import EmbedProvider
+from libs.providers.interfaces import EmbedResult
 
 # ====== Local Project Imports ======
 # (none — TeiEmbedConfig lives in config.py to keep provider and config separate)

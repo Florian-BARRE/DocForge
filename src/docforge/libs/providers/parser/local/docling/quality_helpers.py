@@ -9,7 +9,7 @@
 from __future__ import annotations
 
 # ====== Internal Project Imports ======
-from libs.core.ir.models import Block, BlockType
+from libs.domain.ir.models import Block, BlockType
 
 
 class DoclingQualityHelpers:

@@ -13,7 +13,7 @@ from qdrant_client import AsyncQdrantClient
 from qdrant_client.models import Filter, SparseVector
 
 # ====== Internal Project Imports ======
-from libs.data.retrieval.field_index import FieldIndexHelpers
+from libs.search.field_index import FieldIndexHelpers
 
 
 class QdrantSearchHelpers:

@@ -7,8 +7,8 @@ import uuid
 
 import pytest
 
-from libs.core.ir.chunk import Chunk
-from libs.core.ir.models import (
+from libs.domain.ir.chunk import Chunk
+from libs.domain.ir.models import (
     Block,
     BlockType,
     DocumentIR,
@@ -17,16 +17,16 @@ from libs.core.ir.models import (
     Provenance,
     TableData,
 )
-from libs.core.contracts.pipeline_config import AtomicConfig, ChunkConfig, PipelineConfig
-from libs.engine.stages.chunking import (
+from libs.config.pipeline import AtomicConfig, ChunkConfig, PipelineConfig
+from libs.pipeline.stages.s4_chunk import (
     ChunkingHelpers,
     CrossReferenceLinker,
     SemanticSplitter,
     SentenceWindowSplitter,
     TokenBudgetSplitter,
 )
-from libs.engine.stages.s4_chunk import S4ChunkStage
-from libs.capabilities.interfaces import EmbedResult
+from libs.pipeline.stages.s4_chunk import S4ChunkStage
+from libs.providers.interfaces import EmbedResult
 
 _BBOX = (0.0, 0.0, 1.0, 0.1)
 

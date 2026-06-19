@@ -10,17 +10,17 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from libs.core.contracts.pipeline_config import EmbedConfig
-    from libs.engine.assembly import ProviderRegistry
+    from libs.config.pipeline import EmbedConfig
+    from libs.pipeline.assembly import ProviderRegistry
 
 # ====== Third-Party Library Imports ======
 from loggerplusplus import loggerplusplus
 
-from libs.data.storage.postgres.repositories import ChunkRepository
-from libs.data.storage.qdrant.client import QdrantStorageClient
+from libs.storage.postgres.repositories import ChunkRepository
+from libs.storage.qdrant.client import QdrantStorageClient
 
 # ====== Internal Project Imports ======
-from libs.engine.stages.s6_embed_index import S6EmbedIndexStage
+from libs.pipeline.stages.s6_embed_index.core import S6EmbedIndexStage
 
 
 class S6Builder:
@@ -116,7 +116,7 @@ class S6Builder:
         spec = embed.chain[0]
         embed_provider = spec.build()
         batch_size = getattr(spec, "batch_size", 32)
-        from libs.capabilities.chain import Chain
-        from libs.capabilities.chain_gate import ChainGate
+        from libs.providers.chain import Chain
+        from libs.providers.chain_gate import ChainGate
         embed_chain = Chain(stage="embed", providers=[embed_provider], gate=ChainGate(embed.gate))
         return embed_chain, batch_size

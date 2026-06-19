@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from libs.core.ir.models import ChainTrace
+    from libs.domain.ir.models import ChainTrace
 
 
 @dataclass(slots=True)

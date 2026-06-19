@@ -13,8 +13,8 @@ from collections.abc import Iterator
 from loggerplusplus import loggerplusplus
 
 # ====== Internal Project Imports ======
-from libs.core.ir.chunk import Chunk
-from libs.core.ir.models import Block
+from libs.domain.ir.chunk import Chunk
+from libs.domain.ir.models import Block
 
 from ..chunking import SectionSplitter
 

@@ -110,7 +110,7 @@ class FingerprintHelpers:
 
 
 # ─── Module-level shims ───────────────────────────────────────────────────────
-# Preserve backward-compatible import: ``from libs.engine.fingerprint import compute_fingerprint``
+# Preserve backward-compatible import: ``from libs.pipeline.caches.fingerprint import compute_fingerprint``
 # All callers continue to work without modification.
 
 def compute_fingerprint(

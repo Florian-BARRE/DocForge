@@ -18,7 +18,7 @@ from collections.abc import Awaitable, Callable
 from loggerplusplus import LoggerClass
 
 # ====== Internal Project Imports ======
-from libs.capabilities.chain_gate import ChainGate
+from libs.providers.chain_gate import ChainGate
 
 # ====== Local Project Imports ======
 from .models import ChainAttempt, ChainHelpers, ChainOutcome

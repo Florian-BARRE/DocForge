@@ -15,15 +15,15 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from libs.data.storage.s3.client import S3Client
+    from libs.storage.s3.client import S3Client
 
 # ====== Third-Party Library Imports ======
 from loggerplusplus import LoggerClass
 
-from libs.capabilities.chain import Chain
+from libs.providers.chain import Chain
 
 # ====== Internal Project Imports ======
-from libs.core.ir.models import DocumentIR
+from libs.domain.ir.models import DocumentIR
 
 # ====== Local Project Imports ======
 from .s0_ingest import S0Result

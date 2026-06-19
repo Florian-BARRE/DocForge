@@ -12,13 +12,13 @@ import uuid
 from loggerplusplus import LoggerClass
 
 # ====== Internal Project Imports ======
-from libs.capabilities.converter import (
+from libs.providers.converter import (
     GOTENBERG_FORMATS,
     NATIVE_PDF_FORMATS,
     GotenbergConverter,
 )
-from libs.data.storage.s3.client import S3Client
-from libs.data.storage.s3.helpers import S3Helpers
+from libs.storage.s3.client import S3Client
+from libs.storage.s3.helpers import S3Helpers
 
 # ====== Local Project Imports ======
 from .s0_helpers import S0IngestHelpers

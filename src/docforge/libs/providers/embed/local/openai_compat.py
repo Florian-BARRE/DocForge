@@ -7,7 +7,7 @@
 from __future__ import annotations
 
 # ====== Local Project Imports ======
-from libs.capabilities.embed._openai_compat_base import _OpenAICompatBase
+from libs.providers.embed._openai_compat_base import _OpenAICompatBase
 
 
 class LocalOpenAICompatEmbedProvider(_OpenAICompatBase):

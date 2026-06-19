@@ -3,7 +3,7 @@
 
 import pytest
 
-from libs.engine.fingerprint import compute_call_fingerprint, compute_fingerprint
+from libs.pipeline.caches.fingerprint import compute_call_fingerprint, compute_fingerprint
 
 
 class TestComputeFingerprint:

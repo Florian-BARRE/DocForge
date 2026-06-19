@@ -9,9 +9,9 @@ from __future__ import annotations
 from typing import Any
 
 # ====== Internal Project Imports ======
-from libs.core.ir.chunk import Chunk
-from libs.core.metadata import MetadataHelpers as _MetadataHelpers
-from libs.data.retrieval.field_index import FieldIndexHelpers
+from libs.domain.ir.chunk import Chunk
+from libs.domain.metadata import MetadataHelpers as _MetadataHelpers
+from libs.search.field_index import FieldIndexHelpers
 
 # Backward-compat alias for the private _field_attr function now in MetadataHelpers.
 _field_attr = _MetadataHelpers.field_attr

@@ -13,16 +13,16 @@ from typing import Any
 # ====== Third-Party Library Imports ======
 from loggerplusplus import LoggerClass
 
-from libs.capabilities.chain import Chain
+from libs.providers.chain import Chain
 
 # ====== Internal Project Imports ======
-from libs.core.ir.models import (
+from libs.domain.ir.models import (
     Block,
     BlockType,
     DocumentIR,
 )
-from libs.data.storage.s3.client import S3Client
-from libs.engine.provider_cache import ProviderCallCache
+from libs.storage.s3.client import S3Client
+from libs.pipeline.caches.provider_cache import ProviderCallCache
 
 # ====== Local Project Imports ======
 from .figure_enricher import FigureEnricher

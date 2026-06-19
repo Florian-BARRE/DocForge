@@ -11,8 +11,8 @@ import io
 
 from loggerplusplus import LoggerClass
 
-from libs.capabilities.interfaces import OcrHint, OcrResult
-from libs.capabilities.ocr.base import OcrProvider
+from libs.providers.interfaces import OcrHint, OcrResult
+from libs.providers.ocr.base import OcrProvider
 
 
 class PaddleOcrProvider(OcrProvider, LoggerClass):

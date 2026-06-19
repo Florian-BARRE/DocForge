@@ -13,7 +13,7 @@ import uuid
 from loggerplusplus import loggerplusplus
 
 # ====== Internal Project Imports ======
-from libs.core.ir.models import Block, BlockType
+from libs.domain.ir.models import Block, BlockType
 
 # Characters-per-token heuristic shared across the platform (no tokenizer dependency).
 _CHARS_PER_TOKEN: int = 4

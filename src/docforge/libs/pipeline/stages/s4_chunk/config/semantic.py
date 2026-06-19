@@ -13,11 +13,11 @@ from typing import TYPE_CHECKING, Any, ClassVar, Literal
 from pydantic import BaseModel, Field, model_validator
 
 # ====== Internal Project Imports ======
-from libs.core.contracts._registry import register
-from libs.core.contracts.spec_utils import flatten_provider_spec as _flatten_provider_spec
+from libs.config.pipeline._registry import register
+from libs.config.pipeline.spec_utils import flatten_provider_spec as _flatten_provider_spec
 
 if TYPE_CHECKING:
-    from libs.engine.stages.chunking.semantic_splitter import SemanticSplitter
+    from libs.pipeline.stages.s4_chunk.strategies.semantic import SemanticSplitter
 
 
 @register("split_method")
@@ -80,10 +80,10 @@ class SemanticConfig(BaseModel):
         from pydantic import Field as _F
         from pydantic import TypeAdapter
 
-        from libs.capabilities.embed import EmbedProviderConfig  # noqa: F401  (typing alias)
-        from libs.capabilities.embed.external.openai_compat_config import OpenAIEmbedConfig
-        from libs.capabilities.embed.local.config import TeiEmbedConfig
-        from libs.capabilities.embed.local.openai_compat_config import LocalOpenAIEmbedConfig
+        from libs.providers.embed import EmbedProviderConfig  # noqa: F401  (typing alias)
+        from libs.providers.embed.external.openai_compat_config import OpenAIEmbedConfig
+        from libs.providers.embed.local.config import TeiEmbedConfig
+        from libs.providers.embed.local.openai_compat_config import LocalOpenAIEmbedConfig
 
         # Default to TEI when the field is None (e.g. legacy DB row without embed key).
         if self.embed is None:
@@ -105,7 +105,7 @@ class SemanticConfig(BaseModel):
 
     def build(self) -> SemanticSplitter:
         """Instantiate SemanticSplitter with the configured embed provider."""
-        from libs.engine.stages.chunking.semantic_splitter import SemanticSplitter
+        from libs.pipeline.stages.s4_chunk.strategies.semantic import SemanticSplitter
         embed_provider = self.embed.build()
         return SemanticSplitter(
             embed_provider=embed_provider,

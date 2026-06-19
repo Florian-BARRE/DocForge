@@ -13,12 +13,12 @@ from typing import Any
 from loggerplusplus import LoggerClass
 from sqlalchemy import select
 
-from libs.data.storage.postgres.client import PostgresClient
-from libs.data.storage.postgres.models import ProviderCallModel
-from libs.data.storage.s3.client import S3Client
+from libs.storage.postgres.client import PostgresClient
+from libs.storage.postgres.models import ProviderCallModel
+from libs.storage.s3.client import S3Client
 
 # ====== Internal Project Imports ======
-from libs.engine.fingerprint import compute_call_fingerprint
+from libs.pipeline.caches.fingerprint import compute_call_fingerprint
 
 
 class ProviderCallCache(LoggerClass):

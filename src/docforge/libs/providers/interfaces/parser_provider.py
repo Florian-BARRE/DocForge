@@ -11,7 +11,7 @@ from typing import Protocol, runtime_checkable
 # ====== Third-Party Library Imports ======
 # (none — Protocol and IR type only)
 # ====== Internal Project Imports ======
-from libs.core.ir.models import DocumentIR
+from libs.domain.ir.models import DocumentIR
 
 # ====== Local Project Imports ======
 # (none)

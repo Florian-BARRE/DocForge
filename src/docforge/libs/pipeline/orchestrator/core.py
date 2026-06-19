@@ -26,30 +26,30 @@ import uuid
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from libs.data.storage.s3.client import S3Client
-    from libs.engine.assembly import ProviderRegistry
+    from libs.storage.s3.client import S3Client
+    from libs.pipeline.assembly import ProviderRegistry
 
 # ====== Third-Party Library Imports ======
 from loggerplusplus import LoggerClass
 
 # ====== Internal Project Imports ======
-from libs.core.contracts.pipeline_config import PipelineConfig
-from libs.data.storage.postgres.client import PostgresClient
-from libs.data.storage.postgres.repositories import (
+from libs.config.pipeline import PipelineConfig
+from libs.storage.postgres.client import PostgresClient
+from libs.storage.postgres.repositories import (
     BlockRepository,
     ChunkRepository,
     DocumentRepository,
 )
-from libs.data.storage.qdrant.client import QdrantStorageClient
-from libs.data.storage.s3.helpers import S3Helpers
-from libs.engine.node_cache import NodeCache
-from libs.engine.provider_cache import ProviderCallCache
-from libs.engine.stages.s0_ingest import S0IngestStage
-from libs.engine.stages.s1_parse import S1ParseStage
-from libs.engine.stages.s2_enrich import S2EnrichStage
-from libs.engine.stages.s4_chunk import S4ChunkStage
-from libs.engine.stages.s5_contextualize import S5ContextualizeStage
-from libs.engine.stages.s6_embed_index import S6EmbedIndexStage
+from libs.storage.qdrant.client import QdrantStorageClient
+from libs.storage.s3.helpers import S3Helpers
+from libs.pipeline.caches.node_cache import NodeCache
+from libs.pipeline.caches.provider_cache import ProviderCallCache
+from libs.pipeline.stages.s0_ingest.core import S0IngestStage
+from libs.pipeline.stages.s1_parse.core import S1ParseStage
+from libs.pipeline.stages.s2_enrich import S2EnrichStage
+from libs.pipeline.stages.s4_chunk import S4ChunkStage
+from libs.pipeline.stages.s5_contextualize.core import S5ContextualizeStage
+from libs.pipeline.stages.s6_embed_index.core import S6EmbedIndexStage
 
 # ====== Local Project Imports ======
 from .deps import StageDeps

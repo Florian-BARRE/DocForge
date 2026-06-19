@@ -10,12 +10,12 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from libs.engine.stages.s0_ingest import S0Result
-    from libs.engine.stages.s1_parse import S1Result
-    from libs.engine.stages.s2_enrich import S2Result
-    from libs.engine.stages.s4_chunk import S4Result
-    from libs.engine.stages.s5_contextualize import S5Result
-    from libs.engine.stages.s6_embed_index import S6Result
+    from libs.pipeline.stages.s0_ingest.core import S0Result
+    from libs.pipeline.stages.s1_parse.core import S1Result
+    from libs.pipeline.stages.s2_enrich import S2Result
+    from libs.pipeline.stages.s4_chunk import S4Result
+    from libs.pipeline.stages.s5_contextualize.core import S5Result
+    from libs.pipeline.stages.s6_embed_index.core import S6Result
 
 
 @dataclass(slots=True)

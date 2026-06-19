@@ -11,7 +11,7 @@ from fastapi import APIRouter, HTTPException
 from backend.context import CONTEXT
 from backend.libs.utils.error_handling import auto_handle_errors
 from backend.routers.collections.documents.files.models import PresignedUrlResponse
-from libs.data.storage.s3.helpers import S3Helpers
+from libs.storage.s3.helpers import S3Helpers
 
 router = APIRouter(tags=["files"])
 

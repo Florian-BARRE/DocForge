@@ -1,11 +1,11 @@
 # ─────────────────── Registry (auto-registration API) ─────────────── #
-from libs.core.contracts._registry import auto_import, build_union, get_configs, register
+from libs.config.pipeline._registry import auto_import, build_union, get_configs, register
 
 # ─────────────────── Gate Config ──────────────────────────────────── #
-from libs.core.contracts.chain_gate_config import ChainGateConfig
+from libs.config.pipeline.chain_gate_config import ChainGateConfig
 
 # ─────────────────── Pipeline Contract ────────────────────────────── #
-from libs.core.contracts.pipeline_config import (
+from libs.config.pipeline import (
     DEFAULT_HEADING_RULES,
     SPLIT_METHODS,
     AtomicConfig,
@@ -28,7 +28,7 @@ from libs.core.contracts.pipeline_config import (
 )
 
 # ─────────────────── Shared spec helper ───────────────────────────── #
-from libs.core.contracts.spec_utils import flatten_provider_spec
+from libs.config.pipeline.spec_utils import flatten_provider_spec
 
 # ─────────────────── Public API ───────────────────────────────────── #
 __all__ = [

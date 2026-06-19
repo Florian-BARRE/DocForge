@@ -8,7 +8,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 
 # ====== Internal Project Imports ======
-from libs.capabilities.interfaces import EmbedResult
+from libs.providers.interfaces import EmbedResult
 
 
 class EmbedProvider(ABC):

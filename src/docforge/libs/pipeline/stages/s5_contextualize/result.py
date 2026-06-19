@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from libs.core.ir.chunk import Chunk
+    from libs.domain.ir.chunk import Chunk
 
 
 @dataclass(slots=True)

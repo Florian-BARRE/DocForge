@@ -10,9 +10,9 @@ from __future__ import annotations
 import json
 
 # ====== Internal Project Imports ======
-from libs.engine.stages.s0_ingest import S0Result
-from libs.engine.stages.s1_parse import S1Result
-from libs.engine.stages.s2_enrich import S2Result
+from libs.pipeline.stages.s0_ingest.core import S0Result
+from libs.pipeline.stages.s1_parse.core import S1Result
+from libs.pipeline.stages.s2_enrich import S2Result
 
 
 class CacheEncoder:

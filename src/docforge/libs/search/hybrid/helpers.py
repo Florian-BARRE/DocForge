@@ -23,8 +23,8 @@ from .hybrid_search_models import SearchResult
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
-    from libs.capabilities.embed.local.tei import TeiEmbedProvider
-    from libs.data.storage.postgres.repositories.chunk_repo import ChunkRepository
+    from libs.providers.embed.local.tei import TeiEmbedProvider
+    from libs.storage.postgres.repositories.chunk_repo import ChunkRepository
 
 
 class HybridSearchHelpers:

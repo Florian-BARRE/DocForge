@@ -17,7 +17,7 @@ from backend.routers.collections.documents.search.models import (
     SearchResponse,
     SearchResultItem,
 )
-from libs.core.metadata import schema_field_dicts
+from libs.domain.metadata import schema_field_dicts
 
 router = APIRouter(tags=["search"])
 

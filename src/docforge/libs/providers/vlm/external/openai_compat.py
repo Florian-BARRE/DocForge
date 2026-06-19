@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 # ====== Local Project Imports ======
-from libs.capabilities.vlm._openai_compat_base import _OpenAICompatVlmBase
+from libs.providers.vlm._openai_compat_base import _OpenAICompatVlmBase
 
 
 class OpenAIVlmProvider(_OpenAICompatVlmBase):

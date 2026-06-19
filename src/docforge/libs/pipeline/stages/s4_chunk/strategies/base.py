@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol, runtime_checkable
 
 # ====== Internal Project Imports ======
-from libs.core.ir.models import Block
+from libs.domain.ir.models import Block
 
 
 @dataclass(slots=True)

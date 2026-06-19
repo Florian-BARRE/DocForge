@@ -20,14 +20,14 @@ from loggerplusplus import LoggerClass
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # ====== Internal Project Imports ======
-from libs.capabilities.embed.local.tei import TeiEmbedProvider
-from libs.data.retrieval.field_index import (
+from libs.providers.embed.local.tei import TeiEmbedProvider
+from libs.search.field_index import (
     CONTENT_DENSE,
     CONTENT_SPARSE,
     FieldIndexHelpers,
 )
-from libs.data.storage.postgres.repositories.chunk_repo import ChunkRepository
-from libs.data.storage.qdrant.client import QdrantStorageClient
+from libs.storage.postgres.repositories.chunk_repo import ChunkRepository
+from libs.storage.qdrant.client import QdrantStorageClient
 
 # ====== Local Project Imports ======
 from .metadata_indexer_helpers import MetadataIndexerHelpers

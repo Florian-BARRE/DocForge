@@ -27,8 +27,8 @@ from backend.routers.collections.documents.models import (
     ReingestRequest,
     ReingestResponse,
 )
-from libs.data.storage.s3.helpers import S3Helpers
-from libs.governance.admission import AdmissionValidator
+from libs.storage.s3.helpers import S3Helpers
+from libs.config.admission import AdmissionValidator
 
 router = APIRouter(tags=["documents"])
 

@@ -15,10 +15,10 @@ from typing import Any, TypeVar
 from loggerplusplus import loggerplusplus
 
 # ====== Internal Project Imports ======
-from libs.data.storage.s3.helpers import S3Helpers
-from libs.engine.stages.s0_ingest import S0Result
-from libs.engine.stages.s1_parse import S1Result
-from libs.engine.stages.s2_enrich import S2Result
+from libs.storage.s3.helpers import S3Helpers
+from libs.pipeline.stages.s0_ingest.core import S0Result
+from libs.pipeline.stages.s1_parse.core import S1Result
+from libs.pipeline.stages.s2_enrich import S2Result
 
 # ====== Local Project Imports ======
 from .deps import StageDeps

@@ -10,10 +10,10 @@ from typing import Any
 # ====== Third-Party Library Imports ======
 from loggerplusplus import loggerplusplus
 
-from libs.capabilities.chain import ChainOutcome, chain_outcome_to_attempt_dicts
+from libs.providers.chain import ChainOutcome, chain_outcome_to_attempt_dicts
 
 # ====== Internal Project Imports ======
-from libs.core.ir.models import ChainAttemptIR, ChainTrace
+from libs.domain.ir.models import ChainAttemptIR, ChainTrace
 
 
 class TraceHelpers:

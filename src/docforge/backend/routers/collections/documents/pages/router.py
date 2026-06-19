@@ -22,7 +22,7 @@ from backend.routers.collections.documents.pages.models import (
     PageListResponse,
     PageReingestResponse,
 )
-from libs.data.storage.s3.helpers import S3Helpers
+from libs.storage.s3.helpers import S3Helpers
 
 # Render resolution for on-the-fly page screenshots — 2× zoom matches S1 figure crop quality.
 _PAGE_RENDER_ZOOM: float = 2.0

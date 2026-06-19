@@ -16,7 +16,7 @@ from qdrant_client.models import (
 
 # ====== Internal Project Imports ======
 # Single source of truth for content vector names — defined in field_index and reused here.
-from libs.data.retrieval.field_index import CONTENT_DENSE, CONTENT_SPARSE
+from libs.search.field_index import CONTENT_DENSE, CONTENT_SPARSE
 
 
 class QdrantCollectionAdmin:

@@ -8,8 +8,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 # ====== Internal Project Imports ======
-from libs.core.ir.chunk import Chunk
-from libs.core.ir.models import Block
+from libs.domain.ir.chunk import Chunk
+from libs.domain.ir.models import Block
 
 _PARENT_STRATEGY: str = "section_parent"
 

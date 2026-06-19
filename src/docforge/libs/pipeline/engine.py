@@ -1,7 +1,7 @@
 # ====== Code Summary ======
-# Thin re-export shim — preserves the public import path ``libs.engine.engine``
+# Thin re-export shim — preserves the public import path ``libs.pipeline.engine``
 # for all existing callers (entrypoint.py, worker.py, tasks.py, backend/context.py).
-# The actual implementation lives in libs.engine.orchestrator (sub-package).
+# The actual implementation lives in libs.pipeline.orchestrator (sub-package).
 
 # ====== Local Project Imports ======
 from .orchestrator.core import StageEngine

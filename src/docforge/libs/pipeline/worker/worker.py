@@ -15,8 +15,8 @@ from loggerplusplus import loggerplusplus
 
 # ====== Internal Project Imports ======
 from config import RUNTIME_CONFIG  # MUST be first — registers sys.path
-from libs.engine.tasks import run_pipeline_task
-from libs.engine.worker_bootstrap import WorkerBootstrap
+from libs.pipeline.worker.tasks import run_pipeline_task
+from libs.pipeline.worker.worker_bootstrap import WorkerBootstrap
 
 _logger = loggerplusplus.bind(identifier="ARQ_WORKER")
 
@@ -56,7 +56,7 @@ class WorkerSettings:
     arq WorkerSettings class — defines the worker's task list and Redis connection.
 
     The worker is started with:
-        arq libs.engine.worker.WorkerSettings
+        arq libs.pipeline.worker.worker.WorkerSettings
     from within the docforge application directory (/app/docforge in Docker).
     """
 

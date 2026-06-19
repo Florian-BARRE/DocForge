@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 # ====== Internal Project Imports ======
 # RUNTIME_CONFIG must be imported first — it registers sys.path for internal modules.
 from config import RUNTIME_CONFIG
-from libs.data.storage.postgres.models import Base
+from libs.storage.postgres.models import Base
 
 # Alembic Config object — provides access to the .ini file values.
 config = context.config

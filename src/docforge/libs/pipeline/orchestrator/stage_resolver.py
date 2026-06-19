@@ -11,18 +11,18 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from libs.engine.assembly import ProviderRegistry
-    from libs.engine.stages.s1_parse import S1ParseStage as _S1ParseStageType
+    from libs.pipeline.assembly import ProviderRegistry
+    from libs.pipeline.stages.s1_parse.core import S1ParseStage as _S1ParseStageType
 
 # ====== Internal Project Imports ======
-from libs.core.contracts.pipeline_config import PipelineConfig
-from libs.data.storage.qdrant.client import QdrantStorageClient
-from libs.engine.stages.s0_ingest import S0IngestStage
-from libs.engine.stages.s1_parse import S1ParseStage
-from libs.engine.stages.s2_enrich import S2EnrichStage
-from libs.engine.stages.s4_chunk import S4ChunkStage
-from libs.engine.stages.s5_contextualize import S5ContextualizeStage
-from libs.engine.stages.s6_embed_index import S6EmbedIndexStage
+from libs.config.pipeline import PipelineConfig
+from libs.storage.qdrant.client import QdrantStorageClient
+from libs.pipeline.stages.s0_ingest.core import S0IngestStage
+from libs.pipeline.stages.s1_parse.core import S1ParseStage
+from libs.pipeline.stages.s2_enrich import S2EnrichStage
+from libs.pipeline.stages.s4_chunk import S4ChunkStage
+from libs.pipeline.stages.s5_contextualize.core import S5ContextualizeStage
+from libs.pipeline.stages.s6_embed_index.core import S6EmbedIndexStage
 
 # ====== Local Project Imports ======
 from .deps import StageDeps

@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from libs.capabilities.interfaces import OcrHint, OcrResult
+from libs.providers.interfaces import OcrHint, OcrResult
 
 
 class OcrProvider(ABC):

@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from libs.capabilities.interfaces import ConvertResult
+from libs.providers.interfaces import ConvertResult
 
 
 class ConverterProvider(ABC):

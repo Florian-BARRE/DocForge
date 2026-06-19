@@ -11,7 +11,7 @@ from typing import Any
 from pydantic import ValidationError
 
 # ====== Internal Project Imports ======
-from libs.core.contracts.pipeline_config import PipelineConfig
+from libs.config.pipeline import PipelineConfig
 
 # Locality policies the platform understands.
 _ALLOWED_LOCALITY: frozenset[str] = frozenset({"on_premise_only", "external_allowed"})

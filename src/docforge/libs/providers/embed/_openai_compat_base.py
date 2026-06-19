@@ -11,8 +11,8 @@ import httpx
 from loggerplusplus import LoggerClass
 
 # ====== Internal Project Imports ======
-from libs.capabilities.embed.base import EmbedProvider
-from libs.capabilities.interfaces import EmbedResult
+from libs.providers.embed.base import EmbedProvider
+from libs.providers.interfaces import EmbedResult
 
 # Known dense dimensions for well-known OpenAI model names.
 # Used to pre-configure the Qdrant collection with the correct vector size.
