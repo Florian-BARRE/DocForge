@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 # ====== Local Project Imports ======
 from ..models import BlockModel, DocumentModel, StageRunModel
+from .document_repo_helpers import DocumentRepoHelpers
 
 
 class DocumentRepository(LoggerClass):
@@ -335,17 +336,15 @@ class DocumentRepository(LoggerClass):
         Returns:
             dict[str, str]: ``{node_id: status}`` e.g. ``{"s0": "done", "s1": "done"}``.
         """
+        # 1. Fetch all (node_id, status) rows for this document
         result = await session.execute(
             select(StageRunModel.node_id, StageRunModel.status).where(
                 StageRunModel.document_id == document_id
             )
         )
-        _RANK = {"done": 4, "running": 3, "pending": 2, "failed": 1}
-        summary: dict[str, str] = {}
-        for node_id, status in result.all():
-            if _RANK.get(status, 0) > _RANK.get(summary.get(node_id, ""), 0):
-                summary[node_id] = status
-        return summary
+
+        # 2. Collapse to best status per node using the ranking helper
+        return DocumentRepoHelpers.rank_stage_statuses(list(result.all()))
 
     async def list_by_collection(
         self,
@@ -374,15 +373,11 @@ class DocumentRepository(LoggerClass):
         Returns:
             list[DocumentModel]: Documents matching the criteria.
         """
-        _SORT_COLUMNS = {
-            "created_at": DocumentModel.created_at,
-            "filename": DocumentModel.filename,
-            "status": DocumentModel.status,
-            "file_size": DocumentModel.file_size,
-        }
-        col = _SORT_COLUMNS.get(sort_by, DocumentModel.created_at)
+        # 1. Resolve the sort column via helper (guards against unknown keys)
+        col = DocumentRepoHelpers.resolve_sort_column(sort_by)
         order = col.desc() if sort_order == "desc" else col.asc()
 
+        # 2. Build query with optional status filter and pagination
         query = select(DocumentModel).where(DocumentModel.collection_id == collection_id)
         if status_filter is not None:
             query = query.where(DocumentModel.status == status_filter)
