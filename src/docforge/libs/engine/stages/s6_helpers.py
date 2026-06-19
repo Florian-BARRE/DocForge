@@ -11,7 +11,10 @@ from typing import Any
 from libs.core.ir.chunk import Chunk
 
 # ====== Internal Project Imports ======
-from libs.core.metadata.fields import _field_attr
+from libs.core.metadata import MetadataHelpers as _MetadataHelpers
+
+# Backward-compat alias for the private _field_attr function now in MetadataHelpers.
+_field_attr = _MetadataHelpers.field_attr
 from libs.data.retrieval.field_index import FieldIndexHelpers
 
 

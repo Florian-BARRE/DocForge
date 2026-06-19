@@ -25,12 +25,11 @@ from pydantic import BaseModel, Field
 # ====== Local Project Imports ======
 from libs.core.contracts.chain_gate_config import ChainGateConfig
 from libs.core.contracts.pipeline_config._helpers import _redact
-from libs.core.contracts.pipeline_config.chunk_embed import (
-    ChunkConfig,
-    ContextualizeConfig,
-    EmbedConfig,
-)
-from libs.core.contracts.pipeline_config.parse_enrich import EnrichConfig, ParseConfig
+from libs.core.contracts.pipeline_config.chunk_config import ChunkConfig
+from libs.core.contracts.pipeline_config.contextualize_config import ContextualizeConfig
+from libs.core.contracts.pipeline_config.embed_config import EmbedConfig
+from libs.core.contracts.pipeline_config.enrich_config import EnrichConfig
+from libs.core.contracts.pipeline_config.parse_config import ParseConfig
 
 
 class PipelineConfig(BaseModel):

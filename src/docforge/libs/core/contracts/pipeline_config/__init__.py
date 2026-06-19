@@ -14,19 +14,16 @@ from libs.core.contracts.pipeline_config._type_aliases import (
 )
 
 # ─────────────────── S4 + S5 + S6 Stage Configs ───────────────────── #
-from libs.core.contracts.pipeline_config.chunk_embed import (
-    AtomicConfig,
-    ChunkConfig,
-    ContextualizeConfig,
-    EmbedConfig,
-    HeadingRule,
-)
+from libs.core.contracts.pipeline_config.chunk_config import ChunkConfig
+from libs.core.contracts.pipeline_config.contextualize_config import ContextualizeConfig
+from libs.core.contracts.pipeline_config.embed_config import EmbedConfig
+from libs.core.contracts.pipeline_config.enrich_config import EnrichConfig
+
+# ─────────────────── S4 Supporting Models ─────────────────────────── #
+from libs.core.contracts.pipeline_config.heading_rule import AtomicConfig, HeadingRule
 
 # ─────────────────── S1 + S2 Stage Configs ────────────────────────── #
-from libs.core.contracts.pipeline_config.parse_enrich import (
-    EnrichConfig,
-    ParseConfig,
-)
+from libs.core.contracts.pipeline_config.parse_config import ParseConfig
 
 # ─────────────────── Top-level Pipeline ───────────────────────────── #
 from libs.core.contracts.pipeline_config.pipeline import (
