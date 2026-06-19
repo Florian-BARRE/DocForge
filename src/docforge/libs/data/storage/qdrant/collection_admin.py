@@ -14,11 +14,9 @@ from qdrant_client.models import (
     VectorParams,
 )
 
-
-# Named content vector keys (always present). Per-field vectors are named meta_<field>_dense
-# / meta_<field>_bm25 (see libs/retrieval/field_index.py — one source of truth).
-_DENSE_VECTOR_NAME: str = "content_dense"
-_SPARSE_VECTOR_NAME: str = "content_bm25"
+# ====== Internal Project Imports ======
+# Single source of truth for content vector names — defined in field_index and reused here.
+from libs.data.retrieval.field_index import CONTENT_DENSE, CONTENT_SPARSE
 
 
 class QdrantCollectionAdmin:
@@ -73,12 +71,12 @@ class QdrantCollectionAdmin:
         # 2. Create collection if absent — content vectors + one per metadata field
         if not await client.collection_exists(collection_name):
             vectors_config = {
-                _DENSE_VECTOR_NAME: VectorParams(size=dense_dim, distance=Distance.COSINE, on_disk=True),
+                CONTENT_DENSE: VectorParams(size=dense_dim, distance=Distance.COSINE, on_disk=True),
             }
             for vname in field_dense_names or []:
                 vectors_config[vname] = VectorParams(size=dense_dim, distance=Distance.COSINE, on_disk=True)
 
-            sparse_config = {_SPARSE_VECTOR_NAME: SparseVectorParams()}
+            sparse_config = {CONTENT_SPARSE: SparseVectorParams()}
             for vname in field_sparse_names or []:
                 sparse_config[vname] = SparseVectorParams()
 

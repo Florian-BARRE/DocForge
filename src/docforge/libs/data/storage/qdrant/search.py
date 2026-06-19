@@ -58,6 +58,10 @@ class QdrantSearchHelpers:
         """
         qdrant_filter: Filter | None = Filter(**payload_filter) if payload_filter else None
         ranked: dict[str, list[str]] = {}
+        cls.logger.debug(
+            f"QdrantSearch: querying {len(dense_vectors)} dense + {len(sparse_vectors)} sparse vectors "
+            f"(candidate_limit={candidate_limit}) on {collection_name!r}"
+        )
 
         # 1. Dense named vectors (content + per semantic field)
         for vname in dense_vectors:
@@ -99,6 +103,7 @@ class QdrantSearchHelpers:
         """
         # 1. Batch-retrieve payloads for all winners in one round-trip
         ids = [cid for cid, _ in fused]
+        cls.logger.debug(f"QdrantSearch: hydrating {len(ids)} fused winner(s) from {collection_name!r}")
         records = await client.retrieve(collection_name=collection_name, ids=ids, with_payload=True)
         payload_by_id = {str(r.id): (dict(r.payload) if r.payload else {}) for r in records}
 
