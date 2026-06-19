@@ -1,10 +1,19 @@
 # ====== Code Summary ======
 # Drift-guard + derivation tests: the chunk split-method discovery schema must be GENERATED from
 # the Pydantic params models / SPLIT_METHODS source of truth, never hand-maintained.
+# Also contains regression tests for discriminator validation on pipeline chain fields.
 
 import libs.engine.stages.chunking as _chunking_pkg  # noqa: F401 — triggers @register("split_method")
+import libs.capabilities.embed as _embed_pkg  # noqa: F401 — triggers @register("embed") decorators
+import libs.capabilities.parser as _parser_pkg  # noqa: F401 — triggers @register("parser") decorators
+import libs.capabilities.ocr as _ocr_pkg  # noqa: F401 — triggers @register("ocr") decorators
+import libs.capabilities.classifier as _classifier_pkg  # noqa: F401 — triggers @register("classifier") decorators
+import libs.capabilities.vlm as _vlm_pkg  # noqa: F401 — triggers @register("vlm") decorators
 
-from libs.core.contracts.pipeline_config import SPLIT_METHODS
+import pytest
+from pydantic import ValidationError
+
+from libs.core.contracts.pipeline_config import SPLIT_METHODS, PipelineConfig
 from libs.engine.stages.chunking import (
     SPLIT_METHOD_PARAMS,
     SemanticParams,
@@ -60,3 +69,69 @@ class TestParamsDerivation:
         # This explicit enumeration must be updated whenever SemanticConfig fields change —
         # that is the point: drift causes a loud failure here.
         assert names == {"id", "embed", "max_tokens", "min_tokens", "breakpoint_percentile"}
+
+
+# ─── Discriminator validation regression ─────────────────────────────────────────
+# Regression guard: an unknown provider id in a chain field must raise ValidationError
+# at PipelineConfig.model_validate() time — NOT later at registry resolution.
+# This was broken when the typed discriminated-union aliases were replaced with Any
+# during the contracts extraction refactor.
+
+
+class TestChainDiscriminatorValidation:
+    """Chain fields must reject unknown provider ids at parse time, not registry time."""
+
+    def test_embed_chain_rejects_unknown_id(self) -> None:
+        """An unknown id in embed.chain must raise ValidationError immediately."""
+        with pytest.raises(ValidationError):
+            PipelineConfig.model_validate({
+                "embed": {"chain": [{"id": "nope"}]}
+            })
+
+    def test_parse_chain_rejects_unknown_id(self) -> None:
+        """An unknown id in parse.chain must raise ValidationError immediately."""
+        with pytest.raises(ValidationError):
+            PipelineConfig.model_validate({
+                "parse": {"chain": [{"id": "does_not_exist"}]}
+            })
+
+    def test_ocr_chain_rejects_unknown_id(self) -> None:
+        """An unknown id in enrich.ocr_chain must raise ValidationError immediately."""
+        with pytest.raises(ValidationError):
+            PipelineConfig.model_validate({
+                "enrich": {"ocr_chain": [{"id": "bad_ocr"}]}
+            })
+
+    def test_classifier_chain_rejects_unknown_id(self) -> None:
+        """An unknown id in enrich.classifier_chain must raise ValidationError immediately."""
+        with pytest.raises(ValidationError):
+            PipelineConfig.model_validate({
+                "enrich": {"classifier_chain": [{"id": "not_a_classifier"}]}
+            })
+
+    def test_vlm_chain_rejects_unknown_id(self) -> None:
+        """An unknown id in enrich.vlm_chain must raise ValidationError immediately."""
+        with pytest.raises(ValidationError):
+            PipelineConfig.model_validate({
+                "enrich": {"vlm_chain": [{"id": "bad_vlm"}]}
+            })
+
+    def test_empty_chains_stay_valid(self) -> None:
+        """Empty chains must remain valid — only invalid ids should be rejected."""
+        cfg = PipelineConfig.model_validate({
+            "parse": {"chain": []},
+            "enrich": {"ocr_chain": [], "classifier_chain": [], "vlm_chain": []},
+            "embed": {"chain": []},
+        })
+        # Empty chains get defaults filled in by the model validators.
+        assert cfg.parse.chain  # defaulted to DoclingConfig
+        assert cfg.embed.chain  # defaulted to TeiEmbedConfig
+
+    def test_valid_known_ids_pass_through(self) -> None:
+        """Known provider ids must parse cleanly without raising."""
+        cfg = PipelineConfig.model_validate({
+            "embed": {"chain": [{"id": "tei", "base_url": "http://tei:8080"}]},
+            "parse": {"chain": [{"id": "docling"}]},
+        })
+        assert cfg.embed.chain[0].id == "tei"
+        assert cfg.parse.chain[0].id == "docling"

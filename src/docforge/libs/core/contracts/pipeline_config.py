@@ -152,12 +152,33 @@ class ParseConfig(BaseModel):
         return v
 
     @model_validator(mode="after")
-    def _set_default_parse_chain(self) -> "ParseConfig":
-        """Default the parser chain to [DoclingConfig()] when constructed with no chain."""
+    def _validate_and_default_parse_chain(self) -> "ParseConfig":
+        """
+        Validate each item in the parser chain via the discriminated union, then default.
+
+        When the chain is empty: default to [DoclingConfig()].
+        When items are dicts (round-tripped from DB/JSON): coerce them through the
+        TypeAdapter so unknown ids raise ValidationError immediately (not at registry time).
+        """
+        # Lazy imports to preserve the leaf constraint.
+        from libs.capabilities.parser.local.docling import DoclingConfig
+        from typing import Annotated, Union
+        from pydantic import TypeAdapter, Field as _F
+
         if not self.chain:
-            # Lazy import to preserve the leaf constraint.
-            from libs.capabilities.parser.local.docling import DoclingConfig
             object.__setattr__(self, "chain", [DoclingConfig()])
+            return self
+
+        # Build the discriminated union from all known parser configs.
+        union = Annotated[Union[DoclingConfig], _F(discriminator="id")]
+        adapter = TypeAdapter(union)
+
+        # Coerce/validate each item — raises ValidationError on unknown id.
+        coerced = [
+            adapter.validate_python(item) if isinstance(item, dict) else item
+            for item in self.chain
+        ]
+        object.__setattr__(self, "chain", coerced)
         return self
 
 
@@ -238,12 +259,68 @@ class EnrichConfig(BaseModel):
         return v
 
     @model_validator(mode="after")
-    def _set_default_classifier_chain(self) -> "EnrichConfig":
-        """Default the classifier chain to [LayoutLabelsConfig()] when constructed with no chain."""
-        if not self.classifier_chain:
-            # Lazy import to preserve the leaf constraint.
-            from libs.capabilities.classifier.local.layout_labels import LayoutLabelsConfig
+    def _validate_and_default_enrich_chains(self) -> "EnrichConfig":
+        """
+        Validate each chain field via discriminated unions, then apply defaults.
+
+        For each chain (classifier_chain, ocr_chain, vlm_chain):
+        - Dict items are coerced through the typed discriminated union; an unknown id
+          raises ValidationError immediately (not at registry resolution time).
+        - Already-typed instances are passed through unchanged.
+        - Empty classifier_chain is defaulted to [LayoutLabelsConfig()].
+        - Empty ocr_chain and vlm_chain stay empty (disabled by default).
+        """
+        # Lazy imports to preserve the leaf constraint.
+        from libs.capabilities.classifier.local.layout_labels import LayoutLabelsConfig
+        from libs.capabilities.classifier.local.vit_onnx import VitOnnxConfig
+        from libs.capabilities.ocr.local.paddle_ocr import PaddleOcrConfig
+        from libs.capabilities.ocr.external.mistral_ocr import MistralOcrConfig
+        from libs.capabilities.vlm.local.openai_compat import LocalVlmConfig
+        from libs.capabilities.vlm.external.openai_compat import OpenAIVlmConfig
+        from typing import Annotated, Union
+        from pydantic import TypeAdapter, Field as _F
+
+        # 1. Validate classifier_chain items, then default if empty.
+        classifier_union = Annotated[
+            Union[LayoutLabelsConfig, VitOnnxConfig],
+            _F(discriminator="id"),
+        ]
+        classifier_adapter = TypeAdapter(classifier_union)
+        if self.classifier_chain:
+            coerced_classifier = [
+                classifier_adapter.validate_python(item) if isinstance(item, dict) else item
+                for item in self.classifier_chain
+            ]
+            object.__setattr__(self, "classifier_chain", coerced_classifier)
+        else:
             object.__setattr__(self, "classifier_chain", [LayoutLabelsConfig()])
+
+        # 2. Validate ocr_chain items (stays empty if no items provided).
+        ocr_union = Annotated[
+            Union[PaddleOcrConfig, MistralOcrConfig],
+            _F(discriminator="id"),
+        ]
+        ocr_adapter = TypeAdapter(ocr_union)
+        if self.ocr_chain:
+            coerced_ocr = [
+                ocr_adapter.validate_python(item) if isinstance(item, dict) else item
+                for item in self.ocr_chain
+            ]
+            object.__setattr__(self, "ocr_chain", coerced_ocr)
+
+        # 3. Validate vlm_chain items (stays empty if no items provided).
+        vlm_union = Annotated[
+            Union[LocalVlmConfig, OpenAIVlmConfig],
+            _F(discriminator="id"),
+        ]
+        vlm_adapter = TypeAdapter(vlm_union)
+        if self.vlm_chain:
+            coerced_vlm = [
+                vlm_adapter.validate_python(item) if isinstance(item, dict) else item
+                for item in self.vlm_chain
+            ]
+            object.__setattr__(self, "vlm_chain", coerced_vlm)
+
         return self
 
 
@@ -465,12 +542,38 @@ class EmbedConfig(BaseModel):
         return v
 
     @model_validator(mode="after")
-    def _set_default_chain(self) -> "EmbedConfig":
-        """Default the embed chain to [TeiEmbedConfig()] when constructed with no chain."""
+    def _validate_and_default_embed_chain(self) -> "EmbedConfig":
+        """
+        Validate each item in the embed chain via the discriminated union, then default.
+
+        When the chain is empty: default to [TeiEmbedConfig()].
+        When items are dicts (round-tripped from DB/JSON): coerce them through the
+        TypeAdapter so unknown ids raise ValidationError immediately (not at registry time).
+        """
+        # Lazy imports to preserve the leaf constraint.
+        from libs.capabilities.embed.local.tei import TeiEmbedConfig
+        from libs.capabilities.embed.local.openai_compat import LocalOpenAIEmbedConfig
+        from libs.capabilities.embed.external.openai_compat import OpenAIEmbedConfig
+        from typing import Annotated, Union
+        from pydantic import TypeAdapter, Field as _F
+
         if not self.chain:
-            # Lazy import to preserve the leaf constraint.
-            from libs.capabilities.embed.local.tei import TeiEmbedConfig
             object.__setattr__(self, "chain", [TeiEmbedConfig()])
+            return self
+
+        # Build the discriminated union from all known embed configs.
+        union = Annotated[
+            Union[TeiEmbedConfig, LocalOpenAIEmbedConfig, OpenAIEmbedConfig],
+            _F(discriminator="id"),
+        ]
+        adapter = TypeAdapter(union)
+
+        # Coerce/validate each item — raises ValidationError on unknown id.
+        coerced = [
+            adapter.validate_python(item) if isinstance(item, dict) else item
+            for item in self.chain
+        ]
+        object.__setattr__(self, "chain", coerced)
         return self
 
 
