@@ -62,8 +62,8 @@ class DocumentRepoHelpers:
         """
         return _SORT_COLUMNS.get(sort_by, DocumentModel.created_at)
 
-    @staticmethod
-    def rank_stage_statuses(rows: list[tuple[str, str]]) -> dict[str, str]:
+    @classmethod
+    def rank_stage_statuses(cls, rows: list[tuple[str, str]]) -> dict[str, str]:
         """
         Collapse multiple stage-run rows to a single best-status per node.
 
@@ -85,4 +85,7 @@ class DocumentRepoHelpers:
             incoming_rank = _STAGE_STATUS_RANK.get(status, 0)
             if incoming_rank > current_rank:
                 summary[node_id] = status
+
+        # 2. Emit a debug trace so the bound logger is exercised
+        cls.logger.debug(f"rank_stage_statuses: {len(rows)} rows → {len(summary)} nodes")
         return summary

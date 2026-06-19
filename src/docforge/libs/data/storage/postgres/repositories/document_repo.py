@@ -22,6 +22,10 @@ class DocumentRepository(LoggerClass):
 
     All methods require an active ``AsyncSession`` passed by the caller
     (the session lifecycle is managed by the router / pipeline runner).
+
+    Note: this class exceeds the ~200-line file guideline as a documented exception —
+    all methods are session-bound single-aggregate operations that cannot be meaningfully
+    split without fragmenting session lifecycle.
     """
 
     def __init__(self) -> None:
