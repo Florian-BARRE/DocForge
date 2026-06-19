@@ -1,3 +1,4 @@
+
 # ====== Code Summary ======
 # Canonical Intermediate Representation (IR) for DocForge.
 # All document parsers produce a DocumentIR; markdown/PDF/HTML are views derived from it.
