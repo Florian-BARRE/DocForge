@@ -1,7 +1,8 @@
 # ====== Code Summary ======
 # CacheRunner — async helpers that wrap each S2 capability (classifier, OCR, VLM)
 # behind the ProviderCallCache.  Each helper returns a (result, cost, trace, was_hit) tuple
-# so the caller (S2EnrichStage.run) never needs to know the cache key mechanics.
+# so the caller (FigureEnricher) never needs to know the cache key mechanics.
+# Cache-key resolution is delegated to CallKeyHelpers (call_key.py).
 
 from __future__ import annotations
 
@@ -21,7 +22,9 @@ from libs.core.ir.models import ChainTrace, FigureKind
 from libs.engine.provider_cache import ProviderCallCache
 
 # ====== Local Project Imports ======
+from .call_key import CallKeyHelpers
 from .trace_helpers import TraceHelpers
+from .vlm_runner import VlmRunner
 
 
 class CacheRunner:
@@ -30,8 +33,8 @@ class CacheRunner:
 
     Each ``run_*`` class-method follows the same contract:
 
-    1. Derive a provider-call fingerprint from the capability name, provider id/version,
-       call params, and the crop content-hash.
+    1. Derive a provider-call fingerprint (via CallKeyHelpers) from the capability name,
+       provider id/version, call params, and the crop content-hash.
     2. Consult the cache — if hit, return a synthetic trace and skip the chain.
     3. On miss, invoke the chain, persist the result, and return the real trace.
 
@@ -67,22 +70,13 @@ class CacheRunner:
         Returns:
             tuple: ``(ClassificationResult | None, ChainTrace, was_cache_hit)``.
         """
-        # 1. Resolve the first provider for fingerprint computation.
-        first_provider = (
-            classifier_chain.providers[0] if classifier_chain.providers else None
+        # 1. Resolve provider + cache key.
+        resolved = CallKeyHelpers.resolve(
+            classifier_chain, "classifier", "classifier", {}, crop_hash,
         )
-        if first_provider is None:
+        if resolved is None:
             return None, TraceHelpers.skip("classifier", "no provider"), False
-
-        provider_id = getattr(first_provider, "name", "classifier")
-        provider_version = getattr(first_provider, "version", "0")
-        call_fp = ProviderCallCache.compute_key(
-            capability="classifier",
-            provider_id=provider_id,
-            provider_version=provider_version,
-            params={},
-            content_hash=crop_hash,
-        )
+        _first, provider_id, provider_version, call_fp = resolved
 
         # 2. Check cache — ClassificationResult round-trips via a minimal JSON dict.
         cached_raw = await provider_cache.get(call_fp)
@@ -109,14 +103,9 @@ class CacheRunner:
             f'{{"kind": "{outcome.result.kind.value}", '
             f'"confidence": {outcome.result.confidence}}}'
         )
-        await provider_cache.put(
-            call_fp=call_fp,
-            capability="classifier",
-            provider_id=provider_id,
-            provider_version=provider_version,
-            content_hash=crop_hash,
-            result_json=result_json,
-            cost=0.0,
+        await CallKeyHelpers.persist(
+            provider_cache, call_fp, "classifier", provider_id, provider_version,
+            crop_hash, result_json, 0.0,
         )
         return outcome.result, trace, False
 
@@ -132,6 +121,9 @@ class CacheRunner:
         """
         Run OCR via the chain, consulting the provider-call cache first.
 
+        A cache hit emits a synthetic trace whose ``final_provider`` is ``"provider_cache"``
+        so block-level lineage shows "served from provider-call cache".
+
         Args:
             ocr_chain (Chain[Any, Any] | None): OCR chain; None disables OCR.
             provider_cache (ProviderCallCache): Cross-document provider-call cache.
@@ -141,27 +133,16 @@ class CacheRunner:
 
         Returns:
             tuple: ``(OcrResult | None, cost_incurred, ChainTrace, was_cache_hit)``.
-                A cache hit emits a synthetic trace whose ``final_provider`` is
-                ``"cache"`` so block-level lineage shows "served from provider-call cache".
         """
-        # 1. Guard — no chain configured.
+        # 1. Guard + resolve provider/cache key.
         if ocr_chain is None:
             return None, 0.0, TraceHelpers.skip("ocr", "no chain"), False
-
-        first_provider = ocr_chain.providers[0] if ocr_chain.providers else None
-        if first_provider is None:
-            return None, 0.0, TraceHelpers.skip("ocr", "no provider"), False
-
-        provider_id = getattr(first_provider, "name", "ocr")
-        provider_version = getattr(first_provider, "version", "0")
-        params = {"language": doc_language}
-        call_fp = ProviderCallCache.compute_key(
-            capability="ocr",
-            provider_id=provider_id,
-            provider_version=provider_version,
-            params=params,
-            content_hash=crop_hash,
+        resolved = CallKeyHelpers.resolve(
+            ocr_chain, "ocr", "ocr", {"language": doc_language}, crop_hash,
         )
+        if resolved is None:
+            return None, 0.0, TraceHelpers.skip("ocr", "no provider"), False
+        first_provider, provider_id, provider_version, call_fp = resolved
 
         # 2. Check cache.
         cached_raw = await provider_cache.get(call_fp)
@@ -178,21 +159,15 @@ class CacheRunner:
         hint = OcrHint(language=doc_language)
         outcome = await ocr_chain.call(lambda p: p.extract(crop_bytes, hint))
         trace = TraceHelpers.from_outcome("ocr", outcome)
-
         if outcome.result is None:
             return None, 0.0, trace, False
 
         cost = getattr(first_provider, "cost_per_page", 0.0)
 
         # 4. Persist result for deduplication.
-        await provider_cache.put(
-            call_fp=call_fp,
-            capability="ocr",
-            provider_id=provider_id,
-            provider_version=provider_version,
-            content_hash=crop_hash,
-            result_json=outcome.result.model_dump_json(),
-            cost=cost,
+        await CallKeyHelpers.persist(
+            provider_cache, call_fp, "ocr", provider_id, provider_version,
+            crop_hash, outcome.result.model_dump_json(), cost,
         )
         return outcome.result, cost, trace, False
 
@@ -206,81 +181,10 @@ class CacheRunner:
         ocr_text: str | None,
         use_chart_schema: bool,
     ) -> tuple[VlmResult | None, float, ChainTrace, bool]:
-        """
-        Run VLM description via the chain, consulting the provider-call cache first.
-
-        Args:
-            vlm_chain (Chain[Any, Any] | None): VLM chain; None disables VLM.
-            provider_cache (ProviderCallCache): Cross-document provider-call cache.
-            crop_bytes (bytes): Raw figure crop image bytes.
-            crop_hash (str): SHA-256 hex digest of ``crop_bytes``.
-            ocr_text (str | None): Grounding text from OCR (passed to VLM as context).
-            use_chart_schema (bool): Whether to request structured chart-to-data output.
-
-        Returns:
-            tuple: ``(VlmResult | None, cost_incurred, ChainTrace, was_cache_hit)``.
-        """
-        # 1. Guard — no chain configured.
-        if vlm_chain is None:
-            return None, 0.0, TraceHelpers.skip("vlm", "no chain"), False
-
-        first_provider = vlm_chain.providers[0] if vlm_chain.providers else None
-        if first_provider is None:
-            return None, 0.0, TraceHelpers.skip("vlm", "no provider"), False
-
-        provider_id = getattr(first_provider, "name", "vlm")
-        provider_version = getattr(first_provider, "version", "0")
-        params = {"grounding": bool(ocr_text), "chart_schema": use_chart_schema}
-        call_fp = ProviderCallCache.compute_key(
-            capability="vlm",
-            provider_id=provider_id,
-            provider_version=provider_version,
-            params=params,
-            content_hash=crop_hash,
+        """Run VLM description via the chain (delegates to VlmRunner)."""
+        return await VlmRunner.run_vlm(
+            vlm_chain, provider_cache, crop_bytes, crop_hash, ocr_text, use_chart_schema,
         )
-
-        # 2. Check cache.
-        cached_raw = await provider_cache.get(call_fp)
-        if cached_raw is not None:
-            cls.logger.debug(f"CacheRunner: VLM cache HIT fp={call_fp[:12]}…")
-            return (
-                VlmResult.model_validate_json(cached_raw),
-                0.0,
-                TraceHelpers.cache_hit("vlm", provider_id, call_fp),
-                True,
-            )
-
-        # 3. Resolve chart schema from provider type — late import avoids a circular dep.
-        from libs.capabilities.vlm import OpenAICompatVlmProvider  # noqa: PLC0415
-
-        schema = (
-            OpenAICompatVlmProvider.chart_schema()
-            if use_chart_schema and isinstance(first_provider, OpenAICompatVlmProvider)
-            else None
-        )
-
-        # 4. Cache miss — invoke the chain.
-        outcome = await vlm_chain.call(
-            lambda p: p.describe(crop_bytes, grounding=ocr_text, schema=schema)
-        )
-        trace = TraceHelpers.from_outcome("vlm", outcome)
-
-        if outcome.result is None:
-            return None, 0.0, trace, False
-
-        cost = getattr(first_provider, "cost_per_call", 0.0)
-
-        # 5. Persist result for deduplication.
-        await provider_cache.put(
-            call_fp=call_fp,
-            capability="vlm",
-            provider_id=provider_id,
-            provider_version=provider_version,
-            content_hash=crop_hash,
-            result_json=outcome.result.model_dump_json(),
-            cost=cost,
-        )
-        return outcome.result, cost, trace, False
 
 
 # ------------------- Public API ------------------- #

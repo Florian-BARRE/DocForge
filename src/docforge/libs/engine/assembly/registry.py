@@ -8,54 +8,35 @@
 #
 # The describe-surface (describe_stages, _params_from_instance, _auto_providers) lives in
 # DescribeSurface (describe.py).  Availability probes live in AvailabilityProbes (availability.py).
-# ProviderRegistry inherits DescribeSurface and delegates reachability checks to AvailabilityProbes.
-#
-# REFACTOR EXCEPTION (323 lines > 200 limit):
-# The 5 chain-builder methods (_build_parser_chain, _build_classifier_chain, _build_ocr_chain,
-# _build_vlm_chain, _build_embed_chain) all access self._s3, self._provider_cache, self._cfg.
-# Extracting them into a ChainBuilders mixin would require making those attributes class-level
-# or passing them as arguments to every method call, adding coupling with no readability gain.
-# Each chain builder is ~30 lines with provider-specific error handling — cohesive by category.
-# The file is already reduced from 402 → 323 lines after splitting DescribeSurface/ResolvedStages.
+# The 5 chain builders live in ChainBuilderHelpers (chain_builders.py).  ProviderRegistry
+# inherits DescribeSurface and delegates chain construction + reachability checks to those.
 
 # ====== Standard Library Imports ======
 from __future__ import annotations
 
-import os
 from typing import Any
 
 # ====== Third-Party Library Imports ======
 from loggerplusplus import LoggerClass
 
 from libs.capabilities.chain import Chain
-from libs.capabilities.chain_gate import ChainGate, ChainGateConfig
-from libs.capabilities.classifier.local.vit_onnx_config import VitOnnxConfig
-from libs.capabilities.ocr.external.mistral_ocr_config import MistralOcrConfig
-from libs.capabilities.ocr.local.paddle_ocr_config import PaddleOcrConfig
-from libs.capabilities.parser.local.docling import DoclingConfig
-from libs.capabilities.vlm.external.openai_compat_config import OpenAIVlmConfig
-from libs.capabilities.vlm.local.openai_compat_config import LocalVlmConfig
+from libs.capabilities.chain_gate import ChainGateConfig
 
 # ====== Internal Project Imports ======
 from libs.core.contracts.pipeline_config import (
-    ChunkConfig,
     EnrichConfig,
     PipelineConfig,
     ProviderSpec,
-    SplitMethodConfig,
 )
 from libs.data.storage.s3.client import S3Client
 from libs.engine.provider_cache import ProviderCallCache
-from libs.engine.stages.chunking import (
-    SectionSplitter,
-    SemanticParams,
-)
 from libs.engine.stages.s2_enrich import S2EnrichStage
 from libs.engine.stages.s4_chunk import S4ChunkStage
 from libs.engine.stages.s5_contextualize import S5ContextualizeStage
 
 # ====== Local Project Imports ======
-from .availability import AvailabilityProbes, ProviderUnavailableError
+from .chain_builders import ChainBuilderHelpers
+from .chunk_stage_assembler import ChunkStageAssembler
 from .describe import DescribeSurface
 from .resolved import ResolvedStages
 
@@ -68,8 +49,9 @@ class ProviderRegistry(DescribeSurface, LoggerClass):
     come from construction; per-run provider choices + params come from the PipelineConfig.
 
     Resolution logic lives directly on this class.  The describe surface (describe_stages,
-    _auto_providers, _params_from_instance) is contributed by DescribeSurface.  Network
-    reachability probes are delegated to AvailabilityProbes.
+    _auto_providers, _params_from_instance) is contributed by DescribeSurface.  Chain
+    construction is delegated to ChainBuilderHelpers; network reachability probes to
+    AvailabilityProbes.
     """
 
     def __init__(
@@ -113,7 +95,7 @@ class ProviderRegistry(DescribeSurface, LoggerClass):
         """
         parse_chain = self._build_parser_chain(config.parse.chain, config.parse.gate)
         s2 = self._build_s2(config.enrich)
-        s4 = self._build_chunk_stage(config.chunk)
+        s4 = ChunkStageAssembler.build_chunk_stage(self._cfg, config.chunk)
         s5 = S5ContextualizeStage(config=config.contextualize)
 
         return ResolvedStages(parse_chain=parse_chain, s2=s2, s4=s4, s5=s5)
@@ -139,7 +121,7 @@ class ProviderRegistry(DescribeSurface, LoggerClass):
         s2 = self._build_s2(config.enrich)
 
         # 2. Build S4 splitter from config
-        splitter = self._build_splitter(config.chunk.split_method)
+        splitter = ChunkStageAssembler.build_splitter(self._cfg, config.chunk.split_method)
         s4 = S4ChunkStage(splitter=splitter)
 
         # 3. S5 carries its own contextualization config (header template / separators).
@@ -148,68 +130,6 @@ class ProviderRegistry(DescribeSurface, LoggerClass):
         return s2, s4, s5
 
     # ─── Internal stage builders ───────────────────────────────────────────────
-
-    def _build_chunk_stage(self, chunk: ChunkConfig) -> S4ChunkStage:
-        """
-        Build the S4 chunking stage from config: split method + atomic policy + mode.
-
-        Args:
-            chunk (ChunkConfig): The chunking configuration block.
-
-        Returns:
-            S4ChunkStage: Wired chunking stage.
-
-        Raises:
-            ProviderUnavailableError: When the semantic method is requested but TEI is unreachable.
-        """
-        # 1. Resolve the intra-section split method (the decision-tree-by-method)
-        splitter = self._build_splitter(chunk.split_method)
-
-        # 2. Wire the heading skeleton + atomic policy + mode around it
-        return S4ChunkStage(
-            splitter=splitter,
-            heading_rules=chunk.heading_rules,
-            reinject_breadcrumb=chunk.reinject_breadcrumb,
-            merge_short_sections=chunk.merge_short_sections,
-            atomic=chunk.atomic,
-            cross_references=chunk.cross_references,
-            hierarchical=chunk.hierarchical,
-        )
-
-    def _build_splitter(self, spec: SplitMethodConfig) -> SectionSplitter:
-        """
-        Instantiate the requested intra-section split method from its typed config.
-
-        Merges deployment defaults into the typed config then delegates to build().
-        Semantic split requires a reachable TEI endpoint and is checked before build().
-
-        Args:
-            spec (SplitMethodConfig): Typed split method config (discriminated union).
-
-        Returns:
-            SectionSplitter: Wired splitter.
-
-        Raises:
-            ProviderUnavailableError: When semantic is requested but TEI is unreachable.
-        """
-        # 1. Merge deployment defaults into the typed config (e.g. TEI_BASE_URL for semantic)
-        merged = spec.merge_defaults(self._cfg)
-
-        # 2. Semantic split now accepts any embed provider — only a LOCAL base_url is probed
-        # for reachability; cloud HTTPS endpoints are assumed reachable and will report an
-        # actionable error at the first ``embed()`` call if they aren't.
-        if isinstance(merged, SemanticParams):
-            embed_cfg = getattr(merged, "embed", None)
-            embed_url = getattr(embed_cfg, "base_url", "") or "" if embed_cfg else ""
-            if embed_url and not embed_url.startswith("https://"):
-                if not AvailabilityProbes.endpoint_reachable(embed_url):
-                    raise ProviderUnavailableError(
-                        "split_method", "semantic",
-                        f"Semantic chunking needs a reachable embed endpoint (got {embed_url!r}).",
-                    )
-
-        # 3. Delegate instantiation to the typed config (build() knows its own splitter)
-        return merged.build()
 
     def _build_s2(self, enrich: EnrichConfig) -> S2EnrichStage:
         """
@@ -236,149 +156,44 @@ class ProviderRegistry(DescribeSurface, LoggerClass):
             max_budget_usd=enrich.max_budget_usd,
         )
 
-    # ─── Chain builders (one per stage; share the same Chain primitive) ──────
+    # ─── Chain builders (thin delegators to ChainBuilderHelpers) ────────────────
 
     def _build_parser_chain(
         self,
         specs: list[ProviderSpec],
         gate_cfg: ChainGateConfig,
     ) -> Chain[Any, Any]:
-        """
-        Instantiate the parser providers in declaration order and wrap them in a Chain.
-
-        Args:
-            specs (list[ProviderSpec]): Typed parser configs (currently only DoclingConfig).
-            gate_cfg (ChainGateConfig): Escalation policy applied after each attempt.
-
-        Returns:
-            Chain[ParserProvider, DocumentIR]: Wired parser chain.
-
-        Raises:
-            ProviderUnavailableError: When a requested parser cannot be instantiated.
-        """
-        if not specs:
-            raise ProviderUnavailableError(
-                "parse", "none", "At least one parser must be configured.",
-            )
-        built: list[Any] = []
-        for spec in specs:
-            if not isinstance(spec, DoclingConfig):
-                raise ProviderUnavailableError(
-                    "parse", getattr(spec, "id", str(spec)),
-                    "Only the Docling backend is installed in this deployment.",
-                )
-            merged = spec.merge_defaults(self._cfg)
-            built.append(merged.build())
-        return Chain(stage="parse", providers=built, gate=ChainGate(gate_cfg))
+        """Build the parser chain (delegates to ChainBuilderHelpers)."""
+        return ChainBuilderHelpers.build_parser_chain(self._cfg, specs, gate_cfg)
 
     def _build_classifier_chain(
         self,
         specs: list[ProviderSpec],
         gate_cfg: ChainGateConfig,
     ) -> Chain[Any, Any]:
-        """Build the figure-classifier chain (ViT and/or LayoutLabels)."""
-        if not specs:
-            raise ProviderUnavailableError(
-                "classifier", "none", "At least one classifier must be configured.",
-            )
-        built: list[Any] = []
-        for spec in specs:
-            merged = spec.merge_defaults(self._cfg)
-            if isinstance(merged, VitOnnxConfig):
-                if not os.path.exists(merged.model_path):
-                    raise ProviderUnavailableError(
-                        "classifier", "vit_onnx",
-                        f"ONNX model not found at {merged.model_path}.",
-                    )
-            built.append(merged.build())
-        return Chain(stage="classifier", providers=built, gate=ChainGate(gate_cfg))
+        """Build the figure-classifier chain (delegates to ChainBuilderHelpers)."""
+        return ChainBuilderHelpers.build_classifier_chain(self._cfg, specs, gate_cfg)
 
     def _build_ocr_chain(
         self,
         specs: list[ProviderSpec],
         gate_cfg: ChainGateConfig,
     ) -> Chain[Any, Any] | None:
-        """
-        Build the OCR escalation chain.
-
-        Returns None when no OCR providers are configured — the caller must guard against
-        that case and skip OCR routing.
-        """
-        if not specs:
-            return None
-        built: list[Any] = []
-        for spec in specs:
-            merged = spec.merge_defaults(self._cfg)
-            if isinstance(merged, PaddleOcrConfig):
-                try:
-                    import paddleocr  # noqa: F401
-                except Exception:
-                    raise ProviderUnavailableError(
-                        "ocr", "paddle_ocr", "paddleocr package is not installed.",
-                    )
-            elif isinstance(merged, MistralOcrConfig):
-                if not merged.api_key:
-                    raise ProviderUnavailableError(
-                        "ocr", "mistral_ocr",
-                        "No API key — fill it in the playground or set MISTRAL_OCR_API_KEY.",
-                    )
-            else:
-                raise ProviderUnavailableError(
-                    "ocr", getattr(merged, "id", str(merged)), "Unknown OCR provider id.",
-                )
-            built.append(merged.build())
-        return Chain(stage="ocr", providers=built, gate=ChainGate(gate_cfg))
+        """Build the OCR chain (delegates to ChainBuilderHelpers)."""
+        return ChainBuilderHelpers.build_ocr_chain(self._cfg, specs, gate_cfg)
 
     def _build_vlm_chain(
         self,
         specs: list[ProviderSpec],
         gate_cfg: ChainGateConfig,
     ) -> Chain[Any, Any] | None:
-        """
-        Build the VLM escalation chain.
-
-        Returns None when ``specs`` is empty — disables VLM enrichment entirely.
-        """
-        if not specs:
-            return None
-        built: list[Any] = []
-        for spec in specs:
-            merged = spec.merge_defaults(self._cfg)
-            if isinstance(merged, LocalVlmConfig):
-                if not merged.base_url:
-                    raise ProviderUnavailableError(
-                        "vlm", "openai_compat", "No VLM base URL configured.",
-                    )
-            elif isinstance(merged, OpenAIVlmConfig):
-                if not merged.base_url:
-                    raise ProviderUnavailableError(
-                        "vlm", "openai", "No VLM base URL configured.",
-                    )
-                if not merged.api_key:
-                    raise ProviderUnavailableError(
-                        "vlm", "openai",
-                        "No API key — fill it in the playground or set VLM_API_KEY.",
-                    )
-            else:
-                raise ProviderUnavailableError(
-                    "vlm", getattr(merged, "id", str(merged)),
-                    "Unknown VLM provider id. Valid ids: 'openai_compat' (local), 'openai' (cloud).",
-                )
-            built.append(merged.build())
-        return Chain(stage="vlm", providers=built, gate=ChainGate(gate_cfg))
+        """Build the VLM chain (delegates to ChainBuilderHelpers)."""
+        return ChainBuilderHelpers.build_vlm_chain(self._cfg, specs, gate_cfg)
 
     def _build_embed_chain(
         self,
         specs: list[ProviderSpec],
         gate_cfg: ChainGateConfig,
     ) -> Chain[Any, Any]:
-        """Build the S6 embed chain from typed EmbedProviderConfig specs."""
-        if not specs:
-            raise ProviderUnavailableError(
-                "embed", "none", "At least one embed provider must be configured.",
-            )
-        built: list[Any] = []
-        for spec in specs:
-            merged = spec.merge_defaults(self._cfg)
-            built.append(merged.build())
-        return Chain(stage="embed", providers=built, gate=ChainGate(gate_cfg))
+        """Build the S6 embed chain (delegates to ChainBuilderHelpers)."""
+        return ChainBuilderHelpers.build_embed_chain(self._cfg, specs, gate_cfg)

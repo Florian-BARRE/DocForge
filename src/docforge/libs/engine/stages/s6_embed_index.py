@@ -3,6 +3,7 @@
 # Embeds the chunk body (content) plus one named dense vector per `semantic` metadata field
 # and one sparse vector per `lexical` field, upserts them to Qdrant, and persists chunks to
 # Postgres. The metadata schema + per-document field values drive which vectors are built.
+# Batched embedding is delegated to S6Embedder (s6_embedder.py).
 
 # ====== Standard Library Imports ======
 from __future__ import annotations
@@ -13,11 +14,10 @@ from typing import Any
 from loggerplusplus import LoggerClass
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from libs.capabilities.chain import Chain, chain_outcome_to_attempt_dicts
+from libs.capabilities.chain import Chain
 
 # ====== Internal Project Imports ======
 from libs.core.ir.chunk import Chunk
-from libs.core.ir.models import ChainAttemptIR, ChainTrace
 from libs.data.retrieval.field_index import (
     CONTENT_DENSE,
     CONTENT_SPARSE,
@@ -27,6 +27,7 @@ from libs.data.storage.postgres.repositories.chunk_repo import ChunkRepository
 from libs.data.storage.qdrant.client import QdrantStorageClient
 
 # ====== Local Project Imports ======
+from .s6_embedder import S6Embedder
 from .s6_helpers import S6IndexHelpers
 from .s6_result import S6Result
 
@@ -40,7 +41,8 @@ class S6EmbedIndexStage(LoggerClass):
     - ``meta_<field>_dense`` — for each ``semantic`` field (the field value embedded).
     - ``meta_<field>_bm25`` — for each ``lexical`` field (the field value as sparse BM25).
     Filterable field values go into the Qdrant payload. Both Qdrant and Postgres writes are
-    idempotent, preserving the incremental-reindex property.
+    idempotent, preserving the incremental-reindex property.  Batched embedding lives in
+    ``S6Embedder``.
     """
 
     def __init__(
@@ -61,22 +63,19 @@ class S6EmbedIndexStage(LoggerClass):
             embed_batch_size (int): Texts sent per chain attempt.
         """
         LoggerClass.__init__(self)
-        self._embed_chain = embed_chain
+        self._embedder = S6Embedder(embed_chain, embed_batch_size)
         self._qdrant = qdrant
         self._chunk_repo = chunk_repo
-        self._embed_batch_size = embed_batch_size
-        self._batch_traces: list[ChainTrace] = []
 
     @property
     def embed_chain(self) -> Chain[Any, Any]:
         """Expose the chain so the engine can fingerprint its signature."""
-        return self._embed_chain
+        return self._embedder.embed_chain
 
     @property
     def dimension(self) -> int:
         """Return the dimension of the first embed provider (used by ensure_collection)."""
-        first = self._embed_chain.providers[0] if self._embed_chain.providers else None
-        return int(getattr(first, "dimension", 0))
+        return self._embedder.dimension
 
     async def run(
         self,
@@ -104,7 +103,7 @@ class S6EmbedIndexStage(LoggerClass):
             return S6Result(0, 0, 0, collection_name)
 
         # Reset per-run trace accumulator; each batch contributes one ChainTrace.
-        self._batch_traces = []
+        self._embedder.begin_run()
 
         doc_meta = doc_meta or {}
         plan = FieldIndexHelpers.derive_vector_plan(metadata_fields or [])
@@ -116,20 +115,12 @@ class S6EmbedIndexStage(LoggerClass):
         index_chunks = [c for c in chunks if c.id not in parent_ids]
 
         # 1. Embed the chunk body (content_dense + content_bm25) for the indexed chunks
-        content_dense, content_sparse = await self._embed_texts([c.embed_text for c in index_chunks])
+        content_dense, content_sparse = await self._embedder.embed_texts(
+            [c.embed_text for c in index_chunks]
+        )
 
         # 2. Embed each metadata field's per-chunk value once (reused for dense and/or sparse)
-        field_names: list[str] = []
-        for fv in [*plan.dense, *plan.sparse]:
-            if fv.name not in field_names:
-                field_names.append(fv.name)
-        field_dense: dict[str, list[list[float] | None]] = {}
-        field_sparse: dict[str, list[dict[int, float] | None]] = {}
-        for name in field_names:
-            values = [FieldIndexHelpers.resolve_field_text(name, c, doc_meta) for c in index_chunks]
-            d, sp = await self._embed_values(values)
-            field_dense[name] = d
-            field_sparse[name] = sp
+        field_dense, field_sparse = await self._embed_fields(plan, index_chunks, doc_meta)
 
         # 3. Ensure the collection carries every named vector the schema needs
         await self._qdrant.ensure_collection(
@@ -167,63 +158,40 @@ class S6EmbedIndexStage(LoggerClass):
         )
         return S6Result(
             len(index_chunks), n_upserted, len(chunks), collection_name, n_field_vectors,
-            chain_traces=list(self._batch_traces),
+            chain_traces=list(self._embedder.batch_traces),
         )
 
     # ─── Internal ─────────────────────────────────────────────────────────────
 
-    async def _embed_texts(
-        self, texts: list[str]
-    ) -> tuple[list[list[float]], list[dict[int, float]] | None]:
+    async def _embed_fields(
+        self,
+        plan: Any,
+        index_chunks: list[Chunk],
+        doc_meta: dict[str, Any],
+    ) -> tuple[dict[str, list[list[float] | None]], dict[str, list[dict[int, float] | None]]]:
         """
-        Embed a list of texts via the embed chain, batched per ``embed_batch_size``.
+        Embed each unique metadata field's per-chunk value once.
 
-        Each batch contributes one ``ChainTrace`` to ``self._batch_traces``; the engine
-        flushes them onto the document IR after the stage returns.
+        A field appearing in both the dense and sparse plans is embedded a single time;
+        the dense and sparse projections are reused for every vector that references it.
 
-        Raises:
-            RuntimeError: When the chain exhausts every provider for a batch.
+        Args:
+            plan (Any): Vector plan from FieldIndexHelpers.derive_vector_plan.
+            index_chunks (list[Chunk]): The chunks being indexed (parents excluded).
+            doc_meta (dict[str, Any]): Document-level field values.
+
+        Returns:
+            tuple: ``(field_dense, field_sparse)`` keyed by field name.
         """
-        all_dense: list[list[float]] = []
-        all_sparse: list[dict[int, float]] | None = None
-        for i in range(0, len(texts), self._embed_batch_size):
-            batch = texts[i : i + self._embed_batch_size]
-            outcome = await self._embed_chain.call(lambda p: p.embed(batch))
-            self._batch_traces.append(ChainTrace(
-                stage="embed",
-                attempts=[ChainAttemptIR(**d) for d in chain_outcome_to_attempt_dicts(outcome)],
-                final_provider=outcome.final_provider,
-            ))
-            if outcome.result is None:
-                raise RuntimeError(
-                    f"S6 embed chain exhausted for batch of {len(batch)} texts — "
-                    f"{len(outcome.attempts)} provider(s) attempted, none returned vectors."
-                )
-            res = outcome.result
-            all_dense.extend(res.vectors)
-            if res.sparse is not None:
-                if all_sparse is None:
-                    all_sparse = []
-                all_sparse.extend(res.sparse)
-        return all_dense, all_sparse
-
-    async def _embed_values(
-        self, values: list[str | None]
-    ) -> tuple[list[list[float] | None], list[dict[int, float] | None]]:
-        """
-        Embed only the non-empty field values, scattering results back per chunk.
-
-        Chunks with no value for the field get None (→ no named vector on that point).
-        """
-        dense_out: list[list[float] | None] = [None] * len(values)
-        sparse_out: list[dict[int, float] | None] = [None] * len(values)
-        idxs = [i for i, v in enumerate(values) if v]
-        if not idxs:
-            return dense_out, sparse_out
-        dense, sparse = await self._embed_texts([values[i] or "" for i in idxs])
-        for j, i in enumerate(idxs):
-            dense_out[i] = dense[j]
-            if sparse is not None:
-                sparse_out[i] = sparse[j]
-        return dense_out, sparse_out
-
+        field_names: list[str] = []
+        for fv in [*plan.dense, *plan.sparse]:
+            if fv.name not in field_names:
+                field_names.append(fv.name)
+        field_dense: dict[str, list[list[float] | None]] = {}
+        field_sparse: dict[str, list[dict[int, float] | None]] = {}
+        for name in field_names:
+            values = [FieldIndexHelpers.resolve_field_text(name, c, doc_meta) for c in index_chunks]
+            d, sp = await self._embedder.embed_values(values)
+            field_dense[name] = d
+            field_sparse[name] = sp
+        return field_dense, field_sparse

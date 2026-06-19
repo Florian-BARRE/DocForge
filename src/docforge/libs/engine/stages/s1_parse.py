@@ -5,18 +5,13 @@
 # escalate to a fallback parser (MinerU/Marker — Phase B) when the first provider's
 # quality_score falls below the configured gate.
 #
-# Design note — no s1_helpers.py split attempted for _render_and_upload /
-# _render_figure_crops_sync / _upload_markdown: all three carry self.logger calls
-# (debug/info/warning) that are instance-bound and cannot be cleanly moved to a
-# static helper without either losing log context or introducing artificial coupling.
+# Figure-crop rendering + markdown serialization/upload live in S1Renderer (s1_renderer.py).
 # Pure IR transformations (chain-trace stamping, figure crop key patching) live in
-# s1_helpers.py (S1Helpers) and are called from here.
+# s1_helpers.py (S1Helpers).  This class only drives the parser chain and orchestrates them.
 
 # ====== Standard Library Imports ======
 from __future__ import annotations
 
-import asyncio
-import hashlib
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -29,12 +24,11 @@ from libs.capabilities.chain import Chain
 
 # ====== Internal Project Imports ======
 from libs.core.ir.models import DocumentIR
-from libs.core.ir.serializer import MarkdownSerializer
-from libs.data.storage.s3.helpers import S3Helpers
 
 # ====== Local Project Imports ======
 from .s0_ingest import S0Result
 from .s1_helpers import S1Helpers
+from .s1_renderer import S1Renderer
 from .s1_result import S1Result
 
 
@@ -45,8 +39,8 @@ class S1ParseStage(LoggerClass):
     Responsibilities:
       1. Invoke the parser chain; the first provider whose IR passes the gate wins.
       2. Persist the full attempt log on ``DocumentIR.chain_traces`` for lineage.
-      3. Render each FIGURE bbox and upload the crop to SeaweedFS.
-      4. Serialise the IR to markdown and upload it to SeaweedFS.
+      3. Render each FIGURE bbox and upload the crop to SeaweedFS (via S1Renderer).
+      4. Serialise the IR to markdown and upload it to SeaweedFS (via S1Renderer).
 
     What S1 does NOT do:
       - No OCR, no VLM, no classification (S2 territory).
@@ -54,15 +48,9 @@ class S1ParseStage(LoggerClass):
       - No Postgres writes (handled by the engine).
 
     Helper split rationale:
-      Pure IR transformations (chain-trace stamping, figure crop key patching) are
-      delegated to ``S1Helpers`` in ``s1_helpers.py``.  The remaining private methods
-      (_render_and_upload, _render_figure_crops_sync, _upload_markdown) are kept here
-      because they carry ``self.logger`` calls at debug/info/warning level; extracting
-      them to a static class would either lose log context or require logger injection
-      as a parameter, adding coupling for no structural gain.
+      Pure IR transformations are delegated to ``S1Helpers``; figure-crop rendering and
+      markdown upload (which carry self.logger calls) are delegated to ``S1Renderer``.
     """
-
-    _RENDER_DPI_ZOOM: float = 2.0
 
     def __init__(self, parse_chain: Chain[Any, Any], s3: S3Client) -> None:
         """
@@ -74,8 +62,7 @@ class S1ParseStage(LoggerClass):
         """
         LoggerClass.__init__(self)
         self._parse_chain = parse_chain
-        self._s3 = s3
-        self._md_serializer = MarkdownSerializer()
+        self._renderer = S1Renderer(s3)
 
     @property
     def parse_chain(self) -> Chain[Any, Any]:
@@ -123,13 +110,13 @@ class S1ParseStage(LoggerClass):
         ir = S1Helpers.stamp_parse_trace(ir, outcome)
 
         # 3. Render and upload figure crops (page screenshots are generated on the fly).
-        figure_crop_keys = await self._render_and_upload(s0, ir)
+        figure_crop_keys = await self._renderer.render_and_upload(s0, ir)
 
         # 4. Patch figure blocks with their crop_key.
         ir = S1Helpers.patch_figure_crop_keys(ir, figure_crop_keys)
 
         # 5. Serialise IR → markdown → upload.
-        markdown_key = await self._upload_markdown(s0, ir, fingerprint=fingerprint)
+        markdown_key = await self._renderer.upload_markdown(s0, ir, fingerprint=fingerprint)
 
         result = S1Result(
             ir=ir,
@@ -143,113 +130,3 @@ class S1ParseStage(LoggerClass):
             f"final_parser={outcome.final_provider} attempts={len(outcome.attempts)}"
         )
         return result
-
-    # ─── Private helpers ───────────────────────────────────────────────────────
-
-    async def _render_and_upload(
-        self, s0: S0Result, ir: DocumentIR
-    ) -> dict[str, str]:
-        """
-        Crop all figure bboxes from the PDF and upload them to SeaweedFS.
-
-        Crops are stored under a **content-addressed** key
-        (``figures/by-hash/<sha256[:2]>/<sha256>.png``) so a logo or page header
-        repeating across every slide of a deck only uploads — and only ever
-        stores — a single PNG.  Multiple block IDs map to the same crop_key
-        when their pixel bytes are bit-identical, which also gives the S2
-        provider-call cache 100% hit-rate on those repeated figures.
-
-        Returns:
-            dict[str, str]: block_id → object-store key for each figure crop.
-                Multiple block_ids can share the same key after dedup.
-        """
-        loop = asyncio.get_event_loop()
-        figure_crops = await loop.run_in_executor(
-            None,
-            self._render_figure_crops_sync,
-            s0.pdf_bytes,
-            ir,
-        )
-
-        # Dedup: collapse identical (key → bytes) pairs so a 27-slide deck with
-        # the same header logo issues exactly ONE PutObject, not 27.
-        unique_uploads: dict[str, bytes] = {}
-        for _, key, data in figure_crops:
-            unique_uploads.setdefault(key, data)
-
-        await asyncio.gather(*[
-            self._s3.upload(key=key, data=data, content_type="image/png")
-            for key, data in unique_uploads.items()
-        ])
-
-        if (savings := len(figure_crops) - len(unique_uploads)) > 0:
-            self.logger.info(
-                f"S1: figure crop dedup saved {savings} S3 uploads "
-                f"({len(figure_crops)} blocks → {len(unique_uploads)} unique blobs)"
-            )
-
-        return {block_id: key for block_id, key, _ in figure_crops}
-
-    def _render_figure_crops_sync(
-        self,
-        pdf_bytes: bytes,
-        ir: DocumentIR,
-    ) -> list[tuple[str, str, bytes]]:
-        """Synchronous figure crop rendering via PyMuPDF (runs in thread pool).
-
-        Each crop's S3 key is derived from ``sha256(crop_bytes)`` so two blocks
-        whose pixel content is identical receive the same key and the upload
-        step deduplicates them.
-        """
-        import fitz  # PyMuPDF
-
-        figure_crops: list[tuple[str, str, bytes]] = []
-        matrix = fitz.Matrix(self._RENDER_DPI_ZOOM, self._RENDER_DPI_ZOOM)
-
-        with fitz.open(stream=pdf_bytes, filetype="pdf") as doc:
-            for block in ir.figure_blocks:
-                page_num = block.prov.page
-                if page_num >= doc.page_count:
-                    continue
-
-                page = doc[page_num]
-                page_w = page.rect.width
-                page_h = page.rect.height
-
-                x0, y0, x1, y1 = block.prov.bbox
-                rx0, rx1 = sorted((x0 * page_w, x1 * page_w))
-                ry0, ry1 = sorted((y0 * page_h, y1 * page_h))
-                rect = fitz.Rect(rx0, ry0, rx1, ry1) & page.rect
-
-                if rect.is_empty or rect.width < 2 or rect.height < 2:
-                    self.logger.debug(f"S1: skipping degenerate figure crop for {block.id}")
-                    continue
-
-                try:
-                    pix = page.get_pixmap(matrix=matrix, clip=rect, alpha=False)
-                    crop_bytes = pix.tobytes("png")
-                except Exception as exc:
-                    self.logger.warning(f"S1: figure crop failed for {block.id}: {exc}")
-                    continue
-
-                # Content-addressed: identical pixel bytes → same S3 key.
-                crop_hash = hashlib.sha256(crop_bytes).hexdigest()
-                key = S3Helpers.key_figure_crop_by_hash(crop_hash)
-                figure_crops.append((block.id, key, crop_bytes))
-
-        return figure_crops
-
-    async def _upload_markdown(
-        self, s0: S0Result, ir: DocumentIR, fingerprint: str | None = None
-    ) -> str:
-        """Serialise the IR to faithful markdown and upload to SeaweedFS."""
-        markdown_text = self._md_serializer.serialize(ir)
-        serialize_fp = fingerprint or "s1_no_fingerprint"
-        key = S3Helpers.key_markdown(s0.source_hash, serialize_fp)
-        await self._s3.upload(
-            key=key,
-            data=markdown_text.encode("utf-8"),
-            content_type="text/markdown; charset=utf-8",
-        )
-        self.logger.debug(f"Uploaded markdown → {key}")
-        return key

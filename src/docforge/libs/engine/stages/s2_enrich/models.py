@@ -46,5 +46,37 @@ class S2Result:
     classifier_cache_hits: int = 0
 
 
+@dataclass(slots=True)
+class S2Counters:
+    """
+    Mutable per-run accounting accumulator for the S2 enrichment stage.
+
+    Mirrors the counter fields of :class:`S2Result` but is mutated in place by
+    ``FigureEnricher.process_block`` as each figure is routed.  The stage copies the
+    final counter values into the immutable ``S2Result`` it returns.
+
+    Attributes:
+        budget_spent (float): Total USD spent across OCR and VLM calls.
+        figures_processed (int): FIGURE blocks that completed the full routing.
+        ocr_calls (int): OCR chain invocations (cache misses only).
+        vlm_calls (int): VLM chain invocations (cache misses only).
+        chart_extractions (int): Charts where structured table data was extracted.
+        ocr_cache_hits (int): OCR results served from the provider-call cache.
+        vlm_cache_hits (int): VLM results served from the provider-call cache.
+        classifier_calls (int): Classifier chain invocations (cache misses only).
+        classifier_cache_hits (int): Classifier results served from cache.
+    """
+
+    budget_spent: float = 0.0
+    figures_processed: int = 0
+    ocr_calls: int = 0
+    vlm_calls: int = 0
+    chart_extractions: int = 0
+    ocr_cache_hits: int = 0
+    vlm_cache_hits: int = 0
+    classifier_calls: int = 0
+    classifier_cache_hits: int = 0
+
+
 # ------------------- Public API ------------------- #
-__all__ = ["S2Result"]
+__all__ = ["S2Result", "S2Counters"]

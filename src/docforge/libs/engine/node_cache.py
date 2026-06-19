@@ -1,28 +1,24 @@
 # ====== Code Summary ======
-# NodeCache — node-level result cache for the P2 stage engine.
+# NodeCache — node-level result cache facade for the P2 stage engine.
 # Wraps the stage_run Postgres table: each row records one pipeline node execution.
 # Cache hit condition: (document_id, node_id, fingerprint) with status='done'.
-#
-# REFACTOR EXCEPTION (262 lines > 250):
-# Every method is an async DB operation that emits log messages via self.logger —
-# no stateless logic exists to extract cleanly.  Splitting would create artificial
-# seams (e.g. a separate "query builder" file) with cross-module coupling and no
-# readability benefit.  File is cohesive by design: one class, one responsibility.
+# All SQL operations live in NodeCacheOps (node_cache_ops.py); this class is the typed,
+# instance-bound facade that the engine injects and calls.
 
 # ====== Standard Library Imports ======
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
 
 # ====== Third-Party Library Imports ======
 from loggerplusplus import LoggerClass
-from sqlalchemy import and_, select
-from sqlalchemy import delete as sa_delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # ====== Internal Project Imports ======
 from libs.data.storage.postgres.models import StageRunModel
+
+# ====== Local Project Imports ======
+from .node_cache_ops import NodeCacheOps
 
 
 class NodeCache(LoggerClass):
@@ -36,6 +32,8 @@ class NodeCache(LoggerClass):
         running → the node is currently executing.
         done    → completed; ``output_ref`` points to the S3 meta JSON key.
         failed  → terminal failure; will be retried on next pipeline run.
+
+    All operations are delegated to NodeCacheOps; this facade keeps the public contract.
     """
 
     def __init__(self) -> None:
@@ -61,27 +59,7 @@ class NodeCache(LoggerClass):
         Returns:
             str | None: S3 key of the output meta JSON, or None on cache miss.
         """
-        result = await session.execute(
-            select(StageRunModel).where(
-                and_(
-                    StageRunModel.document_id == document_id,
-                    StageRunModel.node_id == node_id,
-                    StageRunModel.fingerprint == fingerprint,
-                    StageRunModel.status == "done",
-                )
-            )
-        )
-        row = result.scalar_one_or_none()
-        if row is not None and row.output_ref:
-            self.logger.debug(
-                f"NodeCache HIT: doc={document_id} node={node_id} fp={fingerprint[:8]}…"
-            )
-            return row.output_ref
-
-        self.logger.debug(
-            f"NodeCache MISS: doc={document_id} node={node_id} fp={fingerprint[:8]}…"
-        )
-        return None
+        return await NodeCacheOps.get(session, document_id, node_id, fingerprint)
 
     async def start(
         self,
@@ -101,35 +79,7 @@ class NodeCache(LoggerClass):
             node_id (str): Stage identifier.
             fingerprint (str): Node fingerprint.
         """
-        # 1. Remove any prior failed/pending row so we start clean
-        existing = await session.execute(
-            select(StageRunModel).where(
-                and_(
-                    StageRunModel.document_id == document_id,
-                    StageRunModel.node_id == node_id,
-                    StageRunModel.fingerprint == fingerprint,
-                )
-            )
-        )
-        prior = existing.scalar_one_or_none()
-        if prior is not None:
-            await session.delete(prior)
-            await session.flush()
-
-        # 2. Insert a fresh running record
-        session.add(
-            StageRunModel(
-                document_id=document_id,
-                node_id=node_id,
-                fingerprint=fingerprint,
-                status="running",
-                started_at=datetime.now(UTC),
-            )
-        )
-        await session.flush()
-        self.logger.debug(
-            f"NodeCache START: doc={document_id} node={node_id} fp={fingerprint[:8]}…"
-        )
+        await NodeCacheOps.start(session, document_id, node_id, fingerprint)
 
     async def put(
         self,
@@ -149,36 +99,7 @@ class NodeCache(LoggerClass):
             fingerprint (str): Node fingerprint.
             output_ref (str): S3 key of the output meta JSON.
         """
-        # 1. Look up the existing running row written by start()
-        result = await session.execute(
-            select(StageRunModel).where(
-                and_(
-                    StageRunModel.document_id == document_id,
-                    StageRunModel.node_id == node_id,
-                    StageRunModel.fingerprint == fingerprint,
-                )
-            )
-        )
-        row = result.scalar_one_or_none()
-        if row is None:
-            # 2. start() was not called (edge case) — create the row now
-            row = StageRunModel(
-                document_id=document_id,
-                node_id=node_id,
-                fingerprint=fingerprint,
-            )
-            session.add(row)
-
-        # 3. Mark as done with output reference and timestamp
-        row.status = "done"
-        row.output_ref = output_ref
-        row.finished_at = datetime.now(UTC)
-        await session.flush()
-
-        self.logger.debug(
-            f"NodeCache PUT: doc={document_id} node={node_id} "
-            f"fp={fingerprint[:8]}… ref={output_ref}"
-        )
+        await NodeCacheOps.put(session, document_id, node_id, fingerprint, output_ref)
 
     async def fail(
         self,
@@ -196,22 +117,7 @@ class NodeCache(LoggerClass):
             node_id (str): Stage identifier.
             fingerprint (str): Node fingerprint.
         """
-        # 1. Locate the running row to update its terminal state
-        result = await session.execute(
-            select(StageRunModel).where(
-                and_(
-                    StageRunModel.document_id == document_id,
-                    StageRunModel.node_id == node_id,
-                    StageRunModel.fingerprint == fingerprint,
-                )
-            )
-        )
-        row = result.scalar_one_or_none()
-        # 2. Mark the row as failed so the next run re-executes this node
-        if row is not None:
-            row.status = "failed"
-            row.finished_at = datetime.now(UTC)
-            await session.flush()
+        await NodeCacheOps.fail(session, document_id, node_id, fingerprint)
 
     async def invalidate_document(
         self,
@@ -233,15 +139,7 @@ class NodeCache(LoggerClass):
         Returns:
             int: Number of stage_run rows removed.
         """
-        # 1. Build the DELETE targeting this document, optionally scoped to specific nodes
-        stmt = sa_delete(StageRunModel).where(StageRunModel.document_id == document_id)
-        if node_ids:
-            stmt = stmt.where(StageRunModel.node_id.in_(node_ids))
-        # 2. Execute and count the removed rows for the caller to log/audit
-        result = await session.execute(stmt)
-        removed = result.rowcount or 0
-        self.logger.info(f"NodeCache: invalidated {removed} stage_run row(s) for document {document_id}")
-        return removed
+        return await NodeCacheOps.invalidate_document(session, document_id, node_ids)
 
     async def get_all_for_document(
         self,
@@ -260,9 +158,4 @@ class NodeCache(LoggerClass):
         Returns:
             list[StageRunModel]: All stage run records, ordered by started_at ascending.
         """
-        result = await session.execute(
-            select(StageRunModel)
-            .where(StageRunModel.document_id == document_id)
-            .order_by(StageRunModel.started_at)
-        )
-        return list(result.scalars().all())
+        return await NodeCacheOps.get_all_for_document(session, document_id)
