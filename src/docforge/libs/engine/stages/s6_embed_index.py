@@ -17,7 +17,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 # ====== Internal Project Imports ======
 from libs.core.ir.chunk import Chunk
 from libs.core.ir.models import ChainAttemptIR, ChainTrace
-from libs.core.metadata.fields import _field_attr
 from libs.capabilities.chain import Chain, chain_outcome_to_attempt_dicts
 from libs.data.retrieval.field_index import (
     CONTENT_DENSE,
@@ -26,6 +25,9 @@ from libs.data.retrieval.field_index import (
 )
 from libs.data.storage.postgres.repositories.chunk_repo import ChunkRepository
 from libs.data.storage.qdrant.client import QdrantStorageClient
+
+# ====== Local Project Imports ======
+from .s6_helpers import S6IndexHelpers
 
 
 @dataclass(slots=True)
@@ -170,7 +172,7 @@ class S6EmbedIndexStage(LoggerClass):
             sparse_by_vector[fv.vector] = field_sparse[fv.name]
 
         # 5. Upsert the indexed chunks to Qdrant + persist ALL chunks to Postgres (both idempotent)
-        payloads = [_build_payload(c, metadata_fields or [], doc_meta) for c in index_chunks]
+        payloads = [S6IndexHelpers.build_payload(c, metadata_fields or [], doc_meta) for c in index_chunks]
         n_upserted = await self._qdrant.upsert_points(
             collection_name=collection_name,
             chunk_ids=[c.id for c in index_chunks],
@@ -247,30 +249,3 @@ class S6EmbedIndexStage(LoggerClass):
                 sparse_out[i] = sparse[j]
         return dense_out, sparse_out
 
-
-# ─── Module-level helpers ──────────────────────────────────────────────────────
-
-
-def _build_payload(chunk: Chunk, metadata_fields: list[Any], doc_meta: dict[str, Any]) -> dict[str, Any]:
-    """
-    Build the lean Qdrant payload: base provenance + filterable field values (spec §7.1).
-
-    Only filterable fields are promoted to the payload (the rich content stays in Postgres).
-    """
-    payload: dict[str, Any] = {
-        "document_id": chunk.document_id,
-        "config_hash": chunk.config_hash,
-        "strategy": chunk.strategy,
-        "token_count": chunk.token_count,
-        "pages": chunk.prov.get("pages", []),
-    }
-    # Hierarchical mode: carry the parent id so retrieval can roll a child up to its section.
-    if chunk.parent_id:
-        payload["parent_id"] = chunk.parent_id
-    for f in metadata_fields:
-        if _field_attr(f, "filterable", False):
-            name = _field_attr(f, "field_name")
-            value = FieldIndexHelpers.resolve_field_text(name, chunk, doc_meta)
-            if value is not None:
-                payload[name] = value
-    return payload
