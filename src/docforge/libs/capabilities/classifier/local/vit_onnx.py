@@ -6,16 +6,15 @@
 from __future__ import annotations
 
 import io
+from typing import Any, ClassVar, Literal
 
 from loggerplusplus import LoggerClass
-
-from libs.core.ir.models import FigureKind
-
-from libs.capabilities.classifier.base import FigureClassifier, ClassificationResult
-from typing import Any, ClassVar, Literal
 from pydantic import BaseModel, Field, model_validator
+
+from libs.capabilities.classifier.base import ClassificationResult, FigureClassifier
 from libs.core.contracts._registry import register
 from libs.core.contracts.spec_utils import flatten_provider_spec as _flatten_provider_spec
+from libs.core.ir.models import FigureKind
 
 # Expected mapping from ONNX output class index → FigureKind.
 # Must match the label order used during model training.
@@ -172,7 +171,7 @@ class VitOnnxConfig(BaseModel):
     def _compat(cls, v: Any) -> Any:
         return _flatten_provider_spec(v)
 
-    def build(self) -> "VitOnnxClassifier":
+    def build(self) -> VitOnnxClassifier:
         """Instantiate VitOnnxClassifier from this config."""
         import os
         if not self.model_path or not os.path.exists(self.model_path):
@@ -182,7 +181,7 @@ class VitOnnxConfig(BaseModel):
             )
         return VitOnnxClassifier(model_path=self.model_path, use_gpu=self.use_gpu)
 
-    def merge_defaults(self, cfg: Any) -> "VitOnnxConfig":
+    def merge_defaults(self, cfg: Any) -> VitOnnxConfig:
         return self.model_copy(update={
             "model_path": self.model_path or getattr(cfg, "CLASSIFIER_ONNX_MODEL_PATH", ""),
             "use_gpu": self.use_gpu or getattr(cfg, "CLASSIFIER_USE_GPU", False),

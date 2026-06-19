@@ -10,9 +10,10 @@ from typing import Any
 # ====== Third-Party Library Imports ======
 from loggerplusplus import loggerplusplus
 
+from libs.capabilities.chain import ChainOutcome, chain_outcome_to_attempt_dicts
+
 # ====== Internal Project Imports ======
 from libs.core.ir.models import ChainAttemptIR, ChainTrace
-from libs.capabilities.chain import ChainOutcome, chain_outcome_to_attempt_dicts
 
 
 class TraceHelpers:
@@ -32,7 +33,7 @@ class TraceHelpers:
         raise TypeError(f"{cls.__name__} is a static-only class and cannot be instantiated.")
 
     @staticmethod
-    def from_outcome(stage: str, outcome: "ChainOutcome[Any]") -> ChainTrace:
+    def from_outcome(stage: str, outcome: ChainOutcome[Any]) -> ChainTrace:
         """
         Convert a ``ChainOutcome`` into the IR ``ChainTrace`` serialisation.
 

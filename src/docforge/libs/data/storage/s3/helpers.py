@@ -8,7 +8,6 @@ from __future__ import annotations
 
 from typing import Any
 
-
 # Object-store key conventions (content-addressed layout):
 #   originals/{sha256}                              — original file bytes
 #   derived/{sha256}/pdf                            — original→PDF conversion

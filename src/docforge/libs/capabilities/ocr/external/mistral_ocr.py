@@ -7,14 +7,14 @@
 from __future__ import annotations
 
 import base64
+from typing import Any, ClassVar, Literal
 
 import httpx
 from loggerplusplus import LoggerClass
+from pydantic import BaseModel, Field, model_validator
 
 from libs.capabilities.interfaces import OcrHint, OcrResult
 from libs.capabilities.ocr.base import OcrProvider
-from typing import Any, ClassVar, Literal
-from pydantic import BaseModel, Field, model_validator
 from libs.core.contracts._registry import register
 from libs.core.contracts.spec_utils import flatten_provider_spec as _flatten_provider_spec
 
@@ -154,7 +154,7 @@ class MistralOcrConfig(BaseModel):
     def _compat(cls, v: Any) -> Any:
         return _flatten_provider_spec(v)
 
-    def build(self) -> "MistralOcrProvider":
+    def build(self) -> MistralOcrProvider:
         """Instantiate MistralOcrProvider — raises ValueError when api_key is empty."""
         if not self.api_key:
             raise ValueError(
@@ -168,7 +168,7 @@ class MistralOcrConfig(BaseModel):
             timeout_s=self.timeout_s,
         )
 
-    def merge_defaults(self, cfg: Any) -> "MistralOcrConfig":
+    def merge_defaults(self, cfg: Any) -> MistralOcrConfig:
         """Merge deployment env defaults for missing credentials/endpoints."""
         return self.model_copy(update={
             "api_key": self.api_key or getattr(cfg, "MISTRAL_OCR_API_KEY", ""),

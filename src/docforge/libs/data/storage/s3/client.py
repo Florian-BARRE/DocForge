@@ -9,7 +9,7 @@
 from __future__ import annotations
 
 import io
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
 
 # ====== Third-Party Library Imports ======
 import aioboto3

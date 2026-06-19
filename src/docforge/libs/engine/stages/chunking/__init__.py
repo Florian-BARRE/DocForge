@@ -4,9 +4,16 @@
 
 # NOTE: split method configs live in params.py (not in local/external), so we
 # import params.py directly to trigger @register("split_method") decorators.
+from libs.core.contracts._registry import build_union, get_configs
+
 from . import params as _params_module  # noqa: F401 — side-effect: triggers @register
 
-from libs.core.contracts._registry import build_union, get_configs
+# ------------------- Splitter implementations ------------------- #
+from .base_splitter import SectionSplitter
+from .cross_reference_linker import CrossReferenceLinker
+
+# ------------------- Helpers ------------------- #
+from .helpers import ChunkingHelpers
 
 # ------------------- Split Method Configs ------------------- #
 from .params import (
@@ -18,13 +25,6 @@ from .params import (
     TokenBudgetConfig,
     TokenBudgetParams,
 )
-
-# ------------------- Helpers ------------------- #
-from .helpers import ChunkingHelpers
-
-# ------------------- Splitter implementations ------------------- #
-from .base_splitter import SectionSplitter
-from .cross_reference_linker import CrossReferenceLinker
 from .semantic_splitter import SemanticSplitter
 from .sentence_window_splitter import SentenceWindowSplitter
 from .token_budget_splitter import TokenBudgetSplitter

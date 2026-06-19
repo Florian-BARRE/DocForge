@@ -23,19 +23,8 @@ from loggerplusplus import loggerplusplus
 
 # ====== Internal Project Imports ======
 from config import RUNTIME_CONFIG  # MUST be first — registers sys.path
-
-# ====== Internal Project Imports ======
-from libs.engine.engine import StageEngine
-from libs.engine.node_cache import NodeCache
-from libs.core.contracts.pipeline_config import build_default_pipeline
-from libs.engine.provider_cache import ProviderCallCache
-from libs.engine.stages.s0_ingest import S0IngestStage
-from libs.engine.stages.s1_parse import S1ParseStage
-from libs.engine.stages.s6_embed_index import S6EmbedIndexStage
-from libs.engine.tasks import run_pipeline_task
 from libs.capabilities.converter import GotenbergConverter
-from libs.capabilities.parser import DoclingBackend
-from libs.engine.assembly import ProviderRegistry
+from libs.core.contracts.pipeline_config import build_default_pipeline
 from libs.data.storage.postgres.client import PostgresClient
 from libs.data.storage.postgres.repositories import (
     BlockRepository,
@@ -46,6 +35,16 @@ from libs.data.storage.postgres.repositories import (
 )
 from libs.data.storage.qdrant.client import QdrantStorageClient
 from libs.data.storage.s3.client import S3Client
+from libs.engine.assembly import ProviderRegistry
+
+# ====== Internal Project Imports ======
+from libs.engine.engine import StageEngine
+from libs.engine.node_cache import NodeCache
+from libs.engine.provider_cache import ProviderCallCache
+from libs.engine.stages.s0_ingest import S0IngestStage
+from libs.engine.stages.s1_parse import S1ParseStage
+from libs.engine.stages.s6_embed_index import S6EmbedIndexStage
+from libs.engine.tasks import run_pipeline_task
 
 _logger = loggerplusplus.bind(identifier="ARQ_WORKER")
 
@@ -92,7 +91,6 @@ async def startup(ctx: dict) -> None:
         base_url=RUNTIME_CONFIG.GOTENBERG_URL,
         timeout_s=RUNTIME_CONFIG.GOTENBERG_TIMEOUT_S,
     )
-    parser = DoclingBackend(use_gpu=RUNTIME_CONFIG.DOCLING_USE_GPU)
 
     # 4. Instantiate repositories and caches
     document_repo = DocumentRepository()

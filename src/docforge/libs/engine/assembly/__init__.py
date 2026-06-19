@@ -1,11 +1,11 @@
 # ------------------- Availability ------------------- #
 from .availability import ProviderUnavailableError
 
-# ------------------- Registry -------------------- #
-from .registry import ProviderRegistry, ResolvedStages
-
 # ------------------- Describe -------------------- #
 from .describe import _params_from_model
+
+# ------------------- Registry -------------------- #
+from .registry import ProviderRegistry, ResolvedStages
 
 # ------------------- Public API ------------------- #
 __all__ = [

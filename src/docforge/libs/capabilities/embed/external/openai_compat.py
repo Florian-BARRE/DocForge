@@ -4,13 +4,16 @@
 
 # ====== Standard Library Imports ======
 from __future__ import annotations
+
 from typing import Any, ClassVar, Literal
+
 from pydantic import BaseModel, Field, model_validator
+
+from libs.capabilities.embed._openai_compat_base import _OpenAICompatBase
 
 # ====== Internal Project Imports ======
 from libs.core.contracts._registry import register
 from libs.core.contracts.spec_utils import flatten_provider_spec as _flatten_provider_spec
-from libs.capabilities.embed._openai_compat_base import _OpenAICompatBase
 
 
 class OpenAIEmbedProvider(_OpenAICompatBase):
@@ -113,7 +116,7 @@ class OpenAIEmbedConfig(BaseModel):
     def _compat(cls, v: Any) -> Any:
         return _flatten_provider_spec(v)
 
-    def build(self) -> "OpenAIEmbedProvider":
+    def build(self) -> OpenAIEmbedProvider:
         """Instantiate OpenAIEmbedProvider — raises ValueError when api_key empty."""
         if not self.api_key:
             raise ValueError(
@@ -127,7 +130,7 @@ class OpenAIEmbedConfig(BaseModel):
             dimension=self.dimension,
         )
 
-    def merge_defaults(self, cfg: Any) -> "OpenAIEmbedConfig":
+    def merge_defaults(self, cfg: Any) -> OpenAIEmbedConfig:
         return self.model_copy(update={
             "api_key": self.api_key or getattr(cfg, "OPENAI_API_KEY", "") or getattr(cfg, "EMBED_API_KEY", ""),
         })

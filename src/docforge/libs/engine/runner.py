@@ -14,10 +14,11 @@ from typing import TYPE_CHECKING
 from loggerplusplus import LoggerClass
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from libs.data.storage.postgres.repositories import BlockRepository, DocumentRepository
+
 # ====== Internal Project Imports ======
 from libs.engine.stages.s0_ingest import S0IngestStage
 from libs.engine.stages.s1_parse import S1ParseStage
-from libs.data.storage.postgres.repositories import BlockRepository, DocumentRepository
 
 if TYPE_CHECKING:
     pass

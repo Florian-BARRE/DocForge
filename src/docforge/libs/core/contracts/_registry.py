@@ -71,7 +71,7 @@ def build_union(configs: dict[str, type]) -> Any:
     classes = list(configs.values())
     if len(classes) == 1:
         return Annotated[classes[0], Field(discriminator="id")]
-    return Annotated[Union[tuple(classes)], Field(discriminator="id")]
+    return Annotated[Union[tuple(classes)], Field(discriminator="id")]  # noqa: UP007
 
 
 def auto_import(package_name: str) -> None:

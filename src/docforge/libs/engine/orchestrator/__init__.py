@@ -1,8 +1,7 @@
 # ------------------- Core ------------------- #
-from .core import EngineResult, StageEngine
-
 # ------------------- Helpers ----------------- #
 from .cache_io import CacheIOHelpers
+from .core import EngineResult, StageEngine
 from .s6_builder import S6Builder
 from .trace_flush import TraceFlusher
 

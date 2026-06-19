@@ -47,7 +47,7 @@ class ChainGate:
         """Read-only access to the underlying config (useful for logging)."""
         return self._cfg
 
-    def should_escalate(self, result: Any, attempt: "ChainAttempt") -> bool:
+    def should_escalate(self, result: Any, attempt: ChainAttempt) -> bool:
         """
         Decide whether the chain should try the next provider after this attempt.
 

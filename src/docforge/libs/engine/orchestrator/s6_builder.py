@@ -16,10 +16,11 @@ if TYPE_CHECKING:
 # ====== Third-Party Library Imports ======
 from loggerplusplus import loggerplusplus
 
+from libs.data.storage.postgres.repositories import ChunkRepository
+from libs.data.storage.qdrant.client import QdrantStorageClient
+
 # ====== Internal Project Imports ======
 from libs.engine.stages.s6_embed_index import S6EmbedIndexStage
-from libs.data.storage.qdrant.client import QdrantStorageClient
-from libs.data.storage.postgres.repositories import ChunkRepository
 
 
 class S6Builder:
@@ -45,10 +46,10 @@ class S6Builder:
     @classmethod
     def build(
         cls,
-        embed: "EmbedConfig",
+        embed: EmbedConfig,
         qdrant: QdrantStorageClient | None,
         chunk_repo: ChunkRepository | None,
-        registry: "ProviderRegistry | None",
+        registry: ProviderRegistry | None,
     ) -> S6EmbedIndexStage | None:
         """
         Build a per-run S6 stage from the collection's embed provider config.
@@ -85,8 +86,8 @@ class S6Builder:
     @classmethod
     def _build_embed_chain(
         cls,
-        embed: "EmbedConfig",
-        registry: "ProviderRegistry | None",
+        embed: EmbedConfig,
+        registry: ProviderRegistry | None,
     ) -> tuple[Any, int]:
         """
         Build the embed chain and extract the batch size from the config.

@@ -13,7 +13,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 # ====== Third-Party Library Imports ======
 from loggerplusplus import LoggerClass
@@ -123,7 +123,7 @@ class NodeCache(LoggerClass):
                 node_id=node_id,
                 fingerprint=fingerprint,
                 status="running",
-                started_at=datetime.now(timezone.utc),
+                started_at=datetime.now(UTC),
             )
         )
         await session.flush()
@@ -172,7 +172,7 @@ class NodeCache(LoggerClass):
         # 3. Mark as done with output reference and timestamp
         row.status = "done"
         row.output_ref = output_ref
-        row.finished_at = datetime.now(timezone.utc)
+        row.finished_at = datetime.now(UTC)
         await session.flush()
 
         self.logger.debug(
@@ -210,7 +210,7 @@ class NodeCache(LoggerClass):
         # 2. Mark the row as failed so the next run re-executes this node
         if row is not None:
             row.status = "failed"
-            row.finished_at = datetime.now(timezone.utc)
+            row.finished_at = datetime.now(UTC)
             await session.flush()
 
     async def invalidate_document(

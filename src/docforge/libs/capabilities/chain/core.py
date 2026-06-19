@@ -10,7 +10,8 @@
 from __future__ import annotations
 
 import time
-from typing import Any, Awaitable, Callable, Generic, TypeVar
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 # ====== Third-Party Library Imports ======
 from loggerplusplus import LoggerClass
@@ -27,11 +28,8 @@ from .models import (
     _replace_escalated,
 )
 
-T = TypeVar("T")
-R = TypeVar("R")
 
-
-class Chain(LoggerClass, Generic[T, R]):
+class Chain[T, R](LoggerClass):
     """
     Ordered provider chain with policy-driven escalation and full provenance capture.
 

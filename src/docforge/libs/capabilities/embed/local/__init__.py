@@ -1,9 +1,8 @@
 # ------------------- Local Embed Providers ------------------- #
-from .tei import TeiEmbedProvider
-from .openai_compat import LocalOpenAICompatEmbedProvider
-
 # ------------------- Config (triggers @register decorator) ------------------- #
 from .config import TeiEmbedConfig
+from .openai_compat import LocalOpenAICompatEmbedProvider
+from .tei import TeiEmbedProvider
 
 # ------------------- Public API ------------------- #
 __all__ = [

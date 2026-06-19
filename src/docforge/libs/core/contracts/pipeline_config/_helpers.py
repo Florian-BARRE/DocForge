@@ -13,7 +13,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-# ====== Local Project Imports ======
+# ====== Internal Project Imports ======
 from libs.core.contracts.spec_utils import flatten_provider_spec as _flatten_provider_spec
 
 # Param-name segments that mark a value as a credential — masked when the config is echoed.

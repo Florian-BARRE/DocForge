@@ -9,7 +9,7 @@
 from __future__ import annotations
 
 import io
-from typing import TYPE_CHECKING, Any, ClassVar, Literal
+from typing import Any, ClassVar, Literal
 
 # ====== Third-Party Library Imports ======
 import fitz  # PyMuPDF
@@ -17,12 +17,12 @@ import httpx
 from loggerplusplus import LoggerClass
 from pydantic import BaseModel, Field, model_validator
 
-# ====== Internal Project Imports ======
-from libs.core.contracts._registry import register
-from libs.core.contracts.spec_utils import flatten_provider_spec as _flatten_provider_spec
 from libs.capabilities.converter.base import ConverterProvider
 from libs.capabilities.interfaces import ConvertResult
 
+# ====== Internal Project Imports ======
+from libs.core.contracts._registry import register
+from libs.core.contracts.spec_utils import flatten_provider_spec as _flatten_provider_spec
 
 # Formats routed through Gotenberg (office → LibreOffice → PDF)
 GOTENBERG_FORMATS: frozenset[str] = frozenset(
@@ -195,11 +195,11 @@ class GotenbergConfig(BaseModel):
     def _compat(cls, v: Any) -> Any:
         return _flatten_provider_spec(v)
 
-    def build(self) -> "GotenbergConverter":
+    def build(self) -> GotenbergConverter:
         """Instantiate GotenbergConverter from this config."""
         return GotenbergConverter(base_url=self.base_url, timeout_s=self.timeout_s)
 
-    def merge_defaults(self, cfg: Any) -> "GotenbergConfig":
+    def merge_defaults(self, cfg: Any) -> GotenbergConfig:
         """Merge deployment env defaults (base_url from RUNTIME_CONFIG)."""
         return self.model_copy(update={
             "base_url": self.base_url or getattr(cfg, "GOTENBERG_URL", self.base_url),

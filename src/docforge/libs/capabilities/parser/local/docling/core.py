@@ -15,10 +15,11 @@ from typing import Any
 # ====== Third-Party Library Imports ======
 from loggerplusplus import LoggerClass
 
+from libs.capabilities.lang import LanguageDetector
+from libs.capabilities.parser.base import ParserProvider
+
 # ====== Internal Project Imports ======
 from libs.core.ir.models import DocumentIR
-from libs.capabilities.parser.base import ParserProvider
-from libs.capabilities.lang import LanguageDetector
 
 # ====== Local Project Imports ======
 from .ir_mapper import DoclingIRMapper
@@ -164,8 +165,11 @@ class DoclingBackend(ParserProvider, LoggerClass):
         """
         if self._converter is None:
             try:
-                from docling.document_converter import DocumentConverter, PdfFormatOption  # type: ignore
                 from docling.datamodel.pipeline_options import PdfPipelineOptions  # type: ignore
+                from docling.document_converter import (  # type: ignore
+                    DocumentConverter,
+                    PdfFormatOption,
+                )
 
                 # PdfPipelineOptions carries PDF-specific knobs (do_ocr, do_table_structure).
                 # The old PipelineOptions no longer has these fields in docling >= 2.x.

@@ -1,5 +1,5 @@
 # ------------------- Local Converter Providers ------------------- #
-from .gotenberg import GotenbergConverter, GOTENBERG_FORMATS, NATIVE_PDF_FORMATS
+from .gotenberg import GOTENBERG_FORMATS, NATIVE_PDF_FORMATS, GotenbergConverter
 
 # ------------------- Public API ------------------- #
 __all__ = [

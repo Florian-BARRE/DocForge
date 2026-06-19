@@ -3,8 +3,8 @@
 # Provides the engine and session-maker used throughout the backend and pipeline.
 
 # ====== Standard Library Imports ======
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import AsyncIterator
 
 # ====== Third-Party Library Imports ======
 from loggerplusplus import LoggerClass

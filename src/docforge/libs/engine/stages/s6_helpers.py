@@ -8,10 +8,11 @@ from __future__ import annotations
 
 from typing import Any
 
+from libs.core.ir.chunk import Chunk
+
 # ====== Internal Project Imports ======
 from libs.core.metadata.fields import _field_attr
 from libs.data.retrieval.field_index import FieldIndexHelpers
-from libs.core.ir.chunk import Chunk
 
 
 class S6IndexHelpers:

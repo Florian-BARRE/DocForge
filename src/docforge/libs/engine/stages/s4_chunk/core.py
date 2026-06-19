@@ -16,15 +16,17 @@ from typing import Any
 # ====== Third-Party Library Imports ======
 from loggerplusplus import LoggerClass
 
-# ====== Internal Project Imports ======
-from libs.core.ir.models import DocumentIR
 from libs.core.contracts.pipeline_config import AtomicConfig
 
-# ====== Local Project Imports ======
-from .models import S4Result, _PARENT_STRATEGY
-from .heading_walker import HeadingWalker
-from .chunk_assembler import ChunkAssembler
+# ====== Internal Project Imports ======
+from libs.core.ir.models import DocumentIR
+
 from ..chunking import CrossReferenceLinker, SectionSplitter, TokenBudgetSplitter
+from .chunk_assembler import ChunkAssembler
+from .heading_walker import HeadingWalker
+
+# ====== Local Project Imports ======
+from .models import _PARENT_STRATEGY, S4Result
 
 
 class S4ChunkStage(LoggerClass):

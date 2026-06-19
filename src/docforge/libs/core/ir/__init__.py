@@ -1,4 +1,6 @@
 # ------------------- Models ------------------- #
+# ------------------- Chunk ------------------- #
+from .chunk import Chunk
 from .models import (
     Block,
     BlockType,
@@ -8,9 +10,6 @@ from .models import (
     Provenance,
     TableData,
 )
-
-# ------------------- Chunk ------------------- #
-from .chunk import Chunk
 
 # ------------------- Serialization ------------------- #
 from .serializer import MarkdownSerializer

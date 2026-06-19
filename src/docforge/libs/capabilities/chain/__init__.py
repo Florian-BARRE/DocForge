@@ -1,8 +1,7 @@
 # ------------------- Models ------------------- #
-from .models import ChainAttempt, ChainOutcome, chain_outcome_to_attempt_dicts
-
 # ------------------- Core ------------------- #
 from .core import Chain
+from .models import ChainAttempt, ChainOutcome, chain_outcome_to_attempt_dicts
 
 # ------------------- Backward compat ------------------- #
 from .provider_chain import ProviderChain

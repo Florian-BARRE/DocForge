@@ -66,7 +66,7 @@ class TeiEmbedConfig(BaseModel):
             embed_sparse=self.embed_sparse,
         )
 
-    def merge_defaults(self, cfg: Any) -> "TeiEmbedConfig":
+    def merge_defaults(self, cfg: Any) -> TeiEmbedConfig:
         """
         Merge deployment env defaults into this config.
 

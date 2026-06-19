@@ -12,12 +12,13 @@ from typing import Any
 # ====== Third-Party Library Imports ======
 from loggerplusplus import loggerplusplus
 
-# ====== Internal Project Imports ======
-from libs.core.ir.models import ChainTrace, FigureKind
-from libs.engine.provider_cache import ProviderCallCache
 from libs.capabilities.chain import Chain
 from libs.capabilities.classifier.base import ClassificationResult
 from libs.capabilities.interfaces import OcrHint, OcrResult, VlmResult
+
+# ====== Internal Project Imports ======
+from libs.core.ir.models import ChainTrace, FigureKind
+from libs.engine.provider_cache import ProviderCallCache
 
 # ====== Local Project Imports ======
 from .trace_helpers import TraceHelpers
@@ -46,7 +47,7 @@ class CacheRunner:
     @classmethod
     async def run_classify(
         cls,
-        classifier_chain: "Chain[Any, Any]",
+        classifier_chain: Chain[Any, Any],
         provider_cache: ProviderCallCache,
         crop_bytes: bytes,
         crop_hash: str,
@@ -122,7 +123,7 @@ class CacheRunner:
     @classmethod
     async def run_ocr(
         cls,
-        ocr_chain: "Chain[Any, Any] | None",
+        ocr_chain: Chain[Any, Any] | None,
         provider_cache: ProviderCallCache,
         crop_bytes: bytes,
         crop_hash: str,
@@ -198,7 +199,7 @@ class CacheRunner:
     @classmethod
     async def run_vlm(
         cls,
-        vlm_chain: "Chain[Any, Any] | None",
+        vlm_chain: Chain[Any, Any] | None,
         provider_cache: ProviderCallCache,
         crop_bytes: bytes,
         crop_hash: str,

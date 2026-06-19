@@ -4,9 +4,11 @@
 
 from __future__ import annotations
 
-from libs.capabilities.vlm._openai_compat_base import _OpenAICompatVlmBase
 from typing import Any, ClassVar, Literal
+
 from pydantic import BaseModel, Field, model_validator
+
+from libs.capabilities.vlm._openai_compat_base import _OpenAICompatVlmBase
 from libs.core.contracts._registry import register
 from libs.core.contracts.spec_utils import flatten_provider_spec as _flatten_provider_spec
 
@@ -110,7 +112,7 @@ class OpenAIVlmConfig(BaseModel):
     def _compat(cls, v: Any) -> Any:
         return _flatten_provider_spec(v)
 
-    def build(self) -> "OpenAIVlmProvider":
+    def build(self) -> OpenAIVlmProvider:
         """Instantiate OpenAIVlmProvider — raises ValueError when api_key is empty."""
         if not self.api_key:
             raise ValueError(
@@ -126,7 +128,7 @@ class OpenAIVlmConfig(BaseModel):
             cost_per_call=self.cost_per_call,
         )
 
-    def merge_defaults(self, cfg: Any) -> "OpenAIVlmConfig":
+    def merge_defaults(self, cfg: Any) -> OpenAIVlmConfig:
         return self.model_copy(update={
             "base_url": self.base_url or getattr(cfg, "VLM_API_BASE_URL", self.base_url),
             "api_key": self.api_key or getattr(cfg, "VLM_API_KEY", ""),

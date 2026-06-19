@@ -17,16 +17,26 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from libs.engine.stages.s1_parse import S1ParseStage as _S1ParseStageType
+    from libs.data.storage.s3.client import S3Client
     from libs.engine.assembly import ProviderRegistry
+    from libs.engine.stages.s1_parse import S1ParseStage as _S1ParseStageType
 
 # ====== Third-Party Library Imports ======
 from loggerplusplus import LoggerClass
 
+from libs.core.contracts.pipeline_config import PipelineConfig
+from libs.data.storage.postgres.client import PostgresClient
+from libs.data.storage.postgres.repositories import (
+    BlockRepository,
+    ChunkRepository,
+    DocumentRepository,
+)
+from libs.data.storage.qdrant.client import QdrantStorageClient
+from libs.data.storage.s3.helpers import S3Helpers
+
 # ====== Internal Project Imports ======
 from libs.engine.fingerprint import compute_fingerprint
 from libs.engine.node_cache import NodeCache
-from libs.core.contracts.pipeline_config import PipelineConfig
 from libs.engine.provider_cache import ProviderCallCache
 from libs.engine.stages.s0_ingest import S0IngestStage, S0Result
 from libs.engine.stages.s1_parse import S1ParseStage, S1Result
@@ -34,10 +44,6 @@ from libs.engine.stages.s2_enrich import S2EnrichStage, S2Result
 from libs.engine.stages.s4_chunk import S4ChunkStage, S4Result
 from libs.engine.stages.s5_contextualize import S5ContextualizeStage, S5Result
 from libs.engine.stages.s6_embed_index import S6EmbedIndexStage, S6Result
-from libs.data.storage.postgres.client import PostgresClient
-from libs.data.storage.postgres.repositories import BlockRepository, ChunkRepository, DocumentRepository
-from libs.data.storage.qdrant.client import QdrantStorageClient
-from libs.data.storage.s3.helpers import S3Helpers
 
 # ====== Local Project Imports ======
 from .cache_io import CacheIOHelpers
@@ -107,7 +113,7 @@ class StageEngine(LoggerClass):
         s4: S4ChunkStage | None = None,
         s5: S5ContextualizeStage | None = None,
         s6: S6EmbedIndexStage | None = None,
-        registry: "ProviderRegistry | None" = None,
+        registry: ProviderRegistry | None = None,
         qdrant: QdrantStorageClient | None = None,
     ) -> None:
         """
@@ -311,7 +317,7 @@ class StageEngine(LoggerClass):
 
     async def _run_s1(
         self,
-        s1: "_S1ParseStageType",
+        s1: _S1ParseStageType,
         doc_id: uuid.UUID,
         source_hash: str,
         s0_result: S0Result,
@@ -334,7 +340,6 @@ class StageEngine(LoggerClass):
         Returns:
             tuple[S1Result, DocumentIR, str, bool]: (result, ir, fingerprint, cache_hit).
         """
-        from libs.core.ir.models import DocumentIR  # local import to avoid cycle
 
         s1_fp = compute_fingerprint(
             node_type="s1",
@@ -635,7 +640,7 @@ class StageEngine(LoggerClass):
         self, pipeline_config: PipelineConfig | None
     ) -> tuple[
         S0IngestStage,
-        "_S1ParseStageType",
+        _S1ParseStageType,
         S2EnrichStage,
         S4ChunkStage,
         S5ContextualizeStage,
@@ -691,7 +696,7 @@ class StageEngine(LoggerClass):
             "converter_version": getattr(s0._converter, "version", "8"),
         }
 
-    def _s1_params(self, s1: "_S1ParseStageType") -> dict[str, Any]:
+    def _s1_params(self, s1: _S1ParseStageType) -> dict[str, Any]:
         """
         Extract S1 fingerprint parameters from the run's parser.
 

@@ -8,13 +8,13 @@ from __future__ import annotations
 
 import asyncio
 import io
+from typing import Any, ClassVar, Literal
 
 from loggerplusplus import LoggerClass
+from pydantic import BaseModel, Field, model_validator
 
 from libs.capabilities.interfaces import OcrHint, OcrResult
 from libs.capabilities.ocr.base import OcrProvider
-from typing import Any, ClassVar, Literal
-from pydantic import BaseModel, Field, model_validator
 from libs.core.contracts._registry import register
 from libs.core.contracts.spec_utils import flatten_provider_spec as _flatten_provider_spec
 
@@ -153,11 +153,11 @@ class PaddleOcrConfig(BaseModel):
     def _compat(cls, v: Any) -> Any:
         return _flatten_provider_spec(v)
 
-    def build(self) -> "PaddleOcrProvider":
+    def build(self) -> PaddleOcrProvider:
         """Instantiate PaddleOcrProvider from this config."""
         return PaddleOcrProvider(use_gpu=self.use_gpu)
 
-    def merge_defaults(self, cfg: Any) -> "PaddleOcrConfig":
+    def merge_defaults(self, cfg: Any) -> PaddleOcrConfig:
         return self.model_copy(update={
             "use_gpu": self.use_gpu or getattr(cfg, "OCR_PADDLE_USE_GPU", False),
         })

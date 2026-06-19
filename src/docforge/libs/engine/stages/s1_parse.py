@@ -18,14 +18,18 @@ from __future__ import annotations
 import asyncio
 import hashlib
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from libs.data.storage.s3.client import S3Client
 
 # ====== Third-Party Library Imports ======
 from loggerplusplus import LoggerClass
 
+from libs.capabilities.chain import Chain
+
 # ====== Internal Project Imports ======
 from libs.core.ir.models import DocumentIR
-from libs.capabilities.chain import Chain
 from libs.core.ir.serializer import MarkdownSerializer
 from libs.data.storage.s3.helpers import S3Helpers
 
@@ -76,7 +80,7 @@ class S1ParseStage(LoggerClass):
 
     _RENDER_DPI_ZOOM: float = 2.0
 
-    def __init__(self, parse_chain: "Chain[Any, Any]", s3: S3Client) -> None:
+    def __init__(self, parse_chain: Chain[Any, Any], s3: S3Client) -> None:
         """
         Initialise S1 with its dependencies.
 
@@ -90,7 +94,7 @@ class S1ParseStage(LoggerClass):
         self._md_serializer = MarkdownSerializer()
 
     @property
-    def parse_chain(self) -> "Chain[Any, Any]":
+    def parse_chain(self) -> Chain[Any, Any]:
         """Expose the chain so the engine can fingerprint its signature."""
         return self._parse_chain
 

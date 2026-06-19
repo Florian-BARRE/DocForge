@@ -14,16 +14,13 @@
 # ====== Standard Library Imports ======
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 # ====== Third-Party Library Imports ======
 from pydantic import BaseModel
 
 # ====== Internal Project Imports ======
 from libs.core.contracts.pipeline_config import _is_secret_key
-
-if TYPE_CHECKING:
-    pass
 
 # ─── JSON-Schema scalar type → UI param type understood by the configurator ───────
 _JSON_TYPE_TO_UI: dict[str, str] = {

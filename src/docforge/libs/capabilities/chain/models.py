@@ -9,10 +9,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Generic, TypeVar
-
-R = TypeVar("R")
-
+from typing import Any
 
 # ─── Per-attempt and per-chain records ──────────────────────────────────────
 
@@ -44,7 +41,7 @@ class ChainAttempt:
 
 
 @dataclass(frozen=True, slots=True)
-class ChainOutcome(Generic[R]):
+class ChainOutcome[R]:
     """
     The full record of a chain invocation: the final result + every attempt.
 
@@ -74,7 +71,7 @@ class ChainOutcome(Generic[R]):
 # ─── Public helper (IR boundary) ────────────────────────────────────────────
 
 
-def chain_outcome_to_attempt_dicts(outcome: "ChainOutcome[Any]") -> list[dict[str, Any]]:
+def chain_outcome_to_attempt_dicts(outcome: ChainOutcome[Any]) -> list[dict[str, Any]]:
     """
     Convert a ``ChainOutcome`` into the plain-dict shape ``ChainTraceIR.attempts`` expects.
 

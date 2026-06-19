@@ -14,10 +14,11 @@ from typing import Any
 from loggerplusplus import LoggerClass
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from libs.capabilities.chain import Chain, chain_outcome_to_attempt_dicts
+
 # ====== Internal Project Imports ======
 from libs.core.ir.chunk import Chunk
 from libs.core.ir.models import ChainAttemptIR, ChainTrace
-from libs.capabilities.chain import Chain, chain_outcome_to_attempt_dicts
 from libs.data.retrieval.field_index import (
     CONTENT_DENSE,
     CONTENT_SPARSE,
@@ -67,7 +68,7 @@ class S6EmbedIndexStage(LoggerClass):
 
     def __init__(
         self,
-        embed_chain: "Chain[Any, Any]",
+        embed_chain: Chain[Any, Any],
         qdrant: QdrantStorageClient,
         chunk_repo: ChunkRepository,
         embed_batch_size: int = 64,
@@ -90,7 +91,7 @@ class S6EmbedIndexStage(LoggerClass):
         self._batch_traces: list[ChainTrace] = []
 
     @property
-    def embed_chain(self) -> "Chain[Any, Any]":
+    def embed_chain(self) -> Chain[Any, Any]:
         """Expose the chain so the engine can fingerprint its signature."""
         return self._embed_chain
 

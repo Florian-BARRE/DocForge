@@ -20,6 +20,15 @@ from typing import Any
 # ====== Third-Party Library Imports ======
 from loggerplusplus import LoggerClass
 
+from libs.capabilities.chain import Chain
+from libs.capabilities.chain_gate import ChainGate, ChainGateConfig
+from libs.capabilities.classifier.local.vit_onnx import VitOnnxConfig
+from libs.capabilities.ocr.external.mistral_ocr import MistralOcrConfig
+from libs.capabilities.ocr.local.paddle_ocr import PaddleOcrConfig
+from libs.capabilities.parser.local.docling import DoclingConfig
+from libs.capabilities.vlm.external.openai_compat import OpenAIVlmConfig
+from libs.capabilities.vlm.local.openai_compat import LocalVlmConfig
+
 # ====== Internal Project Imports ======
 from libs.core.contracts.pipeline_config import (
     ChunkConfig,
@@ -28,6 +37,7 @@ from libs.core.contracts.pipeline_config import (
     ProviderSpec,
     SplitMethodConfig,
 )
+from libs.data.storage.s3.client import S3Client
 from libs.engine.provider_cache import ProviderCallCache
 from libs.engine.stages.chunking import (
     SectionSplitter,
@@ -36,15 +46,6 @@ from libs.engine.stages.chunking import (
 from libs.engine.stages.s2_enrich import S2EnrichStage
 from libs.engine.stages.s4_chunk import S4ChunkStage
 from libs.engine.stages.s5_contextualize import S5ContextualizeStage
-from libs.capabilities.chain import Chain
-from libs.capabilities.chain_gate import ChainGate, ChainGateConfig
-from libs.capabilities.classifier.local.vit_onnx import VitOnnxConfig
-from libs.capabilities.ocr.local.paddle_ocr import PaddleOcrConfig
-from libs.capabilities.ocr.external.mistral_ocr import MistralOcrConfig
-from libs.capabilities.parser.local.docling import DoclingConfig
-from libs.capabilities.vlm.local.openai_compat import LocalVlmConfig
-from libs.capabilities.vlm.external.openai_compat import OpenAIVlmConfig
-from libs.data.storage.s3.client import S3Client
 
 # ====== Local Project Imports ======
 from .availability import AvailabilityProbes, ProviderUnavailableError
@@ -66,7 +67,7 @@ class ResolvedStages:
         s5 (S5ContextualizeStage): Contextualization stage — always present.
     """
 
-    parse_chain: "Chain[Any, Any]"
+    parse_chain: Chain[Any, Any]
     s2: S2EnrichStage
     s4: S4ChunkStage
     s5: S5ContextualizeStage
@@ -137,8 +138,8 @@ class ProviderRegistry(DescribeSurface, LoggerClass):
 
     def build_enrich_and_chunk_stages(
         self,
-        config: "PipelineConfig",
-    ) -> tuple["S2EnrichStage", "S4ChunkStage", "S5ContextualizeStage"]:  # type: ignore[name-defined]
+        config: PipelineConfig,
+    ) -> tuple[S2EnrichStage, S4ChunkStage, S5ContextualizeStage]:  # type: ignore[name-defined]
         """
         Build S2, S4, S5 from a typed PipelineConfig — for the startup default stack.
 
@@ -229,7 +230,16 @@ class ProviderRegistry(DescribeSurface, LoggerClass):
         return merged.build()
 
     def _build_s2(self, enrich: EnrichConfig) -> S2EnrichStage:
-        """Wire S2 with classifier / OCR / VLM chains from the enrichment config."""
+        """
+        Wire S2 with classifier / OCR / VLM chains from the enrichment config.
+
+        Args:
+            enrich (EnrichConfig): Enrichment configuration block (classifier chain,
+                OCR chain, VLM chain, gates, and budget cap).
+
+        Returns:
+            S2EnrichStage: Fully wired enrichment stage ready for the pipeline.
+        """
         classifier_chain = self._build_classifier_chain(
             enrich.classifier_chain, enrich.classifier_gate,
         )
@@ -250,7 +260,7 @@ class ProviderRegistry(DescribeSurface, LoggerClass):
         self,
         specs: list[ProviderSpec],
         gate_cfg: ChainGateConfig,
-    ) -> "Chain[Any, Any]":
+    ) -> Chain[Any, Any]:
         """
         Instantiate the parser providers in declaration order and wrap them in a Chain.
 
@@ -283,7 +293,7 @@ class ProviderRegistry(DescribeSurface, LoggerClass):
         self,
         specs: list[ProviderSpec],
         gate_cfg: ChainGateConfig,
-    ) -> "Chain[Any, Any]":
+    ) -> Chain[Any, Any]:
         """Build the figure-classifier chain (ViT and/or LayoutLabels)."""
         if not specs:
             raise ProviderUnavailableError(
@@ -305,7 +315,7 @@ class ProviderRegistry(DescribeSurface, LoggerClass):
         self,
         specs: list[ProviderSpec],
         gate_cfg: ChainGateConfig,
-    ) -> "Chain[Any, Any] | None":
+    ) -> Chain[Any, Any] | None:
         """
         Build the OCR escalation chain.
 
@@ -341,7 +351,7 @@ class ProviderRegistry(DescribeSurface, LoggerClass):
         self,
         specs: list[ProviderSpec],
         gate_cfg: ChainGateConfig,
-    ) -> "Chain[Any, Any] | None":
+    ) -> Chain[Any, Any] | None:
         """
         Build the VLM escalation chain.
 
@@ -379,7 +389,7 @@ class ProviderRegistry(DescribeSurface, LoggerClass):
         self,
         specs: list[ProviderSpec],
         gate_cfg: ChainGateConfig,
-    ) -> "Chain[Any, Any]":
+    ) -> Chain[Any, Any]:
         """Build the S6 embed chain from typed EmbedProviderConfig specs."""
         if not specs:
             raise ProviderUnavailableError(

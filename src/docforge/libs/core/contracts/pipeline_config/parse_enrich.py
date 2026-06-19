@@ -28,7 +28,6 @@ from libs.core.contracts.chain_gate_config import ChainGateConfig
 from libs.core.contracts.pipeline_config._helpers import _lift_provider_to_chain
 from libs.core.contracts.spec_utils import flatten_provider_spec as _flatten_provider_spec
 
-
 # ──────────────────────────────────────────────────────────────────────────────
 # S1 — Parse
 # ──────────────────────────────────────────────────────────────────────────────
@@ -60,7 +59,7 @@ class ParseConfig(BaseModel):
         return v
 
     @model_validator(mode="after")
-    def _validate_and_default_parse_chain(self) -> "ParseConfig":
+    def _validate_and_default_parse_chain(self) -> ParseConfig:
         """
         Validate each item in the parser chain via the discriminated union, then default.
 
@@ -69,16 +68,19 @@ class ParseConfig(BaseModel):
         TypeAdapter so unknown ids raise ValidationError immediately (not at registry time).
         """
         # Lazy imports to preserve the leaf constraint.
+        from typing import Annotated
+
+        from pydantic import Field as _F
+        from pydantic import TypeAdapter
+
         from libs.capabilities.parser.local.docling import DoclingConfig
-        from typing import Annotated, Union
-        from pydantic import TypeAdapter, Field as _F
 
         if not self.chain:
             object.__setattr__(self, "chain", [DoclingConfig()])
             return self
 
         # Build the discriminated union from all known parser configs.
-        union = Annotated[Union[DoclingConfig], _F(discriminator="id")]
+        union = Annotated[DoclingConfig, _F(discriminator="id")]
         adapter = TypeAdapter(union)
 
         # Coerce/validate each item — raises ValidationError on unknown id.
@@ -173,7 +175,7 @@ class EnrichConfig(BaseModel):
         return v
 
     @model_validator(mode="after")
-    def _validate_and_default_enrich_chains(self) -> "EnrichConfig":
+    def _validate_and_default_enrich_chains(self) -> EnrichConfig:
         """
         Validate each chain field via discriminated unions, then apply defaults.
 
@@ -185,18 +187,21 @@ class EnrichConfig(BaseModel):
         - Empty ocr_chain and vlm_chain stay empty (disabled by default).
         """
         # Lazy imports to preserve the leaf constraint.
+        from typing import Annotated
+
+        from pydantic import Field as _F
+        from pydantic import TypeAdapter
+
         from libs.capabilities.classifier.local.layout_labels import LayoutLabelsConfig
         from libs.capabilities.classifier.local.vit_onnx import VitOnnxConfig
-        from libs.capabilities.ocr.local.paddle_ocr import PaddleOcrConfig
         from libs.capabilities.ocr.external.mistral_ocr import MistralOcrConfig
-        from libs.capabilities.vlm.local.openai_compat import LocalVlmConfig
+        from libs.capabilities.ocr.local.paddle_ocr import PaddleOcrConfig
         from libs.capabilities.vlm.external.openai_compat import OpenAIVlmConfig
-        from typing import Annotated, Union
-        from pydantic import TypeAdapter, Field as _F
+        from libs.capabilities.vlm.local.openai_compat import LocalVlmConfig
 
         # 1. Validate classifier_chain items, then default if empty.
         classifier_union = Annotated[
-            Union[LayoutLabelsConfig, VitOnnxConfig],
+            LayoutLabelsConfig | VitOnnxConfig,
             _F(discriminator="id"),
         ]
         classifier_adapter = TypeAdapter(classifier_union)
@@ -211,7 +216,7 @@ class EnrichConfig(BaseModel):
 
         # 2. Validate ocr_chain items (stays empty if no items provided).
         ocr_union = Annotated[
-            Union[PaddleOcrConfig, MistralOcrConfig],
+            PaddleOcrConfig | MistralOcrConfig,
             _F(discriminator="id"),
         ]
         ocr_adapter = TypeAdapter(ocr_union)
@@ -224,7 +229,7 @@ class EnrichConfig(BaseModel):
 
         # 3. Validate vlm_chain items (stays empty if no items provided).
         vlm_union = Annotated[
-            Union[LocalVlmConfig, OpenAIVlmConfig],
+            LocalVlmConfig | OpenAIVlmConfig,
             _F(discriminator="id"),
         ]
         vlm_adapter = TypeAdapter(vlm_union)

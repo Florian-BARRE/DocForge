@@ -4,13 +4,16 @@
 
 # ====== Standard Library Imports ======
 from __future__ import annotations
+
 from typing import Any, ClassVar, Literal
+
 from pydantic import BaseModel, Field, model_validator
+
+from libs.capabilities.embed._openai_compat_base import _OpenAICompatBase
 
 # ====== Internal Project Imports ======
 from libs.core.contracts._registry import register
 from libs.core.contracts.spec_utils import flatten_provider_spec as _flatten_provider_spec
-from libs.capabilities.embed._openai_compat_base import _OpenAICompatBase
 
 
 class LocalOpenAICompatEmbedProvider(_OpenAICompatBase):
@@ -105,7 +108,7 @@ class LocalOpenAIEmbedConfig(BaseModel):
     def _compat(cls, v: Any) -> Any:
         return _flatten_provider_spec(v)
 
-    def build(self) -> "LocalOpenAICompatEmbedProvider":
+    def build(self) -> LocalOpenAICompatEmbedProvider:
         """Instantiate LocalOpenAICompatEmbedProvider from this config."""
         if not self.base_url:
             raise ValueError("LocalOpenAIEmbedConfig.build(): base_url is required.")
@@ -117,7 +120,7 @@ class LocalOpenAIEmbedConfig(BaseModel):
             dimension=self.dimension,
         )
 
-    def merge_defaults(self, cfg: Any) -> "LocalOpenAIEmbedConfig":
+    def merge_defaults(self, cfg: Any) -> LocalOpenAIEmbedConfig:
         return self
 
     @classmethod

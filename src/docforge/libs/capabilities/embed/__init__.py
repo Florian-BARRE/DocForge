@@ -9,13 +9,13 @@ auto_import(__name__)
 # ---------------------- Base ---------------------- #
 from .base import EmbedProvider
 
-# ------------------- Local Providers ------------------- #
-from .local.tei import TeiEmbedProvider
-from .local.config import TeiEmbedConfig
-from .local.openai_compat import LocalOpenAIEmbedConfig, LocalOpenAICompatEmbedProvider
-
 # ------------------- External Providers ------------------- #
 from .external.openai_compat import OpenAIEmbedConfig, OpenAIEmbedProvider
+from .local.config import TeiEmbedConfig
+from .local.openai_compat import LocalOpenAICompatEmbedProvider, LocalOpenAIEmbedConfig
+
+# ------------------- Local Providers ------------------- #
+from .local.tei import TeiEmbedProvider
 
 # ------------------- Discriminated Union ------------------- #
 EmbedProviderConfig = build_union(get_configs("embed"))

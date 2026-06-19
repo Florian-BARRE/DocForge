@@ -14,7 +14,6 @@ from typing import Any, Protocol, runtime_checkable
 
 # ====== Third-Party Library Imports ======
 # (none — Protocol and result types only need stdlib + local imports)
-
 # ====== Internal Project Imports ======
 from libs.core.ir.models import DocumentIR
 

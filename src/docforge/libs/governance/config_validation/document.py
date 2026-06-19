@@ -13,9 +13,11 @@ from typing import Any
 # ====== Third-Party Library Imports ======
 from loggerplusplus import loggerplusplus
 
+from libs.core.contracts.pipeline_config import PipelineConfig
+
 # ====== Internal Project Imports ======
 from libs.core.metadata import SYSTEM_METADATA_FIELDS, MetaFieldSpec
-from libs.core.contracts.pipeline_config import PipelineConfig
+
 
 class ConfigDocument:
     """

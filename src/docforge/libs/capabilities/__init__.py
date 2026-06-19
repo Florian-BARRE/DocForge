@@ -1,7 +1,15 @@
 # ------------------- Interfaces ------------------- #
+# ------------------- Chain ------------------- #
+from .chain import ProviderChain
+
+# ------------------- Converter ------------------- #
+from .converter import GOTENBERG_FORMATS, NATIVE_PDF_FORMATS, GotenbergConverter
+
+# ------------------- Device Manager ------------------- #
+from .device_manager import Device, DeviceCapability, DeviceManager
 from .interfaces import (
-    ConvertResult,
     ConverterProvider,
+    ConvertResult,
     EmbedProvider,
     EmbedResult,
     OcrHint,
@@ -14,20 +22,11 @@ from .interfaces import (
     VlmResult,
 )
 
-# ------------------- Device Manager ------------------- #
-from .device_manager import Device, DeviceCapability, DeviceManager
-
-# ------------------- Converter ------------------- #
-from .converter import GOTENBERG_FORMATS, GotenbergConverter, NATIVE_PDF_FORMATS
+# ------------------- OCR Providers (P3) ------------------- #
+from .ocr import MistralOcrProvider, PaddleOcrProvider
 
 # ------------------- Parser ------------------- #
 from .parser import DoclingBackend
-
-# ------------------- Chain ------------------- #
-from .chain import ProviderChain
-
-# ------------------- OCR Providers (P3) ------------------- #
-from .ocr import MistralOcrProvider, PaddleOcrProvider
 
 # ------------------- VLM Providers (P3) ------------------- #
 from .vlm import LocalOpenAICompatVlmProvider, OpenAIVlmProvider
@@ -36,7 +35,12 @@ from .vlm import LocalOpenAICompatVlmProvider, OpenAIVlmProvider
 OpenAICompatVlmProvider = LocalOpenAICompatVlmProvider
 
 # ------------------- Classifier (P3) ------------------- #
-from .classifier import ClassificationResult, FigureClassifier, LayoutLabelsClassifier, VitOnnxClassifier
+from .classifier import (
+    ClassificationResult,
+    FigureClassifier,
+    LayoutLabelsClassifier,
+    VitOnnxClassifier,
+)
 
 # ------------------- Embed Providers (P4) ------------------- #
 from .embed import LocalOpenAICompatEmbedProvider, OpenAIEmbedProvider, TeiEmbedProvider

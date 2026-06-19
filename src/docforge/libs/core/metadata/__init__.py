@@ -1,9 +1,9 @@
 # -------------------- Metadata ------------------- #
 from .fields import (
     SYSTEM_METADATA_FIELDS,
+    MetadataFieldsResponse,
     MetaFieldSpec,
     MetaFieldType,
-    MetadataFieldsResponse,
     schema_field_dicts,
 )
 

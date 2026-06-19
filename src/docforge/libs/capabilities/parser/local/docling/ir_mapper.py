@@ -12,6 +12,8 @@ from typing import Any
 # ====== Third-Party Library Imports ======
 from loggerplusplus import loggerplusplus
 
+from libs.capabilities.lang import LanguageDetector
+
 # ====== Internal Project Imports ======
 from libs.core.ir.models import (
     Block,
@@ -21,7 +23,6 @@ from libs.core.ir.models import (
     FigureKind,
     TableData,
 )
-from libs.capabilities.lang import LanguageDetector
 
 # ====== Local Project Imports ======
 from .extraction_helpers import DoclingExtractionHelpers

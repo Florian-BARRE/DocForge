@@ -11,7 +11,6 @@ from dataclasses import dataclass
 from libs.core.ir.chunk import Chunk
 from libs.core.ir.models import Block
 
-
 _PARENT_STRATEGY: str = "section_parent"
 
 

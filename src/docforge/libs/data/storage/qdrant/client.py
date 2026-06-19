@@ -20,7 +20,6 @@ from .collection_admin import QdrantCollectionAdmin
 from .payload import QdrantPointHelpers
 from .search import QdrantSearchHelpers
 
-
 # Named content vector keys (always present). Per-field vectors are named meta_<field>_dense
 # / meta_<field>_bm25 (see libs/retrieval/field_index.py — one source of truth).
 DENSE_VECTOR_NAME: str = CONTENT_DENSE

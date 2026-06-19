@@ -12,7 +12,12 @@ auto_import(__name__)  # imports local/ and external/ — triggers @register dec
 from .base import ConverterProvider
 
 # ------------------- Local Providers ------------------- #
-from .local.gotenberg import GotenbergConfig, GotenbergConverter, GOTENBERG_FORMATS, NATIVE_PDF_FORMATS
+from .local.gotenberg import (
+    GOTENBERG_FORMATS,
+    NATIVE_PDF_FORMATS,
+    GotenbergConfig,
+    GotenbergConverter,
+)
 
 # ------------------- Discriminated Union ------------------- #
 # Built dynamically from all registered converter configs.

@@ -25,12 +25,12 @@ from pydantic import BaseModel, Field
 # ====== Local Project Imports ======
 from libs.core.contracts.chain_gate_config import ChainGateConfig
 from libs.core.contracts.pipeline_config._helpers import _redact
-from libs.core.contracts.pipeline_config.parse_enrich import EnrichConfig, ParseConfig
 from libs.core.contracts.pipeline_config.chunk_embed import (
     ChunkConfig,
     ContextualizeConfig,
     EmbedConfig,
 )
+from libs.core.contracts.pipeline_config.parse_enrich import EnrichConfig, ParseConfig
 
 
 class PipelineConfig(BaseModel):
@@ -52,7 +52,7 @@ class PipelineConfig(BaseModel):
     embed: EmbedConfig = Field(default_factory=EmbedConfig)
 
     @classmethod
-    def from_dict(cls, raw: dict[str, Any] | None) -> "PipelineConfig":
+    def from_dict(cls, raw: dict[str, Any] | None) -> PipelineConfig:
         """
         Build a PipelineConfig from a (possibly empty/partial) JSON dict.
 
@@ -98,13 +98,13 @@ def build_default_pipeline(cfg: Any) -> PipelineConfig:
     """
     # Lazy imports — triggered only when this function is actually called (after providers
     # register themselves), not at module load time.  Preserves the leaf constraint.
-    from libs.capabilities.parser.local.docling import DoclingConfig
     from libs.capabilities.classifier.local.layout_labels import LayoutLabelsConfig
     from libs.capabilities.classifier.local.vit_onnx import VitOnnxConfig
-    from libs.capabilities.ocr.local.paddle_ocr import PaddleOcrConfig
-    from libs.capabilities.ocr.external.mistral_ocr import MistralOcrConfig
-    from libs.capabilities.vlm.local.openai_compat import LocalVlmConfig
     from libs.capabilities.embed.local.config import TeiEmbedConfig
+    from libs.capabilities.ocr.external.mistral_ocr import MistralOcrConfig
+    from libs.capabilities.ocr.local.paddle_ocr import PaddleOcrConfig
+    from libs.capabilities.parser.local.docling import DoclingConfig
+    from libs.capabilities.vlm.local.openai_compat import LocalVlmConfig
     from libs.engine.stages.chunking.params import TokenBudgetConfig
 
     # 1. Parser chain

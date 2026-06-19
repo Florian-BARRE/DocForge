@@ -17,8 +17,13 @@ from typing import TYPE_CHECKING, Any, ClassVar, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
-from libs.core.contracts.spec_utils import flatten_provider_spec as _flatten_provider_spec
 from libs.core.contracts._registry import register
+from libs.core.contracts.spec_utils import flatten_provider_spec as _flatten_provider_spec
+
+if TYPE_CHECKING:
+    from libs.engine.stages.chunking.semantic_splitter import SemanticSplitter
+    from libs.engine.stages.chunking.sentence_window_splitter import SentenceWindowSplitter
+    from libs.engine.stages.chunking.token_budget_splitter import TokenBudgetSplitter
 
 
 @register("split_method")
@@ -41,12 +46,12 @@ class TokenBudgetConfig(BaseModel):
     def _compat(cls, v: Any) -> Any:
         return _flatten_provider_spec(v)
 
-    def build(self) -> "TokenBudgetSplitter":
+    def build(self) -> TokenBudgetSplitter:
         """Instantiate TokenBudgetSplitter from this config."""
         from libs.engine.stages.chunking.token_budget_splitter import TokenBudgetSplitter
         return TokenBudgetSplitter(max_tokens=self.max_tokens, overlap_blocks=self.overlap_blocks)
 
-    def merge_defaults(self, cfg: Any) -> "TokenBudgetConfig":
+    def merge_defaults(self, cfg: Any) -> TokenBudgetConfig:
         return self.model_copy(update={
             "max_tokens": self.max_tokens or getattr(cfg, "CHUNK_MAX_TOKENS", self.max_tokens),
             "overlap_blocks": self.overlap_blocks,
@@ -110,16 +115,18 @@ class SemanticConfig(BaseModel):
         return v
 
     @model_validator(mode="after")
-    def _validate_embed(self) -> "SemanticConfig":
+    def _validate_embed(self) -> SemanticConfig:
         """Coerce ``embed`` into a typed EmbedProviderConfig instance after construction."""
         # Lazy import — avoids a circular import at module load time.
+        from typing import Annotated
+
+        from pydantic import Field as _F
+        from pydantic import TypeAdapter
+
         from libs.capabilities.embed import EmbedProviderConfig  # noqa: F401  (typing alias)
+        from libs.capabilities.embed.external.openai_compat import OpenAIEmbedConfig
         from libs.capabilities.embed.local.config import TeiEmbedConfig
         from libs.capabilities.embed.local.openai_compat import LocalOpenAIEmbedConfig
-        from libs.capabilities.embed.external.openai_compat import OpenAIEmbedConfig
-        from pydantic import TypeAdapter
-        from typing import Annotated, Union
-        from pydantic import Field as _F
 
         # Default to TEI when the field is None (e.g. legacy DB row without embed key).
         if self.embed is None:
@@ -132,14 +139,14 @@ class SemanticConfig(BaseModel):
 
         # Dict → validate via the same discriminated union the rest of the codebase uses.
         Union_ = Annotated[
-            Union[TeiEmbedConfig, LocalOpenAIEmbedConfig, OpenAIEmbedConfig],
+            TeiEmbedConfig | LocalOpenAIEmbedConfig | OpenAIEmbedConfig,
             _F(discriminator="id"),
         ]
         adapter = TypeAdapter(Union_)
         object.__setattr__(self, "embed", adapter.validate_python(self.embed))
         return self
 
-    def build(self) -> "SemanticSplitter":
+    def build(self) -> SemanticSplitter:
         """Instantiate SemanticSplitter with the configured embed provider."""
         from libs.engine.stages.chunking.semantic_splitter import SemanticSplitter
         embed_provider = self.embed.build()
@@ -150,7 +157,7 @@ class SemanticConfig(BaseModel):
             breakpoint_percentile=self.breakpoint_percentile,
         )
 
-    def merge_defaults(self, cfg: Any) -> "SemanticConfig":
+    def merge_defaults(self, cfg: Any) -> SemanticConfig:
         """Merge deployment defaults into the nested embed config."""
         merged_embed = self.embed.merge_defaults(cfg) if self.embed is not None else None
         return self.model_copy(update={"embed": merged_embed})
@@ -199,7 +206,7 @@ class SentenceWindowConfig(BaseModel):
     def _compat(cls, v: Any) -> Any:
         return _flatten_provider_spec(v)
 
-    def build(self) -> "SentenceWindowSplitter":
+    def build(self) -> SentenceWindowSplitter:
         """Instantiate SentenceWindowSplitter from this config."""
         from libs.engine.stages.chunking.sentence_window_splitter import SentenceWindowSplitter
         return SentenceWindowSplitter(
@@ -208,7 +215,7 @@ class SentenceWindowConfig(BaseModel):
             max_tokens=self.max_tokens,
         )
 
-    def merge_defaults(self, cfg: Any) -> "SentenceWindowConfig":
+    def merge_defaults(self, cfg: Any) -> SentenceWindowConfig:
         return self
 
     @classmethod

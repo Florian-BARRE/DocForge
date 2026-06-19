@@ -4,7 +4,8 @@
 # kept out of any single router so the API structure can evolve without moving the contract.
 
 # ====== Standard Library Imports ======
-from typing import Any, Iterable, Literal
+from collections.abc import Iterable
+from typing import Any, Literal
 
 # ====== Third-Party Library Imports ======
 from pydantic import BaseModel, ConfigDict, Field

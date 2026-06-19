@@ -6,16 +6,15 @@
 from __future__ import annotations
 
 import io
+from typing import Any, ClassVar, Literal
 
 from loggerplusplus import LoggerClass
+from pydantic import BaseModel, model_validator
 
-from libs.core.ir.models import FigureKind
-
-from libs.capabilities.classifier.base import FigureClassifier, ClassificationResult
-from typing import Any, ClassVar, Literal
-from pydantic import BaseModel, Field, model_validator
+from libs.capabilities.classifier.base import ClassificationResult, FigureClassifier
 from libs.core.contracts._registry import register
 from libs.core.contracts.spec_utils import flatten_provider_spec as _flatten_provider_spec
+from libs.core.ir.models import FigureKind
 
 
 class LayoutLabelsClassifier(FigureClassifier, LoggerClass):
@@ -105,8 +104,8 @@ class LayoutLabelsClassifier(FigureClassifier, LoggerClass):
         Returns a (FigureKind, confidence) tuple.  On any failure, returns PHOTO at 0.5.
         """
         try:
-            from PIL import Image  # type: ignore
             import numpy as np  # type: ignore
+            from PIL import Image  # type: ignore
 
             # 1. Convert to grayscale for statistics
             img = Image.open(io.BytesIO(img_bytes)).convert("L")
@@ -155,11 +154,11 @@ class LayoutLabelsConfig(BaseModel):
     def _compat(cls, v: Any) -> Any:
         return _flatten_provider_spec(v)
 
-    def build(self) -> "LayoutLabelsClassifier":
+    def build(self) -> LayoutLabelsClassifier:
         """Instantiate LayoutLabelsClassifier from this config."""
         return LayoutLabelsClassifier()
 
-    def merge_defaults(self, cfg: Any) -> "LayoutLabelsConfig":
+    def merge_defaults(self, cfg: Any) -> LayoutLabelsConfig:
         return self
 
     @classmethod

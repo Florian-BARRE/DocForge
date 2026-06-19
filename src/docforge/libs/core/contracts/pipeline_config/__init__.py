@@ -1,32 +1,31 @@
 # ─────────────────── Type Aliases & ProviderSpec ──────────────────── #
-from libs.core.contracts.pipeline_config._type_aliases import (
-    ParserConfig,
-    ClassifierConfig,
-    OcrProviderConfig,
-    VlmProviderConfig,
-    EmbedProviderConfig,
-    SplitMethodConfig,
-    ProviderSpec,
-    SPLIT_METHODS,
-    DEFAULT_HEADING_RULES,
-)
-
 # ─────────────────── Internal Helpers (re-exported for registry.py) ── #
 from libs.core.contracts.pipeline_config._helpers import _is_secret_key
-
-# ─────────────────── S1 + S2 Stage Configs ────────────────────────── #
-from libs.core.contracts.pipeline_config.parse_enrich import (
-    ParseConfig,
-    EnrichConfig,
+from libs.core.contracts.pipeline_config._type_aliases import (
+    DEFAULT_HEADING_RULES,
+    SPLIT_METHODS,
+    ClassifierConfig,
+    EmbedProviderConfig,
+    OcrProviderConfig,
+    ParserConfig,
+    ProviderSpec,
+    SplitMethodConfig,
+    VlmProviderConfig,
 )
 
 # ─────────────────── S4 + S5 + S6 Stage Configs ───────────────────── #
 from libs.core.contracts.pipeline_config.chunk_embed import (
-    HeadingRule,
     AtomicConfig,
     ChunkConfig,
     ContextualizeConfig,
     EmbedConfig,
+    HeadingRule,
+)
+
+# ─────────────────── S1 + S2 Stage Configs ────────────────────────── #
+from libs.core.contracts.pipeline_config.parse_enrich import (
+    EnrichConfig,
+    ParseConfig,
 )
 
 # ─────────────────── Top-level Pipeline ───────────────────────────── #

@@ -75,7 +75,7 @@ class LanguageDetector(LoggerClass):
         """Return the process-wide py3langid identifier, loading it once on first use."""
         global _IDENTIFIER
         if _IDENTIFIER is None:
-            from py3langid.langid import LanguageIdentifier, MODEL_FILE
+            from py3langid.langid import MODEL_FILE, LanguageIdentifier
 
             # norm_probs=True → classify() returns a probability in [0, 1] usable as confidence.
             _IDENTIFIER = LanguageIdentifier.from_pickled_model(MODEL_FILE, norm_probs=True)

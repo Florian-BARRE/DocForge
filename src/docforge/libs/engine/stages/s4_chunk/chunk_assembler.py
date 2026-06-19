@@ -7,7 +7,8 @@
 # ====== Standard Library Imports ======
 from __future__ import annotations
 
-from typing import Any, Iterator
+from collections.abc import Iterator
+from typing import Any
 
 # ====== Third-Party Library Imports ======
 from loggerplusplus import loggerplusplus
@@ -16,9 +17,10 @@ from loggerplusplus import loggerplusplus
 from libs.core.ir.chunk import Chunk
 from libs.core.ir.models import Block
 
-# ====== Local Project Imports ======
-from .models import _Segment, _Special, _PARENT_STRATEGY
 from ..chunking import ChunkingHelpers, SectionSplitter
+
+# ====== Local Project Imports ======
+from .models import _PARENT_STRATEGY, _Segment, _Special
 
 
 class ChunkAssembler:

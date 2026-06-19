@@ -10,7 +10,8 @@
 # ====== Standard Library Imports ======
 from __future__ import annotations
 
-from typing import Any, Awaitable, Callable, Generic, TypeVar
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 # ====== Third-Party Library Imports ======
 from loggerplusplus import LoggerClass
@@ -21,8 +22,6 @@ from libs.capabilities.chain_gate import ChainGateConfig
 # ====== Local Project Imports ======
 from .core import Chain
 from .models import ChainAttempt
-
-T = TypeVar("T")
 
 
 class _PredicateGate:
@@ -72,7 +71,7 @@ class _PredicateGate:
             return True
 
 
-class ProviderChain(LoggerClass, Generic[T]):
+class ProviderChain[T](LoggerClass):
     """
     Legacy wrapper preserving the pre-Phase-A "raw result or None" return shape.
 

@@ -12,6 +12,8 @@ from typing import Any
 # ====== Third-Party Library Imports ======
 from loggerplusplus import LoggerClass
 
+from libs.capabilities.chain import Chain
+
 # ====== Internal Project Imports ======
 from libs.core.ir.models import (
     Block,
@@ -21,9 +23,8 @@ from libs.core.ir.models import (
     FigureEnrichment,
     FigureKind,
 )
-from libs.engine.provider_cache import ProviderCallCache
-from libs.capabilities.chain import Chain
 from libs.data.storage.s3.client import S3Client
+from libs.engine.provider_cache import ProviderCallCache
 
 # ====== Local Project Imports ======
 from .cache_runner import CacheRunner
@@ -53,9 +54,9 @@ class S2EnrichStage(LoggerClass):
 
     def __init__(
         self,
-        classifier_chain: "Chain[Any, Any]",
-        ocr_chain: "Chain[Any, Any] | None",
-        vlm_chain: "Chain[Any, Any] | None",
+        classifier_chain: Chain[Any, Any],
+        ocr_chain: Chain[Any, Any] | None,
+        vlm_chain: Chain[Any, Any] | None,
         s3: S3Client,
         provider_cache: ProviderCallCache,
         max_budget_usd: float = 0.0,
