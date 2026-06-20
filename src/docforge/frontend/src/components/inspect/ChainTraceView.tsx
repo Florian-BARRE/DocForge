@@ -96,7 +96,7 @@ function TraceFlow({ trace, variant }: { trace: ChainTrace; variant: 'compact' |
     attempts.length === 1 && attempts[0].provider_id === 'provider_cache'
 
   if (isCacheHit) {
-    return <CacheHitCard trace={trace} style={style} attempt={attempts[0]} />
+    return <CacheHitCard style={style} attempt={attempts[0]} />
   }
 
   return (
@@ -230,9 +230,8 @@ function AttemptCard({
 // ── Cache-hit card (degenerate trace where the chain didn't run) ──────────
 
 function CacheHitCard({
-  trace, style, attempt,
+  style, attempt,
 }: {
-  trace: ChainTrace
   style: StageStyle
   attempt: ChainAttempt
 }) {
