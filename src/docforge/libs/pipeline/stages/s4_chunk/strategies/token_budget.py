@@ -16,7 +16,7 @@ from loggerplusplus import LoggerClass
 from libs.domain.ir.models import Block, BlockType
 
 # ====== Local Project Imports ======
-from .base_splitter import SplitPiece
+from .base import SplitPiece
 from ..helpers.text import ChunkingHelpers
 
 

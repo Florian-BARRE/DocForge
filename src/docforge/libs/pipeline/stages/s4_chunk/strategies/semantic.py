@@ -20,7 +20,7 @@ from libs.providers.embed.base import EmbedProvider
 from libs.domain.ir.models import Block
 
 # ====== Local Project Imports ======
-from .base_splitter import SplitPiece
+from .base import SplitPiece
 from ..helpers.text import ChunkingHelpers
 
 
