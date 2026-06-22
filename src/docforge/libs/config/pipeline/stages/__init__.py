@@ -5,6 +5,7 @@ from .embed_config import EmbedConfig
 from .enrich_config import EnrichConfig
 from .heading_rule import AtomicConfig, HeadingRule
 from .parse_config import ParseConfig
+from .search_config import QueryTransformConfig, RerankConfig, SearchConfig
 
 # ─────────────────── Public API ─────────────────────────────────────── #
 __all__ = [
@@ -15,4 +16,7 @@ __all__ = [
     "ChunkConfig",
     "ContextualizeConfig",
     "EmbedConfig",
-]
+    "SearchConfig",
+    "QueryTransformConfig",
+    "RerankConfig",
+]

@@ -26,6 +26,8 @@ services:
         condition: service_started
       redis:
         condition: service_started
+      tei:
+        condition: service_started   # Query-time embedding needs TEI at startup
     restart: unless-stopped
     networks:
       - docforge_net
@@ -104,6 +106,41 @@ services:
     networks:
       - docforge_net
 
+  # ── TEI — BGE-M3 embedding server (dense + sparse BM25) ─────────────────────
+  # Text Embeddings Inference in CPU mode (no GPU required).
+  # Serves: POST /embed (dense 1024-dim), POST /embed_sparse (BM25), GET /health.
+  # Model is downloaded on first start and cached in the tei_cache volume (~1.1 GB).
+  # Required by both the API (query-time search) and the worker (S6 ingestion).
+  tei:
+    image: ghcr.io/huggingface/text-embeddings-inference:cpu-latest
+    # --model-id: BGE-M3 — the only model supported by the TeiEmbedProvider in this project.
+    # --port: listen on 80 inside the container (TEI default; matched by TEI_BASE_URL in .env).
+    # The cpu-1.5 image has no GPU support built in — no --disable-gpu flag needed.
+    command: --model-id BAAI/bge-m3 --port 80
+    ports:
+      - "10026:80"              # Operator access: http://localhost:10026/health to verify liveness
+    volumes:
+      - tei_cache:/data         # Cache downloaded model weights between restarts
+    restart: unless-stopped
+    networks:
+      - docforge_net
+
+  # ── Reranker — BGE-Reranker-v2-m3 cross-encoder (TEI CPU) ──────────────────
+  # Same TEI image as the embed service; different model (bge-reranker-v2-m3),
+  # different container, different port.  Used by the search pipeline rerank stage.
+  # Model is downloaded on first start and cached in the reranker_model_cache volume (~1.1 GB).
+  reranker:
+    image: ghcr.io/huggingface/text-embeddings-inference:cpu-latest
+    # --model-id: BGE-Reranker-v2-m3 — cross-encoder for search result re-ranking.
+    # --port: listen on 80 inside the container (matched by BGE_RERANKER_URL in .env).
+    # --max-client-batch-size: upper limit per HTTP request to avoid OOM on large sets.
+    command: --model-id BAAI/bge-reranker-v2-m3 --port 80 --max-client-batch-size 128
+    volumes:
+      - reranker_model_cache:/root/.cache/huggingface   # Cache downloaded model weights
+    restart: unless-stopped
+    networks:
+      - docforge_net
+
   # ── arq pipeline worker ────────────────────────────────────────────────────
   # Runs the same Docker image as the API but executes arq tasks (S0→S1 pipeline).
   # Workers pull jobs from Redis and process documents independently of the API.
@@ -125,6 +162,8 @@ services:
         condition: service_started
       redis:
         condition: service_started
+      tei:
+        condition: service_started   # S6 ingestion needs TEI for embedding
     restart: unless-stopped
     networks:
       - docforge_net
@@ -135,6 +174,8 @@ volumes:
   seaweedfs_data:   # SeaweedFS chunk data (originals + derived artifacts)
   redis_data:       # Redis persistence (arq job queue)
   qdrant_data:      # Qdrant vector collections (dense + sparse indexes)
+  tei_cache:        # BGE-M3 model weights — ~1.1 GB, cached across restarts
+  reranker_model_cache:  # BGE-Reranker-v2-m3 model weights — ~1.1 GB, cached across restarts
 
 # ── Internal network ──────────────────────────────────────────────────────────
 networks:

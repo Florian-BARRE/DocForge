@@ -197,3 +197,60 @@ class ProviderRegistry(DescribeSurface, LoggerClass):
     ) -> Chain[Any, Any]:
         """Build the S6 embed chain (delegates to ChainBuilderHelpers)."""
         return ChainBuilderHelpers.build_embed_chain(self._cfg, specs, gate_cfg)
+
+    def build_search_pipeline(
+        self,
+        pipeline_dict: dict | None,
+        retrieval: "HybridSearchService",
+    ) -> "SearchPipelineEngine":
+        """
+        Build a SearchPipelineEngine from a collection's stored pipeline config.
+
+        Derives the embed provider from pipeline.embed.chain[0] (same model used during
+        S6 indexing) and optionally wires a reranker and LLM when the search config
+        requests them.  Defaults (strategy="none", rerank.enabled=False) produce identical
+        results to the pre-P7 direct HybridSearchService.search() call.
+
+        Args:
+            pipeline_dict (dict | None): Raw JSON pipeline dict stored on the collection.
+                None or empty falls back to the default PipelineConfig.
+            retrieval (HybridSearchService): Shared retrieval service -- passed through, not
+                stored on ProviderRegistry to avoid circular ownership.
+
+        Returns:
+            SearchPipelineEngine: Configured search pipeline ready to call .run() / .run_debug().
+
+        Raises:
+            ValueError: If a requested provider (reranker, LLM) cannot be built from config.
+        """
+        # Lazy imports to honour the layer DAG: pipeline(3) imports from search(2) and providers(1).
+        # These must not appear at module level or they create circular dependency cycles.
+        from libs.search.pipeline import SearchPipelineEngine
+
+        # 1. Deserialize the stored pipeline config (or fall back to defaults when absent)
+        pipeline = PipelineConfig.from_dict(pipeline_dict)
+
+        # 2. Build embed provider -- must match the model used during S6 indexing
+        embed_spec = pipeline.embed.chain[0]
+        embed_provider = embed_spec.merge_defaults(self._cfg).build()
+
+        # 3. Optionally build reranker from pipeline.search.rerank.chain[0]
+        reranker = None
+        if pipeline.search.rerank.enabled and pipeline.search.rerank.chain:
+            rerank_spec = pipeline.search.rerank.chain[0]
+            reranker = rerank_spec.merge_defaults(self._cfg).build()
+
+        # 4. Optionally build LLM from pipeline.search.query_transform.llm
+        llm = None
+        qt = pipeline.search.query_transform
+        if qt.strategy != "none" and qt.llm is not None:
+            llm = qt.llm.merge_defaults(self._cfg).build()
+
+        # 5. Assemble and return the search pipeline engine
+        return SearchPipelineEngine(
+            config=pipeline.search,
+            embed_provider=embed_provider,
+            retrieval=retrieval,
+            reranker=reranker,
+            llm=llm,
+        )

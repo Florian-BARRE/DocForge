@@ -140,6 +140,13 @@ class RUNTIME_CONFIG(EnvConfigLoader):
     # Number of texts sent to TEI per HTTP request
     TEI_BATCH_SIZE: int = env("TEI_BATCH_SIZE", cast=int, default="64")
 
+    # OpenAI / OpenAI-compatible cloud embed provider.
+    # Consumed by merge_defaults() on OpenAIEmbedConfig for both ingestion (S6) and
+    # query-time embedding (search router) — configure once, used symmetrically.
+    # OPENAI_API_KEY takes precedence; EMBED_API_KEY is the generic fallback.
+    OPENAI_API_KEY: str = env("OPENAI_API_KEY", required=False, default="")
+    EMBED_API_KEY: str = env("EMBED_API_KEY", required=False, default="")
+
     # Qdrant vector store connection
     QDRANT_HOST: str = env("QDRANT_HOST", default="localhost")
     QDRANT_PORT: int = env("QDRANT_PORT", cast=int, default="6333")
@@ -147,6 +154,21 @@ class RUNTIME_CONFIG(EnvConfigLoader):
     QDRANT_API_KEY: str = env("QDRANT_API_KEY", default="")
     # Use HTTPS (set to true for Qdrant Cloud, false for self-hosted)
     QDRANT_HTTPS: bool = env("QDRANT_HTTPS", cast=bool, default="false")
+
+    # ───── Search pipeline — reranker ─────
+    # BGE-Reranker-v2-m3 via TEI (separate container from the embed TEI).
+    # Consumed by BgeRerankerConfig.merge_defaults() when rerank is enabled.
+    BGE_RERANKER_URL: str = env("BGE_RERANKER_URL", required=False, default="http://reranker:80")
+    BGE_RERANKER_BATCH_SIZE: int = env("BGE_RERANKER_BATCH_SIZE", cast=int, default="32")
+    # Cohere Rerank API key — consumed by CohereRerankConfig.merge_defaults().
+    COHERE_API_KEY: str = env("COHERE_API_KEY", required=False, default="")
+
+    # ───── Search pipeline — query transform LLM ─────
+    # OpenAI-compatible LLM endpoint for rewrite / HyDE / multi-query strategies.
+    # Consumed by LocalLLMConfig.merge_defaults() when a query transform is configured.
+    LLM_API_BASE_URL: str = env("LLM_API_BASE_URL", required=False, default="http://localhost:8080/v1")
+    LLM_API_KEY: str = env("LLM_API_KEY", required=False, default="local")
+    LLM_MODEL: str = env("LLM_MODEL", required=False, default="Qwen/Qwen2.5-7B-Instruct")
 
     # ───── Derived paths ─────
     PATH_ROOT_DIR_FRONTEND: pathlib.Path = PATH_ROOT_DIR / "frontend" / "dist"

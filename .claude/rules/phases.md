@@ -98,6 +98,40 @@ mcp_server.py                                # FastMCP stdio — 7 tools
 
 ---
 
+## P7a/P7b — Search Pipeline Engine
+
+```
+libs/config/pipeline/stages/search_config.py    # SearchConfig, QueryTransformConfig, RerankConfig
+libs/config/pipeline/pipeline.py                # PipelineConfig.search field added
+libs/config/pipeline/stages/__init__.py         # exports for new search config types
+
+libs/providers/llm/                             # new LLM provider family
+  base.py                                       #   LLMProvider Protocol (async generate)
+  local/openai_compat.py                        #   LocalLLMProvider (any OpenAI-compat endpoint)
+  local/config.py                               #   LocalLLMConfig @register("llm"), id="local_llm"
+  external/openai.py                            #   OpenAILLMProvider
+  external/config.py                            #   OpenAILLMConfig @register("llm"), id="openai_llm"
+
+libs/providers/rerank/                          # new Rerank provider family
+  base.py                                       #   RerankProvider Protocol (async rerank)
+  local/bge_reranker.py                         #   BgeRerankProvider (TEI /rerank endpoint)
+  local/config.py                               #   BgeRerankerConfig @register("rerank"), id="bge_reranker"
+  external/cohere.py                            #   CohereRerankProvider (Cohere Rerank v2 API)
+  external/config.py                            #   CohereRerankConfig @register("rerank"), id="cohere_rerank"
+
+libs/search/pipeline/                           # new search pipeline package
+  engine.py                                     #   SearchPipelineEngine (wraps HybridSearchService)
+  stages/q_transform.py                         #   QueryTransformStage (rewrite/HyDE/multi_query)
+  stages/rerank.py                              #   RerankStage (cross-encoder reranking)
+
+libs/pipeline/assembly/registry.py              # added build_search_pipeline() method
+backend/routers/collections/documents/search/router.py  # routes now use SearchPipelineEngine
+config/runtime/runtime_config.py                # BGE_RERANKER_URL/BATCH_SIZE, COHERE_API_KEY, LLM_*
+services/docforge/.env                          # reranker + LLM env vars (commented examples)
+docker-compose.yml                              # reranker service (TEI CPU, BAAI/bge-reranker-v2-m3)
+docker-compose.dev.yml                          # reranker port 10027:80
+```
+
 ## Key decisions per phase
 
 ### P2
@@ -126,3 +160,13 @@ mcp_server.py                                # FastMCP stdio — 7 tools
 - MCP: FastMCP stdio — 7 tools (list_collections, list_documents, get_document, search_documents,
   ingest_document, create_collection, reindex_collection)
 - Static files: FastAPI mounts `frontend/dist` at `/` only if directory exists
+
+### P7a/P7b
+- Search config: `SearchConfig` added to `PipelineConfig` — fully backward-compatible (strategy="none", rerank.enabled=False = identical to pre-P7 behavior)
+- Embed provider always auto-derived from `pipeline.embed.chain[0]` — never configurable in SearchConfig
+- `SearchPipelineEngine` wraps `HybridSearchService` — no modifications to `HybridSearchService` itself
+- RRF fusion (`k=60`) used when multi_query produces N variants: `score(d) = sum_i 1/(k + rank_i(d))`
+- HyDE: LLM generates a hypothetical passage, embeds it, retrieves top-k, then re-ranks if enabled
+- Graceful fallback: LLM failure in query transform falls back to `[query]` (original unchanged)
+- Reranker separate TEI container (port 10027 in dev) — different model from embed TEI (port 10025)
+- `build_search_pipeline(pipeline_dict, retrieval)` on `ProviderRegistry` — retrieval passed in, not stored (avoids circular ownership with `HybridSearchService`)
