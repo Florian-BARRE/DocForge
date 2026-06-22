@@ -480,106 +480,6 @@ input[type="range"]::-webkit-slider-thumb:hover { background: var(--text-muted);
 
 .panel-meta { display: flex; align-items: center; gap: 6px; font-size: 11px; }
 
-/* ── Step rail (Inspect mode) ────────────────────────────────────────────── */
-.step-rail-wrapper {
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
-  padding: 0 20px;
-  display: flex;
-  align-items: center;
-  height: 52px;
-  flex-shrink: 0;
-  overflow-x: auto;
-  overflow-y: hidden;
-  gap: 0;
-}
-
-.step-rail {
-  display: flex;
-  align-items: center;
-  gap: 0;
-  white-space: nowrap;
-}
-
-.step-node {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 14px;
-  border-radius: var(--radius-sm);
-  font-size: 12px;
-  cursor: pointer;
-  color: var(--text-dim);
-  border: 1px solid transparent;
-  transition: all 0.15s;
-  user-select: none;
-}
-.step-node:hover { color: var(--text-muted); background: var(--hover); }
-.step-node-active {
-  color: var(--text);
-  background: var(--active);
-  border-color: var(--border-strong);
-}
-.step-node-done { color: var(--text-muted); }
-.step-node-done .step-check { color: var(--s-done); }
-
-.step-number {
-  width: 18px; height: 18px;
-  border-radius: 50%;
-  background: var(--surface-raised);
-  border: 1px solid var(--border-strong);
-  display: flex; align-items: center; justify-content: center;
-  font-size: 10px;
-  flex-shrink: 0;
-}
-.step-node-active .step-number {
-  background: var(--text);
-  color: var(--bg);
-  border-color: var(--text);
-}
-
-.step-arrow {
-  color: var(--text-dim);
-  font-size: 12px;
-  padding: 0 4px;
-}
-
-.step-check { font-size: 11px; }
-
-/* ── Inspect view scroll area ─────────────────────────────────────────────── */
-.inspect-scroll {
-  flex: 1;
-  overflow-y: auto;
-}
-
-/* ── Collection step ─────────────────────────────────────────────────────── */
-.collection-list { display: flex; flex-direction: column; gap: 6px; }
-
-.collection-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 14px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--surface-raised);
-  cursor: pointer;
-  transition: border-color 0.15s, background 0.15s;
-}
-.collection-row:hover { background: var(--hover); border-color: var(--border-strong); }
-.collection-row-active { border-color: var(--border-strong); background: var(--active); }
-
-.collection-row-main { flex: 1; display: flex; flex-direction: column; gap: 3px; }
-.collection-name { font-size: 13px; font-weight: 500; color: var(--text); }
-
-.create-form {
-  padding: 16px;
-  background: var(--surface-raised);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  margin-bottom: 20px;
-}
-
 /* ── Config panel ────────────────────────────────────────────────────────── */
 .config-stage-section {
   margin-bottom: 18px;
@@ -595,117 +495,6 @@ input[type="range"]::-webkit-slider-thumb:hover { background: var(--text-muted);
   margin-bottom: 12px;
 }
 
-.applied-envelope {
-  margin-top: 16px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 8px 12px;
-  background: var(--surface-raised);
-}
-.applied-body { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
-.applied-item { font-size: 11px; }
-
-.history-section { margin-top: 16px; }
-.history-list {
-  display: flex; flex-direction: column; gap: 2px;
-  margin-top: 8px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  overflow: hidden;
-}
-.history-row {
-  display: flex; align-items: center; gap: 10px;
-  padding: 6px 10px;
-  background: var(--surface-raised);
-  font-size: 11px;
-}
-.history-row:hover { background: var(--hover); }
-.history-version { color: var(--text); min-width: 28px; }
-.history-pv { min-width: 80px; }
-.history-note { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.history-date { flex-shrink: 0; }
-
-/* ── Dropzone ────────────────────────────────────────────────────────────── */
-.dropzone {
-  border: 2px dashed var(--border-strong);
-  border-radius: var(--radius);
-  padding: 28px 24px;
-  cursor: pointer;
-  transition: border-color 0.15s, background 0.15s;
-  min-height: 110px;
-  display: flex; align-items: center; justify-content: center;
-}
-.dropzone:hover, .dropzone-active {
-  border-color: var(--text-muted);
-  background: var(--surface-raised);
-}
-.dropzone-placeholder {
-  display: flex; flex-direction: column; align-items: center;
-  gap: 6px; color: var(--text-muted);
-}
-.dropzone-icon { font-size: 22px; opacity: 0.5; }
-
-/* ── Document list ───────────────────────────────────────────────────────── */
-.doc-list { display: flex; flex-direction: column; gap: 4px; }
-
-.doc-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 7px 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--surface-raised);
-}
-.doc-row:hover { background: var(--hover); }
-.doc-row:hover .doc-actions { opacity: 1; }
-.doc-row-clickable { cursor: pointer; }
-
-.doc-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
-.doc-meta { font-size: 11px; flex-shrink: 0; }
-
-.doc-actions {
-  display: flex; align-items: center; gap: 4px;
-  flex-shrink: 0; opacity: 0; transition: opacity 0.15s;
-}
-
-/* ── Ingest result banners ───────────────────────────────────────────────── */
-.ingest-result {
-  display: flex; align-items: flex-start; gap: 10px;
-  padding: 6px 10px;
-  border-radius: var(--radius-sm);
-  font-size: 12px;
-  border: 1px solid var(--border);
-  margin-top: 6px;
-}
-.ingest-result-ok  { border-color: #103810; background: #0a1a0a60; color: var(--s-done); }
-.ingest-result-err { border-color: #3a1010; background: #1a080860; color: var(--s-error); }
-
-/* ── Pipeline Inspector ──────────────────────────────────────────────────── */
-.inspector-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 16px 24px;
-  border-bottom: 1px solid var(--border);
-  background: var(--surface);
-  flex-wrap: wrap;
-  flex-shrink: 0;
-}
-.inspector-filename {
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--text);
-  word-break: break-all;
-}
-.inspector-downloads {
-  display: flex; gap: 6px; flex-wrap: wrap;
-}
-.inspector-scroll {
-  flex: 1;
-  overflow-y: auto;
-  padding: 20px 24px;
-}
 
 /* ── New inspector body: stage rail + active panel ── */
 .inspector-body {
@@ -1608,131 +1397,6 @@ input[type="range"]::-webkit-slider-thumb:hover { background: var(--text-muted);
   margin: 8px 0 12px;
 }
 
-/* ── Browse view ─────────────────────────────────────────────────────────── */
-.browse-layout {
-  display: flex;
-  flex: 1;
-  overflow: hidden;
-}
-
-.browse-sidebar {
-  width: 280px;
-  min-width: 280px;
-  border-right: 1px solid var(--border);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.browse-sidebar-header {
-  padding: 12px 14px;
-  border-bottom: 1px solid var(--border);
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--text-dim);
-  flex-shrink: 0;
-}
-
-.browse-sidebar-list {
-  flex: 1;
-  overflow-y: auto;
-  padding: 6px;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.browse-col-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 10px;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  transition: background 0.1s;
-}
-.browse-col-item:hover { background: var(--hover); }
-.browse-col-item-active { background: var(--active); }
-
-.browse-col-name { flex: 1; font-size: 12px; font-weight: 500; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.browse-col-count { font-size: 11px; color: var(--text-dim); flex-shrink: 0; }
-
-.browse-main {
-  flex: 1;
-  overflow-y: auto;
-  padding: 16px 20px;
-}
-
-/* ── Search view ─────────────────────────────────────────────────────────── */
-.search-view {
-  flex: 1;
-  overflow-y: auto;
-  padding: 24px 28px;
-  max-width: 900px;
-  margin: 0 auto;
-  width: 100%;
-}
-
-.search-bar {
-  display: flex; gap: 10px; align-items: center; margin-bottom: 10px;
-}
-.search-input { flex: 1; font-size: 14px; }
-.search-topk { display: flex; align-items: center; gap: 8px; font-size: 12px; }
-.search-topk .input { width: 72px; }
-
-.search-results { margin-top: 18px; display: flex; flex-direction: column; gap: 8px; }
-
-.result-card {
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--surface-raised);
-  overflow: hidden;
-  transition: border-color 0.15s;
-}
-.result-card:hover { border-color: var(--border-strong); }
-
-.result-header {
-  display: flex; align-items: center; gap: 10px;
-  padding: 8px 12px; cursor: pointer; user-select: none;
-}
-.result-rank       { font-size: 11px; color: var(--text-dim); min-width: 18px; }
-.result-score-bar  { flex: 1; height: 3px; background: var(--border); border-radius: 2px; overflow: hidden; max-width: 160px; }
-.result-score-fill { height: 100%; background: var(--s-done); border-radius: 2px; }
-.result-score      { font-size: 11px; color: var(--text-muted); min-width: 56px; }
-.result-meta       { font-size: 11px; flex: 1; text-align: right; }
-.result-expand     { font-size: 11px; color: var(--text-dim); }
-
-.result-text {
-  padding: 0 12px; font-size: 12px; line-height: 1.6;
-  color: var(--text-muted); white-space: pre-wrap; overflow: hidden;
-  transition: max-height 0.25s ease;
-}
-.result-text-collapsed { max-height: 0; }
-.result-text-expanded  { max-height: 600px; padding-top: 8px; padding-bottom: 10px; }
-
-.result-footer {
-  padding: 4px 12px; border-top: 1px solid var(--border); background: var(--bg);
-  display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
-}
-
-/* ── Vector rank pills ── */
-.vector-rank-pills {
-  display: flex; gap: 5px; flex-wrap: wrap;
-}
-.vector-rank-pill {
-  font-size: 10px; font-family: var(--font-mono);
-  padding: 1px 6px; border-radius: 4px;
-  background: var(--surface-2); color: var(--accent);
-  border: 1px solid var(--accent-dim, rgba(99,102,241,0.3));
-  white-space: nowrap;
-}
-.vector-rank-miss {
-  color: var(--text-dim); border-color: var(--border);
-  background: transparent;
-}
-
 /* ── Search Playground ────────────────────────────────────────────────────── */
 
 /* Query row */
@@ -1991,4 +1655,943 @@ input[type="range"]::-webkit-slider-thumb:hover { background: var(--text-muted);
   background: var(--surface);
   color: var(--text-muted);
   font-style: italic;
+}
+
+/* ── Layout: Sidebar & SlidePanel ─────────────────────────────────────────── */
+
+/* ── CollectionSidebar ── */
+
+.sidebar {
+  /* Fixed-width left sidebar, full parent height, flex column layout. */
+  width: 220px;
+  min-width: 220px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.sidebar-header {
+  /* Section label at the top of the sidebar. */
+  padding: 10px 14px 8px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.sidebar-list {
+  /* Scrollable collection list that fills the available vertical space. */
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 0;
+  list-style: none;
+  margin: 0;
+}
+
+.sidebar-row {
+  /* Single collection row: dot + name + count badge. */
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  cursor: pointer;
+  border-left: 3px solid transparent;
+  transition: background 0.1s, border-color 0.1s;
+  user-select: none;
+}
+.sidebar-row:hover {
+  background: var(--hover);
+}
+
+.sidebar-row-active {
+  /* Active collection: accent left border + soft accent background. */
+  background: var(--accent-soft);
+  border-left-color: var(--accent);
+}
+
+.sidebar-dot {
+  /* Small status indicator circle. Colour is set inline per collection. */
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.sidebar-name {
+  /* Collection label — truncated with ellipsis when too long. */
+  flex: 1;
+  font-size: 12px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.sidebar-count {
+  /* Document count badge on the right side of the row. */
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: var(--text-dim);
+  flex-shrink: 0;
+  padding: 1px 5px;
+  border-radius: 9px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+}
+
+.sidebar-footer {
+  /* Fixed footer at the bottom of the sidebar. */
+  padding: 8px 10px;
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.sidebar-new-btn {
+  /* Full-width "New Collection" action button in the sidebar footer. */
+  width: 100%;
+  padding: 7px 10px;
+  font-size: 12px;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  text-align: center;
+  transition: background 0.12s, border-color 0.12s;
+}
+.sidebar-new-btn:hover {
+  border-color: var(--accent);
+  background: rgba(99, 102, 241, 0.24);
+}
+
+/* ── SlidePanel ── */
+
+.slide-panel-overlay {
+  /* Full-screen dimming layer behind the panel. Hidden when panel is closed. */
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 200;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease-out;
+}
+
+.slide-panel-overlay-open {
+  /* Fade in the overlay when the panel opens. */
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.slide-panel {
+  /* Panel container: fixed to the right edge, full viewport height, 380 px wide.
+     Off-screen by default via translateX(100%); slides in when .slide-panel-open
+     is applied. */
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: 380px;
+  height: 100vh;
+  z-index: 201;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+  box-shadow: var(--shadow-2);
+  transform: translateX(100%);
+  transition: transform 0.2s ease-out;
+}
+
+.slide-panel-open {
+  /* Bring the panel into view. */
+  transform: translateX(0);
+}
+
+.slide-panel-header {
+  /* Sticky header: title on the left, close button on the right. */
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px 12px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  gap: 8px;
+}
+
+.slide-panel-title {
+  /* Panel title text. */
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.slide-panel-close {
+  /* Dismiss button in the header corner. */
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+}
+.slide-panel-close:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.slide-panel-body {
+  /* Scrollable content area between the header and the optional footer. */
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+}
+
+.slide-panel-footer {
+  /* Optional sticky footer rendered at the bottom of the panel. */
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+  background: var(--surface);
+}
+
+/* ── App Shell ─────────────────────────────────────────────────────────────── */
+
+.app-shell {
+  /* Two-column shell: sidebar on the left, main area filling the rest. */
+  display: flex;
+  flex-direction: row;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.app-main {
+  /* Right column: flex-column so the header and content stack vertically. */
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.app-header {
+  /* Sticky header bar: collection name + tab nav + theme toggle. */
+  height: var(--topbar-h);
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  padding: 0 16px;
+  gap: 12px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  background: var(--surface);
+}
+
+.app-header-collection {
+  /* Collection name shown on the left side of the header. */
+  font-weight: 600;
+  color: var(--text);
+  flex-shrink: 0;
+}
+
+.app-tabs {
+  /* Row of sub-tab buttons. */
+  display: flex;
+  gap: 2px;
+  margin-left: 16px;
+}
+
+.app-tab {
+  /* Individual sub-tab button — inactive state. */
+  padding: 4px 12px;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: 13px;
+  transition: color 0.15s, background 0.15s;
+}
+
+.app-tab:hover {
+  color: var(--text);
+  background: var(--hover);
+}
+
+.app-tab-active {
+  /* Active sub-tab: full-contrast text + filled background. */
+  color: var(--text);
+  background: var(--active);
+}
+
+.app-header-end {
+  /* Pushes the theme toggle to the far-right end of the header. */
+  margin-left: auto;
+}
+
+.app-content {
+  /* Scrollable main content area; tabs handle their own internal padding. */
+  flex: 1;
+  overflow: auto;
+  padding: 0;
+}
+
+.app-empty {
+  /* Full-height centred message shown when no collection is selected. */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--text-dim);
+  font-size: 14px;
+}
+
+.app-placeholder {
+  /* Temporary placeholder while a tab component is not yet wired up. */
+  padding: 40px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+/* ── Pipeline Graph ───────────────────────────────────────────────────────── */
+
+.pipeline-graph {
+  /* Outer wrapper: relative so the mode badge can be positioned top-right. */
+  position: relative;
+  display: inline-flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px 8px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.pipeline-graph-nodes {
+  /* Horizontal row of stage nodes connected by arrows. */
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: nowrap;
+}
+
+.pipeline-graph-arrow {
+  /* Simple text arrow between consecutive stage nodes. */
+  color: var(--text-dim);
+  font-size: 13px;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.pipeline-graph-badge {
+  /* Mode pill anchored to the top-right corner of the graph container. */
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  padding: 2px 7px;
+  border-radius: 9px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  text-transform: uppercase;
+  pointer-events: none;
+}
+
+/* ── Stage node ── */
+
+.stage-node {
+  /* Fixed-size card: flex column, centred content. Cursor pointer for all modes. */
+  position: relative;
+  width: 110px;
+  height: 80px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 6px 8px 4px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  user-select: none;
+  overflow: hidden;
+}
+
+.stage-node:hover {
+  background: var(--hover);
+}
+
+.stage-node-active {
+  /* Highlight the node whose SlidePanel is currently open. */
+  border: 2px solid var(--accent) !important;
+}
+
+.stage-node-optional {
+  /* Opt-in stages use a dashed border to signal they are not always active. */
+  border-style: dashed;
+}
+
+.stage-node-readonly {
+  /* Read-only stages (e.g. Embed in search) cannot be configured. */
+  cursor: default;
+}
+
+.stage-node-readonly:hover {
+  /* Suppress the hover background on read-only nodes. */
+  background: var(--surface-raised);
+}
+
+/* ── Node icon ── */
+
+.stage-node-icon {
+  /* Large icon centred at the top of the card. */
+  font-size: 24px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+/* ── Node label ── */
+
+.stage-node-label {
+  /* Stage name — small, centred, does not wrap. */
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text);
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+/* ── Status zone (bottom of the card) ── */
+
+.stage-node-status {
+  /* Container for all status text elements at the bottom of the card. */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 14px;
+  flex-wrap: nowrap;
+  max-width: 100%;
+}
+
+.stage-node-status-enabled {
+  /* Config mode: stage is active. */
+  font-size: 10px;
+  color: var(--s-done);
+}
+
+.stage-node-status-optional {
+  /* Config mode: stage is opt-in. */
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.stage-node-status-readonly {
+  /* Config mode: stage is read-only. */
+  font-size: 9px;
+  color: var(--text-dim);
+}
+
+.stage-node-status-pending {
+  /* Trace mode: stage has not run yet. */
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+.stage-node-status-duration {
+  /* Trace mode: wall-clock duration (e.g. "1.2s"). */
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.stage-node-status-metric {
+  /* Trace mode: short outcome summary (e.g. "47 blocks"). */
+  font-size: 10px;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 70px;
+}
+
+.stage-node-status-skipped {
+  /* Trace mode: stage was deliberately skipped. */
+  font-size: 9px;
+  color: var(--text-dim);
+}
+
+.stage-node-status-error {
+  /* Trace mode: stage failed. */
+  font-size: 10px;
+  color: var(--s-error);
+}
+
+.stage-node-status-running {
+  /* Trace mode: stage is currently executing — inherits .pulse animation. */
+  font-size: 14px;
+  color: var(--accent);
+}
+
+/* ── Config gear overlay ── */
+
+.stage-node-config-gear {
+  /* Gear icon that appears on hover for configurable stages. */
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  font-size: 11px;
+  color: var(--text-dim);
+  opacity: 0;
+  transition: opacity 0.15s;
+  pointer-events: none;
+}
+
+.stage-node:not(.stage-node-readonly):hover .stage-node-config-gear {
+  opacity: 1;
+}
+
+/* ── Read-only badge ── */
+
+.stage-node-readonly-badge {
+  /* Tiny "ro" label in the top-left corner of read-only nodes. */
+  position: absolute;
+  top: 3px;
+  left: 4px;
+  font-size: 8px;
+  font-family: var(--font-mono);
+  color: var(--text-dim);
+  padding: 1px 4px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--bg);
+  pointer-events: none;
+}
+
+/* ── Trace border colours ── */
+
+.stage-node-trace-done {
+  /* Green border for successfully completed stages. */
+  border-color: var(--s-done);
+}
+
+.stage-node-trace-running {
+  /* Accent border with a pulse animation for the currently executing stage.
+     Reuses the `pulse` keyframe defined earlier (opacity 1 → 0.4 → 1). */
+  border-color: var(--accent);
+  animation: pulse 1.8s ease-in-out infinite;
+}
+
+.stage-node-trace-error {
+  /* Red border for failed stages. */
+  border-color: var(--s-error);
+}
+
+.stage-node-trace-skipped {
+  /* Dimmed border for skipped or not-yet-run stages. */
+  border-color: var(--text-dim);
+  opacity: 0.6;
+}
+
+/* ── Pipeline Tab ─────────────────────────────────────────────────────────── */
+
+.pipeline-tab {
+  /* Full-height flex column with comfortable spacing between graph and hint. */
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.pipeline-tab-hint {
+  /* Subtle instruction shown below the graph when no document is being traced. */
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 12px;
+  padding: 8px 0;
+}
+
+.stage-config-panel {
+  /* Flex column for the save indicator + DynamicFieldsGroup rows. */
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px;
+}
+
+.stage-config-empty {
+  /* Placeholder shown when no discovery fields match the stage prefix. */
+  color: var(--text-dim);
+  font-size: 13px;
+  padding: 16px;
+  text-align: center;
+}
+
+.stage-config-save-indicator {
+  /* Fixed-height row that hosts the transient save feedback label.
+     Height is reserved even when idle so the layout does not shift on save. */
+  height: 16px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+}
+
+/* ── Pipeline Trace ────────────────────────────────────────────────────────── */
+
+.pipeline-trace-bar {
+  /* Sticky banner at the top of the pipeline tab showing the traced document.
+     Uses accent-soft background to distinguish it from the graph below. */
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  background: var(--accent-soft, rgba(99, 102, 241, 0.12));
+  border: 1px solid var(--accent, #6366f1);
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.pipeline-trace-label {
+  /* "Tracing:" prefix — dimmed to keep focus on the filename. */
+  color: var(--text-dim);
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.pipeline-trace-filename {
+  /* Document name — grows to fill remaining space with truncation. */
+  color: var(--text);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.pipeline-trace-close {
+  /* Dismiss button — compact, no decoration. */
+  flex-shrink: 0;
+  padding: 2px 8px;
+  font-size: 16px;
+  line-height: 1;
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.pipeline-trace-close:hover {
+  color: var(--text);
+  border-color: var(--text-dim);
+}
+
+/* ── Stage trace panels ──────────────────────────────────────────────────── */
+
+.stage-panel {
+  /* Wrapper for all trace panels inside the SlidePanel.
+     Flex column with consistent spacing between sections. */
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+}
+
+.stage-panel-row {
+  /* A key/value row used in trace panels for duration, metric, etc. */
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+}
+
+.stage-panel-label {
+  /* Left-column label — dimmed, fixed minimum width for alignment. */
+  color: var(--text-dim);
+  min-width: 72px;
+  flex-shrink: 0;
+}
+
+.stage-panel-value {
+  /* Right-column value — normal text weight. */
+  color: var(--text);
+}
+
+/* ── Documents Tab ── */
+
+.documents-tab {
+  /* Full-height flex column; each child is responsible for its own overflow. */
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.documents-drop-zone {
+  /* Compact drop zone anchored at the top of the tab. */
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius);
+  padding: 24px;
+  text-align: center;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  flex-shrink: 0;
+  margin: 16px;
+  /* Fixed height keeps the list anchor stable. */
+  height: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+}
+
+.documents-drop-zone:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.documents-drop-zone-dragging {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.documents-drop-error {
+  color: var(--s-error);
+  font-size: 12px;
+  margin: 4px 16px;
+}
+
+.documents-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 16px 16px;
+}
+
+/* ── DocRow ── */
+
+.doc-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+
+.doc-row:last-child {
+  border-bottom: none;
+}
+
+.doc-row-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.doc-row-meta {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-shrink: 0;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.doc-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+/* ── DocRow overflow menu ── */
+
+.doc-menu {
+  position: relative;
+}
+
+.doc-menu-dropdown {
+  position: absolute;
+  right: 0;
+  top: 100%;
+  z-index: 100;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  min-width: 140px;
+  box-shadow: var(--shadow-2);
+  padding: 4px 0;
+}
+
+.doc-menu-item {
+  display: block;
+  width: 100%;
+  padding: 6px 12px;
+  text-align: left;
+  color: var(--text-muted);
+  font-size: 12px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+}
+
+.doc-menu-item:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.doc-menu-item-danger:hover {
+  color: var(--s-error);
+}
+
+/* ── Search Tab ───────────────────────────────────────────────────────────── */
+
+.search-tab {
+  /* Full-height flex column — graph pinned at top, results scrollable below. */
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.search-tab-graph {
+  /* Graph strip — fixed height, separated from the body by a bottom border. */
+  padding: 16px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.search-tab-body {
+  /* Scrollable results area below the graph. */
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+}
+
+.search-query-row {
+  /* Side-by-side query input + submit button. */
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.search-query-input {
+  /* Extends .input — takes all remaining horizontal space. */
+  flex: 1;
+}
+
+.search-variants-banner {
+  /* Horizontal strip showing multi_query generated variants. */
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+  font-size: 12px;
+}
+
+.search-variant-chip {
+  /* Monospace pill for a single query variant. */
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.search-results-list {
+  /* Container for the list of result cards. */
+  display: flex;
+  flex-direction: column;
+}
+
+.search-result-card {
+  /* Individual result card — clickable, transitions background on hover. */
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.search-result-card:hover {
+  background: var(--hover);
+}
+
+.search-result-header {
+  /* Score bar + metadata row inside the card. */
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.search-result-score-bar {
+  /* Thin gradient bar representing relative relevance score. */
+  height: 4px;
+  border-radius: 2px;
+}
+
+.search-result-preview {
+  /* Short collapsed preview — muted text, comfortable line height. */
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.search-result-expanded {
+  /* Full chunk content shown when the card is expanded. */
+  margin-top: 8px;
+  font-size: 12px;
+  white-space: pre-wrap;
+  color: var(--text);
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+}
+
+.search-reranked-badge {
+  /* Small monospace pill indicating reranker was applied. */
+  padding: 2px 6px;
+  border-radius: 10px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 10px;
+  font-family: var(--font-mono);
 }
