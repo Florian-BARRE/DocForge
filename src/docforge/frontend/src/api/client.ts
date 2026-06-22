@@ -287,6 +287,8 @@ export const searchDocuments = (
     top_k?: number
     filters?: Record<string, unknown>
     weights?: Record<string, number>
+    /** When true, each result carries vector_ranks with per-vector rank breakdown. */
+    debug?: boolean
   },
 ): Promise<SearchResponse> =>
   request<SearchResponse>(`/collections/${collectionId}/documents/search`, {
@@ -302,6 +304,8 @@ export const searchWithinDocument = (
     top_k?: number
     filters?: Record<string, unknown>
     weights?: Record<string, number>
+    /** When true, each result carries vector_ranks with per-vector rank breakdown. */
+    debug?: boolean
   },
 ): Promise<SearchResponse> =>
   request<SearchResponse>(`/collections/${collectionId}/documents/${docId}/search`, {

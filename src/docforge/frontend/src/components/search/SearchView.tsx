@@ -1,11 +1,16 @@
 // ====== Code Summary ======
-// Search playground — interactive hybrid search with visible weight sliders,
-// auto-search when parameters change, and query-term highlighting in results.
-// Replaces the buried discovery form controls with first-class slider UI.
+// Search playground — interactive hybrid search with configurable search pipeline
+// (query transform strategy + reranker), visible weight sliders, auto-search when
+// parameters change, and query-term highlighting in results.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Collection, Document, SearchResultItem } from '../../api/types'
-import { listCollections, listDocuments, searchDocuments } from '../../api/client'
+import { getConfigState, listCollections, listDocuments, searchDocuments } from '../../api/client'
+import {
+  DEFAULT_SEARCH_PIPELINE,
+  SearchPipelinePanel,
+} from './SearchPipelinePanel'
+import type { SearchPipelineCfg } from './SearchPipelinePanel'
 
 /**
  * Interactive hybrid search playground.
@@ -30,6 +35,15 @@ export function SearchView() {
   const [note, setNote] = useState<string | undefined>()
   const [searched, setSearched] = useState(false)
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
+
+  // Embed provider of the selected collection — drives the provider badge.
+  const [embedProviderId, setEmbedProviderId] = useState<string>('tei')
+
+  // Search pipeline configuration — synced with the collection's stored config.
+  const [pipelineConfig, setPipelineConfig] = useState<SearchPipelineCfg>(DEFAULT_SEARCH_PIPELINE)
+
+  // Query variants returned by multi_query transform — populated from debug_info.
+  const [queryVariants, setQueryVariants] = useState<string[]>([])
 
   // Holds the last query that was actually sent — auto-search watches this.
   const lastQueryRef = useRef<string>('')
@@ -56,6 +70,25 @@ export function SearchView() {
       .catch(() => {})
   }, [collectionId])
 
+  // 3. Fetch collection config state — derives the embed provider badge and loads
+  //    the stored search pipeline configuration (query transform + reranker).
+  useEffect(() => {
+    if (!collectionId) return
+    getConfigState(collectionId)
+      .then(cfg => {
+        setEmbedProviderId(cfg.embed_provider_id ?? 'tei')
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const searchCfg = (cfg as any).pipeline?.search
+        if (searchCfg) setPipelineConfig(searchCfg as SearchPipelineCfg)
+        else setPipelineConfig(DEFAULT_SEARCH_PIPELINE)
+        setQueryVariants([])
+      })
+      .catch(() => {
+        setEmbedProviderId('tei')
+        setPipelineConfig(DEFAULT_SEARCH_PIPELINE)
+      })
+  }, [collectionId])
+
   // 3. Core search function — memoised so the auto-search effect can depend on it.
   const runSearch = useCallback(async (
     q: string, dense: number, sparse: number, k: number,
@@ -67,11 +100,15 @@ export function SearchView() {
     try {
       const res = await searchDocuments(collectionId, q.trim(), {
         top_k: k,
-        weights: { dense, sparse },
+        weights: { content_dense: dense, content_bm25: sparse },
+        debug: true,
       })
       setResults(res.results)
       setNote(res.note ?? undefined)
       setSearched(true)
+      // Extract query variants from debug_info — populated by multi_query transform.
+      const variants = (res.debug_info?.query_variants ?? []) as string[]
+      setQueryVariants(variants.length > 1 ? variants : [])
     } catch (err) {
       setError(String(err))
     } finally {
@@ -120,7 +157,7 @@ export function SearchView() {
       </div>
 
       {/* ── Collection picker ── */}
-      <div className="field-row" style={{ marginBottom: 14 }}>
+      <div className="field-row" style={{ marginBottom: 8 }}>
         <span className="field-label">Collection</span>
         <select
           className="input select"
@@ -129,6 +166,7 @@ export function SearchView() {
             setCollectionId(e.target.value)
             setSearched(false)
             setResults([])
+            setQueryVariants([])
             lastQueryRef.current = ''
           }}
           style={{ maxWidth: 280 }}
@@ -139,6 +177,14 @@ export function SearchView() {
           ))}
         </select>
       </div>
+
+      {/* ── Embed provider badge ── */}
+      {collectionId && (
+        <div className="field-row" style={{ marginBottom: 14 }}>
+          <span className="field-label" />
+          <EmbedProviderBadge providerId={embedProviderId} />
+        </div>
+      )}
 
       {/* ── Query input ── */}
       <form onSubmit={handleSearch}>
@@ -199,6 +245,27 @@ export function SearchView() {
         )}
       </div>
 
+      {/* ── Search Pipeline panel ── */}
+      {collectionId && (
+        <SearchPipelinePanel
+          collectionId={collectionId}
+          initialConfig={pipelineConfig}
+          onConfigChange={setPipelineConfig}
+        />
+      )}
+
+      {/* ── Query variants banner (multi_query) ── */}
+      {queryVariants.length > 1 && (
+        <div className="query-variants-banner">
+          <span className="query-variants-label">Query variants ({queryVariants.length})</span>
+          <div className="query-variants-list">
+            {queryVariants.map((v, i) => (
+              <span key={i} className="query-variant-chip">{v}</span>
+            ))}
+          </div>
+        </div>
+      )}
+
       {error && <div className="error-banner">{error}</div>}
       {note && (
         <div className="info-banner">
@@ -220,6 +287,9 @@ export function SearchView() {
           <div className="search-results-hdr">
             <span className="section-title" style={{ fontSize: 12 }}>
               {results.length} result{results.length !== 1 ? 's' : ''}
+              {pipelineConfig.rerank.enabled && (
+                <span className="pipeline-badge pipeline-badge-rerank">reranked</span>
+              )}
             </span>
             <span className="text-dim" style={{ fontSize: 10 }}>
               dense {denseWeight.toFixed(2)} · sparse {sparseWeight.toFixed(2)} · k={topK}
@@ -243,6 +313,37 @@ export function SearchView() {
         </div>
       )}
     </div>
+  )
+}
+
+// ── EmbedProviderBadge ───────────────────────────────────────────────────────
+
+/** Human-readable labels and colours per embed provider discriminator. */
+const PROVIDER_META: Record<string, { label: string; color: string }> = {
+  tei:           { label: 'TEI · BGE-M3 (local)',   color: '#6366f1' },
+  openai_compat: { label: 'OpenAI-compat (local)',   color: '#10b981' },
+  openai:        { label: 'OpenAI (external API)',   color: '#f59e0b' },
+}
+
+/**
+ * Pill badge showing which embed provider was used for this collection.
+ * Helps users understand which search backend will be queried.
+ */
+function EmbedProviderBadge({ providerId }: { providerId: string }) {
+  const meta = PROVIDER_META[providerId] ?? { label: providerId, color: '#6b7280' }
+  return (
+    <span
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 5,
+        padding: '2px 8px', borderRadius: 999,
+        background: meta.color + '18', border: `1px solid ${meta.color}40`,
+        fontSize: 11, color: meta.color, fontFamily: 'var(--font-mono)',
+      }}
+      title="Embed provider used during ingestion — search uses the same model"
+    >
+      <span style={{ opacity: 0.7 }}>embed:</span>
+      {meta.label}
+    </span>
   )
 }
 
@@ -352,6 +453,7 @@ function ResultCard({
               score {item.score.toFixed(4)} · {item.strategy} · {item.token_count} tok
               · {item.chunk_id.slice(0, 8)}…
             </span>
+            {item.vector_ranks && <VectorRankPills ranks={item.vector_ranks} />}
           </div>
         )}
       </div>
@@ -385,6 +487,42 @@ function HighlightedText({ text, query }: { text: string; query: string }) {
           : part,
       )}
     </>
+  )
+}
+
+// ── VectorRankPills ──────────────────────────────────────────────────────────
+
+/**
+ * Renders per-vector rank breakdown as pills (e.g. "dense-text #1" "sparse-text #4").
+ * Absent vectors are shown grayed out as "#—" to signal the chunk didn't appear in
+ * that vector's candidate list before RRF fusion.
+ */
+const KNOWN_VECTORS = ['content_dense', 'content_bm25'] as const
+
+function VectorRankPills({ ranks }: { ranks: Record<string, number> }) {
+  // Merge known vectors with any extra per-field vectors from the collection schema
+  const allVectors = [
+    ...KNOWN_VECTORS,
+    ...Object.keys(ranks).filter(k => !KNOWN_VECTORS.includes(k as typeof KNOWN_VECTORS[number])),
+  ]
+  return (
+    <div className="vector-rank-pills">
+      {allVectors.map(vec => {
+        const rank = ranks[vec]
+        const isMiss = rank === undefined
+        // Short label: strip "content_" prefix → "dense" / "bm25" / per-field suffix
+        const short = vec.replace(/^content_/, '')
+        return (
+          <span
+            key={vec}
+            className={`vector-rank-pill${isMiss ? ' vector-rank-miss' : ''}`}
+            title={`${vec}: ${isMiss ? 'not in candidate list' : `ranked #${rank}`}`}
+          >
+            {short} {isMiss ? '#—' : `#${rank}`}
+          </span>
+        )
+      })}
+    </div>
   )
 }
 

@@ -122,7 +122,9 @@ export type CollectionListResponse = Schemas['CollectionListResponse']
 
 export type MetaField = Schemas['ConfigMetaField']
 export type AppliedIssue = Schemas['AppliedIssue']
-export type ConfigState = Schemas['ConfigStateResponse']
+// embed_provider_id is added server-side on the same response shape.
+// The intersection keeps this in sync when generated.ts is next regenerated.
+export type ConfigState = Schemas['ConfigStateResponse'] & { embed_provider_id: string }
 export type ConfigSchemaResponse = Schemas['ConfigSchemaResponse']
 export type ConfigVersionSummary = Schemas['ConfigVersionSummary']
 export type ConfigHistoryResponse = Schemas['ConfigHistoryResponse']
@@ -158,8 +160,20 @@ export type PageReingestResponse = Schemas['PageReingestResponse']
 
 // ── Search ────────────────────────────────────────────────────────────────────
 
-export type SearchResultItem = Schemas['SearchResultItem']
-export type SearchResponse = Schemas['SearchResponse']
+// Extend the generated type with vector_ranks (added in debug mode — P6.x).
+// The generated schema may not include this field until the next `npm run gen:types`
+// run against a rebuilt container, so we add the overlay here to unblock the UI.
+export type SearchResultItem = Schemas['SearchResultItem'] & {
+  /** Per-vector name → 1-indexed rank in that vector's candidate list (debug mode only). */
+  vector_ranks?: Record<string, number> | null
+  /** Per-query debug info populated when SearchRequest.debug is true. */
+  debug_info?: Record<string, unknown> | null
+}
+// Extend SearchResponse with debug_info (pipeline metadata returned when debug=true).
+// The generated schema may lag behind the backend model until the next types regeneration.
+export type SearchResponse = Schemas['SearchResponse'] & {
+  debug_info?: Record<string, unknown> | null
+}
 
 // ── Re-export everything from the generated namespace for callers that prefer
 // the verbose path (e.g. `import type { components } from '../../api/types'`).

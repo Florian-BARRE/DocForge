@@ -1714,6 +1714,23 @@ input[type="range"]::-webkit-slider-thumb:hover { background: var(--text-muted);
 
 .result-footer {
   padding: 4px 12px; border-top: 1px solid var(--border); background: var(--bg);
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+}
+
+/* ── Vector rank pills ── */
+.vector-rank-pills {
+  display: flex; gap: 5px; flex-wrap: wrap;
+}
+.vector-rank-pill {
+  font-size: 10px; font-family: var(--font-mono);
+  padding: 1px 6px; border-radius: 4px;
+  background: var(--surface-2); color: var(--accent);
+  border: 1px solid var(--accent-dim, rgba(99,102,241,0.3));
+  white-space: nowrap;
+}
+.vector-rank-miss {
+  color: var(--text-dim); border-color: var(--border);
+  background: transparent;
 }
 
 /* ── Search Playground ────────────────────────────────────────────────────── */
@@ -1876,4 +1893,102 @@ input[type="range"]::-webkit-slider-thumb:hover { background: var(--text-muted);
 .chunk-histogram-label {
   font-size: 8px; color: var(--text-dim); text-align: center;
   white-space: nowrap;
+}
+
+/* ── Search Pipeline Panel ───────────────────────────────────────────────── */
+.search-pipeline-panel {
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  margin-bottom: 18px;
+}
+
+/* Section (Query Transform / Reranker) */
+.pipeline-section {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.pipeline-section-label {
+  font-size: 11px; font-weight: 600; color: var(--text-muted);
+  margin-bottom: 8px;
+  display: flex; align-items: center; gap: 6px;
+}
+
+/* Chip row */
+.pipeline-chips {
+  display: flex; flex-wrap: wrap; gap: 6px;
+  margin-bottom: 8px;
+}
+
+.pipeline-chip {
+  font-size: 11px; padding: 3px 10px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+  white-space: nowrap;
+}
+.pipeline-chip:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.pipeline-chip-active {
+  background: var(--accent-soft) !important;
+  color: var(--accent) !important;
+  border-color: var(--accent) !important;
+}
+.pipeline-chip-sm { padding: 2px 8px; font-size: 10px; }
+
+/* Sub-row (LLM, n_variants, candidate_k / top_n) */
+.pipeline-sub-row {
+  display: flex; align-items: center; gap: 8px; margin-top: 6px;
+}
+.pipeline-sub-label {
+  font-size: 10px; color: var(--text-dim); min-width: 48px; flex-shrink: 0;
+}
+.pipeline-number-input {
+  width: 60px; height: 24px; padding: 0 6px; font-size: 11px; text-align: center;
+}
+
+/* Pipeline badge on result header ("reranked") */
+.pipeline-badge {
+  display: inline-block;
+  font-size: 9px; font-weight: 600; letter-spacing: 0.05em;
+  padding: 1px 6px; border-radius: 8px;
+  margin-left: 8px; vertical-align: middle;
+  text-transform: uppercase;
+}
+.pipeline-badge-rerank {
+  background: #6366f118; border: 1px solid #6366f140;
+  color: var(--accent);
+}
+
+/* Query variants banner (multi_query) */
+.query-variants-banner {
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.query-variants-label {
+  font-size: 10px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.06em; color: var(--text-dim);
+}
+.query-variants-list {
+  display: flex; flex-wrap: wrap; gap: 6px;
+}
+.query-variant-chip {
+  font-size: 11px; padding: 3px 10px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-muted);
+  font-style: italic;
 }
