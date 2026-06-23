@@ -12,7 +12,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 // ====== Internal Project Imports ======
 import { updateConfig } from '../../../api/client'
-import type { ConfigState, DynamicField } from '../../../api/types'
+import type { ConfigState, DynamicField, MetaField } from '../../../api/types'
 import { DynamicFieldsGroup } from '../../ui/DynamicFieldsGroup'
 
 // ====== Local Project Imports ======
@@ -148,16 +148,23 @@ export function StageConfigPanel({
 
   return (
     <div className="stage-config-panel">
-      {/* Header row: stage label + auto-save indicator */}
+      {/* Header row: auto-save indicator */}
       <div className="stage-config-save-indicator">
         <SaveIndicator state={saveState} />
       </div>
 
+      {/* S0-specific: collection ingestion conditions (formats, size cap, metadata schema) */}
+      {stage.id === 's0' && configState && (
+        <IngestionConditions configState={configState} />
+      )}
+
       {stageFields.length === 0 ? (
-        /* Empty state: no discoverable fields for this stage */
-        <div className="stage-config-empty">
-          No configurable options for this stage.
-        </div>
+        stage.id === 's0' ? null : (
+          /* Empty state: no discoverable fields for this stage */
+          <div className="stage-config-empty">
+            No configurable options for this stage.
+          </div>
+        )
       ) : (
         <DynamicFieldsGroup
           fields={stageFields}
@@ -168,6 +175,97 @@ export function StageConfigPanel({
       )}
     </div>
   )
+}
+
+// ── IngestionConditions ───────────────────────────────────────────────────────
+
+/**
+ * Displays the collection-level ingestion constraints for the S0 stage:
+ * accepted formats, file size cap, metadata schema, and unknown-field policy.
+ *
+ * Args:
+ *   configState: Current collection config containing the conditions to display.
+ */
+function IngestionConditions({ configState }: { configState: ConfigState }) {
+  return (
+    <div className="stage-conditions">
+      <div className="stage-conditions-section">
+        <div className="stage-conditions-title">Accepted formats</div>
+        <div className="stage-conditions-chips">
+          {configState.supported_formats.map(f => (
+            <span key={f} className="tag">{f}</span>
+          ))}
+        </div>
+      </div>
+
+      <div className="stage-conditions-section">
+        <div className="stage-conditions-title">Limits</div>
+        <div className="stage-panel-row">
+          <span className="stage-panel-label">Max file size</span>
+          <span className="stage-panel-value mono">{formatBytes(configState.max_file_size_bytes)}</span>
+        </div>
+        <div className="stage-panel-row">
+          <span className="stage-panel-label">Unknown fields</span>
+          <span className="stage-panel-value">{configState.unknown_field_policy}</span>
+        </div>
+      </div>
+
+      <div className="stage-conditions-section">
+        <div className="stage-conditions-title">Metadata schema</div>
+        {configState.metadata_fields.length === 0 ? (
+          <div className="stage-config-empty">No metadata fields defined.</div>
+        ) : (
+          <table className="stage-conditions-table">
+            <thead>
+              <tr>
+                <th>Field</th>
+                <th>Type</th>
+                <th>Req.</th>
+                <th>Flags</th>
+              </tr>
+            </thead>
+            <tbody>
+              {configState.metadata_fields.map((f: MetaField) => (
+                <tr key={f.field_name} className={f.is_system ? 'stage-conditions-row-system' : ''}>
+                  <td className="mono" style={{ fontSize: 11 }}>{f.field_name}</td>
+                  <td style={{ color: 'var(--text-muted)' }}>{f.field_type}</td>
+                  <td style={{ color: f.required ? 'var(--s-done)' : 'var(--text-dim)' }}>
+                    {f.required ? '✓' : '—'}
+                  </td>
+                  <td style={{ fontSize: 10, color: 'var(--text-dim)' }}>
+                    {[
+                      f.filterable && 'filter',
+                      f.lexical    && 'lex',
+                      f.semantic   && 'sem',
+                      f.is_system  && 'sys',
+                    ].filter(Boolean).join(' · ')}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+/**
+ * Formats a byte count into a human-readable string (KB / MB / GB).
+ *
+ * Args:
+ *   bytes: Number of bytes to format.
+ *
+ * Returns:
+ *   Formatted string, e.g. "50.0 MB".
+ */
+function formatBytes(bytes: number): string {
+  if (bytes >= 1_073_741_824) return `${(bytes / 1_073_741_824).toFixed(1)} GB`
+  if (bytes >= 1_048_576)     return `${(bytes / 1_048_576).toFixed(1)} MB`
+  if (bytes >= 1_024)         return `${(bytes / 1_024).toFixed(1)} KB`
+  return `${bytes} B`
 }
 
 // ── SaveIndicator ─────────────────────────────────────────────────────────────

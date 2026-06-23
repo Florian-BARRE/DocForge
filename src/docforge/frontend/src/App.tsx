@@ -13,6 +13,8 @@ import { useState } from 'react'
 
 // ====== Internal Project Imports ======
 import { CollectionSidebar } from './components/layout/CollectionSidebar'
+import { NewCollectionPanel } from './components/layout/NewCollectionPanel'
+import { SlidePanel } from './components/layout/SlidePanel'
 import { DocumentsTab } from './components/documents/DocumentsTab'
 import { PipelineTab } from './components/pipeline/PipelineTab'
 import { SearchTab } from './components/search/SearchTab'
@@ -50,9 +52,11 @@ export function App() {
   // 2. Active sub-tab within the selected collection.
   const [activeTab, setActiveTab] = useState<AppTab>('pipeline')
 
-  // 3. Active document ID — used by PipelineTab for trace mode (T5) and will be
-  //    passed to DocumentsTab once that component is wired in T6.
+  // 3. Active document ID — used by PipelineTab for trace mode.
   const [activeDocId, setActiveDocId] = useState<string | null>(null)
+
+  // 4. New collection SlidePanel open state.
+  const [newCollectionOpen, setNewCollectionOpen] = useState(false)
 
   // ── Handlers ──────────────────────────────────────────────────────────────
 
@@ -68,6 +72,21 @@ export function App() {
     setActiveDocId(null)
   }
 
+  /**
+   * Called after successful collection creation.
+   * Selects the new collection and jumps straight to the Pipeline tab so
+   * the user can configure it via the discovery-driven graph.
+   *
+   * Args:
+   *   id: The newly created collection's ID.
+   */
+  function handleCollectionCreated(id: string): void {
+    setNewCollectionOpen(false)
+    setActiveCollectionId(id)
+    setActiveDocId(null)
+    setActiveTab('pipeline')
+  }
+
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
@@ -76,10 +95,20 @@ export function App() {
       <CollectionSidebar
         activeCollectionId={activeCollectionId}
         onSelect={handleSelectCollection}
-        onNew={() => {
-          // Placeholder — will open a "New Collection" modal in a future task.
-        }}
+        onNew={() => setNewCollectionOpen(true)}
       />
+
+      {/* ── New collection slide panel ── */}
+      <SlidePanel
+        isOpen={newCollectionOpen}
+        title="New Collection"
+        onClose={() => setNewCollectionOpen(false)}
+      >
+        <NewCollectionPanel
+          onCreated={handleCollectionCreated}
+          onCancel={() => setNewCollectionOpen(false)}
+        />
+      </SlidePanel>
 
       {/* ── Right: header + content ── */}
       <div className="app-main">

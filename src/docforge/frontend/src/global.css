@@ -2763,3 +2763,87 @@ input[type="range"]::-webkit-slider-thumb:hover { background: var(--text-muted);
   width: 100%;
   display: block;
 }
+
+/* ── New Collection Panel ── */
+.new-collection-panel {
+  padding: 4px 0;
+}
+.new-collection-title {
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: 8px;
+  color: var(--text);
+}
+.new-collection-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 16px;
+  line-height: 1.5;
+}
+.new-collection-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+.new-collection-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+.new-collection-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+/* ── Ingestion Conditions (S0 stage panel) ── */
+.stage-conditions {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-bottom: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+.stage-conditions-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.stage-conditions-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  margin-bottom: 2px;
+}
+.stage-conditions-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.stage-conditions-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.stage-conditions-table th {
+  text-align: left;
+  color: var(--text-dim);
+  font-weight: 500;
+  font-size: 11px;
+  padding: 3px 6px 3px 0;
+  border-bottom: 1px solid var(--border);
+}
+.stage-conditions-table td {
+  padding: 4px 6px 4px 0;
+  border-bottom: 1px solid var(--border-subtle, var(--border));
+  vertical-align: top;
+}
+.stage-conditions-row-system td {
+  color: var(--text-dim);
+  font-style: italic;
+}
