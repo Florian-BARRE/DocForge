@@ -31,15 +31,21 @@ class BgeRerankerConfig(BaseModel):
 
     Attributes:
         id: Provider discriminator — always "bge_reranker".
+        locality: "local" (self-hosted TEI) or "external" (remote TEI endpoint). Editable.
         base_url: TEI reranker server URL (e.g. ``http://reranker:80``).
+        api_key: Optional bearer token (a remote TEI endpoint may require it).
         batch_size: Maximum texts per HTTP request to TEI.
     """
 
-    _label: ClassVar[str] = "BGE-Reranker-v2-m3 — local cross-encoder reranker (TEI)"
+    _label: ClassVar[str] = "BGE-Reranker-v2-m3 — cross-encoder reranker via TEI (local or external)"
     _category: ClassVar[str] = "rerank"
 
     id: Literal["bge_reranker"] = "bge_reranker"
+    locality: Literal["local", "external"] = Field(
+        default="local", description="'local' (self-hosted TEI) or 'external' (remote TEI endpoint)."
+    )
     base_url: str = Field(default="http://reranker:80", description="TEI reranker server URL.")
+    api_key: str = Field(default="", description="Optional bearer token (remote TEI endpoints may require it).")
     batch_size: int = Field(default=32, ge=1, le=256, description="Max texts per batch request.")
 
     @model_validator(mode="before")
@@ -55,7 +61,12 @@ class BgeRerankerConfig(BaseModel):
         Returns:
             BgeRerankProvider: Ready-to-use reranking provider instance.
         """
-        return BgeRerankProvider(base_url=self.base_url, batch_size=self.batch_size)
+        return BgeRerankProvider(
+            base_url=self.base_url,
+            batch_size=self.batch_size,
+            locality=self.locality,
+            api_key=self.api_key,
+        )
 
     def merge_defaults(self, cfg: Any) -> BgeRerankerConfig:
         """
@@ -69,6 +80,7 @@ class BgeRerankerConfig(BaseModel):
         """
         return self.model_copy(update={
             "base_url": self.base_url or getattr(cfg, "BGE_RERANKER_URL", self.base_url),
+            "api_key": self.api_key or getattr(cfg, "BGE_RERANKER_API_KEY", ""),
             "batch_size": self.batch_size or getattr(cfg, "BGE_RERANKER_BATCH_SIZE", self.batch_size),
         })
 

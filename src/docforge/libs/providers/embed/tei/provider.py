@@ -34,7 +34,8 @@ class TeiEmbedProvider(EmbedProvider, LoggerClass):
     Attributes:
         name (str): ``"tei-bge-m3"``
         version (str): ``"BAAI/bge-m3"`` (default model name used in cache keys).
-        runs_on (str): ``"local"`` — TEI is always a self-hosted service.
+        runs_on (str): ``"local"`` or ``"remote"`` — set from the locality flag (a TEI server
+            can be self-hosted or a remote endpoint, e.g. a hosted inference URL).
     """
 
     name: str = "tei-bge-m3"
@@ -45,6 +46,8 @@ class TeiEmbedProvider(EmbedProvider, LoggerClass):
         self,
         base_url: str,
         model: str = "",
+        locality: str = "local",
+        api_key: str = "",
         timeout_s: int = 60,
         batch_size: int = 32,
         embed_sparse: bool = True,
@@ -55,6 +58,9 @@ class TeiEmbedProvider(EmbedProvider, LoggerClass):
         Args:
             base_url (str): TEI server URL (e.g. ``http://tei:8080``).
             model (str): Model identifier for cache keys. Defaults to ``version`` (BGE-M3).
+            locality (str): "local" or "external" — sets runs_on for the device gate.
+            api_key (str): Optional bearer token (sent as Authorization when non-empty; a
+                remote TEI endpoint may require it, a local one usually does not).
             timeout_s (int): HTTP timeout in seconds.
             batch_size (int): Maximum texts per batch request.
             embed_sparse (bool): When True, also request sparse (BM25) vectors.
@@ -65,7 +71,12 @@ class TeiEmbedProvider(EmbedProvider, LoggerClass):
         self._timeout_s = timeout_s
         self._batch_size = batch_size
         self._embed_sparse = embed_sparse
-        self.logger.debug(f"TeiEmbedProvider: model={self._model} url={self._base_url}")
+        # Locality drives the device gate; auth header is added only when a key is supplied.
+        self.runs_on = "remote" if locality == "external" else "local"
+        self._headers: dict[str, str] = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+        self.logger.debug(
+            f"TeiEmbedProvider: locality={locality} model={self._model} url={self._base_url}"
+        )
 
     @property
     def dimension(self) -> int:
@@ -120,7 +131,7 @@ class TeiEmbedProvider(EmbedProvider, LoggerClass):
             httpx.HTTPStatusError: If the server returns a non-2xx status.
         """
         async with httpx.AsyncClient(timeout=timeout_s) as client:
-            response = await client.get(f"{self._base_url}/health")
+            response = await client.get(f"{self._base_url}/health", headers=self._headers)
             response.raise_for_status()
         self.logger.debug(f"TeiEmbedProvider: health check OK ({self._base_url}/health)")
 
@@ -145,6 +156,7 @@ class TeiEmbedProvider(EmbedProvider, LoggerClass):
             dense_resp = await client.post(
                 f"{self._base_url}/embed",
                 json={"inputs": texts, "normalize": True, "truncate": True},
+                headers=self._headers,
             )
             dense_resp.raise_for_status()
             dense: list[list[float]] = dense_resp.json()
@@ -155,6 +167,7 @@ class TeiEmbedProvider(EmbedProvider, LoggerClass):
                 sparse_resp = await client.post(
                     f"{self._base_url}/embed_sparse",
                     json={"inputs": texts, "truncate": True},
+                    headers=self._headers,
                 )
                 sparse_resp.raise_for_status()
                 # TEI returns: [[{"index": int, "value": float}, ...], ...]

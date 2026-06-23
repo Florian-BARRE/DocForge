@@ -22,20 +22,29 @@ class BgeRerankProvider(LoggerClass):
     Attributes:
         _base_url (str): TEI server base URL (e.g. ``http://reranker:80``).
         _batch_size (int): Maximum number of texts per HTTP request.
+        runs_on (str): "local" or "remote" — set from the locality flag.
     """
 
-    def __init__(self, base_url: str, batch_size: int) -> None:
+    runs_on: str = "local"
+
+    def __init__(self, base_url: str, batch_size: int, locality: str = "local", api_key: str = "") -> None:
         """
         Initialize the BGE reranking provider.
 
         Args:
             base_url (str): TEI server base URL (e.g. ``http://reranker:80``).
             batch_size (int): Maximum number of texts per HTTP request to TEI.
+            locality (str): "local" or "external" — sets runs_on for the device gate.
+            api_key (str): Optional bearer token (sent as Authorization when non-empty).
         """
         LoggerClass.__init__(self)
         self._base_url = base_url.rstrip("/")
         self._batch_size = batch_size
-        self.logger.info(f"BgeRerankProvider initialized — url={self._base_url} batch_size={self._batch_size}")
+        self.runs_on = "remote" if locality == "external" else "local"
+        self._headers: dict[str, str] = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+        self.logger.info(
+            f"BgeRerankProvider initialized — locality={locality} url={self._base_url} batch_size={self._batch_size}"
+        )
 
     async def rerank(self, query: str, texts: list[str]) -> list[float]:
         """
@@ -102,6 +111,7 @@ class BgeRerankProvider(LoggerClass):
         response = await client.post(
             f"{self._base_url}/rerank",
             json={"query": query, "texts": texts, "truncate": True},
+            headers=self._headers,
         )
         response.raise_for_status()
         data = response.json()
