@@ -295,22 +295,23 @@ export function IngestionConditionsPanel({
       <div className="stage-conditions-section">
         <div className="stage-conditions-title">Metadata schema</div>
 
-        <table className="stage-conditions-table">
+        <table className="stage-conditions-table meta-schema-table">
           <thead>
             <tr>
               <th>Field</th>
               <th>Type</th>
-              <th title="Required">Req.</th>
-              <th title="Filterable">Flt.</th>
-              <th title="Lexical search">Lex.</th>
-              <th title="Semantic search">Sem.</th>
+              <th title="Required — must be provided at ingestion">Req.</th>
+              <th title="Filterable — available as a search filter">Flt.</th>
+              <th title="Lexical — included in full-text BM25 search">Lex.</th>
+              <th title="Semantic — embedded for vector search">Sem.</th>
+              <th title="Origin of the field">Origin</th>
               <th></th>
             </tr>
           </thead>
           <tbody>
-            {/* User-defined editable rows */}
+            {/* User-defined editable rows — shown first */}
             {userFields.map((f, idx) => (
-              <tr key={idx}>
+              <tr key={idx} className="meta-schema-row-user">
                 <td>
                   <input
                     type="text"
@@ -335,64 +336,50 @@ export function IngestionConditionsPanel({
                     {FIELD_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                   </select>
                 </td>
-                <td style={{ textAlign: 'center' }}>
-                  <input
-                    type="checkbox"
-                    checked={f.required}
-                    onChange={e => updateUserField(idx, 'required', e.target.checked)}
-                  />
+                <td className="meta-schema-check">
+                  <input type="checkbox" checked={f.required}    onChange={e => updateUserField(idx, 'required',    e.target.checked)} />
                 </td>
-                <td style={{ textAlign: 'center' }}>
-                  <input
-                    type="checkbox"
-                    checked={f.filterable}
-                    onChange={e => updateUserField(idx, 'filterable', e.target.checked)}
-                  />
+                <td className="meta-schema-check">
+                  <input type="checkbox" checked={f.filterable}  onChange={e => updateUserField(idx, 'filterable',  e.target.checked)} />
                 </td>
-                <td style={{ textAlign: 'center' }}>
-                  <input
-                    type="checkbox"
-                    checked={f.lexical}
-                    onChange={e => updateUserField(idx, 'lexical', e.target.checked)}
-                  />
+                <td className="meta-schema-check">
+                  <input type="checkbox" checked={f.lexical}     onChange={e => updateUserField(idx, 'lexical',     e.target.checked)} />
                 </td>
-                <td style={{ textAlign: 'center' }}>
-                  <input
-                    type="checkbox"
-                    checked={f.semantic}
-                    onChange={e => updateUserField(idx, 'semantic', e.target.checked)}
-                  />
+                <td className="meta-schema-check">
+                  <input type="checkbox" checked={f.semantic}    onChange={e => updateUserField(idx, 'semantic',    e.target.checked)} />
                 </td>
                 <td>
-                  <button
-                    type="button"
-                    className="btn-icon"
-                    aria-label="Remove field"
-                    onClick={() => removeUserField(idx)}
-                    style={{ fontSize: 12 }}
-                  >
-                    ×
-                  </button>
+                  <span className="tag meta-tag-user">user</span>
+                </td>
+                <td>
+                  <button type="button" className="btn-icon" aria-label="Remove field" onClick={() => removeUserField(idx)}>×</button>
                 </td>
               </tr>
             ))}
 
-            {/* System fields — read-only */}
+            {/* System fields — read-only, clearly labeled */}
             {systemFields.map(f => (
-              <tr key={f.field_name} className="stage-conditions-row-system">
-                <td className="mono" style={{ fontSize: 11 }}>{f.field_name}</td>
-                <td style={{ color: 'var(--text-muted)' }}>{f.field_type}</td>
-                <td style={{ textAlign: 'center', color: f.required ? 'var(--s-done)' : 'var(--text-dim)' }}>
-                  {f.required ? '✓' : '—'}
+              <tr key={f.field_name} className="stage-conditions-row-system meta-schema-row-system">
+                <td className="mono">{f.field_name}</td>
+                <td>{f.field_type}{f.enum_values && f.enum_values.length > 0 && (
+                  <span className="meta-enum-hint" title={f.enum_values.join(', ')}> [{f.enum_values.join('|')}]</span>
+                )}</td>
+                <td className="meta-schema-check">{f.required   ? <span className="meta-flag meta-flag-on">✓</span> : <span className="meta-flag">—</span>}</td>
+                <td className="meta-schema-check">{f.filterable ? <span className="meta-flag meta-flag-on">✓</span> : <span className="meta-flag">—</span>}</td>
+                <td className="meta-schema-check">{f.lexical    ? <span className="meta-flag meta-flag-on">✓</span> : <span className="meta-flag">—</span>}</td>
+                <td className="meta-schema-check">{f.semantic   ? <span className="meta-flag meta-flag-on">✓</span> : <span className="meta-flag">—</span>}</td>
+                <td>
+                  <span className="tag meta-tag-system">system</span>
                 </td>
-                <td style={{ textAlign: 'center', color: 'var(--text-dim)' }}>{f.filterable ? '✓' : '—'}</td>
-                <td style={{ textAlign: 'center', color: 'var(--text-dim)' }}>{f.lexical    ? '✓' : '—'}</td>
-                <td style={{ textAlign: 'center', color: 'var(--text-dim)' }}>{f.semantic   ? '✓' : '—'}</td>
-                <td><span className="tag" style={{ fontSize: 10, opacity: 0.6 }}>sys</span></td>
+                <td></td>
               </tr>
             ))}
           </tbody>
         </table>
+
+        {metaFields.length === 0 && (
+          <div className="stage-config-empty">No metadata fields defined yet.</div>
+        )}
 
         <button type="button" className="btn btn-ghost" style={{ marginTop: 8, fontSize: 12 }} onClick={addField}>
           + Add field

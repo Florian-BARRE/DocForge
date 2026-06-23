@@ -2888,3 +2888,126 @@ input[type="range"]::-webkit-slider-thumb:hover { background: var(--text-muted);
 .stage-conditions-table td {
   vertical-align: middle;
 }
+
+/* ── Metadata Schema Table ── */
+.meta-schema-table th,
+.meta-schema-table td {
+  font-size: 11px;
+  padding: 3px 5px 3px 0;
+}
+.meta-schema-check {
+  text-align: center;
+  width: 28px;
+}
+.meta-schema-row-user td {
+  color: var(--text);
+}
+.meta-schema-row-system td {
+  color: var(--text-dim);
+  font-size: 11px;
+}
+.meta-flag {
+  color: var(--text-dim);
+}
+.meta-flag-on {
+  color: var(--s-done);
+}
+.meta-tag-user {
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  color: var(--accent);
+  font-size: 10px;
+}
+.meta-tag-system {
+  background: color-mix(in srgb, var(--text-dim) 15%, transparent);
+  color: var(--text-dim);
+  font-size: 10px;
+}
+.meta-enum-hint {
+  font-size: 10px;
+  color: var(--text-dim);
+  font-style: italic;
+}
+
+/* ── Metadata Input Form (DocumentsTab) ── */
+.metadata-form {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+.metadata-form-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  background: var(--surface-raised);
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  color: var(--text-muted);
+  font-size: 12px;
+  transition: background 0.15s;
+}
+.metadata-form-toggle:hover {
+  background: var(--hover);
+}
+.metadata-form-chevron {
+  font-size: 10px;
+  color: var(--text-dim);
+}
+.metadata-form-label {
+  font-weight: 500;
+  color: var(--text);
+}
+.metadata-form-status {
+  margin-left: auto;
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 8px;
+}
+.metadata-form-status-warn {
+  background: color-mix(in srgb, var(--s-error) 15%, transparent);
+  color: var(--s-error);
+}
+.metadata-form-status-ok {
+  background: color-mix(in srgb, var(--s-done) 15%, transparent);
+  color: var(--s-done);
+}
+.metadata-form-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px 12px;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+}
+.metadata-form-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.metadata-form-field-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 140px;
+  font-size: 12px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+.metadata-form-required {
+  color: var(--s-error);
+  font-weight: 700;
+}
+.metadata-form-type {
+  font-size: 10px;
+  color: var(--text-dim);
+  background: var(--surface-raised);
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+.metadata-form-row .input {
+  flex: 1;
+}

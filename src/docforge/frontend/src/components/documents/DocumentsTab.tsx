@@ -9,13 +9,15 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 // ====== Internal Project Imports ======
 import {
   deleteDocument,
+  getConfigState,
   ingestDocument,
   listDocuments,
   reingestDocument,
 } from '../../api/client'
-import type { Document } from '../../api/types'
+import type { ConfigState, Document, MetaField } from '../../api/types'
 import { DocDetailView } from './DocDetailView'
 import { DocRow } from './DocRow'
+import { MetadataInputForm } from './MetadataInputForm'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -69,6 +71,13 @@ export function DocumentsTab({ collectionId, onTrace }: DocumentsTabProps) {
   // When set, the detail view for this document id replaces the list.
   const [detailDocId, setDetailDocId] = useState<string | null>(null)
 
+  // Collection config state — used to derive user-defined metadata fields for the form.
+  const [configState, setConfigState] = useState<ConfigState | null>(null)
+  // Metadata values the user has entered — passed to ingestDocument on upload.
+  const [metaValues, setMetaValues]   = useState<Record<string, unknown>>({})
+  // Whether the metadata input form is expanded.
+  const [metaOpen, setMetaOpen]       = useState(false)
+
   // Hidden file input used for click-to-upload.
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -95,8 +104,18 @@ export function DocumentsTab({ collectionId, onTrace }: DocumentsTabProps) {
   useEffect(() => {
     setIsLoading(true)
     setUploadError(null)
+    setMetaValues({})
     fetchDocuments().finally(() => setIsLoading(false))
   }, [fetchDocuments])
+
+  // 1b. Fetch config state to derive user-defined metadata fields.
+  useEffect(() => {
+    let cancelled = false
+    getConfigState(collectionId)
+      .then(cfg => { if (!cancelled) setConfigState(cfg) })
+      .catch(() => { /* non-fatal */ })
+    return () => { cancelled = true }
+  }, [collectionId])
 
   // 2. Polling loop — active only while at least one document is in-flight.
   useEffect(() => {
@@ -136,8 +155,8 @@ export function DocumentsTab({ collectionId, onTrace }: DocumentsTabProps) {
     setUploadError(null)
 
     try {
-      // 2. Submit the file to the API.
-      await ingestDocument(collectionId, file)
+      // 2. Submit the file to the API, including any user-entered metadata.
+      await ingestDocument(collectionId, file, Object.keys(metaValues).length > 0 ? metaValues : undefined)
 
       // 3. Refresh the document list to show the new entry.
       await fetchDocuments()
@@ -278,6 +297,19 @@ export function DocumentsTab({ collectionId, onTrace }: DocumentsTabProps) {
       {uploadError && (
         <div className="documents-drop-error">{uploadError}</div>
       )}
+
+      {/* ── Metadata input form (user-defined fields only) ── */}
+      {configState && (() => {
+        const userFields: MetaField[] = configState.metadata_fields.filter(f => !f.is_system)
+        return (
+          <MetadataInputForm
+            fields={userFields}
+            onChange={setMetaValues}
+            isOpen={metaOpen}
+            onToggle={() => setMetaOpen(o => !o)}
+          />
+        )
+      })()}
 
       {/* ── Document list ── */}
       <div className="documents-list">
