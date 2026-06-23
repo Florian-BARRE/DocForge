@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import re
+import statistics
 from typing import Any
 
 # ====== Local Project Imports ======
@@ -165,6 +166,50 @@ class FieldIndexHelpers:
                 scores[cid] = scores.get(cid, 0.0) + w * (1.0 / (rrf_k + rank + 1))
         # 2. Sort by descending fused score and truncate to top_k
         ordered = sorted(scores.items(), key=lambda kv: kv[1], reverse=True)
+        return ordered[:top_k]
+
+    @staticmethod
+    def dbsf_fuse(
+        scored_lists: dict[str, list[tuple[str, float]]],
+        weights: dict[str, float],
+        top_k: int,
+    ) -> list[tuple[str, float]]:
+        """
+        Combine per-vector scored lists with Distribution-Based Score Fusion (DBSF).
+
+        Each vector's raw similarity scores are normalized to [0, 1] using 3-sigma
+        bounds (``mean ± 3·std``) so heterogeneous score scales (cosine vs. BM25) become
+        comparable, then summed with per-vector weights.  This is Qdrant's DBSF strategy
+        reproduced client-side so it composes with the multi-field weighted plan.
+
+        Args:
+            scored_lists (dict): vector_name → ordered list of ``(chunk_id, raw_score)``.
+            weights (dict): vector_name → fusion weight (missing → 1.0).
+            top_k (int): Number of fused results to return.
+
+        Returns:
+            list[tuple[str, float]]: ``(chunk_id, fused_score)`` ordered by descending score.
+        """
+        totals: dict[str, float] = {}
+        # 1. Per vector: normalize scores via 3-sigma bounds, accumulate weighted sum
+        for vector_name, items in scored_lists.items():
+            w = weights.get(vector_name, 1.0)
+            if w <= 0 or not items:
+                continue
+            raw = [s for _, s in items]
+            if len(raw) == 1:
+                lo, hi = raw[0], raw[0]
+            else:
+                mean = statistics.fmean(raw)
+                std = statistics.pstdev(raw)
+                lo, hi = mean - 3.0 * std, mean + 3.0 * std
+            span = hi - lo
+            for cid, score in items:
+                norm = 0.0 if span <= 0 else (score - lo) / span
+                norm = min(1.0, max(0.0, norm))
+                totals[cid] = totals.get(cid, 0.0) + w * norm
+        # 2. Sort by descending fused score and truncate to top_k
+        ordered = sorted(totals.items(), key=lambda kv: kv[1], reverse=True)
         return ordered[:top_k]
 
     @staticmethod

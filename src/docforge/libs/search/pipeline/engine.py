@@ -21,6 +21,7 @@ from libs.config.pipeline.stages.search_config import SearchConfig
 from libs.providers.embed.base import EmbedProvider
 from libs.providers.llm.base import LLMProvider
 from libs.providers.rerank.base import RerankProvider
+from libs.search.field_index import RetrievalTuning
 from libs.search.hybrid.models import SearchResult
 from libs.search.hybrid.service import HybridSearchService
 
@@ -74,6 +75,9 @@ class SearchPipelineEngine(LoggerClass):
         self._retrieval = retrieval
         self._reranker = reranker
         self._llm = llm
+
+        # Resolve the runtime retrieval tuning once (fusion / candidates / threshold / weights)
+        self._tuning = RetrievalTuning.from_config(getattr(config, "retrieve", None))
 
         # Instantiate sub-stages from injected providers
         self._transform = QueryTransformStage(config=config.query_transform, llm=llm)
@@ -137,6 +141,7 @@ class SearchPipelineEngine(LoggerClass):
                 metadata_fields=metadata_fields,
                 weight_overrides=weight_overrides,
                 embed_provider=self._embed,
+                tuning=self._tuning,
             )
         else:
             # Multi-query: fetch candidates for each variant in parallel, then RRF-fuse
@@ -150,10 +155,11 @@ class SearchPipelineEngine(LoggerClass):
                     metadata_fields=metadata_fields,
                     weight_overrides=weight_overrides,
                     embed_provider=self._embed,
+                    tuning=self._tuning,
                 )
                 for variant in variants
             ])
-            candidates = _rrf_fuse(result_lists, k=60)[:candidate_k]
+            candidates = _rrf_fuse(result_lists, k=self._tuning.rrf_k)[:candidate_k]
 
         # 4. Rerank (if enabled)
         if self._rerank_stage is not None:
@@ -203,6 +209,7 @@ class SearchPipelineEngine(LoggerClass):
             metadata_fields=metadata_fields,
             weight_overrides=weight_overrides,
             embed_provider=self._embed,
+            tuning=self._tuning,
         )
 
         # 3. Rerank candidates when enabled

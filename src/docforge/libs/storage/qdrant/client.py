@@ -13,7 +13,7 @@ from loggerplusplus import LoggerClass
 from qdrant_client import AsyncQdrantClient
 
 # ====== Internal Project Imports ======
-from libs.search.field_index import CONTENT_DENSE, CONTENT_SPARSE
+from libs.search.field_index import CONTENT_DENSE, CONTENT_SPARSE, RetrievalTuning
 
 # ====== Local Project Imports ======
 from .collection_admin import QdrantCollectionAdmin
@@ -285,13 +285,15 @@ class QdrantStorageClient(LoggerClass):
         weights: dict[str, float],
         top_k: int = 10,
         payload_filter: dict | None = None,
+        tuning: RetrievalTuning | None = None,
     ) -> list[dict[str, Any]]:
         """
-        Multi-field hybrid retrieval with weighted Reciprocal Rank Fusion (spec §9).
+        Multi-field hybrid retrieval with configurable fusion (spec §9).
 
         The query is embedded once; it is compared against each enabled named vector
         (content + per-field dense/sparse). Each vector yields a ranked candidate list; the
-        lists are fused client-side with per-vector weights (Qdrant's native RRF is unweighted).
+        lists are fused client-side per ``tuning`` (weighted RRF or DBSF) with per-vector
+        weights, so arbitrary multi-field weighting is preserved.
 
         Args:
             collection_name (str): Target collection.
@@ -302,11 +304,12 @@ class QdrantStorageClient(LoggerClass):
             weights (dict): vector_name → fusion weight.
             top_k (int): Number of fused results to return.
             payload_filter (dict | None): Raw Qdrant filter dict.
+            tuning (RetrievalTuning | None): Fusion / candidate sizing / threshold tuning.
 
         Returns:
             list[dict]: ``id``, ``score`` (fused), ``payload`` for the top_k results.
         """
-        # 1. Run the shared search pipeline (ranked lists → RRF → hydration)
+        # 1. Run the shared search pipeline (ranked lists → fusion → hydration)
         outcome = await QdrantSearchHelpers.run_multi_search(
             client=self._require_client(),
             collection_name=collection_name,
@@ -317,12 +320,13 @@ class QdrantStorageClient(LoggerClass):
             weights=weights,
             top_k=top_k,
             payload_filter=payload_filter,
+            tuning=tuning,
         )
 
         # 2. Return only the hydrated, rank-ordered results
         results = outcome["results"]
         self.logger.debug(
-            f"Qdrant weighted-RRF search → {collection_name!r} "
+            f"Qdrant {(tuning or RetrievalTuning()).fusion} search → {collection_name!r} "
             f"vectors={len(outcome['ranked'])} top_k={top_k} results={len(results)}"
         )
         return results
@@ -337,6 +341,7 @@ class QdrantStorageClient(LoggerClass):
         weights: dict[str, float],
         top_k: int = 10,
         payload_filter: dict | None = None,
+        tuning: RetrievalTuning | None = None,
     ) -> dict[str, Any]:
         """
         Like :meth:`multi_search`, but also exposes the fusion internals for debugging.
@@ -346,7 +351,7 @@ class QdrantStorageClient(LoggerClass):
                 "candidate_limit": int}`` — the per-vector ranked lists, the fused order, and
                 the hydrated winners. Lets the UI explain *why* a chunk ranked where it did.
         """
-        # 1. Run the shared search pipeline (ranked lists → RRF → hydration)
+        # 1. Run the shared search pipeline (ranked lists → fusion → hydration)
         outcome = await QdrantSearchHelpers.run_multi_search(
             client=self._require_client(),
             collection_name=collection_name,
@@ -357,6 +362,7 @@ class QdrantStorageClient(LoggerClass):
             weights=weights,
             top_k=top_k,
             payload_filter=payload_filter,
+            tuning=tuning,
         )
 
         # 2. Reshape the fused pairs into JSON-friendly dicts for the debug view

@@ -5,7 +5,14 @@ from .embed_config import EmbedConfig
 from .enrich_config import EnrichConfig
 from .heading_rule import AtomicConfig, HeadingRule
 from .parse_config import ParseConfig
-from .search_config import QueryTransformConfig, RerankConfig, SearchConfig
+from .search_config import (
+    GroupingConfig,
+    MmrConfig,
+    QueryTransformConfig,
+    RerankConfig,
+    RetrieveConfig,
+    SearchConfig,
+)
 
 # ─────────────────── Public API ─────────────────────────────────────── #
 __all__ = [
@@ -19,4 +26,7 @@ __all__ = [
     "SearchConfig",
     "QueryTransformConfig",
     "RerankConfig",
-]
+    "RetrieveConfig",
+    "GroupingConfig",
+    "MmrConfig",
+]

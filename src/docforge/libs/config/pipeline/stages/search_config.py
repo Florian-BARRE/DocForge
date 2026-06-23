@@ -143,19 +143,136 @@ class RerankConfig(BaseModel):
         return self
 
 
+class GroupingConfig(BaseModel):
+    """
+    Configuration for document-level result grouping (Qdrant query_points_groups).
+
+    When enabled, results are grouped by a payload field (default ``document_id``)
+    so the response carries the top documents each with their best chunks, rather
+    than a flat chunk list.  When disabled (the default), chunk-level results are
+    returned unchanged — identical to the pre-grouping behavior.
+
+    Attributes:
+        enabled: Whether to group results by ``group_by``.
+        group_by: Payload field to group on (must be a filterable/indexed field).
+        group_size: Maximum chunks kept per group.
+    """
+
+    enabled: bool = Field(default=False, description="Group results by document (or another field).")
+    group_by: str = Field(
+        default="document_id",
+        description="Payload field to group on (must be filterable / indexed).",
+    )
+    group_size: int = Field(
+        default=3, ge=1, le=20, description="Maximum chunks returned per group."
+    )
+
+
+class MmrConfig(BaseModel):
+    """
+    Configuration for Maximal Marginal Relevance (MMR) diversity re-ranking.
+
+    When enabled, the fused candidate list is re-ordered to penalize chunks too
+    similar to already-selected ones, trading some relevance for diversity.
+    When disabled (the default), candidates keep their pure-relevance order.
+
+    Attributes:
+        enabled: Whether to apply MMR diversity re-ordering.
+        diversity: 0.0 = pure relevance, 1.0 = pure diversity.
+        candidates_limit: Pool size considered before MMR selection.
+    """
+
+    enabled: bool = Field(default=False, description="Apply MMR diversity re-ordering.")
+    diversity: float = Field(
+        default=0.5, ge=0.0, le=1.0,
+        description="0.0 = pure relevance, 1.0 = pure diversity.",
+    )
+    candidates_limit: int = Field(
+        default=100, ge=1,
+        description="Pool size considered before MMR selection.",
+    )
+
+
+class RetrieveConfig(BaseModel):
+    """
+    Core retrieval tuning — fusion, candidate sizing, thresholds, and per-field weights.
+
+    Every field defaults to the historical hard-coded value, so an absent or empty
+    ``retrieve`` block reproduces the pre-existing behavior exactly (weighted RRF with
+    k=60, candidate_limit = max(top_k*3, 20), all vectors, no score threshold).
+
+    Attributes:
+        vector_mode: Which named vectors to query — "hybrid" (dense + sparse),
+            "dense" (semantic only), or "sparse" (keyword/BM25 only).
+        fusion: Fusion method — "rrf" (reciprocal rank) or "dbsf" (distribution-based score).
+        rrf_k: RRF rank constant (larger → flatter rank influence).
+        candidate_multiplier: candidate_limit = max(top_k * this, min_candidates).
+        min_candidates: Floor for candidate_limit regardless of top_k.
+        score_threshold: Per-vector minimum similarity; None disables the cutoff.
+        field_weights: Per-field fusion weight (applies to that field's dense + sparse
+            vectors); missing field → weight 1.0.
+        content_dense_weight: Fusion weight for the chunk-body dense vector.
+        content_sparse_weight: Fusion weight for the chunk-body BM25 vector.
+        grouping: Document-level grouping settings.
+        mmr: MMR diversity re-ranking settings.
+    """
+
+    vector_mode: Literal["hybrid", "dense", "sparse"] = Field(
+        default="hybrid",
+        description="Vectors to query: hybrid (both), dense (semantic), or sparse (keyword).",
+    )
+    fusion: Literal["rrf", "dbsf"] = Field(
+        default="rrf",
+        description="Fusion method: rrf (reciprocal rank) or dbsf (distribution-based score).",
+    )
+    rrf_k: int = Field(default=60, ge=1, description="RRF rank constant.")
+    candidate_multiplier: int = Field(
+        default=3, ge=1,
+        description="candidate_limit = max(top_k * multiplier, min_candidates).",
+    )
+    min_candidates: int = Field(
+        default=20, ge=1, description="Floor for candidate_limit."
+    )
+    score_threshold: float | None = Field(
+        default=None, description="Per-vector minimum similarity score; None disables."
+    )
+    field_weights: dict[str, float] = Field(
+        default_factory=dict,
+        description="Per-field fusion weight (applies to dense + sparse vectors of that field).",
+    )
+    content_dense_weight: float = Field(
+        default=1.0, ge=0.0, description="Fusion weight for the chunk-body dense vector."
+    )
+    content_sparse_weight: float = Field(
+        default=1.0, ge=0.0, description="Fusion weight for the chunk-body BM25 vector."
+    )
+    grouping: GroupingConfig = Field(
+        default_factory=GroupingConfig, description="Document-level grouping settings."
+    )
+    mmr: MmrConfig = Field(
+        default_factory=MmrConfig, description="MMR diversity re-ranking settings."
+    )
+
+
 class SearchConfig(BaseModel):
     """
     Root search pipeline configuration.
 
-    Composes query transform + rerank settings.  Stored inside the collection's
-    pipeline JSONB column as ``pipeline.search``.  Defaults produce behavior
-    identical to the pre-P7 search path (no transform, no rerank).
+    Composes retrieval tuning + query transform + rerank settings.  Stored inside
+    the collection's pipeline JSONB column as ``pipeline.search``.  Defaults produce
+    behavior identical to the pre-P7 search path (no transform, no rerank, weighted
+    RRF retrieval with the historical constants).
 
     Attributes:
+        retrieve: Core retrieval tuning (fusion, candidates, thresholds, weights).
         query_transform: Query expansion / rewriting settings.
         rerank: Cross-encoder reranking settings.
     """
 
+    retrieve: RetrieveConfig = Field(
+        default_factory=RetrieveConfig,
+        description="Core retrieval tuning (fusion, candidate sizing, thresholds, weights).",
+    )
     query_transform: QueryTransformConfig = Field(
         default_factory=QueryTransformConfig,
         description="Query transformation settings (rewrite / HyDE / multi-query).",

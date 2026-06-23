@@ -17,13 +17,13 @@ from typing import TYPE_CHECKING, Any
 from loggerplusplus import LoggerClass
 
 # ====== Local Project Imports ======
-from .field_index import CONTENT_DENSE, CONTENT_SPARSE, FieldIndexHelpers
-from .hybrid_search_models import SearchResult
+from ..field_index import CONTENT_DENSE, CONTENT_SPARSE, FieldIndexHelpers, RetrievalTuning
+from .models import SearchResult
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
-    from libs.providers.embed.local.tei import TeiEmbedProvider
+    from libs.providers.embed.base import EmbedProvider
     from libs.storage.postgres.repositories.chunk_repo import ChunkRepository
 
 
@@ -42,20 +42,26 @@ class HybridSearchHelpers:
     @staticmethod
     def resolve_vector_plan(
         metadata_fields: list[Any] | None,
+        tuning: RetrievalTuning,
         weight_overrides: dict[str, float] | None,
     ) -> tuple[list[str], list[str], dict[str, float]]:
         """
-        Build the searched named vectors and fusion weights from the collection schema.
+        Build the searched named vectors and fusion weights from the schema + tuning.
 
-        content_* vectors are always searched (weight 1.0); each semantic metadata
-        field adds a dense named vector, each lexical field a sparse one, each with
-        its schema weight (spec §9).  weight_overrides win over schema weights.
+        content_* vectors are always searched; each semantic metadata field adds a dense
+        named vector, each lexical field a sparse one (spec §9).  Weights are layered:
+        content weights and per-field weights come from ``tuning`` (the collection's
+        search config), then ``weight_overrides`` (the request) win over everything.
+
+        ``tuning.vector_mode`` restricts the plan: "dense" drops every sparse vector,
+        "sparse" drops every dense vector, "hybrid" keeps both.
 
         Args:
-            metadata_fields (list | None): Collection schema fields; ``None`` or empty
-                list skips per-field vectors.
-            weight_overrides (dict[str, float] | None): Caller-supplied weight
-                overrides (highest priority).
+            metadata_fields (list | None): Collection schema fields; ``None``/empty skips
+                per-field vectors.
+            tuning (RetrievalTuning): vector_mode, content weights, per-field weights.
+            weight_overrides (dict[str, float] | None): Per-vector request overrides
+                (highest priority).
 
         Returns:
             tuple[list[str], list[str], dict[str, float]]: A triple of
@@ -65,18 +71,26 @@ class HybridSearchHelpers:
         # 1. Derive named-vector plan from the collection's metadata schema
         plan = FieldIndexHelpers.derive_vector_plan(metadata_fields or [])
 
-        # 2. Build the list of vectors to query: content always included first
-        dense_vectors = [CONTENT_DENSE, *plan.dense_vector_names]
-        sparse_vectors = [CONTENT_SPARSE, *plan.sparse_vector_names]
+        # 2. Honor vector_mode — which families participate
+        include_dense = tuning.vector_mode in ("hybrid", "dense")
+        include_sparse = tuning.vector_mode in ("hybrid", "sparse")
 
-        # 3. Seed weights with content defaults, then layer in schema field weights
-        weights: dict[str, float] = {CONTENT_DENSE: 1.0, CONTENT_SPARSE: 1.0}
+        # 3. Build the vector lists: content always first within each enabled family
+        dense_vectors = [CONTENT_DENSE, *plan.dense_vector_names] if include_dense else []
+        sparse_vectors = [CONTENT_SPARSE, *plan.sparse_vector_names] if include_sparse else []
+
+        # 4. Seed weights with content tuning, then per-field tuning (override schema 1.0)
+        weights: dict[str, float] = {}
+        if include_dense:
+            weights[CONTENT_DENSE] = tuning.content_dense_weight
+        if include_sparse:
+            weights[CONTENT_SPARSE] = tuning.content_sparse_weight
         for fv in plan.dense:
-            weights[fv.vector] = fv.weight
+            weights[fv.vector] = tuning.field_weights.get(fv.name, fv.weight)
         for fv in plan.sparse:
-            weights[fv.vector] = fv.weight
+            weights[fv.vector] = tuning.field_weights.get(fv.name, fv.weight)
 
-        # 4. Apply caller overrides (highest priority)
+        # 5. Apply caller overrides (highest priority)
         if weight_overrides:
             weights.update(weight_overrides)
 
@@ -117,22 +131,24 @@ class HybridSearchHelpers:
 
     @staticmethod
     async def embed_and_resolve(
-        embed_provider: TeiEmbedProvider,
+        embed_provider: EmbedProvider,
         query: str,
         metadata_fields: list[Any] | None,
+        tuning: RetrievalTuning,
         weight_overrides: dict[str, float] | None,
     ) -> tuple[list[float], dict[int, float] | None, list[str], list[str], dict[str, float]]:
         """
         Embed the query and resolve the per-field vector plan and fusion weights.
 
-        Shared front half of search and search_debug: a single TEI call yields the
-        dense + sparse query vectors, then the collection schema is turned into the
-        dense/sparse named-vector lists and their fusion weights.
+        Shared front half of search and search_debug: one embed call yields the
+        dense + sparse query vectors, then the collection schema + tuning are turned into
+        the dense/sparse named-vector lists and their fusion weights.
 
         Args:
-            embed_provider (TeiEmbedProvider): The embed provider for query encoding.
+            embed_provider (EmbedProvider): The embed provider for query encoding.
             query (str): Natural language query string.
             metadata_fields (list | None): Collection's metadata schema for per-field vectors.
+            tuning (RetrievalTuning): vector_mode + weights tuning.
             weight_overrides (dict[str, float] | None): Per-vector weight overrides.
 
         Returns:
@@ -143,9 +159,9 @@ class HybridSearchHelpers:
         dense_vec = embed_result.vectors[0]
         sparse_vec = embed_result.sparse[0] if embed_result.sparse else None
 
-        # 2. Resolve the multi-field vector plan + fusion weights from the schema
+        # 2. Resolve the multi-field vector plan + fusion weights from schema + tuning
         dense_vectors, sparse_vectors, weights = HybridSearchHelpers.resolve_vector_plan(
-            metadata_fields, weight_overrides
+            metadata_fields, tuning, weight_overrides
         )
         return dense_vec, sparse_vec, dense_vectors, sparse_vectors, weights
 

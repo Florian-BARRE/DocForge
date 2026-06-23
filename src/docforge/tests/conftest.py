@@ -129,9 +129,28 @@ def mock_job_repo() -> MagicMock:
 
 @pytest.fixture
 def mock_registry() -> MagicMock:
-    """Mock ProviderRegistry — describe_stages returns an empty stage list."""
+    """
+    Mock ProviderRegistry.
+
+    describe_stages returns an empty stage list.  build_search_pipeline returns a
+    real SearchPipelineEngine wrapping whatever retrieval service it is handed, so
+    search-route tests exercise the genuine engine → retrieval call path (the engine
+    delegates to retrieval.search / search_debug, which the tests assert on).
+    """
+    from libs.config.pipeline.stages.search_config import SearchConfig
+    from libs.search.pipeline.engine import SearchPipelineEngine
+
+    def _build_search_pipeline(pipeline: object, retrieval: object) -> SearchPipelineEngine:
+        raw_search = pipeline.get("search") if isinstance(pipeline, dict) else None
+        return SearchPipelineEngine(
+            config=SearchConfig.from_dict(raw_search),
+            embed_provider=MagicMock(),
+            retrieval=retrieval,
+        )
+
     registry = MagicMock()
     registry.describe_stages = MagicMock(return_value={"stages": []})
+    registry.build_search_pipeline = MagicMock(side_effect=_build_search_pipeline)
     return registry
 
 

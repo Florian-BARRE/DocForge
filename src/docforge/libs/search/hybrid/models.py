@@ -2,6 +2,8 @@
 # Pydantic-free data models for hybrid search results.
 # SearchResult is a plain dataclass consumed by the service layer and
 # mapped to API response models in the search router.
+# RetrievalTuning lives in libs.search.field_index (shared low-level module also
+# used by the Qdrant storage layer) and is re-exported here for convenience.
 
 # ====== Standard Library Imports ======
 from __future__ import annotations
