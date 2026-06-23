@@ -2,14 +2,16 @@
 // SearchStagePanel — hardcoded configuration panel for the four search pipeline stages
 // (transform, embed, retrieve, rerank).  Unlike StageConfigPanel it doesn't rely on
 // discovery fields; instead it reads and writes directly into configState.pipeline.search.
-// Changes are debounced 600 ms and persisted via updateConfig.
+// Edits accumulate in a local draft buffer (useConfigDraft) and are persisted only when
+// the user clicks Save in the ConfigSaveBar at the bottom. The embed stage is read-only.
 
 // ====== Third-Party Library Imports ======
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 
 // ====== Internal Project Imports ======
-import { updateConfig } from '../../api/client'
 import type { ConfigState, MetaField } from '../../api/types'
+import { useConfigDraft } from '../../hooks/useConfigDraft'
+import { ConfigSaveBar } from '../ui/ConfigSaveBar'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -26,8 +28,6 @@ interface SearchStagePanelProps {
   /** Called after a successful save so the parent can refresh its copy. */
   onSaved?: () => void
 }
-
-type SaveState = 'idle' | 'saving' | 'saved' | 'error'
 
 // Strategy type shared by several helpers.
 type TransformStrategy = 'none' | 'rewrite' | 'hyde' | 'multi_query'
@@ -79,9 +79,10 @@ function strategyDescription(strategy: TransformStrategy): string {
  *                  weights, grouping, MMR)
  *   - rerank     : enabled toggle + candidate_k + top_n
  *
- * All writable stages auto-save after a 600 ms debounce.  The patch sent to the
- * backend covers only the section that changed, wrapped as
- * `{ pipeline: { search: { <section>: ... } } }`.
+ * Edits stage a partial `pipeline.search` patch into the shared draft buffer;
+ * nothing is sent to the server until the user clicks Save in the bottom
+ * ConfigSaveBar. The patch is wrapped as `{ pipeline: { search: { ... } } }`.
+ * The embed stage is read-only and shows no save bar.
  *
  * Args:
  *   stageId:      Which stage to render.
@@ -95,77 +96,47 @@ export function SearchStagePanel({
   configState,
   onSaved,
 }: SearchStagePanelProps) {
-  const [saveState, setSaveState] = useState<SaveState>('idle')
-  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  // Prevents the first render from triggering an immediate save.
-  const skipNextSave = useRef(true)
+  // ── Draft buffer (shared explicit save/discard workflow) ──────────────────
+  const draft = useConfigDraft(collectionId, onSaved)
 
-  // Reset skip guard when the collection or stage changes.
-  useEffect(() => {
-    skipNextSave.current = true
-  }, [collectionId, stageId])
+  // Reset nonce: bumped on discard so the active section remounts and re-seeds
+  // its local form state from configState (which is unchanged on discard).
+  const [resetNonce, setResetNonce] = useState(0)
 
   /**
-   * Schedule a debounced PATCH to the backend.
+   * Stage a partial pipeline.search patch into the draft buffer.
    *
    * The patch covers only the section relevant to the active stage so other
    * search config sections are not accidentally overwritten.
    *
    * Args:
-   *   section: Key inside pipeline.search to update ('strategy', 'query_transform', 'retrieve', 'rerank').
-   *   value:   Partial value for that section.
+   *   patch: Partial pipeline.search patch to accumulate.
    */
-  const scheduleSave = useCallback(
-    (patch: Record<string, unknown>) => {
-      if (saveTimer.current) clearTimeout(saveTimer.current)
-      setSaveState('saving')
-      saveTimer.current = setTimeout(async () => {
-        try {
-          await updateConfig(
-            collectionId,
-            { pipeline: { search: patch } },
-            `Updated search ${stageId} config`,
-          )
-          setSaveState('saved')
-          onSaved?.()
-          setTimeout(() => setSaveState('idle'), 1500)
-        } catch {
-          setSaveState('error')
-          setTimeout(() => setSaveState('idle'), 3000)
-        }
-      }, 600)
-    },
-    [collectionId, stageId, onSaved],
-  )
-
-  /**
-   * Trigger a save unless this is the first call after a config seed.
-   *
-   * Args:
-   *   patch: Partial pipeline.search patch to persist.
-   */
-  function maybeSave(patch: Record<string, unknown>) {
-    if (skipNextSave.current) {
-      skipNextSave.current = false
-      return
-    }
-    scheduleSave(patch)
+  function handleSave(patch: Record<string, unknown>) {
+    draft.stage({ pipeline: { search: patch } })
   }
+
+  /** Discard the draft buffer and force the active section to re-seed. */
+  function handleDiscard() {
+    draft.discard()
+    setResetNonce(n => n + 1)
+  }
+
+  const searchCfg = extractSearchCfg(configState)
+  // Section key combines stage + nonce so a discard remounts the section,
+  // restoring its local state from the (unchanged) persisted config.
+  const sectionKey = `${stageId}-${resetNonce}`
 
   // ── Stage-specific sections ───────────────────────────────────────────────
 
   return (
     <div className="stage-config-panel">
-      {/* Auto-save indicator row */}
-      <div className="stage-config-save-indicator">
-        <SaveIndicator state={saveState} />
-      </div>
-
       {stageId === 'transform' && (
         <TransformSection
+          key={sectionKey}
           configState={configState}
-          onSave={maybeSave}
-          searchCfg={extractSearchCfg(configState)}
+          onSave={handleSave}
+          searchCfg={searchCfg}
         />
       )}
       {stageId === 'embed' && (
@@ -173,15 +144,27 @@ export function SearchStagePanel({
       )}
       {stageId === 'retrieve' && (
         <RetrieveSection
+          key={sectionKey}
           configState={configState}
-          searchCfg={extractSearchCfg(configState)}
-          onSave={maybeSave}
+          searchCfg={searchCfg}
+          onSave={handleSave}
         />
       )}
       {stageId === 'rerank' && (
         <RerankSection
-          searchCfg={extractSearchCfg(configState)}
-          onSave={maybeSave}
+          key={sectionKey}
+          searchCfg={searchCfg}
+          onSave={handleSave}
+        />
+      )}
+
+      {/* Save bar for all writable stages (embed is read-only). */}
+      {stageId !== 'embed' && (
+        <ConfigSaveBar
+          status={draft.status}
+          isDirty={draft.isDirty}
+          onSave={() => { void draft.save() }}
+          onDiscard={handleDiscard}
         />
       )}
     </div>
@@ -894,25 +877,4 @@ function RerankSection({ searchCfg, onSave }: RerankSectionProps) {
       )}
     </div>
   )
-}
-
-// ── SaveIndicator ─────────────────────────────────────────────────────────────
-
-/**
- * Inline transient feedback label for auto-save state.
- *
- * Returns null when state is 'idle' so the indicator row collapses cleanly.
- *
- * Args:
- *   state: Current save lifecycle state.
- */
-function SaveIndicator({ state }: { state: SaveState }) {
-  if (state === 'idle') return null
-  const meta: Record<string, { text: string; color: string }> = {
-    saving: { text: 'saving…', color: 'var(--text-dim)' },
-    saved:  { text: '✓ saved', color: 'var(--s-done)' },
-    error:  { text: '✗ error', color: 'var(--s-error)' },
-  }
-  const m = meta[state]
-  return <span style={{ color: m.color }}>{m.text}</span>
 }

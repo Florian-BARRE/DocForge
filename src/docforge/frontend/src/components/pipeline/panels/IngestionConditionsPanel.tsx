@@ -3,18 +3,20 @@
 // Displays and allows editing of top-level collection config fields:
 // supported_formats, max_file_size_bytes, unknown_field_policy, and
 // metadata_fields (user-defined only; system fields are read-only).
-// Changes are debounced (600 ms) and persisted via updateConfig.
+// Edits accumulate in a local draft buffer (useConfigDraft) and are persisted
+// only when the user clicks Save in the ConfigSaveBar at the bottom.
 
 // ====== Standard Library Imports ======
 // (none)
 
 // ====== Third-Party Library Imports ======
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { KeyboardEvent } from 'react'
 
 // ====== Internal Project Imports ======
-import { updateConfig } from '../../../api/client'
 import type { ConfigState, MetaField } from '../../../api/types'
+import { useConfigDraft } from '../../../hooks/useConfigDraft'
+import { ConfigSaveBar } from '../../ui/ConfigSaveBar'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -26,8 +28,6 @@ interface IngestionConditionsPanelProps {
   /** Called after a successful save so the parent can refresh its copy. */
   onSaved?: () => void
 }
-
-type SaveState = 'idle' | 'saving' | 'saved' | 'error'
 
 /** Field types available when adding a new metadata field. */
 const FIELD_TYPES = ['string', 'integer', 'float', 'boolean', 'date', 'list'] as const
@@ -46,8 +46,9 @@ const UNKNOWN_FIELD_POLICIES = ['reject', 'ignore', 'allow'] as const
  *   - unknown_field_policy → select
  *   - metadata_fields      → editable table (user fields) + read-only system rows
  *
- * Each of the four sections debounces its own saves so a format change
- * doesn't accidentally overwrite an in-flight metadata edit.
+ * Edits stage a top-level patch into the shared draft buffer; nothing is sent to
+ * the server until the user clicks Save in the bottom ConfigSaveBar. Discard (or
+ * a successful save) re-seeds the local form state from configState.
  *
  * Args:
  *   configState:  Current collection config.
@@ -59,6 +60,9 @@ export function IngestionConditionsPanel({
   collectionId,
   onSaved,
 }: IngestionConditionsPanelProps) {
+  // ── Draft buffer (shared explicit save/discard workflow) ──────────────────
+  const draft = useConfigDraft(collectionId, onSaved)
+
   // ── Local state seeded from configState ───────────────────────────────────
 
   const [formats, setFormats] = useState<string[]>(() => configState.supported_formats)
@@ -68,43 +72,29 @@ export function IngestionConditionsPanel({
   const [unknownPolicy, setUnknownPolicy] = useState(configState.unknown_field_policy)
   const [metaFields, setMetaFields] = useState<MetaField[]>(() => configState.metadata_fields)
 
-  // Re-seed when a different collection is selected or the parent refreshes.
+  // Reset nonce: bumped when configState changes OR on local discard, so the
+  // seed effect below can restore local form state from the persisted config.
+  const [resetNonce, setResetNonce] = useState(0)
+
+  // Bump the nonce whenever the parent provides a fresh configState.
+  useEffect(() => {
+    setResetNonce(n => n + 1)
+  }, [configState])
+
+  // Re-seed local form state from configState on mount, parent refresh, or discard.
   useEffect(() => {
     setFormats(configState.supported_formats)
     setMaxSizeMb(Math.round(configState.max_file_size_bytes / (1024 * 1024)))
     setUnknownPolicy(configState.unknown_field_policy)
     setMetaFields(configState.metadata_fields)
-  }, [configState])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resetNonce])
 
-  // ── Save state ────────────────────────────────────────────────────────────
-
-  const [saveState, setSaveState] = useState<SaveState>('idle')
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  /**
-   * Schedules a debounced config patch.
-   *
-   * Args:
-   *   patch: Partial config object to merge on the server.
-   */
-  const scheduleSave = useCallback(
-    (patch: Record<string, unknown>) => {
-      if (timerRef.current) clearTimeout(timerRef.current)
-      setSaveState('saving')
-      timerRef.current = setTimeout(async () => {
-        try {
-          await updateConfig(collectionId, patch, 'Updated ingestion conditions')
-          setSaveState('saved')
-          onSaved?.()
-          setTimeout(() => setSaveState('idle'), 1500)
-        } catch {
-          setSaveState('error')
-          setTimeout(() => setSaveState('idle'), 3000)
-        }
-      }, 600)
-    },
-    [collectionId, onSaved],
-  )
+  /** Discard the draft buffer and re-seed local form state from configState. */
+  function handleDiscard() {
+    draft.discard()
+    setResetNonce(n => n + 1)
+  }
 
   // ── Format chip input ─────────────────────────────────────────────────────
 
@@ -127,7 +117,7 @@ export function IngestionConditionsPanel({
     const next = [...formats, val]
     setFormats(next)
     setFormatInput('')
-    scheduleSave({ supported_formats: next })
+    draft.stage({ supported_formats: next })
   }
 
   /**
@@ -139,7 +129,7 @@ export function IngestionConditionsPanel({
   function removeFormat(fmt: string) {
     const next = formats.filter(f => f !== fmt)
     setFormats(next)
-    scheduleSave({ supported_formats: next })
+    draft.stage({ supported_formats: next })
   }
 
   // ── Max file size ─────────────────────────────────────────────────────────
@@ -152,7 +142,7 @@ export function IngestionConditionsPanel({
    */
   function handleMaxSizeChange(val: number) {
     setMaxSizeMb(val)
-    scheduleSave({ max_file_size_bytes: val * 1024 * 1024 })
+    draft.stage({ max_file_size_bytes: val * 1024 * 1024 })
   }
 
   // ── Unknown field policy ──────────────────────────────────────────────────
@@ -165,7 +155,7 @@ export function IngestionConditionsPanel({
    */
   function handlePolicyChange(val: string) {
     setUnknownPolicy(val)
-    scheduleSave({ unknown_field_policy: val })
+    draft.stage({ unknown_field_policy: val })
   }
 
   // ── Metadata fields table ─────────────────────────────────────────────────
@@ -185,7 +175,7 @@ export function IngestionConditionsPanel({
     const next = userFields.map((f, i) => i === idx ? { ...f, [key]: val } : f)
     const merged = [...next, ...systemFields]
     setMetaFields(merged)
-    scheduleSave({ metadata_fields: merged })
+    draft.stage({ metadata_fields: merged })
   }
 
   /**
@@ -198,7 +188,7 @@ export function IngestionConditionsPanel({
     const next = userFields.filter((_, i) => i !== idx)
     const merged = [...next, ...systemFields]
     setMetaFields(merged)
-    scheduleSave({ metadata_fields: merged })
+    draft.stage({ metadata_fields: merged })
   }
 
   /** Appends a blank user-defined metadata field row. */
@@ -215,18 +205,13 @@ export function IngestionConditionsPanel({
     const next = [...userFields, blank]
     const merged = [...next, ...systemFields]
     setMetaFields(merged)
-    // Don't save yet — user must fill in field_name first.
+    // Don't stage yet — user must fill in field_name first.
   }
 
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
     <div className="stage-conditions">
-      {/* Auto-save indicator */}
-      <div className="stage-config-save-indicator">
-        <SaveIndicator state={saveState} />
-      </div>
-
       {/* ── Supported formats ── */}
       <div className="stage-conditions-section">
         <div className="stage-conditions-title">Accepted formats</div>
@@ -320,9 +305,9 @@ export function IngestionConditionsPanel({
                     value={f.field_name}
                     onChange={e => updateUserField(idx, 'field_name', e.target.value)}
                     onBlur={e => {
-                      // Only save when field_name is non-empty to avoid orphan rows.
+                      // Only stage when field_name is non-empty to avoid orphan rows.
                       if (e.target.value.trim()) {
-                        scheduleSave({ metadata_fields: [...userFields, ...systemFields] })
+                        draft.stage({ metadata_fields: [...userFields, ...systemFields] })
                       }
                     }}
                   />
@@ -385,25 +370,14 @@ export function IngestionConditionsPanel({
           + Add field
         </button>
       </div>
+
+      {/* ── Save bar ── */}
+      <ConfigSaveBar
+        status={draft.status}
+        isDirty={draft.isDirty}
+        onSave={() => { void draft.save() }}
+        onDiscard={handleDiscard}
+      />
     </div>
   )
-}
-
-// ── SaveIndicator ─────────────────────────────────────────────────────────────
-
-/**
- * Inline transient feedback label for auto-save state.
- *
- * Args:
- *   state: Current save lifecycle state.
- */
-function SaveIndicator({ state }: { state: SaveState }) {
-  if (state === 'idle') return null
-  const meta: Record<string, { text: string; color: string }> = {
-    saving: { text: 'saving…', color: 'var(--text-dim)' },
-    saved:  { text: '✓ saved', color: 'var(--s-done)' },
-    error:  { text: '✗ error', color: 'var(--s-error)' },
-  }
-  const m = meta[state]
-  return <span style={{ color: m.color }}>{m.text}</span>
 }

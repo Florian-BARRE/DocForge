@@ -1,18 +1,21 @@
 // ====== Code Summary ======
 // Discovery-driven configuration panel for a single pipeline stage.
 // Filters the full discovery payload by `stage.fieldPathPrefix` and renders
-// all matching fields via DynamicFieldsGroup.  Changes auto-save via
-// updateConfig with a 600 ms debounce.
+// all matching fields via DynamicFieldsGroup. Edits accumulate in a local draft
+// buffer (useConfigDraft) and are persisted only when the user clicks Save in the
+// ConfigSaveBar at the bottom. The S0 case delegates to IngestionConditionsPanel,
+// which owns its own draft buffer and save bar.
 
 // ====== Standard Library Imports ======
 // (none)
 
 // ====== Third-Party Library Imports ======
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 
 // ====== Internal Project Imports ======
-import { updateConfig } from '../../../api/client'
 import type { ConfigState, DynamicField } from '../../../api/types'
+import { useConfigDraft } from '../../../hooks/useConfigDraft'
+import { ConfigSaveBar } from '../../ui/ConfigSaveBar'
 import { DynamicFieldsGroup } from '../../ui/DynamicFieldsGroup'
 
 // ====== Local Project Imports ======
@@ -34,20 +37,20 @@ interface StageConfigPanelProps {
   onSaved?: () => void
 }
 
-type SaveState = 'idle' | 'saving' | 'saved' | 'error'
-
 // ── Component ─────────────────────────────────────────────────────────────────
 
 /**
  * Single-stage configuration panel driven entirely by the discovery payload.
  *
- * No field names are hardcoded here.  The panel filters `dynamicFields` by
+ * No field names are hardcoded here. The panel filters `dynamicFields` by
  * `stage.fieldPathPrefix`, derives the current value from `configState`, and
  * renders all matching fields via {@link DynamicFieldsGroup}.
  *
- * Changes are debounced (600 ms) and persisted automatically via
- * `updateConfig`.  A save indicator (idle / saving / saved / error) is shown
- * in the panel header.
+ * Edits stage a nested patch (built from the fieldPathPrefix segments) into the
+ * shared draft buffer; nothing is sent to the server until the user clicks Save
+ * in the bottom ConfigSaveBar. For the S0 stage the editable conditions live in
+ * the nested {@link IngestionConditionsPanel}, which owns its own draft + save
+ * bar — so no save bar is rendered at this level for S0.
  *
  * Args:
  *   stage:        Stage definition that owns this panel.
@@ -86,62 +89,48 @@ export function StageConfigPanel({
     return (cursor && typeof cursor === 'object') ? (cursor as Record<string, unknown>) : {}
   }
 
+  // 3. Draft buffer (shared explicit save/discard workflow).
+  const draft = useConfigDraft(collectionId, onSaved)
+
   const [value, setValue] = useState<Record<string, unknown>>(() =>
     extractInitialValue(configState)
   )
-  const [saveState, setSaveState] = useState<SaveState>('idle')
-  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  // Skip the first save triggered by the initial config load to avoid
-  // immediately re-writing unchanged data back to the server.
-  const skipNextSave = useRef(true)
 
-  // Re-seed value when the parent loads a different collection or refreshes.
+  // Reset nonce: bumped when configState/prefix changes OR on local discard, so
+  // the seed effect below can restore local form state from the persisted config.
+  const [resetNonce, setResetNonce] = useState(0)
+
+  // Bump the nonce whenever the parent provides a fresh config or the stage changes.
   useEffect(() => {
-    setValue(extractInitialValue(configState))
-    setSaveState('idle')
-    skipNextSave.current = true
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    setResetNonce(n => n + 1)
   }, [configState, stage.fieldPathPrefix])
 
-  // 3. Debounced auto-save: fires 600 ms after the last user change.
-  //    Builds a nested patch object from the fieldPathPrefix segments so the
-  //    backend can apply it as a deep merge.
-  const scheduleSave = useCallback((newValue: Record<string, unknown>) => {
-    if (saveTimer.current) clearTimeout(saveTimer.current)
-    setSaveState('saving')
-    saveTimer.current = setTimeout(async () => {
-      try {
-        // Build nested patch: "pipeline.ingest" → { pipeline: { ingest: newValue } }
-        const parts = stage.fieldPathPrefix.split('.')
-        const patch = parts.reduceRight<Record<string, unknown>>(
-          (acc, key) => ({ [key]: acc }),
-          newValue as unknown as Record<string, unknown>,
-        )
-        await updateConfig(collectionId, patch, `Updated ${stage.label} config`)
-        setSaveState('saved')
-        onSaved?.()
-        setTimeout(() => setSaveState('idle'), 1500)
-      } catch {
-        setSaveState('error')
-        setTimeout(() => setSaveState('idle'), 3000)
-      }
-    }, 600)
-  }, [collectionId, stage.fieldPathPrefix, stage.label, onSaved])
+  // Re-seed local value on mount, parent refresh, stage change, or discard.
+  useEffect(() => {
+    setValue(extractInitialValue(configState))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resetNonce])
 
-  // 4. Handler for DynamicFieldsGroup changes.
-  function handleChange(newValue: Record<string, unknown>) {
-    setValue(newValue)
-    if (skipNextSave.current) {
-      skipNextSave.current = false
-      return
-    }
-    scheduleSave(newValue)
+  /** Discard the draft buffer and re-seed the local value from configState. */
+  function handleDiscard() {
+    draft.discard()
+    setResetNonce(n => n + 1)
   }
 
-  // 5. Compute the sub-prefix to pass to DynamicFieldsGroup so it strips the
-  //    stage prefix and groups by the next path segment (e.g. "ingest.parser"
-  //    after stripping "pipeline" becomes "ingest.parser" → group "ingest").
-  //    We pass the full fieldPathPrefix as the DynamicFieldsGroup prefix so it
+  // 4. Handler for DynamicFieldsGroup changes — stages a nested patch.
+  //    Builds "pipeline.ingest" → { pipeline: { ingest: newValue } } so the
+  //    backend can apply it as a deep merge.
+  function handleChange(newValue: Record<string, unknown>) {
+    setValue(newValue)
+    const parts = stage.fieldPathPrefix.split('.')
+    const patch = parts.reduceRight<Record<string, unknown>>(
+      (acc, key) => ({ [key]: acc }),
+      newValue,
+    )
+    draft.stage(patch)
+  }
+
+  // 5. Pass the full fieldPathPrefix as the DynamicFieldsGroup prefix so it
   //    strips it and presents relative paths.
   const dfgPrefix = stage.fieldPathPrefix
 
@@ -149,12 +138,8 @@ export function StageConfigPanel({
 
   return (
     <div className="stage-config-panel">
-      {/* Header row: auto-save indicator */}
-      <div className="stage-config-save-indicator">
-        <SaveIndicator state={saveState} />
-      </div>
-
-      {/* S0-specific: editable collection ingestion conditions (formats, size cap, metadata schema) */}
+      {/* S0-specific: editable collection ingestion conditions (formats, size cap, metadata schema).
+          IngestionConditionsPanel owns its own draft buffer + ConfigSaveBar. */}
       {stage.id === 's0' && configState && (
         <IngestionConditionsPanel
           configState={configState}
@@ -171,38 +156,24 @@ export function StageConfigPanel({
           </div>
         )
       ) : (
-        <DynamicFieldsGroup
-          fields={stageFields}
-          prefix={dfgPrefix}
-          value={value}
-          onChange={handleChange}
-        />
+        <>
+          <DynamicFieldsGroup
+            fields={stageFields}
+            prefix={dfgPrefix}
+            value={value}
+            onChange={handleChange}
+          />
+          {/* Save bar only for non-S0 stages; S0 uses the nested panel's bar. */}
+          {stage.id !== 's0' && (
+            <ConfigSaveBar
+              status={draft.status}
+              isDirty={draft.isDirty}
+              onSave={() => { void draft.save() }}
+              onDiscard={handleDiscard}
+            />
+          )}
+        </>
       )}
     </div>
-  )
-}
-
-// ── SaveIndicator ─────────────────────────────────────────────────────────────
-
-/**
- * Inline transient feedback label for auto-save state.
- *
- * Returns null when state is 'idle' so the indicator row collapses cleanly.
- *
- * Args:
- *   state: Current save lifecycle state.
- */
-function SaveIndicator({ state }: { state: SaveState }) {
-  if (state === 'idle') return null
-  const meta: Record<string, { text: string; color: string }> = {
-    saving: { text: 'saving…', color: 'var(--text-dim)' },
-    saved:  { text: '✓ saved', color: 'var(--s-done)' },
-    error:  { text: '✗ error', color: 'var(--s-error)' },
-  }
-  const m = meta[state]
-  return (
-    <span style={{ color: m.color }}>
-      {m.text}
-    </span>
   )
 }

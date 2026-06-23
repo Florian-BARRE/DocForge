@@ -2253,17 +2253,6 @@ input[type="range"]::-webkit-slider-thumb:hover { background: var(--text-muted);
   text-align: center;
 }
 
-.stage-config-save-indicator {
-  /* Fixed-height row that hosts the transient save feedback label.
-     Height is reserved even when idle so the layout does not shift on save. */
-  height: 16px;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 11px;
-  font-family: var(--font-mono);
-}
-
 /* ── Pipeline Trace ────────────────────────────────────────────────────────── */
 
 .pipeline-trace-bar {
@@ -3097,4 +3086,31 @@ input[type="range"]::-webkit-slider-thumb:hover { background: var(--text-muted);
   /* Reuse the metadata form toggle styling for the filters disclosure. */
   margin-top: 8px;
   border-radius: var(--radius-sm);
+}
+
+/* ── Config Save Bar ── */
+
+.config-save-bar {
+  /* Sticky-feeling footer separating the form from its save actions. */
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0 2px;
+  margin-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.config-save-status {
+  /* Left-aligned draft status label (unsaved / saving / saved / error). */
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.config-save-actions {
+  /* Right-aligned Discard / Save buttons. */
+  display: flex;
+  gap: 8px;
 }
