@@ -1,7 +1,7 @@
 // ====== Code Summary ======
 // SearchConfigOverview — read-only summary card shown in the search inline panel
-// when no stage is selected.  Displays the active strategy, top_k, reranking
-// status, and embedding model extracted from ConfigState.
+// when no stage is selected.  Displays the active strategy, top_k, and reranking
+// status.  Embed info is intentionally omitted — click the Embed node to see it.
 
 // ====== Third-Party Library Imports ======
 import type { ConfigState } from '../../api/types'
@@ -62,12 +62,9 @@ export function SearchConfigOverview({ configState }: SearchConfigOverviewProps)
         </span>
       </div>
 
-      {/* Embedding model */}
-      <div className="stage-panel-row">
-        <span className="stage-panel-label">Embed model</span>
-        <span className="stage-panel-value" style={{ fontFamily: 'var(--font-mono)', fontSize: 11 }}>
-          {configState?.embedding_model ?? '—'}
-        </span>
+      {/* Hint */}
+      <div style={{ marginTop: 8, fontSize: 11, color: 'var(--text-dim)' }}>
+        Click a stage to configure it.
       </div>
     </div>
   )
