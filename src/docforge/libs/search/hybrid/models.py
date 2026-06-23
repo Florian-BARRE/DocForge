@@ -37,3 +37,41 @@ class SearchResult:
     pages: list[int] = field(default_factory=list)
     config_hash: str = ""
     block_ids: list[str] = field(default_factory=list)
+
+
+@dataclass(slots=True)
+class DocumentGroup:
+    """
+    A group of chunks belonging to one document (document-level search result).
+
+    Produced when ``RetrieveConfig.grouping`` is enabled: the flat fused chunk list is
+    collapsed by ``document_id`` so the response carries the top documents, each with its
+    best chunks, rather than a flat chunk list.
+
+    Attributes:
+        document_id (str): The grouping key (owning document).
+        score (float): The best (highest) chunk score in the group — used to order groups.
+        chunks (list[SearchResult]): The group's chunks, best-first, capped at group_size.
+    """
+
+    document_id: str
+    score: float
+    chunks: list[SearchResult] = field(default_factory=list)
+
+
+@dataclass(slots=True)
+class SearchOutcome:
+    """
+    The engine's search result: a flat ranked chunk list plus optional document groups.
+
+    ``groups`` is populated only when ``RetrieveConfig.grouping`` is enabled; ``results``
+    is always present (when grouped, it is the groups flattened in group order) so existing
+    flat-list consumers keep working unchanged.
+
+    Attributes:
+        results (list[SearchResult]): Flat ranked chunks (group-flattened when grouping is on).
+        groups (list[DocumentGroup] | None): Document-level groups, or None when disabled.
+    """
+
+    results: list[SearchResult] = field(default_factory=list)
+    groups: list[DocumentGroup] | None = None

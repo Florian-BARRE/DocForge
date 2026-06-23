@@ -16,6 +16,7 @@ from fastapi import APIRouter, HTTPException
 from backend.context import CONTEXT
 from backend.libs.utils.error_handling import auto_handle_errors
 from backend.routers.collections.documents.search.models import (
+    SearchGroupItem,
     SearchRequest,
     SearchResponse,
     SearchResultItem,
@@ -64,12 +65,12 @@ async def search_collection(collection_id: uuid.UUID, body: SearchRequest) -> Se
                 )
                 return _to_response_debug(collection_id, body.query, debug_data)
 
-            results = await search_pipeline.run(
+            outcome = await search_pipeline.run(
                 query=body.query, top_k=body.top_k, session=session,
                 collection_name=str(collection_id), payload_filter=body.filters,
                 metadata_fields=metadata_fields, weight_overrides=body.weights,
             )
-        return _to_response(collection_id, body.query, results)
+        return _to_response(collection_id, body.query, outcome)
     except (httpx.ConnectError, httpx.TimeoutException) as exc:
         raise HTTPException(
             status_code=503,
@@ -123,12 +124,12 @@ async def search_within_document(
                 )
                 return _to_response_debug(collection_id, body.query, debug_data)
 
-            results = await search_pipeline.run(
+            outcome = await search_pipeline.run(
                 query=body.query, top_k=body.top_k, session=session,
                 collection_name=str(collection_id), payload_filter=pinned,
                 metadata_fields=metadata_fields, weight_overrides=body.weights,
             )
-        return _to_response(collection_id, body.query, results)
+        return _to_response(collection_id, body.query, outcome)
     except (httpx.ConnectError, httpx.TimeoutException) as exc:
         raise HTTPException(
             status_code=503,
@@ -162,12 +163,38 @@ def _pin_document(filt: dict[str, Any] | None, document_id: uuid.UUID) -> dict[s
     return pinned
 
 
-def _to_response(collection_id: uuid.UUID, query: str, results: list[Any]) -> SearchResponse:
-    """Shape hydrated SearchResult objects into the API response."""
+def _to_response(collection_id: uuid.UUID, query: str, outcome: Any) -> SearchResponse:
+    """
+    Shape a SearchOutcome (flat results + optional document groups) into the API response.
+
+    Args:
+        collection_id (uuid.UUID): Target collection.
+        query (str): Original query string.
+        outcome (Any): SearchOutcome with ``.results`` and optional ``.groups``.
+
+    Returns:
+        SearchResponse: Flat items plus document groups when grouping was enabled.
+    """
+    results = getattr(outcome, "results", outcome)
+    groups = getattr(outcome, "groups", None)
     return SearchResponse(
         collection_id=collection_id, query=query, total=len(results),
         results=[_item(r) for r in results],
+        groups=_groups(groups),
     )
+
+
+def _groups(groups: list[Any] | None) -> list[SearchGroupItem] | None:
+    """Map engine DocumentGroup objects to API group items (None stays None)."""
+    if groups is None:
+        return None
+    return [
+        SearchGroupItem(
+            document_id=g.document_id, score=g.score,
+            chunks=[_item(c) for c in g.chunks],
+        )
+        for g in groups
+    ]
 
 
 def _to_response_debug(
@@ -190,6 +217,7 @@ def _to_response_debug(
     ranked: dict[str, list[str]] = debug_data.get("ranked", {})
     resolved: dict[str, Any] = debug_data.get("resolved", {})
     results: list[Any] = debug_data.get("results", [])
+    groups: list[Any] | None = debug_data.get("groups")
     pipeline_meta: dict[str, Any] = debug_data.get("pipeline", {})
 
     # 1. Build reverse lookup: chunk_id -> vector_name -> 1-indexed rank
@@ -214,8 +242,34 @@ def _to_response_debug(
 
     return SearchResponse(
         collection_id=collection_id, query=query, total=len(items), results=items,
+        groups=_groups(groups),
+        note=_sparse_note(resolved),
         debug_info=debug_info,
     )
+
+
+def _sparse_note(resolved: dict[str, Any]) -> str | None:
+    """
+    Warn when keyword/BM25 search was requested but the embed provider is dense-only.
+
+    A dense-only embed provider (e.g. OpenAI) yields no sparse query vector, so sparse and
+    hybrid modes silently lose their BM25 contribution.  Surfacing a note turns the silent
+    degradation into actionable feedback.
+
+    Args:
+        resolved (dict): The retrieval plan (carries vector_mode + sparse_enabled).
+
+    Returns:
+        str | None: A guidance note, or None when sparse is either unused or available.
+    """
+    mode = resolved.get("vector_mode", "hybrid")
+    if mode in ("sparse", "hybrid") and resolved.get("sparse_enabled") is False:
+        return (
+            "Keyword/BM25 search is inactive: the collection's embed provider is dense-only "
+            "and produces no sparse vectors. Switch the embed stage to TEI (BGE-M3) and reindex "
+            "to enable sparse/hybrid keyword matching."
+        )
+    return None
 
 
 def _item(r: Any) -> SearchResultItem:

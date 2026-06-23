@@ -373,6 +373,26 @@ class QdrantStorageClient(LoggerClass):
             "candidate_limit": outcome["candidate_limit"],
         }
 
+    async def fetch_dense_vectors(
+        self, collection_name: str, ids: list[str]
+    ) -> dict[str, list[float]]:
+        """
+        Fetch the ``content_dense`` vector for a set of points (for MMR diversity).
+
+        Args:
+            collection_name (str): Target collection.
+            ids (list[str]): Point ids (chunk ids) whose dense vectors to retrieve.
+
+        Returns:
+            dict[str, list[float]]: ``{chunk_id: dense_vector}``; points without the vector omitted.
+        """
+        return await QdrantSearchHelpers.fetch_vectors(
+            client=self._require_client(),
+            collection_name=collection_name,
+            ids=ids,
+            vector_name=CONTENT_DENSE,
+        )
+
     # ─── Internal ───────────────────────────────────────────────────────────
 
     def _require_client(self) -> AsyncQdrantClient:

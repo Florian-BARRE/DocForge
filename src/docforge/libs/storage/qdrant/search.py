@@ -125,6 +125,39 @@ class QdrantSearchHelpers:
         ]
 
     @classmethod
+    async def fetch_vectors(
+        cls,
+        client: AsyncQdrantClient,
+        collection_name: str,
+        ids: list[str],
+        vector_name: str,
+    ) -> dict[str, list[float]]:
+        """
+        Fetch one named dense vector for a set of points (used by MMR diversity).
+
+        Args:
+            client (AsyncQdrantClient): Live Qdrant client.
+            collection_name (str): Target Qdrant collection.
+            ids (list[str]): Point ids whose vectors to retrieve.
+            vector_name (str): Named dense vector to pull (e.g. ``content_dense``).
+
+        Returns:
+            dict[str, list[float]]: ``{point_id: vector}`` — points lacking the vector are omitted.
+        """
+        if not ids:
+            return {}
+        records = await client.retrieve(
+            collection_name=collection_name, ids=ids,
+            with_payload=False, with_vectors=[vector_name],
+        )
+        out: dict[str, list[float]] = {}
+        for r in records:
+            vec = (r.vector or {}).get(vector_name) if isinstance(r.vector, dict) else None
+            if vec:
+                out[str(r.id)] = list(vec)
+        return out
+
+    @classmethod
     def _fuse(
         cls,
         scored_lists: dict[str, list[tuple[str, float]]],

@@ -1,6 +1,6 @@
 # ------------------- Models ---------------------------------- #
 from ..field_index import RetrievalTuning
-from .models import SearchResult
+from .models import DocumentGroup, SearchResult
 
 # ------------------- Helpers --------------------------------- #
 from .helpers import HybridSearchHelpers
@@ -13,5 +13,6 @@ __all__ = [
     "HybridSearchService",
     "HybridSearchHelpers",
     "SearchResult",
+    "DocumentGroup",
     "RetrievalTuning",
 ]

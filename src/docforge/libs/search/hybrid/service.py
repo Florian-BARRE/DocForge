@@ -139,6 +139,36 @@ class HybridSearchService(LoggerClass):
         )
         return results
 
+    async def fetch_dense_vectors(
+        self, collection_name: str, chunk_ids: list[str]
+    ) -> dict[str, list[float]]:
+        """
+        Fetch ``content_dense`` vectors for the given chunks (used by MMR diversity).
+
+        Args:
+            collection_name (str): Qdrant collection name.
+            chunk_ids (list[str]): Chunk ids whose dense vectors to retrieve.
+
+        Returns:
+            dict[str, list[float]]: ``{chunk_id: dense_vector}``; chunks without a stored
+                dense vector (e.g. rolled-up parents not indexed in Qdrant) are omitted.
+        """
+        return await self._qdrant.fetch_dense_vectors(collection_name, chunk_ids)
+
+    async def embed_query_dense(self, query: str, embed_provider: EmbedProvider | None = None) -> list[float]:
+        """
+        Embed a query and return only its dense vector (used by MMR diversity).
+
+        Args:
+            query (str): Query text.
+            embed_provider (EmbedProvider | None): Per-call provider override (collection-specific).
+
+        Returns:
+            list[float]: The query's dense embedding.
+        """
+        result = await (embed_provider or self._embed).embed([query])
+        return result.vectors[0]
+
     async def search_debug(
         self,
         collection_name: str,

@@ -53,6 +53,16 @@ class SearchResultItem(BaseModel):
     )
 
 
+class SearchGroupItem(BaseModel):
+    """One document group when grouping is enabled (document-level results)."""
+
+    document_id: str
+    score: float = Field(..., description="Best chunk score in the group (group ordering key).")
+    chunks: list[SearchResultItem] = Field(
+        default_factory=list, description="The group's chunks, best-first, capped at group_size."
+    )
+
+
 class SearchResponse(BaseModel):
     """Ranked results for a search query."""
 
@@ -60,9 +70,16 @@ class SearchResponse(BaseModel):
     query: str
     total: int
     results: list[SearchResultItem]
+    groups: list[SearchGroupItem] | None = Field(
+        default=None,
+        description=(
+            "Document-level groups, present only when pipeline.search.retrieve.grouping "
+            "is enabled. When set, `results` is the groups flattened in group order."
+        ),
+    )
     note: str | None = Field(
         default=None,
-        description="Optional informational note (e.g. search not available).",
+        description="Optional informational note (e.g. search not available, sparse unavailable).",
     )
     debug_info: dict[str, Any] | None = Field(
         default=None,
