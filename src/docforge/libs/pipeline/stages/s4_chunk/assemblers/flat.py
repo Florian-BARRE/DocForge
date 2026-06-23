@@ -22,7 +22,7 @@ from ..helpers.text import ChunkingHelpers
 from ..strategies.base import SectionSplitter
 
 # ====== Local Project Imports ======
-from .models import _Segment
+from ..models import _Segment
 
 
 class FlatPackerHelpers:

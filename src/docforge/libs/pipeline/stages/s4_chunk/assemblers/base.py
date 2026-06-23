@@ -21,8 +21,8 @@ from ..strategies.base import SectionSplitter
 # ====== Local Project Imports ======
 from .flat import FlatPackerHelpers
 from .hierarchical import HierAssemblerHelpers
-from .chunk_factory import ChunkFactoryHelpers
-from .models import _Segment, _Special
+from ..chunk_factory import ChunkFactoryHelpers
+from ..models import _Segment, _Special
 
 
 class ChunkAssembler:

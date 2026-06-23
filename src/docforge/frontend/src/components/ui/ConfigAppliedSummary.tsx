@@ -42,6 +42,7 @@ export function ConfigAppliedSummary({ applied }: ConfigAppliedSummaryProps) {
   const defaulted = applied.defaulted ?? []
   const notes = applied.notes ?? []
   const warnings = applied.warnings ?? []
+  const reindexReasons = applied.reindex_reasons ?? []
 
   // 2. Skip rendering entirely when every section is empty.
   const hasContent =
@@ -60,6 +61,15 @@ export function ConfigAppliedSummary({ applied }: ConfigAppliedSummaryProps) {
         <span className="tag" style={{ color: 'var(--s-running)' }}>
           Réindexation requise
         </span>
+      )}
+
+      {/* Exact cause(s) of the required reindex — empty for non-critical changes. */}
+      {reindexReasons.length > 0 && (
+        <ul className="config-applied-reasons">
+          {reindexReasons.map((reason, i) => (
+            <li key={i} style={{ color: 'var(--s-running)' }}>{reason}</li>
+          ))}
+        </ul>
       )}
 
       {provided.length > 0 && <div>Fourni : {provided.join(', ')}</div>}

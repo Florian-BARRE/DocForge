@@ -9,6 +9,7 @@ from __future__ import annotations
 import uuid
 
 # ====== Third-Party Library Imports ======
+from arq.worker import Retry
 from loggerplusplus import loggerplusplus
 
 from libs.config.pipeline import PipelineConfig
@@ -23,6 +24,9 @@ from libs.storage.postgres.repositories import (
 from libs.pipeline.engine import StageEngine
 
 _logger = loggerplusplus.bind(identifier="WORKER_TASK")
+
+# Must match WorkerSettings.max_tries — controls when we give up vs. schedule a retry.
+_MAX_TRIES: int = 3
 
 
 async def run_pipeline_task(
@@ -140,11 +144,23 @@ async def run_pipeline_task(
         }
 
     except Exception as exc:
-        # 5. Mark job as failed; arq will retry based on WorkerSettings.max_tries
+        # 5. Mark job as failed in the DB on every attempt
+        job_try: int = ctx.get("job_try", 1)
         error_msg = f"{type(exc).__name__}: {exc}"
-        _logger.error(f"Task failed: document_id={document_id} job_id={job_id} {error_msg}")
+        _logger.error(
+            f"Task failed (attempt {job_try}/{_MAX_TRIES}): "
+            f"document_id={document_id} job_id={job_id} {error_msg}"
+        )
         async with postgres.session() as session:
             await job_repo.update_status(
                 session, job_uuid, "failed", error=error_msg
             )
-        raise
+
+        # 6. Permanent failure on the last attempt — let arq record the final error
+        if job_try >= _MAX_TRIES:
+            raise
+
+        # 7. Non-final attempt: schedule exponential back-off retry (30s, 60s, …)
+        defer_s = 30 * (2 ** (job_try - 1))
+        _logger.info(f"Task retry scheduled in {defer_s}s: document_id={document_id}")
+        raise Retry(defer=defer_s)

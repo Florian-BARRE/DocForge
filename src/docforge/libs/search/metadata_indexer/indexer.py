@@ -7,7 +7,7 @@
 # across the document's points.
 #
 # Per-field sync and value normalization are delegated to MetadataIndexerHelpers
-# (metadata_indexer_helpers.py) to keep this file under 200 lines.
+# (helpers.py) to keep this file under 200 lines.
 
 # ====== Standard Library Imports ======
 from __future__ import annotations
@@ -30,7 +30,7 @@ from libs.storage.postgres.repositories.chunk_repo import ChunkRepository
 from libs.storage.qdrant.client import QdrantStorageClient
 
 # ====== Local Project Imports ======
-from .metadata_indexer_helpers import MetadataIndexerHelpers
+from .helpers import MetadataIndexerHelpers
 
 
 class MetadataIndexer(LoggerClass):

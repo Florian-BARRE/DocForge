@@ -59,43 +59,60 @@ class ConfigRepository(LoggerClass):
         if collection is None:
             return None
 
-        # 2. Detect changes that invalidate the vector space / require a version bump
-        embed_changed = doc["embedding_model"] != collection.embedding_model
-        pipeline_changed = doc["pipeline"] != (collection.pipeline or {})
+        # 2. Compute the merged metadata schema (needed before the reindex diff)
+        merged_fields = ConfigDocument.merge_metadata_schema(doc.get("metadata_fields", []))
 
-        # 3. Apply contract + pipeline scalars
+        # 3. Classify the change: only embedding / indexing-pipeline / searchable-schema
+        #    changes invalidate already-indexed documents. Search config and non-searchable
+        #    metadata edits are non-critical and must NOT bump the version or flag reindex.
+        reindex_relevant, reindex_reasons = ConfigRepoHelpers.reindex_diff(
+            old_embedding_model=collection.embedding_model,
+            new_embedding_model=doc["embedding_model"],
+            old_pipeline=collection.pipeline or {},
+            new_pipeline=doc["pipeline"],
+            old_fields=list(collection.metadata_fields),
+            new_fields=merged_fields,
+        )
+
+        # 4. Apply contract + pipeline scalars
         collection.supported_formats = doc["supported_formats"]
         collection.max_file_size_bytes = doc["max_file_size_bytes"]
         collection.locality_policy = doc["locality_policy"]
         collection.embedding_model = doc["embedding_model"]
         collection.unknown_field_policy = doc["unknown_field_policy"]
         collection.pipeline = doc["pipeline"]
-        if embed_changed or pipeline_changed:
+        if reindex_relevant:
             collection.pipeline_version = ConfigRepoHelpers.next_pipeline_version(
                 collection.pipeline_version
             )
-        if embed_changed:
             collection.needs_reindex = True
 
-        # 4. Replace the metadata schema via the ORM relationship (delete-orphan cascade)
-        merged_fields = ConfigDocument.merge_metadata_schema(doc.get("metadata_fields", []))
+        # 5. Replace the metadata schema via the ORM relationship (delete-orphan cascade)
         collection.metadata_fields.clear()
         for spec in merged_fields:
             collection.metadata_fields.append(ConfigRepoHelpers.build_field(spec))
         await session.flush()
 
-        # 5. Snapshot the applied config into the version history
+        # 6. Snapshot the applied config; record the reindex cause in the note when none given
         final_doc = {**doc, "metadata_fields": merged_fields}
+        snapshot_note = note or ("; ".join(reindex_reasons) if reindex_reasons else None)
         await self.snapshot(
             session, collection_id,
-            pipeline_version=collection.pipeline_version, config=final_doc, note=note,
+            pipeline_version=collection.pipeline_version, config=final_doc, note=snapshot_note,
         )
 
         self.logger.info(
             f"Applied config to collection {collection_id} "
-            f"(pipeline_version={collection.pipeline_version}, needs_reindex={collection.needs_reindex})"
+            f"(pipeline_version={collection.pipeline_version}, needs_reindex={collection.needs_reindex}, "
+            f"reindex_relevant={reindex_relevant})"
         )
-        return await self._get(session, collection_id)
+
+        # 7. Reload and attach the (transient) reindex reasons so the router can surface
+        #    the exact cause in the `applied` transparency envelope.
+        refreshed = await self._get(session, collection_id)
+        if refreshed is not None:
+            refreshed._reindex_reasons = reindex_reasons  # type: ignore[attr-defined]
+        return refreshed
 
     # ─── Version history ──────────────────────────────────────────────────────────
 

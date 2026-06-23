@@ -1,0 +1,7 @@
+stage,description,cache_level,gpu_required,api_cost
+S0,Ingest and normalise to PDF,none,false,0.0
+S1,Parse to IR via Docling,node,false,0.0
+S2,Enrich figures with OCR/VLM,provider,optional,variable
+S4,Chunk IR into retrieval units,none,false,0.0
+S5,Contextualise chunks with heading breadcrumb,none,false,0.0
+S6,Embed with BGE-M3 and index in Qdrant,none,optional,0.0

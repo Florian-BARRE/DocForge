@@ -48,6 +48,91 @@ class ConfigRepoHelpers:
         return f"{current or 'v1'}-2"
 
     @staticmethod
+    def _attr(obj: Any, name: str, default: Any = None) -> Any:
+        """
+        Read an attribute from either an ORM object or a plain dict.
+
+        Args:
+            obj (Any): ORM model instance or dict.
+            name (str): Attribute / key name.
+            default (Any): Fallback when absent.
+
+        Returns:
+            Any: The value, or ``default``.
+        """
+        if isinstance(obj, dict):
+            return obj.get(name, default)
+        return getattr(obj, name, default)
+
+    @staticmethod
+    def reindex_diff(
+        *,
+        old_embedding_model: str,
+        new_embedding_model: str,
+        old_pipeline: dict[str, Any] | None,
+        new_pipeline: dict[str, Any],
+        old_fields: list[Any],
+        new_fields: list[Any],
+    ) -> tuple[bool, list[str]]:
+        """
+        Classify a config change as reindex-relevant (or not) and explain exactly why.
+
+        Only changes that invalidate already-indexed documents count:
+          - the embedding model (vectors become incompatible);
+          - the *indexing* pipeline — every ``pipeline`` section EXCEPT ``search`` (which is
+            query-time only, so search-config edits never require a reindex);
+          - the *searchable* metadata schema — a field gaining/losing a ``semantic`` or
+            ``lexical`` vector (a plain or filter-only field add/remove does NOT).
+
+        Non-critical changes (search config, optional non-searchable metadata add/remove,
+        labels, required flags) return ``(False, [])`` so existing documents stay fresh.
+
+        Args:
+            old_embedding_model (str): Embedding model before the change.
+            new_embedding_model (str): Embedding model after the change.
+            old_pipeline (dict | None): Pipeline config before the change.
+            new_pipeline (dict): Pipeline config after the change.
+            old_fields (list): Current metadata fields (ORM objects).
+            new_fields (list): Merged metadata fields after the change (dicts).
+
+        Returns:
+            tuple[bool, list[str]]: ``(reindex_relevant, human_readable_reasons)``.
+        """
+        reasons: list[str] = []
+
+        # 1. Embedding model — full reindex (vector space changes)
+        if new_embedding_model != old_embedding_model:
+            reasons.append(
+                f"Modèle d'embedding modifié ({old_embedding_model} → {new_embedding_model})"
+            )
+
+        # 2. Indexing pipeline — every stage except query-time 'search'
+        old_idx = {k: v for k, v in (old_pipeline or {}).items() if k != "search"}
+        new_idx = {k: v for k, v in (new_pipeline or {}).items() if k != "search"}
+        for stage in sorted(set(old_idx) | set(new_idx)):
+            if old_idx.get(stage) != new_idx.get(stage):
+                reasons.append(f"Configuration d'indexation « {stage} » modifiée")
+
+        # 3. Searchable metadata schema — only fields carrying a semantic/lexical vector
+        def _searchable(fields: list[Any]) -> set[tuple[str, bool, bool]]:
+            out: set[tuple[str, bool, bool]] = set()
+            for f in fields:
+                sem = bool(ConfigRepoHelpers._attr(f, "semantic"))
+                lex = bool(ConfigRepoHelpers._attr(f, "lexical"))
+                if sem or lex:
+                    out.add((str(ConfigRepoHelpers._attr(f, "field_name")), sem, lex))
+            return out
+
+        old_s = _searchable(old_fields)
+        new_s = _searchable(new_fields)
+        for name, _sem, _lex in sorted(new_s - old_s):
+            reasons.append(f"Champ recherchable « {name} » ajouté ou modifié")
+        for name in sorted({n for n, _, _ in old_s} - {n for n, _, _ in new_s}):
+            reasons.append(f"Champ recherchable « {name} » retiré")
+
+        return (len(reasons) > 0, reasons)
+
+    @staticmethod
     def build_field(spec: dict[str, Any]) -> MetadataFieldModel:
         """
         Build a MetadataFieldModel from a normalized metadata-field dict (no collection_id).

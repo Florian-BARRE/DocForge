@@ -22,6 +22,8 @@ interface DocRowProps {
    * button are shown.
    */
   isStale: boolean
+  /** Collection's current pipeline version — shown in the staleness tooltip. */
+  collectionPipelineVersion?: string
   /**
    * Called when the user clicks `[Trace]`.  The parent navigates to the
    * Pipeline tab and activates trace mode for the given document id.
@@ -104,7 +106,7 @@ function formatDuration(ms: number | null | undefined): string {
  * The ⋯ overflow menu drops down below the button and closes automatically
  * when the user clicks anywhere outside the component.
  */
-export function DocRow({ doc, collectionId: _collectionId, isStale, onTrace, onDelete, onReingest, onOpen }: DocRowProps) {
+export function DocRow({ doc, collectionId: _collectionId, isStale, collectionPipelineVersion, onTrace, onDelete, onReingest, onOpen }: DocRowProps) {
   // 1. Local state: whether the overflow dropdown is visible.
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -177,7 +179,11 @@ export function DocRow({ doc, collectionId: _collectionId, isStale, onTrace, onD
       {isStale && (
         <span
           className="tag doc-stale-badge"
-          title="La configuration de la collection a changé depuis l'ingestion"
+          title={
+            `Traité avec le pipeline ${doc.pipeline_version}` +
+            (collectionPipelineVersion ? `, config actuelle ${collectionPipelineVersion}` : '') +
+            ' — réindexation requise pour refléter les changements de pipeline/embedding/champs recherchables.'
+          }
         >
           Périmé — à réindexer
         </span>

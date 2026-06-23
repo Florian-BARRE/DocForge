@@ -122,7 +122,11 @@ export type CollectionListResponse = Schemas['CollectionListResponse']
 
 export type MetaField = Schemas['ConfigMetaField']
 export type AppliedIssue = Schemas['AppliedIssue']
-export type ConfigApplied = Schemas['ConfigApplied']
+// reindex_reasons overlays the generated type until the next `npm run gen:types`:
+// exact, human-readable causes of a required reindex (empty for non-critical changes).
+export type ConfigApplied = Schemas['ConfigApplied'] & {
+  reindex_reasons?: string[] | null
+}
 // embed_provider_id is added server-side on the same response shape.
 // The intersection keeps this in sync when generated.ts is next regenerated.
 export type ConfigState = Schemas['ConfigStateResponse'] & { embed_provider_id: string }

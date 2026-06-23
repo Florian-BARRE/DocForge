@@ -25,6 +25,9 @@ class ConfigApplied(BaseModel):
         metadata_fields (dict[str, int]): Counts — ``system`` injected, ``custom`` added.
         overridden_system_fields (list[str]): System fields whose flags the caller overrode.
         needs_reindex (bool): Whether this change flagged the collection for reindex.
+        reindex_reasons (list[str]): Exact, human-readable reasons the change requires a
+            reindex (empty when the change was non-critical — e.g. search config or a
+            non-searchable metadata field).
         warnings (list[AppliedIssue]): Non-blocking validation warnings.
         notes (list[str]): Human-readable summary lines of what was applied.
     """
@@ -35,5 +38,6 @@ class ConfigApplied(BaseModel):
     metadata_fields: dict[str, int] = Field(default_factory=dict)
     overridden_system_fields: list[str] = Field(default_factory=list)
     needs_reindex: bool = False
+    reindex_reasons: list[str] = Field(default_factory=list)
     warnings: list[AppliedIssue] = Field(default_factory=list)
     notes: list[str] = Field(default_factory=list)

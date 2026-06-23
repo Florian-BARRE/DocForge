@@ -16,7 +16,7 @@ from ..helpers.text import ChunkingHelpers
 from ..strategies.base import SectionSplitter
 
 # ====== Local Project Imports ======
-from .models import _PARENT_STRATEGY, _Segment
+from ..models import _PARENT_STRATEGY, _Segment
 
 
 class HierAssemblerHelpers:

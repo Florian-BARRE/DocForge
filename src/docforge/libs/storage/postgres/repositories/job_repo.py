@@ -126,6 +126,30 @@ class JobRepository(LoggerClass):
         )
         return result.scalar_one_or_none()
 
+    async def list_by_status(
+        self,
+        session: AsyncSession,
+        status: str,
+    ) -> list[JobModel]:
+        """
+        Return all jobs with a given status, newest first.
+
+        Used by the worker startup hook to detect jobs left in ``"running"`` state
+        by a crashed worker instance (stuck jobs).
+
+        Args:
+            session (AsyncSession): Active DB session.
+            status (str): Job status to filter on (e.g. ``"running"``).
+
+        Returns:
+            list[JobModel]: All matching jobs, newest first.
+        """
+        result = await session.execute(
+            select(JobModel).where(JobModel.status == status)
+            .order_by(JobModel.created_at.desc())
+        )
+        return list(result.scalars().all())
+
     async def update_status(
         self,
         session: AsyncSession,

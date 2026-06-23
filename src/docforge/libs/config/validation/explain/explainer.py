@@ -36,6 +36,7 @@ class ConfigExplainer:
         resolved_doc: dict[str, Any],
         issues: list[dict[str, Any]],
         needs_reindex: bool,
+        reindex_reasons: list[str] | None = None,
         custom_field_names: list[str] | None = None,
     ) -> ConfigApplied:
         """
@@ -84,8 +85,10 @@ class ConfigExplainer:
         notes.append(f"{n_system} system metadata fields auto-injected; {n_custom} custom field(s).")
         if overridden:
             notes.append(f"System field flags overridden: {', '.join(overridden)}.")
+        reindex_reasons = reindex_reasons or []
         if needs_reindex:
-            notes.append("needs_reindex set — embedding model changed; re-embed required.")
+            cause = "; ".join(reindex_reasons) if reindex_reasons else "config d'indexation modifiée"
+            notes.append(f"Réindexation requise — {cause}.")
         if warnings:
             notes.append(f"{len(warnings)} non-blocking warning(s) — see 'warnings'.")
 
@@ -96,6 +99,7 @@ class ConfigExplainer:
             metadata_fields={"system": n_system, "custom": n_custom},
             overridden_system_fields=overridden,
             needs_reindex=needs_reindex,
+            reindex_reasons=reindex_reasons,
             warnings=warnings,
             notes=notes,
         )

@@ -195,6 +195,7 @@ async def _validate_and_apply(
         resolved_doc=ConfigDocument.from_collection(collection),
         issues=issues,
         needs_reindex=collection.needs_reindex,
+        reindex_reasons=list(getattr(collection, "_reindex_reasons", []) or []),
         custom_field_names=submitted_field_names,
     )
     return ConfigStateResponse.from_collection(collection, applied=applied)

@@ -3332,3 +3332,19 @@ input[type="range"]::-webkit-slider-thumb:hover { background: var(--text-muted);
   color: var(--text-muted);
   margin-bottom: 6px;
 }
+
+/* ── Reindex cause / applied reasons ── */
+.reindex-banner-cause {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.config-applied-reasons {
+  margin: 2px 0 0;
+  padding-left: 16px;
+  font-size: 11px;
+}
+.config-applied-reasons li {
+  margin: 1px 0;
+}

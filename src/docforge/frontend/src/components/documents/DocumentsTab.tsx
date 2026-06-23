@@ -9,6 +9,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 // ====== Internal Project Imports ======
 import {
   deleteDocument,
+  getConfigHistory,
   getConfigState,
   ingestDocument,
   listDocuments,
@@ -82,6 +83,9 @@ export function DocumentsTab({ collectionId, onTrace }: DocumentsTabProps) {
   // Bulk reindex progress — null when idle, otherwise {done, total} while running.
   const [reindexProgress, setReindexProgress] =
     useState<{ done: number; total: number } | null>(null)
+  // Exact cause of the current staleness — the most recent config version's note
+  // (auto-filled by the backend with the precise reindex reason).
+  const [reindexCause, setReindexCause] = useState<string | null>(null)
 
   // Hidden file input used for click-to-upload.
   const inputRef = useRef<HTMLInputElement>(null)
@@ -121,6 +125,20 @@ export function DocumentsTab({ collectionId, onTrace }: DocumentsTabProps) {
       .catch(() => { /* non-fatal */ })
     return () => { cancelled = true }
   }, [collectionId])
+
+  // 1c. Fetch the latest config-version note — the exact reindex cause shown in the banner.
+  useEffect(() => {
+    let cancelled = false
+    getConfigHistory(collectionId)
+      .then(h => {
+        if (cancelled) return
+        // Versions are returned newest-first; the most recent note carries the cause.
+        const latest = h.versions?.[0]
+        setReindexCause(latest?.note ?? null)
+      })
+      .catch(() => { /* non-fatal — banner falls back to the generic message */ })
+    return () => { cancelled = true }
+  }, [collectionId, docs])
 
   // 2. Polling loop — active only while at least one document is in-flight.
   useEffect(() => {
@@ -363,6 +381,9 @@ export function DocumentsTab({ collectionId, onTrace }: DocumentsTabProps) {
           <span>
             ⚠ La configuration a changé — {staleDocs.length} document(s) à réindexer
             pour refléter le nouveau pipeline.
+            {reindexCause && (
+              <span className="reindex-banner-cause"> Cause : {reindexCause}.</span>
+            )}
           </span>
           <div className="reindex-banner-actions">
             <button
@@ -396,6 +417,7 @@ export function DocumentsTab({ collectionId, onTrace }: DocumentsTabProps) {
               doc={doc}
               collectionId={collectionId}
               isStale={isDocStale(doc.pipeline_version, collectionPipelineVersion)}
+              collectionPipelineVersion={collectionPipelineVersion}
               onTrace={onTrace}
               onDelete={handleDelete}
               onReingest={handleReingest}

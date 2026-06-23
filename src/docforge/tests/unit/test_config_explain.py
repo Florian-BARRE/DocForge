@@ -71,6 +71,10 @@ class TestConfigExplainer:
         applied = ConfigExplainer.build(
             provided_keys={"embedding_model"}, raw_pipeline=None, resolved_doc=_doc(),
             issues=[], needs_reindex=True,
+            reindex_reasons=["Modèle d'embedding modifié (a -> b)"],
         )
         assert applied.needs_reindex is True
-        assert any("needs_reindex" in n for n in applied.notes)
+        assert applied.reindex_reasons == ["Modèle d'embedding modifié (a -> b)"]
+        # The note surfaces the reindex cause.
+        assert any("Réindexation requise" in n for n in applied.notes)
+        assert any("embedding" in n for n in applied.notes)

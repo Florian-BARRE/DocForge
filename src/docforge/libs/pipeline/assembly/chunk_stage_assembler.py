@@ -11,7 +11,7 @@ from typing import Any
 
 # ====== Internal Project Imports ======
 from libs.config.pipeline import ChunkConfig, SplitMethodConfig
-from libs.pipeline.stages.s4_chunk import SectionSplitter, SemanticParams
+from libs.pipeline.stages.s4_chunk import SectionSplitter, SemanticConfig as SemanticParams
 from libs.pipeline.stages.s4_chunk import S4ChunkStage
 
 # ====== Local Project Imports ======

@@ -56,6 +56,11 @@ class ConfigStateResponse(BaseModel):
     max_file_size_bytes: int
     locality_policy: str
     embedding_model: str
+    embed_provider_id: str = Field(
+        ...,
+        description="Discriminator of the primary embed provider (e.g. 'tei', 'openai_compat', 'openai'). "
+                    "Query-time search must use the same provider as ingestion.",
+    )
     unknown_field_policy: str
     pipeline: dict[str, Any] = Field(..., description="Pipeline config (credentials redacted).")
     metadata_fields: list[ConfigMetaField]
@@ -79,11 +84,15 @@ class ConfigStateResponse(BaseModel):
         Returns:
             ConfigStateResponse: The redacted, resolved config state.
         """
-        # 1. Canonical editable doc + redact pipeline credentials before echoing
+        # 1. Canonical editable doc + parse pipeline to extract embed provider id + redact credentials
         doc = ConfigDocument.from_collection(collection)
-        redacted_pipeline = PipelineConfig.from_dict(doc["pipeline"]).redacted_dict()
+        pipeline_config = PipelineConfig.from_dict(doc["pipeline"])
+        redacted_pipeline = pipeline_config.redacted_dict()
 
-        # 2. Assemble identity + state + contract + redacted pipeline + schema + transparency
+        # 2. Extract the embed provider discriminator from the primary chain entry
+        embed_provider_id = pipeline_config.embed.chain[0].id if pipeline_config.embed.chain else "tei"
+
+        # 3. Assemble identity + state + contract + redacted pipeline + schema + transparency
         return cls(
             id=str(collection.id),
             name=collection.name,
@@ -93,6 +102,7 @@ class ConfigStateResponse(BaseModel):
             max_file_size_bytes=doc["max_file_size_bytes"],
             locality_policy=doc["locality_policy"],
             embedding_model=doc["embedding_model"],
+            embed_provider_id=embed_provider_id,
             unknown_field_policy=doc["unknown_field_policy"],
             pipeline=redacted_pipeline,
             metadata_fields=doc["metadata_fields"],
