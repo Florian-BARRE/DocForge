@@ -116,9 +116,11 @@ class HybridSearchHelpers:
         prov = row.get("prov")
         pages = prov.get("pages", []) if isinstance(prov, dict) else hit.get("payload", {}).get("pages", [])
 
-        # 2. Build and return the result
+        # 2. Build and return the result.
+        #    chunk_id / document_id are UUIDs from Postgres — coerce to str so the
+        #    API SearchResultItem (str fields) validates under Pydantic v2 strict typing.
         return SearchResult(
-            chunk_id=row["id"],
+            chunk_id=str(row["id"]),
             document_id=str(row["document_id"]),
             score=hit["score"],
             raw_text=row["raw_text"],
