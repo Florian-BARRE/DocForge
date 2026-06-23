@@ -2,6 +2,9 @@
 // Search tab — PipelineGraph for the search pipeline (config + trace mode), a query
 // input with a search button, a query-variants banner (multi_query), and result cards.
 // Discovery-driven config panels appear inline below the graph on node click.
+// Search clarity is delegated to dedicated components: SearchSettingsBar (active
+// config chips), SearchTraceSummary (collapsible debug_info), and ResultScore
+// (per-result relevance + per-vector ranks).
 
 // ====== Third-Party Library Imports ======
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -12,9 +15,12 @@ import type { ConfigState, SearchGroupItem, SearchResultItem } from '../../api/t
 import { PipelineGraph } from '../pipeline/PipelineGraph'
 import { SEARCH_STAGES } from '../pipeline/search-stages'
 import type { StageDefinition, StageResult } from '../pipeline/types'
+import { ResultScore } from './ResultScore'
 import { SearchConfigOverview } from './SearchConfigOverview'
 import { SearchFilterBuilder } from './SearchFilterBuilder'
+import { SearchSettingsBar } from './SearchSettingsBar'
 import { SearchStagePanel } from './SearchStagePanel'
+import { SearchTraceSummary } from './SearchTraceSummary'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -79,6 +85,8 @@ export function SearchTab({ collectionId }: SearchTabProps) {
   // ── Trace state ───────────────────────────────────────────────────────────────
 
   const [lastSearchInfo, setLastSearchInfo] = useState<SearchTraceInfo | null>(null)
+  // Raw debug_info of the last response — feeds the SearchTraceSummary panel.
+  const [lastDebugInfo, setLastDebugInfo] = useState<Record<string, unknown> | null>(null)
 
   // ── Expanded result cards ────────────────────────────────────────────────────
 
@@ -167,6 +175,7 @@ export function SearchTab({ collectionId }: SearchTabProps) {
       setResults(res.results)
       setGroups(res.groups ?? null)
       setNote(res.note ?? null)
+      setLastDebugInfo(res.debug_info ?? null)
 
       // Extract trace metadata from debug_info.
       const variants = (res.debug_info?.query_variants ?? []) as string[]
@@ -280,6 +289,9 @@ export function SearchTab({ collectionId }: SearchTabProps) {
             </button>
           </div>
 
+          {/* Active search settings summary (read from persisted config) */}
+          <SearchSettingsBar configState={configState} />
+
           {/* Collapsible filter builder */}
           <button
             type="button"
@@ -319,6 +331,9 @@ export function SearchTab({ collectionId }: SearchTabProps) {
         {searchError && (
           <div className="error-banner">{searchError}</div>
         )}
+
+        {/* Collapsible search trace (debug_info) — above the results */}
+        {lastSearchInfo && <SearchTraceSummary debugInfo={lastDebugInfo} />}
 
         {/* Empty state */}
         {!isSearching && lastSearchInfo && results.length === 0 && !searchError && (
@@ -416,7 +431,6 @@ interface ResultCardProps {
  */
 function ResultCard({ item, idx, maxScore, query, isOpen, onToggle, isReranked }: ResultCardProps) {
   const relPct = maxScore > 0 ? Math.round((item.score / maxScore) * 100) : 0
-  const { label: scoreQuality, color: scoreColor } = scoreLabel(relPct)
   const preview = item.raw_text.slice(0, 120)
 
   return (
@@ -428,19 +442,10 @@ function ResultCard({ item, idx, maxScore, query, isOpen, onToggle, isReranked }
           #{idx + 1}
         </span>
 
-        {/* Score bar */}
+        {/* Relevance score (bar + label + raw score + per-vector ranks) */}
         <div style={{ flex: 1 }}>
-          <div
-            className="search-result-score-bar"
-            style={{ width: `${relPct}%`, background: `linear-gradient(90deg, ${scoreColor}, ${scoreColor}88)` }}
-          />
+          <ResultScore score={item.score} relPct={relPct} vectorRanks={item.vector_ranks} />
         </div>
-
-        {/* Percentage + quality label */}
-        <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: scoreColor, minWidth: 32 }}>
-          {relPct}%
-        </span>
-        <span style={{ fontSize: 11, color: scoreColor, minWidth: 48 }}>{scoreQuality}</span>
 
         {/* Reranked badge — only on first card when reranking was applied */}
         {isReranked && idx === 0 && (
@@ -506,20 +511,3 @@ function HighlightedText({ text, query }: { text: string; query: string }) {
   )
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-/**
- * Maps a relative score percentage to a qualitative label and color.
- *
- * Args:
- *   pct: Relative score as a percentage (0–100).
- *
- * Returns:
- *   Object with a human-readable label and a CSS color string.
- */
-function scoreLabel(pct: number): { label: string; color: string } {
-  if (pct >= 85) return { label: 'Strong',   color: 'var(--s-done)' }
-  if (pct >= 65) return { label: 'Good',     color: 'var(--accent)' }
-  if (pct >= 40) return { label: 'Moderate', color: 'var(--s-running)' }
-  return           { label: 'Weak',       color: 'var(--text-dim)' }
-}

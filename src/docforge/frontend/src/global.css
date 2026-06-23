@@ -3202,3 +3202,60 @@ input[type="range"]::-webkit-slider-thumb:hover { background: var(--text-muted);
   color: var(--text-muted);
   padding: 4px 0;
 }
+
+/* ── Search Clarity ── */
+
+/* Compact one-line summary of active search settings (chips), next to the query bar. */
+.search-settings-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin: 6px 0;
+}
+
+/* Per-result relevance block: stacked bar/label row + optional "why" line. */
+.result-score {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* "Pourquoi ce rang" row — wraps the per-vector mini-chips. */
+.result-score-why {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+/* Single per-vector mini-chip translating a vector name + rank. */
+.result-score-why-chip {
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: var(--surface-raised);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+/* Collapsible "Détails de la recherche" trace panel above the results. */
+.search-trace-summary {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin: 8px 0;
+}
+
+/* Toggle header — reuses the metadata-form-toggle look. */
+.search-trace-summary-toggle {
+  border-radius: var(--radius);
+}
+
+/* Expanded body — key/value rows describing the retrieval pipeline. */
+.search-trace-summary-body {
+  padding: 10px 12px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
