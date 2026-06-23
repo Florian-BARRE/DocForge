@@ -18,8 +18,7 @@ from libs.providers.classifier.local.vit_onnx_config import VitOnnxConfig
 from libs.providers.ocr.external.mistral_ocr_config import MistralOcrConfig
 from libs.providers.ocr.local.paddle_ocr_config import PaddleOcrConfig
 from libs.providers.parser.local.docling import DoclingConfig
-from libs.providers.vlm.external.openai_compat_config import OpenAIVlmConfig
-from libs.providers.vlm.local.openai_compat_config import LocalVlmConfig
+from libs.providers.vlm.openai_compat.config import OpenAICompatVlmConfig
 
 # ====== Internal Project Imports ======
 from libs.config.pipeline import ProviderSpec
@@ -152,25 +151,20 @@ class ChainBuilderHelpers:
         built: list[Any] = []
         for spec in specs:
             merged = spec.merge_defaults(cfg)
-            if isinstance(merged, LocalVlmConfig):
-                if not merged.base_url:
-                    raise ProviderUnavailableError(
-                        "vlm", "openai_compat", "No VLM base URL configured.",
-                    )
-            elif isinstance(merged, OpenAIVlmConfig):
-                if not merged.base_url:
-                    raise ProviderUnavailableError(
-                        "vlm", "openai", "No VLM base URL configured.",
-                    )
-                if not merged.api_key:
-                    raise ProviderUnavailableError(
-                        "vlm", "openai",
-                        "No API key — fill it in the playground or set VLM_API_KEY.",
-                    )
-            else:
+            if not isinstance(merged, OpenAICompatVlmConfig):
                 raise ProviderUnavailableError(
                     "vlm", getattr(merged, "id", str(merged)),
-                    "Unknown VLM provider id. Valid ids: 'openai_compat' (local), 'openai' (cloud).",
+                    "Unknown VLM provider id. Valid id: 'openai_compat' (locality 'local' or 'external').",
+                )
+            # Local needs a base_url; external additionally needs an api_key.
+            if not merged.base_url and merged.locality == "local":
+                raise ProviderUnavailableError(
+                    "vlm", "openai_compat", "No VLM base URL configured.",
+                )
+            if merged.locality == "external" and not merged.api_key:
+                raise ProviderUnavailableError(
+                    "vlm", "openai_compat",
+                    "No API key — fill it in the playground or set VLM_API_KEY.",
                 )
             built.append(merged.build())
         return Chain(stage="vlm", providers=built, gate=ChainGate(gate_cfg))

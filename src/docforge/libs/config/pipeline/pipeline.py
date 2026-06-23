@@ -105,7 +105,7 @@ def build_default_pipeline(cfg: Any) -> PipelineConfig:
     from libs.providers.ocr.external.mistral_ocr_config import MistralOcrConfig
     from libs.providers.ocr.local.paddle_ocr_config import PaddleOcrConfig
     from libs.providers.parser.local.docling import DoclingConfig
-    from libs.providers.vlm.local.openai_compat_config import LocalVlmConfig
+    from libs.providers.vlm.openai_compat.config import OpenAICompatVlmConfig
     from libs.pipeline.stages.s4_chunk.strategies.params import TokenBudgetConfig
 
     # 1. Parser chain
@@ -138,7 +138,8 @@ def build_default_pipeline(cfg: Any) -> PipelineConfig:
     # 4. VLM chain (empty = disabled)
     vlm_chain: list = []
     if getattr(cfg, "VLM_ENABLED", False):
-        vlm_chain.append(LocalVlmConfig(
+        vlm_chain.append(OpenAICompatVlmConfig(
+            locality="local",
             base_url=getattr(cfg, "VLM_API_BASE_URL", ""),
             api_key=getattr(cfg, "VLM_API_KEY", ""),
             model=getattr(cfg, "VLM_MODEL", ""),

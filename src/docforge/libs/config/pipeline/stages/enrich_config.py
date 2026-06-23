@@ -26,15 +26,13 @@ class EnrichConfig(BaseModel):
     S2 enrichment configuration — figure classifier + OCR chain + VLM (spec §4.3).
 
     The ``vlm`` provider selects the Vision-Language Model backend used for figure
-    grounding, chart description, and diagram captioning.  Two backends are available:
+    grounding, chart description, and diagram captioning.  One unified backend with a
+    ``locality`` flag:
 
-    ``LocalVlmConfig`` (id="openai_compat") — local OpenAI-compatible server (vLLM, Ollama).
-        No api_key required (can be omitted or set to any placeholder).
-        Required params: ``base_url``, ``model``.  Optional: ``api_key``, ``max_tokens``.
-
-    ``OpenAIVlmConfig`` (id="openai") — external cloud API (OpenAI, Mistral, OpenRouter, …).
-        ``api_key`` is REQUIRED — raises at provider init if empty or missing.
-        Required params: ``base_url``, ``api_key``, ``model``.
+    ``OpenAICompatVlmConfig`` (id="openai_compat") — OpenAI-compatible vision server.
+        ``locality="local"`` (vLLM/Ollama/LM Studio): ``base_url`` + ``model`` required,
+        api_key optional. ``locality="external"`` (OpenAI/Mistral/OpenRouter cloud): ``api_key``
+        required. The legacy id "openai" is still accepted and mapped to locality="external".
         Optional: ``max_tokens``, ``cost_per_call`` (float, USD; used for budget tracking).
 
     Attributes:
@@ -121,8 +119,7 @@ class EnrichConfig(BaseModel):
         from libs.providers.classifier.local.vit_onnx_config import VitOnnxConfig
         from libs.providers.ocr.external.mistral_ocr_config import MistralOcrConfig
         from libs.providers.ocr.local.paddle_ocr_config import PaddleOcrConfig
-        from libs.providers.vlm.external.openai_compat_config import OpenAIVlmConfig
-        from libs.providers.vlm.local.openai_compat_config import LocalVlmConfig
+        from libs.providers.vlm.openai_compat.config import OpenAICompatVlmConfig
 
         # 1. Validate classifier_chain items, then default if empty.
         classifier_union = Annotated[
@@ -153,11 +150,9 @@ class EnrichConfig(BaseModel):
             object.__setattr__(self, "ocr_chain", coerced_ocr)
 
         # 3. Validate vlm_chain items (stays empty if no items provided).
-        vlm_union = Annotated[
-            LocalVlmConfig | OpenAIVlmConfig,
-            _F(discriminator="id"),
-        ]
-        vlm_adapter = TypeAdapter(vlm_union)
+        # Single unified config; its _compat validator remaps the legacy id "openai" to
+        # locality="external", so old vlm_chain entries keep loading.
+        vlm_adapter = TypeAdapter(OpenAICompatVlmConfig)
         if self.vlm_chain:
             coerced_vlm = [
                 vlm_adapter.validate_python(item) if isinstance(item, dict) else item

@@ -27,9 +27,8 @@ class _OpenAICompatVlmBase(VlmProvider, LoggerClass):
     """
     Shared HTTP implementation for all OpenAI-compatible VLM providers.
 
-    Subclasses (LocalOpenAICompatVlmProvider, OpenAIVlmProvider) define their
-    constructor contract (auth requirements, defaults) and delegate to
-    _init_openai_compat_vlm().
+    The unified OpenAICompatVlmProvider sets its constructor contract (auth requirements,
+    locality-dependent defaults) and delegates the shared HTTP state to _init_openai_compat_vlm().
 
     Protocol: POST {base_url}/chat/completions (vision variant, OpenAI shape).
     """

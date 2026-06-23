@@ -29,10 +29,7 @@ from .ocr import MistralOcrProvider, PaddleOcrProvider
 from .parser import DoclingBackend
 
 # ------------------- VLM Providers (P3) ------------------- #
-from .vlm import LocalOpenAICompatVlmProvider, OpenAIVlmProvider
-
-# Backward-compat alias
-OpenAICompatVlmProvider = LocalOpenAICompatVlmProvider
+from .vlm import OpenAICompatVlmProvider
 
 # ------------------- Classifier (P3) ------------------- #
 from .classifier import (
@@ -61,7 +58,6 @@ __all__ = [
     "GotenbergConverter",
     "LayoutLabelsClassifier",
     "CompositeEmbedProvider",
-    "LocalOpenAICompatVlmProvider",
     "MistralOcrProvider",
     "NATIVE_PDF_FORMATS",
     "OcrHint",
@@ -69,7 +65,6 @@ __all__ = [
     "OcrResult",
     "OpenAICompatEmbedProvider",
     "OpenAICompatVlmProvider",
-    "OpenAIVlmProvider",
     "PaddleOcrProvider",
     "ParserProvider",
     "ProviderChain",
