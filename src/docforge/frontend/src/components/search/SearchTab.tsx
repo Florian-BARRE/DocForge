@@ -1,7 +1,7 @@
 // ====== Code Summary ======
 // Search tab — PipelineGraph for the search pipeline (config + trace mode), a query
 // input with a search button, a query-variants banner (multi_query), and result cards.
-// Discovery-driven config panels open in a SlidePanel on node click.
+// Discovery-driven config panels appear inline below the graph on node click.
 
 // ====== Third-Party Library Imports ======
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -9,7 +9,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 // ====== Internal Project Imports ======
 import { getConfigState, getDiscovery, searchDocuments } from '../../api/client'
 import type { ConfigState, DynamicField, SearchResultItem } from '../../api/types'
-import { SlidePanel } from '../layout/SlidePanel'
 import { PipelineGraph } from '../pipeline/PipelineGraph'
 import { StageConfigPanel } from '../pipeline/panels/StageConfigPanel'
 import { SEARCH_STAGES } from '../pipeline/search-stages'
@@ -65,7 +64,6 @@ export function SearchTab({ collectionId }: SearchTabProps) {
   // ── Graph / panel state ───────────────────────────────────────────────────────
 
   const [activeStage, setActiveStage] = useState<StageDefinition | null>(null)
-  const [slidePanelOpen, setSlidePanelOpen] = useState(false)
 
   // ── Discovery state ──────────────────────────────────────────────────────────
 
@@ -146,20 +144,12 @@ export function SearchTab({ collectionId }: SearchTabProps) {
   // 4. Graph mode: "trace" after first successful search, "config" before.
   const graphMode: 'config' | 'trace' = lastSearchInfo ? 'trace' : 'config'
 
-  // 5. Stage node click handler.
+  // 5. Stage node click: toggle off if same stage clicked again.
   function handleStageClick(stage: StageDefinition) {
-    setActiveStage(stage)
-    setSlidePanelOpen(true)
+    setActiveStage(prev => prev?.id === stage.id ? null : stage)
   }
 
-  // 6. SlidePanel title.
-  const slidePanelTitle = activeStage
-    ? activeStage.readOnly
-      ? `${activeStage.label} — Read Only`
-      : `${activeStage.label} Configuration`
-    : ''
-
-  // 7. Run search.
+  // 6. Run search.
   async function handleSearch(e?: React.FormEvent) {
     e?.preventDefault()
     const q = query.trim()
@@ -218,6 +208,49 @@ export function SearchTab({ collectionId }: SearchTabProps) {
           activeStageId={activeStage?.id ?? null}
           onStageClick={handleStageClick}
         />
+      </div>
+
+      {/* ── Inline config panel (below graph) ── */}
+      <div className="pipeline-inline-panel">
+        {!activeStage ? (
+          <div className="pipeline-inline-panel-empty">
+            Click a stage to view its configuration
+          </div>
+        ) : (
+          <>
+            <div className="pipeline-inline-panel-header">
+              <span className="pipeline-inline-panel-title">
+                {activeStage.readOnly
+                  ? `${activeStage.label} — Read Only`
+                  : `${activeStage.label} Configuration`}
+              </span>
+              <button
+                type="button"
+                className="btn-icon"
+                onClick={() => setActiveStage(null)}
+                aria-label="Close panel"
+              >
+                ×
+              </button>
+            </div>
+            <div className="pipeline-inline-panel-body">
+              {activeStage.readOnly ? (
+                <div className="stage-config-empty">
+                  Embed provider is auto-derived from the collection's ingestion
+                  config and cannot be changed here.
+                </div>
+              ) : (
+                <StageConfigPanel
+                  stage={activeStage}
+                  collectionId={collectionId}
+                  dynamicFields={dynamicFields}
+                  configState={configState}
+                  onSaved={handleSaved}
+                />
+              )}
+            </div>
+          </>
+        )}
       </div>
 
       {/* ── Body: query + results ── */}
@@ -285,28 +318,6 @@ export function SearchTab({ collectionId }: SearchTabProps) {
         )}
       </div>
 
-      {/* ── Slide panel ── */}
-      <SlidePanel
-        isOpen={slidePanelOpen}
-        title={slidePanelTitle}
-        onClose={() => setSlidePanelOpen(false)}
-      >
-        {activeStage && activeStage.readOnly ? (
-          // Read-only message for the embed node.
-          <div className="stage-config-empty" style={{ padding: 16 }}>
-            Embed provider is auto-derived from the collection's ingestion config
-            and cannot be changed here.
-          </div>
-        ) : activeStage ? (
-          <StageConfigPanel
-            stage={activeStage}
-            collectionId={collectionId}
-            dynamicFields={dynamicFields}
-            configState={configState}
-            onSaved={handleSaved}
-          />
-        ) : null}
-      </SlidePanel>
     </div>
   )
 }

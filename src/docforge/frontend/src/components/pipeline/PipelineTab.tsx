@@ -1,9 +1,9 @@
 // ====== Code Summary ======
 // Orchestrator for the Pipeline tab.
 // Config mode (activeDocId null): fetches discovery fields + config state, renders
-// PipelineGraph in "config" mode, opens StageConfigPanel in a SlidePanel on click.
+// PipelineGraph in "config" mode, shows StageConfigPanel inline below the graph on click.
 // Trace mode (activeDocId non-null): fetches the document, passes stageResults derived
-// from the document to PipelineGraph in "trace" mode, opens trace panels on click.
+// from the document to PipelineGraph in "trace" mode, shows trace panels inline below.
 
 // ====== Standard Library Imports ======
 // (none)
@@ -14,7 +14,6 @@ import { useCallback, useEffect, useState } from 'react'
 // ====== Internal Project Imports ======
 import { getConfigState, getDiscovery, getDocument } from '../../api/client'
 import type { ConfigState, Document, DynamicField } from '../../api/types'
-import { SlidePanel } from '../layout/SlidePanel'
 
 // ====== Local Project Imports ======
 import { PipelineGraph } from './PipelineGraph'
@@ -191,13 +190,10 @@ export function PipelineTab({
   // 2. Current persisted config state.
   const [configState, setConfigState] = useState<ConfigState | null>(null)
 
-  // 3. The stage node currently open in the SlidePanel.
+  // 3. The stage node currently selected (shows inline panel below the graph).
   const [activeStage, setActiveStage] = useState<StageDefinition | null>(null)
 
-  // 4. Controls whether the SlidePanel is visible.
-  const [slidePanelOpen, setSlidePanelOpen] = useState(false)
-
-  // 5. Document fetched for trace mode (null when in config mode or loading).
+  // 4. Document fetched for trace mode (null when in config mode or loading).
   const [traceDoc, setTraceDoc] = useState<Document | null>(null)
 
   // 6. Determine mode from the presence of activeDocId.
@@ -265,22 +261,14 @@ export function PipelineTab({
     }
   }, [collectionId])
 
-  // 10. Stage node click: select the stage and open the panel.
+  // 10. Stage node click: select the stage (toggles off if same stage clicked again).
   function handleStageClick(stage: StageDefinition) {
-    setActiveStage(stage)
-    setSlidePanelOpen(true)
+    setActiveStage(prev => prev?.id === stage.id ? null : stage)
   }
 
   // 11. Derive stage results only when in trace mode and the document is loaded.
   const stageResults =
     mode === 'trace' && traceDoc ? deriveStageResults(traceDoc) : undefined
-
-  // 12. Build the SlidePanel title based on mode.
-  const slidePanelTitle = activeStage
-    ? mode === 'trace'
-      ? `${activeStage.label} — Trace`
-      : `${activeStage.label} Configuration`
-    : ''
 
   // ── Render ──────────────────────────────────────────────────────────────────
 
@@ -311,33 +299,46 @@ export function PipelineTab({
         onStageClick={handleStageClick}
       />
 
-      {/* ── Hint — only visible in config mode ── */}
-      {mode === 'config' && (
-        <p className="pipeline-tab-hint">
-          Drop a file in the Documents tab to trace the pipeline
-        </p>
-      )}
-
-      {/* ── Slide panel ── */}
-      <SlidePanel
-        isOpen={slidePanelOpen}
-        title={slidePanelTitle}
-        onClose={() => setSlidePanelOpen(false)}
-      >
-        {activeStage && mode === 'config' && (
-          <StageConfigPanel
-            stage={activeStage}
-            collectionId={collectionId}
-            dynamicFields={dynamicFields}
-            configState={configState}
-            onSaved={handleSaved}
-          />
+      {/* ── Inline config / trace panel ── */}
+      <div className="pipeline-inline-panel">
+        {!activeStage ? (
+          <div className="pipeline-inline-panel-empty">
+            {mode === 'config'
+              ? 'Click a stage to view its configuration'
+              : 'Click a stage to inspect its trace'}
+          </div>
+        ) : (
+          <>
+            <div className="pipeline-inline-panel-header">
+              <span className="pipeline-inline-panel-title">
+                {activeStage.label}{mode === 'trace' ? ' — Trace' : ' Configuration'}
+              </span>
+              <button
+                type="button"
+                className="btn-icon"
+                onClick={() => setActiveStage(null)}
+                aria-label="Close panel"
+              >
+                ×
+              </button>
+            </div>
+            <div className="pipeline-inline-panel-body">
+              {mode === 'config' && (
+                <StageConfigPanel
+                  stage={activeStage}
+                  collectionId={collectionId}
+                  dynamicFields={dynamicFields}
+                  configState={configState}
+                  onSaved={handleSaved}
+                />
+              )}
+              {mode === 'trace' && traceDoc && stageResults &&
+                buildTracePanel(activeStage, traceDoc, collectionId, stageResults)
+              }
+            </div>
+          </>
         )}
-
-        {activeStage && mode === 'trace' && traceDoc && stageResults && (
-          buildTracePanel(activeStage, traceDoc, collectionId, stageResults)
-        )}
-      </SlidePanel>
+      </div>
     </div>
   )
 }
