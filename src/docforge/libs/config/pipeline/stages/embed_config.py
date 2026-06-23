@@ -32,7 +32,7 @@ class EmbedConfig(BaseModel):
 
     ``OpenAICompatEmbedConfig`` (id="openai_compat") — OpenAI-compatible server, local OR external.
         ``locality`` flag: "local" (vLLM/Ollama, api_key optional) or "external" (cloud, api_key
-        required). The legacy id ``"openai"`` is still accepted and mapped to locality="external".
+        required).
 
     Attributes:
         chain (list[EmbedProviderConfig]): Ordered DENSE embedding backends; index 0 is tried first.
@@ -95,16 +95,13 @@ class EmbedConfig(BaseModel):
         ]
         adapter = TypeAdapter(union)
 
-        def _coerce(item: Any) -> Any:
-            # Discriminated-union dispatch keys on `id` BEFORE any class validator, so the
-            # legacy id "openai" must be remapped to the unified openai_compat (external) here.
-            if isinstance(item, dict) and item.get("id") == "openai":
-                item = {**item, "id": "openai_compat", "locality": item.get("locality", "external")}
-            return adapter.validate_python(item) if isinstance(item, dict) else item
-
-        object.__setattr__(self, "chain", [_coerce(item) for item in self.chain])
+        # Coerce/validate each item — raises ValidationError on unknown id.
+        object.__setattr__(self, "chain", [
+            adapter.validate_python(item) if isinstance(item, dict) else item
+            for item in self.chain
+        ])
 
         # Coerce the optional separate sparse backend through the same union.
         if isinstance(self.sparse, dict):
-            object.__setattr__(self, "sparse", _coerce(self.sparse))
+            object.__setattr__(self, "sparse", adapter.validate_python(self.sparse))
         return self

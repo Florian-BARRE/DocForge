@@ -17,11 +17,11 @@ from libs.providers.results.embed_result import EmbedResult
 class TestEmbedConfigSparse:
     def test_dense_chain_plus_separate_sparse(self) -> None:
         cfg = EmbedConfig.model_validate({
-            "chain": [{"id": "openai", "base_url": "https://api.openai.com/v1",
+            "chain": [{"id": "openai_compat", "locality": "external",
+                       "base_url": "https://api.openai.com/v1",
                        "api_key": "sk-x", "model": "text-embedding-3-large"}],
             "sparse": {"id": "tei", "base_url": "http://tei-sparse:80", "embed_sparse": True},
         })
-        # Legacy id "openai" is unified to openai_compat with locality="external".
         assert cfg.chain[0].id == "openai_compat"
         assert cfg.chain[0].locality == "external"
         assert cfg.chain[0].api_key == "sk-x"

@@ -31,8 +31,6 @@ class OpenAICompatVlmConfig(BaseModel):
       - ``"local"`` — self-hosted (vLLM/Ollama/LM Studio); api_key optional; base_url required.
       - ``"external"`` — cloud (OpenAI/Mistral/OpenRouter); api_key required.
 
-    Backward compatibility: the legacy id ``"openai"`` is remapped to this class with
-    locality="external" by the ``_compat`` validator, so old configs keep loading.
     """
 
     _label: ClassVar[str] = "OpenAI-compatible VLM — local or external (locality flag)"
@@ -51,14 +49,9 @@ class OpenAICompatVlmConfig(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
-    def _compat(cls, v: Any) -> Any:
-        """Flatten legacy ``{id, params}`` and map the legacy id ``"openai"`` to locality="external"."""
-        v = _flatten_provider_spec(v)
-        if isinstance(v, dict) and v.get("id") == "openai":
-            v = dict(v)
-            v["id"] = "openai_compat"
-            v.setdefault("locality", "external")
-        return v
+    def _normalize(cls, v: Any) -> Any:
+        """Flatten the nested ``{id, params}`` spec shape to a flat dict before validation."""
+        return _flatten_provider_spec(v)
 
     def build(self) -> OpenAICompatVlmProvider:
         """Instantiate the provider; local requires base_url, external requires api_key."""

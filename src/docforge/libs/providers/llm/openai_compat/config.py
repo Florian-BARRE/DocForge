@@ -33,9 +33,6 @@ class OpenAICompatLLMConfig(BaseModel):
     Config id: ``"openai_compat"``. The ``locality`` flag selects the deployment:
       - ``"external"`` — cloud OpenAI; ``api_key`` required (config or OPENAI_API_KEY/LLM_API_KEY env).
       - ``"local"`` — self-hosted (vLLM/Ollama/llama.cpp); ``api_key`` usually ``"local"``.
-
-    Backward compatibility: legacy ids ``"local_llm"`` and ``"openai_llm"`` are remapped to this
-    class with locality "local" / "external" by the consuming union (search_config).
     """
 
     _label: ClassVar[str] = "OpenAI-compatible LLM — local or external (locality flag)"
@@ -53,15 +50,9 @@ class OpenAICompatLLMConfig(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
-    def _compat(cls, v: Any) -> Any:
-        """Flatten legacy ``{id, params}`` and map legacy ids to the unified id + locality."""
-        v = _flatten_provider_spec(v)
-        if isinstance(v, dict) and v.get("id") in ("local_llm", "openai_llm"):
-            legacy = v.get("id")
-            v = dict(v)
-            v["id"] = "openai_compat"
-            v.setdefault("locality", "external" if legacy == "openai_llm" else "local")
-        return v
+    def _normalize(cls, v: Any) -> Any:
+        """Flatten the nested ``{id, params}`` spec shape to a flat dict before validation."""
+        return _flatten_provider_spec(v)
 
     def build(self) -> OpenAICompatLLMProvider:
         """Instantiate the provider; external requires api_key."""

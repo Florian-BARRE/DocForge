@@ -93,16 +93,12 @@ class SemanticConfig(BaseModel):
             return self
 
         # Dict → validate via the same discriminated union the rest of the codebase uses.
-        # Legacy id "openai" maps to the unified openai_compat (external) for backward compat.
         Union_ = Annotated[
             TeiEmbedConfig | OpenAICompatEmbedConfig,
             _F(discriminator="id"),
         ]
         adapter = TypeAdapter(Union_)
-        item = self.embed
-        if isinstance(item, dict) and item.get("id") == "openai":
-            item = {**item, "id": "openai_compat", "locality": item.get("locality", "external")}
-        object.__setattr__(self, "embed", adapter.validate_python(item))
+        object.__setattr__(self, "embed", adapter.validate_python(self.embed))
         return self
 
     def build(self) -> SemanticSplitter:

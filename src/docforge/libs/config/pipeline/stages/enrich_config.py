@@ -32,7 +32,7 @@ class EnrichConfig(BaseModel):
     ``OpenAICompatVlmConfig`` (id="openai_compat") — OpenAI-compatible vision server.
         ``locality="local"`` (vLLM/Ollama/LM Studio): ``base_url`` + ``model`` required,
         api_key optional. ``locality="external"`` (OpenAI/Mistral/OpenRouter cloud): ``api_key``
-        required. The legacy id "openai" is still accepted and mapped to locality="external".
+        required.
         Optional: ``max_tokens``, ``cost_per_call`` (float, USD; used for budget tracking).
 
     Attributes:
@@ -150,8 +150,7 @@ class EnrichConfig(BaseModel):
             object.__setattr__(self, "ocr_chain", coerced_ocr)
 
         # 3. Validate vlm_chain items (stays empty if no items provided).
-        # Single unified config; its _compat validator remaps the legacy id "openai" to
-        # locality="external", so old vlm_chain entries keep loading.
+        # Single unified config; the locality flag selects local vs external.
         vlm_adapter = TypeAdapter(OpenAICompatVlmConfig)
         if self.vlm_chain:
             coerced_vlm = [

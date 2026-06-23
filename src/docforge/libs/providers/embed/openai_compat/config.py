@@ -1,8 +1,7 @@
 # ====== Code Summary ======
 # Config for the unified OpenAI-compatible embedding provider (local OR external).
-# Registered under id="openai_compat"; a `locality` flag ("local"|"external") replaces the
-# former two classes (id="openai" external + id="openai_compat" local). The legacy id "openai"
-# is still accepted and mapped to locality="external" for backward compatibility.
+# Registered under id="openai_compat"; a `locality` flag ("local"|"external") selects the
+# deployment, replacing the former two classes (external + local).
 
 # ====== Standard Library Imports ======
 from __future__ import annotations
@@ -34,9 +33,6 @@ class OpenAICompatEmbedConfig(BaseModel):
       - ``"local"`` — self-hosted (vLLM/Ollama/…); ``api_key`` optional, ``base_url`` required.
 
     Dense-only. Pair with a separate sparse source (EmbedConfig.sparse) for hybrid search.
-
-    Backward compatibility: the legacy id ``"openai"`` is accepted and mapped to
-    ``locality="external"`` (see the before-validator), so existing collection configs keep working.
     """
 
     _label: ClassVar[str] = "OpenAI-compatible embed — local or external (locality flag, dense only)"
@@ -54,14 +50,9 @@ class OpenAICompatEmbedConfig(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
-    def _compat(cls, v: Any) -> Any:
-        """Flatten legacy ``{id, params}`` specs and map the legacy ``id='openai'`` to external."""
-        v = _flatten_provider_spec(v)
-        if isinstance(v, dict) and v.get("id") == "openai":
-            v = dict(v)
-            v["id"] = "openai_compat"
-            v.setdefault("locality", "external")
-        return v
+    def _normalize(cls, v: Any) -> Any:
+        """Flatten the nested ``{id, params}`` spec shape to a flat dict before validation."""
+        return _flatten_provider_spec(v)
 
     def build(self) -> OpenAICompatEmbedProvider:
         """

@@ -62,9 +62,8 @@ class QueryTransformConfig(BaseModel):
         if self.llm is None or not isinstance(self.llm, dict):
             return self
 
-        # Lazy import to preserve the leaf constraint. The unified OpenAICompatLLMConfig
-        # carries a locality flag; its _compat validator remaps the legacy ids "local_llm"
-        # and "openai_llm" to (id="openai_compat", locality=...) for backward compatibility.
+        # Lazy import to preserve the leaf constraint. There is a single llm provider id
+        # ("openai_compat"); its locality flag ("local" / "external") selects the deployment.
         from pydantic import TypeAdapter
 
         from libs.providers.llm.openai_compat.config import OpenAICompatLLMConfig
