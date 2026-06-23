@@ -60,7 +60,7 @@ class ParseConfig(BaseModel):
         from pydantic import Field as _F
         from pydantic import TypeAdapter
 
-        from libs.providers.parser.local.docling import DoclingConfig
+        from libs.providers.parser.docling import DoclingConfig
 
         if not self.chain:
             object.__setattr__(self, "chain", [DoclingConfig()])

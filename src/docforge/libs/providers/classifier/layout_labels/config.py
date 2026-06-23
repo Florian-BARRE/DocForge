@@ -13,7 +13,7 @@ from libs.config.pipeline._registry import register
 from libs.config.pipeline.spec_utils import flatten_provider_spec as _flatten_provider_spec
 
 # ====== Local Project Imports ======
-from .layout_labels import LayoutLabelsClassifier
+from .provider import LayoutLabelsClassifier
 
 
 @register("classifier")

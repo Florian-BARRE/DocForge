@@ -99,12 +99,12 @@ def build_default_pipeline(cfg: Any) -> PipelineConfig:
     """
     # Lazy imports â€” triggered only when this function is actually called (after providers
     # register themselves), not at module load time.  Preserves the leaf constraint.
-    from libs.providers.classifier.local.layout_labels_config import LayoutLabelsConfig
-    from libs.providers.classifier.local.vit_onnx_config import VitOnnxConfig
+    from libs.providers.classifier.layout_labels.config import LayoutLabelsConfig
+    from libs.providers.classifier.vit_onnx.config import VitOnnxConfig
     from libs.providers.embed.tei.config import TeiEmbedConfig
-    from libs.providers.ocr.external.mistral_ocr_config import MistralOcrConfig
-    from libs.providers.ocr.local.paddle_ocr_config import PaddleOcrConfig
-    from libs.providers.parser.local.docling import DoclingConfig
+    from libs.providers.ocr.mistral.config import MistralOcrConfig
+    from libs.providers.ocr.paddle.config import PaddleOcrConfig
+    from libs.providers.parser.docling import DoclingConfig
     from libs.providers.vlm.openai_compat.config import OpenAICompatVlmConfig
     from libs.pipeline.stages.s4_chunk.strategies.params import TokenBudgetConfig
 

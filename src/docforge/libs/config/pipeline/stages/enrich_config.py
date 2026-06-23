@@ -115,10 +115,10 @@ class EnrichConfig(BaseModel):
         from pydantic import Field as _F
         from pydantic import TypeAdapter
 
-        from libs.providers.classifier.local.layout_labels_config import LayoutLabelsConfig
-        from libs.providers.classifier.local.vit_onnx_config import VitOnnxConfig
-        from libs.providers.ocr.external.mistral_ocr_config import MistralOcrConfig
-        from libs.providers.ocr.local.paddle_ocr_config import PaddleOcrConfig
+        from libs.providers.classifier.layout_labels.config import LayoutLabelsConfig
+        from libs.providers.classifier.vit_onnx.config import VitOnnxConfig
+        from libs.providers.ocr.mistral.config import MistralOcrConfig
+        from libs.providers.ocr.paddle.config import PaddleOcrConfig
         from libs.providers.vlm.openai_compat.config import OpenAICompatVlmConfig
 
         # 1. Validate classifier_chain items, then default if empty.

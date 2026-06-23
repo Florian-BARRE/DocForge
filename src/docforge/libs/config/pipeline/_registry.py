@@ -94,23 +94,29 @@ class ProviderRegistryCatalog:
     @staticmethod
     def auto_import(package_name: str) -> None:
         """
-        Import every module inside local/ and external/ sub-packages to trigger @register decorators.
+        Import every sub-module of a category package to trigger its @register decorators.
 
-        Call this at the TOP of each category __init__.py, before accessing get_configs().
+        Walks the category package recursively (one folder per provider, e.g.
+        ``ocr/paddle/`` and ``ocr/mistral/``) and imports each module so its config class
+        registers itself.  Call this at the TOP of each category __init__.py, before
+        accessing get_configs().
 
         Args:
             package_name (str): The package name of the category (e.g. "libs.providers.ocr").
         """
-        for sub in ("local", "external"):
-            subpkg = f"{package_name}.{sub}"
+        try:
+            pkg = importlib.import_module(package_name)
+        except ImportError:
+            return
+        # A namespace package (e.g. a deleted folder still resolvable) has __file__ = None;
+        # there is nothing on disk to walk, so bail out instead of crashing on Path(None).
+        pkg_file = getattr(pkg, "__file__", None)
+        if not pkg_file:
+            return
+        pkg_path = Path(pkg_file).parent
+        for _, modname, _ in pkgutil.walk_packages([str(pkg_path)], f"{package_name}."):
             try:
-                pkg = importlib.import_module(subpkg)
-                pkg_path = Path(pkg.__file__).parent  # type: ignore[arg-type]
-                for _, modname, _ in pkgutil.walk_packages([str(pkg_path)], f"{subpkg}."):
-                    try:
-                        importlib.import_module(modname)
-                    except ImportError:
-                        pass
+                importlib.import_module(modname)
             except ImportError:
                 pass
 

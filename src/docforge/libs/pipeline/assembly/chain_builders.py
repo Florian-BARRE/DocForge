@@ -14,10 +14,10 @@ from typing import Any
 # ====== Third-Party Library Imports ======
 from libs.providers.chain import Chain
 from libs.providers.chain_gate import ChainGate, ChainGateConfig
-from libs.providers.classifier.local.vit_onnx_config import VitOnnxConfig
-from libs.providers.ocr.external.mistral_ocr_config import MistralOcrConfig
-from libs.providers.ocr.local.paddle_ocr_config import PaddleOcrConfig
-from libs.providers.parser.local.docling import DoclingConfig
+from libs.providers.classifier.vit_onnx.config import VitOnnxConfig
+from libs.providers.ocr.mistral.config import MistralOcrConfig
+from libs.providers.ocr.paddle.config import PaddleOcrConfig
+from libs.providers.parser.docling import DoclingConfig
 from libs.providers.vlm.openai_compat.config import OpenAICompatVlmConfig
 
 # ====== Internal Project Imports ======

@@ -16,7 +16,7 @@ from libs.config.pipeline._registry import register
 from libs.config.pipeline.spec_utils import flatten_provider_spec as _flatten_provider_spec
 
 # ====== Local Project Imports ======
-from .gotenberg import GotenbergConverter
+from .provider import GotenbergConverter
 
 
 @register("converter")

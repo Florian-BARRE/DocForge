@@ -6,18 +6,14 @@
 # ---------------------- Auto-discovery ---------------------- #
 from libs.config.pipeline._registry import auto_import, build_union, get_configs
 
-auto_import(__name__)  # imports local/ and external/ — triggers @register decorators
+auto_import(__name__)  # imports each provider folder — triggers @register decorators
 
 # ---------------------- Base ---------------------- #
 from .base import ConverterProvider
 
-# ------------------- Local Providers ------------------- #
-from .local.gotenberg import (
-    GOTENBERG_FORMATS,
-    NATIVE_PDF_FORMATS,
-    GotenbergConverter,
-)
-from .local.gotenberg_config import GotenbergConfig
+# ------------------- Providers (one folder each) ------------------- #
+from .gotenberg import GotenbergConfig, GotenbergConverter
+from .gotenberg.provider import GOTENBERG_FORMATS, NATIVE_PDF_FORMATS
 
 # ------------------- Discriminated Union ------------------- #
 # Built dynamically from all registered converter configs.
