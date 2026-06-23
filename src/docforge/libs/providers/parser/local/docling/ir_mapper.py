@@ -79,7 +79,7 @@ class DoclingIRMapper:
         # 2. Walk Docling items in reading order
         # iterate_items() returns (DocItem, int) tuples in docling >= 2.x
         for item, _depth in docling_doc.iterate_items():
-            block = cls._map_item(item, reading_order, docling_doc)
+            block = cls._map_item(item, reading_order, docling_doc, doc_id)
             if block is not None:
                 blocks.append(block)
                 reading_order += 1
@@ -115,7 +115,7 @@ class DoclingIRMapper:
         )
 
     @classmethod
-    def _map_item(cls, item: Any, reading_order: int, docling_doc: Any) -> Block | None:
+    def _map_item(cls, item: Any, reading_order: int, docling_doc: Any, doc_id: str) -> Block | None:
         """
         Map a single Docling item to an IR Block.
 
@@ -123,6 +123,7 @@ class DoclingIRMapper:
             item: A Docling DocItem (TextItem, TableItem, PictureItem, etc.).
             reading_order (int): Sequential index in the document.
             docling_doc: The parent DoclingDocument, used for page size lookup.
+            doc_id (str): Owning document UUID — namespaces the block id (see step 4).
 
         Returns:
             Block | None: Mapped block, or None to skip this item.
@@ -143,12 +144,16 @@ class DoclingIRMapper:
         if prov is None:
             return None
 
-        # 4. Generate a stable block ID from self_ref if available
-        block_id = (
+        # 4. Generate a block ID. Docling's self_ref (e.g. "#/texts/0") is only unique
+        #    WITHIN a document, but the block table's primary key is the id alone — so it
+        #    must be namespaced by doc_id, otherwise a second document re-using "#/texts/0"
+        #    collides on block_pkey. doc_id + self_ref is globally unique and stable.
+        raw_ref = (
             str(item.self_ref)
             if hasattr(item, "self_ref") and item.self_ref
             else str(uuid.uuid4())
         )
+        block_id = f"{doc_id}:{raw_ref}"
 
         # 5. Extract type-specific content
         text: str | None = None

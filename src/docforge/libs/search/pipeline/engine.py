@@ -188,7 +188,10 @@ class SearchPipelineEngine(LoggerClass):
         Returns:
             int: Candidate pool size.
         """
-        pool = self._config.rerank.candidate_k if self._rerank_stage else top_k
+        # Always retrieve at least top_k; reranking widens the pool to candidate_k.
+        pool = top_k
+        if self._rerank_stage:
+            pool = max(pool, self._config.rerank.candidate_k)
         grouping = self._config.retrieve.grouping
         mmr = self._config.retrieve.mmr
         if grouping.enabled:

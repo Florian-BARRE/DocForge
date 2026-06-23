@@ -27,7 +27,7 @@ class TeiEmbedConfig(BaseModel):
     Configuration for the TEI (Text Embeddings Inference) local embedding server.
 
     Config id: "tei" — BGE-M3, 1024-dim dense + BM25 sparse, hybrid search.
-    Requires a running TEI server (e.g. http://tei:8080).
+    Requires a running TEI server (URL from the TEI_BASE_URL env, e.g. http://tei:80).
 
     Attributes:
         id: Provider discriminator — always "tei".
@@ -41,7 +41,9 @@ class TeiEmbedConfig(BaseModel):
     _category: ClassVar[str] = "embed"
 
     id: Literal["tei"] = "tei"
-    base_url: str = Field(default="http://tei:8080", description="TEI server URL.")
+    # Empty by default so merge_defaults sources the URL from TEI_BASE_URL (deployment
+    # env) — a non-empty default would shadow the env and pin a possibly-wrong port.
+    base_url: str = Field(default="", description="TEI server URL (defaults to TEI_BASE_URL env).")
     model: str = Field(default="BAAI/bge-m3", description="Embedding model served by TEI.")
     batch_size: int = Field(default=32, ge=1, le=256, description="Max texts per batch.")
     embed_sparse: bool = Field(default=True, description="Produce BM25 sparse vectors (hybrid search).")
@@ -60,7 +62,7 @@ class TeiEmbedConfig(BaseModel):
             TeiEmbedProvider: Ready-to-use provider instance.
         """
         return TeiEmbedProvider(
-            base_url=self.base_url,
+            base_url=self.base_url or "http://tei:80",
             model=self.model,
             batch_size=self.batch_size,
             embed_sparse=self.embed_sparse,
@@ -77,7 +79,7 @@ class TeiEmbedConfig(BaseModel):
             TeiEmbedConfig: Updated config with env defaults applied where needed.
         """
         return self.model_copy(update={
-            "base_url": self.base_url or getattr(cfg, "TEI_BASE_URL", self.base_url),
+            "base_url": self.base_url or getattr(cfg, "TEI_BASE_URL", "") or "http://tei:80",
             "batch_size": self.batch_size or getattr(cfg, "TEI_BATCH_SIZE", self.batch_size),
         })
 

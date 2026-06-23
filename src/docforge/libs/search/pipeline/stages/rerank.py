@@ -1,5 +1,5 @@
 # ====== Code Summary ======
-# RerankStage â€” wraps a RerankProvider to re-score retrieval results with a cross-encoder.
+# RerankStage — wraps a RerankProvider to re-score retrieval results with a cross-encoder.
 # Takes the top candidate_k results, scores them, and returns the top_n highest-scoring ones.
 
 # ====== Standard Library Imports ======
@@ -22,8 +22,8 @@ class RerankStage(LoggerClass):
     a cross-encoder (RerankProvider), and returns the top_n results sorted by
     descending rerank score.
 
-    The rerank score is attached to each SearchResult's metadata dict under the
-    key ``"rerank_score"`` for downstream inspection.
+    Each returned result's ``score`` is overwritten with its cross-encoder score so the
+    surfaced relevance is consistent with the rerank ordering.
 
     Attributes:
         _config (RerankConfig): Candidate count and top_n settings.
@@ -49,8 +49,9 @@ class RerankStage(LoggerClass):
         """
         Re-score results with the cross-encoder and return top_n sorted by rerank score.
 
-        Attaches ``rerank_score`` to each result's metadata for downstream use.
-        If the provider raises, logs a warning and returns the original results unchanged.
+        Each returned result's ``score`` is overwritten with its cross-encoder score so the
+        displayed relevance matches the rerank ordering.  If the provider raises, logs a
+        warning and returns the original (retrieval-ordered) results trimmed to top_n.
 
         Args:
             query (str): The user search query (same query used during retrieval).
@@ -69,7 +70,7 @@ class RerankStage(LoggerClass):
         try:
             scores = await self._provider.rerank(query=query, texts=texts)
         except Exception as exc:
-            self.logger.warning(f"RerankStage: cross-encoder failed, returning original order â€” {exc}")
+            self.logger.warning(f"RerankStage: cross-encoder failed, returning original order — {exc}")
             return results[: self._config.top_n]
 
         self.logger.debug(f"RerankStage: scored {len(scores)} candidates")
@@ -77,7 +78,12 @@ class RerankStage(LoggerClass):
         # 3. Pair each result with its rerank score for sorting
         scored = [(score, result) for result, score in zip(results, scores)]
 
-        # 4. Sort by descending rerank score and trim to top_n
+        # 4. Sort by descending rerank score, trim to top_n, and reflect the score
         scored.sort(key=lambda t: t[0], reverse=True)
-        return [r for _, r in scored[: self._config.top_n]]
-
+        top: list[SearchResult] = []
+        for score, result in scored[: self._config.top_n]:
+            result.score = float(score)
+            top.append(result)
+        return top
+
+
