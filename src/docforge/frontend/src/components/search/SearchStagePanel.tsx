@@ -9,7 +9,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 // ====== Internal Project Imports ======
 import { updateConfig } from '../../api/client'
-import type { ConfigState } from '../../api/types'
+import type { ConfigState, MetaField } from '../../api/types'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -73,10 +73,11 @@ function strategyDescription(strategy: TransformStrategy): string {
  * Hardcoded configuration panel for the search pipeline stages.
  *
  * Renders a different form section depending on `stageId`:
- *   - transform  : strategy selector + LLM provider + n_variants (multi_query only)
+ *   - transform  : query_transform.strategy + n_variants (multi_query only)
  *   - embed      : read-only info about the derived embed provider
- *   - retrieve   : top_k + score_threshold
- *   - rerank     : enabled toggle + provider + top_k + score_threshold
+ *   - retrieve   : full retrieve config (vector mode, fusion, weights, field
+ *                  weights, grouping, MMR)
+ *   - rerank     : enabled toggle + candidate_k + top_n
  *
  * All writable stages auto-save after a 600 ms debounce.  The patch sent to the
  * backend covers only the section that changed, wrapped as
@@ -172,6 +173,7 @@ export function SearchStagePanel({
       )}
       {stageId === 'retrieve' && (
         <RetrieveSection
+          configState={configState}
           searchCfg={extractSearchCfg(configState)}
           onSave={maybeSave}
         />
@@ -197,25 +199,21 @@ interface TransformSectionProps {
 /**
  * Configuration form for the query transform stage.
  *
- * Controls the transform strategy (none / rewrite / hyde / multi_query),
- * the optional LLM provider string, and the number of query variants for
- * the multi_query strategy.
+ * Controls the transform strategy (none / rewrite / hyde / multi_query) and the
+ * number of query variants for the multi_query strategy. Both values live under
+ * `pipeline.search.query_transform`. The LLM provider config is an advanced
+ * provider object and is intentionally not editable here.
  *
  * Args:
- *   configState: Full collection config state (used to seed form values).
- *   searchCfg:   Extracted pipeline.search object.
- *   onSave:      Callback that receives the pipeline.search patch to persist.
+ *   searchCfg: Extracted pipeline.search object.
+ *   onSave:    Callback that receives the pipeline.search patch to persist.
  */
 function TransformSection({ searchCfg, onSave }: TransformSectionProps) {
   const qtCfg = (searchCfg.query_transform as Record<string, unknown>) ?? {}
 
-  // strategy is stored at pipeline.search.strategy (top-level of SearchConfig)
-  // but the backend QueryTransformConfig also has strategy — we read from top-level.
+  // Strategy and n_variants both live under pipeline.search.query_transform.
   const [strategy, setStrategy] = useState<TransformStrategy>(
-    (searchCfg.strategy as TransformStrategy | undefined) ?? 'none',
-  )
-  const [llmProvider, setLlmProvider] = useState<string>(
-    (qtCfg.llm_provider as string | undefined) ?? '',
+    (qtCfg.strategy as TransformStrategy | undefined) ?? 'none',
   )
   const [nVariants, setNVariants] = useState<number>(
     (qtCfg.n_variants as number | undefined) ?? 3,
@@ -223,50 +221,36 @@ function TransformSection({ searchCfg, onSave }: TransformSectionProps) {
 
   // Re-seed when configState changes (e.g. parent refreshes after save).
   useEffect(() => {
-    setStrategy((searchCfg.strategy as TransformStrategy | undefined) ?? 'none')
     const qt = (searchCfg.query_transform as Record<string, unknown>) ?? {}
-    setLlmProvider((qt.llm_provider as string | undefined) ?? '')
+    setStrategy((qt.strategy as TransformStrategy | undefined) ?? 'none')
     setNVariants((qt.n_variants as number | undefined) ?? 3)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchCfg])
 
   /**
-   * Build the full pipeline.search patch covering both top-level strategy and
-   * the nested query_transform section, then hand it to the parent.
+   * Build the query_transform patch and hand it to the parent for persistence.
    *
    * Args:
-   *   newStrategy:   Updated strategy value (may be the current one).
-   *   newLlm:        Updated LLM provider string.
-   *   newNVariants:  Updated n_variants integer.
+   *   newStrategy:  Updated strategy value (may be the current one).
+   *   newNVariants: Updated n_variants integer.
    */
-  function buildAndSave(
-    newStrategy: TransformStrategy,
-    newLlm: string,
-    newNVariants: number,
-  ) {
-    const patch: Record<string, unknown> = {
-      strategy: newStrategy,
+  function buildAndSave(newStrategy: TransformStrategy, newNVariants: number) {
+    onSave({
       query_transform: {
+        strategy: newStrategy,
         n_variants: newNVariants,
-        llm_provider: newLlm || null,
       },
-    }
-    onSave(patch)
+    })
   }
 
   function handleStrategyChange(s: TransformStrategy) {
     setStrategy(s)
-    buildAndSave(s, llmProvider, nVariants)
-  }
-
-  function handleLlmChange(v: string) {
-    setLlmProvider(v)
-    buildAndSave(strategy, v, nVariants)
+    buildAndSave(s, nVariants)
   }
 
   function handleNVariantsChange(v: number) {
     setNVariants(v)
-    buildAndSave(strategy, llmProvider, v)
+    buildAndSave(strategy, v)
   }
 
   return (
@@ -291,21 +275,6 @@ function TransformSection({ searchCfg, onSave }: TransformSectionProps) {
       <div className="search-stage-description">
         {strategyDescription(strategy)}
       </div>
-
-      {/* LLM provider — visible when strategy is not 'none' */}
-      {strategy !== 'none' && (
-        <div className="stage-panel-row" style={{ marginBottom: 10 }}>
-          <label className="stage-panel-label">LLM Provider</label>
-          <input
-            className="input"
-            type="text"
-            placeholder="e.g. local_llm or openai_llm"
-            value={llmProvider}
-            onChange={e => handleLlmChange(e.target.value)}
-            style={{ flex: 1 }}
-          />
-        </div>
-      )}
 
       {/* n_variants — visible only for multi_query */}
       {strategy === 'multi_query' && (
@@ -423,79 +392,409 @@ function ConfigTree({ value, depth = 0 }: { value: unknown; depth?: number }) {
 // ── RetrieveSection ───────────────────────────────────────────────────────────
 
 interface RetrieveSectionProps {
+  /** Full collection config — used to read metadata_fields for per-field weights. */
+  configState: ConfigState | null
   searchCfg: Record<string, unknown>
   onSave: (patch: Record<string, unknown>) => void
 }
 
+type VectorMode = 'hybrid' | 'dense' | 'sparse'
+type FusionMode = 'rrf' | 'dbsf'
+
 /**
- * Configuration form for the retrieve stage.
- *
- * Controls the number of results returned from Qdrant (top_k) and an optional
- * minimum score threshold that filters out low-quality candidates.
+ * Return a short description for the selected vector mode.
  *
  * Args:
- *   searchCfg: Extracted pipeline.search object.
- *   onSave:    Callback that receives the pipeline.search patch to persist.
+ *   mode: Active vector retrieval mode.
+ *
+ * Returns:
+ *   string: Human-readable description shown below the selector.
  */
-function RetrieveSection({ searchCfg, onSave }: RetrieveSectionProps) {
+function vectorModeDescription(mode: VectorMode): string {
+  switch (mode) {
+    case 'hybrid': return 'Dense semantic + sparse keyword (BM25)'
+    case 'dense':  return 'Semantic vectors only'
+    case 'sparse': return 'Keyword/BM25 only'
+  }
+}
+
+/**
+ * Return a short description for the selected fusion mode.
+ *
+ * Args:
+ *   mode: Active fusion algorithm.
+ *
+ * Returns:
+ *   string: Human-readable description shown below the selector.
+ */
+function fusionModeDescription(mode: FusionMode): string {
+  switch (mode) {
+    case 'rrf':  return 'Reciprocal Rank Fusion — robust, rank-based'
+    case 'dbsf': return 'Distribution-Based Score Fusion — normalizes raw scores'
+  }
+}
+
+/**
+ * Configuration form for the retrieve stage (pipeline.search.retrieve).
+ *
+ * Exposes the full RetrieveConfig contract: vector mode, fusion algorithm, RRF k,
+ * score threshold, candidate sizing, content vector weights, per-field fusion
+ * weights, and the advanced grouping / MMR toggles. Every control auto-saves a
+ * partial `{ retrieve: { ... } }` patch (the backend deep-merges it).
+ *
+ * Note: `top_k` is a query parameter (SearchRequest.top_k), not part of this
+ * config — it is intentionally absent here.
+ *
+ * Args:
+ *   configState: Full collection config state (provides metadata_fields).
+ *   searchCfg:   Extracted pipeline.search object.
+ *   onSave:      Callback that receives the pipeline.search patch to persist.
+ */
+function RetrieveSection({ configState, searchCfg, onSave }: RetrieveSectionProps) {
   const retrieveCfg = (searchCfg.retrieve as Record<string, unknown>) ?? {}
 
-  const [topK, setTopK] = useState<number>(
-    (retrieveCfg.top_k as number | undefined) ?? 10,
+  // ── Local form state ────────────────────────────────────────────────────────
+  const [vectorMode, setVectorMode] = useState<VectorMode>(
+    (retrieveCfg.vector_mode as VectorMode | undefined) ?? 'hybrid',
+  )
+  const [fusion, setFusion] = useState<FusionMode>(
+    (retrieveCfg.fusion as FusionMode | undefined) ?? 'rrf',
+  )
+  const [rrfK, setRrfK] = useState<number>(
+    (retrieveCfg.rrf_k as number | undefined) ?? 60,
   )
   const [scoreThreshold, setScoreThreshold] = useState<string>(
     retrieveCfg.score_threshold != null ? String(retrieveCfg.score_threshold) : '',
   )
+  const [candidateMultiplier, setCandidateMultiplier] = useState<number>(
+    (retrieveCfg.candidate_multiplier as number | undefined) ?? 3,
+  )
+  const [minCandidates, setMinCandidates] = useState<number>(
+    (retrieveCfg.min_candidates as number | undefined) ?? 20,
+  )
+  const [contentDenseWeight, setContentDenseWeight] = useState<number>(
+    (retrieveCfg.content_dense_weight as number | undefined) ?? 1.0,
+  )
+  const [contentSparseWeight, setContentSparseWeight] = useState<number>(
+    (retrieveCfg.content_sparse_weight as number | undefined) ?? 1.0,
+  )
+  const [fieldWeights, setFieldWeights] = useState<Record<string, number>>(
+    (retrieveCfg.field_weights as Record<string, number> | undefined) ?? {},
+  )
 
+  const groupingCfg = (retrieveCfg.grouping as Record<string, unknown>) ?? {}
+  const mmrCfg = (retrieveCfg.mmr as Record<string, unknown>) ?? {}
+  const [groupingEnabled, setGroupingEnabled] = useState<boolean>(
+    Boolean(groupingCfg.enabled ?? false),
+  )
+  const [groupSize, setGroupSize] = useState<number>(
+    (groupingCfg.group_size as number | undefined) ?? 3,
+  )
+  const [mmrEnabled, setMmrEnabled] = useState<boolean>(
+    Boolean(mmrCfg.enabled ?? false),
+  )
+  const [mmrDiversity, setMmrDiversity] = useState<number>(
+    (mmrCfg.diversity as number | undefined) ?? 0.5,
+  )
+
+  // Re-seed all fields when the persisted config changes.
   useEffect(() => {
     const rc = (searchCfg.retrieve as Record<string, unknown>) ?? {}
-    setTopK((rc.top_k as number | undefined) ?? 10)
+    setVectorMode((rc.vector_mode as VectorMode | undefined) ?? 'hybrid')
+    setFusion((rc.fusion as FusionMode | undefined) ?? 'rrf')
+    setRrfK((rc.rrf_k as number | undefined) ?? 60)
     setScoreThreshold(rc.score_threshold != null ? String(rc.score_threshold) : '')
+    setCandidateMultiplier((rc.candidate_multiplier as number | undefined) ?? 3)
+    setMinCandidates((rc.min_candidates as number | undefined) ?? 20)
+    setContentDenseWeight((rc.content_dense_weight as number | undefined) ?? 1.0)
+    setContentSparseWeight((rc.content_sparse_weight as number | undefined) ?? 1.0)
+    setFieldWeights((rc.field_weights as Record<string, number> | undefined) ?? {})
+    const g = (rc.grouping as Record<string, unknown>) ?? {}
+    setGroupingEnabled(Boolean(g.enabled ?? false))
+    setGroupSize((g.group_size as number | undefined) ?? 3)
+    const m = (rc.mmr as Record<string, unknown>) ?? {}
+    setMmrEnabled(Boolean(m.enabled ?? false))
+    setMmrDiversity((m.diversity as number | undefined) ?? 0.5)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchCfg])
 
-  function buildAndSave(newTopK: number, newThreshold: string) {
-    onSave({
-      retrieve: {
-        top_k: newTopK,
-        score_threshold: newThreshold !== '' ? parseFloat(newThreshold) : null,
-      },
-    })
+  // ── Searchable fields (have a vector → can carry a fusion weight) ────────────
+  const searchableFields: MetaField[] = (configState?.metadata_fields ?? []).filter(
+    f => f.semantic || f.lexical,
+  )
+
+  // ── Field weight handler ────────────────────────────────────────────────────
+  /**
+   * Update one field's fusion weight and persist the whole field_weights map.
+   *
+   * Args:
+   *   fieldName: Metadata field whose weight changed.
+   *   weight:    New numeric weight for that field.
+   */
+  function handleFieldWeightChange(fieldName: string, weight: number) {
+    const next = { ...fieldWeights, [fieldName]: weight }
+    setFieldWeights(next)
+    onSave({ retrieve: { field_weights: next } })
   }
 
   return (
     <div>
-      <div className="stage-panel-row" style={{ marginBottom: 10 }}>
-        <label className="stage-panel-label">Top K results</label>
-        <input
+      {/* ── Vector mode ── */}
+      <div className="stage-panel-row" style={{ marginBottom: 4 }}>
+        <label className="stage-panel-label">Vector mode</label>
+        <select
           className="input"
-          type="number"
-          min={1}
-          value={topK}
+          value={vectorMode}
           onChange={e => {
-            const v = Number(e.target.value)
-            setTopK(v)
-            buildAndSave(v, scoreThreshold)
+            const v = e.target.value as VectorMode
+            setVectorMode(v)
+            onSave({ retrieve: { vector_mode: v } })
           }}
-          style={{ width: 80 }}
-        />
+          style={{ flex: 1 }}
+        >
+          <option value="hybrid">hybrid</option>
+          <option value="dense">dense</option>
+          <option value="sparse">sparse</option>
+        </select>
       </div>
-      <div className="stage-panel-row">
+      <div className="search-stage-description">{vectorModeDescription(vectorMode)}</div>
+
+      {/* ── Fusion ── */}
+      <div className="stage-panel-row" style={{ marginBottom: 4 }}>
+        <label className="stage-panel-label">Fusion</label>
+        <select
+          className="input"
+          value={fusion}
+          onChange={e => {
+            const v = e.target.value as FusionMode
+            setFusion(v)
+            onSave({ retrieve: { fusion: v } })
+          }}
+          style={{ flex: 1 }}
+        >
+          <option value="rrf">rrf</option>
+          <option value="dbsf">dbsf</option>
+        </select>
+      </div>
+      <div className="search-stage-description">{fusionModeDescription(fusion)}</div>
+
+      {/* ── RRF k (only when fusion=rrf) ── */}
+      {fusion === 'rrf' && (
+        <div className="stage-panel-row" style={{ marginBottom: 4 }}>
+          <label className="stage-panel-label">RRF k</label>
+          <input
+            className="input"
+            type="number"
+            min={1}
+            value={rrfK}
+            onChange={e => {
+              const v = Number(e.target.value)
+              setRrfK(v)
+              onSave({ retrieve: { rrf_k: v } })
+            }}
+            style={{ width: 90 }}
+          />
+        </div>
+      )}
+      {fusion === 'rrf' && (
+        <div className="search-stage-description">Higher = flatter rank influence (standard 60)</div>
+      )}
+
+      {/* ── Score threshold (nullable) ── */}
+      <div className="stage-panel-row" style={{ marginBottom: 4 }}>
         <label className="stage-panel-label">Score threshold</label>
         <input
           className="input"
           type="number"
           step={0.01}
-          min={0}
-          max={1}
-          placeholder="No threshold"
+          placeholder="No cutoff"
           value={scoreThreshold}
           onChange={e => {
-            setScoreThreshold(e.target.value)
-            buildAndSave(topK, e.target.value)
+            const raw = e.target.value
+            setScoreThreshold(raw)
+            onSave({
+              retrieve: { score_threshold: raw !== '' ? parseFloat(raw) : null },
+            })
           }}
-          style={{ width: 100 }}
+          style={{ width: 110 }}
         />
+      </div>
+      <div className="search-stage-description">Minimum per-vector similarity</div>
+
+      {/* ── Candidate sizing ── */}
+      <div className="stage-panel-row" style={{ marginBottom: 4 }}>
+        <label className="stage-panel-label">Candidate sizing</label>
+        <div style={{ display: 'flex', gap: 8, flex: 1 }}>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 2, fontSize: 10, color: 'var(--text-dim)' }}>
+            Candidate ×
+            <input
+              className="input"
+              type="number"
+              min={1}
+              value={candidateMultiplier}
+              onChange={e => {
+                const v = Number(e.target.value)
+                setCandidateMultiplier(v)
+                onSave({ retrieve: { candidate_multiplier: v } })
+              }}
+              style={{ width: 80 }}
+            />
+          </label>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 2, fontSize: 10, color: 'var(--text-dim)' }}>
+            Min candidates
+            <input
+              className="input"
+              type="number"
+              min={1}
+              value={minCandidates}
+              onChange={e => {
+                const v = Number(e.target.value)
+                setMinCandidates(v)
+                onSave({ retrieve: { min_candidates: v } })
+              }}
+              style={{ width: 90 }}
+            />
+          </label>
+        </div>
+      </div>
+      <div className="search-stage-description">Pool per vector = max(top_k × mult, min)</div>
+
+      {/* ── Content weights ── */}
+      <div className="stage-panel-row" style={{ marginBottom: 4 }}>
+        <label className="stage-panel-label">Content weights</label>
+        <div style={{ display: 'flex', gap: 8, flex: 1 }}>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 2, fontSize: 10, color: 'var(--text-dim)' }}>
+            Dense
+            <input
+              className="input"
+              type="number"
+              step={0.1}
+              min={0}
+              value={contentDenseWeight}
+              onChange={e => {
+                const v = Number(e.target.value)
+                setContentDenseWeight(v)
+                onSave({ retrieve: { content_dense_weight: v } })
+              }}
+              style={{ width: 80 }}
+            />
+          </label>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 2, fontSize: 10, color: 'var(--text-dim)' }}>
+            Keyword
+            <input
+              className="input"
+              type="number"
+              step={0.1}
+              min={0}
+              value={contentSparseWeight}
+              onChange={e => {
+                const v = Number(e.target.value)
+                setContentSparseWeight(v)
+                onSave({ retrieve: { content_sparse_weight: v } })
+              }}
+              style={{ width: 80 }}
+            />
+          </label>
+        </div>
+      </div>
+
+      {/* ── Per-field weights ── */}
+      <div className="search-overview-title" style={{ marginTop: 14 }}>Field weights</div>
+      {searchableFields.length === 0 ? (
+        <div className="stage-config-empty" style={{ fontSize: 11 }}>
+          No searchable metadata fields. Mark fields as semantic or lexical in the pipeline config.
+        </div>
+      ) : (
+        searchableFields.map(field => (
+          <div className="field-weight-row" key={field.field_name}>
+            <span className="field-weight-name">{field.field_name}</span>
+            {field.semantic && <span className="field-weight-badge">sem</span>}
+            {field.lexical && <span className="field-weight-badge">lex</span>}
+            <input
+              className="input input-sm"
+              type="number"
+              step={0.1}
+              min={0}
+              value={fieldWeights[field.field_name] ?? 1.0}
+              onChange={e => handleFieldWeightChange(field.field_name, Number(e.target.value))}
+              style={{ width: 70 }}
+            />
+          </div>
+        ))
+      )}
+
+      {/* ── Advanced: grouping + MMR ── */}
+      <div className="search-overview-title" style={{ marginTop: 14 }}>Advanced</div>
+
+      {/* Grouping */}
+      <div className="stage-panel-row" style={{ marginBottom: 4 }}>
+        <label className="stage-panel-label">Group results by document</label>
+        <input
+          type="checkbox"
+          checked={groupingEnabled}
+          onChange={e => {
+            const v = e.target.checked
+            setGroupingEnabled(v)
+            onSave({ retrieve: { grouping: { enabled: v, group_size: groupSize } } })
+          }}
+          style={{ width: 16, height: 16 }}
+        />
+      </div>
+      {groupingEnabled && (
+        <div className="stage-panel-row" style={{ marginBottom: 4 }}>
+          <label className="stage-panel-label">Chunks per document</label>
+          <input
+            className="input"
+            type="number"
+            min={1}
+            max={20}
+            value={groupSize}
+            onChange={e => {
+              const v = Number(e.target.value)
+              setGroupSize(v)
+              onSave({ retrieve: { grouping: { enabled: groupingEnabled, group_size: v } } })
+            }}
+            style={{ width: 80 }}
+          />
+        </div>
+      )}
+
+      {/* MMR */}
+      <div className="stage-panel-row" style={{ marginBottom: 4 }}>
+        <label className="stage-panel-label">Diversify results (MMR)</label>
+        <input
+          type="checkbox"
+          checked={mmrEnabled}
+          onChange={e => {
+            const v = e.target.checked
+            setMmrEnabled(v)
+            onSave({ retrieve: { mmr: { enabled: v, diversity: mmrDiversity } } })
+          }}
+          style={{ width: 16, height: 16 }}
+        />
+      </div>
+      {mmrEnabled && (
+        <div className="stage-panel-row" style={{ marginBottom: 4 }}>
+          <label className="stage-panel-label">Diversity (0=relevance, 1=diversity)</label>
+          <input
+            className="input"
+            type="number"
+            step={0.05}
+            min={0}
+            max={1}
+            value={mmrDiversity}
+            onChange={e => {
+              const v = Number(e.target.value)
+              setMmrDiversity(v)
+              onSave({ retrieve: { mmr: { enabled: mmrEnabled, diversity: v } } })
+            }}
+            style={{ width: 90 }}
+          />
+        </div>
+      )}
+
+      <div style={{ fontSize: 10, color: 'var(--text-dim)', marginTop: 4 }}>
+        ⓘ grouping/MMR backend wiring is in progress
       </div>
     </div>
   )
@@ -509,10 +808,12 @@ interface RerankSectionProps {
 }
 
 /**
- * Configuration form for the rerank stage.
+ * Configuration form for the rerank stage (pipeline.search.rerank).
  *
- * Controls whether cross-encoder reranking is enabled, the rerank provider
- * identifier, and the number of results to return after reranking.
+ * Controls whether cross-encoder reranking is enabled, the number of candidates
+ * fed to the reranker (candidate_k), and the number of results kept after
+ * reranking (top_n). The rerank provider chain is an advanced provider config
+ * and is intentionally not editable here.
  *
  * Args:
  *   searchCfg: Extracted pipeline.search object.
@@ -524,45 +825,20 @@ function RerankSection({ searchCfg, onSave }: RerankSectionProps) {
   const [enabled, setEnabled] = useState<boolean>(
     Boolean(rerankCfg.enabled ?? false),
   )
-  const [provider, setProvider] = useState<string>(
-    (rerankCfg.provider as string | undefined) ?? '',
+  const [candidateK, setCandidateK] = useState<number>(
+    (rerankCfg.candidate_k as number | undefined) ?? 50,
   )
-  const [topK, setTopK] = useState<string>(
-    rerankCfg.top_k != null ? String(rerankCfg.top_k) : '',
-  )
-  const [scoreThreshold, setScoreThreshold] = useState<string>(
-    rerankCfg.score_threshold != null ? String(rerankCfg.score_threshold) : '',
+  const [topN, setTopN] = useState<number>(
+    (rerankCfg.top_n as number | undefined) ?? 10,
   )
 
   useEffect(() => {
     const rc = (searchCfg.rerank as Record<string, unknown>) ?? {}
     setEnabled(Boolean(rc.enabled ?? false))
-    setProvider((rc.provider as string | undefined) ?? '')
-    setTopK(rc.top_k != null ? String(rc.top_k) : '')
-    setScoreThreshold(rc.score_threshold != null ? String(rc.score_threshold) : '')
+    setCandidateK((rc.candidate_k as number | undefined) ?? 50)
+    setTopN((rc.top_n as number | undefined) ?? 10)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchCfg])
-
-  function buildAndSave(
-    newEnabled: boolean,
-    newProvider: string,
-    newTopK: string,
-    newThreshold: string,
-  ) {
-    onSave({
-      rerank: {
-        enabled: newEnabled,
-        provider: newProvider || null,
-        top_k: newTopK !== '' ? parseInt(newTopK, 10) : null,
-        score_threshold: newThreshold !== '' ? parseFloat(newThreshold) : null,
-      },
-    })
-  }
-
-  function handleEnabledChange(v: boolean) {
-    setEnabled(v)
-    buildAndSave(v, provider, topK, scoreThreshold)
-  }
 
   return (
     <div>
@@ -572,7 +848,11 @@ function RerankSection({ searchCfg, onSave }: RerankSectionProps) {
         <input
           type="checkbox"
           checked={enabled}
-          onChange={e => handleEnabledChange(e.target.checked)}
+          onChange={e => {
+            const v = e.target.checked
+            setEnabled(v)
+            onSave({ rerank: { enabled: v } })
+          }}
           style={{ width: 16, height: 16 }}
         />
       </div>
@@ -581,47 +861,33 @@ function RerankSection({ searchCfg, onSave }: RerankSectionProps) {
       {enabled && (
         <>
           <div className="stage-panel-row" style={{ marginBottom: 10 }}>
-            <label className="stage-panel-label">Provider</label>
-            <input
-              className="input"
-              type="text"
-              placeholder="e.g. bge_reranker or cohere_rerank"
-              value={provider}
-              onChange={e => {
-                setProvider(e.target.value)
-                buildAndSave(enabled, e.target.value, topK, scoreThreshold)
-              }}
-              style={{ flex: 1 }}
-            />
-          </div>
-          <div className="stage-panel-row" style={{ marginBottom: 10 }}>
-            <label className="stage-panel-label">Return top K after rerank</label>
+            <label className="stage-panel-label">Candidate K (fed to reranker)</label>
             <input
               className="input"
               type="number"
               min={1}
-              placeholder="—"
-              value={topK}
+              value={candidateK}
               onChange={e => {
-                setTopK(e.target.value)
-                buildAndSave(enabled, provider, e.target.value, scoreThreshold)
+                const v = Number(e.target.value)
+                setCandidateK(v)
+                onSave({ rerank: { candidate_k: v } })
               }}
-              style={{ width: 80 }}
+              style={{ width: 90 }}
             />
           </div>
           <div className="stage-panel-row">
-            <label className="stage-panel-label">Score threshold</label>
+            <label className="stage-panel-label">Top N (kept after rerank)</label>
             <input
               className="input"
               type="number"
-              step={0.01}
-              placeholder="—"
-              value={scoreThreshold}
+              min={1}
+              value={topN}
               onChange={e => {
-                setScoreThreshold(e.target.value)
-                buildAndSave(enabled, provider, topK, e.target.value)
+                const v = Number(e.target.value)
+                setTopN(v)
+                onSave({ rerank: { top_n: v } })
               }}
-              style={{ width: 100 }}
+              style={{ width: 90 }}
             />
           </div>
         </>

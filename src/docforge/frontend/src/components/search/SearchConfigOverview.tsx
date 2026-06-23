@@ -1,7 +1,8 @@
 // ====== Code Summary ======
 // SearchConfigOverview — read-only summary card shown in the search inline panel
-// when no stage is selected.  Displays the active strategy, top_k, and reranking
-// status.  Embed info is intentionally omitted — click the Embed node to see it.
+// when no stage is selected.  Displays the active query-transform strategy, the
+// retrieval vector mode + fusion, and reranking status.  Embed info is
+// intentionally omitted — click the Embed node to see it.
 
 // ====== Third-Party Library Imports ======
 import type { ConfigState } from '../../api/types'
@@ -31,9 +32,11 @@ export function SearchConfigOverview({ configState }: SearchConfigOverviewProps)
   const searchCfg = (pipeline?.search as Record<string, unknown>) ?? {}
 
   // 2. Derive display values from nested search config.
-  const strategy = (searchCfg.strategy as string | undefined) ?? 'none'
+  const qtCfg = (searchCfg.query_transform as Record<string, unknown>) ?? {}
+  const strategy = (qtCfg.strategy as string | undefined) ?? 'none'
   const retrieveCfg = (searchCfg.retrieve as Record<string, unknown>) ?? {}
-  const topK = (retrieveCfg.top_k as number | undefined) ?? 10
+  const vectorMode = (retrieveCfg.vector_mode as string | undefined) ?? 'hybrid'
+  const fusion = (retrieveCfg.fusion as string | undefined) ?? 'rrf'
   const rerankCfg = (searchCfg.rerank as Record<string, unknown>) ?? {}
   const rerankEnabled = Boolean(rerankCfg.enabled ?? false)
 
@@ -48,10 +51,16 @@ export function SearchConfigOverview({ configState }: SearchConfigOverviewProps)
         <span className={`tag ${strategyTagClass(strategy)}`}>{strategy}</span>
       </div>
 
-      {/* Top K */}
+      {/* Vector mode */}
       <div className="stage-panel-row">
-        <span className="stage-panel-label">Top K</span>
-        <span className="stage-panel-value">{topK}</span>
+        <span className="stage-panel-label">Vector mode</span>
+        <span className="stage-panel-value">{vectorMode}</span>
+      </div>
+
+      {/* Fusion */}
+      <div className="stage-panel-row">
+        <span className="stage-panel-label">Fusion</span>
+        <span className="stage-panel-value">{fusion}</span>
       </div>
 
       {/* Reranking status */}

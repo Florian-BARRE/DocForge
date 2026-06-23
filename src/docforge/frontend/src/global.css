@@ -3039,3 +3039,62 @@ input[type="range"]::-webkit-slider-thumb:hover { background: var(--text-muted);
   color: var(--text-muted);
   margin-bottom: 4px;
 }
+
+/* ── Search Config & Filters ── */
+
+.field-weight-row {
+  /* One per-field fusion weight row: name, role badges, weight input. */
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.field-weight-name {
+  /* Field identifier, monospaced and flexible to push the input right. */
+  font-family: var(--font-mono);
+  font-size: 12px;
+  flex: 1;
+}
+
+.field-weight-badge {
+  /* Tiny role indicator (sem / lex) next to a field name. */
+  font-size: 9px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: var(--surface-raised);
+  color: var(--text-dim);
+}
+
+.filter-builder {
+  /* Vertical stack of filter condition rows + the add button. */
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.filter-row {
+  /* One filter condition: clause / field / op / value / remove. */
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.filter-row select,
+.filter-row input {
+  /* Compact controls so a full condition fits on one line. */
+  font-size: 11px;
+  padding: 3px 6px;
+}
+
+.search-topk {
+  /* Narrow top-k input sitting beside the query field. */
+  width: 70px;
+}
+
+.search-filters-toggle {
+  /* Reuse the metadata form toggle styling for the filters disclosure. */
+  margin-top: 8px;
+  border-radius: var(--radius-sm);
+}

@@ -13,6 +13,7 @@ import { PipelineGraph } from '../pipeline/PipelineGraph'
 import { SEARCH_STAGES } from '../pipeline/search-stages'
 import type { StageDefinition, StageResult } from '../pipeline/types'
 import { SearchConfigOverview } from './SearchConfigOverview'
+import { SearchFilterBuilder } from './SearchFilterBuilder'
 import { SearchStagePanel } from './SearchStagePanel'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -56,6 +57,9 @@ export function SearchTab({ collectionId }: SearchTabProps) {
   // ── Query state ──────────────────────────────────────────────────────────────
 
   const [query, setQuery] = useState('')
+  const [topK, setTopK] = useState(10)
+  const [filter, setFilter] = useState<Record<string, unknown> | null>(null)
+  const [filtersOpen, setFiltersOpen] = useState(false)
   const [results, setResults] = useState<SearchResultItem[]>([])
   const [isSearching, setIsSearching] = useState(false)
   const [searchError, setSearchError] = useState<string | null>(null)
@@ -153,7 +157,11 @@ export function SearchTab({ collectionId }: SearchTabProps) {
     setSearchError(null)
 
     try {
-      const res = await searchDocuments(collectionId, q, { debug: true })
+      const res = await searchDocuments(collectionId, q, {
+        top_k: topK,
+        filters: filter ?? undefined,
+        debug: true,
+      })
       setResults(res.results)
 
       // Extract trace metadata from debug_info.
@@ -249,6 +257,16 @@ export function SearchTab({ collectionId }: SearchTabProps) {
               onChange={e => setQuery(e.target.value)}
               disabled={isSearching}
             />
+            <input
+              className="input search-topk"
+              type="number"
+              min={1}
+              max={100}
+              title="Top K results"
+              value={topK}
+              onChange={e => setTopK(Number(e.target.value))}
+              disabled={isSearching}
+            />
             <button
               type="submit"
               className="btn btn-primary"
@@ -257,6 +275,25 @@ export function SearchTab({ collectionId }: SearchTabProps) {
               {isSearching ? '…' : 'Search'}
             </button>
           </div>
+
+          {/* Collapsible filter builder */}
+          <button
+            type="button"
+            className="metadata-form-toggle search-filters-toggle"
+            onClick={() => setFiltersOpen(o => !o)}
+          >
+            <span className="metadata-form-chevron">{filtersOpen ? '▾' : '▸'}</span>
+            <span className="metadata-form-label">Filters</span>
+            {filter && <span className="tag tag-done">active</span>}
+          </button>
+          {filtersOpen && (
+            <div className="metadata-form-body" style={{ padding: '8px 0' }}>
+              <SearchFilterBuilder
+                fields={configState?.metadata_fields ?? []}
+                onChange={setFilter}
+              />
+            </div>
+          )}
         </form>
 
         {/* Query variants banner — only when multi_query produced variants */}
