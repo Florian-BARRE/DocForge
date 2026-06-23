@@ -3114,3 +3114,48 @@ input[type="range"]::-webkit-slider-thumb:hover { background: var(--text-muted);
   display: flex;
   gap: 8px;
 }
+
+/* ── Search Note & Groups ── */
+.search-note-banner {
+  font-size: 12px;
+  color: var(--text);
+  background: color-mix(in srgb, var(--s-running) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--s-running) 35%, transparent);
+  border-radius: var(--radius);
+  padding: 8px 12px;
+  margin: 8px 0;
+  line-height: 1.5;
+}
+.search-group {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: 12px;
+  overflow: hidden;
+}
+.search-group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--surface-raised);
+  border-bottom: 1px solid var(--border);
+}
+.search-group-doc {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+}
+.search-group-meta {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.search-group .search-result-card {
+  border: none;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+}
+.search-group .search-result-card:last-child {
+  border-bottom: none;
+}

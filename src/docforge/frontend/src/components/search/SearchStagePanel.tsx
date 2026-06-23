@@ -775,10 +775,6 @@ function RetrieveSection({ configState, searchCfg, onSave }: RetrieveSectionProp
           />
         </div>
       )}
-
-      <div style={{ fontSize: 10, color: 'var(--text-dim)', marginTop: 4 }}>
-        ⓘ grouping/MMR backend wiring is in progress
-      </div>
     </div>
   )
 }

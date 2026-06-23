@@ -169,10 +169,21 @@ export type SearchResultItem = Schemas['SearchResultItem'] & {
   /** Per-query debug info populated when SearchRequest.debug is true. */
   debug_info?: Record<string, unknown> | null
 }
-// Extend SearchResponse with debug_info (pipeline metadata returned when debug=true).
-// The generated schema may lag behind the backend model until the next types regeneration.
+// A document group, present when pipeline.search.retrieve.grouping is enabled.
+export interface SearchGroupItem {
+  document_id: string
+  score: number
+  chunks: SearchResultItem[]
+}
+
+// Extend SearchResponse with debug_info + groups (overlays until the next types
+// regeneration runs against a rebuilt container).
 export type SearchResponse = Schemas['SearchResponse'] & {
   debug_info?: Record<string, unknown> | null
+  /** Document-level groups, present only when grouping is enabled. */
+  groups?: SearchGroupItem[] | null
+  /** Informational note (e.g. sparse/BM25 unavailable on a dense-only provider). */
+  note?: string | null
 }
 
 // ── Re-export everything from the generated namespace for callers that prefer

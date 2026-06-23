@@ -8,7 +8,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 // ====== Internal Project Imports ======
 import { getConfigState, searchDocuments } from '../../api/client'
-import type { ConfigState, SearchResultItem } from '../../api/types'
+import type { ConfigState, SearchGroupItem, SearchResultItem } from '../../api/types'
 import { PipelineGraph } from '../pipeline/PipelineGraph'
 import { SEARCH_STAGES } from '../pipeline/search-stages'
 import type { StageDefinition, StageResult } from '../pipeline/types'
@@ -61,6 +61,8 @@ export function SearchTab({ collectionId }: SearchTabProps) {
   const [filter, setFilter] = useState<Record<string, unknown> | null>(null)
   const [filtersOpen, setFiltersOpen] = useState(false)
   const [results, setResults] = useState<SearchResultItem[]>([])
+  const [groups, setGroups] = useState<SearchGroupItem[] | null>(null)
+  const [note, setNote] = useState<string | null>(null)
   const [isSearching, setIsSearching] = useState(false)
   const [searchError, setSearchError] = useState<string | null>(null)
   // Track the last submitted query (not the live input value) for result display.
@@ -163,6 +165,8 @@ export function SearchTab({ collectionId }: SearchTabProps) {
         debug: true,
       })
       setResults(res.results)
+      setGroups(res.groups ?? null)
+      setNote(res.note ?? null)
 
       // Extract trace metadata from debug_info.
       const variants = (res.debug_info?.query_variants ?? []) as string[]
@@ -306,6 +310,11 @@ export function SearchTab({ collectionId }: SearchTabProps) {
           </div>
         )}
 
+        {/* Informational note (e.g. sparse/BM25 unavailable on a dense-only provider) */}
+        {note && (
+          <div className="search-note-banner">ⓘ {note}</div>
+        )}
+
         {/* Error banner */}
         {searchError && (
           <div className="error-banner">{searchError}</div>
@@ -319,8 +328,36 @@ export function SearchTab({ collectionId }: SearchTabProps) {
           </div>
         )}
 
-        {/* Result cards */}
-        {results.length > 0 && (
+        {/* Grouped results (document-level) when grouping is enabled */}
+        {groups && groups.length > 0 && (
+          <div className="search-results-list">
+            {groups.map(group => (
+              <div key={group.document_id} className="search-group">
+                <div className="search-group-header">
+                  <span className="search-group-doc">📄 {group.document_id.slice(0, 8)}…</span>
+                  <span className="search-group-meta">
+                    {group.chunks.length} chunk{group.chunks.length > 1 ? 's' : ''} · best {group.score.toFixed(4)}
+                  </span>
+                </div>
+                {group.chunks.map((item, idx) => (
+                  <ResultCard
+                    key={item.chunk_id}
+                    item={item}
+                    idx={idx}
+                    maxScore={maxScore}
+                    query={lastQueryRef.current}
+                    isOpen={expanded.has(item.chunk_id)}
+                    onToggle={() => toggleResult(item.chunk_id)}
+                    isReranked={lastSearchInfo?.reranked ?? false}
+                  />
+                ))}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Flat result cards when grouping is disabled */}
+        {!groups && results.length > 0 && (
           <div className="search-results-list">
             {results.map((item, idx) => (
               <ResultCard
