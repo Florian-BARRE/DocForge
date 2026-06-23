@@ -14,6 +14,7 @@ import {
   reingestDocument,
 } from '../../api/client'
 import type { Document } from '../../api/types'
+import { DocDetailView } from './DocDetailView'
 import { DocRow } from './DocRow'
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -65,6 +66,8 @@ export function DocumentsTab({ collectionId, onTrace }: DocumentsTabProps) {
   const [isDragging, setIsDragging]   = useState(false)
   const [isUploading, setIsUploading] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
+  // When set, the detail view for this document id replaces the list.
+  const [detailDocId, setDetailDocId] = useState<string | null>(null)
 
   // Hidden file input used for click-to-upload.
   const inputRef = useRef<HTMLInputElement>(null)
@@ -216,6 +219,22 @@ export function DocumentsTab({ collectionId, onTrace }: DocumentsTabProps) {
 
   // ── Render ────────────────────────────────────────────────────────────────
 
+  // ── Detail view shortcut ──────────────────────────────────────────────────
+
+  // When a document is selected for detail, render DocDetailView in place of
+  // the list — the drop zone and list are not needed in this mode.
+  if (detailDocId !== null) {
+    return (
+      <DocDetailView
+        collectionId={collectionId}
+        docId={detailDocId}
+        onBack={() => setDetailDocId(null)}
+      />
+    )
+  }
+
+  // ── Render ────────────────────────────────────────────────────────────────
+
   const dropZoneClass = [
     'documents-drop-zone',
     isDragging ? 'documents-drop-zone-dragging' : '',
@@ -279,6 +298,7 @@ export function DocumentsTab({ collectionId, onTrace }: DocumentsTabProps) {
               onTrace={onTrace}
               onDelete={handleDelete}
               onReingest={handleReingest}
+              onOpen={setDetailDocId}
             />
           ))
         )}

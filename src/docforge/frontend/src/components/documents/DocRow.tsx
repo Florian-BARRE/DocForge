@@ -25,6 +25,11 @@ interface DocRowProps {
   onDelete: (docId: string) => void
   /** Called when the user selects "Re-ingest" in the overflow menu. */
   onReingest: (docId: string) => void
+  /**
+   * Called when the user clicks the filename / main row area to open the
+   * document detail view.
+   */
+  onOpen: (docId: string) => void
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -93,7 +98,7 @@ function formatDuration(ms: number | null | undefined): string {
  * The ⋯ overflow menu drops down below the button and closes automatically
  * when the user clicks anywhere outside the component.
  */
-export function DocRow({ doc, collectionId: _collectionId, onTrace, onDelete, onReingest }: DocRowProps) {
+export function DocRow({ doc, collectionId: _collectionId, onTrace, onDelete, onReingest, onOpen }: DocRowProps) {
   // 1. Local state: whether the overflow dropdown is visible.
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -149,8 +154,16 @@ export function DocRow({ doc, collectionId: _collectionId, onTrace, onDelete, on
       {/* Status dot — spinning when running */}
       <span className={dotClass(doc.status)} />
 
-      {/* Filename — truncated to fit the available flex space */}
-      <span className="doc-row-name" title={filename}>
+      {/* Filename — clickable to open the detail view */}
+      <span
+        className="doc-row-name"
+        title={filename}
+        style={{ cursor: 'pointer' }}
+        onClick={() => onOpen(doc.id)}
+        role="button"
+        tabIndex={0}
+        onKeyDown={e => e.key === 'Enter' && onOpen(doc.id)}
+      >
         {filename}
       </span>
 
