@@ -165,6 +165,7 @@ export function SearchStagePanel({
           isDirty={draft.isDirty}
           onSave={() => { void draft.save() }}
           onDiscard={handleDiscard}
+          applied={draft.applied}
         />
       )}
     </div>

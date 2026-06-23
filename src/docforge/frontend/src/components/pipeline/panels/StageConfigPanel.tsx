@@ -170,6 +170,7 @@ export function StageConfigPanel({
               isDirty={draft.isDirty}
               onSave={() => { void draft.save() }}
               onDiscard={handleDiscard}
+              applied={draft.applied}
             />
           )}
         </>

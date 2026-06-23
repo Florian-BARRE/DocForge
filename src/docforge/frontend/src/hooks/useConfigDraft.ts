@@ -11,6 +11,7 @@ import { useCallback, useState } from 'react'
 
 // ====== Internal Project Imports ======
 import { updateConfig } from '../api/client'
+import type { ConfigApplied } from '../api/types'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -31,6 +32,11 @@ export interface ConfigDraft {
   isDirty: boolean
   /** The accumulated patch awaiting persistence. */
   pending: Record<string, unknown>
+  /**
+   * Transparency envelope returned by the last successful save (what the
+   * backend actually applied), or null when no save has completed yet.
+   */
+  applied: ConfigApplied | null
 }
 
 /** Milliseconds the "saved" confirmation stays visible before reverting to clean. */
@@ -107,6 +113,7 @@ export function useConfigDraft(collectionId: string, onSaved?: () => void): Conf
   const [pending, setPending] = useState<Record<string, unknown>>({})
   const [isDirty, setIsDirty] = useState(false)
   const [status, setStatus] = useState<DraftStatus>('clean')
+  const [applied, setApplied] = useState<ConfigApplied | null>(null)
 
   // 1. Accumulate a top-level patch into the pending buffer (deep-merged).
   const stage = useCallback((patch: Record<string, unknown>) => {
@@ -118,9 +125,12 @@ export function useConfigDraft(collectionId: string, onSaved?: () => void): Conf
   // 2. Persist the accumulated patch with a single updateConfig call.
   const save = useCallback(async () => {
     if (!isDirty) return
+    // Reset any previous transparency envelope before a fresh save.
+    setApplied(null)
     setStatus('saving')
     try {
-      await updateConfig(collectionId, pending, 'Updated config')
+      const response = await updateConfig(collectionId, pending, 'Updated config')
+      setApplied(response.applied ?? null)
       setPending({})
       setIsDirty(false)
       setStatus('saved')
@@ -138,7 +148,8 @@ export function useConfigDraft(collectionId: string, onSaved?: () => void): Conf
     setPending({})
     setIsDirty(false)
     setStatus('clean')
+    setApplied(null)
   }, [])
 
-  return { stage, save, discard, status, isDirty, pending }
+  return { stage, save, discard, status, isDirty, pending, applied }
 }

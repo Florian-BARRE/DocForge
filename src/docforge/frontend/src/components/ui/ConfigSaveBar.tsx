@@ -5,7 +5,11 @@
 // it owns no state and delegates all behavior to the supplied callbacks.
 
 // ====== Internal Project Imports ======
+import type { ConfigApplied } from '../../api/types'
 import type { DraftStatus } from '../../hooks/useConfigDraft'
+
+// ====== Local Project Imports ======
+import { ConfigAppliedSummary } from './ConfigAppliedSummary'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -18,6 +22,8 @@ interface ConfigSaveBarProps {
   onSave: () => void
   /** Invoked when the user clicks "Annuler". */
   onDiscard: () => void
+  /** Transparency envelope from the last save, shown above the action row. */
+  applied?: ConfigApplied | null
 }
 
 // ── Status indicator ────────────────────────────────────────────────────────────
@@ -62,30 +68,36 @@ function StatusIndicator({ status }: { status: DraftStatus }) {
  *   isDirty:   Whether unsaved changes exist.
  *   onSave:    Save handler.
  *   onDiscard: Discard handler.
+ *   applied:   Optional transparency envelope from the last save.
  */
-export function ConfigSaveBar({ status, isDirty, onSave, onDiscard }: ConfigSaveBarProps) {
+export function ConfigSaveBar({ status, isDirty, onSave, onDiscard, applied }: ConfigSaveBarProps) {
   return (
-    <div className="config-save-bar">
-      <div className="config-save-status">
-        <StatusIndicator status={status} />
-      </div>
-      <div className="config-save-actions">
-        <button
-          type="button"
-          className="btn btn-ghost"
-          disabled={!isDirty}
-          onClick={onDiscard}
-        >
-          Annuler
-        </button>
-        <button
-          type="button"
-          className="btn btn-primary"
-          disabled={!isDirty || status === 'saving'}
-          onClick={onSave}
-        >
-          Enregistrer
-        </button>
+    <div className="config-save-bar-wrap">
+      {/* Transparency summary of what the last save actually applied. */}
+      <ConfigAppliedSummary applied={applied ?? null} />
+
+      <div className="config-save-bar">
+        <div className="config-save-status">
+          <StatusIndicator status={status} />
+        </div>
+        <div className="config-save-actions">
+          <button
+            type="button"
+            className="btn btn-ghost"
+            disabled={!isDirty}
+            onClick={onDiscard}
+          >
+            Annuler
+          </button>
+          <button
+            type="button"
+            className="btn btn-primary"
+            disabled={!isDirty || status === 'saving'}
+            onClick={onSave}
+          >
+            Enregistrer
+          </button>
+        </div>
       </div>
     </div>
   )

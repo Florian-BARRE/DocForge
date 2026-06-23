@@ -16,6 +16,7 @@ import { getConfigState, getDiscovery, getDocument } from '../../api/client'
 import type { ConfigState, Document, DynamicField } from '../../api/types'
 
 // ====== Local Project Imports ======
+import { ConfigHistoryPanel } from './ConfigHistoryPanel'
 import { PipelineGraph } from './PipelineGraph'
 import { S0Panel } from './panels/S0Panel'
 import { S1Panel } from './panels/S1Panel'
@@ -196,6 +197,9 @@ export function PipelineTab({
   // 4. Document fetched for trace mode (null when in config mode or loading).
   const [traceDoc, setTraceDoc] = useState<Document | null>(null)
 
+  // 5. Whether the inline config-history panel is visible (config mode only).
+  const [showHistory, setShowHistory] = useState(false)
+
   // 6. Determine mode from the presence of activeDocId.
   const mode: 'config' | 'trace' = activeDocId ? 'trace' : 'config'
 
@@ -290,19 +294,36 @@ export function PipelineTab({
         </div>
       )}
 
-      {/* ── Config version + reindex indicator ── */}
+      {/* ── Config version + reindex indicator + history toggle ── */}
       {mode === 'config' && configState && (
-        <div className="pipeline-version-bar">
-          <span className="mono">pipeline_version: {configState.pipeline_version}</span>
-          {configState.needs_reindex && (
-            <span
-              className="tag doc-stale-badge"
-              title="Des documents ont été ingérés avec une config antérieure."
+        <>
+          <div className="pipeline-version-bar">
+            <span className="mono">pipeline_version: {configState.pipeline_version}</span>
+            {configState.needs_reindex && (
+              <span
+                className="tag doc-stale-badge"
+                title="Des documents ont été ingérés avec une config antérieure."
+              >
+                Réindexation requise
+              </span>
+            )}
+            <button
+              type="button"
+              className="btn btn-ghost pipeline-history-toggle"
+              onClick={() => setShowHistory(prev => !prev)}
             >
-              Réindexation requise
-            </span>
+              {showHistory ? 'Masquer l’historique' : 'Historique'}
+            </button>
+          </div>
+
+          {/* Inline config history with rollback, toggled from the bar above. */}
+          {showHistory && (
+            <ConfigHistoryPanel
+              collectionId={collectionId}
+              onRolledBack={handleSaved}
+            />
           )}
-        </div>
+        </>
       )}
 
       {/* ── Pipeline graph ── */}
