@@ -23,25 +23,18 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from libs.storage.s3.client import S3Client
     from libs.pipeline.assembly import ProviderRegistry
+    from libs.storage.s3.client import S3Client
 
 # ====== Third-Party Library Imports ======
 from loggerplusplus import LoggerClass
 
 # ====== Internal Project Imports ======
 from libs.config.pipeline import PipelineConfig
-from libs.storage.postgres.client import PostgresClient
-from libs.storage.postgres.repositories import (
-    BlockRepository,
-    ChunkRepository,
-    DocumentRepository,
-)
-from libs.storage.qdrant.client import QdrantStorageClient
-from libs.storage.s3.helpers import S3Helpers
 from libs.pipeline.caches.node_cache import NodeCache
 from libs.pipeline.caches.provider_cache import ProviderCallCache
 from libs.pipeline.stages.s0_ingest.core import S0IngestStage
@@ -50,6 +43,14 @@ from libs.pipeline.stages.s2_enrich import S2EnrichStage
 from libs.pipeline.stages.s4_chunk import S4ChunkStage
 from libs.pipeline.stages.s5_contextualize.core import S5ContextualizeStage
 from libs.pipeline.stages.s6_embed_index.core import S6EmbedIndexStage
+from libs.storage.postgres.client import PostgresClient
+from libs.storage.postgres.repositories import (
+    BlockRepository,
+    ChunkRepository,
+    DocumentRepository,
+)
+from libs.storage.qdrant.client import QdrantStorageClient
+from libs.storage.s3.helpers import S3Helpers
 
 # ====== Local Project Imports ======
 from .deps import StageDeps
@@ -151,6 +152,7 @@ class StageEngine(LoggerClass):
         pipeline_config: PipelineConfig | None = None,
         metadata_fields: list[Any] | None = None,
         doc_user_meta: dict[str, Any] | None = None,
+        progress_cb: Callable[[str, int], Awaitable[None]] | None = None,
     ) -> EngineResult:
         """
         Execute the full pipeline (S0 → S1 → S2 → S4 → S5 → S6) for a document.
@@ -166,10 +168,21 @@ class StageEngine(LoggerClass):
             pipeline_config (PipelineConfig | None): Per-run overrides; None = use defaults.
             metadata_fields (list | None): Per-collection metadata field specs for S6.
             doc_user_meta (dict | None): User-supplied business metadata for S6.
+            progress_cb (Callable | None): Optional coarse-progress hook invoked at each stage
+                boundary with ``(stage_node_id, percent)``. Telemetry only — never affects the
+                run. The worker wires this to live job-progress updates; ``None`` = no reporting.
 
         Returns:
             EngineResult: Stage results + fingerprints + cache-hit flags + budget spent.
         """
+        async def _report(stage: str, percent: int) -> None:
+            """Invoke the optional progress hook, swallowing any telemetry-side failure."""
+            if progress_cb is None:
+                return
+            try:
+                await progress_cb(stage, percent)
+            except Exception as exc:  # telemetry must never break the pipeline
+                self.logger.warning(f"progress_cb failed at {stage} ({exc}).")
         self.logger.info(
             f"Engine.run: doc_id={doc_id} source_hash={source_hash[:8]}… "
             f"dry_run={dry_run} configured={pipeline_config is not None}"
@@ -190,28 +203,33 @@ class StageEngine(LoggerClass):
             file_bytes = await self._deps.s3.download(S3Helpers.key_original(source_hash))
             self.logger.debug(f"Downloaded original from S3: key_original={source_hash[:8]}…")
 
-        # 3. Run S0/S1/S2 with Merkle-DAG node caching
+        # 3. Run S0/S1/S2 with Merkle-DAG node caching (report progress at each boundary)
         s0_result, s0_fp, s0_cache_hit = await self._s012.run_s0(
             s0, doc_id, source_hash, filename, file_bytes, _local_cache, dry_run
         )
+        await _report("s0", 15)
         s1_result, ir, s1_fp, s1_cache_hit = await self._s012.run_s1(
             s1, doc_id, source_hash, s0_result, s0_fp, _local_cache, dry_run
         )
+        await _report("s1", 35)
         s2_result, final_ir, s2_fp, s2_cache_hit = await self._s012.run_s2(
             s2, doc_id, source_hash, s1_result, ir, s1_fp, _local_cache, dry_run
         )
+        await _report("s2", 55)
 
         # 4. Persist blocks + finalize document in Postgres
         await S012PersistHelpers.persist_s012(
             self._deps, doc_id, source_hash, s0_result, s1_result, s1_fp, s0_fp,
             s2_result, s2_fp, final_ir, s1_cache_hit, s2_cache_hit, dry_run,
         )
+        await _report("persist", 65)
 
         # 5. Run S4/S5/S6 (chunk → contextualize → embed + index)
         s4_result, s5_result, s6_result = await self._s456.run_s456(
             s4, s5, s6, final_ir, collection_id, s0_result, doc_id,
             metadata_fields, doc_user_meta, dry_run
         )
+        await _report("s6", 95)
 
         # 6. Log completion and assemble result
         label = "dry_run done" if dry_run else "done"

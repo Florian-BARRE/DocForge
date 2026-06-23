@@ -124,6 +124,13 @@ def mock_job_repo() -> MagicMock:
     repo.create = AsyncMock()
     repo.get_by_id = AsyncMock(return_value=None)
     repo.list_by_document = AsyncMock(return_value=[])
+    # Observability methods (Brique A)
+    repo.list_jobs = AsyncMock(return_value=([], 0))
+    repo.count_by_status = AsyncMock(return_value={})
+    repo.count_finished_since = AsyncMock(return_value=0)
+    repo.mark_running = AsyncMock()
+    repo.mark_finished = AsyncMock()
+    repo.update_progress = AsyncMock()
     return repo
 
 

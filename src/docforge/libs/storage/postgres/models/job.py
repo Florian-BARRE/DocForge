@@ -10,7 +10,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 # ====== Third-Party Library Imports ======
-from sqlalchemy import DateTime, Float, ForeignKey, String, Text, func
+from sqlalchemy import DateTime, Float, ForeignKey, SmallInteger, String, Text, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -49,6 +49,19 @@ class JobModel(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+
+    # ── Observability (Brique A) ──────────────────────────────────────────────
+    # Identifier of the worker process that picked up the job (hostname:pid:rand).
+    # Nullable: a pending job has not been claimed by any worker yet.
+    worker_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Wall-clock execution window, set by the worker on running → done/failed.
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # arq retry attempt number (1-based) — surfaces flapping jobs in monitoring.
+    attempt: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=1)
+    # Coarse pipeline progress for live UI: current stage node id + 0–100 percent.
+    current_stage: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    progress: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=0)
 
     # Relationship
     document: Mapped[DocumentModel] = relationship(back_populates="jobs")

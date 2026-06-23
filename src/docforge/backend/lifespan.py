@@ -4,13 +4,19 @@
 
 # ====== Standard Library Imports ======
 import unicodedata
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import Any, AsyncIterator
+from typing import Any
 
 # ====== Third-Party Library Imports ======
 from arq import create_pool
 from arq.connections import RedisSettings
 from pyfiglet import Figlet
+
+# ====== Internal Project Imports ======
+from libs.observability.events import EventPublisher
+from libs.observability.heartbeat import HeartbeatReader
+from libs.observability.queue import QueueIntrospector
 
 # ====== Local Project Imports ======
 from .context import CONTEXT
@@ -83,6 +89,13 @@ def lifespan() -> Any:
                 RedisSettings.from_dsn(CONTEXT.RUNTIME_CONFIG.REDIS_URL)
             )
             CONTEXT.logger.info(f"arq Redis pool connected → {CONTEXT.RUNTIME_CONFIG.REDIS_URL}")
+
+            # Observability handles (Brique A) — all read-only views sharing the arq pool
+            # connection: queue introspection, worker heartbeats, and the event publisher.
+            CONTEXT.queue_introspector = QueueIntrospector(CONTEXT.arq_pool)
+            CONTEXT.heartbeat_reader = HeartbeatReader(CONTEXT.arq_pool)
+            CONTEXT.event_publisher = EventPublisher(CONTEXT.arq_pool)
+            CONTEXT.logger.info(f"Observability handles ready (queue / workers / events).")
 
             # 8. Connect to Qdrant — always attempted; falls back gracefully if unreachable.
             # If the connection fails, S6/retrieval/metadata_indexer are nulled out so the

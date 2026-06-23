@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 
 # ====== Third-Party Library Imports ======
 from loggerplusplus import LoggerClass
@@ -185,3 +186,207 @@ class JobRepository(LoggerClass):
 
         await session.flush()
         self.logger.debug(f"Job {job_id} status → {status}.")
+
+    async def list_jobs(
+        self,
+        session: AsyncSession,
+        *,
+        status: str | None = None,
+        collection_id: uuid.UUID | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> tuple[list[JobModel], int]:
+        """
+        List jobs across all collections (newest first) with optional filters + pagination.
+
+        Unlike ``list_by_collection``, this is the global view backing ``GET /api/v1/jobs`` —
+        the monitoring surface that is not scoped to a single collection.
+
+        Args:
+            session (AsyncSession): Active session.
+            status (str | None): Restrict to this job status.
+            collection_id (uuid.UUID | None): Restrict to one collection.
+            limit (int): Page size.
+            offset (int): Page offset.
+
+        Returns:
+            tuple: ``(page_of_jobs, total_matching)``.
+        """
+        # 1. Build the optional filter clause
+        clause = []
+        if status is not None:
+            clause.append(JobModel.status == status)
+        if collection_id is not None:
+            clause.append(JobModel.collection_id == collection_id)
+
+        # 2. Total count (before pagination)
+        total = await session.scalar(select(func.count()).select_from(JobModel).where(*clause))
+
+        # 3. Page of rows (newest first)
+        result = await session.execute(
+            select(JobModel).where(*clause)
+            .order_by(JobModel.created_at.desc()).limit(limit).offset(offset)
+        )
+        return list(result.scalars().all()), int(total or 0)
+
+    async def count_by_status(
+        self,
+        session: AsyncSession,
+        *,
+        collection_id: uuid.UUID | None = None,
+    ) -> dict[str, int]:
+        """
+        Return a ``{status: count}`` map over jobs, optionally scoped to a collection.
+
+        Backs the monitoring overview/queue endpoints — a single grouped query instead of
+        one COUNT per status. Statuses with zero rows are simply absent from the map.
+
+        Args:
+            session (AsyncSession): Active session.
+            collection_id (uuid.UUID | None): Restrict the tally to one collection.
+
+        Returns:
+            dict[str, int]: Count of jobs per status value.
+        """
+        # 1. Grouped count over the status column
+        clause = [] if collection_id is None else [JobModel.collection_id == collection_id]
+        result = await session.execute(
+            select(JobModel.status, func.count())
+            .where(*clause).group_by(JobModel.status)
+        )
+        return {status: int(count) for status, count in result.all()}
+
+    async def count_finished_since(
+        self,
+        session: AsyncSession,
+        since: datetime,
+        *,
+        collection_id: uuid.UUID | None = None,
+    ) -> int:
+        """
+        Count jobs that reached a terminal state (``done``/``failed``) at or after ``since``.
+
+        Drives the throughput metric (jobs/min) on the monitoring queue endpoint. Uses
+        ``finished_at`` so retried jobs are counted once, at their final transition. The optional
+        ``collection_id`` keeps it symmetric with ``count_by_status`` for a future per-collection
+        overview (brique B/C).
+
+        Args:
+            session (AsyncSession): Active session.
+            since (datetime): Lower bound (timezone-aware) for ``finished_at``.
+            collection_id (uuid.UUID | None): Restrict the tally to one collection.
+
+        Returns:
+            int: Number of jobs finished in the window.
+        """
+        # 1. Count terminal jobs within the time window (optionally scoped to a collection)
+        clause = [JobModel.finished_at.is_not(None), JobModel.finished_at >= since]
+        if collection_id is not None:
+            clause.append(JobModel.collection_id == collection_id)
+        total = await session.scalar(
+            select(func.count()).select_from(JobModel).where(*clause)
+        )
+        return int(total or 0)
+
+    async def mark_running(
+        self,
+        session: AsyncSession,
+        job_id: uuid.UUID,
+        *,
+        worker_id: str,
+        attempt: int,
+        started_at: datetime,
+    ) -> None:
+        """
+        Transition a job to ``running`` and record worker attribution + start time.
+
+        Args:
+            session (AsyncSession): Active session.
+            job_id (uuid.UUID): Job primary key.
+            worker_id (str): Identifier of the claiming worker process.
+            attempt (int): 1-based arq retry attempt number.
+            started_at (datetime): Timezone-aware execution start timestamp.
+        """
+        # 1. Load the job (skip silently if it vanished)
+        job = await self.get_by_id(session, job_id)
+        if job is None:
+            self.logger.warning(f"mark_running: job {job_id} not found — skipping.")
+            return
+
+        # 2. Stamp running state + worker attribution
+        job.status = "running"
+        job.worker_id = worker_id
+        job.attempt = attempt
+        job.started_at = started_at
+        job.current_stage = None
+        job.progress = 0
+        await session.flush()
+        self.logger.debug(f"Job {job_id} → running on worker {worker_id} (attempt {attempt}).")
+
+    async def mark_finished(
+        self,
+        session: AsyncSession,
+        job_id: uuid.UUID,
+        status: str,
+        *,
+        finished_at: datetime,
+        error: str | None = None,
+        budget_spent: float | None = None,
+    ) -> None:
+        """
+        Transition a job to a terminal state (``done``/``failed``) and record finish time.
+
+        Args:
+            session (AsyncSession): Active session.
+            job_id (uuid.UUID): Job primary key.
+            status (str): Terminal status (``"done"`` or ``"failed"``).
+            finished_at (datetime): Timezone-aware completion timestamp.
+            error (str | None): Error message (for ``"failed"``).
+            budget_spent (float | None): Total API cost incurred by this job.
+        """
+        # 1. Load the job (skip silently if it vanished)
+        job = await self.get_by_id(session, job_id)
+        if job is None:
+            self.logger.warning(f"mark_finished: job {job_id} not found — skipping.")
+            return
+
+        # 2. Stamp terminal state. A done job reads as 100% with no stage in flight; a failed
+        #    job keeps current_stage so the UI can show where it died.
+        job.status = status
+        job.finished_at = finished_at
+        if error is not None:
+            job.error = error
+        if budget_spent is not None:
+            job.budget_spent = budget_spent
+        if status == "done":
+            job.progress = 100
+            job.current_stage = None
+        await session.flush()
+        self.logger.debug(f"Job {job_id} → {status} (finished).")
+
+    async def update_progress(
+        self,
+        session: AsyncSession,
+        job_id: uuid.UUID,
+        current_stage: str,
+        progress: int,
+    ) -> None:
+        """
+        Update the coarse live-progress signal (current stage + percent) of a running job.
+
+        Args:
+            session (AsyncSession): Active session.
+            job_id (uuid.UUID): Job primary key.
+            current_stage (str): Stage node id currently executing (e.g. ``"s4"``).
+            progress (int): Completion percentage in ``[0, 100]``.
+        """
+        # 1. Load the job (skip silently if it vanished)
+        job = await self.get_by_id(session, job_id)
+        if job is None:
+            self.logger.warning(f"update_progress: job {job_id} not found — skipping.")
+            return
+
+        # 2. Clamp + apply the progress signal
+        job.current_stage = current_stage
+        job.progress = max(0, min(100, progress))
+        await session.flush()

@@ -17,6 +17,8 @@ from .routers import (
     document_router,
     files_router,
     health_router,
+    jobs_router,
+    monitoring_router,
     pages_router,
     search_router,
 )
@@ -72,6 +74,9 @@ def create_app(app_name: str, debug: bool, version: str = "0.1.0", description: 
     app.include_router(router=files_router,      prefix=f"{DOC}/{{document_id}}")
     app.include_router(router=chunks_router,     prefix=f"{DOC}/{{document_id}}/chunks")
     app.include_router(router=pages_router,      prefix=f"{DOC}/{{document_id}}/pages")
+    # Global (non collection-scoped) monitoring surfaces — Brique A.
+    app.include_router(router=jobs_router,       prefix=f"{V1}/jobs")
+    app.include_router(router=monitoring_router, prefix=f"{V1}/monitoring")
 
     # 4. Drift guard: every discovery overlay must bind to a real route function (fail fast).
     route_names = {r.endpoint.__name__ for r in app.routes if isinstance(r, APIRoute)}

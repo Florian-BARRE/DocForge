@@ -26,6 +26,8 @@ from backend.routers import (
     document_router,
     files_router,
     health_router,
+    jobs_router,
+    monitoring_router,
     pages_router,
     search_router,
 )
@@ -57,6 +59,8 @@ def _make_test_app() -> FastAPI:
     app.include_router(router=files_router,      prefix=f"{DOC}/{{document_id}}")
     app.include_router(router=chunks_router,     prefix=f"{DOC}/{{document_id}}/chunks")
     app.include_router(router=pages_router,      prefix=f"{DOC}/{{document_id}}/pages")
+    app.include_router(router=jobs_router,       prefix=f"{V1}/jobs")
+    app.include_router(router=monitoring_router, prefix=f"{V1}/monitoring")
     return app
 
 
@@ -114,6 +118,11 @@ def inject_context(
     monkeypatch.setattr(CONTEXT, "chunk_repo", mock_chunk_repo, raising=False)
     monkeypatch.setattr(CONTEXT, "job_repo", mock_job_repo, raising=False)
     monkeypatch.setattr(CONTEXT, "stage_engine", MagicMock(), raising=False)
+    # Observability handles (Brique A) — async views; tests that exercise monitoring
+    # override these with AsyncMock return values as needed.
+    monkeypatch.setattr(CONTEXT, "queue_introspector", MagicMock(), raising=False)
+    monkeypatch.setattr(CONTEXT, "heartbeat_reader", MagicMock(), raising=False)
+    monkeypatch.setattr(CONTEXT, "event_publisher", MagicMock(), raising=False)
     # node_cache.invalidate_document is awaited in DocumentOps.reingest — must be AsyncMock.
     _mock_nc = MagicMock()
     _mock_nc.invalidate_document = AsyncMock()

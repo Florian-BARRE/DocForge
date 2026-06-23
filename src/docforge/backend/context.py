@@ -3,7 +3,7 @@
 # never imported directly in route files.  Values are assigned in entrypoint.py at startup.
 
 # ====== Standard Library Imports ======
-from typing import Any, Type
+from typing import Any
 
 # ====== Third-Party Library Imports ======
 from arq import ArqRedis
@@ -11,13 +11,18 @@ from loggerplusplus import LoggerPlusPlus
 
 # ====== Internal Project Imports ======
 from config import RUNTIME_CONFIG
-from libs.pipeline.engine import StageEngine
+from libs.observability.events import EventPublisher
+from libs.observability.heartbeat import HeartbeatReader
+from libs.observability.queue import QueueIntrospector
+from libs.pipeline.assembly import ProviderRegistry
 from libs.pipeline.caches.node_cache import NodeCache
 from libs.pipeline.caches.provider_cache import ProviderCallCache
+from libs.pipeline.engine import StageEngine
 from libs.providers.converter import GotenbergConverter
 from libs.providers.device_manager import DeviceManager
 from libs.providers.parser import DoclingBackend
-from libs.pipeline.assembly import ProviderRegistry
+from libs.search.hybrid.service import HybridSearchService
+from libs.search.metadata_indexer.indexer import MetadataIndexer
 from libs.storage.postgres.client import PostgresClient
 from libs.storage.postgres.repositories import (
     BlockRepository,
@@ -27,8 +32,6 @@ from libs.storage.postgres.repositories import (
     DocumentRepository,
     JobRepository,
 )
-from libs.search.metadata_indexer.indexer import MetadataIndexer
-from libs.search.hybrid.service import HybridSearchService
 from libs.storage.qdrant.client import QdrantStorageClient
 from libs.storage.s3.client import S3Client
 
@@ -44,7 +47,7 @@ class CONTEXT:
 
     # ── Core infrastructure ──────────────────────────────────────────────────
     logger: LoggerPlusPlus
-    RUNTIME_CONFIG: Type[RUNTIME_CONFIG]
+    RUNTIME_CONFIG: type[RUNTIME_CONFIG]
 
     # ── Storage ─────────────────────────────────────────────────────────────
     postgres: PostgresClient
@@ -72,6 +75,12 @@ class CONTEXT:
     provider_cache: ProviderCallCache
     registry: ProviderRegistry  # resolves per-run PipelineConfig → concrete stages
     stage_engine: StageEngine   # s6 is None when Qdrant is unreachable
+
+    # ── Observability (Brique A) ─────────────────────────────────────────────
+    # Read-only views over Redis telemetry, all sharing the arq_pool connection.
+    queue_introspector: QueueIntrospector   # arq queue depth + per-job arq status
+    heartbeat_reader: HeartbeatReader       # live worker heartbeats
+    event_publisher: EventPublisher         # publish monitoring events (also consumed in brique C)
 
     # ── Runtime state ────────────────────────────────────────────────────────
     active_tasks: dict[str, Any]

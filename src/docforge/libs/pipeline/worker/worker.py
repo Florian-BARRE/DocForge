@@ -9,6 +9,8 @@
 # ====== Standard Library Imports ======
 from __future__ import annotations
 
+import asyncio
+
 # ====== Third-Party Library Imports ======
 from arq.connections import RedisSettings
 from loggerplusplus import loggerplusplus
@@ -36,6 +38,10 @@ async def startup(ctx: dict) -> None:
     _logger.info(f"Worker starting up…")
     await WorkerBootstrap.build(ctx)
     await _recover_stuck_jobs(ctx)
+
+    # Start the background heartbeat loop (built in WorkerBootstrap). The task is cancelled
+    # in shutdown(); its key is TTL'd so a crash without shutdown still expires cleanly.
+    ctx["heartbeat_task"] = asyncio.create_task(ctx["heartbeat_loop"].run())
     _logger.info(f"Worker startup complete.")
 
 
@@ -84,6 +90,17 @@ async def shutdown(ctx: dict) -> None:
         ctx (dict): arq context dictionary populated during startup.
     """
     _logger.info(f"Worker shutting down…")
+
+    # Stop the heartbeat loop first so it removes its key and stops touching Redis before
+    # the connections are torn down.
+    heartbeat_task = ctx.get("heartbeat_task")
+    if heartbeat_task is not None:
+        heartbeat_task.cancel()
+        try:
+            await heartbeat_task
+        except asyncio.CancelledError:
+            pass
+
     await WorkerBootstrap.teardown(ctx)
     _logger.info(f"Worker shutdown complete.")
 
@@ -114,6 +131,13 @@ class WorkerSettings:
     # Hard deadline per task execution — arq aborts (raises asyncio.CancelledError) after this.
     # Prevents a hanging pipeline stage from blocking a worker slot indefinitely.
     job_timeout = 3600  # 1 hour
+
+    # Max concurrent jobs this worker process runs (Brique A — configurable concurrency).
+    max_jobs = RUNTIME_CONFIG.WORKER_MAX_JOBS
+
+    # Enable arq job abort so POST /api/v1/jobs/{id}/cancel can interrupt queued/running jobs.
+    # Without this flag arq never polls the abort set and cancellation is a silent no-op.
+    allow_abort_jobs = RUNTIME_CONFIG.WORKER_ALLOW_ABORT
 
     # Health-check interval in seconds
     health_check_interval = 30

@@ -28,6 +28,12 @@ from .collections.documents.chunks.router import router as chunks_router
 # ---------------- Documents · pages --------------- #
 from .collections.documents.pages.router import router as pages_router
 
+# -------------------- Jobs ------------------------ #
+from .jobs.router import router as jobs_router
+
+# ------------------- Monitoring ------------------- #
+from .monitoring.router import router as monitoring_router
+
 # ------------------- Public API ------------------ #
 __all__ = [
     "health_router",
@@ -39,4 +45,6 @@ __all__ = [
     "files_router",
     "chunks_router",
     "pages_router",
+    "jobs_router",
+    "monitoring_router",
 ]

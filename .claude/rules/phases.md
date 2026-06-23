@@ -170,3 +170,37 @@ docker-compose.dev.yml                          # reranker port 10027:80
 - Graceful fallback: LLM failure in query transform falls back to `[query]` (original unchanged)
 - Reranker separate TEI container (port 10027 in dev) — different model from embed TEI (port 10025)
 - `build_search_pipeline(pipeline_dict, retrieval)` on `ProviderRegistry` — retrieval passed in, not stored (avoids circular ownership with `HybridSearchService`)
+
+---
+
+## Resource/Job/Monitoring chantier — Brique A (Observability)
+
+> Roadmap of 5 bricks (A observability → C real-time SSE → D resources → B mass ingestion →
+> E dashboard): `docs/superpowers/specs/2026-06-23-resource-job-monitoring-roadmap-design.md`.
+> Brique A RPI docs: `docs/rpi/observability-brick-a/{research,plan,implementation}.md`.
+
+```
+libs/observability/                          # NEW L2 bucket (imports only domain/config/providers/storage)
+  queue/introspector.py                      #   QueueIntrospector — read-only arq (ZCARD/status/SCAN)
+  metrics/{system,gpu,collector}.py          #   psutil + pynvml gauges (GPU fail-soft on CPU image)
+  heartbeat/{models,writer,reader}.py        #   WorkerHeartbeat + TTL'd Redis writer/reader
+  events/{channels,publisher}.py             #   single docforge:events pub/sub channel
+libs/pipeline/worker/heartbeat.py            # WorkerHeartbeatLoop (background task per worker)
+backend/routers/jobs/                        # GET /api/v1/jobs, /{id} (+live arq status), POST /{id}/cancel
+backend/routers/monitoring/                  # GET /api/v1/monitoring/{queue,workers,overview,discovery}
+migrations/versions/009_job_observability.py # +job: worker_id, started_at, finished_at, attempt, current_stage, progress
+libs/storage/postgres/repositories/job_repo.py  # +list_jobs/count_by_status/count_finished_since/mark_running/mark_finished/update_progress
+libs/pipeline/worker/{worker,worker_bootstrap,tasks}.py  # max_jobs, allow_abort_jobs, worker_id, heartbeat, progress_cb, events
+libs/pipeline/orchestrator/core.py           # optional progress_cb at stage boundaries (telemetry-only)
+backend/{context,lifespan,app}.py            # wiring (queue_introspector/heartbeat_reader/event_publisher)
+config/runtime/runtime_config.py             # WORKER_MAX_JOBS, WORKER_ALLOW_ABORT, OBS_HEARTBEAT_*, OBS_METRICS_ENABLED
+```
+
+### Key decisions — Brique A
+- New deps: `psutil`, `nvidia-ml-py` (pure-python, safe on CPU-only image). `sse-starlette` deferred to brique C.
+- Dual store: durable job state in Postgres; ephemeral heartbeats/gauges in Redis (TTL ≈ 3× interval).
+- Single event channel `docforge:events` (typed payload). A only **publishes**; brique C subscribes via SSE.
+- No `SCAN` in hot path: depth=`ZCARD`, running counts=Postgres, workers=heartbeat keys (scalable to 1000+).
+- `progress_cb` is the sole L3 touch — optional, telemetry-only, failures swallowed; not a DAG node.
+- arq abort wired via `allow_abort_jobs=True` + existing `_job_id=str(job_uuid)`; cancel endpoint top-level.
+- `mark_running`/`mark_finished` are job STATE (fail the job on error); event publishes are best-effort.

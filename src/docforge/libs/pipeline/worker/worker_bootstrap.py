@@ -7,13 +7,27 @@
 # ====== Standard Library Imports ======
 from __future__ import annotations
 
+import os
+import socket
+from uuid import uuid4
+
 # ====== Third-Party Library Imports ======
 from loggerplusplus import loggerplusplus
 
 # ====== Internal Project Imports ======
 from config import RUNTIME_CONFIG
-from libs.providers.converter import GotenbergConverter
 from libs.config.pipeline import build_default_pipeline
+from libs.observability.events import EventPublisher
+from libs.observability.heartbeat import HeartbeatWriter
+from libs.observability.metrics import MetricsCollector
+from libs.pipeline.assembly import ProviderRegistry
+from libs.pipeline.caches.node_cache import NodeCache
+from libs.pipeline.caches.provider_cache import ProviderCallCache
+from libs.pipeline.engine import StageEngine
+from libs.pipeline.stages.s0_ingest.core import S0IngestStage
+from libs.pipeline.stages.s1_parse.core import S1ParseStage
+from libs.pipeline.stages.s6_embed_index.core import S6EmbedIndexStage
+from libs.providers.converter import GotenbergConverter
 from libs.storage.postgres.client import PostgresClient
 from libs.storage.postgres.repositories import (
     BlockRepository,
@@ -24,13 +38,9 @@ from libs.storage.postgres.repositories import (
 )
 from libs.storage.qdrant.client import QdrantStorageClient
 from libs.storage.s3.client import S3Client
-from libs.pipeline.assembly import ProviderRegistry
-from libs.pipeline.engine import StageEngine
-from libs.pipeline.caches.node_cache import NodeCache
-from libs.pipeline.caches.provider_cache import ProviderCallCache
-from libs.pipeline.stages.s0_ingest.core import S0IngestStage
-from libs.pipeline.stages.s1_parse.core import S1ParseStage
-from libs.pipeline.stages.s6_embed_index.core import S6EmbedIndexStage
+
+# ====== Local Project Imports ======
+from .heartbeat import WorkerHeartbeatLoop
 
 _logger = loggerplusplus.bind(identifier="ARQ_WORKER")
 
@@ -139,6 +149,30 @@ class WorkerBootstrap:
         ctx["job_repo"] = JobRepository()
         ctx["collection_repo"] = CollectionRepository()
         ctx["document_repo"] = document_repo
+
+        # 9. Observability — worker identity, event publisher, and heartbeat loop.
+        # arq populates ctx["redis"] (the worker's ArqRedis pool) before on_startup runs, so it
+        # is reused here for all telemetry. The loop object is built now and started in worker.py.
+        redis = ctx["redis"]
+        hostname = socket.gethostname()
+        pid = os.getpid()
+        worker_id = f"{hostname}:{pid}:{uuid4().hex[:8]}"
+        ctx["worker_id"] = worker_id
+        ctx["current_job_id"] = None          # mutated by run_pipeline_task while a job runs
+        ctx["jobs_processed"] = 0             # incremented by run_pipeline_task on completion
+        event_publisher = EventPublisher(redis)
+        ctx["event_publisher"] = event_publisher
+        ctx["heartbeat_loop"] = WorkerHeartbeatLoop(
+            writer=HeartbeatWriter(redis, worker_id, RUNTIME_CONFIG.OBS_HEARTBEAT_TTL_S),
+            publisher=event_publisher,
+            metrics=MetricsCollector(enabled=RUNTIME_CONFIG.OBS_METRICS_ENABLED),
+            ctx=ctx,
+            worker_id=worker_id,
+            hostname=hostname,
+            pid=pid,
+            interval_s=RUNTIME_CONFIG.OBS_HEARTBEAT_INTERVAL_S,
+        )
+        _logger.info(f"Worker: observability ready (worker_id={worker_id}).")
 
     @staticmethod
     async def _connect_qdrant() -> QdrantStorageClient | None:

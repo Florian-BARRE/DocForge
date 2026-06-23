@@ -9,8 +9,8 @@ import sys
 
 # ====== Third-Party Library Imports ======
 from configplusplus import EnvConfigLoader, env
-from loggerplusplus import loggerplusplus
 from loggerplusplus import formats as lpp_formats
+from loggerplusplus import loggerplusplus
 
 # ─── Reset logger before anything else ───
 loggerplusplus.remove()
@@ -91,6 +91,18 @@ class RUNTIME_CONFIG(EnvConfigLoader):
 
     # ───── Redis (arq job queue — P2) ─────
     REDIS_URL: str = env("REDIS_URL", default="redis://localhost:6379")
+
+    # ───── Workers & observability (Brique A) ─────
+    # Max concurrent pipeline jobs per arq worker process (arq `max_jobs`).
+    WORKER_MAX_JOBS: int = env("WORKER_MAX_JOBS", cast=int, default="10")
+    # Enable arq job abort (required by POST /jobs/{id}/cancel). Read-only/safe.
+    WORKER_ALLOW_ABORT: bool = env("WORKER_ALLOW_ABORT", cast=bool, default="true")
+    # Worker heartbeat write cadence (seconds) — how often a worker reports liveness + gauges.
+    OBS_HEARTBEAT_INTERVAL_S: int = env("OBS_HEARTBEAT_INTERVAL_S", cast=int, default="5")
+    # Heartbeat Redis key TTL (seconds) — ~3x interval so dead workers vanish automatically.
+    OBS_HEARTBEAT_TTL_S: int = env("OBS_HEARTBEAT_TTL_S", cast=int, default="15")
+    # Gate psutil/pynvml gauge collection (set false to disable resource sampling entirely).
+    OBS_METRICS_ENABLED: bool = env("OBS_METRICS_ENABLED", cast=bool, default="true")
 
     # ───── P3 — S2 Enrichment (OCR / VLM / classifier) ─────
     # Figure classifier: "layout_labels" (heuristic, no model) or "vit_onnx" (ONNX model)

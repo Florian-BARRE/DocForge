@@ -7,21 +7,23 @@
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
 
 # ====== Third-Party Library Imports ======
 from arq.worker import Retry
 from loggerplusplus import loggerplusplus
 
 from libs.config.pipeline import PipelineConfig
+from libs.observability.events import EventPublisher
+
+# ====== Internal Project Imports ======
+from libs.pipeline.engine import StageEngine
 from libs.storage.postgres.client import PostgresClient
 from libs.storage.postgres.repositories import (
     CollectionRepository,
     DocumentRepository,
     JobRepository,
 )
-
-# ====== Internal Project Imports ======
-from libs.pipeline.engine import StageEngine
 
 _logger = loggerplusplus.bind(identifier="WORKER_TASK")
 
@@ -69,17 +71,37 @@ async def run_pipeline_task(
     collection_repo: CollectionRepository = ctx["collection_repo"]
     document_repo: DocumentRepository = ctx["document_repo"]
 
+    # Observability context (Brique A): worker identity, event bus, retry attempt.
+    event_publisher: EventPublisher = ctx["event_publisher"]
+    worker_id: str = ctx["worker_id"]
+    job_try: int = ctx.get("job_try", 1)
+
     doc_uuid = uuid.UUID(document_id)
     job_uuid = uuid.UUID(job_id)
 
     _logger.info(
         f"Task started: document_id={document_id} job_id={job_id} "
-        f"source_hash={source_hash[:8]}…"
+        f"worker={worker_id} attempt={job_try} source_hash={source_hash[:8]}…"
     )
 
-    # 1. Transition job → running so the caller can observe progress immediately
+    # 1. Transition job → running, recording worker attribution + start time, and surface it.
+    #    ctx["current_job_id"] feeds the worker heartbeat so the dashboard shows the active job.
+    ctx["current_job_id"] = job_id
     async with postgres.session() as session:
-        await job_repo.update_status(session, job_uuid, "running")
+        await job_repo.mark_running(
+            session, job_uuid,
+            worker_id=worker_id, attempt=job_try, started_at=datetime.now(UTC),
+        )
+    await event_publisher.job_updated({
+        "id": job_id, "document_id": document_id, "collection_id": collection_id,
+        "status": "running", "worker_id": worker_id, "attempt": job_try, "progress": 0,
+    })
+
+    # Coarse progress hook: each stage boundary updates the job row + publishes a live event.
+    async def _progress_cb(stage: str, percent: int) -> None:
+        async with postgres.session() as session:
+            await job_repo.update_progress(session, job_uuid, stage, percent)
+        await event_publisher.stage_progress(job_id, stage, percent)
 
     # 2. Load the frozen collection contract (spec §3): pipeline config + metadata schema.
     # This makes full ingestion run the exact stack the playground previewed, and materialize
@@ -118,11 +140,23 @@ async def run_pipeline_task(
             pipeline_config=pipeline_config,
             metadata_fields=metadata_fields,
             doc_user_meta=doc_user_meta,
+            progress_cb=_progress_cb,
         )
 
-        # 4. Transition job → done
+        # 4. Transition job → done (records finish time; progress reads back as 100).
+        # This is job STATE, not pure telemetry: it is intentionally NOT wrapped — if persisting
+        # the terminal state fails, the job must fail (and arq retry) rather than silently report
+        # success. Only the event publish below is best-effort (EventPublisher swallows internally).
         async with postgres.session() as session:
-            await job_repo.update_status(session, job_uuid, "done")
+            await job_repo.mark_finished(
+                session, job_uuid, "done", finished_at=datetime.now(UTC),
+            )
+        ctx["current_job_id"] = None
+        ctx["jobs_processed"] = int(ctx.get("jobs_processed", 0)) + 1
+        await event_publisher.job_updated({
+            "id": job_id, "document_id": document_id, "collection_id": collection_id,
+            "status": "done", "worker_id": worker_id, "attempt": job_try, "progress": 100,
+        })
 
         _logger.info(
             f"Task done: document_id={document_id} job_id={job_id} "
@@ -144,20 +178,26 @@ async def run_pipeline_task(
         }
 
     except Exception as exc:
-        # 5. Mark job as failed in the DB on every attempt
-        job_try: int = ctx.get("job_try", 1)
+        # 5. Mark job as failed in the DB on every attempt; release the worker's active-job slot
         error_msg = f"{type(exc).__name__}: {exc}"
         _logger.error(
             f"Task failed (attempt {job_try}/{_MAX_TRIES}): "
             f"document_id={document_id} job_id={job_id} {error_msg}"
         )
         async with postgres.session() as session:
-            await job_repo.update_status(
-                session, job_uuid, "failed", error=error_msg
+            await job_repo.mark_finished(
+                session, job_uuid, "failed",
+                finished_at=datetime.now(UTC), error=error_msg,
             )
+        ctx["current_job_id"] = None
+        await event_publisher.job_updated({
+            "id": job_id, "document_id": document_id, "collection_id": collection_id,
+            "status": "failed", "worker_id": worker_id, "attempt": job_try, "error": error_msg,
+        })
 
         # 6. Permanent failure on the last attempt — let arq record the final error
         if job_try >= _MAX_TRIES:
+            ctx["jobs_processed"] = int(ctx.get("jobs_processed", 0)) + 1
             raise
 
         # 7. Non-final attempt: schedule exponential back-off retry (30s, 60s, …)
