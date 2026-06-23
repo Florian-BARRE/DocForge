@@ -22,6 +22,8 @@ interface DocRowProps {
    * button are shown.
    */
   isStale: boolean
+  /** Exact, human-readable reasons the document is stale (shown in the badge tooltip). */
+  staleReasons?: string[]
   /** Collection's current pipeline version — shown in the staleness tooltip. */
   collectionPipelineVersion?: string
   /**
@@ -106,7 +108,7 @@ function formatDuration(ms: number | null | undefined): string {
  * The ⋯ overflow menu drops down below the button and closes automatically
  * when the user clicks anywhere outside the component.
  */
-export function DocRow({ doc, collectionId: _collectionId, isStale, collectionPipelineVersion, onTrace, onDelete, onReingest, onOpen }: DocRowProps) {
+export function DocRow({ doc, collectionId: _collectionId, isStale, staleReasons, collectionPipelineVersion, onTrace, onDelete, onReingest, onOpen }: DocRowProps) {
   // 1. Local state: whether the overflow dropdown is visible.
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -180,9 +182,12 @@ export function DocRow({ doc, collectionId: _collectionId, isStale, collectionPi
         <span
           className="tag doc-stale-badge"
           title={
+            (staleReasons && staleReasons.length > 0
+              ? `Cause : ${staleReasons.join(' ; ')}.\n`
+              : '') +
             `Traité avec le pipeline ${doc.pipeline_version}` +
             (collectionPipelineVersion ? `, config actuelle ${collectionPipelineVersion}` : '') +
-            ' — réindexation requise pour refléter les changements de pipeline/embedding/champs recherchables.'
+            ' — réindexation requise.'
           }
         >
           Périmé — à réindexer

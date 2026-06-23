@@ -17,6 +17,7 @@ from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
 from backend.context import CONTEXT
 from backend.libs.utils.error_handling import auto_handle_errors
 from backend.routers.collections.documents.helpers import DocumentOps
+from backend.routers.collections.documents.staleness import DocumentStaleness
 from backend.routers.collections.documents.models import (
     DocumentDeleteResponse,
     DocumentListResponse,
@@ -130,12 +131,19 @@ async def list_documents(
             sort_by=sort_by,
             sort_order=sort_order,
         )
-    return DocumentListResponse(
-        documents=[DocumentResponse.model_validate(d) for d in docs],
-        total=total,
-        limit=limit,
-        offset=offset,
-    )
+        # Config history → per-document staleness vs the CURRENT config (precise + reversible).
+        versions = await CONTEXT.config_repo.list_versions(session, collection_id)
+    version_index = DocumentStaleness.index_versions(versions)
+
+    items: list[DocumentResponse] = []
+    for d in docs:
+        stale, reasons = DocumentStaleness.evaluate(collection, d.pipeline_version, version_index)
+        items.append(
+            DocumentResponse.model_validate(d).model_copy(
+                update={"stale": stale, "stale_reasons": reasons}
+            )
+        )
+    return DocumentListResponse(documents=items, total=total, limit=limit, offset=offset)
 
 
 @router.get("/{document_id}", response_model=DocumentResponse)
@@ -156,6 +164,16 @@ async def get_document(collection_id: uuid.UUID, document_id: uuid.UUID) -> Docu
         block_count = await CONTEXT.document_repo.count_blocks(session, document_id)
         stage_summary = await CONTEXT.document_repo.get_stage_run_summary(session, document_id)
         jobs = await CONTEXT.job_repo.list_by_document(session, document_id)
+        collection = await CONTEXT.collection_repo.get_by_id(session, collection_id)
+        versions = await CONTEXT.config_repo.list_versions(session, collection_id)
+
+    # Per-document staleness vs the collection's CURRENT config.
+    stale, stale_reasons = (
+        DocumentStaleness.evaluate(
+            collection, doc.pipeline_version, DocumentStaleness.index_versions(versions)
+        )
+        if collection is not None else (False, [])
+    )
 
     # Only surface errors when the document itself is stuck in a failed state.
     # A done document may have an older failed job in its history — that's noise, not an error.
@@ -180,6 +198,8 @@ async def get_document(collection_id: uuid.UUID, document_id: uuid.UUID) -> Docu
         "has_pdf": has_pdf,
         "has_markdown": has_markdown,
         "indexed": stage_summary.get("s6") == "done",
+        "stale": stale,
+        "stale_reasons": stale_reasons,
         "pipeline_errors": pipeline_errors,
         "quality_score": implicit.get("quality_score"),
         "chain_traces": list(implicit.get("chain_traces", []) or []),

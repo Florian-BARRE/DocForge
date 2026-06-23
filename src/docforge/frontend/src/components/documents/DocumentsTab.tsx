@@ -9,7 +9,6 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 // ====== Internal Project Imports ======
 import {
   deleteDocument,
-  getConfigHistory,
   getConfigState,
   ingestDocument,
   listDocuments,
@@ -18,7 +17,6 @@ import {
 import type { ConfigState, Document, MetaField } from '../../api/types'
 import { DocDetailView } from './DocDetailView'
 import { DocRow } from './DocRow'
-import { isDocStale } from './freshness'
 import { MetadataInputForm } from './MetadataInputForm'
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -83,9 +81,6 @@ export function DocumentsTab({ collectionId, onTrace }: DocumentsTabProps) {
   // Bulk reindex progress — null when idle, otherwise {done, total} while running.
   const [reindexProgress, setReindexProgress] =
     useState<{ done: number; total: number } | null>(null)
-  // Exact cause of the current staleness — the most recent config version's note
-  // (auto-filled by the backend with the precise reindex reason).
-  const [reindexCause, setReindexCause] = useState<string | null>(null)
 
   // Hidden file input used for click-to-upload.
   const inputRef = useRef<HTMLInputElement>(null)
@@ -125,20 +120,6 @@ export function DocumentsTab({ collectionId, onTrace }: DocumentsTabProps) {
       .catch(() => { /* non-fatal */ })
     return () => { cancelled = true }
   }, [collectionId])
-
-  // 1c. Fetch the latest config-version note — the exact reindex cause shown in the banner.
-  useEffect(() => {
-    let cancelled = false
-    getConfigHistory(collectionId)
-      .then(h => {
-        if (cancelled) return
-        // Versions are returned newest-first; the most recent note carries the cause.
-        const latest = h.versions?.[0]
-        setReindexCause(latest?.note ?? null)
-      })
-      .catch(() => { /* non-fatal — banner falls back to the generic message */ })
-    return () => { cancelled = true }
-  }, [collectionId, docs])
 
   // 2. Polling loop — active only while at least one document is in-flight.
   useEffect(() => {
@@ -316,13 +297,17 @@ export function DocumentsTab({ collectionId, onTrace }: DocumentsTabProps) {
     .filter(Boolean)
     .join(' ')
 
-  // Documents whose pipeline version no longer matches the collection's.
+  // Staleness is computed server-side (precise + reversible): a document is stale only when
+  // the index-relevant config it was processed with differs from the current config.
   const collectionPipelineVersion = configState?.pipeline_version
-  const staleDocs = docs.filter(d => isDocStale(d.pipeline_version, collectionPipelineVersion))
+  const staleDocs = docs.filter(d => d.stale === true)
 
-  // Show the reindex banner when at least one doc is stale OR the config state
-  // explicitly flags that a reindex is required.
-  const showReindexBanner = staleDocs.length > 0 || configState?.needs_reindex === true
+  // Aggregate the exact per-document causes (deduplicated) for the banner.
+  const staleCauses = Array.from(
+    new Set(staleDocs.flatMap(d => d.stale_reasons ?? []))
+  )
+
+  const showReindexBanner = staleDocs.length > 0
   const isReindexing = reindexProgress !== null
 
   return (
@@ -379,10 +364,10 @@ export function DocumentsTab({ collectionId, onTrace }: DocumentsTabProps) {
       {showReindexBanner && (
         <div className="reindex-banner">
           <span>
-            ⚠ La configuration a changé — {staleDocs.length} document(s) à réindexer
-            pour refléter le nouveau pipeline.
-            {reindexCause && (
-              <span className="reindex-banner-cause"> Cause : {reindexCause}.</span>
+            ⚠ {staleDocs.length} document(s) à réindexer — leur configuration d'indexation
+            ne correspond plus à la config actuelle.
+            {staleCauses.length > 0 && (
+              <span className="reindex-banner-cause"> Cause : {staleCauses.join(' ; ')}.</span>
             )}
           </span>
           <div className="reindex-banner-actions">
@@ -416,7 +401,8 @@ export function DocumentsTab({ collectionId, onTrace }: DocumentsTabProps) {
               key={doc.id}
               doc={doc}
               collectionId={collectionId}
-              isStale={isDocStale(doc.pipeline_version, collectionPipelineVersion)}
+              isStale={doc.stale === true}
+              staleReasons={doc.stale_reasons ?? []}
               collectionPipelineVersion={collectionPipelineVersion}
               onTrace={onTrace}
               onDelete={handleDelete}

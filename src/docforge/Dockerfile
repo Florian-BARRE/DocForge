@@ -27,7 +27,10 @@ WORKDIR /workspace
 
 # Tell uv where to create the project virtual environment.
 # Using a fixed path (/opt/venv) makes it easy to copy to the runtime stage.
-ENV UV_PROJECT_ENVIRONMENT=/opt/venv
+# UV_HTTP_TIMEOUT: raise the per-request timeout from the 30s default to 5 minutes.
+# Large CUDA/ML wheels (nvidia-curand, triton, scipy) exceed 30s on slow links.
+ENV UV_PROJECT_ENVIRONMENT=/opt/venv \
+    UV_HTTP_TIMEOUT=300
 
 # Copy only the lock metadata first.
 # Docker caches this layer independently of application code changes.

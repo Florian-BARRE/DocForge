@@ -46,6 +46,18 @@ class DocumentResponse(BaseModel):
     has_pdf: bool = False
     has_markdown: bool = False
     indexed: bool = False
+    # Staleness vs the collection's CURRENT config — computed by comparing the config the
+    # document was processed with (its pipeline_version snapshot) to the current config.
+    # Precise and reversible: a reverted config change leaves the document fresh.
+    stale: bool = Field(
+        default=False,
+        description="True when the document was processed with an index-invalidating config "
+                    "that differs from the collection's current config (reindex recommended).",
+    )
+    stale_reasons: list[str] = Field(
+        default_factory=list,
+        description="Exact human-readable reasons the document is stale (empty when fresh).",
+    )
     pipeline_errors: list[str] = Field(default_factory=list)
     # Chain lineage — extracted from implicit_meta by the router so the frontend
     # can render the per-stage attempt log without parsing the meta blob.

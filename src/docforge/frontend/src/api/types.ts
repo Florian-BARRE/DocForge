@@ -139,7 +139,14 @@ export type ConfigHistoryResponse = Schemas['ConfigHistoryResponse']
 // The backend normalises status at the API boundary to {pending,running,done,error}.
 // Pydantic types it as `str` though, so we narrow on the way in.
 export type DocStatus = 'pending' | 'running' | 'done' | 'error'
-export type Document = Omit<Schemas['DocumentResponse'], 'status'> & { status: DocStatus }
+// stale / stale_reasons overlay the generated type until the next `npm run gen:types`:
+// precise, reversible staleness vs the collection's current config (see backend
+// DocumentStaleness). Prefer these over comparing pipeline_version numbers.
+export type Document = Omit<Schemas['DocumentResponse'], 'status'> & {
+  status: DocStatus
+  stale?: boolean
+  stale_reasons?: string[]
+}
 export type DocumentListResponse = Omit<Schemas['DocumentListResponse'], 'documents'> & {
   documents: Document[]
 }
