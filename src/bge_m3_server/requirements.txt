@@ -1,0 +1,6 @@
+# BGE-M3 dense+sparse embedding micro-service dependencies.
+# FlagEmbedding pulls in torch + transformers; torch is installed from the CPU wheel
+# index in the Dockerfile to keep the runtime image free of CUDA payloads.
+FlagEmbedding>=1.2.10
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
