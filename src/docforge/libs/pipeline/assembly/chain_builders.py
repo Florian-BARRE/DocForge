@@ -180,16 +180,40 @@ class ChainBuilderHelpers:
         cfg: Any,
         specs: list[ProviderSpec],
         gate_cfg: ChainGateConfig,
+        sparse_spec: Any = None,
     ) -> Chain[Any, Any]:
-        """Build the S6 embed chain from typed EmbedProviderConfig specs."""
+        """
+        Build the S6 embed chain from typed EmbedProviderConfig specs.
+
+        When ``sparse_spec`` is provided, sparse (BM25) vectors come from that separate backend:
+        each dense provider in the chain is wrapped in a CompositeEmbedProvider that draws dense
+        from the dense provider and sparse from the shared sparse backend. This enables hybrid
+        search with a dense-only chain (e.g. OpenAI, or TEI/BGE-M3 cls pooling).
+
+        Args:
+            cfg (Any): RUNTIME_CONFIG (deployment defaults merged into each spec).
+            specs (list[ProviderSpec]): Dense embed provider configs.
+            gate_cfg (ChainGateConfig): Escalation policy.
+            sparse_spec (Any): Optional separate sparse provider config, or None.
+
+        Returns:
+            Chain[EmbedProvider, EmbedResult]: Wired embed chain (composites when sparse_spec set).
+        """
         if not specs:
             raise ProviderUnavailableError(
                 "embed", "none", "At least one embed provider must be configured.",
             )
+        # Build the shared sparse backend once (when configured).
+        sparse_provider = sparse_spec.merge_defaults(cfg).build() if sparse_spec is not None else None
+
         built: list[Any] = []
         for spec in specs:
-            merged = spec.merge_defaults(cfg)
-            built.append(merged.build())
+            dense_provider = spec.merge_defaults(cfg).build()
+            if sparse_provider is not None:
+                from libs.providers.embed.composite import CompositeEmbedProvider
+                built.append(CompositeEmbedProvider(dense=dense_provider, sparse=sparse_provider))
+            else:
+                built.append(dense_provider)
         return Chain(stage="embed", providers=built, gate=ChainGate(gate_cfg))
 
 

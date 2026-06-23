@@ -194,9 +194,14 @@ class ProviderRegistry(DescribeSurface, LoggerClass):
         self,
         specs: list[ProviderSpec],
         gate_cfg: ChainGateConfig,
+        sparse_spec: Any = None,
     ) -> Chain[Any, Any]:
-        """Build the S6 embed chain (delegates to ChainBuilderHelpers)."""
-        return ChainBuilderHelpers.build_embed_chain(self._cfg, specs, gate_cfg)
+        """Build the S6 embed chain (delegates to ChainBuilderHelpers).
+
+        ``sparse_spec`` (optional) sources sparse vectors from a separate backend — see
+        ChainBuilderHelpers.build_embed_chain.
+        """
+        return ChainBuilderHelpers.build_embed_chain(self._cfg, specs, gate_cfg, sparse_spec)
 
     def build_search_pipeline(
         self,
@@ -230,9 +235,17 @@ class ProviderRegistry(DescribeSurface, LoggerClass):
         # 1. Deserialize the stored pipeline config (or fall back to defaults when absent)
         pipeline = PipelineConfig.from_dict(pipeline_dict)
 
-        # 2. Build embed provider -- must match the model used during S6 indexing
+        # 2. Build embed provider -- must match the model(s) used during S6 indexing.
+        #    When a separate sparse backend is configured, the query is embedded by a composite
+        #    (dense from chain[0], sparse from the sparse backend) so both named-vector families
+        #    can be queried — exactly mirroring how the documents were indexed.
         embed_spec = pipeline.embed.chain[0]
         embed_provider = embed_spec.merge_defaults(self._cfg).build()
+        sparse_spec = getattr(pipeline.embed, "sparse", None)
+        if sparse_spec is not None:
+            from libs.providers.embed.composite import CompositeEmbedProvider
+            sparse_provider = sparse_spec.merge_defaults(self._cfg).build()
+            embed_provider = CompositeEmbedProvider(dense=embed_provider, sparse=sparse_provider)
 
         # 3. Optionally build reranker from pipeline.search.rerank.chain[0]
         reranker = None

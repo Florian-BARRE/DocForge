@@ -37,13 +37,21 @@ class EmbedConfig(BaseModel):
         Required params: ``base_url``, ``api_key`` (mandatory — raises if empty).
 
     Attributes:
-        chain (list[EmbedProviderConfig]): Ordered embedding backends; index 0 is tried first.
+        chain (list[EmbedProviderConfig]): Ordered DENSE embedding backends; index 0 is tried first.
+        sparse (EmbedProviderConfig | None): Optional SEPARATE sparse backend. When set, sparse
+            (BM25/lexical) vectors are sourced from it instead of the dense chain — required to
+            get hybrid search with a dense-only chain (e.g. OpenAI, or TEI/BGE-M3 cls pooling).
+            None means sparse comes from the chain provider itself (e.g. a SPLADE TEI).
         gate (ChainGateConfig): Escalation policy for the embedding chain.
     """
 
     chain: list[Any] = Field(
         default_factory=list,
-        description="Ordered embedding backends; index 0 is tried first.",
+        description="Ordered dense embedding backends; index 0 is tried first.",
+    )
+    sparse: Any = Field(
+        default=None,
+        description="Optional separate sparse backend; None = sparse comes from the chain provider.",
     )
     gate: ChainGateConfig = Field(
         default_factory=ChainGateConfig,
@@ -96,4 +104,8 @@ class EmbedConfig(BaseModel):
             for item in self.chain
         ]
         object.__setattr__(self, "chain", coerced)
+
+        # Coerce the optional separate sparse backend through the same union.
+        if isinstance(self.sparse, dict):
+            object.__setattr__(self, "sparse", adapter.validate_python(self.sparse))
         return self

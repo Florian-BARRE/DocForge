@@ -104,8 +104,11 @@ class S6Builder:
             tuple[Any, int]: (embed_chain, batch_size) — chain is None when embed.chain is empty.
         """
         if registry is not None:
-            # Registry path: full chain with gate + availability checks
-            embed_chain = registry._build_embed_chain(embed.chain, embed.gate)
+            # Registry path: full chain with gate + availability checks. A separate sparse
+            # backend (embed.sparse) is threaded through so S6 indexes sparse vectors from it.
+            embed_chain = registry._build_embed_chain(
+                embed.chain, embed.gate, getattr(embed, "sparse", None)
+            )
             first_spec = embed.chain[0] if embed.chain else None
             batch_size: int = getattr(first_spec, "batch_size", 32)
             return embed_chain, batch_size
