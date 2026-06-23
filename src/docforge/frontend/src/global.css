@@ -3159,3 +3159,46 @@ input[type="range"]::-webkit-slider-thumb:hover { background: var(--text-muted);
 .search-group .search-result-card:last-child {
   border-bottom: none;
 }
+
+/* ── Freshness / Reindex ── */
+
+/* Stale badge — orange tinted `.tag` shown next to outdated documents. */
+.doc-stale-badge {
+  color: var(--s-running);
+  background: color-mix(in srgb, var(--s-running) 14%, transparent);
+  border-color: color-mix(in srgb, var(--s-running) 40%, transparent);
+}
+
+/* Banner shown at the top of the document list when a reindex is needed. */
+.reindex-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  margin: 8px 0;
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--s-running) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--s-running) 35%, transparent);
+  font-size: 13px;
+}
+.reindex-banner-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* Inline re-index button surfaced directly in a stale document row. */
+.doc-row-reingest:hover {
+  color: var(--s-running);
+  border-color: color-mix(in srgb, var(--s-running) 45%, transparent);
+}
+
+/* Pipeline version / reindex status line at the top of the config tab. */
+.pipeline-version-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+  padding: 4px 0;
+}

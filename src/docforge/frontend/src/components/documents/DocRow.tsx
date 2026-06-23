@@ -17,6 +17,12 @@ interface DocRowProps {
   /** Owning collection — forwarded to delete / reingest calls. */
   collectionId: string
   /**
+   * Whether this document is stale relative to the collection's current
+   * pipeline version.  When true, a "périmé" badge and an inline re-index
+   * button are shown.
+   */
+  isStale: boolean
+  /**
    * Called when the user clicks `[Trace]`.  The parent navigates to the
    * Pipeline tab and activates trace mode for the given document id.
    */
@@ -98,7 +104,7 @@ function formatDuration(ms: number | null | undefined): string {
  * The ⋯ overflow menu drops down below the button and closes automatically
  * when the user clicks anywhere outside the component.
  */
-export function DocRow({ doc, collectionId: _collectionId, onTrace, onDelete, onReingest, onOpen }: DocRowProps) {
+export function DocRow({ doc, collectionId: _collectionId, isStale, onTrace, onDelete, onReingest, onOpen }: DocRowProps) {
   // 1. Local state: whether the overflow dropdown is visible.
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -167,6 +173,16 @@ export function DocRow({ doc, collectionId: _collectionId, onTrace, onDelete, on
         {filename}
       </span>
 
+      {/* Staleness badge — only when the doc's pipeline version is outdated */}
+      {isStale && (
+        <span
+          className="tag doc-stale-badge"
+          title="La configuration de la collection a changé depuis l'ingestion"
+        >
+          Périmé — à réindexer
+        </span>
+      )}
+
       {/* Status text + chunk count + duration */}
       <span className="doc-row-meta">
         <span style={statusColor(doc.status)}>{doc.status}</span>
@@ -174,8 +190,20 @@ export function DocRow({ doc, collectionId: _collectionId, onTrace, onDelete, on
         <span>{duration}</span>
       </span>
 
-      {/* Actions: Trace button + overflow menu */}
+      {/* Actions: inline reingest (when stale) + Trace button + overflow menu */}
       <span className="doc-row-actions">
+        {/* Inline re-index — surfaced directly in the row when the doc is stale */}
+        {isStale && (
+          <button
+            type="button"
+            className="btn-icon doc-row-reingest"
+            title="Réindexer (config mise à jour)"
+            onClick={() => onReingest(doc.id)}
+          >
+            ↻
+          </button>
+        )}
+
         {/* Trace — disabled until the document has finished processing */}
         <button
           type="button"

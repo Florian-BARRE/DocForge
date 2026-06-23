@@ -17,6 +17,7 @@ import {
 import type { ConfigState, Document, MetaField } from '../../api/types'
 import { DocDetailView } from './DocDetailView'
 import { DocRow } from './DocRow'
+import { isDocStale } from './freshness'
 import { MetadataInputForm } from './MetadataInputForm'
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -77,6 +78,10 @@ export function DocumentsTab({ collectionId, onTrace }: DocumentsTabProps) {
   const [metaValues, setMetaValues]   = useState<Record<string, unknown>>({})
   // Whether the metadata input form is expanded.
   const [metaOpen, setMetaOpen]       = useState(false)
+
+  // Bulk reindex progress — null when idle, otherwise {done, total} while running.
+  const [reindexProgress, setReindexProgress] =
+    useState<{ done: number; total: number } | null>(null)
 
   // Hidden file input used for click-to-upload.
   const inputRef = useRef<HTMLInputElement>(null)
@@ -236,6 +241,38 @@ export function DocumentsTab({ collectionId, onTrace }: DocumentsTabProps) {
     }
   }
 
+  /**
+   * Re-index every stale document sequentially.
+   *
+   * There is no collection-level reindex endpoint, so this loops over the
+   * provided stale documents and calls `reingestDocument` for each, surfacing
+   * progress via `reindexProgress` and refreshing the list once complete.
+   *
+   * Args:
+   *   staleDocs: The documents whose pipeline version is outdated.
+   */
+  async function handleReindexAll(staleDocs: Document[]) {
+    // 1. Guard against an empty set or a re-entrant click.
+    if (staleDocs.length === 0 || reindexProgress !== null) return
+    setUploadError(null)
+    setReindexProgress({ done: 0, total: staleDocs.length })
+
+    try {
+      // 2. Re-ingest each stale document in order, updating progress as we go.
+      for (let i = 0; i < staleDocs.length; i++) {
+        await reingestDocument(collectionId, staleDocs[i].id)
+        setReindexProgress({ done: i + 1, total: staleDocs.length })
+      }
+
+      // 3. Refresh the list so the new statuses / versions appear.
+      await fetchDocuments()
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : 'Re-index failed')
+    } finally {
+      setReindexProgress(null)
+    }
+  }
+
   // ── Render ────────────────────────────────────────────────────────────────
 
   // ── Detail view shortcut ──────────────────────────────────────────────────
@@ -260,6 +297,15 @@ export function DocumentsTab({ collectionId, onTrace }: DocumentsTabProps) {
   ]
     .filter(Boolean)
     .join(' ')
+
+  // Documents whose pipeline version no longer matches the collection's.
+  const collectionPipelineVersion = configState?.pipeline_version
+  const staleDocs = docs.filter(d => isDocStale(d.pipeline_version, collectionPipelineVersion))
+
+  // Show the reindex banner when at least one doc is stale OR the config state
+  // explicitly flags that a reindex is required.
+  const showReindexBanner = staleDocs.length > 0 || configState?.needs_reindex === true
+  const isReindexing = reindexProgress !== null
 
   return (
     <div className="documents-tab">
@@ -311,6 +357,28 @@ export function DocumentsTab({ collectionId, onTrace }: DocumentsTabProps) {
         )
       })()}
 
+      {/* ── Reindex banner — config changed, stale documents present ── */}
+      {showReindexBanner && (
+        <div className="reindex-banner">
+          <span>
+            ⚠ La configuration a changé — {staleDocs.length} document(s) à réindexer
+            pour refléter le nouveau pipeline.
+          </span>
+          <div className="reindex-banner-actions">
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={isReindexing || staleDocs.length === 0}
+              onClick={() => handleReindexAll(staleDocs)}
+            >
+              {isReindexing && reindexProgress
+                ? `Réindexation… (${reindexProgress.done}/${reindexProgress.total})`
+                : 'Tout réindexer'}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* ── Document list ── */}
       <div className="documents-list">
         {isLoading ? (
@@ -327,6 +395,7 @@ export function DocumentsTab({ collectionId, onTrace }: DocumentsTabProps) {
               key={doc.id}
               doc={doc}
               collectionId={collectionId}
+              isStale={isDocStale(doc.pipeline_version, collectionPipelineVersion)}
               onTrace={onTrace}
               onDelete={handleDelete}
               onReingest={handleReingest}

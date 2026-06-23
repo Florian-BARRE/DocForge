@@ -290,6 +290,21 @@ export function PipelineTab({
         </div>
       )}
 
+      {/* ── Config version + reindex indicator ── */}
+      {mode === 'config' && configState && (
+        <div className="pipeline-version-bar">
+          <span className="mono">pipeline_version: {configState.pipeline_version}</span>
+          {configState.needs_reindex && (
+            <span
+              className="tag doc-stale-badge"
+              title="Des documents ont été ingérés avec une config antérieure."
+            >
+              Réindexation requise
+            </span>
+          )}
+        </div>
+      )}
+
       {/* ── Pipeline graph ── */}
       <PipelineGraph
         stages={INGESTION_STAGES}
