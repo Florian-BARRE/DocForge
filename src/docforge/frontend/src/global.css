@@ -3011,3 +3011,31 @@ input[type="range"]::-webkit-slider-thumb:hover { background: var(--text-muted);
 .metadata-form-row .input {
   flex: 1;
 }
+
+/* ── Search Stage Panels ── */
+
+.search-stage-description {
+  /* Short italic description shown below the strategy selector. */
+  font-size: 12px;
+  color: var(--text-muted);
+  font-style: italic;
+  margin-bottom: 10px;
+  line-height: 1.5;
+}
+
+.search-overview-card {
+  /* Compact key/value summary card shown when no stage is selected. */
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.search-overview-title {
+  /* Section label above the overview rows. */
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}

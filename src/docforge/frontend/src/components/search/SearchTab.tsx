@@ -7,12 +7,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 // ====== Internal Project Imports ======
-import { getConfigState, getDiscovery, searchDocuments } from '../../api/client'
-import type { ConfigState, DynamicField, SearchResultItem } from '../../api/types'
+import { getConfigState, searchDocuments } from '../../api/client'
+import type { ConfigState, SearchResultItem } from '../../api/types'
 import { PipelineGraph } from '../pipeline/PipelineGraph'
-import { StageConfigPanel } from '../pipeline/panels/StageConfigPanel'
 import { SEARCH_STAGES } from '../pipeline/search-stages'
 import type { StageDefinition, StageResult } from '../pipeline/types'
+import { SearchConfigOverview } from './SearchConfigOverview'
+import { SearchStagePanel } from './SearchStagePanel'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -67,7 +68,6 @@ export function SearchTab({ collectionId }: SearchTabProps) {
 
   // ── Discovery state ──────────────────────────────────────────────────────────
 
-  const [dynamicFields, setDynamicFields] = useState<DynamicField[]>([])
   const [configState, setConfigState] = useState<ConfigState | null>(null)
 
   // ── Trace state ───────────────────────────────────────────────────────────────
@@ -78,23 +78,16 @@ export function SearchTab({ collectionId }: SearchTabProps) {
 
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
 
-  // 1. Fetch discovery fields and config state on mount / collection change.
+  // 1. Fetch config state on mount / collection change.
+  //    Discovery fields are no longer needed — SearchStagePanel renders
+  //    hardcoded forms rather than discovery-driven DynamicFieldsGroup.
   useEffect(() => {
     let cancelled = false
 
     async function load() {
       try {
-        const [discoveryResp, cfgState] = await Promise.all([
-          getDiscovery(collectionId),
-          getConfigState(collectionId),
-        ])
+        const cfgState = await getConfigState(collectionId)
         if (cancelled) return
-
-        // Flatten all endpoint dynamic fields into a single list.
-        const allFields: DynamicField[] = discoveryResp.endpoints.flatMap(
-          e => e.dynamic_fields ?? []
-        )
-        setDynamicFields(allFields)
         setConfigState(cfgState)
       } catch {
         // Non-fatal — graph will render in empty config state.
@@ -213,9 +206,7 @@ export function SearchTab({ collectionId }: SearchTabProps) {
       {/* ── Inline config panel (below graph) ── */}
       <div className="pipeline-inline-panel">
         {!activeStage ? (
-          <div className="pipeline-inline-panel-empty">
-            Click a stage to view its configuration
-          </div>
+          <SearchConfigOverview configState={configState} />
         ) : (
           <>
             <div className="pipeline-inline-panel-header">
@@ -234,20 +225,12 @@ export function SearchTab({ collectionId }: SearchTabProps) {
               </button>
             </div>
             <div className="pipeline-inline-panel-body">
-              {activeStage.readOnly ? (
-                <div className="stage-config-empty">
-                  Embed provider is auto-derived from the collection's ingestion
-                  config and cannot be changed here.
-                </div>
-              ) : (
-                <StageConfigPanel
-                  stage={activeStage}
-                  collectionId={collectionId}
-                  dynamicFields={dynamicFields}
-                  configState={configState}
-                  onSaved={handleSaved}
-                />
-              )}
+              <SearchStagePanel
+                stageId={activeStage.id as 'transform' | 'embed' | 'retrieve' | 'rerank'}
+                collectionId={collectionId}
+                configState={configState}
+                onSaved={handleSaved}
+              />
             </div>
           </>
         )}
