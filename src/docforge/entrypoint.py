@@ -12,6 +12,7 @@ from loggerplusplus import loggerplusplus
 from config import RUNTIME_CONFIG  # MUST be first — registers sys.path + configures logging
 
 from backend import CONTEXT, create_app
+from backend.libs.admission import ResourceAdmitter
 from libs.search.metadata_indexer.indexer import MetadataIndexer
 from libs.pipeline.engine import StageEngine
 from libs.search.hybrid.service import HybridSearchService
@@ -25,7 +26,7 @@ from libs.pipeline.stages.s4_chunk import S4ChunkStage
 from libs.pipeline.stages.s5_contextualize.core import S5ContextualizeStage
 from libs.providers.converter import GotenbergConverter
 from libs.providers.device_manager import DeviceManager
-from libs.providers.embed.local.tei import TeiEmbedProvider
+from libs.providers.embed.tei import TeiEmbedProvider
 from libs.providers.parser import DoclingBackend
 from libs.pipeline.assembly import ProviderRegistry
 from libs.storage.postgres.client import PostgresClient
@@ -95,6 +96,15 @@ def _build_app() -> FastAPI:
 
     # 4. Instantiate device manager (GPU/CPU detection deferred to lifespan)
     CONTEXT.device_manager = DeviceManager()
+
+    # 4b. Resource-admission gate (Brique D). Needs only the global limits at construction; the live
+    # collaborators (queue_introspector / job_repo) are passed per-call from the ingest router, so it
+    # is built here like device_manager rather than in lifespan.
+    CONTEXT.resource_admitter = ResourceAdmitter(
+        enabled=RUNTIME_CONFIG.ADMISSION_ENABLED,
+        max_queue_depth=RUNTIME_CONFIG.ADMISSION_MAX_QUEUE_DEPTH,
+        max_in_flight_global=RUNTIME_CONFIG.ADMISSION_MAX_IN_FLIGHT_GLOBAL,
+    )
 
     # 5. Instantiate ML providers
     CONTEXT.converter = GotenbergConverter(

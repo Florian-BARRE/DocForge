@@ -30,11 +30,9 @@ class EmbedConfig(BaseModel):
         Required params: ``base_url`` (e.g. ``http://tei:8080``).
         Optional: ``model`` (default ``BAAI/bge-m3``), ``batch_size``, ``embed_sparse``.
 
-    ``LocalOpenAIEmbedConfig`` (id="openai_compat") — self-hosted OpenAI-compatible server.
-        Required params: ``base_url``.  Optional: ``api_key``, ``model``, ``batch_size``.
-
-    ``OpenAIEmbedConfig`` (id="openai") — external cloud API (OpenAI, Azure, Mistral, Cohere).
-        Required params: ``base_url``, ``api_key`` (mandatory — raises if empty).
+    ``OpenAICompatEmbedConfig`` (id="openai_compat") — OpenAI-compatible server, local OR external.
+        ``locality`` flag: "local" (vLLM/Ollama, api_key optional) or "external" (cloud, api_key
+        required). The legacy id ``"openai"`` is still accepted and mapped to locality="external".
 
     Attributes:
         chain (list[EmbedProviderConfig]): Ordered DENSE embedding backends; index 0 is tried first.
@@ -83,29 +81,30 @@ class EmbedConfig(BaseModel):
         from pydantic import Field as _F
         from pydantic import TypeAdapter
 
-        from libs.providers.embed.external.openai_compat_config import OpenAIEmbedConfig
-        from libs.providers.embed.local.config import TeiEmbedConfig
-        from libs.providers.embed.local.openai_compat_config import LocalOpenAIEmbedConfig
+        from libs.providers.embed.openai_compat.config import OpenAICompatEmbedConfig
+        from libs.providers.embed.tei.config import TeiEmbedConfig
 
         if not self.chain:
             object.__setattr__(self, "chain", [TeiEmbedConfig()])
             return self
 
-        # Build the discriminated union from all known embed configs.
+        # Build the discriminated union from the (post-merge) embed configs.
         union = Annotated[
-            TeiEmbedConfig | LocalOpenAIEmbedConfig | OpenAIEmbedConfig,
+            TeiEmbedConfig | OpenAICompatEmbedConfig,
             _F(discriminator="id"),
         ]
         adapter = TypeAdapter(union)
 
-        # Coerce/validate each item — raises ValidationError on unknown id.
-        coerced = [
-            adapter.validate_python(item) if isinstance(item, dict) else item
-            for item in self.chain
-        ]
-        object.__setattr__(self, "chain", coerced)
+        def _coerce(item: Any) -> Any:
+            # Discriminated-union dispatch keys on `id` BEFORE any class validator, so the
+            # legacy id "openai" must be remapped to the unified openai_compat (external) here.
+            if isinstance(item, dict) and item.get("id") == "openai":
+                item = {**item, "id": "openai_compat", "locality": item.get("locality", "external")}
+            return adapter.validate_python(item) if isinstance(item, dict) else item
+
+        object.__setattr__(self, "chain", [_coerce(item) for item in self.chain])
 
         # Coerce the optional separate sparse backend through the same union.
         if isinstance(self.sparse, dict):
-            object.__setattr__(self, "sparse", adapter.validate_python(self.sparse))
+            object.__setattr__(self, "sparse", _coerce(self.sparse))
         return self

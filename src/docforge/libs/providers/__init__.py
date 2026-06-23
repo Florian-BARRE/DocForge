@@ -43,7 +43,7 @@ from .classifier import (
 )
 
 # ------------------- Embed Providers (P4) ------------------- #
-from .embed import LocalOpenAICompatEmbedProvider, OpenAIEmbedProvider, TeiEmbedProvider
+from .embed import CompositeEmbedProvider, OpenAICompatEmbedProvider, TeiEmbedProvider
 
 # ------------------- Public API ------------------- #
 __all__ = [
@@ -60,15 +60,15 @@ __all__ = [
     "GOTENBERG_FORMATS",
     "GotenbergConverter",
     "LayoutLabelsClassifier",
-    "LocalOpenAICompatEmbedProvider",
+    "CompositeEmbedProvider",
     "LocalOpenAICompatVlmProvider",
     "MistralOcrProvider",
     "NATIVE_PDF_FORMATS",
     "OcrHint",
     "OcrProvider",
     "OcrResult",
+    "OpenAICompatEmbedProvider",
     "OpenAICompatVlmProvider",
-    "OpenAIEmbedProvider",
     "OpenAIVlmProvider",
     "PaddleOcrProvider",
     "ParserProvider",

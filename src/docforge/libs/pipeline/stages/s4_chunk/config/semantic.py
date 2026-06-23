@@ -44,7 +44,7 @@ class SemanticConfig(BaseModel):
         default=None,
         description=(
             "Embed provider used for boundary detection — typed EmbedProviderConfig "
-            "(TeiEmbedConfig / LocalOpenAIEmbedConfig / OpenAIEmbedConfig).  None = "
+            "(TeiEmbedConfig / OpenAICompatEmbedConfig).  None = "
             "default TEI when the config is materialised."
         ),
     )
@@ -80,10 +80,8 @@ class SemanticConfig(BaseModel):
         from pydantic import Field as _F
         from pydantic import TypeAdapter
 
-        from libs.providers.embed import EmbedProviderConfig  # noqa: F401  (typing alias)
-        from libs.providers.embed.external.openai_compat_config import OpenAIEmbedConfig
-        from libs.providers.embed.local.config import TeiEmbedConfig
-        from libs.providers.embed.local.openai_compat_config import LocalOpenAIEmbedConfig
+        from libs.providers.embed.openai_compat.config import OpenAICompatEmbedConfig
+        from libs.providers.embed.tei.config import TeiEmbedConfig
 
         # Default to TEI when the field is None (e.g. legacy DB row without embed key).
         if self.embed is None:
@@ -91,16 +89,20 @@ class SemanticConfig(BaseModel):
             return self
 
         # Already a typed instance — nothing to do.
-        if isinstance(self.embed, (TeiEmbedConfig, LocalOpenAIEmbedConfig, OpenAIEmbedConfig)):
+        if isinstance(self.embed, (TeiEmbedConfig, OpenAICompatEmbedConfig)):
             return self
 
         # Dict → validate via the same discriminated union the rest of the codebase uses.
+        # Legacy id "openai" maps to the unified openai_compat (external) for backward compat.
         Union_ = Annotated[
-            TeiEmbedConfig | LocalOpenAIEmbedConfig | OpenAIEmbedConfig,
+            TeiEmbedConfig | OpenAICompatEmbedConfig,
             _F(discriminator="id"),
         ]
         adapter = TypeAdapter(Union_)
-        object.__setattr__(self, "embed", adapter.validate_python(self.embed))
+        item = self.embed
+        if isinstance(item, dict) and item.get("id") == "openai":
+            item = {**item, "id": "openai_compat", "locality": item.get("locality", "external")}
+        object.__setattr__(self, "embed", adapter.validate_python(item))
         return self
 
     def build(self) -> SemanticSplitter:

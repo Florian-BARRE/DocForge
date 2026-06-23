@@ -21,8 +21,18 @@ class TestEmbedConfigSparse:
                        "api_key": "sk-x", "model": "text-embedding-3-large"}],
             "sparse": {"id": "tei", "base_url": "http://tei-sparse:80", "embed_sparse": True},
         })
-        assert cfg.chain[0].id == "openai"
+        # Legacy id "openai" is unified to openai_compat with locality="external".
+        assert cfg.chain[0].id == "openai_compat"
+        assert cfg.chain[0].locality == "external"
+        assert cfg.chain[0].api_key == "sk-x"
         assert cfg.sparse is not None and cfg.sparse.id == "tei"
+
+    def test_unified_local_openai_compat(self) -> None:
+        cfg = EmbedConfig.model_validate(
+            {"chain": [{"id": "openai_compat", "locality": "local", "base_url": "http://vllm:8000/v1"}]}
+        )
+        assert cfg.chain[0].id == "openai_compat"
+        assert cfg.chain[0].locality == "local"
 
     def test_no_sparse_defaults_to_none(self) -> None:
         cfg = EmbedConfig.model_validate({"chain": [{"id": "tei"}]})

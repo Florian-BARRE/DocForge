@@ -12,7 +12,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from libs.providers.embed.local.tei import TeiEmbedProvider
+    from libs.providers.embed.tei import TeiEmbedProvider
     from libs.storage.qdrant.client import QdrantStorageClient
 
 # ====== Internal Project Imports ======

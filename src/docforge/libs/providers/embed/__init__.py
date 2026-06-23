@@ -1,5 +1,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # Auto-discover all embedding providers and build the discriminated union.
+# One folder per provider; local vs external is a `locality` flag on the config,
+# not a separate class (openai_compat unifies the former local + external classes).
 # ─────────────────────────────────────────────────────────────────────────────
 
 from libs.config.pipeline._registry import auto_import, build_union, get_configs
@@ -8,16 +10,11 @@ auto_import(__name__)
 
 # ---------------------- Base ---------------------- #
 from .base import EmbedProvider
+from .composite import CompositeEmbedProvider
 
-# ------------------- External Providers ------------------- #
-from .external.openai_compat import OpenAIEmbedProvider
-from .external.openai_compat_config import OpenAIEmbedConfig
-from .local.config import TeiEmbedConfig
-from .local.openai_compat import LocalOpenAICompatEmbedProvider
-from .local.openai_compat_config import LocalOpenAIEmbedConfig
-
-# ------------------- Local Providers ------------------- #
-from .local.tei import TeiEmbedProvider
+# ------------------- Providers (one folder each) ------------------- #
+from .openai_compat import OpenAICompatEmbedConfig, OpenAICompatEmbedProvider
+from .tei import TeiEmbedConfig, TeiEmbedProvider
 
 # ------------------- Discriminated Union ------------------- #
 EmbedProviderConfig = build_union(get_configs("embed"))
@@ -25,11 +22,10 @@ EmbedProviderConfig = build_union(get_configs("embed"))
 # ------------------- Public API ------------------- #
 __all__ = [
     "EmbedProvider",
+    "CompositeEmbedProvider",
     "EmbedProviderConfig",
-    "LocalOpenAICompatEmbedProvider",
-    "LocalOpenAIEmbedConfig",
-    "OpenAIEmbedConfig",
-    "OpenAIEmbedProvider",
+    "OpenAICompatEmbedConfig",
+    "OpenAICompatEmbedProvider",
     "TeiEmbedConfig",
     "TeiEmbedProvider",
 ]
