@@ -8,7 +8,14 @@
 from __future__ import annotations
 
 # ====== Third-Party Library Imports ======
-import pynvml
+# nvidia-ml-py (module ``pynvml``) is a declared dependency, but the import is guarded so the
+# SAME image boots on a CPU-only build where the wheel was not installed — consistent with the
+# runtime NVMLError fall-back below and DocForge's single CPU/GPU image strategy.
+try:
+    import pynvml
+except ImportError:  # nvidia-ml-py absent (CPU-only build) — GPU gauges disabled, not fatal.
+    pynvml = None  # type: ignore[assignment]
+
 from loggerplusplus import LoggerClass
 
 
@@ -26,6 +33,10 @@ class GpuMetricsCollector(LoggerClass):
         LoggerClass.__init__(self)
         self._available = False
         self._device_count = 0
+        # nvidia-ml-py not installed (CPU-only build) — degrade exactly like a missing driver.
+        if pynvml is None:
+            self.logger.debug("nvidia-ml-py not installed; GPU gauges disabled.")
+            return
         try:
             pynvml.nvmlInit()
             self._device_count = int(pynvml.nvmlDeviceGetCount())
