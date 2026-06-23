@@ -14,12 +14,18 @@ from typing import Any
 from loggerplusplus import loggerplusplus
 
 from libs.config.pipeline import PipelineConfig
+from libs.config.pipeline._helpers import PipelineConfigHelpers
 
 # ====== Internal Project Imports ======
 from libs.domain.metadata import SYSTEM_METADATA_FIELDS
 
 # ====== Local Project Imports ======
 from .document_helpers import ConfigFieldNormalizer
+
+# Sentinel written by PipelineConfig.redacted_dict() in place of any secret value.
+# A patch carrying this (or an empty secret) must NOT overwrite a real stored secret —
+# it is the redacted value the UI echoed back, not a user-supplied credential.
+_REDACTION_SENTINEL = "•••"
 
 
 class ConfigDocument:
@@ -125,6 +131,14 @@ class ConfigDocument:
         Nested dicts (e.g. ``pipeline.chunk``) merge recursively so a patch can touch a single
         knob; lists and scalars (incl. ``metadata_fields``) replace wholesale.
 
+        Secret preservation: a per-collection credential (api_key, token, …) is entered once
+        in the UI and stored on the collection.  Config responses redact it to ``•••``, so any
+        later config save echoes that sentinel (or an empty value) back.  Such a value must
+        NOT overwrite the real stored secret — otherwise editing any stage would silently wipe
+        the embed/rerank/LLM api_key and break both ingestion and query-time search.  When a
+        patch carries a redacted/empty value for a secret-named key and the base holds a real
+        one, the base value is kept.
+
         Args:
             base (dict): The current full config document.
             patch (dict): A partial document with only the keys to change.
@@ -134,11 +148,61 @@ class ConfigDocument:
         """
         out = copy.deepcopy(base)
         for key, value in patch.items():
-            if isinstance(value, dict) and isinstance(out.get(key), dict):
+            current = out.get(key)
+            if isinstance(value, dict) and isinstance(current, dict):
                 out[key] = cls.merge_patch(out[key], value)
+            elif cls._is_mergeable_dict_list(value, current):
+                # Provider chains (list of dicts) merge element-wise so per-element
+                # secrets survive the redacted round-trip; differing lengths (a provider
+                # added/removed) fall through to a wholesale replace below.
+                out[key] = [
+                    cls.merge_patch(b, p) for b, p in zip(current, value)
+                ]
+            elif cls._is_redacted_secret(key, value) and current:
+                # Keep the real stored secret; the patch only echoed the redacted placeholder.
+                continue
             else:
                 out[key] = copy.deepcopy(value)
         return out
+
+    @staticmethod
+    def _is_mergeable_dict_list(value: Any, current: Any) -> bool:
+        """
+        Return True when both ``value`` and ``current`` are equal-length lists of dicts.
+
+        Such lists (e.g. a provider chain) are merged element-wise so per-element secret
+        preservation applies; any other list is replaced wholesale by the caller.
+
+        Args:
+            value (Any): The incoming patch value.
+            current (Any): The existing base value at the same key.
+
+        Returns:
+            bool: True if element-wise dict merge is appropriate.
+        """
+        return (
+            isinstance(value, list) and isinstance(current, list)
+            and len(value) == len(current) and len(value) > 0
+            and all(isinstance(v, dict) for v in value)
+            and all(isinstance(c, dict) for c in current)
+        )
+
+    @staticmethod
+    def _is_redacted_secret(key: str, value: Any) -> bool:
+        """
+        Decide whether a (key, value) pair is a redacted/empty secret that must not overwrite.
+
+        Args:
+            key (str): The patch key being merged.
+            value (Any): The incoming value for that key.
+
+        Returns:
+            bool: True when ``key`` names a credential and ``value`` is the redaction sentinel,
+                an empty string, or None (i.e. carries no real new secret).
+        """
+        if not (isinstance(key, str) and PipelineConfigHelpers.is_secret_key(key)):
+            return False
+        return value in (_REDACTION_SENTINEL, "", None)
 
     @classmethod
     def merge_metadata_schema(cls, custom: list[dict[str, Any]]) -> list[dict[str, Any]]:
