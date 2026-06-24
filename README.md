@@ -29,7 +29,7 @@ canonical intermediate representation (IR), enrich it, chunk it, and serve **hyb
 | Workers | arq + Redis |
 | Parse | Docling (default), MinerU/Marker, Tika fallback |
 | OCR / VLM | PaddleOCR / Mistral OCR · Qwen2.5-VL (vLLM or any OpenAI-compatible API) |
-| Embed / rerank | BGE-M3 + BGE-reranker-v2-m3 via the local `bge` model host (`src/bge_server`) |
+| Embed / rerank | BGE-M3 + BGE-reranker-v2-m3 via the local `bge_server` model host (`src/bge_server`) |
 | Vector DB | Qdrant (named dense + sparse) |
 | Conversion | Gotenberg (LibreOffice + Chromium) |
 | Frontend | React + Vite |
@@ -43,7 +43,7 @@ canonical intermediate representation (IR), enrich it, chunk it, and serve **hyb
 
 ```bash
 # 1. Provision env files from the templates (then edit any secrets)
-for s in docforge docforge_mcp postgres pgadmin gotenberg redis; do
+for s in docforge mcp postgres pgadmin gotenberg redis; do
   cp "services/$s/.env.example" "services/$s/.env"
 done
 
@@ -54,7 +54,7 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build -d
 docker compose exec docforge sh -c 'cd /app/common && alembic upgrade head'
 ```
 
-The `bge` model service downloads BGE-M3 + the reranker from Hugging Face on first start
+The `bge_server` model service downloads BGE-M3 + the reranker from Hugging Face on first start
 (~3 GB) — give it a few minutes; check readiness with `curl http://localhost:10026/health`.
 
 Then open the UI / API:
@@ -71,7 +71,7 @@ cd src/docforge
 # Unit suite — fast, fully mocked, no services needed
 uv run --project common pytest tests/units
 
-# Live suite — needs the stack up + the `bge` service ready
+# Live suite — needs the stack up + the `bge_server` service ready
 uv run --project common pytest tests/live_test
 ```
 

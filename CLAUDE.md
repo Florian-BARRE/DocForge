@@ -25,8 +25,8 @@ Spec complète : `SPEC-docforge-document-intelligence-platform.md`
 
 - **Dev (hot reload)** : `docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build -d` (ou `/dev`).
 - **Tests unitaires** : depuis `src/docforge/` → `uv run --project common pytest tests/units` (ou `/test`). 418 tests, tout mocké.
-- **Tests live** (stack up requise) : `uv run --project common pytest tests/live_test` — ingestion réelle via le service `bge`.
-- **Build images** : `docker compose build` (app → `docforge/app/Dockerfile`, worker → `docforge/worker/Dockerfile`, bge → `bge_server/Dockerfile`).
+- **Tests live** (stack up requise) : `uv run --project common pytest tests/live_test` — ingestion réelle via le service `bge_server`.
+- **Build images** : `docker compose build` (app → `docforge/app/Dockerfile`, worker → `docforge/worker/Dockerfile`, bge_server → `bge_server/Dockerfile`).
 - **Migrations** : `docker compose exec docforge sh -c 'cd /app/common && alembic upgrade head'`.
 
 > Multi-root : pytest tourne depuis `src/docforge/` (`pytest.ini`) ; `--project common` car le pyproject deps-only est dans `common/`. Si `uv run` râle, `unset VIRTUAL_ENV` d'abord.
@@ -118,7 +118,7 @@ src/
       libs/                 #   dédié `from libs.<x>` : pipeline/{engine,orchestrator,worker}, observability/metrics
     tests/                  # tests docforge (app + worker testés ensemble)
   mcp/                      # MCP standalone (client HTTP pur, aucun import domaine)
-  embedding_server/         # serveur d'embedding BGE-M3 (TEI-compatible)
+  bge_server/               # serveur local BGE-M3 (embed dense+sparse + rerank, TEI-compatible)
 services/                   # .env par service (docforge, postgres, seaweedfs, gotenberg, redis, pgadmin)
 docker-compose.yml          # Prod (app→docforge/app/Dockerfile, worker→docforge/worker/Dockerfile)
 docker-compose.dev.yml      # Dev overrides (volumes common+app + --reload)

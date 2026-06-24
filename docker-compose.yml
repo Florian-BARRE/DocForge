@@ -25,7 +25,7 @@ services:
       context: src            # Build context: the src/ directory (per docker.md rules)
       dockerfile: docforge/app/Dockerfile
     image: docforge:latest
-    container_name: docforge-api  # Explicit name — avoids the `docforge-docforge-1` default
+    container_name: docforge-app  # Explicit name — avoids the `docforge-docforge-1` default
     ports:
       - "10020:8000"          # FastAPI — public API endpoint (firewall: only 10000-11000 open)
     env_file:
@@ -230,7 +230,8 @@ services:
       context: src
       dockerfile: docforge/worker/Dockerfile
     image: docforge-worker:latest
-    container_name: docforge-worker
+    # No container_name here — allows `docker compose up --scale worker=N` to spin up
+    # multiple numbered replicas (docforge-worker-1, docforge-worker-2, …).
     env_file:
       - services/docforge/.env
     depends_on:

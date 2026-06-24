@@ -56,7 +56,7 @@ services:
   # The /api proxy forwards all API calls to the FastAPI backend on :8000.
   frontend:
     image: node:22-bookworm-slim
-    container_name: docforge-frontend  # Dev-only service — not in the prod compose file
+    container_name: dev-docforge-app-frontend  # dev- prefix marks this as the Vite dev server, not a prod container
     working_dir: /app
     volumes:
       # Mount the frontend source directly for instant HMR on file save.
