@@ -12,10 +12,12 @@ from pathlib import Path
 from typing import Literal
 
 from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
+from sse_starlette.sse import EventSourceResponse
 
 # ====== Internal Project Imports ======
 from backend.context import CONTEXT
 from backend.libs.utils.error_handling import auto_handle_errors
+from backend.libs.utils.sse import SseHelpers
 from backend.routers.collections.documents.helpers import DocumentOps
 from backend.routers.collections.documents.staleness import DocumentStaleness
 from backend.routers.collections.documents.models import (
@@ -49,12 +51,20 @@ async def ingest_document(
     """
     file_bytes = await file.read()
     if not file_bytes:
+        # 400 — empty upload. Cheapest guard, runs before any collection/format/dedup work.
+        CONTEXT.logger.warning(
+            f"Ingest rejected (400 empty file): collection={collection_id} filename={file.filename!r}"
+        )
         raise HTTPException(status_code=400, detail=f"Uploaded file is empty.")
     source_hash = hashlib.sha256(file_bytes).hexdigest()
 
     async with CONTEXT.postgres.session() as session:
         collection = await CONTEXT.collection_repo.get_by_id(session, collection_id)
     if collection is None:
+        # 404 — target collection does not exist (cannot admit into an unknown contract).
+        CONTEXT.logger.warning(
+            f"Ingest rejected (404 unknown collection): collection={collection_id} filename={file.filename!r}"
+        )
         raise HTTPException(status_code=404, detail=f"Collection {collection_id} not found.")
 
     filename = file.filename or "unknown"
@@ -66,10 +76,21 @@ async def ingest_document(
             if not isinstance(user_meta, dict):
                 raise ValueError(f"Metadata must be a JSON object.")
         except (json.JSONDecodeError, ValueError) as exc:
+            # 422 — metadata form field is not a valid JSON object (parse error or non-dict).
+            CONTEXT.logger.warning(
+                f"Ingest rejected (422 invalid metadata JSON): collection={collection_id} "
+                f"filename={filename!r} error={exc}"
+            )
             raise HTTPException(status_code=422, detail=f"Invalid metadata JSON: {exc}")
 
     issues = AdmissionValidator.validate(collection, filename, len(file_bytes), user_meta)
     if issues:
+        # 415/413/422 — document-admissibility break (unsupported format / too large / schema
+        # contract violation); the first issue's status drives the response code.
+        CONTEXT.logger.warning(
+            f"Ingest rejected ({issues[0]['status']} admissibility): collection={collection_id} "
+            f"filename={filename!r} issues={issues}"
+        )
         raise HTTPException(status_code=issues[0]["status"], detail={"issues": issues})
 
     ext = Path(filename).suffix.lstrip(".").lower()
@@ -80,7 +101,26 @@ async def ingest_document(
             pipeline_version=collection.pipeline_version,
         )
     if existing is not None:
+        # Content-addressed dedup hit — same source_hash already ingested under this pipeline
+        # version; short-circuit (no re-upload, no re-enqueue, no resource gate).
+        CONTEXT.logger.info(
+            f"Ingest dedup hit doc_id={existing.id} collection={collection_id} "
+            f"filename={filename!r} status={existing.status}"
+        )
         return IngestResponse(doc_id=existing.id, status=existing.status, duplicate=True)
+
+    # Resource-admission gate (Brique D) — runs AFTER document-admissibility (415/413/422) and the
+    # duplicate short-circuit, so a harmless re-upload is never rejected for capacity. Asks "can the
+    # system accept MORE load right now?": 429 on queue/in-flight capacity, 409 on collection budget.
+    async with CONTEXT.postgres.session() as session:
+        decision = await CONTEXT.resource_admitter.admit(
+            session=session, collection=collection,
+            queue_introspector=CONTEXT.queue_introspector, job_repo=CONTEXT.job_repo,
+        )
+    if not decision.admitted:
+        # 429 — capacity (queue backlog / in-flight) | 409 — collection budget exhausted.
+        # ResourceAdmitter.admit() already logs the rejection reason; no duplicate log here.
+        raise HTTPException(status_code=decision.status_code, detail=decision.detail)
 
     await CONTEXT.s3.upload(S3Helpers.key_original(source_hash), file_bytes, "application/octet-stream")
 
@@ -146,6 +186,32 @@ async def list_documents(
     return DocumentListResponse(documents=items, total=total, limit=limit, offset=offset)
 
 
+# NOTE: SSE route — returns an EventSourceResponse stream, so it intentionally has NO
+# response_model (a live stream cannot be a Pydantic model). It MUST be declared before the
+# dynamic "/{document_id}" route below, otherwise "stream" would be captured as a document id.
+@router.get("/stream")
+@auto_handle_errors
+async def stream_documents(collection_id: uuid.UUID) -> EventSourceResponse:
+    """
+    Stream live job/stage updates for one collection's documents as Server-Sent Events.
+
+    Replaces the 2 s polling in the Documents tab: only events whose payload targets this
+    collection are forwarded.
+
+    Args:
+        collection_id (uuid.UUID): The collection whose document updates to stream.
+
+    Returns:
+        EventSourceResponse: Collection-scoped live event stream.
+    """
+    # 1. Filter the global bus down to events for this collection
+    return SseHelpers.stream(
+        CONTEXT.event_broadcaster,
+        keepalive=CONTEXT.RUNTIME_CONFIG.SSE_KEEPALIVE_SECONDS,
+        predicate=SseHelpers.collection_predicate(str(collection_id)),
+    )
+
+
 @router.get("/{document_id}", response_model=DocumentResponse)
 @auto_handle_errors
 async def get_document(collection_id: uuid.UUID, document_id: uuid.UUID) -> DocumentResponse:
@@ -197,7 +263,10 @@ async def get_document(collection_id: uuid.UUID, document_id: uuid.UUID) -> Docu
         "has_original": True,
         "has_pdf": has_pdf,
         "has_markdown": has_markdown,
-        "indexed": stage_summary.get("s6") == "done",
+        # S4/S5/S6 are NOT node-cached, so they never write a stage_run row — `stage_summary`
+        # only ever contains s0/s1/s2. The embed stage flushes its chain traces onto the document
+        # on success, so their presence is the reliable "S6 embedded + indexed this doc" marker.
+        "indexed": stage_summary.get("s6") == "done" or bool(implicit.get("embed_chain_traces")),
         "stale": stale,
         "stale_reasons": stale_reasons,
         "pipeline_errors": pipeline_errors,
@@ -223,13 +292,28 @@ async def update_document(
     async with CONTEXT.postgres.session() as session:
         collection = await CONTEXT.collection_repo.get_by_id(session, collection_id)
     if collection is None:
+        # 404 — the owning collection vanished between document load and schema fetch.
+        CONTEXT.logger.warning(
+            f"Metadata update rejected (404 unknown collection): collection={collection_id} "
+            f"document={document_id}"
+        )
         raise HTTPException(status_code=404, detail=f"Collection {collection_id} not found.")
 
     # 2. Merge + re-validate + persist + optional reindex (shared with batch)
     result = await DocumentOps.apply_metadata(collection, doc, body.metadata, body.reindex)
     if "issues" in result:
+        # 422 — merged metadata breaks the collection schema contract (DocumentOps logged details).
+        CONTEXT.logger.warning(
+            f"Metadata update rejected (422 schema violation): collection={collection_id} "
+            f"document={document_id} issues={result['issues']}"
+        )
         raise HTTPException(status_code=422, detail={"issues": result["issues"]})
 
+    # 3. Mutation succeeded — record exactly what changed and whether the live index was synced.
+    CONTEXT.logger.info(
+        f"Metadata updated document={document_id} collection={collection_id} "
+        f"changed_fields={result.get('changed_fields')} reindexed={result.get('reindexed')}"
+    )
     return MetadataUpdateResponse(id=document_id, **result)
 
 
@@ -279,6 +363,10 @@ async def _get_document(collection_id: uuid.UUID, document_id: uuid.UUID):
     async with CONTEXT.postgres.session() as session:
         doc = await CONTEXT.document_repo.get_by_id(session, document_id)
     if doc is None or doc.collection_id != collection_id:
+        # 404 — document id is unknown OR belongs to a different collection (scope mismatch).
+        CONTEXT.logger.warning(
+            f"Document lookup rejected (404): document={document_id} collection={collection_id}"
+        )
         raise HTTPException(
             status_code=404,
             detail=f"Document {document_id} not found in collection {collection_id}.",

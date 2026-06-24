@@ -120,6 +120,11 @@ async def rollback_config(
     async with CONTEXT.postgres.session() as session:
         snapshot = await CONTEXT.config_repo.get_version(session, collection_id, body.version)
     if snapshot is None:
+        # 404 — requested config version does not exist in this collection's history.
+        CONTEXT.logger.warning(
+            f"Config rollback rejected (404 unknown version): collection={collection_id} "
+            f"version={body.version}"
+        )
         raise HTTPException(
             status_code=404,
             detail=f"Config version {body.version} not found for collection {collection_id}.",
@@ -143,6 +148,8 @@ async def _load(collection_id: uuid.UUID):
     async with CONTEXT.postgres.session() as session:
         collection = await CONTEXT.collection_repo.get_by_id(session, collection_id)
     if collection is None:
+        # 404 — config sub-resource requested for a collection that does not exist.
+        CONTEXT.logger.warning(f"Config request rejected (404 unknown collection): collection={collection_id}")
         raise HTTPException(status_code=404, detail=f"Collection {collection_id} not found.")
     return collection
 
@@ -180,13 +187,28 @@ async def _validate_and_apply(
     issues = ConfigValidator.validate(doc, CONTEXT.registry.describe_stages()["stages"])
     errors = [i for i in issues if i["severity"] == "error"]
     if errors:
+        # 422 — the resolved config has at least one error-severity coherence issue.
+        CONTEXT.logger.warning(
+            f"Config apply rejected (422 invalid config): collection={collection_id} "
+            f"provided_keys={sorted(provided_keys)} errors={errors}"
+        )
         raise HTTPException(status_code=422, detail={"message": "Invalid configuration.", "issues": issues})
 
     # 3. Apply + snapshot
     async with CONTEXT.postgres.session() as session:
         collection = await CONTEXT.config_repo.apply_config(session, collection_id, doc, note=note)
     if collection is None:
+        # 404 — collection was deleted between the existence check and apply.
+        CONTEXT.logger.warning(
+            f"Config apply rejected (404 unknown collection): collection={collection_id}"
+        )
         raise HTTPException(status_code=404, detail=f"Collection {collection_id} not found.")
+
+    # Mutation succeeded — record the new pipeline version + whether a reindex is now required.
+    CONTEXT.logger.info(
+        f"Config applied collection={collection_id} note={note!r} "
+        f"pipeline_version={collection.pipeline_version} needs_reindex={collection.needs_reindex}"
+    )
 
     # 4. Build the transparency envelope from the applied result
     applied = ConfigExplainer.build(

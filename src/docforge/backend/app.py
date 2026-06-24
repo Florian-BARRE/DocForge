@@ -18,6 +18,7 @@ from .routers import (
     files_router,
     health_router,
     jobs_router,
+    limits_router,
     monitoring_router,
     pages_router,
     search_router,
@@ -69,6 +70,7 @@ def create_app(app_name: str, debug: bool, version: str = "0.1.0", description: 
     app.include_router(router=discovery_router, prefix=f"{V1}/discovery")
     app.include_router(router=collection_router,   prefix=COL)
     app.include_router(router=config_router,     prefix=f"{COL}/{{collection_id}}/config")
+    app.include_router(router=limits_router,      prefix=f"{COL}/{{collection_id}}/limits")
     app.include_router(router=document_router,   prefix=DOC)
     app.include_router(router=search_router,     prefix=DOC)
     app.include_router(router=files_router,      prefix=f"{DOC}/{{document_id}}")

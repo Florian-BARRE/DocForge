@@ -14,20 +14,12 @@ from config import RUNTIME_CONFIG  # MUST be first — registers sys.path + conf
 from backend import CONTEXT, create_app
 from backend.libs.admission import ResourceAdmitter
 from libs.search.metadata_indexer.indexer import MetadataIndexer
-from libs.pipeline.engine import StageEngine
 from libs.search.hybrid.service import HybridSearchService
 from libs.pipeline.caches.node_cache import NodeCache
 from libs.pipeline.caches.provider_cache import ProviderCallCache
-from libs.pipeline.stages.s0_ingest.core import S0IngestStage
-from libs.pipeline.stages.s1_parse.core import S1ParseStage
-from libs.pipeline.stages.s2_enrich import S2EnrichStage
-from libs.pipeline.stages.s4_chunk import TokenBudgetSplitter
-from libs.pipeline.stages.s4_chunk import S4ChunkStage
-from libs.pipeline.stages.s5_contextualize.core import S5ContextualizeStage
 from libs.providers.converter import GotenbergConverter
 from libs.providers.device_manager import DeviceManager
 from libs.providers.embed.tei import TeiEmbedProvider
-from libs.providers.parser import DoclingBackend
 from libs.pipeline.assembly import ProviderRegistry
 from libs.storage.postgres.client import PostgresClient
 from libs.storage.postgres.repositories import (
@@ -50,13 +42,17 @@ def _build_app() -> FastAPI:
     1. Bind logger and inject RUNTIME_CONFIG into CONTEXT.
     2. Instantiate storage clients (Postgres, S3).
     3. Instantiate all repositories (collections, documents, blocks, jobs).
-    4. Instantiate device manager and ML providers (Gotenberg, Docling).
-    5. Instantiate P2 pipeline infrastructure (NodeCache, ProviderCallCache).
-    6. Build S2/S4/S5 stages from default PipelineConfig (derived from RUNTIME_CONFIG env vars).
-    7. Build S6 embedding + indexing stack — attempted always; falls back to None if
-       TEI/Qdrant is unreachable (infrastructure availability, not a toggle).
-    8. Assemble StageEngine + ProviderRegistry and inject into CONTEXT.
-    9. Create and return the FastAPI app (lifespan connects storage + arq pool).
+    4. Instantiate the device manager, Gotenberg converter, and resource-admission gate.
+    5. Instantiate pipeline caches (NodeCache, ProviderCallCache) and the provider registry.
+    6. Build the query-time search stack — Qdrant client, TEI embed provider,
+       HybridSearchService and MetadataIndexer (None when TEI/Qdrant is unreachable).
+    7. Create and return the FastAPI app (lifespan connects storage + arq pool).
+
+    Note:
+        The backend never runs the ingestion pipeline (S0 → S6) — that is the arq
+        worker's job (see libs/pipeline/worker/worker_bootstrap.py).  The backend only
+        needs the query-time search stack, storage, and the registry for config
+        validation and schema discovery.
 
     Returns:
         FastAPI: The configured application instance, ready for uvicorn.
@@ -106,35 +102,25 @@ def _build_app() -> FastAPI:
         max_in_flight_global=RUNTIME_CONFIG.ADMISSION_MAX_IN_FLIGHT_GLOBAL,
     )
 
-    # 5. Instantiate ML providers
+    # 5. Instantiate the document converter (Gotenberg). DeviceManager.detect() runs in lifespan.
     CONTEXT.converter = GotenbergConverter(
         base_url=RUNTIME_CONFIG.GOTENBERG_URL,
         timeout_s=RUNTIME_CONFIG.GOTENBERG_TIMEOUT_S,
     )
-    # use_gpu configured via env; DeviceManager.detect() runs in lifespan
-    # Kept on CONTEXT for backward compatibility — the chain owns the live instance.
-    CONTEXT.parser = DoclingBackend(use_gpu=RUNTIME_CONFIG.DOCLING_USE_GPU)
 
     # 6. Instantiate P2 pipeline infrastructure
     CONTEXT.node_cache = NodeCache()
     CONTEXT.provider_cache = ProviderCallCache(postgres=CONTEXT.postgres, s3=CONTEXT.s3)
 
     # 7. Provider registry — resolves a per-run PipelineConfig into concrete stages.
-    # This is what lets the playground (dry_run) and per-collection pipelines tune the
-    # exact same engine.  Shares S3 + provider cache with the env-built default stages.
+    # Used by the search router (per-collection search pipelines) and by config
+    # validation / schema discovery (describe_stages).  The ingestion stages are built
+    # by the arq worker, not here — the backend never runs the ingestion pipeline.
     CONTEXT.registry = ProviderRegistry(
         s3=CONTEXT.s3,
         provider_cache=CONTEXT.provider_cache,
         runtime_config=RUNTIME_CONFIG,
     )
-
-    # Build the parse chain + S2/S4/S5 stages from the deployment defaults.
-    from libs.config.pipeline import build_default_pipeline
-    default_pipeline = build_default_pipeline(RUNTIME_CONFIG)
-    default_parse_chain = CONTEXT.registry._build_parser_chain(
-        default_pipeline.parse.chain, default_pipeline.parse.gate,
-    )
-    s2_stage, s4_stage, s5_stage = CONTEXT.registry.build_enrich_and_chunk_stages(default_pipeline)
 
     # 8. Qdrant client + query-time embed provider (TEI, configured via RUNTIME_CONFIG).
     # The query-time provider (HybridSearchService, MetadataIndexer) uses the TEI server
@@ -147,9 +133,13 @@ def _build_app() -> FastAPI:
         api_key=RUNTIME_CONFIG.QDRANT_API_KEY or None,
         https=RUNTIME_CONFIG.QDRANT_HTTPS,
     )
+    # embed_sparse mirrors the deployment's TEI capability (dense-only -> False) so query embedding
+    # and chunk/metadata re-embed don't hit /embed_sparse on a TEI without a sparse head (HTTP 424).
+    # The per-collection ingest path (S6) resolves its own provider from the collection config.
     _query_embed = TeiEmbedProvider(
         base_url=RUNTIME_CONFIG.TEI_BASE_URL,
         batch_size=RUNTIME_CONFIG.TEI_BATCH_SIZE,
+        embed_sparse=RUNTIME_CONFIG.TEI_EMBED_SPARSE,
     )
     CONTEXT.retrieval = HybridSearchService(
         embed_provider=_query_embed,
@@ -160,24 +150,6 @@ def _build_app() -> FastAPI:
         embed_provider=_query_embed,
         qdrant=CONTEXT.qdrant,
         chunk_repo=CONTEXT.chunk_repo,
-    )
-
-    CONTEXT.stage_engine = StageEngine(
-        s0=S0IngestStage(s3=CONTEXT.s3, converter=CONTEXT.converter),
-        s1=S1ParseStage(parse_chain=default_parse_chain, s3=CONTEXT.s3),
-        s3=CONTEXT.s3,
-        postgres=CONTEXT.postgres,
-        node_cache=CONTEXT.node_cache,
-        provider_cache=CONTEXT.provider_cache,
-        document_repo=CONTEXT.document_repo,
-        block_repo=CONTEXT.block_repo,
-        chunk_repo=CONTEXT.chunk_repo,
-        s2=s2_stage,
-        s4=s4_stage,
-        s5=s5_stage,
-        s6=None,  # built per-job from collection embed config by _build_s6_from_config
-        registry=CONTEXT.registry,
-        qdrant=CONTEXT.qdrant,
     )
 
     # 9. Create FastAPI app (lifespan connects storage + arq pool)

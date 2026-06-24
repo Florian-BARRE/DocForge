@@ -11,15 +11,18 @@ from datetime import UTC, datetime
 
 # ====== Third-Party Library Imports ======
 from fastapi import APIRouter
+from sse_starlette.sse import EventSourceResponse
 
 # ====== Internal Project Imports ======
 from ...context import CONTEXT
 from ...libs.utils.error_handling import auto_handle_errors
+from ...libs.utils.sse import SseHelpers
 from .helpers import MonitoringHelpers
 from .models import (
     MonitoringDiscoveryResponse,
     OverviewResponse,
     QueueStatusResponse,
+    ResourcesResponse,
     WorkersResponse,
 )
 
@@ -76,6 +79,45 @@ async def get_overview() -> OverviewResponse:
         queue=queue,
         workers=workers,
         generated_at=datetime.now(UTC).isoformat(),
+    )
+
+
+@router.get("/resources", response_model=ResourcesResponse)
+@auto_handle_errors
+async def get_resources() -> ResourcesResponse:
+    """
+    Return the resource snapshot: device gauge + admission limits + live load (Brique D).
+
+    Returns:
+        ResourcesResponse: Device resolution, global admission thresholds, queue depth, counts.
+    """
+    # 1. Assemble device gauge + limits + live counts from the injected services
+    return await MonitoringHelpers.build_resources(
+        device_manager=CONTEXT.device_manager,
+        queue_introspector=CONTEXT.queue_introspector,
+        postgres=CONTEXT.postgres,
+        job_repo=CONTEXT.job_repo,
+        runtime_config=CONTEXT.RUNTIME_CONFIG,
+    )
+
+
+# NOTE: SSE route — returns an EventSourceResponse stream, so it intentionally has NO
+# response_model (a live stream cannot be described by a Pydantic model). @auto_handle_errors still
+# guards exceptions raised while building the response; errors inside the stream are handled by the
+# generator itself (it always unsubscribes in its finally block).
+@router.get("/stream")
+@auto_handle_errors
+async def stream_events() -> EventSourceResponse:
+    """
+    Stream every monitoring event (jobs, stages, workers, batches) as Server-Sent Events.
+
+    Returns:
+        EventSourceResponse: Unfiltered live event stream for the monitoring dashboard.
+    """
+    # 1. Fan out the global event bus to this client (no predicate = all events)
+    return SseHelpers.stream(
+        CONTEXT.event_broadcaster,
+        keepalive=CONTEXT.RUNTIME_CONFIG.SSE_KEEPALIVE_SECONDS,
     )
 
 

@@ -18,16 +18,21 @@ from libs.observability.heartbeat import WorkerHeartbeat
 
 # ====== Local Project Imports ======
 from .models import (
+    AdmissionLimitsModel,
+    DeviceSnapshotModel,
     MonitoringDiscoveryResponse,
     PanelDescriptor,
     QueueStatusResponse,
+    ResourcesResponse,
     WorkerInfo,
     WorkersResponse,
 )
 
 if TYPE_CHECKING:
+    from config import RUNTIME_CONFIG
     from libs.observability.heartbeat import HeartbeatReader
     from libs.observability.queue import QueueIntrospector
+    from libs.providers.device_manager import DeviceManager
     from libs.storage.postgres.client import PostgresClient
     from libs.storage.postgres.repositories import JobRepository
 
@@ -95,6 +100,56 @@ class MonitoringHelpers:
         )
 
     @classmethod
+    async def build_resources(
+        cls,
+        *,
+        device_manager: DeviceManager,
+        queue_introspector: QueueIntrospector,
+        postgres: PostgresClient,
+        job_repo: JobRepository,
+        runtime_config: type[RUNTIME_CONFIG],
+    ) -> ResourcesResponse:
+        """
+        Assemble the resource snapshot: device gauge + admission limits + live load (Brique D).
+
+        Args:
+            device_manager (DeviceManager): Source of the read-only device gauge.
+            queue_introspector (QueueIntrospector): Read-only arq backlog depth.
+            postgres (PostgresClient): Database client for the session.
+            job_repo (JobRepository): Per-status job counts.
+            runtime_config (type[RUNTIME_CONFIG]): Carries the global admission thresholds.
+
+        Returns:
+            ResourcesResponse: Device + limits + queue depth + running/per-status counts.
+        """
+        # 1. Read-only device gauge (no allocation logic exposed)
+        snap = device_manager.snapshot()
+
+        # 2. Backlog depth (Redis ZCARD) + per-status counts (indexed Postgres)
+        depth = await queue_introspector.queue_depth()
+        async with postgres.session() as session:
+            counts = await job_repo.count_by_status(session)
+
+        # 3. Pack device + global limits + live load into the response
+        return ResourcesResponse(
+            device=DeviceSnapshotModel(
+                gpu_available=snap.gpu_available,
+                gpu_name=snap.gpu_name,
+                cuda_version=snap.cuda_version,
+                capabilities=snap.capabilities,
+            ),
+            limits=AdmissionLimitsModel(
+                enabled=runtime_config.ADMISSION_ENABLED,
+                max_queue_depth=runtime_config.ADMISSION_MAX_QUEUE_DEPTH,
+                max_in_flight_global=runtime_config.ADMISSION_MAX_IN_FLIGHT_GLOBAL,
+            ),
+            queue_depth=depth,
+            running=counts.get("running", 0),
+            counts=counts,
+            generated_at=datetime.now(UTC).isoformat(),
+        )
+
+    @classmethod
     async def build_workers(cls, *, heartbeat_reader: HeartbeatReader) -> WorkersResponse:
         """
         Assemble the live worker fleet from non-expired heartbeats.
@@ -119,27 +174,32 @@ class MonitoringHelpers:
             MonitoringDiscoveryResponse: Panels + (future) stream endpoint.
         """
         cls.logger.debug(f"Serving monitoring discovery descriptor.")
-        # The stream endpoint stays None until brique C wires the SSE broadcaster.
+        # Brique C wired the SSE broadcaster: queue/workers panels now have a live backing stream,
+        # and the global stream endpoint is advertised for the UI to open one EventSource.
         return MonitoringDiscoveryResponse(
             panels=[
                 PanelDescriptor(
                     key="queue", title="Queue & throughput", kind="queue",
-                    endpoint="/api/v1/monitoring/queue", stream=False,
+                    endpoint="/api/v1/monitoring/queue", stream=True,
                 ),
                 PanelDescriptor(
                     key="workers", title="Workers", kind="workers",
-                    endpoint="/api/v1/monitoring/workers", stream=False,
+                    endpoint="/api/v1/monitoring/workers", stream=True,
                 ),
                 PanelDescriptor(
                     key="jobs", title="Jobs", kind="jobs",
-                    endpoint="/api/v1/jobs", stream=False,
+                    endpoint="/api/v1/jobs", stream=True,
                 ),
                 PanelDescriptor(
                     key="overview", title="Overview", kind="resources",
-                    endpoint="/api/v1/monitoring/overview", stream=False,
+                    endpoint="/api/v1/monitoring/overview", stream=True,
+                ),
+                PanelDescriptor(
+                    key="resources", title="Resources", kind="resources",
+                    endpoint="/api/v1/monitoring/resources", stream=False,
                 ),
             ],
-            stream_endpoint=None,
+            stream_endpoint="/api/v1/monitoring/stream",
         )
 
 

@@ -24,6 +24,17 @@ from .helpers import ChunkingHelpers, CrossReferenceLinker
 # ─────────────────── Configs (re-exported) ───────────────────────────── #
 from .config import SemanticConfig, SentenceWindowConfig, TokenBudgetConfig
 
+# ─────────────────── Catalog + legacy *Params aliases (re-exported) ───── #
+# The split-method catalog and the backward-compat aliases are part of the chunking public
+# surface (params.py documents them as importable "from one place"); the libs-reorg refactor
+# dropped them from this package __init__ — restore them so callers and drift-guard tests resolve.
+from .strategies.params import (
+    SPLIT_METHOD_PARAMS,
+    SemanticParams,
+    SentenceWindowParams,
+    TokenBudgetParams,
+)
+
 # ------------------- Public API ------------------- #
 __all__ = [
     "S4ChunkStage",
@@ -41,4 +52,9 @@ __all__ = [
     "SemanticConfig",
     "SentenceWindowConfig",
     "TokenBudgetConfig",
+    # Split-method catalog + legacy aliases
+    "SPLIT_METHOD_PARAMS",
+    "SemanticParams",
+    "SentenceWindowParams",
+    "TokenBudgetParams",
 ]

@@ -101,7 +101,10 @@ async def run_pipeline_task(
     async def _progress_cb(stage: str, percent: int) -> None:
         async with postgres.session() as session:
             await job_repo.update_progress(session, job_uuid, stage, percent)
-        await event_publisher.stage_progress(job_id, stage, percent)
+        # Carry collection_id/document_id so the SSE collection stream can scope this progress.
+        await event_publisher.stage_progress(
+            job_id, stage, percent, collection_id=collection_id, document_id=document_id,
+        )
 
     # 2. Load the frozen collection contract (spec §3): pipeline config + metadata schema.
     # This makes full ingestion run the exact stack the playground previewed, and materialize

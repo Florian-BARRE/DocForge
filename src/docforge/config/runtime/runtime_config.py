@@ -103,6 +103,19 @@ class RUNTIME_CONFIG(EnvConfigLoader):
     OBS_HEARTBEAT_TTL_S: int = env("OBS_HEARTBEAT_TTL_S", cast=int, default="15")
     # Gate psutil/pynvml gauge collection (set false to disable resource sampling entirely).
     OBS_METRICS_ENABLED: bool = env("OBS_METRICS_ENABLED", cast=bool, default="true")
+    # SSE comment-ping cadence (seconds) — keeps proxies/load-balancers from killing idle streams.
+    SSE_KEEPALIVE_SECONDS: int = env("SSE_KEEPALIVE_SECONDS", cast=int, default="15")
+    # Per-client SSE fan-out queue size; on overflow the broadcaster drops the oldest event so one
+    # slow browser cannot grow memory unboundedly (back-pressure, brique C).
+    SSE_CLIENT_QUEUE_MAXSIZE: int = env("SSE_CLIENT_QUEUE_MAXSIZE", cast=int, default="100")
+
+    # ───── Resource admission / back-pressure (Brique D) ─────
+    # Master switch for the runtime resource gate (queue depth / in-flight / budget back-pressure).
+    ADMISSION_ENABLED: bool = env("ADMISSION_ENABLED", cast=bool, default="true")
+    # Reject ingest when the arq backlog (ZCARD) reaches this depth (0 = unlimited).
+    ADMISSION_MAX_QUEUE_DEPTH: int = env("ADMISSION_MAX_QUEUE_DEPTH", cast=int, default="0")
+    # Reject ingest when running jobs (all collections) reach this count (0 = unlimited).
+    ADMISSION_MAX_IN_FLIGHT_GLOBAL: int = env("ADMISSION_MAX_IN_FLIGHT_GLOBAL", cast=int, default="0")
 
     # ───── P3 — S2 Enrichment (OCR / VLM / classifier) ─────
     # Figure classifier: "layout_labels" (heuristic, no model) or "vit_onnx" (ONNX model)
@@ -151,6 +164,12 @@ class RUNTIME_CONFIG(EnvConfigLoader):
     TEI_BASE_URL: str = env("TEI_BASE_URL", default="http://localhost:8080")
     # Number of texts sent to TEI per HTTP request
     TEI_BATCH_SIZE: int = env("TEI_BATCH_SIZE", cast=int, default="64")
+    # Whether the SHARED query/re-embed TEI provider also requests sparse (BM25) vectors.
+    # Set False for a dense-only BGE-M3 deployment (no sparse head) — otherwise /embed_sparse
+    # returns HTTP 424 and breaks search-query embedding + chunk/metadata re-embed. Per-INGEST
+    # sparse is configured per-collection (pipeline.embed.chain[].embed_sparse); this flag only
+    # governs the deployment-wide provider used by HybridSearchService + MetadataIndexer.
+    TEI_EMBED_SPARSE: bool = env("TEI_EMBED_SPARSE", cast=bool, default="True")
 
     # OpenAI / OpenAI-compatible cloud embed provider.
     # Consumed by merge_defaults() on OpenAIEmbedConfig for both ingestion (S6) and

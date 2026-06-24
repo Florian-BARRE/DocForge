@@ -13,6 +13,9 @@ from .collections.router import router as collection_router
 # ----------------- Collection config -------------- #
 from .collections.config.router import router as config_router
 
+# ----------------- Collection limits -------------- #
+from .collections.limits.router import router as limits_router
+
 # -------------------- Documents ------------------ #
 from .collections.documents.router import router as document_router
 
@@ -40,6 +43,7 @@ __all__ = [
     "discovery_router",
     "collection_router",
     "config_router",
+    "limits_router",
     "document_router",
     "search_router",
     "files_router",

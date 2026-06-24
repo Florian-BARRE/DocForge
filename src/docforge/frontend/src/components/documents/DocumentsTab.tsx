@@ -1,7 +1,8 @@
 // ====== Code Summary ======
 // DocumentsTab renders the Documents sub-tab for a selected collection.
-// It owns the document list, a compact drop-zone for uploads, background
-// polling for in-progress documents, and delegates per-row actions to DocRow.
+// It owns the document list, a compact drop-zone for uploads, a live SSE stream
+// that refreshes the list on job/stage events (with a 2 s polling fallback), and
+// delegates per-row actions to DocRow.
 
 // ====== Standard Library Imports ======
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -13,6 +14,7 @@ import {
   ingestDocument,
   listDocuments,
   reingestDocument,
+  streamCollectionDocuments,
 } from '../../api/client'
 import type { ConfigState, Document, MetaField } from '../../api/types'
 import { DocDetailView } from './DocDetailView'
@@ -32,21 +34,12 @@ interface DocumentsTabProps {
   onTrace: (docId: string) => void
 }
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+// ── Constants ────────────────────────────────────────────────────────────────
 
-/**
- * Returns `true` when at least one document in the list is still in-flight
- * (pending or running).  Used to decide whether polling should continue.
- *
- * Args:
- *   docs: Current document list.
- *
- * Returns:
- *   Boolean indicating whether any document needs polling.
- */
-function hasActiveDocuments(docs: Document[]): boolean {
-  return docs.some(d => d.status === 'pending' || d.status === 'running')
-}
+// Collapse bursts of SSE events (e.g. rapid stage.progress) into a single reload.
+const REFETCH_DEBOUNCE_MS = 500
+// Fallback polling cadence, used only when the SSE stream errors out.
+const FALLBACK_POLL_MS = 2000
 
 // ── Component ────────────────────────────────────────────────────────────────
 
@@ -55,7 +48,8 @@ function hasActiveDocuments(docs: Document[]): boolean {
  *
  * Responsibilities:
  * - Fetches and displays the document list for the active collection.
- * - Polls the list every 2 s while any document is pending/running.
+ * - Subscribes to a collection-scoped SSE stream and refreshes the list (debounced)
+ *   on job/stage events, falling back to 2 s polling if the stream fails.
  * - Provides a compact drag-and-drop upload zone at the top.
  * - Forwards per-row actions (trace, delete, reingest) to the API layer and
  *   refreshes the list on completion.
@@ -85,8 +79,11 @@ export function DocumentsTab({ collectionId, onTrace }: DocumentsTabProps) {
   // Hidden file input used for click-to-upload.
   const inputRef = useRef<HTMLInputElement>(null)
 
-  // Interval handle for the polling loop — kept in a ref so the cleanup
-  // function always sees the most recent handle.
+  // Live SSE stream handle for this collection's document updates.
+  const esRef = useRef<EventSource | null>(null)
+  // Debounce handle so a burst of events triggers a single list reload.
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Fallback polling interval — started only if the SSE stream errors out.
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // ── Data fetching ──────────────────────────────────────────────────────
@@ -121,27 +118,49 @@ export function DocumentsTab({ collectionId, onTrace }: DocumentsTabProps) {
     return () => { cancelled = true }
   }, [collectionId])
 
-  // 2. Polling loop — active only while at least one document is in-flight.
+  // 2. Live updates — subscribe to a collection-scoped SSE stream and reload the
+  //    list (debounced) on each job/stage event. EventSource reconnects natively;
+  //    if it errors out we fall back to the legacy 2 s polling loop.
   useEffect(() => {
-    // Clear any previous interval before deciding whether to start a new one.
-    if (pollRef.current !== null) {
-      clearInterval(pollRef.current)
-      pollRef.current = null
+    // Debounced reload — collapses bursts of stage.progress events into one fetch.
+    const scheduleRefetch = () => {
+      // An event means the SSE stream is live again: stop any polling fallback a prior
+      // onerror started, otherwise the list would be fetched twice indefinitely.
+      if (pollRef.current !== null) {
+        clearInterval(pollRef.current)
+        pollRef.current = null
+      }
+      if (debounceRef.current !== null) clearTimeout(debounceRef.current)
+      debounceRef.current = setTimeout(() => { void fetchDocuments() }, REFETCH_DEBOUNCE_MS)
     }
 
-    if (!hasActiveDocuments(docs)) return
+    // Start the polling fallback once (guarded so onerror can't stack intervals).
+    const startPolling = () => {
+      if (pollRef.current !== null) return
+      pollRef.current = setInterval(() => { void fetchDocuments() }, FALLBACK_POLL_MS)
+    }
 
-    pollRef.current = setInterval(async () => {
-      await fetchDocuments()
-    }, 2000)
+    // 2a. Open the stream and wire the two relevant typed events to a refetch.
+    const es = streamCollectionDocuments(collectionId)
+    esRef.current = es
+    es.addEventListener('job.updated', scheduleRefetch)
+    es.addEventListener('stage.progress', scheduleRefetch)
+    es.onerror = startPolling
 
+    // 2b. Tear everything down on unmount / collection change.
     return () => {
+      es.close()
+      esRef.current = null
+      if (debounceRef.current !== null) {
+        clearTimeout(debounceRef.current)
+        debounceRef.current = null
+      }
       if (pollRef.current !== null) {
         clearInterval(pollRef.current)
         pollRef.current = null
       }
     }
-  }, [docs, fetchDocuments])
+  }, [collectionId, fetchDocuments])
 
   // ── Upload handler ─────────────────────────────────────────────────────
 

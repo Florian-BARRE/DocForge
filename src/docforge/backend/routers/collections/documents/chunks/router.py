@@ -67,6 +67,11 @@ async def update_chunk(
     """
     # 1. Validate input + ownership
     if body.raw_text is None and body.embed_text is None:
+        # 422 — empty patch: neither raw_text nor embed_text supplied, nothing to update.
+        CONTEXT.logger.warning(
+            f"Chunk update rejected (422 empty patch): collection={collection_id} "
+            f"document={document_id} chunk={chunk_id}"
+        )
         raise HTTPException(status_code=422, detail="Provide raw_text and/or embed_text to update.")
     await _require_document(collection_id, document_id)
     await _require_chunk(document_id, chunk_id)
@@ -88,8 +93,26 @@ async def update_chunk(
             )
             reindexed = True
 
+    # 4. Mutation succeeded — log which fields were corrected and whether vectors were re-embedded.
+    changed_fields = [
+        name for name, value in (("raw_text", body.raw_text), ("embed_text", body.embed_text))
+        if value is not None
+    ]
+    if body.reindex and not reindexed:
+        CONTEXT.logger.warning(
+            f"Chunk updated chunk={chunk_id} document={document_id} changed_fields={changed_fields} "
+            f"reindex requested but skipped ({warning})"
+        )
+    else:
+        CONTEXT.logger.info(
+            f"Chunk updated chunk={chunk_id} document={document_id} "
+            f"changed_fields={changed_fields} reindexed={reindexed}"
+        )
+
+    # str(id): the RETURNING clause yields a uuid.UUID, but ChunkUpdateResponse.id is a str and
+    # Pydantic v2 does not coerce UUID -> str (it would 500 with a string_type error on a live row).
     return ChunkUpdateResponse(
-        id=updated["id"], raw_text=updated["raw_text"], embed_text=updated["embed_text"],
+        id=str(updated["id"]), raw_text=updated["raw_text"], embed_text=updated["embed_text"],
         reindexed=reindexed, warning=warning,
     )
 
@@ -102,6 +125,10 @@ async def _require_document(collection_id: uuid.UUID, document_id: uuid.UUID) ->
     async with CONTEXT.postgres.session() as session:
         doc = await CONTEXT.document_repo.get_by_id(session, document_id)
     if doc is None or doc.collection_id != collection_id:
+        # 404 — document id is unknown OR belongs to a different collection (scope mismatch).
+        CONTEXT.logger.warning(
+            f"Chunk document lookup rejected (404): document={document_id} collection={collection_id}"
+        )
         raise HTTPException(
             status_code=404, detail=f"Document {document_id} not found in collection {collection_id}."
         )
@@ -112,6 +139,10 @@ async def _require_chunk(document_id: uuid.UUID, chunk_id: uuid.UUID) -> dict:
     async with CONTEXT.postgres.session() as session:
         row = await CONTEXT.chunk_repo.get_by_id(session, str(chunk_id))
     if row is None or str(row["document_id"]) != str(document_id):
+        # 404 — chunk id is unknown OR belongs to a different document (scope mismatch).
+        CONTEXT.logger.warning(
+            f"Chunk lookup rejected (404): chunk={chunk_id} document={document_id}"
+        )
         raise HTTPException(status_code=404, detail=f"Chunk {chunk_id} not found in document {document_id}.")
     return row
 

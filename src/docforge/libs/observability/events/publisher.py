@@ -54,11 +54,29 @@ class EventPublisher(LoggerClass):
         """Publish a ``job.updated`` event carrying the job snapshot."""
         await self.publish(EventType.JOB_UPDATED, {"job": job})
 
-    async def stage_progress(self, job_id: str, stage: str, progress: int) -> None:
-        """Publish a ``stage.progress`` event for a running job."""
+    async def stage_progress(
+        self,
+        job_id: str,
+        stage: str,
+        progress: int,
+        collection_id: str | None = None,
+        document_id: str | None = None,
+    ) -> None:
+        """
+        Publish a ``stage.progress`` event for a running job.
+
+        ``collection_id``/``document_id`` let the SSE layer (brique C) scope progress to a single
+        collection's document stream; they are optional so non-collection runs still publish.
+        """
         await self.publish(
             EventType.STAGE_PROGRESS,
-            {"job_id": job_id, "stage": stage, "progress": progress},
+            {
+                "job_id": job_id,
+                "stage": stage,
+                "progress": progress,
+                "collection_id": collection_id,
+                "document_id": document_id,
+            },
         )
 
     async def worker_heartbeat(self, heartbeat: dict[str, Any]) -> None:

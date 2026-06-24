@@ -11,7 +11,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 # ====== Third-Party Library Imports ======
-from sqlalchemy import ARRAY, JSON, Boolean, DateTime, Integer, String, func
+from sqlalchemy import ARRAY, JSON, Boolean, DateTime, Float, Integer, String, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -56,6 +56,10 @@ class CollectionModel(Base):
     # Set when a config change invalidates the vector space (e.g. embedding_model change) —
     # existing vectors are stale until a reindex runs.
     needs_reindex: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # Resource-admission limits (Brique D) — kept as columns (NOT in the pipeline JSON blob) so they
+    # never perturb reindex semantics. NULL = no per-collection cap (fall back to global / unlimited).
+    max_in_flight: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    budget_cap_usd: Mapped[float | None] = mapped_column(Float, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

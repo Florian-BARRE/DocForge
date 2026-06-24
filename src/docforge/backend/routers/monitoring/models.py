@@ -60,6 +60,36 @@ class OverviewResponse(BaseModel):
     generated_at: str = Field(..., description="ISO-8601 time the snapshot was assembled.")
 
 
+class DeviceSnapshotModel(BaseModel):
+    """Read-only gauge of the device manager's current resolution state (Brique D)."""
+
+    gpu_available: bool = Field(..., description="Whether a CUDA GPU was detected at startup.")
+    gpu_name: str | None = Field(None, description="Detected GPU device name (null on CPU-only).")
+    cuda_version: str | None = Field(None, description="Detected CUDA toolkit version (null on CPU-only).")
+    capabilities: dict[str, str] = Field(
+        ..., description="Capability → device it currently resolves to (e.g. {'vlm': 'remote'})."
+    )
+
+
+class AdmissionLimitsModel(BaseModel):
+    """Deployment-global resource-admission thresholds (0 = unlimited)."""
+
+    enabled: bool = Field(..., description="Whether the resource gate is active.")
+    max_queue_depth: int = Field(..., description="Backlog cap (0 = unlimited).")
+    max_in_flight_global: int = Field(..., description="Global running-jobs cap (0 = unlimited).")
+
+
+class ResourcesResponse(BaseModel):
+    """Resource snapshot: device gauge + admission limits + live load (Brique D)."""
+
+    device: DeviceSnapshotModel = Field(..., description="Device resolution gauge.")
+    limits: AdmissionLimitsModel = Field(..., description="Global admission thresholds.")
+    queue_depth: int = Field(..., description="Pending jobs in the arq queue.")
+    running: int = Field(..., description="Jobs currently running (all collections).")
+    counts: dict[str, int] = Field(..., description="Job counts per status (Postgres).")
+    generated_at: str = Field(..., description="ISO-8601 time the snapshot was assembled.")
+
+
 class PanelDescriptor(BaseModel):
     """Descriptor for one monitoring panel, consumed by the discovery-driven UI tab."""
 
@@ -86,6 +116,9 @@ __all__ = [
     "QueueStatusResponse",
     "WorkersResponse",
     "OverviewResponse",
+    "DeviceSnapshotModel",
+    "AdmissionLimitsModel",
+    "ResourcesResponse",
     "PanelDescriptor",
     "MonitoringDiscoveryResponse",
 ]

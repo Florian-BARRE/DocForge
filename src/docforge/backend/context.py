@@ -11,16 +11,15 @@ from loggerplusplus import LoggerPlusPlus
 
 # ====== Internal Project Imports ======
 from config import RUNTIME_CONFIG
-from libs.observability.events import EventPublisher
+from backend.libs.admission import ResourceAdmitter
+from libs.observability.events import EventBroadcaster, EventPublisher
 from libs.observability.heartbeat import HeartbeatReader
 from libs.observability.queue import QueueIntrospector
 from libs.pipeline.assembly import ProviderRegistry
 from libs.pipeline.caches.node_cache import NodeCache
 from libs.pipeline.caches.provider_cache import ProviderCallCache
-from libs.pipeline.engine import StageEngine
 from libs.providers.converter import GotenbergConverter
 from libs.providers.device_manager import DeviceManager
-from libs.providers.parser import DoclingBackend
 from libs.search.hybrid.service import HybridSearchService
 from libs.search.metadata_indexer.indexer import MetadataIndexer
 from libs.storage.postgres.client import PostgresClient
@@ -60,7 +59,6 @@ class CONTEXT:
     # ── Providers ────────────────────────────────────────────────────────────
     device_manager: DeviceManager
     converter: GotenbergConverter
-    parser: DoclingBackend
 
     # ── Repositories ─────────────────────────────────────────────────────────
     collection_repo: CollectionRepository
@@ -74,13 +72,20 @@ class CONTEXT:
     node_cache: NodeCache
     provider_cache: ProviderCallCache
     registry: ProviderRegistry  # resolves per-run PipelineConfig → concrete stages
-    stage_engine: StageEngine   # s6 is None when Qdrant is unreachable
 
     # ── Observability (Brique A) ─────────────────────────────────────────────
     # Read-only views over Redis telemetry, all sharing the arq_pool connection.
     queue_introspector: QueueIntrospector   # arq queue depth + per-job arq status
     heartbeat_reader: HeartbeatReader       # live worker heartbeats
     event_publisher: EventPublisher         # publish monitoring events (also consumed in brique C)
+
+    # ── Real-time streaming (Brique C) ───────────────────────────────────────
+    # Subscribes once to the events channel and fans out to SSE clients (own Redis connection).
+    event_broadcaster: EventBroadcaster
+
+    # ── Resource admission (Brique D) ────────────────────────────────────────
+    # Runtime back-pressure gate on enqueue (queue depth / in-flight / cumulative budget).
+    resource_admitter: ResourceAdmitter
 
     # ── Runtime state ────────────────────────────────────────────────────────
     active_tasks: dict[str, Any]

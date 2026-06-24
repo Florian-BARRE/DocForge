@@ -99,6 +99,12 @@ class DocumentOps:
         # 2. Re-validate against the collection schema
         issues = AdmissionValidator.validate_metadata(collection, merged)
         if issues:
+            # Contract break — caller maps this to HTTP 422; log here so the rejection is
+            # traceable from the shared helper regardless of which endpoint called it.
+            cls.logger.warning(
+                f"Metadata validation failed document={doc.id} "
+                f"changed_fields={sorted(changed)} issues={issues}"
+            )
             return {"issues": issues}
 
         # 3. Persist
@@ -121,6 +127,18 @@ class DocumentOps:
                         changed_field_names=changed,
                     )
                 reindexed = True
+
+        # 5. Record the applied mutation: persisted change set + whether/why the index was synced.
+        if reindex and changed and not reindexed:
+            cls.logger.warning(
+                f"Metadata applied document={doc.id} changed_fields={sorted(changed)} "
+                f"reindex requested but skipped ({warning})"
+            )
+        else:
+            cls.logger.info(
+                f"Metadata applied document={doc.id} changed_fields={sorted(changed)} "
+                f"reindexed={reindexed}"
+            )
 
         return {
             "user_meta": merged, "changed_fields": sorted(changed),

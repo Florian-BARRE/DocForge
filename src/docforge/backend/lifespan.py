@@ -14,7 +14,7 @@ from arq.connections import RedisSettings
 from pyfiglet import Figlet
 
 # ====== Internal Project Imports ======
-from libs.observability.events import EventPublisher
+from libs.observability.events import EventBroadcaster, EventPublisher
 from libs.observability.heartbeat import HeartbeatReader
 from libs.observability.queue import QueueIntrospector
 
@@ -22,7 +22,7 @@ from libs.observability.queue import QueueIntrospector
 from .context import CONTEXT
 
 # Total startup steps — update this constant when adding or removing steps.
-TOTAL_STEPS = 8
+TOTAL_STEPS = 9
 
 
 def lifespan() -> Any:
@@ -97,10 +97,19 @@ def lifespan() -> Any:
             CONTEXT.event_publisher = EventPublisher(CONTEXT.arq_pool)
             CONTEXT.logger.info(f"Observability handles ready (queue / workers / events).")
 
-            # 8. Connect to Qdrant — always attempted; falls back gracefully if unreachable.
+            # 8. Start the SSE broadcaster (brique C) — subscribes once to the events channel on its
+            #    OWN Redis connection (subscribe mode forbids other commands) and fans out to clients.
+            log_step(7, "Event broadcaster (SSE fan-out)")
+            CONTEXT.event_broadcaster = EventBroadcaster(
+                CONTEXT.RUNTIME_CONFIG.REDIS_URL,
+                CONTEXT.RUNTIME_CONFIG.SSE_CLIENT_QUEUE_MAXSIZE,
+            )
+            await CONTEXT.event_broadcaster.start()
+
+            # 9. Connect to Qdrant — always attempted; falls back gracefully if unreachable.
             # If the connection fails, S6/retrieval/metadata_indexer are nulled out so the
             # rest of the pipeline continues without vector indexing.
-            log_step(7, "Qdrant vector store")
+            log_step(8, "Qdrant vector store")
             if CONTEXT.qdrant is not None:
                 try:
                     await CONTEXT.qdrant.connect()
@@ -117,8 +126,8 @@ def lifespan() -> Any:
                     CONTEXT.retrieval = None
                     CONTEXT.metadata_indexer = None
 
-            # 9. Final startup confirmation
-            log_step(8, "Application ready")
+            # 10. Final startup confirmation
+            log_step(9, "Application ready")
             CONTEXT.logger.info(f"DocForge is ready — serving {CONTEXT.RUNTIME_CONFIG.FASTAPI_APP_NAME} v{CONTEXT.RUNTIME_CONFIG.APP_VERSION}")
 
             # ── Yield — app is now running ────────────────────────────────────
@@ -127,6 +136,11 @@ def lifespan() -> Any:
         finally:
             # ── Shutdown (reverse order, hasattr guards for partial startup) ──
             CONTEXT.logger.info(f"Shutting down DocForge…")
+
+            # Stop the SSE broadcaster before the arq pool: it owns a separate Redis connection and
+            # must release its subscriber queues + background task first.
+            if hasattr(CONTEXT, "event_broadcaster"):
+                await CONTEXT.event_broadcaster.stop()
 
             if hasattr(CONTEXT, "arq_pool"):
                 await CONTEXT.arq_pool.close(close_connection_pool=True)

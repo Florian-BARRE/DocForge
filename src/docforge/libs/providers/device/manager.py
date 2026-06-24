@@ -13,6 +13,7 @@ from loggerplusplus import loggerplusplus
 
 # ====== Local Project Imports ======
 from .enums import Device, DeviceCapability
+from .snapshot import DeviceSnapshot
 
 
 class DeviceManager:
@@ -136,4 +137,31 @@ class DeviceManager:
         raise RuntimeError(
             f"No available device for capability={capability!r}. "
             f"Chain exhausted: {chain}."
+        )
+
+    def snapshot(self) -> DeviceSnapshot:
+        """
+        Return a read-only gauge of the current resolution state (Brique D monitoring).
+
+        Reports GPU availability plus, for each known capability, the device it would currently
+        resolve to using the default chain. Resolution is best-effort: a capability whose chain is
+        exhausted is reported as ``"unavailable"`` rather than raising.
+
+        Returns:
+            DeviceSnapshot: Immutable view of availability + per-capability device.
+        """
+        # 1. Resolve each capability against its default chain (never raises here)
+        capabilities: dict[str, str] = {}
+        for capability in DeviceCapability:
+            try:
+                capabilities[capability.value] = self.resolve(capability).value
+            except RuntimeError:
+                capabilities[capability.value] = "unavailable"
+
+        # 2. Pack availability + per-capability mapping into the immutable gauge
+        return DeviceSnapshot(
+            gpu_available=self._gpu_available,
+            gpu_name=self._gpu_name,
+            cuda_version=self._cuda_version,
+            capabilities=capabilities,
         )

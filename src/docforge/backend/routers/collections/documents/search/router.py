@@ -49,6 +49,10 @@ async def search_collection(collection_id: uuid.UUID, body: SearchRequest) -> Se
             collection.pipeline, CONTEXT.retrieval
         )
     except ValueError as exc:
+        # 503 — the collection's configured search/embed provider could not be built.
+        CONTEXT.logger.warning(
+            f"Search rejected (503 provider not configured): collection={collection_id} error={exc}"
+        )
         raise HTTPException(
             status_code=503,
             detail=f"Search pipeline provider not configured for this collection — {exc}",
@@ -72,6 +76,10 @@ async def search_collection(collection_id: uuid.UUID, body: SearchRequest) -> Se
             )
         return _to_response(collection_id, body.query, outcome)
     except (httpx.ConnectError, httpx.TimeoutException) as exc:
+        # 503 — embedding / Qdrant backend unreachable (connection refused or timed out).
+        CONTEXT.logger.warning(
+            f"Search rejected (503 embed/qdrant unreachable): collection={collection_id} error={exc}"
+        )
         raise HTTPException(
             status_code=503,
             detail=f"Embedding service unreachable — {exc}.",
@@ -93,6 +101,10 @@ async def search_within_document(
     async with CONTEXT.postgres.session() as session:
         doc = await CONTEXT.document_repo.get_by_id(session, document_id)
     if doc is None or doc.collection_id != collection_id:
+        # 404 — document id is unknown OR belongs to a different collection (scope mismatch).
+        CONTEXT.logger.warning(
+            f"In-document search rejected (404): document={document_id} collection={collection_id}"
+        )
         raise HTTPException(
             status_code=404, detail=f"Document {document_id} not found in collection {collection_id}."
         )
@@ -108,6 +120,11 @@ async def search_within_document(
             collection.pipeline, CONTEXT.retrieval
         )
     except ValueError as exc:
+        # 503 — the collection's configured search/embed provider could not be built.
+        CONTEXT.logger.warning(
+            f"In-document search rejected (503 provider not configured): collection={collection_id} "
+            f"document={document_id} error={exc}"
+        )
         raise HTTPException(
             status_code=503,
             detail=f"Search pipeline provider not configured — {exc}",
@@ -131,6 +148,11 @@ async def search_within_document(
             )
         return _to_response(collection_id, body.query, outcome)
     except (httpx.ConnectError, httpx.TimeoutException) as exc:
+        # 503 — embedding / Qdrant backend unreachable (connection refused or timed out).
+        CONTEXT.logger.warning(
+            f"In-document search rejected (503 embed/qdrant unreachable): collection={collection_id} "
+            f"document={document_id} error={exc}"
+        )
         raise HTTPException(
             status_code=503,
             detail=f"Embedding service unreachable — {exc}.",
@@ -145,6 +167,8 @@ async def _get_collection(collection_id: uuid.UUID) -> Any:
     async with CONTEXT.postgres.session() as session:
         collection = await CONTEXT.collection_repo.get_by_id(session, collection_id)
     if collection is None:
+        # 404 — search target collection does not exist.
+        CONTEXT.logger.warning(f"Search rejected (404 unknown collection): collection={collection_id}")
         raise HTTPException(status_code=404, detail=f"Collection {collection_id} not found.")
     return collection
 

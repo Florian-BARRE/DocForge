@@ -288,6 +288,32 @@ class JobRepository(LoggerClass):
         )
         return int(total or 0)
 
+    async def sum_budget_by_collection(
+        self,
+        session: AsyncSession,
+        collection_id: uuid.UUID,
+    ) -> float:
+        """
+        Return the cumulative ``budget_spent`` (USD) across all jobs of one collection.
+
+        Backs the resource admitter's per-collection budget pre-flight (Brique D): since a job's
+        cost is unknown before it runs, the gate can only reject on already-incurred cumulative
+        spend. ``COALESCE`` makes an all-NULL/empty collection sum to 0.0 rather than NULL.
+
+        Args:
+            session (AsyncSession): Active session.
+            collection_id (uuid.UUID): Collection whose spend is tallied.
+
+        Returns:
+            float: Total USD spent across the collection's jobs (0.0 when none).
+        """
+        # 1. Indexed SUM over budget_spent for the collection (no per-job scan in Python)
+        total = await session.scalar(
+            select(func.coalesce(func.sum(JobModel.budget_spent), 0.0))
+            .where(JobModel.collection_id == collection_id)
+        )
+        return float(total or 0.0)
+
     async def mark_running(
         self,
         session: AsyncSession,

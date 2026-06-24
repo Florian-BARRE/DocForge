@@ -65,11 +65,26 @@ async def get_page(
 ) -> PageDetailResponse:
     """Full info for one page: its blocks, concatenated text, and covering chunk ids."""
     # 1. Load + filter to this page
-    await _require_document(collection_id, document_id)
+    doc = await _require_document(collection_id, document_id)
     blocks, chunks = await _blocks_and_chunks(document_id)
+
+    # 2. Reject out-of-range pages (consistent with the screenshot endpoint). Pages are 0-indexed,
+    # so the valid range is 0..page_count-1; fall back to the highest block page when page_count
+    # is unset (e.g. older documents) so a document with blocks still bounds-checks correctly.
+    max_page = (doc.page_count - 1) if doc.page_count else (max((b.page for b in blocks), default=-1))
+    if page_number < 0 or page_number > max_page:
+        # 404 — requested page is outside the document's page range.
+        CONTEXT.logger.warning(
+            f"Page detail rejected (404 out of range): collection={collection_id} "
+            f"document={document_id} page={page_number} max_page={max_page}"
+        )
+        raise HTTPException(
+            status_code=404,
+            detail=f"Page {page_number} out of range for document {document_id}.",
+        )
     page_blocks = [b for b in blocks if b.page == page_number]
 
-    # 2. Shape blocks + text + covering chunks
+    # 3. Shape blocks + text + covering chunks
     return PageDetailResponse(
         document_id=document_id, page=page_number, n_blocks=len(page_blocks),
         blocks=[_block_info(b) for b in page_blocks],
@@ -87,11 +102,21 @@ async def get_page_screenshot(
     # 1. Document must exist + be fully processed
     doc = await _require_document(collection_id, document_id)
     if doc.status != "done":
+        # 409 — document is not fully processed yet, so its PDF render is not available.
+        CONTEXT.logger.warning(
+            f"Page screenshot rejected (409 not done): collection={collection_id} "
+            f"document={document_id} page={page_number} status={doc.status!r}"
+        )
         raise HTTPException(status_code=409, detail=f"Document {document_id} not done (status={doc.status!r}).")
 
     # 2. Download original PDF from object store
     pdf_key = S3Helpers.key_original(doc.source_hash)
     if not await CONTEXT.s3.exists(pdf_key):
+        # 404 — the content-addressed original PDF blob is missing from the object store.
+        CONTEXT.logger.warning(
+            f"Page screenshot rejected (404 PDF missing): collection={collection_id} "
+            f"document={document_id} page={page_number} source_hash={doc.source_hash}"
+        )
         raise HTTPException(status_code=404, detail="Original PDF not available in object store.")
     pdf_bytes = await CONTEXT.s3.download(pdf_key)
 
@@ -100,6 +125,11 @@ async def get_page_screenshot(
     try:
         png_bytes = await loop.run_in_executor(None, _render_page_png, pdf_bytes, page_number)
     except ValueError as exc:
+        # 404 — page index is out of range for the rendered PDF (raised by _render_page_png).
+        CONTEXT.logger.warning(
+            f"Page screenshot rejected (404 out of range): collection={collection_id} "
+            f"document={document_id} page={page_number} error={exc}"
+        )
         raise HTTPException(status_code=404, detail=str(exc))
 
     return Response(content=png_bytes, media_type="image/png")
@@ -132,6 +162,10 @@ async def _require_document(collection_id: uuid.UUID, document_id: uuid.UUID):
     async with CONTEXT.postgres.session() as session:
         doc = await CONTEXT.document_repo.get_by_id(session, document_id)
     if doc is None or doc.collection_id != collection_id:
+        # 404 — document id is unknown OR belongs to a different collection (scope mismatch).
+        CONTEXT.logger.warning(
+            f"Page document lookup rejected (404): document={document_id} collection={collection_id}"
+        )
         raise HTTPException(
             status_code=404, detail=f"Document {document_id} not found in collection {collection_id}."
         )

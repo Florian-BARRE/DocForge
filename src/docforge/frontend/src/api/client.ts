@@ -157,6 +157,17 @@ export const listDocuments = (
 export const getDocument = (collectionId: string, docId: string): Promise<Document> =>
   request<Document>(`/collections/${collectionId}/documents/${docId}`)
 
+// ── Real-time streams (SSE, brique C) ───────────────────────────────────────
+
+// Live job/stage updates scoped to one collection's documents — replaces 2 s polling in
+// DocumentsTab. EventSource auto-reconnects natively; callers fall back to polling on `onerror`.
+export const streamCollectionDocuments = (collectionId: string): EventSource =>
+  new EventSource(`/api/v1/collections/${collectionId}/documents/stream`)
+
+// Global monitoring event stream (jobs, stages, workers, batches) for the Monitoring tab.
+export const streamMonitoring = (): EventSource =>
+  new EventSource('/api/v1/monitoring/stream')
+
 export const ingestDocument = (
   collectionId: string,
   file: File,

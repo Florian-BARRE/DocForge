@@ -67,6 +67,8 @@ async def get_job(job_id: uuid.UUID) -> JobResponse:
     async with CONTEXT.postgres.session() as session:
         job = await CONTEXT.job_repo.get_by_id(session, job_id)
     if job is None:
+        # 404 — no job row with this id.
+        CONTEXT.logger.warning(f"Job lookup rejected (404 unknown job): job={job_id}")
         raise HTTPException(status_code=404, detail=f"Job {job_id} not found.")
 
     # 2. Attach the live arq status (queued / in_progress / complete / …)
@@ -96,6 +98,8 @@ async def cancel_job(job_id: uuid.UUID) -> JobCancelResponse:
     async with CONTEXT.postgres.session() as session:
         job = await CONTEXT.job_repo.get_by_id(session, job_id)
     if job is None:
+        # 404 — cannot cancel a job that does not exist.
+        CONTEXT.logger.warning(f"Job cancel rejected (404 unknown job): job={job_id}")
         raise HTTPException(status_code=404, detail=f"Job {job_id} not found.")
 
     # 2. Ask arq to abort (job ids match the enqueue-time _job_id = str(job_id))
@@ -105,4 +109,6 @@ async def cancel_job(job_id: uuid.UUID) -> JobCancelResponse:
         if aborted else
         "Abort not applied — job already finished or could not be cancelled."
     )
+    # Cancellation is a state-changing request — record the arq abort outcome.
+    CONTEXT.logger.info(f"Job cancel requested job={job_id} aborted={aborted}")
     return JobCancelResponse(job_id=job_id, aborted=aborted, message=message)

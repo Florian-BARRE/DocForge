@@ -69,6 +69,10 @@ async def create_collection(body: CreateCollectionRequest) -> ConfigStateRespons
     issues = ConfigValidator.validate(config_doc, CONTEXT.registry.describe_stages()["stages"])
     errors = [i for i in issues if i["severity"] == "error"]
     if errors:
+        # 422 — the requested pipeline config has at least one error-severity coherence issue.
+        CONTEXT.logger.warning(
+            f"Collection create rejected (422 invalid pipeline): name={body.name!r} errors={errors}"
+        )
         raise HTTPException(
             status_code=422,
             detail={"message": "Invalid pipeline configuration.", "issues": issues},
@@ -89,6 +93,8 @@ async def create_collection(body: CreateCollectionRequest) -> ConfigStateRespons
                 metadata_fields=metadata_fields,
             )
     except IntegrityError:
+        # 409 — a collection with this (unique) name already exists.
+        CONTEXT.logger.warning(f"Collection create rejected (409 duplicate name): name={body.name!r}")
         raise HTTPException(status_code=409, detail=f"A collection named {body.name!r} already exists.")
 
     # 4. Build the transparency envelope: what was provided vs defaulted at creation
@@ -118,6 +124,8 @@ async def delete_collection(collection_id: uuid.UUID) -> DeleteResponse:
     async with CONTEXT.postgres.session() as session:
         collection = await CONTEXT.collection_repo.get_by_id(session, collection_id)
     if collection is None:
+        # 404 — cannot delete a collection that does not exist.
+        CONTEXT.logger.warning(f"Collection delete rejected (404 unknown collection): collection={collection_id}")
         raise HTTPException(status_code=404, detail=f"Collection {collection_id} not found.")
 
     # 2. Determine which blobs are safe to delete (not shared with other collections)
