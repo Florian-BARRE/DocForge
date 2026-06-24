@@ -1,1 +1,0 @@
-- [Import rename patterns after libs/ reorg](feedback_import_renames.md) — SemanticParams→SemanticConfig alias, hybrid_search_models→models, Docker __pycache__ hides these
