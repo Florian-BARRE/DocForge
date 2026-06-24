@@ -1,0 +1,53 @@
+[project]
+name = "docforge-mcp"
+version = "0.1.0"
+description = "DocForge MCP server — exposes the full DocForge REST API as MCP tools (pure HTTP client)"
+requires-python = ">=3.12"
+dependencies = [
+    # MCP server SDK — streamable_http_app() requires >= 1.8.0; pin >= 1.9.0 for HTTP stability.
+    "mcp>=1.9.0",
+    # HTTP client to the DocForge REST API.
+    "httpx>=0.28.0",
+    # ASGI server + framework for the streamable-HTTP transport and the auth middleware.
+    "uvicorn[standard]>=0.32.0",
+    "starlette>=0.40.0",
+    # Config & logging (internal libraries) — same sources as the main docforge app.
+    "loggerplusplus>=1.0.0",
+    "configplusplus>=0.1.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.24.0",
+    "ruff>=0.8.0",
+    "mypy>=1.13.0",
+]
+
+[tool.uv]
+# This app is run as scripts (python entrypoint.py), not installed as a package — only its
+# dependencies are resolved. Avoids needing a build backend / wheel for the project itself.
+package = false
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+ignore = [
+    "F541",   # f-string without placeholder (loggerplusplus convention)
+    "E501",   # line too long (handled by formatter)
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["config_loader", "libs"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true

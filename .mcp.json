@@ -2,11 +2,12 @@
   "mcpServers": {
     "docforge": {
       "command": "python",
-      "args": ["src/docforge/mcp_server.py"],
+      "args": ["src/docforge_mcp/entrypoint.py"],
       "env": {
-        "DOCFORGE_API_URL": "http://localhost:8000"
+        "MCP_TRANSPORT": "stdio",
+        "DOCFORGE_API_URL": "http://localhost:10020"
       },
-      "description": "DocForge document intelligence — search, ingest, collections"
+      "description": "DocForge document intelligence — full REST surface as MCP tools (stdio). For remote clients, run the `mcp` compose service and connect to http://<host>:10030/mcp with an Authorization: Bearer <MCP_AUTH_TOKEN> header."
     },
     "memory": {
       "command": "npx",
