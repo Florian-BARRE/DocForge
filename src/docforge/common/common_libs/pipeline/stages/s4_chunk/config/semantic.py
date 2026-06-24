@@ -80,6 +80,7 @@ class SemanticConfig(BaseModel):
         from pydantic import Field as _F
         from pydantic import TypeAdapter
 
+        from common_libs.providers.embed.bge_server.config import BgeServerEmbedConfig
         from common_libs.providers.embed.openai_compat.config import OpenAICompatEmbedConfig
         from common_libs.providers.embed.tei.config import TeiEmbedConfig
 
@@ -89,12 +90,12 @@ class SemanticConfig(BaseModel):
             return self
 
         # Already a typed instance — nothing to do.
-        if isinstance(self.embed, (TeiEmbedConfig, OpenAICompatEmbedConfig)):
+        if isinstance(self.embed, (BgeServerEmbedConfig, TeiEmbedConfig, OpenAICompatEmbedConfig)):
             return self
 
         # Dict → validate via the same discriminated union the rest of the codebase uses.
         Union_ = Annotated[
-            TeiEmbedConfig | OpenAICompatEmbedConfig,
+            BgeServerEmbedConfig | TeiEmbedConfig | OpenAICompatEmbedConfig,
             _F(discriminator="id"),
         ]
         adapter = TypeAdapter(Union_)

@@ -81,6 +81,7 @@ class EmbedConfig(BaseModel):
         from pydantic import Field as _F
         from pydantic import TypeAdapter
 
+        from common_libs.providers.embed.bge_server.config import BgeServerEmbedConfig
         from common_libs.providers.embed.openai_compat.config import OpenAICompatEmbedConfig
         from common_libs.providers.embed.tei.config import TeiEmbedConfig
 
@@ -90,7 +91,7 @@ class EmbedConfig(BaseModel):
 
         # Build the discriminated union from the (post-merge) embed configs.
         union = Annotated[
-            TeiEmbedConfig | OpenAICompatEmbedConfig,
+            BgeServerEmbedConfig | TeiEmbedConfig | OpenAICompatEmbedConfig,
             _F(discriminator="id"),
         ]
         adapter = TypeAdapter(union)
