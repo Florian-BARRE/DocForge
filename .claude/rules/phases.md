@@ -183,9 +183,8 @@ docker-compose.dev.yml                          # reranker port 10027:80
 
 ## Resource/Job/Monitoring chantier — Brique A (Observability)
 
-> Roadmap of 5 bricks (A observability → C real-time SSE → D resources → B mass ingestion →
-> E dashboard): `docs/superpowers/specs/2026-06-23-resource-job-monitoring-roadmap-design.md`.
-> Brique A RPI docs: `docs/rpi/observability-brick-a/{research,plan,implementation}.md`.
+> Roadmap of 5 bricks: A observability → C real-time SSE → D resources → B mass ingestion →
+> E dashboard. A, C, D are done (B mass ingestion is next).
 
 ```
 libs/observability/                          # NEW L2 bucket (imports only domain/config/providers/storage)
