@@ -5,7 +5,7 @@ Spec complète : `SPEC-docforge-document-intelligence-platform.md`
 
 ---
 
-## Phase courante : P6 — UI React + MCP server ✅ done
+## Phase courante : P7 — Search pipeline engine ✅ done
 
 | Phase | Statut | Contenu |
 |---|---|---|
@@ -15,6 +15,7 @@ Spec complète : `SPEC-docforge-document-intelligence-platform.md`
 | **P4** | ✅ done | S4 chunking structure-aware, S5 contextualisation, S6 BGE-M3 + Qdrant multi-vecteurs |
 | **P5** | ✅ done | Collections schema + pipeline update + reindex, hybrid search, chunks router, markdown endpoint |
 | **P6** | ✅ done | UI React (workspace unifié, drag-and-drop, live status, recherche hybride) + MCP server |
+| **P7** | ✅ done | SearchPipelineEngine : query transform (rewrite/HyDE/multi_query) + cross-encoder reranking (BGE/Cohere) |
 
 > Phase file inventory and key decisions per phase → `.claude/rules/phases.md`
 
@@ -103,13 +104,32 @@ src/docforge/             # Source app (dans WORKDIR /app/docforge)
   backend/                # FastAPI app, CONTEXT, lifespan, routers (+ backend/libs/utils)
   migrations/             # Alembic
 services/                 # .env par service (docforge, postgres, seaweedfs, gotenberg, redis)
-docker-compose.yml        # Production
+docker-compose.yml        # Production (+ deploy.resources.limits par service)
 docker-compose.dev.yml    # Dev overrides (volumes + --reload)
 ```
+
+> Conso ressources & plafonds CPU/RAM par service → `docs/deployment-resources.md`
 
 > Imports : toujours `from libs.<bucket>.<module> import …` (jamais d'import plat).
 > Fichiers >200 lignes = signal de découpage ; quelques exceptions cohésives documentées
 > subsistent (ORM models, IR schema, StageEngine orchestrator) avec justification en docstring.
+
+### `libs/` = socle commun à deux consommateurs
+
+`libs/` n'appartient ni au backend ni au worker : c'est leur **socle partagé** (le « common »).
+Deux points d'entrée le consomment — `entrypoint.py` (backend FastAPI) et `arq_worker.py` (worker arq).
+C'est pourquoi `libs/` est leur **frère**, jamais rangé sous `backend/` (sinon le worker dépendrait du
+web sans raison). Zones d'usage réelles :
+
+| Zone | Modules | Lancé par |
+|---|---|---|
+| **Backend-only** (web/query) | `search/hybrid`, `search/metadata_indexer`, `observability/queue`, `backend/libs/` (error_handling, sse, admission) | uvicorn |
+| **Worker-only** (ingestion) | `pipeline/engine`, `pipeline/orchestrator`, `pipeline/worker/`, exécution des stages `pipeline/stages/` (S0→S6), `observability/metrics` | arq |
+| **Partagé** (le socle) | `domain`, `config`, `providers` (+ `pipeline/assembly` registry), `storage`, `pipeline/caches`, `observability/events`+`heartbeat`, `search/field_index` | les deux |
+
+> Le backend ne lance **jamais** le pipeline d'ingestion S0→S6 : il enqueue un job, le worker l'exécute.
+> Le registry (`pipeline/assembly`) câble dynamiquement providers + stages → il tire l'essentiel du socle,
+> ce qui rend une scission physique backend/worker/common peu rentable (le partagé est majoritaire).
 
 ## Règles
 

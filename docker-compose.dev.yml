@@ -57,6 +57,12 @@ services:
       # Point Vite's /api proxy to the backend container name (not localhost,
       # which would resolve to the frontend container itself inside the network).
       - VITE_PROXY_TARGET=http://docforge:8000
+    # Vite dev server (Node) — light; cap at 1 GiB / 1 CPU to stay sober in dev.
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 1g
     networks:
       - docforge_net
     # Run Vite dev server listening on all interfaces (required inside container).
@@ -85,3 +91,14 @@ services:
     # Expose the reranker port for operator inspection and local testing during development.
     ports:
       - "10027:80"          # TEI reranker dev access: http://localhost:10027/health
+
+  mcp:
+    # Volume-mount source so tool/SDK edits are picked up on container restart.
+    # The MCP server has no hot-reload of its own; restart the container after edits
+    # (docker compose restart mcp) — it boots in well under a second.
+    volumes:
+      - ./src/docforge_mcp:/app/docforge_mcp
+    environment:
+      # Override the transport here if you want to exercise stdio locally instead of HTTP.
+      - MCP_TRANSPORT=streamable-http
+      - LOGGING_CONSOLE_LEVEL=DEBUG

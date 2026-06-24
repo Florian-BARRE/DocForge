@@ -3,7 +3,7 @@ paths:
   - "src/docforge/libs/**"
   - "src/docforge/backend/**"
   - "src/docforge/frontend/**"
-  - "src/docforge/mcp_server.py"
+  - "src/docforge_mcp/**"
 ---
 
 # DocForge — Phase File Inventory
@@ -92,7 +92,7 @@ frontend/src/components/Header.tsx           # collection tabs + searchbar
 frontend/src/components/DropZone.tsx         # drag-and-drop zone
 frontend/src/components/DocumentCard.tsx     # animated status indicators
 frontend/src/components/SearchResults.tsx    # ranked chunks with score bar
-mcp_server.py                                # FastMCP stdio — 7 tools
+mcp_server.py                                # FastMCP stdio — 7 tools (SUPERSEDED → moved to src/docforge_mcp/ in P8)
 .mcp.json                                    # Claude Code MCP config
 ```
 
@@ -204,3 +204,143 @@ config/runtime/runtime_config.py             # WORKER_MAX_JOBS, WORKER_ALLOW_ABO
 - `progress_cb` is the sole L3 touch — optional, telemetry-only, failures swallowed; not a DAG node.
 - arq abort wired via `allow_abort_jobs=True` + existing `_job_id=str(job_uuid)`; cancel endpoint top-level.
 - `mark_running`/`mark_finished` are job STATE (fail the job on error); event publishes are best-effort.
+
+---
+
+## Resource/Job/Monitoring chantier — Brique C (Real-time SSE)
+
+> Build order A→C→D→B→E. RPI docs: `docs/rpi/observability-brick-c/{research,plan,implementation}.md`.
+> Push model replacing the Documents tab's 2 s polling. Brique A already publishes typed events on
+> `docforge:events`; brique C subscribes once per backend process and fans out to browsers via SSE.
+
+```
+libs/observability/events/broadcaster.py     # NEW EventBroadcaster — 1 dedicated Redis pubsub sub →
+                                             #   per-client bounded asyncio.Queue fan-out (drop-oldest);
+                                             #   _run self-heals on drop (capped exp backoff)
+libs/observability/events/{__init__,publisher}.py  # export EventBroadcaster; stage_progress +collection_id/document_id
+libs/pipeline/worker/tasks.py                # _progress_cb forwards collection_id/document_id
+backend/libs/utils/sse.py                    # NEW SseHelpers — stream(broadcaster, keepalive, predicate)
+                                             #   + collection_predicate(id); SSE routes omit response_model
+backend/libs/utils/__init__.py              # export SseHelpers
+backend/context.py                           # +event_broadcaster: EventBroadcaster
+backend/lifespan.py                          # TOTAL_STEPS=9; start broadcaster step 7; stop() in finally
+backend/routers/monitoring/{router,helpers}.py  # GET /stream (global) + discovery advertises stream_endpoint
+backend/routers/collections/documents/router.py # GET /stream (collection-scoped, BEFORE /{document_id})
+config/runtime/runtime_config.py             # SSE_KEEPALIVE_SECONDS=15, SSE_CLIENT_QUEUE_MAXSIZE=100
+services/docforge/.env                       # same two SSE vars
+frontend/src/api/client.ts                   # streamCollectionDocuments / streamMonitoring (EventSource)
+frontend/src/components/documents/DocumentsTab.tsx  # EventSource (job.updated+stage.progress) debounced
+                                             #   refetch + polling fallback torn down once events resume
+tests/unit/{test_event_broadcaster,test_sse_helpers}.py  # NEW fan-out/predicate units
+tests/unit/test_observability_events.py      # stage_progress shape + scope enrichment
+tests/api/monitoring/test_monitoring.py      # discovery asserts wired stream endpoint
+pyproject.toml                               # +sse-starlette
+```
+
+### Key decisions — Brique C
+- New dep: `sse-starlette` (deferred from A). No migration.
+- ONE `EventBroadcaster` per process with its OWN Redis connection — a subscribe-mode connection
+  cannot issue other commands, so never reuse the arq pool. One sub serves N tabs; multi-instance
+  backends each subscribe (pub/sub delivers to all).
+- Pub/sub has no replay → clients snapshot-then-stream (REST snapshot + SSE deltas).
+- `stage.progress` enriched with collection_id/document_id (Option A) so the scoped stream can filter
+  without resolving job→collection in the broadcaster (keeps it domain-agnostic).
+- SSE routes keep `@auto_handle_errors` but OMIT `response_model` (a live stream is not a Pydantic
+  model) — documented inline. Collection `/stream` MUST precede `/{document_id}` (FastAPI matches in
+  declaration order, else "stream" is captured as a doc id).
+- Back-pressure: per-client `asyncio.Queue(maxsize=SSE_CLIENT_QUEUE_MAXSIZE)`, drop-oldest on overflow.
+- `_run` self-heals a dropped Redis subscription (browser→backend SSE link stays open, so the
+  frontend `onerror` fallback can't see a backend→Redis drop); fan-out snapshots the subscriber set.
+- Frontend: native `EventSource` (auto-reconnect), debounced refetch, polling fallback on `onerror`
+  that is torn down once SSE events resume (avoids permanent double-fetch).
+
+---
+
+## Resource/Job/Monitoring chantier — Brique D (Resource management)
+
+> Build order A→C→**D**→B→E. RPI docs: `docs/rpi/resource-brick-d/{research,plan,implementation}.md`.
+> Enqueue-time back-pressure gate — the mechanism Brique B (wave-based mass ingestion) relies on.
+> NEW sibling of the config-time `AdmissionValidator`: this gate asks "can we accept MORE load?".
+
+```
+backend/libs/admission/                      # NEW backend lib (sibling of config-time AdmissionValidator)
+  admitter.py                                #   ResourceAdmitter(LoggerClass) — pure evaluate() + fail-soft admit()
+  models.py                                  #   AdmissionDecision / AdmissionSnapshot / ResourceLimits (frozen)
+backend/routers/collections/limits/          # NEW sub-router GET/PUT /collections/{id}/limits (+ live usage)
+  {router,models,__init__}.py
+libs/providers/device/snapshot.py            # NEW DeviceSnapshot frozen gauge
+libs/providers/device/manager.py             # +snapshot() read-only gauge (per-capability resolved device)
+backend/routers/collections/documents/router.py  # ingest gate: 429 capacity / 409 budget, after admissibility+dedup
+backend/routers/monitoring/{models,helpers,router}.py  # GET /monitoring/resources + discovery 'resources' panel
+backend/{app,context,entrypoint,lifespan}.py # limits_router wiring + resource_admitter injection
+libs/storage/postgres/models/collection.py   # +max_in_flight INT, budget_cap_usd FLOAT (nullable)
+libs/storage/postgres/repositories/collection_repo.py  # +update_limits()
+libs/storage/postgres/repositories/job_repo.py         # +sum_budget_by_collection()
+config/runtime/runtime_config.py             # ADMISSION_ENABLED / MAX_QUEUE_DEPTH / MAX_IN_FLIGHT_GLOBAL
+services/docforge/.env                       # same 3 ADMISSION_* vars (commented, 0 = unlimited)
+migrations/versions/010_collection_limits.py # +collection per-collection limit columns (009 → 010)
+tests/unit/{test_resource_admitter,test_device_snapshot}.py
+tests/api/collections/limits/test_collection_limits.py
+tests/api/{collections/documents/test_documents,monitoring/test_monitoring,conftest}.py  # 429 / resources / wiring
+```
+
+### Key decisions — Brique D
+- **Sibling not extension**: document-admissibility (415/413/422) runs first, then resource-admission
+  (429/409), and only AFTER the duplicate short-circuit — a harmless re-upload is never throttled.
+- **Pure core / I/O shell**: `evaluate(snapshot, limits)` is pure & unit-tested as a decision matrix;
+  `admit(*, session, collection, queue_introspector, job_repo)` does the I/O with injected collaborators.
+- **Fail-soft**: any introspection error (Redis/Postgres down) → ADMIT + warn. Back-pressure must
+  never become a new way to drop ingestion.
+- **Precedence**: budget (409) checked before capacity (429).
+- **Sentinels**: global int caps `0` = unlimited; per-collection caps `None` = no cap. A *zero*
+  per-collection cap is rejected at the API boundary (`ge=1`/`gt=0`) — it would freeze the collection,
+  and "unlimited" is already null.
+- **Hot-path cheap**: backlog=`ZCARD`, running/spend=indexed Postgres COUNT/SUM — no `SCAN`.
+- **Limits as a dedicated sub-resource** (GET/PUT), NOT config merge-patch: keeps resource policy out
+  of the pipeline blob (migration-010 columns) so editing a limit never triggers reindex semantics.
+- **No async resource**: `resource_admitter` built in `entrypoint.py` wiring (not lifespan), no finally
+  guard needed — collaborators passed per-call.
+- **Device gauge**: `DeviceManager.snapshot()` → frozen `DeviceSnapshot` feeds `/monitoring/resources`;
+  VLM skips CPU by design → resolves to `remote` on a CPU-only host.
+
+---
+
+## P8 — Standalone MCP server (full REST surface)
+
+> Separate minimal app `src/docforge_mcp/` — a PURE HTTP client of the DocForge API exposing the
+> whole REST surface as MCP tools, so any LLM/chatbot drives DocForge without a dedicated app.
+> Replaces the old 7-tool `src/docforge/mcp_server.py` (deleted). RPI: `docs/rpi/mcp-full-surface/plan.md`.
+
+```
+src/docforge_mcp/
+  entrypoint.py                  # name aligned w/ docforge; dispatches MCP_TRANSPORT (stdio | streamable-http)
+  config_loader.py               # McpConfig(EnvConfigLoader) — self-contained (NOT docforge RUNTIME_CONFIG)
+  pyproject.toml + uv.lock       # 6 deps only: mcp>=1.9.0, httpx, uvicorn, starlette, loggerplusplus, configplusplus
+  Dockerfile                     # 2-stage uv build, ~150 MB (none of the ML stack)
+  libs/
+    auth.py                      # StaticBearerAuthMiddleware (401 on bad/absent Bearer token)
+    server.py                    # build_mcp(sdk) + build_http_app(mcp, config) (streamable_http_app + middleware)
+    sdk/                         # DocForge SDK — typed HTTP client, reusable alone, no domain import
+      transport.py               #   DocForgeTransport (httpx get/post/delete/upload/get_bytes)
+      client.py                  #   DocForgeClient — composes the 11 sub-APIs
+      {health,discovery,collections,collection_config,documents,search,files,chunks,pages,jobs,monitoring}.py
+    tools/                       # MCP layer — 36 @mcp.tool wrappers (1 line each) over the SDK
+      __init__.py                #   register_all(mcp, sdk)
+      <same 11 domain modules>
+  tests/unit/{test_sdk,test_auth,test_tool_registration}.py
+services/docforge_mcp/.env       # MCP_TRANSPORT/HOST/PORT/HTTP_PATH/AUTH_TOKEN + DOCFORGE_API_URL
+docker-compose.yml               # `mcp` service (docforge-mcp:latest, 10030:9000, depends_on docforge)
+docker-compose.dev.yml           # mcp volume mount + DEBUG
+.mcp.json                        # local stdio entry repointed to src/docforge_mcp/entrypoint.py
+```
+
+### Key decisions — P8
+- **Pure HTTP client**: SDK calls `POST/GET /api/v1/...`, never imports `libs/` domain → MCP stays out of the layer DAG.
+- **Dedicated minimal image** (not shared docforge:latest): ~150 MB, independent deploy, smaller attack surface for the exposed component.
+- **Self-contained `McpConfig`** (not RUNTIME_CONFIG): avoids forcing Postgres/S3 secrets on a client; keeps standalone stdio working.
+- **Package named `mcp_app`-style under `libs/`, never `mcp/`** — a top-level `mcp` package would shadow the third-party `mcp` lib.
+- **Two-layer split**: `sdk/` (knows the API: paths/bodies, typed, testable) vs `tools/` (presents to the LLM: docstrings/schemas). Tools are 1-line wrappers.
+- **Bi-transport**: `stdio` (local Claude Desktop, logs to STDERR — stdout is the protocol channel) | `streamable-http` (container, `stateless_http=True`+`json_response=True`).
+- **Bearer auth** via custom Starlette middleware (built-in FastMCP auth is OAuth2/overkill); HTTP mode refuses to boot without `MCP_AUTH_TOKEN`.
+- **36 tools** = health(1)+discovery(1)+collections(3)+config(5)+documents(6)+search(2)+files(4)+chunks(3)+pages(4)+jobs(3)+monitoring(4). Search exposes filters/weights/debug; page screenshot returns an MCP `Image`.
+- Windows gotcha: log messages must stay ASCII (cp1252 console can't encode `→`); use `->`.

@@ -4,6 +4,14 @@
 #
 # All services communicate on the internal `docforge_net` network.
 # External ports are exposed only where operator access is needed (API, Postgres).
+#
+# Resource limits:
+#   Every service declares `deploy.resources.limits` (cpus + memory). These are
+#   HARD CEILINGS (not reservations) honoured by `docker compose up` in v2 — they
+#   cap runaway usage so no single container can starve the WSL2 VM (~15.5 GiB on
+#   this host) and trigger engine instability. Values are sized from observed
+#   usage with generous headroom: heavy on the ML/parsing services
+#   (worker / tei / reranker) and tight on the lightweight ones.
 
 services:
 
@@ -28,6 +36,12 @@ services:
         condition: service_started
       tei:
         condition: service_started   # Query-time embedding needs TEI at startup
+    # API is I/O-bound at runtime (embeds delegated to TEI); 2 GiB / 2 CPUs is ample.
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 2g
     restart: unless-stopped
     networks:
       - docforge_net
@@ -44,6 +58,12 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    # Catalogue/job store: small footprint, 1 GiB / 1 CPU is comfortable.
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 1g
     restart: unless-stopped
     networks:
       - docforge_net
@@ -68,6 +88,12 @@ services:
       - seaweedfs_data:/data
       # s3_config.json is kept for reference but not loaded — running without S3 auth is safe on
       # the internal docker network (port 10021 is for operator inspection only, not external access)
+    # Object gateway: light steady-state; 1 GiB / 1 CPU caps it without throttling I/O.
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 1g
     restart: unless-stopped
     networks:
       - docforge_net
@@ -78,6 +104,12 @@ services:
     image: gotenberg/gotenberg:8
     env_file:
       - services/gotenberg/.env
+    # LibreOffice + Chromium spike during conversion; 2 GiB / 2 CPUs absorbs the bursts.
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 2g
     restart: unless-stopped
     networks:
       - docforge_net
@@ -89,6 +121,12 @@ services:
       - services/redis/.env
     volumes:
       - redis_data:/data
+    # Pure job-queue broker: tiny resident set; 512 MiB / 1 CPU is plenty.
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 512m
     restart: unless-stopped
     networks:
       - docforge_net
@@ -102,6 +140,12 @@ services:
       - "10025:6333"              # Qdrant REST API — for operator inspection
     volumes:
       - qdrant_data:/qdrant/storage
+    # Vector index/search grows with collection size; 2 GiB / 2 CPUs is a sane cap.
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 2g
     restart: unless-stopped
     networks:
       - docforge_net
@@ -121,6 +165,12 @@ services:
       - "10026:80"              # Operator access: http://localhost:10026/health to verify liveness
     volumes:
       - tei_cache:/data         # Cache downloaded model weights between restarts
+    # CPU embedding is compute-bound; 3 CPUs keeps it responsive, 3 GiB covers batch buffers.
+    deploy:
+      resources:
+        limits:
+          cpus: "3"
+          memory: 3g
     restart: unless-stopped
     networks:
       - docforge_net
@@ -137,6 +187,12 @@ services:
     command: --model-id BAAI/bge-reranker-v2-m3 --port 80 --max-client-batch-size 128
     volumes:
       - reranker_model_cache:/root/.cache/huggingface   # Cache downloaded model weights
+    # Cross-encoder model is ~2.1 GiB resident; 3 GiB ceiling + 3 CPUs for batch scoring.
+    deploy:
+      resources:
+        limits:
+          cpus: "3"
+          memory: 3g
     restart: unless-stopped
     networks:
       - docforge_net
@@ -164,6 +220,80 @@ services:
         condition: service_started
       tei:
         condition: service_started   # S6 ingestion needs TEI for embedding
+    # Heaviest service: Docling parsing + pipeline stages. 4 GiB / 4 CPUs is the
+    # largest budget here, sized so ingestion stays workable without monopolising the host.
+    deploy:
+      resources:
+        limits:
+          cpus: "4"
+          memory: 4g
+    restart: unless-stopped
+    networks:
+      - docforge_net
+
+  # ── pgAdmin 4 — PostgreSQL web administration UI ─────────────────────────────
+  # Operator/inspection tool only — reaches Postgres by service name over the
+  # internal network. The DocForge server connection is fully auto-provisioned:
+  #   * servers.json  → pre-registers the "DocForge" server (host/port/user/db).
+  #   * pgpass        → pre-fills the Postgres password (referenced as PassFile).
+  # On first start pgAdmin imports these, so you only log into the pgAdmin web UI
+  # (credentials in services/pgadmin/.env) — no manual server setup is required.
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    env_file:
+      - services/pgadmin/.env
+    environment:
+      # Tell pgAdmin where to find the server definitions to import at boot.
+      - PGADMIN_SERVER_JSON_FILE=/pgadmin4/servers.json
+    volumes:
+      # Read-only provisioning files imported once during startup.
+      - ./services/pgadmin/servers.json:/pgadmin4/servers.json:ro
+      - ./services/pgadmin/pgpass:/pgpass:ro
+      # Persist pgAdmin's own config DB (imported servers, preferences) across restarts.
+      - pgadmin_data:/var/lib/pgadmin
+    ports:
+      - "10028:80"            # pgAdmin web UI — firewall: only 10000-11000 open
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # Inspection UI only — not on the hot path; 512 MiB / 1 CPU is enough.
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 512m
+    restart: unless-stopped
+    networks:
+      - docforge_net
+
+  # ── MCP server — DocForge tools over streamable HTTP ────────────────────────
+  # Standalone minimal image (httpx + mcp + uvicorn only — none of the ML stack).
+  # Pure HTTP client of the docforge API: exposes the full REST surface as MCP tools so any
+  # LLM/chatbot can drive DocForge. Reaches the API by service name over docforge_net.
+  # The port is published, so a bearer token (MCP_AUTH_TOKEN in services/docforge_mcp/.env)
+  # is mandatory — the server refuses to start in HTTP mode without it.
+  mcp:
+    build:
+      context: src                  # Same context as docforge so sibling app folders are visible
+      dockerfile: docforge_mcp/Dockerfile
+    image: docforge-mcp:latest
+    command: python entrypoint.py
+    env_file:
+      - services/docforge_mcp/.env
+    environment:
+      - MCP_TRANSPORT=streamable-http     # Container always serves over HTTP
+      - DOCFORGE_API_URL=http://docforge:8000
+    ports:
+      - "10030:9000"              # MCP streamable-http endpoint at /mcp (firewall: 10000-11000)
+    depends_on:
+      docforge:
+        condition: service_started
+    # Thin HTTP proxy to the API — negligible footprint; 512 MiB / 1 CPU.
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 512m
     restart: unless-stopped
     networks:
       - docforge_net
@@ -176,6 +306,7 @@ volumes:
   qdrant_data:      # Qdrant vector collections (dense + sparse indexes)
   tei_cache:        # BGE-M3 model weights — ~1.1 GB, cached across restarts
   reranker_model_cache:  # BGE-Reranker-v2-m3 model weights — ~1.1 GB, cached across restarts
+  pgadmin_data:     # pgAdmin config DB (imported servers, preferences)
 
 # ── Internal network ──────────────────────────────────────────────────────────
 networks:
