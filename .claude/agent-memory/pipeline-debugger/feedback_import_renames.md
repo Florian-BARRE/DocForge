@@ -7,9 +7,9 @@ metadata:
 
 After the `libs/` restructuring (2026-06-19), callers were left importing old names/paths that no longer exist. Two patterns recur:
 
-**Pattern A — Renamed class:** A caller imports `SemanticParams` but the class was renamed to `SemanticConfig` (in `libs/pipeline/stages/s4_chunk/config/semantic.py`). Fix: update the import in the caller to use an alias (`SemanticConfig as SemanticParams`) so the internal `isinstance()` guard still works without logic changes.
+**Pattern A — Renamed class:** A caller imports `SemanticParams` but the class was renamed to `SemanticConfig` (in `common_libs/pipeline/stages/s4_chunk/config/semantic.py`). Fix: update the import in the caller to use an alias (`SemanticConfig as SemanticParams`) so the internal `isinstance()` guard still works without logic changes.
 
-**Pattern B — Renamed module file:** A caller imports from `libs.search.hybrid.hybrid_search_models` but the file was renamed to `models.py`. Fix: update the import path to `libs.search.hybrid.models`.
+**Pattern B — Renamed module file:** A caller imports from `backend.libs.search.hybrid.hybrid_search_models` but the file was renamed to `models.py`. Fix: update the import path to `backend.libs.search.hybrid.models` (the hybrid search module is app-only, under `app/backend/libs/search/`).
 
 **Why:** The `libs/` restructuring (phase map in `.claude/rules/phases.md`) moved and renamed many modules. Docker __pycache__ hid the errors in production; pytest reveals them because it triggers a fresh import chain.
 

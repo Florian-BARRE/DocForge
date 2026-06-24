@@ -29,7 +29,7 @@ catch correctness bugs, rule violations, and DocForge-specific anti-patterns.
 - [ ] Import order: stdlib → third-party → internal (`from config`) → local (relative)
 - [ ] Every non-trivial file starts with `# ====== Code Summary ======`
 - [ ] `__init__.py` files have labeled sections and `__all__`
-- [ ] `RUNTIME_CONFIG` is the first internal import in every entry point
+- [ ] `RUNTIME_CONFIG` is the first internal import in every entry point (per-app subclass `RUNTIME_CONFIG(BaseRuntimeConfig)` in `app/config/runtime_config.py` / `worker/config/runtime_config.py`; shared vars live in `BaseRuntimeConfig` at `common/base_config/runtime/base_config.py`)
 
 ### FastAPI rules (fastapi.md)
 - [ ] Every route has `@auto_handle_errors` decorator (below `@router.verb`, above `async def`)
@@ -42,9 +42,9 @@ catch correctness bugs, rule violations, and DocForge-specific anti-patterns.
 - [ ] IR is canonical — never treat markdown/PDF as source of truth
 - [ ] Every provider hides behind a `Protocol` interface
 - [ ] No `DeviceManager` logic inside individual providers
-- [ ] New env vars added to both `RUNTIME_CONFIG` and `services/docforge/.env`
-- [ ] Schema changes have an Alembic migration in `migrations/versions/`
-- [ ] New pipeline stages are wired as DAG nodes in `libs/pipeline/engine.py`
+- [ ] New env vars added to the right config (shared → `BaseRuntimeConfig`; app/worker-only → the per-app `RUNTIME_CONFIG` subclass) and `services/docforge/.env`
+- [ ] Schema changes have an Alembic migration in `common/migrations/versions/`
+- [ ] New pipeline stages are wired as DAG nodes in `worker/libs/pipeline/engine.py`
 - [ ] No MinIO references (SeaweedFS only, port 8333)
 - [ ] Container CLI uses `docker compose` (v2 syntax, no hyphen) — never `podman` or legacy `docker-compose`
 

@@ -5,7 +5,7 @@ metadata:
   type: pattern
 ---
 
-`ConfigDocument.merge_patch` (`libs/config/validation/document.py`) preserves per-collection credentials across the redacted round-trip. This is VALIDATED CORRECT — do not flag it as a secret-wipe bug on future reviews.
+`ConfigDocument.merge_patch` (`common_libs/config/validation/document.py`) preserves per-collection credentials across the redacted round-trip. This is VALIDATED CORRECT — do not flag it as a secret-wipe bug on future reviews.
 
 Mechanism:
 - Config responses redact secrets to `•••` (`_REDACTION_SENTINEL`); the UI echoes that back on the next save.

@@ -39,9 +39,9 @@ metadata:
 - [ ] IR is canonical — no code writes raw markdown/PDF as source of truth
 - [ ] Every provider implements its `Protocol` — duck-typed, no concrete coupling
 - [ ] No device logic (CUDA/CPU) inside individual providers — only in `DeviceManager`
-- [ ] New env vars: added to `RUNTIME_CONFIG` class AND `services/docforge/.env`
-- [ ] Schema change: Alembic migration present in `migrations/versions/`
-- [ ] New pipeline stage: wired as DAG node in `libs/pipeline/engine.py`
+- [ ] New env vars: shared → `BaseRuntimeConfig` (`common/base_config/runtime/base_config.py`); app/worker-only → the per-app `RUNTIME_CONFIG(BaseRuntimeConfig)` subclass; plus `services/docforge/.env`
+- [ ] Schema change: Alembic migration present in `common/migrations/versions/`
+- [ ] New pipeline stage: wired as DAG node in `worker/libs/pipeline/engine.py`
 - [ ] New stage: idempotency guaranteed (Postgres ON CONFLICT DO NOTHING, Qdrant upsert)
 
 ## Common anti-patterns seen in this codebase
@@ -88,9 +88,9 @@ metadata:
 
 ## Chain framework invariants (Phase A — generalised provider chains)
 
-- Every ML stage uses `providers.chain.Chain[T, R]` — parse, classifier, OCR,
+- Every ML stage uses `common_libs.providers.chain.Chain[T, R]` — parse, classifier, OCR,
   VLM, embed. New providers plug in by exposing `score() -> float | None` on
-  their result type (see `providers/scoring.py::ScoredResult`).
+  their result type (see `common_libs/providers/scoring.py::ScoredResult`).
 - Pipeline config fields are ALWAYS `chain: list[…]` + `gate: ChainGateConfig`
   (or `<stage>_chain` + `<stage>_gate` inside `EnrichConfig`). A legacy
   `{provider: {...}}` blob is lifted via `_lift_provider_to_chain` so old

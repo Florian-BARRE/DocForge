@@ -5,7 +5,7 @@ metadata:
   type: feedback
 ---
 
-Anti-patterns to check on every review touching `libs/search/pipeline/` or `libs/search/field_index/helpers.py`.
+Anti-patterns to check on every review touching `app/backend/libs/search/pipeline/` (app-only) or `common/common_libs/search/field_index/helpers.py` (shared).
 
 **Why:** caught during the P7b search-pipeline review; these are subtle and recur because the knobs are independent and the defaults mask the interaction.
 

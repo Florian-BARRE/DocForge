@@ -8,8 +8,8 @@ metadata:
 Page numbering across DocForge is **0-indexed**, not 1-indexed.
 
 **Why:** `block.prov.page` originates from the parser and is consumed directly as a PyMuPDF
-page index — `libs/pipeline/stages/s1_parse/renderer.py` does `doc[block.prov.page]` after a
-`page_num >= doc.page_count` bounds check. The pages router (`backend/routers/collections/documents/pages/router.py`)
+page index — `common_libs/pipeline/stages/s1_parse/renderer.py` does `doc[block.prov.page]` after a
+`page_num >= doc.page_count` bounds check. The pages router (`app/backend/routers/collections/documents/pages/router.py`)
 surfaces it unchanged: `PageInfo(page=b.page)`, and `_render_page_png(pdf, page_number)` also
 treats its argument as a 0-based fitz index. So for an N-page document the valid page indices are
 `0 .. N-1`. `GET .../pages/{n}` and `.../pages/{n}/screenshot` with `n=1` target the **second** page.

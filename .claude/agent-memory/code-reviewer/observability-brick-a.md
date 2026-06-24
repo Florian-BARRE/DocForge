@@ -7,9 +7,11 @@ metadata:
 
 # Observability Brique A — review findings
 
-Brique A = foundation of the resource/job/monitoring chantier. Located in
-`libs/observability/` (L2 bucket: queue/, metrics/, heartbeat/, events/), plus
-`libs/pipeline/worker/heartbeat.py`, routers `jobs/` + `monitoring/`, migration 009.
+Brique A = foundation of the resource/job/monitoring chantier. Now split across the three
+roots: shared `common_libs/observability/{heartbeat,events}/`, app-only
+`backend.libs.observability.queue` (`app/backend/libs/observability/queue/`), worker-only
+`libs.observability.metrics` (`worker/libs/observability/metrics/`), plus
+`worker/libs/pipeline/worker/heartbeat.py`, routers `jobs/` + `monitoring/`, migration 009.
 Briques B/C build on it (SSE streaming = brique C, batches = future).
 
 **Why:** future observability work plugs into these contracts (EventType enum,
@@ -28,8 +30,8 @@ WorkerHeartbeat schema, EVENTS_CHANNEL single channel, monitoring discovery pane
 
 ## Recurring anti-patterns caught (reusable)
 
-- **Misplaced/orphan section comment in bucket `__init__.py`**: top-level
-  `libs/observability/__init__.py` had a `# --- Queue introspection ---` header with the
+- **Misplaced/orphan section comment in bucket `__init__.py`**: the app-only
+  `app/backend/libs/observability/__init__.py` had a `# --- Queue introspection ---` header with the
   import 8 lines below it under a different section, and imports not alphabetic/grouped cleanly.
   Cosmetic but violates the labeled-section convention.
 - **Hardcoded third-party magic strings instead of importing the library constant**:

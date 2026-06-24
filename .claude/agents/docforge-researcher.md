@@ -28,7 +28,7 @@ up-to-date documentation and examples for the libraries and technologies used in
 | Migrations | Alembic |
 | Task queue | arq + Redis |
 | Vector DB | Qdrant (named dense + sparse vectors, RRF fusion) |
-| Embeddings | BGE-M3 via TEI HTTP API |
+| Embeddings | BGE-M3 via the local `bge` host (`src/bge_server/`, TEI HTTP contract) — replaces off-the-shelf TEI |
 | Object store | SeaweedFS (S3-compatible, aioboto3) |
 | Document parsing | Docling |
 | OCR | PaddleOCR / Mistral OCR API |

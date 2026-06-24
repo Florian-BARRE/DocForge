@@ -24,19 +24,19 @@ You are a specialized agent for debugging the DocForge document processing pipel
 1. **Identify the failing stage** (S0 ingest, S1 parse, S2 enrich, S4 chunk, S5 contextualize, S6 embed+index)
 2. **Read relevant logs** from the container or test output
 3. **Inspect the IR output** at the point of failure
-4. **Check provider connectivity** (Gotenberg, Docling, SeaweedFS, Postgres, Qdrant, TEI)
+4. **Check provider connectivity** (Gotenberg, Docling, SeaweedFS, Postgres, Qdrant, bge)
 5. **Propose a fix** with the exact file and line to change
 
 ## Pipeline stage map
 
 | Stage | File | Responsibility |
 |---|---|---|
-| S0 | `libs/pipeline/stages/s0_ingest.py` | Download + convert to PDF |
-| S1 | `libs/pipeline/stages/s1_parse.py` | Docling → IR blocks |
-| S2 | `libs/pipeline/stages/s2_enrich.py` | OCR/VLM/chart enrichment |
-| S4 | `libs/pipeline/stages/s4_chunk.py` | Structure-aware chunking |
-| S5 | `libs/pipeline/stages/s5_contextualize.py` | Breadcrumb embed_text |
-| S6 | `libs/pipeline/stages/s6_embed_index.py` | BGE-M3 embed + Qdrant upsert |
+| S0 | `common_libs/pipeline/stages/s0_ingest/core.py` | Download + convert to PDF |
+| S1 | `common_libs/pipeline/stages/s1_parse/core.py` | Docling → IR blocks |
+| S2 | `common_libs/pipeline/stages/s2_enrich/core.py` | OCR/VLM/chart enrichment |
+| S4 | `common_libs/pipeline/stages/s4_chunk/core.py` | Structure-aware chunking |
+| S5 | `common_libs/pipeline/stages/s5_contextualize/core.py` | Breadcrumb embed_text |
+| S6 | `common_libs/pipeline/stages/s6_embed_index/core.py` | BGE-M3 embed + Qdrant upsert |
 
 ## Diagnostic commands
 
@@ -61,8 +61,8 @@ docker compose exec -T docforge curl -s http://seaweedfs:8888/buckets/docforge-o
 # Check Qdrant collection status
 curl -s http://localhost:10025/collections | python3 -m json.tool
 
-# Check TEI embed service
-curl -s http://localhost:8080/health
+# Check bge embed/rerank service
+curl -s http://localhost:10026/health
 
 # Check job failures
 docker compose exec -T postgres psql -U docforge -d docforge \
@@ -71,24 +71,24 @@ docker compose exec -T postgres psql -U docforge -d docforge \
 
 ## Key files to inspect
 
-- `src/docforge/libs/pipeline/engine.py` — DAG orchestration
-- `src/docforge/libs/pipeline/stages/s0_ingest.py` — S0 stage
-- `src/docforge/libs/pipeline/stages/s1_parse.py` — S1 stage
-- `src/docforge/libs/pipeline/stages/s2_enrich.py` — S2 enrichment
-- `src/docforge/libs/pipeline/stages/s4_chunk.py` — S4 chunker
-- `src/docforge/libs/pipeline/stages/s5_contextualize.py` — S5 contextualization
-- `src/docforge/libs/pipeline/stages/s6_embed_index.py` — S6 embed + index
-- `src/docforge/libs/providers/embed/tei.py` — TEI embed client
-- `src/docforge/libs/storage/qdrant/client.py` — Qdrant client
-- `src/docforge/libs/providers/converter/gotenberg.py` — Gotenberg client
-- `src/docforge/libs/providers/parser/docling_backend.py` — Docling adapter
-- `src/docforge/libs/storage/postgres/repositories/` — DB repos
+- `src/docforge/worker/libs/pipeline/engine.py` — DAG orchestration (worker-only)
+- `src/docforge/common/common_libs/pipeline/stages/s0_ingest/core.py` — S0 stage
+- `src/docforge/common/common_libs/pipeline/stages/s1_parse/core.py` — S1 stage
+- `src/docforge/common/common_libs/pipeline/stages/s2_enrich/core.py` — S2 enrichment
+- `src/docforge/common/common_libs/pipeline/stages/s4_chunk/core.py` — S4 chunker
+- `src/docforge/common/common_libs/pipeline/stages/s5_contextualize/core.py` — S5 contextualization
+- `src/docforge/common/common_libs/pipeline/stages/s6_embed_index/core.py` — S6 embed + index
+- `src/docforge/common/common_libs/providers/embed/tei/` — TEI-contract embed client (also `providers/embed/bge_server/` for the local `bge` host)
+- `src/docforge/common/common_libs/storage/qdrant/client.py` — Qdrant client
+- `src/docforge/common/common_libs/providers/converter/gotenberg.py` — Gotenberg client
+- `src/docforge/common/common_libs/providers/parser/docling_backend.py` — Docling adapter
+- `src/docforge/common/common_libs/storage/postgres/repositories/` — DB repos
 
 ## Common failure patterns
 
 - **S6 skips Qdrant**: `collection_id=None` passed to `engine.run()` — check that the arq task
   receives `collection_id` from the ingest endpoint (`documents/router.py`, `enqueue_job` call).
-- **TEI unreachable**: check `TEI_BASE_URL` in `.env` and that the TEI container is healthy.
+- **bge unreachable**: check `TEI_BASE_URL`/`BGE_RERANKER_URL` in `.env` and that the `bge` container is healthy (`docker compose ps bge` + `docker compose logs bge`; first boot is slow — it downloads BGE-M3 + reranker from HF).
 - **Qdrant collection missing**: S6 calls `ensure_collection()` automatically; if it fails,
   check Qdrant connectivity (`QDRANT_HOST`/`QDRANT_PORT`).
 - **Chunk count 0**: S4 disabled (`S4_ENABLED=false`). Check env.
