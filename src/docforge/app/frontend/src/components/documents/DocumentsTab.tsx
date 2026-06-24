@@ -32,6 +32,12 @@ interface DocumentsTabProps {
    * Pipeline tab.
    */
   onTrace: (docId: string) => void
+  /**
+   * When false, the upload drop-zone, metadata form, reindex banner, and
+   * all per-row write actions (reingest / delete) are hidden.
+   * Read-only users can browse and trace documents but cannot mutate them.
+   */
+  canWrite?: boolean
 }
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -54,7 +60,7 @@ const FALLBACK_POLL_MS = 2000
  * - Forwards per-row actions (trace, delete, reingest) to the API layer and
  *   refreshes the list on completion.
  */
-export function DocumentsTab({ collectionId, onTrace }: DocumentsTabProps) {
+export function DocumentsTab({ collectionId, onTrace, canWrite = true }: DocumentsTabProps) {
   // ── State ──────────────────────────────────────────────────────────────
 
   const [docs, setDocs]               = useState<Document[]>([])
@@ -331,43 +337,47 @@ export function DocumentsTab({ collectionId, onTrace }: DocumentsTabProps) {
 
   return (
     <div className="documents-tab">
-      {/* ── Drop zone ── */}
-      <div
-        className={dropZoneClass}
-        onClick={handleZoneClick}
-        onDragEnter={handleDragEnter}
-        onDragLeave={handleDragLeave}
-        onDragOver={handleDragOver}
-        onDrop={handleDrop}
-        role="button"
-        tabIndex={0}
-        onKeyDown={e => e.key === 'Enter' && handleZoneClick()}
-        aria-label="Drop a file here or click to upload"
-      >
-        {isUploading ? (
-          <span className="text-muted">Uploading…</span>
-        ) : (
-          <span className="text-muted">
-            {isDragging ? 'Drop to upload' : 'Drop a file here or click to upload'}
-          </span>
-        )}
-      </div>
+      {/* ── Drop zone — only rendered for users with write access ── */}
+      {canWrite && (
+        <>
+          <div
+            className={dropZoneClass}
+            onClick={handleZoneClick}
+            onDragEnter={handleDragEnter}
+            onDragLeave={handleDragLeave}
+            onDragOver={handleDragOver}
+            onDrop={handleDrop}
+            role="button"
+            tabIndex={0}
+            onKeyDown={e => e.key === 'Enter' && handleZoneClick()}
+            aria-label="Drop a file here or click to upload"
+          >
+            {isUploading ? (
+              <span className="text-muted">Uploading…</span>
+            ) : (
+              <span className="text-muted">
+                {isDragging ? 'Drop to upload' : 'Drop a file here or click to upload'}
+              </span>
+            )}
+          </div>
 
-      {/* Hidden file input — triggered by click on the drop zone */}
-      <input
-        ref={inputRef}
-        type="file"
-        style={{ display: 'none' }}
-        onChange={handleFileChange}
-      />
+          {/* Hidden file input — triggered by click on the drop zone */}
+          <input
+            ref={inputRef}
+            type="file"
+            style={{ display: 'none' }}
+            onChange={handleFileChange}
+          />
+        </>
+      )}
 
-      {/* Upload error banner */}
+      {/* Upload / delete error banner */}
       {uploadError && (
         <div className="documents-drop-error">{uploadError}</div>
       )}
 
-      {/* ── Metadata input form (user-defined fields only) ── */}
-      {configState && (() => {
+      {/* ── Metadata input form — only shown to users with write access ── */}
+      {canWrite && configState && (() => {
         const userFields: MetaField[] = configState.metadata_fields.filter(f => !f.is_system)
         return (
           <MetadataInputForm
@@ -379,28 +389,31 @@ export function DocumentsTab({ collectionId, onTrace }: DocumentsTabProps) {
         )
       })()}
 
-      {/* ── Reindex banner — config changed, stale documents present ── */}
+      {/* ── Reindex banner — shown to all users; action button only for write access ── */}
       {showReindexBanner && (
         <div className="reindex-banner">
           <span>
-            ⚠ {staleDocs.length} document(s) à réindexer — leur configuration d'indexation
+            {staleDocs.length} document(s) à réindexer — leur configuration d'indexation
             ne correspond plus à la config actuelle.
             {staleCauses.length > 0 && (
               <span className="reindex-banner-cause"> Cause : {staleCauses.join(' ; ')}.</span>
             )}
           </span>
-          <div className="reindex-banner-actions">
-            <button
-              type="button"
-              className="btn btn-primary"
-              disabled={isReindexing || staleDocs.length === 0}
-              onClick={() => handleReindexAll(staleDocs)}
-            >
-              {isReindexing && reindexProgress
-                ? `Réindexation… (${reindexProgress.done}/${reindexProgress.total})`
-                : 'Tout réindexer'}
-            </button>
-          </div>
+          {/* Reindex action only for users with write permission. */}
+          {canWrite && (
+            <div className="reindex-banner-actions">
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={isReindexing || staleDocs.length === 0}
+                onClick={() => handleReindexAll(staleDocs)}
+              >
+                {isReindexing && reindexProgress
+                  ? `Réindexation… (${reindexProgress.done}/${reindexProgress.total})`
+                  : 'Tout réindexer'}
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -427,6 +440,7 @@ export function DocumentsTab({ collectionId, onTrace }: DocumentsTabProps) {
               onDelete={handleDelete}
               onReingest={handleReingest}
               onOpen={setDetailDocId}
+              canWrite={canWrite}
             />
           ))
         )}

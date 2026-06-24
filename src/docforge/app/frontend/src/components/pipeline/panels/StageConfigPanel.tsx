@@ -35,6 +35,11 @@ interface StageConfigPanelProps {
   configState: ConfigState | null
   /** Called after a successful save so the parent can refresh its copy. */
   onSaved?: () => void
+  /**
+   * When false, all pickers are rendered in display-only mode and the save bar
+   * is replaced by a read-only notice.  Passed through to IngestionConditionsPanel.
+   */
+  canWrite?: boolean
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -65,6 +70,7 @@ export function StageConfigPanel({
   dynamicFields,
   configState,
   onSaved,
+  canWrite = true,
 }: StageConfigPanelProps) {
   // 1. Filter fields that belong to this stage by field_path prefix.
   const stageFields = dynamicFields.filter(f =>
@@ -145,6 +151,7 @@ export function StageConfigPanel({
           configState={configState}
           collectionId={collectionId}
           onSaved={onSaved}
+          canWrite={canWrite}
         />
       )}
 
@@ -163,15 +170,23 @@ export function StageConfigPanel({
             value={value}
             onChange={handleChange}
           />
-          {/* Save bar only for non-S0 stages; S0 uses the nested panel's bar. */}
+          {/* Save bar only for non-S0 stages; S0 uses the nested panel's bar.
+              Read-only users see a notice instead of the save/discard actions. */}
           {stage.id !== 's0' && (
-            <ConfigSaveBar
-              status={draft.status}
-              isDirty={draft.isDirty}
-              onSave={() => { void draft.save() }}
-              onDiscard={handleDiscard}
-              applied={draft.applied}
-            />
+            canWrite ? (
+              <ConfigSaveBar
+                status={draft.status}
+                isDirty={draft.isDirty}
+                onSave={() => { void draft.save() }}
+                onDiscard={handleDiscard}
+                applied={draft.applied}
+              />
+            ) : (
+              <div className="info-banner" style={{ marginTop: 8 }}>
+                <span className="info-icon">ℹ</span>
+                <span>Read-only — you do not have write access to this collection.</span>
+              </div>
+            )
           )}
         </>
       )}

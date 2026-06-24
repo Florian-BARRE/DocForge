@@ -27,7 +27,13 @@ from tests.corpus import CorpusDocument
 class LiveClient(LoggerClass):
     """Synchronous client for end-to-end tests against the running DocForge stack."""
 
-    def __init__(self, api_url: str, qdrant_url: str, timeout: float = 90.0) -> None:
+    def __init__(
+        self,
+        api_url: str,
+        qdrant_url: str,
+        timeout: float = 90.0,
+        api_token: str = "",
+    ) -> None:
         """
         Initialize the client.
 
@@ -35,11 +41,19 @@ class LiveClient(LoggerClass):
             api_url (str): API root including the version prefix (e.g. .../api/v1).
             qdrant_url (str): Qdrant REST root (e.g. http://localhost:10025).
             timeout (float): Default per-request timeout in seconds.
+            api_token (str): Bearer token to send on every request (``Authorization: Bearer
+                <token>``). When empty the header is omitted so the client works unchanged
+                against an AUTH_ENABLED=false stack (backward-compatible default).
         """
         LoggerClass.__init__(self)
         self._api = api_url.rstrip("/")
         self._qdrant = qdrant_url.rstrip("/")
-        self._http = httpx.Client(timeout=timeout)
+        self._token = api_token.strip()
+        # Build a default-headers map once; when empty the header is absent.
+        _default_headers = (
+            {"Authorization": f"Bearer {self._token}"} if self._token else {}
+        )
+        self._http = httpx.Client(timeout=timeout, headers=_default_headers)
 
     # ─── Liveness ────────────────────────────────────────────────────────────────
 
@@ -192,14 +206,26 @@ class LiveClient(LoggerClass):
         Keepalive comments are ignored. A read timeout simply returns whatever was collected,
         so callers can assert "the stream connected and delivered N events" without flakiness.
 
+        When a token was supplied at construction time it is appended as ``?token=<token>`` to the
+        SSE URL in addition to the Authorization header. Browser EventSource cannot send headers, so
+        the server's SSE dependency (``require_principal_sse``) accepts the query parameter as a
+        fallback — this mirrors the real browser path.
+
         Returns:
             list[str]: The raw payloads of the captured `data:` events.
         """
-        # 1. Stream lines until enough events, the deadline, or a read timeout
+        # 1. Append the ?token= query parameter for SSE routes (header also present via default
+        #    headers, but the query param is the browser-compatible path we want to exercise).
+        sse_path = path
+        if self._token:
+            separator = "&" if "?" in path else "?"
+            sse_path = f"{path}{separator}token={self._token}"
+
+        # 2. Stream lines until enough events, the deadline, or a read timeout
         events: list[str] = []
         deadline = time.time() + timeout_s
         try:
-            with self._http.stream("GET", self._api + path, timeout=timeout_s) as resp:
+            with self._http.stream("GET", self._api + sse_path, timeout=timeout_s) as resp:
                 for line in resp.iter_lines():
                     if line.startswith("data:"):
                         events.append(line[len("data:"):].strip())

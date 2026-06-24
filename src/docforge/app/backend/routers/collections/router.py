@@ -9,11 +9,12 @@
 import uuid
 
 # ====== Third-Party Library Imports ======
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.exc import IntegrityError
 
 # ====== Internal Project Imports ======
 from backend.context import CONTEXT
+from backend.libs.auth import Principal, require_collection_role, require_principal
 from backend.libs.utils.error_handling import auto_handle_errors
 from backend.routers.collections.config.models import ConfigStateResponse
 from backend.routers.collections.models import (
@@ -23,6 +24,7 @@ from backend.routers.collections.models import (
     DeleteResponse,
 )
 from common_libs.config.validation import ConfigDocument, ConfigExplainer, ConfigValidator
+from common_libs.storage.postgres.models import GrantRole
 from common_libs.storage.s3.helpers import S3Helpers
 
 router = APIRouter(tags=["collections"])
@@ -30,10 +32,28 @@ router = APIRouter(tags=["collections"])
 
 @router.get("/list", response_model=CollectionListResponse)
 @auto_handle_errors
-async def list_collections() -> CollectionListResponse:
-    """List all collections (newest first)."""
+async def list_collections(
+    principal: Principal = Depends(require_principal),
+) -> CollectionListResponse:
+    """
+    List collections visible to the caller (newest first).
+
+    Root sees every collection; a standard user sees only the collections they hold any grant on
+    (per-collection authorization model). The list is filtered server-side so a user can never
+    enumerate collections they have no access to.
+    """
+    # 1. Read all collections, then scope to what the caller may see
     async with CONTEXT.postgres.session() as session:
         collections = await CONTEXT.collection_repo.list_all(session)
+        if not principal.is_root:
+            # Standard user — keep only collections they have a grant on.
+            allowed = set(
+                await CONTEXT.grant_repo.list_collection_ids_for_user(
+                    session, principal.user_id
+                )
+            )
+            collections = [c for c in collections if c.id in allowed]
+
     return CollectionListResponse(
         collections=[CollectionResponse.model_validate(c) for c in collections],
         total=len(collections),
@@ -42,7 +62,9 @@ async def list_collections() -> CollectionListResponse:
 
 @router.post("/create", response_model=ConfigStateResponse, status_code=201)
 @auto_handle_errors
-async def create_collection(body: CreateCollectionRequest) -> ConfigStateResponse:
+async def create_collection(
+    body: CreateCollectionRequest, principal: Principal = Depends(require_principal)
+) -> ConfigStateResponse:
     """
     Create a collection.  The system metadata fields are always injected server-side; the client
     only sends custom business fields (and may override a system field's search flags).  The
@@ -97,6 +119,21 @@ async def create_collection(body: CreateCollectionRequest) -> ConfigStateRespons
         CONTEXT.logger.warning(f"Collection create rejected (409 duplicate name): name={body.name!r}")
         raise HTTPException(status_code=409, detail=f"A collection named {body.name!r} already exists.")
 
+    # 3b. Creator gets an admin grant on the new collection (GitHub-style ownership). Skipped for
+    # root, which is implicitly admin on every collection — recording a grant would be redundant.
+    if not principal.is_root:
+        async with CONTEXT.postgres.session() as session:
+            await CONTEXT.grant_repo.upsert(
+                session,
+                user_id=principal.user_id,
+                collection_id=collection.id,
+                role=GrantRole.ADMIN.value,
+                granted_by=principal.user_id,
+            )
+        CONTEXT.logger.info(
+            f"Granted creator admin on new collection id={collection.id} user_id={principal.user_id}"
+        )
+
     # 4. Build the transparency envelope: what was provided vs defaulted at creation
     applied = ConfigExplainer.build(
         provided_keys=body.model_fields_set,
@@ -110,7 +147,11 @@ async def create_collection(body: CreateCollectionRequest) -> ConfigStateRespons
     return ConfigStateResponse.from_collection(collection, applied=applied)
 
 
-@router.delete("/{collection_id}/delete", response_model=DeleteResponse)
+@router.delete(
+    "/{collection_id}/delete",
+    response_model=DeleteResponse,
+    dependencies=[Depends(require_collection_role(GrantRole.ADMIN))],
+)
 @auto_handle_errors
 async def delete_collection(collection_id: uuid.UUID) -> DeleteResponse:
     """

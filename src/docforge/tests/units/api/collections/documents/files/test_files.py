@@ -23,7 +23,7 @@ class TestGetOriginal:
         """Done document → 200 with a presigned URL."""
         col_id = uuid.uuid4()
         doc_id = uuid.uuid4()
-        doc = make_document_orm(id=doc_id, status="done", source_hash="abc123")
+        doc = make_document_orm(id=doc_id, collection_id=col_id, status="done", source_hash="abc123")
         CONTEXT.document_repo.get_by_id.return_value = doc
         CONTEXT.s3.get_presigned_url.return_value = "https://s3.example.com/orig"
         response = await client.get(_url(col_id, doc_id, "original"))
@@ -46,7 +46,7 @@ class TestGetOriginal:
         """Document still processing → 409 Conflict."""
         col_id = uuid.uuid4()
         doc_id = uuid.uuid4()
-        doc = make_document_orm(id=doc_id, status="running")
+        doc = make_document_orm(id=doc_id, collection_id=col_id, status="running")
         CONTEXT.document_repo.get_by_id.return_value = doc
         response = await client.get(_url(col_id, doc_id, "original"))
         assert response.status_code == 409
@@ -58,7 +58,7 @@ class TestGetOriginal:
         """Response includes expires_in field (default 3600)."""
         col_id = uuid.uuid4()
         doc_id = uuid.uuid4()
-        doc = make_document_orm(id=doc_id, status="done", source_hash="abc")
+        doc = make_document_orm(id=doc_id, collection_id=col_id, status="done", source_hash="abc")
         CONTEXT.document_repo.get_by_id.return_value = doc
         body = (await client.get(_url(col_id, doc_id, "original"))).json()
         assert "expires_in" in body
@@ -76,7 +76,7 @@ class TestGetMarkdown:
         col_id = uuid.uuid4()
         doc_id = uuid.uuid4()
         doc = make_document_orm(
-            id=doc_id, status="done", source_hash="abc",
+            id=doc_id, collection_id=col_id, status="done", source_hash="abc",
             implicit_meta={"markdown_key": "markdown/abc.md"},
         )
         CONTEXT.document_repo.get_by_id.return_value = doc
@@ -93,7 +93,7 @@ class TestGetMarkdown:
         col_id = uuid.uuid4()
         doc_id = uuid.uuid4()
         doc = make_document_orm(
-            id=doc_id, status="done", source_hash="abc",
+            id=doc_id, collection_id=col_id, status="done", source_hash="abc",
             implicit_meta={"s1_fingerprint": "fp123"},
         )
         CONTEXT.document_repo.get_by_id.return_value = doc
@@ -109,7 +109,7 @@ class TestGetMarkdown:
         col_id = uuid.uuid4()
         doc_id = uuid.uuid4()
         doc = make_document_orm(
-            id=doc_id, status="done", source_hash="abc",
+            id=doc_id, collection_id=col_id, status="done", source_hash="abc",
             implicit_meta={"markdown_key": "markdown/abc.md"},
         )
         CONTEXT.document_repo.get_by_id.return_value = doc
@@ -124,7 +124,7 @@ class TestGetMarkdown:
         """No markdown_key and no s1_fingerprint → 404."""
         col_id = uuid.uuid4()
         doc_id = uuid.uuid4()
-        doc = make_document_orm(id=doc_id, status="done", source_hash="abc", implicit_meta={})
+        doc = make_document_orm(id=doc_id, collection_id=col_id, status="done", source_hash="abc", implicit_meta={})
         CONTEXT.document_repo.get_by_id.return_value = doc
         response = await client.get(_url(col_id, doc_id, "markdown"))
         assert response.status_code == 404
@@ -136,7 +136,7 @@ class TestGetMarkdown:
         """Document not done → 409."""
         col_id = uuid.uuid4()
         doc_id = uuid.uuid4()
-        doc = make_document_orm(id=doc_id, status="pending")
+        doc = make_document_orm(id=doc_id, collection_id=col_id, status="pending")
         CONTEXT.document_repo.get_by_id.return_value = doc
         response = await client.get(_url(col_id, doc_id, "markdown"))
         assert response.status_code == 409
@@ -159,7 +159,7 @@ class TestGetPdf:
         """Done document → 200 with a presigned URL."""
         col_id = uuid.uuid4()
         doc_id = uuid.uuid4()
-        doc = make_document_orm(id=doc_id, status="done", source_hash="abc")
+        doc = make_document_orm(id=doc_id, collection_id=col_id, status="done", source_hash="abc")
         CONTEXT.document_repo.get_by_id.return_value = doc
         CONTEXT.s3.get_presigned_url.return_value = "https://s3.example.com/abc.pdf"
         response = await client.get(_url(col_id, doc_id, "pdf"))
@@ -180,7 +180,7 @@ class TestGetPdf:
         """Document not done → 409."""
         col_id = uuid.uuid4()
         doc_id = uuid.uuid4()
-        doc = make_document_orm(id=doc_id, status="failed")
+        doc = make_document_orm(id=doc_id, collection_id=col_id, status="failed")
         CONTEXT.document_repo.get_by_id.return_value = doc
         response = await client.get(_url(col_id, doc_id, "pdf"))
         assert response.status_code == 409

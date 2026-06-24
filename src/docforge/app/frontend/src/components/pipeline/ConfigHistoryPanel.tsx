@@ -20,6 +20,11 @@ interface ConfigHistoryPanelProps {
   collectionId: string
   /** Called after a successful rollback so the parent can reload configState. */
   onRolledBack: () => void
+  /**
+   * When false the rollback buttons are hidden.
+   * A read-only user can view history but cannot restore versions.
+   */
+  canWrite?: boolean
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────────
@@ -52,7 +57,7 @@ function formatDate(iso: string): string {
  *   collectionId: Collection whose history is shown.
  *   onRolledBack: Callback invoked after a successful rollback.
  */
-export function ConfigHistoryPanel({ collectionId, onRolledBack }: ConfigHistoryPanelProps) {
+export function ConfigHistoryPanel({ collectionId, onRolledBack, canWrite = true }: ConfigHistoryPanelProps) {
   const [versions, setVersions] = useState<ConfigVersionSummary[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -126,7 +131,8 @@ export function ConfigHistoryPanel({ collectionId, onRolledBack }: ConfigHistory
             <span className="config-history-date">{formatDate(v.created_at)}</span>
             {isCurrent ? (
               <span className="tag">actuelle</span>
-            ) : (
+            ) : canWrite ? (
+              /* Rollback button — only for users with write permission. */
               <button
                 type="button"
                 className="btn btn-ghost"
@@ -135,7 +141,7 @@ export function ConfigHistoryPanel({ collectionId, onRolledBack }: ConfigHistory
               >
                 {rollingBack === v.version ? 'Restauration…' : 'Restaurer'}
               </button>
-            )}
+            ) : null}
           </div>
         )
       })}

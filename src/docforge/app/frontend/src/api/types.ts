@@ -198,6 +198,110 @@ export type SearchResponse = Schemas['SearchResponse'] & {
   note?: string | null
 }
 
+// ── Auth ──────────────────────────────────────────────────────────────────────
+//
+// Hand-written types because the auth router was added after the last
+// `npm run gen:types` run.  These mirror the Pydantic models exactly.
+// Regenerate `generated.ts` when the backend schema stabilises.
+
+export interface UserSummary {
+  id: string
+  username: string
+  /** 'root' | 'user' */
+  role: string
+  is_active: boolean
+}
+
+export interface LoginResponse {
+  access_token: string
+  token_type: string
+  user: UserSummary
+}
+
+export interface CollectionGrantSummary {
+  collection_id: string
+  /** 'read' | 'write' | 'admin' */
+  role: string
+}
+
+export interface MeResponse {
+  user: UserSummary
+  grants: CollectionGrantSummary[]
+}
+
+// ── API keys ───────────────────────────────────────────────────────────────
+
+export interface ApiKeyCreatedResponse {
+  id: string
+  name: string
+  prefix: string
+  /** Plaintext key — shown ONCE on creation, never retrievable again. */
+  key: string
+  created_at: string
+}
+
+export interface ApiKeySummary {
+  id: string
+  name: string
+  prefix: string
+  created_at: string
+  last_used_at: string | null
+  revoked_at: string | null
+}
+
+export interface ApiKeyListResponse {
+  keys: ApiKeySummary[]
+  total: number
+}
+
+export interface ApiKeyRevokeResponse {
+  revoked: boolean
+  id: string
+}
+
+// ── Users (root only) ─────────────────────────────────────────────────────
+
+export interface UserResponse {
+  id: string
+  username: string
+  role: string
+  is_active: boolean
+  created_at: string
+}
+
+export interface UserListResponse {
+  users: UserResponse[]
+  total: number
+}
+
+export interface DeactivateUserResponse {
+  deactivated: boolean
+  id: string
+}
+
+// ── Collection access ─────────────────────────────────────────────────────
+
+export interface AccessGrantResponse {
+  user_id: string
+  username: string | null
+  /** 'read' | 'write' | 'admin' */
+  role: string
+  granted_by: string | null
+  created_at: string
+}
+
+export interface AccessListResponse {
+  collection_id: string
+  grants: AccessGrantResponse[]
+  total: number
+}
+
+export interface RevokeAccessResponse {
+  revoked: boolean
+  collection_id: string
+  user_id: string
+}
+
 // ── Re-export everything from the generated namespace for callers that prefer
 // the verbose path (e.g. `import type { components } from '../../api/types'`).
 export type { components } from './generated'

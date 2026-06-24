@@ -10,11 +10,12 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 # ====== Third-Party Library Imports ======
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from sse_starlette.sse import EventSourceResponse
 
 # ====== Internal Project Imports ======
 from ...context import CONTEXT
+from ...libs.auth import require_principal, require_principal_sse
 from ...libs.utils.error_handling import auto_handle_errors
 from ...libs.utils.sse import SseHelpers
 from .helpers import MonitoringHelpers
@@ -26,10 +27,15 @@ from .models import (
     WorkersResponse,
 )
 
+# Monitoring authenticates PER-ROUTE (not at the app include) so the SSE /stream route can use the
+# header-OR-query SSE dependency while every other route stays header-only. Any authenticated user
+# may view monitoring (no per-collection scoping applies to these global surfaces).
+_AUTH = [Depends(require_principal)]
+
 router = APIRouter(tags=["monitoring"])
 
 
-@router.get("/queue", response_model=QueueStatusResponse)
+@router.get("/queue", response_model=QueueStatusResponse, dependencies=_AUTH)
 @auto_handle_errors
 async def get_queue() -> QueueStatusResponse:
     """
@@ -46,7 +52,7 @@ async def get_queue() -> QueueStatusResponse:
     )
 
 
-@router.get("/workers", response_model=WorkersResponse)
+@router.get("/workers", response_model=WorkersResponse, dependencies=_AUTH)
 @auto_handle_errors
 async def get_workers() -> WorkersResponse:
     """
@@ -59,7 +65,7 @@ async def get_workers() -> WorkersResponse:
     return await MonitoringHelpers.build_workers(heartbeat_reader=CONTEXT.heartbeat_reader)
 
 
-@router.get("/overview", response_model=OverviewResponse)
+@router.get("/overview", response_model=OverviewResponse, dependencies=_AUTH)
 @auto_handle_errors
 async def get_overview() -> OverviewResponse:
     """
@@ -82,7 +88,7 @@ async def get_overview() -> OverviewResponse:
     )
 
 
-@router.get("/resources", response_model=ResourcesResponse)
+@router.get("/resources", response_model=ResourcesResponse, dependencies=_AUTH)
 @auto_handle_errors
 async def get_resources() -> ResourcesResponse:
     """
@@ -105,11 +111,14 @@ async def get_resources() -> ResourcesResponse:
 # response_model (a live stream cannot be described by a Pydantic model). @auto_handle_errors still
 # guards exceptions raised while building the response; errors inside the stream are handled by the
 # generator itself (it always unsubscribes in its finally block).
-@router.get("/stream")
+@router.get("/stream", dependencies=[Depends(require_principal_sse)])
 @auto_handle_errors
 async def stream_events() -> EventSourceResponse:
     """
     Stream every monitoring event (jobs, stages, workers, batches) as Server-Sent Events.
+
+    Auth: a browser EventSource cannot send headers, so this route uses the header-OR-query SSE
+    dependency (?token=) instead of the header-only _AUTH gate. Any authenticated user may stream.
 
     Returns:
         EventSourceResponse: Unfiltered live event stream for the monitoring dashboard.
@@ -121,7 +130,7 @@ async def stream_events() -> EventSourceResponse:
     )
 
 
-@router.get("/discovery", response_model=MonitoringDiscoveryResponse)
+@router.get("/discovery", response_model=MonitoringDiscoveryResponse, dependencies=_AUTH)
 @auto_handle_errors
 async def get_discovery() -> MonitoringDiscoveryResponse:
     """

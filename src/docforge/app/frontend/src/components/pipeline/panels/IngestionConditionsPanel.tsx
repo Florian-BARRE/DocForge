@@ -27,6 +27,11 @@ interface IngestionConditionsPanelProps {
   collectionId: string
   /** Called after a successful save so the parent can refresh its copy. */
   onSaved?: () => void
+  /**
+   * When false all inputs are read-only and the save bar is hidden.
+   * A read-only user can inspect the conditions but cannot edit them.
+   */
+  canWrite?: boolean
 }
 
 /** Field types available when adding a new metadata field. */
@@ -59,6 +64,7 @@ export function IngestionConditionsPanel({
   configState,
   collectionId,
   onSaved,
+  canWrite = true,
 }: IngestionConditionsPanelProps) {
   // ── Draft buffer (shared explicit save/discard workflow) ──────────────────
   const draft = useConfigDraft(collectionId, onSaved)
@@ -217,27 +223,33 @@ export function IngestionConditionsPanel({
         <div className="stage-conditions-title">Accepted formats</div>
         <div className="stage-conditions-chips" style={{ marginBottom: 6 }}>
           {formats.map(f => (
-            <span key={f} className="tag tag-removable">
+            <span key={f} className={canWrite ? 'tag tag-removable' : 'tag'}>
               {f}
-              <button
-                type="button"
-                className="tag-remove"
-                aria-label={`Remove ${f}`}
-                onClick={() => removeFormat(f)}
-              >
-                ×
-              </button>
+              {/* Remove button hidden for read-only users. */}
+              {canWrite && (
+                <button
+                  type="button"
+                  className="tag-remove"
+                  aria-label={`Remove ${f}`}
+                  onClick={() => removeFormat(f)}
+                >
+                  ×
+                </button>
+              )}
             </span>
           ))}
         </div>
-        <input
-          type="text"
-          className="input input-sm"
-          placeholder="Add format (e.g. application/pdf) — Enter to add"
-          value={formatInput}
-          onChange={e => setFormatInput(e.target.value)}
-          onKeyDown={handleFormatKeyDown}
-        />
+        {/* Format input only shown to users who can write. */}
+        {canWrite && (
+          <input
+            type="text"
+            className="input input-sm"
+            placeholder="Add format (e.g. application/pdf) — Enter to add"
+            value={formatInput}
+            onChange={e => setFormatInput(e.target.value)}
+            onKeyDown={handleFormatKeyDown}
+          />
+        )}
       </div>
 
       {/* ── Limits ── */}
@@ -253,7 +265,8 @@ export function IngestionConditionsPanel({
             min={1}
             step={1}
             value={maxSizeMb}
-            onChange={e => handleMaxSizeChange(Number(e.target.value))}
+            readOnly={!canWrite}
+            onChange={e => canWrite && handleMaxSizeChange(Number(e.target.value))}
           />
         </div>
 
@@ -263,6 +276,7 @@ export function IngestionConditionsPanel({
             id="unknown-policy"
             className="input input-sm input-inline"
             value={unknownPolicy}
+            disabled={!canWrite}
             onChange={e => handlePolicyChange(e.target.value)}
           >
             {UNKNOWN_FIELD_POLICIES.map(p => (
@@ -294,7 +308,8 @@ export function IngestionConditionsPanel({
             </tr>
           </thead>
           <tbody>
-            {/* User-defined editable rows — shown first */}
+            {/* User-defined editable rows — shown first.
+                When canWrite is false, all inputs are read-only / disabled. */}
             {userFields.map((f, idx) => (
               <tr key={idx} className="meta-schema-row-user">
                 <td>
@@ -303,9 +318,10 @@ export function IngestionConditionsPanel({
                     className="input input-sm input-table"
                     placeholder="field_name"
                     value={f.field_name}
-                    onChange={e => updateUserField(idx, 'field_name', e.target.value)}
+                    readOnly={!canWrite}
+                    onChange={e => canWrite && updateUserField(idx, 'field_name', e.target.value)}
                     onBlur={e => {
-                      // Only stage when field_name is non-empty to avoid orphan rows.
+                      if (!canWrite) return
                       if (e.target.value.trim()) {
                         draft.stage({ metadata_fields: [...userFields, ...systemFields] })
                       }
@@ -316,28 +332,32 @@ export function IngestionConditionsPanel({
                   <select
                     className="input input-sm input-table"
                     value={f.field_type}
+                    disabled={!canWrite}
                     onChange={e => updateUserField(idx, 'field_type', e.target.value)}
                   >
                     {FIELD_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                   </select>
                 </td>
                 <td className="meta-schema-check">
-                  <input type="checkbox" checked={f.required}    onChange={e => updateUserField(idx, 'required',    e.target.checked)} />
+                  <input type="checkbox" checked={f.required}    disabled={!canWrite} onChange={e => updateUserField(idx, 'required',    e.target.checked)} />
                 </td>
                 <td className="meta-schema-check">
-                  <input type="checkbox" checked={f.filterable}  onChange={e => updateUserField(idx, 'filterable',  e.target.checked)} />
+                  <input type="checkbox" checked={f.filterable}  disabled={!canWrite} onChange={e => updateUserField(idx, 'filterable',  e.target.checked)} />
                 </td>
                 <td className="meta-schema-check">
-                  <input type="checkbox" checked={f.lexical}     onChange={e => updateUserField(idx, 'lexical',     e.target.checked)} />
+                  <input type="checkbox" checked={f.lexical}     disabled={!canWrite} onChange={e => updateUserField(idx, 'lexical',     e.target.checked)} />
                 </td>
                 <td className="meta-schema-check">
-                  <input type="checkbox" checked={f.semantic}    onChange={e => updateUserField(idx, 'semantic',    e.target.checked)} />
+                  <input type="checkbox" checked={f.semantic}    disabled={!canWrite} onChange={e => updateUserField(idx, 'semantic',    e.target.checked)} />
                 </td>
                 <td>
                   <span className="tag meta-tag-user">user</span>
                 </td>
                 <td>
-                  <button type="button" className="btn-icon" aria-label="Remove field" onClick={() => removeUserField(idx)}>×</button>
+                  {/* Remove button hidden for read-only users. */}
+                  {canWrite && (
+                    <button type="button" className="btn-icon" aria-label="Remove field" onClick={() => removeUserField(idx)}>×</button>
+                  )}
                 </td>
               </tr>
             ))}
@@ -366,19 +386,29 @@ export function IngestionConditionsPanel({
           <div className="stage-config-empty">No metadata fields defined yet.</div>
         )}
 
-        <button type="button" className="btn btn-ghost" style={{ marginTop: 8, fontSize: 12 }} onClick={addField}>
-          + Add field
-        </button>
+        {/* Add field button hidden for read-only users. */}
+        {canWrite && (
+          <button type="button" className="btn btn-ghost" style={{ marginTop: 8, fontSize: 12 }} onClick={addField}>
+            + Add field
+          </button>
+        )}
       </div>
 
-      {/* ── Save bar ── */}
-      <ConfigSaveBar
-        status={draft.status}
-        isDirty={draft.isDirty}
-        onSave={() => { void draft.save() }}
-        onDiscard={handleDiscard}
-        applied={draft.applied}
-      />
+      {/* Save bar only shown to users who can write. Read-only users see a notice instead. */}
+      {canWrite ? (
+        <ConfigSaveBar
+          status={draft.status}
+          isDirty={draft.isDirty}
+          onSave={() => { void draft.save() }}
+          onDiscard={handleDiscard}
+          applied={draft.applied}
+        />
+      ) : (
+        <div className="info-banner" style={{ marginTop: 8 }}>
+          <span className="info-icon">ℹ</span>
+          <span>Read-only — you do not have write access to this collection.</span>
+        </div>
+      )}
     </div>
   )
 }

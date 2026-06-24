@@ -20,6 +20,8 @@ from backend.context import CONTEXT
 from backend.libs.admission import ResourceAdmitter
 from common_libs.config.validation import ConfigValidator
 from backend.routers import (
+    access_router,
+    auth_router,
     chunks_router,
     collection_router,
     config_router,
@@ -32,6 +34,7 @@ from backend.routers import (
     monitoring_router,
     pages_router,
     search_router,
+    users_router,
 )
 
 
@@ -53,10 +56,13 @@ def _make_test_app() -> FastAPI:
     COL = f"{V1}/collections"
     DOC = f"{COL}/{{collection_id}}/documents"
     app.include_router(router=health_router,    prefix=f"{V1}/health")
+    app.include_router(router=auth_router,      prefix=f"{V1}/auth")
+    app.include_router(router=users_router,     prefix=f"{V1}/users")
     app.include_router(router=discovery_router, prefix=f"{V1}/discovery")
     app.include_router(router=collection_router,   prefix=COL)
     app.include_router(router=config_router,     prefix=f"{COL}/{{collection_id}}/config")
     app.include_router(router=limits_router,      prefix=f"{COL}/{{collection_id}}/limits")
+    app.include_router(router=access_router,     prefix=f"{COL}/{{collection_id}}/access")
     app.include_router(router=document_router,   prefix=DOC)
     app.include_router(router=search_router,     prefix=DOC)
     app.include_router(router=files_router,      prefix=f"{DOC}/{{document_id}}")
@@ -85,6 +91,10 @@ def inject_context(
     mock_registry: MagicMock,
     mock_logger: MagicMock,
     mock_config_repo: MagicMock,
+    mock_user_repo: MagicMock,
+    mock_api_key_repo: MagicMock,
+    mock_grant_repo: MagicMock,
+    mock_auth_service: MagicMock,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
@@ -99,7 +109,9 @@ def inject_context(
     monkeypatch.setattr(
         CONTEXT,
         "RUNTIME_CONFIG",
-        MagicMock(FASTAPI_DEBUG_MODE=False, APP_VERSION="0.1.0-test"),
+        # AUTH_ENABLED=False activates the kill-switch in require_principal so the existing
+        # test suite needs no Authorization headers — a synthetic root principal is injected.
+        MagicMock(FASTAPI_DEBUG_MODE=False, APP_VERSION="0.1.0-test", AUTH_ENABLED=False),
         raising=False,
     )
     monkeypatch.setattr(CONTEXT, "postgres", mock_postgres, raising=False)
@@ -140,6 +152,14 @@ def inject_context(
     monkeypatch.setattr(CONTEXT, "block_repo", mock_block_repo, raising=False)
     monkeypatch.setattr(CONTEXT, "chunk_repo", mock_chunk_repo, raising=False)
     monkeypatch.setattr(CONTEXT, "job_repo", mock_job_repo, raising=False)
+    # Auth repos + service — auth is disabled by default (AUTH_ENABLED=False above), so these
+    # mocks are never actually called by the existing tests. They are wired so that routes that
+    # declare auth dependencies (require_principal etc.) can import without AttributeError, and
+    # so per-test auth-on tests can override individual mocks as needed.
+    monkeypatch.setattr(CONTEXT, "user_repo", mock_user_repo, raising=False)
+    monkeypatch.setattr(CONTEXT, "api_key_repo", mock_api_key_repo, raising=False)
+    monkeypatch.setattr(CONTEXT, "grant_repo", mock_grant_repo, raising=False)
+    monkeypatch.setattr(CONTEXT, "auth_service", mock_auth_service, raising=False)
     monkeypatch.setattr(CONTEXT, "stage_engine", MagicMock(), raising=False)
     # Observability handles (Brique A) — async views; tests that exercise monitoring
     # override these with AsyncMock return values as needed.
@@ -177,6 +197,71 @@ async def client() -> AsyncIterator[httpx.AsyncClient]:
     transport = httpx.ASGITransport(app=_test_app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
         yield c
+
+
+# ─── Auth-specific fixtures ──────────────────────────────────────────────────
+
+
+@pytest.fixture
+def mock_user_repo() -> MagicMock:
+    """Mock UserRepository with all auth-layer async methods."""
+    repo = MagicMock()
+    repo.get_by_id = AsyncMock(return_value=None)
+    repo.get_by_username = AsyncMock(return_value=None)
+    repo.create = AsyncMock()
+    repo.list_users = AsyncMock(return_value=[])
+    repo.set_active = AsyncMock(return_value=None)
+    repo.update_password = AsyncMock(return_value=None)
+    repo.upsert_root = AsyncMock()
+    return repo
+
+
+@pytest.fixture
+def mock_api_key_repo() -> MagicMock:
+    """Mock ApiKeyRepository with all auth-layer async methods."""
+    repo = MagicMock()
+    repo.get_by_hash = AsyncMock(return_value=None)
+    repo.touch_last_used = AsyncMock()
+    repo.create = AsyncMock()
+    repo.list_for_user = AsyncMock(return_value=[])
+    repo.revoke = AsyncMock(return_value=False)
+    return repo
+
+
+@pytest.fixture
+def mock_grant_repo() -> MagicMock:
+    """Mock CollectionGrantRepository with all auth-layer async methods."""
+    repo = MagicMock()
+    repo.get = AsyncMock(return_value=None)
+    repo.list_collection_ids_for_user = AsyncMock(return_value=[])
+    repo.list_for_collection = AsyncMock(return_value=[])
+    repo.upsert = AsyncMock()
+    repo.delete = AsyncMock(return_value=False)
+    return repo
+
+
+@pytest.fixture
+def mock_auth_service() -> MagicMock:
+    """
+    Mock AuthService.
+
+    ``effective_collection_role`` defaults to ``GrantRole.ADMIN`` so that existing
+    collection-scoped routes pass their auth gate when AUTH_ENABLED=False injects the
+    synthetic root principal (root is implicitly admin everywhere in the real service too).
+
+    Tests that need auth-on behaviour override ``resolve_principal``,
+    ``effective_collection_role``, or ``CONTEXT.RUNTIME_CONFIG.AUTH_ENABLED`` per test.
+    """
+    from common_libs.storage.postgres.models import GrantRole
+
+    svc = MagicMock()
+    svc.resolve_principal = AsyncMock(return_value=None)
+    svc.authenticate = AsyncMock(return_value=None)
+    # Default: admin everywhere — mirrors AuthService.effective_collection_role for a root principal.
+    svc.effective_collection_role = AsyncMock(return_value=GrantRole.ADMIN)
+    svc.generate_api_key = MagicMock(return_value=("plaintext-key", "hash123", "plaintex"))
+    svc.mint_token = MagicMock(return_value="minted-jwt-token")
+    return svc
 
 
 # ─── Sample entity factories ──────────────────────────────────────────────────

@@ -39,6 +39,11 @@ interface PipelineTabProps {
   activeDocId: string | null
   /** Callback used to close trace mode by passing null. */
   onRequestTrace?: (docId: string | null) => void
+  /**
+   * When false, config save bars and rollback buttons are replaced by a
+   * read-only notice.  Derived from the current user's collection grant.
+   */
+  canWrite?: boolean
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -184,6 +189,7 @@ export function PipelineTab({
   collectionId,
   activeDocId,
   onRequestTrace,
+  canWrite = true,
 }: PipelineTabProps) {
   // 1. Discovery fields — all DynamicField objects for this collection.
   const [dynamicFields, setDynamicFields] = useState<DynamicField[]>([])
@@ -316,11 +322,13 @@ export function PipelineTab({
             </button>
           </div>
 
-          {/* Inline config history with rollback, toggled from the bar above. */}
+          {/* Inline config history with rollback, toggled from the bar above.
+              canWrite gates the rollback button inside the panel. */}
           {showHistory && (
             <ConfigHistoryPanel
               collectionId={collectionId}
               onRolledBack={handleSaved}
+              canWrite={canWrite}
             />
           )}
         </>
@@ -366,6 +374,7 @@ export function PipelineTab({
                   dynamicFields={dynamicFields}
                   configState={configState}
                   onSaved={handleSaved}
+                  canWrite={canWrite}
                 />
               )}
               {mode === 'trace' && traceDoc && stageResults &&

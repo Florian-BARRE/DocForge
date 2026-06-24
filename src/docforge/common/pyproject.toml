@@ -32,6 +32,9 @@ dependencies = [
     "redis>=5.2.0",
     # Vector store (P4)
     "qdrant-client>=1.12.0",
+    # Authentication / authorization (JWT minting + argon2 password hashing)
+    "pyjwt>=2.10.0",
+    "argon2-cffi>=23.1.0",
     # Config & logging (internal libraries)
     "loggerplusplus>=1.0.0",
     "configplusplus>=0.1.0",

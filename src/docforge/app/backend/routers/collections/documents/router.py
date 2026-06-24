@@ -11,11 +11,12 @@ from pathlib import Path
 # ====== Third-Party Library Imports ======
 from typing import Literal
 
-from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from sse_starlette.sse import EventSourceResponse
 
 # ====== Internal Project Imports ======
 from backend.context import CONTEXT
+from backend.libs.auth import Principal, require_collection_role, require_principal_sse
 from backend.libs.utils.error_handling import auto_handle_errors
 from backend.libs.utils.sse import SseHelpers
 from backend.routers.collections.documents.helpers import DocumentOps
@@ -30,13 +31,19 @@ from backend.routers.collections.documents.models import (
     ReingestRequest,
     ReingestResponse,
 )
+from common_libs.storage.postgres.models import GrantRole
 from common_libs.storage.s3.helpers import S3Helpers
 from common_libs.config.admission import AdmissionValidator
+
+# Reads (list/get/stream) need 'read'; ingest/update/reingest/delete mutate the collection's
+# documents and need 'write'. The minimum is declared per-route so each endpoint is explicit.
+_READ = [Depends(require_collection_role(GrantRole.READ))]
+_WRITE = [Depends(require_collection_role(GrantRole.WRITE))]
 
 router = APIRouter(tags=["documents"])
 
 
-@router.post("/ingest", response_model=IngestResponse, status_code=202)
+@router.post("/ingest", response_model=IngestResponse, status_code=202, dependencies=_WRITE)
 @auto_handle_errors
 async def ingest_document(
     collection_id: uuid.UUID,
@@ -143,7 +150,7 @@ async def ingest_document(
     return IngestResponse(doc_id=doc_id, status="pending", duplicate=False, job_id=job_id)
 
 
-@router.get("/list", response_model=DocumentListResponse)
+@router.get("/list", response_model=DocumentListResponse, dependencies=_READ)
 @auto_handle_errors
 async def list_documents(
     collection_id: uuid.UUID,
@@ -189,9 +196,15 @@ async def list_documents(
 # NOTE: SSE route — returns an EventSourceResponse stream, so it intentionally has NO
 # response_model (a live stream cannot be a Pydantic model). It MUST be declared before the
 # dynamic "/{document_id}" route below, otherwise "stream" would be captured as a document id.
+# Auth: a browser EventSource cannot send headers, so this route authenticates via
+# require_principal_sse (header OR ?token=) instead of the header-only _READ gate, then performs the
+# per-collection READ authorization in-body using the resolved principal.
 @router.get("/stream")
 @auto_handle_errors
-async def stream_documents(collection_id: uuid.UUID) -> EventSourceResponse:
+async def stream_documents(
+    collection_id: uuid.UUID,
+    principal: Principal = Depends(require_principal_sse),
+) -> EventSourceResponse:
     """
     Stream live job/stage updates for one collection's documents as Server-Sent Events.
 
@@ -200,11 +213,24 @@ async def stream_documents(collection_id: uuid.UUID) -> EventSourceResponse:
 
     Args:
         collection_id (uuid.UUID): The collection whose document updates to stream.
+        principal (Principal): The SSE-authenticated caller (header or ?token= query param).
 
     Returns:
         EventSourceResponse: Collection-scoped live event stream.
+
+    Raises:
+        HTTPException: 403 when the caller lacks at least the 'read' role on the collection.
     """
-    # 1. Filter the global bus down to events for this collection
+    # 1. Per-collection READ authorization (done in-body since the SSE auth dep replaces the role gate)
+    effective = await CONTEXT.auth_service.effective_collection_role(principal, collection_id)
+    if effective is None:
+        # 403 — no grant on this collection (we do not 404 to avoid leaking existence).
+        CONTEXT.logger.warning(
+            f"Stream rejected (403 no grant): user_id={principal.user_id} collection={collection_id}"
+        )
+        raise HTTPException(status_code=403, detail="You do not have access to this collection.")
+
+    # 2. Filter the global bus down to events for this collection
     return SseHelpers.stream(
         CONTEXT.event_broadcaster,
         keepalive=CONTEXT.RUNTIME_CONFIG.SSE_KEEPALIVE_SECONDS,
@@ -212,7 +238,7 @@ async def stream_documents(collection_id: uuid.UUID) -> EventSourceResponse:
     )
 
 
-@router.get("/{document_id}", response_model=DocumentResponse)
+@router.get("/{document_id}", response_model=DocumentResponse, dependencies=_READ)
 @auto_handle_errors
 async def get_document(collection_id: uuid.UUID, document_id: uuid.UUID) -> DocumentResponse:
     """
@@ -276,7 +302,7 @@ async def get_document(collection_id: uuid.UUID, document_id: uuid.UUID) -> Docu
     })
 
 
-@router.post("/{document_id}/update", response_model=MetadataUpdateResponse)
+@router.post("/{document_id}/update", response_model=MetadataUpdateResponse, dependencies=_WRITE)
 @auto_handle_errors
 async def update_document(
     collection_id: uuid.UUID, document_id: uuid.UUID, body: MetadataUpdateRequest
@@ -317,7 +343,7 @@ async def update_document(
     return MetadataUpdateResponse(id=document_id, **result)
 
 
-@router.post("/{document_id}/reingest", response_model=ReingestResponse, status_code=202)
+@router.post("/{document_id}/reingest", response_model=ReingestResponse, status_code=202, dependencies=_WRITE)
 @auto_handle_errors
 async def reingest_document(
     collection_id: uuid.UUID, document_id: uuid.UUID, body: ReingestRequest
@@ -337,7 +363,7 @@ async def reingest_document(
     return ReingestResponse(document_id=document_id, job_id=job_id, status="pending")
 
 
-@router.delete("/{document_id}/delete", response_model=DocumentDeleteResponse)
+@router.delete("/{document_id}/delete", response_model=DocumentDeleteResponse, dependencies=_WRITE)
 @auto_handle_errors
 async def delete_document(collection_id: uuid.UUID, document_id: uuid.UUID) -> DocumentDeleteResponse:
     """

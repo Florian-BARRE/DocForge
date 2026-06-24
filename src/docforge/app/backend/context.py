@@ -22,14 +22,18 @@ from common_libs.providers.converter import GotenbergConverter
 from common_libs.providers.device_manager import DeviceManager
 from backend.libs.search.hybrid.service import HybridSearchService
 from backend.libs.search.metadata_indexer.indexer import MetadataIndexer
+from backend.libs.auth import AuthService
 from common_libs.storage.postgres.client import PostgresClient
 from common_libs.storage.postgres.repositories import (
+    ApiKeyRepository,
     BlockRepository,
     ChunkRepository,
+    CollectionGrantRepository,
     CollectionRepository,
     ConfigRepository,
     DocumentRepository,
     JobRepository,
+    UserRepository,
 )
 from common_libs.storage.qdrant.client import QdrantStorageClient
 from common_libs.storage.s3.client import S3Client
@@ -67,6 +71,12 @@ class CONTEXT:
     block_repo: BlockRepository
     chunk_repo: ChunkRepository
     job_repo: JobRepository
+
+    # ── Auth (authentication + per-collection authorization) ──────────────────
+    user_repo: UserRepository
+    api_key_repo: ApiKeyRepository
+    grant_repo: CollectionGrantRepository
+    auth_service: AuthService
 
     # ── Pipeline (P2 / P3 / P4) ─────────────────────────────────────────────
     node_cache: NodeCache

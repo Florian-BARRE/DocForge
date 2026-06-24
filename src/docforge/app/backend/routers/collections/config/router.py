@@ -8,10 +8,11 @@ import uuid
 from typing import Any
 
 # ====== Third-Party Library Imports ======
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
 # ====== Internal Project Imports ======
 from backend.context import CONTEXT
+from backend.libs.auth import require_collection_role
 from backend.libs.utils.error_handling import auto_handle_errors
 from backend.routers.collections.config.models import (
     ConfigHistoryResponse,
@@ -22,6 +23,12 @@ from backend.routers.collections.config.models import (
     ConfigVersionSummary,
 )
 from common_libs.config.validation import ConfigDocument, ConfigExplainer, ConfigValidator
+from common_libs.storage.postgres.models import GrantRole
+
+# Reads need 'read' on the collection; config edits (update/rollback) need 'write'. The minimum is
+# declared per-route below so the read/write split is explicit at each endpoint.
+_READ = [Depends(require_collection_role(GrantRole.READ))]
+_WRITE = [Depends(require_collection_role(GrantRole.WRITE))]
 
 router = APIRouter(tags=["config"])
 
@@ -29,7 +36,7 @@ router = APIRouter(tags=["config"])
 # ─────────────────────────── Read ───────────────────────────
 
 
-@router.get("/state", response_model=ConfigStateResponse)
+@router.get("/state", response_model=ConfigStateResponse, dependencies=_READ)
 @auto_handle_errors
 async def get_config_state(collection_id: uuid.UUID) -> ConfigStateResponse:
     """Return the collection's complete current configuration (pipeline credentials redacted)."""
@@ -40,7 +47,7 @@ async def get_config_state(collection_id: uuid.UUID) -> ConfigStateResponse:
     return _state_response(collection)
 
 
-@router.get("/schema", response_model=ConfigSchemaResponse)
+@router.get("/schema", response_model=ConfigSchemaResponse, dependencies=_READ)
 @auto_handle_errors
 async def get_config_schema(collection_id: uuid.UUID) -> ConfigSchemaResponse:
     """Return this collection's metadata schema: system (auto-extracted) + custom (caller-provided)."""
@@ -52,7 +59,7 @@ async def get_config_schema(collection_id: uuid.UUID) -> ConfigSchemaResponse:
     return ConfigSchemaResponse(metadata_fields=doc["metadata_fields"])
 
 
-@router.get("/history", response_model=ConfigHistoryResponse)
+@router.get("/history", response_model=ConfigHistoryResponse, dependencies=_READ)
 @auto_handle_errors
 async def config_history(collection_id: uuid.UUID) -> ConfigHistoryResponse:
     """List the config version history (newest first)."""
@@ -79,7 +86,7 @@ async def config_history(collection_id: uuid.UUID) -> ConfigHistoryResponse:
 # ─────────────────────────── Mutations ───────────────────────────
 
 
-@router.post("/update", response_model=ConfigStateResponse)
+@router.post("/update", response_model=ConfigStateResponse, dependencies=_WRITE)
 @auto_handle_errors
 async def update_config(
     collection_id: uuid.UUID, body: ConfigUpdateRequest
@@ -104,7 +111,7 @@ async def update_config(
     )
 
 
-@router.post("/rollback", response_model=ConfigStateResponse)
+@router.post("/rollback", response_model=ConfigStateResponse, dependencies=_WRITE)
 @auto_handle_errors
 async def rollback_config(
     collection_id: uuid.UUID, body: ConfigRollbackRequest

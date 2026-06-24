@@ -25,9 +25,14 @@ API_URL = os.environ.get("DOCFORGE_TEST_API_URL", "http://localhost:10020/api/v1
 QDRANT_URL = os.environ.get("DOCFORGE_TEST_QDRANT_URL", "http://localhost:10025")
 RERANKER_URL = os.environ.get("DOCFORGE_TEST_RERANKER_URL", "http://localhost:10027")
 
+# Optional bearer token for AUTH_ENABLED=true stacks. When empty (default) the client omits
+# the Authorization header entirely, preserving backward compatibility with auth-off deployments.
+# Set DOCFORGE_TEST_API_TOKEN to a root API key to run the live suite against a secured stack.
+API_TOKEN = os.environ.get("DOCFORGE_TEST_API_TOKEN", "")
+
 # Dense-only embed: the deployed TEI serves BGE-M3 WITHOUT a sparse head, so embed_sparse
 # MUST be False (a /embed_sparse call would 424). Shared by every collection the suite creates.
-DENSE_ONLY_PIPELINE: dict[str, Any] = {"embed": {"chain": [{"id": "bge_server", "base_url": "http://bge:80", "embed_sparse": False}]}}
+DENSE_ONLY_PIPELINE: dict[str, Any] = {"embed": {"chain": [{"id": "bge_server", "base_url": "http://bge_server:80", "embed_sparse": False}]}}
 
 # Formats the corpus exercises — must be whitelisted on every collection that ingests them.
 CORPUS_FORMATS: list[str] = ["pdf", "docx", "doc", "xlsx", "xls", "pptx", "ppt", "html"]
@@ -71,7 +76,7 @@ def live_client() -> Iterator[LiveClient]:
     if not LiveClient.is_live(API_URL):
         pytest.skip(f"live DocForge stack not reachable at {API_URL}")
     # 2. Yield a shared client and close it at session end
-    client = LiveClient(api_url=API_URL, qdrant_url=QDRANT_URL)
+    client = LiveClient(api_url=API_URL, qdrant_url=QDRANT_URL, api_token=API_TOKEN)
     yield client
     client.close()
 

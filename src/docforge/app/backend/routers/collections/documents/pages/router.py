@@ -9,10 +9,11 @@ from collections import defaultdict
 from typing import Any
 
 # ====== Third-Party Library Imports ======
-from fastapi import APIRouter, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Response
 
 # ====== Internal Project Imports ======
 from backend.context import CONTEXT
+from backend.libs.auth import require_collection_role
 from backend.libs.utils.error_handling import auto_handle_errors
 from backend.routers.collections.documents.helpers import DocumentOps
 from backend.routers.collections.documents.pages.models import (
@@ -22,15 +23,21 @@ from backend.routers.collections.documents.pages.models import (
     PageListResponse,
     PageReingestResponse,
 )
+from common_libs.storage.postgres.models import GrantRole
 from common_libs.storage.s3.helpers import S3Helpers
 
 # Render resolution for on-the-fly page screenshots — 2× zoom matches S1 figure crop quality.
 _PAGE_RENDER_ZOOM: float = 2.0
 
+# Page reads (list/detail/screenshot) need 'read'; reingesting a page re-runs the whole document
+# and needs 'write'.
+_READ = [Depends(require_collection_role(GrantRole.READ))]
+_WRITE = [Depends(require_collection_role(GrantRole.WRITE))]
+
 router = APIRouter(tags=["pages"])
 
 
-@router.get("/list", response_model=PageListResponse)
+@router.get("/list", response_model=PageListResponse, dependencies=_READ)
 @auto_handle_errors
 async def list_pages(collection_id: uuid.UUID, document_id: uuid.UUID) -> PageListResponse:
     """List the document's pages with per-page block/figure/table/chunk counts."""
@@ -58,7 +65,7 @@ async def list_pages(collection_id: uuid.UUID, document_id: uuid.UUID) -> PageLi
     return PageListResponse(document_id=document_id, total_pages=len(infos), pages=infos)
 
 
-@router.get("/{page_number}", response_model=PageDetailResponse)
+@router.get("/{page_number}", response_model=PageDetailResponse, dependencies=_READ)
 @auto_handle_errors
 async def get_page(
     collection_id: uuid.UUID, document_id: uuid.UUID, page_number: int
@@ -93,7 +100,7 @@ async def get_page(
     )
 
 
-@router.get("/{page_number}/screenshot")
+@router.get("/{page_number}/screenshot", dependencies=_READ)
 @auto_handle_errors
 async def get_page_screenshot(
     collection_id: uuid.UUID, document_id: uuid.UUID, page_number: int
@@ -135,7 +142,7 @@ async def get_page_screenshot(
     return Response(content=png_bytes, media_type="image/png")
 
 
-@router.post("/{page_number}/reingest", response_model=PageReingestResponse)
+@router.post("/{page_number}/reingest", response_model=PageReingestResponse, dependencies=_WRITE)
 @auto_handle_errors
 async def reingest_page(
     collection_id: uuid.UUID, document_id: uuid.UUID, page_number: int

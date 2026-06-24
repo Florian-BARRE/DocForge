@@ -40,6 +40,11 @@ interface DocRowProps {
    * document detail view.
    */
   onOpen: (docId: string) => void
+  /**
+   * When false, the reingest and delete actions are hidden.
+   * Read-only users can view and trace documents but cannot mutate them.
+   */
+  canWrite?: boolean
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -108,7 +113,7 @@ function formatDuration(ms: number | null | undefined): string {
  * The ⋯ overflow menu drops down below the button and closes automatically
  * when the user clicks anywhere outside the component.
  */
-export function DocRow({ doc, collectionId: _collectionId, isStale, staleReasons, collectionPipelineVersion, onTrace, onDelete, onReingest, onOpen }: DocRowProps) {
+export function DocRow({ doc, collectionId: _collectionId, isStale, staleReasons, collectionPipelineVersion, onTrace, onDelete, onReingest, onOpen, canWrite = true }: DocRowProps) {
   // 1. Local state: whether the overflow dropdown is visible.
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -201,10 +206,10 @@ export function DocRow({ doc, collectionId: _collectionId, isStale, staleReasons
         <span>{duration}</span>
       </span>
 
-      {/* Actions: inline reingest (when stale) + Trace button + overflow menu */}
+      {/* Actions: inline reingest (when stale, write-only) + Trace + overflow menu (write-only) */}
       <span className="doc-row-actions">
-        {/* Inline re-index — surfaced directly in the row when the doc is stale */}
-        {isStale && (
+        {/* Inline re-index — only shown to users with write access. */}
+        {isStale && canWrite && (
           <button
             type="button"
             className="btn-icon doc-row-reingest"
@@ -215,7 +220,7 @@ export function DocRow({ doc, collectionId: _collectionId, isStale, staleReasons
           </button>
         )}
 
-        {/* Trace — disabled until the document has finished processing */}
+        {/* Trace — disabled until the document has finished processing. */}
         <button
           type="button"
           className="btn-icon"
@@ -226,36 +231,38 @@ export function DocRow({ doc, collectionId: _collectionId, isStale, staleReasons
           Trace
         </button>
 
-        {/* Overflow menu */}
-        <div className="doc-menu" ref={menuRef}>
-          <button
-            type="button"
-            className="btn-icon"
-            title="More actions"
-            onClick={() => setMenuOpen(prev => !prev)}
-          >
-            ⋯
-          </button>
+        {/* Overflow menu — only rendered for users with write access. */}
+        {canWrite && (
+          <div className="doc-menu" ref={menuRef}>
+            <button
+              type="button"
+              className="btn-icon"
+              title="More actions"
+              onClick={() => setMenuOpen(prev => !prev)}
+            >
+              ⋯
+            </button>
 
-          {menuOpen && (
-            <div className="doc-menu-dropdown">
-              <button
-                type="button"
-                className="doc-menu-item"
-                onClick={handleReingest}
-              >
-                Re-ingest
-              </button>
-              <button
-                type="button"
-                className="doc-menu-item doc-menu-item-danger"
-                onClick={handleDelete}
-              >
-                Delete
-              </button>
-            </div>
-          )}
-        </div>
+            {menuOpen && (
+              <div className="doc-menu-dropdown">
+                <button
+                  type="button"
+                  className="doc-menu-item"
+                  onClick={handleReingest}
+                >
+                  Re-ingest
+                </button>
+                <button
+                  type="button"
+                  className="doc-menu-item doc-menu-item-danger"
+                  onClick={handleDelete}
+                >
+                  Delete
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </span>
     </div>
   )

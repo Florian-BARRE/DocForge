@@ -10,10 +10,11 @@ from typing import Any
 
 # ====== Third-Party Library Imports ======
 import httpx
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
 # ====== Internal Project Imports ======
 from backend.context import CONTEXT
+from backend.libs.auth import require_collection_role
 from backend.libs.search.builder import build_search_pipeline
 from backend.libs.utils.error_handling import auto_handle_errors
 from backend.routers.collections.documents.search.models import (
@@ -23,11 +24,15 @@ from backend.routers.collections.documents.search.models import (
     SearchResultItem,
 )
 from common_libs.domain.metadata import schema_field_dicts
+from common_libs.storage.postgres.models import GrantRole
+
+# Searching is a read operation — both the collection-wide and in-document search need 'read'.
+_READ = [Depends(require_collection_role(GrantRole.READ))]
 
 router = APIRouter(tags=["search"])
 
 
-@router.post("/search", response_model=SearchResponse)
+@router.post("/search", response_model=SearchResponse, dependencies=_READ)
 @auto_handle_errors
 async def search_collection(collection_id: uuid.UUID, body: SearchRequest) -> SearchResponse:
     """Weighted multi-field hybrid search over a collection."""
@@ -87,7 +92,7 @@ async def search_collection(collection_id: uuid.UUID, body: SearchRequest) -> Se
         )
 
 
-@router.post("/{document_id}/search", response_model=SearchResponse)
+@router.post("/{document_id}/search", response_model=SearchResponse, dependencies=_READ)
 @auto_handle_errors
 async def search_within_document(
     collection_id: uuid.UUID, document_id: uuid.UUID, body: SearchRequest

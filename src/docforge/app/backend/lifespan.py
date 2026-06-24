@@ -22,7 +22,7 @@ from backend.libs.observability.queue import QueueIntrospector
 from .context import CONTEXT
 
 # Total startup steps — update this constant when adding or removing steps.
-TOTAL_STEPS = 9
+TOTAL_STEPS = 10
 
 
 def lifespan() -> Any:
@@ -55,9 +55,13 @@ def lifespan() -> Any:
             )
             CONTEXT.logger.info(f"{banner}")
 
-            # 2. Log runtime configuration (secrets masked automatically by configplusplus)
+            # 2. Log + validate runtime configuration (secrets masked automatically by configplusplus).
+            # validate() is NOT auto-called by configplusplus, so we invoke it explicitly here BEFORE
+            # any service starts or any request is served. It fails fast (RuntimeError) when auth is
+            # enabled with insecure/placeholder secrets — startup aborts and the app never serves.
             log_step(1, "Runtime configuration")
             CONTEXT.logger.info(f"{CONTEXT.RUNTIME_CONFIG}")
+            CONTEXT.RUNTIME_CONFIG.validate()
 
             # 3. Detect GPU / device availability
             log_step(2, "Device detection (GPU/CPU)")
@@ -126,8 +130,15 @@ def lifespan() -> Any:
                     CONTEXT.retrieval = None
                     CONTEXT.metadata_indexer = None
 
-            # 10. Final startup confirmation
-            log_step(9, "Application ready")
+            # 10. Bootstrap the root account — idempotent upsert of the configured root user.
+            # Runs after the PostgreSQL connection (step 3) is live; safe on every boot (refreshes
+            # the hash + re-asserts the root role). Required even when AUTH_ENABLED is false so a
+            # later flip to enabled finds a working root account.
+            log_step(9, "Root account bootstrap")
+            await CONTEXT.auth_service.bootstrap_root()
+
+            # 11. Final startup confirmation
+            log_step(10, "Application ready")
             CONTEXT.logger.info(f"DocForge is ready — serving {CONTEXT.RUNTIME_CONFIG.FASTAPI_APP_NAME} v{CONTEXT.RUNTIME_CONFIG.APP_VERSION}")
 
             # ── Yield — app is now running ────────────────────────────────────

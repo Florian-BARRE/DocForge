@@ -7,10 +7,11 @@
 import uuid
 
 # ====== Third-Party Library Imports ======
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 # ====== Internal Project Imports ======
 from backend.context import CONTEXT
+from backend.libs.auth import require_collection_role
 from backend.libs.utils.error_handling import auto_handle_errors
 from backend.routers.collections.documents.chunks.models import (
     ChunkListResponse,
@@ -18,11 +19,17 @@ from backend.routers.collections.documents.chunks.models import (
     ChunkUpdateRequest,
     ChunkUpdateResponse,
 )
+from common_libs.storage.postgres.models import GrantRole
+
+# Listing/reading chunks needs 'read'; manually correcting a chunk (and optionally re-embedding it)
+# mutates the indexed content and needs 'write'.
+_READ = [Depends(require_collection_role(GrantRole.READ))]
+_WRITE = [Depends(require_collection_role(GrantRole.WRITE))]
 
 router = APIRouter(tags=["chunks"])
 
 
-@router.get("/list", response_model=ChunkListResponse)
+@router.get("/list", response_model=ChunkListResponse, dependencies=_READ)
 @auto_handle_errors
 async def list_chunks(
     collection_id: uuid.UUID,
@@ -43,7 +50,7 @@ async def list_chunks(
     )
 
 
-@router.get("/{chunk_id}", response_model=ChunkResponse)
+@router.get("/{chunk_id}", response_model=ChunkResponse, dependencies=_READ)
 @auto_handle_errors
 async def get_chunk(
     collection_id: uuid.UUID, document_id: uuid.UUID, chunk_id: uuid.UUID
@@ -53,7 +60,7 @@ async def get_chunk(
     return _to_response(row)
 
 
-@router.post("/{chunk_id}/update", response_model=ChunkUpdateResponse)
+@router.post("/{chunk_id}/update", response_model=ChunkUpdateResponse, dependencies=_WRITE)
 @auto_handle_errors
 async def update_chunk(
     collection_id: uuid.UUID, document_id: uuid.UUID, chunk_id: uuid.UUID, body: ChunkUpdateRequest
