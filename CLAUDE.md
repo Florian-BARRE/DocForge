@@ -72,64 +72,56 @@ Serveur-agnostique : GPU (CUDA 11.8, V100) quand disponible, fallback CPU+API.
 
 ## Structure du projet
 
-`libs/` est rangé **par domaine**, 6 buckets. DAG strict des couches :
+Code éclaté en **3 racines sous `src/`** (+ le MCP), selon qui consomme quoi. DAG strict :
 `domain(0) ← config(1) ← providers(1) ← storage(2) ← search(2) ← pipeline(3)`.
 Règle d'or : une couche n'importe jamais une couche au-dessus d'elle.
 
 ```
-src/docforge/             # Source app (dans WORKDIR /app/docforge)
-  entrypoint.py           # uvicorn target: uvicorn entrypoint:app
-  arq_worker.py           # arq target: arq arq_worker.WorkerSettings
-  mcp_server.py           # MCP server (client HTTP, aucun import domaine)
-  config/runtime/         # RUNTIME_CONFIG (EnvConfigLoader) — sys.path.append(PATH_ROOT_DIR)
-  libs/
-    domain/               # L0 feuille — modèles purs (IR, Chunk, metadata)
-      ir/                 #   IR Pydantic + sérialisation markdown
-      metadata/           #   schéma de champs (MetaFieldSpec, system fields)
-    config/               # L1 — tout ce qui est config
-      pipeline/           #   PipelineConfig, _registry, spec_utils, stage configs
-        stages/           #   parse/enrich/chunk/contextualize/embed configs
-      validation/         #   ConfigValidator + explain (ex-governance/config_validation)
-      admission/          #   AdmissionValidator (ex-governance/admission)
-    providers/            # L1 — capacités ML interchangeables : interfaces Protocol,
-                          #      chain, device, converter/parser/ocr/vlm/embed/classifier/lang
-    storage/              # L2 — persistance brute
-                          #      postgres/ (SQLAlchemy) + qdrant/ + s3/ (aioboto3)
-    search/               # L2 — recherche & indexation
-                          #      hybrid/ (HybridSearchService), field_index/, metadata_indexer/
-    pipeline/             # L3 — orchestration pipeline
-                          #      engine.py (StageEngine), orchestrator/, assembly/,
-                          #      stages/ (S0–S6, each a folder with core/helpers/result),
-                          #      caches/ (fingerprint/node/provider), worker/ (runner/tasks)
-  backend/                # FastAPI app, CONTEXT, lifespan, routers (+ backend/libs/utils)
-  migrations/             # Alembic
-services/                 # .env par service (docforge, postgres, seaweedfs, gotenberg, redis)
-docker-compose.yml        # Production (+ deploy.resources.limits par service)
-docker-compose.dev.yml    # Dev overrides (volumes + --reload)
+src/
+  common/                 # SOCLE PARTAGÉ — consommé par backend ET worker
+    pyproject.toml        #   contrat de deps (deps-only) + uv.lock ; `--extra worker` = docling
+    config/runtime/       #   RUNTIME_CONFIG (EnvConfigLoader) — importé `from config import …`
+    common_libs/          #   importé `from common_libs.<bucket> import …`
+      domain/             #     L0 — modèles purs (IR, Chunk, metadata)
+      config/             #     L1 — PipelineConfig, validation, admission
+      providers/          #     L1 — capacités ML (converter/parser/ocr/vlm/embed/rerank/llm/device…)
+      storage/            #     L2 — postgres/ + qdrant/ + s3/
+      search/field_index/ #     L2 — schéma de champs (partagé : S6 + query)
+      observability/      #     events/ + heartbeat/ (partagés)
+      pipeline/           #     L3 — caches/, assembly/ (registry), stages/ (S0–S6)
+  backend/                # APP FASTAPI — image légère (sans docling)
+    Dockerfile  entrypoint.py  alembic.ini  migrations/
+    backend/              #   app, CONTEXT, lifespan, routers (+ backend/libs : error_handling, sse, admission)
+    libs/                 #   dédié backend `from libs.<x>` : search/{hybrid,metadata_indexer,pipeline}, observability/queue
+    frontend/             #   React + Vite (dist/ servi en statique)
+  worker/                 # WORKER ARQ — image lourde (+ docling)
+    Dockerfile  arq_worker.py
+    libs/                 #   dédié worker `from libs.<x>` : pipeline/{engine,orchestrator,worker}, observability/metrics
+  docforge_mcp/           # MCP standalone (client HTTP pur, aucun import domaine)
+services/                 # .env par service (docforge, postgres, seaweedfs, gotenberg, redis, pgadmin)
+docker-compose.yml        # Production (backend→backend/Dockerfile, worker→worker/Dockerfile)
+docker-compose.dev.yml    # Dev overrides (volumes common+app + --reload)
 ```
 
 > Conso ressources & plafonds CPU/RAM par service → `docs/deployment-resources.md`
 
-> Imports : toujours `from libs.<bucket>.<module> import …` (jamais d'import plat).
-> Fichiers >200 lignes = signal de découpage ; quelques exceptions cohésives documentées
-> subsistent (ORM models, IR schema, StageEngine orchestrator) avec justification en docstring.
+### Deux apps, un socle : `common_libs.*` vs `libs.*`
 
-### `libs/` = socle commun à deux consommateurs
+`config` + `common_libs.*` (dans `src/common/`) = **socle partagé**, consommé par les DEUX entrypoints.
+Chaque app a en plus son `libs.*` **dédié** (sous `src/backend/` ou `src/worker/`), résolu par app au
+runtime. `entrypoint.py` / `arq_worker.py` bootstrappent `sys.path` (`src/common` + leur dossier) avant
+d'importer `config`. Import partagé → `from common_libs.<bucket> import …` ; dédié → `from libs.<x> import …`.
 
-`libs/` n'appartient ni au backend ni au worker : c'est leur **socle partagé** (le « common »).
-Deux points d'entrée le consomment — `entrypoint.py` (backend FastAPI) et `arq_worker.py` (worker arq).
-C'est pourquoi `libs/` est leur **frère**, jamais rangé sous `backend/` (sinon le worker dépendrait du
-web sans raison). Zones d'usage réelles :
-
-| Zone | Modules | Lancé par |
+| Racine | Modules | Lancé par |
 |---|---|---|
-| **Backend-only** (web/query) | `search/hybrid`, `search/metadata_indexer`, `observability/queue`, `backend/libs/` (error_handling, sse, admission) | uvicorn |
-| **Worker-only** (ingestion) | `pipeline/engine`, `pipeline/orchestrator`, `pipeline/worker/`, exécution des stages `pipeline/stages/` (S0→S6), `observability/metrics` | arq |
-| **Partagé** (le socle) | `domain`, `config`, `providers` (+ `pipeline/assembly` registry), `storage`, `pipeline/caches`, `observability/events`+`heartbeat`, `search/field_index` | les deux |
+| `common/` (`common_libs.*`) | domain, config, providers, storage, observability events/heartbeat, search/field_index, pipeline caches/assembly/**stages** | les deux |
+| `backend/` (`libs.*`) | search hybrid/metadata_indexer/pipeline, observability/queue + le package `backend/` | uvicorn |
+| `worker/` (`libs.*`) | pipeline engine/orchestrator/worker, observability/metrics | arq |
 
-> Le backend ne lance **jamais** le pipeline d'ingestion S0→S6 : il enqueue un job, le worker l'exécute.
-> Le registry (`pipeline/assembly`) câble dynamiquement providers + stages → il tire l'essentiel du socle,
-> ce qui rend une scission physique backend/worker/common peu rentable (le partagé est majoritaire).
+> Les **stages** (S0→S6) vivent en `common_libs` (pas en worker) car le registry partagé
+> (`pipeline/assembly`) les importe **statiquement**. Le backend ne lance jamais l'ingestion : il
+> enqueue un job, le worker l'exécute. Image backend ~2-3 GB plus légère (docling = `--extra worker`).
+> Fichiers >200 lignes = signal de découpage ; exceptions cohésives documentées en docstring.
 
 ## Règles
 
