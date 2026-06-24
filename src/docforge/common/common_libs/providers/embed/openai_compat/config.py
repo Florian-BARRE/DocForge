@@ -29,7 +29,7 @@ class OpenAICompatEmbedConfig(BaseModel):
 
     Config id: ``"openai_compat"``. The ``locality`` flag selects the deployment:
       - ``"external"`` — cloud API (OpenAI/Azure/Mistral); ``api_key`` required (from config
-        or the OPENAI_API_KEY / EMBED_API_KEY env via merge_defaults).
+        from the collection config).
       - ``"local"`` — self-hosted (vLLM/Ollama/…); ``api_key`` optional, ``base_url`` required.
 
     Dense-only. Pair with a separate sparse source (EmbedConfig.sparse) for hybrid search.
@@ -80,26 +80,19 @@ class OpenAICompatEmbedConfig(BaseModel):
 
     def merge_defaults(self, cfg: Any) -> OpenAICompatEmbedConfig:
         """
-        Fill external defaults from the deployment env (api_key + the cloud base_url).
-
-        Local configs are returned unchanged (the caller sets base_url explicitly).
+        Return this config unchanged — base_url/api_key are per-collection.
 
         Args:
-            cfg: Runtime config exposing OPENAI_API_KEY / EMBED_API_KEY.
+            cfg: Unused — kept for call-site signature compatibility.
 
         Returns:
-            OpenAICompatEmbedConfig: Config copy with external defaults merged.
+            OpenAICompatEmbedConfig: This config, unchanged.
         """
-        if self.locality != "external":
-            return self
-        return self.model_copy(update={
-            "api_key": self.api_key or getattr(cfg, "OPENAI_API_KEY", "") or getattr(cfg, "EMBED_API_KEY", ""),
-            "base_url": self.base_url or _DEFAULT_EXTERNAL_BASE_URL,
-        })
+        _ = cfg
+        return self
 
     @classmethod
     def availability(cls, cfg: Any) -> tuple[bool, str]:
-        """Report availability — cloud always reachable; local needs an explicit base_url."""
-        api_key = getattr(cfg, "OPENAI_API_KEY", "") or getattr(cfg, "EMBED_API_KEY", "")
-        hint = "Cloud (external): set api_key. Local: set base_url + model. Dense only."
-        return True, (hint if not api_key else f"Cloud key detected · {hint}")
+        """Report as usable — base_url + key are supplied by the collection config."""
+        _ = cfg
+        return True, "OpenAI-compatible embed · base_url + key per-collection"

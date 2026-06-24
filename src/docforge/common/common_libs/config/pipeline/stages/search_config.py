@@ -125,10 +125,13 @@ class RerankConfig(BaseModel):
         from pydantic import Field as _F
         from pydantic import TypeAdapter
 
+        from common_libs.providers.rerank.bge_server.config import BgeServerRerankConfig
         from common_libs.providers.rerank.cohere.config import CohereRerankConfig
         from common_libs.providers.rerank.bge.config import BgeRerankerConfig
 
-        union = Annotated[BgeRerankerConfig | CohereRerankConfig, _F(discriminator="id")]
+        union = Annotated[
+            BgeServerRerankConfig | BgeRerankerConfig | CohereRerankConfig, _F(discriminator="id")
+        ]
         adapter = TypeAdapter(union)
 
         coerced = [

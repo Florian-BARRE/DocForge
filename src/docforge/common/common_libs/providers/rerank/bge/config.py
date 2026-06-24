@@ -70,39 +70,40 @@ class BgeRerankerConfig(BaseModel):
 
     def merge_defaults(self, cfg: Any) -> BgeRerankerConfig:
         """
-        Merge deployment env defaults into this config.
+        Return this config unchanged — all defaults are per-collection.
+
+        The Pydantic field defaults already provide the structural defaults at
+        construction time; nothing is sourced from the deployment env.
 
         Args:
-            cfg: RUNTIME_CONFIG instance providing BGE_RERANKER_URL / BGE_RERANKER_BATCH_SIZE.
+            cfg: Unused — kept for call-site signature compatibility.
 
         Returns:
-            BgeRerankerConfig: Updated config with env defaults applied where fields are empty/zero.
+            BgeRerankerConfig: This config, unchanged.
         """
-        return self.model_copy(update={
-            "base_url": self.base_url or getattr(cfg, "BGE_RERANKER_URL", self.base_url),
-            "api_key": self.api_key or getattr(cfg, "BGE_RERANKER_API_KEY", ""),
-            "batch_size": self.batch_size or getattr(cfg, "BGE_RERANKER_BATCH_SIZE", self.batch_size),
-        })
+        _ = cfg
+        return self
 
     @classmethod
     def availability(cls, cfg: Any) -> tuple[bool, str]:
         """
-        Check whether the TEI reranker server is reachable.
+        Probe the structural-default bge server for reachability.
 
         Args:
-            cfg: RUNTIME_CONFIG instance providing BGE_RERANKER_URL.
+            cfg: Unused — the per-collection base_url is not visible here.
 
         Returns:
             tuple[bool, str]: (is_available, human-readable description).
         """
-        base_url = getattr(cfg, "BGE_RERANKER_URL", "http://bge:80")
+        _ = cfg
+        base_url = "http://bge:80"
         try:
             p = urlparse(base_url)
-            host, port = p.hostname or "reranker", p.port or 80
+            host, port = p.hostname or "bge", p.port or 80
             with socket.create_connection((host, port), timeout=1):
-                return True, f"BGE-Reranker-v2-m3 · cross-encoder · {base_url}"
+                return True, "BGE reranker · http://bge:80"
         except OSError:
-            return False, f"TEI reranker not reachable at {base_url}"
+            return False, "bge reranker not reachable at http://bge:80"
 
 
 __all__ = ["BgeRerankerConfig"]

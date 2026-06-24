@@ -27,7 +27,7 @@ class TeiEmbedConfig(BaseModel):
     Configuration for the TEI (Text Embeddings Inference) local embedding server.
 
     Config id: "tei" — BGE-M3, 1024-dim dense + BM25 sparse, hybrid search.
-    Requires a running TEI server (URL from the TEI_BASE_URL env, e.g. http://bge:80).
+    Requires a running TEI server (URL from the collection config (defaults to http://bge:80)).
 
     Attributes:
         id: Provider discriminator — always "tei".
@@ -47,9 +47,9 @@ class TeiEmbedConfig(BaseModel):
     locality: Literal["local", "external"] = Field(
         default="local", description="'local' (self-hosted TEI) or 'external' (remote TEI endpoint)."
     )
-    # Empty by default so merge_defaults sources the URL from TEI_BASE_URL (deployment
-    # env) — a non-empty default would shadow the env and pin a possibly-wrong port.
-    base_url: str = Field(default="", description="TEI server URL (defaults to TEI_BASE_URL env).")
+    # Structural default points at the in-cluster bge service; per-collection configs
+    # override it. No env sourcing — the URL lives in the collection config only.
+    base_url: str = Field(default="http://bge:80", description="TEI server URL.")
     api_key: str = Field(default="", description="Optional bearer token (remote TEI endpoints may require it).")
     model: str = Field(default="BAAI/bge-m3", description="Embedding model served by TEI.")
     batch_size: int = Field(default=32, ge=1, le=256, description="Max texts per batch.")
@@ -79,39 +79,40 @@ class TeiEmbedConfig(BaseModel):
 
     def merge_defaults(self, cfg: Any) -> TeiEmbedConfig:
         """
-        Merge deployment env defaults into this config.
+        Return this config unchanged — all defaults are per-collection.
+
+        The Pydantic field defaults already provide the structural defaults at
+        construction time; nothing is sourced from the deployment env.
 
         Args:
-            cfg: RUNTIME_CONFIG instance providing TEI_BASE_URL / TEI_BATCH_SIZE.
+            cfg: Unused — kept for call-site signature compatibility.
 
         Returns:
-            TeiEmbedConfig: Updated config with env defaults applied where needed.
+            TeiEmbedConfig: This config, unchanged.
         """
-        return self.model_copy(update={
-            "base_url": self.base_url or getattr(cfg, "TEI_BASE_URL", "") or "http://bge:80",
-            "api_key": self.api_key or getattr(cfg, "TEI_API_KEY", ""),
-            "batch_size": self.batch_size or getattr(cfg, "TEI_BATCH_SIZE", self.batch_size),
-        })
+        _ = cfg
+        return self
 
     @classmethod
     def availability(cls, cfg: Any) -> tuple[bool, str]:
         """
-        Check whether the TEI server is reachable.
+        Probe the structural-default bge server for reachability.
 
         Args:
-            cfg: RUNTIME_CONFIG instance providing TEI_BASE_URL.
+            cfg: Unused — the per-collection base_url is not visible here.
 
         Returns:
             tuple[bool, str]: (is_available, human-readable description).
         """
-        base_url = getattr(cfg, "TEI_BASE_URL", "http://bge:80")
+        _ = cfg
+        base_url = "http://bge:80"
         try:
             p = urlparse(base_url)
-            host, port = p.hostname or "tei", p.port or 8080
+            host, port = p.hostname or "bge", p.port or 80
             with socket.create_connection((host, port), timeout=1):
                 return True, f"BGE-M3 · 1024-dim · dense+sparse · {base_url}"
         except OSError:
-            return False, f"TEI server not reachable at {base_url}"
+            return False, f"TEI/bge server not reachable at {base_url}"
 
 
 __all__ = ["TeiEmbedConfig"]

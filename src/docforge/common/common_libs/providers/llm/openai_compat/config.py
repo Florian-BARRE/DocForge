@@ -7,9 +7,7 @@
 # ====== Standard Library Imports ======
 from __future__ import annotations
 
-import socket
 from typing import Any, ClassVar, Literal
-from urllib.parse import urlparse
 
 # ====== Third-Party Library Imports ======
 from pydantic import BaseModel, Field, model_validator
@@ -31,7 +29,7 @@ class OpenAICompatLLMConfig(BaseModel):
     Configuration for an OpenAI-compatible chat LLM — local or external.
 
     Config id: ``"openai_compat"``. The ``locality`` flag selects the deployment:
-      - ``"external"`` — cloud OpenAI; ``api_key`` required (config or OPENAI_API_KEY/LLM_API_KEY env).
+      - ``"external"`` — cloud OpenAI; ``api_key`` required (from the collection config).
       - ``"local"`` — self-hosted (vLLM/Ollama/llama.cpp); ``api_key`` usually ``"local"``.
     """
 
@@ -69,31 +67,23 @@ class OpenAICompatLLMConfig(BaseModel):
         )
 
     def merge_defaults(self, cfg: Any) -> OpenAICompatLLMConfig:
-        """Fill env defaults: external api_key from OPENAI/LLM env; local base_url/model from LLM env."""
-        if self.locality == "external":
-            return self.model_copy(update={
-                "api_key": (self.api_key if self.api_key not in ("", "local") else "")
-                           or getattr(cfg, "OPENAI_API_KEY", "") or getattr(cfg, "LLM_API_KEY", ""),
-                "base_url": self.base_url or _DEFAULT_EXTERNAL_BASE_URL,
-            })
-        return self.model_copy(update={
-            "base_url": self.base_url or getattr(cfg, "LLM_API_BASE_URL", _DEFAULT_LOCAL_BASE_URL),
-            "api_key": self.api_key or getattr(cfg, "LLM_API_KEY", "local"),
-            "model": self.model or getattr(cfg, "LLM_MODEL", self.model),
-        })
+        """
+        Return this config unchanged — base_url/api_key/model are per-collection.
+
+        Args:
+            cfg: Unused — kept for call-site signature compatibility.
+
+        Returns:
+            OpenAICompatLLMConfig: This config, unchanged.
+        """
+        _ = cfg
+        return self
 
     @classmethod
     def availability(cls, cfg: Any) -> tuple[bool, str]:
-        """Report availability — external on key presence; local on server reachability."""
-        api_key = getattr(cfg, "OPENAI_API_KEY", "") or getattr(cfg, "LLM_API_KEY", "")
-        base_url = getattr(cfg, "LLM_API_BASE_URL", _DEFAULT_LOCAL_BASE_URL)
-        try:
-            p = urlparse(base_url)
-            with socket.create_connection((p.hostname or "localhost", p.port or 8080), timeout=1):
-                return True, f"Local LLM reachable · {base_url} (or set api_key for external OpenAI)"
-        except OSError:
-            hint = "OpenAI key configured" if api_key else "set api_key for external, or start a local server"
-            return True, f"External LLM available ({hint}); local {base_url} unreachable"
+        """Report as usable — base_url + key are supplied by the collection config."""
+        _ = cfg
+        return True, "OpenAI-compatible LLM · base_url + key per-collection"
 
 
 __all__ = ["OpenAICompatLLMConfig"]

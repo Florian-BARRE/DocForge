@@ -46,10 +46,17 @@ class PaddleOcrConfig(BaseModel):
         return PaddleOcrProvider(use_gpu=self.use_gpu)
 
     def merge_defaults(self, cfg: Any) -> PaddleOcrConfig:
-        """Merge deployment env defaults (GPU flag from RUNTIME_CONFIG)."""
-        return self.model_copy(update={
-            "use_gpu": self.use_gpu or getattr(cfg, "OCR_PADDLE_USE_GPU", False),
-        })
+        """
+        Return this config unchanged — use_gpu is per-collection.
+
+        Args:
+            cfg: Unused — kept for call-site signature compatibility.
+
+        Returns:
+            PaddleOcrConfig: This config, unchanged.
+        """
+        _ = cfg
+        return self
 
     @classmethod
     def availability(cls, cfg: Any) -> tuple[bool, str]:

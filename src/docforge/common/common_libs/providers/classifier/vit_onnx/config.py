@@ -51,17 +51,20 @@ class VitOnnxConfig(BaseModel):
         return VitOnnxClassifier(model_path=self.model_path, use_gpu=self.use_gpu)
 
     def merge_defaults(self, cfg: Any) -> VitOnnxConfig:
-        """Return a copy with defaults merged from runtime config when fields are unset."""
-        return self.model_copy(update={
-            "model_path": self.model_path or getattr(cfg, "CLASSIFIER_ONNX_MODEL_PATH", ""),
-            "use_gpu": self.use_gpu or getattr(cfg, "CLASSIFIER_USE_GPU", False),
-        })
+        """
+        Return this config unchanged — model_path/use_gpu are per-collection.
+
+        Args:
+            cfg: Unused — kept for call-site signature compatibility.
+
+        Returns:
+            VitOnnxConfig: This config, unchanged.
+        """
+        _ = cfg
+        return self
 
     @classmethod
     def availability(cls, cfg: Any) -> tuple[bool, str]:
-        """Available when the ONNX model file is present on disk."""
-        import os
-        path = getattr(cfg, "CLASSIFIER_ONNX_MODEL_PATH", "")
-        if path and os.path.exists(path):
-            return True, f"ViT ONNX · accurate · model at {path}"
-        return False, f"ONNX model not found at {path!r} — set CLASSIFIER_ONNX_MODEL_PATH"
+        """Report as usable — the ONNX model_path is supplied per-collection."""
+        _ = cfg
+        return True, "ViT-ONNX classifier · model_path per-collection"

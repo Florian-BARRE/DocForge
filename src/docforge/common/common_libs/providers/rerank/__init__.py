@@ -12,6 +12,7 @@ from .base import RerankProvider
 
 # ─────────────────── Providers (one folder each) ───────────────────── #
 from .bge import BgeRerankerConfig, BgeRerankProvider
+from .bge_server import BgeServerRerankConfig
 from .cohere import CohereRerankConfig, CohereRerankProvider
 
 # ─────────────────── Public API ───────────────────────────────────── #
@@ -19,6 +20,7 @@ __all__ = [
     "RerankProvider",
     "BgeRerankerConfig",
     "BgeRerankProvider",
+    "BgeServerRerankConfig",
     "CohereRerankConfig",
     "CohereRerankProvider",
 ]

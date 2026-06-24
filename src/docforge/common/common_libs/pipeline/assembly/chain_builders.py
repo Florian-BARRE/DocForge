@@ -126,7 +126,7 @@ class ChainBuilderHelpers:
                 if not merged.api_key:
                     raise ProviderUnavailableError(
                         "ocr", "mistral_ocr",
-                        "No API key — fill it in the playground or set MISTRAL_OCR_API_KEY.",
+                        "No API key — set it in the collection's OCR provider config.",
                     )
             else:
                 raise ProviderUnavailableError(
@@ -164,7 +164,7 @@ class ChainBuilderHelpers:
             if merged.locality == "external" and not merged.api_key:
                 raise ProviderUnavailableError(
                     "vlm", "openai_compat",
-                    "No API key — fill it in the playground or set VLM_API_KEY.",
+                    "No API key — set it in the collection's VLM provider config.",
                 )
             built.append(merged.build())
         return Chain(stage="vlm", providers=built, gate=ChainGate(gate_cfg))

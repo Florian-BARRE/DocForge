@@ -23,7 +23,7 @@ class ChunkStageAssembler:
     Static builder for the S4 chunking stage and its intra-section splitter.
 
     All methods take the RUNTIME_CONFIG instance (``cfg``) so deployment defaults (e.g.
-    ``TEI_BASE_URL`` for semantic chunking) can be merged into the typed config.
+    the bge host for semantic chunking) can be merged into the typed config.
     """
 
     def __new__(cls, *args: object, **kwargs: object) -> None:  # type: ignore[misc]
@@ -77,7 +77,7 @@ class ChunkStageAssembler:
         Raises:
             ProviderUnavailableError: When semantic is requested but the embed endpoint is unreachable.
         """
-        # 1. Merge deployment defaults into the typed config (e.g. TEI_BASE_URL for semantic)
+        # 1. Merge deployment defaults into the typed config (the bge host for semantic)
         merged = spec.merge_defaults(cfg)
 
         # 2. Semantic split now accepts any embed provider — only a LOCAL base_url is probed

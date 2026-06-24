@@ -72,27 +72,23 @@ class OpenAICompatVlmConfig(BaseModel):
         )
 
     def merge_defaults(self, cfg: Any) -> OpenAICompatVlmConfig:
-        """Fill missing fields from VLM_* env defaults (shared by both localities)."""
-        return self.model_copy(update={
-            "base_url": self.base_url or getattr(cfg, "VLM_API_BASE_URL", self.base_url),
-            "model": self.model or getattr(cfg, "VLM_MODEL", self.model),
-            "api_key": self.api_key or getattr(cfg, "VLM_API_KEY", ""),
-            "timeout_s": self.timeout_s or getattr(cfg, "VLM_TIMEOUT_S", self.timeout_s),
-            "max_tokens": getattr(cfg, "VLM_MAX_TOKENS", self.max_tokens),
-            "cost_per_call": getattr(cfg, "VLM_COST_PER_CALL", self.cost_per_call),
-        })
+        """
+        Return this config unchanged — base_url/model/api_key are per-collection.
+
+        Args:
+            cfg: Unused — kept for call-site signature compatibility.
+
+        Returns:
+            OpenAICompatVlmConfig: This config, unchanged.
+        """
+        _ = cfg
+        return self
 
     @classmethod
     def availability(cls, cfg: Any) -> tuple[bool, str]:
-        """Report availability — local on base_url+model, external on api_key+model."""
-        base_url = getattr(cfg, "VLM_API_BASE_URL", "")
-        model = getattr(cfg, "VLM_MODEL", "")
-        api_key = getattr(cfg, "VLM_API_KEY", "")
-        if base_url and model:
-            return True, f"Local · {model} @ {base_url}"
-        if api_key and api_key != "local" and model:
-            return True, f"Cloud API · {model}"
-        return True, "Set base_url+model (local) or api_key+model (external) to enable"
+        """Report as usable — base_url + model + key are supplied per-collection."""
+        _ = cfg
+        return True, "VLM (OpenAI-compatible) · base_url + model + key per-collection"
 
 
 __all__ = ["OpenAICompatVlmConfig"]

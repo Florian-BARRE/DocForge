@@ -100,12 +100,8 @@ def build_default_pipeline(cfg: Any) -> PipelineConfig:
     # Lazy imports â€” triggered only when this function is actually called (after providers
     # register themselves), not at module load time.  Preserves the leaf constraint.
     from common_libs.providers.classifier.layout_labels.config import LayoutLabelsConfig
-    from common_libs.providers.classifier.vit_onnx.config import VitOnnxConfig
     from common_libs.providers.embed.tei.config import TeiEmbedConfig
-    from common_libs.providers.ocr.mistral.config import MistralOcrConfig
-    from common_libs.providers.ocr.paddle.config import PaddleOcrConfig
     from common_libs.providers.parser.docling import DoclingConfig
-    from common_libs.providers.vlm.openai_compat.config import OpenAICompatVlmConfig
     from common_libs.pipeline.stages.s4_chunk.strategies.params import TokenBudgetConfig
 
     # 1. Parser chain
@@ -114,39 +110,15 @@ def build_default_pipeline(cfg: Any) -> PipelineConfig:
     )
 
     # 2. Figure classifier chain
-    classifier_type = getattr(cfg, "CLASSIFIER_TYPE", "layout_labels")
-    if classifier_type == "vit_onnx":
-        classifier_chain: list = [VitOnnxConfig(
-            model_path=getattr(cfg, "CLASSIFIER_ONNX_MODEL_PATH", ""),
-            use_gpu=getattr(cfg, "CLASSIFIER_USE_GPU", False),
-        )]
-    else:
-        classifier_chain = [LayoutLabelsConfig()]
+    # Default deployment stack uses the heuristic layout-labels classifier; a per-collection
+    # config swaps in vit_onnx (with its own model_path / use_gpu) when needed.
+    classifier_chain: list = [LayoutLabelsConfig()]
 
-    # 3. OCR chain
+    # 3. OCR chain — empty by default; OCR providers are opted in per-collection.
     ocr_chain: list = []
-    if getattr(cfg, "OCR_PADDLE_ENABLED", False):
-        ocr_chain.append(PaddleOcrConfig(use_gpu=getattr(cfg, "OCR_PADDLE_USE_GPU", False)))
-    if getattr(cfg, "MISTRAL_OCR_ENABLED", False):
-        ocr_chain.append(MistralOcrConfig(
-            api_key=getattr(cfg, "MISTRAL_OCR_API_KEY", ""),
-            base_url=getattr(cfg, "MISTRAL_OCR_API_URL", "https://api.mistral.ai/v1"),
-            model=getattr(cfg, "MISTRAL_OCR_MODEL", "mistral-ocr-latest"),
-            timeout_s=getattr(cfg, "MISTRAL_OCR_TIMEOUT_S", 60),
-        ))
 
-    # 4. VLM chain (empty = disabled)
+    # 4. VLM chain — empty by default (disabled); VLM is opted in per-collection.
     vlm_chain: list = []
-    if getattr(cfg, "VLM_ENABLED", False):
-        vlm_chain.append(OpenAICompatVlmConfig(
-            locality="local",
-            base_url=getattr(cfg, "VLM_API_BASE_URL", ""),
-            api_key=getattr(cfg, "VLM_API_KEY", ""),
-            model=getattr(cfg, "VLM_MODEL", ""),
-            timeout_s=getattr(cfg, "VLM_TIMEOUT_S", 30),
-            max_tokens=getattr(cfg, "VLM_MAX_TOKENS", 1024),
-            cost_per_call=getattr(cfg, "VLM_COST_PER_CALL", 0.0),
-        ))
 
     # OCR gate inherits the legacy threshold (default 0.85 if not present).
     ocr_threshold = float(getattr(cfg, "OCR_CONFIDENCE_THRESHOLD", 0.85))
@@ -168,12 +140,8 @@ def build_default_pipeline(cfg: Any) -> PipelineConfig:
     )
 
     # 6. Embedding chain
-    embed_cfg = EmbedConfig(
-        chain=[TeiEmbedConfig(
-            base_url=getattr(cfg, "TEI_BASE_URL", "http://bge:80"),
-            batch_size=getattr(cfg, "TEI_BATCH_SIZE", 32),
-        )]
-    )
+    # base_url / batch_size are per-collection — TeiEmbedConfig structural defaults apply here.
+    embed_cfg = EmbedConfig(chain=[TeiEmbedConfig()])
 
     return PipelineConfig(parse=parse_cfg, enrich=enrich_cfg, chunk=chunk_cfg, embed=embed_cfg)
 

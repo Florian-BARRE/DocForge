@@ -32,7 +32,7 @@ from common_libs.pipeline.caches.node_cache import NodeCache
 from common_libs.pipeline.caches.provider_cache import ProviderCallCache
 from common_libs.providers.converter import GotenbergConverter
 from common_libs.providers.device_manager import DeviceManager
-from common_libs.providers.embed.tei import TeiEmbedProvider
+from common_libs.providers.embed import BgeServerEmbedConfig
 from common_libs.pipeline.assembly import ProviderRegistry
 from common_libs.storage.postgres.client import PostgresClient
 from common_libs.storage.postgres.repositories import (
@@ -135,25 +135,21 @@ def _build_app() -> FastAPI:
         runtime_config=RUNTIME_CONFIG,
     )
 
-    # 8. Qdrant client + query-time embed provider (TEI, configured via RUNTIME_CONFIG).
-    # The query-time provider (HybridSearchService, MetadataIndexer) uses the TEI server
-    # declared in env vars — separate from the per-collection ingestion embed provider.
-    # S6 ingestion providers are resolved per-job by StageEngine._build_s6_from_config
-    # from the collection's embed config (tei_bge_m3 or openai_compat) — not built here.
+    # 8. Qdrant client + shared query-time embed provider.
+    # The query-time provider feeds HybridSearchService + MetadataIndexer. It is built from the
+    # bge_server provider's STRUCTURAL default (local bge model host) — NOT from any env var:
+    # provider URLs/secrets are per-collection now. Per-collection SEARCH still builds its own
+    # embed provider from the queried collection's config (build_search_pipeline). S6 ingestion
+    # providers are resolved per-job by the worker from the collection's embed config.
     CONTEXT.qdrant = QdrantStorageClient(
         host=RUNTIME_CONFIG.QDRANT_HOST,
         port=RUNTIME_CONFIG.QDRANT_PORT,
         api_key=RUNTIME_CONFIG.QDRANT_API_KEY or None,
         https=RUNTIME_CONFIG.QDRANT_HTTPS,
     )
-    # embed_sparse mirrors the deployment's TEI capability (dense-only -> False) so query embedding
-    # and chunk/metadata re-embed don't hit /embed_sparse on a TEI without a sparse head (HTTP 424).
-    # The per-collection ingest path (S6) resolves its own provider from the collection config.
-    _query_embed = TeiEmbedProvider(
-        base_url=RUNTIME_CONFIG.TEI_BASE_URL,
-        batch_size=RUNTIME_CONFIG.TEI_BATCH_SIZE,
-        embed_sparse=RUNTIME_CONFIG.TEI_EMBED_SPARSE,
-    )
+    # Dense-only here so the shared query/metadata embed stays compatible with dense-indexed
+    # collections; a collection opts into sparse via its own pipeline (resolved per search).
+    _query_embed = BgeServerEmbedConfig(embed_sparse=False).build()
     CONTEXT.retrieval = HybridSearchService(
         embed_provider=_query_embed,
         qdrant=CONTEXT.qdrant,

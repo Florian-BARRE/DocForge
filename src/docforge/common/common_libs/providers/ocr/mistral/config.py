@@ -63,18 +63,20 @@ class MistralOcrConfig(BaseModel):
         )
 
     def merge_defaults(self, cfg: Any) -> MistralOcrConfig:
-        """Merge deployment env defaults for missing credentials/endpoints."""
-        return self.model_copy(update={
-            "api_key": self.api_key or getattr(cfg, "MISTRAL_OCR_API_KEY", ""),
-            "base_url": self.base_url or getattr(cfg, "MISTRAL_OCR_API_URL", self.base_url),
-            "model": self.model or getattr(cfg, "MISTRAL_OCR_MODEL", self.model),
-            "timeout_s": self.timeout_s,
-        })
+        """
+        Return this config unchanged — api_key/base_url/model are per-collection.
+
+        Args:
+            cfg: Unused — kept for call-site signature compatibility.
+
+        Returns:
+            MistralOcrConfig: This config, unchanged.
+        """
+        _ = cfg
+        return self
 
     @classmethod
     def availability(cls, cfg: Any) -> tuple[bool, str]:
-        """Always selectable — API key can be supplied on the fly from the playground."""
-        has_key = bool(getattr(cfg, "MISTRAL_OCR_API_KEY", ""))
-        if has_key:
-            return True, "Cloud API · confidence=1.0"
-        return True, "Select and paste your API key to enable on the fly"
+        """Report as usable — the Mistral API key is supplied per-collection."""
+        _ = cfg
+        return True, "Mistral OCR · API key per-collection"

@@ -64,35 +64,22 @@ class CohereRerankConfig(BaseModel):
 
     def merge_defaults(self, cfg: Any) -> CohereRerankConfig:
         """
-        Merge deployment-level defaults into this config.
-
-        Fills ``api_key`` from ``cfg.COHERE_API_KEY`` when the field is empty.
+        Return this config unchanged — api_key is per-collection.
 
         Args:
-            cfg: Runtime config object exposing env-level defaults.
+            cfg: Unused — kept for call-site signature compatibility.
 
         Returns:
-            CohereRerankConfig: Updated config copy with merged defaults.
+            CohereRerankConfig: This config, unchanged.
         """
-        return self.model_copy(update={
-            "api_key": self.api_key or getattr(cfg, "COHERE_API_KEY", ""),
-        })
+        _ = cfg
+        return self
 
     @classmethod
     def availability(cls, cfg: Any) -> tuple[bool, str]:
-        """
-        Report availability based on whether COHERE_API_KEY is set.
-
-        Args:
-            cfg: Runtime config object for env-level key inspection.
-
-        Returns:
-            tuple[bool, str]: (is_available, human-readable description).
-        """
-        api_key = getattr(cfg, "COHERE_API_KEY", "")
-        if api_key:
-            return True, "Cohere Rerank · cloud cross-encoder · key configured"
-        return True, "Set COHERE_API_KEY to enable Cohere Rerank"
+        """Report as usable — the Cohere API key is supplied per-collection."""
+        _ = cfg
+        return True, "Cohere rerank · API key per-collection"
 
 
 __all__ = ["CohereRerankConfig"]
