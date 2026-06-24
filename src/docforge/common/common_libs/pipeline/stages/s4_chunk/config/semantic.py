@@ -130,10 +130,10 @@ class SemanticConfig(BaseModel):
         import socket
         from urllib.parse import urlparse
         _ = cfg
-        base_url = "http://bge:80"
+        base_url = "http://bge_server:80"
         try:
             p = urlparse(base_url)
-            with socket.create_connection((p.hostname or "bge", p.port or 80), timeout=1):
+            with socket.create_connection((p.hostname or "bge_server", p.port or 80), timeout=1):
                 return True, f"Semantic boundaries · default embed TEI · {base_url}"
         except OSError:
             return False, (

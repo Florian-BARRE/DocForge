@@ -56,7 +56,7 @@ class TeiEmbedProvider(EmbedProvider, LoggerClass):
         Initialise the TEI embedding provider.
 
         Args:
-            base_url (str): TEI server URL (e.g. ``http://bge:80``).
+            base_url (str): TEI server URL (e.g. ``http://bge_server:80``).
             model (str): Model identifier for cache keys. Defaults to ``version`` (BGE-M3).
             locality (str): "local" or "external" — sets runs_on for the device gate.
             api_key (str): Optional bearer token (sent as Authorization when non-empty; a

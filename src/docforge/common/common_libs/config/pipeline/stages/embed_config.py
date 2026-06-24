@@ -27,7 +27,7 @@ class EmbedConfig(BaseModel):
     Three backends are available:
 
     ``TeiEmbedConfig`` (id="tei") — local TEI server (BGE-M3, dense 1024-dim + sparse BM25).
-        Required params: ``base_url`` (e.g. ``http://bge:80``).
+        Required params: ``base_url`` (e.g. ``http://bge_server:80``).
         Optional: ``model`` (default ``BAAI/bge-m3``), ``batch_size``, ``embed_sparse``.
 
     ``OpenAICompatEmbedConfig`` (id="openai_compat") — OpenAI-compatible server, local OR external.

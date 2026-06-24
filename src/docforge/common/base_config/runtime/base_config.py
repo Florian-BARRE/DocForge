@@ -87,7 +87,7 @@ class BaseRuntimeConfig(EnvConfigLoader):
     # ───── Provider configuration — NOT here ─────
     # Per the per-collection rule, ML provider URLs/secrets/models (embed, rerank, OCR, VLM,
     # LLM, classifier) live in each collection's pipeline config (DB), never in env. Provider
-    # configs default to sensible structural values (e.g. the local bge host) and read NOTHING
+    # configs default to sensible structural values (e.g. the local bge_server host) and read NOTHING
     # from RUNTIME_CONFIG. Only NON-secret pipeline tuning + infra remain below.
 
     # ───── S2 Enrichment tuning (non-secret pipeline defaults) ─────

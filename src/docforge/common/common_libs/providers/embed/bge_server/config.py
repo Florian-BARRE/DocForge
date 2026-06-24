@@ -25,9 +25,9 @@ from common_libs.config.pipeline.spec_utils import flatten_provider_spec as _fla
 # bge_server speaks the TEI HTTP contract → it reuses the TEI HTTP client provider.
 from ..tei.provider import TeiEmbedProvider
 
-# Canonical URL of the local bge service (compose service `bge`). A structural default
+# Canonical URL of the local bge service (compose service `bge_server`). A structural default
 # (a service name, not a secret) — a collection may override it per-collection.
-_DEFAULT_BGE_URL = "http://bge:80"
+_DEFAULT_BGE_URL = "http://bge_server:80"
 
 
 @register("embed")
@@ -36,12 +36,12 @@ class BgeServerEmbedConfig(BaseModel):
     Configuration for the local `bge_server` embedding service (BGE-M3 dense + sparse).
 
     Config id: "bge_server". URL + key come from the COLLECTION config (per-collection),
-    never from RUNTIME_CONFIG. base_url defaults to the local `bge` service.
+    never from RUNTIME_CONFIG. base_url defaults to the local `bge_server` service.
 
     Attributes:
         id: Provider discriminator — always "bge_server".
         locality: "local" (self-hosted) or "external" (remote endpoint) — drives the device gate.
-        base_url: bge_server URL (defaults to the local `bge` service).
+        base_url: bge_server URL (defaults to the local `bge_server` service).
         api_key: Optional bearer token (a remote/secured endpoint may require it).
         model: Embedding model identifier (default BAAI/bge-m3).
         batch_size: Max texts per batch request.
@@ -92,7 +92,7 @@ class BgeServerEmbedConfig(BaseModel):
         _ = cfg
         try:
             p = urlparse(_DEFAULT_BGE_URL)
-            with socket.create_connection((p.hostname or "bge", p.port or 80), timeout=1):
+            with socket.create_connection((p.hostname or "bge_server", p.port or 80), timeout=1):
                 return True, f"BGE-M3 · 1024-dim · dense+sparse · {_DEFAULT_BGE_URL}"
         except OSError:
             return False, f"bge_server not reachable at {_DEFAULT_BGE_URL}"

@@ -31,11 +31,11 @@ class ProviderSpecHelpers:
 
         Old DB rows store provider configs as::
 
-            {"id": "tei", "params": {"base_url": "http://bge:80"}}
+            {"id": "tei", "params": {"base_url": "http://bge_server:80"}}
 
         Typed union members (Pydantic v2) expect the flat form::
 
-            {"id": "tei", "base_url": "http://bge:80"}
+            {"id": "tei", "base_url": "http://bge_server:80"}
 
         This function is called from ``model_validator(mode="before")`` in each sub-config
         class so that existing stored configs deserialise correctly after the migration to

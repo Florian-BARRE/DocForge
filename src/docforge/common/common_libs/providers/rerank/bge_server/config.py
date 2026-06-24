@@ -22,9 +22,9 @@ from common_libs.config.pipeline.spec_utils import flatten_provider_spec as _fla
 # bge_server speaks the TEI /rerank contract → it reuses the same HTTP client provider.
 from ..bge.provider import BgeRerankProvider
 
-# Canonical URL of the local bge service (compose service `bge`) — a structural default
+# Canonical URL of the local bge service (compose service `bge_server`) — a structural default
 # (a service name, not a secret); a collection may override it per-collection.
-_DEFAULT_BGE_URL = "http://bge:80"
+_DEFAULT_BGE_URL = "http://bge_server:80"
 
 
 @register("rerank")
@@ -33,12 +33,12 @@ class BgeServerRerankConfig(BaseModel):
     Configuration for the local `bge_server` reranker (BGE-reranker-v2-m3).
 
     Config id: "bge_server". URL + key come from the COLLECTION config (per-collection),
-    never from RUNTIME_CONFIG. base_url defaults to the local `bge` service.
+    never from RUNTIME_CONFIG. base_url defaults to the local `bge_server` service.
 
     Attributes:
         id: Provider discriminator — always "bge_server".
         locality: "local" (self-hosted) or "external" (remote endpoint) — drives the device gate.
-        base_url: bge_server URL (defaults to the local `bge` service).
+        base_url: bge_server URL (defaults to the local `bge_server` service).
         api_key: Optional bearer token (a remote/secured endpoint may require it).
         batch_size: Maximum texts per HTTP request.
     """
@@ -80,7 +80,7 @@ class BgeServerRerankConfig(BaseModel):
         _ = cfg
         try:
             p = urlparse(_DEFAULT_BGE_URL)
-            with socket.create_connection((p.hostname or "bge", p.port or 80), timeout=1):
+            with socket.create_connection((p.hostname or "bge_server", p.port or 80), timeout=1):
                 return True, f"BGE reranker · {_DEFAULT_BGE_URL}"
         except OSError:
             return False, f"bge reranker not reachable at {_DEFAULT_BGE_URL}"

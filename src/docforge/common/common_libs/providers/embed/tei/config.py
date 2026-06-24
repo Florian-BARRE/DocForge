@@ -27,7 +27,7 @@ class TeiEmbedConfig(BaseModel):
     Configuration for the TEI (Text Embeddings Inference) local embedding server.
 
     Config id: "tei" — BGE-M3, 1024-dim dense + BM25 sparse, hybrid search.
-    Requires a running TEI server (URL from the collection config (defaults to http://bge:80)).
+    Requires a running TEI server (URL from the collection config (defaults to http://bge_server:80)).
 
     Attributes:
         id: Provider discriminator — always "tei".
@@ -47,9 +47,9 @@ class TeiEmbedConfig(BaseModel):
     locality: Literal["local", "external"] = Field(
         default="local", description="'local' (self-hosted TEI) or 'external' (remote TEI endpoint)."
     )
-    # Structural default points at the in-cluster bge service; per-collection configs
+    # Structural default points at the in-cluster bge_server service; per-collection configs
     # override it. No env sourcing — the URL lives in the collection config only.
-    base_url: str = Field(default="http://bge:80", description="TEI server URL.")
+    base_url: str = Field(default="http://bge_server:80", description="TEI server URL.")
     api_key: str = Field(default="", description="Optional bearer token (remote TEI endpoints may require it).")
     model: str = Field(default="BAAI/bge-m3", description="Embedding model served by TEI.")
     batch_size: int = Field(default=32, ge=1, le=256, description="Max texts per batch.")
@@ -69,7 +69,7 @@ class TeiEmbedConfig(BaseModel):
             TeiEmbedProvider: Ready-to-use provider instance.
         """
         return TeiEmbedProvider(
-            base_url=self.base_url or "http://bge:80",
+            base_url=self.base_url or "http://bge_server:80",
             model=self.model,
             locality=self.locality,
             api_key=self.api_key,
@@ -96,7 +96,7 @@ class TeiEmbedConfig(BaseModel):
     @classmethod
     def availability(cls, cfg: Any) -> tuple[bool, str]:
         """
-        Probe the structural-default bge server for reachability.
+        Probe the structural-default bge_server server for reachability.
 
         Args:
             cfg: Unused — the per-collection base_url is not visible here.
@@ -105,10 +105,10 @@ class TeiEmbedConfig(BaseModel):
             tuple[bool, str]: (is_available, human-readable description).
         """
         _ = cfg
-        base_url = "http://bge:80"
+        base_url = "http://bge_server:80"
         try:
             p = urlparse(base_url)
-            host, port = p.hostname or "bge", p.port or 80
+            host, port = p.hostname or "bge_server", p.port or 80
             with socket.create_connection((host, port), timeout=1):
                 return True, f"BGE-M3 · 1024-dim · dense+sparse · {base_url}"
         except OSError:

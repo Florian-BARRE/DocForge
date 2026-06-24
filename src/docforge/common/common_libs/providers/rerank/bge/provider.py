@@ -20,7 +20,7 @@ class BgeRerankProvider(LoggerClass):
     class re-sorts by original index so the caller can zip with their result list.
 
     Attributes:
-        _base_url (str): TEI server base URL (e.g. ``http://bge:80``).
+        _base_url (str): TEI server base URL (e.g. ``http://bge_server:80``).
         _batch_size (int): Maximum number of texts per HTTP request.
         runs_on (str): "local" or "remote" — set from the locality flag.
     """
@@ -32,7 +32,7 @@ class BgeRerankProvider(LoggerClass):
         Initialize the BGE reranking provider.
 
         Args:
-            base_url (str): TEI server base URL (e.g. ``http://bge:80``).
+            base_url (str): TEI server base URL (e.g. ``http://bge_server:80``).
             batch_size (int): Maximum number of texts per HTTP request to TEI.
             locality (str): "local" or "external" — sets runs_on for the device gate.
             api_key (str): Optional bearer token (sent as Authorization when non-empty).
