@@ -21,14 +21,28 @@ Spec complète : `SPEC-docforge-document-intelligence-platform.md`
 
 ---
 
+## Commandes (dev / test / build)
+
+- **Dev (hot reload)** : `docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build -d` (ou `/dev`).
+- **Tests unitaires** : depuis `src/docforge/` → `uv run --project common pytest tests/units` (ou `/test`). 418 tests, tout mocké.
+- **Tests live** (stack up requise) : `uv run --project common pytest tests/live_test` — ingestion réelle via le service `bge`.
+- **Build images** : `docker compose build` (app → `docforge/app/Dockerfile`, worker → `docforge/worker/Dockerfile`, bge → `bge_server/Dockerfile`).
+- **Migrations** : `docker compose exec docforge sh -c 'cd /app/common && alembic upgrade head'`.
+
+> Multi-root : pytest tourne depuis `src/docforge/` (`pytest.ini`) ; `--project common` car le pyproject deps-only est dans `common/`. Si `uv run` râle, `unset VIRTUAL_ENV` d'abord.
+
+---
+
 ## Principes non négociables
 
+<important>
 1. **L'IR est canonique** — markdown/PDF/HTML sont des vues générées, jamais sources.
-2. **Tout provider est interchangeable** derrière une interface `Protocol`.
+2. **Tout provider est interchangeable** derrière une interface `Protocol` ; **URL + secret par collection** (en DB), jamais en `.env`.
 3. **`DeviceManager` centralise GPU/CPU** — aucune logique device dans les briques.
 4. **Locality gate** — résolution à 3 niveaux : locality → provider → device.
 5. **Vecteur maigre** — seuls les champs filtrables dans Qdrant ; le riche est en Postgres.
 6. **Collection = contrat** — validation fail-fast avant toute dépense.
+</important>
 
 ---
 

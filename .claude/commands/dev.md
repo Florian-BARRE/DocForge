@@ -29,9 +29,10 @@ Start all DocForge services in development mode using `docker compose` (v2). Bac
    ```
    Poll until PostgreSQL is `healthy` and the other services are `running`.
 
-4. **Run Alembic migrations** (idempotent):
+4. **Run Alembic migrations** (idempotent). Migrations live in `common/` now, so run them
+   from `/app/common`:
    ```bash
-   docker compose exec -T docforge alembic upgrade head
+   docker compose exec -T docforge sh -c 'cd /app/common && alembic upgrade head'
    ```
 
 5. **Print service URLs**:

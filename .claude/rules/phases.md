@@ -1,9 +1,9 @@
 ---
 paths:
-  - "src/docforge/libs/**"
-  - "src/docforge/backend/**"
-  - "src/docforge/frontend/**"
-  - "src/docforge_mcp/**"
+  - "src/docforge/common/**"
+  - "src/docforge/app/**"
+  - "src/docforge/worker/**"
+  - "src/mcp/**"
 ---
 
 # DocForge — Phase File Inventory
@@ -27,7 +27,15 @@ a concept was introduced or which files are relevant to a given feature.
 > | `libs/pipeline/` (old flat) | `libs/pipeline/` (orchestrator/, stages/, caches/, worker/, assembly/) |
 >
 > Stage files (s0..s6) are now packages: `pipeline/stages/s0_ingest/core.py`, etc.
-> Imports: always `from libs.<bucket>.<module> import …`. See CLAUDE.md for the layer DAG.
+>
+> **⚠️ 2nd refactor (2026-06-24):** the whole tree was split into `src/docforge/{common,app,worker}`
+> (+ siblings `src/mcp`, `src/bge_server`). The `libs/<bucket>` paths below now live under
+> `common/common_libs/<bucket>` (shared, imported `from common_libs.<bucket> import …`) — EXCEPT
+> the app-only (`search/{hybrid,metadata_indexer,pipeline}`, `observability/queue` → `app/backend/libs`)
+> and worker-only (`pipeline/{engine,orchestrator,worker}`, `observability/metrics` → `worker/libs`)
+> trees, both imported `from libs.<x> import …`. `RUNTIME_CONFIG` is now `BaseRuntimeConfig` (common)
+> + per-app subclasses. The off-the-shelf TEI service was replaced by the local `bge` model host
+> (`src/bge_server`). See **CLAUDE.md** for the current layout, layer DAG, and commands.
 
 ---
 
@@ -92,7 +100,7 @@ frontend/src/components/Header.tsx           # collection tabs + searchbar
 frontend/src/components/DropZone.tsx         # drag-and-drop zone
 frontend/src/components/DocumentCard.tsx     # animated status indicators
 frontend/src/components/SearchResults.tsx    # ranked chunks with score bar
-mcp_server.py                                # FastMCP stdio — 7 tools (SUPERSEDED → moved to src/docforge_mcp/ in P8)
+mcp_server.py                                # FastMCP stdio — 7 tools (SUPERSEDED → moved to src/mcp/ in P8)
 .mcp.json                                    # Claude Code MCP config
 ```
 
@@ -307,12 +315,12 @@ tests/api/{collections/documents/test_documents,monitoring/test_monitoring,conft
 
 ## P8 — Standalone MCP server (full REST surface)
 
-> Separate minimal app `src/docforge_mcp/` — a PURE HTTP client of the DocForge API exposing the
+> Separate minimal app `src/mcp/` — a PURE HTTP client of the DocForge API exposing the
 > whole REST surface as MCP tools, so any LLM/chatbot drives DocForge without a dedicated app.
 > Replaces the old 7-tool `src/docforge/mcp_server.py` (deleted). RPI: `docs/rpi/mcp-full-surface/plan.md`.
 
 ```
-src/docforge_mcp/
+src/mcp/
   entrypoint.py                  # name aligned w/ docforge; dispatches MCP_TRANSPORT (stdio | streamable-http)
   config_loader.py               # McpConfig(EnvConfigLoader) — self-contained (NOT docforge RUNTIME_CONFIG)
   pyproject.toml + uv.lock       # 6 deps only: mcp>=1.9.0, httpx, uvicorn, starlette, loggerplusplus, configplusplus
@@ -331,7 +339,7 @@ src/docforge_mcp/
 services/docforge_mcp/.env       # MCP_TRANSPORT/HOST/PORT/HTTP_PATH/AUTH_TOKEN + DOCFORGE_API_URL
 docker-compose.yml               # `mcp` service (docforge-mcp:latest, 10030:9000, depends_on docforge)
 docker-compose.dev.yml           # mcp volume mount + DEBUG
-.mcp.json                        # local stdio entry repointed to src/docforge_mcp/entrypoint.py
+.mcp.json                        # local stdio entry repointed to src/mcp/entrypoint.py
 ```
 
 ### Key decisions — P8

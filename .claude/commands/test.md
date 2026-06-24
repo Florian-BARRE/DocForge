@@ -7,22 +7,25 @@ allowed-tools: "Bash(*), Read(*)"
 
 # Run Tests
 
-Run the full DocForge test suite using uv + pytest.
+Run the DocForge test suite. The tree is **multi-root** (`src/docforge/{common,app,worker}`):
+pytest runs from `src/docforge/` (config in `pytest.ini`); the deps-only project lives in `common/`,
+so use `--project common`. `tests/conftest.py` bootstraps `sys.path` for all roots.
 
 ## Steps
 
-1. **Locate test files**:
+1. **Unit suite** (default — fast, fully mocked, no services needed):
    ```bash
-   find src/docforge -name "test_*.py" -o -name "*_test.py" | sort
+   cd src/docforge && unset VIRTUAL_ENV && uv run --project common pytest tests/units -q --tb=short $args
    ```
+   (`unset VIRTUAL_ENV` avoids a stale env var pointing at another project's venv.)
 
-2. **Run tests**:
+2. **Live suite** (ONLY on explicit request — needs the full stack `up` AND the `bge` model
+   service ready at http://localhost:10026/health):
    ```bash
-   cd src/docforge && uv run pytest tests/ -v --tb=short 2>&1 | head -100
+   cd src/docforge && unset VIRTUAL_ENV && uv run --project common pytest tests/live_test -q --tb=line
    ```
+   Auto-skips when the stack is unreachable; ingestion runs through `bge` (slow on CPU).
 
-3. **Report results** — list failures with file:line and error message.
+3. **Report results** — list failures with file:line and the error message.
 
-4. **If no tests exist yet** — report that and list test files that should be created based on the current code.
-
-Arguments: `$args` — optional pytest args (e.g., `-k test_ir`, `-x`, `--cov`)
+Arguments: `$args` — optional pytest args (e.g., `-k test_ir`, `-x`, `tests/units/test_chunking.py`).

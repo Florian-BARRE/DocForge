@@ -1,8 +1,8 @@
 ---
 paths:
-  - "src/docforge/entrypoint.py"
-  - "src/docforge/backend/**"
-  - "src/docforge/backend/routers/**"
+  - "src/docforge/app/entrypoint.py"
+  - "src/docforge/app/backend/**"
+  - "src/docforge/app/backend/routers/**"
 ---
 
 # FastAPI Project Rules
