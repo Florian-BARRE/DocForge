@@ -1,11 +1,13 @@
 # ====== Code Summary ======
-# Local BGE-M3 embedding micro-service exposing dense + sparse over HTTP.
-# Implements the SAME contract as HuggingFace TEI (/embed, /embed_sparse, /health) so the
-# existing DocForge `tei` embed provider drives it with no new provider code — but unlike TEI,
-# it serves BGE-M3's NATIVE multilingual sparse (lexical weights), which TEI cannot.
+# Local BGE model-suite micro-service: serves dense + sparse EMBEDDING (BGE-M3) AND
+# cross-encoder RERANK (BGE-reranker-v2-m3) over one HTTP API. Replaces the off-the-shelf
+# HuggingFace TEI containers (which crash on BGE-M3's ONNX backend and can't do BGE-M3 sparse).
 #
-# BGE-M3 is a single multilingual model producing dense (1024-dim) + sparse (lexical weights)
-# in one forward pass via FlagEmbedding.BGEM3FlagModel — so one model, one service, both vectors.
+# Implements the SAME contract as TEI (/embed, /embed_sparse, /rerank, /health), so the
+# existing DocForge `tei` embed provider AND `bge_reranker` rerank provider drive it with NO
+# new provider code — just point TEI_BASE_URL and BGE_RERANKER_URL at this one service.
+#
+# Both models run via FlagEmbedding (torch), loaded once at startup. CPU by default.
 
 # ====== Standard Library Imports ======
 from __future__ import annotations
@@ -19,27 +21,29 @@ from fastapi import FastAPI
 from pydantic import BaseModel, Field
 
 # ── Model identity / runtime config (env-overridable) ─────────────────────────────
-MODEL_ID = os.environ.get("BGE_M3_MODEL", "BAAI/bge-m3")
-USE_FP16 = os.environ.get("BGE_M3_FP16", "false").lower() in ("1", "true", "yes")
+EMBED_MODEL_ID = os.environ.get("BGE_M3_MODEL", "BAAI/bge-m3")
+RERANK_MODEL_ID = os.environ.get("BGE_RERANKER_MODEL", "BAAI/bge-reranker-v2-m3")
+USE_FP16 = os.environ.get("BGE_FP16", os.environ.get("BGE_M3_FP16", "false")).lower() in ("1", "true", "yes")
 MAX_LENGTH = int(os.environ.get("BGE_M3_MAX_LENGTH", "8192"))
 
-# The loaded model is held on the app state, initialized once at startup (lifespan).
+# Loaded models held on app state, initialized once at startup (lifespan).
 _STATE: dict[str, Any] = {}
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Load BGE-M3 once at startup; release it on shutdown."""
-    # Imported here so the module imports cheaply (e.g. for tooling) and the heavy
-    # model load happens only when the service actually boots.
-    from FlagEmbedding import BGEM3FlagModel
+    """Load the BGE embedding + reranker models once at startup; release on shutdown."""
+    # Imported here so the module imports cheaply and the heavy model loads happen only
+    # when the service actually boots.
+    from FlagEmbedding import BGEM3FlagModel, FlagReranker
 
-    _STATE["model"] = BGEM3FlagModel(MODEL_ID, use_fp16=USE_FP16)
+    _STATE["model"] = BGEM3FlagModel(EMBED_MODEL_ID, use_fp16=USE_FP16)
+    _STATE["reranker"] = FlagReranker(RERANK_MODEL_ID, use_fp16=USE_FP16)
     yield
     _STATE.clear()
 
 
-app = FastAPI(title="BGE-M3 dense+sparse embedding server", version="1.0.0", lifespan=lifespan)
+app = FastAPI(title="BGE model-suite (embed dense+sparse + rerank)", version="2.0.0", lifespan=lifespan)
 
 
 # ── Request models ────────────────────────────────────────────────────────────────
@@ -49,6 +53,14 @@ class EmbedRequest(BaseModel):
 
     inputs: list[str] | str = Field(..., description="One text or a list of texts to embed.")
     normalize: bool = Field(default=True, description="L2-normalize dense vectors (TEI parity).")
+    truncate: bool = Field(default=True, description="Truncate inputs to the model max length.")
+
+
+class RerankRequest(BaseModel):
+    """TEI-compatible rerank request body."""
+
+    query: str = Field(..., description="The search query.")
+    texts: list[str] = Field(..., description="Candidate texts to score against the query.")
     truncate: bool = Field(default=True, description="Truncate inputs to the model max length.")
 
 
@@ -62,7 +74,7 @@ def _as_list(inputs: list[str] | str) -> list[str]:
 @app.get("/health")
 async def health() -> dict[str, str]:
     """Liveness probe — mirrors TEI's GET /health."""
-    return {"status": "ok", "model": MODEL_ID}
+    return {"status": "ok", "embed_model": EMBED_MODEL_ID, "rerank_model": RERANK_MODEL_ID}
 
 
 @app.post("/embed")
@@ -108,3 +120,26 @@ async def embed_sparse(req: EmbedRequest) -> list[list[dict[str, float]]]:
         # weights: {token_id(str|int): weight(float)} — emit TEI's index/value token list.
         result.append([{"index": int(tok), "value": float(w)} for tok, w in weights.items()])
     return result
+
+
+@app.post("/rerank")
+async def rerank(req: RerankRequest) -> list[dict[str, Any]]:
+    """
+    Cross-encoder rerank — mirrors TEI's POST /rerank.
+
+    Scores each candidate text against the query with BGE-reranker-v2-m3 and returns
+    ``[{"index": int, "score": float}, ...]`` in INPUT order (the DocForge bge_reranker
+    provider re-sorts by index, so order is not significant). Scores are sigmoid-normalized
+    to [0, 1] (``normalize=True``) for stable thresholds.
+
+    Returns:
+        list[dict]: One ``{"index": i, "score": s}`` per input text, aligned with ``texts``.
+    """
+    if not req.texts:
+        return []
+    pairs = [[req.query, text] for text in req.texts]
+    scores = _STATE["reranker"].compute_score(pairs, normalize=True)
+    # compute_score returns a bare float for a single pair — normalize to a list.
+    if not isinstance(scores, list):
+        scores = [scores]
+    return [{"index": i, "score": float(s)} for i, s in enumerate(scores)]

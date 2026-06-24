@@ -27,7 +27,7 @@ RERANKER_URL = os.environ.get("DOCFORGE_TEST_RERANKER_URL", "http://localhost:10
 
 # Dense-only embed: the deployed TEI serves BGE-M3 WITHOUT a sparse head, so embed_sparse
 # MUST be False (a /embed_sparse call would 424). Shared by every collection the suite creates.
-DENSE_ONLY_PIPELINE: dict[str, Any] = {"embed": {"chain": [{"id": "tei", "embed_sparse": False}]}}
+DENSE_ONLY_PIPELINE: dict[str, Any] = {"embed": {"chain": [{"id": "bge_server", "base_url": "http://bge:80", "embed_sparse": False}]}}
 
 # Formats the corpus exercises — must be whitelisted on every collection that ingests them.
 CORPUS_FORMATS: list[str] = ["pdf", "docx", "doc", "xlsx", "xls", "pptx", "ppt", "html"]

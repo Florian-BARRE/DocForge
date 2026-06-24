@@ -32,7 +32,7 @@ class BgeRerankerConfig(BaseModel):
     Attributes:
         id: Provider discriminator — always "bge_reranker".
         locality: "local" (self-hosted TEI) or "external" (remote TEI endpoint). Editable.
-        base_url: TEI reranker server URL (e.g. ``http://reranker:80``).
+        base_url: TEI reranker server URL (e.g. ``http://bge:80``).
         api_key: Optional bearer token (a remote TEI endpoint may require it).
         batch_size: Maximum texts per HTTP request to TEI.
     """
@@ -44,7 +44,7 @@ class BgeRerankerConfig(BaseModel):
     locality: Literal["local", "external"] = Field(
         default="local", description="'local' (self-hosted TEI) or 'external' (remote TEI endpoint)."
     )
-    base_url: str = Field(default="http://reranker:80", description="TEI reranker server URL.")
+    base_url: str = Field(default="http://bge:80", description="TEI reranker server URL.")
     api_key: str = Field(default="", description="Optional bearer token (remote TEI endpoints may require it).")
     batch_size: int = Field(default=32, ge=1, le=256, description="Max texts per batch request.")
 
@@ -95,7 +95,7 @@ class BgeRerankerConfig(BaseModel):
         Returns:
             tuple[bool, str]: (is_available, human-readable description).
         """
-        base_url = getattr(cfg, "BGE_RERANKER_URL", "http://reranker:80")
+        base_url = getattr(cfg, "BGE_RERANKER_URL", "http://bge:80")
         try:
             p = urlparse(base_url)
             host, port = p.hostname or "reranker", p.port or 80

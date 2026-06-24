@@ -171,7 +171,7 @@ def test_full_document_lifecycle_live() -> None:
             "supported_formats": ["docx"],
             # Dense-only TEI: the deployed TEI serves BGE-M3 without the sparse head, so
             # embed_sparse must be False (otherwise /embed_sparse → HTTP 424).
-            "pipeline": {"embed": {"chain": [{"id": "tei", "embed_sparse": False}]}},
+            "pipeline": {"embed": {"chain": [{"id": "bge_server", "base_url": "http://bge:80", "embed_sparse": False}]}},
             "metadata_schema": [
                 {"field_name": "dossier", "field_type": "string", "required": False,
                  "filterable": True, "lexical": False, "semantic": False},

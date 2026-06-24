@@ -90,11 +90,6 @@ services:
 #      - LOGGING_LPP_FORMAT=DebugFormat
       - PYTHONPATH=/app/common:/app/worker
 
-  reranker:
-    # Expose the reranker port for operator inspection and local testing during development.
-    ports:
-      - "10027:80"          # TEI reranker dev access: http://localhost:10027/health
-
   mcp:
     # Volume-mount source so tool/SDK edits are picked up on container restart.
     # The MCP server has no hot-reload of its own; restart the container after edits

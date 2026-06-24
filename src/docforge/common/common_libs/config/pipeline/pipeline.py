@@ -170,7 +170,7 @@ def build_default_pipeline(cfg: Any) -> PipelineConfig:
     # 6. Embedding chain
     embed_cfg = EmbedConfig(
         chain=[TeiEmbedConfig(
-            base_url=getattr(cfg, "TEI_BASE_URL", "http://tei:8080"),
+            base_url=getattr(cfg, "TEI_BASE_URL", "http://bge:80"),
             batch_size=getattr(cfg, "TEI_BATCH_SIZE", 32),
         )]
     )

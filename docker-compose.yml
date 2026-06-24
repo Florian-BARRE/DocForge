@@ -34,8 +34,8 @@ services:
         condition: service_started
       redis:
         condition: service_started
-      tei:
-        condition: service_started   # Query-time embedding needs TEI at startup
+      bge:
+        condition: service_started   # Query-time embedding + rerank need the BGE service
     # API is I/O-bound at runtime (embeds delegated to TEI); 2 GiB / 2 CPUs is ample.
     deploy:
       resources:
@@ -150,49 +150,28 @@ services:
     networks:
       - docforge_net
 
-  # ── TEI — BGE-M3 embedding server (dense + sparse BM25) ─────────────────────
-  # Text Embeddings Inference in CPU mode (no GPU required).
-  # Serves: POST /embed (dense 1024-dim), POST /embed_sparse (BM25), GET /health.
-  # Model is downloaded on first start and cached in the tei_cache volume (~1.1 GB).
-  # Required by both the API (query-time search) and the worker (S6 ingestion).
-  tei:
-    image: ghcr.io/huggingface/text-embeddings-inference:cpu-latest
-    # --model-id: BGE-M3 — the only model supported by the TeiEmbedProvider in this project.
-    # --port: listen on 80 inside the container (TEI default; matched by TEI_BASE_URL in .env).
-    # The cpu-1.5 image has no GPU support built in — no --disable-gpu flag needed.
-    command: --model-id BAAI/bge-m3 --port 80
+  # ── BGE model-suite — dense+sparse embedding + rerank (local, FlagEmbedding/torch) ──
+  # Replaces the off-the-shelf TEI `tei` + `reranker` containers: TEI's ONNX backend crashes
+  # on BGE-M3 (exit-0 restart loop) and cannot serve BGE-M3's native sparse. This single
+  # service loads both BGE models in one torch process and exposes the SAME TEI HTTP contract:
+  #   POST /embed (dense 1024-dim), POST /embed_sparse (lexical), POST /rerank, GET /health.
+  # Required by the API (query-time search) AND the worker (S6 ingestion). Both the embed
+  # provider (TEI_BASE_URL) and the rerank provider (BGE_RERANKER_URL) point at http://bge:80.
+  bge:
+    build:
+      context: src                # Same context as the other apps (sibling folders visible)
+      dockerfile: bge_server/Dockerfile
+    image: bge-server:latest
     ports:
-      - "10026:80"              # Operator access: http://localhost:10026/health to verify liveness
+      - "10026:80"                # Operator access: http://localhost:10026/health
     volumes:
-      - tei_cache:/data         # Cache downloaded model weights between restarts
-    # CPU embedding is compute-bound; 3 CPUs keeps it responsive, 3 GiB covers batch buffers.
+      - bge_models:/models        # HF cache (HF_HOME=/models) — weights persist across restarts
+    # Two BGE models (m3 ~2.2 GiB + reranker-v2-m3 ~2.2 GiB) loaded in ONE torch process.
     deploy:
       resources:
         limits:
-          cpus: "3"
-          memory: 3g
-    restart: unless-stopped
-    networks:
-      - docforge_net
-
-  # ── Reranker — BGE-Reranker-v2-m3 cross-encoder (TEI CPU) ──────────────────
-  # Same TEI image as the embed service; different model (bge-reranker-v2-m3),
-  # different container, different port.  Used by the search pipeline rerank stage.
-  # Model is downloaded on first start and cached in the reranker_model_cache volume (~1.1 GB).
-  reranker:
-    image: ghcr.io/huggingface/text-embeddings-inference:cpu-latest
-    # --model-id: BGE-Reranker-v2-m3 — cross-encoder for search result re-ranking.
-    # --port: listen on 80 inside the container (matched by BGE_RERANKER_URL in .env).
-    # --max-client-batch-size: upper limit per HTTP request to avoid OOM on large sets.
-    command: --model-id BAAI/bge-reranker-v2-m3 --port 80 --max-client-batch-size 128
-    volumes:
-      - reranker_model_cache:/root/.cache/huggingface   # Cache downloaded model weights
-    # Cross-encoder model is ~2.1 GiB resident; 3 GiB ceiling + 3 CPUs for batch scoring.
-    deploy:
-      resources:
-        limits:
-          cpus: "3"
-          memory: 3g
+          cpus: "4"
+          memory: 6g
     restart: unless-stopped
     networks:
       - docforge_net
@@ -218,8 +197,8 @@ services:
         condition: service_started
       redis:
         condition: service_started
-      tei:
-        condition: service_started   # S6 ingestion needs TEI for embedding
+      bge:
+        condition: service_started   # S6 ingestion needs the BGE service for embedding
     # Heaviest service: Docling parsing + pipeline stages. 4 GiB / 4 CPUs is the
     # largest budget here, sized so ingestion stays workable without monopolising the host.
     deploy:
@@ -304,8 +283,7 @@ volumes:
   seaweedfs_data:   # SeaweedFS chunk data (originals + derived artifacts)
   redis_data:       # Redis persistence (arq job queue)
   qdrant_data:      # Qdrant vector collections (dense + sparse indexes)
-  tei_cache:        # BGE-M3 model weights — ~1.1 GB, cached across restarts
-  reranker_model_cache:  # BGE-Reranker-v2-m3 model weights — ~1.1 GB, cached across restarts
+  bge_models:       # BGE-M3 + BGE-reranker-v2-m3 weights (HF cache) — cached across restarts
   pgadmin_data:     # pgAdmin config DB (imported servers, preferences)
 
 # ── Internal network ──────────────────────────────────────────────────────────

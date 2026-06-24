@@ -134,7 +134,7 @@ class BaseRuntimeConfig(EnvConfigLoader):
     QDRANT_HTTPS: bool = env("QDRANT_HTTPS", cast=bool, default="false")
 
     # ───── Search pipeline — reranker (consumed by rerank config merge_defaults) ─────
-    BGE_RERANKER_URL: str = env("BGE_RERANKER_URL", required=False, default="http://reranker:80")
+    BGE_RERANKER_URL: str = env("BGE_RERANKER_URL", required=False, default="http://bge:80")
     BGE_RERANKER_BATCH_SIZE: int = env("BGE_RERANKER_BATCH_SIZE", cast=int, default="32")
     COHERE_API_KEY: str = env("COHERE_API_KEY", required=False, default="")
 

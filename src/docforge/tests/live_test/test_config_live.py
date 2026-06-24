@@ -28,7 +28,7 @@ class TestConfigRead:
         for field in ("id", "name", "pipeline_version", "needs_reindex", "pipeline",
                       "metadata_fields", "embed_provider_id", "supported_formats"):
             assert field in state, f"missing {field} in config state"
-        assert state["embed_provider_id"] == "tei"
+        assert state["embed_provider_id"] == "bge_server"
 
     def test_schema_includes_system_and_custom_fields(self, make_collection, live_client) -> None:
         """The schema lists caller-provided custom fields plus auto-injected system fields."""

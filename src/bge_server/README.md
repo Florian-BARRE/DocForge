@@ -23,7 +23,7 @@ BGE-M3's sparse head, enabling true multilingual hybrid search locally.
 ## Build
 ```bash
 # From the repo root, with src/ as the build context:
-docker build -f src/bge_m3_server/Dockerfile -t bge-m3-server:latest src
+docker build -f src/bge_server/Dockerfile -t bge-m3-server:latest src
 ```
 
 ## docker-compose service (add when your compose is stable)
@@ -31,7 +31,7 @@ docker build -f src/bge_m3_server/Dockerfile -t bge-m3-server:latest src
   bge-m3-embed:
     build:
       context: src
-      dockerfile: bge_m3_server/Dockerfile
+      dockerfile: bge_server/Dockerfile
     image: bge-m3-server:latest
     volumes:
       - bge_m3_models:/models        # HuggingFace cache — weights persist across restarts

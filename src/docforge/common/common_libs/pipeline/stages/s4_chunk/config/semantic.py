@@ -128,7 +128,7 @@ class SemanticConfig(BaseModel):
         """
         import socket
         from urllib.parse import urlparse
-        base_url = getattr(cfg, "TEI_BASE_URL", "http://tei:8080")
+        base_url = getattr(cfg, "TEI_BASE_URL", "http://bge:80")
         try:
             p = urlparse(base_url)
             with socket.create_connection((p.hostname or "tei", p.port or 8080), timeout=1):

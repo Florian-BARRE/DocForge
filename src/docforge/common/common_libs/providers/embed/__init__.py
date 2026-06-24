@@ -13,6 +13,7 @@ from .base import EmbedProvider
 from .composite import CompositeEmbedProvider
 
 # ------------------- Providers (one folder each) ------------------- #
+from .bge_server import BgeServerEmbedConfig
 from .openai_compat import OpenAICompatEmbedConfig, OpenAICompatEmbedProvider
 from .tei import TeiEmbedConfig, TeiEmbedProvider
 
@@ -24,6 +25,7 @@ __all__ = [
     "EmbedProvider",
     "CompositeEmbedProvider",
     "EmbedProviderConfig",
+    "BgeServerEmbedConfig",
     "OpenAICompatEmbedConfig",
     "OpenAICompatEmbedProvider",
     "TeiEmbedConfig",

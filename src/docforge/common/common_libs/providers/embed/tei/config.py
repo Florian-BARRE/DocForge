@@ -27,7 +27,7 @@ class TeiEmbedConfig(BaseModel):
     Configuration for the TEI (Text Embeddings Inference) local embedding server.
 
     Config id: "tei" — BGE-M3, 1024-dim dense + BM25 sparse, hybrid search.
-    Requires a running TEI server (URL from the TEI_BASE_URL env, e.g. http://tei:80).
+    Requires a running TEI server (URL from the TEI_BASE_URL env, e.g. http://bge:80).
 
     Attributes:
         id: Provider discriminator — always "tei".
@@ -69,7 +69,7 @@ class TeiEmbedConfig(BaseModel):
             TeiEmbedProvider: Ready-to-use provider instance.
         """
         return TeiEmbedProvider(
-            base_url=self.base_url or "http://tei:80",
+            base_url=self.base_url or "http://bge:80",
             model=self.model,
             locality=self.locality,
             api_key=self.api_key,
@@ -88,7 +88,7 @@ class TeiEmbedConfig(BaseModel):
             TeiEmbedConfig: Updated config with env defaults applied where needed.
         """
         return self.model_copy(update={
-            "base_url": self.base_url or getattr(cfg, "TEI_BASE_URL", "") or "http://tei:80",
+            "base_url": self.base_url or getattr(cfg, "TEI_BASE_URL", "") or "http://bge:80",
             "api_key": self.api_key or getattr(cfg, "TEI_API_KEY", ""),
             "batch_size": self.batch_size or getattr(cfg, "TEI_BATCH_SIZE", self.batch_size),
         })
@@ -104,7 +104,7 @@ class TeiEmbedConfig(BaseModel):
         Returns:
             tuple[bool, str]: (is_available, human-readable description).
         """
-        base_url = getattr(cfg, "TEI_BASE_URL", "http://tei:8080")
+        base_url = getattr(cfg, "TEI_BASE_URL", "http://bge:80")
         try:
             p = urlparse(base_url)
             host, port = p.hostname or "tei", p.port or 8080
