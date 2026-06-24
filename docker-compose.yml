@@ -198,17 +198,17 @@ services:
       - docforge_net
 
   # ── arq pipeline worker ────────────────────────────────────────────────────
-  # Runs the same Docker image as the API but executes arq tasks (S0→S1 pipeline).
-  # Workers pull jobs from Redis and process documents independently of the API.
+  # Dedicated HEAVY image (Dockerfile.worker = base + docling/torch/opencv) — this is the
+  # only service that runs the ingestion pipeline (S0→S6). The backend image is kept light
+  # by omitting the worker dependency group. Workers pull jobs from Redis and process
+  # documents independently of the API. arq is launched by the image CMD (no override).
   worker:
     build:
       context: src
-      dockerfile: docforge/Dockerfile
-    image: docforge:latest      # Same image as the API — reuses cached layer
+      dockerfile: docforge/Dockerfile.worker
+    image: docforge-worker:latest
     env_file:
       - services/docforge/.env
-    # arq CLI: `arq <module>.<WorkerSettings class>` run from WORKDIR /app/docforge
-    command: arq arq_worker.WorkerSettings
     depends_on:
       postgres:
         condition: service_healthy

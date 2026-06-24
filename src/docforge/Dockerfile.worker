@@ -1,0 +1,87 @@
+# syntax=docker/dockerfile:1.7
+
+###############################################################################
+# Build note:
+# Worker image for DocForge — runs the arq ingestion pipeline (S0 -> S6).
+# Built from the repository root with the src/ directory as context.
+# Example:
+#   docker build -f src/docforge/Dockerfile.worker -t docforge-worker:latest src
+#
+# This image is the HEAVY one: it installs the optional `worker` dependency group
+# (docling + its torch/opencv/transformers chain). The backend image (Dockerfile)
+# deliberately omits this group, since only the worker ever runs DoclingBackend.parse().
+# There is NO frontend stage here — the worker serves no static assets.
+#
+# WORKDIR is /app/docforge so that `from config import RUNTIME_CONFIG` resolves to
+# /app/docforge/config/ without extra PYTHONPATH configuration (same as the backend).
+###############################################################################
+
+###############################################################################
+# Stage 1: Python dependency builder (uv + Python 3.12)
+#
+# Goal:
+# - Create a virtual environment at /opt/venv with the production dependencies
+#   PLUS the optional `worker` group (docling and its heavy ML transitive deps).
+# - Separate dependency installation from application code for layer-cache efficiency.
+###############################################################################
+FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim AS py-build
+
+# Neutral build workspace — all paths inside the stage use /workspace as their root.
+WORKDIR /workspace
+
+# Tell uv where to create the project virtual environment (fixed path → easy to copy).
+# UV_HTTP_TIMEOUT: raise the per-request timeout from 30s to 5 min — large CUDA/ML
+# wheels (torch, nvidia-*, opencv) exceed 30s on slow links.
+ENV UV_PROJECT_ENVIRONMENT=/opt/venv \
+    UV_HTTP_TIMEOUT=300
+
+# Copy only the lock metadata first so the dependency layer is cached independently
+# of application code changes (re-triggered only when pyproject.toml / uv.lock change).
+COPY docforge/pyproject.toml docforge/uv.lock /workspace/docforge/
+
+# Install locked production dependencies AND the worker extra (docling).
+# --frozen: fail if uv.lock is out of sync with pyproject.toml (safety check).
+# --no-dev: skip development-only packages (tests, lint, type-checking).
+# --extra worker: pull the heavy ingestion stack — THIS is what makes the worker image
+#                 large and the backend image small.
+# cache mount: avoids re-downloading the multi-GB ML wheels on repeated local builds.
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev --extra worker --project /workspace/docforge
+
+###############################################################################
+# Stage 2: Runtime image (minimal Python 3.12 slim)
+#
+# Goal:
+# - Contain only what is needed to run the arq worker.
+# - Expose a clean filesystem:
+#     /app/docforge/  → application source code
+#     /opt/venv/      → prebuilt virtual environment (base + worker extra)
+###############################################################################
+FROM python:3.12-slim-bookworm AS runtime
+
+# PYTHONDONTWRITEBYTECODE: prevents .pyc files on disk (smaller image; recompiled at startup).
+# PYTHONUNBUFFERED: flush stdout/stderr immediately so `docker logs` is real-time.
+# PATH: prepend the uv-built venv so its Python + executables are used by default.
+# QT_QPA_PLATFORM=offscreen: Docling imports OpenCV, which bundles Qt plugins. Without a
+#   display the xcb platform plugin would fail at runtime; "offscreen" uses a framebuffer
+#   backend (no X11 needed). This env is worker-only — the backend image dropped OpenCV.
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PATH="/opt/venv/bin:${PATH}" \
+    QT_QPA_PLATFORM=offscreen
+
+# Set working directory to the docforge package root (same rationale as the backend image):
+# arq is started from here so `from config import RUNTIME_CONFIG` resolves without PYTHONPATH.
+WORKDIR /app/docforge
+
+# Copy the prebuilt virtual environment from the py-build stage.
+# Only the compiled environment is transferred — no uv, no build tools, no sources.
+COPY --from=py-build /opt/venv /opt/venv
+
+# Copy the DocForge application source tree (rebuilt only when application code changes).
+COPY docforge /app/docforge
+
+# Start the arq worker.
+# `arq arq_worker.WorkerSettings` targets the WorkerSettings class in
+# /app/docforge/arq_worker.py — the same module uvicorn-free workers pull jobs from.
+CMD ["arq", "arq_worker.WorkerSettings"]

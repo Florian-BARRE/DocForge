@@ -17,8 +17,8 @@ dependencies = [
     "aioboto3>=13.0.0",
     # HTTP client (Gotenberg, provider APIs)
     "httpx>=0.28.0",
-    # Document parsing
-    "docling>=2.14.0",
+    # PDF utilities (PyMuPDF/fitz) — used eagerly by the Gotenberg converter and page
+    # rendering, so it stays in the base set (both backend and worker need it).
     "pymupdf>=1.25.0",
     # Hashing
     "blake3>=1.0.1",
@@ -32,8 +32,6 @@ dependencies = [
     # Config & logging (internal libraries)
     "loggerplusplus>=1.0.0",
     "configplusplus>=0.1.0",
-    # MCP server (P6 — Claude Code / Claude Desktop integration)
-    "mcp>=1.0.0",
     # Startup banner
     "pyfiglet>=1.0.2",
     "py3langid>=0.3.0",
@@ -43,6 +41,15 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# Worker-only heavy ingestion stack. ONLY the arq worker runs the pipeline (S0->S6),
+# so only the worker image installs this. The backend imports the provider modules
+# (e.g. for stage discovery) but never triggers their lazy `import docling` — it never
+# calls DoclingBackend.parse() — so it ships without docling/torch/opencv (~2-3 GB lighter).
+# Install in the worker image with:  uv sync --frozen --no-dev --extra worker
+worker = [
+    "docling>=2.14.0",
+]
+
 # GPU variant: install torch with CUDA 11.8 wheels separately:
 #   uv pip install torch --extra-index-url https://download.pytorch.org/whl/cu118
 gpu = []

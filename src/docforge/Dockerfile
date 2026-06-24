@@ -16,7 +16,10 @@
 # Stage 1: Python dependency builder (uv + Python 3.12)
 #
 # Goal:
-# - Create a virtual environment at /opt/venv with all production dependencies.
+# - Create a virtual environment at /opt/venv with the BASE production dependencies only.
+# - The optional `worker` group (docling + torch/opencv) is deliberately NOT installed:
+#   the backend never runs DoclingBackend.parse(), so it ships ~2-3 GB lighter. Only the
+#   worker image (Dockerfile.worker) adds `--extra worker`.
 # - Separate dependency installation from application code for layer-cache efficiency:
 #   pyproject.toml/uv.lock layer is only rebuilt when dependencies change.
 ###############################################################################
@@ -86,13 +89,11 @@ FROM python:3.12-slim-bookworm AS runtime
 # PYTHONUNBUFFERED: forces stdout/stderr to flush immediately.
 #   Ensures container logs are visible in real time via `docker logs`.
 # PATH: prepend the uv-built venv so its Python + executables are used by default.
-# QT_QPA_PLATFORM=offscreen: prevents OpenCV/Qt from trying to connect to X11 (libxcb.so.1).
-#   Docling imports OpenCV which bundles Qt plugins; without a display, the xcb platform
-#   plugin would fail at runtime. "offscreen" uses a framebuffer backend — no X11 needed.
+# (No QT_QPA_PLATFORM here: the backend image excludes Docling/OpenCV — that env lives
+#  only in Dockerfile.worker, where OpenCV's Qt plugins actually load.)
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PATH="/opt/venv/bin:${PATH}" \
-    QT_QPA_PLATFORM=offscreen
+    PATH="/opt/venv/bin:${PATH}"
 
 # Set working directory to /app/docforge (the docforge package root).
 # uvicorn is started from this directory so `from config import RUNTIME_CONFIG`
