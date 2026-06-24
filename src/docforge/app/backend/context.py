@@ -14,14 +14,14 @@ from config import RUNTIME_CONFIG
 from backend.libs.admission import ResourceAdmitter
 from common_libs.observability.events import EventBroadcaster, EventPublisher
 from common_libs.observability.heartbeat import HeartbeatReader
-from libs.observability.queue import QueueIntrospector
+from backend.libs.observability.queue import QueueIntrospector
 from common_libs.pipeline.assembly import ProviderRegistry
 from common_libs.pipeline.caches.node_cache import NodeCache
 from common_libs.pipeline.caches.provider_cache import ProviderCallCache
 from common_libs.providers.converter import GotenbergConverter
 from common_libs.providers.device_manager import DeviceManager
-from libs.search.hybrid.service import HybridSearchService
-from libs.search.metadata_indexer.indexer import MetadataIndexer
+from backend.libs.search.hybrid.service import HybridSearchService
+from backend.libs.search.metadata_indexer.indexer import MetadataIndexer
 from common_libs.storage.postgres.client import PostgresClient
 from common_libs.storage.postgres.repositories import (
     BlockRepository,

@@ -14,7 +14,7 @@ from __future__ import annotations
 import math
 
 # ====== Local Project Imports ======
-from libs.search.hybrid.models import DocumentGroup, SearchResult
+from backend.libs.search.hybrid.models import DocumentGroup, SearchResult
 
 
 class SearchPostProcessor:

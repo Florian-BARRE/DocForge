@@ -12,8 +12,11 @@ from alembic import context
 from sqlalchemy.ext.asyncio import create_async_engine
 
 # ====== Internal Project Imports ======
-# RUNTIME_CONFIG must be imported first — it registers sys.path for internal modules.
-from config import RUNTIME_CONFIG
+# Migrations only need the SHARED DB settings (POSTGRES_*), which live on BaseRuntimeConfig
+# (common/base_config) — NOT the per-app RUNTIME_CONFIG. This keeps migrations self-contained
+# in common/. `prepend_sys_path = .` in alembic.ini puts common/ on sys.path so both
+# `base_config` and `common_libs` resolve when Alembic runs env.py.
+from base_config import BaseRuntimeConfig as RUNTIME_CONFIG
 from common_libs.storage.postgres.models import Base
 
 # Alembic Config object — provides access to the .ini file values.

@@ -11,7 +11,7 @@ from loggerplusplus import LoggerClass
 # ====== Internal Project Imports ======
 from common_libs.config.pipeline.stages.search_config import RerankConfig
 from common_libs.providers.rerank.base import RerankProvider
-from libs.search.hybrid.models import SearchResult
+from backend.libs.search.hybrid.models import SearchResult
 
 
 class RerankStage(LoggerClass):

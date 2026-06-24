@@ -82,6 +82,7 @@ src/
     common/                 # SOCLE PARTAGÉ — chargé par app ET worker
       pyproject.toml        #   contrat de deps (deps-only) + uv.lock ; `--extra worker` = docling
       base_config/          #   BaseRuntimeConfig (vars communes + setup logging) — hérité par les 2 apps
+      migrations/  alembic.ini  #   Alembic du schéma partagé (env.py → base_config ; lancées par l'app)
       common_libs/          #   importé `from common_libs.<bucket> import …`
         domain/             #     L0 — modèles purs (IR, Chunk, metadata)
         config/             #     L1 — PipelineConfig, validation, admission
@@ -91,13 +92,14 @@ src/
         observability/      #     events/ + heartbeat/ (partagés)
         pipeline/           #     L3 — caches/, assembly/ (registry), stages/ (S0–S6)
     app/                    # APP FASTAPI — image légère (sans docling)
-      Dockerfile  entrypoint.py  alembic.ini  migrations/
+      Dockerfile  entrypoint.py
       config/               #   RUNTIME_CONFIG(BaseRuntimeConfig) + vars web (FASTAPI/CORS/SSE/ADMISSION)
-      backend/              #   app, CONTEXT, lifespan, routers (+ backend/libs : error_handling, sse, admission)
-      libs/                 #   dédié `from libs.<x>` : search/{hybrid,metadata_indexer,pipeline}, observability/queue
+      backend/              #   app, CONTEXT, lifespan, routers + TOUT le dédié app sous backend/libs :
+        libs/               #     `from backend.libs.<x>` : utils(error_handling,sse), admission,
+                            #     search/{hybrid,metadata_indexer,pipeline,builder}, observability/queue
       frontend/             #   React + Vite (dist/ servi en statique)
     worker/                 # WORKER ARQ — image lourde (+ docling)
-      Dockerfile  arq_worker.py
+      Dockerfile  entrypoint.py   #   cible arq : `arq entrypoint.WorkerSettings`
       config/               #   RUNTIME_CONFIG(BaseRuntimeConfig) + vars worker (WORKER_*, OBS_METRICS)
       libs/                 #   dédié `from libs.<x>` : pipeline/{engine,orchestrator,worker}, observability/metrics
     tests/                  # tests docforge (app + worker testés ensemble)
@@ -113,16 +115,16 @@ docker-compose.dev.yml      # Dev overrides (volumes common+app + --reload)
 ### Deux apps, un socle : `common_libs.*` vs `libs.*` (+ config par héritage)
 
 `base_config` + `common_libs.*` (dans `src/docforge/common/`) = **socle partagé**, chargé par les DEUX
-apps. Chacune a en plus son `config` (`RUNTIME_CONFIG(BaseRuntimeConfig)` + vars dédiées) et son `libs.*`
-**dédié** (sous `src/docforge/app/` ou `src/docforge/worker/`), résolus par app au runtime.
-`entrypoint.py` / `arq_worker.py` bootstrappent `sys.path` (`docforge/common` + leur dossier) avant
-d'importer `config`. Import partagé → `from common_libs.<bucket> import …` ; dédié → `from libs.<x> import …`.
+apps. Chacune a en plus son `config` (`RUNTIME_CONFIG(BaseRuntimeConfig)` + vars dédiées) et son code
+**dédié**, résolu par app au runtime. Les deux points d'entrée s'appellent `entrypoint.py` (app : uvicorn ;
+worker : `arq entrypoint.WorkerSettings`) et bootstrappent `sys.path` (`docforge/common` + leur dossier)
+avant d'importer `config`. Import partagé → `from common_libs.<bucket> import …`.
 
-| Racine | Modules | Lancé par |
+| Racine | Modules (namespace) | Lancé par |
 |---|---|---|
-| `docforge/common/` (`common_libs.*` + `base_config`) | domain, config, providers, storage, observability events/heartbeat, search/field_index, pipeline caches/assembly/**stages** | les deux |
-| `docforge/app/` (`config` + `libs.*`) | search hybrid/metadata_indexer/pipeline, observability/queue + le package `backend/` | uvicorn |
-| `docforge/worker/` (`config` + `libs.*`) | pipeline engine/orchestrator/worker, observability/metrics | arq |
+| `docforge/common/` | `common_libs.*` (+ `base_config`, `migrations`) : domain, config, providers, storage, observability events/heartbeat, search/field_index, pipeline caches/assembly/**stages** | les deux |
+| `docforge/app/` | `backend.*` (le package FastAPI) + `backend.libs.*` : utils/admission/sse, search hybrid/metadata_indexer/pipeline, observability/queue | uvicorn |
+| `docforge/worker/` | `libs.*` : pipeline engine/orchestrator/worker, observability/metrics | arq |
 
 > Les **stages** (S0→S6) vivent en `common_libs` (pas en worker) car le registry partagé
 > (`pipeline/assembly`) les importe **statiquement**. L'app ne lance jamais l'ingestion : elle enqueue

@@ -16,7 +16,7 @@ from pyfiglet import Figlet
 # ====== Internal Project Imports ======
 from common_libs.observability.events import EventBroadcaster, EventPublisher
 from common_libs.observability.heartbeat import HeartbeatReader
-from libs.observability.queue import QueueIntrospector
+from backend.libs.observability.queue import QueueIntrospector
 
 # ====== Local Project Imports ======
 from .context import CONTEXT

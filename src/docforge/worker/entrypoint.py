@@ -1,13 +1,13 @@
 # ====== Code Summary ======
-# arq worker entry point for DocForge.
-# Target for the arq CLI: `arq arq_worker.WorkerSettings`
+# arq worker entry point for DocForge (named entrypoint.py to mirror the app entrypoint).
+# Target for the arq CLI: `arq entrypoint.WorkerSettings`
 # Run from WORKDIR /app/worker.
 
 # ====== Path bootstrap (multi-root layout) ======
 # This app lives in src/worker/; shared code lives in src/common/. Register both on
 # sys.path BEFORE any internal import so that:
 #   - src/common  resolves `config` and `common_libs.*`  (shared)
-#   - src/worker  resolves `arq_worker` and `libs.*`  (worker-dedicated pipeline)
+#   - src/worker  resolves `entrypoint` and `libs.*`  (worker-dedicated pipeline)
 import pathlib as _pathlib
 import sys as _sys
 

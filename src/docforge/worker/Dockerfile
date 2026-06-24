@@ -13,8 +13,8 @@
 # No frontend stage — the worker serves no static assets.
 #
 # Multi-root layout: shared code in src/common/ (`config`, `common_libs.*`), worker
-# code in src/worker/ (`arq_worker`, `libs.*` = pipeline engine/orchestrator/worker).
-# arq_worker.py's path bootstrap registers /app/common and /app/worker on sys.path.
+# code in src/worker/ (`entrypoint`, `libs.*` = pipeline engine/orchestrator/worker).
+# entrypoint.py's path bootstrap registers /app/common and /app/worker on sys.path.
 ###############################################################################
 
 ###############################################################################
@@ -44,7 +44,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 #
 # Goal — a clean filesystem:
 #     /app/common/   → shared code (config, common_libs)
-#     /app/worker/   → worker code (arq_worker, libs = engine/orchestrator/worker)
+#     /app/worker/   → worker code (entrypoint, libs = engine/orchestrator/worker)
 #     /opt/venv/     → prebuilt virtual environment (base + worker extra)
 ###############################################################################
 FROM python:3.12-slim-bookworm AS runtime
@@ -56,8 +56,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PATH="/opt/venv/bin:${PATH}" \
     QT_QPA_PLATFORM=offscreen
 
-# WORKDIR is the worker app root so `arq arq_worker.WorkerSettings` finds arq_worker.py.
-# The bootstrap at the top of arq_worker.py adds /app/common and /app/worker to sys.path.
+# WORKDIR is the worker app root so `arq entrypoint.WorkerSettings` finds entrypoint.py.
+# The bootstrap at the top of entrypoint.py adds /app/common and /app/worker to sys.path.
 WORKDIR /app/worker
 
 COPY --from=py-build /opt/venv /opt/venv
@@ -66,5 +66,5 @@ COPY --from=py-build /opt/venv /opt/venv
 COPY docforge/common /app/common
 COPY docforge/worker /app/worker
 
-# Start the arq worker (WorkerSettings class in /app/worker/arq_worker.py).
-CMD ["arq", "arq_worker.WorkerSettings"]
+# Start the arq worker (WorkerSettings class in /app/worker/entrypoint.py).
+CMD ["arq", "entrypoint.WorkerSettings"]

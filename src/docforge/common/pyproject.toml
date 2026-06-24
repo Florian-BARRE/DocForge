@@ -68,7 +68,7 @@ dev = [
 
 [tool.uv]
 # Deps-only project: do not build/install the local tree as a package — the apps run
-# from source via sys.path (entrypoint/arq_worker bootstrap src/common + their own dir).
+# from source via sys.path (entrypoint bootstrap src/common + their own dir).
 package = false
 dev-dependencies = [
     "pytest>=8.3.0",

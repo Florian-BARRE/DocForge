@@ -14,6 +14,7 @@ from fastapi import APIRouter, HTTPException
 
 # ====== Internal Project Imports ======
 from backend.context import CONTEXT
+from backend.libs.search.builder import build_search_pipeline
 from backend.libs.utils.error_handling import auto_handle_errors
 from backend.routers.collections.documents.search.models import (
     SearchGroupItem,
@@ -45,8 +46,8 @@ async def search_collection(collection_id: uuid.UUID, body: SearchRequest) -> Se
     # Embed provider is derived from pipeline.embed.chain[0] so query vectors
     # match the indexed vectors -- mixing providers corrupts results.
     try:
-        search_pipeline = CONTEXT.registry.build_search_pipeline(
-            collection.pipeline, CONTEXT.retrieval
+        search_pipeline = build_search_pipeline(
+            collection.pipeline, CONTEXT.retrieval, CONTEXT.RUNTIME_CONFIG
         )
     except ValueError as exc:
         # 503 — the collection's configured search/embed provider could not be built.
@@ -116,8 +117,8 @@ async def search_within_document(
     collection = await _get_collection(collection_id)
     metadata_fields = _extract_schema_fields(collection)
     try:
-        search_pipeline = CONTEXT.registry.build_search_pipeline(
-            collection.pipeline, CONTEXT.retrieval
+        search_pipeline = build_search_pipeline(
+            collection.pipeline, CONTEXT.retrieval, CONTEXT.RUNTIME_CONFIG
         )
     except ValueError as exc:
         # 503 — the collection's configured search/embed provider could not be built.

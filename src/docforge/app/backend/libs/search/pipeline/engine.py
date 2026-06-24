@@ -22,8 +22,8 @@ from common_libs.providers.embed.base import EmbedProvider
 from common_libs.providers.llm.base import LLMProvider
 from common_libs.providers.rerank.base import RerankProvider
 from common_libs.search.field_index import RetrievalTuning
-from libs.search.hybrid.models import DocumentGroup, SearchOutcome, SearchResult
-from libs.search.hybrid.service import HybridSearchService
+from backend.libs.search.hybrid.models import DocumentGroup, SearchOutcome, SearchResult
+from backend.libs.search.hybrid.service import HybridSearchService
 
 # ====== Local Project Imports ======
 from .post import SearchPostProcessor

@@ -26,8 +26,8 @@ from config import RUNTIME_CONFIG  # registers the shared common/ tree on sys.pa
 
 from backend import CONTEXT, create_app
 from backend.libs.admission import ResourceAdmitter
-from libs.search.metadata_indexer.indexer import MetadataIndexer
-from libs.search.hybrid.service import HybridSearchService
+from backend.libs.search.metadata_indexer.indexer import MetadataIndexer
+from backend.libs.search.hybrid.service import HybridSearchService
 from common_libs.pipeline.caches.node_cache import NodeCache
 from common_libs.pipeline.caches.provider_cache import ProviderCallCache
 from common_libs.providers.converter import GotenbergConverter

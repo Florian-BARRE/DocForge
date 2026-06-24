@@ -31,7 +31,7 @@ from .models import (
 if TYPE_CHECKING:
     from config import RUNTIME_CONFIG
     from common_libs.observability.heartbeat import HeartbeatReader
-    from libs.observability.queue import QueueIntrospector
+    from backend.libs.observability.queue import QueueIntrospector
     from common_libs.providers.device_manager import DeviceManager
     from common_libs.storage.postgres.client import PostgresClient
     from common_libs.storage.postgres.repositories import JobRepository

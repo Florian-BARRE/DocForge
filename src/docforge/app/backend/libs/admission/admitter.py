@@ -18,7 +18,7 @@ from loggerplusplus import LoggerClass
 from .models import AdmissionDecision, AdmissionSnapshot, ResourceLimits
 
 if TYPE_CHECKING:
-    from libs.observability.queue import QueueIntrospector
+    from backend.libs.observability.queue import QueueIntrospector
     from common_libs.storage.postgres.models import CollectionModel
     from common_libs.storage.postgres.repositories import JobRepository
     from sqlalchemy.ext.asyncio import AsyncSession
