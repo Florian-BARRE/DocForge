@@ -58,3 +58,5 @@ Thumbs.db
 .coverage
 htmlcov/
 .claude/worktrees/
+# Note: the synthetic test corpus under src/docforge/tests/corpus/documents/<ext>/ IS committed
+# (deterministic, loaded at test time); it is regenerated via tests/corpus/generation/ when builders change.

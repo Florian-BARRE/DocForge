@@ -1,0 +1,34 @@
+# syntax=docker/dockerfile:1.7
+
+###############################################################################
+# One-shot headless LibreOffice converter image.
+#
+# Goal:
+# - Provide a `soffice --headless --convert-to` capable environment used ONLY to bake
+#   the committed legacy Office binaries (.doc/.xls/.ppt) and the native rich PDF from the
+#   pure-Python generated modern formats (.docx/.xlsx/.pptx).
+# - This is a build-time tool, never a runtime service. It is built once by
+#   tests/corpus/legacy/bake_legacy.py; Docker layer caching makes later bakes instant.
+#
+# Build (handled automatically by the bake script):
+#   docker build -t docforge-libreoffice:bake -f Dockerfile.libreoffice .
+###############################################################################
+FROM debian:bookworm-slim
+
+# Install a headless LibreOffice able to read OOXML and write the legacy 97 filters + PDF.
+# --no-install-recommends drops the GUI / help packs to keep the image lean.
+# fonts-dejavu-core guarantees deterministic text rendering (and therefore pagination).
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+        libreoffice-writer \
+        libreoffice-calc \
+        libreoffice-impress \
+        fonts-dejavu-core \
+ && rm -rf /var/lib/apt/lists/*
+
+# LibreOffice writes a user profile on first launch; HOME must be a writable directory.
+# /tmp is always writable inside the ephemeral conversion container.
+ENV HOME=/tmp
+
+# Conversions bind-mount the working directory here; outputs are written next to inputs.
+WORKDIR /data
