@@ -44,6 +44,20 @@ metadata:
 - [ ] New pipeline stage: wired as DAG node in `worker/libs/pipeline/engine.py`
 - [ ] New stage: idempotency guaranteed (Postgres ON CONFLICT DO NOTHING, Qdrant upsert)
 
+## Topic memory files (read on demand)
+
+- [layer_dag](layer_dag.md) — libs layer DAG import rules to enforce, esp. storage vs search
+- [reindex_staleness_coherence](reindex_staleness_coherence.md) — reindex_diff shared between config bump + per-doc staleness; fragile transient `_reindex_reasons`
+- [secret_roundtrip](secret_roundtrip.md) — `ConfigDocument.merge_patch` preserves redacted secrets — validated, do NOT flag
+- [page_indexing_zero_based](page_indexing_zero_based.md) — page numbers are 0-indexed end to end; page-1-as-first is off-by-one
+- [search_pipeline_antipatterns](search_pipeline_antipatterns.md) — P7 search pipeline (engine, rerank, fusion) recurring issues
+- [observability-brick-a](observability-brick-a.md) — Brique A audit anti-patterns (queue/metrics/heartbeat/events + jobs/monitoring routers)
+
+> Component-scoped memory lives with the component agents: **`mcp`** agent (`agent-memory/mcp/`) for
+> the `src/mcp/` HTTP-client invariant + REST endpoint map; **`bge-server`** agent
+> (`agent-memory/bge-server/`) for the `src/bge_server/` model host. Consult them when reviewing
+> those trees; this file holds the cross-cutting product rules.
+
 ## Common anti-patterns seen in this codebase
 
 - Passing `collection_id` as a positional arg instead of keyword — causes silent None

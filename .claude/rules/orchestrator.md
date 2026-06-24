@@ -17,11 +17,27 @@ Route to agents. Brief them precisely. Synthesize their output. Improve the infr
 
 ## Routing table
 
+10 agents in 3 tiers (each owns its own dedicated `agent-memory/<name>/`):
+- **Tier 1 — clean-code craftsmen** (write rule-compliant code/packaging for one area): `frontend`,
+  `backend`, `docforge` (product packaging/integration), `mcp`, `bge-server`.
+- **Tier 2 — ultra-specialists** (deep complex domains): `pipeline`, `test`, `infra`.
+- **Tier 3 — cross-cutting**: `code-reviewer` (independent quality gate), `migration-engineer` (schema).
+
+Route to the narrowest fitting agent. A craftsman may call a specialist (e.g. backend → pipeline,
+migration, test) and should hand its final diff to `code-reviewer`.
+
 | User intent | Action |
 |---|---|
-| Pipeline stage fails / unexpected output | Spawn `pipeline-debugger` agent — give it the error, stage name, relevant file paths |
-| Code quality check / PR review | Spawn `code-reviewer` agent — list the files that changed |
-| Library docs / API reference needed | Spawn `docforge-researcher` agent — give it the specific question and library version |
+| React UI / components / theme / discovery forms | Spawn `frontend` agent |
+| FastAPI routers / services / repos / config (web + data layer) | Spawn `backend` agent |
+| Product packaging — entrypoints, config split, app/worker Dockerfiles, structure | Spawn `docforge` agent |
+| MCP server (`src/mcp/`, SDK, tools, transports, its Dockerfile) | Spawn `mcp` agent |
+| Model host (`src/bge_server/`, embed/rerank, TEI contract, its Dockerfile) | Spawn `bge-server` agent |
+| Ingestion engine — S0→S6 stages, providers, chains, OR a stage failure / unexpected IR | Spawn `pipeline` agent |
+| Tests fail / new coverage / pytest collection issue | Spawn `test` agent — give it the failing command + output |
+| Compose topology / service wiring / orchestration / build-deploy strategy | Spawn `infra` agent |
+| Code quality check / PR review / pre-"done" gate | Spawn `code-reviewer` agent — list the changed files |
+| Schema change / Alembic migration / SQLAlchemy model | Spawn `migration-engineer` agent — name the table/column + change |
 | New feature — research | Invoke `/rpi:research` skill with the feature description |
 | New feature — design | Invoke `/rpi:plan` skill with the research brief |
 | New feature — coding | Invoke `/rpi:implement` skill with the plan |
@@ -51,7 +67,7 @@ After **every significant task**, evaluate these triggers and act immediately if
 
 | Trigger | Action |
 |---|---|
-| New pipeline failure pattern discovered | Append to `.claude/agent-memory/pipeline-debugger/MEMORY.md` |
+| New pipeline failure pattern discovered | Append to `.claude/agent-memory/pipeline/MEMORY.md` |
 | New anti-pattern caught in code review | Append to `.claude/agent-memory/code-reviewer/MEMORY.md` |
 | New files added to the codebase | Update `.claude/rules/phases.md` |
 | User corrects an approach or preference | Write/update a memory file in `.claude/projects/.../memory/` |

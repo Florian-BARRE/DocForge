@@ -19,12 +19,12 @@ so use `--project common`. `tests/conftest.py` bootstraps `sys.path` for all roo
    ```
    (`unset VIRTUAL_ENV` avoids a stale env var pointing at another project's venv.)
 
-2. **Live suite** (ONLY on explicit request — needs the full stack `up` AND the `bge` model
+2. **Live suite** (ONLY on explicit request — needs the full stack `up` AND the `bge_server` model
    service ready at http://localhost:10026/health):
    ```bash
    cd src/docforge && unset VIRTUAL_ENV && uv run --project common pytest tests/live_test -q --tb=line
    ```
-   Auto-skips when the stack is unreachable; ingestion runs through `bge` (slow on CPU).
+   Auto-skips when the stack is unreachable; ingestion runs through `bge_server` (slow on CPU).
 
 3. **Report results** — list failures with file:line and the error message.
 

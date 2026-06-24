@@ -33,9 +33,11 @@ grep -n "$args" SPEC-docforge-document-intelligence-platform.md 2>/dev/null | he
 find src/docforge -name "*.py" | xargs grep -l "<relevant_keyword>" 2>/dev/null | head -20
 ```
 
-### 3. Research external libraries (via docforge-researcher agent)
+### 3. Research external libraries (via Context7 MCP)
 
-Spawn the `docforge-researcher` agent for any external library the feature will use.
+For any external library the feature will use, pull current docs via the **Context7 MCP**
+(`resolve-library-id` → `query-docs`), falling back to WebSearch/WebFetch for anything Context7
+doesn't cover. Capture the exact API/version facts the plan will depend on.
 
 ### 4. Check constraints
 

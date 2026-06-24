@@ -4,6 +4,7 @@ paths:
   - "src/docforge/app/**"
   - "src/docforge/worker/**"
   - "src/mcp/**"
+  - "src/bge_server/**"
 ---
 
 # DocForge — Phase File Inventory
@@ -34,7 +35,7 @@ a concept was introduced or which files are relevant to a given feature.
 > the app-only (`search/{hybrid,metadata_indexer,pipeline}`, `observability/queue` → `app/backend/libs`)
 > and worker-only (`pipeline/{engine,orchestrator,worker}`, `observability/metrics` → `worker/libs`)
 > trees, both imported `from libs.<x> import …`. `RUNTIME_CONFIG` is now `BaseRuntimeConfig` (common)
-> + per-app subclasses. The off-the-shelf TEI service was replaced by the local `bge` model host
+> + per-app subclasses. The off-the-shelf TEI service was replaced by the local `bge_server` model host
 > (`src/bge_server`). See **CLAUDE.md** for the current layout, layer DAG, and commands.
 
 ---
@@ -331,11 +332,11 @@ src/mcp/
       transport.py               #   DocForgeTransport (httpx get/post/delete/upload/get_bytes)
       client.py                  #   DocForgeClient — composes the 11 sub-APIs
       {health,discovery,collections,collection_config,documents,search,files,chunks,pages,jobs,monitoring}.py
-    tools/                       # MCP layer — 36 @mcp.tool wrappers (1 line each) over the SDK
+    tools/                       # MCP layer — 51 @mcp.tool wrappers (1 line each) over the SDK
       __init__.py                #   register_all(mcp, sdk)
       <same 11 domain modules>
   tests/unit/{test_sdk,test_auth,test_tool_registration}.py
-services/docforge_mcp/.env       # MCP_TRANSPORT/HOST/PORT/HTTP_PATH/AUTH_TOKEN + DOCFORGE_API_URL
+services/mcp/.env       # MCP_TRANSPORT/HOST/PORT/HTTP_PATH/AUTH_TOKEN + DOCFORGE_API_URL
 docker-compose.yml               # `mcp` service (docforge-mcp:latest, 10030:9000, depends_on docforge)
 docker-compose.dev.yml           # mcp volume mount + DEBUG
 .mcp.json                        # local stdio entry repointed to src/mcp/entrypoint.py
@@ -349,5 +350,5 @@ docker-compose.dev.yml           # mcp volume mount + DEBUG
 - **Two-layer split**: `sdk/` (knows the API: paths/bodies, typed, testable) vs `tools/` (presents to the LLM: docstrings/schemas). Tools are 1-line wrappers.
 - **Bi-transport**: `stdio` (local Claude Desktop, logs to STDERR — stdout is the protocol channel) | `streamable-http` (container, `stateless_http=True`+`json_response=True`).
 - **Bearer auth** via custom Starlette middleware (built-in FastMCP auth is OAuth2/overkill); HTTP mode refuses to boot without `MCP_AUTH_TOKEN`.
-- **36 tools** = health(1)+discovery(1)+collections(3)+config(5)+documents(6)+search(2)+files(4)+chunks(3)+pages(4)+jobs(3)+monitoring(4). Search exposes filters/weights/debug; page screenshot returns an MCP `Image`.
+- **51 tools** (was 36 at P8) across all **15** backend routers = health(1)+discovery(1)+auth(5)+users(4)+collections(3)+config(5)+limits(2)+access(3)+documents(6)+search(2)+files(4)+chunks(3)+pages(4)+jobs(3)+monitoring(5). Search exposes filters/weights/debug; page screenshot returns an MCP `Image`. Post-P8 additions: Brique D limits/resources (`get_collection_limits`/`update_collection_limits`/`get_monitoring_resources`), then the full auth system (2026-06-24) — `auth` (login/me/keys CRUD), `users` (root-only user mgmt), `access` (per-collection grants). The 2 SSE routes (`documents/stream`, `monitoring/stream`) are intentionally NOT tools — MCP has no streaming primitive; their REST snapshot companions are the substitute. The MCP→DocForge transport carries a static bearer (`api_token`) for `AUTH_ENABLED=true` instances; the `login` tool returns a JWT informationally and does NOT reconfigure the transport.
 - Windows gotcha: log messages must stay ASCII (cp1252 console can't encode `→`); use `->`.

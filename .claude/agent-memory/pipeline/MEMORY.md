@@ -1,11 +1,11 @@
 ---
-name: pipeline-debugger-memory
-description: Known failure patterns, service endpoints, and diagnostic notes for the DocForge S0→S6 pipeline
+name: pipeline-memory
+description: Pipeline architecture + runtime failure patterns, service endpoints, env flags, stage file map
 metadata:
   type: project
 ---
 
-# Pipeline Debugger Memory
+# Pipeline — Memory Index
 
 ## Known failure patterns
 
@@ -14,7 +14,7 @@ metadata:
 | S6 skips Qdrant | `collection_id=None` in `arq_pool.enqueue_job()` | `documents/router.py` — pass `collection_id=str(collection_id)` |
 | Chunk count = 0 | `S4_ENABLED=false` | Set `S4_ENABLED=true` in `services/docforge/.env` |
 | S2 silently skips all figures | `S2_ENRICH_ENABLED=false` | Set `S2_ENRICH_ENABLED=true` |
-| bge unreachable | Wrong `TEI_BASE_URL` or `bge` container down | Check `services/docforge/.env` + `docker compose ps bge` + `docker compose logs bge` (first boot is slow — downloads BGE-M3 + reranker from HF) |
+| bge unreachable | Wrong `TEI_BASE_URL` or `bge_server` container down | Check `services/docforge/.env` + `docker compose ps bge` + `docker compose logs bge` (first boot is slow — downloads BGE-M3 + reranker from HF) |
 | Qdrant collection missing | `ensure_collection()` failed | Check `QDRANT_HOST`/`QDRANT_PORT` connectivity |
 | SeaweedFS 403 on upload | Bucket not initialized | Call `POST /api/v1/collections` to provision the bucket |
 | Docling parse returns empty IR | Corrupted PDF or Gotenberg timeout | Check Gotenberg logs: `docker compose logs gotenberg` |
@@ -30,7 +30,7 @@ metadata:
 | SeaweedFS | http://localhost:8333 | GET /status |
 | SeaweedFS Filer | http://localhost:8888 | GET / |
 | Qdrant | http://localhost:6333 | GET /healthz |
-| bge | http://localhost:10026 | GET /health |
+| bge_server | http://localhost:10026 | GET /health |
 | Redis | redis://localhost:6379 | `redis-cli ping` |
 | PostgreSQL | localhost:5432 | `pg_isready` |
 
@@ -42,8 +42,8 @@ metadata:
 | `S4_ENABLED` | false | S4 structure-aware chunking |
 | `S6_ENABLED` | false | S6 BGE-M3 embed + Qdrant indexing |
 | `ENRICH_MAX_BUDGET_USD` | 0.0 | Budget cap (0 = unlimited) |
-| `TEI_BASE_URL` | http://bge:80 | bge embed service URL (stopgap; provider URLs migrating to per-collection DB config) |
-| `BGE_RERANKER_URL` | http://bge:80 | bge rerank service URL |
+| `TEI_BASE_URL` | http://bge_server:80 | bge embed service URL (stopgap; provider URLs migrating to per-collection DB config) |
+| `BGE_RERANKER_URL` | http://bge_server:80 | bge rerank service URL |
 | `QDRANT_HOST` | qdrant | Qdrant hostname |
 
 ## Stage file map
