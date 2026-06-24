@@ -29,7 +29,7 @@ class McpConfig(EnvConfigLoader):
     """
 
     # ───── Paths & dirs ─────
-    # Root of the docforge_mcp application (this file's directory).
+    # Root of the mcp application (this file's directory).
     PATH_ROOT_DIR: pathlib.Path = pathlib.Path(__file__).resolve().parent
 
     # Register the app root on sys.path so `from libs.sdk... import ...` resolves regardless of
@@ -49,6 +49,11 @@ class McpConfig(EnvConfigLoader):
     DOCFORGE_API_URL: str = env("DOCFORGE_API_URL", default="http://localhost:8000")
     # Per-request timeout (seconds) for SDK HTTP calls.
     MCP_API_TIMEOUT_S: int = env("MCP_API_TIMEOUT_S", cast=int, default="60")
+    # Bearer token sent on every outbound request to the DocForge REST API when AUTH_ENABLED=true
+    # on the docforge side. Must match the DocForge AUTH_ROOT_API_KEY or any per-user API key
+    # registered in the DB. Leave empty only when targeting a DocForge instance with auth disabled.
+    # The name contains "TOKEN" so configplusplus auto-masks this value in log output.
+    DOCFORGE_API_TOKEN: str = env("DOCFORGE_API_TOKEN", required=False, default="")
 
     # ───── MCP transport ─────
     # "stdio"        → local Claude Desktop / Claude Code (protocol over stdin/stdout).

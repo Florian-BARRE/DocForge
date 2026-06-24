@@ -10,6 +10,8 @@ from __future__ import annotations
 from loggerplusplus import LoggerClass
 
 # ====== Local Project Imports ======
+from .access import AccessApi
+from .auth import AuthApi
 from .chunks import ChunksApi
 from .collection_config import ConfigApi
 from .collections import CollectionsApi
@@ -18,10 +20,12 @@ from .documents import DocumentsApi
 from .files import FilesApi
 from .health import HealthApi
 from .jobs import JobsApi
+from .limits import LimitsApi
 from .monitoring import MonitoringApi
 from .pages import PagesApi
 from .search import SearchApi
 from .transport import DocForgeTransport
+from .users import UsersApi
 
 
 class DocForgeClient(LoggerClass):
@@ -32,17 +36,20 @@ class DocForgeClient(LoggerClass):
     whole process; call :meth:`aclose` on shutdown to release the connection pool.
     """
 
-    def __init__(self, base_url: str, timeout: float = 60.0) -> None:
+    def __init__(self, base_url: str, timeout: float = 60.0, api_token: str = "") -> None:
         """
         Build the shared transport and wire every sub-API.
 
         Args:
             base_url (str): DocForge base URL (e.g. ``http://docforge:8000``).
             timeout (float): Per-request timeout in seconds.
+            api_token (str): Bearer token for the DocForge REST API. When non-empty,
+                every outbound HTTP request carries ``Authorization: Bearer <token>``.
+                Leave empty when targeting a DocForge instance with ``AUTH_ENABLED=false``.
         """
         LoggerClass.__init__(self)
-        # 1. One pooled transport shared by every sub-API
-        self._transport = DocForgeTransport(base_url, timeout)
+        # 1. One pooled transport shared by every sub-API — auth token threaded through
+        self._transport = DocForgeTransport(base_url, timeout, api_token=api_token)
 
         # 2. Compose the domain sub-APIs as attributes
         self.health = HealthApi(self._transport)
@@ -55,7 +62,11 @@ class DocForgeClient(LoggerClass):
         self.chunks = ChunksApi(self._transport)
         self.pages = PagesApi(self._transport)
         self.jobs = JobsApi(self._transport)
+        self.limits = LimitsApi(self._transport)
         self.monitoring = MonitoringApi(self._transport)
+        self.auth = AuthApi(self._transport)
+        self.users = UsersApi(self._transport)
+        self.access = AccessApi(self._transport)
 
         self.logger.info(f"DocForgeClient ready ({base_url})")
 

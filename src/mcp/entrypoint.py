@@ -25,8 +25,15 @@ def main() -> None:
     Raises:
         RuntimeError: When HTTP transport is selected without an MCP_AUTH_TOKEN.
     """
-    # 1. Build the SDK client and the MCP server (tools registered over the SDK)
-    sdk = DocForgeClient(McpConfig.DOCFORGE_API_URL, float(McpConfig.MCP_API_TIMEOUT_S))
+    # 1. Build the SDK client and the MCP server (tools registered over the SDK).
+    #    Pass DOCFORGE_API_TOKEN so every outbound request carries "Authorization: Bearer <token>"
+    #    when the DocForge API has AUTH_ENABLED=true. An empty token is forward-compatible with
+    #    auth-disabled deployments (no Authorization header will be sent in that case).
+    sdk = DocForgeClient(
+        McpConfig.DOCFORGE_API_URL,
+        float(McpConfig.MCP_API_TIMEOUT_S),
+        api_token=McpConfig.DOCFORGE_API_TOKEN,
+    )
     mcp = build_mcp(sdk)
 
     # 2. stdio transport — local protocol over stdin/stdout (no auth, no network)

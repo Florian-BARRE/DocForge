@@ -7,6 +7,8 @@ from mcp.server.fastmcp import FastMCP
 # ====== Local Project Imports ======
 from ..sdk import DocForgeClient
 from . import (
+    access,
+    auth,
     chunks,
     collection_config,
     collections,
@@ -15,15 +17,19 @@ from . import (
     files,
     health,
     jobs,
+    limits,
     monitoring,
     pages,
     search,
+    users,
 )
 
 # Every domain tool module, in catalogue order. Each exposes register(mcp, sdk).
 _MODULES = (
     health,
     discovery,
+    auth,
+    users,
     collections,
     collection_config,
     documents,
@@ -32,6 +38,8 @@ _MODULES = (
     chunks,
     pages,
     jobs,
+    limits,
+    access,
     monitoring,
 )
 

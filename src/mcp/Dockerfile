@@ -5,9 +5,9 @@
 # Built from the repository root with the src/ directory as context (same context as the main
 # docforge image, so both Dockerfiles see the sibling app folders).
 # Example:
-#   docker build -f src/docforge_mcp/Dockerfile -t docforge-mcp:latest src
+#   docker build -f src/mcp/Dockerfile -t docforge-mcp:latest src
 #
-# WORKDIR in the runtime stage is /app/docforge_mcp so that `python entrypoint.py` runs with the
+# WORKDIR in the runtime stage is /app/mcp so that `python entrypoint.py` runs with the
 # app root as CWD — `import config_loader` and `from libs... import ...` resolve without extra
 # PYTHONPATH (config_loader also appends the app root to sys.path defensively).
 ###############################################################################
@@ -33,14 +33,14 @@ ENV UV_PROJECT_ENVIRONMENT=/opt/venv \
 
 # Copy only the lock metadata first so the dependency layer is cached independently of app code.
 # Re-resolved only when pyproject.toml or uv.lock changes.
-COPY mcp/pyproject.toml mcp/uv.lock /workspace/docforge_mcp/
+COPY mcp/pyproject.toml mcp/uv.lock /workspace/mcp/
 
 # Install locked production dependencies.
 # --frozen: fail if uv.lock is out of sync with pyproject.toml (reproducibility guard).
 # --no-dev: skip test/lint/type-check tools.
 # cache mount: reuse the uv download cache across local rebuilds.
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev --project /workspace/docforge_mcp
+    uv sync --frozen --no-dev --project /workspace/mcp
 
 ###############################################################################
 # Stage 2: Runtime image (minimal Python 3.12 slim)
@@ -48,7 +48,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # Goal:
 # - Contain only what is needed to run the MCP server:
 #     /opt/venv          → prebuilt virtual environment
-#     /app/docforge_mcp  → MCP application source code
+#     /app/mcp  → MCP application source code
 ###############################################################################
 FROM python:3.12-slim-bookworm AS runtime
 
@@ -60,13 +60,13 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PATH="/opt/venv/bin:${PATH}"
 
 # Run from the app root so `python entrypoint.py` resolves config_loader + libs without PYTHONPATH.
-WORKDIR /app/docforge_mcp
+WORKDIR /app/mcp
 
 # Copy the prebuilt virtual environment from the builder stage (no uv, no build tools in runtime).
 COPY --from=py-build /opt/venv /opt/venv
 
 # Copy the MCP application source tree (rebuilt only when app code changes).
-COPY mcp /app/docforge_mcp
+COPY mcp /app/mcp
 
 # Expose the internal MCP HTTP port (matched by MCP_PORT and published in docker-compose.yml).
 EXPOSE 9000

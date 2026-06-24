@@ -23,20 +23,33 @@ class DocForgeTransport(LoggerClass):
     Every helper raises ``RuntimeError`` on a non-2xx response so sub-APIs can stay terse.
     """
 
-    def __init__(self, base_url: str, timeout: float) -> None:
+    def __init__(self, base_url: str, timeout: float, api_token: str = "") -> None:
         """
         Initialise the transport and bind the versioned API root.
 
         Args:
             base_url (str): DocForge base URL, e.g. ``http://docforge:8000``.
             timeout (float): Per-request timeout in seconds.
+            api_token (str): Bearer token for the DocForge REST API. When non-empty,
+                every outbound request carries ``Authorization: Bearer <token>``.
+                Leave empty when calling a DocForge instance with ``AUTH_ENABLED=false``.
         """
         LoggerClass.__init__(self)
         # Store the versioned API root used by every endpoint helper.
         self._api_v1: str = f"{base_url.rstrip('/')}/api/v1"
+        # Build default headers — include the Authorization header only when a token is provided
+        # so requests to an auth-disabled DocForge instance remain unaffected.
+        _default_headers: dict[str, str] = {}
+        if api_token:
+            _default_headers["Authorization"] = f"Bearer {api_token}"
         # Persistent async client — pooled connections across tool calls.
-        self._http: httpx.AsyncClient = httpx.AsyncClient(timeout=timeout)
-        self.logger.info(f"DocForge SDK transport ready - base: {self._api_v1}")
+        # Default headers are applied to every request (get/post/put/delete/upload/get_bytes).
+        self._http: httpx.AsyncClient = httpx.AsyncClient(
+            timeout=timeout,
+            headers=_default_headers,
+        )
+        _auth_status = "with token" if api_token else "no auth"
+        self.logger.info(f"DocForge SDK transport ready - base: {self._api_v1} ({_auth_status})")
 
     async def aclose(self) -> None:
         """Close the underlying HTTP client (call on shutdown)."""
@@ -91,6 +104,26 @@ class DocForgeTransport(LoggerClass):
         """
         # 1. Issue the request
         res = await self._http.post(f"{self._api_v1}{path}", json=body or {})
+
+        # 2. Validate, then handle the empty-body case
+        self._raise_for_status(res)
+        if res.status_code == 204:
+            return {}
+        return res.json()
+
+    async def put(self, path: str, body: dict[str, Any] | None = None) -> Any:
+        """
+        Perform a PUT request with a JSON body.
+
+        Args:
+            path (str): Path relative to ``/api/v1``.
+            body (dict | None): JSON-serialisable request body (sent as ``{}`` when None).
+
+        Returns:
+            Any: Parsed JSON body, or ``{}`` for ``204 No Content``.
+        """
+        # 1. Issue the request
+        res = await self._http.put(f"{self._api_v1}{path}", json=body or {})
 
         # 2. Validate, then handle the empty-body case
         self._raise_for_status(res)

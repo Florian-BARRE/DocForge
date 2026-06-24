@@ -37,6 +37,21 @@ def register(mcp: FastMCP, sdk: DocForgeClient) -> None:
         return await sdk.monitoring.overview()
 
     @mcp.tool()
+    async def get_monitoring_resources() -> Any:
+        """
+        Return the resource snapshot: device gauge + global admission limits + live load (Brique D).
+
+        Includes GPU/CPU device resolution, deployment-global queue/in-flight caps, current
+        queue depth, running job count, and per-status job counts. Use this to understand
+        the system's current capacity before triggering mass ingestion.
+
+        NOTE: The GET /monitoring/stream SSE endpoint is not exposed here — MCP cannot
+        stream events. Use get_monitoring_overview() or get_queue_status() for polling-based
+        operational monitoring instead.
+        """
+        return await sdk.monitoring.resources()
+
+    @mcp.tool()
     async def get_monitoring_discovery() -> Any:
         """Return the descriptor that drives the monitoring dashboard."""
         return await sdk.monitoring.discovery()

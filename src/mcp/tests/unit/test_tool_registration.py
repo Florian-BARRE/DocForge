@@ -8,9 +8,10 @@ from __future__ import annotations
 from libs.sdk import DocForgeClient
 from libs.server import build_mcp
 
-# 36 = health(1) + discovery(1) + collections(3) + config(5) + documents(6) + search(2)
-#    + files(4) + chunks(3) + pages(4) + jobs(3) + monitoring(4)
-EXPECTED_TOOL_COUNT = 36
+# 51 = health(1) + discovery(1) + auth(5) + users(4) + collections(3) + config(5)
+#    + documents(6) + search(2) + files(4) + chunks(3) + pages(4) + jobs(3)
+#    + limits(2) + access(3) + monitoring(5)
+EXPECTED_TOOL_COUNT = 51
 
 
 async def test_all_tools_registered_and_unique() -> None:
