@@ -55,13 +55,13 @@ FEATURE: <name>
 PHASE: Implementation
 
 ## New files
-1. src/docforge/libs/.../new_module.py
+1. src/docforge/common/common_libs/.../new_module.py
    - Class: NewClass(LoggerClass)
    - Protocol: implements XxxProtocol
    - Key methods: ...
 
 ## Modified files
-1. src/docforge/libs/pipeline/engine.py
+1. src/docforge/worker/libs/pipeline/engine.py
    - Add DAG node: ...
    - Wire dependency: ...
 

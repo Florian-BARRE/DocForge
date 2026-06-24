@@ -51,9 +51,9 @@ Spawn the `docforge-researcher` agent for any external library the feature will 
 FEATURE: <name>
 STAGES AFFECTED: <S0/S1/S2/S4/S5/S6/engine/backend>
 NEW FILES NEEDED:
-  - src/docforge/libs/...
+  - src/docforge/common/common_libs/...
 MODIFIED FILES:
-  - src/docforge/libs/pipeline/engine.py
+  - src/docforge/worker/libs/pipeline/engine.py
   - ...
 NEW DEPENDENCIES: <uv add ...>
 NEW ENV VARS: <VAR_NAME=default>
