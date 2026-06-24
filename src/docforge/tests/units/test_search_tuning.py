@@ -7,7 +7,7 @@
 
 from common_libs.config.pipeline.stages.search_config import RetrieveConfig, SearchConfig
 from common_libs.search.field_index import FieldIndexHelpers, RetrievalTuning
-from libs.search.hybrid.helpers import HybridSearchHelpers
+from backend.libs.search.hybrid.helpers import HybridSearchHelpers
 
 
 # ── RetrievalTuning ─────────────────────────────────────────────────────────────

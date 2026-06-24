@@ -8,7 +8,7 @@ from __future__ import annotations
 import pytest
 
 # ====== Internal Project Imports ======
-from libs.observability.queue import ARQ_QUEUE_KEY, QueueIntrospector
+from backend.libs.observability.queue import ARQ_QUEUE_KEY, QueueIntrospector
 
 
 class FakeRedis:

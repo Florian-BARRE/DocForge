@@ -2,8 +2,8 @@
 # Unit tests for SearchPostProcessor: document grouping and MMR diversity re-ranking
 # (the client-side equivalents of Qdrant query_points_groups and MMR).
 
-from libs.search.hybrid.models import SearchResult
-from libs.search.pipeline.post import SearchPostProcessor
+from backend.libs.search.hybrid.models import SearchResult
+from backend.libs.search.pipeline.post import SearchPostProcessor
 
 
 def _sr(chunk_id: str, document_id: str, score: float) -> SearchResult:

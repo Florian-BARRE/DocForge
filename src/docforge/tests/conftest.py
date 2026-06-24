@@ -19,8 +19,21 @@ os.environ.setdefault("S3_SECRET_KEY", "test_secret_key")
 os.environ.setdefault("LOGGING_ENABLE_CONSOLE", "false")
 os.environ.setdefault("LOGGING_ENABLE_FILE", "false")
 
-# ─── Import RUNTIME_CONFIG first (registers sys.path for libs/) ───────────────
-from config import RUNTIME_CONFIG  # noqa: E402
+# ─── Multi-root sys.path bootstrap (BEFORE importing config / backend / libs) ──
+# The product is split across src/docforge/{common,app,worker}. Tests exercise the app
+# (backend.*), the worker (libs.observability.metrics) and the shared base (common_libs,
+# config). Register all four roots so every import resolves; `config` resolves to the APP
+# config (app is inserted ahead of worker), which is what the API tests need.
+import pathlib  # noqa: E402
+import sys  # noqa: E402
+
+_DOCFORGE = pathlib.Path(__file__).resolve().parent.parent  # src/docforge/
+for _p in (_DOCFORGE / "common", _DOCFORGE / "worker", _DOCFORGE / "app", _DOCFORGE):
+    if str(_p) not in sys.path:
+        sys.path.insert(0, str(_p))
+
+# ─── Import RUNTIME_CONFIG first (triggers base_config logging setup) ──────────
+from config import RUNTIME_CONFIG  # noqa: E402,F401
 
 # ─── IR model helpers (used across unit and api tests) ────────────────────────
 
@@ -137,27 +150,13 @@ def mock_job_repo() -> MagicMock:
 @pytest.fixture
 def mock_registry() -> MagicMock:
     """
-    Mock ProviderRegistry.
+    Mock ProviderRegistry — describe_stages returns an empty stage list.
 
-    describe_stages returns an empty stage list.  build_search_pipeline returns a
-    real SearchPipelineEngine wrapping whatever retrieval service it is handed, so
-    search-route tests exercise the genuine engine → retrieval call path (the engine
-    delegates to retrieval.search / search_debug, which the tests assert on).
+    (build_search_pipeline is no longer a registry method: it moved to
+    backend.libs.search.builder and is patched on the search router in the API conftest.)
     """
-    from common_libs.config.pipeline.stages.search_config import SearchConfig
-    from libs.search.pipeline.engine import SearchPipelineEngine
-
-    def _build_search_pipeline(pipeline: object, retrieval: object) -> SearchPipelineEngine:
-        raw_search = pipeline.get("search") if isinstance(pipeline, dict) else None
-        return SearchPipelineEngine(
-            config=SearchConfig.from_dict(raw_search),
-            embed_provider=MagicMock(),
-            retrieval=retrieval,
-        )
-
     registry = MagicMock()
     registry.describe_stages = MagicMock(return_value={"stages": []})
-    registry.build_search_pipeline = MagicMock(side_effect=_build_search_pipeline)
     return registry
 
 

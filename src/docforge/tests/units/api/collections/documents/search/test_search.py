@@ -222,13 +222,15 @@ class TestSearchServiceUnavailable:
 
     @pytest.mark.asyncio
     async def test_collection_search_provider_not_configured_returns_503(
-        self, client: httpx.AsyncClient
+        self, client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """build_search_pipeline raising ValueError (no provider) → 503."""
         col_id = uuid.uuid4()
         CONTEXT.collection_repo.get_by_id.return_value = make_collection_orm(id=col_id)
-        CONTEXT.registry.build_search_pipeline = MagicMock(
-            side_effect=ValueError("embed provider not configured")
+        monkeypatch.setattr(
+            "backend.routers.collections.documents.search.router.build_search_pipeline",
+            MagicMock(side_effect=ValueError("embed provider not configured")),
+            raising=True,
         )
         response = await client.post(_col_search_url(col_id), json={"query": "test"})
         assert response.status_code == 503

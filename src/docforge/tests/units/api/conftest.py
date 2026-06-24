@@ -108,6 +108,26 @@ def inject_context(
     monkeypatch.setattr(CONTEXT, "qdrant", None, raising=False)
     monkeypatch.setattr(CONTEXT, "retrieval", mock_retrieval, raising=False)
     monkeypatch.setattr(CONTEXT, "registry", mock_registry, raising=False)
+    # The search route calls the module-level build_search_pipeline (relocated out of the
+    # registry into backend.libs.search.builder). Patch it to assemble a real
+    # SearchPipelineEngine around the mock retrieval, so route tests exercise the genuine
+    # engine → retrieval path without building real embed providers.
+    from common_libs.config.pipeline.stages.search_config import SearchConfig
+    from backend.libs.search.pipeline.engine import SearchPipelineEngine
+
+    def _fake_build_search_pipeline(pipeline_dict: object, retrieval: object, runtime_config: object):
+        raw_search = pipeline_dict.get("search") if isinstance(pipeline_dict, dict) else None
+        return SearchPipelineEngine(
+            config=SearchConfig.from_dict(raw_search),
+            embed_provider=MagicMock(),
+            retrieval=retrieval,
+        )
+
+    monkeypatch.setattr(
+        "backend.routers.collections.documents.search.router.build_search_pipeline",
+        _fake_build_search_pipeline,
+        raising=True,
+    )
     mock_dm = MagicMock()
     mock_dm.gpu_available = False
     mock_dm.gpu_name = None

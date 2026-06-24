@@ -7,8 +7,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from libs.search.hybrid.helpers import HybridSearchHelpers
-from libs.search.hybrid.models import SearchResult
+from backend.libs.search.hybrid.helpers import HybridSearchHelpers
+from backend.libs.search.hybrid.models import SearchResult
 
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
