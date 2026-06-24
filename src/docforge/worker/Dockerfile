@@ -32,7 +32,7 @@ ENV UV_PROJECT_ENVIRONMENT=/opt/venv \
     UV_HTTP_TIMEOUT=300
 
 # Shared dependency metadata first (cache layer independent of app code).
-COPY common/pyproject.toml common/uv.lock /workspace/common/
+COPY docforge/common/pyproject.toml docforge/common/uv.lock /workspace/common/
 
 # Install locked base deps AND the worker extra (docling). --extra worker is THE line
 # that makes the worker image large and keeps the backend image small.
@@ -63,8 +63,8 @@ WORKDIR /app/worker
 COPY --from=py-build /opt/venv /opt/venv
 
 # Shared code + worker code.
-COPY common /app/common
-COPY worker /app/worker
+COPY docforge/common /app/common
+COPY docforge/worker /app/worker
 
 # Start the arq worker (WorkerSettings class in /app/worker/arq_worker.py).
 CMD ["arq", "arq_worker.WorkerSettings"]

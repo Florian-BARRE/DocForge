@@ -2,7 +2,7 @@
   "mcpServers": {
     "docforge": {
       "command": "python",
-      "args": ["src/docforge_mcp/entrypoint.py"],
+      "args": ["src/mcp/entrypoint.py"],
       "env": {
         "MCP_TRANSPORT": "stdio",
         "DOCFORGE_API_URL": "http://localhost:10020"

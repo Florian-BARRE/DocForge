@@ -33,7 +33,7 @@ ENV UV_PROJECT_ENVIRONMENT=/opt/venv \
     UV_HTTP_TIMEOUT=300
 
 # Copy only the shared dependency metadata first (cache layer independent of app code).
-COPY common/pyproject.toml common/uv.lock /workspace/common/
+COPY docforge/common/pyproject.toml docforge/common/uv.lock /workspace/common/
 
 # Install locked base dependencies (no worker extra, no dev tools).
 # --frozen: fail if uv.lock is out of sync with pyproject.toml.
@@ -53,12 +53,12 @@ FROM node:22-bookworm-slim AS ui-build
 WORKDIR /workspace/frontend
 
 # Copy package descriptors first to enable npm dependency-layer caching.
-COPY backend/frontend/package.json backend/frontend/package-lock.json ./
+COPY docforge/app/frontend/package.json docforge/app/frontend/package-lock.json ./
 
 RUN npm ci
 
 # Copy the full frontend source and compile the production bundle.
-COPY backend/frontend/ ./
+COPY docforge/app/frontend/ ./
 RUN npm run build
 
 ###############################################################################
@@ -85,9 +85,9 @@ WORKDIR /app/backend
 # Prebuilt virtual environment (no uv, no build tools, no sources).
 COPY --from=py-build /opt/venv /opt/venv
 
-# Shared code + backend code (rebuilt only when application code changes).
-COPY common /app/common
-COPY backend /app/backend
+# Shared code + backend (app) code (rebuilt only when application code changes).
+COPY docforge/common /app/common
+COPY docforge/app /app/backend
 
 # Compiled React bundle — FastAPI mounts /app/backend/frontend/dist at "/" (see entrypoint.py).
 COPY --from=ui-build /workspace/frontend/dist /app/backend/frontend/dist

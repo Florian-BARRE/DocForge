@@ -33,7 +33,7 @@ ENV UV_PROJECT_ENVIRONMENT=/opt/venv \
 
 # Copy only the lock metadata first so the dependency layer is cached independently of app code.
 # Re-resolved only when pyproject.toml or uv.lock changes.
-COPY docforge_mcp/pyproject.toml docforge_mcp/uv.lock /workspace/docforge_mcp/
+COPY mcp/pyproject.toml mcp/uv.lock /workspace/docforge_mcp/
 
 # Install locked production dependencies.
 # --frozen: fail if uv.lock is out of sync with pyproject.toml (reproducibility guard).
@@ -66,7 +66,7 @@ WORKDIR /app/docforge_mcp
 COPY --from=py-build /opt/venv /opt/venv
 
 # Copy the MCP application source tree (rebuilt only when app code changes).
-COPY docforge_mcp /app/docforge_mcp
+COPY mcp /app/docforge_mcp
 
 # Expose the internal MCP HTTP port (matched by MCP_PORT and published in docker-compose.yml).
 EXPOSE 9000

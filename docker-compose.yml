@@ -19,7 +19,7 @@ services:
   docforge:
     build:
       context: src            # Build context: the src/ directory (per docker.md rules)
-      dockerfile: backend/Dockerfile
+      dockerfile: docforge/app/Dockerfile
     image: docforge:latest
     ports:
       - "10020:8000"          # FastAPI — public API endpoint (firewall: only 10000-11000 open)
@@ -205,7 +205,7 @@ services:
   worker:
     build:
       context: src
-      dockerfile: worker/Dockerfile
+      dockerfile: docforge/worker/Dockerfile
     image: docforge-worker:latest
     env_file:
       - services/docforge/.env
@@ -275,7 +275,7 @@ services:
   mcp:
     build:
       context: src                  # Same context as docforge so sibling app folders are visible
-      dockerfile: docforge_mcp/Dockerfile
+      dockerfile: mcp/Dockerfile
     image: docforge-mcp:latest
     command: python entrypoint.py
     env_file:

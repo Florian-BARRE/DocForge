@@ -17,12 +17,12 @@ services:
     # The volume mounts below overlay the source with the local working tree.
     build:
       context: src
-      dockerfile: backend/Dockerfile
+      dockerfile: docforge/app/Dockerfile
     volumes:
       # Mount the shared + backend source trees over the container copies.
       # Edits are reflected immediately; only dependency changes require a rebuild.
-      - ./src/common:/app/common
-      - ./src/backend:/app/backend
+      - ./src/docforge/common:/app/common
+      - ./src/docforge/app:/app/backend
     environment:
       - FASTAPI_DEBUG_MODE=true
       - DEV_MODE=true
@@ -52,7 +52,7 @@ services:
     working_dir: /app
     volumes:
       # Mount the frontend source directly for instant HMR on file save.
-      - ./src/backend/frontend:/app
+      - ./src/docforge/app/frontend:/app
     ports:
       - "10023:5173"          # Vite dev server (HMR) — firewall: only 10000-11000 open
     environment:
@@ -82,8 +82,8 @@ services:
   worker:
     # Volume-mount the shared + worker source so code changes are picked up without rebuilding.
     volumes:
-      - ./src/common:/app/common
-      - ./src/worker:/app/worker
+      - ./src/docforge/common:/app/common
+      - ./src/docforge/worker:/app/worker
     environment:
       - DEV_MODE=true
 #      - LOGGING_CONSOLE_LEVEL=DEBUG
@@ -100,7 +100,7 @@ services:
     # The MCP server has no hot-reload of its own; restart the container after edits
     # (docker compose restart mcp) — it boots in well under a second.
     volumes:
-      - ./src/docforge_mcp:/app/docforge_mcp
+      - ./src/mcp:/app/docforge_mcp
     environment:
       # Override the transport here if you want to exercise stdio locally instead of HTTP.
       - MCP_TRANSPORT=streamable-http

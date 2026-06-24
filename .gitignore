@@ -29,15 +29,17 @@ services/**/.env
 logs/
 *.log
 
-# ── Frontend build artifacts ──────────────────────────────
-src/docforge/frontend/dist/
-src/docforge/frontend/node_modules/
+# ── Node / frontend build artifacts (location-independent) ──
+# Globbed so they match wherever the frontend lives (now src/docforge/app/frontend/).
+**/node_modules/
+**/frontend/dist/
 # Stale .js outputs that shadow .tsx/.ts source — Vite resolves them with priority
-# and serves an old bundle.  We're TS-only; any .js in src/ is build artefact noise.
-src/docforge/frontend/src/**/*.js
-src/docforge/frontend/src/**/*.js.map
-# Auto-generated OpenAPI types — regenerated via `npm run gen:types`
-src/docforge/frontend/src/api/generated.ts
+# and serves an old bundle.  We're TS-only (tsconfig has noEmit); any .js under a
+# frontend src/ is build artefact noise.
+**/frontend/src/**/*.js
+**/frontend/src/**/*.js.map
+# NOTE: src/api/generated.ts is NOW committed (tracked) so the build is reproducible
+# without a live backend — regenerate it with `npm run gen:types` after schema changes.
 
 # ── IDE / OS ──────────────────────────────────────────────
 .idea/

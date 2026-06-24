@@ -34,13 +34,13 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 # Install dependencies. Torch is pulled from the CPU wheel index first so FlagEmbedding
 # resolves against the CPU build (no CUDA). The cache mount speeds up repeated local builds.
-COPY bge_m3_server/requirements.txt /app/requirements.txt
+COPY embedding_server/requirements.txt /app/requirements.txt
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv pip install --system --no-cache torch --index-url https://download.pytorch.org/whl/cpu \
  && uv pip install --system --no-cache -r /app/requirements.txt
 
 # Copy the service code only (small, changes often — kept after the dependency layer for cache reuse).
-COPY bge_m3_server/app.py /app/app.py
+COPY embedding_server/app.py /app/app.py
 
 # HTTP port served by uvicorn — TEI parity is the API shape, not the port (set freely in compose).
 EXPOSE 80
