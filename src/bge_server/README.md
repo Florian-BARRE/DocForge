@@ -1,77 +1,133 @@
-# BGE-M3 dense + sparse embedding micro-service
+# BGE model-suite micro-service
 
-A small, reliable, **fully local** embedding service that serves **BAAI/bge-m3** producing
-both **dense** (1024-dim) and **native multilingual sparse** (lexical weights) vectors.
+A small, fully local embedding + reranking server that hosts:
 
-It speaks the **same HTTP contract as HuggingFace TEI** (`/embed`, `/embed_sparse`, `/health`),
-so DocForge drives it with the **existing `tei` embed provider — no new provider code**. Unlike
-a real TEI server (which only exposes BGE-M3 in dense `cls` pooling), this service exposes
-BGE-M3's sparse head, enabling true multilingual hybrid search locally.
+- **BAAI/bge-m3** via `BGEM3FlagModel` -- producing both **dense** (1024-dim L2-normalized) and
+  **native multilingual sparse** (lexical weights) vectors in one pass.
+- **BAAI/bge-reranker-v2-m3** via `FlagReranker` -- cross-encoder reranking with sigmoid-normalized
+  scores.
+
+Both models run via **FlagEmbedding (torch)**, loaded once at startup on CPU by default. The service
+speaks the **same HTTP contract as HuggingFace TEI** (`/embed`, `/embed_sparse`, `/rerank`, `/health`)
+so DocForge drives it with the **existing `tei` embed provider and `bge_reranker` rerank provider --
+no new provider code needed**.
 
 ## Why this and not TEI / Infinity
-- **TEI** `/embed_sparse` is SPLADE-only → it returns HTTP 424 for BGE-M3 (cls pooling) → dense only.
-- **SPLADE** models are English-centric → poor multilingual sparse.
+
+- **TEI** `/embed_sparse` is SPLADE-only -- it returns HTTP 424 for BGE-M3 (cls pooling) -- dense only.
+- **SPLADE** models are English-centric -- poor multilingual sparse.
 - **BGE-M3 via FlagEmbedding** = one multilingual model, dense + sparse in one pass, API we control.
 
-## Endpoints (TEI-compatible)
-| Method | Path | Body | Response |
+## Endpoints (TEI-compatible contract -- frozen)
+
+| Method | Path | Request body | Response |
 |---|---|---|---|
-| GET  | `/health` | — | `{"status":"ok","model":"BAAI/bge-m3"}` |
-| POST | `/embed` | `{"inputs": ["…"], "normalize": true, "truncate": true}` | `[[float, …], …]` (dense) |
-| POST | `/embed_sparse` | `{"inputs": ["…"], "truncate": true}` | `[[{"index": int, "value": float}, …], …]` (sparse) |
+| GET  | `/health` | -- | `{"status":"ok","embed_model":"...","rerank_model":"..."}` |
+| POST | `/embed` | `{"inputs": "..." or ["..."], "normalize": true, "truncate": true}` | `[[float, ...], ...]` (dense 1024-dim) |
+| POST | `/embed_sparse` | `{"inputs": "..." or ["..."], "truncate": true}` | `[[{"index": int, "value": float}, ...], ...]` |
+| POST | `/rerank` | `{"query": "...", "texts": ["..."], "truncate": true}` | `[{"index": int, "score": float}, ...]` |
 
-## Build
+Rerank scores are sigmoid-normalized to `[0, 1]`. Results are returned in **input order** -- the
+DocForge `bge_reranker` provider re-sorts by index.
+
+## Source layout
+
+```
+src/bge_server/
+  entrypoint.py          # uvicorn target (module-level app); wires CONTEXT + creates FastAPI app
+  config_loader.py       # BgeServerConfig(EnvConfigLoader) -- all env vars + logging setup
+  pyproject.toml         # uv-managed dependencies (FlagEmbedding, fastapi, uvicorn, loggerplusplus...)
+  uv.lock                # locked dependency graph
+  Dockerfile             # 2-stage uv build; CPU torch installed from PyTorch wheel index
+  libs/
+    bge_models/
+      service.py         # BgeModelsService(LoggerClass) -- loads/unloads both models, encode/rerank
+  backend/
+    app.py               # create_app() -- FastAPI factory, registers routers
+    context.py           # CONTEXT static service locator (CONFIG + bge_models)
+    lifespan.py          # lifespan() -- banner + config log + model load/unload
+    libs/utils/
+      error_handling.py  # @auto_handle_errors decorator for all routes
+    routers/
+      health/            # GET /health
+      inference/         # POST /embed, /embed_sparse, /rerank
+services/bge_server/
+  .env.example           # all env var defaults
+```
+
+## Build — two torch variants
+
+The Dockerfile supports two mutually exclusive torch variants selected at build time via
+`--build-arg TORCH_VARIANT`. The default is `cpu`.
+
+| Variant | Torch version | nvidia-* libs | Approximate image size | CUDA available |
+|---|---|---|---|---|
+| `cpu` (default) | 2.12.1+cpu | none | ~2 GB | no |
+| `gpu` | 2.6.0+cu124 | yes (cu12-*) | ~9.5 GB | yes (with --gpus) |
+
 ```bash
-# From the repo root, with src/ as the build context:
-docker build -f src/bge_server/Dockerfile -t bge-m3-server:latest src
+# CPU variant (default) — used by docker compose build, no flags needed:
+docker compose build bge_server
+
+# Or equivalently with explicit arg:
+docker build -f src/bge_server/Dockerfile -t docforge-bge-server:latest src
+
+# GPU variant (opt-in) — CUDA 12.4, compatible with RTX 40xx (Ada, compute 8.9):
+docker build --build-arg TORCH_VARIANT=gpu \
+  -f src/bge_server/Dockerfile -t docforge-bge-server:gpu src
+
+# Also via compose for the GPU variant:
+docker compose build --build-arg TORCH_VARIANT=gpu bge_server
 ```
 
-## docker-compose service (add when your compose is stable)
-```yaml
-  bge-m3-embed:
-    build:
-      context: src
-      dockerfile: bge_server/Dockerfile
-    image: bge-m3-server:latest
-    volumes:
-      - bge_m3_models:/models        # HuggingFace cache — weights persist across restarts
-    networks:
-      - docforge_net
-    restart: unless-stopped
-    # Optional dev access:
-    # ports: ["10028:80"]
+To use the GPU image at runtime, three things are required:
+1. Build with `TORCH_VARIANT=gpu` (above).
+2. Set `BGE_DEVICE=cuda` (or `auto`) in `services/bge_server/.env`.
+3. Uncomment the `reservations.devices` GPU block in `docker-compose.yml` and ensure the
+   NVIDIA Container Toolkit is installed on the Docker host.
 
-# under top-level volumes:
-#   bge_m3_models:
-```
+## docker compose service
 
-## Wire it into a DocForge collection
-Point the collection's embed provider at this service via the existing `tei` provider and enable
-sparse (multilingual hybrid):
+Already wired in `docker-compose.yml` as the `bge_server` service (port 10026, volume `bge_models`).
+Default build produces the CPU variant (~2 GB).
+
+## Wire a DocForge collection
+
+Point the collection's embed and rerank providers at this service via per-collection config
+(never in `.env`):
 
 ```json
 {
   "pipeline": {
     "embed": {
       "chain": [
-        { "id": "tei", "base_url": "http://bge-m3-embed:80", "embed_sparse": true }
+        { "id": "tei", "base_url": "http://bge_server:80", "embed_sparse": true }
       ]
+    },
+    "search": {
+      "rerank": {
+        "enabled": true,
+        "chain": [
+          { "id": "bge_reranker", "base_url": "http://bge_server:80" }
+        ]
+      }
     }
   }
 }
 ```
 
-Notes:
-- Set `base_url` explicitly to `http://bge-m3-embed:80` — do NOT rely on `TEI_BASE_URL`
-  (that points at the dense-only TEI server).
-- `semantic` metadata fields → dense vector; `lexical` fields → sparse vector — routed
-  automatically from the single embed call (see `metadata_indexer`).
-- Changing the embed config flags documents for reindex with an exact cause; reindexing
-  re-runs only S4→S6 (parse/OCR are served from the node cache).
-
 ## Config / env
-| Env | Default | Purpose |
+
+All vars have safe defaults -- the service starts with no `.env` file. Copy
+`services/bge_server/.env.example` to `services/bge_server/.env` to override.
+
+| Env var | Default | Purpose |
 |---|---|---|
-| `BGE_M3_MODEL` | `BAAI/bge-m3` | Model id to load |
-| `BGE_M3_FP16` | `false` | Use fp16 (GPU only) |
-| `BGE_M3_MAX_LENGTH` | `8192` | Max input tokens |
+| `BGE_M3_MODEL` | `BAAI/bge-m3` | HuggingFace model ID for the embed model |
+| `BGE_RERANKER_MODEL` | `BAAI/bge-reranker-v2-m3` | HuggingFace model ID for the reranker |
+| `BGE_FP16` | `false` | fp16 precision (GPU only; leave false on CPU) |
+| `BGE_M3_MAX_LENGTH` | `8192` | Max token length for encode() calls |
+| `LOGGING_CONSOLE_LEVEL` | `INFO` | Console log level |
+| `LOGGING_LPP_FORMAT` | `ShortFormat` | loggerplusplus format (ShortFormat or DebugFormat) |
+| `LOGGING_ENABLE_CONSOLE` | `true` | Enable stdout logging |
+| `LOGGING_ENABLE_FILE` | `false` | Enable rotating file logs under `logs/` |

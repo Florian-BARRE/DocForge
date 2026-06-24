@@ -2,48 +2,103 @@
 
 ###############################################################################
 # Build note:
-# Built from the repository root with the src/ directory as context.
+# Built from the repository root with the src/ directory as build context.
 # Example:
-#   docker build -f src/bge_server/Dockerfile -t bge-m3-server:latest src
+#   docker build -f src/bge_server/Dockerfile -t docforge-bge-server:latest src
 ###############################################################################
 
 ###############################################################################
-# Single-stage runtime image (CPU).
+# Stage 1: Python dependency builder (uv + Python 3.12)
 #
 # Goal:
-# - Serve BAAI/bge-m3 (dense + native multilingual sparse) over a TEI-compatible HTTP API.
-# - Keep the image CPU-only: torch is installed from the CPU wheel index (no CUDA payload).
+# - Sync the locked production dependencies from uv.lock into a virtual environment
+#   at /opt/venv, selecting the correct torch wheel variant via TORCH_VARIANT.
+# - TORCH_VARIANT=cpu  (default) installs torch 2.12.1+cpu (~200 MB) — no nvidia-* libs.
+#   Target runtime image size: ~2 GB.
+# - TORCH_VARIANT=gpu installs torch 2.6.0+cu124 (~2 GB) + all nvidia-cu12-* runtime libs.
+#   Target runtime image size: ~8.5 GB. Requires NVIDIA Container Toolkit on the host.
+# - Isolating dependency installation from application code means code-only changes do
+#   NOT invalidate this slow dependency layer.
+###############################################################################
+FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim AS py-build
+
+# ── Build-time argument: torch variant selector ───────────────────────────────
+# Default is "cpu" — the slim variant. Pass --build-arg TORCH_VARIANT=gpu at build time
+# to produce a CUDA-capable image:
+#   docker build --build-arg TORCH_VARIANT=gpu -f src/bge_server/Dockerfile \
+#                -t docforge-bge-server:gpu src
+# The two values map to pyproject.toml [project.optional-dependencies] extras (cpu / gpu),
+# which steer uv to the correct torch wheel index (pytorch-cpu / pytorch-cu124). They are
+# declared as conflicting extras so uv rejects any attempt to install both simultaneously.
+ARG TORCH_VARIANT=cpu
+
+WORKDIR /workspace
+
+# Tell uv where to place the project virtual environment.
+ENV UV_PROJECT_ENVIRONMENT=/opt/venv
+
+# Copy lock metadata only — the dependency layer is rebuilt only when these two files
+# change, not when application source code changes.
+COPY bge_server/pyproject.toml bge_server/uv.lock /workspace/bge_server/
+
+# Sync the locked production dependencies, activating the selected torch variant extra.
+# --frozen: fail if uv.lock is out of sync with pyproject.toml (CI safety net).
+# --no-dev: omit development-only groups (pytest, ruff, mypy, httpx).
+# --no-install-project: the project itself is not a package (package = false in pyproject.toml).
+# --extra ${TORCH_VARIANT}: activates either the `cpu` or `gpu` optional-dependency extra,
+#   which gates the correct torch wheel + (for gpu) all nvidia-cu12-* runtime libs.
+#   The two extras are mutually exclusive (declared as conflicting in pyproject.toml).
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev --no-install-project --extra "${TORCH_VARIANT}" --project /workspace/bge_server
+
+###############################################################################
+# Stage 2: Runtime image (minimal Python 3.12)
 #
-# The model weights are NOT baked in; they are pulled on first start and cached in a volume
-# (HF_HOME), so the image stays small and the model can be swapped via env without a rebuild.
+# Goal:
+# - Contain only what is strictly needed to serve the BGE model-suite HTTP API.
+# - Expose a clean filesystem:
+#     /app/bge_server -> application source (entrypoint, config_loader, backend/, libs/)
+# - Model weights are NOT baked in; they are downloaded on first start from HuggingFace
+#   and cached in a named volume (HF_HOME=/models) so they persist across container
+#   restarts and never need re-downloading.
 ###############################################################################
 FROM python:3.12-slim-bookworm AS runtime
 
 # Runtime best practices:
-# - PYTHONDONTWRITEBYTECODE: no .pyc files on disk
-# - PYTHONUNBUFFERED: logs appear immediately in stdout/stderr
-# - HF_HOME: HuggingFace cache location (mounted as a volume so weights persist)
+# - PYTHONDONTWRITEBYTECODE: suppresses .pyc file creation inside the container.
+# - PYTHONUNBUFFERED: log lines appear immediately in stdout/stderr — critical for
+#   monitoring model-load progress, which can take minutes on first run.
+# - PATH: make the uv-built virtual environment the active Python installation without
+#   requiring `source /opt/venv/bin/activate`.
+# - HF_HOME: HuggingFace cache directory; docker compose mounts a named volume here so
+#   BGE-M3 and BGE-reranker-v2-m3 weights (~4.4 GiB total) persist across restarts.
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
+    PATH="/opt/venv/bin:${PATH}" \
     HF_HOME=/models
 
-WORKDIR /app
+# Working directory is set to the application root so that `config_loader`, `backend`,
+# and `libs` are all top-level names on sys.path — matching the pattern of the sibling
+# src/mcp/ service. uvicorn targets `entrypoint:app` (a flat module name, not a package path).
+WORKDIR /app/bge_server
 
-# Install uv (the project-standard resolver) from its official image.
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+# Copy the prebuilt virtual environment from the builder stage.
+# This layer is the largest (~500 MB for CPU torch + FlagEmbedding) and changes only
+# when pyproject.toml / uv.lock change — not on every code edit.
+COPY --from=py-build /opt/venv /opt/venv
 
-# Install dependencies. Torch is pulled from the CPU wheel index first so FlagEmbedding
-# resolves against the CPU build (no CUDA). The cache mount speeds up repeated local builds.
-COPY bge_server/requirements.txt /app/requirements.txt
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv pip install --system --no-cache torch --index-url https://download.pytorch.org/whl/cpu \
- && uv pip install --system --no-cache -r /app/requirements.txt
+# Copy application source code into the working directory.
+# config_loader.py, entrypoint.py, backend/, and libs/ land directly under /app/bge_server/
+# so they are importable as top-level modules without package qualification.
+# This layer is small and rebuilt only when source files change.
+COPY bge_server /app/bge_server
 
-# Copy the service code only (small, changes often — kept after the dependency layer for cache reuse).
-COPY bge_server/app.py /app/app.py
-
-# HTTP port served by uvicorn — TEI parity is the API shape, not the port (set freely in compose).
+# HTTP port served by uvicorn. TEI parity is the API shape, not the port — docker compose
+# maps this internal port 80 to host port 10026 (see docker-compose.yml).
 EXPOSE 80
 
-# Start the embedding server. The model loads once in the FastAPI lifespan on startup.
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "80"]
+# Start the BGE model-suite HTTP server.
+# - entrypoint:app is the module-level FastAPI app assembled in entrypoint.py.
+# - Both BGE models (embed + reranker) load once in the FastAPI lifespan at startup.
+#   First boot may take 30-120 s while weights download; subsequent starts use the volume.
+CMD ["uvicorn", "entrypoint:app", "--host", "0.0.0.0", "--port", "80"]

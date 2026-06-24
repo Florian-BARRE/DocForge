@@ -13,6 +13,10 @@
 #   usage with generous headroom: heavy on the ML/parsing services
 #   (worker / tei / reranker) and tight on the lightweight ones.
 
+# Explicit project name — prevents compose from deriving it from the folder name,
+# which would produce prefixes like `docforge-docforge-1` in Docker Desktop.
+name: docforge
+
 services:
 
   # ── DocForge FastAPI application ─────────────────────────────────────────────
@@ -21,6 +25,7 @@ services:
       context: src            # Build context: the src/ directory (per docker.md rules)
       dockerfile: docforge/app/Dockerfile
     image: docforge:latest
+    container_name: docforge-api  # Explicit name — avoids the `docforge-docforge-1` default
     ports:
       - "10020:8000"          # FastAPI — public API endpoint (firewall: only 10000-11000 open)
     env_file:
@@ -34,7 +39,7 @@ services:
         condition: service_started
       redis:
         condition: service_started
-      bge:
+      bge_server:
         condition: service_started   # Query-time embedding + rerank need the BGE service
     # API is I/O-bound at runtime (embeds delegated to TEI); 2 GiB / 2 CPUs is ample.
     deploy:
@@ -49,6 +54,7 @@ services:
   # ── PostgreSQL 16 — relational catalogue & job store ─────────────────────────
   postgres:
     image: postgres:16-bookworm
+    container_name: docforge-postgres
     env_file:
       - services/postgres/.env
     volumes:
@@ -74,6 +80,7 @@ services:
   # S3 API is available on port 8333; master on 9333; volume on 8080.
   seaweedfs:
     image: chrislusf/seaweedfs:latest
+    container_name: docforge-seaweedfs
     command: >
       server
       -dir=/data
@@ -102,6 +109,7 @@ services:
   # Only converter in DocForge (spec ADR-3). Converts office formats → PDF.
   gotenberg:
     image: gotenberg/gotenberg:8
+    container_name: docforge-gotenberg
     env_file:
       - services/gotenberg/.env
     # LibreOffice + Chromium spike during conversion; 2 GiB / 2 CPUs absorbs the bursts.
@@ -117,6 +125,7 @@ services:
   # ── Redis — arq job queue backend ────────────────────────────────────────────
   redis:
     image: redis:7-bookworm
+    container_name: docforge-redis
     env_file:
       - services/redis/.env
     volumes:
@@ -136,6 +145,7 @@ services:
   # Data is persisted in a named volume so collections survive container restarts.
   qdrant:
     image: qdrant/qdrant:latest
+    container_name: docforge-qdrant
     ports:
       - "10025:6333"              # Qdrant REST API — for operator inspection
     volumes:
@@ -156,22 +166,56 @@ services:
   # service loads both BGE models in one torch process and exposes the SAME TEI HTTP contract:
   #   POST /embed (dense 1024-dim), POST /embed_sparse (lexical), POST /rerank, GET /health.
   # Required by the API (query-time search) AND the worker (S6 ingestion). Both the embed
-  # provider (TEI_BASE_URL) and the rerank provider (BGE_RERANKER_URL) point at http://bge:80.
-  bge:
+  # provider (TEI_BASE_URL) and the rerank provider (BGE_RERANKER_URL) point at http://bge_server:80.
+  bge_server:
     build:
       context: src                # Same context as the other apps (sibling folders visible)
       dockerfile: bge_server/Dockerfile
-    image: bge-server:latest
+      args:
+        # TORCH_VARIANT selects the torch wheel at build time via pyproject.toml optional-dependency
+        # extras. Default "cpu" produces a ~2 GB CPU-only image (torch 2.12.1+cpu, no nvidia-* libs).
+        # To build the GPU variant (~9.5 GB, torch 2.6.0+cu124 + nvidia-cu12-* runtime) run:
+        #   docker compose build --build-arg TORCH_VARIANT=gpu bge_server
+        # The GPU image also requires BGE_DEVICE=cuda (or auto) in services/bge_server/.env
+        # AND the NVIDIA Container Toolkit on the host (see the GPU reservation comment below).
+        TORCH_VARIANT: cpu
+    image: docforge-bge-server:latest
+    container_name: docforge-bge-server
+    env_file:
+      - services/bge_server/.env  # BGE_DEVICE / BGE_FP16 / model IDs / logging (copy from .env.example)
     ports:
       - "10026:80"                # Operator access: http://localhost:10026/health
     volumes:
       - bge_models:/models        # HF cache (HF_HOME=/models) — weights persist across restarts
+    # Liveness probe — hits the in-container /health endpoint with the stdlib (the slim runtime
+    # has python but no curl). start_period is generous because the first boot downloads ~4.4 GiB
+    # of weights and loads two torch models, which can take minutes; the container is NOT marked
+    # unhealthy during that window. Once healthy, dependents can gate on `condition: service_healthy`.
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:80/health', timeout=5).status == 200 else 1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 300s
     # Two BGE models (m3 ~2.2 GiB + reranker-v2-m3 ~2.2 GiB) loaded in ONE torch process.
     deploy:
       resources:
         limits:
           cpus: "4"
           memory: 6g
+        # ── GPU reservation (commented out — CPU default) ──────────────────────────
+        # To enable GPU inference, ALL THREE steps are required:
+        #   1. Build a GPU image (torch 2.6.0+cu124 + nvidia-cu12-* runtime, ~9.5 GB):
+        #        docker compose build --build-arg TORCH_VARIANT=gpu bge_server
+        #   2. Set BGE_DEVICE=cuda (or auto) in services/bge_server/.env
+        #   3. Install the NVIDIA Container Toolkit on the Docker host and uncomment below.
+        # The CPU memory limit above can be reduced to ~2g when GPU VRAM handles the tensors.
+        #
+        # reservations:
+        #   devices:
+        #     - driver: nvidia
+        #       count: all            # expose all GPU devices to the container
+        #       capabilities: [gpu]
     restart: unless-stopped
     networks:
       - docforge_net
@@ -186,6 +230,7 @@ services:
       context: src
       dockerfile: docforge/worker/Dockerfile
     image: docforge-worker:latest
+    container_name: docforge-worker
     env_file:
       - services/docforge/.env
     depends_on:
@@ -197,7 +242,7 @@ services:
         condition: service_started
       redis:
         condition: service_started
-      bge:
+      bge_server:
         condition: service_started   # S6 ingestion needs the BGE service for embedding
     # Heaviest service: Docling parsing + pipeline stages. 4 GiB / 4 CPUs is the
     # largest budget here, sized so ingestion stays workable without monopolising the host.
@@ -219,6 +264,7 @@ services:
   # (credentials in services/pgadmin/.env) — no manual server setup is required.
   pgadmin:
     image: dpage/pgadmin4:latest
+    container_name: docforge-pgadmin
     env_file:
       - services/pgadmin/.env
     environment:
@@ -249,16 +295,17 @@ services:
   # Standalone minimal image (httpx + mcp + uvicorn only — none of the ML stack).
   # Pure HTTP client of the docforge API: exposes the full REST surface as MCP tools so any
   # LLM/chatbot can drive DocForge. Reaches the API by service name over docforge_net.
-  # The port is published, so a bearer token (MCP_AUTH_TOKEN in services/docforge_mcp/.env)
+  # The port is published, so a bearer token (MCP_AUTH_TOKEN in services/mcp/.env)
   # is mandatory — the server refuses to start in HTTP mode without it.
   mcp:
     build:
       context: src                  # Same context as docforge so sibling app folders are visible
       dockerfile: mcp/Dockerfile
     image: docforge-mcp:latest
+    container_name: docforge-mcp
     command: python entrypoint.py
     env_file:
-      - services/docforge_mcp/.env
+      - services/mcp/.env
     environment:
       - MCP_TRANSPORT=streamable-http     # Container always serves over HTTP
       - DOCFORGE_API_URL=http://docforge:8000

@@ -1,0 +1,106 @@
+[project]
+name = "docforge-bge-server"
+version = "2.0.0"
+description = "BGE model-suite micro-service — dense+sparse embedding (BGE-M3) + rerank (BGE-reranker-v2-m3) over a TEI-compatible HTTP API"
+requires-python = ">=3.12"
+dependencies = [
+    # FlagEmbedding is the core ML library; it brings torch + transformers as transitive deps.
+    # Torch itself is declared as a DIRECT dependency below (split across the cpu/gpu extras)
+    # so that uv sources can steer it to the correct wheel index. Without this direct declaration,
+    # uv sources are ignored for transitive deps and torch resolves from PyPI (CUDA build, multi-GiB).
+    "FlagEmbedding>=1.2.10",
+    # Pin transformers to the 4.x line: FlagEmbedding 1.4.0's FlagReranker calls the slow-tokenizer
+    # `prepare_for_model` API, which transformers 5.x removed — on transformers 5.x /rerank fails with
+    # "XLMRobertaTokenizer has no attribute prepare_for_model" (embedding is unaffected). Cap at <5
+    # until FlagEmbedding ships a reranker compatible with transformers 5.
+    "transformers>=4.45,<5",
+    # FastAPI + ASGI server.
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
+    # Config & logging (same internal libraries as the rest of the DocForge stack).
+    "configplusplus>=0.1.0",
+    "loggerplusplus>=1.0.0",
+    # ASCII startup banner printed by the lifespan.
+    "pyfiglet>=1.0.2",
+]
+
+# ── Torch variant extras ──────────────────────────────────────────────────────────────────────
+# Exactly ONE of these extras must be selected at install time:
+#   cpu  → CPU-only torch (~200 MB wheel, no nvidia-* libs).  Target image size: ~2 GB.
+#   gpu  → CUDA 12.4 torch (~2 GB wheel + nvidia-* runtime). Target image size: ~8.5 GB.
+#
+# The two extras are declared as CONFLICTING in [tool.uv] below so uv enforces mutual exclusivity
+# at lock time. The Dockerfile selects the active extra via ARG TORCH_VARIANT (default: cpu).
+#
+# Build commands:
+#   CPU  (default): docker compose build bge_server
+#   GPU  (opt-in):  docker build --build-arg TORCH_VARIANT=gpu -f src/bge_server/Dockerfile \
+#                     -t docforge-bge-server:gpu src
+[project.optional-dependencies]
+cpu = ["torch"]
+gpu = ["torch"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.24.0",
+    "ruff>=0.8.0",
+    "mypy>=1.13.0",
+    "httpx>=0.28.0",   # For FastAPI TestClient
+]
+
+[tool.uv]
+# This app is run as scripts (uvicorn entrypoint:app), not installed as a package.
+# Only its dependencies are resolved — no build backend / wheel required.
+package = false
+
+# Declare the cpu and gpu torch extras as mutually exclusive — uv enforces this at lock time
+# and raises an error if both are requested simultaneously.
+conflicts = [
+    [{ extra = "cpu" }, { extra = "gpu" }],
+]
+
+[tool.uv.sources]
+# Route torch to the correct wheel index depending on the active extra.
+# pytorch-cpu: CPU-only wheels (~200 MB), no CUDA runtime payload.
+# pytorch-cu124: CUDA 12.4 wheels, compatible with Ada (RTX 40xx, compute 8.9) and later.
+torch = [
+    { index = "pytorch-cpu", extra = "cpu" },
+    { index = "pytorch-cu124", extra = "gpu" },
+]
+
+[[tool.uv.index]]
+# CPU-only torch wheels — the default variant. Produces a ~2 GB image.
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[[tool.uv.index]]
+# CUDA 12.4 torch wheels — RTX 40xx (compute 8.9), RTX 30xx (compute 8.6), and later.
+# Also compatible with the default PyPI cu13x torch that was validated on the RTX 4050.
+name = "pytorch-cu124"
+url = "https://download.pytorch.org/whl/cu124"
+explicit = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+ignore = [
+    "F541",   # f-string without placeholder (loggerplusplus convention)
+    "E501",   # line too long (handled by formatter)
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["config_loader", "libs", "backend"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true
