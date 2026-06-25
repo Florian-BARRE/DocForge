@@ -104,6 +104,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
           return
         }
         const data = await res.json()
+        // Register synchronously before the app renders its authed subtree (same
+        // child-effect-before-parent-effect race as in login()).
+        setAuthToken(stored)
         setUser(data.user)
         setGrants(data.grants ?? [])
         setToken(stored)
@@ -125,6 +128,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
    * Clears all session state and removes the token from localStorage.
    */
   function clearSession(): void {
+    setAuthToken(null)
     setToken(null)
     setUser(null)
     setGrants([])
@@ -160,6 +164,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
     // 2. Persist token and update user state.
     const data = await res.json()
     const newToken: string = data.access_token
+    // Register the token in the api/client SYNCHRONOUSLY — React runs child effects
+    // before the parent provider's [token] effect, so a child's first request() would
+    // otherwise fire before setAuthToken ran, 401, and bounce us back to login.
+    setAuthToken(newToken)
     try { window.localStorage.setItem(STORAGE_KEY, newToken) } catch { /* quota guard */ }
     setToken(newToken)
     setUser(data.user)
