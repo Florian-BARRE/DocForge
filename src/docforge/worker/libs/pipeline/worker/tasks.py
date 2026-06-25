@@ -138,7 +138,6 @@ async def run_pipeline_task(
             filename=filename,
             pipeline_version=pipeline_version,
             file_bytes=None,   # engine downloads from S3: originals/{source_hash}
-            dry_run=False,
             collection_id=collection_id,
             pipeline_config=pipeline_config,
             metadata_fields=metadata_fields,

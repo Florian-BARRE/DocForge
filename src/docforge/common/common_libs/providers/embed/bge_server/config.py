@@ -60,6 +60,10 @@ class BgeServerEmbedConfig(BaseModel):
     model: str = Field(default="BAAI/bge-m3", description="Embedding model served by bge_server.")
     batch_size: int = Field(default=32, ge=1, le=256, description="Max texts per batch.")
     embed_sparse: bool = Field(default=True, description="Produce native sparse vectors (hybrid search).")
+    # 180s (not 60) so a COLD bge_server survives: it reports /health=200 before the ~4.4 GB BGE-M3
+    # weights finish loading, and the first CPU embed batch can take >60s — a too-short read timeout
+    # otherwise exhausts the S6 chain and writes nothing to Qdrant.
+    timeout_s: int = Field(default=180, ge=1, le=1800, description="HTTP read timeout per batch (s).")
 
     @model_validator(mode="before")
     @classmethod
@@ -76,6 +80,7 @@ class BgeServerEmbedConfig(BaseModel):
             api_key=self.api_key,
             batch_size=self.batch_size,
             embed_sparse=self.embed_sparse,
+            timeout_s=self.timeout_s,
         )
 
     def merge_defaults(self, cfg: Any) -> "BgeServerEmbedConfig":

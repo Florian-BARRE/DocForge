@@ -30,9 +30,9 @@ class EngineResult:
         s0_result (S0Result): Ingestion stage output (always present).
         s1_result (S1Result): Parse stage output (always present).
         s2_result (S2Result | None): Enrichment stage output; None on cache error.
-        s4_result (S4Result | None): Chunking stage output; None in dry_run.
-        s5_result (S5Result | None): Contextualization stage output; None in dry_run.
-        s6_result (S6Result | None): Embed+index stage output; None without collection or in dry_run.
+        s4_result (S4Result | None): Chunking stage output.
+        s5_result (S5Result | None): Contextualization stage output.
+        s6_result (S6Result | None): Embed+index stage output; None when no collection is set.
         stage_fingerprints (dict[str, str]): Per-stage Merkle fingerprints.
         from_cache (dict[str, bool]): Per-stage cache hit flags.
         budget_spent (float): Total OCR/VLM API cost for this run.
@@ -41,9 +41,9 @@ class EngineResult:
     s0_result: S0Result
     s1_result: S1Result
     s2_result: S2Result | None = None          # None only when a cache error occurs
-    s4_result: S4Result | None = None          # None only in dry_run (S4 is always built)
-    s5_result: S5Result | None = None          # None only in dry_run (S5 is always built)
-    s6_result: S6Result | None = None          # None when no collection_id or dry_run
+    s4_result: S4Result | None = None          # always populated on a successful run
+    s5_result: S5Result | None = None          # always populated on a successful run
+    s6_result: S6Result | None = None          # None when no collection_id is set
     stage_fingerprints: dict[str, str] = field(default_factory=dict)
     from_cache: dict[str, bool] = field(default_factory=dict)
     budget_spent: float = 0.0                  # Total OCR/VLM API cost for this run

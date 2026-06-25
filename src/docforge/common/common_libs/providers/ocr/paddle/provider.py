@@ -64,7 +64,13 @@ class PaddleOcrProvider(OcrProvider, LoggerClass):
         """
         Synchronous PaddleOCR extraction (runs in thread pool).
 
-        Returns an empty OcrResult (confidence=0.0) on any failure.
+        Raises on any engine/inference failure so the provider chain can record the failed
+        attempt and ESCALATE to the next OCR provider — a crashed engine must never be masked
+        as a successful empty result.  A genuinely text-free image still returns an empty
+        OcrResult (the engine ran fine, it just found no text).
+
+        Raises:
+            Exception: Re-raised on any PaddleOCR import/init/inference failure.
         """
         try:
             import numpy as np  # type: ignore
@@ -120,5 +126,7 @@ class PaddleOcrProvider(OcrProvider, LoggerClass):
             return OcrResult(text=full_text, confidence=avg_confidence)
 
         except Exception as exc:
+            # Log + re-raise: the chain marks this attempt failed and escalates to the next
+            # provider; an exhausted chain then returns None (handled by the S2 OCR router).
             self.logger.error(f"PaddleOCR extraction failed: {exc}")
-            return OcrResult(text="", confidence=0.0)
+            raise

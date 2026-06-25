@@ -2,6 +2,8 @@
 # S456Runner — executes the S4/S5/S6 stages (chunk → contextualize → embed + index).
 # Extracted from StageEngine.core to bring core.py under 200 lines.
 # S4 and S5 always run (pure transforms); S6 runs only in live mode with a collection_id.
+# Any failure in this window flips the document to ``failed`` (fail-closed): a document is
+# never left in the intermediate ``parsed`` state reading as if indexing had succeeded.
 
 # ====== Standard Library Imports ======
 from __future__ import annotations
@@ -19,6 +21,7 @@ from common_libs.pipeline.stages.s6_embed_index.core import S6EmbedIndexStage, S
 
 # ====== Local Project Imports ======
 from .deps import StageDeps
+from .s012_persist import S012PersistHelpers
 from .trace_flush import TraceFlusher
 
 
@@ -26,10 +29,9 @@ class S456Runner(LoggerClass):
     """
     Executes the S4 / S5 / S6 stages in sequence.
 
-    S4 and S5 are pure IR transforms and always run, even in dry_run (playground needs
-    real chunk preview).  S6 is skipped in dry_run or when chunk_repo / collection_id
-    are absent; in that case chunks are either discarded (dry_run) or written to Postgres
-    without Qdrant indexing.
+    S4 and S5 are pure IR transforms and always run.  S6 (embed + index) runs when a
+    ``collection_id`` is set; with no collection the chunks are persisted to Postgres only
+    (no Qdrant indexing).  Any failure flips the document to ``failed`` and re-raises.
     """
 
     def __init__(self, deps: StageDeps) -> None:
@@ -53,7 +55,6 @@ class S456Runner(LoggerClass):
         doc_id: uuid.UUID,
         metadata_fields: list[Any] | None,
         doc_user_meta: dict[str, Any] | None,
-        dry_run: bool,
     ) -> tuple[S4Result, S5Result, S6Result | None]:
         """
         Run S4 (chunk) → S5 (contextualize) → S6 (embed + index).
@@ -68,20 +69,58 @@ class S456Runner(LoggerClass):
             doc_id (uuid.UUID): Document primary key for trace flush.
             metadata_fields (list | None): Per-collection metadata field specs.
             doc_user_meta (dict | None): User-supplied business metadata.
-            dry_run (bool): When True, skip S6 and all DB writes.
+
+        Returns:
+            tuple[S4Result, S5Result, S6Result | None]: Stage results.
+
+        Raises:
+            Exception: Re-raises any S4/S5/S6 failure after flipping the document to
+                ``failed`` so the caller/job records the error too.
+        """
+        # Fail-closed guard: any S4/S5/S6 error marks the document ``failed`` before
+        # propagating, so a doc is never left in ``parsed`` while reading as ingested.
+        try:
+            return await self._execute_s456(
+                s4, s5, s6, final_ir, collection_id, s0_result,
+                doc_id, metadata_fields, doc_user_meta,
+            )
+        except Exception as exc:
+            self.logger.error(
+                f"S4/S5/S6 failed for doc_id={doc_id} ({type(exc).__name__}: {exc}) "
+                f"— marking document 'failed'."
+            )
+            await S012PersistHelpers.mark_failed(self._deps, doc_id)
+            raise
+
+    async def _execute_s456(
+        self,
+        s4: S4ChunkStage,
+        s5: S5ContextualizeStage,
+        s6: S6EmbedIndexStage | None,
+        final_ir: Any,
+        collection_id: str | None,
+        s0_result: Any,
+        doc_id: uuid.UUID,
+        metadata_fields: list[Any] | None,
+        doc_user_meta: dict[str, Any] | None,
+    ) -> tuple[S4Result, S5Result, S6Result | None]:
+        """
+        Execute S4 → S5 → S6 without the failure guard (see ``run_s456``).
+
+        Args: identical to ``run_s456``.
 
         Returns:
             tuple[S4Result, S5Result, S6Result | None]: Stage results.
         """
         deps = self._deps
 
-        # S4 and S5 always run (pure transforms — playground needs real chunk preview)
+        # S4 and S5 always run (pure IR transforms)
         s4_result: S4Result = await s4.run(final_ir)
         s5_result: S5Result = await s5.run(s4_result.chunks, final_ir)
         contextualized_chunks = s5_result.chunks
 
         s6_result: S6Result | None = None
-        if dry_run or deps.chunk_repo is None:
+        if deps.chunk_repo is None:
             return s4_result, s5_result, s6_result
 
         if s6 is not None and collection_id is not None:

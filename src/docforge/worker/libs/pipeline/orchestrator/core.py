@@ -147,7 +147,6 @@ class StageEngine(LoggerClass):
         filename: str,
         pipeline_version: str,
         file_bytes: bytes | None = None,
-        dry_run: bool = False,
         collection_id: str | None = None,
         pipeline_config: PipelineConfig | None = None,
         metadata_fields: list[Any] | None = None,
@@ -163,7 +162,6 @@ class StageEngine(LoggerClass):
             filename (str): Original filename (extension determines conversion path).
             pipeline_version (str): Collection pipeline version tag.
             file_bytes (bytes | None): Raw file bytes; downloaded from S3 when None.
-            dry_run (bool): Use ephemeral in-memory cache and skip all DB writes.
             collection_id (str | None): Qdrant collection name for S6 indexing.
             pipeline_config (PipelineConfig | None): Per-run overrides; None = use defaults.
             metadata_fields (list | None): Per-collection metadata field specs for S6.
@@ -185,7 +183,7 @@ class StageEngine(LoggerClass):
                 self.logger.warning(f"progress_cb failed at {stage} ({exc}).")
         self.logger.info(
             f"Engine.run: doc_id={doc_id} source_hash={source_hash[:8]}… "
-            f"dry_run={dry_run} configured={pipeline_config is not None}"
+            f"configured={pipeline_config is not None}"
         )
 
         # 1. Resolve effective stage stack for this run
@@ -196,7 +194,6 @@ class StageEngine(LoggerClass):
             self._qdrant,
             (self._s0, self._s1, self._s2, self._s4, self._s5, self._s6),
         )
-        _local_cache: dict[tuple[str, str, str], str] = {}
 
         # 2. Download original bytes if not provided (arq worker path)
         if file_bytes is None:
@@ -205,35 +202,51 @@ class StageEngine(LoggerClass):
 
         # 3. Run S0/S1/S2 with Merkle-DAG node caching (report progress at each boundary)
         s0_result, s0_fp, s0_cache_hit = await self._s012.run_s0(
-            s0, doc_id, source_hash, filename, file_bytes, _local_cache, dry_run
+            s0, doc_id, source_hash, filename, file_bytes
         )
         await _report("s0", 15)
         s1_result, ir, s1_fp, s1_cache_hit = await self._s012.run_s1(
-            s1, doc_id, source_hash, s0_result, s0_fp, _local_cache, dry_run
+            s1, doc_id, source_hash, s0_result, s0_fp
         )
         await _report("s1", 35)
         s2_result, final_ir, s2_fp, s2_cache_hit = await self._s012.run_s2(
-            s2, doc_id, source_hash, s1_result, ir, s1_fp, _local_cache, dry_run
+            s2, doc_id, source_hash, s1_result, ir, s1_fp
         )
         await _report("s2", 55)
 
-        # 4. Persist blocks + finalize document in Postgres
-        await S012PersistHelpers.persist_s012(
-            self._deps, doc_id, source_hash, s0_result, s1_result, s1_fp, s0_fp,
-            s2_result, s2_fp, final_ir, s1_cache_hit, s2_cache_hit, dry_run,
-        )
+        # 4. Persist blocks + finalize document in Postgres.
+        # Fail-closed: this step runs outside the S0/S1/S2 (guarded_run) and S4/S5/S6
+        # (run_s456) guards, so a failure here would otherwise leave the document stuck in
+        # ``processing``. Mark it ``failed`` before re-raising (the secondary status write is
+        # best-effort inside mark_failed and never masks the original persist error).
+        try:
+            await S012PersistHelpers.persist_s012(
+                self._deps, doc_id, source_hash, s0_result, s1_result, s1_fp, s0_fp,
+                s2_result, s2_fp, final_ir, s1_cache_hit, s2_cache_hit,
+            )
+        except Exception as exc:
+            self.logger.error(
+                f"persist_s012 failed for doc_id={doc_id} "
+                f"({type(exc).__name__}: {exc}) — marking document 'failed'."
+            )
+            await S012PersistHelpers.mark_failed(self._deps, doc_id)
+            raise
         await _report("persist", 65)
 
-        # 5. Run S4/S5/S6 (chunk → contextualize → embed + index)
+        # 5. Run S4/S5/S6 (chunk → contextualize → embed + index).
+        # On any failure here the runner flips the document to ``failed`` and re-raises.
         s4_result, s5_result, s6_result = await self._s456.run_s456(
             s4, s5, s6, final_ir, collection_id, s0_result, doc_id,
-            metadata_fields, doc_user_meta, dry_run
+            metadata_fields, doc_user_meta
         )
         await _report("s6", 95)
 
-        # 6. Log completion and assemble result
-        label = "dry_run done" if dry_run else "done"
-        self.logger.info(f"Engine.run {label}: doc_id={doc_id}")
+        # 6. Terminal success: flip the document from ``parsed`` to ``done`` ONLY now that
+        # chunks (and, when a collection is set, the Qdrant upsert) have persisted.
+        await S012PersistHelpers.mark_done(self._deps, doc_id)
+
+        # 7. Log completion and assemble result
+        self.logger.info(f"Engine.run done: doc_id={doc_id}")
 
         return EngineResult(
             s0_result=s0_result,

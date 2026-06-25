@@ -85,7 +85,14 @@ class VitOnnxClassifier(FigureClassifier, LoggerClass):
         """
         Synchronous ONNX inference (runs inside a thread pool).
 
-        Returns PHOTO at confidence 0.5 if the model is unavailable or inference fails.
+        Raises on any model-load/inference failure so the classifier chain can record the
+        failed attempt and ESCALATE to the next classifier.  The terminal "all classifiers
+        failed" case is handled upstream: the chain returns None and FigureEnricher applies
+        its documented PHOTO fallback — but a single provider must not pre-empt escalation by
+        fabricating that fallback itself.
+
+        Raises:
+            Exception: Re-raised on any ONNX import/load/inference failure.
         """
         try:
             import numpy as np  # type: ignore
@@ -134,8 +141,8 @@ class VitOnnxClassifier(FigureClassifier, LoggerClass):
             return ClassificationResult(kind=kind, confidence=confidence)
 
         except Exception as exc:
-            self.logger.warning(
-                f"VitOnnxClassifier inference failed: {exc} — falling back to PHOTO"
-            )
-            return ClassificationResult(kind=FigureKind.PHOTO, confidence=0.5)
+            # Log + re-raise: the chain marks this attempt failed and escalates; the PHOTO
+            # fallback for a fully-exhausted chain is applied by FigureEnricher, not here.
+            self.logger.warning(f"VitOnnxClassifier inference failed: {exc}")
+            raise
 

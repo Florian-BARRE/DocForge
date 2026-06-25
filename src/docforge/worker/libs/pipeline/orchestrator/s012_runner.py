@@ -74,8 +74,6 @@ class S012Runner(LoggerClass):
         source_hash: str,
         filename: str,
         file_bytes: bytes,
-        local_cache: dict[tuple[str, str, str], str],
-        dry_run: bool,
     ) -> tuple[S0Result, str, bool]:
         """
         Execute S0 (ingest + convert) with Merkle node caching.
@@ -86,13 +84,11 @@ class S012Runner(LoggerClass):
             source_hash (str): SHA-256 of the original file (Merkle root).
             filename (str): Original filename.
             file_bytes (bytes): Raw file content.
-            local_cache (dict): In-memory cache for dry_run mode.
-            dry_run (bool): When True, skip all Postgres/S3 writes.
 
         Returns:
             tuple[S0Result, str, bool]: ``(result, fingerprint, cache_hit)``.
 
-        Note: doc_id/source_hash/local_cache/dry_run carry the same meaning in run_s1/run_s2.
+        Note: doc_id/source_hash carry the same meaning in run_s1/run_s2.
         """
         deps = self._deps
         s0_fp = compute_fingerprint(
@@ -102,19 +98,18 @@ class S012Runner(LoggerClass):
             input_fingerprints=[source_hash],
         )
         cached_ref = await CacheIOHelpers.check(
-            deps.postgres, deps.node_cache, doc_id, "s0", s0_fp, local_cache, dry_run
+            deps.postgres, deps.node_cache, doc_id, "s0", s0_fp
         )
         if cached_ref is not None:
             self.logger.info(f"S0 cache HIT: doc_id={doc_id}")
             return await CacheIOHelpers.restore_s0(deps.s3, cached_ref), s0_fp, True
 
-        # 1. Flip document status to ``processing`` on the first real run, then execute S0
-        # under the shared start/run/fail guard.
-        if not dry_run:
-            async with deps.postgres.session() as session:
-                await deps.document_repo.update_status(session, doc_id, "processing")
+        # 1. Flip document status to ``processing``, then execute S0 under the shared
+        # start/run/fail guard.
+        async with deps.postgres.session() as session:
+            await deps.document_repo.update_status(session, doc_id, "processing")
         result = await S012PersistHelpers.guarded_run(
-            deps, doc_id, "s0", s0_fp, dry_run,
+            deps, doc_id, "s0", s0_fp,
             lambda: s0.run(file_bytes=file_bytes, filename=filename, doc_id=str(doc_id)),
         )
 
@@ -122,7 +117,7 @@ class S012Runner(LoggerClass):
         s0_meta_key = S3Helpers.key_s0_meta(source_hash, s0_fp)
         await deps.s3.upload(s0_meta_key, CacheIOHelpers.encode_s0_meta(result), "application/json")
         await CacheIOHelpers.store(
-            deps.postgres, deps.node_cache, doc_id, "s0", s0_fp, s0_meta_key, local_cache, dry_run
+            deps.postgres, deps.node_cache, doc_id, "s0", s0_fp, s0_meta_key
         )
         return result, s0_fp, False
 
@@ -133,8 +128,6 @@ class S012Runner(LoggerClass):
         source_hash: str,
         s0_result: S0Result,
         s0_fp: str,
-        local_cache: dict[tuple[str, str, str], str],
-        dry_run: bool,
     ) -> tuple[S1Result, Any, str, bool]:
         """
         Execute S1 (parse → IR + PNGs + crops) with Merkle node caching.
@@ -143,7 +136,7 @@ class S012Runner(LoggerClass):
             s1 (_S1ParseStageType): S1 stage instance to execute on cache miss.
             s0_result (S0Result): Output from the S0 stage (may have lazy pdf_bytes).
             s0_fp (str): S0 Merkle fingerprint (chained as S1 input).
-            (doc_id, source_hash, local_cache, dry_run): see run_s0.
+            (doc_id, source_hash): see run_s0.
 
         Returns:
             tuple[S1Result, DocumentIR, str, bool]: ``(result, ir, fingerprint, cache_hit)``.
@@ -156,7 +149,7 @@ class S012Runner(LoggerClass):
             input_fingerprints=[s0_fp],
         )
         cached_ref = await CacheIOHelpers.check(
-            deps.postgres, deps.node_cache, doc_id, "s1", s1_fp, local_cache, dry_run
+            deps.postgres, deps.node_cache, doc_id, "s1", s1_fp
         )
         if cached_ref is not None:
             self.logger.info(f"S1 cache HIT: doc_id={doc_id}")
@@ -168,7 +161,7 @@ class S012Runner(LoggerClass):
             s0_result = await CacheIOHelpers.populate_pdf_bytes(deps.s3, s0_result)
         hydrated_s0 = s0_result
         s1_result = await S012PersistHelpers.guarded_run(
-            deps, doc_id, "s1", s1_fp, dry_run,
+            deps, doc_id, "s1", s1_fp,
             lambda: s1.run(hydrated_s0, fingerprint=s1_fp),
         )
 
@@ -181,7 +174,7 @@ class S012Runner(LoggerClass):
             s1_meta_key, CacheIOHelpers.encode_s1_meta(s1_result, ir_key), "application/json"
         )
         await CacheIOHelpers.store(
-            deps.postgres, deps.node_cache, doc_id, "s1", s1_fp, s1_meta_key, local_cache, dry_run
+            deps.postgres, deps.node_cache, doc_id, "s1", s1_fp, s1_meta_key
         )
         return s1_result, ir, s1_fp, False
 
@@ -193,8 +186,6 @@ class S012Runner(LoggerClass):
         s1_result: S1Result,
         ir: Any,
         s1_fp: str,
-        local_cache: dict[tuple[str, str, str], str],
-        dry_run: bool,
     ) -> tuple[S2Result | None, Any, str, bool]:
         """
         Execute S2 (enrich figures: OCR / VLM / chart-to-data) with Merkle node caching.
@@ -204,7 +195,7 @@ class S012Runner(LoggerClass):
             s1_result (S1Result): Output from the S1 stage.
             ir (DocumentIR): DocumentIR produced by S1.
             s1_fp (str): S1 Merkle fingerprint (chained as S2 input).
-            (doc_id, source_hash, local_cache, dry_run): see run_s0.
+            (doc_id, source_hash): see run_s0.
 
         Returns:
             tuple[S2Result | None, DocumentIR, str, bool]: (result, final_ir, fp, cache_hit).
@@ -217,7 +208,7 @@ class S012Runner(LoggerClass):
             input_fingerprints=[s1_fp],
         )
         cached_ref = await CacheIOHelpers.check(
-            deps.postgres, deps.node_cache, doc_id, "s2", s2_fp, local_cache, dry_run
+            deps.postgres, deps.node_cache, doc_id, "s2", s2_fp
         )
         if cached_ref is not None:
             self.logger.info(f"S2 cache HIT: doc_id={doc_id}")
@@ -225,7 +216,7 @@ class S012Runner(LoggerClass):
             return s2_result, final_ir, s2_fp, True
 
         s2_result = await S012PersistHelpers.guarded_run(
-            deps, doc_id, "s2", s2_fp, dry_run,
+            deps, doc_id, "s2", s2_fp,
             lambda: s2.run(s1_result, ir),
         )
 
@@ -240,6 +231,6 @@ class S012Runner(LoggerClass):
             s2_meta_key, CacheIOHelpers.encode_s2_meta(s2_result, ir_enriched_key), "application/json"
         )
         await CacheIOHelpers.store(
-            deps.postgres, deps.node_cache, doc_id, "s2", s2_fp, s2_meta_key, local_cache, dry_run
+            deps.postgres, deps.node_cache, doc_id, "s2", s2_fp, s2_meta_key
         )
         return s2_result, final_ir, s2_fp, False

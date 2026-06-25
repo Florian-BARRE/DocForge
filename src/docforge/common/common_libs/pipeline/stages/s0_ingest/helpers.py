@@ -1,6 +1,7 @@
 # ====== Code Summary ======
 # Stateless helpers for the S0 ingestion stage: SHA-256 hashing, extension extraction,
-# MIME-type lookup, PDF page counting, and raster-page detection (no logging needed).
+# MIME-type lookup, PDF page counting, and raster-page detection.  Heuristic PDF probes
+# log a warning on a degraded fallback so the degradation is never truly silent.
 
 # ====== Standard Library Imports ======
 from __future__ import annotations
@@ -8,15 +9,20 @@ from __future__ import annotations
 import hashlib
 from typing import Any
 
+# ====== Third-Party Library Imports ======
+from loggerplusplus import loggerplusplus
+
 
 class S0IngestHelpers:
     """
     Stateless utility helpers for the S0 ingestion stage.
 
-    All methods are pure functions with no side effects and no dependency on
-    external services or instance state.  No logger is bound because none of
-    these methods emit log messages.
+    All methods are pure functions with no dependency on external services or instance
+    state.  The bound logger is only used to surface degraded heuristic fallbacks (page
+    count / raster detection) so a malformed PDF never degrades silently.
     """
+
+    logger = loggerplusplus.bind(identifier="S0IngestHelpers")
 
     def __new__(cls, *args: object, **kwargs: object) -> None:
         """Block instantiation — this is a static-only class."""
@@ -88,13 +94,14 @@ class S0IngestHelpers:
         """
         return S0IngestHelpers._MIME_MAP.get(extension, "application/octet-stream")
 
-    @staticmethod
-    def count_pages_fast(pdf_bytes: bytes) -> int:
+    @classmethod
+    def count_pages_fast(cls, pdf_bytes: bytes) -> int:
         """
         Count the number of pages in a PDF using PyMuPDF without a full parse.
 
         Returns 1 as a safe fallback if PyMuPDF is unavailable or the bytes are
-        not a valid PDF.
+        not a valid PDF.  The fallback is a degraded heuristic (S1 is the authority
+        on the real page count), so it is logged rather than raised — but never silent.
 
         Args:
             pdf_bytes (bytes): Raw PDF bytes.
@@ -106,16 +113,21 @@ class S0IngestHelpers:
             import fitz
             with fitz.open(stream=pdf_bytes, filetype="pdf") as doc:
                 return doc.page_count
-        except Exception:
+        except Exception as exc:
+            cls.logger.warning(
+                f"count_pages_fast: PyMuPDF could not read the PDF ({exc}); defaulting to 1 page."
+            )
             return 1
 
-    @staticmethod
-    def detect_raster_pages(pdf_bytes: bytes) -> bool:
+    @classmethod
+    def detect_raster_pages(cls, pdf_bytes: bytes) -> bool:
         """
         Return True if at least one page has no extractable text layer.
 
         Per spec §4.2: PyMuPDF.get_text() empty → scanned/raster page.
         Pages with a native text layer never need OCR (spec cost-saving principle 1).
+        A probe failure is a degraded heuristic (OCR routing happens later in S2 anyway),
+        so it is logged and treated as "no raster pages" — but never silent.
 
         Args:
             pdf_bytes (bytes): Raw PDF bytes.
@@ -129,8 +141,10 @@ class S0IngestHelpers:
                 for page in doc:
                     if not page.get_text().strip():
                         return True
-        except Exception:
-            pass
+        except Exception as exc:
+            cls.logger.warning(
+                f"detect_raster_pages: PyMuPDF probe failed ({exc}); assuming no raster pages."
+            )
         return False
 
     @staticmethod

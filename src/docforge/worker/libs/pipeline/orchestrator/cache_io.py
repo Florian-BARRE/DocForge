@@ -1,8 +1,8 @@
 # ====== Code Summary ======
-# CacheIOHelpers — static helpers for node-cache read/write (dry_run in-memory cache vs the
-# live Postgres-backed NodeCache).  S3 (de)serialization of stage artefacts lives in
-# CacheCodec (cache_codec.py); the restore/encode/populate methods are re-exposed here as
-# thin delegators so the historical CacheIOHelpers.<method> public API stays intact.
+# CacheIOHelpers — static helpers for node-cache read/write against the Postgres-backed
+# NodeCache.  S3 (de)serialization of stage artefacts lives in CacheCodec (cache_codec.py);
+# the restore/encode/populate methods are re-exposed here as thin delegators so the
+# historical CacheIOHelpers.<method> public API stays intact.
 
 # ====== Standard Library Imports ======
 from __future__ import annotations
@@ -31,7 +31,7 @@ class CacheIOHelpers:
     Static helpers for node-cache I/O, with S3 codec re-exposed via delegation.
 
     Covers directly:
-    - ``check`` / ``store`` — consult or write the node cache (dry_run vs live)
+    - ``check`` / ``store`` — consult or write the Postgres-backed node cache
 
     Delegated to CacheCodec (kept as classmethods for API compatibility):
     - ``restore_s0`` / ``restore_s1`` / ``restore_s2`` — reconstruct stage results from S3
@@ -54,27 +54,20 @@ class CacheIOHelpers:
         doc_id: uuid.UUID,
         node_id: str,
         fingerprint: str,
-        local_cache: dict[tuple[str, str, str], str],
-        dry_run: bool,
     ) -> str | None:
         """
-        Return the cached output_ref, consulting local or DB cache based on mode.
+        Return the cached output_ref from the Postgres-backed node cache.
 
         Args:
-            postgres (PostgresClient): Postgres session factory (unused in dry_run).
-            node_cache (NodeCache): DB-backed node cache (unused in dry_run).
+            postgres (PostgresClient): Postgres session factory.
+            node_cache (NodeCache): DB-backed node cache.
             doc_id (uuid.UUID): Document primary key.
             node_id (str): Stage identifier (e.g. ``"s0"``, ``"s1"``, ``"s2"``).
             fingerprint (str): blake3 Merkle fingerprint for this node.
-            local_cache (dict): In-memory cache used during dry_run.
-            dry_run (bool): When True, consult the in-memory cache instead of Postgres.
 
         Returns:
             str | None: S3 output_ref on cache hit, or None on miss.
         """
-        key = (str(doc_id), node_id, fingerprint)
-        if dry_run:
-            return local_cache.get(key)
         async with postgres.session() as session:
             return await node_cache.get(session, doc_id, node_id, fingerprint)
 
@@ -87,28 +80,20 @@ class CacheIOHelpers:
         node_id: str,
         fingerprint: str,
         output_ref: str,
-        local_cache: dict[tuple[str, str, str], str],
-        dry_run: bool,
     ) -> None:
         """
-        Write the output_ref to the local cache (dry_run) or DB cache (live).
+        Write the output_ref to the Postgres-backed node cache.
 
         Args:
-            postgres (PostgresClient): Postgres session factory (unused in dry_run).
-            node_cache (NodeCache): DB-backed node cache (unused in dry_run).
+            postgres (PostgresClient): Postgres session factory.
+            node_cache (NodeCache): DB-backed node cache.
             doc_id (uuid.UUID): Document primary key.
             node_id (str): Stage identifier (e.g. ``"s0"``, ``"s1"``, ``"s2"``).
             fingerprint (str): blake3 Merkle fingerprint for this node.
             output_ref (str): S3 key of the node's output artefact to persist.
-            local_cache (dict): In-memory cache mutated in place during dry_run.
-            dry_run (bool): When True, write to the in-memory cache instead of Postgres.
         """
-        key = (str(doc_id), node_id, fingerprint)
-        if dry_run:
-            local_cache[key] = output_ref
-        else:
-            async with postgres.session() as session:
-                await node_cache.put(session, doc_id, node_id, fingerprint, output_ref)
+        async with postgres.session() as session:
+            await node_cache.put(session, doc_id, node_id, fingerprint, output_ref)
 
     # ─── S3 codec delegators (implementation in CacheCodec) ───────────────────
 

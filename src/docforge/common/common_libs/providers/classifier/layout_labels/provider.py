@@ -97,7 +97,13 @@ class LayoutLabelsClassifier(FigureClassifier, LoggerClass):
         """
         Analyse grayscale pixel statistics to estimate the figure kind.
 
-        Returns a (FigureKind, confidence) tuple.  On any failure, returns PHOTO at 0.5.
+        Returns a (FigureKind, confidence) tuple.  ``(PHOTO, 0.55)`` is a legitimate verdict
+        for inconclusive stats; but an actual analysis FAILURE (unreadable image, numpy error)
+        is re-raised so the chain escalates to the next classifier rather than masking the
+        crash as a low-confidence PHOTO.
+
+        Raises:
+            Exception: Re-raised on any image-decode / numpy failure.
         """
         try:
             import numpy as np  # type: ignore
@@ -125,6 +131,8 @@ class LayoutLabelsClassifier(FigureClassifier, LoggerClass):
             return FigureKind.PHOTO, 0.55
 
         except Exception as exc:
+            # Log + re-raise: a genuine analysis failure escalates to the next classifier;
+            # the all-classifiers-failed case is handled by FigureEnricher (PHOTO fallback).
             self.logger.warning(f"LayoutLabels pixel analysis failed: {exc}")
-            return FigureKind.PHOTO, 0.50
+            raise
 
