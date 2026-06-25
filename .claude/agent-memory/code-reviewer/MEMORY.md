@@ -52,6 +52,7 @@ metadata:
 - [page_indexing_zero_based](page_indexing_zero_based.md) — page numbers are 0-indexed end to end; page-1-as-first is off-by-one
 - [search_pipeline_antipatterns](search_pipeline_antipatterns.md) — P7 search pipeline (engine, rerank, fusion) recurring issues
 - [observability-brick-a](observability-brick-a.md) — Brique A audit anti-patterns (queue/metrics/heartbeat/events + jobs/monitoring routers)
+- [async_teardown_swallow](async_teardown_swallow.md) — flag `except (CancelledError, Exception): pass` + unlogged `_run` safety nets that hide async worker crashes (hand-rolled queue/worker designs)
 
 > Component-scoped memory lives with the component agents: **`mcp`** agent (`agent-memory/mcp/`) for
 > the `src/mcp/` HTTP-client invariant + REST endpoint map; **`bge-server`** agent

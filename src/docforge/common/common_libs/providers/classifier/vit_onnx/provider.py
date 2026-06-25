@@ -6,10 +6,12 @@
 from __future__ import annotations
 
 import io
+from typing import Any
 
 from loggerplusplus import LoggerClass
 
 from common_libs.providers.classifier.base import ClassificationResult, FigureClassifier
+from common_libs.providers.model_cache import ModelCache
 from common_libs.domain.ir.models import FigureKind
 
 # Expected mapping from ONNX output class index → FigureKind.
@@ -58,7 +60,9 @@ class VitOnnxClassifier(FigureClassifier, LoggerClass):
         LoggerClass.__init__(self)
         self._model_path = model_path
         self._use_gpu = use_gpu
-        self._session = None   # Lazy-loaded on first classify() call
+        # The ONNX session is shared process-wide via ModelCache, keyed by the model-
+        # determining params (path + device) so a new instance per job reuses the loaded model.
+        self._model_key: tuple[str, str, bool] = ("vit_onnx.session", model_path, use_gpu)
 
     async def classify(
         self,
@@ -96,21 +100,12 @@ class VitOnnxClassifier(FigureClassifier, LoggerClass):
         """
         try:
             import numpy as np  # type: ignore
-            import onnxruntime as ort  # type: ignore
             from PIL import Image  # type: ignore
 
-            # 1. Lazy-load the ONNX Runtime session
-            if self._session is None:
-                providers = (
-                    ["CUDAExecutionProvider", "CPUExecutionProvider"]
-                    if self._use_gpu
-                    else ["CPUExecutionProvider"]
-                )
-                self._session = ort.InferenceSession(self._model_path, providers=providers)
-                self.logger.info(
-                    f"VitOnnxClassifier: model loaded from {self._model_path!r} "
-                    f"(gpu={self._use_gpu})"
-                )
+            # 1. Resolve the process-shared ONNX Runtime session (loaded once via ModelCache).
+            # ort.InferenceSession.run() is thread-safe, so concurrent inference on the shared
+            # session needs no lock — only the one-time load is serialized inside ModelCache.
+            session = ModelCache.get_or_load(self._model_key, self._build_session)
 
             # 2. Preprocess: resize → normalize → (1, 3, H, W) float32
             img = (
@@ -125,8 +120,8 @@ class VitOnnxClassifier(FigureClassifier, LoggerClass):
             arr = arr.transpose(2, 0, 1)[np.newaxis, :]  # (1, C, H, W)
 
             # 3. Run inference
-            input_name = self._session.get_inputs()[0].name
-            logits = self._session.run(None, {input_name: arr})[0][0]
+            input_name = session.get_inputs()[0].name
+            logits = session.run(None, {input_name: arr})[0][0]
 
             # 4. Softmax → argmax
             exp_l = np.exp(logits - logits.max())
@@ -145,4 +140,27 @@ class VitOnnxClassifier(FigureClassifier, LoggerClass):
             # fallback for a fully-exhausted chain is applied by FigureEnricher, not here.
             self.logger.warning(f"VitOnnxClassifier inference failed: {exc}")
             raise
+
+    def _build_session(self) -> Any:
+        """
+        Build the ONNX Runtime session (the ModelCache loader — invoked once per process).
+
+        Returns:
+            Any: A new ``onnxruntime.InferenceSession`` bound to the configured providers.
+
+        Raises:
+            Exception: Propagates any onnxruntime import / session-load failure (not cached).
+        """
+        import onnxruntime as ort  # type: ignore
+
+        providers = (
+            ["CUDAExecutionProvider", "CPUExecutionProvider"]
+            if self._use_gpu
+            else ["CPUExecutionProvider"]
+        )
+        session = ort.InferenceSession(self._model_path, providers=providers)
+        self.logger.info(
+            f"VitOnnxClassifier: model loaded from {self._model_path!r} (gpu={self._use_gpu})"
+        )
+        return session
 

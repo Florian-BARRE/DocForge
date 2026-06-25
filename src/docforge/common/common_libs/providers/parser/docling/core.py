@@ -16,6 +16,7 @@ from typing import Any
 from loggerplusplus import LoggerClass
 
 from common_libs.providers.lang import LanguageDetector
+from common_libs.providers.model_cache import ModelCache
 from common_libs.providers.parser.base import ParserProvider
 
 # ====== Internal Project Imports ======
@@ -59,7 +60,9 @@ class DoclingBackend(ParserProvider, LoggerClass):
         """
         LoggerClass.__init__(self)
         self._use_gpu = use_gpu
-        self._converter = None  # Lazy initialization — loaded on first parse call
+        # The heavy DocumentConverter is shared process-wide via ModelCache, keyed by the only
+        # model-determining param (use_gpu).  A new DoclingBackend per job no longer reloads it.
+        self._model_key: tuple[str, bool] = ("docling.converter", use_gpu)
         self._lang_detector = LanguageDetector()  # offline language ID over the parsed text
 
     def set_device(self, runs_on: str) -> None:
@@ -128,7 +131,7 @@ class DoclingBackend(ParserProvider, LoggerClass):
         Returns:
             DocumentIR: Parsed canonical IR.
         """
-        # 1. Lazy-load the Docling converter (heavy import — load once)
+        # 1. Resolve the process-shared Docling converter (loaded once via ModelCache)
         converter = self._get_converter()
 
         # 2. Write PDF to a temp file (Docling works with file paths, not bytes)
@@ -137,8 +140,11 @@ class DoclingBackend(ParserProvider, LoggerClass):
             tmp_path = Path(tmp.name)
 
         try:
-            # 3. Run Docling conversion
-            result = converter.convert(str(tmp_path))
+            # 3. Run Docling conversion. DocumentConverter.convert() is NOT documented as
+            # thread-safe, and the instance is now shared across jobs; serialize conversion on
+            # the per-model lock. Acceptable: parsing is CPU-bound and already thread-pooled.
+            with ModelCache.lock_for(self._model_key):
+                result = converter.convert(str(tmp_path))
             docling_doc = result.document
 
             # 4. Map Docling document → DocumentIR via the dedicated mapper
@@ -155,7 +161,7 @@ class DoclingBackend(ParserProvider, LoggerClass):
 
     def _get_converter(self) -> Any:
         """
-        Lazy-load the Docling DocumentConverter (heavy — initializes ML models).
+        Return the process-shared Docling DocumentConverter (loaded once via ModelCache).
 
         Returns:
             Any: The Docling DocumentConverter instance (type imported lazily).
@@ -163,32 +169,43 @@ class DoclingBackend(ParserProvider, LoggerClass):
         Raises:
             RuntimeError: When the docling package is not installed.
         """
-        if self._converter is None:
-            try:
-                from docling.datamodel.pipeline_options import PdfPipelineOptions  # type: ignore
-                from docling.document_converter import (  # type: ignore
-                    DocumentConverter,
-                    PdfFormatOption,
-                )
+        # The converter is shared across every DoclingBackend with the same use_gpu setting.
+        return ModelCache.get_or_load(self._model_key, self._build_converter)
 
-                # PdfPipelineOptions carries PDF-specific knobs (do_ocr, do_table_structure).
-                # The old PipelineOptions no longer has these fields in docling >= 2.x.
-                pipeline_opts = PdfPipelineOptions()
-                # Disable OCR inside Docling — DocForge delegates that to S2 providers
-                pipeline_opts.do_ocr = False
-                # do_table_structure loads docling_ibm_models -> cv2 which requires libxcb.so.1
-                # (X11 system lib absent in the slim runtime image). Disabled here; table
-                # structure extraction can be re-enabled once libxcb1 is added to the image.
-                pipeline_opts.do_table_structure = False
+    def _build_converter(self) -> Any:
+        """
+        Build a fresh Docling DocumentConverter (the ModelCache loader — invoked once).
 
-                self._converter = DocumentConverter(
-                    format_options={"pdf": PdfFormatOption(pipeline_options=pipeline_opts)},
-                )
-                self.logger.info(f"Docling DocumentConverter initialized (gpu={self._use_gpu})")
-            except ImportError as exc:
-                raise RuntimeError(
-                    f"docling is not installed. "
-                    f"Run: uv add docling"
-                ) from exc
+        Returns:
+            Any: A newly constructed DocumentConverter.
 
-        return self._converter
+        Raises:
+            RuntimeError: When the docling package is not installed.
+        """
+        try:
+            from docling.datamodel.pipeline_options import PdfPipelineOptions  # type: ignore
+            from docling.document_converter import (  # type: ignore
+                DocumentConverter,
+                PdfFormatOption,
+            )
+
+            # PdfPipelineOptions carries PDF-specific knobs (do_ocr, do_table_structure).
+            # The old PipelineOptions no longer has these fields in docling >= 2.x.
+            pipeline_opts = PdfPipelineOptions()
+            # Disable OCR inside Docling — DocForge delegates that to S2 providers
+            pipeline_opts.do_ocr = False
+            # do_table_structure loads docling_ibm_models -> cv2 which requires libxcb.so.1
+            # (X11 system lib absent in the slim runtime image). Disabled here; table
+            # structure extraction can be re-enabled once libxcb1 is added to the image.
+            pipeline_opts.do_table_structure = False
+
+            converter = DocumentConverter(
+                format_options={"pdf": PdfFormatOption(pipeline_options=pipeline_opts)},
+            )
+            self.logger.info(f"Docling DocumentConverter initialized (gpu={self._use_gpu})")
+            return converter
+        except ImportError as exc:
+            raise RuntimeError(
+                f"docling is not installed. "
+                f"Run: uv add docling"
+            ) from exc

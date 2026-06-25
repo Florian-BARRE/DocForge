@@ -5,7 +5,7 @@ metadata:
   type: project
 ---
 
-The `document.status` column is written at exactly these points in the live (non-dry_run) path:
+The `document.status` column is written at exactly these points in the (single) live path:
 
 - **S0 start** -> `processing` (`s012_runner.run_s0`, before the guarded run).
 - **Any S0/S1/S2 failure** -> `failed` (`S012PersistHelpers.guarded_run`).
@@ -25,8 +25,14 @@ upsert succeeded. `parsed` means "IR persisted, indexing not yet confirmed" — 
 embed traces are the reliable "S6 indexed this doc" marker.
 
 **Job vs document:** the arq task (`worker/.../worker/tasks.py`) updates only the JOB row on
-failure; the DOCUMENT failed-flip is owned by the engine/runners (above), NOT the task. dry_run
-never writes document status (playground previews don't mutate the doc row).
+failure; the DOCUMENT failed-flip is owned by the engine/runners (above), NOT the task.
+
+**`dry_run` is GONE (2026-06-25):** the playground/preview feature was removed long ago; the
+`dry_run` param + every `if dry_run` branch were purged from StageEngine.run, the s012/s456
+runners, cache_io, s012_persist, result, and tasks.py (~88 occurrences / 8 files). The pipeline
+now has ONE path: S4/S5/S6 always run; any stage error always `mark_failed`+raise; `mark_done`
+always on success. No no-write/preview mode exists. Do not reintroduce it. The fail-closed guards
+(guarded_run, run_s456, persist_s012) are now unconditional, not gated on `not dry_run`.
 
 **Do not** move the `done` write back into persist_s012. **Do not** weaken the NodeCache: a failed
 stage is only ever `failed`/absent in stage_run, never cached as a `done` hit (the cache `get`

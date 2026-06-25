@@ -9,9 +9,12 @@ from __future__ import annotations
 import asyncio
 import io
 
+from typing import Any
+
 from loggerplusplus import LoggerClass
 
 from common_libs.providers.interfaces import OcrHint, OcrResult
+from common_libs.providers.model_cache import ModelCache
 from common_libs.providers.ocr.base import OcrProvider
 
 
@@ -42,7 +45,6 @@ class PaddleOcrProvider(OcrProvider, LoggerClass):
         LoggerClass.__init__(self)
         self._use_gpu = use_gpu
         self._default_lang = default_lang
-        self._ocr = None  # Lazy-loaded PaddleOCR instance
         self.runs_on: str = "gpu" if use_gpu else "cpu"
 
     async def extract(self, img_bytes: bytes, hint: OcrHint) -> OcrResult:
@@ -76,32 +78,22 @@ class PaddleOcrProvider(OcrProvider, LoggerClass):
             import numpy as np  # type: ignore
             from PIL import Image  # type: ignore
 
-            # 1. Lazy-load PaddleOCR (heavy — initializes detection + recognition models)
-            if self._ocr is None:
-                try:
-                    from paddleocr import PaddleOCR  # type: ignore
-                except ImportError as exc:
-                    raise RuntimeError(
-                        f"paddleocr is not installed. Run: uv add paddleocr"
-                    ) from exc
-
-                lang = hint.language or self._default_lang
-                self._ocr = PaddleOCR(
-                    use_angle_cls=True,
-                    lang=lang,
-                    use_gpu=self._use_gpu,
-                    show_log=False,
-                )
-                self.logger.info(
-                    f"PaddleOCR initialized: lang={lang} gpu={self._use_gpu}"
-                )
+            # 1. Resolve the process-shared PaddleOCR engine (loaded once per lang+device via
+            # ModelCache). The language is model-determining, so it is part of the cache key —
+            # an "en" request never reuses the "fr" engine.
+            lang = hint.language or self._default_lang
+            model_key = ("paddle_ocr.engine", lang, self._use_gpu)
+            ocr = ModelCache.get_or_load(model_key, lambda: self._build_engine(lang))
 
             # 2. Convert bytes → numpy array (RGB)
             img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
             arr = np.array(img)
 
-            # 3. Run recognition
-            results = self._ocr.ocr(arr, cls=True)
+            # 3. Run recognition. PaddleOCR is NOT thread-safe and the engine is now shared
+            # across jobs, so serialize the call on the per-model lock. Acceptable: OCR is
+            # CPU-bound and already dispatched to a thread pool.
+            with ModelCache.lock_for(model_key):
+                results = ocr.ocr(arr, cls=True)
 
             # 4. Aggregate text lines and compute average confidence
             lines: list[str] = []
@@ -130,3 +122,30 @@ class PaddleOcrProvider(OcrProvider, LoggerClass):
             # provider; an exhausted chain then returns None (handled by the S2 OCR router).
             self.logger.error(f"PaddleOCR extraction failed: {exc}")
             raise
+
+    def _build_engine(self, lang: str) -> Any:
+        """
+        Build a PaddleOCR engine for the given language (the ModelCache loader — once per key).
+
+        Args:
+            lang (str): Resolved OCR language code (model-determining — part of the cache key).
+
+        Returns:
+            Any: A new ``PaddleOCR`` engine bound to ``lang`` and the configured device.
+
+        Raises:
+            RuntimeError: When the paddleocr package is not installed (not cached).
+        """
+        try:
+            from paddleocr import PaddleOCR  # type: ignore
+        except ImportError as exc:
+            raise RuntimeError(f"paddleocr is not installed. Run: uv add paddleocr") from exc
+
+        engine = PaddleOCR(
+            use_angle_cls=True,
+            lang=lang,
+            use_gpu=self._use_gpu,
+            show_log=False,
+        )
+        self.logger.info(f"PaddleOCR initialized: lang={lang} gpu={self._use_gpu}")
+        return engine
