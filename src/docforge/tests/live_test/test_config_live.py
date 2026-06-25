@@ -1,9 +1,10 @@
 # ====== Code Summary ======
 # LIVE coverage of the collection configuration sub-resource: state / schema / history (read) and
-# update / rollback (mutations), plus the reindex-flagging contract. Runs on isolated collections
-# (no document needed) so it is fast and side-effect free. Verifies the transparency envelope,
-# version history growth, credential-free redaction shape, and that an index-invalidating change
-# (embedding model) flips needs_reindex.
+# update / rollback (mutations), plus the reindex-flagging contract. Most tests run on isolated
+# empty collections (fast, side-effect free); the reindex test ingests one document first, since
+# needs_reindex only fires on a populated collection. Verifies the transparency envelope, version
+# history growth, credential-free redaction shape, and that an index-invalidating change
+# (embedding model) flips needs_reindex when there is something to reindex.
 
 # ====== Standard Library Imports ======
 from __future__ import annotations
@@ -77,18 +78,32 @@ class TestConfigUpdate:
         after = live_client.get(f"/collections/{cid}/config/history")[1]["total"]
         assert after == before + 1, "history did not grow by one"
 
-    def test_embedding_model_change_flags_reindex(self, make_collection, live_client) -> None:
-        """Changing the embedding model is index-invalidating → needs_reindex becomes True."""
-        col = make_collection()
+    def test_embedding_model_change_flags_reindex(self, make_collection, live_client, corpus) -> None:
+        """Changing the embedding model on a POPULATED collection flags needs_reindex.
+
+        needs_reindex only fires when there is something indexed to redo — an empty collection
+        never flags it (see the per-collection reindex contract). So this ingests one document
+        first, then changes the embedding model and asserts the flag flips.
+        """
+        col = make_collection(metadata_schema=CORPUS_METADATA_SCHEMA)
         cid = col["id"]
         assert live_client.get(f"/collections/{cid}/config/state")[1]["needs_reindex"] is False
 
+        # 1. Ingest one document (smallest format) so the collection has something to reindex.
+        doc = next(d for d in corpus.ingestable if d.spec.fmt == "html")
+        ing_status, ing = live_client.ingest_doc(
+            cid, doc, metadata={"dossier": f"D-{doc.key}", "sujet": doc.spec.title}
+        )
+        assert ing_status in (200, 202), ing
+        live_client.wait_done(cid, ing["doc_id"])
+
+        # 2. An embedding-model change is index-invalidating → needs_reindex becomes True.
         status, state = live_client.post(
             f"/collections/{cid}/config/update",
             {"patch": {"embedding_model": "BAAI/bge-m3-alt"}},
         )
         assert status == 200, state
-        assert state["needs_reindex"] is True, "embedding-model change should flag reindex"
+        assert state["needs_reindex"] is True, "embedding-model change on a populated collection should flag reindex"
 
     def test_pipeline_redacted_shape(self, make_collection, live_client) -> None:
         """The echoed pipeline is a dict (credentials redacted) and exposes the embed chain."""
