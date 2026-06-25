@@ -1,6 +1,6 @@
 # ------------------- Interfaces ------------------- #
 # ------------------- Chain ------------------- #
-from .chain import ProviderChain
+from .chain import Chain
 
 # ------------------- Converter ------------------- #
 from .converter import GOTENBERG_FORMATS, NATIVE_PDF_FORMATS, GotenbergConverter
@@ -67,7 +67,7 @@ __all__ = [
     "OpenAICompatVlmProvider",
     "PaddleOcrProvider",
     "ParserProvider",
-    "ProviderChain",
+    "Chain",
     "RerankProvider",
     "RerankResult",
     "TeiEmbedProvider",

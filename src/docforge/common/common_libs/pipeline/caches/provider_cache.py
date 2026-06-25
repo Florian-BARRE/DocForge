@@ -119,7 +119,6 @@ class ProviderCallCache(LoggerClass):
         provider_version: str,
         content_hash: str,
         result_json: str,
-        cost: float = 0.0,
     ) -> None:
         """
         Store a provider call result in the cache.
@@ -135,7 +134,6 @@ class ProviderCallCache(LoggerClass):
             provider_version (str): Provider version.
             content_hash (str): Content hash of the processed input.
             result_json (str): JSON-serialised result object.
-            cost (float): API cost incurred (e.g. USD).
         """
         # 1. Upload result JSON to SeaweedFS (hex-partitioned path, ~256 prefix dirs)
         s3_key = f"provider_cache/{call_fp[:2]}/{call_fp}.json"
@@ -150,7 +148,6 @@ class ProviderCallCache(LoggerClass):
 
             if row is not None:
                 row.result_ref = s3_key
-                row.cost = cost
             else:
                 session.add(
                     ProviderCallModel(
@@ -160,11 +157,8 @@ class ProviderCallCache(LoggerClass):
                         provider_version=provider_version,
                         content_hash=content_hash,
                         result_ref=s3_key,
-                        cost=cost,
                     )
                 )
             await session.commit()
 
-        self.logger.debug(
-            f"ProviderCallCache PUT: fp={call_fp[:8]}… ref={s3_key} cost={cost}"
-        )
+        self.logger.debug(f"ProviderCallCache PUT: fp={call_fp[:8]}… ref={s3_key}")

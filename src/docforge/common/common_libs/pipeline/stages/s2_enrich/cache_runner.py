@@ -1,6 +1,6 @@
 # ====== Code Summary ======
 # CacheRunner — async helpers that wrap each S2 capability (classifier, OCR, VLM)
-# behind the ProviderCallCache.  Each helper returns a (result, cost, trace, was_hit) tuple
+# behind the ProviderCallCache.  Each helper returns a (result, trace, was_hit) tuple
 # so the caller (FigureEnricher) never needs to know the cache key mechanics.
 # Cache-key resolution is delegated to CallKeyHelpers (call_key.py).
 
@@ -105,7 +105,7 @@ class CacheRunner:
         )
         await CallKeyHelpers.persist(
             provider_cache, call_fp, "classifier", provider_id, provider_version,
-            crop_hash, result_json, 0.0,
+            crop_hash, result_json,
         )
         return outcome.result, trace, False
 
@@ -117,7 +117,7 @@ class CacheRunner:
         crop_bytes: bytes,
         crop_hash: str,
         doc_language: str,
-    ) -> tuple[OcrResult | None, float, ChainTrace, bool]:
+    ) -> tuple[OcrResult | None, ChainTrace, bool]:
         """
         Run OCR via the chain, consulting the provider-call cache first.
 
@@ -132,16 +132,16 @@ class CacheRunner:
             doc_language (str): Document language hint (ISO 639-1, e.g. ``"en"``).
 
         Returns:
-            tuple: ``(OcrResult | None, cost_incurred, ChainTrace, was_cache_hit)``.
+            tuple: ``(OcrResult | None, ChainTrace, was_cache_hit)``.
         """
         # 1. Guard + resolve provider/cache key.
         if ocr_chain is None:
-            return None, 0.0, TraceHelpers.skip("ocr", "no chain"), False
+            return None, TraceHelpers.skip("ocr", "no chain"), False
         resolved = CallKeyHelpers.resolve(
             ocr_chain, "ocr", "ocr", {"language": doc_language}, crop_hash,
         )
         if resolved is None:
-            return None, 0.0, TraceHelpers.skip("ocr", "no provider"), False
+            return None, TraceHelpers.skip("ocr", "no provider"), False
         _first_provider, provider_id, provider_version, call_fp = resolved
 
         # 2. Check cache.
@@ -150,7 +150,6 @@ class CacheRunner:
             cls.logger.debug(f"CacheRunner: OCR cache HIT fp={call_fp[:12]}…")
             return (
                 OcrResult.model_validate_json(cached_raw),
-                0.0,
                 TraceHelpers.cache_hit("ocr", provider_id, call_fp),
                 True,
             )
@@ -160,14 +159,14 @@ class CacheRunner:
         outcome = await ocr_chain.call(lambda p: p.extract(crop_bytes, hint))
         trace = TraceHelpers.from_outcome("ocr", outcome)
         if outcome.result is None:
-            return None, 0.0, trace, False
+            return None, trace, False
 
         # 4. Persist result for deduplication.
         await CallKeyHelpers.persist(
             provider_cache, call_fp, "ocr", provider_id, provider_version,
-            crop_hash, outcome.result.model_dump_json(), 0.0,
+            crop_hash, outcome.result.model_dump_json(),
         )
-        return outcome.result, 0.0, trace, False
+        return outcome.result, trace, False
 
     @classmethod
     async def run_vlm(
@@ -178,7 +177,7 @@ class CacheRunner:
         crop_hash: str,
         ocr_text: str | None,
         use_chart_schema: bool,
-    ) -> tuple[VlmResult | None, float, ChainTrace, bool]:
+    ) -> tuple[VlmResult | None, ChainTrace, bool]:
         """Run VLM description via the chain (delegates to VlmRunner)."""
         return await VlmRunner.run_vlm(
             vlm_chain, provider_cache, crop_bytes, crop_hash, ocr_text, use_chart_schema,

@@ -14,7 +14,7 @@ class OcrProvider(ABC):
     Abstract base class for all OCR providers.
 
     OCR providers extract text from image regions (figure crops, page scans).
-    They participate in ProviderChain escalation: when confidence falls below
+    They participate in Chain escalation: when confidence falls below
     the chain threshold the next provider in the list is tried.
 
     Class attributes:

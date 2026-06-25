@@ -48,9 +48,19 @@ Stamped by S1Helpers.stamp_parse_trace, S6Embedder, S2 TraceHelpers.from_outcome
 pipeline section BEFORE comparison → policy toggles are NOT reindex-relevant; gate `min_score`/
 `max_duration_ms` changes on parse/enrich/embed STILL flag reindex (can change which provider runs).
 
-## ProviderChain (legacy)
-Only used in tests, NOT on any live ingestion path. `_PredicateGate` synthetic config pinned to
-`failure_policy="continue"` to preserve its "raw result or None" contract. Removal = CHUNK 3 cleanup.
+## CHUNK 3 cleanup (2026-06-25) — DONE
+- `ProviderChain` + `_PredicateGate` REMOVED (files `provider_chain.py`/`predicate_gate.py` deleted;
+  `chain/__init__` + `providers/__init__` now export `Chain` instead). Were test-only, no live path.
+- `provider_call.cost` sentinel REMOVED end-to-end: column gone from `models/provider_call.py`;
+  `ProviderCallCache.put` / `CallKeyHelpers.persist` lost the `cost` param; S2 runner return tuples
+  shrank `(result, cost, trace, hit)` → `(result, trace, hit)` (cache_runner/vlm_runner/figure_routing).
+  **Migration TODO (migration-engineer):** drop column `provider_call.cost` (Float, NOT NULL,
+  server_default="0.0"), defined in `001_initial_schema.py:145`. No live migration written yet.
+- Empty-chain rule DOCUMENTED in `chain_builders.py` class docstring: REQUIRED (parse/classifier/embed)
+  raise ProviderUnavailableError on empty; OPTIONAL (ocr/vlm) return None=disabled. Behavior unchanged.
+- Per-family score semantics DOCUMENTED in `ChainGateConfig` docstring: `min_score` means
+  block-ratio (parse) / char-confidence (ocr) / structured-validity (vlm) — only comparable within a
+  family; OCR's 0.85 default is intentional (real 0-1 confidence metric), do NOT normalize.
 
 ## DEFERRED (not CHUNK 2): search/semantic chains (rerank, query_transform, S4 semantic split),
 discovery/UI overlay work. Discovery already surfaces ingestion gates → new fields appear via JSON schema.

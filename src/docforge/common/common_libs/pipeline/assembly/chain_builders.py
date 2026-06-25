@@ -34,6 +34,16 @@ class ChainBuilderHelpers:
     Each ``build_*`` classmethod instantiates the providers declared in ``specs`` (in order),
     merging deployment defaults from ``cfg`` and raising ProviderUnavailableError when a knob
     cannot be honored.  All builders are stateless apart from the passed-in ``cfg``.
+
+    Empty-chain rule (intentional, per stage category):
+    - REQUIRED stages — ``build_parser_chain`` / ``build_classifier_chain`` /
+      ``build_embed_chain`` — RAISE ``ProviderUnavailableError`` on an empty spec list.
+      These capabilities are load-bearing: a document cannot be parsed/classified/embedded
+      with zero providers, so an empty chain is a misconfiguration caught fail-fast.
+    - OPTIONAL stages — ``build_ocr_chain`` / ``build_vlm_chain`` — RETURN ``None`` on an
+      empty spec list. OCR and VLM are capability-off-when-empty: an empty chain simply means
+      "this enrichment is disabled", and S2 routing guards against a ``None`` chain. Returning
+      None (not raising) is what keeps the disabled-OCR/VLM path working.
     """
 
     def __new__(cls, *args: object, **kwargs: object) -> None:  # type: ignore[misc]

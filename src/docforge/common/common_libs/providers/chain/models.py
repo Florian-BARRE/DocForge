@@ -78,8 +78,7 @@ class ChainHelpers:
     Static utility helpers for the chain escalation primitive.
 
     Groups the IR-boundary converter (public) and the internal manipulation
-    utilities used by Chain[T, R] and ProviderChain.  No instance state —
-    instantiation is blocked.
+    utilities used by Chain[T, R].  No instance state — instantiation is blocked.
     """
 
     def __new__(cls, *args: object, **kwargs: object) -> None:  # type: ignore[misc]

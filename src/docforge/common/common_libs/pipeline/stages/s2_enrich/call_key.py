@@ -72,7 +72,6 @@ class CallKeyHelpers:
         provider_version: str,
         content_hash: str,
         result_json: str,
-        cost: float,
     ) -> None:
         """
         Persist a provider-call result so an identical future crop is a cache hit.
@@ -85,7 +84,6 @@ class CallKeyHelpers:
             provider_version (str): Provider version.
             content_hash (str): SHA-256 hex digest of the crop bytes.
             result_json (str): Serialized result payload.
-            cost (float): USD cost incurred by the call.
         """
         await provider_cache.put(
             call_fp=call_fp,
@@ -94,7 +92,6 @@ class CallKeyHelpers:
             provider_version=provider_version,
             content_hash=content_hash,
             result_json=result_json,
-            cost=cost,
         )
 
 

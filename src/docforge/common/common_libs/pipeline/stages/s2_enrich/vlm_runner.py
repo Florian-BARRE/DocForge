@@ -46,7 +46,7 @@ class VlmRunner:
         crop_hash: str,
         ocr_text: str | None,
         use_chart_schema: bool,
-    ) -> tuple[VlmResult | None, float, ChainTrace, bool]:
+    ) -> tuple[VlmResult | None, ChainTrace, bool]:
         """
         Run VLM description via the chain, consulting the provider-call cache first.
 
@@ -59,15 +59,15 @@ class VlmRunner:
             use_chart_schema (bool): Whether to request structured chart-to-data output.
 
         Returns:
-            tuple: ``(VlmResult | None, cost_incurred, ChainTrace, was_cache_hit)``.
+            tuple: ``(VlmResult | None, ChainTrace, was_cache_hit)``.
         """
         # 1. Guard + resolve provider/cache key.
         if vlm_chain is None:
-            return None, 0.0, TraceHelpers.skip("vlm", "no chain"), False
+            return None, TraceHelpers.skip("vlm", "no chain"), False
         params = {"grounding": bool(ocr_text), "chart_schema": use_chart_schema}
         resolved = CallKeyHelpers.resolve(vlm_chain, "vlm", "vlm", params, crop_hash)
         if resolved is None:
-            return None, 0.0, TraceHelpers.skip("vlm", "no provider"), False
+            return None, TraceHelpers.skip("vlm", "no provider"), False
         first_provider, provider_id, provider_version, call_fp = resolved
 
         # 2. Check cache.
@@ -76,7 +76,6 @@ class VlmRunner:
             cls.logger.debug(f"CacheRunner: VLM cache HIT fp={call_fp[:12]}…")
             return (
                 VlmResult.model_validate_json(cached_raw),
-                0.0,
                 TraceHelpers.cache_hit("vlm", provider_id, call_fp),
                 True,
             )
@@ -96,14 +95,14 @@ class VlmRunner:
         )
         trace = TraceHelpers.from_outcome("vlm", outcome)
         if outcome.result is None:
-            return None, 0.0, trace, False
+            return None, trace, False
 
         # 5. Persist result for deduplication.
         await CallKeyHelpers.persist(
             provider_cache, call_fp, "vlm", provider_id, provider_version,
-            crop_hash, outcome.result.model_dump_json(), 0.0,
+            crop_hash, outcome.result.model_dump_json(),
         )
-        return outcome.result, 0.0, trace, False
+        return outcome.result, trace, False
 
 
 # ------------------- Public API ------------------- #

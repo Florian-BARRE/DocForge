@@ -26,10 +26,24 @@ class ChainGateConfig(BaseModel):
     ``model_config`` uses ``extra="ignore"`` so gates serialized before these fields existed
     (and any since-removed knob such as ``max_cost_usd``) still load against the current model.
 
+    Per-family score semantics — IMPORTANT:
+        ``min_score`` is a single scalar, but the ``score()`` it gates means a DIFFERENT
+        thing per provider family — there is no universal "quality" metric across stages:
+          * parse (Docling) — block-coverage ratio (fraction of the page turned into IR blocks).
+          * ocr — character-level recognition confidence (a genuine model-emitted 0-1 value).
+          * vlm — structured-output validity (did the description / chart schema parse?).
+        A given ``min_score`` is therefore only comparable WITHIN one family. This is why the
+        defaults diverge: most stages use ``0.5`` (a neutral midpoint for ratio/validity
+        heuristics), while the OCR gate defaults to ``0.85`` (see ``EnrichConfig.ocr_gate``).
+        OCR's 0.85 is deliberate, not an accidental divergence: OCR confidence is a real,
+        well-calibrated 0-1 metric, so a high bar correctly escalates a low-confidence local
+        OCR result to a stronger provider. Do NOT "normalize" these defaults to one value —
+        changing 0.85 alters OCR escalation behaviour.
+
     Attributes:
-        min_score (float): Lower bound on the result's ``score()``.  An attempt whose
-            score is strictly less than this triggers escalation.  A score of ``None``
-            (unknown) never triggers escalation on its own.
+        min_score (float): Lower bound on the result's ``score()`` (see per-family note above).
+            An attempt whose score is strictly less than this triggers escalation.  A score of
+            ``None`` (unknown) never triggers escalation on its own.
         max_duration_ms (int | None): Upper bound on an attempt's wall-clock duration.
             When set, an attempt that takes strictly longer escalates to the next
             provider (the slow result is discarded). ``None`` disables the time gate.

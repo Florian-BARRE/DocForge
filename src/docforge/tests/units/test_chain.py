@@ -16,7 +16,6 @@ from common_libs.providers.chain import (
     Chain,
     ChainExhaustedError,
     ChainOutcome,
-    ProviderChain,
 )
 from common_libs.providers.chain_gate import ChainGate, ChainGateConfig
 
@@ -302,34 +301,3 @@ async def test_duration_gate_escalates_slow_attempt() -> None:
     assert outcome.final_provider == "fast"
     assert outcome.attempts[0].escalated is True  # slow tripped the time gate
     assert outcome.attempts[1].escalated is False
-
-
-# ─── Backward-compatibility wrapper ────────────────────────────────────────────
-
-
-@pytest.mark.asyncio
-async def test_legacy_provider_chain_returns_raw_result() -> None:
-    """The legacy wrapper preserves the pre-Phase-A ``raw result or None`` contract."""
-    p1 = _FakeProvider("p1", result=_ScoredResult("low", score=0.3))
-    p2 = _FakeProvider("p2", result=_ScoredResult("good", score=0.8))
-    chain = ProviderChain(
-        providers=[p1, p2],
-        escalate_if=lambda r: r.score() < 0.5,
-    )
-
-    result = await chain.call(lambda p: p.run())
-    assert result is not None and result.value == "good"
-
-
-@pytest.mark.asyncio
-async def test_legacy_provider_chain_exhaustion_returns_none() -> None:
-    """The legacy wrapper still returns None when every provider escalates."""
-    p1 = _FakeProvider("p1", result=_ScoredResult("low1", score=0.1))
-    p2 = _FakeProvider("p2", result=_ScoredResult("low2", score=0.2))
-    chain = ProviderChain(
-        providers=[p1, p2],
-        escalate_if=lambda r: r.score() < 0.9,
-    )
-
-    result = await chain.call(lambda p: p.run())
-    assert result is None

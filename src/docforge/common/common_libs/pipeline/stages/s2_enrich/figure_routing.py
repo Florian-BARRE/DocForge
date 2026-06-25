@@ -57,7 +57,7 @@ class FigureRoutingHelpers:
         """Run OCR if the kind implies text; append the trace and update counters."""
         if not (ocr_chain and kind in _OCR_KINDS):
             return None
-        ocr_result, _cost, ocr_trace, ocr_was_cache_hit = await CacheRunner.run_ocr(
+        ocr_result, ocr_trace, ocr_was_cache_hit = await CacheRunner.run_ocr(
             ocr_chain, provider_cache, crop_bytes, crop_hash, doc_language,
         )
         block_traces.append(ocr_trace)
@@ -90,7 +90,7 @@ class FigureRoutingHelpers:
         # only when enabled does a CHART request the structured schema; otherwise a CHART
         # is treated like any other figure (VLM description only, no data-table extraction).
         use_chart_schema = (kind == FigureKind.CHART) and chart_to_data
-        vlm_result, _cost, vlm_trace, vlm_was_cache_hit = await CacheRunner.run_vlm(
+        vlm_result, vlm_trace, vlm_was_cache_hit = await CacheRunner.run_vlm(
             vlm_chain, provider_cache, crop_bytes, crop_hash, ocr_text, use_chart_schema,
         )
         block_traces.append(vlm_trace)

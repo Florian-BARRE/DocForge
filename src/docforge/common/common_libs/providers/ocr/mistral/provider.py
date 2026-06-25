@@ -19,7 +19,7 @@ class MistralOcrProvider(OcrProvider, LoggerClass):
     """
     OCR provider backed by the Mistral OCR API.
 
-    Positioned as the second link in an OcrProviderChain — called only when
+    Positioned as the second link in an OCR Chain — called only when
     the local provider (PaddleOCR) returns low-confidence results.
 
     The API does not expose per-character confidence; the returned confidence
