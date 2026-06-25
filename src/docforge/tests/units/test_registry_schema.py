@@ -55,9 +55,10 @@ class TestParamsDerivation:
     def test_params_carry_type_bounds_and_defaults(self) -> None:
         """Param descriptors are derived from the model's JSON schema (type + ge/le + default)."""
         params = {p["name"]: p for p in _params_from_model(SemanticParams)}
-        # _params_from_model includes 'id' (no exclusion, unlike _params_from_instance).
-        # SemanticConfig fields: id, embed, max_tokens, min_tokens, breakpoint_percentile.
-        assert set(params) == {"id", "embed", "max_tokens", "min_tokens", "breakpoint_percentile"}
+        # _params_from_model keeps 'id' but SKIPS non-scalar fields: SemanticConfig.embed is a
+        # nested EmbedProviderConfig (not a single scalar control) and must not surface.
+        assert set(params) == {"id", "max_tokens", "min_tokens", "breakpoint_percentile"}
+        assert "embed" not in params  # nested provider config — excluded, never "[object Object]"
         bp = params["breakpoint_percentile"]
         assert bp["type"] == "int" and bp["min"] == 50 and bp["max"] == 99 and bp["default"] == 90
         assert params["max_tokens"]["type"] == "int"
@@ -65,10 +66,10 @@ class TestParamsDerivation:
     def test_adding_a_model_field_propagates(self) -> None:
         """A field added to the params model appears automatically (no hand list to update)."""
         names = {p["name"] for p in _params_from_model(SemanticParams)}
-        # _params_from_model does NOT exclude 'id' (unlike _params_from_instance which skips it).
-        # This explicit enumeration must be updated whenever SemanticConfig fields change —
+        # Scalar fields surface automatically; the nested 'embed' provider config is excluded.
+        # This explicit enumeration must be updated whenever SemanticConfig's SCALAR fields change —
         # that is the point: drift causes a loud failure here.
-        assert names == {"id", "embed", "max_tokens", "min_tokens", "breakpoint_percentile"}
+        assert names == {"id", "max_tokens", "min_tokens", "breakpoint_percentile"}
 
 
 # ─── Discriminator validation regression ─────────────────────────────────────────

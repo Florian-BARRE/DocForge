@@ -25,7 +25,7 @@ from typing import Any
 from common_libs.config.pipeline import _is_secret_key
 
 # ====== Local Project Imports ======
-from .describe_helpers import _param, _params_from_model, _rules  # noqa: F401 (re-exported)
+from .describe_helpers import _param, _params_from_model, _rules, _scalar_ui_type  # noqa: F401 (re-exported)
 from .stage_descriptors import StageDescriptorHelpers
 
 
@@ -59,16 +59,15 @@ class DescribeSurface:
         for name, field_schema in schema.get("properties", {}).items():
             if name == "id":
                 continue
+            # Skip non-scalar fields (nested provider configs such as the semantic split's
+            # ``embed``): they cannot be edited as a single control and would otherwise render
+            # as "[object Object]" in the configurator. _scalar_ui_type handles Optional unions.
+            scalar_type = _scalar_ui_type(field_schema)
+            if scalar_type is None:
+                continue
             value = getattr(instance, name, None)
             is_secret = _is_secret_key(name)
-            ftype = field_schema.get("type", "string")
-            ui_type = (
-                "secret" if is_secret
-                else "bool" if ftype == "boolean"
-                else "float" if ftype == "number"
-                else "int" if ftype == "integer"
-                else "str"
-            )
+            ui_type = "secret" if is_secret else scalar_type
             result.append({
                 "name": name,
                 "label": field_schema.get("description", name.replace("_", " ").title()),
