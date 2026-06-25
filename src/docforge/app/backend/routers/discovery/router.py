@@ -14,19 +14,22 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.routing import APIRoute
 
 # ====== Internal Project Imports ======
+from common_libs.config.pipeline import PipelineConfig
 from common_libs.domain.metadata import schema_field_dicts
+from common_libs.pipeline.assembly.config_describer import describe as describe_config_tree
 
 # ====== Local Project Imports ======
 from ...context import CONTEXT
 from ...libs.utils.error_handling import auto_handle_errors
 from .models import (
+    ConfigNode,
     ContractRef,
     DiscoveryResponse,
     EndpointDescriptor,
     FieldDescriptor,
     OperationRef,
 )
-from .overlays import build_dynamic_fields
+from .overlays import CONFIG_BEARING_ROUTES, build_dynamic_fields
 
 router = APIRouter(tags=["discovery"])
 
@@ -56,6 +59,10 @@ async def get_discovery(request: Request, collection_id: uuid.UUID | None = None
     stages = CONTEXT.registry.describe_stages()["stages"]
     schema_fields = await _load_schema_fields(collection_id) if collection_id is not None else None
 
+    # 2b. Recursive config tree (describe(PipelineConfig)) per config-bearing route prefix — built
+    # once and memoised so the two config-bearing routes (create/update) reuse the same walk.
+    config_trees = _build_config_trees()
+
     # 3. One descriptor per (route, method), enriched with its dynamic-field overlays
     endpoints: list[EndpointDescriptor] = []
     for route in request.app.routes:
@@ -67,7 +74,9 @@ async def get_discovery(request: Request, collection_id: uuid.UUID | None = None
             op = path_item.get(method.lower())
             if op is None:
                 continue
-            endpoints.append(_build_endpoint(route_name, method, route.path, route.tags, op, stages, schema_fields))
+            endpoints.append(_build_endpoint(
+                route_name, method, route.path, route.tags, op, stages, schema_fields, config_trees,
+            ))
 
     return DiscoveryResponse(
         openapi_version=openapi.get("openapi", ""),
@@ -78,6 +87,28 @@ async def get_discovery(request: Request, collection_id: uuid.UUID | None = None
 
 
 # ─── Internal ──────────────────────────────────────────────────────────────────
+
+def _build_config_trees() -> dict[str, ConfigNode]:
+    """
+    Build the recursive ``config_tree`` once per config-bearing route prefix.
+
+    Both ``create_collection`` and ``update_config`` describe the SAME ``PipelineConfig``; only
+    their absolute root path differs (``pipeline`` vs ``patch.pipeline``), so the walk is run once
+    per distinct prefix and validated into a :class:`ConfigNode`.
+
+    Returns:
+        dict[str, ConfigNode]: route function name → its config tree.
+    """
+    # 1. Describe PipelineConfig once per distinct root path (the registry's runtime config drives
+    #    provider availability — same source the flat describe surface reads).
+    cfg = CONTEXT.registry._cfg
+    by_prefix: dict[str, ConfigNode] = {}
+    for prefix in set(CONFIG_BEARING_ROUTES.values()):
+        by_prefix[prefix] = ConfigNode.model_validate(describe_config_tree(PipelineConfig, cfg, root_path=prefix))
+
+    # 2. Re-key by route function name so the endpoint builder can look it up directly.
+    return {route: by_prefix[prefix] for route, prefix in CONFIG_BEARING_ROUTES.items()}
+
 
 async def _load_schema_fields(collection_id: uuid.UUID) -> list[dict[str, Any]]:
     """Load the collection's normalized metadata schema (404 if missing) — shared with search."""
@@ -96,6 +127,7 @@ def _build_endpoint(
     op: dict[str, Any],
     stages: list[dict[str, Any]],
     schema_fields: list[dict[str, Any]] | None,
+    config_trees: dict[str, ConfigNode],
 ) -> EndpointDescriptor:
     """Assemble one endpoint descriptor from its OpenAPI operation + dynamic overlays."""
     params = op.get("parameters", [])
@@ -110,6 +142,9 @@ def _build_endpoint(
         input=_input_contract(op),
         output=_output_contract(op),
         dynamic_fields=build_dynamic_fields(route_name, stages, schema_fields),
+        # ADDITIVE: config-bearing routes (create/update) also carry the recursive tree; all
+        # other routes leave it None. The flat dynamic_fields stays until the frontend cuts over.
+        config_tree=config_trees.get(route_name),
     )
 
 

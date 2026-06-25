@@ -24,6 +24,14 @@ OVERLAYS: dict[str, list[tuple[str, str]]] = {
     "ingest_document": [("metadata", "metadata")],
 }
 
+# Routes that carry the FULL pipeline+search config in their request body — these get the recursive
+# `config_tree` (describe(PipelineConfig)) in addition to the flat `dynamic_fields`. Each maps to the
+# absolute dot-path prefix the tree is rooted at, so the frontend's setPath/patch targets line up.
+CONFIG_BEARING_ROUTES: dict[str, str] = {
+    "create_collection": "pipeline",
+    "update_config": "patch.pipeline",
+}
+
 # Per collection-scoped source: its capability + UI kind (used for both resolved + unresolved cases).
 _COLLECTION_SOURCES: dict[str, dict[str, str]] = {
     "filters": {"capability": "metadata_filter", "kind": "map"},

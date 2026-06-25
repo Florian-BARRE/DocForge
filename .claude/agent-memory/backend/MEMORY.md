@@ -29,6 +29,9 @@ repos, config, domain models, search/observability wiring). NOT the ingestion pi
 
 - [API surface map](api-surface-map.md) — 12 routers / 38 routes; prefix algebra; the 2 SSE routes +
   1 bytes route; files/* return a pre-signed URL (not bytes); ingest error ladder. MCP mirrors 36 tools.
+- [Discovery config_tree](discovery-config-tree.md) — recursive schema-driven describer (CHUNK D1);
+  auto_import must use `common_libs.providers.*` (legacy `libs.providers.*` silently fails); field→
+  category glue; ConfigNode/ProviderChoice mutual forward refs need model_rebuild; ADDITIVE to flat.
 
 ## Brique D (resource admission) — post-budget-purge
 
