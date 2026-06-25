@@ -119,15 +119,20 @@ async def get_page_screenshot(
         )
         raise HTTPException(status_code=409, detail=f"Document {document_id} not done (status={doc.status!r}).")
 
-    # 2. Download original PDF from object store
-    pdf_key = S3Helpers.key_original(doc.source_hash)
+    # 2. Download the canonical PDF to render. Prefer the Gotenberg-converted PDF (key_pdf): its
+    #    page count matches doc.page_count and it renders correctly for NON-PDF originals (pptx /
+    #    docx / html). Rendering the raw original with PyMuPDF would mis-page those (e.g. a 10-slide
+    #    pptx opens as ~4 pages → pages 4-9 would 404). Fall back to the original for PDF-native docs.
+    pdf_key = S3Helpers.key_pdf(doc.source_hash)
     if not await CONTEXT.s3.exists(pdf_key):
-        # 404 — the content-addressed original PDF blob is missing from the object store.
+        pdf_key = S3Helpers.key_original(doc.source_hash)
+    if not await CONTEXT.s3.exists(pdf_key):
+        # 404 — neither the converted PDF nor the original blob is in the object store.
         CONTEXT.logger.warning(
             f"Page screenshot rejected (404 PDF missing): collection={collection_id} "
             f"document={document_id} page={page_number} source_hash={doc.source_hash}"
         )
-        raise HTTPException(status_code=404, detail="Original PDF not available in object store.")
+        raise HTTPException(status_code=404, detail="No renderable PDF available in object store.")
     pdf_bytes = await CONTEXT.s3.download(pdf_key)
 
     # 3. Render the requested page in a thread pool (PyMuPDF is CPU-bound)
