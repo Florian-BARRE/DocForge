@@ -11,6 +11,8 @@
 # ====== Standard Library Imports ======
 from __future__ import annotations
 
+import math
+import os
 import time
 from typing import TYPE_CHECKING, Any
 
@@ -44,6 +46,7 @@ class BgeModelsService(LoggerClass):
         rerank_model_id: str,
         device_policy: str,
         fp16_requested: bool,
+        torch_num_threads: int = 0,
     ) -> None:
         """
         Args:
@@ -51,12 +54,21 @@ class BgeModelsService(LoggerClass):
             rerank_model_id (str): HuggingFace model ID for FlagReranker (cross-encoder).
             device_policy (str): BGE_DEVICE policy — "auto", "cuda", or "cpu".
             fp16_requested (bool): BGE_FP16 from config. Gated: only applied on CUDA devices.
+            torch_num_threads (int): Intra-op thread cap for torch (BGE_TORCH_NUM_THREADS).
+                0 means "auto" — derived inside load() as ceil(cpu_count / 1) since the
+                batching engine serialises model calls via a single asyncio.Lock. The engine
+                is the concurrency gate now; the service no longer needs a concurrency hint.
+                Stored here; applied at the start of load() before any torch model call.
         """
         LoggerClass.__init__(self)
         self._embed_model_id = embed_model_id
         self._rerank_model_id = rerank_model_id
         self._device_policy = device_policy
         self._fp16_requested = fp16_requested
+        self._torch_num_threads = torch_num_threads
+        # The batching engine's model_lock ensures at most one model call runs at a time,
+        # so the effective concurrency for thread-count auto-derivation is always 1.
+        self._max_concurrency = 1
 
         # Set by load() after device resolution; None until the service is started.
         self._resolved_device: str | None = None
@@ -143,10 +155,33 @@ class BgeModelsService(LoggerClass):
             f"device={resolved.device}, use_fp16={resolved.use_fp16}"
         )
 
-        # 2. Defer the heavy FlagEmbedding import to this moment — the container is booting
+        # 2. Defer the heavy FlagEmbedding import to this moment — the container is booting.
+        # Torch is bundled with FlagEmbedding, so import it here too, right after, to apply
+        # the thread cap before any model is instantiated.
         from FlagEmbedding import BGEM3FlagModel, FlagReranker  # noqa: PLC0415
+        import torch  # noqa: PLC0415
 
-        # 3. Load the embedding model (dense + sparse heads both available from one instance).
+        # 3. Cap torch intra-op threads to prevent CPU oversubscription under concurrent load.
+        # When N requests each spawn torch thread pools across all cores, the OS scheduler
+        # thrashes and latency explodes non-linearly. The cap distributes available cores
+        # across the allowed concurrent calls (see BGE_MAX_CONCURRENCY / the semaphore).
+        # Only relevant on CPU; on CUDA this has no meaningful effect but is harmless.
+        if self._torch_num_threads > 0:
+            # Explicit override from BGE_TORCH_NUM_THREADS.
+            n_threads = self._torch_num_threads
+        else:
+            # Auto: share cores evenly across concurrent slots, minimum 1.
+            cpu_count = os.cpu_count() or 1
+            n_threads = max(1, math.ceil(cpu_count / max(1, self._max_concurrency)))
+        torch.set_num_threads(n_threads)
+        self.logger.info(
+            f"torch intra-op threads set to {n_threads} "
+            f"(BGE_TORCH_NUM_THREADS={self._torch_num_threads}, "
+            f"max_concurrency={self._max_concurrency}, "
+            f"cpu_count={os.cpu_count() or 1})"
+        )
+
+        # 4. Load the embedding model (dense + sparse heads both available from one instance).
         # The `devices` parameter accepts a device string ("cuda" / "cpu") or list thereof.
         self.logger.info(
             f"Loading embed model: {self._embed_model_id} "
@@ -159,7 +194,7 @@ class BgeModelsService(LoggerClass):
         )
         self.logger.info(f"Embed model loaded -> {self._embed_model_id}")
 
-        # 4. Load the cross-encoder reranker with the same device settings.
+        # 5. Load the cross-encoder reranker with the same device settings.
         self.logger.info(
             f"Loading reranker: {self._rerank_model_id} "
             f"(device={resolved.device}, fp16={resolved.use_fp16})"
@@ -255,6 +290,39 @@ class BgeModelsService(LoggerClass):
             f"encode_sparse: {n} texts -> {len(result)} token-lists in {elapsed:.3f}s (device={device})"
         )
         return result
+
+    def compute_rerank_scores_flat(self, pairs: list[list[str]]) -> list[float]:
+        """
+        Score a flat list of [query, text] pairs and return raw float scores.
+
+        This is the batching-engine entry point: the engine builds the full pair list
+        from multiple requests, calls this method once, then scatters the flat score
+        list back to each request's future. Scores are sigmoid-normalized to [0, 1].
+
+        Args:
+            pairs (list[list[str]]): Each inner list is [query, candidate_text].
+                Must be non-empty.
+
+        Returns:
+            list[float]: One sigmoid-normalized score per input pair, in input order.
+        """
+        device = self._resolved_device or "unknown"
+        n = len(pairs)
+        self.logger.debug(f"compute_rerank_scores_flat: {n} pairs, device={device}")
+
+        # 1. Time the scoring call
+        t0 = time.perf_counter()
+        scores = self.reranker.compute_score(pairs, normalize=True)
+        elapsed = time.perf_counter() - t0
+
+        # 2. Normalise to list — compute_score returns a scalar when n=1
+        if not isinstance(scores, list):
+            scores = [scores]
+
+        self.logger.debug(
+            f"compute_rerank_scores_flat: {n} pairs -> {len(scores)} scores in {elapsed:.3f}s (device={device})"
+        )
+        return [float(s) for s in scores]
 
     def compute_rerank_scores(
         self, query: str, texts: list[str]

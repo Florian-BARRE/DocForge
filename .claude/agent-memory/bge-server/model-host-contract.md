@@ -44,6 +44,10 @@ This is INFRA (a model host), deliberately OUTSIDE the docforge layer DAG.
 - `BGE_DEVICE` (default `auto`), `BGE_M3_MODEL` (default `BAAI/bge-m3`),
   `BGE_RERANKER_MODEL` (default `BAAI/bge-reranker-v2-m3`), `BGE_FP16` (default `false`),
   `BGE_M3_MAX_LENGTH` (default `8192`), plus 5 `LOGGING_*` vars.
+- `BGE_MAX_CONCURRENCY` (default `2`): semaphore limit on simultaneous inference calls across
+  all three endpoints. Requests beyond the limit queue (asyncio wait), never reject.
+- `BGE_TORCH_NUM_THREADS` (default `0` = auto = `ceil(cpu_count / BGE_MAX_CONCURRENCY)`):
+  `torch.set_num_threads()` cap applied once in `BgeModelsService.load()`.
 - Template: `services/bge_server/.env.example`.
 
 **Why it exists:** off-the-shelf HuggingFace TEI crash-loops on BGE-M3's ONNX backend (exit-0,
@@ -84,6 +88,17 @@ semantic scores: GPU-answer 0.967 vs off-topic 2e-5). fp16 keeps both models wel
 `http://bge_server:80` (per-collection config, never `.env`). If the compose service name ever changes,
 the structural default `http://bge_server:80` must change in lockstep across the embed/rerank/semantic
 config defaults in `common_libs` (see code-reviewer's product memory).
+
+**Concurrency control (added 2026-06-25):** `asyncio.Semaphore(BGE_MAX_CONCURRENCY)` created in
+`lifespan.py` step 3, stored on `CONTEXT.inference_semaphore`. The three inference router handlers
+each do `async with CONTEXT.inference_semaphore:` around the model call. Empty-list fast-paths
+return before acquiring. Torch threads capped via `torch.set_num_threads()` in `BgeModelsService.load()`
+step 3 (auto = `ceil(cpu_count / max_concurrency)`, override via `BGE_TORCH_NUM_THREADS`).
+
+**Readiness gate (added 2026-06-25):** `GET /health` returns HTTP 503 + `{status:"loading", ready:False}`
+while models load (checks `bge_models._embed_model is None`). Returns HTTP 200 + `{ready:True}` after.
+`HealthResponse` now has a `ready: bool` field. The TEI callers that checked for 200/ok still work;
+the compose healthcheck already uses `start_period=300s` and will retry on 503.
 
 **Logging coverage (full):** `LoggerClass` on `BgeModelsService` (`self.logger`); module-level
 `loggerplusplus.bind` for lifespan (`BGEServer`), routers (`InferenceRouter`/`HealthRouter`),

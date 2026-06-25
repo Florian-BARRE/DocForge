@@ -2,15 +2,17 @@
 # Route definitions for POST /embed, POST /embed_sparse, and POST /rerank.
 # These three endpoints implement the TEI HTTP contract so the DocForge `tei` embed provider
 # and `bge_reranker` rerank provider can drive this service with zero provider-side changes.
-# All inference is delegated to CONTEXT.bge_models (BgeModelsService); no model logic here.
+# All inference is delegated to CONTEXT.batching_engine; no model logic here.
+# Back-pressure: QueueFullError from the engine is translated to HTTP 503 with Retry-After: 1.
 
 # ====== Third-Party Library Imports ======
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from loggerplusplus import loggerplusplus
 
 # ====== Internal Project Imports ======
 from backend.context import CONTEXT
 from backend.libs.utils.error_handling import auto_handle_errors
+from libs.batching import QueueFullError
 
 # ====== Local Project Imports ======
 from .helpers import InferenceHelpers
@@ -27,11 +29,15 @@ logger = loggerplusplus.bind(identifier="InferenceRouter")
 @auto_handle_errors
 async def embed(req: EmbedRequest) -> list[list[float]]:
     """
-    Dense embeddings — mirrors TEI's POST /embed.
+    Dense embeddings -- mirrors TEI's POST /embed.
 
     Encodes each input text into a 1024-dimensional L2-normalized float vector using
     BGE-M3's dense head. FlagEmbedding always normalizes dense output, so the ``normalize``
     field is accepted for TEI parity but has no additional effect.
+
+    Concurrency: requests are submitted to the batching engine's dense queue. Multiple
+    concurrent requests are coalesced into single batches to maximize GPU/CPU utilization.
+    When the queue is full, HTTP 503 + Retry-After: 1 is returned immediately.
 
     Args:
         req (EmbedRequest): Request body with texts to embed.
@@ -45,22 +51,32 @@ async def embed(req: EmbedRequest) -> list[list[float]]:
     # 2. Log batch size at DEBUG — never log text contents (may be large / sensitive)
     logger.debug(f"POST /embed: {len(texts)} inputs")
 
+    # 3. Empty input — return immediately without touching the engine
     if not texts:
         return []
 
-    # 3. Delegate encode to the model service via CONTEXT
-    return CONTEXT.bge_models.encode_dense(texts, CONTEXT.CONFIG.BGE_M3_MAX_LENGTH)
+    # 4. Submit to the dense batching worker; translate back-pressure to HTTP 503
+    try:
+        return await CONTEXT.batching_engine.submit_embed_dense(texts)
+    except QueueFullError:
+        raise HTTPException(
+            status_code=503,
+            detail={"error": "server overloaded — try again shortly"},
+            headers={"Retry-After": "1"},
+        )
 
 
 @router.post("/embed_sparse", response_model=list[list[SparseToken]])
 @auto_handle_errors
 async def embed_sparse(req: EmbedRequest) -> list[list[SparseToken]]:
     """
-    Sparse (lexical) embeddings — mirrors TEI's POST /embed_sparse response shape.
+    Sparse (lexical) embeddings -- mirrors TEI's POST /embed_sparse response shape.
 
     BGE-M3's ``lexical_weights`` dict is re-shaped to TEI's
     ``[[{"index": int, "value": float}, ...], ...]`` format so the DocForge ``tei`` provider
     parses it unchanged.
+
+    Concurrency: requests are submitted to the batching engine's sparse queue.
 
     Args:
         req (EmbedRequest): Request body with texts to embed.
@@ -71,16 +87,24 @@ async def embed_sparse(req: EmbedRequest) -> list[list[SparseToken]]:
     # 1. Normalize the TEI inputs field (str | list[str]) into a list
     texts = InferenceHelpers.as_list(req.inputs)
 
-    # 2. Log batch size at DEBUG — never log text contents (may be large / sensitive)
+    # 2. Log batch size at DEBUG
     logger.debug(f"POST /embed_sparse: {len(texts)} inputs")
 
+    # 3. Empty input — return immediately
     if not texts:
         return []
 
-    # 3. Delegate sparse encode to the model service via CONTEXT
-    raw = CONTEXT.bge_models.encode_sparse(texts, CONTEXT.CONFIG.BGE_M3_MAX_LENGTH)
+    # 4. Submit to the sparse batching worker
+    try:
+        raw = await CONTEXT.batching_engine.submit_embed_sparse(texts)
+    except QueueFullError:
+        raise HTTPException(
+            status_code=503,
+            detail={"error": "server overloaded — try again shortly"},
+            headers={"Retry-After": "1"},
+        )
 
-    # 4. Wrap each dict into the typed SparseToken model for response validation
+    # 5. Wrap each dict into the typed SparseToken model for response validation
     return [[SparseToken(**tok) for tok in row] for row in raw]
 
 
@@ -88,11 +112,13 @@ async def embed_sparse(req: EmbedRequest) -> list[list[SparseToken]]:
 @auto_handle_errors
 async def rerank(req: RerankRequest) -> list[RerankResult]:
     """
-    Cross-encoder rerank — mirrors TEI's POST /rerank.
+    Cross-encoder rerank -- mirrors TEI's POST /rerank.
 
     Scores each candidate text against the query using BGE-reranker-v2-m3. Scores are
-    sigmoid-normalized to [0, 1]. Results are returned in INPUT order — the DocForge
+    sigmoid-normalized to [0, 1]. Results are returned in INPUT order -- the DocForge
     ``bge_reranker`` provider re-sorts by index.
+
+    Concurrency: requests are submitted to the batching engine's rerank queue.
 
     Args:
         req (RerankRequest): Request body with query and candidate texts.
@@ -103,12 +129,19 @@ async def rerank(req: RerankRequest) -> list[RerankResult]:
     # 1. Log batch size at DEBUG — never log query text or candidate contents
     logger.debug(f"POST /rerank: {len(req.texts)} candidates")
 
-    # 2. Empty candidate list — return immediately
+    # 2. Empty candidate list — return immediately (no engine call needed)
     if not req.texts:
         return []
 
-    # 3. Delegate rerank scoring to the model service via CONTEXT
-    raw = CONTEXT.bge_models.compute_rerank_scores(req.query, req.texts)
+    # 3. Submit to the rerank batching worker
+    try:
+        raw = await CONTEXT.batching_engine.submit_rerank(req.query, req.texts)
+    except QueueFullError:
+        raise HTTPException(
+            status_code=503,
+            detail={"error": "server overloaded — try again shortly"},
+            headers={"Retry-After": "1"},
+        )
 
     # 4. Wrap each dict into the typed RerankResult model for response validation
     return [RerankResult(**item) for item in raw]

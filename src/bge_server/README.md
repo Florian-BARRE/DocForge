@@ -42,15 +42,22 @@ src/bge_server/
   libs/
     bge_models/
       service.py         # BgeModelsService(LoggerClass) -- loads/unloads both models, encode/rerank
+      device.py          # DeviceResolver -- BGE_DEVICE policy -> concrete device + fp16 gate
+    batching/
+      models.py          # BatchItem/EmbedItem/RerankItem dataclasses + QueueFullError
+      worker.py          # BatchQueueWorker(LoggerClass) -- one generic micro-batcher per op
+      engine.py          # BatchingEngine(LoggerClass) -- owns 3 workers + shared model_lock
   backend/
     app.py               # create_app() -- FastAPI factory, registers routers
-    context.py           # CONTEXT static service locator (CONFIG + bge_models)
-    lifespan.py          # lifespan() -- banner + config log + model load/unload
+    context.py           # CONTEXT static service locator (CONFIG + bge_models + batching_engine)
+    lifespan.py          # lifespan() -- banner + config log + model load + engine start/stop
     libs/utils/
       error_handling.py  # @auto_handle_errors decorator for all routes
     routers/
       health/            # GET /health
-      inference/         # POST /embed, /embed_sparse, /rerank
+      inference/         # POST /embed, /embed_sparse, /rerank (routes through batching engine)
+  tests/unit/
+    test_batching.py     # unit tests for the batching engine (mocked models, no torch)
 services/bge_server/
   .env.example           # all env var defaults
 ```
@@ -125,9 +132,17 @@ All vars have safe defaults -- the service starts with no `.env` file. Copy
 |---|---|---|
 | `BGE_M3_MODEL` | `BAAI/bge-m3` | HuggingFace model ID for the embed model |
 | `BGE_RERANKER_MODEL` | `BAAI/bge-reranker-v2-m3` | HuggingFace model ID for the reranker |
+| `BGE_DEVICE` | `auto` | Device policy: `auto` / `cuda` / `cpu` |
 | `BGE_FP16` | `false` | fp16 precision (GPU only; leave false on CPU) |
 | `BGE_M3_MAX_LENGTH` | `8192` | Max token length for encode() calls |
+| `BGE_MAX_BATCH_SIZE` | `32` | Max units (texts/pairs) per batch |
+| `BGE_MAX_WAIT_MS` | `10` | Batch formation window in milliseconds |
+| `BGE_MAX_QUEUE_SIZE` | `256` | Per-op queue capacity; full -> HTTP 503 + Retry-After |
+| `BGE_TORCH_NUM_THREADS` | `0` | Intra-op torch threads (0 = auto) |
 | `LOGGING_CONSOLE_LEVEL` | `INFO` | Console log level |
 | `LOGGING_LPP_FORMAT` | `ShortFormat` | loggerplusplus format (ShortFormat or DebugFormat) |
 | `LOGGING_ENABLE_CONSOLE` | `true` | Enable stdout logging |
 | `LOGGING_ENABLE_FILE` | `false` | Enable rotating file logs under `logs/` |
+
+**Disable batching:** set `BGE_MAX_BATCH_SIZE=1` and `BGE_MAX_WAIT_MS=0` for per-request processing
+(no wait overhead, useful for debugging or environments where latency matters more than throughput).

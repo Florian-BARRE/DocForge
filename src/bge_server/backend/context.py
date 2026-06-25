@@ -8,6 +8,7 @@ from typing import Type
 
 # ====== Internal Project Imports ======
 from config_loader import BgeServerConfig
+from libs.batching import BatchingEngine
 from libs.bge_models import BgeModelsService
 
 
@@ -16,7 +17,8 @@ class CONTEXT:
     Shared application context for the BGE model-suite micro-service.
 
     A typed static service locator — never instantiated. All attributes are set during
-    startup (entrypoint.py injects config; lifespan.py injects the loaded model service).
+    startup (entrypoint.py injects config; lifespan.py injects the loaded model service
+    and the batching engine).
     """
 
     # ── Configuration ────────────────────────────────────────────────────────────
@@ -25,3 +27,11 @@ class CONTEXT:
     # ── Model service ─────────────────────────────────────────────────────────────
     # Holds the loaded BGE embed + rerank models after lifespan startup completes.
     bge_models: BgeModelsService
+
+    # ── Dynamic batching engine ───────────────────────────────────────────────────
+    # Owns three BatchQueueWorkers (dense / sparse / rerank) plus a shared asyncio.Lock
+    # that serialises all model calls. Routes submit to the engine rather than calling
+    # the model service directly — the engine handles batching, lock, to_thread, and scatter.
+    # Created and started in lifespan.py after models are loaded. Stopped in the finally
+    # block before models are unloaded.
+    batching_engine: BatchingEngine

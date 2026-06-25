@@ -80,13 +80,36 @@ class BgeServerConfig(EnvConfigLoader):
     # Maximum token length passed to FlagEmbedding's encode call.
     BGE_M3_MAX_LENGTH: int = env("BGE_M3_MAX_LENGTH", cast=int, default="8192")
 
+    # ───── Dynamic batching ─────
+    # Maximum number of UNITS (texts for embed/sparse, query+text pairs for rerank) to include
+    # in a single batch. A single request whose cost exceeds this limit is still admitted whole
+    # and processed as a batch of one — FlagEmbedding handles its own internal chunking.
+    # Effective range: 1..∞. With max_batch_size=1 + max_wait_ms=0 the engine degrades to
+    # per-request processing (no batching overhead, useful for debugging or very low load).
+    BGE_MAX_BATCH_SIZE: int = env("BGE_MAX_BATCH_SIZE", cast=int, default="32")
+    # Batch formation window in milliseconds. After the first item arrives, the worker waits up
+    # to this many ms for additional items before dispatching the batch. 0 = process immediately
+    # with whatever is available (effectively disables wait-based batching).
+    BGE_MAX_WAIT_MS: int = env("BGE_MAX_WAIT_MS", cast=int, default="10")
+    # Maximum number of pending items in the per-op bounded queue. When full, submit() raises
+    # QueueFullError and the router responds HTTP 503 with Retry-After: 1. Raise this on
+    # high-traffic servers or lower it for tighter back-pressure control.
+    BGE_MAX_QUEUE_SIZE: int = env("BGE_MAX_QUEUE_SIZE", cast=int, default="256")
+    # Number of intra-op threads torch may use PER inference call (torch.set_num_threads).
+    # 0 = auto: the service derives a reasonable value at startup as cpu_count/max_concurrency
+    # (rounded up, minimum 1) so the combined thread budget stays near the total core count.
+    # Set explicitly to override the auto derivation (e.g. BGE_TORCH_NUM_THREADS=4).
+    BGE_TORCH_NUM_THREADS: int = env("BGE_TORCH_NUM_THREADS", cast=int, default="0")
+
     @classmethod
     def validate(cls) -> None:
         """
         Validate env-derived config values beyond simple type casting.
 
         Raises:
-            ValueError: When BGE_DEVICE is not one of the accepted policy values.
+            ValueError: When BGE_DEVICE is not one of the accepted policy values, or when
+                any of the batching knobs has a value that would make the engine behave
+                incorrectly (e.g. zero or negative batch size / queue size).
         """
         super().validate()
         # Import here to avoid a circular dep at class-body evaluation time;
@@ -98,6 +121,12 @@ class BgeServerConfig(EnvConfigLoader):
                 f"BGE_DEVICE='{cls.BGE_DEVICE}' is not a valid device policy. "
                 f"Accepted values: {sorted(VALID_BGE_DEVICE_POLICIES)}"
             )
+        if cls.BGE_MAX_BATCH_SIZE < 1:
+            raise ValueError(f"BGE_MAX_BATCH_SIZE must be >= 1, got {cls.BGE_MAX_BATCH_SIZE}")
+        if cls.BGE_MAX_WAIT_MS < 0:
+            raise ValueError(f"BGE_MAX_WAIT_MS must be >= 0, got {cls.BGE_MAX_WAIT_MS}")
+        if cls.BGE_MAX_QUEUE_SIZE < 1:
+            raise ValueError(f"BGE_MAX_QUEUE_SIZE must be >= 1, got {cls.BGE_MAX_QUEUE_SIZE}")
 
 
 # ─── Apply logging configuration AFTER class definition ───

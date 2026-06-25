@@ -37,11 +37,13 @@ def _build_app() -> FastAPI:
     # 2. Instantiate the model service (models are NOT loaded yet — lifespan calls .load()).
     # Device resolution (torch.cuda.is_available) is deferred to load() inside the lifespan,
     # not done here, so this wiring step is cheap and has no ML-stack dependencies.
+    # max_concurrency is forwarded so load() can auto-derive the torch thread budget.
     CONTEXT.bge_models = BgeModelsService(
         embed_model_id=BgeServerConfig.BGE_M3_MODEL,
         rerank_model_id=BgeServerConfig.BGE_RERANKER_MODEL,
         device_policy=BgeServerConfig.BGE_DEVICE,
         fp16_requested=BgeServerConfig.BGE_FP16,
+        torch_num_threads=BgeServerConfig.BGE_TORCH_NUM_THREADS,
     )
 
     # 3. Create the FastAPI app (lifespan registered inside create_app)
