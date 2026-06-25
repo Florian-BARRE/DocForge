@@ -184,3 +184,121 @@ class TestGetPdf:
         CONTEXT.document_repo.get_by_id.return_value = doc
         response = await client.get(_url(col_id, doc_id, "pdf"))
         assert response.status_code == 409
+
+
+class TestGetFigureCrop:
+    """GET /api/v1/collections/{collection_id}/documents/{document_id}/figures/{block_id}"""
+
+    @pytest.mark.asyncio
+    async def test_figure_returns_200_when_blob_present(
+        self, client: httpx.AsyncClient
+    ) -> None:
+        """Done doc + blob in S3 → 200 with a presigned URL."""
+        col_id = uuid.uuid4()
+        doc_id = uuid.uuid4()
+        doc = make_document_orm(id=doc_id, collection_id=col_id, status="done", source_hash="abc")
+        CONTEXT.document_repo.get_by_id.return_value = doc
+        CONTEXT.s3.exists.return_value = True
+        CONTEXT.s3.get_presigned_url.return_value = "https://s3.example.com/fig.png"
+        response = await client.get(_url(col_id, doc_id, "figures/blk-123"))
+        assert response.status_code == 200
+        body = response.json()
+        assert body["url"] == "https://s3.example.com/fig.png"
+
+    @pytest.mark.asyncio
+    async def test_figure_returns_404_when_blob_missing(
+        self, client: httpx.AsyncClient
+    ) -> None:
+        """Done doc but blob absent in S3 → 404."""
+        col_id = uuid.uuid4()
+        doc_id = uuid.uuid4()
+        doc = make_document_orm(id=doc_id, collection_id=col_id, status="done", source_hash="abc")
+        CONTEXT.document_repo.get_by_id.return_value = doc
+        CONTEXT.s3.exists.return_value = False
+        response = await client.get(_url(col_id, doc_id, "figures/blk-missing"))
+        assert response.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_figure_returns_409_when_not_done(
+        self, client: httpx.AsyncClient
+    ) -> None:
+        """Document not done → 409."""
+        col_id = uuid.uuid4()
+        doc_id = uuid.uuid4()
+        doc = make_document_orm(id=doc_id, collection_id=col_id, status="running")
+        CONTEXT.document_repo.get_by_id.return_value = doc
+        response = await client.get(_url(col_id, doc_id, "figures/blk-1"))
+        assert response.status_code == 409
+
+    @pytest.mark.asyncio
+    async def test_figure_returns_404_for_unknown_document(
+        self, client: httpx.AsyncClient
+    ) -> None:
+        """Document not found → 404."""
+        CONTEXT.document_repo.get_by_id.return_value = None
+        response = await client.get(_url(uuid.uuid4(), uuid.uuid4(), "figures/blk-1"))
+        assert response.status_code == 404
+
+
+class TestCrossCollectionScope:
+    """
+    Cross-collection IDOR guard: _require_done and _require_document check that
+    ``doc.collection_id == path collection_id``.
+
+    A document that EXISTS in the DB but belongs to a DIFFERENT collection must be rejected
+    with 404 (not served), so a caller with READ on collection A cannot access artefacts from
+    collection B by guessing a document id.
+    """
+
+    @pytest.mark.asyncio
+    async def test_original_rejects_doc_from_different_collection(
+        self, client: httpx.AsyncClient
+    ) -> None:
+        """doc.collection_id != path → 404 (IDOR guard on original)."""
+        path_col = uuid.uuid4()
+        doc_col = uuid.uuid4()   # different collection
+        doc_id = uuid.uuid4()
+        # The document exists but belongs to doc_col, not path_col
+        doc = make_document_orm(id=doc_id, collection_id=doc_col, status="done")
+        CONTEXT.document_repo.get_by_id.return_value = doc
+        response = await client.get(_url(path_col, doc_id, "original"))
+        assert response.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_pdf_rejects_doc_from_different_collection(
+        self, client: httpx.AsyncClient
+    ) -> None:
+        """doc.collection_id != path → 404 (IDOR guard on pdf)."""
+        path_col = uuid.uuid4()
+        doc_col = uuid.uuid4()
+        doc_id = uuid.uuid4()
+        doc = make_document_orm(id=doc_id, collection_id=doc_col, status="done")
+        CONTEXT.document_repo.get_by_id.return_value = doc
+        response = await client.get(_url(path_col, doc_id, "pdf"))
+        assert response.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_markdown_rejects_doc_from_different_collection(
+        self, client: httpx.AsyncClient
+    ) -> None:
+        """doc.collection_id != path → 404 (IDOR guard on markdown)."""
+        path_col = uuid.uuid4()
+        doc_col = uuid.uuid4()
+        doc_id = uuid.uuid4()
+        doc = make_document_orm(id=doc_id, collection_id=doc_col, status="done")
+        CONTEXT.document_repo.get_by_id.return_value = doc
+        response = await client.get(_url(path_col, doc_id, "markdown"))
+        assert response.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_figure_rejects_doc_from_different_collection(
+        self, client: httpx.AsyncClient
+    ) -> None:
+        """doc.collection_id != path → 404 (IDOR guard on figures)."""
+        path_col = uuid.uuid4()
+        doc_col = uuid.uuid4()
+        doc_id = uuid.uuid4()
+        doc = make_document_orm(id=doc_id, collection_id=doc_col, status="done")
+        CONTEXT.document_repo.get_by_id.return_value = doc
+        response = await client.get(_url(path_col, doc_id, "figures/blk-1"))
+        assert response.status_code == 404

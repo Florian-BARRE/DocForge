@@ -4,6 +4,15 @@
 # never broken. Provides: a shared LiveClient, a session-built synthetic corpus, a once-ingested
 # shared collection (read-only tests reuse it), and a collection factory with auto-cleanup
 # (mutating tests get isolated, disposable collections).
+#
+# Collection naming: `e2e-{label}-{YYYYMMDD-HHMMSS}` using the exact creation datetime.
+#   - `make_collection`: label defaults to the pytest test node name (derived from `request`).
+#   - `ingested_corpus`: label is the stable literal `corpus`.
+#   - Callers may pass `label=` to `make_collection` to override the auto-derived name.
+#
+# Cleanup policy: collections are deleted on teardown by default.
+#   - Set env var `DOCFORGE_TEST_KEEP_COLLECTIONS=true` to SKIP deletion and print the kept
+#     collection ids + names instead (useful for debugging in the UI after a test run).
 
 # ====== Standard Library Imports ======
 from __future__ import annotations
@@ -11,6 +20,7 @@ from __future__ import annotations
 import os
 import uuid
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any, Callable, Iterator
 
 # ====== Third-Party Library Imports ======
@@ -30,6 +40,12 @@ RERANKER_URL = os.environ.get("DOCFORGE_TEST_RERANKER_URL", "http://localhost:10
 # Set DOCFORGE_TEST_API_TOKEN to a root API key to run the live suite against a secured stack.
 API_TOKEN = os.environ.get("DOCFORGE_TEST_API_TOKEN", "")
 
+# When truthy, teardown skips collection deletion and prints kept ids/names so the user can
+# inspect them in the UI. Set DOCFORGE_TEST_KEEP_COLLECTIONS=true to activate.
+_KEEP_COLLECTIONS: bool = os.environ.get("DOCFORGE_TEST_KEEP_COLLECTIONS", "").lower() in (
+    "1", "true", "yes",
+)
+
 # Dense-only embed: the deployed TEI serves BGE-M3 WITHOUT a sparse head, so embed_sparse
 # MUST be False (a /embed_sparse call would 424). Shared by every collection the suite creates.
 DENSE_ONLY_PIPELINE: dict[str, Any] = {"embed": {"chain": [{"id": "bge_server", "base_url": "http://bge_server:80", "embed_sparse": False}]}}
@@ -46,11 +62,22 @@ CORPUS_METADATA_SCHEMA: list[dict[str, Any]] = [
 ]
 
 
+def _ts() -> str:
+    """Return the current datetime as a compact YYYYMMDD-HHMMSS string for collection names."""
+    return datetime.now().strftime("%Y%m%d-%H%M%S")
+
+
+def _collection_name(label: str) -> str:
+    """Build the standard e2e collection name: ``e2e-{label}-{YYYYMMDD-HHMMSS}``."""
+    return f"e2e-{label}-{_ts()}"
+
+
 @dataclass
 class IngestedCorpus:
     """A shared collection with the whole ingestable corpus already processed."""
 
     collection_id: str
+    collection_name: str
     client: LiveClient
     manifest: CorpusManifest
     # key -> last observed document payload (includes status / chunk_count / page_count).
@@ -88,34 +115,50 @@ def corpus() -> CorpusManifest:
 
 
 @pytest.fixture
-def make_collection(live_client: LiveClient) -> Iterator[Callable[..., dict]]:
+def make_collection(
+    live_client: LiveClient,
+    request: pytest.FixtureRequest,
+) -> Iterator[Callable[..., dict]]:
     """
     Factory creating disposable collections, each cleaned up after the test.
 
     The returned callable accepts overrides for the create-collection body; sensible
     corpus-friendly defaults (dense-only embed, all corpus formats) are applied.
-    """
-    created: list[str] = []
 
-    def _make(**overrides: Any) -> dict:
-        # 1. Compose the create body from corpus-friendly defaults + caller overrides
+    Collection naming: ``e2e-{label}-{YYYYMMDD-HHMMSS}`` where label defaults to the
+    pytest test node name. Pass ``label=`` explicitly to override.
+
+    Cleanup: collections are deleted on teardown unless ``DOCFORGE_TEST_KEEP_COLLECTIONS``
+    is truthy, in which case ids + names are printed and deletion is skipped.
+    """
+    # Track (id, name) pairs for teardown reporting
+    created: list[tuple[str, str]] = []
+
+    def _make(label: str | None = None, **overrides: Any) -> dict:
+        # 1. Derive the label from the test node name when not explicitly provided
+        resolved_label = label if label is not None else request.node.name
+        # 2. Compose the create body from corpus-friendly defaults + caller overrides
         body: dict[str, Any] = {
-            "name": overrides.pop("name", f"e2e-{uuid.uuid4().hex[:8]}"),
+            "name": overrides.pop("name", _collection_name(resolved_label)),
             "supported_formats": overrides.pop("supported_formats", CORPUS_FORMATS),
             "pipeline": overrides.pop("pipeline", DENSE_ONLY_PIPELINE),
         }
         body.update(overrides)
-        # 2. Create and register for teardown
+        # 3. Create and register for teardown
         status, payload = live_client.post("/collections/create", body)
         assert status == 201, f"collection create failed ({status}): {payload}"
-        created.append(payload["id"])
+        created.append((payload["id"], body["name"]))
         return payload
 
     yield _make
 
-    # 3. Cascade-delete every collection this test created
-    for collection_id in created:
-        live_client.delete(f"/collections/{collection_id}/delete")
+    # 4. Teardown: delete or print kept collections depending on the keep flag
+    if _KEEP_COLLECTIONS:
+        for col_id, col_name in created:
+            print(f"\n[KEPT] collection id={col_id} name={col_name!r}")
+    else:
+        for col_id, _ in created:
+            live_client.delete(f"/collections/{col_id}/delete")
 
 
 @pytest.fixture(scope="session")
@@ -126,12 +169,16 @@ def ingested_corpus(live_client: LiveClient, corpus: CorpusManifest) -> Iterator
     Read-only tests (search / get / pages / chunks / files / list / jobs) reuse this so the
     expensive Gotenberg -> Docling -> embed path runs a single time per session. Ingestion
     failures are recorded (not raised) so one bad format never blocks the others' tests.
+
+    Collection naming: ``e2e-corpus-{YYYYMMDD-HHMMSS}`` (stable label ``corpus``).
+    Cleanup: deleted on session teardown unless ``DOCFORGE_TEST_KEEP_COLLECTIONS`` is truthy.
     """
     # 1. Create the shared collection with the corpus metadata schema
+    col_name = _collection_name("corpus")
     status, collection = live_client.post(
         "/collections/create",
         {
-            "name": f"e2e-corpus-{uuid.uuid4().hex[:8]}",
+            "name": col_name,
             "supported_formats": CORPUS_FORMATS,
             "pipeline": DENSE_ONLY_PIPELINE,
             "metadata_schema": CORPUS_METADATA_SCHEMA,
@@ -139,7 +186,12 @@ def ingested_corpus(live_client: LiveClient, corpus: CorpusManifest) -> Iterator
     )
     assert status == 201, f"shared collection create failed ({status}): {collection}"
     collection_id = collection["id"]
-    shared = IngestedCorpus(collection_id=collection_id, client=live_client, manifest=corpus)
+    shared = IngestedCorpus(
+        collection_id=collection_id,
+        collection_name=col_name,
+        client=live_client,
+        manifest=corpus,
+    )
 
     # 2. Fire all ingests first (they process concurrently in the worker pool)
     pending: dict[str, str] = {}
@@ -155,5 +207,8 @@ def ingested_corpus(live_client: LiveClient, corpus: CorpusManifest) -> Iterator
 
     yield shared
 
-    # 4. Cascade-delete the shared collection
-    live_client.delete(f"/collections/{collection_id}/delete")
+    # 4. Teardown: delete or print kept collection depending on the keep flag
+    if _KEEP_COLLECTIONS:
+        print(f"\n[KEPT] corpus collection id={collection_id} name={col_name!r}")
+    else:
+        live_client.delete(f"/collections/{collection_id}/delete")

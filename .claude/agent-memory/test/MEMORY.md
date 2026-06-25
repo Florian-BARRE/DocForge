@@ -4,7 +4,7 @@ DocForge tests live in `src/docforge/tests/`. Multi-root pytest with a few non-o
 
 ## Run commands (from `src/docforge/`)
 
-- Units: `unset VIRTUAL_ENV && uv run --project common pytest tests/units` — **528 tests, fully mocked**.
+- Units: `unset VIRTUAL_ENV && uv run --project common pytest tests/units` — **540 tests, fully mocked**.
 - Live: `uv run --project common pytest tests/live_test` — needs the stack `up` + `bge_server` ready
   (real ingestion, slow on CPU; auto-skips when unreachable).
 - `pytest.ini` + root `conftest.py` are at `src/docforge/`.
@@ -83,3 +83,24 @@ DocForge tests live in `src/docforge/tests/`. Multi-root pytest with a few non-o
   for login tests; `DOCFORGE_TEST_API_TOKEN` for RBAC/key/SSE tests.
 - Do NOT use `@pytest.mark.live` on live test classes — `live` is not a registered mark in `pytest.ini`
   and will produce PytestUnknownMarkWarning. Use inline `pytest.skip()` instead.
+
+## Live conftest — collection naming + keep flag (added 2026-06-25)
+
+- Collection naming: `e2e-{label}-{YYYYMMDD-HHMMSS}` using `datetime.now().strftime("%Y%m%d-%H%M%S")`.
+  `make_collection` uses the pytest test node name as label by default (requires `request` fixture
+  injection); callers pass `label=` to override. `ingested_corpus` uses the stable label `corpus`.
+- `make_collection` signature: `_make(label: str | None = None, **overrides)`. `name=` override still
+  works but bypasses the timestamp naming — prefer `label=` for human-readable names.
+- `IngestedCorpus` dataclass now carries `collection_name: str` (the full `e2e-corpus-*` name).
+- Cleanup opt-out: `DOCFORGE_TEST_KEEP_COLLECTIONS=true` (or `1`/`yes`) skips deletion and prints
+  `[KEPT] collection id=... name=...` for each kept collection. Default: delete on teardown.
+
+## Document artifact unit coverage (added 2026-06-25)
+
+- `tests/units/api/collections/documents/files/test_files.py` now covers:
+  - `TestGetFigureCrop`: figures/{block_id} → 200 (blob present), 404 (blob missing), 409 (not done), 404 (unknown doc).
+  - `TestCrossCollectionScope`: all four file endpoints (original/pdf/markdown/figures) return 404
+    when `doc.collection_id != path collection_id` (IDOR guard).
+- `tests/units/api/collections/documents/pages/test_pages.py` now covers:
+  - `TestPagesCrossCollectionScope`: all four pages endpoints (list/detail/screenshot/reingest) return 404
+    when `doc.collection_id != path collection_id` (same IDOR guard via `_require_document`).

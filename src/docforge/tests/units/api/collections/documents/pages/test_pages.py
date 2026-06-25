@@ -285,3 +285,65 @@ class TestReingestPage:
         CONTEXT.job_repo.create.return_value = job
         await client.post(_reingest_url(c, d, 1))
         CONTEXT.node_cache.invalidate_document.assert_called_once()
+
+
+class TestPagesCrossCollectionScope:
+    """
+    Cross-collection IDOR guard: ``_require_document`` in the pages router checks
+    that ``doc.collection_id == path collection_id``.
+
+    A document in the DB that belongs to a DIFFERENT collection must be rejected
+    with 404 across all pages endpoints (list, detail, screenshot, reingest).
+    """
+
+    @pytest.mark.asyncio
+    async def test_list_rejects_doc_from_different_collection(
+        self, client: httpx.AsyncClient
+    ) -> None:
+        """doc.collection_id != path → 404 on pages/list."""
+        path_col = uuid.uuid4()
+        doc_col = uuid.uuid4()
+        doc_id = uuid.uuid4()
+        doc = make_document_orm(id=doc_id, collection_id=doc_col)
+        CONTEXT.document_repo.get_by_id.return_value = doc
+        response = await client.get(_list_url(path_col, doc_id))
+        assert response.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_detail_rejects_doc_from_different_collection(
+        self, client: httpx.AsyncClient
+    ) -> None:
+        """doc.collection_id != path → 404 on pages/{n}."""
+        path_col = uuid.uuid4()
+        doc_col = uuid.uuid4()
+        doc_id = uuid.uuid4()
+        doc = make_document_orm(id=doc_id, collection_id=doc_col)
+        CONTEXT.document_repo.get_by_id.return_value = doc
+        response = await client.get(_get_url(path_col, doc_id, 0))
+        assert response.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_screenshot_rejects_doc_from_different_collection(
+        self, client: httpx.AsyncClient
+    ) -> None:
+        """doc.collection_id != path → 404 on pages/{n}/screenshot."""
+        path_col = uuid.uuid4()
+        doc_col = uuid.uuid4()
+        doc_id = uuid.uuid4()
+        doc = make_document_orm(id=doc_id, collection_id=doc_col)
+        CONTEXT.document_repo.get_by_id.return_value = doc
+        response = await client.get(_screenshot_url(path_col, doc_id, 0))
+        assert response.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_reingest_rejects_doc_from_different_collection(
+        self, client: httpx.AsyncClient
+    ) -> None:
+        """doc.collection_id != path → 404 on pages/{n}/reingest."""
+        path_col = uuid.uuid4()
+        doc_col = uuid.uuid4()
+        doc_id = uuid.uuid4()
+        doc = make_document_orm(id=doc_id, collection_id=doc_col)
+        CONTEXT.document_repo.get_by_id.return_value = doc
+        response = await client.post(_reingest_url(path_col, doc_id, 0))
+        assert response.status_code == 404
