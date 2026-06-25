@@ -47,7 +47,10 @@ class EnrichConfig(BaseModel):
         vlm_gate (ChainGateConfig): Escalation policy for the VLM chain.
     """
 
-    chart_to_data: bool = False
+    # Default True: a CHART-classified figure extracts its series into a structured data_table
+    # (the historical behavior). Set False per-collection to skip the chart->data step (VLM
+    # description only) — e.g. to save VLM cost when structured chart data isn't needed.
+    chart_to_data: bool = True
     max_budget_usd: float = 0.0
     classifier_chain: list[Any] = Field(
         default_factory=list,

@@ -172,9 +172,10 @@ class TestGroupingAndRerank:
         if not live_client.reranker_live(RERANKER_URL):
             pytest.skip(f"local TEI reranker not reachable at {RERANKER_URL}")
 
-        # 2. Create a rerank-enabled collection (local bge_server reranker) and ingest one doc
+        # 2. Create a rerank-enabled collection (local bge_server reranker) and ingest one doc.
+        #    candidate_k=20 sizes the pre-rerank pool; the final count is the request top_k.
         pipeline = {**DENSE_ONLY_PIPELINE,
-                    "search": {"rerank": {"enabled": True, "candidate_k": 20, "top_n": 5,
+                    "search": {"rerank": {"enabled": True, "candidate_k": 20,
                                           "chain": [{"id": "bge_server"}]}}}
         collection = make_collection(pipeline=pipeline, supported_formats=["docx"])
         cid = collection["id"]
@@ -183,7 +184,7 @@ class TestGroupingAndRerank:
         assert status in (200, 202), ing
         live_client.wait_indexed(cid, ing["doc_id"])
 
-        # 3. Search → reranked results, capped at top_n
+        # 3. Search → reranked results; the request top_k is the authoritative final count
         status, res = live_client.post(
             f"/collections/{cid}/documents/search",
             {"query": doc.spec.searchable_phrase, "top_k": 5},

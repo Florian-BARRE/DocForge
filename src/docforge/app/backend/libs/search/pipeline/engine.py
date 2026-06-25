@@ -2,6 +2,11 @@
 # SearchPipelineEngine — orchestrates the full search pipeline:
 #   query transform → multi-query retrieval → RRF fusion → optional rerank.
 #
+# Result-count contract: the REQUEST top_k is the single authoritative final-count.
+# The engine retrieves a candidate pool (>= top_k, widened to rerank.candidate_k /
+# MMR / grouping needs), runs the optional post-steps over that pool, and only THEN
+# trims to top_k in _finalize.  No stage may override the request top_k from config.
+#
 # The embed provider is always injected at construction from the collection's ingestion
 # pipeline (pipeline.embed.chain[0]) to guarantee query vectors live in the same space
 # as the indexed vectors.  The engine wraps HybridSearchService without modifying it.
@@ -130,7 +135,7 @@ class SearchPipelineEngine(LoggerClass):
         # 1. Query transform — may produce multiple variants for multi-query retrieval
         variants = await self._transform.run(query)
 
-        # 2. Candidate pool size: enough to feed rerank / MMR / grouping post-steps
+        # 2. Candidate pool size: always >= top_k, widened for rerank / MMR / grouping
         candidate_k = self._pool_size(top_k)
 
         # 3. Retrieve — single or multi-query path
@@ -139,14 +144,14 @@ class SearchPipelineEngine(LoggerClass):
             payload_filter, metadata_fields, weight_overrides,
         )
 
-        # 4. Rerank (if enabled)
+        # 4. Rerank (if enabled) — re-scores the whole pool; does NOT trim (engine owns top_k)
         if self._rerank_stage is not None:
             candidates = await self._rerank_stage.run(query=query, results=candidates)
 
         # 5. MMR diversity re-ranking (if enabled)
         candidates = await self._apply_mmr(query, candidates, collection_name, top_k)
 
-        # 6. Document grouping (if enabled) → groups + flattened flat list
+        # 6. Grouping (if enabled) + final trim to the authoritative request top_k
         return self._finalize(candidates, top_k)
 
     async def _retrieve(
@@ -180,15 +185,21 @@ class SearchPipelineEngine(LoggerClass):
         """
         Compute how many candidates to retrieve before post-processing.
 
-        Reranking, MMR, and grouping each need a larger pool than the final top_k.
+        The pool is ALWAYS at least the request ``top_k`` (so the final trim can never
+        be starved), then widened as each post-step requires:
+        - rerank: ``rerank.candidate_k`` is the configured pre-rerank pool; it is
+          clamped up to ``top_k`` here, so a ``candidate_k`` smaller than the request
+          ``top_k`` can never reduce the final result count.
+        - grouping / MMR: widened to their own candidate needs.
 
         Args:
-            top_k (int): Final result count requested.
+            top_k (int): Final result count requested (authoritative).
 
         Returns:
-            int: Candidate pool size.
+            int: Candidate pool size (>= top_k).
         """
-        # Always retrieve at least top_k; reranking widens the pool to candidate_k.
+        # Always retrieve at least top_k; reranking widens the pool to candidate_k
+        # (candidate_k is clamped up to top_k so it can never starve the final set).
         pool = top_k
         if self._rerank_stage:
             pool = max(pool, self._config.rerank.candidate_k)

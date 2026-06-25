@@ -154,6 +154,7 @@ class ProviderRegistry(DescribeSurface, LoggerClass):
             s3=self._s3,
             provider_cache=self._provider_cache,
             max_budget_usd=enrich.max_budget_usd,
+            chart_to_data=enrich.chart_to_data,
         )
 
     # ─── Chain builders (thin delegators to ChainBuilderHelpers) ────────────────

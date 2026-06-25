@@ -80,6 +80,7 @@ class FigureRoutingHelpers:
         crop_hash: str,
         ocr_text: str | None,
         max_budget: float,
+        chart_to_data: bool,
         block_traces: list[ChainTrace],
         counters: S2Counters,
     ) -> tuple[str | None, list[list[str]] | None]:
@@ -89,7 +90,10 @@ class FigureRoutingHelpers:
         if max_budget - counters.budget_spent <= 0:
             return None, None
 
-        use_chart_schema = kind == FigureKind.CHART
+        # Chart-to-data structured extraction is gated by the enrich.chart_to_data flag:
+        # only when enabled does a CHART request the structured schema; otherwise a CHART
+        # is treated like any other figure (VLM description only, no data-table extraction).
+        use_chart_schema = (kind == FigureKind.CHART) and chart_to_data
         vlm_result, vlm_cost, vlm_trace, vlm_was_cache_hit = await CacheRunner.run_vlm(
             vlm_chain, provider_cache, crop_bytes, crop_hash, ocr_text, use_chart_schema,
         )

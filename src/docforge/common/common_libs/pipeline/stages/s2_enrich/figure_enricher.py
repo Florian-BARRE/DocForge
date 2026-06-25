@@ -50,6 +50,7 @@ class FigureEnricher(LoggerClass):
         s3: S3Client,
         provider_cache: ProviderCallCache,
         max_budget: float,
+        chart_to_data: bool = False,
     ) -> None:
         """
         Wire the enricher with its three chains and infrastructure.
@@ -61,6 +62,9 @@ class FigureEnricher(LoggerClass):
             s3 (S3Client): SeaweedFS client for figure crop downloads.
             provider_cache (ProviderCallCache): Cross-document provider call cache.
             max_budget (float): Per-job budget cap in USD (``float('inf')`` = no limit).
+            chart_to_data (bool): When True, CHART figures additionally request structured
+                chart-to-data extraction; when False, a CHART is treated like a normal figure
+                (VLM description only). Mirrors ``EnrichConfig.chart_to_data``.
         """
         LoggerClass.__init__(self)
         self._classifier_chain = classifier_chain
@@ -69,6 +73,7 @@ class FigureEnricher(LoggerClass):
         self._s3 = s3
         self._provider_cache = provider_cache
         self._max_budget = max_budget
+        self._chart_to_data = chart_to_data
 
     async def process_block(
         self,
@@ -158,7 +163,7 @@ class FigureEnricher(LoggerClass):
         # 6. VLM routing — applies to kinds that benefit from a visual description.
         description, data_table = await FigureRoutingHelpers.maybe_vlm(
             self._vlm_chain, self._provider_cache, kind, crop_bytes, crop_hash,
-            ocr_text, self._max_budget, block_traces, counters,
+            ocr_text, self._max_budget, self._chart_to_data, block_traces, counters,
         )
 
         # 7. Build the enriched figure block with the accumulated traces.

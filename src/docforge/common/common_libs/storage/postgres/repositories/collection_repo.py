@@ -40,7 +40,6 @@ class CollectionRepository(LoggerClass):
         pipeline_version: str = "v1",
         default_search: dict[str, Any] | None = None,
         unknown_field_policy: str = "reject",
-        allowed_providers: list[str] | None = None,
         metadata_fields: list[dict[str, Any]] | None = None,
     ) -> CollectionModel:
         """
@@ -57,7 +56,6 @@ class CollectionRepository(LoggerClass):
             pipeline_version (str): Version tag.
             default_search (dict | None): Serialized SearchConfig defaults.
             unknown_field_policy (str): How to handle extra metadata fields.
-            allowed_providers (list[str] | None): Allowlist when external_allowed.
 
         Returns:
             CollectionModel: The created and flushed record.
@@ -69,7 +67,6 @@ class CollectionRepository(LoggerClass):
             max_file_size_bytes=max_file_size_bytes,
             unknown_field_policy=unknown_field_policy,
             locality_policy=locality_policy,
-            allowed_providers=allowed_providers or [],
             pipeline=pipeline or {},
             pipeline_version=pipeline_version,
             embedding_model=embedding_model,

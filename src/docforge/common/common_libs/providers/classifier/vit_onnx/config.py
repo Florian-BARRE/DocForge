@@ -98,7 +98,51 @@ class VitOnnxConfig(BaseModel):
         return merged
 
     @classmethod
-    def availability(cls, cfg: Any) -> tuple[bool, str]:
-        """Report as usable — the ONNX model_path is supplied per-collection."""
+    def availability(cls, cfg: Any, model_path: str | None = None) -> tuple[bool, str]:
+        """
+        Report whether the ViT-ONNX classifier can actually run.
+
+        ``build()`` raises when ``model_path`` is empty or does not point to an existing
+        ``.onnx`` file, so reporting ``available=True`` unconditionally would offer the UI a
+        choice that fails at ingest.  Availability is therefore tied to a usable model_path.
+
+        ``model_path`` is a per-collection value, so the discovery surface (which calls this on
+        the bare config class with no collection context) passes ``model_path=None`` and is
+        told the provider needs configuration.  When an existing ``.onnx`` path is supplied —
+        e.g. a caller resolving an already-configured collection — the provider is reported
+        available.
+
+        Args:
+            cfg: Runtime config object (unused — ViT-ONNX has no deployment-level model path).
+            model_path (str | None): Per-collection ONNX model path, when a collection context
+                is available.  ``None`` (the discovery default) means "no path configured".
+
+        Returns:
+            tuple[bool, str]: ``(available, note)``.
+        """
         _ = cfg
-        return True, "ViT-ONNX classifier · model_path per-collection"
+        # 1. No usable model_path → not selectable, surface a clear configuration note.
+        if not model_path or not os.path.exists(model_path):
+            return False, "requires a model_path to an .onnx file (set per-collection)"
+        # 2. A real, existing model file is configured → usable.
+        return True, "ViT-ONNX classifier · model_path configured"
+
+    @classmethod
+    def selectable(cls, cfg: Any, model_path: str | None = None) -> bool:
+        """
+        Report whether this provider should be offered as a pickable UI choice.
+
+        ViT-ONNX is only selectable once a usable per-collection ``model_path`` exists —
+        otherwise the UI would let a user choose a classifier that fails at ingest.  The
+        discovery surface has no collection context (``model_path=None``) so the provider is
+        reported non-selectable there, mirroring ``availability``.
+
+        Args:
+            cfg: Runtime config object (unused).
+            model_path (str | None): Per-collection ONNX model path, when known.
+
+        Returns:
+            bool: True only when a usable model_path is configured.
+        """
+        available, _note = cls.availability(cfg, model_path=model_path)
+        return available

@@ -47,7 +47,7 @@ interface SearchStagePanelProps {
  *   - embed      : read-only info about the derived embed provider
  *   - retrieve   : full retrieve config (vector mode, fusion, weights, field
  *                  weights, grouping, MMR)
- *   - rerank     : enabled toggle + candidate_k + top_n
+ *   - rerank     : enabled toggle + candidate_k
  *
  * Edits stage a partial `pipeline.search` patch into the shared draft buffer;
  * nothing is sent to the server until the user clicks Save in the bottom

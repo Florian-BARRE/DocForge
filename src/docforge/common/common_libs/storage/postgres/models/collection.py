@@ -46,9 +46,6 @@ class CollectionModel(Base):
         String(20), nullable=False, default="reject"
     )
     locality_policy: Mapped[str] = mapped_column(String(30), nullable=False)
-    allowed_providers: Mapped[list[str]] = mapped_column(
-        ARRAY(String), nullable=False, default=list
-    )
     pipeline: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
     pipeline_version: Mapped[str] = mapped_column(String(64), nullable=False, default="v1")
     embedding_model: Mapped[str] = mapped_column(String(255), nullable=False)

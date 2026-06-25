@@ -50,8 +50,10 @@ metadata:
 
 ## Architectural notes
 
+- [Ingestion config audit](ingestion-config-audit.md) — per-option S0-S6 wiring map: DEAD config (enrich.chart_to_data, allowed_providers, gate max_duration/cost), discovery gaps (chunk.atomic.*, heading_rules, embed.sparse), two config surfaces (collection columns vs pipeline blob).
 - [Device not in config](device-not-in-config.md) — GPU/device is a deployment env decision (DOCLING/PADDLE/VIT_USE_GPU + DeviceManager), never a per-collection `use_gpu` provider config Field; the no-Field + PrivateAttr + extra="ignore" pattern.
 - [Embed/rerank providers + bge_server aliases](embed-providers-and-tei-alias.md) — embed={bge_server,openai_compat}, rerank={bge_server,cohere_rerank}; legacy `tei`/`bge_reranker` ids alias→bge_server via shared `spec_utils.normalize_legacy_id` (configs unregistered, HTTP clients kept). Compose `reranker` TEI service now redundant (infra follow-up).
+- [Search result-count semantics](search-result-count-semantics.md) — request top_k is authoritative; candidate_k = pre-rerank pool (clamped >= top_k); top_n + grouping.group_by REMOVED (extra="ignore"); enabled+empty rerank chain → 422 via PipelineChecks._check_rerank_chain.
 
 ## Stage file map
 

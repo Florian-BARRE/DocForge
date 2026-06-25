@@ -12,7 +12,7 @@ migrations; the worker never does.
 - Repos: `common_libs/storage/postgres/repositories/` (collection/document/config/job/block/chunk + helpers).
 - Run head: `docker compose exec docforge sh -c 'cd /app/common && alembic upgrade head'`.
 
-## Chain so far (001→010)
+## Chain so far (001→012)
 
 | Rev | What |
 |---|---|
@@ -27,6 +27,7 @@ migrations; the worker never does.
 | 009 | job observability (worker_id, started_at, finished_at, attempt, current_stage, progress) |
 | 010 | collection limits (max_in_flight INT, budget_cap_usd FLOAT, both nullable) |
 | 011 | auth tables: app_user, api_key, collection_grant (auth/authz data layer) |
+| 012 | drop collection.allowed_providers (dead write-only ARRAY(String), always '{}'; downgrade re-adds NOT NULL default '{}') |
 
 ## Auth schema (011)
 

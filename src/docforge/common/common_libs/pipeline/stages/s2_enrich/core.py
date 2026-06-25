@@ -49,6 +49,7 @@ class S2EnrichStage(LoggerClass):
         s3: S3Client,
         provider_cache: ProviderCallCache,
         max_budget_usd: float = 0.0,
+        chart_to_data: bool = False,
     ) -> None:
         """
         Wire the S2 stage with its three chains.
@@ -63,6 +64,9 @@ class S2EnrichStage(LoggerClass):
             s3 (S3Client): SeaweedFS client for figure crop downloads.
             provider_cache (ProviderCallCache): Cross-document provider call cache.
             max_budget_usd (float): Per-job budget cap in USD.  0.0 = no limit.
+            chart_to_data (bool): When True, CHART figures additionally undergo structured
+                chart-to-data extraction; when False, a CHART is enriched like a normal
+                figure (VLM description only).  Mirrors ``EnrichConfig.chart_to_data``.
         """
         LoggerClass.__init__(self)
         self._classifier_chain = classifier_chain
@@ -70,6 +74,7 @@ class S2EnrichStage(LoggerClass):
         self._vlm_chain = vlm_chain
         # Convert 0.0 (sentinel = no limit) to +∞ so comparisons are uniform.
         self._max_budget = max_budget_usd if max_budget_usd > 0 else float("inf")
+        self._chart_to_data = chart_to_data
         self._enricher = FigureEnricher(
             classifier_chain=classifier_chain,
             ocr_chain=ocr_chain,
@@ -77,6 +82,7 @@ class S2EnrichStage(LoggerClass):
             s3=s3,
             provider_cache=provider_cache,
             max_budget=self._max_budget,
+            chart_to_data=chart_to_data,
         )
 
     def params_for_fingerprint(self) -> dict[str, Any]:
@@ -97,6 +103,9 @@ class S2EnrichStage(LoggerClass):
             "max_budget_usd": (
                 self._max_budget if self._max_budget != float("inf") else 0.0
             ),
+            # chart_to_data changes the VLM schema requested + the data_table output, so it
+            # must invalidate the S2 cache (and downstream chunks/embeddings) when toggled.
+            "chart_to_data": self._chart_to_data,
         }
 
     async def run(self, s1: Any, ir: DocumentIR) -> S2Result:

@@ -98,11 +98,17 @@ class DescribeSurface:
         for config_cls in get_configs(category).values():
             available, note = config_cls.availability(self._cfg)  # type: ignore[attr-defined]
             instance = config_cls().merge_defaults(self._cfg)  # type: ignore[attr-defined]
+            # A provider is selectable unless it opts out via an optional `selectable` hook.
+            # Most providers are always selectable (their `available` flag merely reflects a
+            # reachable service); some (e.g. vit_onnx) require per-collection configuration and
+            # must NOT be offered as a pickable choice until that config exists.
+            selectable_hook = getattr(config_cls, "selectable", None)
+            selectable = bool(selectable_hook(self._cfg)) if callable(selectable_hook) else True
             providers.append({
                 "id": config_cls.model_fields["id"].default,
                 "label": getattr(config_cls, "_label", config_cls.__name__),
                 "available": available,
-                "selectable": True,
+                "selectable": selectable,
                 "note": note,
                 "params": self._params_from_instance(instance),
             })

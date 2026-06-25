@@ -81,15 +81,42 @@ class PipelineChecks:
         pipeline: PipelineConfig, issues: list[dict[str, Any]]
     ) -> None:
         """
-        Reserved for future inter-stage dependency checks.
+        Validate inter-stage / intra-stage coherence invariants.
 
-        The pipeline is fixed and linear (S0→S6) — no toggles to validate here.
+        The ingestion pipeline (S0→S6) is fixed and linear, so there is nothing to
+        check there.  The search stage, however, has a toggle whose chain must be
+        coherent: ``search.rerank.enabled`` requires a configured provider chain.
 
         Args:
             pipeline (PipelineConfig): The parsed pipeline config.
-            issues (list[dict]): Accumulator (unused currently).
+            issues (list[dict]): Accumulator — issues are appended in place.
         """
-        # Pipeline is always fully executed in declaration order — nothing to check yet.
+        # 1. Rerank coherence: enabled without a provider chain silently no-ops at runtime.
+        PipelineChecks._check_rerank_chain(pipeline, issues)
+
+    @staticmethod
+    def _check_rerank_chain(
+        pipeline: PipelineConfig, issues: list[dict[str, Any]]
+    ) -> None:
+        """
+        Flag an enabled rerank stage that has no provider configured.
+
+        A config with ``search.rerank.enabled == true`` but an empty ``chain`` cannot
+        rerank anything: the engine builder silently skips reranking, so the user
+        believes reranking is active when it is not.  This is an ERROR-severity issue
+        so saving such a config is rejected (422) rather than stored in a broken state.
+
+        Args:
+            pipeline (PipelineConfig): The parsed pipeline config.
+            issues (list[dict]): Accumulator — issues are appended in place.
+        """
+        rerank = pipeline.search.rerank
+        if rerank.enabled and len(rerank.chain) == 0:
+            issues.append(_issue(
+                "search.rerank.empty_chain", "error", "pipeline.search.rerank.chain",
+                "rerank is enabled but no rerank provider is configured "
+                "(search.rerank.chain is empty).",
+            ))
 
 
 # ─── Module-level helper (not exposed in __all__) ────────────────────────────

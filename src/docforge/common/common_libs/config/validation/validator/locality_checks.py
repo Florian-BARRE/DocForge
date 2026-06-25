@@ -71,11 +71,6 @@ class LocalityChecks:
                     "locality.remote_embed", "error", "embed.chain",
                     f"Embedding endpoint {embed_url!r} is remote, forbidden by on_premise_only.",
                 ))
-        if LocalityChecks._is_remote_url(embed_url):
-            issues.append(_issue(
-                "locality.remote_embed", "error", "embed.provider",
-                f"Embedding endpoint {embed_url!r} is remote, forbidden by on_premise_only.",
-            ))
 
     @staticmethod
     def _is_remote_url(url: str) -> bool:

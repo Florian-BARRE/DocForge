@@ -1,6 +1,8 @@
 # ====== Code Summary ======
 # RerankStage — wraps a RerankProvider to re-score retrieval results with a cross-encoder.
-# Takes the top candidate_k results, scores them, and returns the top_n highest-scoring ones.
+# Re-scores the whole candidate pool and returns it fully sorted by rerank score.
+# The engine (not this stage) trims the sorted list to the request top_k — the request
+# top_k is the single authoritative final-count, never overridden by config.
 
 # ====== Standard Library Imports ======
 from __future__ import annotations
@@ -18,15 +20,17 @@ class RerankStage(LoggerClass):
     """
     Cross-encoder reranking stage.
 
-    Takes a list of retrieval candidates, scores each one against the query using
-    a cross-encoder (RerankProvider), and returns the top_n results sorted by
-    descending rerank score.
+    Takes the retrieval candidate pool, scores each candidate against the query
+    using a cross-encoder (RerankProvider), and returns the WHOLE pool sorted by
+    descending rerank score.  Trimming to the final count is the engine's job: the
+    request ``top_k`` is the single authoritative final-count and must never be
+    overridden here by a config value.
 
     Each returned result's ``score`` is overwritten with its cross-encoder score so the
     surfaced relevance is consistent with the rerank ordering.
 
     Attributes:
-        _config (RerankConfig): Candidate count and top_n settings.
+        _config (RerankConfig): Candidate pool sizing (candidate_k).
         _provider (RerankProvider): Cross-encoder provider instance.
     """
 
@@ -35,30 +39,29 @@ class RerankStage(LoggerClass):
         Initialize the rerank stage.
 
         Args:
-            config (RerankConfig): Reranking configuration (candidate_k, top_n).
+            config (RerankConfig): Reranking configuration (candidate_k).
             provider (RerankProvider): Cross-encoder reranking provider.
         """
         LoggerClass.__init__(self)
         self._config = config
         self._provider = provider
-        self.logger.debug(
-            f"RerankStage: candidate_k={self._config.candidate_k} top_n={self._config.top_n}"
-        )
+        self.logger.debug(f"RerankStage: candidate_k={self._config.candidate_k}")
 
     async def run(self, query: str, results: list[SearchResult]) -> list[SearchResult]:
         """
-        Re-score results with the cross-encoder and return top_n sorted by rerank score.
+        Re-score the candidate pool and return it fully sorted by rerank score.
 
         Each returned result's ``score`` is overwritten with its cross-encoder score so the
-        displayed relevance matches the rerank ordering.  If the provider raises, logs a
-        warning and returns the original (retrieval-ordered) results trimmed to top_n.
+        displayed relevance matches the rerank ordering.  The list is NOT trimmed here —
+        the engine trims the sorted pool to the request top_k.  If the provider raises,
+        logs a warning and returns the original (retrieval-ordered) candidates unchanged.
 
         Args:
             query (str): The user search query (same query used during retrieval).
             results (list[SearchResult]): Retrieval candidates (pre-sorted by Qdrant RRF).
 
         Returns:
-            list[SearchResult]: Top ``top_n`` results sorted by descending rerank score.
+            list[SearchResult]: All candidates sorted by descending rerank score.
         """
         if not results:
             return results
@@ -71,19 +74,20 @@ class RerankStage(LoggerClass):
             scores = await self._provider.rerank(query=query, texts=texts)
         except Exception as exc:
             self.logger.warning(f"RerankStage: cross-encoder failed, returning original order — {exc}")
-            return results[: self._config.top_n]
+            return results
 
         self.logger.debug(f"RerankStage: scored {len(scores)} candidates")
 
         # 3. Pair each result with its rerank score for sorting
         scored = [(score, result) for result, score in zip(results, scores)]
 
-        # 4. Sort by descending rerank score, trim to top_n, and reflect the score
+        # 4. Sort by descending rerank score and reflect the score onto each result.
+        #    No trim here — the engine returns the request top_k from this sorted pool.
         scored.sort(key=lambda t: t[0], reverse=True)
-        top: list[SearchResult] = []
-        for score, result in scored[: self._config.top_n]:
+        reranked: list[SearchResult] = []
+        for score, result in scored:
             result.score = float(score)
-            top.append(result)
-        return top
+            reranked.append(result)
+        return reranked
 
 

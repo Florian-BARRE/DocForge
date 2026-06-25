@@ -5,7 +5,12 @@
 #   - FieldIndexHelpers.dbsf_fuse (distribution-based score fusion)
 #   - HybridSearchHelpers.resolve_vector_plan (vector_mode, field/content weights, overrides)
 
-from common_libs.config.pipeline.stages.search_config import RetrieveConfig, SearchConfig
+from common_libs.config.pipeline.stages.search_config import (
+    GroupingConfig,
+    RerankConfig,
+    RetrieveConfig,
+    SearchConfig,
+)
 from common_libs.search.field_index import FieldIndexHelpers, RetrievalTuning
 from backend.libs.search.hybrid.helpers import HybridSearchHelpers
 
@@ -140,6 +145,52 @@ class TestRerankConfig:
         """When reranking is disabled the chain is not validated (provider not needed)."""
         cfg = SearchConfig.from_dict({"rerank": {"enabled": False, "chain": [{"id": "anything"}]}})
         assert cfg.rerank.enabled is False
+
+
+# ── RerankConfig top_n removal (FIX 3) ─────────────────────────────────────────────
+
+
+class TestRerankTopNRemoved:
+    """top_n was removed (request top_k is authoritative); candidate_k is the pre-rerank pool."""
+
+    def test_top_n_field_no_longer_exists(self) -> None:
+        """The dead top_n field is gone from the model schema."""
+        assert "top_n" not in RerankConfig.model_fields
+        assert "candidate_k" in RerankConfig.model_fields
+
+    def test_stored_top_n_is_ignored_not_rejected(self) -> None:
+        """A stored config carrying top_n still loads (extra='ignore'); the key is dropped."""
+        cfg = SearchConfig.from_dict(
+            {"rerank": {"enabled": False, "candidate_k": 30, "top_n": 7}}
+        )
+        assert cfg.rerank.candidate_k == 30
+        assert not hasattr(cfg.rerank, "top_n")
+
+    def test_candidate_k_defaults_preserved(self) -> None:
+        """candidate_k keeps its historical default."""
+        assert SearchConfig.from_dict({}).rerank.candidate_k == 50
+
+
+# ── GroupingConfig group_by removal (FIX 1) ────────────────────────────────────────
+
+
+class TestGroupingGroupByRemoved:
+    """group_by was dead config (grouping is always by document_id); it was removed."""
+
+    def test_group_by_field_no_longer_exists(self) -> None:
+        """The dead group_by field is gone; enabled + group_size remain."""
+        fields = GroupingConfig.model_fields
+        assert "group_by" not in fields
+        assert "enabled" in fields and "group_size" in fields
+
+    def test_stored_group_by_is_ignored_not_rejected(self) -> None:
+        """A stored config carrying group_by still loads (extra='ignore'); the key is dropped."""
+        cfg = SearchConfig.from_dict(
+            {"retrieve": {"grouping": {"enabled": True, "group_by": "author", "group_size": 4}}}
+        )
+        assert cfg.retrieve.grouping.enabled is True
+        assert cfg.retrieve.grouping.group_size == 4
+        assert not hasattr(cfg.retrieve.grouping, "group_by")
 
 
 # ── DBSF fusion ─────────────────────────────────────────────────────────────────

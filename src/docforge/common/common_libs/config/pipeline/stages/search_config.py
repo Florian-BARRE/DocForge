@@ -12,7 +12,7 @@ from __future__ import annotations
 from typing import Any, Literal
 
 # ====== Third-Party Library Imports ======
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 # ====== Internal Project Imports ======
 from common_libs.config.pipeline.spec_utils import normalize_legacy_id as _normalize_legacy_id
@@ -88,26 +88,37 @@ class RerankConfig(BaseModel):
     Configuration for the reranking stage.
 
     When enabled=False (the default), the rerank stage is skipped and retrieval
-    results are returned as-is.  When enabled, candidate_k results are fetched
-    from Qdrant and then trimmed to top_n by the cross-encoder.
+    results are returned as-is.
+
+    Result-count semantics (authoritative):
+        The REQUEST ``top_k`` is the single source of truth for the final result
+        count — it is NEVER overridden by config.  ``candidate_k`` only sizes the
+        pre-rerank candidate pool: the engine retrieves ``candidate_k`` candidates,
+        the cross-encoder re-scores all of them, and the engine then returns the
+        top ``top_k``.  ``candidate_k`` should be >= the request ``top_k`` (the
+        engine clamps it up to ``top_k`` at runtime so a small ``candidate_k`` can
+        never starve the final result set).
+
+        The legacy ``top_n`` field (a second, config-side final-count cap) was
+        removed: it produced a confusing double-trim (``min(top_k, top_n)``) where
+        the request ``top_k`` could be silently overridden.  ``extra="ignore"``
+        keeps stored configs that still carry ``top_n`` loadable — the key is simply
+        dropped.
 
     Attributes:
         enabled: Whether to run the rerank stage.
-        candidate_k: Number of candidates to retrieve before reranking.
-        top_n: Final number of results to return after reranking.
+        candidate_k: Size of the pre-rerank candidate pool (fed INTO the reranker);
+            must be >= the request top_k (clamped up at runtime).
         chain: Ordered list of rerank provider configs (first entry is used).
     """
+
+    model_config = ConfigDict(extra="ignore")
 
     enabled: bool = Field(default=False, description="Enable the rerank stage.")
     candidate_k: int = Field(
         default=50,
         ge=1,
-        description="Candidates fetched from Qdrant before reranking.",
-    )
-    top_n: int = Field(
-        default=10,
-        ge=1,
-        description="Final number of results after reranking.",
+        description="Pre-rerank candidate pool size (fed into the reranker); >= request top_k.",
     )
     chain: list[Any] = Field(
         default_factory=list,
@@ -175,24 +186,27 @@ class RerankConfig(BaseModel):
 
 class GroupingConfig(BaseModel):
     """
-    Configuration for document-level result grouping (Qdrant query_points_groups).
+    Configuration for document-level result grouping.
 
-    When enabled, results are grouped by a payload field (default ``document_id``)
-    so the response carries the top documents each with their best chunks, rather
-    than a flat chunk list.  When disabled (the default), chunk-level results are
-    returned unchanged — identical to the pre-grouping behavior.
+    When enabled, results are grouped by document so the response carries the top
+    documents each with their best chunks, rather than a flat chunk list.  When
+    disabled (the default), chunk-level results are returned unchanged — identical
+    to the pre-grouping behavior.
+
+    Grouping is ALWAYS by ``document_id`` — that is the only meaningful grouping key
+    for a chunk-level index, and the post-processor hardcodes it.  The former
+    ``group_by`` field was dead config (its value was never read) and has been
+    removed; ``extra="ignore"`` keeps stored configs that still carry it loadable
+    (the key is simply dropped).
 
     Attributes:
-        enabled: Whether to group results by ``group_by``.
-        group_by: Payload field to group on (must be a filterable/indexed field).
+        enabled: Whether to group results by document.
         group_size: Maximum chunks kept per group.
     """
 
-    enabled: bool = Field(default=False, description="Group results by document (or another field).")
-    group_by: str = Field(
-        default="document_id",
-        description="Payload field to group on (must be filterable / indexed).",
-    )
+    model_config = ConfigDict(extra="ignore")
+
+    enabled: bool = Field(default=False, description="Group results by document.")
     group_size: int = Field(
         default=3, ge=1, le=20, description="Maximum chunks returned per group."
     )
