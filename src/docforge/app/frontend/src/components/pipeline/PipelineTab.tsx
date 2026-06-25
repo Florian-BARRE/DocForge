@@ -313,9 +313,9 @@ export function PipelineTab({
             {configState.needs_reindex && (
               <span
                 className="tag doc-stale-badge"
-                title="Des documents ont été ingérés avec une config antérieure."
+                title="Some documents were ingested with an older pipeline configuration."
               >
-                Réindexation requise
+                Reindex required
               </span>
             )}
             <button
@@ -323,7 +323,7 @@ export function PipelineTab({
               className="btn btn-ghost pipeline-history-toggle"
               onClick={() => setShowHistory(prev => !prev)}
             >
-              {showHistory ? 'Masquer l’historique' : 'Historique'}
+              {showHistory ? 'Hide history' : 'History'}
             </button>
           </div>
 

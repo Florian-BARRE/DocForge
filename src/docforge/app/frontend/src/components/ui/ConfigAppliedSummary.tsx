@@ -22,9 +22,9 @@ interface ConfigAppliedSummaryProps {
  * Render the post-save transparency envelope in a compact, muted block.
  *
  * Shows, in order and only when present:
- *   - a "Réindexation requise" badge when {@link ConfigApplied.needs_reindex};
- *   - a "Fourni" line listing explicitly provided top-level keys;
- *   - a "Par défaut" line listing keys filled from defaults;
+ *   - a "Reindex required" badge when {@link ConfigApplied.needs_reindex};
+ *   - a "Provided" line listing explicitly provided top-level keys;
+ *   - a "Defaulted" line listing keys filled from defaults;
  *   - a bulleted list of human-readable notes;
  *   - each warning message highlighted in the running/warning colour.
  *
@@ -59,7 +59,7 @@ export function ConfigAppliedSummary({ applied }: ConfigAppliedSummaryProps) {
     <div className="config-applied-summary">
       {applied.needs_reindex && (
         <span className="tag" style={{ color: 'var(--s-running)' }}>
-          Réindexation requise
+          Reindex required
         </span>
       )}
 
@@ -72,9 +72,9 @@ export function ConfigAppliedSummary({ applied }: ConfigAppliedSummaryProps) {
         </ul>
       )}
 
-      {provided.length > 0 && <div>Fourni : {provided.join(', ')}</div>}
+      {provided.length > 0 && <div>Provided: {provided.join(', ')}</div>}
 
-      {defaulted.length > 0 && <div>Par défaut : {defaulted.join(', ')}</div>}
+      {defaulted.length > 0 && <div>Defaulted: {defaulted.join(', ')}</div>}
 
       {notes.length > 0 && (
         <ul>

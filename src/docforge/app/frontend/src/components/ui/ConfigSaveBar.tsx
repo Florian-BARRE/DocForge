@@ -18,9 +18,9 @@ interface ConfigSaveBarProps {
   status: DraftStatus
   /** Whether there are unsaved changes (gates both buttons). */
   isDirty: boolean
-  /** Invoked when the user clicks "Enregistrer". */
+  /** Invoked when the user clicks "Save". */
   onSave: () => void
-  /** Invoked when the user clicks "Annuler". */
+  /** Invoked when the user clicks "Cancel". */
   onDiscard: () => void
   /** Transparency envelope from the last save, shown above the action row. */
   applied?: ConfigApplied | null
@@ -42,13 +42,13 @@ interface ConfigSaveBarProps {
 function StatusIndicator({ status }: { status: DraftStatus }) {
   switch (status) {
     case 'dirty':
-      return <span style={{ color: 'var(--s-running)' }}>● Modifications non enregistrées</span>
+      return <span style={{ color: 'var(--s-running)' }}>● Unsaved changes</span>
     case 'saving':
-      return <span style={{ color: 'var(--text-dim)' }}>Enregistrement…</span>
+      return <span style={{ color: 'var(--text-dim)' }}>Saving…</span>
     case 'saved':
-      return <span style={{ color: 'var(--s-done)' }}>✓ Enregistré</span>
+      return <span style={{ color: 'var(--s-done)' }}>✓ Saved</span>
     case 'error':
-      return <span style={{ color: 'var(--s-error)' }}>✗ Échec de l&apos;enregistrement</span>
+      return <span style={{ color: 'var(--s-error)' }}>✗ Save failed</span>
     case 'clean':
     default:
       return null
@@ -87,7 +87,7 @@ export function ConfigSaveBar({ status, isDirty, onSave, onDiscard, applied }: C
             disabled={!isDirty}
             onClick={onDiscard}
           >
-            Annuler
+            Cancel
           </button>
           <button
             type="button"
@@ -95,7 +95,7 @@ export function ConfigSaveBar({ status, isDirty, onSave, onDiscard, applied }: C
             disabled={!isDirty || status === 'saving'}
             onClick={onSave}
           >
-            Enregistrer
+            Save
           </button>
         </div>
       </div>

@@ -25,7 +25,7 @@ interface ResultScoreProps {
  *      label (Fort / Bon / Moyen / Faible) coloured by relevance tier.
  *   2. The raw fusion score in small mono text, with a tooltip explaining that
  *      the absolute value is not comparable across queries.
- *   3. A "Pourquoi ce rang" line of mini-chips translating each per-vector rank
+ *   3. A "Why this rank" line of mini-chips translating each per-vector rank
  *      into a readable label, sorted by ascending rank — when vectorRanks exist.
  *
  * Args:
@@ -71,7 +71,7 @@ export function ResultScore({ score, relPct, vectorRanks }: ResultScoreProps) {
       {/* "Why this rank" line — per-vector mini-chips, sorted by ascending rank */}
       {ranks.length > 0 && (
         <div className="result-score-why">
-          <span className="text-dim" style={{ fontSize: 10 }}>Pourquoi ce rang :</span>
+          <span className="text-dim" style={{ fontSize: 10 }}>Why this rank:</span>
           {ranks.map(([name, rank]) => (
             <span key={name} className="result-score-why-chip">
               {vectorLabel(name)} #{rank}

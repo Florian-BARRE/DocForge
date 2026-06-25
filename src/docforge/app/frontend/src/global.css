@@ -4,75 +4,87 @@ html, body, #root { height: 100%; }
 
 /* ── Design tokens ──────────────────────────────────────────────────────── */
 /*
- * Two themes share the same token names; only the values differ.  The active
- * theme is selected by the `data-theme` attribute on <html> (set in App.tsx
- * from localStorage / prefers-color-scheme).  Add a token here once, both
- * themes get their value below.
+ * CSS custom properties derived from src/theme.ts (canonical source of truth).
+ * Two themes share the same token names; only the values differ. The active
+ * theme is selected by the `data-theme` attribute on <html>.
+ * When adding a token: add to theme.ts first, then mirror the CSS var here.
  */
 :root {
-  /* Pipeline status — same hues read well on both themes */
-  --s-pending:       #94a3b8;
-  --s-running:       #d97706;
-  --s-done:          #22c55e;
-  --s-error:         #ef4444;
-  --s-skip:          #475569;
+  /* ── Status colors — theme-invariant (theme.ts → status.*) ── */
+  --s-pending:   #94a3b8;  /* status.pending */
+  --s-running:   #d97706;  /* status.running */
+  --s-done:      #22c55e;  /* status.done    */
+  --s-error:     #ef4444;  /* status.error   */
+  --s-warning:   #f59e0b;  /* status.warning */
+  --s-idle:      #475569;  /* status.idle    */
+  --s-skip:      #475569;  /* status.skip    */
 
-  /* Layout */
-  --topbar-h:        44px;
-  --radius:          6px;
-  --radius-sm:       4px;
+  /* ── Layout (theme.ts → density / layout) ── */
+  --topbar-h:    44px;    /* density.topbarHeight   */
+  --sidebar-w:   200px;   /* density.sidebarWidth   */
+  --inspector-w: 380px;   /* density.inspectorWidth */
 
-  /* Typography */
+  /* ── Radii (theme.ts → radii.*) ── */
+  --radius:      6px;     /* radii.base */
+  --radius-sm:   4px;     /* radii.sm   */
+  --radius-md:   8px;     /* radii.md   */
+  --radius-full: 9999px;  /* radii.full */
+
+  /* ── Typography (theme.ts → typography.*) ── */
   --font-ui:   system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-mono: 'JetBrains Mono', 'Cascadia Code', 'Fira Code', ui-monospace, monospace;
-  --font-size: 13px;
+  --font-size: 13px;  /* typography.baseFontSize */
 
-  /* Accent — primary buttons, focus rings, picker active state */
-  --accent:          #6366f1;
-  --accent-soft:     rgba(99, 102, 241, 0.16);
+  /* ── Accent (theme.ts → palette.accent / accentSoft) ── */
+  --accent:       #6366f1;               /* palette.accent     */
+  --accent-soft:  rgba(99,102,241,0.16); /* palette.accentSoft */
+  --accent-hover: #818cf8;               /* palette.accentHover */
 }
 
-/* ── Dark (default) ──────────────────────────────────────────────────── */
+/* ── Dark (default) — values from theme.ts → palette.* ─────────────────── */
 :root,
 [data-theme="dark"] {
-  --bg:              #090910;
-  --surface:         #101018;
-  --surface-raised:  #15151f;
-  --hover:           #1b1b28;
-  --active:          #222233;
-  --panel-bg:        #15151f;
+  --bg:             #090910;  /* palette.base          */
+  --surface:        #101018;  /* palette.surface       */
+  --surface-raised: #15151f;  /* palette.surfaceRaised */
+  --hover:          #1b1b28;  /* palette.hover         */
+  --active:         #222233;  /* palette.active        */
+  --panel-bg:       #15151f;  /* palette.surfaceRaised (alias) */
 
-  --border:          #20202e;
-  --border-strong:   #30304a;
+  --border:         #20202e;  /* palette.border       */
+  --border-strong:  #30304a;  /* palette.borderStrong */
 
-  --text:            #e8e8f2;
-  --text-muted:      #787898;
-  --text-dim:        #38384e;
+  --text:           #e8e8f2;  /* palette.text      */
+  --text-muted:     #787898;  /* palette.textMuted */
+  --text-dim:       #38384e;  /* palette.textDim   */
 
-  --shadow-1:        0 1px 2px rgba(0,0,0,0.4);
-  --shadow-2:        0 4px 16px rgba(0,0,0,0.5);
+  --shadow-1: 0 1px 2px rgba(0,0,0,0.4);   /* elevation.1 */
+  --shadow-2: 0 4px 16px rgba(0,0,0,0.5);  /* elevation.2 */
 
   color-scheme: dark;
 }
 
-/* ── Light ──────────────────────────────────────────────────────────── */
+/* ── Light — values from theme.ts → paletteLight.* ─────────────────────── */
 [data-theme="light"] {
-  --bg:              #f6f7fb;
-  --surface:         #ffffff;
-  --surface-raised:  #ffffff;
-  --hover:           #eef0f5;
-  --active:          #e2e6ef;
-  --panel-bg:        #ffffff;
+  --bg:             #f6f7fb;  /* paletteLight.base          */
+  --surface:        #ffffff;  /* paletteLight.surface       */
+  --surface-raised: #ffffff;  /* paletteLight.surfaceRaised */
+  --hover:          #eef0f5;  /* paletteLight.hover         */
+  --active:         #e2e6ef;  /* paletteLight.active        */
+  --panel-bg:       #ffffff;  /* paletteLight.surfaceRaised (alias) */
 
-  --border:          #e2e6ef;
-  --border-strong:   #cbd0db;
+  --border:         #e2e6ef;  /* paletteLight.border       */
+  --border-strong:  #cbd0db;  /* paletteLight.borderStrong */
 
-  --text:            #1a1a2a;
-  --text-muted:      #5b6478;
-  --text-dim:        #8d96a8;
+  --text:           #1a1a2a;  /* paletteLight.text      */
+  --text-muted:     #5b6478;  /* paletteLight.textMuted */
+  --text-dim:       #8d96a8;  /* paletteLight.textDim   */
 
-  --shadow-1:        0 1px 2px rgba(20, 25, 40, 0.06);
-  --shadow-2:        0 4px 16px rgba(20, 25, 40, 0.10);
+  --accent-soft:  rgba(99,102,241,0.12); /* paletteLight.accentSoft  */
+  --accent-hover: #4f46e5;               /* paletteLight.accentHover */
+
+  --shadow-1: 0 1px 2px rgba(20,25,40,0.06);   /* paletteLight elevation.1 */
+  --shadow-2: 0 4px 16px rgba(20,25,40,0.10);  /* paletteLight elevation.2 */
 
   color-scheme: light;
 }

@@ -17,7 +17,7 @@ interface SearchTraceSummaryProps {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 /**
- * Collapsible "Détails de la recherche" panel built from the backend debug_info.
+ * Collapsible "Search details" panel built from the backend debug_info.
  *
  * Every key is optional — the panel renders only the rows it can populate, so it
  * stays robust against partial or future debug payloads. Closed by default;
@@ -59,7 +59,7 @@ export function SearchTraceSummary({ debugInfo }: SearchTraceSummaryProps) {
         onClick={() => setOpen(o => !o)}
       >
         <span className="metadata-form-chevron">{open ? '▾' : '▸'}</span>
-        <span className="metadata-form-label">Détails de la recherche</span>
+        <span className="metadata-form-label">Search details</span>
       </button>
 
       {open && (

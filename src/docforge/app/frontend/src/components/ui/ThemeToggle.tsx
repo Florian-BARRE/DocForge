@@ -13,7 +13,9 @@ function readInitialTheme(): Theme {
   if (typeof window === 'undefined') return 'dark'
   const stored = window.localStorage.getItem(KEY)
   if (stored === 'dark' || stored === 'light') return stored
-  return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'
+  // Dark-first: default to dark regardless of OS preference (the cockpit is designed dark);
+  // users can still opt into light via the toggle (persisted).
+  return 'dark'
 }
 
 function applyTheme(t: Theme) {

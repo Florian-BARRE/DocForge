@@ -49,8 +49,8 @@ function formatDate(iso: string): string {
  * History panel listing every persisted config version with rollback actions.
  *
  * The list is rendered newest-first. The first (most recent) entry is the
- * current version: it is labelled "actuelle" and offers no restore button.
- * Every other version exposes a "Restaurer" button that re-applies it as a new
+ * current version: it is labelled "current" and offers no restore button.
+ * Every other version exposes a "Restore" button that re-applies it as a new
  * version, after which {@link ConfigHistoryPanelProps.onRolledBack} fires.
  *
  * Args:
@@ -73,7 +73,7 @@ export function ConfigHistoryPanel({ collectionId, onRolledBack, canWrite = true
       const sorted = [...resp.versions].sort((a, b) => b.version - a.version)
       setVersions(sorted)
     } catch {
-      setError('Impossible de charger l’historique.')
+      setError('Failed to load history.')
     } finally {
       setLoading(false)
     }
@@ -92,7 +92,7 @@ export function ConfigHistoryPanel({ collectionId, onRolledBack, canWrite = true
       onRolledBack()
       await loadHistory()
     } catch {
-      setError('Échec de la restauration.')
+      setError('Rollback failed.')
     } finally {
       setRollingBack(null)
     }
@@ -101,11 +101,11 @@ export function ConfigHistoryPanel({ collectionId, onRolledBack, canWrite = true
   // ── Render ──────────────────────────────────────────────────────────────────
 
   if (loading) {
-    return <div className="config-history-empty">Chargement de l’historique…</div>
+    return <div className="config-history-empty">Loading history…</div>
   }
 
   if (versions.length === 0) {
-    return <div className="config-history-empty">Aucun historique</div>
+    return <div className="config-history-empty">No history</div>
   }
 
   // The most recent version is the current one — first after newest-first sort.
@@ -130,7 +130,7 @@ export function ConfigHistoryPanel({ collectionId, onRolledBack, canWrite = true
             </span>
             <span className="config-history-date">{formatDate(v.created_at)}</span>
             {isCurrent ? (
-              <span className="tag">actuelle</span>
+              <span className="tag">current</span>
             ) : canWrite ? (
               /* Rollback button — only for users with write permission. */
               <button
@@ -139,7 +139,7 @@ export function ConfigHistoryPanel({ collectionId, onRolledBack, canWrite = true
                 disabled={rollingBack !== null}
                 onClick={() => { void handleRollback(v.version) }}
               >
-                {rollingBack === v.version ? 'Restauration…' : 'Restaurer'}
+                {rollingBack === v.version ? 'Restoring…' : 'Restore'}
               </button>
             ) : null}
           </div>

@@ -393,10 +393,10 @@ export function DocumentsTab({ collectionId, onTrace, canWrite = true }: Documen
       {showReindexBanner && (
         <div className="reindex-banner">
           <span>
-            {staleDocs.length} document(s) à réindexer — leur configuration d'indexation
-            ne correspond plus à la config actuelle.
+            {staleDocs.length} document(s) pending reindex — their indexing configuration
+            no longer matches the current pipeline config.
             {staleCauses.length > 0 && (
-              <span className="reindex-banner-cause"> Cause : {staleCauses.join(' ; ')}.</span>
+              <span className="reindex-banner-cause"> Cause: {staleCauses.join('; ')}.</span>
             )}
           </span>
           {/* Reindex action only for users with write permission. */}
@@ -409,8 +409,8 @@ export function DocumentsTab({ collectionId, onTrace, canWrite = true }: Documen
                 onClick={() => handleReindexAll(staleDocs)}
               >
                 {isReindexing && reindexProgress
-                  ? `Réindexation… (${reindexProgress.done}/${reindexProgress.total})`
-                  : 'Tout réindexer'}
+                  ? `Reindexing… (${reindexProgress.done}/${reindexProgress.total})`
+                  : 'Reindex all'}
               </button>
             </div>
           )}

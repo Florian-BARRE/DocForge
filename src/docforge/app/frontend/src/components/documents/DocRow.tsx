@@ -188,14 +188,14 @@ export function DocRow({ doc, collectionId: _collectionId, isStale, staleReasons
           className="tag doc-stale-badge"
           title={
             (staleReasons && staleReasons.length > 0
-              ? `Cause : ${staleReasons.join(' ; ')}.\n`
+              ? `Cause: ${staleReasons.join(' ; ')}.\n`
               : '') +
-            `Traité avec le pipeline ${doc.pipeline_version}` +
-            (collectionPipelineVersion ? `, config actuelle ${collectionPipelineVersion}` : '') +
-            ' — réindexation requise.'
+            `Processed with pipeline ${doc.pipeline_version}` +
+            (collectionPipelineVersion ? `, current config ${collectionPipelineVersion}` : '') +
+            ' — reindex required.'
           }
         >
-          Périmé — à réindexer
+          Stale — reindex required
         </span>
       )}
 
@@ -213,7 +213,7 @@ export function DocRow({ doc, collectionId: _collectionId, isStale, staleReasons
           <button
             type="button"
             className="btn-icon doc-row-reingest"
-            title="Réindexer (config mise à jour)"
+            title="Re-index (config updated)"
             onClick={() => onReingest(doc.id)}
           >
             ↻
