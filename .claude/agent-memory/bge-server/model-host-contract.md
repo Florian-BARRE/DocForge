@@ -100,6 +100,20 @@ while models load (checks `bge_models._embed_model is None`). Returns HTTP 200 +
 `HealthResponse` now has a `ready: bool` field. The TEI callers that checked for 200/ok still work;
 the compose healthcheck already uses `start_period=300s` and will retry on 503.
 
+**Dynamic batching (2026-06-25, GPU-verified):** inference is NOT called directly anymore — it goes
+through `libs/batching/` (`BatchingEngine` + 3 `BatchQueueWorker`, in-process `asyncio.Queue`, NEVER
+Redis). Handlers `await CONTEXT.batching_engine.submit_{embed_dense,embed_sparse,rerank}`; each worker
+drains its queue (Σcost >= `BGE_MAX_BATCH_SIZE` or `BGE_MAX_WAIT_MS` window), runs ONE batched model call
+via `asyncio.to_thread` under ONE shared `asyncio.Lock` (dense+sparse share `embed_model` -> mandatory),
+scatters by offsets. Cost units = texts (embed) / pairs (rerank); rerank flattens pairs across requests
+then **re-indexes 0..n-1 per request**. Bounded queue full -> `QueueFullError` -> HTTP 503 + Retry-After.
+`stop()` drains pending futures (no client hangs). Env: `BGE_MAX_BATCH_SIZE=32`/`BGE_MAX_WAIT_MS=10`/
+`BGE_MAX_QUEUE_SIZE=256` (batch=1+wait=0 disables). `BGE_MAX_CONCURRENCY` REMOVED (superseded).
+`service.compute_rerank_scores_flat(pairs)` is the engine's rerank entry. Verified RTX 4050: 50 concurrent
+/embed in ~1.1 s (batches of 23/11/8...), /health stays 200 (~100 ms) under load. RPI docs:
+`docs/rpi/bge-server-dynamic-batching/`. Do NOT reintroduce direct model calls in the router or a
+per-worker lock.
+
 **Logging coverage (full):** `LoggerClass` on `BgeModelsService` (`self.logger`); module-level
 `loggerplusplus.bind` for lifespan (`BGEServer`), routers (`InferenceRouter`/`HealthRouter`),
 error_handling (`ErrorHandler`), DeviceResolver, entrypoint (`BGEEntrypoint`).

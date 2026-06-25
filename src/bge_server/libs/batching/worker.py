@@ -117,8 +117,11 @@ class BatchQueueWorker(LoggerClass):
                 await self._process_fn(batch)
             except Exception as exc:
                 # Distribute the exception to every future so no client request hangs forever.
-                # This should not happen normally because process_fn handles its own errors,
-                # but this is the last-resort safety net.
+                # process_fn normally handles its own errors, so reaching here means an unexpected
+                # crash in batch dispatch — log it loudly (with traceback) instead of swallowing.
+                self.logger.exception(
+                    f"[{self._name}] batch dispatch crashed ({len(batch)} reqs): {exc}"
+                )
                 for item in batch:
                     if not item.future.done():
                         item.future.set_exception(exc)
@@ -182,8 +185,11 @@ class BatchQueueWorker(LoggerClass):
             self._task.cancel()
             try:
                 await self._task
-            except (asyncio.CancelledError, Exception):
-                pass
+            except asyncio.CancelledError:
+                pass  # expected — we just cancelled it
+            except Exception as exc:
+                # The task should exit cleanly on cancel; an unexpected error here must be visible.
+                self.logger.warning(f"[{self._name}] worker task raised during shutdown: {exc}")
 
         # Drain any items still sitting in the queue after task cancellation
         drained = 0

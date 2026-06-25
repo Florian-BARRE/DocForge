@@ -161,10 +161,10 @@ class BgeModelsService(LoggerClass):
         from FlagEmbedding import BGEM3FlagModel, FlagReranker  # noqa: PLC0415
         import torch  # noqa: PLC0415
 
-        # 3. Cap torch intra-op threads to prevent CPU oversubscription under concurrent load.
-        # When N requests each spawn torch thread pools across all cores, the OS scheduler
-        # thrashes and latency explodes non-linearly. The cap distributes available cores
-        # across the allowed concurrent calls (see BGE_MAX_CONCURRENCY / the semaphore).
+        # 3. Cap torch intra-op threads to prevent CPU oversubscription.
+        # The batching engine's model_lock serialises model calls (one at a time), so the single
+        # in-flight call may use all cores (_max_concurrency is 1 → no division). The explicit
+        # BGE_TORCH_NUM_THREADS override exists for hosts that want a tighter cap (e.g. shared CPU).
         # Only relevant on CPU; on CUDA this has no meaningful effect but is harmless.
         if self._torch_num_threads > 0:
             # Explicit override from BGE_TORCH_NUM_THREADS.
