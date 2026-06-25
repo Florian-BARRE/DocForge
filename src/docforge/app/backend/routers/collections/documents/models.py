@@ -12,6 +12,9 @@ from pydantic import BaseModel, Field, field_validator
 # ====== Internal Project Imports ======
 from common_libs.domain.ir.models import ChainTrace
 
+# ====== Local Project Imports ======
+from backend.routers.jobs.models import JobResponse
+
 
 class IngestResponse(BaseModel):
     """Returned immediately after a document is admitted for ingestion."""
@@ -72,6 +75,11 @@ class DocumentResponse(BaseModel):
     embed_chain_traces: list[ChainTrace] = Field(
         default_factory=list,
         description="S6 embed chain traces — one entry per batch sent to the embed provider.",
+    )
+    jobs: list[JobResponse] = Field(
+        default_factory=list,
+        description="Full job history for this document (ingestion + reingestions + retries), "
+                    "newest first. Each entry carries status/stage/progress/attempt/worker/timing/error.",
     )
 
     model_config = {"from_attributes": True}

@@ -53,6 +53,23 @@
   blank loading screen instead of the login screen flash.
 - `main.tsx` wraps `<App>` in `<AuthProvider>`.
 
+## Document detail view — tab layout
+
+`DocDetailView.tsx` is the orchestrator; each tab is its own file under `components/documents/detail/`:
+- `OverviewTab` / `IRTab` / `ChunksTab` / `PagesTab` / `DownloadsTab` — pre-existing
+- `ChainTracesTab` — renders `chain_traces` (parse/S1) and `embed_chain_traces` (S6) via `<ChainTraceView>`
+- `JobsTab` — renders `doc.jobs[]` newest-first with expandable error rows
+
+`types.ts` hand-written overlays (added after last gen):
+- `JobResponse` + `JobStatus` — mirrors backend JobResponse exactly
+- `Document` extended with `jobs?: JobResponse[]`
+- `chain_traces` / `embed_chain_traces` already in generated `DocumentResponse`
+
+`<ChainTraceView>` (inspect feature) is the canonical chain-of-fallbacks renderer — always reuse it,
+never write a new renderer. It accepts `traces: ChainTrace[]` and `variant: 'compact' | 'detailed'`.
+
+CSS classes for the jobs list live in `global.css` under `/* ── Jobs Tab ──... */`.
+
 ## Boundary
 
 UI code only. REST contract changes → **backend** agent. Build/serve of `dist/` → **docforge** agent.

@@ -2702,6 +2702,130 @@ input[type="range"]::-webkit-slider-thumb:hover { background: var(--text-muted);
   gap: 10px;
 }
 
+/* ── Jobs Tab ─────────────────────────────────────────────────────────────── */
+
+.jobs-tab-list {
+  /* Stack of job rows with a thin divider between each. */
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.jobs-tab-row {
+  /* Individual job card — sits inside the list, divides with a bottom border. */
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-raised);
+}
+
+.jobs-tab-row:last-child {
+  border-bottom: none;
+}
+
+.jobs-tab-row-header {
+  /* Horizontally scrollable header row: status pill + key metrics in a flex row. */
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  font-size: 12px;
+  flex-wrap: wrap;
+  min-height: 38px;
+}
+
+.jobs-tab-row-clickable {
+  /* Expand/collapse cursor when the row has an error to reveal. */
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.jobs-tab-row-clickable:hover {
+  background: var(--hover);
+}
+
+.jobs-tab-status-pill {
+  /* Coloured status pill — colours injected inline from statusStyle(). */
+  display: inline-flex;
+  align-items: center;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 2px 8px;
+  border-radius: 10px;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+.jobs-tab-attempt {
+  /* "Ingestion" / "Re-ingestion N" label — slightly highlighted. */
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.jobs-tab-stage {
+  /* Current stage indicator (only shown while running). */
+  font-size: 10px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.jobs-tab-progress-wrap {
+  /* Thin inline progress bar. */
+  flex: 1;
+  min-width: 48px;
+  max-width: 120px;
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.jobs-tab-progress-fill {
+  /* Filled portion of the progress bar. */
+  height: 100%;
+  background: var(--s-running);
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+.jobs-tab-arq-badge {
+  /* Small secondary badge showing the raw arq status when it differs from status. */
+  font-size: 9px;
+  font-family: var(--font-mono);
+  letter-spacing: 0.03em;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
+  color: var(--text-dim);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.jobs-tab-error-body {
+  /* Expanded error block rendered below the header when the row is opened. */
+  border-top: 1px solid rgba(239, 68, 68, 0.25);
+  background: rgba(239, 68, 68, 0.06);
+  padding: 10px 12px;
+}
+
+.jobs-tab-error-pre {
+  /* Full error text in a scrollable monospace block. */
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1.6;
+  color: var(--s-error);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
 .doc-download-btn {
   display: flex;
   align-items: center;

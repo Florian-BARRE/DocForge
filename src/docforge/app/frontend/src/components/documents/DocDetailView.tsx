@@ -12,16 +12,18 @@ import { getDocument } from '../../api/client'
 import type { Document } from '../../api/types'
 
 // ====== Local Project Imports ======
+import { ChainTracesTab } from './detail/ChainTracesTab'
 import { ChunksTab } from './detail/ChunksTab'
 import { dotClass, formatFileSize, statusColor } from './detail/detailHelpers'
 import { DownloadsTab } from './detail/DownloadsTab'
 import { IRTab } from './detail/IRTab'
+import { JobsTab } from './detail/JobsTab'
 import { OverviewTab } from './detail/OverviewTab'
 import { PagesTab } from './detail/PagesTab'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type DetailTab = 'overview' | 'ir' | 'chunks' | 'pages' | 'downloads'
+type DetailTab = 'overview' | 'ir' | 'chunks' | 'pages' | 'downloads' | 'traces' | 'jobs'
 
 interface DocDetailViewProps {
   /** Collection the document belongs to. */
@@ -122,14 +124,24 @@ export function DocDetailView({ collectionId, docId, onBack }: DocDetailViewProp
 
       {/* ── Sub-tab navigation ── */}
       <div className="doc-detail-tabs">
-        {(['overview', 'ir', 'chunks', 'pages', 'downloads'] as DetailTab[]).map(tab => (
+        {(
+          [
+            { id: 'overview',  label: 'Overview' },
+            { id: 'ir',        label: 'IR' },
+            { id: 'chunks',    label: 'Chunks' },
+            { id: 'pages',     label: 'Pages' },
+            { id: 'downloads', label: 'Downloads' },
+            { id: 'traces',    label: 'Chain traces' },
+            { id: 'jobs',      label: 'Jobs' },
+          ] as { id: DetailTab; label: string }[]
+        ).map(({ id, label }) => (
           <button
-            key={tab}
+            key={id}
             type="button"
-            className={`doc-detail-tab ${activeTab === tab ? 'doc-detail-tab-active' : ''}`}
-            onClick={() => setActiveTab(tab)}
+            className={`doc-detail-tab ${activeTab === id ? 'doc-detail-tab-active' : ''}`}
+            onClick={() => setActiveTab(id)}
           >
-            {tab.charAt(0).toUpperCase() + tab.slice(1)}
+            {label}
           </button>
         ))}
       </div>
@@ -150,6 +162,12 @@ export function DocDetailView({ collectionId, docId, onBack }: DocDetailViewProp
         )}
         {activeTab === 'downloads' && (
           <DownloadsTab collectionId={collectionId} docId={docId} doc={doc} />
+        )}
+        {activeTab === 'traces' && (
+          <ChainTracesTab doc={doc} />
+        )}
+        {activeTab === 'jobs' && (
+          <JobsTab doc={doc} />
         )}
       </div>
     </div>

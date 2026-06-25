@@ -34,6 +34,7 @@ from backend.routers.collections.documents.models import (
 from common_libs.storage.postgres.models import GrantRole
 from common_libs.storage.s3.helpers import S3Helpers
 from common_libs.config.admission import AdmissionValidator
+from backend.routers.jobs.models import JobResponse
 
 # Reads (list/get/stream) need 'read'; ingest/update/reingest/delete mutate the collection's
 # documents and need 'write'. The minimum is declared per-route so each endpoint is explicit.
@@ -299,6 +300,12 @@ async def get_document(collection_id: uuid.UUID, document_id: uuid.UUID) -> Docu
         "quality_score": implicit.get("quality_score"),
         "chain_traces": list(implicit.get("chain_traces", []) or []),
         "embed_chain_traces": list(implicit.get("embed_chain_traces", []) or []),
+        # Full job history (newest first) so the UI can show every ingestion / reingestion / retry
+        # and retrace each one's outcome, stage, worker, timing and error.
+        "jobs": [
+            JobResponse.from_model(j)
+            for j in sorted(jobs, key=lambda j: j.created_at, reverse=True)
+        ],
     })
 
 

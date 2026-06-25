@@ -134,6 +134,31 @@ export type ConfigSchemaResponse = Schemas['ConfigSchemaResponse']
 export type ConfigVersionSummary = Schemas['ConfigVersionSummary']
 export type ConfigHistoryResponse = Schemas['ConfigHistoryResponse']
 
+// ── Jobs ──────────────────────────────────────────────────────────────────────
+//
+// Hand-written because `jobs` was added to DocumentResponse after the last
+// `npm run gen:types` run.  Mirrors the backend JobResponse Pydantic model exactly.
+// Regenerate `generated.ts` to absorb this when the schema stabilises.
+
+export type JobStatus = 'pending' | 'running' | 'done' | 'failed'
+
+export interface JobResponse {
+  id: string
+  document_id: string
+  collection_id: string
+  status: JobStatus
+  error: string | null
+  budget_spent: number
+  created_at: string
+  worker_id: string | null
+  started_at: string | null
+  finished_at: string | null
+  attempt: number
+  current_stage: string | null
+  progress: number
+  arq_status: string | null
+}
+
 // ── Documents ─────────────────────────────────────────────────────────────────
 
 // The backend normalises status at the API boundary to {pending,running,done,error}.
@@ -142,10 +167,13 @@ export type DocStatus = 'pending' | 'running' | 'done' | 'error'
 // stale / stale_reasons overlay the generated type until the next `npm run gen:types`:
 // precise, reversible staleness vs the collection's current config (see backend
 // DocumentStaleness). Prefer these over comparing pipeline_version numbers.
+// jobs / chain_traces / embed_chain_traces: also added server-side after the last gen.
 export type Document = Omit<Schemas['DocumentResponse'], 'status'> & {
   status: DocStatus
   stale?: boolean
   stale_reasons?: string[]
+  /** Full job history newest-first (ingestion + reingestions + retries). */
+  jobs?: JobResponse[]
 }
 export type DocumentListResponse = Omit<Schemas['DocumentListResponse'], 'documents'> & {
   documents: Document[]
