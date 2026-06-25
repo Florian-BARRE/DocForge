@@ -76,8 +76,13 @@ class DocumentResponse(BaseModel):
         default_factory=list,
         description="S6 embed chain traces — one entry per batch sent to the embed provider.",
     )
+    # `validation_alias` points at a name that does NOT exist on the ORM DocumentModel, so
+    # `model_validate(doc, from_attributes=True)` does NOT lazy-load the real `document.jobs`
+    # relationship (which would raise DetachedInstanceError outside the session, and cause an
+    # N+1 on the list endpoint). The detail route fills this field explicitly via model_copy.
     jobs: list[JobResponse] = Field(
         default_factory=list,
+        validation_alias="jobs_explicit",
         description="Full job history for this document (ingestion + reingestions + retries), "
                     "newest first. Each entry carries status/stage/progress/attempt/worker/timing/error.",
     )
