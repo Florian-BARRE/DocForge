@@ -118,7 +118,10 @@ class TestReingest:
             f"/collections/{c.cid}/documents/{c.did}/reingest", {"force": True}
         )
         assert status == 202, body
-        done = c.client.wait_done(c.cid, c.did)
+        # wait_status (not wait_done): the doc still has its prior chunks, so wait_done would
+        # return the stale 'pending' snapshot immediately. Poll the STATUS through the
+        # pending → running → done transition of the force re-run.
+        done = c.client.wait_status(c.cid, c.did, "done")
         assert done.get("status") == "done"
         assert (done.get("chunk_count") or 0) > 0
 

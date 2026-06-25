@@ -22,6 +22,7 @@ from common_libs.providers.chain import Chain
 from common_libs.providers.chain_gate import ChainGate, ChainGateConfig
 from common_libs.pipeline.stages.s6_embed_index.embedder import S6Embedder
 
+from libs.pipeline.engine import StageEngine
 from libs.pipeline.orchestrator.deps import StageDeps
 from libs.pipeline.orchestrator.s456_runner import S456Runner
 
@@ -229,6 +230,53 @@ async def test_s456_raises_when_collection_set_but_s6_unavailable() -> None:
             doc_user_meta=None,
         )
 
+    assert document_repo.statuses == ["failed"]
+
+
+# ─── 2b. StageEngine marks the doc failed when the original blob is missing ───
+
+
+class _FailingDownloadS3:
+    """S3Client stand-in whose download() always raises (original blob missing)."""
+
+    async def download(self, key: str) -> bytes:
+        # Mirrors the real S3Client.download contract: a missing object raises KeyError.
+        raise KeyError(f"Object not found: s3://docforge-objects/{key}")
+
+
+@pytest.mark.asyncio
+async def test_engine_marks_document_failed_when_original_missing() -> None:
+    """A missing original blob (S3 download raises) flips the doc to 'failed' and re-raises.
+
+    Regression for the reingest fail-closed gap: the engine downloads the original BEFORE the
+    per-stage guards run, so a missing/unreadable original previously left the document stuck in
+    its pre-run status (``pending`` on a reingest) — reading as "running" forever instead of a
+    terminal ``failed``. The engine must mark it ``failed`` before propagating the error.
+    """
+    document_repo = _RecordingDocumentRepo()
+    deps_postgres = _FakePostgres()
+    engine = StageEngine(
+        s0=None,                          # never reached — download fails first  # type: ignore[arg-type]
+        s1=None,                          # type: ignore[arg-type]
+        s3=_FailingDownloadS3(),          # type: ignore[arg-type]
+        postgres=deps_postgres,           # type: ignore[arg-type]
+        node_cache=None,                  # type: ignore[arg-type]
+        provider_cache=None,              # type: ignore[arg-type]
+        document_repo=document_repo,      # type: ignore[arg-type]
+        block_repo=None,                  # type: ignore[arg-type]
+    )
+    doc_id = uuid.uuid4()
+
+    with pytest.raises(KeyError, match="Object not found"):
+        await engine.run(
+            doc_id=doc_id,
+            source_hash="deadbeef" * 8,
+            filename="contrat_fr.docx",
+            pipeline_version="v1",
+            file_bytes=None,              # forces the S3 download path (arq worker path)
+        )
+
+    # Fail-closed: the missing-original path wrote exactly the 'failed' status.
     assert document_repo.statuses == ["failed"]
 
 

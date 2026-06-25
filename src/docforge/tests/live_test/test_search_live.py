@@ -42,10 +42,20 @@ class TestCollectionSearch:
     """POST /collections/{id}/documents/search over the shared ingested corpus."""
 
     def test_finds_target_document(self, ingested_corpus: IngestedCorpus, corpus) -> None:
-        """A query on a document's distinctive phrase retrieves that document."""
+        """A query on a document's searchable phrase retrieves that document.
+
+        The corpus deliberately SHARES each ``searchable_phrase`` across every format of a
+        given (type, language) pair — e.g. ``report_fr`` docx/html/pptx, ``data_fr`` xlsx and
+        the baked legacy xls/ppt all carry the identical phrase (catalog ``_PHRASE``). That is
+        intentional: it exercises cross-format consistency. The consequence for retrieval is
+        that the phrase is NOT unique to one document, and search returns CHUNK-level hits — so
+        the target's own chunks compete with several siblings' chunks carrying the same phrase.
+        On the full corpus this needs a top_k wide enough to span the shared-phrase family
+        (a top_k of 10 is fully consumed by sibling chunks before the target's first chunk).
+        """
         doc = _require(ingested_corpus)
         phrase = corpus.get(SEARCH_DOC_KEY).spec.searchable_phrase
-        status, res = _search(ingested_corpus, {"query": phrase, "top_k": 10})
+        status, res = _search(ingested_corpus, {"query": phrase, "top_k": 30})
         assert status == 200, res
         assert any(r["document_id"] == doc["id"] for r in res["results"]), (
             f"target doc not found; got {[r['document_id'] for r in res['results']]}"

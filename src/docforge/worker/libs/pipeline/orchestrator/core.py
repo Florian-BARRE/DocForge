@@ -195,10 +195,23 @@ class StageEngine(LoggerClass):
             (self._s0, self._s1, self._s2, self._s4, self._s5, self._s6),
         )
 
-        # 2. Download original bytes if not provided (arq worker path)
+        # 2. Download original bytes if not provided (arq worker path).
+        # Fail-closed: this download runs BEFORE the per-stage guards (guarded_run / run_s456),
+        # so a missing/unreadable original would otherwise leave the document stuck in its
+        # pre-run status (``pending`` on a reingest) and read as "running" forever. Mark it
+        # ``failed`` before re-raising so the state is terminal and arq still retries.
         if file_bytes is None:
-            file_bytes = await self._deps.s3.download(S3Helpers.key_original(source_hash))
-            self.logger.debug(f"Downloaded original from S3: key_original={source_hash[:8]}…")
+            try:
+                file_bytes = await self._deps.s3.download(S3Helpers.key_original(source_hash))
+                self.logger.debug(f"Downloaded original from S3: key_original={source_hash[:8]}…")
+            except Exception as exc:
+                self.logger.error(
+                    f"Original download failed for doc_id={doc_id} "
+                    f"key_original={source_hash[:8]}… ({type(exc).__name__}: {exc}) — "
+                    f"marking document 'failed'."
+                )
+                await S012PersistHelpers.mark_failed(self._deps, doc_id)
+                raise
 
         # 3. Run S0/S1/S2 with Merkle-DAG node caching (report progress at each boundary)
         s0_result, s0_fp, s0_cache_hit = await self._s012.run_s0(

@@ -11,6 +11,8 @@ metadata:
 
 | Symptom | Root cause | Fix |
 |---|---|---|
+| Reingest "original not found" → doc stuck `pending` | S0 download in `engine.run` step 2 is OUTSIDE the fail-closed guards; OR the repro races a collection-delete / polls stale chunks | Wrap step-2 download → `mark_failed`+raise; verify reingest by polling REAL status, not `wait_done`. See [[reingest-failclosed-and-corpus-phrases]] |
+| "Search misses a doc by its own phrase" | corpus `searchable_phrase` shared across all formats of a (type,lang) pair → not distinctive | raise `top_k` (>=~20-30) or scope to one doc. See [[reingest-failclosed-and-corpus-phrases]] |
 | S6 skips Qdrant | `collection_id=None` in `arq_pool.enqueue_job()` | `documents/router.py` — pass `collection_id=str(collection_id)` |
 | Chunk count = 0 | `S4_ENABLED=false` | Set `S4_ENABLED=true` in `services/docforge/.env` |
 | S2 silently skips all figures | `S2_ENRICH_ENABLED=false` | Set `S2_ENRICH_ENABLED=true` |

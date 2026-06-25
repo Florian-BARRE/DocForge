@@ -171,6 +171,38 @@ class LiveClient(LoggerClass):
             time.sleep(2)
         return last
 
+    def wait_status(
+        self, collection_id: str, doc_id: str, target: str = "done", timeout_s: float = 300.0
+    ) -> dict:
+        """
+        Poll a document until its STATUS reaches ``target`` (or terminal ``error``), or timeout.
+
+        Use this instead of :meth:`wait_done` when the document already has chunks from a previous
+        run — e.g. a force-reingest. ``wait_done`` keys on ``chunk_count>0`` and would return the
+        stale snapshot immediately (the prior chunks survive while the re-run is still pending), so
+        it can never observe the pending → running → done transition of a reingest.
+
+        Args:
+            collection_id (str): The document's collection.
+            doc_id (str): The document id to poll.
+            target (str): The status to wait for (default "done").
+            timeout_s (float): Maximum seconds to wait.
+
+        Returns:
+            dict: The last document payload observed.
+        """
+        # 1. Poll the status until it reaches the target, errors out, or the deadline passes
+        deadline = time.time() + timeout_s
+        last: dict = {}
+        while time.time() < deadline:
+            status, body = self.get(f"/collections/{collection_id}/documents/{doc_id}")
+            if status == 200:
+                last = body
+                if body.get("status") in (target, "error"):
+                    return body
+            time.sleep(2)
+        return last
+
     def wait_indexed(self, collection_id: str, doc_id: str, timeout_s: float = 120.0) -> dict:
         """
         Poll until the document's vectors are present in Qdrant (the definitive indexing signal).
