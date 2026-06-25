@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import json
+import os
 import time
 import urllib.error
 import urllib.request
@@ -22,6 +23,9 @@ import pytest
 
 API = "http://localhost:10020/api/v1"
 QDRANT_URL = "http://localhost:10025"
+
+# Optional bearer token — read from env so this test works on both auth-on and auth-off stacks.
+_TOKEN = os.environ.get("DOCFORGE_TEST_API_TOKEN", "")
 
 
 # ── HTTP helpers ────────────────────────────────────────────────────────────────
@@ -44,7 +48,11 @@ def _req(method: str, url: str, body: dict | None = None, raw: bytes | None = No
 
 
 def _api(method: str, path: str, body: dict | None = None):
-    return _req(method, API + path, body=body, headers={"Content-Type": "application/json"})
+    # Include the bearer token when one is configured — required for AUTH_ENABLED=true stacks.
+    headers: dict[str, str] = {"Content-Type": "application/json"}
+    if _TOKEN:
+        headers["Authorization"] = f"Bearer {_TOKEN}"
+    return _req(method, API + path, body=body, headers=headers)
 
 
 def _make_docx(marker: str) -> bytes:
@@ -110,9 +118,13 @@ def _ingest(collection_id: str, filename: str, content: bytes, metadata: dict | 
     parts.append(content)
     parts.append(("\r\n--%s--\r\n" % boundary).encode())
     payload = b"".join(parts)
+    # Include auth token for AUTH_ENABLED=true stacks (same as _api helper above).
+    hdrs: dict[str, str] = {"Content-Type": "multipart/form-data; boundary=%s" % boundary}
+    if _TOKEN:
+        hdrs["Authorization"] = f"Bearer {_TOKEN}"
     return _req(
         "POST", f"{API}/collections/{collection_id}/documents/ingest",
-        raw=payload, headers={"Content-Type": "multipart/form-data; boundary=%s" % boundary},
+        raw=payload, headers=hdrs,
         timeout=60,
     )
 

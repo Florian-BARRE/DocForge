@@ -346,6 +346,56 @@ class TestGetDocument:
         body = (await client.get(_doc_url(col_id, doc_id))).json()
         assert body["indexed"] is False
 
+    @pytest.mark.asyncio
+    async def test_get_serializes_jobs_without_lazy_load(
+        self, client: httpx.AsyncClient
+    ) -> None:
+        """jobs field is populated from job_repo.list_by_document, not ORM lazy-load.
+
+        The route must call CONTEXT.job_repo.list_by_document inside the async session
+        context manager and pass the result explicitly into JobResponse.from_model().
+        If the route instead accessed a relationship attribute on the document ORM object
+        (a lazy-load), it would raise DetachedInstanceError after the session closes.
+
+        This test verifies the explicit-load contract: job_repo.list_by_document is awaited
+        and the jobs appear in the response body — not via any ORM attribute on the document.
+        """
+        import datetime
+
+        col_id = uuid.uuid4()
+        doc_id = uuid.uuid4()
+        doc = make_document_orm(id=doc_id, collection_id=col_id, implicit_meta={})
+        CONTEXT.document_repo.get_by_id.return_value = doc
+        CONTEXT.document_repo.get_stage_run_summary.return_value = {}
+
+        # Build a realistic minimal job mock that JobResponse.from_model() can consume.
+        job = MagicMock()
+        job.id = uuid.uuid4()
+        job.document_id = doc_id
+        job.collection_id = col_id
+        job.status = "done"
+        job.error = None
+        job.budget_spent = 0.05
+        job.created_at = datetime.datetime.utcnow()
+        job.worker_id = "worker-1"
+        job.started_at = datetime.datetime.utcnow()
+        job.finished_at = datetime.datetime.utcnow()
+        job.attempt = 1
+        job.current_stage = None
+        job.progress = 100
+
+        # Inject via the repo mock — the route MUST read from here, not from doc.jobs.
+        CONTEXT.job_repo.list_by_document.return_value = [job]
+
+        resp = await client.get(_doc_url(col_id, doc_id))
+        assert resp.status_code == 200
+        body = resp.json()
+        assert "jobs" in body
+        assert len(body["jobs"]) == 1
+        assert body["jobs"][0]["status"] == "done"
+        # Confirm the route used job_repo.list_by_document (explicit load), not a doc attribute.
+        CONTEXT.job_repo.list_by_document.assert_awaited_once()
+
 
 # ─────────────────────────── Update ─────────────────────────────
 

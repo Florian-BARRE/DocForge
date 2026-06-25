@@ -96,6 +96,23 @@ class LiveClient(LoggerClass):
         resp = self._http.get(self._api + path)
         return resp.status_code, resp.content, resp.headers.get("content-type", "")
 
+    def fetch_url(self, url: str) -> tuple[int, bytes]:
+        """
+        Fetch an absolute URL (e.g. a presigned S3 URL) and return (status, bytes).
+
+        Used by live tests to verify that presigned URLs issued by the API are actually
+        fetchable and return non-empty content — not just that the URL string exists.
+
+        Args:
+            url (str): Absolute URL to fetch (no auth headers added).
+
+        Returns:
+            tuple[int, bytes]: HTTP status and raw response body.
+        """
+        # 1. Fetch without auth headers — presigned URLs carry their own auth signature
+        resp = httpx.get(url, timeout=30.0, follow_redirects=True)
+        return resp.status_code, resp.content
+
     # ─── Ingestion ───────────────────────────────────────────────────────────────
 
     def ingest(

@@ -213,6 +213,34 @@ class TestGetFigureCrop:
         assert body["url"] == "https://s3.example.com/fig.png"
 
     @pytest.mark.asyncio
+    async def test_figure_uses_stored_crop_key_not_recomputed_key(
+        self, client: httpx.AsyncClient
+    ) -> None:
+        """Route must call s3.exists with the block's stored crop_key, not a key derived
+        from (source_hash, block_id).
+
+        The stale scheme S3Helpers.key_figure_crop(source_hash, block_id) would produce
+        'derived/<hash>/figures/<safe_id>.png', which no longer matches anything stored since
+        content-addressed crops were introduced.  This test pins the regression.
+        """
+        col_id = uuid.uuid4()
+        doc_id = uuid.uuid4()
+        stored_crop_key = "figures/by-hash/de/deadbeef1234.png"
+        doc = make_document_orm(
+            id=doc_id, collection_id=col_id, status="done", source_hash="somehash"
+        )
+        CONTEXT.document_repo.get_by_id.return_value = doc
+        block = SimpleNamespace(
+            id="blk-99", type="figure", type_data={"crop_key": stored_crop_key}
+        )
+        CONTEXT.block_repo.get_by_document.return_value = [block]
+        CONTEXT.s3.exists.return_value = True
+        await client.get(_url(col_id, doc_id, "figures/blk-99"))
+        # s3.exists must have been called with EXACTLY the stored crop_key — not the
+        # stale computed key (which would be 'derived/somehash/figures/blk-99.png').
+        CONTEXT.s3.exists.assert_awaited_once_with(stored_crop_key)
+
+    @pytest.mark.asyncio
     async def test_figure_returns_404_when_blob_missing(
         self, client: httpx.AsyncClient
     ) -> None:

@@ -161,7 +161,9 @@ _RENDER_PATH = "backend.routers.collections.documents.pages.router._render_page_
 
 class TestGetPageScreenshot:
     """GET /api/v1/collections/{collection_id}/documents/{document_id}/pages/{page_number}/screenshot
-    Page PNGs are rendered on-the-fly from the original PDF — no pre-stored PNGs in S3.
+    Page PNGs are rendered on-the-fly from the PDF artefact in S3.
+    The route prefers the Gotenberg-converted PDF (key_pdf) so that non-PDF originals
+    (pptx/docx/html) are rendered page-faithfully.  key_original is used only as a fallback.
     """
 
     @pytest.mark.asyncio
@@ -178,6 +180,70 @@ class TestGetPageScreenshot:
         assert response.status_code == 200
         assert response.headers["content-type"] == "image/png"
         assert response.content == _PNG_MAGIC
+
+    @pytest.mark.asyncio
+    async def test_screenshot_prefers_key_pdf_over_key_original(
+        self, client: httpx.AsyncClient
+    ) -> None:
+        """Route must try S3Helpers.key_pdf first (Gotenberg-converted PDF).
+
+        For non-PDF originals (pptx/docx/html), the raw original file is not a PDF, so
+        PyMuPDF would mis-count pages or fail entirely.  The converted PDF always has the
+        correct page structure.  This test pins that S3 is queried with the pdf key first.
+        """
+        from unittest.mock import call
+        from common_libs.storage.s3.helpers import S3Helpers
+
+        c, d = uuid.uuid4(), uuid.uuid4()
+        source_hash = "sha256abc"
+        CONTEXT.document_repo.get_by_id.return_value = make_document_orm(
+            id=d, collection_id=c, status="done", source_hash=source_hash
+        )
+        # First exists call (key_pdf) returns True → route should download key_pdf, not key_original.
+        CONTEXT.s3.exists.return_value = True
+        CONTEXT.s3.download.return_value = b"fake_pdf_bytes"
+        with patch(_RENDER_PATH, return_value=_PNG_MAGIC):
+            response = await client.get(_screenshot_url(c, d, 0))
+        assert response.status_code == 200
+        expected_pdf_key = S3Helpers.key_pdf(source_hash)
+        # The first s3.exists call must use key_pdf — assert it appears as the very first call.
+        first_exists_call = CONTEXT.s3.exists.await_args_list[0]
+        assert first_exists_call == call(expected_pdf_key)
+        # And download must use the same key_pdf (not the original).
+        CONTEXT.s3.download.assert_awaited_once_with(expected_pdf_key)
+
+    @pytest.mark.asyncio
+    async def test_screenshot_falls_back_to_key_original_when_pdf_missing(
+        self, client: httpx.AsyncClient
+    ) -> None:
+        """When key_pdf is absent, route falls back to key_original.
+
+        PDF-native documents may not have a separate converted-PDF artefact (the original
+        IS the PDF), so the fallback path must work correctly.
+        """
+        from unittest.mock import call
+        from common_libs.storage.s3.helpers import S3Helpers
+
+        c, d = uuid.uuid4(), uuid.uuid4()
+        source_hash = "sha256xyz"
+        CONTEXT.document_repo.get_by_id.return_value = make_document_orm(
+            id=d, collection_id=c, status="done", source_hash=source_hash
+        )
+        # key_pdf missing, key_original present.
+        CONTEXT.s3.exists.side_effect = [False, True]
+        CONTEXT.s3.download.return_value = b"native_pdf_bytes"
+        with patch(_RENDER_PATH, return_value=_PNG_MAGIC):
+            response = await client.get(_screenshot_url(c, d, 0))
+        assert response.status_code == 200
+        expected_original_key = S3Helpers.key_original(source_hash)
+        expected_pdf_key = S3Helpers.key_pdf(source_hash)
+        # First call: try key_pdf, second call: try key_original.
+        assert CONTEXT.s3.exists.await_args_list == [
+            call(expected_pdf_key),
+            call(expected_original_key),
+        ]
+        # Download uses the fallback key_original.
+        CONTEXT.s3.download.assert_awaited_once_with(expected_original_key)
 
     @pytest.mark.asyncio
     async def test_screenshot_returns_409_when_not_done(
