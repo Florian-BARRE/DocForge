@@ -79,6 +79,63 @@ export interface FieldDescriptor {
   description: string
 }
 
+// ── Config tree (recursive discovery — CHUNK D2) ─────────────────────────────
+//
+// The backend emits a `config_tree: ConfigNode` on config-bearing endpoints
+// (create_collection, update_config).  This is a recursive tree where each node
+// is tagged by `kind` and describes one field or sub-group of the PipelineConfig.
+// The tree replaces the flat `dynamic_fields` for config panels; flat fields
+// remain for other overlays (filters, weights, metadata).
+
+/** A single provider choice within a chain or provider_union node. */
+export interface ProviderChoice {
+  id: string
+  label: string
+  available: boolean
+  selectable: boolean
+  /** True when this choice is the deployment-default (first available) */
+  default: boolean
+  note: string
+  /** Recursive sub-config fields for this provider. */
+  params: ConfigNode[]
+}
+
+/**
+ * One node in the recursive config tree emitted by the backend discovery endpoint.
+ * Kinds map to their rendering strategy in RecursiveFieldRenderer.
+ */
+export interface ConfigNode {
+  /** Absolute dot-path, e.g. "patch.pipeline.embed.gate.min_score". */
+  path: string
+  /** Discriminator that drives the rendering dispatch. */
+  kind: 'scalar' | 'enum' | 'object' | 'chain' | 'provider_union'
+  label: string
+  description: string
+  default: unknown
+  /** False when a collection_id is needed but was not provided. */
+  resolved: boolean
+
+  // ── kind=scalar ──
+  type?: 'bool' | 'int' | 'float' | 'str' | 'secret' | string | null
+  min?: number | null
+  max?: number | null
+
+  // ── kind=enum ──
+  options?: string[] | null
+
+  // ── kind=object ──
+  children?: ConfigNode[] | null
+
+  // ── kind=chain / provider_union ──
+  /** True for chains (multi-provider), false for single provider_union. */
+  multi?: boolean | null
+  /** True when the union may be unset (adds a "disabled" chip). */
+  optional?: boolean | null
+  /** Registry category (parser / embed / rerank / llm / …). */
+  capability?: string | null
+  choices?: ProviderChoice[] | null
+}
+
 export interface EndpointDescriptor {
   operation: Schemas['OperationRef']
   route_name: string
@@ -90,6 +147,8 @@ export interface EndpointDescriptor {
   input?: ContractRef | null
   output?: ContractRef | null
   dynamic_fields: DynamicField[]
+  /** Recursive config tree for config-bearing endpoints (create_collection, update_config). */
+  config_tree?: ConfigNode | null
 }
 
 export interface DiscoveryResponse {

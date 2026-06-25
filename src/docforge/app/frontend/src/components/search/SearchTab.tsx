@@ -1,7 +1,8 @@
 // ====== Code Summary ======
 // Search tab — PipelineGraph for the search pipeline (config + trace mode), a query
 // input with a search button, a query-variants banner (multi_query), and result cards.
-// Discovery-driven config panels appear inline below the graph on node click.
+// Config panels for search stages are now discovery-driven via StageConfigPanel +
+// RecursiveFieldRenderer (same path as PipelineTab) — SearchStagePanel is retired.
 // Search clarity is delegated to dedicated components: SearchSettingsBar (active
 // config chips), SearchTraceSummary (collapsible debug_info), and ResultScore
 // (per-result relevance + per-vector ranks).
@@ -10,8 +11,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 // ====== Internal Project Imports ======
-import { getConfigState, searchDocuments } from '../../api/client'
-import type { ConfigState, SearchGroupItem, SearchResultItem } from '../../api/types'
+import { getConfigState, getDiscovery, searchDocuments } from '../../api/client'
+import type { ConfigState, DiscoveryResponse, SearchGroupItem, SearchResultItem } from '../../api/types'
+import { StageConfigPanel } from '../pipeline/panels/StageConfigPanel'
 import { PipelineGraph } from '../pipeline/PipelineGraph'
 import { SEARCH_STAGES } from '../pipeline/search-stages'
 import type { StageDefinition, StageResult } from '../pipeline/types'
@@ -19,7 +21,6 @@ import { ResultCard } from './ResultCard'
 import { SearchConfigOverview } from './SearchConfigOverview'
 import { SearchFilterBuilder } from './SearchFilterBuilder'
 import { SearchSettingsBar } from './SearchSettingsBar'
-import { SearchStagePanel } from './SearchStagePanel'
 import { SearchTraceSummary } from './SearchTraceSummary'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -78,9 +79,11 @@ export function SearchTab({ collectionId }: SearchTabProps) {
 
   const [activeStage, setActiveStage] = useState<StageDefinition | null>(null)
 
-  // ── Discovery state ──────────────────────────────────────────────────────────
+  // ── Discovery / config state ─────────────────────────────────────────────────
 
   const [configState, setConfigState] = useState<ConfigState | null>(null)
+  // Full discovery response — passed to StageConfigPanel for the config_tree path.
+  const [discovery, setDiscovery] = useState<DiscoveryResponse | null>(null)
 
   // ── Trace state ───────────────────────────────────────────────────────────────
 
@@ -92,16 +95,19 @@ export function SearchTab({ collectionId }: SearchTabProps) {
 
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
 
-  // 1. Fetch config state on mount / collection change.
-  //    Discovery fields are no longer needed — SearchStagePanel renders
-  //    hardcoded forms rather than discovery-driven DynamicFieldsGroup.
+  // 1. Fetch discovery + config state on mount / collection change.
+  //    Discovery provides the config_tree for StageConfigPanel.
   useEffect(() => {
     let cancelled = false
 
     async function load() {
       try {
-        const cfgState = await getConfigState(collectionId)
+        const [discoveryResp, cfgState] = await Promise.all([
+          getDiscovery(collectionId),
+          getConfigState(collectionId),
+        ])
         if (cancelled) return
+        setDiscovery(discoveryResp)
         setConfigState(cfgState)
       } catch {
         // Non-fatal — graph will render in empty config state.
@@ -120,6 +126,8 @@ export function SearchTab({ collectionId }: SearchTabProps) {
     } catch {
       // Silent — the panel already showed a success indicator.
     }
+    // Note: discovery (config_tree structure) does not change on config save,
+    // so we do not re-fetch it here.
   }, [collectionId])
 
   // 3. Derive trace stageResults from lastSearchInfo.
@@ -246,12 +254,21 @@ export function SearchTab({ collectionId }: SearchTabProps) {
               </button>
             </div>
             <div className="pipeline-inline-panel-body">
-              <SearchStagePanel
-                stageId={activeStage.id as 'transform' | 'embed' | 'retrieve' | 'rerank'}
-                collectionId={collectionId}
-                configState={configState}
-                onSaved={handleSaved}
-              />
+              {/* Embed stage is read-only — auto-derived from ingestion embed config. */}
+              {activeStage.readOnly ? (
+                <div className="stage-config-empty">
+                  This stage is auto-derived from the ingestion embed configuration.
+                </div>
+              ) : (
+                <StageConfigPanel
+                  stage={activeStage}
+                  collectionId={collectionId}
+                  dynamicFields={[]}
+                  discovery={discovery}
+                  configState={configState}
+                  onSaved={handleSaved}
+                />
+              )}
             </div>
           </>
         )}

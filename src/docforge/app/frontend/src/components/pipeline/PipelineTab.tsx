@@ -13,7 +13,7 @@ import { useCallback, useEffect, useState } from 'react'
 
 // ====== Internal Project Imports ======
 import { getConfigState, getDiscovery, getDocument } from '../../api/client'
-import type { ConfigState, Document, DynamicField } from '../../api/types'
+import type { ConfigState, DiscoveryResponse, Document, DynamicField } from '../../api/types'
 
 // ====== Local Project Imports ======
 import { ConfigHistoryPanel } from './ConfigHistoryPanel'
@@ -194,6 +194,9 @@ export function PipelineTab({
   // 1. Discovery fields — all DynamicField objects for this collection.
   const [dynamicFields, setDynamicFields] = useState<DynamicField[]>([])
 
+  // 1b. Full discovery response — passed to StageConfigPanel for config_tree path.
+  const [discovery, setDiscovery] = useState<DiscoveryResponse | null>(null)
+
   // 2. Current persisted config state.
   const [configState, setConfigState] = useState<ConfigState | null>(null)
 
@@ -226,6 +229,8 @@ export function PipelineTab({
           e => e.dynamic_fields ?? []
         )
         setDynamicFields(allFields)
+        // Store the full discovery response so StageConfigPanel can use config_tree.
+        setDiscovery(discoveryResp)
         setConfigState(cfgState)
       } catch {
         // Non-fatal: the panel will render in empty state.
@@ -372,6 +377,7 @@ export function PipelineTab({
                   stage={activeStage}
                   collectionId={collectionId}
                   dynamicFields={dynamicFields}
+                  discovery={discovery}
                   configState={configState}
                   onSaved={handleSaved}
                   canWrite={canWrite}

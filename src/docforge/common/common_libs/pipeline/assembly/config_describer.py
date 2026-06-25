@@ -9,9 +9,16 @@
 #   1. _FIELD_CATEGORY_MAP — (ModelName, field_name) → registry category, for the `Any`-typed
 #      provider fields. A `list[Any]` field becomes a `chain` node, a scalar `Any` becomes a
 #      `provider_union` (optionally `optional`). Choices come from `get_configs(category)` using
-#      availability()/selectable logic like DescribeSurface._auto_providers (structural defaults; merge_defaults not applied — per-collection);
+#      the cheap selectable() hook only (structural defaults; merge_defaults not applied — per-collection);
 #      each choice's `params` are produced by RECURSING describe() on the provider config class.
 #   2. auto_import of all categories (incl. llm + rerank) before walking, so @register fires.
+#
+# I/O-FREE BY CONTRACT: this is a config-FORM describer, NOT a monitoring surface. It performs NO
+# network probes — provider `availability()` hooks do a blocking ~1s socket probe per provider, and
+# the recursive walk re-describes the embed providers ~3× (embed.chain + embed.sparse + semantic.embed),
+# so probing made GET /discovery take ~45s. Choices therefore report `available=True` unconditionally;
+# whether a service is currently UP is a separate concern owned by /monitoring/resources. Only the
+# cheap, non-I/O `selectable()` hook (e.g. vit_onnx's model_path check) still gates UI choices.
 #
 # Emits plain dicts (ConfigNodeDict) — the backend's Pydantic ConfigNode validates them at the
 # router boundary. Keeping this in common_libs avoids the layer DAG depending on the app's models.
@@ -22,6 +29,7 @@
 # ====== Standard Library Imports ======
 from __future__ import annotations
 
+import copy
 from typing import Any
 
 # ====== Internal Project Imports ======
@@ -73,9 +81,10 @@ class ConfigDescriberHelpers:
     """
     Static-only recursive describer building the discovery config tree from a Pydantic model.
 
-    Read-only relative to all state: it queries provider configs (availability/selectable, structural defaults)
-    and JSON schemas but mutates nothing. The host passes the RUNTIME_CONFIG instance (``cfg``)
-    used for provider availability — mirroring DescribeSurface, which reads ``registry._cfg``.
+    Read-only relative to all state: it queries provider configs (the cheap selectable hook,
+    structural defaults) and JSON schemas but mutates nothing, and performs NO network I/O. The
+    host passes the RUNTIME_CONFIG instance (``cfg``) used for the selectable hook — mirroring
+    DescribeSurface, which reads ``registry._cfg``.
     """
 
     def __new__(cls, *args: object, **kwargs: object) -> None:
@@ -97,8 +106,10 @@ class ConfigDescriberHelpers:
         Returns:
             ConfigNodeDict: The root object node with fully recursed ``children``.
         """
-        # 1. Ensure every provider category is registered before any union is walked.
-        cls._auto_import_all()
+        # 1. Ensure every provider category is registered before any union is walked. Idempotent
+        #    and process-cached: @register fires once and stays, so the (filesystem-walking)
+        #    auto_import never re-runs — critically, NOT on every recursive describe() entry.
+        cls._ensure_registered()
 
         # 2. Walk the model's schema into a single object node rooted at root_path.
         schema = model_cls.model_json_schema()
@@ -113,6 +124,23 @@ class ConfigDescriberHelpers:
         )
 
     # ─── Registration bootstrap ─────────────────────────────────────────────────
+
+    @classmethod
+    def _ensure_registered(cls) -> None:
+        """
+        Run provider auto-import exactly once per process (idempotent, filesystem-cheap thereafter).
+
+        ``@register`` is a permanent, process-global side effect of importing a provider module, so
+        re-walking the packages on every (recursive) ``describe()`` call is pure waste —
+        ``auto_import`` does a ``pkgutil.walk_packages`` filesystem scan that dominated the build
+        time (~6 s/call × the recursive entries). The guard collapses that to a single first walk.
+        """
+        # 1. Already imported in this process → nothing to do (the registry is permanent).
+        if cls._registered:
+            return
+        # 2. First call: walk every provider package + the chunking strategies once.
+        cls._auto_import_all()
+        cls._registered = True
 
     @staticmethod
     def _auto_import_all() -> None:
@@ -295,12 +323,19 @@ class ConfigDescriberHelpers:
         """
         Build the choice list for a category, RECURSING describe() on each provider config.
 
-        Like DescribeSurface._auto_providers: availability(cfg) + the optional selectable() hook.
+        Performs NO network I/O. The flat DescribeSurface._auto_providers probes each provider's
+        ``availability(cfg)`` hook (a blocking ~1s socket connect) — this config-FORM describer does
+        NOT: a form lists what is *configurable*, while whether a service is currently reachable is a
+        live-monitoring concern owned by /monitoring/resources. So every choice reports
+        ``available=True`` and only the cheap, non-I/O ``selectable()`` hook gates UI offering.
+
         NOTE: unlike the flat surface this surfaces STRUCTURAL defaults from the provider class
         schema — merge_defaults(cfg) is NOT applied (provider config is per-collection, so it is a
         no-op today; if a future provider derives a default from cfg, wire merge_defaults here).
         Each choice's ``params`` is the recursively-described field list of that provider config
-        (so a nested union — semantic.embed — is expressible).
+        (so a nested union — semantic.embed — is expressible). The per-class recursive describe is
+        memoized for the duration of one build (see ``_describe_provider``) so an embed provider
+        re-encountered under embed.chain / embed.sparse / semantic.embed is only walked once.
 
         Args:
             category (str): Registry category.
@@ -315,37 +350,53 @@ class ConfigDescriberHelpers:
         _ = defs
         choices: list[ConfigNodeDict] = []
         for config_cls in get_configs(category).values():
-            available, note = cls._availability(config_cls)
             selectable = cls._selectable(config_cls)
             # The choice's own fields are the recursively-described provider config — its
-            # children become the choice's `params` (a nested union recurses naturally).
-            described = cls.describe(config_cls, cls._cfg_for(config_cls), root_path="")
+            # children become the choice's `params` (a nested union recurses naturally). Memoized
+            # per class so the embed providers (walked 3× across the tree) are described once.
+            params = cls._describe_provider(config_cls)
             choices.append({
                 "id": config_cls.model_fields["id"].default,
                 "label": getattr(config_cls, "_label", config_cls.__name__),
-                "available": available,
+                # Config-form describer: never live-probed. UP/DOWN is a /monitoring/resources concern.
+                "available": True,
                 "selectable": selectable,
                 # `default` is not tracked at the registry level (the flat _auto_providers surface
                 # omits it too); the frontend derives the default from the empty-chain behaviour.
                 "default": False,
-                "note": note,
-                "params": cls._reparent_params(path_prefix="", children=described["children"]),
+                "note": "",
+                "params": params,
             })
         return choices
 
-    # ─── Provider introspection (mirrors DescribeSurface) ───────────────────────
+    # ─── Provider introspection (cheap, non-I/O) ────────────────────────────────
 
     @classmethod
-    def _availability(cls, config_cls: type) -> tuple[bool, str]:
-        """Call the provider config's ``availability(cfg)`` hook, fail-soft to (False, reason)."""
-        hook = getattr(config_cls, "availability", None)
-        if not callable(hook):
-            return True, ""
-        try:
-            available, note = hook(cls._runtime_cfg)
-            return bool(available), str(note or "")
-        except Exception as exc:  # fail-closed: an unprobeable provider is reported unavailable.
-            return False, f"availability probe failed: {exc}"
+    def _describe_provider(cls, config_cls: type) -> list[ConfigNodeDict]:
+        """
+        Recursively describe a provider config's own fields as a choice's ``params`` (memoized).
+
+        The recursive walk re-encounters the embed providers three times (embed.chain,
+        embed.sparse, semantic.embed). Memoizing the per-class result within one build means each
+        provider's schema is walked exactly once. A deep copy is returned on a cache hit so the
+        caller's path-reparenting never mutates the shared cached node.
+
+        Args:
+            config_cls (type): The provider's Pydantic config class.
+
+        Returns:
+            list[ConfigNodeDict]: The provider's described fields (paths local, leading "." stripped).
+        """
+        # 1. Serve a deep copy from cache so reparenting/mutation stays caller-local.
+        cached = cls._describe_cache.get(config_cls)
+        if cached is not None:
+            return copy.deepcopy(cached)
+        # 2. Describe once: recurse the provider model, then strip the synthetic empty root path.
+        described = cls.describe(config_cls, cls._cfg_for(config_cls), root_path="")
+        params = cls._reparent_params(path_prefix="", children=described["children"])
+        # 3. Cache the canonical result; hand the caller its own copy.
+        cls._describe_cache[config_cls] = params
+        return copy.deepcopy(params)
 
     @classmethod
     def _selectable(cls, config_cls: type) -> bool:
@@ -501,8 +552,18 @@ class ConfigDescriberHelpers:
         """Return a human label from a schema's ``title`` (or a Title-cased field name)."""
         return schema.get("title") or fallback.replace("_", " ").title()
 
-    # The runtime config used for provider availability — set per-describe() via the public API.
+    # The runtime config used for the selectable hook — set per-describe() via the public API.
     _runtime_cfg: Any = None
+
+    # Process-global guard: provider auto-import (a permanent @register side effect that does a
+    # costly filesystem package-walk) runs once, not on every recursive describe() entry.
+    _registered: bool = False
+
+    # Per-build memoization of the recursive per-provider describe (class → described params).
+    # Reset at the start of every top-level build by the module-level describe() entry point, so a
+    # provider re-encountered across the tree (embed.chain / embed.sparse / semantic.embed) is
+    # walked once per request without leaking described state between requests.
+    _describe_cache: dict[type, list[ConfigNodeDict]] = {}
 
 
 def describe(model_cls: type, cfg: Any, root_path: str = "pipeline") -> ConfigNodeDict:
@@ -517,9 +578,13 @@ def describe(model_cls: type, cfg: Any, root_path: str = "pipeline") -> ConfigNo
     Returns:
         ConfigNodeDict: The recursively-described config tree (plain dicts).
     """
-    # Stash the runtime config so the static helper's availability probes can read it without
-    # threading it through every recursive call — describe() is single-threaded per request.
+    # 1. Stash the runtime config so the static helper's selectable hook can read it without
+    #    threading it through every recursive call — describe() is single-threaded per request.
     ConfigDescriberHelpers._runtime_cfg = cfg
+    # 2. Reset the per-build provider memo so no described state leaks between requests. Done here
+    #    (the true public entry), NOT in the recursive class method which re-enters per provider.
+    ConfigDescriberHelpers._describe_cache = {}
+    # 3. Walk the model into the recursive config tree.
     return ConfigDescriberHelpers.describe(model_cls, cfg, root_path=root_path)
 
 
