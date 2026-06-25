@@ -65,9 +65,12 @@ class EmbedConfig(BaseModel):
         default=None,
         description="Optional separate sparse backend; None = sparse comes from the chain provider.",
     )
+    # Embed defaults to failure_policy="raise": there is no index without vectors, so an
+    # exhausted embed chain fails the document with a precise reason. An expert may set
+    # failure_policy="continue" per-collection (the batch then contributes no vectors).
     gate: ChainGateConfig = Field(
-        default_factory=ChainGateConfig,
-        description="Escalation policy for the embedding chain.",
+        default_factory=lambda: ChainGateConfig(failure_policy="raise"),
+        description="Escalation + exhaustion policy for the embedding chain (default failure_policy=raise).",
     )
 
     @model_validator(mode="before")

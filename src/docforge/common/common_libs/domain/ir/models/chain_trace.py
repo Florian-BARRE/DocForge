@@ -48,8 +48,17 @@ class ChainTrace(BaseModel):
         attempts (list[ChainAttemptIR]): One record per provider tried, in order.
         final_provider (str | None): provider_id of the attempt whose result was
             kept, or None when every provider escalated.
+        degraded (bool): True when the chain exhausted under ``failure_policy="continue"``
+            and the stage ran its degraded path (no provider accepted). The UI surfaces
+            this so a degraded stage is a first-class signal rather than silent loss.
+            Default False keeps legacy IR rows loading unchanged.
+        gate_tripped (str | None): Which gate caused the final escalation when degraded —
+            ``"score"`` (below min_score), ``"time"`` (over max_duration_ms), or ``"error"``
+            (the last provider raised). None when not degraded or undeterminable.
     """
 
     stage: str
     attempts: list[ChainAttemptIR] = Field(default_factory=list)
     final_provider: str | None = None
+    degraded: bool = False
+    gate_tripped: str | None = None

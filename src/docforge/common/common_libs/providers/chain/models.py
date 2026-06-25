@@ -44,15 +44,20 @@ class ChainOutcome[R]:
 
     Attributes:
         result (R | None): The first satisfactory result, or None when every provider
-            either raised or was escalated.
+            either raised or was escalated.  A ``best_effort`` degraded outcome carries
+            the highest-scoring below-threshold result here (with ``degraded=True``).
         attempts (list[ChainAttempt]): One entry per provider tried, in order.
         final_provider (str | None): provider_id of the attempt whose result was
             returned, or None when the chain exhausted without success.
+        degraded (bool): True when the chain exhausted under ``failure_policy="continue"``
+            and returned a degraded outcome (empty or best-effort) instead of raising.
+            A normally-accepted result always has ``degraded=False``.
     """
 
     result: R | None
     attempts: list[ChainAttempt] = field(default_factory=list)
     final_provider: str | None = None
+    degraded: bool = False
 
     @property
     def succeeded(self) -> bool:
@@ -130,6 +135,31 @@ class ChainHelpers:
             escalated=escalated,
             error=attempt.error,
         )
+
+    @staticmethod
+    def gate_tripped(outcome: ChainOutcome[Any]) -> str | None:
+        """
+        Infer which gate caused the final escalation on a degraded/exhausted outcome.
+
+        Inspects the LAST attempt (the one that ultimately failed the chain):
+        an attempt that raised → ``"error"``; a scored attempt → ``"score"``; a
+        succeeded-but-escalated attempt with no score → ``"time"`` (only the time gate
+        can reject a scoreless success). Returns None when there are no attempts.
+
+        Args:
+            outcome (ChainOutcome[Any]): The chain invocation record.
+
+        Returns:
+            str | None: ``"error"`` | ``"score"`` | ``"time"`` | None.
+        """
+        if not outcome.attempts:
+            return None
+        last = outcome.attempts[-1]
+        if not last.succeeded:
+            return "error"
+        if last.score is not None:
+            return "score"
+        return "time"
 
     @staticmethod
     def default_provider_id(provider: Any) -> str:

@@ -54,25 +54,32 @@ class EnrichConfig(BaseModel):
         default_factory=list,
         description="Ordered figure classifier chain; index 0 is tried first.",
     )
+    # S2 enrichment gates default to failure_policy="continue": a figure that cannot be
+    # classified/OCR'd/described should NOT fail the whole document — the stage runs its
+    # degraded path (classifier->PHOTO, ocr->skip, vlm->skip) and the pipeline proceeds. An
+    # expert may set any of these to "raise" per-collection to make enrichment mandatory.
     classifier_gate: ChainGateConfig = Field(
-        default_factory=ChainGateConfig,
-        description="Escalation policy for the classifier chain.",
+        default_factory=lambda: ChainGateConfig(failure_policy="continue"),
+        description="Escalation policy for the classifier chain (default failure_policy=continue).",
     )
     ocr_chain: list[Any] = Field(
         default_factory=list,
         description="Ordered OCR providers; empty list disables OCR.",
     )
     ocr_gate: ChainGateConfig = Field(
-        default_factory=lambda: ChainGateConfig(min_score=0.85),
-        description="Escalation policy for the OCR chain (default min_score=0.85 preserves legacy threshold).",
+        default_factory=lambda: ChainGateConfig(min_score=0.85, failure_policy="continue"),
+        description=(
+            "Escalation policy for the OCR chain (default min_score=0.85 preserves the legacy "
+            "threshold; failure_policy=continue degrades to no-OCR rather than failing the doc)."
+        ),
     )
     vlm_chain: list[Any] = Field(
         default_factory=list,
         description="Ordered VLM providers; empty list disables VLM enrichment entirely.",
     )
     vlm_gate: ChainGateConfig = Field(
-        default_factory=ChainGateConfig,
-        description="Escalation policy for the VLM chain.",
+        default_factory=lambda: ChainGateConfig(failure_policy="continue"),
+        description="Escalation policy for the VLM chain (default failure_policy=continue).",
     )
 
     @model_validator(mode="before")

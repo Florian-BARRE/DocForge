@@ -36,8 +36,11 @@ class _PredicateGate:
                 returns True when the next provider should be tried.
         """
         self._predicate = predicate
-        # Synthetic config — never actually consulted, kept for the API shape.
-        self._cfg = ChainGateConfig()
+        # Synthetic config kept for the API shape. failure_policy="continue" is REQUIRED so the
+        # legacy "raw result or None" contract survives the CHUNK-2 raise default: an exhausted
+        # legacy chain must return None (degraded), never raise ChainExhaustedError. (ProviderChain
+        # itself is slated for removal in CHUNK 3 cleanup.)
+        self._cfg = ChainGateConfig(failure_policy="continue")
 
     @property
     def config(self) -> ChainGateConfig:

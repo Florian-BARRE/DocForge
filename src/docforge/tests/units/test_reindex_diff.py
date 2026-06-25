@@ -16,6 +16,58 @@ def _diff(old_pipe, new_pipe, old_fields, new_fields, oem="bge-m3", nem="bge-m3"
     )
 
 
+class TestReindexDiffFailurePolicy:
+    """Gate failure-policy vs threshold reindex nuance (CHUNK 2)."""
+
+    def test_failure_policy_change_is_non_critical(self) -> None:
+        """Toggling a gate's failure_policy changes run-behavior only → no reindex."""
+        relevant, reasons = _diff(
+            {"parse": {"gate": {"min_score": 0.5, "failure_policy": "raise"}}},
+            {"parse": {"gate": {"min_score": 0.5, "failure_policy": "continue"}}},
+            [], [],
+        )
+        assert relevant is False
+        assert reasons == []
+
+    def test_on_degraded_change_is_non_critical(self) -> None:
+        """Toggling on_degraded (empty <-> best_effort) → no reindex."""
+        relevant, _ = _diff(
+            {"enrich": {"ocr_gate": {"min_score": 0.85, "on_degraded": "empty"}}},
+            {"enrich": {"ocr_gate": {"min_score": 0.85, "on_degraded": "best_effort"}}},
+            [], [],
+        )
+        assert relevant is False
+
+    def test_min_score_change_on_embed_is_critical(self) -> None:
+        """A gate min_score change can change which provider runs → reindex on embed."""
+        relevant, reasons = _diff(
+            {"embed": {"gate": {"min_score": 0.5, "failure_policy": "raise"}}},
+            {"embed": {"gate": {"min_score": 0.8, "failure_policy": "raise"}}},
+            [], [],
+        )
+        assert relevant is True
+        assert any("embed" in r for r in reasons)
+
+    def test_max_duration_change_on_parse_is_critical(self) -> None:
+        """A gate max_duration_ms change can change which provider is accepted → reindex."""
+        relevant, reasons = _diff(
+            {"parse": {"gate": {"max_duration_ms": None}}},
+            {"parse": {"gate": {"max_duration_ms": 1000}}},
+            [], [],
+        )
+        assert relevant is True
+        assert any("parse" in r for r in reasons)
+
+    def test_policy_change_alongside_threshold_change_still_reindexes(self) -> None:
+        """A threshold change still flags reindex even when bundled with a policy change."""
+        relevant, _ = _diff(
+            {"embed": {"gate": {"min_score": 0.5, "failure_policy": "raise"}}},
+            {"embed": {"gate": {"min_score": 0.7, "failure_policy": "continue"}}},
+            [], [],
+        )
+        assert relevant is True
+
+
 class TestReindexDiffNonCritical:
     """Non-critical changes must NOT flag a reindex (documents stay fresh)."""
 

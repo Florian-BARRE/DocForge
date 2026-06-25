@@ -21,6 +21,7 @@ from loggerplusplus import LoggerClass
 from common_libs.providers.chain_gate import ChainGate
 
 # ====== Local Project Imports ======
+from .errors import ChainExhaustedError
 from .models import ChainAttempt, ChainHelpers, ChainOutcome
 from .run_helpers import ChainRunHelpers
 
@@ -122,10 +123,20 @@ class Chain[T, R](LoggerClass):
 
         Returns:
             ChainOutcome[R]: The first satisfactory result + every attempt's record
-                (provider id, score, duration, escalated flag, error).
+                (provider id, score, duration, escalated flag, error).  On exhaustion
+                under ``failure_policy="continue"`` a degraded outcome is returned
+                (``degraded=True``); under ``failure_policy="raise"`` it raises.
+
+        Raises:
+            ChainExhaustedError: When the chain is exhausted (no provider accepted) AND
+                the gate's ``failure_policy`` is ``"raise"`` (the default).
         """
         attempts: list[ChainAttempt] = []
         total = len(self._providers)
+        # Track the best (highest-scoring) SUCCEEDED-but-escalated result for best_effort.
+        best_result: R | None = None
+        best_score: float = float("-inf")
+        best_provider: str | None = None
 
         # 1. Iterate providers in declaration order, recording one attempt each.
         for idx, provider in enumerate(self._providers, start=1):
@@ -147,10 +158,64 @@ class Chain[T, R](LoggerClass):
                     result=raw_result,
                     attempts=attempts,
                     final_provider=attempt.provider_id,
+                    degraded=False,
                 )
 
-        # 3. Every provider escalated or raised — the caller gets an empty outcome.
+            # 3. Escalated — remember the best succeeded result for a possible best_effort fallback.
+            if attempt.succeeded and raw_result is not None:
+                score = attempt.score if attempt.score is not None else float("-inf")
+                if best_result is None or score > best_score:
+                    best_result, best_score, best_provider = raw_result, score, provider_id
+
+        # 4. Every provider escalated or raised — apply the gate's failure policy.
+        return self._on_exhausted(attempts, best_result, best_provider)
+
+    def _on_exhausted(
+        self,
+        attempts: list[ChainAttempt],
+        best_result: R | None,
+        best_provider: str | None,
+    ) -> ChainOutcome[R]:
+        """
+        Apply the gate's failure policy when the chain produced no accepted result.
+
+        Args:
+            attempts (list[ChainAttempt]): Every attempt made, in order.
+            best_result (R | None): Highest-scoring SUCCEEDED-but-escalated result, if any.
+            best_provider (str | None): provider_id that produced ``best_result``.
+
+        Returns:
+            ChainOutcome[R]: A degraded outcome (``failure_policy="continue"``).
+
+        Raises:
+            ChainExhaustedError: When ``failure_policy="raise"`` (the default).
+        """
+        policy = self._gate.config.failure_policy
+        total = len(self._providers)
+
+        # 1. raise → fail-closed: the worker boundary records the precise reason on the doc.
+        if policy == "raise":
+            self.logger.warning(
+                f"[CHAIN {self._stage}] exhausted ({total} provider(s)) — policy=raise"
+            )
+            raise ChainExhaustedError(self._stage, attempts)
+
+        # 2. continue + best_effort → return the best below-threshold succeeded result, if any.
+        if self._gate.config.on_degraded == "best_effort" and best_result is not None:
+            self.logger.warning(
+                f"[CHAIN {self._stage}] exhausted — policy=continue on_degraded=best_effort "
+                f"→ using below-threshold result from {best_provider}"
+            )
+            return ChainOutcome(
+                result=best_result,
+                attempts=attempts,
+                final_provider=best_provider,
+                degraded=True,
+            )
+
+        # 3. continue + empty (or best_effort with no succeeded result) → empty degraded outcome.
         self.logger.warning(
-            f"[CHAIN {self._stage}] exhausted — {total} provider(s) escalated or raised"
+            f"[CHAIN {self._stage}] exhausted ({total} provider(s)) — "
+            f"policy=continue on_degraded={self._gate.config.on_degraded} → degraded (empty)"
         )
-        return ChainOutcome(result=None, attempts=attempts, final_provider=None)
+        return ChainOutcome(result=None, attempts=attempts, final_provider=None, degraded=True)

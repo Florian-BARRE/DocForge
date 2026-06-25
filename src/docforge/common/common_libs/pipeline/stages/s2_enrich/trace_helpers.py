@@ -10,7 +10,7 @@ from typing import Any
 # ====== Third-Party Library Imports ======
 from loggerplusplus import loggerplusplus
 
-from common_libs.providers.chain import ChainOutcome, chain_outcome_to_attempt_dicts
+from common_libs.providers.chain import ChainHelpers, ChainOutcome, chain_outcome_to_attempt_dicts
 
 # ====== Internal Project Imports ======
 from common_libs.domain.ir.models import ChainAttemptIR, ChainTrace
@@ -42,7 +42,9 @@ class TraceHelpers:
             outcome (ChainOutcome[Any]): The result returned by ``Chain.call()``.
 
         Returns:
-            ChainTrace: Populated trace with one attempt per provider tried.
+            ChainTrace: Populated trace with one attempt per provider tried, carrying the
+                degraded flag + which gate tripped when the chain exhausted under
+                ``failure_policy="continue"``.
         """
         return ChainTrace(
             stage=stage,
@@ -50,6 +52,8 @@ class TraceHelpers:
                 ChainAttemptIR(**d) for d in chain_outcome_to_attempt_dicts(outcome)
             ],
             final_provider=outcome.final_provider,
+            degraded=outcome.degraded,
+            gate_tripped=ChainHelpers.gate_tripped(outcome) if outcome.degraded else None,
         )
 
     @classmethod

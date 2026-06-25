@@ -6,12 +6,17 @@
 # ====== Standard Library Imports ======
 from __future__ import annotations
 
-from common_libs.providers.chain import ChainOutcome, chain_outcome_to_attempt_dicts
+from typing import TYPE_CHECKING
+
+from common_libs.providers.chain import ChainHelpers, ChainOutcome, chain_outcome_to_attempt_dicts
 
 # ====== Third-Party Library Imports ======
 # (none)
 # ====== Internal Project Imports ======
 from common_libs.domain.ir.models import BlockType, ChainAttemptIR, ChainTrace, DocumentIR
+
+if TYPE_CHECKING:
+    from ..s0_ingest import S0Result
 
 
 class S1Helpers:
@@ -54,9 +59,36 @@ class S1Helpers:
                         for d in chain_outcome_to_attempt_dicts(outcome)
                     ],
                     final_provider=outcome.final_provider,
+                    degraded=outcome.degraded,
+                    gate_tripped=ChainHelpers.gate_tripped(outcome) if outcome.degraded else None,
                 ),
             ],
         })
+
+    @staticmethod
+    def empty_ir(s0: S0Result) -> DocumentIR:
+        """
+        Build a minimal, block-less DocumentIR for a degraded (no-parse) S1 outcome.
+
+        Used only when the parse gate's ``failure_policy="continue"`` and the chain
+        exhausted: the expert chose to let the document proceed without a parse, so the
+        document ends "done" with zero blocks (and therefore zero chunks / not indexed).
+        Carries the S0-known identity fields so downstream persistence stays consistent.
+
+        Args:
+            s0 (S0Result): The S0 ingestion result (provides identity + page count).
+
+        Returns:
+            DocumentIR: An empty IR (no blocks, quality_score=0.0).
+        """
+        return DocumentIR(
+            doc_id=s0.doc_id,
+            source_hash=s0.source_hash,
+            n_pages=s0.page_count,
+            language="und",  # ISO 639-2 "undetermined" — no parser determined a language
+            blocks=[],
+            quality_score=0.0,
+        )
 
     @staticmethod
     def patch_figure_crop_keys(

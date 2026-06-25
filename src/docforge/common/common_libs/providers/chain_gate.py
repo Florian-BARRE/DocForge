@@ -6,9 +6,10 @@
 # internals.  It is configured by a typed ``ChainGateConfig`` so the discovery payload
 # can expose every knob to the UI as scalar overlays.
 #
-# Today the only enforced criterion is ``min_score``.  ``max_duration_ms`` is accepted
-# in the config so the UI surfaces it, but it is advisory in Phase A (no enforcement) —
-# the wiring is reserved for Phase B.
+# Enforced escalation criteria: ``min_score`` (result below threshold) and
+# ``max_duration_ms`` (attempt slower than the per-attempt budget). The exhaustion
+# behaviour (``failure_policy`` / ``on_degraded``) lives on the config too but is applied
+# by ``Chain.call`` after the loop, not here — the gate only decides per-attempt escalation.
 
 # ====== Standard Library Imports ======
 from __future__ import annotations
@@ -68,8 +69,11 @@ class ChainGate:
         if score is not None and score < self._cfg.min_score:
             return True
 
-        # 3. Future extension point (max_duration_ms) is parsed but not enforced in
-        # Phase A — keep the gate explicit so the UI shows the knob.
+        # 3. Time gate — an attempt slower than the budget escalates (slow result discarded).
+        # None disables the gate; a 0 budget would reject everything, which is the operator's call.
+        if self._cfg.max_duration_ms is not None and attempt.duration_ms > self._cfg.max_duration_ms:
+            return True
+
         return False
 
     @staticmethod

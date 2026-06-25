@@ -18,7 +18,7 @@ from typing import Any
 import pytest
 
 # ====== Internal Project Imports ======
-from common_libs.providers.chain import Chain
+from common_libs.providers.chain import Chain, ChainExhaustedError
 from common_libs.providers.chain_gate import ChainGate, ChainGateConfig
 from common_libs.pipeline.stages.s6_embed_index.embedder import S6Embedder
 
@@ -39,6 +39,31 @@ class _AlwaysRaisingEmbedProvider:
 
     async def embed(self, texts: list[str]) -> Any:
         raise RuntimeError("embed backend unreachable (simulated ReadTimeout)")
+
+
+class _MiddleBatchFailingEmbedProvider:
+    """Embed provider that raises ONLY for one designated text — to fail a middle batch.
+
+    Produces a deterministic dense vector ``[float(ord(text[0]))] * dimension`` per text so a
+    test can assert the surviving batches kept their correct, positionally-aligned vectors.
+    """
+
+    name = "middle_fail_embed"
+    version = "test"
+    dimension = 2
+
+    def __init__(self, fail_text: str) -> None:
+        self._fail_text = fail_text
+
+    async def embed(self, texts: list[str]) -> Any:
+        from common_libs.providers.results.embed_result import EmbedResult
+
+        if self._fail_text in texts:
+            raise RuntimeError(f"simulated failure on batch containing {self._fail_text!r}")
+        return EmbedResult(
+            vectors=[[float(ord(t[0]))] * self.dimension for t in texts],
+            model="test-embed",
+        )
 
 
 class _FakeSession:
@@ -138,21 +163,92 @@ def _deps(document_repo: _RecordingDocumentRepo, chunk_repo: Any) -> StageDeps:
 
 @pytest.mark.asyncio
 async def test_s6_embedder_raises_when_chain_exhausted() -> None:
-    """An exhausted embed chain must raise RuntimeError, never return empty vectors."""
+    """An exhausted embed chain (default failure_policy=raise) must raise ChainExhaustedError."""
+    # Default embed gate policy is "raise": the chain itself raises on exhaustion (the embedder
+    # no longer hand-rolls the raise). The error names the stage and the failing provider.
     chain: Chain[Any, Any] = Chain(
         stage="embed",
         providers=[_AlwaysRaisingEmbedProvider()],
-        gate=ChainGate(ChainGateConfig(min_score=0.6)),
+        gate=ChainGate(ChainGateConfig(min_score=0.6, failure_policy="raise")),
     )
     embedder = S6Embedder(chain, embed_batch_size=16)
     embedder.begin_run()
 
-    with pytest.raises(RuntimeError, match="embed chain exhausted"):
+    with pytest.raises(ChainExhaustedError, match="'embed' chain exhausted"):
         await embedder.embed_texts(["hello world"])
 
-    # The failed batch still recorded a trace (per-substep observability).
+
+@pytest.mark.asyncio
+async def test_s6_embedder_degrades_when_chain_continue() -> None:
+    """An exhausted embed chain under failure_policy=continue contributes no vectors (no raise)."""
+    chain: Chain[Any, Any] = Chain(
+        stage="embed",
+        providers=[_AlwaysRaisingEmbedProvider()],
+        gate=ChainGate(ChainGateConfig(min_score=0.6, failure_policy="continue")),
+    )
+    embedder = S6Embedder(chain, embed_batch_size=16)
+    embedder.begin_run()
+
+    dense, sparse = await embedder.embed_texts(["hello world"])
+
+    assert dense == [None]  # same-length placeholder, NOT dropped
+    assert sparse is None
+    # The degraded batch still recorded a trace flagged degraded (per-substep observability).
     assert len(embedder.batch_traces) == 1
     assert embedder.batch_traces[0].final_provider is None
+    assert embedder.batch_traces[0].degraded is True
+
+
+@pytest.mark.asyncio
+async def test_s6_embedder_preserves_alignment_when_middle_batch_degrades() -> None:
+    """A degraded MIDDLE batch must emit None placeholders so positional alignment is preserved.
+
+    Regression guard: dropping a degraded batch would shift every later text onto the wrong
+    vector (silent corruption) and make embed_values raise IndexError. With batch_size=1 and
+    the 2nd of three texts failing, the result must be [vec0, None, vec2] — index-aligned.
+    """
+    # "beta" lives in the middle batch (batch_size=1 → one text per batch).
+    chain: Chain[Any, Any] = Chain(
+        stage="embed",
+        providers=[_MiddleBatchFailingEmbedProvider(fail_text="beta")],
+        gate=ChainGate(ChainGateConfig(min_score=0.0, failure_policy="continue")),
+    )
+    embedder = S6Embedder(chain, embed_batch_size=1)
+    embedder.begin_run()
+
+    dense, _sparse = await embedder.embed_texts(["alpha", "beta", "gamma"])
+
+    # 1. Length is preserved 1:1 with the input — no drop, no crash.
+    assert len(dense) == 3
+    # 2. Surviving batches keep their correct, positionally-aligned vectors.
+    assert dense[0] == [float(ord("a"))] * 2  # "alpha"
+    assert dense[2] == [float(ord("g"))] * 2  # "gamma"
+    # 3. The degraded middle batch is a None placeholder (skipped by _build_point on upsert).
+    assert dense[1] is None
+    # 4. One trace per batch; only the middle one is degraded.
+    assert len(embedder.batch_traces) == 3
+    assert [t.degraded for t in embedder.batch_traces] == [False, True, False]
+
+
+@pytest.mark.asyncio
+async def test_s6_embed_values_no_index_error_when_batch_degrades() -> None:
+    """embed_values must scatter None for a degraded batch (no IndexError, alignment kept)."""
+    chain: Chain[Any, Any] = Chain(
+        stage="embed",
+        providers=[_MiddleBatchFailingEmbedProvider(fail_text="beta")],
+        gate=ChainGate(ChainGateConfig(min_score=0.0, failure_policy="continue")),
+    )
+    embedder = S6Embedder(chain, embed_batch_size=1)
+    embedder.begin_run()
+
+    # Per-chunk field values: index 1 has no value (skipped), index 3 fails to embed.
+    dense_out, _sparse_out = await embedder.embed_values(["alpha", None, "gamma", "beta"])
+
+    assert len(dense_out) == 4
+    assert dense_out[0] == [float(ord("a"))] * 2  # "alpha" embedded
+    assert dense_out[1] is None                   # no value → skipped
+    assert dense_out[2] == [float(ord("g"))] * 2  # "gamma" embedded
+    assert dense_out[3] is None                   # "beta" batch degraded → None (no IndexError)
 
 
 # ─── 2. S456Runner fail-closed document status ───────────────────────────────
@@ -318,15 +414,18 @@ async def test_failing_classifier_chain_escalates_then_exhausts() -> None:
         async def classify(self, img_bytes: bytes) -> Any:
             raise RuntimeError("inference crashed")
 
+    # failure_policy="continue" mirrors the classifier's real per-stage default: an all-raising
+    # chain degrades (returns None) rather than raising, so the figure falls back to PHOTO.
     chain: Chain[Any, Any] = Chain(
         stage="classifier",
         providers=[_RaisingClassifier(), _RaisingClassifier()],
-        gate=ChainGate(ChainGateConfig(min_score=0.5)),
+        gate=ChainGate(ChainGateConfig(min_score=0.5, failure_policy="continue")),
     )
     outcome = await chain.call(lambda p: p.classify(b"x"))
 
-    # Both providers raised → exhausted → None result, with both attempts recorded as failed.
+    # Both providers raised → exhausted → degraded None result, both attempts recorded as failed.
     assert outcome.result is None
+    assert outcome.degraded is True
     assert outcome.final_provider is None
     assert len(outcome.attempts) == 2
     assert all(not a.succeeded and a.error for a in outcome.attempts)

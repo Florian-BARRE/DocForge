@@ -81,15 +81,20 @@ class S1ParseStage(LoggerClass):
             S1Result: The parsed IR (with chain trace), markdown key, and crop keys.
 
         Raises:
-            RuntimeError: When every parser in the chain escalates or raises — the
-                pipeline cannot proceed without an IR.
+            ChainExhaustedError: When every parser escalates/raises AND the parse gate's
+                ``failure_policy="raise"`` (the default). The chain itself raises with a
+                precise per-provider reason; the worker fail-closed boundary marks the doc
+                ``failed``. A collection that sets ``failure_policy="continue"`` instead
+                yields a degraded (result=None) outcome — handled below.
         """
         self.logger.info(
             f"S1 started: doc_id={s0.doc_id} pages={s0.page_count}"
         )
 
         # 1. Run the parser chain.  Each provider produces a full DocumentIR; the chain
-        # stops at the first one whose quality_score passes the gate.
+        # stops at the first one whose quality_score passes the gate. On exhaustion the
+        # chain applies its failure policy itself (raise → ChainExhaustedError propagates;
+        # continue → degraded outcome with result=None handled below).
         outcome = await self._parse_chain.call(
             lambda p: p.parse(
                 pdf_bytes=s0.pdf_bytes,
@@ -98,11 +103,17 @@ class S1ParseStage(LoggerClass):
             )
         )
         if outcome.result is None:
-            raise RuntimeError(
-                f"S1 parse chain exhausted for doc_id={s0.doc_id} — "
-                f"{len(outcome.attempts)} provider(s) attempted, none produced an IR. "
-                f"See chain attempt logs above."
+            # Reached only under failure_policy="continue": the expert chose to let a doc
+            # proceed without a parse. There is no IR to render — return an empty IR so the
+            # document ends "done" with no blocks (the expert's explicit call, see design §11bis Q3).
+            self.logger.warning(
+                f"S1 parse chain degraded for doc_id={s0.doc_id} "
+                f"({len(outcome.attempts)} provider(s) attempted, none produced an IR) — "
+                f"continuing with an empty IR per the gate's failure_policy=continue."
             )
+            empty_ir = S1Helpers.empty_ir(s0)
+            empty_ir = S1Helpers.stamp_parse_trace(empty_ir, outcome)
+            return S1Result(ir=empty_ir, markdown_key=None, figure_crop_keys={})
 
         ir: DocumentIR = outcome.result
 

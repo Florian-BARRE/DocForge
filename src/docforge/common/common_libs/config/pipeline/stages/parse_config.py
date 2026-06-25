@@ -33,7 +33,13 @@ class ParseConfig(BaseModel):
     """
 
     chain: list[Any] = Field(default_factory=list)
-    gate: ChainGateConfig = Field(default_factory=ChainGateConfig)
+    # Parse defaults to failure_policy="raise": the pipeline cannot proceed without an IR, so an
+    # exhausted parse chain fails the document with a precise reason. An expert may set
+    # failure_policy="continue" per-collection (the doc then ends "done" with 0 blocks).
+    gate: ChainGateConfig = Field(
+        default_factory=lambda: ChainGateConfig(failure_policy="raise"),
+        description="Escalation + exhaustion policy for the parser chain (default failure_policy=raise).",
+    )
 
     @model_validator(mode="before")
     @classmethod

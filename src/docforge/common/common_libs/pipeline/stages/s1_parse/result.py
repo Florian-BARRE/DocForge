@@ -20,10 +20,12 @@ class S1Result:
 
     Attributes:
         ir (DocumentIR): The canonical IR, with the parse ChainTrace appended.
-        markdown_key (str): Object-store key for the faithful markdown view.
+        markdown_key (str | None): Object-store key for the faithful markdown view.
+            ``None`` only in the degraded no-parse case (parse gate failure_policy=continue,
+            chain exhausted) — there is no IR to serialise so no markdown is uploaded.
         figure_crop_keys (dict[str, str]): block_id → object-store key for each figure crop.
     """
 
     ir: DocumentIR
-    markdown_key: str
+    markdown_key: str | None
     figure_crop_keys: dict[str, str]

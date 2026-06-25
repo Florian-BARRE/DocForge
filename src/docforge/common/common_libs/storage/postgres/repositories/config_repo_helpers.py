@@ -64,6 +64,39 @@ class ConfigRepoHelpers:
             return obj.get(name, default)
         return getattr(obj, name, default)
 
+    # Gate keys that change run-behavior only (not the produced output) → never reindex-relevant.
+    _NON_REINDEX_GATE_KEYS: frozenset[str] = frozenset({"failure_policy", "on_degraded"})
+
+    @staticmethod
+    def _strip_non_reindex_keys(value: Any) -> Any:
+        """
+        Return a deep copy of ``value`` with all non-reindex gate keys removed.
+
+        Recursively drops ``failure_policy`` and ``on_degraded`` from every nested dict so
+        toggling a chain's exhaustion policy never registers as an indexing-config change.
+        These keys live only on gate objects; stripping them everywhere is safe and avoids
+        having to know each stage's exact gate location. Lists are walked element-wise; all
+        other scalars pass through unchanged.
+
+        Args:
+            value (Any): A pipeline stage config fragment (dict / list / scalar).
+
+        Returns:
+            Any: The same structure with the non-reindex gate keys removed.
+        """
+        # 1. Dict — copy, drop the policy keys, recurse into the remaining values.
+        if isinstance(value, dict):
+            return {
+                k: ConfigRepoHelpers._strip_non_reindex_keys(v)
+                for k, v in value.items()
+                if k not in ConfigRepoHelpers._NON_REINDEX_GATE_KEYS
+            }
+        # 2. List — recurse element-wise (e.g. a provider chain list).
+        if isinstance(value, list):
+            return [ConfigRepoHelpers._strip_non_reindex_keys(item) for item in value]
+        # 3. Scalar — unchanged.
+        return value
+
     @staticmethod
     def reindex_diff(
         *,
@@ -106,9 +139,20 @@ class ConfigRepoHelpers:
                 f"Modèle d'embedding modifié ({old_embedding_model} → {new_embedding_model})"
             )
 
-        # 2. Indexing pipeline — every stage except query-time 'search'
-        old_idx = {k: v for k, v in (old_pipeline or {}).items() if k != "search"}
-        new_idx = {k: v for k, v in (new_pipeline or {}).items() if k != "search"}
+        # 2. Indexing pipeline — every stage except query-time 'search'.
+        # The chain failure policy (failure_policy / on_degraded) is run-behavior only: it
+        # changes WHAT happens on exhaustion (raise vs degrade), never WHICH provider runs nor
+        # the bytes it produces — so it is NOT reindex-relevant. Strip those two keys from every
+        # gate before comparing. Gate THRESHOLDS (min_score / max_duration_ms) stay in the
+        # comparison: they can change which provider is accepted → different output → reindex.
+        old_idx = {
+            k: ConfigRepoHelpers._strip_non_reindex_keys(v)
+            for k, v in (old_pipeline or {}).items() if k != "search"
+        }
+        new_idx = {
+            k: ConfigRepoHelpers._strip_non_reindex_keys(v)
+            for k, v in (new_pipeline or {}).items() if k != "search"
+        }
         for stage in sorted(set(old_idx) | set(new_idx)):
             if old_idx.get(stage) != new_idx.get(stage):
                 reasons.append(f"Configuration d'indexation « {stage} » modifiée")

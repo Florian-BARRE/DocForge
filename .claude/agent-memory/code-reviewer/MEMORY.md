@@ -58,6 +58,7 @@ metadata:
 - [extra_ignore_provider_field_removal](extra_ignore_provider_field_removal.md) — sanctioned way to remove a dead config FIELD (top_n/group_by/use_gpu): ConfigDict(extra="ignore") drops stored key (no 422); review checklist; do NOT flag as compat gap
 - [locality_empty_chain_nameerror](locality_empty_chain_nameerror.md) — latent NameError: code after `for x in seq` using `x` crashes on empty seq; fixed in locality_checks embed.chain dead block
 - [deletion_batch_residue](deletion_batch_residue.md) — feature-purge batches: identifier-grep is clean yet orphaned env vars (base_config/.env) + stale docstrings survive; run a 2nd feature-word grep; consistently-threaded sentinel columns (provider_call.cost=0.0) are out-of-scope follow-ups, not danglers
+- [embed_continue_batch_misalignment](embed_continue_batch_misalignment.md) — S6 embed `continue` skips a degraded batch → content_dense misaligned vs index_chunks (wrong/None Qdrant vectors) + IndexError in embed_values; positionally-consumed chain results must emit same-length placeholders, not drop the batch
 
 > Component-scoped memory lives with the component agents: **`mcp`** agent (`agent-memory/mcp/`) for
 > the `src/mcp/` HTTP-client invariant + REST endpoint map; **`bge-server`** agent
