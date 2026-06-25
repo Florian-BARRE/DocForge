@@ -48,3 +48,7 @@ Ultra-specialists (complex): ingestion engine S0→S6 + providers/chains → **p
 Cross-cutting: rules/quality gate → **code-reviewer**; Alembic + SQLAlchemy schema → **migration-engineer**.
 Sibling deployables: **mcp** (`src/mcp/`), **bge-server** (`src/bge_server/`).
 You own the *conditionnement*: entrypoints, config split, the app+worker Dockerfiles, structure.
+
+## Assembly facts
+
+- [Worker torch cpu/gpu variants](worker_torch_variants.md) — common deps contract steers transitive docling torch to cpu vs cu124 wheel index; validate gpu via `uv export`, not `--dry-run`.

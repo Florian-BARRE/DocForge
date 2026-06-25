@@ -16,12 +16,20 @@ Build example: `docker build -f src/<x>/Dockerfile -t <image> src`. All Dockerfi
 
 ## Compose & env
 
-- Prod `docker-compose.yml` + dev override `docker-compose.dev.yml` (source volume mounts + `--reload`;
-  dev only overrides what differs, never a full re-def). Services: docforge, worker, mcp, bge_server,
-  postgres, qdrant, redis, seaweedfs, gotenberg, pgadmin.
-- `services/<svc>/.env` per service (`.env.example` tracked, `.env` gitignored). Provider URLs/secrets
-  are NEVER in `.env` — per-collection in DB. Canonical names aligned src↔compose↔services↔hostname
-  (see [[naming-and-agent-homogenization]] user memory): bge host `http://bge_server:80`.
+Three-layer compose strategy:
+- `docker-compose.yml` — prod base (CPU default everywhere, `TORCH_VARIANT=cpu` for bge_server + worker)
+- `docker-compose.dev.yml` — hot-reload ONLY: source volume mounts, `--reload`/`--watch`, Vite frontend, `DEV_MODE=true`. Device-agnostic — no GPU, no CPU assumption. Never re-declares full service defs.
+- `docker-compose.gpu.yml` — GPU opt-in, layered LAST: rebuilds `bge_server` (TORCH_VARIANT=gpu, image docforge-bge-server:gpu) and `worker` (TORCH_VARIANT=gpu, image docforge-worker:gpu) with nvidia device reservation; sets `DOCLING_USE_GPU=true` on worker. CPU-only hosts never need this file.
+
+Run combos:
+- Prod (CPU): `docker compose -f docker-compose.yml up -d`
+- Dev (CPU, hot reload): `docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build -d`
+- Dev + GPU: `docker compose -f docker-compose.yml -f docker-compose.dev.yml -f docker-compose.gpu.yml up -d --build`
+
+Services: docforge, worker, mcp, bge_server, postgres, qdrant, redis, seaweedfs, gotenberg, pgadmin.
+`services/<svc>/.env` per service (`.env.example` tracked, `.env` gitignored). Provider URLs/secrets
+are NEVER in `.env` — per-collection in DB. Canonical names aligned src↔compose↔services↔hostname
+(see [[naming-and-agent-homogenization]] user memory): bge host `http://bge_server:80`.
 
 ## Dev hot-reload (docker-compose.dev.yml) — ALL services reload
 
@@ -61,9 +69,18 @@ inherits it — `frontend` is the exception, named only in `docker-compose.dev.y
 Service names (DNS hostnames on `docforge_net`) are UNCHANGED — only container display names differ.
 `docker compose exec <service-name>` still works as before.
 
+## Worker Dockerfile — TORCH_VARIANT
+
+`src/docforge/worker/Dockerfile` now mirrors the bge_server pattern:
+- `ARG TORCH_VARIANT=cpu` (default, committed) → `--extra worker --extra cpu` → CPU torch wheels.
+- `TORCH_VARIANT=gpu` (via docker-compose.gpu.yml build arg) → `--extra worker --extra gpu` → CUDA 12.4 torch.
+- Both extras must be declared conflicting in `common/pyproject.toml` (same pattern as bge_server).
+- CPU is the committed default — repo builds on CPU-only hosts without modification.
+
 ## Known gotchas
 
 - OneDrive dehydrated placeholders break BuildKit ("invalid file request") — materialize (pin local)
   before building; Docker Desktop engine can flap with 500s. See [[onedrive-placeholder-buildkit]].
 - docling is worker-only (lazy-imported inside `DoclingBackend.parse`) — never let it into the app image.
 - Validate with `docker compose config` before declaring done.
+- GPU combo requires NVIDIA Container Toolkit on the host AND the gpu extras in common/pyproject.toml. Before declaring gpu.yml done, verify pyproject.toml has conflicting `cpu`/`gpu` extras in the worker section.

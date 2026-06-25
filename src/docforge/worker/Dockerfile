@@ -23,8 +23,23 @@
 # Goal:
 # - Create /opt/venv with the BASE deps PLUS the optional `worker` group (docling et al.).
 # - The dependency contract (pyproject.toml/uv.lock) is shared, in src/common/.
+# - TORCH_VARIANT selects whether Docling uses CPU torch (default, ~2 GB image delta) or
+#   CUDA torch (gpu variant, ~8 GB image delta) for GPU-accelerated parsing.
 ###############################################################################
 FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim AS py-build
+
+# ── Build-time argument: torch variant selector ───────────────────────────────
+# Default is "cpu" — Docling runs on CPU torch (smaller image, works everywhere).
+# Pass --build-arg TORCH_VARIANT=gpu to build a CUDA-capable image:
+#   docker build --build-arg TORCH_VARIANT=gpu \
+#                -f src/docforge/worker/Dockerfile -t docforge-worker:gpu src
+# The value is appended to the --extra worker flag so that both the standard worker
+# deps AND the correct torch wheel variant are installed in a single uv sync call.
+# "cpu" selects cpu-only torch wheels; "gpu" selects the CUDA 12.4 torch wheels
+# (mirroring the strategy used by src/bge_server/Dockerfile for its TORCH_VARIANT).
+# The two torch variants must be declared as conflicting extras in pyproject.toml so
+# that uv never installs both simultaneously.
+ARG TORCH_VARIANT=cpu
 
 WORKDIR /workspace
 
@@ -34,10 +49,13 @@ ENV UV_PROJECT_ENVIRONMENT=/opt/venv \
 # Shared dependency metadata first (cache layer independent of app code).
 COPY docforge/common/pyproject.toml docforge/common/uv.lock /workspace/common/
 
-# Install locked base deps AND the worker extra (docling). --extra worker is THE line
-# that makes the worker image large and keeps the backend image small.
+# Install locked base deps, the worker extra (docling), and the selected torch variant.
+# --extra worker activates Docling and its dependency chain.
+# --extra ${TORCH_VARIANT} activates the matching torch wheel index (cpu or cu124).
+# The two --extra flags are additive; the conflicting-extras declaration in pyproject.toml
+# ensures the cpu and gpu torch variants cannot coexist in the same environment.
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev --extra worker --project /workspace/common
+    uv sync --frozen --no-dev --extra worker --extra "${TORCH_VARIANT}" --project /workspace/common
 
 ###############################################################################
 # Stage 2: Runtime image (minimal Python 3.12 slim)

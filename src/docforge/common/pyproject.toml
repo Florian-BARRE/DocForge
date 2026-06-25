@@ -51,14 +51,30 @@ dependencies = [
 # so only the worker image installs this. The backend imports the provider modules
 # (e.g. for stage discovery) but never triggers their lazy `import docling` — it never
 # calls DoclingBackend.parse() — so it ships without docling/torch/opencv (~2-3 GB lighter).
-# Install in the worker image with:  uv sync --frozen --no-dev --extra worker
+# Docling pulls torch + torchvision transitively (via docling-ibm-models); the WHEEL
+# VARIANT of that torch (CPU vs CUDA) is selected by the cpu/gpu extra below, not here.
+# Install in the worker image with:  uv sync --frozen --no-dev --extra worker --extra cpu
 worker = [
     "docling>=2.14.0",
 ]
 
-# GPU variant: install torch with CUDA 11.8 wheels separately:
-#   uv pip install torch --extra-index-url https://download.pytorch.org/whl/cu118
-gpu = []
+# ── Torch variant extras (worker image only) ──────────────────────────────────────────
+# Docling drags torch + torchvision in transitively, but uv only honours [tool.uv.sources]
+# wheel-index routing for DIRECT dependencies. We therefore re-declare torch and torchvision
+# as direct deps inside these two mutually-exclusive extras so the sources block below can
+# steer them to the right wheel index. Exactly ONE extra must be selected at install time:
+#   cpu  → CPU-only torch wheels (~200 MB, no nvidia-* libs).  This is the COMMITTED DEFAULT.
+#   gpu  → CUDA 12.4 torch wheels (~2 GB + nvidia-* runtime).  Opt-in, GPU-accelerated parsing.
+# The two extras are declared CONFLICTING in [tool.uv] below so uv enforces mutual exclusivity
+# at lock time and never installs both torch wheels at once. The worker Dockerfile selects the
+# active extra via ARG TORCH_VARIANT (default: cpu), mirroring src/bge_server.
+#
+# Build commands:
+#   CPU (default): docker compose build worker
+#   GPU (opt-in):  docker build --build-arg TORCH_VARIANT=gpu \
+#                    -f src/docforge/worker/Dockerfile -t docforge-worker:gpu src
+cpu = ["torch", "torchvision"]
+gpu = ["torch", "torchvision"]
 
 dev = [
     "pytest>=8.3.0",
@@ -83,6 +99,40 @@ dev-dependencies = [
     "openpyxl>=3.1.5",
     "python-pptx>=1.0.2",
 ]
+
+# Declare the cpu and gpu torch extras as mutually exclusive — uv enforces this at lock time
+# and raises an error if both are requested simultaneously (mirrors src/bge_server).
+conflicts = [
+    [{ extra = "cpu" }, { extra = "gpu" }],
+]
+
+[tool.uv.sources]
+# Route torch AND torchvision to the correct wheel index depending on the active extra.
+# Both are direct deps of the cpu/gpu extras (see [project.optional-dependencies]) precisely
+# so this routing applies — uv ignores sources for purely-transitive deps. The app image
+# (no worker/cpu/gpu extra) never pulls torch, so these sources are inert for it.
+# pytorch-cpu: CPU-only wheels (~200 MB), no CUDA runtime payload — the committed default.
+# pytorch-cu124: CUDA 12.4 wheels, compatible with Ada (RTX 40xx, compute 8.9) and later.
+torch = [
+    { index = "pytorch-cpu", extra = "cpu" },
+    { index = "pytorch-cu124", extra = "gpu" },
+]
+torchvision = [
+    { index = "pytorch-cpu", extra = "cpu" },
+    { index = "pytorch-cu124", extra = "gpu" },
+]
+
+[[tool.uv.index]]
+# CPU-only torch wheels — the default variant. Keeps the worker image lean.
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[[tool.uv.index]]
+# CUDA 12.4 torch wheels — RTX 40xx (compute 8.9), RTX 30xx (compute 8.6), and later.
+name = "pytorch-cu124"
+url = "https://download.pytorch.org/whl/cu124"
+explicit = true
 
 [tool.ruff]
 line-length = 100

@@ -23,7 +23,9 @@ Spec complète : `SPEC-docforge-document-intelligence-platform.md`
 
 ## Commandes (dev / test / build)
 
-- **Dev (hot reload)** : `docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build -d` (ou `/dev`).
+- **Prod (CPU)** : `docker compose -f docker-compose.yml up -d`
+- **Dev (CPU, hot reload)** : `docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build -d` (ou `/dev`).
+- **Dev + GPU (fast)** : `docker compose -f docker-compose.yml -f docker-compose.dev.yml -f docker-compose.gpu.yml up -d --build` — builds the ~9.5 GB GPU images for `bge_server` + `worker`; requires NVIDIA Container Toolkit. First build ~15-20 min; subsequent builds reuse the uv cache layer.
 - **Tests unitaires** : depuis `src/docforge/` → `uv run --project common pytest tests/units` (ou `/test`). 418 tests, tout mocké.
 - **Tests live** (stack up requise) : `uv run --project common pytest tests/live_test` — ingestion réelle via le service `bge_server`.
 - **Build images** : `docker compose build` (app → `docforge/app/Dockerfile`, worker → `docforge/worker/Dockerfile`, bge_server → `bge_server/Dockerfile`).
