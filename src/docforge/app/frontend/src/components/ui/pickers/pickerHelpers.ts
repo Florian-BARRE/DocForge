@@ -15,10 +15,17 @@ import type { ParamSchema } from '../../../api/types'
 //   weights  — float slider per named vector.
 //   scalar   — single typed scalar input (bool / int / float / str) for stage-level params.
 
-/** Selected provider/method value: a choice id plus its optional params. */
+/**
+ * Selected provider/method value as stored on the wire and in configState.
+ *
+ * The backend expects (and returns) a flat object: { id, param1, param2, … }.
+ * There is NO nested `params` sub-object — all provider params sit alongside `id`.
+ * Keeping this shape in the pickers guarantees that the patch sent to the backend
+ * exactly matches what configState returns, so read/write round-trips are lossless.
+ */
 export interface PickerValue {
   id: string
-  params?: Record<string, unknown>
+  [param: string]: unknown
 }
 
 // ── Nested provider picker plumbing ──────────────────────────────────────────

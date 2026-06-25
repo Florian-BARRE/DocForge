@@ -53,6 +53,7 @@ metadata:
 - [search_pipeline_antipatterns](search_pipeline_antipatterns.md) — P7 search pipeline (engine, rerank, fusion) recurring issues
 - [observability-brick-a](observability-brick-a.md) — Brique A audit anti-patterns (queue/metrics/heartbeat/events + jobs/monitoring routers)
 - [async_teardown_swallow](async_teardown_swallow.md) — flag `except (CancelledError, Exception): pass` + unlogged `_run` safety nets that hide async worker crashes (hand-rolled queue/worker designs)
+- [deployment_knob_privateattr](deployment_knob_privateattr.md) — sanctioned way to remove a per-collection provider knob (use_gpu): PrivateAttr + env in merge_defaults + extra="ignore"; flat frontend PickerValue twin
 
 > Component-scoped memory lives with the component agents: **`mcp`** agent (`agent-memory/mcp/`) for
 > the `src/mcp/` HTTP-client invariant + REST endpoint map; **`bge-server`** agent

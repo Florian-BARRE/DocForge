@@ -48,6 +48,10 @@ metadata:
 | `BGE_RERANKER_URL` | http://bge_server:80 | bge rerank service URL |
 | `QDRANT_HOST` | qdrant | Qdrant hostname |
 
+## Architectural notes
+
+- [Device not in config](device-not-in-config.md) — GPU/device is a deployment env decision (DOCLING/PADDLE/VIT_USE_GPU + DeviceManager), never a per-collection `use_gpu` provider config Field; the no-Field + PrivateAttr + extra="ignore" pattern.
+
 ## Stage file map
 
 | Stage | File |

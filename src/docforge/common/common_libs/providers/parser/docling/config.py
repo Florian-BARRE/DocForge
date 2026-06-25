@@ -2,6 +2,10 @@
 # DoclingConfig: Pydantic provider config for the Docling parser backend.
 # Decorated with @register("parser") for auto-discovery via the plugin registry.
 # Exposes build() to instantiate DoclingBackend and merge_defaults() for deployment overrides.
+#
+# GPU usage is a DEPLOYMENT decision (DOCLING_USE_GPU env + DeviceManager), NOT a per-collection
+# pipeline knob — so `use_gpu` is intentionally NOT a Pydantic field. It is resolved from the
+# deployment env in merge_defaults() and carried as a private runtime attribute to build().
 
 # ====== Standard Library Imports ======
 from __future__ import annotations
@@ -9,7 +13,7 @@ from __future__ import annotations
 from typing import Any, ClassVar, Literal
 
 # ====== Third-Party Library Imports ======
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, PrivateAttr, model_validator
 
 # ====== Internal Project Imports ======
 from common_libs.config.pipeline._registry import register
@@ -26,16 +30,27 @@ class DoclingConfig(BaseModel):
 
     Config id: "docling" — structural block extraction, table recognition, figure detection.
 
+    GPU usage is NOT exposed as a configurable field: whether Docling runs on GPU is a
+    deployment decision driven by the ``DOCLING_USE_GPU`` env var (the GPU worker image sets it)
+    and the central ``DeviceManager`` — never a per-collection setting. The resolved value is
+    injected by ``merge_defaults`` and carried as a private attribute into ``build``.
+
     Attributes:
         id: Provider discriminator — always "docling".
-        use_gpu: Use GPU acceleration for Docling layout models when True.
     """
+
+    # extra="ignore" so a stored collection config still carrying a stale ``use_gpu`` key
+    # (from before this field was removed) loads without raising — the key is simply dropped.
+    model_config = ConfigDict(extra="ignore")
 
     _label: ClassVar[str] = "Docling — structural parser with table + figure detection"
     _category: ClassVar[str] = "parser"
 
     id: Literal["docling"] = "docling"
-    use_gpu: bool = Field(default=False, description="Use GPU for Docling layout models.")
+
+    # Resolved from the deployment env in merge_defaults(); not a configurable pipeline field,
+    # so it never appears in the JSON schema / discovery / UI. Defaults to False (CPU).
+    _use_gpu: bool = PrivateAttr(default=False)
 
     @model_validator(mode="before")
     @classmethod
@@ -47,24 +62,30 @@ class DoclingConfig(BaseModel):
         """
         Instantiate DoclingBackend from this config.
 
+        The GPU flag comes from the deployment env (resolved in ``merge_defaults``), never
+        from a per-collection pipeline field.
+
         Returns:
             DoclingBackend: Configured backend instance.
         """
-        return DoclingBackend(use_gpu=self.use_gpu)
+        return DoclingBackend(use_gpu=self._use_gpu)
 
     def merge_defaults(self, cfg: Any) -> DoclingConfig:
         """
         Merge deployment environment defaults into this config.
 
+        Sources the GPU flag purely from the deployment env (``DOCLING_USE_GPU``) and stores
+        it on the returned copy's private attribute for ``build`` to consume.
+
         Args:
-            cfg: Runtime config object carrying optional ``DOCLING_USE_GPU`` flag.
+            cfg: Runtime config object carrying the optional ``DOCLING_USE_GPU`` flag.
 
         Returns:
-            DoclingConfig: New config instance with merged values.
+            DoclingConfig: New config instance with the deployment GPU flag resolved.
         """
-        return self.model_copy(update={
-            "use_gpu": self.use_gpu or getattr(cfg, "DOCLING_USE_GPU", False),
-        })
+        merged = self.model_copy()
+        merged._use_gpu = bool(getattr(cfg, "DOCLING_USE_GPU", False))
+        return merged
 
     @classmethod
     def availability(cls, cfg: Any) -> tuple[bool, str]:

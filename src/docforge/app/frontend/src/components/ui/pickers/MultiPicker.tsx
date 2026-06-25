@@ -34,8 +34,10 @@ export function MultiPicker({
   const chain = value ?? []
 
   function add(c: Choice) {
+    // Emit a flat entry: { id, param1, param2, … } — no nested `params` sub-object.
+    // This matches the backend wire format so the PATCH payload round-trips correctly.
     const defaults = paramsDefaults(c.fields)
-    onChange([...chain, { id: c.id, params: Object.keys(defaults).length ? defaults : undefined }])
+    onChange([...chain, { id: c.id, ...defaults }])
   }
 
   function remove(idx: number) {
@@ -43,8 +45,9 @@ export function MultiPicker({
   }
 
   function updateParam(idx: number, key: string, v: unknown) {
+    // Merge the changed param flat into the entry alongside `id`.
     const next = chain.map((item, i) =>
-      i === idx ? { ...item, params: { ...item.params, [key]: v } } : item
+      i === idx ? { ...item, [key]: v } : item
     )
     onChange(next)
   }
@@ -83,7 +86,8 @@ export function MultiPicker({
                       <FieldInput
                         key={p.name}
                         schema={p}
-                        value={(item.params ?? {})[p.name]}
+                        // Params are stored flat alongside `id`; cast to read any key.
+                        value={(item as Record<string, unknown>)[p.name]}
                         onChange={v => updateParam(idx, p.name, v)}
                       />
                     ))}

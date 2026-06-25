@@ -79,10 +79,15 @@ services:
     # Tag the GPU variant so it coexists with the CPU worker image on the same host.
     image: docforge-worker:gpu
     environment:
-      # Instruct Docling to use the GPU device for its internal torch models.
-      # The Docling backend reads this env var (DOCLING_USE_GPU=true) to select the
-      # CUDA device instead of defaulting to CPU-only inference.
+      # Instruct the local providers to use the GPU device for their models.
+      # Each local provider backend reads its own deployment flag to select the CUDA device
+      # instead of defaulting to CPU-only inference:
+      #   - DOCLING_USE_GPU : Docling parser (layout/table torch models)
+      #   - PADDLE_USE_GPU  : PaddleOCR detection + recognition
+      #   - VIT_USE_GPU     : ViT-ONNX figure classifier (ONNX Runtime CUDA provider)
       - DOCLING_USE_GPU=true
+      - PADDLE_USE_GPU=true
+      - VIT_USE_GPU=true
     deploy:
       resources:
         limits:

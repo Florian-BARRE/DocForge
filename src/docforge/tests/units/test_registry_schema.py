@@ -135,3 +135,39 @@ class TestChainDiscriminatorValidation:
         })
         assert cfg.embed.chain[0].id == "tei"
         assert cfg.parse.chain[0].id == "docling"
+
+
+# ─── Device-knob removal backward-compat ─────────────────────────────────────────
+# `use_gpu` was removed from the docling / paddle_ocr / vit_onnx configs (GPU is a deployment
+# decision resolved from the *_USE_GPU env, never a per-collection field). A collection whose
+# stored pipeline JSON still carries a stale `use_gpu` MUST still load — the key is dropped, never
+# resurfaced. This locks in the `extra="ignore"` guarantee on those three config models.
+
+
+class TestDeviceKnobBackwardCompat:
+    """Stored configs carrying a stale `use_gpu` load cleanly and never echo the key back."""
+
+    def test_stale_use_gpu_is_dropped_across_providers(self) -> None:
+        """A legacy `use_gpu` on docling/paddle/vit chains loads and is stripped from the dump."""
+        cfg = PipelineConfig.model_validate({
+            "parse": {"chain": [{"id": "docling", "use_gpu": True}]},
+            "enrich": {
+                "ocr_chain": [{"id": "paddle_ocr", "use_gpu": True}],
+                "classifier_chain": [{"id": "vit_onnx", "use_gpu": True, "model_path": "/m.onnx"}],
+            },
+        })
+        # 1. The stale key never survives validation (it is off the schema).
+        assert "use_gpu" not in cfg.parse.chain[0].model_dump()
+        assert "use_gpu" not in cfg.enrich.ocr_chain[0].model_dump()
+        assert "use_gpu" not in cfg.enrich.classifier_chain[0].model_dump()
+        # 2. Legitimate per-collection fields are preserved.
+        assert cfg.enrich.classifier_chain[0].model_path == "/m.onnx"
+
+    def test_use_gpu_absent_from_provider_schemas(self) -> None:
+        """`use_gpu` must not appear in the JSON schema of any device-bearing provider config."""
+        from common_libs.providers.parser.docling import DoclingConfig
+        from common_libs.providers.ocr.paddle.config import PaddleOcrConfig
+        from common_libs.providers.classifier.vit_onnx.config import VitOnnxConfig
+
+        for model in (DoclingConfig, PaddleOcrConfig, VitOnnxConfig):
+            assert "use_gpu" not in model.model_json_schema()["properties"]

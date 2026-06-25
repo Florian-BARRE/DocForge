@@ -74,8 +74,13 @@ class BaseRuntimeConfig(EnvConfigLoader):
     GOTENBERG_TIMEOUT_S: int = env("GOTENBERG_TIMEOUT_S", cast=int, default="120")
 
     # ───── Pipeline providers ─────
+    # GPU usage for the LOCAL providers is a DEPLOYMENT decision (the GPU worker image sets these
+    # to true), NOT a per-collection pipeline knob — DeviceManager owns device selection, so no
+    # provider exposes a `use_gpu` config field. Each local provider reads its own deployment flag.
     PARSER_DEFAULT_BACKEND: str = env("PARSER_DEFAULT_BACKEND", default="docling")
     DOCLING_USE_GPU: bool = env("DOCLING_USE_GPU", cast=bool, default="false")
+    PADDLE_USE_GPU: bool = env("PADDLE_USE_GPU", cast=bool, default="false")
+    VIT_USE_GPU: bool = env("VIT_USE_GPU", cast=bool, default="false")
 
     # ───── Redis (arq job queue — app enqueues, worker consumes) ─────
     REDIS_URL: str = env("REDIS_URL", default="redis://localhost:6379")

@@ -105,13 +105,13 @@ def build_default_pipeline(cfg: Any) -> PipelineConfig:
     from common_libs.pipeline.stages.s4_chunk.strategies.params import TokenBudgetConfig
 
     # 1. Parser chain
-    parse_cfg = ParseConfig(
-        chain=[DoclingConfig(use_gpu=getattr(cfg, "DOCLING_USE_GPU", False))]
-    )
+    # GPU usage is a deployment decision resolved from DOCLING_USE_GPU via merge_defaults()
+    # at assembly time — NOT a per-collection pipeline field, so it is not set here.
+    parse_cfg = ParseConfig(chain=[DoclingConfig()])
 
     # 2. Figure classifier chain
     # Default deployment stack uses the heuristic layout-labels classifier; a per-collection
-    # config swaps in vit_onnx (with its own model_path / use_gpu) when needed.
+    # config swaps in vit_onnx (with its own model_path) when needed.
     classifier_chain: list = [LayoutLabelsConfig()]
 
     # 3. OCR chain — empty by default; OCR providers are opted in per-collection.

@@ -123,13 +123,14 @@ export function SinglePicker({
 
   function selectChoice(c: Choice) {
     if (!c.selectable) return
+    // Emit a flat object: { id, param1, param2, … } — matches the backend wire format.
     const defaults = paramsDefaults(c.fields ?? [])
-    onChange({ id: c.id, params: Object.keys(defaults).length ? defaults : undefined })
+    onChange({ id: c.id, ...defaults })
   }
 
   function updateParam(key: string, v: unknown) {
-    const params = { ...(value?.params ?? {}), [key]: v }
-    onChange({ id: selectedId!, params })
+    // Merge the changed param flat alongside `id`, preserving any existing params.
+    onChange({ ...value, id: selectedId!, [key]: v })
   }
 
   const selectedChoice = choices.find(c => c.id === selectedId)
@@ -168,6 +169,8 @@ export function SinglePicker({
             // Nested provider config (e.g. semantic.embed) → reuse the sibling overlay
             // to render a proper single-picker instead of a JSON-dict text input.
             const nestedCapability = nestedCapabilityFor(field.capability, p.name)
+            // Params are flat alongside `id` in the wire format; cast to read any key.
+            const flatValue = value as Record<string, unknown> | null | undefined
             if (nestedCapability && discovery) {
               return (
                 <NestedProviderPicker
@@ -175,7 +178,7 @@ export function SinglePicker({
                   label={p.label || p.name}
                   capability={nestedCapability}
                   discovery={discovery}
-                  value={(value?.params ?? {})[p.name] as Record<string, unknown> | undefined}
+                  value={flatValue?.[p.name] as Record<string, unknown> | undefined}
                   onChange={v => updateParam(p.name, v)}
                 />
               )
@@ -184,7 +187,7 @@ export function SinglePicker({
               <FieldInput
                 key={p.name}
                 schema={p}
-                value={(value?.params ?? {})[p.name]}
+                value={flatValue?.[p.name]}
                 onChange={v => updateParam(p.name, v)}
               />
             )
