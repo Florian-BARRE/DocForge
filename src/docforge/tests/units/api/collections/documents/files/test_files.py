@@ -3,6 +3,7 @@
 # All three share the same _require_done guard (404 / 409).
 
 import uuid
+from types import SimpleNamespace
 
 import httpx
 import pytest
@@ -193,11 +194,17 @@ class TestGetFigureCrop:
     async def test_figure_returns_200_when_blob_present(
         self, client: httpx.AsyncClient
     ) -> None:
-        """Done doc + blob in S3 → 200 with a presigned URL."""
+        """Done doc + figure block carrying a crop_key whose blob is present → 200 presigned URL."""
         col_id = uuid.uuid4()
         doc_id = uuid.uuid4()
         doc = make_document_orm(id=doc_id, collection_id=col_id, status="done", source_hash="abc")
         CONTEXT.document_repo.get_by_id.return_value = doc
+        # Crop key is resolved from the figure block's stored crop_key (content-addressed at store
+        # time), NOT recomputed from (source_hash, block_id).
+        block = SimpleNamespace(
+            id="blk-123", type="figure", type_data={"crop_key": "figures/by-hash/ab/abc.png"}
+        )
+        CONTEXT.block_repo.get_by_document.return_value = [block]
         CONTEXT.s3.exists.return_value = True
         CONTEXT.s3.get_presigned_url.return_value = "https://s3.example.com/fig.png"
         response = await client.get(_url(col_id, doc_id, "figures/blk-123"))

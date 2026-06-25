@@ -71,17 +71,47 @@ async def get_pdf(collection_id: uuid.UUID, document_id: uuid.UUID) -> Presigned
 async def get_figure_crop(
     collection_id: uuid.UUID, document_id: uuid.UUID, block_id: str
 ) -> PresignedUrlResponse:
-    """Pre-signed URL for a figure crop PNG produced by S1 (keyed by block_id)."""
-    doc = await _require_done(collection_id, document_id)
-    key = S3Helpers.key_figure_crop(doc.source_hash, block_id)
-    if not await CONTEXT.s3.exists(key):
-        # 404 — no figure-crop blob stored for this block id (block is not a figure / S1 skipped it).
+    """
+    Pre-signed URL for a figure crop PNG produced by S1.
+
+    Figure crops are content-addressed at store time (``key_figure_crop_by_hash`` — a repeating
+    logo/header dedups to one blob), and the resulting object key is stored on the figure block's
+    ``crop_key``. So the key is resolved from the block, NOT recomputed from (source_hash, block_id)
+    — the latter is a stale scheme that no longer matches what was uploaded.
+    """
+    await _require_done(collection_id, document_id)
+
+    # 1. Resolve the figure block and its stored crop_key (the authoritative object key)
+    async with CONTEXT.postgres.session() as session:
+        blocks = await CONTEXT.block_repo.get_by_document(session, document_id)
+    block = next((b for b in blocks if b.id == block_id), None)
+    if block is None:
+        # 404 — no such block in this document.
         CONTEXT.logger.warning(
-            f"Figure crop URL rejected (404 blob missing): collection={collection_id} "
+            f"Figure crop rejected (404 unknown block): collection={collection_id} "
             f"document={document_id} block={block_id!r}"
         )
-        raise HTTPException(status_code=404, detail=f"Figure crop not found for block {block_id!r}.")
-    return PresignedUrlResponse(url=await CONTEXT.s3.get_presigned_url(key))
+        raise HTTPException(status_code=404, detail=f"Block {block_id!r} not found in document {document_id}.")
+
+    crop_key = (block.type_data or {}).get("crop_key")
+    if not crop_key:
+        # 404 — the block is not a figure, or S1 produced no crop for it.
+        CONTEXT.logger.warning(
+            f"Figure crop rejected (404 no crop_key): collection={collection_id} "
+            f"document={document_id} block={block_id!r} type={block.type!r}"
+        )
+        raise HTTPException(status_code=404, detail=f"No figure crop for block {block_id!r}.")
+
+    # 2. The stored crop blob must still exist in the object store
+    if not await CONTEXT.s3.exists(crop_key):
+        # 404 — the content-addressed crop blob is missing from the object store.
+        CONTEXT.logger.warning(
+            f"Figure crop rejected (404 blob missing): collection={collection_id} "
+            f"document={document_id} block={block_id!r} key={crop_key}"
+        )
+        raise HTTPException(status_code=404, detail=f"Figure crop blob missing for block {block_id!r}.")
+
+    return PresignedUrlResponse(url=await CONTEXT.s3.get_presigned_url(crop_key))
 
 
 # ─── Private helpers ─────────────────────────────────────────────────────────
