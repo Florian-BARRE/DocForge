@@ -27,7 +27,6 @@ def make_job_orm(**overrides: object) -> types.SimpleNamespace:
         collection_id=overrides.get("collection_id", uuid.uuid4()),
         status=overrides.get("status", "running"),
         error=overrides.get("error", None),
-        budget_spent=overrides.get("budget_spent", 0.0),
         created_at=overrides.get("created_at", datetime.datetime.now(datetime.timezone.utc)),
         worker_id=overrides.get("worker_id", "host:1:abcd"),
         started_at=overrides.get("started_at", None),

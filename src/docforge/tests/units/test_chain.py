@@ -30,8 +30,6 @@ class _ScoredResult:
 class _FakeProvider:
     """Test double — a provider with a ``name`` and a parameterised behaviour."""
 
-    cost_per_call = 0.0
-
     def __init__(
         self,
         name: str,

@@ -169,7 +169,6 @@ async def run_pipeline_task(
             "job_id": job_id,
             "stage_fingerprints": result.stage_fingerprints,
             "from_cache": result.from_cache,
-            "budget_spent": result.budget_spent,
             "n_chunks": (
                 result.s4_result.n_text_chunks
                 + result.s4_result.n_figure_chunks

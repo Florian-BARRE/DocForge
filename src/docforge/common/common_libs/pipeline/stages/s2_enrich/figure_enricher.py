@@ -1,9 +1,9 @@
 # ====== Code Summary ======
 # FigureEnricher — processes a single FIGURE block through the S2 routing pipeline:
-# classify → gate DECORATIVE → gate budget → OCR → VLM → build enriched block.
-# It owns the three chains + S3 + provider cache + budget cap and mutates an S2Counters
+# classify → gate DECORATIVE → OCR → VLM → build enriched block.
+# It owns the three chains + S3 + provider cache and mutates an S2Counters
 # accumulator passed by the stage.  Extracted from S2EnrichStage.run to keep both the
-# stage and the per-block routing under the line budget.
+# stage and the per-block routing under the line limit.
 
 # ====== Standard Library Imports ======
 from __future__ import annotations
@@ -36,7 +36,7 @@ class FigureEnricher(LoggerClass):
     """
     Routes a single FIGURE block through classifier / OCR / VLM and builds its enrichment.
 
-    Holds the three chains plus the S3 client, the provider-call cache, and the budget cap.
+    Holds the three chains plus the S3 client and the provider-call cache.
     ``process_block`` mutates the shared ``S2Counters`` accumulator and returns the updated
     block (the figure block with its accumulated chain traces and enrichment).  OCR/VLM
     routing steps are delegated to ``FigureRoutingHelpers``.
@@ -49,7 +49,6 @@ class FigureEnricher(LoggerClass):
         vlm_chain: Chain[Any, Any] | None,
         s3: S3Client,
         provider_cache: ProviderCallCache,
-        max_budget: float,
         chart_to_data: bool = False,
     ) -> None:
         """
@@ -61,7 +60,6 @@ class FigureEnricher(LoggerClass):
             vlm_chain (Chain[Any, Any] | None): Ordered VLM chain; None disables VLM.
             s3 (S3Client): SeaweedFS client for figure crop downloads.
             provider_cache (ProviderCallCache): Cross-document provider call cache.
-            max_budget (float): Per-job budget cap in USD (``float('inf')`` = no limit).
             chart_to_data (bool): When True, CHART figures additionally request structured
                 chart-to-data extraction; when False, a CHART is treated like a normal figure
                 (VLM description only). Mirrors ``EnrichConfig.chart_to_data``.
@@ -72,7 +70,6 @@ class FigureEnricher(LoggerClass):
         self._vlm_chain = vlm_chain
         self._s3 = s3
         self._provider_cache = provider_cache
-        self._max_budget = max_budget
         self._chart_to_data = chart_to_data
 
     async def process_block(
@@ -87,10 +84,9 @@ class FigureEnricher(LoggerClass):
         Processing order:
         1. Download crop → classify (kind + relevance).
         2. Gate DECORATIVE — skip enrichment.
-        3. Gate budget — stop costly calls when the USD cap is reached.
-        4. OCR — when the kind implies text.
-        5. VLM — when the kind implies a visual description (+ chart-to-data).
-        6. Build the enriched FigureEnrichment and updated block.
+        3. OCR — when the kind implies text.
+        4. VLM — when the kind implies a visual description (+ chart-to-data).
+        5. Build the enriched FigureEnrichment and updated block.
 
         Args:
             block (Block): The FIGURE block to enrich (must have a non-empty crop_key).
@@ -146,27 +142,19 @@ class FigureEnricher(LoggerClass):
                 "chain_traces": block_traces,
             })
 
-        # 4. Gate: budget cap — stop costly API calls when limit is reached.
-        if counters.budget_spent >= self._max_budget:
-            self.logger.warning(
-                f"S2: budget exhausted (spent={counters.budget_spent:.4f} >= "
-                f"max={self._max_budget:.4f}) — skipping block={block.id}"
-            )
-            return block.model_copy(update={"chain_traces": block_traces})
-
-        # 5. OCR routing — applies to kinds that may contain text.
+        # 4. OCR routing — applies to kinds that may contain text.
         ocr_text = await FigureRoutingHelpers.maybe_ocr(
             self._ocr_chain, self._provider_cache, kind, crop_bytes, crop_hash,
             doc_language, block_traces, counters,
         )
 
-        # 6. VLM routing — applies to kinds that benefit from a visual description.
+        # 5. VLM routing — applies to kinds that benefit from a visual description.
         description, data_table = await FigureRoutingHelpers.maybe_vlm(
             self._vlm_chain, self._provider_cache, kind, crop_bytes, crop_hash,
-            ocr_text, self._max_budget, self._chart_to_data, block_traces, counters,
+            ocr_text, self._chart_to_data, block_traces, counters,
         )
 
-        # 7. Build the enriched figure block with the accumulated traces.
+        # 6. Build the enriched figure block with the accumulated traces.
         updated_figure = FigureEnrichment(
             kind=kind,
             crop_key=crop_key,

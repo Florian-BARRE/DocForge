@@ -215,29 +215,27 @@ class CollectionRepository(LoggerClass):
         collection_id: uuid.UUID,
         *,
         max_in_flight: int | None,
-        budget_cap_usd: float | None,
     ) -> CollectionModel | None:
         """
-        Replace the per-collection resource-admission limits (Brique D).
+        Replace the per-collection resource-admission limit (Brique D).
 
-        PUT semantics: both caps are set to the supplied values, where ``None`` clears the cap
-        (falls back to the global limit / unlimited). These are plain columns, deliberately kept out
-        of the pipeline config blob so editing them never triggers reindex semantics.
+        PUT semantics: the cap is set to the supplied value, where ``None`` clears it (falls back to
+        the global limit / unlimited). This is a plain column, deliberately kept out of the pipeline
+        config blob so editing it never triggers reindex semantics.
 
         Args:
             session (AsyncSession): Active session.
             collection_id (uuid.UUID): Target collection.
             max_in_flight (int | None): Per-collection running+pending cap (None = no cap).
-            budget_cap_usd (float | None): Cumulative spend cap in USD (None = unlimited).
 
         Returns:
             CollectionModel | None: The updated collection, or None if not found.
         """
-        # 1. Apply both caps in a single update (None clears the column)
+        # 1. Apply the cap (None clears the column)
         result = await session.execute(
             sa_update(CollectionModel)
             .where(CollectionModel.id == collection_id)
-            .values(max_in_flight=max_in_flight, budget_cap_usd=budget_cap_usd)
+            .values(max_in_flight=max_in_flight)
         )
         if (result.rowcount or 0) == 0:
             return None
@@ -251,7 +249,7 @@ class CollectionRepository(LoggerClass):
         if collection:
             self.logger.info(
                 f"CollectionRepository: limits updated for collection id={collection_id} "
-                f"max_in_flight={max_in_flight} budget_cap_usd={budget_cap_usd}"
+                f"max_in_flight={max_in_flight}"
             )
         return collection
 

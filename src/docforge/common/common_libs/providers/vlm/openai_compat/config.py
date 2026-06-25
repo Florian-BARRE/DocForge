@@ -45,7 +45,6 @@ class OpenAICompatVlmConfig(BaseModel):
     api_key: str = Field(default="", description="Bearer token; required for external, optional for local.")
     timeout_s: int = Field(default=0, ge=0, le=600, description="HTTP timeout in seconds (0 = locality default).")
     max_tokens: int = Field(default=1024, ge=64, le=8192, description="Max generated tokens.")
-    cost_per_call: float = Field(default=0.0, ge=0.0, description="Estimated USD per call (0 for local).")
 
     @model_validator(mode="before")
     @classmethod
@@ -68,7 +67,6 @@ class OpenAICompatVlmConfig(BaseModel):
             api_key=self.api_key,
             timeout_s=self.timeout_s or None,
             max_tokens=self.max_tokens,
-            cost_per_call=self.cost_per_call,
         )
 
     def merge_defaults(self, cfg: Any) -> OpenAICompatVlmConfig:

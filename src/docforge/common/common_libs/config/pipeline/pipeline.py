@@ -128,7 +128,6 @@ def build_default_pipeline(cfg: Any) -> PipelineConfig:
         ocr_chain=ocr_chain,
         ocr_gate=ChainGateConfig(min_score=ocr_threshold),
         vlm_chain=vlm_chain,
-        max_budget_usd=getattr(cfg, "ENRICH_MAX_BUDGET_USD", 0.0),
     )
 
     # 5. Chunking

@@ -214,9 +214,6 @@ function AttemptCard({
 
       <div className="chain-attempt-meta">
         <span className="text-dim">⏱ {attempt.duration_ms} ms</span>
-        {attempt.cost_usd > 0 && (
-          <span className="text-dim">· ${attempt.cost_usd.toFixed(4)}</span>
-        )}
         {attempt.error && (
           <span className="chain-attempt-error" title={attempt.error}>
             ⚠ {attempt.error}

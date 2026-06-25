@@ -119,14 +119,14 @@ async def ingest_document(
 
     # Resource-admission gate (Brique D) — runs AFTER document-admissibility (415/413/422) and the
     # duplicate short-circuit, so a harmless re-upload is never rejected for capacity. Asks "can the
-    # system accept MORE load right now?": 429 on queue/in-flight capacity, 409 on collection budget.
+    # system accept MORE load right now?": 429 on queue/in-flight capacity.
     async with CONTEXT.postgres.session() as session:
         decision = await CONTEXT.resource_admitter.admit(
             session=session, collection=collection,
             queue_introspector=CONTEXT.queue_introspector, job_repo=CONTEXT.job_repo,
         )
     if not decision.admitted:
-        # 429 — capacity (queue backlog / in-flight) | 409 — collection budget exhausted.
+        # 429 — capacity (queue backlog / in-flight).
         # ResourceAdmitter.admit() already logs the rejection reason; no duplicate log here.
         raise HTTPException(status_code=decision.status_code, detail=decision.detail)
 

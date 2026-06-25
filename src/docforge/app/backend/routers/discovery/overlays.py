@@ -114,7 +114,7 @@ def _pipeline_dynamic_fields(stages: list[dict[str, Any]], prefix: str) -> list[
                 resolved=True,
                 choices=[_provider_choice(p) for p in group.get("providers", [])],
             ))
-        # 2. Stage-level scalar params (chart_to_data, max_budget_usd, reinject_breadcrumb, …)
+        # 2. Stage-level scalar params (chart_to_data, reinject_breadcrumb, …)
         for param in stage.get("params", []):
             # The registry historically emits scalar entries with ``name`` (dot-path) +
             # ``type``/``default``/``description``.  Wrap them into a single Choice so the

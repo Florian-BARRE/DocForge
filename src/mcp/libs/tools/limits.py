@@ -31,10 +31,10 @@ def register(mcp: FastMCP, sdk: DocForgeClient) -> None:
     @mcp.tool()
     async def get_collection_limits(collection_id: str) -> Any:
         """
-        Return a collection's configured resource limits and current live usage.
+        Return a collection's configured in-flight cap and current live usage.
 
-        Reports the per-collection in-flight job cap and budget cap in USD, alongside the
-        current in-flight count and cumulative spend. A null cap means unlimited.
+        Reports the per-collection max_in_flight cap alongside the current in_flight
+        count. A null cap means unlimited.
         """
         return await sdk.limits.get(collection_id)
 
@@ -42,17 +42,15 @@ def register(mcp: FastMCP, sdk: DocForgeClient) -> None:
     async def update_collection_limits(
         collection_id: str,
         max_in_flight: int | None = None,
-        budget_cap_usd: float | None = None,
     ) -> Any:
         """
-        Replace a collection's resource limits (PUT — both caps are set in one call).
+        Replace a collection's in-flight cap (PUT — the cap is set explicitly).
 
-        Pass null for a cap to clear it (unlimited). The server rejects a value of 0
-        for either cap (use null to express 'no limit'). Responds with the refreshed
-        caps and live usage. Changing limits never triggers reindex.
+        Pass null to clear the cap (unlimited). The server rejects a value of 0
+        (use null to express 'no limit'). Responds with the refreshed cap and live
+        in-flight count. Changing limits never triggers reindex.
         """
         return await sdk.limits.update(
             collection_id,
             max_in_flight=max_in_flight,
-            budget_cap_usd=budget_cap_usd,
         )

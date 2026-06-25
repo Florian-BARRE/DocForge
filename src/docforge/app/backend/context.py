@@ -94,7 +94,7 @@ class CONTEXT:
     event_broadcaster: EventBroadcaster
 
     # ── Resource admission (Brique D) ────────────────────────────────────────
-    # Runtime back-pressure gate on enqueue (queue depth / in-flight / cumulative budget).
+    # Runtime back-pressure gate on enqueue (queue depth / in-flight).
     resource_admitter: ResourceAdmitter
 
     # ── Runtime state ────────────────────────────────────────────────────────

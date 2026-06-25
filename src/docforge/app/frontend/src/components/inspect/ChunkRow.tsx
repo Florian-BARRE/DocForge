@@ -356,7 +356,7 @@ function emptyReasonForVLM(kind: unknown, traces: ChainTrace[]): string {
     return `routing skip — kind '${k}' is not in VLM_KINDS = {CHART, DIAGRAM, PHOTO}`
   }
   const vlm = traces.find(t => t.stage === 'vlm')
-  if (!vlm) return 'VLM chain not invoked (no provider configured or budget exhausted before this figure)'
+  if (!vlm) return 'VLM chain not invoked (no provider configured for this figure)'
   if (vlm.final_provider == null) {
     const n = vlm.attempts?.length ?? 0
     return `VLM chain exhausted after ${n} attempt${n !== 1 ? 's' : ''} — every provider escalated or raised`

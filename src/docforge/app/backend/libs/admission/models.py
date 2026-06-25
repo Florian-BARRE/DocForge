@@ -23,13 +23,11 @@ class ResourceLimits:
         max_queue_depth (int): Reject when the arq backlog (ZCARD) reaches this (0 = unlimited).
         max_in_flight_global (int): Reject when running jobs reach this (0 = unlimited).
         max_in_flight_collection (int | None): Per-collection running+pending cap (None = none).
-        budget_cap_usd (float | None): Per-collection cumulative spend cap (None = unlimited).
     """
 
     max_queue_depth: int
     max_in_flight_global: int
     max_in_flight_collection: int | None = None
-    budget_cap_usd: float | None = None
 
 
 @dataclass(slots=True)
@@ -41,13 +39,11 @@ class AdmissionSnapshot:
         queue_depth (int): Pending jobs in the arq queue (Redis ZCARD).
         running_global (int): Jobs in status ``running`` across all collections (Postgres).
         inflight_collection (int): running + pending jobs scoped to the target collection.
-        collection_spent (float): Cumulative ``budget_spent`` for the target collection (USD).
     """
 
     queue_depth: int
     running_global: int
     inflight_collection: int
-    collection_spent: float
 
 
 @dataclass(slots=True)
@@ -61,7 +57,7 @@ class AdmissionDecision:
     Attributes:
         admitted (bool): Whether the system can accept this ingest right now.
         reason (str): Short human-readable explanation (logged + echoed on rejection).
-        status_code (int): HTTP status to raise on rejection (429 capacity / 409 budget).
+        status_code (int): HTTP status to raise on rejection (429 capacity).
         detail (dict): Structured rejection body (limit + current value).
     """
 

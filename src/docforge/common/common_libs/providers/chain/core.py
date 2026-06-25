@@ -122,7 +122,7 @@ class Chain[T, R](LoggerClass):
 
         Returns:
             ChainOutcome[R]: The first satisfactory result + every attempt's record
-                (provider id, score, duration, escalated flag, error, cost).
+                (provider id, score, duration, escalated flag, error).
         """
         attempts: list[ChainAttempt] = []
         total = len(self._providers)

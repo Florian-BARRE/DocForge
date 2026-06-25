@@ -27,8 +27,9 @@ Leaf paths + verbs the SDK is validated against (all confirmed matching as of Br
 - pages: GET `/list`, GET `/{page_number}`, GET `/{page_number}/screenshot` (returns image/png bytes →
   MCP tool wraps in `Image(data=..., format="png")`), POST `/{page_number}/reingest`
 - jobs: GET `` (empty leaf, i.e. `/api/v1/jobs`), GET `/{job_id}`, POST `/{job_id}/cancel`
-- limits (Brique D): GET `/collections/{id}/limits`, PUT `/collections/{id}/limits` (body `{max_in_flight, budget_cap_usd}`)
-  — transport.put(), NOT post(). Null values are sent explicitly (not omitted) to clear caps.
+- limits: GET `/collections/{id}/limits`, PUT `/collections/{id}/limits` (body `{max_in_flight}`)
+  — transport.put(), NOT post(). Null is sent explicitly (not omitted) to clear the cap.
+  Response shape: `{collection_id, max_in_flight, in_flight}` — budget fields removed.
 - monitoring: GET `/queue` `/workers` `/overview` `/discovery` `/resources`
   — `/resources` added in Brique D (device gauge + global admission limits + live load)
 

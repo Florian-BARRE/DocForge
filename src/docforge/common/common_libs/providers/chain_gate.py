@@ -6,9 +6,9 @@
 # internals.  It is configured by a typed ``ChainGateConfig`` so the discovery payload
 # can expose every knob to the UI as scalar overlays.
 #
-# Today the only enforced criterion is ``min_score``.  ``max_duration_ms`` and
-# ``max_cost_usd`` are accepted in the config so the UI surfaces them, but they are
-# advisory in Phase A (no enforcement) — the wiring is reserved for Phase B.
+# Today the only enforced criterion is ``min_score``.  ``max_duration_ms`` is accepted
+# in the config so the UI surfaces it, but it is advisory in Phase A (no enforcement) —
+# the wiring is reserved for Phase B.
 
 # ====== Standard Library Imports ======
 from __future__ import annotations
@@ -68,8 +68,8 @@ class ChainGate:
         if score is not None and score < self._cfg.min_score:
             return True
 
-        # 3. Future extension points (max_duration_ms / max_cost_usd) are parsed but
-        # not enforced in Phase A — keep the gate explicit so the UI shows the knobs.
+        # 3. Future extension point (max_duration_ms) is parsed but not enforced in
+        # Phase A — keep the gate explicit so the UI shows the knob.
         return False
 
     @staticmethod

@@ -21,9 +21,6 @@ class ChainGateConfig(BaseModel):
         max_duration_ms (int | None): Soft upper bound on an attempt's wall-clock
             duration — surfaced in the UI for future enforcement; not enforced in
             Phase A.
-        max_cost_usd (float | None): Soft upper bound on the cumulative provider cost
-            of the chain — surfaced in the UI for future enforcement; not enforced in
-            Phase A.
     """
 
     min_score: float = Field(
@@ -36,11 +33,6 @@ class ChainGateConfig(BaseModel):
         default=None,
         ge=0,
         description="Soft wall-clock budget per attempt (ms). Surfaced in UI; not enforced in Phase A.",
-    )
-    max_cost_usd: float | None = Field(
-        default=None,
-        ge=0.0,
-        description="Soft cumulative cost budget (USD). Surfaced in UI; not enforced in Phase A.",
     )
 
 

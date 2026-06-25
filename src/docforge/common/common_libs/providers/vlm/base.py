@@ -27,13 +27,11 @@ class VlmProvider(ABC):
         name (str): Provider identifier used in logs.
         version (str): Model version / identifier string.
         runs_on (str): \"local\" (self-hosted) or \"remote\" (cloud API).
-        cost_per_call (float): Estimated USD cost per API call (0.0 for local).
     """
 
     name: str
     version: str
     runs_on: str
-    cost_per_call: float
 
     @abstractmethod
     async def describe(

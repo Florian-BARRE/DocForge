@@ -21,13 +21,11 @@ class OcrProvider(ABC):
         name (str): Provider identifier used in logs.
         version (str): OCR engine version string.
         runs_on (str): \"local\" (GPU/CPU) or \"remote\" (cloud API).
-        cost_per_page (float): Estimated USD cost per page — 0.0 for local providers.
     """
 
     name: str
     version: str
     runs_on: str
-    cost_per_page: float
 
     @abstractmethod
     async def extract(self, img_bytes: bytes, hint: OcrHint) -> OcrResult:

@@ -30,6 +30,16 @@ repos, config, domain models, search/observability wiring). NOT the ingestion pi
 - [API surface map](api-surface-map.md) — 12 routers / 38 routes; prefix algebra; the 2 SSE routes +
   1 bytes route; files/* return a pre-signed URL (not bytes); ingest error ladder. MCP mirrors 36 tools.
 
+## Brique D (resource admission) — post-budget-purge
+
+Budget/spend was fully removed (2026-06-25); only the **capacity (429)** path survives. `ResourceAdmitter`
+gates on queue depth + global/per-collection in-flight only (no 409). Per-collection limit = `max_in_flight`
+column on `collection` (the only resource cap). `JobModel` has no `budget_spent`; `JobResponse` has no budget
+field. Admission models (`ResourceLimits`/`AdmissionSnapshot`/`AdmissionDecision`) carry no budget fields.
+Limits sub-router (`collections/{id}/limits`) GET/PUT only `max_in_flight` + `in_flight`. `job_repo` has no
+`sum_budget_by_collection`; `update_status`/`mark_finished` take no `budget_spent`. Worker-side cost write
+(`worker/libs/pipeline/orchestrator/*`, `s2_enrich`) is **pipeline-owned**, not backend.
+
 ## Boundary
 
 You own routers/services/repos/config/models on the request→response path. Ingestion engine (S0→S6,

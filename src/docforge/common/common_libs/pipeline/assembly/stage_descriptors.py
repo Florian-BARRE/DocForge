@@ -63,8 +63,6 @@ class StageDescriptorHelpers:
                     "params": [
                         {"name": "enrich.chart_to_data", "label": "Chart → data", "type": "bool",
                          "default": False, "description": "Extract chart series into a structured table"},
-                        {"name": "enrich.max_budget_usd", "label": "Max budget (USD)", "type": "float",
-                         "default": 0.0, "description": "Per-job spend cap; 0 = no limit"},
                         {"name": "enrich.classifier_gate.min_score", "label": "Classifier gate — min_score",
                          "type": "float", "default": 0.5,
                          "description": "Escalate the classifier chain below this confidence."},

@@ -1,7 +1,7 @@
 # ====== Code Summary ======
-# Unit tests for ResourceAdmitter (Brique D): the pure evaluate() decision matrix (budget 409,
-# capacity 429, sentinels, precedence, disabled) and the fail-soft admit() wrapper (introspection
-# errors must ADMIT, never block ingestion). All inputs are hand-built — no DB / Redis needed.
+# Unit tests for ResourceAdmitter (Brique D): the pure evaluate() decision matrix (capacity 429,
+# sentinels, precedence, disabled) and the fail-soft admit() wrapper (introspection errors must
+# ADMIT, never block ingestion). All inputs are hand-built — no DB / Redis needed.
 
 # ====== Standard Library Imports ======
 from __future__ import annotations
@@ -25,24 +25,22 @@ def _admitter(*, enabled: bool = True) -> ResourceAdmitter:
 
 
 def _snapshot(
-    *, queue_depth: int = 0, running_global: int = 0, inflight_collection: int = 0, collection_spent: float = 0.0
+    *, queue_depth: int = 0, running_global: int = 0, inflight_collection: int = 0
 ) -> AdmissionSnapshot:
     """Build a load snapshot with all-quiet defaults; override one signal per test."""
     return AdmissionSnapshot(
         queue_depth=queue_depth,
         running_global=running_global,
         inflight_collection=inflight_collection,
-        collection_spent=collection_spent,
     )
 
 
 class _FakeCollection:
-    """Minimal collection carrying only the per-collection caps the admitter reads."""
+    """Minimal collection carrying only the per-collection cap the admitter reads."""
 
-    def __init__(self, *, max_in_flight: int | None = None, budget_cap_usd: float | None = None) -> None:
+    def __init__(self, *, max_in_flight: int | None = None) -> None:
         self.id = uuid.uuid4()
         self.max_in_flight = max_in_flight
-        self.budget_cap_usd = budget_cap_usd
 
 
 class _FakeQueue:
@@ -59,21 +57,17 @@ class _FakeQueue:
 
 
 class _FakeJobRepo:
-    """JobRepository stand-in for global/per-collection counts + cumulative spend."""
+    """JobRepository stand-in for global/per-collection counts."""
 
-    def __init__(self, *, running_global: int = 0, coll_running: int = 0, coll_pending: int = 0, spent: float = 0.0) -> None:
+    def __init__(self, *, running_global: int = 0, coll_running: int = 0, coll_pending: int = 0) -> None:
         self._running_global = running_global
         self._coll_running = coll_running
         self._coll_pending = coll_pending
-        self._spent = spent
 
     async def count_by_status(self, session, *, collection_id=None) -> dict[str, int]:
         if collection_id is None:
             return {"running": self._running_global}
         return {"running": self._coll_running, "pending": self._coll_pending}
-
-    async def sum_budget_by_collection(self, session, collection_id) -> float:
-        return self._spent
 
 
 class TestEvaluateMatrix:
@@ -82,19 +76,10 @@ class TestEvaluateMatrix:
     def test_admits_when_all_under_limits(self) -> None:
         """Everything quiet and well under caps → admit."""
         decision = _admitter().evaluate(
-            _snapshot(queue_depth=1, running_global=1, inflight_collection=1, collection_spent=1.0),
-            ResourceLimits(max_queue_depth=10, max_in_flight_global=10, max_in_flight_collection=10, budget_cap_usd=100.0),
+            _snapshot(queue_depth=1, running_global=1, inflight_collection=1),
+            ResourceLimits(max_queue_depth=10, max_in_flight_global=10, max_in_flight_collection=10),
         )
         assert decision.admitted is True
-
-    def test_rejects_409_on_exhausted_budget(self) -> None:
-        """Cumulative spend at the cap → 409 budget rejection."""
-        decision = _admitter().evaluate(
-            _snapshot(collection_spent=50.0),
-            ResourceLimits(max_queue_depth=0, max_in_flight_global=0, budget_cap_usd=50.0),
-        )
-        assert decision.admitted is False
-        assert decision.status_code == 409
 
     def test_rejects_429_on_global_in_flight(self) -> None:
         """Global running count at the cap → 429 capacity rejection."""
@@ -139,19 +124,11 @@ class TestEvaluateMatrix:
         )
         assert decision.admitted is True
 
-    def test_budget_precedes_capacity(self) -> None:
-        """When both budget and global capacity are breached, budget (409) wins."""
-        decision = _admitter().evaluate(
-            _snapshot(running_global=8, collection_spent=50.0),
-            ResourceLimits(max_queue_depth=0, max_in_flight_global=8, budget_cap_usd=50.0),
-        )
-        assert decision.status_code == 409
-
     def test_disabled_admitter_always_admits(self) -> None:
         """A disabled admitter admits even when every cap is breached."""
         decision = _admitter(enabled=False).evaluate(
-            _snapshot(queue_depth=10_000, running_global=10_000, collection_spent=10_000.0),
-            ResourceLimits(max_queue_depth=1, max_in_flight_global=1, budget_cap_usd=1.0),
+            _snapshot(queue_depth=10_000, running_global=10_000),
+            ResourceLimits(max_queue_depth=1, max_in_flight_global=1),
         )
         assert decision.admitted is True
 
@@ -177,12 +154,12 @@ class TestAdmitWrapper:
     async def test_admit_passes_when_under_caps(self) -> None:
         """Quiet system, generous caps → admit."""
         admitter = _admitter()
-        collection = _FakeCollection(max_in_flight=10, budget_cap_usd=100.0)
+        collection = _FakeCollection(max_in_flight=10)
         decision = await admitter.admit(
             session=None,
             collection=collection,
             queue_introspector=_FakeQueue(depth=1),
-            job_repo=_FakeJobRepo(running_global=1, coll_running=1, spent=1.0),
+            job_repo=_FakeJobRepo(running_global=1, coll_running=1),
         )
         assert decision.admitted is True
 

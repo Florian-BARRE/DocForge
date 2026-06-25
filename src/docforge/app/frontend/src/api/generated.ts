@@ -579,7 +579,7 @@ export interface paths {
          * @description Return the collection's configured resource limits and live usage.
          *
          *     Returns:
-         *         CollectionLimitsResponse: Caps + current in-flight + budget spent/remaining.
+         *         CollectionLimitsResponse: Caps + current in-flight.
          */
         get: operations["get_limits_api_v1_collections__collection_id__limits_get"];
         /**
@@ -1011,14 +1011,8 @@ export interface components {
          *         succeeded (bool): False when the call raised or returned None.
          *         escalated (bool): True when the gate told the chain to try the next provider.
          *         error (str | None): Exception summary captured when the attempt raised.
-         *         cost_usd (float): Provider-reported cost of this attempt (0.0 if free).
          */
         ChainAttemptIR: {
-            /**
-             * Cost Usd
-             * @default 0
-             */
-            cost_usd: number;
             /** Duration Ms */
             duration_ms: number;
             /** Error */
@@ -1181,27 +1175,9 @@ export interface components {
          *     Attributes:
          *         collection_id (uuid.UUID): The collection these limits apply to.
          *         max_in_flight (int | None): Configured in-flight cap (null = unlimited).
-         *         budget_cap_usd (float | None): Configured budget cap in USD (null = unlimited).
          *         in_flight (int): Current running + pending jobs for the collection.
-         *         budget_spent_usd (float): Cumulative USD spent across the collection's jobs.
-         *         budget_remaining_usd (float | None): cap − spent (clamped at 0), or null when uncapped.
          */
         CollectionLimitsResponse: {
-            /**
-             * Budget Cap Usd
-             * @description Configured budget cap USD (null = unlimited).
-             */
-            budget_cap_usd?: number | null;
-            /**
-             * Budget Remaining Usd
-             * @description Remaining budget (cap − spent, clamped at 0); null when uncapped.
-             */
-            budget_remaining_usd?: number | null;
-            /**
-             * Budget Spent Usd
-             * @description Cumulative USD spent across the collection's jobs.
-             */
-            budget_spent_usd: number;
             /**
              * Collection Id
              * Format: uuid
@@ -1221,18 +1197,12 @@ export interface components {
         };
         /**
          * CollectionLimitsUpdateRequest
-         * @description Replace a collection's resource-admission limits (PUT semantics — both caps are set).
+         * @description Replace a collection's resource-admission limits (PUT semantics — the cap is set).
          *
          *     Attributes:
          *         max_in_flight (int | None): Per-collection running+pending cap; null clears it (unlimited).
-         *         budget_cap_usd (float | None): Cumulative spend cap in USD; null clears it (unlimited).
          */
         CollectionLimitsUpdateRequest: {
-            /**
-             * Budget Cap Usd
-             * @description Cumulative spend cap in USD (null = unlimited).
-             */
-            budget_cap_usd?: number | null;
             /**
              * Max In Flight
              * @description Per-collection running+pending cap (null = unlimited).
@@ -1957,7 +1927,6 @@ export interface components {
          *         collection_id (uuid.UUID): Owning collection.
          *         status (str): Persisted status (pending|running|done|failed).
          *         error (str | None): Error message when failed.
-         *         budget_spent (float): API cost incurred by the job (USD).
          *         created_at (datetime): Admission time.
          *         worker_id (str | None): Worker process that ran the job.
          *         started_at (datetime | None): Execution start.
@@ -1979,12 +1948,6 @@ export interface components {
              * @default 1
              */
             attempt: number;
-            /**
-             * Budget Spent
-             * @description API cost incurred (USD).
-             * @default 0
-             */
-            budget_spent: number;
             /**
              * Collection Id
              * Format: uuid

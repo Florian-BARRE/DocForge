@@ -116,31 +116,6 @@ class TestIngestDocument:
         assert response.status_code == 429
 
     @pytest.mark.asyncio
-    async def test_ingest_budget_exceeded_returns_409(
-        self, client: httpx.AsyncClient
-    ) -> None:
-        """The resource-admission gate rejecting on cumulative budget surfaces as 409 (Brique D)."""
-        col_id = uuid.uuid4()
-        CONTEXT.collection_repo.get_by_id.return_value = make_collection_orm(id=col_id)
-        CONTEXT.document_repo.find_duplicate.return_value = None
-        # Budget (409) is checked before capacity (429); a re-upload is never throttled, so dedup
-        # must miss first (find_duplicate=None) for the budget gate to be reached.
-        admitter = MagicMock()
-        admitter.admit = AsyncMock(
-            return_value=AdmissionDecision.reject(
-                status_code=409,
-                reason="collection budget exhausted",
-                detail={"error": "Collection budget exhausted."},
-            )
-        )
-        CONTEXT.resource_admitter = admitter
-        response = await client.post(
-            _col_url(col_id, "/ingest"),
-            files={"file": ("report.pdf", _pdf_file(), "application/pdf")},
-        )
-        assert response.status_code == 409
-
-    @pytest.mark.asyncio
     async def test_ingest_missing_collection_returns_404(
         self, client: httpx.AsyncClient
     ) -> None:
@@ -375,7 +350,6 @@ class TestGetDocument:
         job.collection_id = col_id
         job.status = "done"
         job.error = None
-        job.budget_spent = 0.05
         job.created_at = datetime.datetime.utcnow()
         job.worker_id = "worker-1"
         job.started_at = datetime.datetime.utcnow()

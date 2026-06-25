@@ -24,7 +24,6 @@ class ChainAttemptIR(BaseModel):
         succeeded (bool): False when the call raised or returned None.
         escalated (bool): True when the gate told the chain to try the next provider.
         error (str | None): Exception summary captured when the attempt raised.
-        cost_usd (float): Provider-reported cost of this attempt (0.0 if free).
     """
 
     provider_id: str
@@ -33,7 +32,6 @@ class ChainAttemptIR(BaseModel):
     succeeded: bool
     escalated: bool
     error: str | None = None
-    cost_usd: float = 0.0
 
 
 class ChainTrace(BaseModel):

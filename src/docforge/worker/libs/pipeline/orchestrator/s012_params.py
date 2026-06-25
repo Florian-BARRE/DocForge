@@ -70,7 +70,7 @@ class S012ParamHelpers:
         Extract S2 fingerprint parameters from the run's enrichment stage.
 
         Delegates to S2EnrichStage.params_for_fingerprint() which returns classifier
-        name/version, OCR chain signature, VLM chain signature, and budget cap.
+        name/version, OCR chain signature, and VLM chain signature.
 
         Args:
             s2 (S2EnrichStage): The S2 enrichment stage.

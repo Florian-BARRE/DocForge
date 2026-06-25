@@ -148,7 +148,6 @@ export interface JobResponse {
   collection_id: string
   status: JobStatus
   error: string | null
-  budget_spent: number
   created_at: string
   worker_id: string | null
   started_at: string | null

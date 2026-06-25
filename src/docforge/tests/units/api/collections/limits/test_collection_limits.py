@@ -1,6 +1,6 @@
 # ====== Code Summary ======
-# Tests for the per-collection limits sub-resource (Brique D): GET returns the configured caps plus
-# live usage (in-flight + budget spent/remaining); PUT replaces both caps. All endpoints live under
+# Tests for the per-collection limits sub-resource (Brique D): GET returns the configured cap plus
+# live usage (in-flight); PUT replaces the cap. All endpoints live under
 # /api/v1/collections/{collection_id}/limits.
 
 # ====== Standard Library Imports ======
@@ -20,10 +20,9 @@ def _url(collection_id: uuid.UUID) -> str:
     return f"/api/v1/collections/{collection_id}/limits"
 
 
-def _wire_usage(*, running: int = 0, pending: int = 0, spent: float = 0.0) -> None:
-    """Point the job_repo mocks at fixed live-usage numbers."""
+def _wire_usage(*, running: int = 0, pending: int = 0) -> None:
+    """Point the job_repo mock at fixed live-usage numbers."""
     CONTEXT.job_repo.count_by_status = AsyncMock(return_value={"running": running, "pending": pending})
-    CONTEXT.job_repo.sum_budget_by_collection = AsyncMock(return_value=spent)
 
 
 class TestGetLimits:
@@ -38,32 +37,27 @@ class TestGetLimits:
         assert response.status_code == 404
 
     @pytest.mark.asyncio
-    async def test_returns_caps_and_live_usage(self, client: httpx.AsyncClient) -> None:
-        """200 echoes the configured caps plus computed in-flight + remaining budget."""
+    async def test_returns_cap_and_live_usage(self, client: httpx.AsyncClient) -> None:
+        """200 echoes the configured cap plus computed in-flight."""
         col_id = uuid.uuid4()
         CONTEXT.collection_repo.get_by_id.return_value = make_collection_orm(
-            id=col_id, max_in_flight=5, budget_cap_usd=100.0
+            id=col_id, max_in_flight=5
         )
-        _wire_usage(running=2, pending=1, spent=30.0)
+        _wire_usage(running=2, pending=1)
 
         body = (await client.get(_url(col_id))).json()
         assert body["collection_id"] == str(col_id)
         assert body["max_in_flight"] == 5
-        assert body["budget_cap_usd"] == 100.0
         assert body["in_flight"] == 3
-        assert body["budget_spent_usd"] == 30.0
-        assert body["budget_remaining_usd"] == 70.0
 
     @pytest.mark.asyncio
-    async def test_remaining_is_null_when_uncapped(self, client: httpx.AsyncClient) -> None:
-        """A collection with no budget cap reports null remaining budget."""
+    async def test_cap_is_null_when_uncapped(self, client: httpx.AsyncClient) -> None:
+        """A collection with no in-flight cap reports null max_in_flight."""
         col_id = uuid.uuid4()
         CONTEXT.collection_repo.get_by_id.return_value = make_collection_orm(id=col_id)
-        _wire_usage(spent=5.0)
+        _wire_usage()
         body = (await client.get(_url(col_id))).json()
         assert body["max_in_flight"] is None
-        assert body["budget_cap_usd"] is None
-        assert body["budget_remaining_usd"] is None
 
 
 class TestPutLimits:
@@ -74,39 +68,36 @@ class TestPutLimits:
         """404 when update_limits reports no matching collection."""
         CONTEXT.collection_repo.update_limits = AsyncMock(return_value=None)
         _wire_usage()
-        response = await client.put(_url(uuid.uuid4()), json={"max_in_flight": 3, "budget_cap_usd": 10.0})
+        response = await client.put(_url(uuid.uuid4()), json={"max_in_flight": 3})
         assert response.status_code == 404
 
     @pytest.mark.asyncio
-    async def test_replaces_caps_and_echoes_state(self, client: httpx.AsyncClient) -> None:
-        """200 returns the refreshed caps and re-computed usage."""
+    async def test_replaces_cap_and_echoes_state(self, client: httpx.AsyncClient) -> None:
+        """200 returns the refreshed cap and re-computed usage."""
         col_id = uuid.uuid4()
         CONTEXT.collection_repo.update_limits = AsyncMock(
-            return_value=make_collection_orm(id=col_id, max_in_flight=3, budget_cap_usd=10.0)
+            return_value=make_collection_orm(id=col_id, max_in_flight=3)
         )
-        _wire_usage(running=1, pending=0, spent=4.0)
+        _wire_usage(running=1, pending=0)
 
-        response = await client.put(_url(col_id), json={"max_in_flight": 3, "budget_cap_usd": 10.0})
+        response = await client.put(_url(col_id), json={"max_in_flight": 3})
         assert response.status_code == 200
         body = response.json()
         assert body["max_in_flight"] == 3
-        assert body["budget_cap_usd"] == 10.0
         assert body["in_flight"] == 1
-        assert body["budget_remaining_usd"] == 6.0
 
     @pytest.mark.asyncio
-    async def test_clears_caps_with_nulls(self, client: httpx.AsyncClient) -> None:
-        """PUT with nulls clears both caps (unlimited)."""
+    async def test_clears_cap_with_null(self, client: httpx.AsyncClient) -> None:
+        """PUT with null clears the cap (unlimited)."""
         col_id = uuid.uuid4()
         CONTEXT.collection_repo.update_limits = AsyncMock(
-            return_value=make_collection_orm(id=col_id, max_in_flight=None, budget_cap_usd=None)
+            return_value=make_collection_orm(id=col_id, max_in_flight=None)
         )
         _wire_usage()
-        response = await client.put(_url(col_id), json={"max_in_flight": None, "budget_cap_usd": None})
+        response = await client.put(_url(col_id), json={"max_in_flight": None})
         assert response.status_code == 200
         body = response.json()
         assert body["max_in_flight"] is None
-        assert body["budget_cap_usd"] is None
 
     @pytest.mark.asyncio
     async def test_rejects_negative_cap(self, client: httpx.AsyncClient) -> None:
@@ -115,9 +106,7 @@ class TestPutLimits:
         assert response.status_code == 422
 
     @pytest.mark.asyncio
-    async def test_rejects_zero_caps(self, client: httpx.AsyncClient) -> None:
+    async def test_rejects_zero_cap(self, client: httpx.AsyncClient) -> None:
         """A 0 cap is rejected (422): 'unlimited' is null, not 0 — 0 would freeze the collection."""
         in_flight = await client.put(_url(uuid.uuid4()), json={"max_in_flight": 0})
         assert in_flight.status_code == 422
-        budget = await client.put(_url(uuid.uuid4()), json={"budget_cap_usd": 0.0})
-        assert budget.status_code == 422

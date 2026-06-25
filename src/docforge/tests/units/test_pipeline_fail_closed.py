@@ -35,7 +35,6 @@ class _AlwaysRaisingEmbedProvider:
 
     name = "boom_embed"
     version = "test"
-    cost_per_call = 0.0
     dimension = 8
 
     async def embed(self, texts: list[str]) -> Any:
@@ -315,7 +314,6 @@ async def test_failing_classifier_chain_escalates_then_exhausts() -> None:
     class _RaisingClassifier:
         name = "raises"
         version = "test"
-        cost_per_call = 0.0
 
         async def classify(self, img_bytes: bytes) -> Any:
             raise RuntimeError("inference crashed")

@@ -1020,7 +1020,6 @@ class TestCollectionListFiltering:
         col.metadata_fields = []
         col.created_at = datetime.datetime.now()
         col.max_in_flight = None
-        col.budget_cap_usd = None
         return col
 
     @pytest.mark.asyncio
@@ -1122,7 +1121,6 @@ class TestCollectionCreateCreatorGrant:
         col.metadata_fields = []
         col.created_at = datetime.datetime.now()
         col.max_in_flight = None
-        col.budget_cap_usd = None
         return col
 
     @pytest.mark.asyncio

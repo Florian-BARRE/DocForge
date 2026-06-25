@@ -35,7 +35,6 @@ class OpenAICompatVlmProvider(_OpenAICompatVlmBase):
         api_key: str = "",
         timeout_s: int | None = None,
         max_tokens: int = 1024,
-        cost_per_call: float = 0.0,
     ) -> None:
         """
         Initialize the unified OpenAI-compatible VLM provider.
@@ -47,7 +46,6 @@ class OpenAICompatVlmProvider(_OpenAICompatVlmBase):
             api_key (str): Bearer token. Required (non-empty) when locality == "external".
             timeout_s (int | None): HTTP timeout; defaults by locality when None (30 s local / 120 s cloud).
             max_tokens (int): Max generated tokens per response.
-            cost_per_call (float): Estimated USD per call (0.0 for local).
 
         Raises:
             ValueError: When locality == "external" and api_key is empty.
@@ -69,7 +67,6 @@ class OpenAICompatVlmProvider(_OpenAICompatVlmBase):
             model=model,
             timeout_s=resolved_timeout,
             max_tokens=max_tokens,
-            cost_per_call=cost_per_call,
         )
 
         # 3. Override identity from the locality flag (the base seeds name from the class attr).

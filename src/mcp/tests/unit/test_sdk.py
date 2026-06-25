@@ -117,42 +117,40 @@ async def test_get_collection_limits_path() -> None:
     def handler(req: httpx.Request) -> httpx.Response:
         seen["method"] = req.method
         seen["path"] = req.url.path
-        return httpx.Response(200, json={"collection_id": "c1", "in_flight": 0, "budget_spent_usd": 0.0})
+        return httpx.Response(200, json={"collection_id": "c1", "max_in_flight": None, "in_flight": 0})
 
     await _client(handler).limits.get("c1")
     assert seen == {"method": "GET", "path": "/api/v1/collections/c1/limits"}
 
 
 async def test_update_collection_limits_path_and_body() -> None:
-    """sdk.limits.update issues PUT /api/v1/collections/{id}/limits with caps in the body."""
+    """sdk.limits.update issues PUT /api/v1/collections/{id}/limits with max_in_flight in the body."""
     captured: dict[str, Any] = {}
 
     def handler(req: httpx.Request) -> httpx.Response:
         captured["method"] = req.method
         captured["path"] = req.url.path
         captured["json"] = json.loads(req.content)
-        return httpx.Response(200, json={"collection_id": "c1", "in_flight": 0, "budget_spent_usd": 0.0})
+        return httpx.Response(200, json={"collection_id": "c1", "max_in_flight": 5, "in_flight": 0})
 
-    await _client(handler).limits.update("c1", max_in_flight=5, budget_cap_usd=10.0)
+    await _client(handler).limits.update("c1", max_in_flight=5)
     assert captured["method"] == "PUT"
     assert captured["path"] == "/api/v1/collections/c1/limits"
-    assert captured["json"] == {"max_in_flight": 5, "budget_cap_usd": 10.0}
+    assert captured["json"] == {"max_in_flight": 5}
 
 
-async def test_update_collection_limits_null_caps() -> None:
-    """sdk.limits.update sends null values to clear caps (unlimited) — not omits them."""
+async def test_update_collection_limits_null_cap() -> None:
+    """sdk.limits.update sends null to clear the cap (unlimited) — key must be present, not omitted."""
     captured: dict[str, Any] = {}
 
     def handler(req: httpx.Request) -> httpx.Response:
         captured["json"] = json.loads(req.content)
-        return httpx.Response(200, json={"collection_id": "c1", "in_flight": 0, "budget_spent_usd": 0.0})
+        return httpx.Response(200, json={"collection_id": "c1", "max_in_flight": None, "in_flight": 0})
 
-    await _client(handler).limits.update("c1", max_in_flight=None, budget_cap_usd=None)
-    # Both keys must be present in the body as null (not omitted) so the server replaces both caps
+    await _client(handler).limits.update("c1", max_in_flight=None)
+    # max_in_flight must be present in the body as null so the server clears the cap
     assert "max_in_flight" in captured["json"]
-    assert "budget_cap_usd" in captured["json"]
     assert captured["json"]["max_in_flight"] is None
-    assert captured["json"]["budget_cap_usd"] is None
 
 
 async def test_get_monitoring_resources_path() -> None:

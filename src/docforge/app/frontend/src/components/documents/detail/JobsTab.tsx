@@ -4,7 +4,7 @@
 //
 // Each job row shows:
 //   status pill · attempt label (ingestion / re-ingestion N) · current_stage
-//   · progress % · worker_id · created_at · wall-clock duration · budget_spent
+//   · progress % · worker_id · created_at · wall-clock duration
 //   · expandable error text (when present)
 //   · arq_status badge (when present and different from status)
 
@@ -141,13 +141,6 @@ function JobRow({ job, ordinal }: JobRowProps) {
         <span className="text-dim" style={{ fontSize: 11, flexShrink: 0, minWidth: 42, textAlign: 'right' }}>
           {duration}
         </span>
-
-        {/* Budget */}
-        {job.budget_spent > 0 && (
-          <span className="text-dim" style={{ fontSize: 11, flexShrink: 0 }}>
-            ${job.budget_spent.toFixed(4)}
-          </span>
-        )}
 
         {/* Worker */}
         {job.worker_id && (

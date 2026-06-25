@@ -23,7 +23,6 @@ class OcrProvider(Protocol):
     name: str
     version: str
     runs_on: str        # "cpu" | "gpu" | "remote"
-    cost_per_page: float  # 0.0 for local providers
 
     async def extract(self, img_bytes: bytes, hint: OcrHint) -> OcrResult:
         """

@@ -25,14 +25,11 @@ class PaddleOcrProvider(OcrProvider, LoggerClass):
     Supports GPU (CUDA) and CPU.  Heavy model loading is lazy (deferred to the first
     extract() call).  Inference is dispatched to a thread pool.
 
-    cost_per_page = 0.0 — PaddleOCR runs entirely on local hardware.
-
     Config id: "paddle_ocr"
     """
 
     name: str = "paddleocr"
     version: str = "5"
-    cost_per_page: float = 0.0
 
     def __init__(self, use_gpu: bool = False, default_lang: str = "fr") -> None:
         """

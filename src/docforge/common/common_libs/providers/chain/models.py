@@ -27,8 +27,6 @@ class ChainAttempt:
         succeeded (bool): False when the provider raised or returned None.
         escalated (bool): True when the gate told the chain to try the next provider.
         error (str | None): The exception summary when the attempt raised.
-        cost_usd (float): Provider-reported cost of this attempt (0.0 for free local
-            backends).  Populated when the provider exposes ``cost_per_call``.
     """
 
     provider_id: str
@@ -37,7 +35,6 @@ class ChainAttempt:
     succeeded: bool
     escalated: bool
     error: str | None = None
-    cost_usd: float = 0.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -105,7 +102,6 @@ class ChainHelpers:
                 "succeeded": a.succeeded,
                 "escalated": a.escalated,
                 "error": a.error,
-                "cost_usd": a.cost_usd,
             }
             for a in outcome.attempts
         ]
@@ -133,7 +129,6 @@ class ChainHelpers:
             succeeded=attempt.succeeded,
             escalated=escalated,
             error=attempt.error,
-            cost_usd=attempt.cost_usd,
         )
 
     @staticmethod

@@ -97,7 +97,6 @@ class BaseRuntimeConfig(EnvConfigLoader):
 
     # ───── S2 Enrichment tuning (non-secret pipeline defaults) ─────
     OCR_CONFIDENCE_THRESHOLD: float = env("OCR_CONFIDENCE_THRESHOLD", cast=float, default="0.85")
-    ENRICH_MAX_BUDGET_USD: float = env("ENRICH_MAX_BUDGET_USD", cast=float, default="0.0")
 
     # ───── S4 Chunking tuning ─────
     CHUNK_MAX_TOKENS: int = env("CHUNK_MAX_TOKENS", cast=int, default="512")

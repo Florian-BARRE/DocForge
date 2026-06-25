@@ -33,11 +33,10 @@ class EnrichConfig(BaseModel):
         ``locality="local"`` (vLLM/Ollama/LM Studio): ``base_url`` + ``model`` required,
         api_key optional. ``locality="external"`` (OpenAI/Mistral/OpenRouter cloud): ``api_key``
         required.
-        Optional: ``max_tokens``, ``cost_per_call`` (float, USD; used for budget tracking).
+        Optional: ``max_tokens``.
 
     Attributes:
         chart_to_data (bool): Extract chart series into a structured data_table.
-        max_budget_usd (float): Per-job spend cap in USD. 0.0 = no limit.
         classifier_chain (list[ClassifierConfig]): Ordered figure classifier chain; index 0
             is tried first.
         classifier_gate (ChainGateConfig): Escalation policy for the classifier chain.
@@ -49,9 +48,8 @@ class EnrichConfig(BaseModel):
 
     # Default True: a CHART-classified figure extracts its series into a structured data_table
     # (the historical behavior). Set False per-collection to skip the chart->data step (VLM
-    # description only) — e.g. to save VLM cost when structured chart data isn't needed.
+    # description only) — e.g. when structured chart data isn't needed.
     chart_to_data: bool = True
-    max_budget_usd: float = 0.0
     classifier_chain: list[Any] = Field(
         default_factory=list,
         description="Ordered figure classifier chain; index 0 is tried first.",

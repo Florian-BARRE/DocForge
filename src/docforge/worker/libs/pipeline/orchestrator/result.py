@@ -23,7 +23,7 @@ class EngineResult:
     """
     Aggregated output of a StageEngine pipeline run (S0 → S1 → S2 → S4 → S5 → S6).
 
-    Carries per-stage results, Merkle fingerprints, cache hit flags, and budget spent.
+    Carries per-stage results, Merkle fingerprints, and cache hit flags.
     Stage results are None when their stage is disabled or not configured.
 
     Attributes:
@@ -35,7 +35,6 @@ class EngineResult:
         s6_result (S6Result | None): Embed+index stage output; None when no collection is set.
         stage_fingerprints (dict[str, str]): Per-stage Merkle fingerprints.
         from_cache (dict[str, bool]): Per-stage cache hit flags.
-        budget_spent (float): Total OCR/VLM API cost for this run.
     """
 
     s0_result: S0Result
@@ -46,4 +45,3 @@ class EngineResult:
     s6_result: S6Result | None = None          # None when no collection_id is set
     stage_fingerprints: dict[str, str] = field(default_factory=dict)
     from_cache: dict[str, bool] = field(default_factory=dict)
-    budget_spent: float = 0.0                  # Total OCR/VLM API cost for this run

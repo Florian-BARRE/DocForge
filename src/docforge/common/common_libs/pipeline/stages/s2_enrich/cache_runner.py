@@ -142,7 +142,7 @@ class CacheRunner:
         )
         if resolved is None:
             return None, 0.0, TraceHelpers.skip("ocr", "no provider"), False
-        first_provider, provider_id, provider_version, call_fp = resolved
+        _first_provider, provider_id, provider_version, call_fp = resolved
 
         # 2. Check cache.
         cached_raw = await provider_cache.get(call_fp)
@@ -162,14 +162,12 @@ class CacheRunner:
         if outcome.result is None:
             return None, 0.0, trace, False
 
-        cost = getattr(first_provider, "cost_per_page", 0.0)
-
         # 4. Persist result for deduplication.
         await CallKeyHelpers.persist(
             provider_cache, call_fp, "ocr", provider_id, provider_version,
-            crop_hash, outcome.result.model_dump_json(), cost,
+            crop_hash, outcome.result.model_dump_json(), 0.0,
         )
-        return outcome.result, cost, trace, False
+        return outcome.result, 0.0, trace, False
 
     @classmethod
     async def run_vlm(

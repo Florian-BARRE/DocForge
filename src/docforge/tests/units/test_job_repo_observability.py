@@ -21,7 +21,7 @@ def _fake_job() -> types.SimpleNamespace:
     """A mutable stand-in for a JobModel row."""
     return types.SimpleNamespace(
         status="pending", worker_id=None, attempt=1, started_at=None,
-        finished_at=None, current_stage=None, progress=0, error=None, budget_spent=0.0,
+        finished_at=None, current_stage=None, progress=0, error=None,
     )
 
 

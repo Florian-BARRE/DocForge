@@ -1,6 +1,6 @@
 # ====== Code Summary ======
 # S2Result dataclass — the output contract of the S2 enrichment stage.
-# Carries the enriched IR plus all per-run accounting counters (budget, call/hit counts).
+# Carries the enriched IR plus all per-run accounting counters (call/hit counts).
 
 from __future__ import annotations
 
@@ -18,7 +18,6 @@ class S2Result:
 
     Attributes:
         ir (DocumentIR): The IR with all FIGURE blocks enriched in-place.
-        budget_spent (float): Total USD spent across OCR and VLM calls in this run.
         figures_processed (int): Number of FIGURE blocks that completed the full routing.
         ocr_calls (int): Number of OCR chain invocations (cache misses only).
         vlm_calls (int): Number of VLM chain invocations (cache misses only).
@@ -30,14 +29,13 @@ class S2Result:
     """
 
     ir: DocumentIR
-    budget_spent: float
     figures_processed: int
     ocr_calls: int
     vlm_calls: int
     chart_extractions: int
     # ─── Cache-aware counters (Phase A) ─────────────────────────────────────────
     # Hits = a duplicate crop was answered from ProviderCallCache without
-    # invoking the underlying chain (zero API cost, zero latency).  Misses
+    # invoking the underlying chain (zero latency).  Misses
     # = the chain ran.  ocr_calls / vlm_calls above remain the miss counts
     # (== number of chain invocations) for backward compatibility.
     ocr_cache_hits: int = 0
@@ -56,7 +54,6 @@ class S2Counters:
     final counter values into the immutable ``S2Result`` it returns.
 
     Attributes:
-        budget_spent (float): Total USD spent across OCR and VLM calls.
         figures_processed (int): FIGURE blocks that completed the full routing.
         ocr_calls (int): OCR chain invocations (cache misses only).
         vlm_calls (int): VLM chain invocations (cache misses only).
@@ -67,7 +64,6 @@ class S2Counters:
         classifier_cache_hits (int): Classifier results served from cache.
     """
 
-    budget_spent: float = 0.0
     figures_processed: int = 0
     ocr_calls: int = 0
     vlm_calls: int = 0

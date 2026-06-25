@@ -137,7 +137,7 @@ class ProviderRegistry(DescribeSurface, LoggerClass):
 
         Args:
             enrich (EnrichConfig): Enrichment configuration block (classifier chain,
-                OCR chain, VLM chain, gates, and budget cap).
+                OCR chain, VLM chain, and gates).
 
         Returns:
             S2EnrichStage: Fully wired enrichment stage ready for the pipeline.
@@ -153,7 +153,6 @@ class ProviderRegistry(DescribeSurface, LoggerClass):
             vlm_chain=vlm_chain,
             s3=self._s3,
             provider_cache=self._provider_cache,
-            max_budget_usd=enrich.max_budget_usd,
             chart_to_data=enrich.chart_to_data,
         )
 

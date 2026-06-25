@@ -287,10 +287,9 @@ def make_collection_orm(**overrides: object) -> MagicMock:
     col.pipeline = overrides.get("pipeline", {})
     col.metadata_fields = overrides.get("metadata_fields", [])
     col.created_at = overrides.get("created_at", datetime.datetime.utcnow())
-    # Per-collection resource limits (Brique D) — default to None (no cap) so a bare MagicMock
+    # Per-collection resource limit (Brique D) — default to None (no cap) so a bare MagicMock
     # attribute never leaks into the limits response and breaks Pydantic validation.
     col.max_in_flight = overrides.get("max_in_flight", None)
-    col.budget_cap_usd = overrides.get("budget_cap_usd", None)
     return col
 
 

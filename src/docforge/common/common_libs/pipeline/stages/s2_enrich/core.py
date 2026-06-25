@@ -1,7 +1,7 @@
 # ====== Code Summary ======
 # S2EnrichStage — S2 enrichment stage: classifies figures and routes each to OCR / VLM /
 # chart-to-data.  Every sub-stage is driven by a Chain[T, R] so escalation lineage is
-# recorded per block.  Provider-call caching and a per-job budget cap are enforced here.
+# recorded per block.  Provider-call caching is applied here.
 # Per-block routing is delegated to FigureEnricher (figure_enricher.py); this class owns the
 # IR iteration, the run-level counter accumulator, and the fingerprint parameters.
 
@@ -36,9 +36,6 @@ class S2EnrichStage(LoggerClass):
     The classifier, OCR and VLM are all driven by ``Chain[T, R]`` instances so each
     figure carries the full lineage of every provider that touched it in
     ``Block.chain_traces``.  Per-block routing is delegated to ``FigureEnricher``.
-
-    Budget enforcement is per-run: when ``budget_spent >= max_budget_usd``, further
-    figures that would incur cost are skipped (their traces are still recorded).
     """
 
     def __init__(
@@ -48,7 +45,6 @@ class S2EnrichStage(LoggerClass):
         vlm_chain: Chain[Any, Any] | None,
         s3: S3Client,
         provider_cache: ProviderCallCache,
-        max_budget_usd: float = 0.0,
         chart_to_data: bool = False,
     ) -> None:
         """
@@ -63,7 +59,6 @@ class S2EnrichStage(LoggerClass):
                 Ordered VLM chain; None disables VLM routing entirely.
             s3 (S3Client): SeaweedFS client for figure crop downloads.
             provider_cache (ProviderCallCache): Cross-document provider call cache.
-            max_budget_usd (float): Per-job budget cap in USD.  0.0 = no limit.
             chart_to_data (bool): When True, CHART figures additionally undergo structured
                 chart-to-data extraction; when False, a CHART is enriched like a normal
                 figure (VLM description only).  Mirrors ``EnrichConfig.chart_to_data``.
@@ -72,8 +67,6 @@ class S2EnrichStage(LoggerClass):
         self._classifier_chain = classifier_chain
         self._ocr_chain = ocr_chain
         self._vlm_chain = vlm_chain
-        # Convert 0.0 (sentinel = no limit) to +∞ so comparisons are uniform.
-        self._max_budget = max_budget_usd if max_budget_usd > 0 else float("inf")
         self._chart_to_data = chart_to_data
         self._enricher = FigureEnricher(
             classifier_chain=classifier_chain,
@@ -81,7 +74,6 @@ class S2EnrichStage(LoggerClass):
             vlm_chain=vlm_chain,
             s3=s3,
             provider_cache=provider_cache,
-            max_budget=self._max_budget,
             chart_to_data=chart_to_data,
         )
 
@@ -100,9 +92,6 @@ class S2EnrichStage(LoggerClass):
             "classifier_chain": self._classifier_chain.signature(),
             "ocr_chain": self._ocr_chain.signature() if self._ocr_chain else "none",
             "vlm_chain": self._vlm_chain.signature() if self._vlm_chain else "none",
-            "max_budget_usd": (
-                self._max_budget if self._max_budget != float("inf") else 0.0
-            ),
             # chart_to_data changes the VLM schema requested + the data_table output, so it
             # must invalidate the S2 cache (and downstream chunks/embeddings) when toggled.
             "chart_to_data": self._chart_to_data,
@@ -143,7 +132,6 @@ class S2EnrichStage(LoggerClass):
         enriched_ir = ir.model_copy(update={"blocks": enriched_blocks})
         result = S2Result(
             ir=enriched_ir,
-            budget_spent=counters.budget_spent,
             figures_processed=counters.figures_processed,
             ocr_calls=counters.ocr_calls,
             vlm_calls=counters.vlm_calls,
@@ -159,8 +147,7 @@ class S2EnrichStage(LoggerClass):
             f"classifier(call/hit)={counters.classifier_calls}/{counters.classifier_cache_hits} "
             f"ocr(call/hit)={counters.ocr_calls}/{counters.ocr_cache_hits} "
             f"vlm(call/hit)={counters.vlm_calls}/{counters.vlm_cache_hits} "
-            f"chart_extractions={counters.chart_extractions} "
-            f"budget_spent={counters.budget_spent:.4f} USD"
+            f"chart_extractions={counters.chart_extractions}"
         )
         return result
 

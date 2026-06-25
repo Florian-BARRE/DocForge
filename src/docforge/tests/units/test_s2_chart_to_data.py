@@ -27,7 +27,6 @@ class _FakeVlmProvider:
 
     name = "fake_vlm"
     version = "test"
-    cost_per_call = 0.0
 
     async def describe(
         self,
@@ -76,7 +75,6 @@ async def test_chart_to_data_enabled_extracts_table() -> None:
         crop_bytes=b"png-bytes",
         crop_hash="deadbeef",
         ocr_text=None,
-        max_budget=float("inf"),
         chart_to_data=True,
         block_traces=[],
         counters=counters,
@@ -104,7 +102,6 @@ async def test_chart_to_data_disabled_skips_table() -> None:
         crop_bytes=b"png-bytes",
         crop_hash="deadbeef",
         ocr_text=None,
-        max_budget=float("inf"),
         chart_to_data=False,
         block_traces=[],
         counters=counters,

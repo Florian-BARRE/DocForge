@@ -171,7 +171,7 @@ class StageEngine(LoggerClass):
                 run. The worker wires this to live job-progress updates; ``None`` = no reporting.
 
         Returns:
-            EngineResult: Stage results + fingerprints + cache-hit flags + budget spent.
+            EngineResult: Stage results + fingerprints + cache-hit flags.
         """
         async def _report(stage: str, percent: int) -> None:
             """Invoke the optional progress hook, swallowing any telemetry-side failure."""
@@ -270,5 +270,4 @@ class StageEngine(LoggerClass):
             s6_result=s6_result,
             stage_fingerprints={"s0": s0_fp, "s1": s1_fp, "s2": s2_fp},
             from_cache={"s0": s0_cache_hit, "s1": s1_cache_hit, "s2": s2_cache_hit},
-            budget_spent=s2_result.budget_spent if s2_result is not None else 0.0,
         )

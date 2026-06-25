@@ -98,14 +98,12 @@ class VlmRunner:
         if outcome.result is None:
             return None, 0.0, trace, False
 
-        cost = getattr(first_provider, "cost_per_call", 0.0)
-
         # 5. Persist result for deduplication.
         await CallKeyHelpers.persist(
             provider_cache, call_fp, "vlm", provider_id, provider_version,
-            crop_hash, outcome.result.model_dump_json(), cost,
+            crop_hash, outcome.result.model_dump_json(), 0.0,
         )
-        return outcome.result, cost, trace, False
+        return outcome.result, 0.0, trace, False
 
 
 # ------------------- Public API ------------------- #

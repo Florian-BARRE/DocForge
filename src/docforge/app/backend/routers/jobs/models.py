@@ -23,7 +23,6 @@ class JobResponse(BaseModel):
         collection_id (uuid.UUID): Owning collection.
         status (str): Persisted status (pending|running|done|failed).
         error (str | None): Error message when failed.
-        budget_spent (float): API cost incurred by the job (USD).
         created_at (datetime): Admission time.
         worker_id (str | None): Worker process that ran the job.
         started_at (datetime | None): Execution start.
@@ -39,7 +38,6 @@ class JobResponse(BaseModel):
     collection_id: uuid.UUID = Field(..., description="Owning collection.")
     status: str = Field(..., description="Persisted job status.")
     error: str | None = Field(None, description="Error message when failed.")
-    budget_spent: float = Field(0.0, description="API cost incurred (USD).")
     created_at: datetime = Field(..., description="Admission time.")
     worker_id: str | None = Field(None, description="Worker process that ran the job.")
     started_at: datetime | None = Field(None, description="Execution start.")
@@ -67,7 +65,6 @@ class JobResponse(BaseModel):
             collection_id=job.collection_id,
             status=job.status,
             error=job.error,
-            budget_spent=job.budget_spent,
             created_at=job.created_at,
             worker_id=job.worker_id,
             started_at=job.started_at,

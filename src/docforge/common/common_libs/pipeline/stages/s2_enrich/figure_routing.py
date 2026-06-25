@@ -57,14 +57,13 @@ class FigureRoutingHelpers:
         """Run OCR if the kind implies text; append the trace and update counters."""
         if not (ocr_chain and kind in _OCR_KINDS):
             return None
-        ocr_result, call_cost, ocr_trace, ocr_was_cache_hit = await CacheRunner.run_ocr(
+        ocr_result, _cost, ocr_trace, ocr_was_cache_hit = await CacheRunner.run_ocr(
             ocr_chain, provider_cache, crop_bytes, crop_hash, doc_language,
         )
         block_traces.append(ocr_trace)
         if ocr_result is None:
             return None
         ocr_text = ocr_result.text if ocr_result.text.strip() else None
-        counters.budget_spent += call_cost
         if ocr_was_cache_hit:
             counters.ocr_cache_hits += 1
         else:
@@ -79,7 +78,6 @@ class FigureRoutingHelpers:
         crop_bytes: bytes,
         crop_hash: str,
         ocr_text: str | None,
-        max_budget: float,
         chart_to_data: bool,
         block_traces: list[ChainTrace],
         counters: S2Counters,
@@ -87,14 +85,12 @@ class FigureRoutingHelpers:
         """Run VLM (+ optional chart-to-data) if the kind benefits from a visual description."""
         if not (vlm_chain and kind in _VLM_KINDS):
             return None, None
-        if max_budget - counters.budget_spent <= 0:
-            return None, None
 
         # Chart-to-data structured extraction is gated by the enrich.chart_to_data flag:
         # only when enabled does a CHART request the structured schema; otherwise a CHART
         # is treated like any other figure (VLM description only, no data-table extraction).
         use_chart_schema = (kind == FigureKind.CHART) and chart_to_data
-        vlm_result, vlm_cost, vlm_trace, vlm_was_cache_hit = await CacheRunner.run_vlm(
+        vlm_result, _cost, vlm_trace, vlm_was_cache_hit = await CacheRunner.run_vlm(
             vlm_chain, provider_cache, crop_bytes, crop_hash, ocr_text, use_chart_schema,
         )
         block_traces.append(vlm_trace)
@@ -102,7 +98,6 @@ class FigureRoutingHelpers:
             return None, None
 
         description = vlm_result.description or None
-        counters.budget_spent += vlm_cost
         if vlm_was_cache_hit:
             counters.vlm_cache_hits += 1
         else:

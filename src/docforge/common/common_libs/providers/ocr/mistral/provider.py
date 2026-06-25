@@ -14,9 +14,6 @@ from loggerplusplus import LoggerClass
 from common_libs.providers.interfaces import OcrHint, OcrResult
 from common_libs.providers.ocr.base import OcrProvider
 
-# Approximate Mistral OCR billing rate (USD per page, subject to change)
-_MISTRAL_OCR_COST_PER_PAGE: float = 0.001
-
 
 class MistralOcrProvider(OcrProvider, LoggerClass):
     """
@@ -34,7 +31,6 @@ class MistralOcrProvider(OcrProvider, LoggerClass):
     name: str = "mistral-ocr"
     version: str = "latest"
     runs_on: str = "remote"
-    cost_per_page: float = _MISTRAL_OCR_COST_PER_PAGE
 
     def __init__(
         self,

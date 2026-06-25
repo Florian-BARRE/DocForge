@@ -55,7 +55,6 @@ class ChainRunHelpers:
             tuple[ChainAttempt, Any]: The attempt record and the raw result
                 (None when the call raised).
         """
-        cost = float(getattr(provider, "cost_per_call", 0.0) or 0.0)
         start = time.perf_counter()
         try:
             # 1. Run the provider's coroutine; record the duration in either branch.
@@ -70,7 +69,6 @@ class ChainRunHelpers:
                     succeeded=result is not None,
                     escalated=False,
                     error=None,
-                    cost_usd=cost,
                 ),
                 result,
             )
@@ -85,7 +83,6 @@ class ChainRunHelpers:
                     succeeded=False,
                     escalated=False,
                     error=f"{type(exc).__name__}: {exc}",
-                    cost_usd=cost,
                 ),
                 None,
             )

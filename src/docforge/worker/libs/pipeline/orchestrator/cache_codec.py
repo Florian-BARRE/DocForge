@@ -146,7 +146,6 @@ class CacheCodec:
         # 3. Rebuild the S2Result from the cached stats
         s2_result = S2Result(
             ir=enriched_ir,
-            budget_spent=meta["budget_spent"],
             figures_processed=meta["figures_processed"],
             ocr_calls=meta["ocr_calls"],
             vlm_calls=meta["vlm_calls"],

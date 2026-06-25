@@ -157,17 +157,15 @@ class JobRepository(LoggerClass):
         job_id: uuid.UUID,
         status: str,
         error: str | None = None,
-        budget_spent: float | None = None,
     ) -> None:
         """
-        Update the status (and optionally error/cost) of an existing job.
+        Update the status (and optionally error) of an existing job.
 
         Args:
             session (AsyncSession): Active DB session.
             job_id (uuid.UUID): Job primary key.
             status (str): New status: ``"running"``, ``"done"``, or ``"failed"``.
             error (str | None): Error message to store (only for ``"failed"`` status).
-            budget_spent (float | None): Total API cost incurred by this job.
         """
         result = await session.execute(
             select(JobModel).where(JobModel.id == job_id)
@@ -181,8 +179,6 @@ class JobRepository(LoggerClass):
         job.status = status
         if error is not None:
             job.error = error
-        if budget_spent is not None:
-            job.budget_spent = budget_spent
 
         await session.flush()
         self.logger.debug(f"Job {job_id} status → {status}.")
@@ -288,32 +284,6 @@ class JobRepository(LoggerClass):
         )
         return int(total or 0)
 
-    async def sum_budget_by_collection(
-        self,
-        session: AsyncSession,
-        collection_id: uuid.UUID,
-    ) -> float:
-        """
-        Return the cumulative ``budget_spent`` (USD) across all jobs of one collection.
-
-        Backs the resource admitter's per-collection budget pre-flight (Brique D): since a job's
-        cost is unknown before it runs, the gate can only reject on already-incurred cumulative
-        spend. ``COALESCE`` makes an all-NULL/empty collection sum to 0.0 rather than NULL.
-
-        Args:
-            session (AsyncSession): Active session.
-            collection_id (uuid.UUID): Collection whose spend is tallied.
-
-        Returns:
-            float: Total USD spent across the collection's jobs (0.0 when none).
-        """
-        # 1. Indexed SUM over budget_spent for the collection (no per-job scan in Python)
-        total = await session.scalar(
-            select(func.coalesce(func.sum(JobModel.budget_spent), 0.0))
-            .where(JobModel.collection_id == collection_id)
-        )
-        return float(total or 0.0)
-
     async def mark_running(
         self,
         session: AsyncSession,
@@ -357,7 +327,6 @@ class JobRepository(LoggerClass):
         *,
         finished_at: datetime,
         error: str | None = None,
-        budget_spent: float | None = None,
     ) -> None:
         """
         Transition a job to a terminal state (``done``/``failed``) and record finish time.
@@ -368,7 +337,6 @@ class JobRepository(LoggerClass):
             status (str): Terminal status (``"done"`` or ``"failed"``).
             finished_at (datetime): Timezone-aware completion timestamp.
             error (str | None): Error message (for ``"failed"``).
-            budget_spent (float | None): Total API cost incurred by this job.
         """
         # 1. Load the job (skip silently if it vanished)
         job = await self.get_by_id(session, job_id)
@@ -382,8 +350,6 @@ class JobRepository(LoggerClass):
         job.finished_at = finished_at
         if error is not None:
             job.error = error
-        if budget_spent is not None:
-            job.budget_spent = budget_spent
         if status == "done":
             job.progress = 100
             job.current_stage = None

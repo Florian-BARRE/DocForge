@@ -27,21 +27,20 @@ _ADMIN = [Depends(require_collection_role(GrantRole.ADMIN))]
 router = APIRouter(tags=["collections"])
 
 
-async def _live_usage(collection_id: uuid.UUID) -> tuple[int, float]:
+async def _live_usage(collection_id: uuid.UUID) -> int:
     """
-    Read the collection's current in-flight job count and cumulative spend.
+    Read the collection's current in-flight job count.
 
     Args:
         collection_id (uuid.UUID): Target collection.
 
     Returns:
-        tuple[int, float]: (running + pending jobs, cumulative USD spent).
+        int: running + pending jobs for the collection.
     """
-    # 1. One session for both indexed reads (counts + spend sum)
+    # 1. Indexed count read scoped to the collection
     async with CONTEXT.postgres.session() as session:
         counts = await CONTEXT.job_repo.count_by_status(session, collection_id=collection_id)
-        spent = await CONTEXT.job_repo.sum_budget_by_collection(session, collection_id)
-    return counts.get("running", 0) + counts.get("pending", 0), spent
+    return counts.get("running", 0) + counts.get("pending", 0)
 
 
 @router.get("", response_model=CollectionLimitsResponse, dependencies=_READ)
@@ -51,7 +50,7 @@ async def get_limits(collection_id: uuid.UUID) -> CollectionLimitsResponse:
     Return the collection's configured resource limits and live usage.
 
     Returns:
-        CollectionLimitsResponse: Caps + current in-flight + budget spent/remaining.
+        CollectionLimitsResponse: Cap + current in-flight.
     """
     # 1. Resolve the collection (404 when absent)
     async with CONTEXT.postgres.session() as session:
@@ -61,9 +60,9 @@ async def get_limits(collection_id: uuid.UUID) -> CollectionLimitsResponse:
         CONTEXT.logger.warning(f"Get limits rejected (404 unknown collection): collection={collection_id}")
         raise HTTPException(status_code=404, detail=f"Collection {collection_id} not found.")
 
-    # 2. Assemble caps + live usage
-    in_flight, spent = await _live_usage(collection_id)
-    return CollectionLimitsResponse.from_state(collection, in_flight=in_flight, budget_spent=spent)
+    # 2. Assemble cap + live usage
+    in_flight = await _live_usage(collection_id)
+    return CollectionLimitsResponse.from_state(collection, in_flight=in_flight)
 
 
 @router.put("", response_model=CollectionLimitsResponse, dependencies=_ADMIN)
@@ -72,26 +71,25 @@ async def update_limits(
     collection_id: uuid.UUID, body: CollectionLimitsUpdateRequest
 ) -> CollectionLimitsResponse:
     """
-    Replace the collection's resource limits (both caps; null clears a cap).
+    Replace the collection's resource limits (the cap; null clears it).
 
     Returns:
-        CollectionLimitsResponse: The refreshed caps + live usage.
+        CollectionLimitsResponse: The refreshed cap + live usage.
     """
-    # 1. Apply the new caps (404 when the collection does not exist)
+    # 1. Apply the new cap (404 when the collection does not exist)
     async with CONTEXT.postgres.session() as session:
         collection = await CONTEXT.collection_repo.update_limits(
             session, collection_id,
-            max_in_flight=body.max_in_flight, budget_cap_usd=body.budget_cap_usd,
+            max_in_flight=body.max_in_flight,
         )
     if collection is None:
         # 404 — cannot set limits on a collection that does not exist.
         CONTEXT.logger.warning(f"Update limits rejected (404 unknown collection): collection={collection_id}")
         raise HTTPException(status_code=404, detail=f"Collection {collection_id} not found.")
 
-    # 2. Echo the updated caps with live usage
-    in_flight, spent = await _live_usage(collection_id)
+    # 2. Echo the updated cap with live usage
+    in_flight = await _live_usage(collection_id)
     CONTEXT.logger.info(
-        f"Updated limits for collection {collection_id}: "
-        f"max_in_flight={body.max_in_flight} budget_cap_usd={body.budget_cap_usd}"
+        f"Updated limits for collection {collection_id}: max_in_flight={body.max_in_flight}"
     )
-    return CollectionLimitsResponse.from_state(collection, in_flight=in_flight, budget_spent=spent)
+    return CollectionLimitsResponse.from_state(collection, in_flight=in_flight)

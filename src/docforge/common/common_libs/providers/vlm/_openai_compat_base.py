@@ -42,7 +42,6 @@ class _OpenAICompatVlmBase(VlmProvider, LoggerClass):
         model: str,
         timeout_s: int,
         max_tokens: int,
-        cost_per_call: float,
     ) -> None:
         """
         Initialize shared OpenAI-compat VLM state. Called from subclass __init__.
@@ -53,14 +52,12 @@ class _OpenAICompatVlmBase(VlmProvider, LoggerClass):
             model (str): Model identifier sent in the request body.
             timeout_s (int): HTTP timeout in seconds.
             max_tokens (int): Max generated tokens per response.
-            cost_per_call (float): Estimated USD per API call (0.0 for local).
         """
         LoggerClass.__init__(self)
         self._api_base_url = api_base_url.rstrip("/")
         self._model = model
         self._timeout_s = timeout_s
         self._max_tokens = max_tokens
-        self.cost_per_call: float = cost_per_call
         self._headers: dict[str, str] = {"Content-Type": "application/json"}
         if api_key:
             self._headers["Authorization"] = f"Bearer {api_key}"

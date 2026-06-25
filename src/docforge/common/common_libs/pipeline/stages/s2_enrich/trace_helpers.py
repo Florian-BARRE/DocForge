@@ -22,7 +22,7 @@ class TraceHelpers:
 
     Three trace shapes are needed:
     - ``from_outcome`` — converts a real ``ChainOutcome`` to a ``ChainTrace``.
-    - ``cache_hit`` — synthetic trace for a provider-call cache hit (zero cost, zero latency).
+    - ``cache_hit`` — synthetic trace for a provider-call cache hit (zero latency).
     - ``skip`` — synthetic trace for a sub-stage that was bypassed (no chain / no provider).
     """
 
@@ -59,7 +59,7 @@ class TraceHelpers:
 
         The cache is modelled as a degenerate "provider" so the existing UI does not
         need a new shape: one attempt with ``provider_id="provider_cache"``, a success
-        badge, ``duration=0``, ``cost=0``.  The original chain's first provider id is
+        badge, ``duration=0``.  The original chain's first provider id is
         carried in the attempt's ``error`` slot so operators can see
         "cache hit — would have called <original_provider>".
 
@@ -87,7 +87,6 @@ class TraceHelpers:
                         f"cache hit — would have called {provider_id} "
                         f"(fp={call_fp[:12]}…)"
                     ),
-                    cost_usd=0.0,
                 )
             ],
             final_provider="provider_cache",
@@ -118,7 +117,6 @@ class TraceHelpers:
                     succeeded=False,
                     escalated=False,
                     error=reason,
-                    cost_usd=0.0,
                 )
             ],
             final_provider=None,

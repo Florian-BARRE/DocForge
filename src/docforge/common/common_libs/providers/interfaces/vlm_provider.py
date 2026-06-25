@@ -29,7 +29,6 @@ class VlmProvider(Protocol):
     name: str
     version: str
     runs_on: str
-    cost_per_call: float
 
     async def describe(
         self,

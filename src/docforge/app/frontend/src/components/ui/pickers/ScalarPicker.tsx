@@ -1,6 +1,6 @@
 // ====== Code Summary ======
-// ScalarPicker — renders a stage-level pipeline param (chart_to_data,
-// max_budget_usd, …) for kind="scalar" dynamic fields as a single FieldInput.
+// ScalarPicker — renders a stage-level pipeline param (chart_to_data, …)
+// for kind="scalar" dynamic fields as a single FieldInput.
 
 // ====== Internal Project Imports ======
 import type { DynamicField } from '../../../api/types'

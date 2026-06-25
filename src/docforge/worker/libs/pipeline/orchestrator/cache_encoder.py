@@ -89,7 +89,6 @@ class CacheEncoder:
         return json.dumps(
             {
                 "ir_enriched_key": ir_enriched_key,
-                "budget_spent": s2.budget_spent,
                 "figures_processed": s2.figures_processed,
                 "ocr_calls": s2.ocr_calls,
                 "vlm_calls": s2.vlm_calls,

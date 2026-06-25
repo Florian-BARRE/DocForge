@@ -49,7 +49,7 @@ class TraceFlusher:
         Assemble the implicit_meta dict for the document record update.
 
         Combines file-intrinsic S0 metadata with IR-derived statistics and S3 references.
-        When S2 ran, enrichment stats (budget_spent, ocr_calls, vlm_calls) are included.
+        When S2 ran, enrichment stats (ocr_calls, vlm_calls, …) are included.
 
         Args:
             s0_result (S0Result): S0 stage output.
@@ -83,7 +83,6 @@ class TraceFlusher:
         }
         if s2_result is not None and s2_fp is not None:
             meta["s2_fingerprint"] = s2_fp
-            meta["budget_spent"] = s2_result.budget_spent
             meta["figures_enriched"] = s2_result.figures_processed
             meta["ocr_calls"] = s2_result.ocr_calls
             meta["vlm_calls"] = s2_result.vlm_calls
