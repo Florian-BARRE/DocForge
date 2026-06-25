@@ -79,8 +79,14 @@ class DocumentResponse(BaseModel):
     @field_validator("status", mode="before")
     @classmethod
     def normalize_status(cls, v: str) -> str:
-        """Map DB-internal status values to the API contract expected by clients."""
-        return {"processing": "running", "failed": "error"}.get(str(v), str(v))
+        """
+        Map DB-internal status values to the API contract expected by clients.
+
+        ``parsed`` is the intermediate state set after S0-S2 persist but before the terminal
+        ``done`` (written only once S4 chunks + S6 indexing succeed); it surfaces as ``running``
+        so a document mid-ingestion (or stalled before indexing) never reads as fully ingested.
+        """
+        return {"processing": "running", "parsed": "running", "failed": "error"}.get(str(v), str(v))
 
 
 class DocumentListResponse(BaseModel):

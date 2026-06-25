@@ -179,19 +179,38 @@ async def delete_collection(collection_id: uuid.UUID) -> DeleteResponse:
             else:
                 deletable.append(sh)
 
-    # 3. Delete S3 blobs for non-shared source_hashes (original + all derived artefacts)
-    blobs_deleted = 0
-    for sh in deletable:
-        await CONTEXT.s3.delete(S3Helpers.key_original(sh))
-        blobs_deleted += 1 + await CONTEXT.s3.delete_prefix(f"derived/{sh}/")
-
-    # 4. Drop the Qdrant collection (named by collection id) — only if vector store is wired
+    # 3. Drop the Qdrant collection (named by collection id) BEFORE the authoritative delete so a
+    #    success leaves no orphan vectors. Best-effort by design: external-store cleanup must NEVER
+    #    abort the Postgres delete (a flaky/unreachable Qdrant previously left the collection stuck,
+    #    deletable only after the store recovered). drop_collection is already idempotent when the
+    #    collection was never created (no ingest reached S6).
     if CONTEXT.qdrant is not None:
-        await CONTEXT.qdrant.drop_collection(str(collection_id))
+        try:
+            await CONTEXT.qdrant.drop_collection(str(collection_id))
+        except Exception as exc:  # noqa: BLE001 — cleanup failure must not block the delete
+            CONTEXT.logger.warning(
+                f"Qdrant drop failed for collection {collection_id} (continuing with delete): {exc}"
+            )
 
-    # 5. Delete Postgres rows (cascade documents/blocks/chunks/jobs/metadata_field + stage_runs)
+    # 4. Delete the authoritative Postgres rows (cascade documents/blocks/chunks/jobs/metadata_field
+    #    + stage_runs + collection_grant). This is THE step that makes the collection truly gone, so
+    #    it runs even if the external-store cleanup above hiccupped. If it fails, the route errors
+    #    (500 via @auto_handle_errors) and nothing is half-removed from the source of truth.
     async with CONTEXT.postgres.session() as session:
         await CONTEXT.collection_repo.delete(session, collection_id)
+
+    # 5. Delete S3 blobs for non-shared source_hashes (best-effort, per-blob). The collection is
+    #    already gone from the source of truth; content-addressed blob residue is harmless and
+    #    dedup-safe, so a single flaky blob must not resurface the (now-deleted) collection.
+    blobs_deleted = 0
+    for sh in deletable:
+        try:
+            await CONTEXT.s3.delete(S3Helpers.key_original(sh))
+            blobs_deleted += 1 + await CONTEXT.s3.delete_prefix(f"derived/{sh}/")
+        except Exception as exc:  # noqa: BLE001 — cleanup failure must not block the delete
+            CONTEXT.logger.warning(
+                f"S3 cleanup failed for source_hash {sh} (continuing): {exc}"
+            )
 
     CONTEXT.logger.info(
         f"Deleted collection {collection_id} (blobs_deleted={blobs_deleted}, blobs_kept_shared={kept})"
