@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 # ====== Local Project Imports ======
-from ..models import CollectionModel, ConfigVersionModel
+from ..models import CollectionModel, ConfigVersionModel, DocumentModel
 from .config_repo_helpers import ConfigRepoHelpers
 
 
@@ -74,6 +74,17 @@ class ConfigRepository(LoggerClass):
             new_fields=merged_fields,
         )
 
+        # 3b. A reindex is only meaningful when the collection ALREADY has indexed documents.
+        #     On a brand-new / empty collection an index-invalidating change has nothing to redo,
+        #     so it must NOT flag reindex (otherwise the UI shows "Réindexation requise" on a
+        #     collection with 0 documents). Count once here.
+        doc_count = await session.scalar(
+            select(func.count()).select_from(DocumentModel).where(
+                DocumentModel.collection_id == collection_id
+            )
+        ) or 0
+        has_documents = doc_count > 0
+
         # 4. Apply contract + pipeline scalars
         collection.supported_formats = doc["supported_formats"]
         collection.max_file_size_bytes = doc["max_file_size_bytes"]
@@ -82,10 +93,15 @@ class ConfigRepository(LoggerClass):
         collection.unknown_field_policy = doc["unknown_field_policy"]
         collection.pipeline = doc["pipeline"]
         if reindex_relevant:
+            # The pipeline_version still bumps (config lineage / future-doc staleness), but the
+            # reindex flag is raised only when there is something indexed to reindex.
             collection.pipeline_version = ConfigRepoHelpers.next_pipeline_version(
                 collection.pipeline_version
             )
-            collection.needs_reindex = True
+            collection.needs_reindex = has_documents
+        # Don't surface reindex reasons to the UI when there is nothing to reindex (empty collection).
+        if not has_documents:
+            reindex_reasons = []
 
         # 5. Replace the metadata schema via the ORM relationship (delete-orphan cascade)
         collection.metadata_fields.clear()
