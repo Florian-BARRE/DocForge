@@ -9,6 +9,9 @@ import { useEffect, useState } from 'react'
 import { getPage, getPageScreenshotUrl, listPages } from '../../../api/client'
 import type { Document, PageDetailResponse, PageInfo } from '../../../api/types'
 
+// ====== Local Project Imports ======
+import { FigureCropImage } from './FigureCropImage'
+
 interface PagesTabProps {
   collectionId: string
   docId: string
@@ -122,13 +125,19 @@ export function PagesTab({ collectionId, docId, doc }: PagesTabProps) {
                 {pageDetail.blocks.length} blocks on page {selectedPage + 1}
               </div>
               {pageDetail.blocks.map(block => (
-                <div key={block.id} className="block-row" style={{ borderBottom: '1px solid var(--border)', padding: '5px 0', fontSize: 11 }}>
+                <div key={block.id} className="block-row" style={{ borderBottom: '1px solid var(--border)', padding: '5px 0', fontSize: 11, display: 'flex', flexWrap: 'wrap', alignItems: 'center' }}>
                   <span className="block-type-badge" style={{ marginRight: 8 }}>{block.type}</span>
                   <span className="mono text-dim" style={{ fontSize: 10 }}>{block.id.slice(0, 22)}…</span>
                   {block.text && (
                     <span className="text-muted" style={{ marginLeft: 8, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
                       {block.text.slice(0, 120)}
                     </span>
+                  )}
+                  {/* Figure blocks: render the actual extracted crop image, not just the text row. */}
+                  {block.type.toLowerCase() === 'figure' && (
+                    <div style={{ flexBasis: '100%', marginTop: 6 }}>
+                      <FigureCropImage collectionId={collectionId} docId={docId} blockId={block.id} />
+                    </div>
                   )}
                 </div>
               ))}

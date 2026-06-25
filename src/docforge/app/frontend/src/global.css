@@ -1229,6 +1229,7 @@ input[type="range"]::-webkit-slider-thumb:hover { background: var(--text-muted);
 .page-stats { display: flex; gap: 8px; flex: 1; font-size: 11px; flex-wrap: wrap; }
 .page-screenshot-wrap { padding: 8px 10px; background: var(--bg); }
 .page-screenshot { max-width: 100%; border-radius: var(--radius-sm); border: 1px solid var(--border); display: block; }
+.figure-crop-thumb { max-width: 260px; max-height: 180px; border-radius: var(--radius-sm); border: 1px solid var(--border); display: block; background: var(--bg); }
 
 /* ── S4/S5 block (chunks) ────────────────────────────────────────────────── */
 .chunk-list { display: flex; flex-direction: column; gap: 1px; }
