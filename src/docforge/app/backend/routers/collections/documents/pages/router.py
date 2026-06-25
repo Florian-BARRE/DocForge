@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response
 
 # ====== Internal Project Imports ======
 from backend.context import CONTEXT
-from backend.libs.auth import require_collection_role
+from backend.libs.auth import require_collection_role, require_collection_role_media
 from backend.libs.utils.error_handling import auto_handle_errors
 from backend.routers.collections.documents.helpers import DocumentOps
 from backend.routers.collections.documents.pages.models import (
@@ -33,6 +33,9 @@ _PAGE_RENDER_ZOOM: float = 2.0
 # and needs 'write'.
 _READ = [Depends(require_collection_role(GrantRole.READ))]
 _WRITE = [Depends(require_collection_role(GrantRole.WRITE))]
+# Screenshot returns raw PNG bytes loaded by the browser via <img> (no Authorization header),
+# so it accepts the bearer credential via header OR ?token= (mirrors the SSE media path).
+_READ_MEDIA = [Depends(require_collection_role_media(GrantRole.READ))]
 
 router = APIRouter(tags=["pages"])
 
@@ -100,7 +103,7 @@ async def get_page(
     )
 
 
-@router.get("/{page_number}/screenshot", dependencies=_READ)
+@router.get("/{page_number}/screenshot", dependencies=_READ_MEDIA)
 @auto_handle_errors
 async def get_page_screenshot(
     collection_id: uuid.UUID, document_id: uuid.UUID, page_number: int

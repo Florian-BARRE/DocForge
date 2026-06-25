@@ -98,7 +98,10 @@ def create_app(app_name: str, debug: bool, version: str = "0.1.0", description: 
     app.include_router(router=search_router,     prefix=DOC, dependencies=auth)
     app.include_router(router=files_router,      prefix=f"{DOC}/{{document_id}}", dependencies=auth)
     app.include_router(router=chunks_router,     prefix=f"{DOC}/{{document_id}}/chunks", dependencies=auth)
-    app.include_router(router=pages_router,      prefix=f"{DOC}/{{document_id}}/pages", dependencies=auth)
+    # pages_router authenticates PER-ROUTE (same reason as document_router): its screenshot route
+    # returns raw PNG bytes loaded via <img>, which cannot send an Authorization header, so it uses
+    # the media gate (header OR ?token=). An include-level header-only dep would 401 that <img> load.
+    app.include_router(router=pages_router,      prefix=f"{DOC}/{{document_id}}/pages")
     # Global (non collection-scoped) monitoring surfaces — Brique A.
     app.include_router(router=jobs_router,       prefix=f"{V1}/jobs", dependencies=auth)
     # monitoring_router also authenticates PER-ROUTE for the same reason as document_router: its SSE

@@ -181,14 +181,63 @@ async def require_root(principal: Principal = Depends(require_principal)) -> Pri
     return principal
 
 
+async def _enforce_collection_role(
+    principal: Principal, collection_id: uuid.UUID, min_role: GrantRole
+) -> Principal:
+    """
+    Enforce the minimum per-collection role for an already-authenticated principal.
+
+    Shared by the header-only and media (header-or-query) collection gates so the 403 policy
+    lives in one place.
+
+    Args:
+        principal (Principal): The authenticated principal.
+        collection_id (uuid.UUID): The path's collection id.
+        min_role (GrantRole): The minimum per-collection role required.
+
+    Returns:
+        Principal: The authorized principal.
+
+    Raises:
+        HTTPException: 403 when the caller has no grant on, or an insufficient role for, the
+        collection. (A non-existent collection is surfaced as 403 here too — to avoid leaking
+        existence; the route's own handler returns the precise 404 once authorization passes.)
+    """
+    # 1. Compute the caller's effective role (None = no grant at all)
+    effective = await CONTEXT.auth_service.effective_collection_role(principal, collection_id)
+    if effective is None:
+        # 403 — the user holds no grant on this collection. We deliberately do NOT 404 here:
+        # leaking "this collection exists" to a user with no access is an enumeration vector.
+        CONTEXT.logger.warning(
+            f"Request rejected (403 no grant): user_id={principal.user_id} "
+            f"collection={collection_id} required={min_role.value}"
+        )
+        raise HTTPException(status_code=403, detail="You do not have access to this collection.")
+
+    # 2. Compare the effective role against the route's minimum
+    if _ROLE_RANK[effective] < _ROLE_RANK[min_role]:
+        # 403 — the user has a grant but at a lower role than this route requires.
+        CONTEXT.logger.warning(
+            f"Request rejected (403 insufficient role): user_id={principal.user_id} "
+            f"collection={collection_id} effective={effective.value} required={min_role.value}"
+        )
+        raise HTTPException(
+            status_code=403,
+            detail=f"This action requires the {min_role.value!r} role on the collection.",
+        )
+
+    return principal
+
+
 def require_collection_role(
     min_role: GrantRole,
 ) -> Callable[..., Coroutine[Any, Any, Principal]]:
     """
     Build a dependency that gates a collection-scoped route by minimum effective role.
 
-    The returned dependency reads ``collection_id`` from the path, computes the caller's effective
-    role on that collection (root is implicitly admin), and enforces ``min_role``.
+    Header-only authentication. The returned dependency reads ``collection_id`` from the path,
+    computes the caller's effective role on that collection (root is implicitly admin), and
+    enforces ``min_role``.
 
     Args:
         min_role (GrantRole): The minimum per-collection role required (read | write | admin).
@@ -201,48 +250,40 @@ def require_collection_role(
         collection_id: uuid.UUID,
         principal: Principal = Depends(require_principal),
     ) -> Principal:
-        """
-        Enforce the minimum collection role for the resolved principal.
+        """Enforce the minimum collection role for the header-authenticated principal."""
+        return await _enforce_collection_role(principal, collection_id, min_role)
 
-        Args:
-            collection_id (uuid.UUID): The path's collection id.
-            principal (Principal): The authenticated principal.
+    return _dependency
 
-        Returns:
-            Principal: The authorized principal.
 
-        Raises:
-            HTTPException: 403 when the caller has no grant or an insufficient role on the
-            collection. (A non-existent collection is surfaced as 403 here too — the route's own
-            handler returns the precise 404 once authorization has passed for an admin/root.)
-        """
-        # 1. Compute the caller's effective role (None = no grant at all)
-        effective = await CONTEXT.auth_service.effective_collection_role(
-            principal, collection_id
-        )
-        if effective is None:
-            # 403 — the user holds no grant on this collection. We deliberately do NOT 404 here:
-            # leaking "this collection exists" to a user with no access is an enumeration vector.
-            CONTEXT.logger.warning(
-                f"Request rejected (403 no grant): user_id={principal.user_id} "
-                f"collection={collection_id} required={min_role.value}"
-            )
-            raise HTTPException(
-                status_code=403, detail="You do not have access to this collection."
-            )
+def require_collection_role_media(
+    min_role: GrantRole,
+) -> Callable[..., Coroutine[Any, Any, Principal]]:
+    """
+    Like :func:`require_collection_role`, but accepts the bearer credential from the Authorization
+    header OR a ``?token=`` query parameter.
 
-        # 2. Compare the effective role against the route's minimum
-        if _ROLE_RANK[effective] < _ROLE_RANK[min_role]:
-            # 403 — the user has a grant but at a lower role than this route requires.
-            CONTEXT.logger.warning(
-                f"Request rejected (403 insufficient role): user_id={principal.user_id} "
-                f"collection={collection_id} effective={effective.value} required={min_role.value}"
-            )
-            raise HTTPException(
-                status_code=403,
-                detail=f"This action requires the {min_role.value!r} role on the collection.",
-            )
+    Used ONLY for byte-returning media routes a browser loads via ``<img src>`` / direct navigation
+    (e.g. the page screenshot), which cannot set an Authorization header — exactly the EventSource
+    limitation that ``require_principal_sse`` addresses. The header still wins; query-param auth is
+    not broadened to JSON routes (those go through the fetch client, which sends the header).
 
-        return principal
+    Args:
+        min_role (GrantRole): The minimum per-collection role required.
+
+    Returns:
+        Callable: An async FastAPI dependency yielding the authorized Principal.
+    """
+
+    async def _dependency(
+        collection_id: uuid.UUID,
+        request: Request,
+        token: str | None = None,
+    ) -> Principal:
+        """Authenticate via header or ?token=, then enforce the minimum collection role."""
+        # 1. Header-or-query authentication (query fallback for header-less <img> loads)
+        principal = await _authenticate(request, query_token=token)
+        # 2. Same per-collection role policy as the header-only gate
+        return await _enforce_collection_role(principal, collection_id, min_role)
 
     return _dependency

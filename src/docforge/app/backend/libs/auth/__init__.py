@@ -7,6 +7,7 @@ from .service import AuthService
 # ------------------- Dependencies ----------------- #
 from .dependencies import (
     require_collection_role,
+    require_collection_role_media,
     require_principal,
     require_principal_sse,
     require_root,
@@ -24,6 +25,7 @@ __all__ = [
     "require_principal_sse",
     "require_root",
     "require_collection_role",
+    "require_collection_role_media",
     "PasswordHelpers",
     "TokenHelpers",
 ]

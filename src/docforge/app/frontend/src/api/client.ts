@@ -345,8 +345,13 @@ export const getPage = (
 ): Promise<PageDetailResponse> =>
   request<PageDetailResponse>(`/collections/${collectionId}/documents/${docId}/pages/${pageNumber}`)
 
-export const getPageScreenshotUrl = (collectionId: string, docId: string, pageNumber: number): string =>
-  `/api/v1/collections/${collectionId}/documents/${docId}/pages/${pageNumber}/screenshot`
+export const getPageScreenshotUrl = (collectionId: string, docId: string, pageNumber: number): string => {
+  const base = `/api/v1/collections/${collectionId}/documents/${docId}/pages/${pageNumber}/screenshot`
+  // The browser loads this via <img src>, which cannot send the Authorization header — so the
+  // bearer is passed as ?token= (the screenshot route accepts it via the media auth gate).
+  // Omitted when logged out / auth disabled.
+  return _bearerToken ? `${base}?token=${encodeURIComponent(_bearerToken)}` : base
+}
 
 export const reingestPage = (
   collectionId: string,
