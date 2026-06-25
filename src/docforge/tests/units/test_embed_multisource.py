@@ -20,12 +20,22 @@ class TestEmbedConfigSparse:
             "chain": [{"id": "openai_compat", "locality": "external",
                        "base_url": "https://api.openai.com/v1",
                        "api_key": "sk-x", "model": "text-embedding-3-large"}],
-            "sparse": {"id": "tei", "base_url": "http://tei-sparse:80", "embed_sparse": True},
+            "sparse": {"id": "bge_server", "base_url": "http://bge_server:80", "embed_sparse": True},
         })
         assert cfg.chain[0].id == "openai_compat"
         assert cfg.chain[0].locality == "external"
         assert cfg.chain[0].api_key == "sk-x"
-        assert cfg.sparse is not None and cfg.sparse.id == "tei"
+        assert cfg.sparse is not None and cfg.sparse.id == "bge_server"
+
+    def test_legacy_tei_sparse_normalizes_to_bge_server(self) -> None:
+        """A separate sparse backend stored with the legacy ``tei`` id loads as ``bge_server``."""
+        cfg = EmbedConfig.model_validate({
+            "chain": [{"id": "openai_compat", "locality": "external",
+                       "base_url": "https://api.openai.com/v1", "api_key": "sk-x",
+                       "model": "text-embedding-3-large"}],
+            "sparse": {"id": "tei", "base_url": "http://bge_server:80", "embed_sparse": True},
+        })
+        assert cfg.sparse is not None and cfg.sparse.id == "bge_server"
 
     def test_unified_local_openai_compat(self) -> None:
         cfg = EmbedConfig.model_validate(
@@ -35,13 +45,13 @@ class TestEmbedConfigSparse:
         assert cfg.chain[0].locality == "local"
 
     def test_no_sparse_defaults_to_none(self) -> None:
-        cfg = EmbedConfig.model_validate({"chain": [{"id": "tei"}]})
+        cfg = EmbedConfig.model_validate({"chain": [{"id": "bge_server"}]})
         assert cfg.sparse is None
 
     def test_unknown_sparse_id_rejected(self) -> None:
         import pytest
         with pytest.raises(Exception):
-            EmbedConfig.model_validate({"chain": [{"id": "tei"}], "sparse": {"id": "nope"}})
+            EmbedConfig.model_validate({"chain": [{"id": "bge_server"}], "sparse": {"id": "nope"}})
 
 
 # ── CompositeEmbedProvider ──────────────────────────────────────────────────────

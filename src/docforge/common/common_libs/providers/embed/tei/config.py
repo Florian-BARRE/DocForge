@@ -1,7 +1,16 @@
 # ====== Code Summary ======
-# Pydantic config for the TEI (Text Embeddings Inference) local embedding provider.
-# Registered via @register("embed") so the provider auto-discovers on import.
-# build() instantiates TeiEmbedProvider; availability() checks server reachability.
+# Pydantic config for the legacy TEI (Text Embeddings Inference) embedding provider.
+#
+# DEPRECATED as a CHOICE: the off-the-shelf TEI image was replaced by the local `bge_server`
+# model host (which speaks the same TEI HTTP contract). This config is therefore NO LONGER
+# registered via @register("embed") — it does not appear in discovery / the discriminated union,
+# and an empty embed chain now defaults to `bge_server` (see EmbedConfig / build_default_pipeline).
+#
+# The class is KEPT (unregistered) only so existing stored pipelines with `id == "tei"` can be
+# referenced during backward-compat normalization; EmbedConfig rewrites such specs to "bge_server"
+# BEFORE the discriminated-union dispatch, so a TeiEmbedConfig instance is never produced.
+# The HTTP client (TeiEmbedProvider, in provider.py) stays the shared embed client used by
+# BgeServerEmbedConfig.build().
 
 # ====== Standard Library Imports ======
 from __future__ import annotations
@@ -14,17 +23,18 @@ from urllib.parse import urlparse
 from pydantic import BaseModel, Field, model_validator
 
 # ====== Internal Project Imports ======
-from common_libs.config.pipeline._registry import register
 from common_libs.config.pipeline.spec_utils import flatten_provider_spec as _flatten_provider_spec
 
 # ====== Local Project Imports ======
 from .provider import TeiEmbedProvider
 
 
-@register("embed")
 class TeiEmbedConfig(BaseModel):
     """
-    Configuration for the TEI (Text Embeddings Inference) local embedding server.
+    Legacy configuration for the TEI (Text Embeddings Inference) embedding server.
+
+    DEPRECATED CHOICE — not registered in the "embed" category. Kept only for reference;
+    stored configs with id="tei" are normalized to "bge_server" before validation.
 
     Config id: "tei" — BGE-M3, 1024-dim dense + BM25 sparse, hybrid search.
     Requires a running TEI server (URL from the collection config (defaults to http://bge_server:80)).

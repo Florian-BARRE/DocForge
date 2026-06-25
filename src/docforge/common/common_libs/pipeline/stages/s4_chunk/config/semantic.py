@@ -1,8 +1,10 @@
 # ====== Code Summary ======
 # SemanticConfig — typed config + build() for the semantic (embedding-based) intra-section
 # split method.  Registered into the "split_method" discriminated union via @register.
-# Carries a fully typed embed provider sub-config (TEI / openai_compat / openai), shared with
-# S6; backward-compat lifts a legacy flat {base_url: ...} to {embed: {id: tei, base_url}}.
+# Carries a fully typed embed provider sub-config (bge_server / openai_compat), shared with
+# S6; backward-compat lifts a legacy flat {base_url: ...} to {embed: {id: bge_server, base_url}}
+# and rewrites a legacy {id: tei} embed sub-config to {id: bge_server} (the off-the-shelf TEI
+# image was replaced by the local bge_server host — same TEI HTTP contract).
 
 from __future__ import annotations
 
@@ -28,13 +30,14 @@ class SemanticConfig(BaseModel):
     Config id: "semantic" — requires ANY embed provider reachable at build time.
     Places boundaries at points of maximum semantic distance between sentences.
 
-    The embed provider is a fully typed discriminated union (TEI / openai_compat / openai),
+    The embed provider is a fully typed discriminated union (bge_server / openai_compat),
     identical to the one used by S6 — so semantic chunking and indexing can share or
     differ at will (e.g. a cheap local embed for boundary detection + a cloud embed for
     retrieval-quality vectors at index time).
 
     Backward-compat: a legacy ``{base_url: "..."}`` flat config is lifted to
-    ``{embed: {id: "tei", base_url: "..."}}`` so old DB rows still load.
+    ``{embed: {id: "bge_server", base_url: "..."}}``; a legacy ``{embed: {id: "tei", ...}}``
+    sub-config is rewritten to ``id: "bge_server"`` — so old DB rows still load.
     """
 
     _label: ClassVar[str] = "Semantic — embedding-based boundary detection (any embed provider)"
@@ -44,8 +47,8 @@ class SemanticConfig(BaseModel):
         default=None,
         description=(
             "Embed provider used for boundary detection — typed EmbedProviderConfig "
-            "(TeiEmbedConfig / OpenAICompatEmbedConfig).  None = "
-            "default TEI when the config is materialised."
+            "(BgeServerEmbedConfig / OpenAICompatEmbedConfig).  None = "
+            "default bge_server when the config is materialised."
         ),
     )
     max_tokens: int = Field(default=512, ge=64, le=4096, description="Hard cap per piece.")
@@ -58,17 +61,22 @@ class SemanticConfig(BaseModel):
         """
         Accept both new ``{embed: {...}}`` and legacy ``{base_url: "..."}`` shapes.
 
-        The legacy shape is lifted to a TEI embed config so old DB rows keep loading.
+        The legacy top-level ``base_url`` shape is lifted to a bge_server embed config; a legacy
+        embed sub-config with ``id="tei"`` is rewritten to ``id="bge_server"`` (bge_server replaced
+        the off-the-shelf TEI image, same HTTP contract) — so old DB rows keep loading.
         """
         v = _flatten_provider_spec(v)
         if isinstance(v, dict):
             v = dict(v)
-            # Legacy: top-level base_url meant TEI
+            # Legacy: a top-level base_url meant the local embed server (now bge_server).
             if "embed" not in v and "base_url" in v:
-                v["embed"] = {"id": "tei", "base_url": v.pop("base_url")}
-            # Flatten nested {id, params} on the embed sub-config
+                v["embed"] = {"id": "bge_server", "base_url": v.pop("base_url")}
+            # Flatten nested {id, params} on the embed sub-config, then rewrite legacy ids.
             if isinstance(v.get("embed"), dict):
-                v["embed"] = _flatten_provider_spec(v["embed"])
+                embed = _flatten_provider_spec(v["embed"])
+                if isinstance(embed, dict) and embed.get("id") == "tei":
+                    embed = {**embed, "id": "bge_server"}
+                v["embed"] = embed
         return v
 
     @model_validator(mode="after")
@@ -82,20 +90,20 @@ class SemanticConfig(BaseModel):
 
         from common_libs.providers.embed.bge_server.config import BgeServerEmbedConfig
         from common_libs.providers.embed.openai_compat.config import OpenAICompatEmbedConfig
-        from common_libs.providers.embed.tei.config import TeiEmbedConfig
 
-        # Default to TEI when the field is None (e.g. legacy DB row without embed key).
+        # Default to bge_server when the field is None (e.g. legacy DB row without embed key).
         if self.embed is None:
-            object.__setattr__(self, "embed", TeiEmbedConfig())
+            object.__setattr__(self, "embed", BgeServerEmbedConfig())
             return self
 
         # Already a typed instance — nothing to do.
-        if isinstance(self.embed, (BgeServerEmbedConfig, TeiEmbedConfig, OpenAICompatEmbedConfig)):
+        if isinstance(self.embed, (BgeServerEmbedConfig, OpenAICompatEmbedConfig)):
             return self
 
         # Dict → validate via the same discriminated union the rest of the codebase uses.
+        # `tei` is intentionally absent; _compat already rewrote any legacy id to `bge_server`.
         Union_ = Annotated[
-            BgeServerEmbedConfig | TeiEmbedConfig | OpenAICompatEmbedConfig,
+            BgeServerEmbedConfig | OpenAICompatEmbedConfig,
             _F(discriminator="id"),
         ]
         adapter = TypeAdapter(Union_)
@@ -121,7 +129,7 @@ class SemanticConfig(BaseModel):
     @classmethod
     def availability(cls, cfg: Any) -> tuple[bool, str]:
         """
-        Report availability of the DEFAULT semantic config (TEI on the deployment env vars).
+        Report availability of the DEFAULT semantic config (bge_server on the deployment env vars).
 
         At the per-collection level, the user picks any embed provider — its own
         availability is reported under the embed picker.  This classmethod only describes
@@ -134,11 +142,11 @@ class SemanticConfig(BaseModel):
         try:
             p = urlparse(base_url)
             with socket.create_connection((p.hostname or "bge_server", p.port or 80), timeout=1):
-                return True, f"Semantic boundaries · default embed TEI · {base_url}"
+                return True, f"Semantic boundaries · default embed bge_server · {base_url}"
         except OSError:
             return False, (
-                f"Default TEI at {base_url} unreachable — pick another embed provider "
-                f"(openai_compat / openai) under split_method.embed."
+                f"Default bge_server at {base_url} unreachable — pick another embed provider "
+                f"(openai_compat) under split_method.embed."
             )
 
 

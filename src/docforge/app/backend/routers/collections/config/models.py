@@ -58,7 +58,7 @@ class ConfigStateResponse(BaseModel):
     embedding_model: str
     embed_provider_id: str = Field(
         ...,
-        description="Discriminator of the primary embed provider (e.g. 'tei', 'openai_compat', 'openai'). "
+        description="Discriminator of the primary embed provider (e.g. 'bge_server', 'openai_compat'). "
                     "Query-time search must use the same provider as ingestion.",
     )
     unknown_field_policy: str
@@ -90,7 +90,7 @@ class ConfigStateResponse(BaseModel):
         redacted_pipeline = pipeline_config.redacted_dict()
 
         # 2. Extract the embed provider discriminator from the primary chain entry
-        embed_provider_id = pipeline_config.embed.chain[0].id if pipeline_config.embed.chain else "tei"
+        embed_provider_id = pipeline_config.embed.chain[0].id if pipeline_config.embed.chain else "bge_server"
 
         # 3. Assemble identity + state + contract + redacted pipeline + schema + transparency
         return cls(

@@ -15,6 +15,11 @@ from .composite import CompositeEmbedProvider
 # ------------------- Providers (one folder each) ------------------- #
 from .bge_server import BgeServerEmbedConfig
 from .openai_compat import OpenAICompatEmbedConfig, OpenAICompatEmbedProvider
+
+# `tei` is no longer a registered embed CHOICE (bge_server replaced the off-the-shelf TEI image).
+# The HTTP client TeiEmbedProvider stays exported — it is the shared embed client reused by
+# BgeServerEmbedConfig.build(). TeiEmbedConfig is exported only for backward-compat reference;
+# being unregistered, it is absent from the EmbedProviderConfig discriminated union below.
 from .tei import TeiEmbedConfig, TeiEmbedProvider
 
 # ------------------- Discriminated Union ------------------- #

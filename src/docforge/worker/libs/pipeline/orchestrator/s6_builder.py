@@ -27,13 +27,12 @@ class S6Builder:
     """
     Static helper to construct a per-run S6EmbedIndexStage from an EmbedConfig.
 
-    Dispatch is handled by a Pydantic discriminated union: the ``embed.provider``
-    field resolves to one of the three typed config objects, each of which exposes
-    a ``.build()`` method that instantiates the matching provider:
+    Dispatch is handled by a Pydantic discriminated union: the first ``embed.chain``
+    entry resolves to one of the typed config objects, each of which exposes a
+    ``.build()`` method that instantiates the matching provider:
 
-    - ``TeiEmbedConfig``          (``id="tei"``)           → local TEI/BGE-M3, dense + BM25 sparse
-    - ``LocalOpenAIEmbedConfig``  (``id="openai_compat"``) → local OpenAI-compat server, dense-only
-    - ``OpenAIEmbedConfig``       (``id="openai"``)        → external cloud API, api_key required
+    - ``BgeServerEmbedConfig``     (``id="bge_server"``)    → local bge_server/BGE-M3, dense + sparse
+    - ``OpenAICompatEmbedConfig``  (``id="openai_compat"``) → OpenAI-compat server (local or external)
 
     Returns ``None`` when infrastructure (Qdrant or chunk repo) is unavailable.
     """

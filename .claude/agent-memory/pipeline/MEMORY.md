@@ -51,6 +51,7 @@ metadata:
 ## Architectural notes
 
 - [Device not in config](device-not-in-config.md) — GPU/device is a deployment env decision (DOCLING/PADDLE/VIT_USE_GPU + DeviceManager), never a per-collection `use_gpu` provider config Field; the no-Field + PrivateAttr + extra="ignore" pattern.
+- [Embed providers + tei alias](embed-providers-and-tei-alias.md) — embed choices = bge_server + openai_compat only; legacy `tei` id is a back-compat alias → bge_server (config unregistered, HTTP client TeiEmbedProvider kept). Rerank may have the same dup (follow-up).
 
 ## Stage file map
 

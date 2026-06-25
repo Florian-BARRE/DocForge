@@ -20,19 +20,32 @@ from common_libs.config.pipeline.chain_gate_config import ChainGateConfig
 from common_libs.config.pipeline._helpers import _lift_provider_to_chain
 
 
+# Legacy embed provider ids that have been collapsed into a current choice. Stored pipelines
+# may still carry these; they are rewritten to the canonical id BEFORE the discriminated-union
+# dispatch so old configs keep loading. `tei` → `bge_server`: the off-the-shelf TEI image was
+# replaced by the local bge_server host, which speaks the same TEI HTTP contract and shares the
+# same compatible fields (base_url, api_key, model, batch_size, embed_sparse, locality).
+_LEGACY_EMBED_ID_ALIASES: dict[str, str] = {"tei": "bge_server"}
+
+
 class EmbedConfig(BaseModel):
     """
     S6 embedding + indexing configuration (spec §4.7).
 
-    Three backends are available:
+    Two backends are available:
 
-    ``TeiEmbedConfig`` (id="tei") — local TEI server (BGE-M3, dense 1024-dim + sparse BM25).
-        Required params: ``base_url`` (e.g. ``http://bge_server:80``).
-        Optional: ``model`` (default ``BAAI/bge-m3``), ``batch_size``, ``embed_sparse``.
+    ``BgeServerEmbedConfig`` (id="bge_server") — local bge_server host (BGE-M3, dense 1024-dim +
+        native multilingual sparse). Speaks the TEI HTTP contract. Optional: ``base_url``
+        (default ``http://bge_server:80``), ``model`` (default ``BAAI/bge-m3``), ``batch_size``,
+        ``embed_sparse``, ``timeout_s``. This is the default when the chain is empty.
 
     ``OpenAICompatEmbedConfig`` (id="openai_compat") — OpenAI-compatible server, local OR external.
         ``locality`` flag: "local" (vLLM/Ollama, api_key optional) or "external" (cloud, api_key
         required).
+
+    Backward-compat: a stored spec with the legacy ``id="tei"`` is rewritten to ``id="bge_server"``
+    before validation (see ``_LEGACY_EMBED_ID_ALIASES``); the compatible fields are carried over and
+    bge_server's extra ``timeout_s`` falls back to its own default.
 
     Attributes:
         chain (list[EmbedProviderConfig]): Ordered DENSE embedding backends; index 0 is tried first.
@@ -56,14 +69,51 @@ class EmbedConfig(BaseModel):
         description="Escalation policy for the embedding chain.",
     )
 
+    @staticmethod
+    def _normalize_legacy_id(spec: Any) -> Any:
+        """
+        Rewrite a legacy embed provider id to its canonical replacement.
+
+        Stored pipelines may reference an id that has since been collapsed into a current
+        choice (e.g. ``tei`` → ``bge_server``). The replacement provider shares the same
+        compatible fields, so only the discriminator is swapped; the extra fields the new
+        provider adds (e.g. bge_server's ``timeout_s``) fall back to their own defaults.
+
+        Args:
+            spec (Any): A single embed provider spec (dict) or any other value.
+
+        Returns:
+            Any: The spec with a rewritten ``id`` when it is a known legacy alias; otherwise
+                 ``spec`` unchanged.
+        """
+        # Only dicts carry a discriminator to rewrite; leave already-parsed models untouched.
+        if isinstance(spec, dict) and spec.get("id") in _LEGACY_EMBED_ID_ALIASES:
+            return {**spec, "id": _LEGACY_EMBED_ID_ALIASES[spec["id"]]}
+        return spec
+
     @model_validator(mode="before")
     @classmethod
     def _compat(cls, v: Any) -> Any:
-        """Lift legacy ``{provider: {...}}`` to ``{chain: [{...}]}`` and flatten entries."""
+        """
+        Normalize legacy shapes before the discriminated-union dispatch.
+
+        Steps:
+        1. Lift a legacy ``{provider: {...}}`` into ``{chain: [{...}]}``.
+        2. Rewrite legacy provider ids (e.g. ``tei`` → ``bge_server``) in every chain entry and
+           in the optional separate ``sparse`` backend, so configs stored against a now-removed
+           choice still validate against the current union.
+        """
         if not isinstance(v, dict):
             return v
+        # 1. Lift the legacy single-provider shape into the chain shape.
         v = dict(v)
         v = _lift_provider_to_chain(v, chain_key="chain", provider_key="provider")
+        # 2. Rewrite legacy ids in the chain entries and the separate sparse backend.
+        chain = v.get("chain")
+        if isinstance(chain, list):
+            v["chain"] = [cls._normalize_legacy_id(item) for item in chain]
+        if "sparse" in v:
+            v["sparse"] = cls._normalize_legacy_id(v["sparse"])
         return v
 
     @model_validator(mode="after")
@@ -71,9 +121,11 @@ class EmbedConfig(BaseModel):
         """
         Validate each item in the embed chain via the discriminated union, then default.
 
-        When the chain is empty: default to [TeiEmbedConfig()].
+        When the chain is empty: default to [BgeServerEmbedConfig()] (bge_server is the default
+        embed provider; the legacy ``tei`` choice was removed).
         When items are dicts (round-tripped from DB/JSON): coerce them through the
         TypeAdapter so unknown ids raise ValidationError immediately (not at registry time).
+        Legacy ``tei`` specs are already rewritten to ``bge_server`` by ``_compat`` (mode="before").
         """
         # Lazy imports to preserve the leaf constraint.
         from typing import Annotated
@@ -83,15 +135,15 @@ class EmbedConfig(BaseModel):
 
         from common_libs.providers.embed.bge_server.config import BgeServerEmbedConfig
         from common_libs.providers.embed.openai_compat.config import OpenAICompatEmbedConfig
-        from common_libs.providers.embed.tei.config import TeiEmbedConfig
 
         if not self.chain:
-            object.__setattr__(self, "chain", [TeiEmbedConfig()])
+            object.__setattr__(self, "chain", [BgeServerEmbedConfig()])
             return self
 
-        # Build the discriminated union from the (post-merge) embed configs.
+        # Build the discriminated union from the (post-merge) embed configs. `tei` is intentionally
+        # absent — it was unregistered and is normalized to `bge_server` upstream in _compat.
         union = Annotated[
-            BgeServerEmbedConfig | TeiEmbedConfig | OpenAICompatEmbedConfig,
+            BgeServerEmbedConfig | OpenAICompatEmbedConfig,
             _F(discriminator="id"),
         ]
         adapter = TypeAdapter(union)

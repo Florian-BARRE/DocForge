@@ -100,7 +100,7 @@ def build_default_pipeline(cfg: Any) -> PipelineConfig:
     # Lazy imports â€” triggered only when this function is actually called (after providers
     # register themselves), not at module load time.  Preserves the leaf constraint.
     from common_libs.providers.classifier.layout_labels.config import LayoutLabelsConfig
-    from common_libs.providers.embed.tei.config import TeiEmbedConfig
+    from common_libs.providers.embed.bge_server.config import BgeServerEmbedConfig
     from common_libs.providers.parser.docling import DoclingConfig
     from common_libs.pipeline.stages.s4_chunk.strategies.params import TokenBudgetConfig
 
@@ -140,8 +140,9 @@ def build_default_pipeline(cfg: Any) -> PipelineConfig:
     )
 
     # 6. Embedding chain
-    # base_url / batch_size are per-collection — TeiEmbedConfig structural defaults apply here.
-    embed_cfg = EmbedConfig(chain=[TeiEmbedConfig()])
+    # bge_server is the default embed provider (BGE-M3 dense+sparse, local). base_url / batch_size
+    # are per-collection — BgeServerEmbedConfig structural defaults apply here.
+    embed_cfg = EmbedConfig(chain=[BgeServerEmbedConfig()])
 
     return PipelineConfig(parse=parse_cfg, enrich=enrich_cfg, chunk=chunk_cfg, embed=embed_cfg)
 

@@ -126,16 +126,39 @@ class TestChainDiscriminatorValidation:
         })
         # Empty chains get defaults filled in by the model validators.
         assert cfg.parse.chain  # defaulted to DoclingConfig
-        assert cfg.embed.chain  # defaulted to TeiEmbedConfig
+        assert cfg.embed.chain[0].id == "bge_server"  # defaulted to BgeServerEmbedConfig
 
     def test_valid_known_ids_pass_through(self) -> None:
         """Known provider ids must parse cleanly without raising."""
         cfg = PipelineConfig.model_validate({
-            "embed": {"chain": [{"id": "tei", "base_url": "http://tei:8080"}]},
+            "embed": {"chain": [{"id": "bge_server", "base_url": "http://bge_server:80"}]},
             "parse": {"chain": [{"id": "docling"}]},
         })
-        assert cfg.embed.chain[0].id == "tei"
+        assert cfg.embed.chain[0].id == "bge_server"
         assert cfg.parse.chain[0].id == "docling"
+
+    def test_legacy_tei_embed_id_normalizes_to_bge_server(self) -> None:
+        """
+        A stored pipeline referencing the removed ``tei`` embed choice must still load and be
+        rewritten to ``bge_server`` (the off-the-shelf TEI image was replaced by bge_server,
+        which speaks the same TEI HTTP contract). Compatible fields are carried over; bge_server's
+        extra ``timeout_s`` falls back to its default.
+        """
+        cfg = PipelineConfig.model_validate({
+            "embed": {"chain": [{
+                "id": "tei",
+                "base_url": "http://bge_server:80",
+                "model": "BAAI/bge-m3",
+                "batch_size": 16,
+                "embed_sparse": True,
+            }]},
+        })
+        provider = cfg.embed.chain[0]
+        assert provider.id == "bge_server"            # legacy id rewritten
+        assert provider.base_url == "http://bge_server:80"  # compatible field carried over
+        assert provider.batch_size == 16               # compatible field carried over
+        assert provider.embed_sparse is True           # compatible field carried over
+        assert provider.timeout_s == 180               # new field falls back to bge_server default
 
 
 # ─── Device-knob removal backward-compat ─────────────────────────────────────────
