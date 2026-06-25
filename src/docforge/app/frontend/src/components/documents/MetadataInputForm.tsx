@@ -87,12 +87,18 @@ function castValue(raw: string, fieldType: string): unknown {
 export function MetadataInputForm({ fields, onChange, isOpen, onToggle }: MetadataInputFormProps) {
   const [values, setValues] = useState<Record<string, string>>({})
 
-  // Reset values when the field list changes (e.g. collection switch).
+  // Stable identity for the field SET — the parent re-creates the `fields` array on every render,
+  // so depending on the array reference would re-run the reset effect each render → setState →
+  // re-render → infinite "Maximum update depth exceeded" loop. Key on the field names instead, so
+  // the reset only fires when the actual field set changes (e.g. a collection switch).
+  const fieldsKey = fields.map(f => f.field_name).join('|')
+
+  // Reset values when the field set changes (e.g. collection switch).
   useEffect(() => {
     setValues({})
     onChange({})
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fields])
+  }, [fieldsKey])
 
   if (fields.length === 0) return null
 
