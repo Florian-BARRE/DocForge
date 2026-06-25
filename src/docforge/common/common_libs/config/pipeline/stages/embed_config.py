@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field, model_validator
 # ====== Internal Project Imports ======
 from common_libs.config.pipeline.chain_gate_config import ChainGateConfig
 from common_libs.config.pipeline._helpers import _lift_provider_to_chain
+from common_libs.config.pipeline.spec_utils import normalize_legacy_id as _normalize_legacy_id
 
 
 # Legacy embed provider ids that have been collapsed into a current choice. Stored pipelines
@@ -69,28 +70,6 @@ class EmbedConfig(BaseModel):
         description="Escalation policy for the embedding chain.",
     )
 
-    @staticmethod
-    def _normalize_legacy_id(spec: Any) -> Any:
-        """
-        Rewrite a legacy embed provider id to its canonical replacement.
-
-        Stored pipelines may reference an id that has since been collapsed into a current
-        choice (e.g. ``tei`` → ``bge_server``). The replacement provider shares the same
-        compatible fields, so only the discriminator is swapped; the extra fields the new
-        provider adds (e.g. bge_server's ``timeout_s``) fall back to their own defaults.
-
-        Args:
-            spec (Any): A single embed provider spec (dict) or any other value.
-
-        Returns:
-            Any: The spec with a rewritten ``id`` when it is a known legacy alias; otherwise
-                 ``spec`` unchanged.
-        """
-        # Only dicts carry a discriminator to rewrite; leave already-parsed models untouched.
-        if isinstance(spec, dict) and spec.get("id") in _LEGACY_EMBED_ID_ALIASES:
-            return {**spec, "id": _LEGACY_EMBED_ID_ALIASES[spec["id"]]}
-        return spec
-
     @model_validator(mode="before")
     @classmethod
     def _compat(cls, v: Any) -> Any:
@@ -101,7 +80,8 @@ class EmbedConfig(BaseModel):
         1. Lift a legacy ``{provider: {...}}`` into ``{chain: [{...}]}``.
         2. Rewrite legacy provider ids (e.g. ``tei`` → ``bge_server``) in every chain entry and
            in the optional separate ``sparse`` backend, so configs stored against a now-removed
-           choice still validate against the current union.
+           choice still validate against the current union. Uses the shared
+           ``normalize_legacy_id`` helper with ``_LEGACY_EMBED_ID_ALIASES``.
         """
         if not isinstance(v, dict):
             return v
@@ -111,9 +91,9 @@ class EmbedConfig(BaseModel):
         # 2. Rewrite legacy ids in the chain entries and the separate sparse backend.
         chain = v.get("chain")
         if isinstance(chain, list):
-            v["chain"] = [cls._normalize_legacy_id(item) for item in chain]
+            v["chain"] = [_normalize_legacy_id(item, _LEGACY_EMBED_ID_ALIASES) for item in chain]
         if "sparse" in v:
-            v["sparse"] = cls._normalize_legacy_id(v["sparse"])
+            v["sparse"] = _normalize_legacy_id(v["sparse"], _LEGACY_EMBED_ID_ALIASES)
         return v
 
     @model_validator(mode="after")

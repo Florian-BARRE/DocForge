@@ -172,10 +172,10 @@ class TestGroupingAndRerank:
         if not live_client.reranker_live(RERANKER_URL):
             pytest.skip(f"local TEI reranker not reachable at {RERANKER_URL}")
 
-        # 2. Create a rerank-enabled collection (local bge_reranker) and ingest one doc
+        # 2. Create a rerank-enabled collection (local bge_server reranker) and ingest one doc
         pipeline = {**DENSE_ONLY_PIPELINE,
                     "search": {"rerank": {"enabled": True, "candidate_k": 20, "top_n": 5,
-                                          "chain": [{"id": "bge_reranker"}]}}}
+                                          "chain": [{"id": "bge_server"}]}}}
         collection = make_collection(pipeline=pipeline, supported_formats=["docx"])
         cid = collection["id"]
         doc = corpus.get("report_fr_docx")

@@ -17,6 +17,11 @@ from pydantic import BaseModel, Field, model_validator
 # ====== Internal Project Imports ======
 from common_libs.config.pipeline._registry import register
 from common_libs.config.pipeline.spec_utils import flatten_provider_spec as _flatten_provider_spec
+from common_libs.config.pipeline.spec_utils import normalize_legacy_id as _normalize_legacy_id
+
+# Legacy embed ids accepted by the semantic split's embed sub-config — same map as EmbedConfig.
+# `tei` -> `bge_server` (off-the-shelf TEI replaced by the local bge_server host, same contract).
+_LEGACY_EMBED_ID_ALIASES: dict[str, str] = {"tei": "bge_server"}
 
 if TYPE_CHECKING:
     from common_libs.pipeline.stages.s4_chunk.strategies.semantic import SemanticSplitter
@@ -74,9 +79,7 @@ class SemanticConfig(BaseModel):
             # Flatten nested {id, params} on the embed sub-config, then rewrite legacy ids.
             if isinstance(v.get("embed"), dict):
                 embed = _flatten_provider_spec(v["embed"])
-                if isinstance(embed, dict) and embed.get("id") == "tei":
-                    embed = {**embed, "id": "bge_server"}
-                v["embed"] = embed
+                v["embed"] = _normalize_legacy_id(embed, _LEGACY_EMBED_ID_ALIASES)
         return v
 
     @model_validator(mode="after")

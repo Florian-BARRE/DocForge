@@ -1,7 +1,16 @@
 # ====== Code Summary ======
-# Pydantic config for the BGE-Reranker-v2-m3 local reranking provider (TEI).
-# Registered via @register("rerank") so the provider auto-discovers on import.
-# build() instantiates BgeRerankProvider; availability() checks server reachability.
+# Pydantic config for the legacy BGE-Reranker-v2-m3 reranking provider (off-the-shelf TEI).
+#
+# DEPRECATED as a CHOICE: the off-the-shelf TEI reranker image was replaced by the local
+# `bge_server` model host (which serves BGE-reranker-v2-m3 on the same TEI /rerank contract).
+# This config is therefore NO LONGER registered via @register("rerank") — it does not appear in
+# discovery / the rerank discriminated union, and `bge_server` is the canonical rerank provider.
+#
+# The class is KEPT (unregistered) only so existing stored pipelines with `id == "bge_reranker"`
+# can be referenced during backward-compat normalization; RerankConfig rewrites such specs to
+# "bge_server" BEFORE the discriminated-union dispatch, so a BgeRerankerConfig instance is never
+# produced. The HTTP client (BgeRerankProvider, in provider.py) stays the shared rerank client
+# used by BgeServerRerankConfig.build().
 
 # ====== Standard Library Imports ======
 from __future__ import annotations
@@ -14,17 +23,18 @@ from urllib.parse import urlparse
 from pydantic import BaseModel, Field, model_validator
 
 # ====== Internal Project Imports ======
-from common_libs.config.pipeline._registry import register
 from common_libs.config.pipeline.spec_utils import flatten_provider_spec as _flatten_provider_spec
 
 # ====== Local Project Imports ======
 from .provider import BgeRerankProvider
 
 
-@register("rerank")
 class BgeRerankerConfig(BaseModel):
     """
-    Configuration for the BGE-Reranker-v2-m3 local cross-encoder via TEI.
+    Legacy configuration for the BGE-Reranker-v2-m3 cross-encoder via off-the-shelf TEI.
+
+    DEPRECATED CHOICE — not registered in the "rerank" category. Kept only for reference;
+    stored configs with id="bge_reranker" are normalized to "bge_server" before validation.
 
     Config id: "bge_reranker" — BAAI/bge-reranker-v2-m3, served by TEI on a
     separate container (reranker:80).  Requires a running TEI reranker server.

@@ -1,11 +1,14 @@
 # ====== Code Summary ======
-# Shared backward-compat helper for flattening old {id, params} ProviderSpec dicts into the
-# flat format that each typed discriminated-union Config model expects.  Every provider Config
-# that uses a model_validator(mode="before") imports this function instead of defining its own
-# private copy, eliminating the duplication that existed across ~13 capability files.
+# Shared backward-compat helpers for provider specs:
+#  - flatten_provider_spec: flatten old {id, params} DB rows into the flat form each typed
+#    discriminated-union Config model expects.
+#  - normalize_legacy_id: rewrite a removed/legacy provider id to its canonical replacement
+#    (e.g. embed tei -> bge_server, rerank bge_reranker -> bge_server) BEFORE the union dispatch.
+# Every provider Config that uses a model_validator(mode="before") imports these instead of
+# defining private copies, eliminating duplication across the capability files.
 #
-# ProviderSpecHelpers wraps the logic as a static-only class. The module-level
-# flatten_provider_spec function is preserved as a thin wrapper for backward compat.
+# ProviderSpecHelpers wraps the logic as a static-only class. Module-level thin wrappers are
+# preserved so existing imports keep working.
 
 # ====== Standard Library Imports ======
 from typing import Any
@@ -53,8 +56,37 @@ class ProviderSpecHelpers:
             return {"id": v.get("id"), **v["params"]}
         return v
 
+    @staticmethod
+    def normalize_legacy_id(v: Any, aliases: dict[str, str]) -> Any:
+        """
+        Rewrite a provider spec's discriminator from a removed/legacy id to its replacement.
 
-# ── Module-level alias — keep flatten_provider_spec importable at the same path ──
+        When a provider CHOICE is removed because a newer provider subsumes it (same HTTP
+        contract, same compatible fields), stored pipelines may still carry the old ``id``.
+        Validating such a spec against the current discriminated union would fail. This helper
+        is called from ``model_validator(mode="before")`` to swap only the discriminator, so the
+        compatible fields carry over and any extra field the replacement adds falls back to its
+        own default.
+
+        Current aliases (defined by each caller): embed ``tei`` -> ``bge_server`` and rerank
+        ``bge_reranker`` -> ``bge_server`` — the off-the-shelf TEI image was replaced by the local
+        bge_server host, which speaks the same TEI HTTP contract for both embed and rerank.
+
+        Args:
+            v (Any): A single provider spec (dict) or any other value.
+            aliases (dict[str, str]): Mapping of legacy id -> canonical replacement id.
+
+        Returns:
+            Any: The spec with a rewritten ``id`` when it is a known legacy alias; otherwise
+                 ``v`` unchanged.
+        """
+        # Only dicts carry a discriminator to rewrite; leave already-parsed models untouched.
+        if isinstance(v, dict) and v.get("id") in aliases:
+            return {**v, "id": aliases[v["id"]]}
+        return v
+
+
+# ── Module-level aliases — keep these importable at the same path (back-compat) ──
 def flatten_provider_spec(v: Any) -> Any:
     """
     Flatten an old-style ``{id, params}`` ProviderSpec dict into the flat form.
@@ -69,3 +101,22 @@ def flatten_provider_spec(v: Any) -> Any:
         Any: Flattened dict or ``v`` unchanged.
     """
     return ProviderSpecHelpers.flatten_provider_spec(v)
+
+
+def normalize_legacy_id(v: Any, aliases: dict[str, str]) -> Any:
+    """
+    Rewrite a provider spec's legacy discriminator to its replacement.
+
+    Thin wrapper around ``ProviderSpecHelpers.normalize_legacy_id``.
+
+    Args:
+        v (Any): A single provider spec (dict) or any other value.
+        aliases (dict[str, str]): Mapping of legacy id -> canonical replacement id.
+
+    Returns:
+        Any: The spec with a rewritten ``id`` when it is a known legacy alias; otherwise unchanged.
+    """
+    return ProviderSpecHelpers.normalize_legacy_id(v, aliases)
+
+
+__all__ = ["ProviderSpecHelpers", "flatten_provider_spec", "normalize_legacy_id"]

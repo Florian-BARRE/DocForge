@@ -11,6 +11,10 @@ auto_import(__name__)
 from .base import RerankProvider
 
 # ─────────────────── Providers (one folder each) ───────────────────── #
+# `bge_reranker` is no longer a registered rerank CHOICE (bge_server replaced the off-the-shelf TEI
+# reranker image). The HTTP client BgeRerankProvider stays exported — it is the shared rerank client
+# reused by BgeServerRerankConfig.build(). BgeRerankerConfig is exported only for backward-compat
+# reference; being unregistered, it is absent from the rerank discriminated union.
 from .bge import BgeRerankerConfig, BgeRerankProvider
 from .bge_server import BgeServerRerankConfig
 from .cohere import CohereRerankConfig, CohereRerankProvider

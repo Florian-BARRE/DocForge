@@ -88,6 +88,60 @@ class TestSearchConfigRetrieve:
         assert cfg.retrieve.vector_mode == "hybrid"
 
 
+# ── RerankConfig provider choices ─────────────────────────────────────────────────
+
+
+class TestRerankConfig:
+    """
+    Rerank provider choices: bge_server + cohere_rerank only; legacy bge_reranker normalizes.
+
+    The off-the-shelf TEI reranker (`bge_reranker`) was replaced by the local bge_server host,
+    which serves BGE-reranker-v2-m3 on the same /rerank contract. The `bge_reranker` choice was
+    removed from the rerank discriminated union; stored configs referencing it must still load.
+    """
+
+    def test_bge_server_rerank_passes_through(self) -> None:
+        """The current default rerank provider id parses cleanly when reranking is enabled."""
+        cfg = SearchConfig.from_dict(
+            {"rerank": {"enabled": True, "chain": [{"id": "bge_server", "base_url": "http://bge_server:80"}]}}
+        )
+        assert cfg.rerank.chain[0].id == "bge_server"
+        assert cfg.rerank.chain[0].base_url == "http://bge_server:80"
+
+    def test_legacy_bge_reranker_id_normalizes_to_bge_server(self) -> None:
+        """
+        A stored rerank config referencing the removed `bge_reranker` choice must still load and
+        be rewritten to `bge_server`. Compatible fields (base_url/batch_size/locality) carry over.
+        """
+        cfg = SearchConfig.from_dict({
+            "rerank": {
+                "enabled": True,
+                "chain": [{
+                    "id": "bge_reranker",
+                    "base_url": "http://bge_server:80",
+                    "batch_size": 16,
+                    "locality": "local",
+                }],
+            }
+        })
+        provider = cfg.rerank.chain[0]
+        assert provider.id == "bge_server"            # legacy id rewritten
+        assert provider.base_url == "http://bge_server:80"  # compatible field carried over
+        assert provider.batch_size == 16               # compatible field carried over
+        assert provider.locality == "local"            # compatible field carried over
+
+    def test_unknown_rerank_id_rejected(self) -> None:
+        """An unknown rerank provider id must still raise when reranking is enabled."""
+        import pytest
+        with pytest.raises(Exception):
+            SearchConfig.from_dict({"rerank": {"enabled": True, "chain": [{"id": "not_a_reranker"}]}})
+
+    def test_disabled_rerank_skips_chain_validation(self) -> None:
+        """When reranking is disabled the chain is not validated (provider not needed)."""
+        cfg = SearchConfig.from_dict({"rerank": {"enabled": False, "chain": [{"id": "anything"}]}})
+        assert cfg.rerank.enabled is False
+
+
 # ── DBSF fusion ─────────────────────────────────────────────────────────────────
 
 

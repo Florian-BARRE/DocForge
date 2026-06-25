@@ -14,6 +14,16 @@ from typing import Any, Literal
 # ====== Third-Party Library Imports ======
 from pydantic import BaseModel, Field, model_validator
 
+# ====== Internal Project Imports ======
+from common_libs.config.pipeline.spec_utils import normalize_legacy_id as _normalize_legacy_id
+
+# Legacy rerank provider ids collapsed into a current choice. Stored pipelines may still carry
+# these; they are rewritten BEFORE the discriminated-union dispatch so old configs keep loading.
+# `bge_reranker` -> `bge_server`: the off-the-shelf TEI reranker image was replaced by the local
+# bge_server host, which serves BGE-reranker-v2-m3 on the same TEI /rerank contract and shares the
+# compatible fields (base_url, api_key, batch_size, locality).
+_LEGACY_RERANK_ID_ALIASES: dict[str, str] = {"bge_reranker": "bge_server"}
+
 
 class QueryTransformConfig(BaseModel):
     """
@@ -104,12 +114,32 @@ class RerankConfig(BaseModel):
         description="Ordered rerank provider configs; index 0 is used.",
     )
 
+    @model_validator(mode="before")
+    @classmethod
+    def _compat(cls, v: Any) -> Any:
+        """
+        Rewrite legacy rerank provider ids before the discriminated-union dispatch.
+
+        A stored chain entry with the removed ``id="bge_reranker"`` is rewritten to
+        ``id="bge_server"`` (the off-the-shelf TEI reranker was replaced by the local bge_server
+        host, same /rerank contract) so old configs keep loading. Uses the shared
+        ``normalize_legacy_id`` helper with ``_LEGACY_RERANK_ID_ALIASES``.
+        """
+        if not isinstance(v, dict):
+            return v
+        v = dict(v)
+        chain = v.get("chain")
+        if isinstance(chain, list):
+            v["chain"] = [_normalize_legacy_id(item, _LEGACY_RERANK_ID_ALIASES) for item in chain]
+        return v
+
     @model_validator(mode="after")
     def _validate_and_default_rerank_chain(self) -> RerankConfig:
         """
         Coerce each chain item through the discriminated union if it is a raw dict.
 
         When enabled=False the chain is not validated (no provider needed).
+        Legacy ``bge_reranker`` specs are already rewritten to ``bge_server`` by ``_compat``.
         """
         # Skip validation when reranking is disabled or chain is empty
         if not self.enabled or not self.chain:
@@ -127,10 +157,11 @@ class RerankConfig(BaseModel):
 
         from common_libs.providers.rerank.bge_server.config import BgeServerRerankConfig
         from common_libs.providers.rerank.cohere.config import CohereRerankConfig
-        from common_libs.providers.rerank.bge.config import BgeRerankerConfig
 
+        # `bge_reranker` is intentionally absent — it was unregistered and is normalized to
+        # `bge_server` upstream in _compat.
         union = Annotated[
-            BgeServerRerankConfig | BgeRerankerConfig | CohereRerankConfig, _F(discriminator="id")
+            BgeServerRerankConfig | CohereRerankConfig, _F(discriminator="id")
         ]
         adapter = TypeAdapter(union)
 
