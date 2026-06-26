@@ -1,223 +1,215 @@
 // ====== Code Summary ======
-// StageFlowNode — rich pipeline stage card for the new PipelineFlowGraph.
-// Config mode: shows provider summary, description, status pill, gear hover.
-// Trace mode: shows runtime status color + duration + metric in the footer.
-// Replaces the old StageNode with more information density and modern styling.
+// StageFlowNode — react-flow custom node for the PipelineCanvas.
+// Renders a polished elevated card with a 3 px per-stage accent strip, stage ID
+// badge, icon, label, role description, provider/chain chip, ON/OPT-IN status
+// pill, and source/target Handles styled as subtle 8 px dots.
+// All colors come from CSS custom properties — no hardcoded values.
+
+// ====== Third-Party Library Imports ======
+import { Handle, Position } from '@xyflow/react'
+import type { Node, NodeProps } from '@xyflow/react'
 
 // ====== Internal Project Imports ======
 import type { ConfigState } from '../../api/types'
 import type { StageDefinition, StageResult, StageStatus } from './types'
 
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+/** Data payload carried on each react-flow node in the pipeline canvas. */
+export interface StageNodeData extends Record<string, unknown> {
+  /** Static stage identity and display metadata. */
+  stage: StageDefinition
+  /** Canvas rendering mode. */
+  mode: 'config' | 'trace'
+  /** Runtime result — populated in trace mode only. */
+  result?: StageResult
+  /** Whether this stage's config/trace panel is currently open. */
+  isActive: boolean
+  /** Live collection config — used to derive provider summaries. */
+  configState: ConfigState | null
+}
+
+/** Typed react-flow node variant used in PipelineCanvas. */
+export type StageFlowNodeType = Node<StageNodeData>
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 /**
- * Extract a one-line provider summary from the collection's config state.
+ * Map a stage id to an accent color CSS-var reference for the top strip.
+ * All values reference existing custom properties — no hardcoded hex values.
+ */
+const STAGE_ACCENT: Record<string, string> = {
+  s0:        'var(--s-info)',
+  s1:        'var(--accent)',
+  s2:        'var(--s-warning)',
+  s4:        'var(--s-done)',
+  s5:        'var(--s-info)',
+  s6:        'var(--accent)',
+  transform: 'var(--s-info)',
+  retrieve:  'var(--s-done)',
+  rerank:    'var(--accent)',
+}
+
+/**
+ * Extract a one-line provider summary from the collection config.
  *
- * Reads the pipeline sub-object at the stage's fieldPathPrefix and returns a
- * compact label: chain summary (e.g. "docling +1"), provider id, or key scalar.
+ * Walks the fieldPathPrefix into the config and returns a compact chip label:
+ * first chain provider + "×N" count, enabled flag, or split_method.
  *
  * Args:
- *   configState: Current persisted config for the collection.
- *   prefix:      Stage fieldPathPrefix (e.g. "pipeline.parse").
+ *   config: Live persisted config for the collection, or null.
+ *   prefix: Stage fieldPathPrefix (e.g. "pipeline.parse").
  *
  * Returns:
- *   string | null: Compact label, or null when no summary can be derived.
+ *   string | null: Compact summary, or null when not derivable.
  */
-function extractStageSummary(configState: ConfigState | null, prefix: string): string | null {
-  if (!configState) return null
-  // 1. Walk the prefix segments into the config object.
+function extractSummary(config: ConfigState | null, prefix: string): string | null {
+  if (!config) return null
   const parts = prefix.split('.')
-  let cursor: unknown = configState
+  let cursor: unknown = config
   for (const part of parts) {
-    if (cursor && typeof cursor === 'object') {
-      cursor = (cursor as Record<string, unknown>)[part]
-    } else return null
+    if (cursor && typeof cursor === 'object') cursor = (cursor as Record<string, unknown>)[part]
+    else return null
   }
   if (!cursor || typeof cursor !== 'object') return null
   const cfg = cursor as Record<string, unknown>
-
-  // 2. Chain array: show first provider + overflow count.
   if (Array.isArray(cfg.chain) && cfg.chain.length > 0) {
     const chain = cfg.chain as Array<{ id?: string }>
     const first = chain[0]?.id ?? '?'
-    return chain.length > 1 ? `${first}  +${chain.length - 1}` : first
+    return chain.length > 1 ? `${first} ×${chain.length}` : first
   }
-
-  // 3. Explicit enabled flag.
   if (typeof cfg.enabled === 'boolean') return cfg.enabled ? 'enabled' : 'disabled'
-
-  // 4. Chunk split_method as a key signal.
   if (typeof cfg.split_method === 'string') return cfg.split_method
-
   return null
 }
 
 /**
- * Map a StageStatus to its CSS modifier class for trace-mode border color.
+ * Map a StageStatus to its CSS modifier class for the card border.
  *
  * Args:
- *   status: Stage lifecycle status.
+ *   status: The stage's lifecycle status.
  *
  * Returns:
- *   string: CSS class name from the .stage-flow-node-trace-* family.
+ *   CSS class name from the .sfn-trace-* family.
  */
-function traceClass(status: StageStatus): string {
+function traceModifier(status: StageStatus): string {
   switch (status) {
-    case 'done':    return 'stage-flow-node-trace-done'
-    case 'running': return 'stage-flow-node-trace-running'
-    case 'error':   return 'stage-flow-node-trace-error'
-    default:        return 'stage-flow-node-trace-skipped'
+    case 'done':    return 'sfn-trace-done'
+    case 'running': return 'sfn-trace-running'
+    case 'error':   return 'sfn-trace-error'
+    default:        return 'sfn-trace-skipped'
   }
 }
 
 /**
- * Format a duration in milliseconds into a compact human-readable string.
+ * Format a duration in milliseconds as a compact human-readable string.
  *
  * Args:
  *   ms: Duration in milliseconds.
  *
  * Returns:
- *   string: e.g. "1.2s" or "850ms".
+ *   "1.2s" for durations >= 1 s, "850ms" otherwise.
  */
 function formatDuration(ms: number): string {
   return ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${ms}ms`
 }
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+// ── Sub-renderers ─────────────────────────────────────────────────────────────
 
-interface StageFlowNodeProps {
-  /** Static stage identity and display metadata. */
-  stage: StageDefinition
-  /** Rendering mode: "config" for pipeline setup, "trace" for post-run inspection. */
-  mode: 'config' | 'trace'
-  /** Runtime result for this stage — only meaningful in trace mode. */
-  result?: StageResult
-  /** Whether this stage is currently selected in the detail panel. */
-  isActive: boolean
-  /** Called when the user clicks the card. */
-  onClick: () => void
-  /** Collection config state — used to derive provider summaries in config mode. */
-  configState?: ConfigState | null
+function ConfigFooter({ stage, summary }: { stage: StageDefinition; summary: string | null }) {
+  const pillCls = stage.optional ? 'sfn-pill sfn-pill-opt' : 'sfn-pill sfn-pill-on'
+  return (
+    <>
+      {summary
+        ? <span className="sfn-summary" title={summary}>{summary}</span>
+        : <span className="sfn-summary" />
+      }
+      <span className={pillCls}>{stage.optional ? 'opt-in' : 'on'}</span>
+    </>
+  )
+}
+
+function TraceFooter({ result }: { result?: StageResult }) {
+  if (!result)                     return <span className="sfn-tdim">—</span>
+  if (result.status === 'error')   return <span className="sfn-terr">error</span>
+  if (result.status === 'running') return <span className="sfn-trun">running…</span>
+  return (
+    <>
+      {result.duration_ms !== undefined &&
+        <span className="sfn-tdur">{formatDuration(result.duration_ms)}</span>}
+      {result.metric && <span className="sfn-tmet">{result.metric}</span>}
+      {result.status === 'skipped' && <span className="sfn-tdim">skip</span>}
+    </>
+  )
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
 /**
- * Rich stage card for the pipeline flow graph.
+ * React Flow custom node for a single pipeline stage.
  *
- * Config mode: displays stage ID badge, icon, label, description, and a
- * one-line provider summary derived from the collection's config state.
+ * Renders an elevated card with a 3 px per-stage accent strip, stage ID badge,
+ * icon, label, role description, and a footer row with either a provider/chain
+ * chip + status pill (config mode) or trace status + duration (trace mode).
+ * Left/right Handles are 8 px subtle dots via the sfn-handle CSS class.
  *
- * Trace mode: replaces the summary/pill footer with a runtime status
- * (done/running/error/skipped), wall-clock duration, and a short metric.
- *
- * Args:
- *   stage:       Static stage definition.
- *   mode:        "config" or "trace" rendering mode.
- *   result:      Optional runtime trace result.
- *   isActive:    Whether this stage's detail panel is open.
- *   onClick:     Click handler.
- *   configState: Optional live config used for the provider summary.
+ * Args (react-flow NodeProps):
+ *   data.stage:       Static stage definition.
+ *   data.mode:        Canvas rendering mode ("config" | "trace").
+ *   data.result:      Optional runtime trace result.
+ *   data.isActive:    Whether this stage's detail panel is currently open.
+ *   data.configState: Live collection config for provider summary derivation.
  */
-export function StageFlowNode({
-  stage, mode, result, isActive, onClick, configState,
-}: StageFlowNodeProps) {
-  // 1. Build CSS class list.
-  const classes = ['stage-flow-node']
-  if (isActive) classes.push('stage-flow-node-active')
-  if (stage.optional) classes.push('stage-flow-node-optional')
-  if (stage.readOnly) classes.push('stage-flow-node-readonly')
-  if (mode === 'trace' && result) classes.push(traceClass(result.status))
+export function StageFlowNode({ data }: NodeProps<StageFlowNodeType>) {
+  const { stage, mode, result, isActive, configState } = data
 
-  // 2. Derive footer content by mode.
-  const summary = extractStageSummary(configState ?? null, stage.fieldPathPrefix)
-  const footer = mode === 'config'
-    ? _configFooter(stage, summary)
-    : _traceFooter(result)
+  // 1. Build the card's CSS modifier class list.
+  const classes = ['sfn-card']
+  if (isActive)        classes.push('sfn-active')
+  if (stage.optional)  classes.push('sfn-optional')
+  if (stage.readOnly)  classes.push('sfn-readonly')
+  if (mode === 'trace' && result) classes.push(traceModifier(result.status))
 
-  // 3. Stage ID badge label (e.g. "S1", "S4").
-  const idLabel = stage.id.toUpperCase()
+  // 2. Derive per-stage accent (CSS var reference — no hardcoded hex).
+  const accentColor = STAGE_ACCENT[stage.id] ?? 'var(--accent)'
+
+  // 3. Derive provider/chain summary chip text.
+  const summary = extractSummary(configState, stage.fieldPathPrefix)
 
   return (
-    <div
-      className={classes.join(' ')}
-      onClick={onClick}
-      role="button"
-      tabIndex={0}
-      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') onClick() }}
-      aria-label={`${stage.label} stage`}
-      aria-pressed={isActive}
-    >
-      {/* Top row: ID badge + icon */}
-      <div className="stage-flow-node-top">
-        <span className="stage-flow-node-id">{idLabel}</span>
-        <span className="stage-flow-node-icon" aria-hidden="true">{stage.icon}</span>
+    <div className={classes.join(' ')}>
+      {/* Left handle — edge entry point from the preceding stage. */}
+      <Handle type="target" position={Position.Left}
+        className="sfn-handle" isConnectable={false} />
+
+      {/* 3 px accent strip — per-stage hue, top of card. */}
+      <div className="sfn-accent-strip" style={{ background: accentColor }} />
+
+      {/* Top row: stage ID badge (mono) + icon flush right. */}
+      <div className="sfn-top">
+        <span className="sfn-id">{stage.id.toUpperCase()}</span>
+        <span className="sfn-icon" aria-hidden="true">{stage.icon}</span>
       </div>
 
-      {/* Stage label */}
-      <span className="stage-flow-node-label">{stage.label}</span>
+      {/* Stage name — Inter 600. */}
+      <span className="sfn-label">{stage.label}</span>
 
-      {/* Description — muted, truncated at 2 lines */}
+      {/* Role description — muted, clamped to 2 lines. */}
       {stage.description && (
-        <span className="stage-flow-node-desc">{stage.description}</span>
+        <span className="sfn-desc">{stage.description}</span>
       )}
 
-      {/* Footer: provider summary + status pill (config) or trace info */}
-      <div className="stage-flow-node-footer">
-        {footer}
+      {/* Footer: provider chip + pill (config) or trace status + duration. */}
+      <div className="sfn-footer">
+        {mode === 'config'
+          ? <ConfigFooter stage={stage} summary={summary} />
+          : <TraceFooter result={result} />
+        }
       </div>
 
-      {/* Gear hover overlay — config mode, non-read-only stages only */}
-      {mode === 'config' && !stage.readOnly && (
-        <span className="stage-flow-node-gear" aria-hidden="true">&#x2699;</span>
-      )}
+      {/* Right handle — edge exit point to the following stage. */}
+      <Handle type="source" position={Position.Right}
+        className="sfn-handle" isConnectable={false} />
     </div>
-  )
-}
-
-// ── Private render helpers ────────────────────────────────────────────────────
-
-function _configFooter(stage: StageDefinition, summary: string | null) {
-  const pillClass = stage.optional
-    ? 'stage-flow-node-pill stage-flow-node-pill-optional'
-    : 'stage-flow-node-pill stage-flow-node-pill-enabled'
-  const pillLabel = stage.optional ? 'opt-in' : 'on'
-
-  return (
-    <>
-      {summary ? (
-        <span className="stage-flow-node-summary" title={summary}>{summary}</span>
-      ) : (
-        <span className="stage-flow-node-summary" />
-      )}
-      <span className={pillClass}>{pillLabel}</span>
-    </>
-  )
-}
-
-function _traceFooter(result: StageResult | undefined) {
-  if (!result) {
-    return <span className="stage-flow-node-trace-label stage-flow-node-trace-label-dim">—</span>
-  }
-  if (result.status === 'error') {
-    return <span className="stage-flow-node-trace-label stage-flow-node-trace-label-err">error</span>
-  }
-  if (result.status === 'running') {
-    return <span className="stage-flow-node-trace-label stage-flow-node-trace-label-run">running…</span>
-  }
-  return (
-    <>
-      {result.duration_ms !== undefined && (
-        <span className="stage-flow-node-summary">{formatDuration(result.duration_ms)}</span>
-      )}
-      {result.metric && (
-        <span className="stage-flow-node-trace-label stage-flow-node-trace-label-dim">
-          {result.metric}
-        </span>
-      )}
-      {result.status === 'skipped' && (
-        <span className="stage-flow-node-trace-label stage-flow-node-trace-label-dim">skip</span>
-      )}
-    </>
   )
 }

@@ -17,7 +17,7 @@ import type { ConfigState, DiscoveryResponse, Document, DynamicField } from '../
 
 // ====== Local Project Imports ======
 import { ConfigHistoryPanel } from './ConfigHistoryPanel'
-import { PipelineFlowGraph } from './PipelineFlowGraph'
+import { PipelineCanvas } from './PipelineCanvas'
 import { S0Panel } from './panels/S0Panel'
 import { S1Panel } from './panels/S1Panel'
 import { S2Panel } from './panels/S2Panel'
@@ -339,8 +339,8 @@ export function PipelineTab({
         </>
       )}
 
-      {/* ── Pipeline flow graph ── */}
-      <PipelineFlowGraph
+      {/* ── Pipeline canvas (react-flow) ── */}
+      <PipelineCanvas
         stages={INGESTION_STAGES}
         mode={mode}
         stageResults={stageResults}

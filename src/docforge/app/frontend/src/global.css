@@ -4851,3 +4851,251 @@ input[type="range"]::-webkit-slider-thumb:hover { background: var(--text-muted);
 .pipeline-history-toggle {
   margin-left: auto;
 }
+
+/* ── React Flow PipelineCanvas ────────────────────────────────────────────── */
+/*
+ * All react-flow overrides are scoped to .pipeline-canvas so they cannot
+ * bleed into any other react-flow instance that may be added later.
+ * Token rule: every value references a CSS custom property — no hex literals.
+ */
+
+/* Outer wrapper — provides height, background, border, rounded corners. */
+.pipeline-canvas {
+  position: relative;
+  height: 420px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;   /* clips react-flow canvas at our rounded corners */
+}
+
+/* Mode pill — floats above the canvas top-right. */
+.pipeline-canvas-badge {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  z-index: 20;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: 9px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  pointer-events: none;
+  user-select: none;
+}
+
+/* Main react-flow element — transparent so .pipeline-canvas bg shows through. */
+.pipeline-canvas .react-flow {
+  background: transparent;
+}
+
+/* Edges — override react-flow's default stroke. */
+.pipeline-canvas .react-flow__edge-path {
+  stroke: var(--border-strong);
+  stroke-width: 1.5;
+}
+.pipeline-canvas .react-flow__edge.selected .react-flow__edge-path {
+  stroke: var(--accent);
+}
+
+/* Controls panel — bottom-right, dark themed. */
+.pipeline-canvas .react-flow__controls {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+.pipeline-canvas .react-flow__controls-button {
+  background: var(--surface);
+  border: none;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-muted);
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.1s, color 0.1s;
+  padding: 0;
+}
+.pipeline-canvas .react-flow__controls-button:last-child { border-bottom: none; }
+.pipeline-canvas .react-flow__controls-button:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.pipeline-canvas .react-flow__controls-button svg { fill: currentColor; }
+
+/* MiniMap — bottom-left, dark themed. */
+.pipeline-canvas .react-flow__minimap {
+  background: var(--surface) !important;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+
+/* ── Stage Flow Node (SFN) — react-flow custom node ───────────────────────── */
+
+.sfn-card {
+  position: relative;
+  width: 175px;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-md);
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+  user-select: none;
+}
+
+.sfn-card:hover {
+  background: var(--surface-raised);
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-lg);
+}
+
+/* Active = this stage's detail panel is open — accent ring. */
+.sfn-active {
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 0 2px var(--accent-soft), var(--shadow-lg) !important;
+}
+
+/* Optional stages (opt-in) — dashed border. */
+.sfn-optional { border-style: dashed; }
+
+/* Read-only stages — no hover effect. */
+.sfn-readonly { cursor: default; }
+.sfn-readonly:hover {
+  background: var(--surface);
+  border-color: var(--border);
+  box-shadow: var(--shadow-md);
+}
+
+/* Trace-mode border colors — applied as modifier classes. */
+.sfn-trace-done    { border-color: var(--s-done) !important; }
+.sfn-trace-running {
+  border-color: var(--accent) !important;
+  animation: pulse 1.8s ease-in-out infinite;
+}
+.sfn-trace-error   { border-color: var(--s-error) !important; }
+.sfn-trace-skipped { opacity: 0.5; }
+
+/* 3 px accent strip — background set inline as a CSS-var reference. */
+.sfn-accent-strip {
+  height: 3px;
+  flex-shrink: 0;
+  border-radius: var(--radius) var(--radius) 0 0;
+}
+
+/* Top row: stage ID badge + icon. */
+.sfn-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 10px 4px;
+}
+
+/* Stage ID badge — mono, small, dimmed. */
+.sfn-id {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  background: var(--border);
+  border-radius: 3px;
+  padding: 1px 4px;
+}
+
+/* Stage icon — emoji or glyph. */
+.sfn-icon { font-size: 15px; line-height: 1; }
+
+/* Stage name — Inter 600. */
+.sfn-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  padding: 0 10px 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Role description — muted, clamped to 2 lines. */
+.sfn-desc {
+  font-size: 10px;
+  color: var(--text-muted);
+  padding: 0 10px;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  flex: 1;
+}
+
+/* Footer row: provider chip + status pill (config) or trace status. */
+.sfn-footer {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 8px 10px 10px;
+  min-height: 30px;
+}
+
+/* Provider/chain chip — mono, accent-colored, truncated. */
+.sfn-summary {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--accent);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+/* Status pill — ON / OPT-IN. */
+.sfn-pill {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 1px 5px;
+  border-radius: 3px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.sfn-pill-on  { color: var(--s-done);    background: var(--s-done-soft); }
+.sfn-pill-opt { color: var(--s-pending); background: rgba(148, 163, 184, 0.1); }
+
+/* Trace footer labels. */
+.sfn-tdur { font-size: 10px; color: var(--text-muted); }
+.sfn-tmet { font-size: 10px; color: var(--text-dim); }
+.sfn-terr { font-size: 10px; color: var(--s-error); }
+.sfn-trun { font-size: 10px; color: var(--s-running); }
+.sfn-tdim { font-size: 10px; color: var(--text-dim); }
+
+/* Handles — 8 px subtle dots at node edges. */
+.sfn-handle {
+  width: 8px !important;
+  height: 8px !important;
+  background: var(--border-strong) !important;
+  border: 2px solid var(--surface) !important;
+  border-radius: 50% !important;
+  min-width: unset !important;
+  min-height: unset !important;
+  transition: background 0.15s;
+}
+.sfn-card:hover .sfn-handle {
+  background: var(--accent) !important;
+}
+

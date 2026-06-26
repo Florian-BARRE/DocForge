@@ -132,6 +132,16 @@ CSS classes for the jobs list live in `global.css` under `/* ── Jobs Tab ─
   as a bulleted list under the "Reindex required" tag. CSS class `.config-applied-reasons` styled in
   global.css. No additional work needed — pre-existing from before UI-2.
 
+## Pipeline canvas (react-flow) — R2
+
+- `@xyflow/react` v12.11.1 in dependencies; stylesheet imported in `main.tsx` before `global.css`.
+- `PipelineCanvas.tsx` — ReactFlow wrapper; nodes at `x=index*240,y=0`; NODE_TYPES at module scope.
+- `StageFlowNode.tsx` — rewritten as react-flow custom node; `StageNodeData extends Record<string,unknown>`.
+- Dead stubs: `PipelineFlowGraph.tsx`, `StageConnector.tsx` (both `export {}`).
+- PRESERVED: `PipelineGraph.tsx` + `StageNode.tsx` still serve SearchTab.
+- All react-flow chrome overridden via CSS vars scoped to `.pipeline-canvas` in global.css.
+- See [[react-flow-canvas]] for full details.
+
 ## Boundary
 
 UI code only. REST contract changes → **backend** agent. Build/serve of `dist/` → **docforge** agent.
