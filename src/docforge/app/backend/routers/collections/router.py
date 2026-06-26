@@ -14,7 +14,7 @@ from sqlalchemy.exc import IntegrityError
 
 # ====== Internal Project Imports ======
 from backend.context import CONTEXT
-from backend.libs.auth import Principal, require_collection_role, require_principal
+from backend.libs.auth import Capability, Principal, require_capability, require_principal
 from backend.libs.utils.error_handling import auto_handle_errors
 from backend.routers.collections.config.models import ConfigStateResponse
 from backend.routers.collections.models import (
@@ -24,7 +24,6 @@ from backend.routers.collections.models import (
     DeleteResponse,
 )
 from common_libs.config.validation import ConfigDocument, ConfigExplainer, ConfigValidator
-from common_libs.storage.postgres.models import GrantRole
 from common_libs.storage.s3.helpers import S3Helpers
 
 router = APIRouter(tags=["collections"])
@@ -36,23 +35,17 @@ async def list_collections(
     principal: Principal = Depends(require_principal),
 ) -> CollectionListResponse:
     """
-    List collections visible to the caller (newest first).
+    List all collections (newest first).
 
-    Root sees every collection; a standard user sees only the collections they hold any grant on
-    (per-collection authorization model). The list is filtered server-side so a user can never
-    enumerate collections they have no access to.
+    This route is not collection-scoped (no collection id in the path), so it cannot be gated by a
+    per-collection capability — any authenticated principal (root login, static root key, or any
+    valid API key) may enumerate the collections. Per-collection authorization is enforced on the
+    scoped routes the caller then hits.
     """
-    # 1. Read all collections, then scope to what the caller may see
+    # 1. Authenticated access only; no per-collection scoping at the list level
+    _ = principal
     async with CONTEXT.postgres.session() as session:
         collections = await CONTEXT.collection_repo.list_all(session)
-        if not principal.is_root:
-            # Standard user — keep only collections they have a grant on.
-            allowed = set(
-                await CONTEXT.grant_repo.list_collection_ids_for_user(
-                    session, principal.user_id
-                )
-            )
-            collections = [c for c in collections if c.id in allowed]
 
     return CollectionListResponse(
         collections=[CollectionResponse.model_validate(c) for c in collections],
@@ -63,7 +56,7 @@ async def list_collections(
 @router.post("/create", response_model=ConfigStateResponse, status_code=201)
 @auto_handle_errors
 async def create_collection(
-    body: CreateCollectionRequest, principal: Principal = Depends(require_principal)
+    body: CreateCollectionRequest, _principal: Principal = Depends(require_principal)
 ) -> ConfigStateResponse:
     """
     Create a collection.  The system metadata fields are always injected server-side; the client
@@ -119,21 +112,6 @@ async def create_collection(
         CONTEXT.logger.warning(f"Collection create rejected (409 duplicate name): name={body.name!r}")
         raise HTTPException(status_code=409, detail=f"A collection named {body.name!r} already exists.")
 
-    # 3b. Creator gets an admin grant on the new collection (GitHub-style ownership). Skipped for
-    # root, which is implicitly admin on every collection — recording a grant would be redundant.
-    if not principal.is_root:
-        async with CONTEXT.postgres.session() as session:
-            await CONTEXT.grant_repo.upsert(
-                session,
-                user_id=principal.user_id,
-                collection_id=collection.id,
-                role=GrantRole.ADMIN.value,
-                granted_by=principal.user_id,
-            )
-        CONTEXT.logger.info(
-            f"Granted creator admin on new collection id={collection.id} user_id={principal.user_id}"
-        )
-
     # 4. Build the transparency envelope: what was provided vs defaulted at creation
     applied = ConfigExplainer.build(
         provided_keys=body.model_fields_set,
@@ -150,7 +128,7 @@ async def create_collection(
 @router.delete(
     "/{collection_id}/delete",
     response_model=DeleteResponse,
-    dependencies=[Depends(require_collection_role(GrantRole.ADMIN))],
+    dependencies=[Depends(require_capability(Capability.COLLECTION_ADMIN))],
 )
 @auto_handle_errors
 async def delete_collection(collection_id: uuid.UUID) -> DeleteResponse:
@@ -193,7 +171,7 @@ async def delete_collection(collection_id: uuid.UUID) -> DeleteResponse:
             )
 
     # 4. Delete the authoritative Postgres rows (cascade documents/blocks/chunks/jobs/metadata_field
-    #    + stage_runs + collection_grant). This is THE step that makes the collection truly gone, so
+    #    + stage_runs). This is THE step that makes the collection truly gone, so
     #    it runs even if the external-store cleanup above hiccupped. If it fails, the route errors
     #    (500 via @auto_handle_errors) and nothing is half-removed from the source of truth.
     async with CONTEXT.postgres.session() as session:

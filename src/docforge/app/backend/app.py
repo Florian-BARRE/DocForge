@@ -11,7 +11,6 @@ from fastapi.routing import APIRoute
 from .libs.auth import require_principal
 from .lifespan import lifespan
 from .routers import (
-    access_router,
     auth_router,
     chunks_router,
     collection_router,
@@ -25,7 +24,6 @@ from .routers import (
     monitoring_router,
     pages_router,
     search_router,
-    users_router,
 )
 from .routers.discovery.overlays import validate_overlay_route_names
 
@@ -74,7 +72,7 @@ def create_app(app_name: str, debug: bool, version: str = "0.1.0", description: 
     #        credentials; its other routes (/me, /keys) carry their own require_principal dependency.
     #      - PROTECTED: every other router gets a router-level require_principal dependency, so an
     #        unauthenticated request is a 401 before any handler runs. Collection-scoped routers add
-    #        per-route require_collection_role(...) checks inside their own router modules.
+    #        per-route require_capability(...) checks inside their own router modules.
     #      When AUTH_ENABLED is false, require_principal injects a synthetic root — full rétro-compat.
     auth = [Depends(require_principal)]
     V1 = "/api/v1"
@@ -84,13 +82,11 @@ def create_app(app_name: str, debug: bool, version: str = "0.1.0", description: 
     app.include_router(router=health_router,    prefix=f"{V1}/health")
     app.include_router(router=auth_router,      prefix=f"{V1}/auth")
     # Protected surfaces — require an authenticated principal.
-    app.include_router(router=users_router,      prefix=f"{V1}/users")
     app.include_router(router=discovery_router, prefix=f"{V1}/discovery", dependencies=auth)
     app.include_router(router=collection_router,   prefix=COL, dependencies=auth)
     app.include_router(router=config_router,     prefix=f"{COL}/{{collection_id}}/config", dependencies=auth)
     app.include_router(router=limits_router,      prefix=f"{COL}/{{collection_id}}/limits", dependencies=auth)
-    app.include_router(router=access_router,      prefix=f"{COL}/{{collection_id}}/access", dependencies=auth)
-    # document_router authenticates PER-ROUTE (each route carries its own require_collection_role,
+    # document_router authenticates PER-ROUTE (each route carries its own require_capability,
     # which chains to require_principal) — NOT at include level. This is required because its SSE
     # /stream route needs the header-OR-query SSE dependency, and an include-level header-only
     # require_principal would 401 the header-less EventSource before that route's own dep ran.

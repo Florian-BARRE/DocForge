@@ -9,17 +9,16 @@ from fastapi import APIRouter, Depends, HTTPException
 
 # ====== Internal Project Imports ======
 from backend.context import CONTEXT
-from backend.libs.auth import require_collection_role
+from backend.libs.auth import Capability, require_capability
 from backend.libs.utils.error_handling import auto_handle_errors
 from backend.routers.collections.documents.files.models import PresignedUrlResponse
-from common_libs.storage.postgres.models import GrantRole
 from common_libs.storage.s3.helpers import S3Helpers
 
-# Every artefact route (original / markdown / pdf / figure crop) is a read — enforce 'read' once
-# at the router level so all four endpoints inherit it.
+# Every artefact route (original / markdown / pdf / figure crop) is part of documents.read — enforce
+# the capability once at the router level so all four endpoints inherit it.
 router = APIRouter(
     tags=["files"],
-    dependencies=[Depends(require_collection_role(GrantRole.READ))],
+    dependencies=[Depends(require_capability(Capability.DOCUMENTS_READ))],
 )
 
 

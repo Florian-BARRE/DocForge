@@ -12,17 +12,16 @@ from fastapi import APIRouter, Depends, HTTPException
 
 # ====== Internal Project Imports ======
 from backend.context import CONTEXT
-from backend.libs.auth import require_collection_role
+from backend.libs.auth import Capability, require_capability
 from backend.libs.utils.error_handling import auto_handle_errors
 from backend.routers.collections.limits.models import (
     CollectionLimitsResponse,
     CollectionLimitsUpdateRequest,
 )
-from common_libs.storage.postgres.models import GrantRole
 
-# Viewing the caps + live usage needs 'read'; editing resource limits is an admin policy change.
-_READ = [Depends(require_collection_role(GrantRole.READ))]
-_ADMIN = [Depends(require_collection_role(GrantRole.ADMIN))]
+# Resource limits are collection-administration policy — both viewing the caps + live usage and
+# editing them require collection.admin (per the capability taxonomy: "manage limits").
+_ADMIN = [Depends(require_capability(Capability.COLLECTION_ADMIN))]
 
 router = APIRouter(tags=["collections"])
 
@@ -43,7 +42,7 @@ async def _live_usage(collection_id: uuid.UUID) -> int:
     return counts.get("running", 0) + counts.get("pending", 0)
 
 
-@router.get("", response_model=CollectionLimitsResponse, dependencies=_READ)
+@router.get("", response_model=CollectionLimitsResponse, dependencies=_ADMIN)
 @auto_handle_errors
 async def get_limits(collection_id: uuid.UUID) -> CollectionLimitsResponse:
     """

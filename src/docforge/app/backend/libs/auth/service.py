@@ -1,8 +1,9 @@
 # ====== Code Summary ======
-# AuthService — the heart of the auth layer. Owns credential resolution (root static key | JWT |
-# DB API key), username/password authentication, root bootstrap, and the per-collection effective
-# role computation. Pure-ish service: it opens its own DB sessions via the injected PostgresClient
-# and delegates persistence to the three auth repositories. Never logs plaintext secrets.
+# AuthService — the heart of the auth layer. Owns credential resolution (root static key | password
+# JWT | DB API key), username/password authentication, and root bootstrap. In the keys-only model
+# the SOLE delegated-access mechanism is the API key: its per-collection capability scope rides on
+# the resolved Principal. Pure-ish service: it opens its own DB sessions via the injected
+# PostgresClient and delegates persistence to the user + api-key repositories. Never logs secrets.
 
 # ====== Standard Library Imports ======
 from __future__ import annotations
@@ -11,17 +12,15 @@ import hashlib
 import hmac
 import secrets
 import uuid
-from dataclasses import replace
 
 # ====== Third-Party Library Imports ======
 from loggerplusplus import LoggerClass
 
 # ====== Internal Project Imports ======
 from common_libs.storage.postgres.client import PostgresClient
-from common_libs.storage.postgres.models import GrantRole, UserRole
+from common_libs.storage.postgres.models import UserRole
 from common_libs.storage.postgres.repositories import (
     ApiKeyRepository,
-    CollectionGrantRepository,
     UserRepository,
 )
 
@@ -40,10 +39,11 @@ class AuthService(LoggerClass):
     """
     Authentication + authorization service.
 
-    Resolves request credentials into a ``Principal``, authenticates username/password logins,
-    bootstraps the root account at startup, and computes a user's effective role on a collection.
-    It opens short-lived sessions through the injected ``PostgresClient`` so callers (routes,
-    dependencies) never have to thread a session into auth calls.
+    Resolves request credentials into a ``Principal``, authenticates username/password logins, and
+    bootstraps the single root account at startup. It opens short-lived sessions through the injected
+    ``PostgresClient`` so callers (routes, dependencies) never have to thread a session into auth
+    calls. Per-collection authorization is no longer a DB lookup: it is the capability scope carried
+    on the Principal (None = full access; a dict = a scoped API key).
     """
 
     def __init__(
@@ -52,7 +52,6 @@ class AuthService(LoggerClass):
         postgres: PostgresClient,
         user_repo: UserRepository,
         api_key_repo: ApiKeyRepository,
-        grant_repo: CollectionGrantRepository,
         root_api_key: str,
         jwt_secret: str,
         jwt_ttl_minutes: int,
@@ -66,7 +65,6 @@ class AuthService(LoggerClass):
             postgres (PostgresClient): Session factory for all auth DB access.
             user_repo (UserRepository): Users data access.
             api_key_repo (ApiKeyRepository): API keys data access.
-            grant_repo (CollectionGrantRepository): Per-collection grants data access.
             root_api_key (str): Static break-glass root Bearer key (constant-time compared).
             jwt_secret (str): HS256 signing secret for minted access tokens.
             jwt_ttl_minutes (int): Lifetime of minted access tokens in minutes.
@@ -77,7 +75,6 @@ class AuthService(LoggerClass):
         self._postgres = postgres
         self._user_repo = user_repo
         self._api_key_repo = api_key_repo
-        self._grant_repo = grant_repo
         self._root_api_key = root_api_key
         self._jwt_secret = jwt_secret
         self._jwt_ttl_minutes = jwt_ttl_minutes
@@ -105,12 +102,15 @@ class AuthService(LoggerClass):
         """
         return hashlib.sha256(plaintext_key.encode("utf-8")).hexdigest()
 
-    async def _principal_from_user_id(self, user_id: uuid.UUID) -> Principal | None:
+    async def _principal_from_user_id(
+        self, user_id: uuid.UUID, *, permissions: dict | None = None
+    ) -> Principal | None:
         """
         Load an active user by id and build its Principal (None if missing/inactive).
 
         Args:
             user_id (uuid.UUID): The user id to resolve.
+            permissions (dict | None): The API-key permission scope to attach (None = full access).
 
         Returns:
             Principal | None: The principal, or None when the user is unknown or deactivated.
@@ -121,14 +121,17 @@ class AuthService(LoggerClass):
         if user is None or not user.is_active:
             return None
 
-        # 2. Project the ORM row into the immutable principal
+        # 2. Project the ORM row into the immutable principal, carrying the key's scope
         return Principal.from_user(
-            user_id=user.id, username=user.username, role=user.role
+            user_id=user.id, username=user.username, role=user.role, permissions=permissions
         )
 
     async def _resolve_jwt(self, bearer: str) -> Principal | None:
         """
-        Resolve a Bearer value as a JWT (step 2 of credential resolution).
+        Resolve a Bearer value as a password-login JWT (step 2 of credential resolution).
+
+        A JWT is only ever minted by ``/auth/login`` for the root account, so it always resolves to
+        a full-access (unscoped) principal.
 
         Args:
             bearer (str): The raw Bearer token value.
@@ -150,32 +153,22 @@ class AuthService(LoggerClass):
         except (ValueError, TypeError):
             return None
 
-        # 3. Resolve the user behind the subject (the resolved identity IS the target user —
-        #    impersonation tokens carry the target as the subject, so /auth/keys etc. operate
-        #    natively as that user with exactly the target's permissions).
-        principal = await self._principal_from_user_id(user_id)
-        if principal is None:
-            return None
-
-        # 4. Carry the optional impersonation audit claim onto the principal (display only).
-        #    A malformed claim is ignored — it must never break an otherwise valid token.
-        impersonator = claims.get("impersonated_by")
-        if impersonator:
-            try:
-                principal = replace(principal, impersonated_by=uuid.UUID(str(impersonator)))
-            except (ValueError, TypeError):
-                pass
-        return principal
+        # 3. Resolve the user behind the subject (full access — a login JWT carries no key scope)
+        return await self._principal_from_user_id(user_id)
 
     async def _resolve_api_key(self, bearer: str) -> Principal | None:
         """
         Resolve a Bearer value as a DB API key (step 3 of credential resolution).
 
+        The key's stored ``permissions`` scope is attached to the resolved principal so the
+        capability dependencies can authorize per collection. A NULL scope (legacy key) yields a
+        full-access principal for backward compatibility.
+
         Args:
             bearer (str): The raw API key value.
 
         Returns:
-            Principal | None: The owning principal if the key exists and is not revoked.
+            Principal | None: The owning principal (scoped by the key) if the key exists/active.
         """
         # 1. Hash then look up a non-revoked key
         key_hash = self._hash_api_key(bearer)
@@ -186,9 +179,10 @@ class AuthService(LoggerClass):
             # 2. Best-effort last-used telemetry on the hot auth path (same session/txn)
             await self._api_key_repo.touch_last_used(session, api_key.id)
             owner_id = api_key.user_id
+            permissions = api_key.permissions
 
-        # 3. Resolve the key's owner
-        return await self._principal_from_user_id(owner_id)
+        # 3. Resolve the key's owner, carrying the key's capability scope (None = full access)
+        return await self._principal_from_user_id(owner_id, permissions=permissions)
 
     # ── Public ────────────────────────────────────────────────────────────────
 
@@ -222,37 +216,6 @@ class AuthService(LoggerClass):
             subject=str(principal.user_id),
             secret=self._jwt_secret,
             ttl_minutes=self._jwt_ttl_minutes,
-        )
-
-    def mint_impersonation_token(
-        self, *, target: Principal, impersonator_id: uuid.UUID
-    ) -> str:
-        """
-        Mint a JWT that authenticates AS the target user, tagged with the impersonating root.
-
-        The token's subject is the TARGET user's id, so on every subsequent request it resolves to
-        the target principal with exactly the target's permissions — root gains no extra power, it
-        simply acts as that user. An ``impersonated_by`` claim records the originating root for
-        audit/display (surfaced by ``/auth/me``); a ``role`` claim echoes the target's global role
-        informationally (authorization always re-reads the live DB role, never trusts the claim).
-        The token uses the standard access-token TTL (``AUTH_JWT_TTL_MINUTES``) — an impersonation
-        session is an ordinary session, not a privileged long-lived one.
-
-        Args:
-            target (Principal): The user to impersonate (becomes the token subject).
-            impersonator_id (uuid.UUID): The id of the root minting the token (audit trail).
-
-        Returns:
-            str: The signed JWT access token for the target user.
-        """
-        return TokenHelpers.mint(
-            subject=str(target.user_id),
-            secret=self._jwt_secret,
-            ttl_minutes=self._jwt_ttl_minutes,
-            extra_claims={
-                "role": target.global_role.value,
-                "impersonated_by": str(impersonator_id),
-            },
         )
 
     async def authenticate(self, username: str, password: str) -> Principal | None:
@@ -292,9 +255,10 @@ class AuthService(LoggerClass):
         Resolve a raw Bearer credential into a Principal, in priority order.
 
         Resolution order:
-            1. Static root API key (constant-time compare) → the bootstrapped root user.
-            2. Valid JWT → the user named by its subject.
-            3. DB API key (hash lookup, non-revoked) → the key's owner.
+            1. Static root API key (constant-time compare) → the bootstrapped root user (full access).
+            2. Valid password JWT → the user named by its subject (full access).
+            3. DB API key (hash lookup, non-revoked) → the key's owner, scoped by the key's
+               ``permissions`` (NULL scope = full access, back-compat).
         The first match wins; if none match, the credential is invalid.
 
         Args:
@@ -308,9 +272,9 @@ class AuthService(LoggerClass):
             return None
 
         # 1. Static root key — constant-time compare guards against timing attacks. A match resolves
-        #    to the bootstrapped root account (break-glass / tests / MCP). The root id is cached at
-        #    bootstrap, so the hot path builds the Principal from config WITHOUT a DB round-trip. The
-        #    cache is only empty if bootstrap_root() never ran (misconfiguration) — then fail closed.
+        #    to the bootstrapped root account (break-glass / tests / MCP) with FULL access. The root
+        #    id is cached at bootstrap, so the hot path builds the Principal from config WITHOUT a DB
+        #    round-trip. The cache is only empty if bootstrap_root() never ran — then fail closed.
         if hmac.compare_digest(bearer, self._root_api_key):
             if self._root_user_id is not None:
                 return Principal.from_user(
@@ -324,12 +288,12 @@ class AuthService(LoggerClass):
             )
             return None
 
-        # 2. JWT access token
+        # 2. Password JWT (full access)
         jwt_principal = await self._resolve_jwt(bearer)
         if jwt_principal is not None:
             return jwt_principal
 
-        # 3. DB API key
+        # 3. DB API key (scoped by its permissions)
         return await self._resolve_api_key(bearer)
 
     async def bootstrap_root(self) -> None:
@@ -351,30 +315,3 @@ class AuthService(LoggerClass):
         # 3. Cache the root id so the static-root-key auth path needs no per-request DB lookup
         self._root_user_id = root.id
         self.logger.info(f"Root account ready: username={root.username!r} user_id={root.id}")
-
-    async def effective_collection_role(
-        self, principal: Principal, collection_id: uuid.UUID
-    ) -> GrantRole | None:
-        """
-        Compute a principal's effective role on a collection.
-
-        Root is implicitly ``admin`` on every collection. A standard user's effective role is the
-        role of their grant on that collection, or None when they hold no grant (no access).
-
-        Args:
-            principal (Principal): The authenticated principal.
-            collection_id (uuid.UUID): The target collection.
-
-        Returns:
-            GrantRole | None: The effective role, or None when the user has no access.
-        """
-        # 1. Root short-circuit — implicit admin everywhere
-        if principal.is_root:
-            return GrantRole.ADMIN
-
-        # 2. Otherwise the effective role is exactly the user's stored grant (None = no access)
-        async with self._postgres.session() as session:
-            grant = await self._grant_repo.get(session, principal.user_id, collection_id)
-        if grant is None:
-            return None
-        return GrantRole(grant.role)

@@ -7,9 +7,6 @@ from .health.router import router as health_router
 # --------------------- Auth ---------------------- #
 from .auth.router import router as auth_router
 
-# --------------------- Users --------------------- #
-from .users.router import router as users_router
-
 # ------------------- Discovery -------------------- #
 from .discovery.router import router as discovery_router
 
@@ -21,9 +18,6 @@ from .collections.config.router import router as config_router
 
 # ----------------- Collection limits -------------- #
 from .collections.limits.router import router as limits_router
-
-# ----------------- Collection access -------------- #
-from .collections.access.router import router as access_router
 
 # -------------------- Documents ------------------ #
 from .collections.documents.router import router as document_router
@@ -50,12 +44,10 @@ from .monitoring.router import router as monitoring_router
 __all__ = [
     "health_router",
     "auth_router",
-    "users_router",
     "discovery_router",
     "collection_router",
     "config_router",
     "limits_router",
-    "access_router",
     "document_router",
     "search_router",
     "files_router",

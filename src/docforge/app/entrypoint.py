@@ -40,7 +40,6 @@ from common_libs.storage.postgres.repositories import (
     ApiKeyRepository,
     BlockRepository,
     ChunkRepository,
-    CollectionGrantRepository,
     CollectionRepository,
     ConfigRepository,
     DocumentRepository,
@@ -112,12 +111,10 @@ def _build_app() -> FastAPI:
     # API key). The root account is bootstrapped in lifespan once the DB connection is live.
     CONTEXT.user_repo = UserRepository()
     CONTEXT.api_key_repo = ApiKeyRepository()
-    CONTEXT.grant_repo = CollectionGrantRepository()
     CONTEXT.auth_service = AuthService(
         postgres=CONTEXT.postgres,
         user_repo=CONTEXT.user_repo,
         api_key_repo=CONTEXT.api_key_repo,
-        grant_repo=CONTEXT.grant_repo,
         root_api_key=RUNTIME_CONFIG.AUTH_ROOT_API_KEY,
         jwt_secret=RUNTIME_CONFIG.AUTH_JWT_SECRET,
         jwt_ttl_minutes=RUNTIME_CONFIG.AUTH_JWT_TTL_MINUTES,

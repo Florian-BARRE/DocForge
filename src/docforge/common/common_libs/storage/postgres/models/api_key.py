@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 
 # ====== Third-Party Library Imports ======
 from sqlalchemy import DateTime, ForeignKey, Text, func
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 # ====== Local Project Imports ======
@@ -55,6 +55,12 @@ class ApiKeyModel(Base):
     key_hash: Mapped[str] = mapped_column(Text, nullable=False, index=True)
     # First characters of the key (e.g. 8 chars) — displayed in the UI to identify the key.
     prefix: Mapped[str] = mapped_column(Text, nullable=False)
+    # Per-collection capability scope (keys-only authz model). Shape:
+    #   {"entries": [{"collection_id": "*"|"<uuid>", "role": "read"|"write"|"admin"|"custom",
+    #                 "capabilities": ["documents.read", ...]}]}
+    # NULL = FULL access (the static root env key, or a legacy key created before scoping existed)
+    # — kept full for backward compatibility. A non-NULL scope restricts the key per collection.
+    permissions: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

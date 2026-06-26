@@ -1,7 +1,7 @@
 # ====== Code Summary ======
 # SQLAlchemy ORM model for an application user (authentication identity).
 # Stores the argon2 password hash (never plaintext), a global role, and an
-# active flag. Users own API keys and per-collection grants (both cascade).
+# active flag. Holds the single root account; owns API keys (cascade).
 
 # ====== Standard Library Imports ======
 from __future__ import annotations
@@ -23,17 +23,16 @@ from .base import Base
 # imports are type-checking only to avoid runtime circular imports.
 if TYPE_CHECKING:
     from .api_key import ApiKeyModel
-    from .collection_grant import CollectionGrantModel
 
 
 class AppUserModel(Base):
     """
     Persisted authentication identity.
 
-    One row per user. The password is stored only as an argon2 hash (this layer never
-    hashes or verifies — it just persists what the auth layer produces). ``role`` is the
-    global role (``root`` | ``user``); per-collection authorization is expressed through
-    the ``collection_grant`` table, not this column.
+    One row per user (in the keys-only model this is the single root account). The password is
+    stored only as an argon2 hash (this layer never hashes or verifies — it just persists what the
+    auth layer produces). ``role`` is the global role (``root`` | ``user``); per-collection
+    authorization is no longer a stored role — it is the capability scope carried on API keys.
     """
 
     __tablename__ = "app_user"
@@ -60,9 +59,4 @@ class AppUserModel(Base):
     # registry once all model modules are imported in the package __init__.
     api_keys: Mapped[list[ApiKeyModel]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
-    )
-    grants: Mapped[list[CollectionGrantModel]] = relationship(
-        back_populates="user",
-        cascade="all, delete-orphan",
-        foreign_keys="CollectionGrantModel.user_id",
     )

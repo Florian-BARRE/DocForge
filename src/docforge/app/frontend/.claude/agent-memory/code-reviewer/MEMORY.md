@@ -1,2 +1,0 @@
-- [SSE / EventBroadcaster review patterns](sse-broadcaster-patterns.md) — fan-out set iteration, silent Redis-drop, justified no-response_model SSE exception
-- [Frontend SSE+polling fallback pattern](frontend-sse-polling-fallback.md) — onerror→polling that never stops after EventSource recovers (double-fetch)

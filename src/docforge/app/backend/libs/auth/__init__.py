@@ -1,16 +1,19 @@
 # -------------------- Models ---------------------- #
 from .models import Principal
 
+# ------------------- Capabilities ----------------- #
+from .capabilities import Capability, CapabilityHelpers, PermissionRole
+
 # -------------------- Service --------------------- #
 from .service import AuthService
 
 # ------------------- Dependencies ----------------- #
 from .dependencies import (
-    require_collection_role,
-    require_collection_role_media,
+    principal_grants_capability,
+    require_capability,
+    require_capability_media,
     require_principal,
     require_principal_sse,
-    require_root,
 )
 
 # -------------------- Helpers --------------------- #
@@ -20,12 +23,15 @@ from .tokens import TokenHelpers
 # ------------------- Public API ------------------- #
 __all__ = [
     "Principal",
+    "Capability",
+    "CapabilityHelpers",
+    "PermissionRole",
     "AuthService",
+    "principal_grants_capability",
+    "require_capability",
+    "require_capability_media",
     "require_principal",
     "require_principal_sse",
-    "require_root",
-    "require_collection_role",
-    "require_collection_role_media",
     "PasswordHelpers",
     "TokenHelpers",
 ]

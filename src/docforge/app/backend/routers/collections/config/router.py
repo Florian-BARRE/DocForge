@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 # ====== Internal Project Imports ======
 from backend.context import CONTEXT
-from backend.libs.auth import require_collection_role
+from backend.libs.auth import Capability, require_capability
 from backend.libs.utils.error_handling import auto_handle_errors
 from backend.routers.collections.config.models import (
     ConfigHistoryResponse,
@@ -23,12 +23,11 @@ from backend.routers.collections.config.models import (
     ConfigVersionSummary,
 )
 from common_libs.config.validation import ConfigDocument, ConfigExplainer, ConfigValidator
-from common_libs.storage.postgres.models import GrantRole
 
-# Reads need 'read' on the collection; config edits (update/rollback) need 'write'. The minimum is
-# declared per-route below so the read/write split is explicit at each endpoint.
-_READ = [Depends(require_collection_role(GrantRole.READ))]
-_WRITE = [Depends(require_collection_role(GrantRole.WRITE))]
+# Reads need config.read on the collection; config edits (update/rollback) need config.write. The
+# capability is declared per-route below so the read/write split is explicit at each endpoint.
+_READ = [Depends(require_capability(Capability.CONFIG_READ))]
+_WRITE = [Depends(require_capability(Capability.CONFIG_WRITE))]
 
 router = APIRouter(tags=["config"])
 

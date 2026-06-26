@@ -46,6 +46,7 @@ metadata:
 
 ## Topic memory files (read on demand)
 
+- [auth_keys_only_capabilities](auth_keys_only_capabilities.md) — AUTH-A keys-only model: capability taxonomy + require_capability enforcement; null=full-access footgun + jobs-cancel cross-collection gap (both pre-existing/by-design — flag as risk not bug); cap↔route map; migration 015
 - [layer_dag](layer_dag.md) — libs layer DAG import rules to enforce, esp. storage vs search
 - [reindex_staleness_coherence](reindex_staleness_coherence.md) — reindex_diff shared between config bump + per-doc staleness; fragile transient `_reindex_reasons`
 - [secret_roundtrip](secret_roundtrip.md) — `ConfigDocument.merge_patch` preserves redacted secrets — validated, do NOT flag

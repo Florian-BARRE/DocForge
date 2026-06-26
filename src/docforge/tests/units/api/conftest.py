@@ -20,7 +20,6 @@ from backend.context import CONTEXT
 from backend.libs.admission import ResourceAdmitter
 from common_libs.config.validation import ConfigValidator
 from backend.routers import (
-    access_router,
     auth_router,
     chunks_router,
     collection_router,
@@ -34,7 +33,6 @@ from backend.routers import (
     monitoring_router,
     pages_router,
     search_router,
-    users_router,
 )
 
 
@@ -57,12 +55,10 @@ def _make_test_app() -> FastAPI:
     DOC = f"{COL}/{{collection_id}}/documents"
     app.include_router(router=health_router,    prefix=f"{V1}/health")
     app.include_router(router=auth_router,      prefix=f"{V1}/auth")
-    app.include_router(router=users_router,     prefix=f"{V1}/users")
     app.include_router(router=discovery_router, prefix=f"{V1}/discovery")
     app.include_router(router=collection_router,   prefix=COL)
     app.include_router(router=config_router,     prefix=f"{COL}/{{collection_id}}/config")
     app.include_router(router=limits_router,      prefix=f"{COL}/{{collection_id}}/limits")
-    app.include_router(router=access_router,     prefix=f"{COL}/{{collection_id}}/access")
     app.include_router(router=document_router,   prefix=DOC)
     app.include_router(router=search_router,     prefix=DOC)
     app.include_router(router=files_router,      prefix=f"{DOC}/{{document_id}}")
@@ -93,7 +89,6 @@ def inject_context(
     mock_config_repo: MagicMock,
     mock_user_repo: MagicMock,
     mock_api_key_repo: MagicMock,
-    mock_grant_repo: MagicMock,
     mock_auth_service: MagicMock,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -158,7 +153,6 @@ def inject_context(
     # so per-test auth-on tests can override individual mocks as needed.
     monkeypatch.setattr(CONTEXT, "user_repo", mock_user_repo, raising=False)
     monkeypatch.setattr(CONTEXT, "api_key_repo", mock_api_key_repo, raising=False)
-    monkeypatch.setattr(CONTEXT, "grant_repo", mock_grant_repo, raising=False)
     monkeypatch.setattr(CONTEXT, "auth_service", mock_auth_service, raising=False)
     monkeypatch.setattr(CONTEXT, "stage_engine", MagicMock(), raising=False)
     # Observability handles (Brique A) — async views; tests that exercise monitoring
@@ -229,36 +223,18 @@ def mock_api_key_repo() -> MagicMock:
 
 
 @pytest.fixture
-def mock_grant_repo() -> MagicMock:
-    """Mock CollectionGrantRepository with all auth-layer async methods."""
-    repo = MagicMock()
-    repo.get = AsyncMock(return_value=None)
-    repo.list_collection_ids_for_user = AsyncMock(return_value=[])
-    repo.list_for_collection = AsyncMock(return_value=[])
-    repo.upsert = AsyncMock()
-    repo.delete = AsyncMock(return_value=False)
-    return repo
-
-
-@pytest.fixture
 def mock_auth_service() -> MagicMock:
     """
-    Mock AuthService.
+    Mock AuthService for the keys-only authz model.
 
-    ``effective_collection_role`` defaults to ``GrantRole.ADMIN`` so that existing
-    collection-scoped routes pass their auth gate when AUTH_ENABLED=False injects the
-    synthetic root principal (root is implicitly admin everywhere in the real service too).
-
-    Tests that need auth-on behaviour override ``resolve_principal``,
-    ``effective_collection_role``, or ``CONTEXT.RUNTIME_CONFIG.AUTH_ENABLED`` per test.
+    With AUTH_ENABLED=False (the default) require_principal injects a synthetic full-access root, so
+    these stubs are unused. Auth-on tests override ``resolve_principal`` to return a scoped/full
+    principal; per-collection authorization is then driven by the principal's ``permissions`` scope
+    (no DB role lookup), so no ``effective_collection_role`` stub is needed.
     """
-    from common_libs.storage.postgres.models import GrantRole
-
     svc = MagicMock()
     svc.resolve_principal = AsyncMock(return_value=None)
     svc.authenticate = AsyncMock(return_value=None)
-    # Default: admin everywhere — mirrors AuthService.effective_collection_role for a root principal.
-    svc.effective_collection_role = AsyncMock(return_value=GrantRole.ADMIN)
     svc.generate_api_key = MagicMock(return_value=("plaintext-key", "hash123", "plaintex"))
     svc.mint_token = MagicMock(return_value="minted-jwt-token")
     return svc

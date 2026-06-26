@@ -16,7 +16,13 @@ from sse_starlette.sse import EventSourceResponse
 
 # ====== Internal Project Imports ======
 from backend.context import CONTEXT
-from backend.libs.auth import Principal, require_collection_role, require_principal_sse
+from backend.libs.auth import (
+    Capability,
+    Principal,
+    principal_grants_capability,
+    require_capability,
+    require_principal_sse,
+)
 from backend.libs.utils.error_handling import auto_handle_errors
 from backend.libs.utils.sse import SseHelpers
 from backend.routers.collections.documents.helpers import DocumentOps
@@ -31,15 +37,14 @@ from backend.routers.collections.documents.models import (
     ReingestRequest,
     ReingestResponse,
 )
-from common_libs.storage.postgres.models import GrantRole
 from common_libs.storage.s3.helpers import S3Helpers
 from common_libs.config.admission import AdmissionValidator
 from backend.routers.jobs.models import JobResponse
 
-# Reads (list/get/stream) need 'read'; ingest/update/reingest/delete mutate the collection's
-# documents and need 'write'. The minimum is declared per-route so each endpoint is explicit.
-_READ = [Depends(require_collection_role(GrantRole.READ))]
-_WRITE = [Depends(require_collection_role(GrantRole.WRITE))]
+# Reads (list/get/stream) need the documents.read capability; ingest/update/reingest/delete mutate
+# the collection's documents and need documents.write. Declared per-route so each endpoint is explicit.
+_READ = [Depends(require_capability(Capability.DOCUMENTS_READ))]
+_WRITE = [Depends(require_capability(Capability.DOCUMENTS_WRITE))]
 
 router = APIRouter(tags=["documents"])
 
@@ -199,7 +204,7 @@ async def list_documents(
 # dynamic "/{document_id}" route below, otherwise "stream" would be captured as a document id.
 # Auth: a browser EventSource cannot send headers, so this route authenticates via
 # require_principal_sse (header OR ?token=) instead of the header-only _READ gate, then performs the
-# per-collection READ authorization in-body using the resolved principal.
+# per-collection documents.read authorization in-body using the resolved principal.
 @router.get("/stream")
 @auto_handle_errors
 async def stream_documents(
@@ -220,16 +225,20 @@ async def stream_documents(
         EventSourceResponse: Collection-scoped live event stream.
 
     Raises:
-        HTTPException: 403 when the caller lacks at least the 'read' role on the collection.
+        HTTPException: 403 when the caller's key lacks documents.read on the collection.
     """
-    # 1. Per-collection READ authorization (done in-body since the SSE auth dep replaces the role gate)
-    effective = await CONTEXT.auth_service.effective_collection_role(principal, collection_id)
-    if effective is None:
-        # 403 — no grant on this collection (we do not 404 to avoid leaking existence).
+    # 1. Per-collection documents.read authorization (done in-body since the SSE auth dep replaces
+    #    the capability gate). A full-access principal passes; a scoped key must grant documents.read.
+    if not principal_grants_capability(principal, collection_id, Capability.DOCUMENTS_READ):
+        # 403 — the key's scope does not grant documents.read on this collection.
         CONTEXT.logger.warning(
-            f"Stream rejected (403 no grant): user_id={principal.user_id} collection={collection_id}"
+            f"Stream rejected (403 missing capability): user_id={principal.user_id} "
+            f"collection={collection_id} required={Capability.DOCUMENTS_READ.value}"
         )
-        raise HTTPException(status_code=403, detail="You do not have access to this collection.")
+        raise HTTPException(
+            status_code=403,
+            detail="Your API key is not authorized for 'documents.read' on this collection.",
+        )
 
     # 2. Filter the global bus down to events for this collection
     return SseHelpers.stream(

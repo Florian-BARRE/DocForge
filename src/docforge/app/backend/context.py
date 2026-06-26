@@ -28,7 +28,6 @@ from common_libs.storage.postgres.repositories import (
     ApiKeyRepository,
     BlockRepository,
     ChunkRepository,
-    CollectionGrantRepository,
     CollectionRepository,
     ConfigRepository,
     DocumentRepository,
@@ -72,10 +71,9 @@ class CONTEXT:
     chunk_repo: ChunkRepository
     job_repo: JobRepository
 
-    # ── Auth (authentication + per-collection authorization) ──────────────────
+    # ── Auth (authentication + API-key capability authorization) ──────────────
     user_repo: UserRepository
     api_key_repo: ApiKeyRepository
-    grant_repo: CollectionGrantRepository
     auth_service: AuthService
 
     # ── Pipeline (P2 / P3 / P4) ─────────────────────────────────────────────

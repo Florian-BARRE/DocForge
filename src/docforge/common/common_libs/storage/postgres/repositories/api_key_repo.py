@@ -40,6 +40,7 @@ class ApiKeyRepository(LoggerClass):
         name: str,
         key_hash: str,
         prefix: str,
+        permissions: dict | None = None,
     ) -> ApiKeyModel:
         """
         Persist a new API key record and return it.
@@ -50,6 +51,7 @@ class ApiKeyRepository(LoggerClass):
             name (str): Human-readable label.
             key_hash (str): Pre-computed hash of the key (never hashed here).
             prefix (str): First characters of the key, safe to display.
+            permissions (dict | None): Per-collection capability scope (None = full access).
 
         Returns:
             ApiKeyModel: The created and flushed record.
@@ -60,6 +62,7 @@ class ApiKeyRepository(LoggerClass):
             name=name,
             key_hash=key_hash,
             prefix=prefix,
+            permissions=permissions,
         )
         session.add(api_key)
         await session.flush()

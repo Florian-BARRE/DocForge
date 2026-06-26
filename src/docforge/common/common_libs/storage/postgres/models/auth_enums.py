@@ -1,8 +1,9 @@
 # ====== Code Summary ======
-# String enumerations for the authentication / authorization layer.
-# These define the allowed values for the two role columns (global user role and
-# per-collection grant role). The DB columns themselves stay plain VARCHAR — these
-# enums are the single source of truth for the legal string values in Python code.
+# String enumeration for the authentication layer.
+# Defines the allowed values for the global user-role column. The DB column itself stays plain
+# VARCHAR — this enum is the single source of truth for the legal string values in Python code.
+# (Per-collection authorization is no longer a stored role: it is the capability scope carried on
+# API keys — see backend.libs.auth.capabilities.)
 
 # ====== Standard Library Imports ======
 from __future__ import annotations
@@ -14,28 +15,13 @@ class UserRole(StrEnum):
     """
     Global role of an application user.
 
+    In the keys-only model the only login account is root; ``USER`` is retained for schema /
+    backward-compatibility on the ``app_user.role`` column.
+
     Attributes:
         ROOT: Superuser — full administrative access across the whole instance.
-        USER: Standard user — access is scoped by per-collection grants.
+        USER: Standard user (legacy / non-login).
     """
 
     ROOT = "root"
     USER = "user"
-
-
-class GrantRole(StrEnum):
-    """
-    Per-collection role granted to a user (GitHub-collaborator model).
-
-    Ordered from least to most privileged: a higher role implies the capabilities
-    of the lower ones (enforcement lives in the later auth layer, not here).
-
-    Attributes:
-        READ: May read/search the collection and its documents.
-        WRITE: READ + ingest/update/delete documents in the collection.
-        ADMIN: WRITE + manage the collection's settings and its collaborators.
-    """
-
-    READ = "read"
-    WRITE = "write"
-    ADMIN = "admin"

@@ -40,6 +40,19 @@
 - Admin area: `components/admin/AdminView.tsx` (tabs) + `UsersPanel.tsx` (root-only) +
   `ApiKeysPanel.tsx` (any user) + `CollectionAccessPanel.tsx` (root or collection admin).
   Gated in `App.tsx` by `user.role === 'root'` for the Users tab; `canAdmin()` for Collaborators.
+- **UserDetailPanel (UI-6)**: root-admin "manage one user in one place" drawer. Three files:
+  `UserDetailPanel.tsx` (orchestrator, uses `<Drawer isOpen={true}>` — conditionally mounted in
+  AdminView so isOpen is always true when rendered) + `UserKeysSection.tsx` (create/list/revoke API
+  keys FOR a user, via `listUserKeys/createUserKey/revokeUserKey` in client.ts) +
+  `UserAccessSection.tsx` (list grants + grant/change-role/revoke per-collection, via
+  `listUserGrants/setCollectionAccess/revokeCollectionAccess`). `UserGrant` + `UserGrantList`
+  types added to `api/types.ts`. `refreshSignal` counter pattern in AdminView: parent increments
+  to force UsersPanel reload without prop-drilling. UsersPanel: active users first, deactivated
+  hidden by default with "Show deactivated (N)" chip toggle. Row click fires `onUserSelect` via
+  `.admin-user-name` click (not row center — actions div has stopPropagation).
+- **Multiple `.slide-panel` elements in the DOM**: several Drawers/panels always present but closed.
+  Playwright tests (and any imperative DOM queries) MUST scope selectors to `.slide-panel-open`
+  to avoid matching closed panels (e.g. `.slide-panel-open .slide-panel-title`, not `.slide-panel-title`).
 - **Role-based UI prop threading**: `App.tsx` computes `write = canWrite(user, grants, activeCollectionId)`
   from `useAuth()` + `permissions.ts`, then passes it as `canWrite` prop to `DocumentsTab` and
   `PipelineTab`. Components accept `canWrite?: boolean` (default true) and gate:

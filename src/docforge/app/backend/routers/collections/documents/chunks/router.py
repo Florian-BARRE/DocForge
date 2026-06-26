@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 # ====== Internal Project Imports ======
 from backend.context import CONTEXT
-from backend.libs.auth import require_collection_role
+from backend.libs.auth import Capability, require_capability
 from backend.libs.utils.error_handling import auto_handle_errors
 from backend.routers.collections.documents.chunks.models import (
     ChunkListResponse,
@@ -19,12 +19,11 @@ from backend.routers.collections.documents.chunks.models import (
     ChunkUpdateRequest,
     ChunkUpdateResponse,
 )
-from common_libs.storage.postgres.models import GrantRole
 
-# Listing/reading chunks needs 'read'; manually correcting a chunk (and optionally re-embedding it)
-# mutates the indexed content and needs 'write'.
-_READ = [Depends(require_collection_role(GrantRole.READ))]
-_WRITE = [Depends(require_collection_role(GrantRole.WRITE))]
+# Listing/reading chunks is part of documents.read; manually correcting a chunk (and optionally
+# re-embedding it) mutates the indexed content and needs the dedicated chunks.write capability.
+_READ = [Depends(require_capability(Capability.DOCUMENTS_READ))]
+_WRITE = [Depends(require_capability(Capability.CHUNKS_WRITE))]
 
 router = APIRouter(tags=["chunks"])
 

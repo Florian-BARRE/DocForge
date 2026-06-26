@@ -1,10 +1,13 @@
 # ====== Code Summary ======
 # FastAPI dependencies for the auth layer. These are the only auth touch-points routers see:
 #   - require_principal: authenticate the request (or inject a synthetic root when auth is off).
-#   - require_root: gate root-only routes.
-#   - require_collection_role(min_role): factory gating a collection-scoped route by effective role.
-# All business logic lives in AuthService (accessed via CONTEXT) — dependencies only translate its
-# results into 401 / 403 / 404 HTTP outcomes with verbose, explicit comments.
+#   - require_principal_sse: authenticate an SSE route (header OR ?token= query fallback).
+#   - require_capability(cap): factory gating a collection-scoped route by a capability the caller's
+#       API-key scope must grant on the path's collection.
+#   - require_capability_media(cap): the same gate for byte-returning media routes (header OR ?token=).
+# All business logic lives in AuthService (accessed via CONTEXT) + the capability taxonomy
+# (capabilities.py); dependencies only translate results into 401 / 403 HTTP outcomes with verbose,
+# explicit comments.
 
 # ====== Standard Library Imports ======
 from __future__ import annotations
@@ -18,27 +21,22 @@ from fastapi import Depends, HTTPException, Request
 
 # ====== Internal Project Imports ======
 from backend.context import CONTEXT
-from common_libs.storage.postgres.models import GrantRole, UserRole
+from common_libs.storage.postgres.models import UserRole
 
 # ====== Local Project Imports ======
+from .capabilities import Capability, CapabilityHelpers
 from .models import Principal
-
-# Per-collection role ordering (read < write < admin). Used to compare a caller's effective role
-# against a route's minimum required role. Higher number = more privileged.
-_ROLE_RANK: dict[GrantRole, int] = {
-    GrantRole.READ: 0,
-    GrantRole.WRITE: 1,
-    GrantRole.ADMIN: 2,
-}
 
 # Synthetic principal injected when AUTH_ENABLED is false — a stable, all-powerful root identity so
 # the API behaves exactly as it did before auth existed. Its fixed nil-UUID makes it recognizable in
-# logs and never collides with a real user (real ids are random UUID4).
+# logs and never collides with a real user (real ids are random UUID4). permissions=None → full
+# access (it bypasses every per-capability check).
 _DISABLED_AUTH_PRINCIPAL = Principal(
     user_id=uuid.UUID(int=0),
     username="auth-disabled-root",
     global_role=UserRole.ROOT,
     is_root=True,
+    permissions=None,
 )
 
 
@@ -46,14 +44,14 @@ def _extract_bearer(request: Request, query_token: str | None = None) -> str | N
     """
     Pull the raw Bearer credential out of the Authorization header.
 
-    The optional ``query_token`` fallback exists ONLY for SSE routes: a browser ``EventSource``
-    cannot send an Authorization header, so those routes pass the ``?token=`` query value in
-    explicitly. The header always wins; the query fallback is never read for any route that does
-    not opt in (tokens in query strings can end up in access logs).
+    The optional ``query_token`` fallback exists ONLY for SSE / media routes: a browser
+    ``EventSource`` or ``<img>`` cannot send an Authorization header, so those routes pass the
+    ``?token=`` query value in explicitly. The header always wins; the query fallback is never read
+    for any route that does not opt in (tokens in query strings can end up in access logs).
 
     Args:
         request (Request): The incoming request.
-        query_token (str | None): An explicit fallback credential (SSE routes only). Default None.
+        query_token (str | None): An explicit fallback credential (SSE/media routes only).
 
     Returns:
         str | None: The token value with the ``Bearer `` scheme stripped, the query fallback, or
@@ -66,7 +64,7 @@ def _extract_bearer(request: Request, query_token: str | None = None) -> str | N
         if scheme.lower() == "bearer" and value:
             return value.strip()
 
-    # 2. SSE-only explicit fallback (never populated for header-only routes)
+    # 2. SSE/media-only explicit fallback (never populated for header-only routes)
     if query_token:
         return query_token.strip()
     return None
@@ -77,12 +75,12 @@ async def _authenticate(request: Request, query_token: str | None = None) -> Pri
     Shared credential-resolution core for the request-level auth dependencies.
 
     Applies the kill-switch, resolves the Bearer credential (header, or — only when ``query_token``
-    is supplied by an SSE route — the query fallback) via AuthService, and stashes the result on
-    ``request.state``. This is the single place the 401 outcome is produced.
+    is supplied by an SSE/media route — the query fallback) via AuthService, and stashes the result
+    on ``request.state``. This is the single place the 401 outcome is produced.
 
     Args:
         request (Request): The incoming request.
-        query_token (str | None): Explicit query-string credential (SSE routes only). Default None.
+        query_token (str | None): Explicit query-string credential (SSE/media routes only).
 
     Returns:
         Principal: The authenticated (or synthetic root) principal.
@@ -139,9 +137,8 @@ async def require_principal_sse(request: Request, token: str | None = None) -> P
     Authenticate an SSE route from the Authorization header OR a ``?token=`` query parameter.
 
     Browser ``EventSource`` cannot set request headers, so SSE endpoints accept the bearer credential
-    as a ``token`` query parameter as a fallback. This dependency is used ONLY on the two SSE routes;
-    the header still takes precedence and the resolution + 401 behavior are identical to
-    ``require_principal``. Query-param auth is intentionally NOT broadened to any other route.
+    as a ``token`` query parameter as a fallback. Used ONLY on the SSE routes; the header still takes
+    precedence and the resolution + 401 behavior are identical to ``require_principal``.
 
     Args:
         request (Request): The incoming request.
@@ -157,90 +154,82 @@ async def require_principal_sse(request: Request, token: str | None = None) -> P
     return await _authenticate(request, query_token=token)
 
 
-async def require_root(principal: Principal = Depends(require_principal)) -> Principal:
+def principal_grants_capability(
+    principal: Principal, collection_id: uuid.UUID, capability: Capability
+) -> bool:
     """
-    Gate a route to root users only.
+    Decide whether a principal is allowed a capability on a collection.
 
-    Args:
-        principal (Principal): The authenticated principal (from ``require_principal``).
-
-    Returns:
-        Principal: The principal, guaranteed root.
-
-    Raises:
-        HTTPException: 403 when the principal is not root.
-    """
-    # 1. Only the global root role may pass
-    if not principal.is_root:
-        # 403 — authenticated but lacking the global root role required by this route.
-        CONTEXT.logger.warning(
-            f"Request rejected (403 root required): user_id={principal.user_id} "
-            f"username={principal.username!r}"
-        )
-        raise HTTPException(status_code=403, detail="Root privileges required.")
-    return principal
-
-
-async def _enforce_collection_role(
-    principal: Principal, collection_id: uuid.UUID, min_role: GrantRole
-) -> Principal:
-    """
-    Enforce the minimum per-collection role for an already-authenticated principal.
-
-    Shared by the header-only and media (header-or-query) collection gates so the 403 policy
-    lives in one place.
+    The single authorization predicate shared by every collection-scoped gate (header, media, and
+    the in-body SSE check). A full-access principal (root login, static root key, or a legacy
+    null-permission key) is allowed everything; a scoped API key is allowed iff its permission
+    entries grant the capability on this collection (its id or the ``*`` wildcard).
 
     Args:
         principal (Principal): The authenticated principal.
         collection_id (uuid.UUID): The path's collection id.
-        min_role (GrantRole): The minimum per-collection role required.
+        capability (Capability): The capability the route requires.
+
+    Returns:
+        bool: True when the principal may perform the capability on the collection.
+    """
+    # 1. Full-access principals bypass per-capability checks
+    if principal.has_full_access:
+        return True
+
+    # 2. Scoped API key — consult its permission entries
+    return CapabilityHelpers.grants(principal.permissions or {}, str(collection_id), capability)
+
+
+def _enforce_capability(
+    principal: Principal, collection_id: uuid.UUID, capability: Capability
+) -> Principal:
+    """
+    Enforce a capability for an already-authenticated principal, or raise 403.
+
+    Shared by the header-only and media (header-or-query) collection gates so the 403 policy lives
+    in one place.
+
+    Args:
+        principal (Principal): The authenticated principal.
+        collection_id (uuid.UUID): The path's collection id.
+        capability (Capability): The capability the route requires.
 
     Returns:
         Principal: The authorized principal.
 
     Raises:
-        HTTPException: 403 when the caller has no grant on, or an insufficient role for, the
-        collection. (A non-existent collection is surfaced as 403 here too — to avoid leaking
-        existence; the route's own handler returns the precise 404 once authorization passes.)
+        HTTPException: 403 when the key's scope does not grant the capability on the collection.
     """
-    # 1. Compute the caller's effective role (None = no grant at all)
-    effective = await CONTEXT.auth_service.effective_collection_role(principal, collection_id)
-    if effective is None:
-        # 403 — the user holds no grant on this collection. We deliberately do NOT 404 here:
-        # leaking "this collection exists" to a user with no access is an enumeration vector.
-        CONTEXT.logger.warning(
-            f"Request rejected (403 no grant): user_id={principal.user_id} "
-            f"collection={collection_id} required={min_role.value}"
-        )
-        raise HTTPException(status_code=403, detail="You do not have access to this collection.")
+    # 1. Allow full-access principals + scoped keys that grant the capability here
+    if principal_grants_capability(principal, collection_id, capability):
+        return principal
 
-    # 2. Compare the effective role against the route's minimum
-    if _ROLE_RANK[effective] < _ROLE_RANK[min_role]:
-        # 403 — the user has a grant but at a lower role than this route requires.
-        CONTEXT.logger.warning(
-            f"Request rejected (403 insufficient role): user_id={principal.user_id} "
-            f"collection={collection_id} effective={effective.value} required={min_role.value}"
-        )
-        raise HTTPException(
-            status_code=403,
-            detail=f"This action requires the {min_role.value!r} role on the collection.",
-        )
-
-    return principal
+    # 2. 403 — the API key's scope does not grant this capability on this collection.
+    CONTEXT.logger.warning(
+        f"Request rejected (403 missing capability): user_id={principal.user_id} "
+        f"collection={collection_id} required={capability.value}"
+    )
+    raise HTTPException(
+        status_code=403,
+        detail=(
+            f"Your API key is not authorized for {capability.value!r} on this collection."
+        ),
+    )
 
 
-def require_collection_role(
-    min_role: GrantRole,
+def require_capability(
+    capability: Capability,
 ) -> Callable[..., Coroutine[Any, Any, Principal]]:
     """
-    Build a dependency that gates a collection-scoped route by minimum effective role.
+    Build a dependency that gates a collection-scoped route by a single capability.
 
     Header-only authentication. The returned dependency reads ``collection_id`` from the path,
-    computes the caller's effective role on that collection (root is implicitly admin), and
-    enforces ``min_role``.
+    resolves the caller, and enforces that the caller's API-key scope grants ``capability`` on that
+    collection (a full-access principal passes implicitly).
 
     Args:
-        min_role (GrantRole): The minimum per-collection role required (read | write | admin).
+        capability (Capability): The capability the route requires.
 
     Returns:
         Callable: An async FastAPI dependency yielding the authorized Principal.
@@ -250,26 +239,26 @@ def require_collection_role(
         collection_id: uuid.UUID,
         principal: Principal = Depends(require_principal),
     ) -> Principal:
-        """Enforce the minimum collection role for the header-authenticated principal."""
-        return await _enforce_collection_role(principal, collection_id, min_role)
+        """Enforce the required capability for the header-authenticated principal."""
+        return _enforce_capability(principal, collection_id, capability)
 
     return _dependency
 
 
-def require_collection_role_media(
-    min_role: GrantRole,
+def require_capability_media(
+    capability: Capability,
 ) -> Callable[..., Coroutine[Any, Any, Principal]]:
     """
-    Like :func:`require_collection_role`, but accepts the bearer credential from the Authorization
-    header OR a ``?token=`` query parameter.
+    Like :func:`require_capability`, but accepts the bearer credential from the Authorization header
+    OR a ``?token=`` query parameter.
 
     Used ONLY for byte-returning media routes a browser loads via ``<img src>`` / direct navigation
-    (e.g. the page screenshot), which cannot set an Authorization header — exactly the EventSource
+    (e.g. the page screenshot), which cannot set an Authorization header — the same EventSource
     limitation that ``require_principal_sse`` addresses. The header still wins; query-param auth is
     not broadened to JSON routes (those go through the fetch client, which sends the header).
 
     Args:
-        min_role (GrantRole): The minimum per-collection role required.
+        capability (Capability): The capability the route requires.
 
     Returns:
         Callable: An async FastAPI dependency yielding the authorized Principal.
@@ -280,10 +269,10 @@ def require_collection_role_media(
         request: Request,
         token: str | None = None,
     ) -> Principal:
-        """Authenticate via header or ?token=, then enforce the minimum collection role."""
+        """Authenticate via header or ?token=, then enforce the required capability."""
         # 1. Header-or-query authentication (query fallback for header-less <img> loads)
         principal = await _authenticate(request, query_token=token)
-        # 2. Same per-collection role policy as the header-only gate
-        return await _enforce_collection_role(principal, collection_id, min_role)
+        # 2. Same per-capability policy as the header-only gate
+        return _enforce_capability(principal, collection_id, capability)
 
     return _dependency

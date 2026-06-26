@@ -47,9 +47,9 @@ class TokenHelpers:
             subject (str): The token subject — the user's id (stringified UUID).
             secret (str): HS256 signing secret.
             ttl_minutes (int): Token lifetime in minutes.
-            extra_claims (dict | None): Optional additional claims to embed (e.g. an
-                ``impersonated_by`` audit claim). The reserved ``sub`` / ``iat`` / ``exp``
-                claims are protected — any same-named key here is ignored, never overrides them.
+            extra_claims (dict | None): Optional additional claims to embed. The reserved
+                ``sub`` / ``iat`` / ``exp`` claims are protected — any same-named key here is
+                ignored, never overrides them.
 
         Returns:
             str: The encoded, signed JWT.
