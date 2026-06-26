@@ -1,14 +1,10 @@
 // ====== Code Summary ======
 // ContextBar — the horizontal top bar spanning the main content area.
 // Shows: current collection name (or view name), sub-tab navigation
-// (Pipeline / Documents / Search / Access when applicable), and the
-// AccountMenu (user badge dropdown with API Keys + Sign out).
+// (Pipeline / Documents / Search), and the user badge (Sign out).
 //
-// Tab visibility:
-//   Pipeline / Documents / Search — always when a collection is active.
-//   Access — only when the current user is admin on the active collection
-//             (or root, who is implicitly admin everywhere).
-//
+// AUTH-B: the Access sub-tab and isCollectionAdmin prop are removed —
+// per-collection access management no longer exists.
 // All colors from CSS vars (token-driven). No hardcoded color values.
 
 // ====== Third-Party Library Imports ======
@@ -22,7 +18,7 @@ import type { GlobalView } from './NavRail'
 // ── Types ────────────────────────────────────────────────────────────────────
 
 /** Sub-tabs available within a collection context. */
-export type CollectionTab = 'pipeline' | 'documents' | 'search' | 'access'
+export type CollectionTab = 'pipeline' | 'documents' | 'search'
 
 interface ContextBarProps {
   /** Active global view (determines title + whether sub-tabs appear). */
@@ -35,38 +31,27 @@ interface ContextBarProps {
   onTabChange: (tab: CollectionTab) => void
   /** Authenticated username to display in the badge. */
   username: string
-  /** Whether the active session is root (controls role pill in AccountMenu). */
+  /** Whether the active session is root (shows role pill). */
   isRoot: boolean
-  /**
-   * Whether the current user holds admin rights on the active collection.
-   * When true, the "Access" sub-tab is rendered.
-   */
-  isCollectionAdmin: boolean
   /** Right-side action slot (optional additional controls). */
   actions?: ReactNode
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-/** Base tabs always shown in a collection context. */
-const BASE_TABS: { key: CollectionTab; label: string }[] = [
+/** Tabs shown in a collection context. */
+const COLLECTION_TABS: { key: CollectionTab; label: string }[] = [
   { key: 'pipeline',  label: 'Pipeline'  },
   { key: 'documents', label: 'Documents' },
   { key: 'search',    label: 'Search'    },
 ]
-
-/** "Access" tab — shown when the user is admin on the collection. */
-const ACCESS_TAB: { key: CollectionTab; label: string } = {
-  key: 'access',
-  label: 'Access',
-}
 
 const VIEW_LABEL: Record<GlobalView, string> = {
   pipeline:      'Pipeline',
   documents:     'Documents',
   search:        'Search',
   observability: 'Observability',
-  admin:         'Admin',
+  apikeys:       'API Keys',
 }
 
 // ── Component ────────────────────────────────────────────────────────────────
@@ -74,10 +59,9 @@ const VIEW_LABEL: Record<GlobalView, string> = {
 /**
  * Horizontal context bar for the cockpit shell.
  *
- * Left side:  collection name (or view title for admin / observability).
- * Center:     collection sub-tabs — Pipeline, Documents, Search, and
- *             conditionally Access (when isCollectionAdmin is true).
- * Right side: optional extra actions, AccountMenu, ThemeToggle.
+ * Left side:  collection name (or view title for API Keys / observability).
+ * Center:     collection sub-tabs — Pipeline, Documents, Search.
+ * Right side: optional extra actions, user badge + sign-out, ThemeToggle.
  *
  * Args:
  *   activeView:         Determines title and whether sub-tabs appear.
@@ -86,7 +70,6 @@ const VIEW_LABEL: Record<GlobalView, string> = {
  *   onTabChange:        Sub-tab click callback.
  *   username:           Badge display name.
  *   isRoot:             Controls role pill in AccountMenu.
- *   isCollectionAdmin:  Shows the "Access" tab when true.
  *   actions:            Optional right-side controls.
  */
 export function ContextBar({
@@ -96,20 +79,14 @@ export function ContextBar({
   onTabChange,
   username,
   isRoot,
-  isCollectionAdmin,
   actions,
 }: ContextBarProps) {
   // 1. Determine whether the collection sub-tabs should be shown.
   const isCollectionView = activeCollectionId !== null
-    && activeView !== 'admin'
+    && activeView !== 'apikeys'
     && activeView !== 'observability'
 
-  // 2. Build the tab list — add Access tab when the user is a collection admin.
-  const tabs = isCollectionAdmin
-    ? [...BASE_TABS, ACCESS_TAB]
-    : BASE_TABS
-
-  // 3. Resolve the title shown on the left side.
+  // 2. Resolve the title shown on the left side.
   const title = isCollectionView
     ? activeCollectionId
     : VIEW_LABEL[activeView]
@@ -134,7 +111,7 @@ export function ContextBar({
       {/* ── Center: collection sub-tabs ── */}
       {isCollectionView && (
         <nav className="app-tabs">
-          {tabs.map(tab => (
+          {COLLECTION_TABS.map(tab => (
             <button
               key={tab.key}
               type="button"

@@ -23,48 +23,75 @@
 - SSE: `EventSource` (native auto-reconnect), debounced refetch, polling fallback torn down once events
   resume (see DocumentsTab).
 
-## Auth integration (P9)
+## Auth integration (AUTH-B — simplified root-only model)
 
-- `src/auth/AuthContext.tsx` — provider holding `{token, user, grants, loading, login(), logout()}`.
+- **Single root login only.** No multi-user, no impersonation, no per-collection grants.
+- `src/auth/AuthContext.tsx` — provider holding `{token, user, loading, login(), logout()}`.
   Token persisted in `localStorage` under key `docforge.auth.token`. On mount: calls `/auth/me` to
   rehydrate; 401 → force-logout. Registers the token with `api/client.ts` via `setAuthToken()`.
+  **Removed in AUTH-B**: `grants`, `isImpersonating`, `impersonatedUser`, `actAs`, `exitImpersonation`.
 - `src/auth/LoginScreen.tsx` — full-screen login form, renders when `user` is null.
-- `src/auth/permissions.ts` — `getCollectionRole / canRead / canWrite / canAdmin` helpers.
-- `api/client.ts` auth pattern: module-level `_bearerToken` + `_onUnauthorized` (registered by
-  AuthContext). Every `request()` and `upload()` reads `_bearerToken` via `authHeaders()`.
-  **401 → force-logout (onUnauthorized callback). 403 → surface as a normal Error, no logout.**
-- SSE `EventSource` cannot send headers: token passed as `?token=` query param. Backend may need to
-  accept this for SSE endpoints (follow-up with backend agent if SSE breaks after auth).
-- Auth types are hand-written in `api/types.ts` (not generated) because the auth router was added
-  after the last `npm run gen:types`. Regenerate `generated.ts` to absorb them when possible.
-- Admin area: `components/admin/AdminView.tsx` (tabs) + `UsersPanel.tsx` (root-only) +
-  `ApiKeysPanel.tsx` (any user) + `CollectionAccessPanel.tsx` (root or collection admin).
-  Gated in `App.tsx` by `user.role === 'root'` for the Users tab; `canAdmin()` for Collaborators.
-- **UserDetailPanel (UI-6)**: root-admin "manage one user in one place" drawer. Three files:
-  `UserDetailPanel.tsx` (orchestrator, uses `<Drawer isOpen={true}>` — conditionally mounted in
-  AdminView so isOpen is always true when rendered) + `UserKeysSection.tsx` (create/list/revoke API
-  keys FOR a user, via `listUserKeys/createUserKey/revokeUserKey` in client.ts) +
-  `UserAccessSection.tsx` (list grants + grant/change-role/revoke per-collection, via
-  `listUserGrants/setCollectionAccess/revokeCollectionAccess`). `UserGrant` + `UserGrantList`
-  types added to `api/types.ts`. `refreshSignal` counter pattern in AdminView: parent increments
-  to force UsersPanel reload without prop-drilling. UsersPanel: active users first, deactivated
-  hidden by default with "Show deactivated (N)" chip toggle. Row click fires `onUserSelect` via
-  `.admin-user-name` click (not row center — actions div has stopPropagation).
-- **Multiple `.slide-panel` elements in the DOM**: several Drawers/panels always present but closed.
-  Playwright tests (and any imperative DOM queries) MUST scope selectors to `.slide-panel-open`
-  to avoid matching closed panels (e.g. `.slide-panel-open .slide-panel-title`, not `.slide-panel-title`).
-- **Role-based UI prop threading**: `App.tsx` computes `write = canWrite(user, grants, activeCollectionId)`
-  from `useAuth()` + `permissions.ts`, then passes it as `canWrite` prop to `DocumentsTab` and
-  `PipelineTab`. Components accept `canWrite?: boolean` (default true) and gate:
-  - `DocumentsTab`: drop-zone, hidden file input, metadata form, "Tout réindexer" button, `DocRow.canWrite`
-  - `DocRow`: inline reingest (stale) + overflow menu (Re-ingest / Delete)
-  - `PipelineTab` → `StageConfigPanel` → `ConfigSaveBar` / `IngestionConditionsPanel` (all inputs + save bar)
-  - `ConfigHistoryPanel`: rollback "Restaurer" buttons
-  - Pattern: permissions are derived once at `App.tsx` and threaded as props — never call `useAuth()` deep
-    in a component tree. This keeps permission logic central and the component tree testable.
-- Loading state: `AuthProvider` sets `loading=true` until `/auth/me` resolves — `App.tsx` renders a
-  blank loading screen instead of the login screen flash.
+- `src/auth/permissions.ts` — `canWrite(user: UserSummary | null): boolean` only (root check).
+  `getCollectionRole`, `canRead`, `canAdmin` removed. No `CollectionGrantSummary`.
+- `api/client.ts` auth pattern: module-level `_bearerToken` + `_onUnauthorized`.
+  **401 → force-logout. 403 → surface as normal Error.**
+  **Removed in AUTH-B**: `createUser`, `listUsers`, `deleteUser`, `resetUserPassword`,
+  `impersonateUser`, `listCollectionAccess`, `setCollectionAccess`, `revokeCollectionAccess`.
+- **`createApiKey(name, permissions)` — permissions is now REQUIRED** (no longer optional).
+  `listApiKeys()` returns keys with `permissions: Permissions | null`.
+- `api/types.ts` removed types: `CollectionGrantSummary`, `UserResponse`, `UserListResponse`,
+  `DeactivateUserResponse`, `ImpersonateResponse`, `AccessGrantResponse`, `AccessListResponse`,
+  `RevokeAccessResponse`. `MeResponse` is now `{user: UserSummary}` (no grants field).
+- **New in AUTH-B** (`api/types.ts`): `Capability`, `PermissionRole`, `PermissionEntry`, `Permissions`.
+- **Dead files (stubbed `export {}`)**: `components/admin/AdminView.tsx`, `UsersPanel.tsx`,
+  `CollectionAccessPanel.tsx`, `ApiKeysPanel.tsx`, `layout/ImpersonationBanner.tsx`.
+- SSE `EventSource` token passed as `?token=` query param (no header support).
 - `main.tsx` wraps `<App>` in `<AuthProvider>`.
+
+## API Keys page (AUTH-B)
+
+- `components/apikeys/ApiKeysPage.tsx` — orchestrator: loads keys + collections on mount, composes
+  CreateKeyForm + KeyRevealCallout + ApiKeysList. Handles `onCreated` (appends to list in-place) and
+  `onRevoked` (marks revoked_at in-place).
+- `components/apikeys/CreateKeyForm.tsx` — name input + PermissionBuilder + submit.
+- `components/apikeys/PermissionBuilder.tsx` — all-collections vs specific toggle. Manages
+  `PermissionRowDraft[]` state; emits `Permissions` via onChange on every change. Counter-based
+  stable local IDs for row reconciliation.
+- `components/apikeys/PermissionEntryRow.tsx` — one scope row: collection `<select>` + RoleChipGroup
+  + "Advanced" expander (switches to CapabilityCheckboxes + role='custom').
+- `components/apikeys/RoleChipGroup.tsx` — chip-style read/write/admin role selector (controlled).
+- `components/apikeys/CapabilityCheckboxes.tsx` — 7-item capability checkbox grid.
+- `components/apikeys/KeyRevealCallout.tsx` — one-time plaintext key reveal with copy button +
+  dismiss. Parent renders it conditionally; after dismiss, `createdKey` state → null.
+- `components/apikeys/ApiKeysList.tsx` — DataTable of ApiKeySummary: name/prefix, scope summary,
+  created, last used, status tag (active/revoked), revoke button.
+- `components/apikeys/apiKeyTypes.ts` — `CAPABILITY_LABELS`, `ALL_CAPABILITIES`, `ROLE_CAPABILITIES`,
+  `PermissionRowDraft` interface, `formatScopeSummary()`.
+- **Scope shortcuts** (hardcoded in apiKeyTypes.ts): read={documents.read,search,config.read};
+  write=read+{documents.write,config.write,chunks.write}; admin=write+{collection.admin}.
+
+## Shell/nav (AUTH-B)
+
+- `GlobalView` in NavRail.tsx: `'pipeline'|'documents'|'search'|'observability'|'apikeys'`
+  (renamed from 'admin'). Prop renamed `showApiKeys` (was `showAdmin`). Label: "API Keys", icon "🔑".
+- `CollectionTab` in ContextBar.tsx: `'pipeline'|'documents'|'search'` — "access" tab removed.
+  `isCollectionAdmin` prop removed. `VIEW_LABEL` includes `'apikeys': 'API Keys'`.
+- `AccountMenu.tsx` simplified: API Keys drawer removed. Dropdown has only "Sign out".
+- `AppShell.tsx`: no `grants`, no `isImpersonating`, no `ImpersonationBanner`, no `AdminView`,
+  no `CollectionAccessPanel`. `write = canWrite(user)` (root role check). Renders `<ApiKeysPage />`
+  when `activeView === 'apikeys'`. `showApiKeys = user.role === 'root'`.
+
+## Role-based UI prop threading
+
+- `AppShell.tsx` computes `write = canWrite(user)` and threads as `canWrite` prop to
+  `DocumentsTab` and `PipelineTab`. Components accept `canWrite?: boolean` (default true).
+- `DocumentsTab`: drop-zone, file input, metadata form, re-index button, `DocRow.canWrite`
+- `DocRow`: inline reingest (stale) + overflow menu (Re-ingest / Delete)
+- `PipelineTab` → `StageConfigPanel` → `ConfigSaveBar` / `IngestionConditionsPanel`
+- `ConfigHistoryPanel`: rollback buttons
+- Pattern: permissions derived once at AppShell, threaded as props — no `useAuth()` in deep components.
+- Loading state: `AuthProvider` sets `loading=true` until `/auth/me` resolves — `App.tsx` renders
+  blank screen (no login flash).
 
 ## Document detail view — tab layout
 
@@ -73,14 +100,7 @@
 - `ChainTracesTab` — renders `chain_traces` (parse/S1) and `embed_chain_traces` (S6) via `<ChainTraceView>`
 - `JobsTab` — renders `doc.jobs[]` newest-first with expandable error rows
 
-`types.ts` hand-written overlays (added after last gen):
-- `JobResponse` + `JobStatus` — mirrors backend JobResponse exactly
-- `Document` extended with `jobs?: JobResponse[]`
-- `chain_traces` / `embed_chain_traces` already in generated `DocumentResponse`
-
-`<ChainTraceView>` (inspect feature) is the canonical chain-of-fallbacks renderer — always reuse it,
-never write a new renderer. It accepts `traces: ChainTrace[]` and `variant: 'compact' | 'detailed'`.
-
+`<ChainTraceView>` accepts `traces: ChainTrace[]` and `variant: 'compact' | 'detailed'`.
 CSS classes for the jobs list live in `global.css` under `/* ── Jobs Tab ──... */`.
 
 ## Boundary

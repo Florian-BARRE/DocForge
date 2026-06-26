@@ -304,18 +304,41 @@ export interface LoginResponse {
   user: UserSummary
 }
 
-export interface CollectionGrantSummary {
-  collection_id: string
-  /** 'read' | 'write' | 'admin' */
-  role: string
-}
-
 export interface MeResponse {
   user: UserSummary
-  grants: CollectionGrantSummary[]
 }
 
-// ── API keys ───────────────────────────────────────────────────────────────
+// ── API keys ───────────────────────────────────────────────────────────────────
+//
+// AUTH-B: permissions is now REQUIRED on key creation and present on every key
+// summary.  null means a legacy key with implicit full access.
+
+/** Fine-grained capability granted by an API key on a specific collection. */
+export type Capability =
+  | 'documents.read'
+  | 'documents.write'
+  | 'search'
+  | 'config.read'
+  | 'config.write'
+  | 'chunks.write'
+  | 'collection.admin'
+
+/** Role shortcut or 'custom' (hand-picked capabilities). */
+export type PermissionRole = 'read' | 'write' | 'admin' | 'custom'
+
+/** One scope entry in a key's permissions. */
+export interface PermissionEntry {
+  /** '*' = all collections (incl. future ones). */
+  collection_id: string
+  role: PermissionRole
+  /** Required when role is 'custom'; optional for shortcut roles (backend expands). */
+  capabilities?: Capability[]
+}
+
+/** Full permissions payload stored on an API key. */
+export interface Permissions {
+  entries: PermissionEntry[]
+}
 
 export interface ApiKeyCreatedResponse {
   id: string
@@ -324,6 +347,7 @@ export interface ApiKeyCreatedResponse {
   /** Plaintext key — shown ONCE on creation, never retrievable again. */
   key: string
   created_at: string
+  permissions: Permissions | null
 }
 
 export interface ApiKeySummary {
@@ -333,6 +357,7 @@ export interface ApiKeySummary {
   created_at: string
   last_used_at: string | null
   revoked_at: string | null
+  permissions: Permissions | null
 }
 
 export interface ApiKeyListResponse {
@@ -343,56 +368,6 @@ export interface ApiKeyListResponse {
 export interface ApiKeyRevokeResponse {
   revoked: boolean
   id: string
-}
-
-// ── Users (root only) ─────────────────────────────────────────────────────
-
-export interface UserResponse {
-  id: string
-  username: string
-  role: string
-  is_active: boolean
-  created_at: string
-}
-
-export interface UserListResponse {
-  users: UserResponse[]
-  total: number
-}
-
-export interface DeactivateUserResponse {
-  deactivated: boolean
-  id: string
-}
-
-/** Response from POST /users/{id}/impersonate (root only). */
-export interface ImpersonateResponse {
-  access_token: string
-  token_type: string
-  user: UserSummary
-}
-
-// ── Collection access ─────────────────────────────────────────────────────
-
-export interface AccessGrantResponse {
-  user_id: string
-  username: string | null
-  /** 'read' | 'write' | 'admin' */
-  role: string
-  granted_by: string | null
-  created_at: string
-}
-
-export interface AccessListResponse {
-  collection_id: string
-  grants: AccessGrantResponse[]
-  total: number
-}
-
-export interface RevokeAccessResponse {
-  revoked: boolean
-  collection_id: string
-  user_id: string
 }
 
 // ── Re-export everything from the generated namespace for callers that prefer

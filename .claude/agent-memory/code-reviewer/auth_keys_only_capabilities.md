@@ -29,10 +29,14 @@ chunk edit=chunks.write; config state/schema/history=config.read, update/rollbac
 search=search; collection delete + limits GET&PUT=collection.admin. Shortcut expansion makes new
 caps == old READ/WRITE/ADMIN. NOTE: limits **GET** moved READ→ADMIN (stricter, not a hole).
 
-## Known footgun / risk (real, but documented + tested — flag as risk, not a bug)
-- POST /auth/keys with `permissions` omitted → key gets `None` → **FULL ACCESS** (same sentinel as
-  legacy back-compat). A forgotten scope fails OPEN, not closed. Tested intentional
-  (`test_create_full_access_key_when_permissions_omitted`). Recommend explicit opt-in for full access.
+## Footgun CLOSED in AUTH-B (2026-06-26) — do NOT re-flag the old fail-open
+- The AUTH-A footgun (POST /auth/keys with `permissions` omitted → key `None` → FULL ACCESS) is FIXED:
+  `ApiKeyCreateRequest.permissions: dict = Field(...)` is now REQUIRED and `router.create_api_key`
+  calls `CapabilityHelpers.validate_permissions` unconditionally (422 on malformed/empty entries).
+  Full access must be requested explicitly via `{"entries":[{"collection_id":"*","role":"admin"}]}`.
+  The `None`=full-access sentinel now only reaches root-JWT + static root env key (not creatable).
+
+## Known risk still open (flag as risk, not a bug)
 - `POST /jobs/{id}/cancel` is destructive + cross-collection but gated only by `require_principal`
   (any valid key can cancel any job in any collection). NOT a regression — identical pre-AUTH-A —
   and design blesses jobs as global-allow. Recommend a documents.write check on the job's collection.
@@ -45,3 +49,15 @@ reversible downgrade re-creates the 011 grant shape. Models: `ApiKeyModel.permis
 ## Removals confirmed complete
 No users/access routers, no CollectionGrant model/repo, no impersonation/Principal.impersonated_by.
 Only app-code residue: stale docstring `app_user.py` line 4 ("...and per-collection grants"). 606 tests pass.
+
+## AUTH-B frontend (2026-06-26, reviewed APPROVED-w-suggestions)
+- `components/apikeys/` single "API Keys" page (root-only) replaced users/collaborators/impersonation UI.
+  Builder emits backend shape verbatim: `{entries:[{collection_id:"*"|uuid, role, capabilities?}]}`.
+  'All' mode → one `*` entry (sends caps even for shortcuts — harmless, backend ignores caps for
+  non-custom). 'Specific' → one entry/row, caps only when role=custom.
+- **DRIFT RISK**: `apiKeyTypes.ts ROLE_CAPABILITIES` is a hand-maintained DUPLICATE of backend
+  `capabilities.py _ROLE_EXPANSION`. No shared source — if backend taxonomy changes, the frontend
+  silently diverges. Re-verify parity on any capability/role change. (Currently in sync.)
+- No-scope key prevented: `CreateKeyForm.handleSubmit` filters empty `collection_id` and blocks
+  `validEntries.length===0`. No dangling refs (admin/* + ImpersonationBanner deleted, grep clean).
+- Soft size flags: `PermissionBuilder.tsx` 245 lines, `AppShell.tsx` 219 (both >200).

@@ -1,6 +1,4 @@
 import type {
-  AccessGrantResponse,
-  AccessListResponse,
   ApiKeyCreatedResponse,
   ApiKeyListResponse,
   ApiKeyRevokeResponse,
@@ -8,30 +6,25 @@ import type {
   ChunkListResponse,
   ChunkResponse,
   ChunkUpdateResponse,
-  CollectionGrantSummary,
   CollectionListResponse,
   ConfigHistoryResponse,
   ConfigSchemaResponse,
   ConfigState,
-  DeactivateUserResponse,
   DiscoveryResponse,
   Document,
   DocumentDeleteResponse,
   DocumentListResponse,
   HealthResponse,
-  ImpersonateResponse,
   IngestResponse,
   MeResponse,
   MetadataUpdateResponse,
   PageDetailResponse,
   PageListResponse,
   PageReingestResponse,
+  Permissions,
   PresignedUrlResponse,
   ReingestResponse,
-  RevokeAccessResponse,
   SearchResponse,
-  UserListResponse,
-  UserResponse,
 } from './types'
 
 // ── Auth token registry ────────────────────────────────────────────────────
@@ -404,20 +397,32 @@ export const searchWithinDocument = (
 // dependency (the context owns the token; the client reads it).
 // All other auth endpoints go through the standard request() helper.
 
-/** Returns the current user's identity and per-collection grants. */
+/** Returns the current root user's identity. */
 export const getMe = (): Promise<MeResponse> =>
   request<MeResponse>('/auth/me')
 
 // ── API keys ───────────────────────────────────────────────────────────────
+//
+// AUTH-B: permissions is now REQUIRED on key creation.
+// The plaintext key is only present in ApiKeyCreatedResponse (creation only).
 
-/** Creates a new API key for the current user.  The plaintext key is in the response. */
-export const createApiKey = (name: string): Promise<ApiKeyCreatedResponse> =>
+/**
+ * Creates a new API key with the given name and permission scope.
+ *
+ * The plaintext key value is present in the response exactly once and cannot
+ * be retrieved again — display it immediately and prompt the user to copy it.
+ *
+ * Args:
+ *   name:        Human-readable label for the key (e.g. "ci-pipeline").
+ *   permissions: Scope entries granting capabilities per collection.
+ */
+export const createApiKey = (name: string, permissions: Permissions): Promise<ApiKeyCreatedResponse> =>
   request<ApiKeyCreatedResponse>('/auth/keys', {
     method: 'POST',
-    body: JSON.stringify({ name }),
+    body: JSON.stringify({ name, permissions }),
   })
 
-/** Lists all non-revoked API keys for the current user (prefix only). */
+/** Lists all API keys (active + revoked) with their permission scopes. */
 export const listApiKeys = (): Promise<ApiKeyListResponse> =>
   request<ApiKeyListResponse>('/auth/keys')
 
@@ -425,91 +430,5 @@ export const listApiKeys = (): Promise<ApiKeyListResponse> =>
 export const revokeApiKey = (keyId: string): Promise<ApiKeyRevokeResponse> =>
   request<ApiKeyRevokeResponse>(`/auth/keys/${keyId}`, { method: 'DELETE' })
 
-// ── Users (root only) ─────────────────────────────────────────────────────
-
-/**
- * Creates a new application user (root only).
- *
- * Args:
- *   username: Unique login handle.
- *   password: Initial plaintext password.
- *   role:     Global role — 'root' or 'user' (default 'user').
- */
-export const createUser = (
-  username: string,
-  password: string,
-  role: 'root' | 'user' = 'user',
-): Promise<UserResponse> =>
-  request<UserResponse>('/users', {
-    method: 'POST',
-    body: JSON.stringify({ username, password, role }),
-  })
-
-/** Lists all users (root only). */
-export const listUsers = (): Promise<UserListResponse> =>
-  request<UserListResponse>('/users')
-
-/** Soft-deactivates a user by their UUID (root only). */
-export const deleteUser = (userId: string): Promise<DeactivateUserResponse> =>
-  request<DeactivateUserResponse>(`/users/${userId}`, { method: 'DELETE' })
-
-/**
- * Resets a user's password (root only).
- *
- * Args:
- *   userId:   The target user's UUID.
- *   password: The new plaintext password.
- */
-export const resetUserPassword = (userId: string, password: string): Promise<{ ok: boolean }> =>
-  request<{ ok: boolean }>(`/users/${userId}/password`, {
-    method: 'PUT',
-    body: JSON.stringify({ password }),
-  })
-
-/**
- * Creates an impersonation session for the given user (root only).
- *
- * Returns a short-lived access token that acts as the target user.
- * The response user is the impersonated user's summary.
- *
- * Args:
- *   userId: UUID of the user to impersonate.
- */
-export const impersonateUser = (userId: string): Promise<ImpersonateResponse> =>
-  request<ImpersonateResponse>(`/users/${userId}/impersonate`, { method: 'POST' })
-
-// ── Collection access ─────────────────────────────────────────────────────
-
-/** Lists all collaborators on a collection (admin or root only). */
-export const listCollectionAccess = (collectionId: string): Promise<AccessListResponse> =>
-  request<AccessListResponse>(`/collections/${collectionId}/access`)
-
-/**
- * Sets (or updates) a user's role on a collection.
- *
- * Args:
- *   collectionId: The collection to update.
- *   userId:       The user whose role is being set.
- *   role:         'read' | 'write' | 'admin'.
- */
-export const setCollectionAccess = (
-  collectionId: string,
-  userId: string,
-  role: 'read' | 'write' | 'admin',
-): Promise<AccessGrantResponse> =>
-  request<AccessGrantResponse>(`/collections/${collectionId}/access/${userId}`, {
-    method: 'PUT',
-    body: JSON.stringify({ role }),
-  })
-
-/** Revokes a user's grant on a collection. */
-export const revokeCollectionAccess = (
-  collectionId: string,
-  userId: string,
-): Promise<RevokeAccessResponse> =>
-  request<RevokeAccessResponse>(`/collections/${collectionId}/access/${userId}`, {
-    method: 'DELETE',
-  })
-
-// Re-export types only used by callers that import from client.ts instead of types.ts.
-export type { ApiKeySummary, CollectionGrantSummary }
+// Re-export the ApiKeySummary type for callers that import from client.ts.
+export type { ApiKeySummary }

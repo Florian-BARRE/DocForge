@@ -1,7 +1,7 @@
 // ====== Code Summary ======
 // NavRail — the persistent left vertical rail in the cockpit shell.
 // Contains: DocForge logo, global nav entries (Pipeline/Documents/Search/
-// Observability/Admin), and the collections list below the nav.
+// Observability/API Keys), and the collections list below the nav.
 // All colors from CSS vars (token-driven). No hardcoded color values.
 
 // ====== Third-Party Library Imports ======
@@ -14,7 +14,7 @@ import { StatusDot } from '../ui/primitives/StatusDot'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
-export type GlobalView = 'pipeline' | 'documents' | 'search' | 'observability' | 'admin'
+export type GlobalView = 'pipeline' | 'documents' | 'search' | 'observability' | 'apikeys'
 
 interface NavRailProps {
   /** Currently active global view. */
@@ -27,8 +27,8 @@ interface NavRailProps {
   onNew: () => void
   /** Called when a global nav entry is clicked. */
   onNavigate: (view: GlobalView) => void
-  /** Whether to show the Admin nav entry (root only). */
-  showAdmin: boolean
+  /** Whether to show the API Keys nav entry (root only). */
+  showApiKeys: boolean
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -68,7 +68,7 @@ function hasProcessedDocs(col: Collection): boolean {
  *   onSelectCollection: Collection row click handler.
  *   onNew: New collection button handler.
  *   onNavigate: Global nav entry click handler.
- *   showAdmin: Whether to show the Admin nav entry.
+ *   showApiKeys: Whether to show the API Keys nav entry (root only).
  */
 export function NavRail({
   activeView,
@@ -76,7 +76,7 @@ export function NavRail({
   onSelectCollection,
   onNew,
   onNavigate,
-  showAdmin,
+  showApiKeys,
 }: NavRailProps) {
   const [collections, setCollections] = useState<Collection[]>([])
 
@@ -140,12 +140,12 @@ export function NavRail({
             onClick={() => onNavigate(entry.key)}
           />
         ))}
-        {showAdmin && (
+        {showApiKeys && (
           <NavEntry
-            icon="👤"
-            label="Admin"
-            active={activeView === 'admin'}
-            onClick={() => onNavigate('admin')}
+            icon="🔑"
+            label="API Keys"
+            active={activeView === 'apikeys'}
+            onClick={() => onNavigate('apikeys')}
           />
         )}
       </nav>
