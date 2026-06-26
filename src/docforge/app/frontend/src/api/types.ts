@@ -370,6 +370,113 @@ export interface ApiKeyRevokeResponse {
   id: string
 }
 
+// ── Monitoring ────────────────────────────────────────────────────────────────
+//
+// Hand-written because the monitoring router was added after the last
+// `npm run gen:types` run.  Mirror the Pydantic models from backend/routers/monitoring/.
+
+/** GPU gauge for one device on a worker host (from worker heartbeat). */
+export interface WorkerGpu {
+  index: number
+  mem_used_mb: number
+  mem_total_mb: number
+  util_gpu_pct: number
+}
+
+/** Live heartbeat data for one arq worker. */
+export interface WorkerSummary {
+  worker_id: string
+  hostname: string
+  pid: number
+  started_at: string
+  last_seen: string
+  /** 'idle' | 'busy' | 'starting' | … */
+  status: string
+  current_job_id: string | null
+  jobs_processed: number
+  cpu_pct: number
+  rss_mb: number
+  sys_cpu_pct: number
+  sys_ram_pct: number
+  gpu: WorkerGpu[]
+}
+
+/** Response shape for GET /monitoring/workers. */
+export interface WorkersResponse {
+  workers: WorkerSummary[]
+  count: number
+}
+
+/** Per-status job counts (keys are DocStatus values). */
+export type QueueCounts = Record<string, number>
+
+/** Response shape for GET /monitoring/queue. */
+export interface QueueResponse {
+  queue_depth: number
+  counts: QueueCounts
+  throughput_per_min: number
+  window_minutes: number
+}
+
+/** Response shape for GET /monitoring/overview. */
+export interface MonitoringOverviewResponse {
+  queue: QueueResponse
+  workers: WorkersResponse
+  generated_at: string
+}
+
+/** Per-capability device resolution (cpu / gpu / remote). */
+export type CapabilityDevice = 'cpu' | 'gpu' | 'remote'
+
+/** Device capabilities map from GET /monitoring/resources. */
+export interface DeviceCapabilities {
+  parse: CapabilityDevice
+  ocr: CapabilityDevice
+  vlm: CapabilityDevice
+  embed: CapabilityDevice
+  rerank: CapabilityDevice
+  classify: CapabilityDevice
+}
+
+/** Device (app-side) info from GET /monitoring/resources. */
+export interface DeviceInfo {
+  gpu_available: boolean
+  gpu_name: string | null
+  cuda_version: string | null
+  capabilities: DeviceCapabilities
+}
+
+/** Admission limits gate from GET /monitoring/resources. */
+export interface AdmissionLimits {
+  enabled: boolean
+  max_queue_depth: number
+  max_in_flight_global: number
+}
+
+/** Response shape for GET /monitoring/resources. */
+export interface MonitoringResourcesResponse {
+  device: DeviceInfo
+  limits: AdmissionLimits
+  queue_depth: number
+  running: number
+  counts: QueueCounts
+  generated_at: string
+}
+
+/** Response shape for GET /jobs (paginated). */
+export interface JobListResponse {
+  jobs: JobResponse[]
+  total: number
+  limit: number
+  offset: number
+}
+
+/** Response shape for POST /jobs/{id}/cancel. */
+export interface CancelJobResponse {
+  cancelled: boolean
+  id: string
+}
+
 // ── Re-export everything from the generated namespace for callers that prefer
 // the verbose path (e.g. `import type { components } from '../../api/types'`).
 export type { components } from './generated'

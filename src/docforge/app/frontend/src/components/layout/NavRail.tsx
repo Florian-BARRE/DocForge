@@ -136,7 +136,6 @@ export function NavRail({
             icon={entry.icon}
             label={entry.label}
             active={activeView === entry.key}
-            stub={entry.key === 'observability'}
             onClick={() => onNavigate(entry.key)}
           />
         ))}

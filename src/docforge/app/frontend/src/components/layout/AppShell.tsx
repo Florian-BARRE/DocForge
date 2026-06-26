@@ -24,7 +24,7 @@ import { PipelineTab } from '../pipeline/PipelineTab'
 import { DocumentsTab } from '../documents/DocumentsTab'
 import { SearchTab } from '../search/SearchTab'
 import { ApiKeysPage } from '../apikeys/ApiKeysPage'
-import { ObservabilityStub } from '../observability/ObservabilityStub'
+import { ObservabilityDashboard } from '../observability/ObservabilityDashboard'
 import { canWrite } from '../../auth/permissions'
 import { useAuth } from '../../auth/AuthContext'
 
@@ -122,7 +122,7 @@ export function AppShell() {
    *
    * Priority order:
    *   1. API Keys page (root-only global zone)
-   *   2. Observability stub
+   *   2. Observability dashboard (live cockpit — monitoring bricks A/C/D)
    *   3. Empty state when no collection selected
    *   4. Collection sub-tabs: Pipeline / Documents / Search (default)
    */
@@ -132,7 +132,7 @@ export function AppShell() {
     }
 
     if (activeView === 'observability') {
-      return <ObservabilityStub />
+      return <ObservabilityDashboard />
     }
 
     // Collection zone — requires a collection to be selected.

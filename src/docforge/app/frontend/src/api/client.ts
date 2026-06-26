@@ -3,6 +3,7 @@ import type {
   ApiKeyListResponse,
   ApiKeyRevokeResponse,
   ApiKeySummary,
+  CancelJobResponse,
   ChunkListResponse,
   ChunkResponse,
   ChunkUpdateResponse,
@@ -16,8 +17,11 @@ import type {
   DocumentListResponse,
   HealthResponse,
   IngestResponse,
+  JobListResponse,
   MeResponse,
   MetadataUpdateResponse,
+  MonitoringOverviewResponse,
+  MonitoringResourcesResponse,
   PageDetailResponse,
   PageListResponse,
   PageReingestResponse,
@@ -432,3 +436,43 @@ export const revokeApiKey = (keyId: string): Promise<ApiKeyRevokeResponse> =>
 
 // Re-export the ApiKeySummary type for callers that import from client.ts.
 export type { ApiKeySummary }
+
+// ── Monitoring ─────────────────────────────────────────────────────────────
+
+/** Fetches aggregate queue + workers overview. */
+export const getMonitoringOverview = (): Promise<MonitoringOverviewResponse> =>
+  request<MonitoringOverviewResponse>('/monitoring/overview')
+
+/** Fetches device capabilities, admission limits, and queue depth. */
+export const getMonitoringResources = (): Promise<MonitoringResourcesResponse> =>
+  request<MonitoringResourcesResponse>('/monitoring/resources')
+
+/**
+ * Lists jobs with optional status filter and pagination.
+ *
+ * Args:
+ *   params.limit:  Max rows to return.
+ *   params.offset: Row offset for pagination.
+ *   params.status: Filter by job status (pending / running / done / failed).
+ */
+export const listJobs = (params?: {
+  limit?: number
+  offset?: number
+  status?: string
+}): Promise<JobListResponse> => {
+  const qs = new URLSearchParams()
+  if (params?.limit  != null) qs.set('limit',  String(params.limit))
+  if (params?.offset != null) qs.set('offset', String(params.offset))
+  if (params?.status)         qs.set('status', params.status)
+  const q = qs.toString() ? `?${qs}` : ''
+  return request<JobListResponse>(`/jobs${q}`)
+}
+
+/**
+ * Cancels a queued or running job.
+ *
+ * Args:
+ *   id: UUID of the job to cancel.
+ */
+export const cancelJob = (id: string): Promise<CancelJobResponse> =>
+  request<CancelJobResponse>(`/jobs/${id}/cancel`, { method: 'POST' })
