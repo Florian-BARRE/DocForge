@@ -3,11 +3,15 @@
 // the backend's `config_tree` discovery endpoint.
 //
 // Dispatches each node by `kind`:
-//   scalar       -> FieldInput (reuses type/min/max/default)
-//   enum         -> FieldInput with options array (select)
-//   object       -> collapsible section header + recurse children
+//   scalar         -> FieldInput (reuses type/min/max/default)
+//   enum           -> FieldInput with options array (select)
+//   object         -> collapsible section header + recurse children
 //   provider_union -> ProviderUnionPicker (chip group; nested unions handled uniformly)
-//   chain        -> ChainPicker (ordered list; params recurse via render-prop)
+//   chain          -> ChainLadder (expressive fallback ladder + gate connector)
+//
+// Special grouping: when a sibling list contains a `chain` node AND an `object`
+// node whose last path segment is "gate", they are co-rendered via ChainLadder so
+// gate settings appear as an editable section alongside the provider ladder.
 //
 // Read/write accessors use absolute node.path strings and are provided by the
 // caller (StageConfigPanel or a parent picker) via `readValue`/`writeValue` props.
@@ -21,7 +25,7 @@
 import type { ConfigNode } from '../../api/types'
 import { FieldInput } from './FieldInput'
 import type { ParamSchema } from '../../api/types'
-import { ChainPicker } from './pickers/ChainPicker'
+import { ChainLadder } from '../pipeline/ChainLadder'
 import { ProviderUnionPicker } from './pickers/ProviderUnionPicker'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -68,7 +72,7 @@ function humanize(seg: string): string {
  * Recursive config tree renderer driven by ConfigNode descriptors.
  *
  * Called by StageConfigPanel to render the config subtree for one pipeline stage.
- * Also injected as `renderChildren` into ProviderUnionPicker and ChainPicker so
+ * Also injected as `renderChildren` into ProviderUnionPicker and ChainLadder so
  * nested provider params (including nested provider_unions like semantic.embed)
  * render uniformly without any hand-coded field mapping.
  *
@@ -107,9 +111,37 @@ export function RecursiveFieldRenderer({
     )
   }
 
+  // Detect chain + gate sibling pair at this level so they can be co-rendered
+  // as a ChainLadder rather than a generic chain list + standalone gate form.
+  // Gate detection: kind=object whose path segment ends with "gate".
+  const chainNode = nodes.find(n => n.kind === 'chain')
+  const gateNode  = chainNode
+    ? nodes.find(n => n.kind === 'object' && n.path.split('.').pop() === 'gate')
+    : undefined
+
+  // Nodes that are neither the chain nor its gate sibling render normally.
+  const otherNodes = chainNode
+    ? nodes.filter(n => n !== chainNode && n !== gateNode)
+    : nodes
+
   return (
     <>
-      {nodes.map(node => {
+      {/* Co-render chain + gate as ChainLadder when present */}
+      {chainNode && (
+        <ChainLadder
+          key={chainNode.path}
+          node={chainNode}
+          gateNode={gateNode ?? null}
+          value={readValue(chainNode.path) as Array<{ id: string; [k: string]: unknown }> | undefined}
+          onChange={v => writeValue(chainNode.path, v)}
+          readValue={readValue}
+          writeValue={writeValue}
+          renderChildren={renderChildren}
+        />
+      )}
+
+      {/* Remaining nodes rendered with the standard dispatch */}
+      {otherNodes.map(node => {
         const key = node.path
 
         // ── scalar ──────────────────────────────────────────────────────────
@@ -166,21 +198,6 @@ export function RecursiveFieldRenderer({
               key={key}
               node={node}
               value={currentVal as Record<string, unknown> | null | undefined}
-              onChange={v => writeValue(node.path, v)}
-              renderChildren={renderChildren}
-            />
-          )
-        }
-
-        // ── chain ────────────────────────────────────────────────────────────
-        // Multi-provider ordered list; each entry's params recurse via render-prop.
-        if (node.kind === 'chain') {
-          const currentVal = readValue(node.path)
-          return (
-            <ChainPicker
-              key={key}
-              node={node}
-              value={currentVal as Array<{ id: string; [k: string]: unknown }> | undefined}
               onChange={v => writeValue(node.path, v)}
               renderChildren={renderChildren}
             />

@@ -12,6 +12,8 @@ export interface StageDefinition {
   label: string
   /** Emoji or short glyph displayed as the stage icon. */
   icon: string
+  /** One-line description of what the stage does — shown in the flow node card. */
+  description?: string
   /** Prefix used to filter relevant config fields in a discovery panel. */
   fieldPathPrefix: string
   /** If true, the stage is opt-in and rendered with a dashed border. */

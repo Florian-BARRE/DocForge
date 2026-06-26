@@ -17,7 +17,7 @@ import type { ConfigState, DiscoveryResponse, Document, DynamicField } from '../
 
 // ====== Local Project Imports ======
 import { ConfigHistoryPanel } from './ConfigHistoryPanel'
-import { PipelineGraph } from './PipelineGraph'
+import { PipelineFlowGraph } from './PipelineFlowGraph'
 import { S0Panel } from './panels/S0Panel'
 import { S1Panel } from './panels/S1Panel'
 import { S2Panel } from './panels/S2Panel'
@@ -339,13 +339,14 @@ export function PipelineTab({
         </>
       )}
 
-      {/* ── Pipeline graph ── */}
-      <PipelineGraph
+      {/* ── Pipeline flow graph ── */}
+      <PipelineFlowGraph
         stages={INGESTION_STAGES}
         mode={mode}
         stageResults={stageResults}
         activeStageId={activeStage?.id ?? null}
         onStageClick={handleStageClick}
+        configState={configState}
       />
 
       {/* ── Inline config / trace panel ── */}
