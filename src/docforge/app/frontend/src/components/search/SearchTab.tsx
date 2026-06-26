@@ -1,27 +1,29 @@
 // ====== Code Summary ======
-// Search tab — PipelineGraph for the search pipeline (config + trace mode), a query
-// input with a search button, a query-variants banner (multi_query), and result cards.
-// Config panels for search stages are now discovery-driven via StageConfigPanel +
-// RecursiveFieldRenderer (same path as PipelineTab) — SearchStagePanel is retired.
-// Search clarity is delegated to dedicated components: SearchSettingsBar (active
-// config chips), SearchTraceSummary (collapsible debug_info), and ResultScore
-// (per-result relevance + per-vector ranks).
+// Search Lab tab — query bar with a collapsible Tuning panel (per-query
+// overrides), discovery-driven pipeline graph, stage config panels, and a rich
+// LabDebugPanel that surfaces the backend's effective settings + recall funnel.
+// Always sends debug:true so the debug panel is always populated.
+// 422 errors (e.g. "rerank requires a rerank chain") surface inline in the
+// Tuning panel rather than as a generic banner.
 
 // ====== Third-Party Library Imports ======
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 // ====== Internal Project Imports ======
-import { getConfigState, getDiscovery, searchDocuments } from '../../api/client'
+import { HttpError, getConfigState, getDiscovery, searchDocuments } from '../../api/client'
 import type { ConfigState, DiscoveryResponse, SearchGroupItem, SearchResultItem } from '../../api/types'
+import { useLabOverrides } from '../../hooks/useLabOverrides'
 import { StageConfigPanel } from '../pipeline/panels/StageConfigPanel'
 import { PipelineGraph } from '../pipeline/PipelineGraph'
 import { SEARCH_STAGES } from '../pipeline/search-stages'
 import type { StageDefinition, StageResult } from '../pipeline/types'
+
+// ====== Local Project Imports ======
+import { LabDebugPanel } from './LabDebugPanel'
+import { LabTuningPanel } from './LabTuningPanel'
 import { ResultCard } from './ResultCard'
 import { SearchConfigOverview } from './SearchConfigOverview'
 import { SearchFilterBuilder } from './SearchFilterBuilder'
-import { SearchSettingsBar } from './SearchSettingsBar'
-import { SearchTraceSummary } from './SearchTraceSummary'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -30,39 +32,30 @@ interface SearchTabProps {
   collectionId: string
 }
 
-/**
- * Lightweight post-search trace metadata derived from the backend debug_info payload.
- * Drives the graph's "trace" mode after a query completes.
- */
+/** Lightweight post-search trace metadata derived from debug_info. */
 interface SearchTraceInfo {
-  /** All query strings sent (original + LLM-generated variants). */
   queryVariants: string[]
-  /** Whether a reranker was applied after retrieval. */
   reranked: boolean
-  /** Number of candidates retrieved before reranking (or final count if no rerank). */
   candidateCount: number
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
 /**
- * Search tab — interactive search UI with a discovery-driven pipeline graph.
+ * Search Lab tab — the power-user search interface.
  *
- * Config mode (before any search):
- *   PipelineGraph renders in "config" mode. Clicking a node opens a SlidePanel
- *   with {@link StageConfigPanel} populated from the discovery endpoint.
- *   The embed node is read-only (provider auto-derived from ingestion config).
+ * Config mode (before any search): PipelineGraph in "config" mode; clicking a
+ * node opens a StageConfigPanel inline. The Tuning panel shows baseline settings
+ * from the saved config and lets the user override them per-query.
  *
- * Trace mode (after a search):
- *   PipelineGraph switches to "trace" mode with per-stage status derived from
- *   the last {@link SearchTraceInfo}.
+ * Trace mode (after a search): PipelineGraph in "trace" mode; LabDebugPanel
+ * shows effective settings + recall funnel + query variants.
  *
- * Props:
- *   collectionId: The collection to run searches against.
+ * Args:
+ *   collectionId: The collection to search against.
  */
 export function SearchTab({ collectionId }: SearchTabProps) {
   // ── Query state ──────────────────────────────────────────────────────────────
-
   const [query, setQuery] = useState('')
   const [topK, setTopK] = useState(10)
   const [filter, setFilter] = useState<Record<string, unknown> | null>(null)
@@ -72,34 +65,39 @@ export function SearchTab({ collectionId }: SearchTabProps) {
   const [note, setNote] = useState<string | null>(null)
   const [isSearching, setIsSearching] = useState(false)
   const [searchError, setSearchError] = useState<string | null>(null)
-  // Track the last submitted query (not the live input value) for result display.
+  // 422 / config-incompatibility error — shown inline in the Tuning panel.
+  const [labError, setLabError] = useState<string | null>(null)
   const lastQueryRef = useRef<string>('')
 
   // ── Graph / panel state ───────────────────────────────────────────────────────
-
   const [activeStage, setActiveStage] = useState<StageDefinition | null>(null)
 
   // ── Discovery / config state ─────────────────────────────────────────────────
-
   const [configState, setConfigState] = useState<ConfigState | null>(null)
-  // Full discovery response — passed to StageConfigPanel for the config_tree path.
   const [discovery, setDiscovery] = useState<DiscoveryResponse | null>(null)
 
-  // ── Trace state ───────────────────────────────────────────────────────────────
+  // ── Lab override state ────────────────────────────────────────────────────────
+  const lab = useLabOverrides(configState)
 
+  // ── Trace state ───────────────────────────────────────────────────────────────
   const [lastSearchInfo, setLastSearchInfo] = useState<SearchTraceInfo | null>(null)
-  // Raw debug_info of the last response — feeds the SearchTraceSummary panel.
   const [lastDebugInfo, setLastDebugInfo] = useState<Record<string, unknown> | null>(null)
 
   // ── Expanded result cards ────────────────────────────────────────────────────
-
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
 
-  // 1. Fetch discovery + config state on mount / collection change.
-  //    Discovery provides the config_tree for StageConfigPanel.
+  // 1. Derive known vector names from the last debug_info for weight inputs.
+  const vectorNames = useMemo(() => {
+    if (!lastDebugInfo) return ['content_dense', 'content_bm25']
+    const dense = (lastDebugInfo.dense_vectors ?? []) as string[]
+    const sparse = (lastDebugInfo.sparse_vectors ?? []) as string[]
+    const all = [...dense, ...sparse]
+    return all.length > 0 ? all : ['content_dense', 'content_bm25']
+  }, [lastDebugInfo])
+
+  // 2. Fetch discovery + config state on mount / collection change.
   useEffect(() => {
     let cancelled = false
-
     async function load() {
       try {
         const [discoveryResp, cfgState] = await Promise.all([
@@ -110,61 +108,45 @@ export function SearchTab({ collectionId }: SearchTabProps) {
         setDiscovery(discoveryResp)
         setConfigState(cfgState)
       } catch {
-        // Non-fatal — graph will render in empty config state.
+        // Non-fatal — graph renders in empty state.
       }
     }
-
     load()
     return () => { cancelled = true }
   }, [collectionId])
 
-  // 2. Refresh config state after a successful save in StageConfigPanel.
+  // 3. Refresh config state after a save in StageConfigPanel.
   const handleSaved = useCallback(async () => {
     try {
       const updated = await getConfigState(collectionId)
       setConfigState(updated)
-    } catch {
-      // Silent — the panel already showed a success indicator.
-    }
-    // Note: discovery (config_tree structure) does not change on config save,
-    // so we do not re-fetch it here.
+    } catch { /* silent */ }
   }, [collectionId])
 
-  // 3. Derive trace stageResults from lastSearchInfo.
-  //    Transform is "done" if there were LLM variants (len > 1), "skipped" if not.
-  //    Rerank is "done" if reranked, "skipped" if not.
-  //    Embed and retrieve are always "done" when lastSearchInfo exists.
+  // 4. Derive trace stageResults from lastSearchInfo.
   const stageResults: Record<string, StageResult> | undefined = useMemo(() => {
     if (!lastSearchInfo) return undefined
     return {
       transform: {
         status: lastSearchInfo.queryVariants.length > 1 ? 'done' : 'skipped',
         metric: lastSearchInfo.queryVariants.length > 1
-          ? `${lastSearchInfo.queryVariants.length} variants`
-          : undefined,
+          ? `${lastSearchInfo.queryVariants.length} variants` : undefined,
       },
-      embed: {
-        status: 'done',
-      },
-      retrieve: {
-        status: 'done',
-        metric: `${lastSearchInfo.candidateCount} results`,
-      },
-      rerank: {
-        status: lastSearchInfo.reranked ? 'done' : 'skipped',
-      },
+      embed:    { status: 'done' },
+      retrieve: { status: 'done', metric: `${lastSearchInfo.candidateCount} results` },
+      rerank:   { status: lastSearchInfo.reranked ? 'done' : 'skipped' },
     }
   }, [lastSearchInfo])
 
-  // 4. Graph mode: "trace" after first successful search, "config" before.
+  // 5. Graph mode.
   const graphMode: 'config' | 'trace' = lastSearchInfo ? 'trace' : 'config'
 
-  // 5. Stage node click: toggle off if same stage clicked again.
+  // 6. Stage node click.
   function handleStageClick(stage: StageDefinition) {
     setActiveStage(prev => prev?.id === stage.id ? null : stage)
   }
 
-  // 6. Run search.
+  // 7. Run search — always debug:true; pass overrides only when non-empty.
   async function handleSearch(e?: React.FormEvent) {
     e?.preventDefault()
     const q = query.trim()
@@ -173,19 +155,26 @@ export function SearchTab({ collectionId }: SearchTabProps) {
     lastQueryRef.current = q
     setIsSearching(true)
     setSearchError(null)
+    setLabError(null)
+
+    // Build the overrides object — only changed fields, omit empty map.
+    const hasOverrides = Object.keys(lab.overrides).length > 0
+    const hasWeights = Object.keys(lab.localWeights).length > 0
 
     try {
       const res = await searchDocuments(collectionId, q, {
         top_k: topK,
         filters: filter ?? undefined,
         debug: true,
+        overrides: hasOverrides ? lab.overrides : undefined,
+        weights: hasWeights ? lab.localWeights : undefined,
       })
       setResults(res.results)
       setGroups(res.groups ?? null)
       setNote(res.note ?? null)
       setLastDebugInfo(res.debug_info ?? null)
 
-      // Extract trace metadata from debug_info.
+      // Extract trace metadata.
       const variants = (res.debug_info?.query_variants ?? []) as string[]
       const reranked = Boolean(res.debug_info?.reranked ?? false)
       const candidateCount =
@@ -199,7 +188,12 @@ export function SearchTab({ collectionId }: SearchTabProps) {
         candidateCount,
       })
     } catch (err) {
-      setSearchError(String(err))
+      // Surface 422 inline near the controls; everything else → generic banner.
+      if (err instanceof HttpError && err.status === 422) {
+        setLabError(err.message)
+      } else {
+        setSearchError(String(err))
+      }
     } finally {
       setIsSearching(false)
     }
@@ -209,8 +203,7 @@ export function SearchTab({ collectionId }: SearchTabProps) {
   function toggleResult(id: string) {
     setExpanded(prev => {
       const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
+      if (next.has(id)) next.delete(id); else next.add(id)
       return next
     })
   }
@@ -244,17 +237,9 @@ export function SearchTab({ collectionId }: SearchTabProps) {
                   ? `${activeStage.label} — Read Only`
                   : `${activeStage.label} Configuration`}
               </span>
-              <button
-                type="button"
-                className="btn-icon"
-                onClick={() => setActiveStage(null)}
-                aria-label="Close panel"
-              >
-                ×
-              </button>
+              <button type="button" className="btn-icon" onClick={() => setActiveStage(null)}>×</button>
             </div>
             <div className="pipeline-inline-panel-body">
-              {/* Embed stage is read-only — auto-derived from ingestion embed config. */}
               {activeStage.readOnly ? (
                 <div className="stage-config-empty">
                   This stage is auto-derived from the ingestion embed configuration.
@@ -274,10 +259,10 @@ export function SearchTab({ collectionId }: SearchTabProps) {
         )}
       </div>
 
-      {/* ── Body: query + results ── */}
+      {/* ── Body: query + lab tuning + results ── */}
       <div className="search-tab-body">
-        {/* Query input row */}
         <form onSubmit={handleSearch}>
+          {/* Query input row */}
           <div className="search-query-row">
             <input
               className="input search-query-input"
@@ -289,9 +274,7 @@ export function SearchTab({ collectionId }: SearchTabProps) {
             />
             <input
               className="input search-topk"
-              type="number"
-              min={1}
-              max={100}
+              type="number" min={1} max={100}
               title="Top K results"
               value={topK}
               onChange={e => setTopK(Number(e.target.value))}
@@ -306,8 +289,19 @@ export function SearchTab({ collectionId }: SearchTabProps) {
             </button>
           </div>
 
-          {/* Active search settings summary (read from persisted config) */}
-          <SearchSettingsBar configState={configState} />
+          {/* Lab Tuning panel — per-query overrides */}
+          <LabTuningPanel
+            baseline={lab.baseline}
+            display={lab.display}
+            overrides={lab.overrides}
+            isOverriding={lab.isOverriding}
+            vectorNames={vectorNames}
+            localWeights={lab.localWeights}
+            errorMessage={labError}
+            onUpdate={lab.update}
+            onUpdateWeights={lab.updateWeights}
+            onReset={lab.reset}
+          />
 
           {/* Collapsible filter builder */}
           <button
@@ -329,44 +323,32 @@ export function SearchTab({ collectionId }: SearchTabProps) {
           )}
         </form>
 
-        {/* Query variants banner — only when multi_query produced variants */}
-        {lastSearchInfo && lastSearchInfo.queryVariants.length > 1 && (
-          <div className="search-variants-banner">
-            <span className="text-dim" style={{ fontSize: 11 }}>Variants:</span>
-            {lastSearchInfo.queryVariants.map((v, i) => (
-              <span key={i} className="search-variant-chip">{v}</span>
-            ))}
-          </div>
-        )}
+        {/* Informational note (e.g. sparse/BM25 unavailable) */}
+        {note && <div className="search-note-banner">&#x2139; {note}</div>}
 
-        {/* Informational note (e.g. sparse/BM25 unavailable on a dense-only provider) */}
-        {note && (
-          <div className="search-note-banner">ⓘ {note}</div>
-        )}
+        {/* Generic error banner (non-422 errors) */}
+        {searchError && <div className="error-banner">{searchError}</div>}
 
-        {/* Error banner */}
-        {searchError && (
-          <div className="error-banner">{searchError}</div>
+        {/* Lab debug panel — always shown after a search (debug:true always sent) */}
+        {lastDebugInfo && (
+          <LabDebugPanel debugInfo={lastDebugInfo} topK={topK} />
         )}
-
-        {/* Collapsible search trace (debug_info) — above the results */}
-        {lastSearchInfo && <SearchTraceSummary debugInfo={lastDebugInfo} />}
 
         {/* Empty state */}
-        {!isSearching && lastSearchInfo && results.length === 0 && !searchError && (
+        {!isSearching && lastSearchInfo && results.length === 0 && !searchError && !labError && (
           <div className="empty" style={{ padding: '32px 0' }}>
-            <div className="empty-icon">🔍</div>
+            <div className="empty-icon">&#128269;</div>
             <div>No results found.</div>
           </div>
         )}
 
-        {/* Grouped results (document-level) when grouping is enabled */}
+        {/* Grouped results */}
         {groups && groups.length > 0 && (
           <div className="search-results-list">
             {groups.map(group => (
               <div key={group.document_id} className="search-group">
                 <div className="search-group-header">
-                  <span className="search-group-doc">📄 {group.document_id.slice(0, 8)}…</span>
+                  <span className="search-group-doc">&#128196; {group.document_id.slice(0, 8)}&hellip;</span>
                   <span className="search-group-meta">
                     {group.chunks.length} chunk{group.chunks.length > 1 ? 's' : ''} · best {group.score.toFixed(4)}
                   </span>
@@ -374,9 +356,7 @@ export function SearchTab({ collectionId }: SearchTabProps) {
                 {group.chunks.map((item, idx) => (
                   <ResultCard
                     key={item.chunk_id}
-                    item={item}
-                    idx={idx}
-                    maxScore={maxScore}
+                    item={item} idx={idx} maxScore={maxScore}
                     query={lastQueryRef.current}
                     isOpen={expanded.has(item.chunk_id)}
                     onToggle={() => toggleResult(item.chunk_id)}
@@ -388,15 +368,13 @@ export function SearchTab({ collectionId }: SearchTabProps) {
           </div>
         )}
 
-        {/* Flat result cards when grouping is disabled */}
+        {/* Flat results */}
         {!groups && results.length > 0 && (
           <div className="search-results-list">
             {results.map((item, idx) => (
               <ResultCard
                 key={item.chunk_id}
-                item={item}
-                idx={idx}
-                maxScore={maxScore}
+                item={item} idx={idx} maxScore={maxScore}
                 query={lastQueryRef.current}
                 isOpen={expanded.has(item.chunk_id)}
                 onToggle={() => toggleResult(item.chunk_id)}
@@ -406,8 +384,6 @@ export function SearchTab({ collectionId }: SearchTabProps) {
           </div>
         )}
       </div>
-
     </div>
   )
 }
-

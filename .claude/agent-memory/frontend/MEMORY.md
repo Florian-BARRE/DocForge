@@ -103,6 +103,35 @@
 `<ChainTraceView>` accepts `traces: ChainTrace[]` and `variant: 'compact' | 'detailed'`.
 CSS classes for the jobs list live in `global.css` under `/* ── Jobs Tab ──... */`.
 
+## Search Lab (UI-2)
+
+- `components/search/labTypes.ts` — `SearchBaseline`, `SearchOverrides`, `SearchEffective` types.
+- `hooks/useLabOverrides.ts` — extracts baseline from `configState.pipeline.search.*`; tracks local
+  choices as `Partial<SearchBaseline>`; computes diff (`overrides`) = only keys that differ from
+  baseline. `isOverriding` gates the "Reset to config" button in the panel.
+- `components/search/SegmentedControl.tsx` — generic `<SegmentedControl<T>>` button group using
+  `.segmented-control / .segmented-btn / .segmented-btn-active` CSS classes.
+- `components/search/LabTuningPanel.tsx` — collapsible "Tuning" panel; each control shows a
+  baseline annotation ("config: hybrid") and an `.lab-override-dot` when overriding.
+  "Reset to config" button only renders when `isOverriding`.
+- `components/search/LabDebugPanel.tsx` — always-visible after a search (lab always sends
+  `debug:true`). Reads `debug_info.effective` (new format) with fallback to flat `debug_info` keys.
+  Shows effective chips, recall hint (candidates → top_k), collapsible query variants.
+- `api/client.ts` adds `HttpError extends Error` with `status: number` field. `handleError` now
+  throws `HttpError` for all non-401 errors. SearchTab catches `instanceof HttpError && status===422`
+  → sets `labError` (shown inline in LabTuningPanel); other errors → generic `searchError` banner.
+- `api/client.ts` `searchDocuments` and `searchWithinDocument` accept `overrides?: SearchOverrides`.
+- `SearchTab.tsx` wires `useLabOverrides`, passes `overrides` (only non-empty) and `weights` to
+  `searchDocuments`. Always passes `debug: true`. `SearchTraceSummary` removed; `LabDebugPanel` is
+  the primary debug view.
+- CSS for lab: `lab-tuning-panel`, `segmented-control`, `lab-effective-chip` (accent-tinted mono),
+  `lab-recall-hint`, `lab-422-banner` (red tint) — all in global.css.
+- Vector names for weight inputs: derived from `debug_info.dense_vectors + sparse_vectors` after
+  first search; defaults to `['content_dense', 'content_bm25']` before any search.
+- **Reindex-reasons pipeline polish**: `ConfigAppliedSummary.tsx` already renders `reindex_reasons[]`
+  as a bulleted list under the "Reindex required" tag. CSS class `.config-applied-reasons` styled in
+  global.css. No additional work needed — pre-existing from before UI-2.
+
 ## Boundary
 
 UI code only. REST contract changes → **backend** agent. Build/serve of `dist/` → **docforge** agent.

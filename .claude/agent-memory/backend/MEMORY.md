@@ -32,6 +32,9 @@ repos, config, domain models, search/observability wiring). NOT the ingestion pi
 - [Discovery config_tree](discovery-config-tree.md) — recursive schema-driven describer (CHUNK D1);
   auto_import must use `common_libs.providers.*` (legacy `libs.providers.*` silently fails); field→
   category glue; ConfigNode/ProviderChoice mutual forward refs need model_rebuild; ADDITIVE to flat.
+- [Search overrides (Search Lab)](search-overrides.md) — per-REQUEST `overrides` shadow pipeline.search
+  for one query (never persisted); merge+validate in `backend/libs/search/overrides.py`; 422 guards
+  reuse `search.rerank.empty_chain`; `debug_info.effective` shape; embed provider never overridable.
 
 ## Brique D (resource admission) — post-budget-purge
 

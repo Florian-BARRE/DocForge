@@ -258,6 +258,9 @@ export type PageReingestResponse = Schemas['PageReingestResponse']
 
 // ── Search ────────────────────────────────────────────────────────────────────
 
+// Re-export SearchOverrides so callers can import from the canonical api path.
+export type { SearchOverrides } from '../components/search/labTypes'
+
 // Extend the generated type with vector_ranks (added in debug mode — P6.x).
 // The generated schema may not include this field until the next `npm run gen:types`
 // run against a rebuilt container, so we add the overlay here to unblock the UI.

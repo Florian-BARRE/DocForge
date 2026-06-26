@@ -3486,6 +3486,193 @@ input[type="range"]::-webkit-slider-thumb:hover { background: var(--text-muted);
   margin: 1px 0;
 }
 
+/* ── Search Lab — Tuning panel ───────────────────────────────────────────── */
+
+/* Container: collapsed or expanded, inset between query bar and filters. */
+.lab-tuning-panel {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  margin: 6px 0;
+  overflow: hidden;
+}
+
+/* Toggle header row — similar to metadata-form-toggle. */
+.lab-tuning-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 5px 10px;
+  font-size: 11px;
+  color: var(--text-muted);
+  text-align: left;
+  cursor: pointer;
+  background: none;
+  border: none;
+}
+.lab-tuning-toggle:hover { color: var(--text); background: var(--hover); }
+
+/* Expanded body — control rows stacked vertically. */
+.lab-tuning-body {
+  padding: 8px 12px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-top: 1px solid var(--border);
+}
+
+/* One control row: label + input + baseline annotation. */
+.lab-control-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* Fixed-width label column. */
+.lab-control-label {
+  min-width: 110px;
+  max-width: 110px;
+  font-size: 11px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Small indicator dot shown when a control overrides the saved config. */
+.lab-override-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--s-running);
+  flex-shrink: 0;
+}
+
+/* ── Segmented Control ───────────────────────────────────────────────────── */
+
+.segmented-control {
+  display: inline-flex;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--surface);
+}
+
+.segmented-btn {
+  padding: 3px 10px;
+  font-size: 11px;
+  color: var(--text-muted);
+  background: transparent;
+  border: none;
+  border-right: 1px solid var(--border-strong);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+  white-space: nowrap;
+}
+.segmented-btn:last-child { border-right: none; }
+.segmented-btn:hover:not(:disabled) { color: var(--text); background: var(--hover); }
+.segmented-btn-active { background: var(--active); color: var(--text); }
+.segmented-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ── Lab 422 inline error ────────────────────────────────────────────────── */
+
+.lab-422-banner {
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: var(--s-error);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  font-size: 11px;
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+/* Collapsed variant: flush top border, square corners (sits under the panel header). */
+.lab-422-banner-collapsed {
+  border-top: 1px solid rgba(239, 68, 68, 0.2);
+  border-radius: 0;
+}
+
+/* ── Lab Debug Panel ──────────────────────────────────────────────────────── */
+
+/* Compact panel shown after every lab query (debug:true always). */
+.lab-debug-panel {
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  margin: 8px 0;
+}
+
+/* Header row: title + status tags. */
+.lab-debug-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+/* "EFFECTIVE" section label. */
+.lab-debug-title {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+
+/* Row of effective-settings chips. */
+.lab-effective-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+
+/* One effective chip — accent-tinted, mono. */
+.lab-effective-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-family: var(--font-mono);
+  background: var(--accent-soft);
+  color: var(--accent);
+  border: 1px solid rgba(99, 102, 241, 0.2);
+}
+
+/* Recall funnel hint: "retrieved N candidates → top K". */
+.lab-recall-hint {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+/* Expandable variant chip list. */
+.lab-variants-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+/* One variant in mono, muted. */
+.lab-variant-chip {
+  font-size: 10px;
+  color: var(--text-dim);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-family: var(--font-mono);
+}
+
 /* ── Auth: Login screen ──────────────────────────────────────────────────── */
 
 /* Full-viewport centered container. */

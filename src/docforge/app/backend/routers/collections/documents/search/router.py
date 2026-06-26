@@ -16,13 +16,16 @@ from fastapi import APIRouter, Depends, HTTPException
 from backend.context import CONTEXT
 from backend.libs.auth import Capability, require_capability
 from backend.libs.search.builder import build_search_pipeline
+from backend.libs.search.overrides import SearchOverrideError, SearchOverridesHelpers
 from backend.libs.utils.error_handling import auto_handle_errors
 from backend.routers.collections.documents.search.models import (
     SearchGroupItem,
+    SearchOverrides,
     SearchRequest,
     SearchResponse,
     SearchResultItem,
 )
+from common_libs.config.pipeline.stages.search_config import SearchConfig
 from common_libs.domain.metadata import schema_field_dicts
 
 # Searching needs the dedicated search capability — both the collection-wide and in-document search.
@@ -46,12 +49,16 @@ async def search_collection(collection_id: uuid.UUID, body: SearchRequest) -> Se
     collection = await _get_collection(collection_id)
     metadata_fields = _extract_schema_fields(collection)
 
-    # 3. Build search pipeline from collection pipeline config.
+    # 3. Resolve the effective pipeline dict — collection config + optional per-request
+    # overrides (Search Lab). Invalid overrides (e.g. rerank on without a chain) raise 422.
+    pipeline_dict = _resolve_pipeline(collection, body.overrides, collection_id)
+
+    # 4. Build search pipeline from the resolved pipeline config.
     # Embed provider is derived from pipeline.embed.chain[0] so query vectors
     # match the indexed vectors -- mixing providers corrupts results.
     try:
         search_pipeline = build_search_pipeline(
-            collection.pipeline, CONTEXT.retrieval, CONTEXT.RUNTIME_CONFIG
+            pipeline_dict, CONTEXT.retrieval, CONTEXT.RUNTIME_CONFIG
         )
     except ValueError as exc:
         # 503 — the collection's configured search/embed provider could not be built.
@@ -63,7 +70,10 @@ async def search_collection(collection_id: uuid.UUID, body: SearchRequest) -> Se
             detail=f"Search pipeline provider not configured for this collection — {exc}",
         )
 
-    # 4. Execute -- debug path exposes per-vector ranks
+    # 5. Effective search config actually applied (collection + overrides) — surfaced in debug.
+    effective_search = SearchConfig.from_dict((pipeline_dict or {}).get("search"))
+
+    # 6. Execute -- debug path exposes per-vector ranks + effective settings
     try:
         async with CONTEXT.postgres.session() as session:
             if body.debug:
@@ -72,7 +82,9 @@ async def search_collection(collection_id: uuid.UUID, body: SearchRequest) -> Se
                     collection_name=str(collection_id), payload_filter=body.filters,
                     metadata_fields=metadata_fields, weight_overrides=body.weights,
                 )
-                return _to_response_debug(collection_id, body.query, debug_data)
+                return _to_response_debug(
+                    collection_id, body.query, debug_data, effective_search
+                )
 
             outcome = await search_pipeline.run(
                 query=body.query, top_k=body.top_k, session=session,
@@ -120,9 +132,12 @@ async def search_within_document(
     # 3. Fetch collection for schema fields + search pipeline resolution
     collection = await _get_collection(collection_id)
     metadata_fields = _extract_schema_fields(collection)
+
+    # Resolve the effective pipeline dict (collection config + optional overrides → 422 if bad).
+    pipeline_dict = _resolve_pipeline(collection, body.overrides, collection_id)
     try:
         search_pipeline = build_search_pipeline(
-            collection.pipeline, CONTEXT.retrieval, CONTEXT.RUNTIME_CONFIG
+            pipeline_dict, CONTEXT.retrieval, CONTEXT.RUNTIME_CONFIG
         )
     except ValueError as exc:
         # 503 — the collection's configured search/embed provider could not be built.
@@ -135,6 +150,9 @@ async def search_within_document(
             detail=f"Search pipeline provider not configured — {exc}",
         )
 
+    # Effective search config actually applied (collection + overrides) — surfaced in debug.
+    effective_search = SearchConfig.from_dict((pipeline_dict or {}).get("search"))
+
     # 4. Execute with pinned filter + collection-specific search pipeline
     try:
         async with CONTEXT.postgres.session() as session:
@@ -144,7 +162,9 @@ async def search_within_document(
                     collection_name=str(collection_id), payload_filter=pinned,
                     metadata_fields=metadata_fields, weight_overrides=body.weights,
                 )
-                return _to_response_debug(collection_id, body.query, debug_data)
+                return _to_response_debug(
+                    collection_id, body.query, debug_data, effective_search
+                )
 
             outcome = await search_pipeline.run(
                 query=body.query, top_k=body.top_k, session=session,
@@ -165,6 +185,52 @@ async def search_within_document(
 
 
 # --- Private helpers ---------------------------------------------------------
+
+
+def _resolve_pipeline(
+    collection: Any, overrides: SearchOverrides | None, collection_id: uuid.UUID
+) -> dict[str, Any] | None:
+    """
+    Resolve the pipeline dict used to build the engine: collection config + optional overrides.
+
+    When no overrides are supplied (or all fields are None) the collection's stored pipeline is
+    returned unchanged — behavior is identical to the pre-overrides path. When overrides are
+    present they are deep-merged onto a COPY (never persisted) and validated; an override that
+    would need an unconfigured provider raises a 422 rather than silently no-opping.
+
+    Args:
+        collection (Any): The collection ORM object (carries the stored ``pipeline`` dict).
+        overrides (SearchOverrides | None): Optional per-request search overrides.
+        collection_id (uuid.UUID): Target collection (for log context).
+
+    Returns:
+        dict | None: The effective pipeline dict to feed ``build_search_pipeline``.
+
+    Raises:
+        HTTPException: 422 when the supplied overrides need a provider the collection lacks.
+    """
+    # 1. No overrides → use the stored pipeline verbatim (identical legacy behavior).
+    if overrides is None:
+        return collection.pipeline
+    override_keys = overrides.model_dump(exclude_none=True)
+    if not override_keys:
+        return collection.pipeline
+
+    # 2. Deep-merge overrides onto a copy, then validate provider coherence.
+    merged = SearchOverridesHelpers.apply(collection.pipeline, override_keys)
+    try:
+        SearchOverridesHelpers.validate(merged)
+    except SearchOverrideError as exc:
+        # 422 — the override asked for a capability this collection has not configured.
+        CONTEXT.logger.warning(
+            f"Search overrides rejected (422): collection={collection_id} "
+            f"overrides={override_keys} error={exc}"
+        )
+        raise HTTPException(status_code=422, detail=str(exc))
+    CONTEXT.logger.debug(
+        f"Search overrides applied: collection={collection_id} overrides={override_keys}"
+    )
+    return merged
 
 
 async def _get_collection(collection_id: uuid.UUID) -> Any:
@@ -227,18 +293,23 @@ def _groups(groups: list[Any] | None) -> list[SearchGroupItem] | None:
 
 
 def _to_response_debug(
-    collection_id: uuid.UUID, query: str, debug_data: dict[str, Any]
+    collection_id: uuid.UUID,
+    query: str,
+    debug_data: dict[str, Any],
+    effective_search: SearchConfig,
 ) -> SearchResponse:
     """
     Shape debug search data (with per-vector ranks) into the API response.
 
     Builds a reverse-lookup table from ranked (vector to ordered chunk IDs)
-    so each result item carries vector_ranks.
+    so each result item carries vector_ranks, and attaches the EFFECTIVE search
+    settings actually used (collection config + any per-request overrides).
 
     Args:
         collection_id (uuid.UUID): Target collection.
         query (str): Original query string.
         debug_data (dict): Output of SearchPipelineEngine.run_debug().
+        effective_search (SearchConfig): The search config actually applied to this query.
 
     Returns:
         SearchResponse: Results enriched with vector rank breakdown and debug_info.
@@ -266,8 +337,8 @@ def _to_response_debug(
         for r in results
     ]
 
-    # 3. Merge pipeline metadata into debug_info for observability
-    debug_info = {**resolved, **pipeline_meta}
+    # 3. Merge pipeline metadata + the effective settings summary into debug_info
+    debug_info = {**resolved, **pipeline_meta, "effective": _effective(effective_search, debug_data)}
 
     return SearchResponse(
         collection_id=collection_id, query=query, total=len(items), results=items,
@@ -275,6 +346,36 @@ def _to_response_debug(
         note=_sparse_note(resolved),
         debug_info=debug_info,
     )
+
+
+def _effective(effective_search: SearchConfig, debug_data: dict[str, Any]) -> dict[str, Any]:
+    """
+    Summarize the effective search settings actually used for this query.
+
+    Combines the *intent* (the effective SearchConfig = collection config + overrides) with the
+    *runtime facts* observed during retrieval (the resolved vector plan + pipeline metadata), so
+    the Search Lab can show "ran with: hybrid + rrf + rerank on + multi_query (3 variants)".
+
+    Args:
+        effective_search (SearchConfig): The search config applied to this query.
+        debug_data (dict): Output of SearchPipelineEngine.run_debug().
+
+    Returns:
+        dict: The effective settings summary embedded under debug_info.effective.
+    """
+    resolved: dict[str, Any] = debug_data.get("resolved", {})
+    pipeline_meta: dict[str, Any] = debug_data.get("pipeline", {})
+    variants = pipeline_meta.get("query_variants") or []
+    return {
+        "vector_mode": effective_search.retrieve.vector_mode,
+        "fusion": effective_search.retrieve.fusion,
+        "query_transform_strategy": effective_search.query_transform.strategy,
+        "rerank_enabled": effective_search.rerank.enabled,
+        "sparse_enabled": resolved.get("sparse_enabled"),
+        "candidate_count": resolved.get("candidate_limit"),
+        "query_variants": len(variants),
+        "reranked": bool(pipeline_meta.get("rerank_enabled", False)),
+    }
 
 
 def _sparse_note(resolved: dict[str, Any]) -> str | None:

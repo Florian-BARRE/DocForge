@@ -205,6 +205,172 @@ class TestSearchWithinDocument:
         )
 
 
+class TestSearchOverrides:
+    """Per-request search overrides (Search Lab) — shadow pipeline.search for one query only."""
+
+    @staticmethod
+    def _install_capturing_build(
+        monkeypatch: pytest.MonkeyPatch, holder: dict
+    ) -> None:
+        """Patch build_search_pipeline to capture the pipeline dict and return a real engine."""
+        from backend.libs.search.pipeline.engine import SearchPipelineEngine
+        from common_libs.config.pipeline.stages.search_config import SearchConfig
+
+        def _fake(pipeline_dict: object, retrieval: object, runtime_config: object):
+            holder["pipeline_dict"] = pipeline_dict
+            raw_search = pipeline_dict.get("search") if isinstance(pipeline_dict, dict) else None
+            return SearchPipelineEngine(
+                config=SearchConfig.from_dict(raw_search),
+                embed_provider=MagicMock(),
+                retrieval=retrieval,
+            )
+
+        monkeypatch.setattr(
+            "backend.routers.collections.documents.search.router.build_search_pipeline",
+            _fake,
+            raising=True,
+        )
+
+    @pytest.mark.asyncio
+    async def test_omitting_overrides_uses_collection_pipeline_unchanged(
+        self, client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """No overrides → the engine is built from the collection's stored pipeline as-is."""
+        col_id = uuid.uuid4()
+        stored = {"search": {"retrieve": {"vector_mode": "hybrid"}}}
+        CONTEXT.collection_repo.get_by_id.return_value = make_collection_orm(
+            id=col_id, pipeline=stored
+        )
+        CONTEXT.retrieval.search.return_value = []
+        holder: dict = {}
+        self._install_capturing_build(monkeypatch, holder)
+
+        response = await client.post(_col_search_url(col_id), json={"query": "q"})
+
+        assert response.status_code == 200
+        # The stored pipeline is forwarded verbatim (same vector_mode, no mutation).
+        assert holder["pipeline_dict"]["search"]["retrieve"]["vector_mode"] == "hybrid"
+
+    @pytest.mark.asyncio
+    async def test_override_vector_mode_changes_engine_build(
+        self, client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Override vector_mode shadows the stored config for this query without mutating it."""
+        col_id = uuid.uuid4()
+        stored = {"search": {"retrieve": {"vector_mode": "hybrid"}}}
+        CONTEXT.collection_repo.get_by_id.return_value = make_collection_orm(
+            id=col_id, pipeline=stored
+        )
+        CONTEXT.retrieval.search.return_value = []
+        holder: dict = {}
+        self._install_capturing_build(monkeypatch, holder)
+
+        response = await client.post(
+            _col_search_url(col_id),
+            json={"query": "q", "overrides": {"vector_mode": "dense"}},
+        )
+
+        assert response.status_code == 200
+        # Engine built with the overridden mode...
+        assert holder["pipeline_dict"]["search"]["retrieve"]["vector_mode"] == "dense"
+        # ...but the persisted config object is untouched (no write-back).
+        assert stored["search"]["retrieve"]["vector_mode"] == "hybrid"
+
+    @pytest.mark.asyncio
+    async def test_bad_vector_mode_enum_returns_422(
+        self, client: httpx.AsyncClient
+    ) -> None:
+        """An out-of-enum override value fails request validation → 422."""
+        col_id = uuid.uuid4()
+        CONTEXT.collection_repo.get_by_id.return_value = make_collection_orm(id=col_id)
+        response = await client.post(
+            _col_search_url(col_id),
+            json={"query": "q", "overrides": {"vector_mode": "diagonal"}},
+        )
+        assert response.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_rerank_enabled_without_chain_returns_422(
+        self, client: httpx.AsyncClient
+    ) -> None:
+        """rerank_enabled=true on a collection with no rerank chain → 422 (no silent no-op)."""
+        col_id = uuid.uuid4()
+        CONTEXT.collection_repo.get_by_id.return_value = make_collection_orm(
+            id=col_id, pipeline={}
+        )
+        response = await client.post(
+            _col_search_url(col_id),
+            json={"query": "q", "overrides": {"rerank_enabled": True}},
+        )
+        assert response.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_query_transform_without_llm_returns_422(
+        self, client: httpx.AsyncClient
+    ) -> None:
+        """A non-passthrough transform strategy with no LLM configured → 422."""
+        col_id = uuid.uuid4()
+        CONTEXT.collection_repo.get_by_id.return_value = make_collection_orm(
+            id=col_id, pipeline={}
+        )
+        response = await client.post(
+            _col_search_url(col_id),
+            json={"query": "q", "overrides": {"query_transform_strategy": "multi_query"}},
+        )
+        assert response.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_unknown_override_key_returns_422(
+        self, client: httpx.AsyncClient
+    ) -> None:
+        """A typo'd override key is rejected (extra='forbid') → 422, never a silent no-op."""
+        col_id = uuid.uuid4()
+        CONTEXT.collection_repo.get_by_id.return_value = make_collection_orm(id=col_id)
+        response = await client.post(
+            _col_search_url(col_id),
+            json={"query": "q", "overrides": {"rerank": True}},
+        )
+        assert response.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_effective_settings_appear_in_debug_info(
+        self, client: httpx.AsyncClient
+    ) -> None:
+        """debug=True surfaces debug_info.effective reflecting the applied overrides."""
+        col_id = uuid.uuid4()
+        CONTEXT.collection_repo.get_by_id.return_value = make_collection_orm(
+            id=col_id, pipeline={}
+        )
+        # The engine's run_debug delegates to retrieval.search_debug; return a minimal plan.
+        CONTEXT.retrieval.search_debug = AsyncMock(
+            return_value={
+                "resolved": {
+                    "sparse_enabled": False, "candidate_limit": 30,
+                    "fusion": "rrf", "vector_mode": "dense",
+                },
+                "ranked": {},
+                "fused": [],
+                "results": [],
+            }
+        )
+        response = await client.post(
+            _col_search_url(col_id),
+            json={
+                "query": "q", "debug": True,
+                "overrides": {"vector_mode": "dense", "rerank_enabled": False},
+            },
+        )
+        assert response.status_code == 200
+        effective = response.json()["debug_info"]["effective"]
+        assert effective["vector_mode"] == "dense"
+        assert effective["rerank_enabled"] is False
+        assert effective["reranked"] is False
+        assert effective["sparse_enabled"] is False
+        assert effective["candidate_count"] == 30
+        assert effective["query_transform_strategy"] == "none"
+        assert effective["query_variants"] == 1
+
+
 class TestSearchServiceUnavailable:
     """503 — the embed/vector backend is wired but unreachable or misconfigured."""
 

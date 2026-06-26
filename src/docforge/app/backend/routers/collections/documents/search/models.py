@@ -6,10 +6,44 @@
 
 # ====== Standard Library Imports ======
 import uuid
-from typing import Any
+from typing import Any, Literal
 
 # ====== Third-Party Library Imports ======
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class SearchOverrides(BaseModel):
+    """
+    Per-REQUEST search overrides for the Search Lab.
+
+    Every field is optional. When a field is present it SHADOWS the collection's stored
+    ``pipeline.search`` config for THIS request only — nothing is ever persisted. Omitting the
+    whole object (or leaving every field None) reproduces the collection's saved search behavior
+    exactly. Enum values are validated by Pydantic (a bad value is a 422); unknown keys are
+    rejected (``extra="forbid"``) so a typo'd override never silently no-ops.
+
+    Attributes:
+        vector_mode: Which named vectors to query — dense (semantic), sparse (keyword), or hybrid.
+        fusion: Multi-vector fusion method — rrf (reciprocal rank) or dbsf (distribution-based).
+        query_transform_strategy: Query expansion — none, rewrite, hyde, or multi_query.
+        rerank_enabled: Toggle the cross-encoder rerank stage for this query.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    vector_mode: Literal["dense", "sparse", "hybrid"] | None = Field(
+        default=None, description="Override pipeline.search.retrieve.vector_mode for this query."
+    )
+    fusion: Literal["rrf", "dbsf"] | None = Field(
+        default=None, description="Override pipeline.search.retrieve.fusion for this query."
+    )
+    query_transform_strategy: Literal["none", "rewrite", "hyde", "multi_query"] | None = Field(
+        default=None,
+        description="Override pipeline.search.query_transform.strategy for this query.",
+    )
+    rerank_enabled: bool | None = Field(
+        default=None, description="Override pipeline.search.rerank.enabled for this query."
+    )
 
 
 class SearchRequest(BaseModel):
@@ -20,6 +54,14 @@ class SearchRequest(BaseModel):
     filters: dict[str, Any] | None = Field(default=None, description="Qdrant payload filter.")
     weights: dict[str, float] | None = Field(
         default=None, description="Per-vector fusion weight overrides."
+    )
+    overrides: SearchOverrides | None = Field(
+        default=None,
+        description=(
+            "Optional per-request search overrides (Search Lab). When present, the listed fields "
+            "shadow the collection's saved pipeline.search for THIS query only — never persisted. "
+            "Omit for the collection's saved search behavior."
+        ),
     )
     debug: bool = Field(
         default=False,

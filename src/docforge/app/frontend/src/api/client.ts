@@ -30,6 +30,29 @@ import type {
   ReingestResponse,
   SearchResponse,
 } from './types'
+import type { SearchOverrides } from '../components/search/labTypes'
+
+// ── HTTP error class ───────────────────────────────────────────────────────
+//
+// Richer than a plain Error: carries the HTTP status so callers can branch on
+// specific codes (e.g. 422 validation failure) without string-matching.
+
+/**
+ * HTTP error with a status code.
+ *
+ * Thrown by `handleError` for all non-2xx responses except 401 (which
+ * calls the unauthorized handler and throws a plain Error).
+ * Use `err instanceof HttpError && err.status === 422` to detect 422s.
+ */
+export class HttpError extends Error {
+  constructor(
+    public readonly status: number,
+    message: string,
+  ) {
+    super(message)
+    this.name = 'HttpError'
+  }
+}
 
 // ── Auth token registry ────────────────────────────────────────────────────
 //
@@ -92,7 +115,7 @@ function authHeaders(): Record<string, string> {
 }
 
 // Handles the common "not-ok" path after a fetch: 401 triggers force-logout,
-// everything else throws with the backend's detail message.
+// everything else throws an HttpError with the status code and backend detail.
 async function handleError(res: Response): Promise<never> {
   if (res.status === 401) {
     // Token is missing or expired — force the user back to the login screen.
@@ -102,7 +125,7 @@ async function handleError(res: Response): Promise<never> {
   }
   const body = await res.json().catch(() => ({}))
   const msg = (body as { detail?: unknown })?.detail ?? `HTTP ${res.status}`
-  throw new Error(typeof msg === 'string' ? msg : JSON.stringify(msg))
+  throw new HttpError(res.status, typeof msg === 'string' ? msg : JSON.stringify(msg))
 }
 
 // Base fetch with consistent error handling and bearer-token injection.
@@ -372,6 +395,13 @@ export const searchDocuments = (
     weights?: Record<string, number>
     /** When true, each result carries vector_ranks with per-vector rank breakdown. */
     debug?: boolean
+    /**
+     * Per-query overrides that shadow the collection's saved pipeline.search config.
+     * Only send the keys that the user explicitly changed — omit a key to use the
+     * saved config value.  A 422 is returned when the override is incompatible with
+     * the collection's provider setup (e.g. rerank with no rerank chain).
+     */
+    overrides?: SearchOverrides
   },
 ): Promise<SearchResponse> =>
   request<SearchResponse>(`/collections/${collectionId}/documents/search`, {
@@ -389,6 +419,11 @@ export const searchWithinDocument = (
     weights?: Record<string, number>
     /** When true, each result carries vector_ranks with per-vector rank breakdown. */
     debug?: boolean
+    /**
+     * Per-query overrides — same semantics as {@link searchDocuments}.
+     * A 422 is returned when the override conflicts with the collection's config.
+     */
+    overrides?: SearchOverrides
   },
 ): Promise<SearchResponse> =>
   request<SearchResponse>(`/collections/${collectionId}/documents/${docId}/search`, {
