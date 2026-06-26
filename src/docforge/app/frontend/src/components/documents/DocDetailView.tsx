@@ -1,7 +1,8 @@
 // ====== Code Summary ======
 // DocDetailView renders a full-screen detail view for a single document.
-// Provides sub-tab navigation across: Overview, IR, Chunks, Pages, Downloads.
-// Replaces the documents list when a user opens a document from DocRow.
+// Provides sub-tab navigation across: Overview, IR, Chunks, Pages, Downloads,
+// Chain traces, Jobs, and In-doc search.  Owns the jumpChunkId signal used to
+// cross-navigate from search results to the Chunks tab.
 // Orchestration only — each sub-tab lives in ./detail/.
 
 // ====== Standard Library Imports ======
@@ -16,6 +17,7 @@ import { ChainTracesTab } from './detail/ChainTracesTab'
 import { ChunksTab } from './detail/ChunksTab'
 import { dotClass, formatFileSize, statusColor } from './detail/detailHelpers'
 import { DownloadsTab } from './detail/DownloadsTab'
+import { InDocSearch } from './detail/InDocSearch'
 import { IRTab } from './detail/IRTab'
 import { JobsTab } from './detail/JobsTab'
 import { OverviewTab } from './detail/OverviewTab'
@@ -23,7 +25,7 @@ import { PagesTab } from './detail/PagesTab'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type DetailTab = 'overview' | 'ir' | 'chunks' | 'pages' | 'downloads' | 'traces' | 'jobs'
+type DetailTab = 'overview' | 'ir' | 'chunks' | 'pages' | 'downloads' | 'traces' | 'jobs' | 'search'
 
 interface DocDetailViewProps {
   /** Collection the document belongs to. */
@@ -32,31 +34,39 @@ interface DocDetailViewProps {
   docId: string
   /** Callback to return to the document list. */
   onBack: () => void
+  /** When false, write-only controls (chunk edit) are hidden. */
+  canWrite?: boolean
 }
 
 // ── Component ────────────────────────────────────────────────────────────────
 
 /**
- * DocDetailView is a full-screen document inspector with sub-tab navigation.
+ * DocDetailView is a full-screen document inspector with eight sub-tabs.
  *
- * Fetches the document on mount, then renders five sub-tabs:
- *   - Overview: key/value metadata grid
- *   - IR:       per-page block inspector via S1Block
- *   - Chunks:   full chunk browser via ChunkBrowser
- *   - Pages:    screenshot thumbnails with expandable block detail
- *   - Downloads: presigned URL buttons for original / markdown / PDF
+ * Fetches the document on mount, then renders:
+ *   - Overview:      metadata grid + stale_reasons + pipeline_errors
+ *   - IR:            per-page block inspector
+ *   - Chunks:        full chunk browser (jumpChunkId-aware, canWrite-gated edit)
+ *   - Pages:         screenshot thumbnails with block bbox overlays
+ *   - Downloads:     presigned URL buttons
+ *   - Chain traces:  parse + embed stage provenance
+ *   - Jobs:          full job history
+ *   - Search:        in-document search → jump-to-chunk cross-navigation
  *
  * Args:
  *   collectionId: UUID of the owning collection.
  *   docId:        UUID of the document to display.
  *   onBack:       Callback to navigate back to the document list.
+ *   canWrite:     When false, write-only controls are hidden (default true).
  */
-export function DocDetailView({ collectionId, docId, onBack }: DocDetailViewProps) {
+export function DocDetailView({ collectionId, docId, onBack, canWrite = true }: DocDetailViewProps) {
   // ── State ──────────────────────────────────────────────────────────────
   const [doc, setDoc]             = useState<Document | null>(null)
   const [activeTab, setActiveTab] = useState<DetailTab>('overview')
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError]         = useState<string | null>(null)
+  // chunkId to auto-open in ChunksTab after navigation from in-doc search.
+  const [jumpChunkId, setJumpChunkId] = useState<string | null>(null)
 
   // ── Data fetch ─────────────────────────────────────────────────────────
 
@@ -69,6 +79,12 @@ export function DocDetailView({ collectionId, docId, onBack }: DocDetailViewProp
       .catch(err => setError(String(err)))
       .finally(() => setIsLoading(false))
   }, [collectionId, docId])
+
+  // 2. Jump from in-doc search: switch to Chunks tab and set the target chunk.
+  function handleJumpToChunk(chunkId: string) {
+    setJumpChunkId(chunkId)
+    setActiveTab('chunks')
+  }
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -119,6 +135,18 @@ export function DocDetailView({ collectionId, docId, onBack }: DocDetailViewProp
           {doc.chunk_count != null && (
             <span className="tag">{doc.chunk_count} chunks</span>
           )}
+          {doc.stale && (
+            <span
+              className="tag"
+              style={{
+                color: 'var(--s-warning)',
+                borderColor: 'rgba(245,158,11,0.4)',
+                background: 'rgba(245,158,11,0.1)',
+              }}
+            >
+              stale
+            </span>
+          )}
         </div>
       </div>
 
@@ -133,6 +161,7 @@ export function DocDetailView({ collectionId, docId, onBack }: DocDetailViewProp
             { id: 'downloads', label: 'Downloads' },
             { id: 'traces',    label: 'Chain traces' },
             { id: 'jobs',      label: 'Jobs' },
+            { id: 'search',    label: 'Search' },
           ] as { id: DetailTab; label: string }[]
         ).map(({ id, label }) => (
           <button
@@ -155,7 +184,12 @@ export function DocDetailView({ collectionId, docId, onBack }: DocDetailViewProp
           <IRTab doc={doc} collectionId={collectionId} />
         )}
         {activeTab === 'chunks' && (
-          <ChunksTab doc={doc} collectionId={collectionId} />
+          <ChunksTab
+            doc={doc}
+            collectionId={collectionId}
+            jumpChunkId={jumpChunkId}
+            canWrite={canWrite}
+          />
         )}
         {activeTab === 'pages' && (
           <PagesTab collectionId={collectionId} docId={docId} doc={doc} />
@@ -168,6 +202,13 @@ export function DocDetailView({ collectionId, docId, onBack }: DocDetailViewProp
         )}
         {activeTab === 'jobs' && (
           <JobsTab doc={doc} />
+        )}
+        {activeTab === 'search' && (
+          <InDocSearch
+            collectionId={collectionId}
+            docId={docId}
+            onJumpToChunk={handleJumpToChunk}
+          />
         )}
       </div>
     </div>

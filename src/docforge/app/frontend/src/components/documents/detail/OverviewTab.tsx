@@ -1,6 +1,8 @@
 // ====== Code Summary ======
 // OverviewTab — renders a two-column key/value grid of all available document
 // metadata, including user_meta / implicit_meta fields and any pipeline errors.
+// Surfaces stale_reasons prominently when the document is out of sync with the
+// collection's current config.
 
 // ====== Internal Project Imports ======
 import type { Document } from '../../../api/types'
@@ -14,7 +16,12 @@ interface OverviewTabProps {
 }
 
 /**
- * Renders a two-column key/value grid of all available document metadata.
+ * Renders document metadata, staleness warnings, and pipeline errors.
+ *
+ * Layout (top to bottom):
+ *   1. Stale-reasons banner (when doc.stale or stale_reasons is non-empty)
+ *   2. Pipeline-errors banners (when errors are present)
+ *   3. Two-column key/value metadata grid (core + user_meta + implicit_meta)
  *
  * Args:
  *   doc:                 Fully hydrated document record.
@@ -62,11 +69,45 @@ export function OverviewTab({ doc, pipelineDurationMs }: OverviewTabProps) {
     }
   }
 
-  // 4. Show pipeline errors if any.
-  const errors = doc.pipeline_errors ?? []
+  const errors       = doc.pipeline_errors ?? []
+  const staleReasons = doc.stale_reasons   ?? []
+  const isStale      = doc.stale === true || staleReasons.length > 0
 
   return (
-    <div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+
+      {/* Staleness banner — orange, lists which pipeline aspects are out of date */}
+      {isStale && (
+        <div className="stale-banner">
+          <div className="stale-banner-title">
+            Stale — re-ingestion recommended
+          </div>
+          {staleReasons.length > 0 ? (
+            <ul style={{ margin: 0, paddingLeft: 14 }}>
+              {staleReasons.map((reason, i) => (
+                <li key={i} className="stale-reason-item">{reason}</li>
+              ))}
+            </ul>
+          ) : (
+            <span className="stale-reason-item">
+              Pipeline version differs from the collection's current configuration.
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Pipeline-errors section */}
+      {errors.length > 0 && (
+        <div>
+          <div className="stage-panel-label" style={{ marginBottom: 6 }}>
+            Pipeline errors ({errors.length})
+          </div>
+          {errors.map((e, i) => (
+            <div key={i} className="error-banner" style={{ marginBottom: 4, fontSize: 11 }}>{e}</div>
+          ))}
+        </div>
+      )}
+
       {/* Metadata grid */}
       <div style={{ display: 'grid', gridTemplateColumns: '180px 1fr', gap: '4px 16px', padding: '4px 0' }}>
         {rows.map(({ label, value }) => (
@@ -76,16 +117,6 @@ export function OverviewTab({ doc, pipelineDurationMs }: OverviewTabProps) {
           </div>
         ))}
       </div>
-
-      {/* Pipeline errors */}
-      {errors.length > 0 && (
-        <div style={{ marginTop: 16 }}>
-          <div className="stage-panel-label" style={{ marginBottom: 6 }}>Pipeline errors</div>
-          {errors.map((e, i) => (
-            <div key={i} className="error-banner" style={{ marginBottom: 4, fontSize: 11 }}>{e}</div>
-          ))}
-        </div>
-      )}
     </div>
   )
 }

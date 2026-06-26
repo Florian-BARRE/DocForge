@@ -4135,3 +4135,128 @@ input[type="range"]::-webkit-slider-thumb:hover { background: var(--text-muted);
   color: var(--text-dim);
   font-size: 11px;
 }
+
+/* ── UI-4: In-doc search ─────────────────────────────────────────────────── */
+
+.indoc-search { display: flex; flex-direction: column; gap: 12px; }
+.indoc-search-bar { display: flex; gap: 8px; }
+
+.indoc-search-results { display: flex; flex-direction: column; gap: 6px; }
+
+.indoc-result-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  padding: 8px 12px;
+  transition: border-color 0.12s;
+}
+.indoc-result-card:hover { border-color: var(--border-strong); }
+
+.indoc-result-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+}
+
+/* Relative relevance bar */
+.indoc-result-bar-wrap {
+  flex: 1;
+  height: 3px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.indoc-result-bar { height: 3px; border-radius: 2px; transition: width 0.3s; }
+
+.indoc-result-preview {
+  font-size: 11px;
+  margin-top: 5px;
+  line-height: 1.5;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.indoc-result-body { margin-top: 6px; }
+
+.indoc-result-full {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  margin: 0;
+  max-height: 280px;
+  overflow-y: auto;
+  font-family: var(--font-mono);
+}
+
+/* ── UI-4: Block detail row (PageBlockOverlay + PageBlockList) ───────────── */
+
+.block-detail-row {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  cursor: pointer;
+  font-size: 11px;
+  transition: border-color 0.12s, background 0.12s;
+}
+.block-detail-row:hover { border-color: var(--border-strong); background: var(--hover); }
+
+/* ── UI-4: Chunk edit form ───────────────────────────────────────────────── */
+
+.chunk-edit-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 8px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+}
+
+.chunk-edit-field { display: flex; flex-direction: column; gap: 4px; }
+
+.chunk-edit-label {
+  font-size: 10px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+
+.chunk-edit-textarea {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  resize: vertical;
+  line-height: 1.5;
+  min-height: 80px;
+}
+
+/* ── UI-4: Stale banner (OverviewTab) ────────────────────────────────────── */
+
+/* Orange warning box surfacing stale_reasons[] */
+.stale-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: rgba(217, 119, 6, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  color: var(--s-warning);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  font-size: 11px;
+}
+
+.stale-banner-title {
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+.stale-reason-item { color: var(--text-muted); }

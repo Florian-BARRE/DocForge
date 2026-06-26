@@ -9,26 +9,31 @@
 import { useMemo, useState } from 'react'
 
 // ====== Internal Project Imports ======
-import type { BlockInfo, ChainTrace, ChunkResponse } from '../../api/types'
+import type { BlockInfo, ChainTrace, ChunkResponse, ChunkUpdateResponse } from '../../api/types'
 import { ObjectTree } from '../ui/ObjectTree'
 
 // ====== Local Project Imports ======
+import { ChunkEditForm } from '../documents/detail/ChunkEditForm'
 import { blockTypeColor, chunkHeadingPath, chunkPages, splitEmbedHeader } from './chunkHelpers'
 
 /**
  * Collapsed/expanded inspector card for a single chunk.
  *
  * Args:
- *   rank:         1-based display rank within the current view.
- *   chunk:        The chunk record to render.
- *   isOpen:       Whether the card is expanded.
- *   onToggle:     Callback to toggle the expanded state.
- *   pageBlocks:   Shared per-page block cache.
- *   loadingPages: Set of page indices currently being fetched.
- *   figureSrc:    Pre-fetched figure crop URL ('' when unavailable, undefined while loading).
+ *   rank:             1-based display rank within the current view.
+ *   chunk:            The chunk record to render.
+ *   isOpen:           Whether the card is expanded.
+ *   onToggle:         Callback to toggle the expanded state.
+ *   pageBlocks:       Shared per-page block cache.
+ *   loadingPages:     Set of page indices currently being fetched.
+ *   figureSrc:        Pre-fetched figure crop URL ('' when unavailable, undefined while loading).
+ *   collectionId:     UUID of the owning collection (needed for chunk edit API call).
+ *   canWrite:         When false, the Edit tab is hidden (default true).
+ *   onChunkUpdated:   Called after a successful chunk save to sync the browser list.
  */
 export function ChunkCard({
   rank, chunk, isOpen, onToggle, pageBlocks, loadingPages, figureSrc,
+  collectionId, canWrite = true, onChunkUpdated,
 }: {
   rank: number
   chunk: ChunkResponse
@@ -37,10 +42,13 @@ export function ChunkCard({
   pageBlocks: Record<number, BlockInfo[]>
   loadingPages: Set<number>
   figureSrc: string | undefined
+  collectionId: string
+  canWrite?: boolean
+  onChunkUpdated?: (chunkId: string, updates: { raw_text: string; embed_text: string }) => void
 }) {
   const pages = chunkPages(chunk)
   const heading = chunkHeadingPath(chunk)
-  const [tab, setTab] = useState<'embed' | 'diff' | 'blocks' | 'prov'>('embed')
+  const [tab, setTab] = useState<'embed' | 'diff' | 'blocks' | 'prov' | 'edit'>('embed')
 
   // Compute the header that S5 added: embed_text - raw_text suffix.
   const { headerPart, bodyPart } = useMemo(() => splitEmbedHeader(chunk), [chunk])
@@ -87,11 +95,27 @@ export function ChunkCard({
             <TabBtn label="Diff vs raw" active={tab === 'diff'}   onClick={() => setTab('diff')} />
             <TabBtn label={`Blocks · ${chunk.block_ids.length}`}  active={tab === 'blocks'} onClick={() => setTab('blocks')} />
             <TabBtn label="Provenance" active={tab === 'prov'}   onClick={() => setTab('prov')} />
+            {canWrite && (
+              <TabBtn label="Edit" active={tab === 'edit'} onClick={() => setTab('edit')} />
+            )}
           </div>
 
           {/* ── Tab contents ── */}
           {tab === 'embed' && (
             <pre className="chunk-browser-pre">{chunk.embed_text}</pre>
+          )}
+
+          {tab === 'edit' && canWrite && (
+            <ChunkEditForm
+              chunk={chunk}
+              collectionId={collectionId}
+              onSaved={(res: ChunkUpdateResponse) => {
+                // Propagate the updated texts to the browser list, then return to embed view.
+                onChunkUpdated?.(chunk.id, { raw_text: res.raw_text, embed_text: res.embed_text })
+                setTab('embed')
+              }}
+              onCancel={() => setTab('embed')}
+            />
           )}
 
           {tab === 'diff' && (

@@ -61,6 +61,8 @@ metadata:
 - [deletion_batch_residue](deletion_batch_residue.md) — feature-purge batches: identifier-grep is clean yet orphaned env vars (base_config/.env) + stale docstrings survive; run a 2nd feature-word grep; consistently-threaded sentinel columns (provider_call.cost=0.0) are out-of-scope follow-ups, not danglers
 - [embed_continue_batch_misalignment](embed_continue_batch_misalignment.md) — S6 embed `continue` skips a degraded batch → content_dense misaligned vs index_chunks (wrong/None Qdrant vectors) + IndexError in embed_values; positionally-consumed chain results must emit same-length placeholders, not drop the batch
 - [recursive_describer_vs_flat](recursive_describer_vs_flat.md) — discovery has 2 describe surfaces (flat dynamic_fields vs recursive config_tree); they diverge on provider defaults (recursive walks class schema, skips merge_defaults); field→category map is the only union-field glue (silent gap if a union field is unmapped); class-schema walk = no secret leak
+- [bbox_normalized_overlay](bbox_normalized_overlay.md) — IR bbox is normalized [0,1] (Provenance + renderer.py *page_w/h); frontend overlays must use bbox*100% NOT divide by naturalWidth/zoom (else boxes collapse to corner); screenshot `<img>` auth via getPageScreenshotUrl ?token=
+- [warning_swallowed_on_unmount](warning_swallowed_on_unmount.md) — React edit form that setWarning() then calls onSaved() which closes/unmounts the form never shows the warning; lift it to a persisting parent surface
 
 > Component-scoped memory lives with the component agents: **`mcp`** agent (`agent-memory/mcp/`) for
 > the `src/mcp/` HTTP-client invariant + REST endpoint map; **`bge-server`** agent

@@ -309,6 +309,7 @@ export function DocumentsTab({ collectionId, onTrace, canWrite = true }: Documen
         collectionId={collectionId}
         docId={detailDocId}
         onBack={() => setDetailDocId(null)}
+        canWrite={canWrite}
       />
     )
   }

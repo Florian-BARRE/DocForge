@@ -5,7 +5,7 @@
 // in useChunkFilter; the stats bar and the chunk cards are extracted components.
 
 // ====== Standard Library Imports ======
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 // ====== Internal Project Imports ======
 import type { BlockInfo, ChunkResponse, Document } from '../../api/types'
@@ -20,6 +20,16 @@ import { useChunkFilter } from './useChunkFilter'
 interface Props {
   doc: Document
   collectionId: string
+  /**
+   * When set, auto-filters the view to this chunk id and opens it.
+   * Set by DocDetailView when the user jumps from in-document search.
+   */
+  jumpChunkId?: string | null
+  /**
+   * When false, chunk edit controls are hidden.
+   * Defaults to true.
+   */
+  canWrite?: boolean
 }
 
 /**
@@ -28,14 +38,18 @@ interface Props {
  * Args:
  *   doc:          The document whose chunks are inspected.
  *   collectionId: UUID of the owning collection.
+ *   jumpChunkId:  When non-null, filters to this chunk and auto-opens it.
+ *   canWrite:     When false, hides write-only controls (Edit tab).
  */
-export function ChunkBrowser({ doc, collectionId }: Props) {
+export function ChunkBrowser({ doc, collectionId, jumpChunkId, canWrite = true }: Props) {
   const [chunks, setChunks] = useState<ChunkResponse[]>([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const [openId, setOpenId] = useState<string | null>(null)
+  // Track the last jumpChunkId we handled to avoid re-jumping on re-renders.
+  const lastJumpRef = useRef<string | null>(null)
 
   // Per-page block cache shared across every open chunk inspector — chunks that
   // overlap a page only pay for it once.
@@ -70,6 +84,20 @@ export function ChunkBrowser({ doc, collectionId }: Props) {
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
   }, [doc.id, doc.status, collectionId])
+
+  // ── Jump to a specific chunk (from in-document search) ────────────────────
+  // When jumpChunkId changes and is new, filter the view to that id and open it.
+  useEffect(() => {
+    if (!jumpChunkId || jumpChunkId === lastJumpRef.current) return
+    lastJumpRef.current = jumpChunkId
+    setSearch(jumpChunkId)
+    setOpenId(jumpChunkId)
+  }, [jumpChunkId, setSearch])
+
+  // ── Propagate chunk text edits to the browser list ────────────────────────
+  function onChunkUpdated(chunkId: string, updates: { raw_text: string; embed_text: string }) {
+    setChunks(prev => prev.map(c => c.id === chunkId ? { ...c, ...updates } : c))
+  }
 
   // ── On expansion, lazy-load pages referenced by the chunk ─────────────────
   async function ensurePages(chunk: ChunkResponse) {
@@ -190,6 +218,9 @@ export function ChunkBrowser({ doc, collectionId }: Props) {
               pageBlocks={pageBlocks}
               loadingPages={loadingPages}
               figureSrc={figureSrcs[chunk.id]}
+              collectionId={collectionId}
+              canWrite={canWrite}
+              onChunkUpdated={onChunkUpdated}
             />
           )
         })}

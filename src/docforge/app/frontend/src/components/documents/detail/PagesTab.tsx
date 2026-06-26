@@ -1,6 +1,8 @@
 // ====== Code Summary ======
 // PagesTab — thumbnail grid of document pages.  Clicking a thumbnail lazily
-// loads the full page detail (large screenshot + IR block list).
+// loads the full page detail: screenshot with block bbox overlays + block list.
+// activeBlockId is lifted here so PageBlockOverlay and PageBlockList can
+// cross-highlight the same block.
 
 // ====== Standard Library Imports ======
 import { useEffect, useState } from 'react'
@@ -10,7 +12,8 @@ import { getPage, getPageScreenshotUrl, listPages } from '../../../api/client'
 import type { Document, PageDetailResponse, PageInfo } from '../../../api/types'
 
 // ====== Local Project Imports ======
-import { FigureCropImage } from './FigureCropImage'
+import { PageBlockList } from './PageBlockList'
+import { PageBlockOverlay } from './PageBlockOverlay'
 
 interface PagesTabProps {
   collectionId: string
@@ -19,8 +22,11 @@ interface PagesTabProps {
 }
 
 /**
- * Renders a thumbnail grid of document pages. Clicking a thumbnail loads
- * the full page detail (screenshot + block list).
+ * Renders a thumbnail grid of document pages.  Clicking a thumbnail loads
+ * the full page detail: screenshot with block bbox overlays and a block list.
+ *
+ * activeBlockId is lifted here so PageBlockOverlay and PageBlockList
+ * can cross-highlight each other without parent drilling.
  *
  * Args:
  *   collectionId: Collection identifier for API calls.
@@ -28,12 +34,14 @@ interface PagesTabProps {
  *   doc:          Document record (used for status guard).
  */
 export function PagesTab({ collectionId, docId, doc }: PagesTabProps) {
-  const [pages, setPages]             = useState<PageInfo[]>([])
-  const [loading, setLoading]         = useState(false)
-  const [error, setError]             = useState<string | null>(null)
+  const [pages, setPages]           = useState<PageInfo[]>([])
+  const [loading, setLoading]       = useState(false)
+  const [error, setError]           = useState<string | null>(null)
   const [selectedPage, setSelectedPage] = useState<number | null>(null)
-  const [pageDetail, setPageDetail]   = useState<PageDetailResponse | null>(null)
+  const [pageDetail, setPageDetail] = useState<PageDetailResponse | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
+  // Shared highlight: drives cross-highlight between overlay boxes and list rows.
+  const [activeBlockId, setActiveBlockId] = useState<string | null>(null)
 
   // 1. Fetch page list when the document is done.
   useEffect(() => {
@@ -45,10 +53,11 @@ export function PagesTab({ collectionId, docId, doc }: PagesTabProps) {
       .finally(() => setLoading(false))
   }, [collectionId, docId, doc.status])
 
-  // 2. Fetch page detail when a page is selected.
+  // 2. Fetch page detail when a page is selected; reset active block.
   useEffect(() => {
-    if (selectedPage == null) { setPageDetail(null); return }
+    if (selectedPage == null) { setPageDetail(null); setActiveBlockId(null); return }
     setDetailLoading(true)
+    setActiveBlockId(null)
     getPage(collectionId, docId, selectedPage)
       .then(setPageDetail)
       .catch(() => setPageDetail(null))
@@ -98,49 +107,49 @@ export function PagesTab({ collectionId, docId, doc }: PagesTabProps) {
 
       {/* Expanded page detail */}
       {selectedPage != null && (
-        <div className="fadein" style={{
-          border: '1px solid var(--border)',
-          borderRadius: 'var(--radius)',
-          background: 'var(--surface-raised)',
-          padding: 12,
-          marginTop: 8,
-        }}>
-          {/* Large screenshot */}
-          <div style={{ marginBottom: 12 }}>
-            <img
-              src={getPageScreenshotUrl(collectionId, docId, selectedPage)}
-              alt={`Page ${selectedPage + 1}`}
-              style={{ maxWidth: '100%', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', display: 'block' }}
-            />
-          </div>
-
-          {/* Block list */}
+        <div
+          className="fadein"
+          style={{
+            border: '1px solid var(--border)',
+            borderRadius: 'var(--radius)',
+            background: 'var(--surface-raised)',
+            padding: 12,
+            marginTop: 8,
+          }}
+        >
           {detailLoading ? (
             <div className="text-muted" style={{ fontSize: 12 }}>
-              <span className="spin">⟳</span> Loading blocks…
+              <span className="spin">⟳</span> Loading page detail…
             </div>
           ) : pageDetail ? (
-            <div>
-              <div className="stage-panel-label" style={{ marginBottom: 8 }}>
-                {pageDetail.blocks.length} blocks on page {selectedPage + 1}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {/* Page header */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                <span className="section-title" style={{ margin: 0 }}>
+                  Page {selectedPage + 1}
+                </span>
+                <span className="tag" style={{ fontSize: 10 }}>
+                  {pageDetail.blocks.length} blocks
+                </span>
+                <span className="text-dim" style={{ fontSize: 10 }}>
+                  Click a block box or a list row to inspect it
+                </span>
               </div>
-              {pageDetail.blocks.map(block => (
-                <div key={block.id} className="block-row" style={{ borderBottom: '1px solid var(--border)', padding: '5px 0', fontSize: 11, display: 'flex', flexWrap: 'wrap', alignItems: 'center' }}>
-                  <span className="block-type-badge" style={{ marginRight: 8 }}>{block.type}</span>
-                  <span className="mono text-dim" style={{ fontSize: 10 }}>{block.id.slice(0, 22)}…</span>
-                  {block.text && (
-                    <span className="text-muted" style={{ marginLeft: 8, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
-                      {block.text.slice(0, 120)}
-                    </span>
-                  )}
-                  {/* Figure blocks: render the actual extracted crop image, not just the text row. */}
-                  {block.type.toLowerCase() === 'figure' && (
-                    <div style={{ flexBasis: '100%', marginTop: 6 }}>
-                      <FigureCropImage collectionId={collectionId} docId={docId} blockId={block.id} />
-                    </div>
-                  )}
-                </div>
-              ))}
+
+              {/* Screenshot + bbox overlays (cross-highlighted with the list) */}
+              <PageBlockOverlay
+                blocks={pageDetail.blocks}
+                screenshotUrl={getPageScreenshotUrl(collectionId, docId, selectedPage)}
+                activeId={activeBlockId}
+                onBlockActivate={setActiveBlockId}
+              />
+
+              {/* Block detail list (cross-highlighted with the overlay) */}
+              <PageBlockList
+                blocks={pageDetail.blocks}
+                activeId={activeBlockId}
+                onBlockActivate={setActiveBlockId}
+              />
             </div>
           ) : null}
         </div>
