@@ -75,20 +75,26 @@ export function DataTable<T>({
         overflowY: 'auto',
         maxHeight,
         border: '1px solid var(--border)',
-        borderRadius: 'var(--radius)',
+        borderRadius: 'var(--radius-md)',
         background: 'var(--surface)',
+        boxShadow: 'var(--shadow-sm)',
       }}
     >
       <table
         style={{
           width: '100%',
           borderCollapse: 'collapse',
-          fontSize: 12,
+          fontSize: 'var(--text-base)' as string,
         }}
       >
-        {/* ── Sticky header ── */}
+        {/* ── Sticky header — slightly elevated, uppercase labels */}
         <thead>
-          <tr style={{ background: 'var(--surface-raised)', position: 'sticky', top: 0, zIndex: 1 }}>
+          <tr style={{
+            background: 'var(--surface-raised)',
+            position: 'sticky',
+            top: 0,
+            zIndex: 1,
+          }}>
             {columns.map(col => {
               const isSorted = sortKey === col.key
               const canSort  = !!onSort
@@ -97,11 +103,11 @@ export function DataTable<T>({
                   key={col.key}
                   style={{
                     textAlign: col.align ?? 'left',
-                    padding: '5px 8px',
+                    padding: '7px 12px',
                     borderBottom: '1px solid var(--border)',
                     fontWeight: 600,
-                    fontSize: 11,
-                    color: 'var(--text-dim)',
+                    fontSize: 'var(--text-xs)' as string,
+                    color: 'var(--text-muted)',
                     textTransform: 'uppercase',
                     letterSpacing: '0.05em',
                     whiteSpace: 'nowrap',
@@ -123,17 +129,17 @@ export function DataTable<T>({
           </tr>
         </thead>
 
-        {/* ── Body ── */}
+        {/* ── Body — comfortable row height with subtle hover */}
         <tbody>
           {rows.length === 0 ? (
             <tr>
               <td
                 colSpan={columns.length}
                 style={{
-                  padding: '24px',
+                  padding: '28px 24px',
                   textAlign: 'center',
                   color: 'var(--text-dim)',
-                  fontSize: 12,
+                  fontSize: 'var(--text-base)' as string,
                 }}
               >
                 {emptyMessage}
@@ -151,7 +157,7 @@ export function DataTable<T>({
                     key={col.key}
                     style={{
                       textAlign: col.align ?? 'left',
-                      padding: '5px 8px',
+                      padding: '9px 12px',
                       color: 'var(--text)',
                       verticalAlign: 'middle',
                     }}

@@ -1,13 +1,14 @@
 // ====== Code Summary ======
 // Tag / Badge primitive — inline label for status, metadata, and categories.
 // Maps to the .tag CSS class family from global.css (token-driven).
-// Supports status variants (done/running/error/warning) and custom color.
+// Status variants use --s-*-soft token backgrounds for a polished, tinted look.
 
 import { ReactNode } from 'react'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
-export type TagVariant = 'default' | 'done' | 'running' | 'error' | 'warning' | 'accent'
+/** Added 'info' variant for informational (blue) status labels. */
+export type TagVariant = 'default' | 'done' | 'running' | 'error' | 'warning' | 'info' | 'accent'
 
 interface TagProps {
   children: ReactNode
@@ -18,28 +19,29 @@ interface TagProps {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
+// CSS classes encode the status-soft token pattern (all defined in global.css).
+// No hardcoded hex here — global.css owns the soft-bg + tinted-text formula.
 const variantClass: Record<TagVariant, string> = {
   default: 'tag',
   done:    'tag tag-done',
   running: 'tag tag-running',
   error:   'tag tag-error',
-  warning: 'tag',
+  warning: 'tag tag-warning',
+  info:    'tag tag-info',
   accent:  'tag',
 }
 
+// Accent uses inline style (no dedicated CSS class); all others defer to CSS.
 const variantStyle: Record<TagVariant, React.CSSProperties> = {
   default: {},
   done:    {},
   running: {},
   error:   {},
-  warning: {
-    background: 'color-mix(in srgb, var(--s-warning) 14%, transparent)',
-    borderColor: 'color-mix(in srgb, var(--s-warning) 40%, transparent)',
-    color: 'var(--s-warning)',
-  },
+  warning: {},
+  info:    {},
   accent: {
     background: 'var(--accent-soft)',
-    borderColor: 'color-mix(in srgb, var(--accent) 40%, transparent)',
+    borderColor: 'rgba(99, 102, 241, 0.30)',
     color: 'var(--accent)',
   },
 }
@@ -49,11 +51,12 @@ const variantStyle: Record<TagVariant, React.CSSProperties> = {
 /**
  * Inline status or category label.
  *
- * Uses `.tag` CSS class family from global.css (all colors token-driven).
- * Variant maps to semantic color (done=green, running=orange, error=red).
+ * Uses .tag CSS class family from global.css (all colors token-driven).
+ * Status variants use --s-*-soft backgrounds with matching tinted text.
  *
  * Args:
- *   variant: Semantic color variant. Default renders neutral surface.
+ *   variant: Semantic color variant. done=mint, running/warning=amber,
+ *            error=coral, info=blue, accent=indigo, default=neutral surface.
  */
 export function Tag({ children, variant = 'default', className = '', style }: TagProps) {
   return (

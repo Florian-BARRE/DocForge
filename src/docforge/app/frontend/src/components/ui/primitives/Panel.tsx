@@ -38,8 +38,10 @@ export function Panel({ children, padding = 'md', accent = false, className = ''
       style={{
         background: 'var(--panel-bg)',
         border: `1px solid ${accent ? 'var(--accent)' : 'var(--border)'}`,
-        borderRadius: 'var(--radius)',
+        borderRadius: 'var(--radius-md)',
         padding: paddingMap[padding],
+        // Elevation shadow makes panels read as raised instead of merely outlined.
+        boxShadow: accent ? 'var(--shadow-md)' : 'var(--shadow-sm)',
         ...style,
       }}
       {...rest}

@@ -3,6 +3,7 @@
 // Contains: DocForge logo, global nav entries (Pipeline/Documents/Search/
 // Observability/API Keys), and the collections list below the nav.
 // All colors from CSS vars (token-driven). No hardcoded color values.
+// Typography: Inter (var(--font-ui)) everywhere — no mono for labels/nav.
 
 // ====== Third-Party Library Imports ======
 import { useEffect, useState } from 'react'
@@ -34,10 +35,10 @@ interface NavRailProps {
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const NAV_ENTRIES: { key: GlobalView; icon: string; label: string }[] = [
-  { key: 'pipeline',     icon: '⚙',  label: 'Pipeline'     },
-  { key: 'documents',    icon: '📄',  label: 'Documents'    },
-  { key: 'search',       icon: '🔍',  label: 'Search'       },
-  { key: 'observability',icon: '📊',  label: 'Observability'},
+  { key: 'pipeline',      icon: '⚙',  label: 'Pipeline'     },
+  { key: 'documents',     icon: '📄',  label: 'Documents'    },
+  { key: 'search',        icon: '🔍',  label: 'Search'       },
+  { key: 'observability', icon: '📊',  label: 'Observability'},
 ]
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -61,6 +62,7 @@ function hasProcessedDocs(col: Collection): boolean {
  *   - Collections: scrollable list of user collections with status dots.
  *
  * Polls the collection list every 5 s so count badges stay current.
+ * All labels use Inter (--font-ui), never mono.
  *
  * Args:
  *   activeView: Highlighted global nav entry.
@@ -109,27 +111,28 @@ export function NavRail({
       overflow: 'hidden',
     }}>
 
-      {/* ── Logo ── */}
+      {/* ── Logo — Inter 700, accent-colored, premium tracking ── */}
       <div style={{
         height: 'var(--topbar-h)',
         display: 'flex',
         alignItems: 'center',
-        padding: '0 14px',
+        padding: '0 16px',
         borderBottom: '1px solid var(--border)',
         flexShrink: 0,
       }}>
         <span style={{
-          fontSize: 13,
+          fontSize: 15,
           fontWeight: 700,
+          fontFamily: 'var(--font-ui)',
           color: 'var(--accent)',
-          letterSpacing: '0.06em',
+          letterSpacing: '-0.01em',
         }}>
           DocForge
         </span>
       </div>
 
-      {/* ── Global nav entries ── */}
-      <nav style={{ padding: '6px 0', flexShrink: 0 }}>
+      {/* ── Global nav entries — comfortable height, accent-soft active state ── */}
+      <nav style={{ padding: '8px 0', flexShrink: 0 }}>
         {NAV_ENTRIES.map(entry => (
           <NavEntry
             key={entry.key}
@@ -158,14 +161,15 @@ export function NavRail({
         flex: 1,
         minHeight: 0,
       }}>
-        {/* Section label */}
+        {/* Section label — Inter, muted text, refined tracking */}
         <div style={{
-          padding: '6px 12px 4px',
-          fontSize: 10,
+          padding: '8px 14px 4px',
+          fontSize: 11,
           fontWeight: 600,
+          fontFamily: 'var(--font-ui)',
           textTransform: 'uppercase',
-          letterSpacing: '0.08em',
-          color: 'var(--text-dim)',
+          letterSpacing: '0.06em',
+          color: 'var(--text-muted)',
           flexShrink: 0,
         }}>
           Collections
@@ -196,15 +200,15 @@ export function NavRail({
                 style={{
                   display: 'flex',
                   alignItems: 'center',
-                  gap: 7,
-                  padding: '5px 10px 5px 12px',
+                  gap: 8,
+                  padding: '6px 12px 6px 14px',
                   cursor: 'pointer',
+                  // Left accent bar is the primary active indicator.
                   borderLeft: `3px solid ${isActive ? 'var(--accent)' : 'transparent'}`,
                   background: isActive ? 'var(--accent-soft)' : 'transparent',
-                  transition: 'background 0.1s',
+                  transition: 'background 0.12s',
                   userSelect: 'none',
                 }}
-                className={isActive ? '' : 'sidebar-row-hover'}
                 onMouseEnter={e => {
                   if (!isActive) (e.currentTarget as HTMLElement).style.background = 'var(--hover)'
                 }}
@@ -217,10 +221,13 @@ export function NavRail({
                   size={6}
                   title={done ? 'Has processed documents' : 'No processed documents'}
                 />
+                {/* Collection name — Inter, full contrast on active, muted otherwise */}
                 <span style={{
                   flex: 1,
-                  fontSize: 12,
-                  color: 'var(--text)',
+                  fontSize: 'var(--text-base)',
+                  fontFamily: 'var(--font-ui)',
+                  fontWeight: isActive ? 500 : 400,
+                  color: isActive ? 'var(--text)' : 'var(--text-muted)',
                   overflow: 'hidden',
                   textOverflow: 'ellipsis',
                   whiteSpace: 'nowrap',
@@ -228,16 +235,19 @@ export function NavRail({
                 }}>
                   {col.name}
                 </span>
+                {/* Count badge — Inter (not mono), subtle background */}
                 {count > 0 && (
                   <span style={{
-                    fontSize: 10,
-                    fontFamily: 'var(--font-mono)',
+                    fontSize: 11,
+                    fontFamily: 'var(--font-ui)',
+                    fontWeight: 500,
                     color: 'var(--text-dim)',
-                    padding: '1px 5px',
-                    borderRadius: 9,
-                    background: 'var(--bg)',
+                    padding: '1px 6px',
+                    borderRadius: 'var(--radius-full)',
+                    background: 'var(--surface-raised)',
                     border: '1px solid var(--border)',
                     flexShrink: 0,
+                    lineHeight: 1.4,
                   }}>
                     {count}
                   </span>
@@ -247,8 +257,9 @@ export function NavRail({
           })}
           {collections.length === 0 && (
             <li style={{
-              padding: '6px 12px',
-              fontSize: 12,
+              padding: '8px 14px',
+              fontSize: 'var(--text-base)',
+              fontFamily: 'var(--font-ui)',
               color: 'var(--text-dim)',
               pointerEvents: 'none',
             }}>
@@ -259,7 +270,7 @@ export function NavRail({
 
         {/* New collection footer button */}
         <div style={{
-          padding: '8px 10px',
+          padding: '10px 12px',
           borderTop: '1px solid var(--border)',
           flexShrink: 0,
         }}>
@@ -268,8 +279,10 @@ export function NavRail({
             onClick={onNew}
             style={{
               width: '100%',
-              padding: '6px 10px',
-              fontSize: 12,
+              padding: '7px 10px',
+              fontSize: 'var(--text-base)',
+              fontFamily: 'var(--font-ui)',
+              fontWeight: 500,
               color: 'var(--accent)',
               background: 'var(--accent-soft)',
               border: '1px solid transparent',
@@ -280,7 +293,7 @@ export function NavRail({
             }}
             onMouseEnter={e => {
               (e.currentTarget as HTMLElement).style.borderColor = 'var(--accent)'
-              ;(e.currentTarget as HTMLElement).style.background = 'rgba(99,102,241,0.24)'
+              ;(e.currentTarget as HTMLElement).style.background = 'rgba(99,102,241,0.22)'
             }}
             onMouseLeave={e => {
               (e.currentTarget as HTMLElement).style.borderColor = 'transparent'
@@ -308,12 +321,13 @@ interface NavEntryProps {
 /**
  * Single navigation rail entry.
  *
- * Highlights with accent background + border when active.
- * Stub entries are visually dimmed and show a "coming soon" indicator.
+ * Active state: accent-soft background + 3px left accent bar.
+ * Uses Inter (--font-ui) for the label — never mono.
+ * Height is set via generous padding (8px/10px) for a comfortable 36px tap area.
  *
  * Args:
  *   icon: Emoji/icon character.
- *   label: Display label.
+ *   label: Display label (Inter font, 500 weight when active).
  *   active: Whether this entry is currently selected.
  *   stub: If true, the zone is not yet built (dims the entry).
  *   onClick: Navigation callback.
@@ -327,18 +341,21 @@ function NavEntry({ icon, label, active, stub = false, onClick }: NavEntryProps)
       style={{
         display: 'flex',
         alignItems: 'center',
-        gap: 8,
+        gap: 9,
         width: '100%',
-        padding: '7px 12px',
+        padding: '8px 14px',
         border: 'none',
         borderRadius: 0,
         background: active ? 'var(--accent-soft)' : 'transparent',
         color: active ? 'var(--text)' : stub ? 'var(--text-dim)' : 'var(--text-muted)',
-        fontSize: 12,
+        // Inter label, 500 weight when active for subtle emphasis.
+        fontSize: 'var(--text-base)',
         fontFamily: 'var(--font-ui)',
+        fontWeight: active ? 500 : 400,
         cursor: stub ? 'default' : 'pointer',
         textAlign: 'left',
-        borderLeft: `2px solid ${active ? 'var(--accent)' : 'transparent'}`,
+        // Left accent bar is the sole active indicator — matches sidebar rows.
+        borderLeft: `3px solid ${active ? 'var(--accent)' : 'transparent'}`,
         transition: 'background 0.12s, color 0.12s',
         opacity: stub ? 0.5 : 1,
       }}
@@ -355,11 +372,15 @@ function NavEntry({ icon, label, active, stub = false, onClick }: NavEntryProps)
         }
       }}
     >
-      <span style={{ fontSize: 13, width: 16, textAlign: 'center', flexShrink: 0 }}>{icon}</span>
-      <span style={{ flex: 1 }}>{label}</span>
+      {/* Icon — slightly larger, fixed width for alignment */}
+      <span style={{ fontSize: 14, width: 18, textAlign: 'center', flexShrink: 0, lineHeight: 1 }}>
+        {icon}
+      </span>
+      <span style={{ flex: 1, lineHeight: 1.2 }}>{label}</span>
       {stub && (
         <span style={{
           fontSize: 9,
+          fontFamily: 'var(--font-ui)',
           color: 'var(--text-dim)',
           background: 'var(--surface-raised)',
           border: '1px solid var(--border)',

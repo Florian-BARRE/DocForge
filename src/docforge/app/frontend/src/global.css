@@ -8,83 +8,134 @@ html, body, #root { height: 100%; }
  * Two themes share the same token names; only the values differ. The active
  * theme is selected by the `data-theme` attribute on <html>.
  * When adding a token: add to theme.ts first, then mirror the CSS var here.
+ *
+ * REFINED DARK DESIGN SYSTEM (Linear / Vercel grade):
+ *   - Layered surfaces (not flat black) give depth without harsh borders.
+ *   - Real elevation shadows make cards read as raised, not outlined-only.
+ *   - Inter as body font kills the mono-everywhere terminal feel.
+ *   - Generous radius scale (6 / 10 / 14 px) rounds off the cockpit edges.
+ *   - Comfortable spacing grid (8 px base) adds breathing room.
  */
+
+/* ── Theme-invariant tokens ─────────────────────────────────────────────── */
 :root {
-  /* ── Status colors — theme-invariant (theme.ts → status.*) ── */
-  --s-pending:   #94a3b8;  /* status.pending */
-  --s-running:   #d97706;  /* status.running */
-  --s-done:      #22c55e;  /* status.done    */
-  --s-error:     #ef4444;  /* status.error   */
-  --s-warning:   #f59e0b;  /* status.warning */
-  --s-idle:      #475569;  /* status.idle    */
-  --s-skip:      #475569;  /* status.skip    */
+  /* ── Status colors (theme.ts → status.*) — same hues on both themes ── */
+  --s-pending:      #94a3b8;
+  --s-running:      #fbbf24;  /* amber-400 — in-progress / caution        */
+  --s-done:         #34d399;  /* emerald-400 — success                     */
+  --s-error:        #f87171;  /* red-400 — soft coral, not harsh           */
+  --s-warning:      #fbbf24;  /* same as running; both are caution states  */
+  --s-info:         #60a5fa;  /* blue-400                                  */
+  --s-idle:         #475569;
+  --s-skip:         #475569;
+
+  /* ── Status soft backgrounds (.14 alpha) — for tags / badges ── */
+  --s-done-soft:    rgba(52, 211, 153, 0.14);
+  --s-warning-soft: rgba(251, 191, 36, 0.14);
+  --s-error-soft:   rgba(248, 113, 113, 0.14);
+  --s-info-soft:    rgba(96, 165, 250, 0.14);
 
   /* ── Layout (theme.ts → density / layout) ── */
-  --topbar-h:    44px;    /* density.topbarHeight   */
-  --sidebar-w:   200px;   /* density.sidebarWidth   */
-  --inspector-w: 380px;   /* density.inspectorWidth */
+  --topbar-h:    46px;    /* density.topbarHeight   */
+  --sidebar-w:   220px;   /* density.sidebarWidth   */
+  --inspector-w: 400px;   /* density.inspectorWidth */
 
-  /* ── Radii (theme.ts → radii.*) ── */
-  --radius:      6px;     /* radii.base */
-  --radius-sm:   4px;     /* radii.sm   */
-  --radius-md:   8px;     /* radii.md   */
-  --radius-full: 9999px;  /* radii.full */
+  /* ── Radius scale (generous — rounded = premium) ── */
+  --radius:      10px;    /* base — cards, panels, containers */
+  --radius-sm:   6px;     /* tags, badges, inputs, small chips */
+  --radius-md:   10px;    /* alias for --radius                */
+  --radius-lg:   14px;    /* drawers, modals, overlays         */
+  --radius-full: 9999px;  /* pills, avatar circles             */
 
-  /* ── Typography (theme.ts → typography.*) ── */
-  --font-ui:   system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --font-mono: 'JetBrains Mono', 'Cascadia Code', 'Fira Code', ui-monospace, monospace;
-  --font-size: 13px;  /* typography.baseFontSize */
+  /* ── Typography (Inter body; mono ONLY for IDs/hashes/code) ── */
+  --font-ui:   'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: ui-monospace, 'JetBrains Mono', 'Cascadia Code', 'Fira Code', monospace;
+  --font-size: 13.5px;  /* body default (--text-base) */
 
-  /* ── Accent (theme.ts → palette.accent / accentSoft) ── */
-  --accent:       #6366f1;               /* palette.accent     */
-  --accent-soft:  rgba(99,102,241,0.16); /* palette.accentSoft */
-  --accent-hover: #818cf8;               /* palette.accentHover */
+  /* ── Type scale ── */
+  --text-xs:   11px;     /* meta labels, tags, status pills  */
+  --text-sm:   12.5px;   /* dense UI text                    */
+  --text-base: 13.5px;   /* body / form text (= --font-size) */
+  --text-md:   15px;     /* table rows, form labels          */
+  --text-lg:   18px;     /* section headings                 */
+  --text-xl:   22px;     /* panel / page titles              */
+
+  /* ── Spacing (8 px grid) ── */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 32px;
+  --space-8: 40px;
+
+  /* ── Accent (theme.ts → palette.accent) ── */
+  --accent:       #6366f1;
+  --accent-soft:  rgba(99, 102, 241, 0.14);
+  --accent-hover: #7c7ff3;
+
+  /* ── Focus ring ── */
+  --focus-ring: 0 0 0 3px rgba(99, 102, 241, 0.35);
 }
 
 /* ── Dark (default) — values from theme.ts → palette.* ─────────────────── */
 :root,
 [data-theme="dark"] {
-  --bg:             #090910;  /* palette.base          */
-  --surface:        #101018;  /* palette.surface       */
-  --surface-raised: #15151f;  /* palette.surfaceRaised */
-  --hover:          #1b1b28;  /* palette.hover         */
-  --active:         #222233;  /* palette.active        */
-  --panel-bg:       #15151f;  /* palette.surfaceRaised (alias) */
+  /* Layered surfaces — read from dark to light; each step is visually distinct. */
+  --bg:              #0e0f13;  /* app shell background              */
+  --surface:         #16181f;  /* panels, sidebar, cards            */
+  --surface-raised:  #1d2029;  /* hover states, elevated, inputs    */
+  --surface-overlay: #232734;  /* popovers, dropdowns, modals       */
+  --hover:           #1d2029;  /* hover = raised surface            */
+  --active:          #232734;  /* active / selected = overlay       */
+  --panel-bg:        #1d2029;  /* alias for surface-raised          */
 
-  --border:         #20202e;  /* palette.border       */
-  --border-strong:  #30304a;  /* palette.borderStrong */
+  --border:          #262a35;  /* subtle dividers                   */
+  --border-strong:   #333a49;  /* focus rings base, strong dividers */
 
-  --text:           #e8e8f2;  /* palette.text      */
-  --text-muted:     #787898;  /* palette.textMuted */
-  --text-dim:       #38384e;  /* palette.textDim   */
+  --text:            #e7e9ef;
+  --text-muted:      #9aa2b1;  /* secondary labels, table values    */
+  --text-dim:        #6a7180;  /* tertiary, disabled, placeholders  */
 
-  --shadow-1: 0 1px 2px rgba(0,0,0,0.4);   /* elevation.1 */
-  --shadow-2: 0 4px 16px rgba(0,0,0,0.5);  /* elevation.2 */
+  /* Elevation shadows — the key ingredient for depth. */
+  --shadow-sm: 0 1px 2px rgba(0,0,0,.35);   /* cards, small panels  */
+  --shadow-md: 0 4px 14px rgba(0,0,0,.40);  /* elevated cards, toast */
+  --shadow-lg: 0 16px 40px rgba(0,0,0,.50); /* dropdowns, modals     */
+
+  /* Legacy aliases kept so existing box-shadow references don't break. */
+  --shadow-1: 0 1px 2px rgba(0,0,0,.35);
+  --shadow-2: 0 4px 14px rgba(0,0,0,.40);
 
   color-scheme: dark;
 }
 
 /* ── Light — values from theme.ts → paletteLight.* ─────────────────────── */
 [data-theme="light"] {
-  --bg:             #f6f7fb;  /* paletteLight.base          */
-  --surface:        #ffffff;  /* paletteLight.surface       */
-  --surface-raised: #ffffff;  /* paletteLight.surfaceRaised */
-  --hover:          #eef0f5;  /* paletteLight.hover         */
-  --active:         #e2e6ef;  /* paletteLight.active        */
-  --panel-bg:       #ffffff;  /* paletteLight.surfaceRaised (alias) */
+  --bg:              #f6f7fb;
+  --surface:         #ffffff;
+  --surface-raised:  #f0f2f8;
+  --surface-overlay: #ffffff;
+  --hover:           #eef0f5;
+  --active:          #e2e6ef;
+  --panel-bg:        #f0f2f8;
 
-  --border:         #e2e6ef;  /* paletteLight.border       */
-  --border-strong:  #cbd0db;  /* paletteLight.borderStrong */
+  --border:          #e2e6ef;
+  --border-strong:   #cbd0db;
 
-  --text:           #1a1a2a;  /* paletteLight.text      */
-  --text-muted:     #5b6478;  /* paletteLight.textMuted */
-  --text-dim:       #8d96a8;  /* paletteLight.textDim   */
+  --text:            #1a1a2a;
+  --text-muted:      #5b6478;
+  --text-dim:        #8d96a8;
 
-  --accent-soft:  rgba(99,102,241,0.12); /* paletteLight.accentSoft  */
-  --accent-hover: #4f46e5;               /* paletteLight.accentHover */
+  --accent-soft:  rgba(99, 102, 241, 0.12);
+  --accent-hover: #4f46e5;
 
-  --shadow-1: 0 1px 2px rgba(20,25,40,0.06);   /* paletteLight elevation.1 */
-  --shadow-2: 0 4px 16px rgba(20,25,40,0.10);  /* paletteLight elevation.2 */
+  --shadow-sm: 0 1px 2px rgba(20,25,40,0.06);
+  --shadow-md: 0 4px 16px rgba(20,25,40,0.10);
+  --shadow-lg: 0 16px 40px rgba(20,25,40,0.18);
+
+  --shadow-1: 0 1px 2px rgba(20,25,40,0.06);
+  --shadow-2: 0 4px 16px rgba(20,25,40,0.10);
 
   color-scheme: light;
 }
@@ -92,11 +143,13 @@ html, body, #root { height: 100%; }
 /* ── Base ───────────────────────────────────────────────────────────────── */
 body {
   font-family: var(--font-ui);
-  font-size: var(--font-size);
+  font-size: var(--font-size);    /* 13.5px */
   background: var(--bg);
   color: var(--text);
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';  /* Inter optical variants */
 }
 
 a { color: inherit; text-decoration: none; }
@@ -105,25 +158,59 @@ input, textarea, select { font-family: inherit; font-size: inherit; color: inher
 ul, ol { list-style: none; }
 
 /* ── Shared form controls ───────────────────────────────────────────────── */
+/*
+ * Inputs use surface-raised background (not bg) so they read as slightly
+ * elevated — the standard pattern for inputs on dark layered designs.
+ * Height ~34px with radius-sm and a focus ring matches Linear/Vercel.
+ */
 .input {
   width: 100%;
-  background: var(--bg);
+  height: 34px;
+  background: var(--surface-raised);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  padding: 6px 10px;
+  padding: 0 10px;
   color: var(--text);
-  transition: border-color 0.15s;
+  font-size: var(--text-base);
+  transition: border-color 0.15s, box-shadow 0.15s;
   outline: none;
 }
-.input:focus { border-color: var(--border-strong); }
+.input:focus {
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
+}
 .input::placeholder { color: var(--text-dim); }
 
+/*
+ * Textarea extends .input but without fixed height so it can resize vertically.
+ * Override height and padding for multi-line comfort.
+ */
+textarea.input {
+  height: auto;
+  padding: 8px 10px;
+  resize: vertical;
+  line-height: 1.5;
+}
+
+/*
+ * Select uses the same surface-raised background as input and a custom
+ * chevron arrow that matches the new muted text color (#9aa2b1).
+ */
 .select {
   appearance: none;
-  background: var(--bg) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23787898'/%3E%3C/svg%3E") no-repeat right 10px center;
+  background: var(--surface-raised)
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%239aa2b1'/%3E%3C/svg%3E")
+    no-repeat right 10px center;
   padding-right: 28px;
 }
 
+/*
+ * Buttons — three tiers:
+ *   primary  : solid accent fill, subtle shadow to read as a CTA
+ *   subtle   : surface-raised, bordered — secondary actions
+ *   ghost    : transparent, no border — tertiary / icon-adjacent
+ *   danger   : hovered to red tint — destructive actions
+ */
 .btn {
   display: inline-flex;
   align-items: center;
@@ -133,41 +220,74 @@ ul, ol { list-style: none; }
   border: 1px solid var(--border-strong);
   color: var(--text-muted);
   background: var(--surface-raised);
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  font-size: var(--text-base);
+  font-weight: 500;
+  transition: background 0.15s, color 0.15s, border-color 0.15s, box-shadow 0.15s;
   white-space: nowrap;
+  line-height: 1;
 }
-.btn:hover { background: var(--hover); color: var(--text); border-color: var(--border-strong); }
+.btn:hover {
+  background: var(--hover);
+  color: var(--text);
+  border-color: var(--border-strong);
+}
 .btn:active { background: var(--active); }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
 .btn-primary {
   background: var(--accent);
   color: #ffffff;
   border-color: var(--accent);
+  box-shadow: 0 1px 4px rgba(99, 102, 241, 0.35);
 }
-.btn-primary:hover { filter: brightness(1.1); }
+.btn-primary:hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.45);
+}
+
 .btn-ghost { border-color: transparent; background: transparent; }
 .btn-ghost:hover { background: var(--hover); border-color: transparent; }
-.btn-danger:hover { border-color: var(--s-error); color: var(--s-error); background: #1a0505; }
 
+.btn-danger:hover {
+  border-color: var(--s-error);
+  color: var(--s-error);
+  background: var(--s-error-soft);
+}
+
+/*
+ * Icon-only button — compact, used for copy/close/revoke inline actions.
+ * Uses the UI font (not mono) for any text content.
+ */
 .btn-icon {
   background: none;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
   color: var(--text-muted);
   cursor: pointer;
-  font-family: var(--font-mono);
-  font-size: 10px;
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
   line-height: 1;
-  padding: 2px 5px;
+  padding: 3px 7px;
   transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
 .btn-icon:hover { background: var(--active); color: var(--text); border-color: var(--border-strong); }
 .btn-icon:disabled { opacity: 0.4; cursor: not-allowed; }
-.btn-icon-danger:hover { background: #2a0808; color: var(--s-error); border-color: #5a1010; }
+.btn-icon-danger:hover {
+  background: var(--s-error-soft);
+  color: var(--s-error);
+  border-color: rgba(248, 113, 113, 0.4);
+}
 
 /* ── Scrollbar ──────────────────────────────────────────────────────────── */
-::-webkit-scrollbar { width: 6px; height: 6px; }
+/* Slim themed scrollbar — 5px track with a rounded thumb */
+::-webkit-scrollbar { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 3px; }
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
 
 /* ── Animations ─────────────────────────────────────────────────────────── */
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
@@ -195,21 +315,60 @@ ul, ol { list-style: none; }
 .dot-error   { background: var(--s-error);   }
 
 /* ── Tags / badges ───────────────────────────────────────────────────────── */
+/*
+ * Tags use status-soft backgrounds (.14 alpha) + matching tinted text.
+ * radius-sm (6px) looks premium; border tinted at .30 alpha for subtlety.
+ */
 .tag {
-  display: inline-flex; align-items: center; gap: 4px;
-  padding: 2px 7px; border-radius: 10px; font-size: 11px;
-  background: var(--surface-raised); color: var(--text-muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  background: var(--surface-raised);
+  color: var(--text-muted);
   border: 1px solid var(--border);
+  white-space: nowrap;
 }
-.tag-running { background: #1a150060; border-color: #4a3a0080; color: var(--s-running); }
-.tag-done    { background: #05140560; border-color: #0f3a1080; color: var(--s-done);    }
-.tag-error   { background: #1a050560; border-color: #4a101080; color: var(--s-error);   }
+/* Status variant tags — use token-based soft backgrounds */
+.tag-running {
+  background: var(--s-warning-soft);
+  border-color: rgba(251, 191, 36, 0.30);
+  color: var(--s-running);
+}
+.tag-done {
+  background: var(--s-done-soft);
+  border-color: rgba(52, 211, 153, 0.30);
+  color: var(--s-done);
+}
+.tag-error {
+  background: var(--s-error-soft);
+  border-color: rgba(248, 113, 113, 0.30);
+  color: var(--s-error);
+}
+.tag-warning {
+  background: var(--s-warning-soft);
+  border-color: rgba(251, 191, 36, 0.30);
+  color: var(--s-warning);
+}
+.tag-info {
+  background: var(--s-info-soft);
+  border-color: rgba(96, 165, 250, 0.30);
+  color: var(--s-info);
+}
 
 /* ── Mono / text utilities ─────────────────────────────────────────────────── */
 .mono       { font-family: var(--font-mono); }
 .text-muted { color: var(--text-muted); }
 .text-dim   { color: var(--text-dim); }
 .row-end    { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+
+/* ── DataTable row hover ─────────────────────────────────────────────────── */
+/* Subtle hover on table rows; the .dt-row class is applied by DataTable.tsx */
+.dt-row:hover { background: var(--surface-raised); }
+.dt-row:last-child td { border-bottom: none; }
 
 /* ── Divider ─────────────────────────────────────────────────────────────── */
 .divider { height: 1px; background: var(--border); margin: 16px 0; }
@@ -223,12 +382,12 @@ ul, ol { list-style: none; }
 
 /* ── Banner utilities ─────────────────────────────────────────────────────── */
 .error-banner {
-  background: #1a050560;
-  border: 1px solid #4a101080;
+  background: var(--s-error-soft);
+  border: 1px solid rgba(248, 113, 113, 0.30);
   color: var(--s-error);
   border-radius: var(--radius-sm);
   padding: 8px 12px;
-  font-size: 12px;
+  font-size: var(--text-base);
   margin-top: 10px;
 }
 
@@ -236,24 +395,24 @@ ul, ol { list-style: none; }
   display: flex;
   align-items: center;
   gap: 8px;
-  background: #0a0e1a80;
-  border: 1px solid #1e2a4a80;
+  background: var(--s-info-soft);
+  border: 1px solid rgba(96, 165, 250, 0.25);
   color: var(--text-muted);
   border-radius: var(--radius-sm);
   padding: 8px 12px;
-  font-size: 12px;
+  font-size: var(--text-base);
   margin-top: 10px;
 }
-.info-icon { color: #4a6eb0; font-size: 14px; flex-shrink: 0; }
+.info-icon { color: var(--s-info); font-size: 14px; flex-shrink: 0; }
 
 /* ── Section primitives ──────────────────────────────────────────────────── */
 .section { margin-top: 28px; }
 
 .section-title {
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 600;
-  color: var(--text-dim);
-  letter-spacing: 0.08em;
+  color: var(--text-muted);  /* slightly lighter than --text-dim for readability */
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   margin-bottom: 10px;
 }
@@ -426,10 +585,10 @@ input[type="range"]::-webkit-slider-thumb:hover { background: var(--text-muted);
 }
 
 .topbar-logo {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
   color: var(--text);
-  letter-spacing: 0.06em;
+  letter-spacing: 0.02em;
   flex-shrink: 0;
   margin-right: 24px;
 }
@@ -444,8 +603,9 @@ input[type="range"]::-webkit-slider-thumb:hover { background: var(--text-muted);
 .topbar-tab {
   display: flex;
   align-items: center;
-  padding: 0 18px;
-  font-size: 12px;
+  padding: 0 16px;
+  font-size: var(--text-base);
+  font-weight: 500;
   color: var(--text-muted);
   border-bottom: 2px solid transparent;
   border-top: 2px solid transparent;
@@ -456,7 +616,7 @@ input[type="range"]::-webkit-slider-thumb:hover { background: var(--text-muted);
 .topbar-tab:hover { color: var(--text); }
 .topbar-tab-active {
   color: var(--text);
-  border-bottom-color: var(--border-strong);
+  border-bottom-color: var(--accent);
 }
 
 /* ── Main content area ───────────────────────────────────────────────────── */
@@ -495,15 +655,18 @@ input[type="range"]::-webkit-slider-thumb:hover { background: var(--text-muted);
 /* ── Config panel ────────────────────────────────────────────────────────── */
 .config-stage-section {
   margin-bottom: 18px;
-  padding: 14px 16px;
+  padding: 16px 18px;
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   background: var(--surface-raised);
+  box-shadow: var(--shadow-sm);
 }
 .config-stage-label {
-  font-size: 11px; font-weight: 600;
-  color: var(--text-dim);
-  text-transform: uppercase; letter-spacing: 0.08em;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
   margin-bottom: 12px;
 }
 
@@ -1181,9 +1344,9 @@ input[type="range"]::-webkit-slider-thumb:hover { background: var(--text-muted);
   margin-bottom: 10px;
   overflow: hidden;
 }
-.stage-block-done    { border-color: #103810; }
-.stage-block-error   { border-color: #3a1010; }
-.stage-block-running { border-color: #3a2a00; }
+.stage-block-done    { border-color: rgba(52, 211, 153, 0.25); }
+.stage-block-error   { border-color: rgba(248, 113, 113, 0.25); }
+.stage-block-running { border-color: rgba(251, 191, 36, 0.20); }
 .stage-block-disabled { opacity: 0.6; }
 
 .stage-header {
@@ -1341,7 +1504,7 @@ input[type="range"]::-webkit-slider-thumb:hover { background: var(--text-muted);
 /* ── Figure crop + enrichment ────────────────────────────────────────────── */
 .figure-detail {
   display: flex; flex-direction: column; gap: 6px;
-  border-left: 2px solid #6366f130;
+  border-left: 2px solid rgba(99, 102, 241, 0.19);
   padding-left: 10px; margin-top: 4px;
 }
 
@@ -1641,7 +1804,7 @@ input[type="range"]::-webkit-slider-thumb:hover { background: var(--text-muted);
   text-transform: uppercase;
 }
 .pipeline-badge-rerank {
-  background: #6366f118; border: 1px solid #6366f140;
+  background: rgba(99, 102, 241, 0.09); border: 1px solid rgba(99, 102, 241, 0.25);
   color: var(--accent);
 }
 
@@ -1690,11 +1853,11 @@ input[type="range"]::-webkit-slider-thumb:hover { background: var(--text-muted);
 .sidebar-header {
   /* Section label at the top of the sidebar. */
   padding: 10px 14px 8px;
-  font-size: 10px;
+  font-size: var(--text-xs);
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--text-dim);
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
@@ -1738,9 +1901,10 @@ input[type="range"]::-webkit-slider-thumb:hover { background: var(--text-muted);
 }
 
 .sidebar-name {
-  /* Collection label — truncated with ellipsis when too long. */
+  /* Collection label — Inter, truncated with ellipsis when too long. */
   flex: 1;
-  font-size: 12px;
+  font-size: var(--text-base);
+  font-weight: 400;
   color: var(--text);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1805,22 +1969,22 @@ input[type="range"]::-webkit-slider-thumb:hover { background: var(--text-muted);
 }
 
 .slide-panel {
-  /* Panel container: fixed to the right edge, full viewport height, 380 px wide.
+  /* Panel container: fixed to the right edge, full viewport height, 400 px wide.
      Off-screen by default via translateX(100%); slides in when .slide-panel-open
-     is applied. */
+     is applied. Uses surface-overlay + shadow-lg for proper modal elevation. */
   position: fixed;
   top: 0;
   right: 0;
-  width: 380px;
+  width: 400px;
   height: 100vh;
   z-index: 201;
   display: flex;
   flex-direction: column;
-  background: var(--surface);
+  background: var(--surface-overlay);
   border-left: 1px solid var(--border);
-  box-shadow: var(--shadow-2);
+  box-shadow: var(--shadow-lg);
   transform: translateX(100%);
-  transition: transform 0.2s ease-out;
+  transition: transform 0.22s ease-out;
 }
 
 .slide-panel-open {
@@ -1920,7 +2084,8 @@ input[type="range"]::-webkit-slider-thumb:hover { background: var(--text-muted);
 }
 
 .app-header-collection {
-  /* Collection name shown on the left side of the header. */
+  /* Collection name shown on the left side of the header — medium weight, not bold. */
+  font-size: var(--text-base);
   font-weight: 600;
   color: var(--text);
   flex-shrink: 0;
@@ -1935,10 +2100,11 @@ input[type="range"]::-webkit-slider-thumb:hover { background: var(--text-muted);
 
 .app-tab {
   /* Individual sub-tab button — inactive state. */
-  padding: 4px 12px;
+  padding: 5px 12px;
   border-radius: var(--radius-sm);
   color: var(--text-muted);
-  font-size: 13px;
+  font-size: var(--text-base);
+  font-weight: 500;
   transition: color 0.15s, background 0.15s;
 }
 
@@ -1948,9 +2114,9 @@ input[type="range"]::-webkit-slider-thumb:hover { background: var(--text-muted);
 }
 
 .app-tab-active {
-  /* Active sub-tab: full-contrast text + filled background. */
+  /* Active sub-tab: accent-soft background + accent-colored text. */
   color: var(--text);
-  background: var(--active);
+  background: var(--accent-soft);
 }
 
 .app-header-end {
@@ -2447,23 +2613,24 @@ input[type="range"]::-webkit-slider-thumb:hover { background: var(--text-muted);
 .doc-menu-dropdown {
   position: absolute;
   right: 0;
-  top: 100%;
+  top: calc(100% + 4px);
   z-index: 100;
-  background: var(--surface-raised);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  min-width: 140px;
-  box-shadow: var(--shadow-2);
+  background: var(--surface-overlay);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  min-width: 148px;
+  box-shadow: var(--shadow-lg);
   padding: 4px 0;
 }
 
 .doc-menu-item {
   display: block;
   width: 100%;
-  padding: 6px 12px;
+  padding: 7px 14px;
   text-align: left;
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: var(--text-base);
+  font-weight: 400;
   background: transparent;
   border: none;
   cursor: pointer;
@@ -2543,18 +2710,21 @@ input[type="range"]::-webkit-slider-thumb:hover { background: var(--text-muted);
 }
 
 .search-result-card {
-  /* Individual result card — clickable, transitions background on hover. */
-  background: var(--surface-raised);
+  /* Individual result card — raised surface with shadow for depth. */
+  background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 12px;
+  border-radius: var(--radius-md);
+  padding: 14px;
   margin-bottom: 8px;
   cursor: pointer;
-  transition: background 0.15s;
+  box-shadow: var(--shadow-sm);
+  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
 }
 
 .search-result-card:hover {
-  background: var(--hover);
+  background: var(--surface-raised);
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-md);
 }
 
 .search-result-header {
@@ -3684,33 +3854,34 @@ input[type="range"]::-webkit-slider-thumb:hover { background: var(--text-muted);
   background: var(--bg);
 }
 
-/* Card that wraps the login form. */
+/* Card that wraps the login form — raised with shadow-md + radius-lg for prominence. */
 .login-card {
-  width: 340px;
+  width: 360px;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 32px 28px 28px;
-  box-shadow: var(--shadow-2);
+  border-radius: var(--radius-lg);
+  padding: 36px 32px 32px;
+  box-shadow: var(--shadow-lg);
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
-/* Product wordmark. */
+/* Product wordmark — Inter 700, accent-colored. */
 .login-logo {
-  font-size: 20px;
+  font-size: var(--text-xl);
   font-weight: 700;
   color: var(--accent);
-  letter-spacing: 0.04em;
+  letter-spacing: -0.01em;
   margin-bottom: 2px;
 }
 
 /* Subtitle beneath the logo. */
 .login-subtitle {
-  font-size: 13px;
+  font-size: var(--text-base);
   color: var(--text-muted);
-  margin-bottom: 16px;
+  margin-bottom: 18px;
+  line-height: 1.5;
 }
 
 /* Stacked form fields. */
@@ -3727,9 +3898,9 @@ input[type="range"]::-webkit-slider-thumb:hover { background: var(--text-muted);
   gap: 5px;
 }
 
-/* Label text. */
+/* Label text — Inter medium weight. */
 .login-label {
-  font-size: 12px;
+  font-size: var(--text-base);
   color: var(--text-muted);
   font-weight: 500;
 }
@@ -4071,16 +4242,17 @@ input[type="range"]::-webkit-slider-thumb:hover { background: var(--text-muted);
   gap: 6px;
 }
 
-/* Full-width dropdown item button. */
+/* Full-width dropdown item button — Inter, comfortable tap-target. */
 .account-menu-item {
   display: block;
   width: 100%;
-  padding: 7px 14px;
+  padding: 8px 16px;
   border: none;
   background: transparent;
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: var(--text-base);
   font-family: var(--font-ui);
+  font-weight: 400;
   text-align: left;
   cursor: pointer;
   white-space: nowrap;

@@ -5,253 +5,295 @@
 // NO component file should hardcode any color, font-size, spacing, or other
 // visual constant — always reference tokens from here or via CSS vars.
 //
-// Token philosophy: dense cockpit (Linear / Datadog / Grafana aesthetics).
-// Dark-first (#090910 base, #6366f1 indigo accent), light-variant available.
+// Token philosophy: refined dark (Linear / Vercel-grade).
+// Layered surfaces (NOT flat black), real elevation shadows, Inter typography.
+// Dark-first (#0e0f13 base, #6366f1 indigo accent), light-variant available.
 
 // ── Palette ──────────────────────────────────────────────────────────────────
 
 /** Raw color palette — dark theme. Never use these directly; use semantic tokens. */
 export const palette = {
-  // Backgrounds (darkest to lightest)
-  base:           '#090910',
-  surface:        '#101018',
-  surfaceRaised:  '#15151f',
-  hover:          '#1b1b28',
-  active:         '#222233',
+  // Backgrounds — layered from darkest to lightest; creates visual depth.
+  base:            '#0e0f13',
+  surface:         '#16181f',
+  surfaceRaised:   '#1d2029',  // hover, elevated, inputs
+  surfaceOverlay:  '#232734',  // popovers, dropdowns, modals
 
   // Borders
-  border:         '#20202e',
-  borderStrong:   '#30304a',
+  border:          '#262a35',  // subtle dividers
+  borderStrong:    '#333a49',  // focus rings base, strong dividers
 
   // Text
-  text:           '#e8e8f2',
-  textMuted:      '#787898',
-  textDim:        '#38384e',
+  text:            '#e7e9ef',
+  textMuted:       '#9aa2b1',
+  textDim:         '#6a7180',
 
-  // Accent (indigo)
-  accent:         '#6366f1',
-  accentSoft:     'rgba(99, 102, 241, 0.16)',
-  accentHover:    '#818cf8',
+  // Accent (indigo — used sparingly)
+  accent:          '#6366f1',
+  accentHover:     '#7c7ff3',
+  accentSoft:      'rgba(99, 102, 241, 0.14)',
 
-  // Shadows
-  shadow1:        '0 1px 2px rgba(0,0,0,0.4)',
-  shadow2:        '0 4px 16px rgba(0,0,0,0.5)',
+  // Elevation shadows — dark theme; these add the depth missing from the old design.
+  shadowSm:  '0 1px 2px rgba(0,0,0,.35)',
+  shadowMd:  '0 4px 14px rgba(0,0,0,.40)',
+  shadowLg:  '0 16px 40px rgba(0,0,0,.50)',
 } as const
 
 /** Raw color palette — light theme. */
 export const paletteLight = {
-  base:           '#f6f7fb',
-  surface:        '#ffffff',
-  surfaceRaised:  '#ffffff',
-  hover:          '#eef0f5',
-  active:         '#e2e6ef',
+  base:            '#f6f7fb',
+  surface:         '#ffffff',
+  surfaceRaised:   '#f0f2f8',
+  surfaceOverlay:  '#ffffff',
 
-  border:         '#e2e6ef',
-  borderStrong:   '#cbd0db',
+  border:          '#e2e6ef',
+  borderStrong:    '#cbd0db',
 
-  text:           '#1a1a2a',
-  textMuted:      '#5b6478',
-  textDim:        '#8d96a8',
+  text:            '#1a1a2a',
+  textMuted:       '#5b6478',
+  textDim:         '#8d96a8',
 
-  accent:         '#6366f1',
-  accentSoft:     'rgba(99, 102, 241, 0.12)',
-  accentHover:    '#4f46e5',
+  accent:          '#6366f1',
+  accentHover:     '#4f46e5',
+  accentSoft:      'rgba(99, 102, 241, 0.12)',
 
-  shadow1:        '0 1px 2px rgba(20, 25, 40, 0.06)',
-  shadow2:        '0 4px 16px rgba(20, 25, 40, 0.10)',
+  shadowSm:  '0 1px 2px rgba(20,25,40,0.06)',
+  shadowMd:  '0 4px 16px rgba(20,25,40,0.10)',
+  shadowLg:  '0 16px 40px rgba(20,25,40,0.18)',
 } as const
 
 // ── Status / Semantic colors ──────────────────────────────────────────────────
 
-/** Status colors — same hues on both themes for legibility. */
+/** Status colors — refined hues with better legibility on layered dark surfaces. */
 export const status = {
-  done:    '#22c55e',
-  running: '#d97706',
-  error:   '#ef4444',
-  warning: '#f59e0b',
+  done:    '#34d399',  // emerald-400 (mint green — passes on dark surfaces)
+  running: '#fbbf24',  // amber-400 (warm amber for in-progress)
+  error:   '#f87171',  // red-400 (soft coral — not harsh on dark)
+  warning: '#fbbf24',  // same as running (both are caution states)
+  info:    '#60a5fa',  // blue-400
   pending: '#94a3b8',
   idle:    '#475569',
   skip:    '#475569',
+
+  // Soft background variants (.14 alpha) — for status badges/tags.
+  doneSoft:    'rgba(52, 211, 153, 0.14)',
+  warningSoft: 'rgba(251, 191, 36, 0.14)',
+  errorSoft:   'rgba(248, 113, 113, 0.14)',
+  infoSoft:    'rgba(96, 165, 250, 0.14)',
 } as const
 
 // ── Typography ────────────────────────────────────────────────────────────────
 
 export const typography = {
   fonts: {
-    /** System UI stack — used for all UI text. */
-    ui:   "system-ui, -apple-system, 'Segoe UI', sans-serif",
-    /** Monospace stack — used for IDs, traces, code, and dense data. */
-    mono: "'JetBrains Mono', 'Cascadia Code', 'Fira Code', ui-monospace, monospace",
+    /**
+     * UI font — Inter first; system-ui as fallback.
+     * Inter is loaded via @fontsource/inter (imported in main.tsx).
+     * Used for ALL UI text: labels, body, nav, headings.
+     */
+    ui:   "'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif",
+    /**
+     * Mono font — ONLY for IDs, hashes, code, keys, API tokens.
+     * Never use for labels, body text, or nav items.
+     */
+    mono: "ui-monospace, 'JetBrains Mono', 'Cascadia Code', 'Fira Code', monospace",
   },
   sizes: {
-    /** Sub-label, timestamps, micro badges. */
-    xxs: '9px',
-    /** Meta labels, tags, status pills. */
-    xs:  '10px',
-    /** Primary dense UI text (default). */
-    sm:  '11px',
-    /** Base body / form text. */
-    base: '12px',
-    /** Table rows, form labels. */
-    md:  '13px',
-    /** Section headings. */
-    lg:  '15px',
-    /** Panel titles. */
-    xl:  '16px',
-    /** Modal/page titles. */
-    xxl: '20px',
+    /** Timestamps, sub-labels, micro badges. */
+    xxs:  '9px',
+    /** Meta labels, tags, status pills (--text-xs). */
+    xs:   '11px',
+    /** Dense UI text (--text-sm). */
+    sm:   '12.5px',
+    /** Body / form text (--text-base, body default). */
+    base: '13.5px',
+    /** Table rows, form labels (--text-md). */
+    md:   '15px',
+    /** Section headings (--text-lg). */
+    lg:   '18px',
+    /** Panel / page titles (--text-xl). */
+    xl:   '22px',
   },
   weights: {
-    regular:   400,
-    medium:    500,
-    semibold:  600,
-    bold:      700,
+    regular:  400,
+    medium:   500,
+    semibold: 600,
+    bold:     700,
   },
   lineHeights: {
-    tight:  1.3,
-    base:   1.5,
-    loose:  1.7,
+    tight: 1.3,
+    base:  1.5,
+    loose: 1.7,
   },
   /** Default base font size applied to <body>. */
-  baseFontSize: '13px',
+  baseFontSize: '13.5px',
 } as const
 
 // ── Spacing ───────────────────────────────────────────────────────────────────
 
-/** 4-px base grid spacing scale. */
+/**
+ * 8-px grid spacing scale.
+ * --space-1 … --space-8 = 4, 8, 12, 16, 20, 24, 32, 40 px.
+ */
 export const spacing = {
   0:    '0px',
   0.5:  '2px',
-  1:    '4px',
+  1:    '4px',   // --space-1
   1.5:  '6px',
-  2:    '8px',
+  2:    '8px',   // --space-2
   2.5:  '10px',
-  3:    '12px',
-  4:    '16px',
-  5:    '20px',
-  6:    '24px',
+  3:    '12px',  // --space-3
+  4:    '16px',  // --space-4
+  5:    '20px',  // --space-5
+  6:    '24px',  // --space-6
   7:    '28px',
-  8:    '32px',
-  10:   '40px',
+  8:    '32px',  // --space-7
+  10:   '40px',  // --space-8
   12:   '48px',
 } as const
 
 // ── Radii ─────────────────────────────────────────────────────────────────────
 
+/**
+ * Generous radius scale — rounded feels premium on dark surfaces.
+ * sm=tags/badges, md=cards/inputs, lg=drawers/modals.
+ */
 export const radii = {
   none: '0px',
-  sm:   '4px',
-  base: '6px',
-  md:   '8px',
-  lg:   '12px',
+  sm:   '6px',   // tags, badges, small chips
+  base: '10px',  // default — cards, panels, containers
+  md:   '10px',  // alias for base (cards/inputs per spec)
+  lg:   '14px',  // drawers, modals, overlays
   full: '9999px',
 } as const
 
-// ── Shadows / Elevation ───────────────────────────────────────────────────────
+// ── Elevation ────────────────────────────────────────────────────────────────
 
-/** Elevation scale — dark theme. */
+/**
+ * Shadow scale — the key ingredient for "depth" missing from the old design.
+ * Cards: sm/md. Dropdowns/modals: lg.
+ */
 export const elevation = {
-  1: '0 1px 2px rgba(0,0,0,0.4)',
-  2: '0 4px 16px rgba(0,0,0,0.5)',
-  3: '0 8px 32px rgba(0,0,0,0.6)',
+  sm: '0 1px 2px rgba(0,0,0,.35)',
+  md: '0 4px 14px rgba(0,0,0,.40)',
+  lg: '0 16px 40px rgba(0,0,0,.50)',
+  // Legacy numeric aliases kept so old references don't break.
+  1: '0 1px 2px rgba(0,0,0,.35)',
+  2: '0 4px 14px rgba(0,0,0,.40)',
+  3: '0 16px 40px rgba(0,0,0,.50)',
 } as const
 
 // ── Z-index layers ────────────────────────────────────────────────────────────
 
 export const zIndex = {
   /** Base content. */
-  base:    0,
+  base:     0,
+  /** Sticky headers / toolbars. */
+  sticky:   10,
   /** Dropdowns, context menus. */
   dropdown: 100,
-  /** Sticky headers / toolbars. */
-  sticky:  10,
   /** Overlays, modals. */
-  overlay: 200,
+  overlay:  200,
   /** Modal dialogs (above overlay). */
-  modal:   201,
+  modal:    201,
   /** Tooltips (highest). */
-  tooltip: 300,
+  tooltip:  300,
 } as const
 
 // ── Density metrics ───────────────────────────────────────────────────────────
-// Tuned for a cockpit layout: information density over comfort.
+// Comfortable but still information-dense — breathing room over pure cockpit.
 
 export const density = {
-  /** Tall (comfortable) row — detail panels, form rows. */
-  rowHeightLg: '38px',
-  /** Standard row — document list, search results. */
-  rowHeight:   '32px',
+  /** Tall (comfortable) row — form rows, detail panels. */
+  rowHeightLg: '40px',
+  /** Standard row — document list, search results, table rows. */
+  rowHeight:   '36px',
   /** Compact row — dense tables, trace lines. */
-  rowHeightSm: '26px',
+  rowHeightSm: '28px',
   /** Micro row — status chips, badges. */
   rowHeightXs: '20px',
 
   /** Default cell padding (vertical). */
-  cellPaddingV:  '4px',
+  cellPaddingV:  '6px',
   /** Default cell padding (horizontal). */
-  cellPaddingH:  '8px',
+  cellPaddingH:  '10px',
 
   /** Table header height. */
-  tableHeaderH: '28px',
+  tableHeaderH: '32px',
 
   /** Left sidebar width. */
-  sidebarWidth:  '200px',
+  sidebarWidth:  '220px',
   /** Top bar / context bar height. */
-  topbarHeight:  '44px',
+  topbarHeight:  '46px',
   /** Right inspector panel default width. */
-  inspectorWidth: '380px',
+  inspectorWidth: '400px',
 } as const
 
 // ── Layout ────────────────────────────────────────────────────────────────────
 
 export const layout = {
-  topbarH:       density.topbarHeight,
-  sidebarW:      density.sidebarWidth,
-  inspectorW:    density.inspectorWidth,
+  topbarH:    density.topbarHeight,
+  sidebarW:   density.sidebarWidth,
+  inspectorW: density.inspectorWidth,
 } as const
 
 // ── CSS var mapping ───────────────────────────────────────────────────────────
 // These are the CSS custom property names used in global.css.
 // The values are provided by the :root / [data-theme] blocks.
-// This map is a reference only — the actual injection happens in global.css.
+// This map is a reference only — actual injection happens in global.css.
 
 export const vars = {
-  bg:             'var(--bg)',
-  surface:        'var(--surface)',
-  surfaceRaised:  'var(--surface-raised)',
-  hover:          'var(--hover)',
-  active:         'var(--active)',
-  panelBg:        'var(--panel-bg)',
+  bg:              'var(--bg)',
+  surface:         'var(--surface)',
+  surfaceRaised:   'var(--surface-raised)',
+  surfaceOverlay:  'var(--surface-overlay)',
+  hover:           'var(--hover)',
+  active:          'var(--active)',
+  panelBg:         'var(--panel-bg)',
 
-  border:         'var(--border)',
-  borderStrong:   'var(--border-strong)',
+  border:          'var(--border)',
+  borderStrong:    'var(--border-strong)',
 
-  text:           'var(--text)',
-  textMuted:      'var(--text-muted)',
-  textDim:        'var(--text-dim)',
+  text:            'var(--text)',
+  textMuted:       'var(--text-muted)',
+  textDim:         'var(--text-dim)',
 
-  accent:         'var(--accent)',
-  accentSoft:     'var(--accent-soft)',
-  accentHover:    'var(--accent-hover)',
+  accent:          'var(--accent)',
+  accentSoft:      'var(--accent-soft)',
+  accentHover:     'var(--accent-hover)',
 
-  shadow1:        'var(--shadow-1)',
-  shadow2:        'var(--shadow-2)',
+  // Legacy names kept for compatibility
+  shadow1:         'var(--shadow-sm)',
+  shadow2:         'var(--shadow-md)',
 
-  fontUi:         'var(--font-ui)',
-  fontMono:       'var(--font-mono)',
-  fontSize:       'var(--font-size)',
+  // New elevation vars
+  shadowSm:        'var(--shadow-sm)',
+  shadowMd:        'var(--shadow-md)',
+  shadowLg:        'var(--shadow-lg)',
 
-  radius:         'var(--radius)',
-  radiusSm:       'var(--radius-sm)',
+  fontUi:          'var(--font-ui)',
+  fontMono:        'var(--font-mono)',
+  fontSize:        'var(--font-size)',
 
-  topbarH:        'var(--topbar-h)',
+  radius:          'var(--radius)',
+  radiusSm:        'var(--radius-sm)',
+  radiusMd:        'var(--radius-md)',
+  radiusLg:        'var(--radius-lg)',
 
-  sDone:          'var(--s-done)',
-  sRunning:       'var(--s-running)',
-  sError:         'var(--s-error)',
-  sWarning:       'var(--s-warning)',
-  sPending:       'var(--s-pending)',
-  sIdle:          'var(--s-idle)',
+  topbarH:         'var(--topbar-h)',
+
+  sDone:           'var(--s-done)',
+  sRunning:        'var(--s-running)',
+  sError:          'var(--s-error)',
+  sWarning:        'var(--s-warning)',
+  sInfo:           'var(--s-info)',
+  sPending:        'var(--s-pending)',
+  sIdle:           'var(--s-idle)',
+
+  sDoneSoft:       'var(--s-done-soft)',
+  sWarningSoft:    'var(--s-warning-soft)',
+  sErrorSoft:      'var(--s-error-soft)',
+  sInfoSoft:       'var(--s-info-soft)',
 } as const
 
 export default {
