@@ -1,6 +1,9 @@
 // ====== Code Summary ======
-// UsersPanel — root-only panel to create, list, deactivate, and reset
-// passwords for application users.  Hidden for non-root users.
+// UsersPanel — root-only panel to create, list, deactivate, reset passwords,
+// and impersonate application users.
+// The optional onActAs callback enables the "Act as" button per user row;
+// the button is hidden when onActAs is not provided (e.g. while already
+// impersonating, to prevent nested impersonation sessions).
 
 // ====== Third-Party Library Imports ======
 import { useEffect, useState, FormEvent } from 'react'
@@ -14,6 +17,19 @@ import {
 } from '../../api/client'
 import type { UserResponse } from '../../api/types'
 
+// ── Types ────────────────────────────────────────────────────────────────────
+
+interface UsersPanelProps {
+  /**
+   * When provided, each non-root active user row shows an "Act as" button that
+   * calls this handler with the user's UUID.  Omit to hide the button (e.g.
+   * when the session is already impersonating to block nested impersonation).
+   */
+  onActAs?: (userId: string) => Promise<void>
+  /** The currently authenticated user's UUID — prevents self-impersonation. */
+  currentUserId?: string
+}
+
 // ── Component ────────────────────────────────────────────────────────────────
 
 /**
@@ -22,9 +38,14 @@ import type { UserResponse } from '../../api/types'
  * Sections:
  *   1. Create user form — username, password, role selector.
  *   2. User list — rows with username, role, status, deactivate button,
- *      and an inline password-reset form.
+ *      inline password-reset form, and an optional "Act as" impersonation button.
+ *
+ * Args:
+ *   onActAs:       Optional impersonation callback.  When provided, non-root
+ *                  active user rows gain an "Act as" button.
+ *   currentUserId: The logged-in user's UUID, used to suppress self-impersonation.
  */
-export function UsersPanel() {
+export function UsersPanel({ onActAs, currentUserId }: UsersPanelProps) {
   const [users, setUsers] = useState<UserResponse[]>([])
   const [loadError, setLoadError] = useState<string | null>(null)
 
@@ -41,6 +62,10 @@ export function UsersPanel() {
   const [resetPassword, setResetPassword] = useState('')
   const [resetting, setResetting] = useState(false)
   const [resetError, setResetError] = useState<string | null>(null)
+
+  // Per-user impersonation loading state.
+  const [actingAsId, setActingAsId] = useState<string | null>(null)
+  const [actAsError, setActAsError] = useState<string | null>(null)
 
   // 1. Load users on mount.
   useEffect(() => {
@@ -93,7 +118,7 @@ export function UsersPanel() {
       await deleteUser(userId)
       setUsers(prev => prev.filter(u => u.id !== userId))
     } catch {
-      // Non-fatal — button re-enables automatically via setDeactivatingId(null).
+      // Non-fatal — button re-enables automatically.
     } finally {
       setDeactivatingId(null)
     }
@@ -119,6 +144,48 @@ export function UsersPanel() {
     } finally {
       setResetting(false)
     }
+  }
+
+  /**
+   * Initiates an impersonation session as the given user.
+   *
+   * Delegates to the onActAs callback provided by the parent (AdminView).
+   * Disabled when already acting as someone, or for self / root users.
+   *
+   * Args:
+   *   userId: UUID of the user to impersonate.
+   */
+  async function handleActAs(userId: string): Promise<void> {
+    if (!onActAs) return
+    setActingAsId(userId)
+    setActAsError(null)
+    try {
+      await onActAs(userId)
+    } catch (err) {
+      setActAsError(err instanceof Error ? err.message : 'Impersonation failed.')
+      setActingAsId(null)
+    }
+    // Leave actingAsId set — the app context switches and this panel unmounts.
+  }
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
+
+  /**
+   * Returns true when the "Act as" button should be shown for a given user.
+   *
+   * Conditions: onActAs is provided, user is not self, user is not root,
+   * and user is active.
+   *
+   * Args:
+   *   u: The user row to evaluate.
+   */
+  function canActAs(u: UserResponse): boolean {
+    return (
+      onActAs != null
+      && u.id !== currentUserId
+      && u.role !== 'root'
+      && u.is_active
+    )
   }
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -165,11 +232,15 @@ export function UsersPanel() {
         {createError && <div className="error-banner">{createError}</div>}
       </form>
 
+      {/* Act-as error */}
+      {actAsError && <div className="error-banner">{actAsError}</div>}
+
       {/* User list */}
       {loadError && <div className="error-banner">{loadError}</div>}
       {users.length === 0 && !loadError && (
         <p className="text-muted" style={{ marginTop: 12, fontSize: 13 }}>No users found.</p>
       )}
+
       {users.map(u => (
         <div key={u.id} className="admin-user-row">
           <div className="admin-user-info">
@@ -184,7 +255,21 @@ export function UsersPanel() {
               {new Date(u.created_at).toLocaleDateString()}
             </span>
           </div>
+
           <div className="admin-user-actions">
+            {/* Act as — only for eligible users when onActAs is provided. */}
+            {canActAs(u) && (
+              <button
+                type="button"
+                className="btn"
+                disabled={actingAsId === u.id}
+                onClick={() => { void handleActAs(u.id) }}
+                title={`Act as ${u.username}`}
+              >
+                {actingAsId === u.id ? 'Switching...' : 'Act as'}
+              </button>
+            )}
+
             <button
               type="button"
               className="btn"
@@ -196,6 +281,7 @@ export function UsersPanel() {
             >
               Reset password
             </button>
+
             <button
               type="button"
               className="btn btn-danger"

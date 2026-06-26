@@ -19,6 +19,7 @@ import type {
   DocumentDeleteResponse,
   DocumentListResponse,
   HealthResponse,
+  ImpersonateResponse,
   IngestResponse,
   MeResponse,
   MetadataUpdateResponse,
@@ -464,6 +465,18 @@ export const resetUserPassword = (userId: string, password: string): Promise<{ o
     method: 'PUT',
     body: JSON.stringify({ password }),
   })
+
+/**
+ * Creates an impersonation session for the given user (root only).
+ *
+ * Returns a short-lived access token that acts as the target user.
+ * The response user is the impersonated user's summary.
+ *
+ * Args:
+ *   userId: UUID of the user to impersonate.
+ */
+export const impersonateUser = (userId: string): Promise<ImpersonateResponse> =>
+  request<ImpersonateResponse>(`/users/${userId}/impersonate`, { method: 'POST' })
 
 // ── Collection access ─────────────────────────────────────────────────────
 

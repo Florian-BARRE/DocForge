@@ -52,6 +52,13 @@ class MeResponse(BaseModel):
         default_factory=list,
         description="Per-collection grants. Empty for root (root has implicit admin everywhere).",
     )
+    impersonated_by: uuid.UUID | None = Field(
+        default=None,
+        description=(
+            "Set when the session was minted by a root impersonating this user — the impersonating "
+            "root's id. None for an ordinary session. The UI uses it to show an 'Acting as' banner."
+        ),
+    )
 
 
 class ApiKeyCreateRequest(BaseModel):

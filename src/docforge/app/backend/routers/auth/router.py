@@ -76,9 +76,10 @@ async def me(principal: Principal = Depends(require_principal)) -> MeResponse:
         is_active=True,
     )
 
-    # 2. Root has implicit admin everywhere — no explicit grants to enumerate
+    # 2. Root has implicit admin everywhere — no explicit grants to enumerate. impersonated_by is
+    #    still echoed so a root impersonating ANOTHER root would still surface the "acting as" tag.
     if principal.is_root:
-        return MeResponse(user=user, grants=[])
+        return MeResponse(user=user, grants=[], impersonated_by=principal.impersonated_by)
 
     # 3. List the user's explicit grants
     async with CONTEXT.postgres.session() as session:
@@ -91,7 +92,8 @@ async def me(principal: Principal = Depends(require_principal)) -> MeResponse:
         for g in grants
         if g is not None
     ]
-    return MeResponse(user=user, grants=summaries)
+    # impersonated_by is set when this session was minted by a root impersonating the user.
+    return MeResponse(user=user, grants=summaries, impersonated_by=principal.impersonated_by)
 
 
 @router.post("/keys", response_model=ApiKeyCreatedResponse, status_code=201)

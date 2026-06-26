@@ -17,6 +17,7 @@ from backend.libs.utils.error_handling import auto_handle_errors
 from backend.routers.users.models import (
     CreateUserRequest,
     DeactivateUserResponse,
+    ImpersonateResponse,
     UpdatePasswordRequest,
     UserListResponse,
     UserResponse,
@@ -94,6 +95,49 @@ async def deactivate_user(
 
     CONTEXT.logger.info(f"Deactivated user id={user_id}")
     return DeactivateUserResponse(deactivated=True, id=user_id)
+
+
+@router.post("/{user_id}/impersonate", response_model=ImpersonateResponse)
+@auto_handle_errors
+async def impersonate_user(
+    user_id: uuid.UUID, root: Principal = Depends(require_root)
+) -> ImpersonateResponse:
+    """
+    Mint a session that lets root act AS another user (root only).
+
+    Returns a login-shaped session (access_token + target user) whose token authenticates as the
+    target user with EXACTLY the target's permissions — root gains nothing extra, it simply operates
+    as that account (create their keys, see their grants/collections). The token embeds an
+    ``impersonated_by`` audit claim. Impersonating an unknown user → 404; an inactive one → 409
+    (a deactivated account cannot authenticate, so a session for it would be a dead end).
+    """
+    # 1. Load the target user; an unknown id cannot be impersonated → 404
+    async with CONTEXT.postgres.session() as session:
+        user = await CONTEXT.user_repo.get_by_id(session, user_id)
+        target = UserResponse.model_validate(user) if user is not None else None
+    if target is None:
+        # 404 — no user with this id to impersonate.
+        CONTEXT.logger.warning(f"Impersonate rejected (404 unknown user): user_id={user_id}")
+        raise HTTPException(status_code=404, detail=f"User {user_id} not found.")
+
+    # 2. Refuse impersonating a deactivated account — its token would never resolve → 409
+    if not target.is_active:
+        # 409 — the target is soft-deactivated and cannot authenticate; a session is meaningless.
+        CONTEXT.logger.warning(f"Impersonate rejected (409 inactive user): user_id={user_id}")
+        raise HTTPException(status_code=409, detail=f"User {user_id} is deactivated.")
+
+    # 3. Mint a target-scoped token tagged with the impersonating root (audit trail)
+    target_principal = Principal.from_user(
+        user_id=target.id, username=target.username, role=target.role
+    )
+    token = CONTEXT.auth_service.mint_impersonation_token(
+        target=target_principal, impersonator_id=root.user_id
+    )
+
+    CONTEXT.logger.info(
+        f"Impersonation started: root user_id={root.user_id} acting as user_id={user_id}"
+    )
+    return ImpersonateResponse(access_token=token, token_type="bearer", user=target)
 
 
 @router.put("/{user_id}/password", response_model=UserResponse)

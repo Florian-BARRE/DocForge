@@ -3865,3 +3865,86 @@ input[type="range"]::-webkit-slider-thumb:hover { background: var(--text-muted);
   padding: 4px 28px 4px 8px;
   font-size: 12px;
 }
+
+/* ── Account menu dropdown ─────────────────────────────────────────────────── */
+
+/* Wrapper keeps position:relative so the dropdown anchors correctly. */
+.account-menu-wrapper {
+  position: relative;
+}
+
+/* The user badge doubles as the dropdown trigger — add pointer cursor. */
+.account-menu-trigger {
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Full-width dropdown item button. */
+.account-menu-item {
+  display: block;
+  width: 100%;
+  padding: 7px 14px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-family: var(--font-ui);
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.1s, color 0.1s;
+}
+
+.account-menu-item:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+/* Danger variant — sign out, destructive actions. */
+.account-menu-item-danger {
+  color: var(--s-error);
+}
+
+.account-menu-item-danger:hover {
+  background: rgba(239, 68, 68, 0.08);
+  color: var(--s-error);
+}
+
+/* ── Impersonation banner ──────────────────────────────────────────────────── */
+
+/* Full-width bar rendered at the top of app-main when impersonating. */
+.impersonation-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 5px 16px;
+  background: rgba(217, 119, 6, 0.12);
+  border-bottom: 1px solid rgba(245, 158, 11, 0.35);
+  font-size: 12px;
+  color: var(--s-warning);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+/* Mono username chip inside the banner. */
+.impersonation-banner-user {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 1px 7px;
+  background: rgba(217, 119, 6, 0.18);
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  border-radius: var(--radius-sm);
+  color: var(--s-warning);
+}
+
+/* Dim label. */
+.impersonation-banner-note {
+  color: var(--text-dim);
+  font-size: 11px;
+}

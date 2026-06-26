@@ -1335,3 +1335,179 @@ class TestSseTokenAuth:
             f"/api/v1/auth/me?token={_ROOT_API_KEY}",
         )
         assert response.status_code == 401
+
+
+# ── 20. POST /users/{id}/impersonate — root act-as ───────────────────────────
+
+class TestImpersonateUser:
+    """
+    POST /api/v1/users/{user_id}/impersonate — root mints a session AS another user.
+
+    Behaviour:
+      - Root impersonating a known active user → 200 with access_token + the target user.
+      - Non-root caller → 403 (require_root gate).
+      - Unknown user id → 404.
+      - Inactive (deactivated) user → 409.
+      - The minted token's principal IS the target user: creating an API key under it
+        creates a key OWNED by the target, never the impersonating root.
+    """
+
+    def _make_user_orm(
+        self,
+        user_id: uuid.UUID,
+        *,
+        is_active: bool = True,
+        role: str = "user",
+        username: str = "bob",
+    ) -> MagicMock:
+        """Minimal mock user ORM row for impersonation tests."""
+        import datetime
+        user = MagicMock()
+        user.id = user_id
+        user.username = username
+        user.role = role
+        user.is_active = is_active
+        user.created_at = datetime.datetime.now()
+        return user
+
+    @pytest.mark.asyncio
+    async def test_root_impersonates_active_user_returns_200(
+        self, authed_client: httpx.AsyncClient
+    ) -> None:
+        """Root impersonating a known active user → 200 with a login-shaped session."""
+        target_id = uuid.uuid4()
+        CONTEXT.user_repo.get_by_id = AsyncMock(return_value=self._make_user_orm(target_id))
+        CONTEXT.auth_service.mint_impersonation_token = MagicMock(return_value="imp-jwt-token")
+
+        response = await authed_client.post(
+            f"/api/v1/users/{target_id}/impersonate", headers=_ROOT_HEADERS
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert body["access_token"] == "imp-jwt-token"
+        assert body["token_type"] == "bearer"
+        assert body["user"]["id"] == str(target_id)
+
+    @pytest.mark.asyncio
+    async def test_mint_called_with_root_as_impersonator(
+        self, authed_client: httpx.AsyncClient
+    ) -> None:
+        """The token is minted for the target user, tagged with the calling root's id."""
+        target_id = uuid.uuid4()
+        CONTEXT.user_repo.get_by_id = AsyncMock(return_value=self._make_user_orm(target_id))
+        CONTEXT.auth_service.mint_impersonation_token = MagicMock(return_value="imp-jwt-token")
+
+        await authed_client.post(
+            f"/api/v1/users/{target_id}/impersonate", headers=_ROOT_HEADERS
+        )
+
+        CONTEXT.auth_service.mint_impersonation_token.assert_called_once()
+        kwargs = CONTEXT.auth_service.mint_impersonation_token.call_args.kwargs
+        assert kwargs["impersonator_id"] == _ROOT_USER_ID
+        assert kwargs["target"].user_id == target_id
+
+    @pytest.mark.asyncio
+    async def test_non_root_returns_403(self, authed_client: httpx.AsyncClient) -> None:
+        """A standard user cannot impersonate anyone → 403 (require_root gate)."""
+        CONTEXT.auth_service.resolve_principal = AsyncMock(return_value=_USER_PRINCIPAL)
+        response = await authed_client.post(
+            f"/api/v1/users/{uuid.uuid4()}/impersonate",
+            headers={"Authorization": "Bearer user-token"},
+        )
+        assert response.status_code == 403
+
+    @pytest.mark.asyncio
+    async def test_unknown_user_returns_404(self, authed_client: httpx.AsyncClient) -> None:
+        """Impersonating a user id that does not exist → 404."""
+        CONTEXT.user_repo.get_by_id = AsyncMock(return_value=None)
+        response = await authed_client.post(
+            f"/api/v1/users/{uuid.uuid4()}/impersonate", headers=_ROOT_HEADERS
+        )
+        assert response.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_inactive_user_returns_409(self, authed_client: httpx.AsyncClient) -> None:
+        """Impersonating a deactivated account → 409 (its session could never authenticate)."""
+        target_id = uuid.uuid4()
+        CONTEXT.user_repo.get_by_id = AsyncMock(
+            return_value=self._make_user_orm(target_id, is_active=False)
+        )
+        response = await authed_client.post(
+            f"/api/v1/users/{target_id}/impersonate", headers=_ROOT_HEADERS
+        )
+        assert response.status_code == 409
+
+    @pytest.mark.asyncio
+    async def test_api_key_under_impersonation_owned_by_target(
+        self, authed_client: httpx.AsyncClient
+    ) -> None:
+        """
+        A key created under the impersonation token is owned by the TARGET, not the root.
+
+        The impersonation token resolves to the target principal (subject = target id, carrying
+        ``impersonated_by`` = root id) — exactly what AuthService.mint_impersonation_token produces.
+        The /auth/keys handler binds the new key to ``principal.user_id``, so it must be the target.
+        """
+        import datetime
+        target_id = uuid.uuid4()
+        imp_token = "impersonation-jwt-for-bob"
+        target_principal = Principal(
+            user_id=target_id,
+            username="bob",
+            global_role=UserRole.USER,
+            is_root=False,
+            impersonated_by=_ROOT_USER_ID,
+        )
+
+        async def _resolve(bearer: str | None) -> Principal | None:
+            return target_principal if bearer == imp_token else None
+
+        CONTEXT.auth_service.resolve_principal = AsyncMock(side_effect=_resolve)
+        CONTEXT.auth_service.generate_api_key = MagicMock(
+            return_value=("plaintext", "hash", "plaintex")
+        )
+        mock_key_orm = MagicMock()
+        mock_key_orm.id = uuid.uuid4()
+        mock_key_orm.name = "bobs-key"
+        mock_key_orm.prefix = "plaintex"
+        mock_key_orm.created_at = datetime.datetime.now()
+        CONTEXT.api_key_repo.create = AsyncMock(return_value=mock_key_orm)
+
+        response = await authed_client.post(
+            "/api/v1/auth/keys",
+            json={"name": "bobs-key"},
+            headers={"Authorization": f"Bearer {imp_token}"},
+        )
+        assert response.status_code == 201
+
+        # The key must be created OWNED by the target user, never the impersonating root.
+        CONTEXT.api_key_repo.create.assert_awaited_once()
+        create_kwargs = CONTEXT.api_key_repo.create.call_args.kwargs
+        assert create_kwargs["user_id"] == target_id
+        assert create_kwargs["user_id"] != _ROOT_USER_ID
+
+    @pytest.mark.asyncio
+    async def test_me_under_impersonation_surfaces_impersonated_by(
+        self, authed_client: httpx.AsyncClient
+    ) -> None:
+        """GET /auth/me under an impersonation token exposes impersonated_by = the root's id."""
+        imp_token = "impersonation-jwt-for-bob"
+        target_principal = Principal(
+            user_id=_USER_ID,
+            username="bob",
+            global_role=UserRole.USER,
+            is_root=False,
+            impersonated_by=_ROOT_USER_ID,
+        )
+
+        async def _resolve(bearer: str | None) -> Principal | None:
+            return target_principal if bearer == imp_token else None
+
+        CONTEXT.auth_service.resolve_principal = AsyncMock(side_effect=_resolve)
+        CONTEXT.grant_repo.list_collection_ids_for_user = AsyncMock(return_value=[])
+
+        response = await authed_client.get(
+            "/api/v1/auth/me", headers={"Authorization": f"Bearer {imp_token}"}
+        )
+        assert response.status_code == 200
+        assert response.json()["impersonated_by"] == str(_ROOT_USER_ID)

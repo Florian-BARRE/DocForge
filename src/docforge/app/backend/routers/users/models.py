@@ -51,3 +51,17 @@ class DeactivateUserResponse(BaseModel):
 
     deactivated: bool = Field(..., description="True if the account was deactivated.")
     id: uuid.UUID = Field(..., description="The targeted user id.")
+
+
+class ImpersonateResponse(BaseModel):
+    """
+    Response for POST /users/{id}/impersonate — a login-shaped session for the target user.
+
+    Mirrors the auth router's ``LoginResponse`` (access_token + token_type + user) so the frontend
+    can swap the active session seamlessly. The token authenticates AS the target user; the embedded
+    ``impersonated_by`` audit claim is surfaced separately via ``/auth/me``.
+    """
+
+    access_token: str = Field(..., description="Signed JWT for the target user (send as 'Bearer <token>').")
+    token_type: str = Field(default="bearer", description="Token scheme — always 'bearer'.")
+    user: UserResponse = Field(..., description="The impersonated (target) user.")

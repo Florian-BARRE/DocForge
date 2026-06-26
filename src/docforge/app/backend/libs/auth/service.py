@@ -11,6 +11,7 @@ import hashlib
 import hmac
 import secrets
 import uuid
+from dataclasses import replace
 
 # ====== Third-Party Library Imports ======
 from loggerplusplus import LoggerClass
@@ -149,8 +150,22 @@ class AuthService(LoggerClass):
         except (ValueError, TypeError):
             return None
 
-        # 3. Resolve the user behind the subject
-        return await self._principal_from_user_id(user_id)
+        # 3. Resolve the user behind the subject (the resolved identity IS the target user —
+        #    impersonation tokens carry the target as the subject, so /auth/keys etc. operate
+        #    natively as that user with exactly the target's permissions).
+        principal = await self._principal_from_user_id(user_id)
+        if principal is None:
+            return None
+
+        # 4. Carry the optional impersonation audit claim onto the principal (display only).
+        #    A malformed claim is ignored — it must never break an otherwise valid token.
+        impersonator = claims.get("impersonated_by")
+        if impersonator:
+            try:
+                principal = replace(principal, impersonated_by=uuid.UUID(str(impersonator)))
+            except (ValueError, TypeError):
+                pass
+        return principal
 
     async def _resolve_api_key(self, bearer: str) -> Principal | None:
         """
@@ -207,6 +222,37 @@ class AuthService(LoggerClass):
             subject=str(principal.user_id),
             secret=self._jwt_secret,
             ttl_minutes=self._jwt_ttl_minutes,
+        )
+
+    def mint_impersonation_token(
+        self, *, target: Principal, impersonator_id: uuid.UUID
+    ) -> str:
+        """
+        Mint a JWT that authenticates AS the target user, tagged with the impersonating root.
+
+        The token's subject is the TARGET user's id, so on every subsequent request it resolves to
+        the target principal with exactly the target's permissions — root gains no extra power, it
+        simply acts as that user. An ``impersonated_by`` claim records the originating root for
+        audit/display (surfaced by ``/auth/me``); a ``role`` claim echoes the target's global role
+        informationally (authorization always re-reads the live DB role, never trusts the claim).
+        The token uses the standard access-token TTL (``AUTH_JWT_TTL_MINUTES``) — an impersonation
+        session is an ordinary session, not a privileged long-lived one.
+
+        Args:
+            target (Principal): The user to impersonate (becomes the token subject).
+            impersonator_id (uuid.UUID): The id of the root minting the token (audit trail).
+
+        Returns:
+            str: The signed JWT access token for the target user.
+        """
+        return TokenHelpers.mint(
+            subject=str(target.user_id),
+            secret=self._jwt_secret,
+            ttl_minutes=self._jwt_ttl_minutes,
+            extra_claims={
+                "role": target.global_role.value,
+                "impersonated_by": str(impersonator_id),
+            },
         )
 
     async def authenticate(self, username: str, password: str) -> Principal | None:

@@ -435,3 +435,87 @@ class TestAuthenticate:
 
         result = await service.authenticate(inactive_user.username, password)
         assert result is None
+
+
+# ── mint_impersonation_token ──────────────────────────────────────────────────
+
+class TestImpersonationToken:
+    """
+    Tests for AuthService.mint_impersonation_token() and its resolution round-trip.
+
+    The defining property: an impersonation token authenticates AS the target user (subject =
+    target id) while recording the impersonating root in an ``impersonated_by`` claim that surfaces
+    on the resolved principal — without granting any extra authority.
+    """
+
+    @pytest.mark.asyncio
+    async def test_token_resolves_to_target_user_principal(self) -> None:
+        """The minted token resolves to the TARGET user's principal (subject = target id)."""
+        # 1. Target user the root wants to impersonate
+        target_id = uuid.uuid4()
+        target = _make_user_orm(user_id=target_id, username="bob", role="user")
+        user_repo = MagicMock()
+        user_repo.get_by_id = AsyncMock(return_value=target)
+        user_repo.get_by_username = AsyncMock(return_value=None)
+        service, _, _, _, _ = _make_service(user_repo=user_repo)
+
+        # 2. Root mints an impersonation token for the target
+        root_id = uuid.uuid4()
+        target_principal = Principal.from_user(user_id=target_id, username="bob", role="user")
+        token = service.mint_impersonation_token(target=target_principal, impersonator_id=root_id)
+
+        # 3. Resolving that token yields the TARGET principal, not the root
+        resolved = await service.resolve_principal(token)
+        assert resolved is not None
+        assert resolved.user_id == target_id
+        assert resolved.username == "bob"
+        assert resolved.is_root is False
+
+    @pytest.mark.asyncio
+    async def test_resolved_principal_carries_impersonated_by(self) -> None:
+        """The resolved principal exposes ``impersonated_by`` = the minting root's id."""
+        target_id = uuid.uuid4()
+        target = _make_user_orm(user_id=target_id, username="bob", role="user")
+        user_repo = MagicMock()
+        user_repo.get_by_id = AsyncMock(return_value=target)
+        user_repo.get_by_username = AsyncMock(return_value=None)
+        service, _, _, _, _ = _make_service(user_repo=user_repo)
+
+        root_id = uuid.uuid4()
+        target_principal = Principal.from_user(user_id=target_id, username="bob", role="user")
+        token = service.mint_impersonation_token(target=target_principal, impersonator_id=root_id)
+
+        resolved = await service.resolve_principal(token)
+        assert resolved is not None
+        assert resolved.impersonated_by == root_id
+
+    @pytest.mark.asyncio
+    async def test_token_embeds_impersonated_by_and_role_claims(self) -> None:
+        """The raw token carries the impersonated_by + role audit claims (verified directly)."""
+        target_id = uuid.uuid4()
+        root_id = uuid.uuid4()
+        service, _, _, _, _ = _make_service()
+        target_principal = Principal.from_user(user_id=target_id, username="bob", role="user")
+
+        token = service.mint_impersonation_token(target=target_principal, impersonator_id=root_id)
+
+        claims = TokenHelpers.verify(token=token, secret=_JWT_SECRET)
+        assert claims is not None
+        assert claims["sub"] == str(target_id)
+        assert claims["impersonated_by"] == str(root_id)
+        assert claims["role"] == "user"
+
+    @pytest.mark.asyncio
+    async def test_ordinary_token_has_no_impersonated_by(self) -> None:
+        """A normal (non-impersonation) token resolves to a principal with impersonated_by=None."""
+        user_id = uuid.uuid4()
+        user = _make_user_orm(user_id=user_id, username="carol", role="user")
+        user_repo = MagicMock()
+        user_repo.get_by_id = AsyncMock(return_value=user)
+        user_repo.get_by_username = AsyncMock(return_value=None)
+        service, _, _, _, _ = _make_service(user_repo=user_repo)
+
+        token = TokenHelpers.mint(subject=str(user_id), secret=_JWT_SECRET, ttl_minutes=_JWT_TTL)
+        resolved = await service.resolve_principal(token)
+        assert resolved is not None
+        assert resolved.impersonated_by is None

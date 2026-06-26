@@ -365,6 +365,13 @@ export interface DeactivateUserResponse {
   id: string
 }
 
+/** Response from POST /users/{id}/impersonate (root only). */
+export interface ImpersonateResponse {
+  access_token: string
+  token_type: string
+  user: UserSummary
+}
+
 // ── Collection access ─────────────────────────────────────────────────────
 
 export interface AccessGrantResponse {

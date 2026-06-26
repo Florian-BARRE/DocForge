@@ -1,101 +1,48 @@
 // ====== Code Summary ======
-// AdminView — the top-level admin area, gated to root users.
-// Contains three tabs: Users (root only), API Keys (any user), and
-// Collaborators (root or collection admin).
-
-// ====== Third-Party Library Imports ======
-import { useState } from 'react'
+// AdminView — instance-level administration area, root-gated in NavRail.
+// Renders UsersPanel with the "Act as" impersonation capability wired in.
+//
+// Scope split (UI-5):
+//   - Personal (API Keys)     → AccountMenu in ContextBar (every user).
+//   - Per-collection (Access) → "Access" sub-tab in ContextBar (collection admin).
+//   - Instance (Users)        → this view, root-only.
 
 // ====== Internal Project Imports ======
 import { useAuth } from '../../auth/AuthContext'
-import { canAdmin } from '../../auth/permissions'
-import { ApiKeysPanel } from './ApiKeysPanel'
 import { UsersPanel } from './UsersPanel'
-import { CollectionAccessPanel } from './CollectionAccessPanel'
-
-// ── Types ────────────────────────────────────────────────────────────────────
-
-interface AdminViewProps {
-  /** Currently selected collection, for the Collaborators panel. */
-  activeCollectionId: string | null
-}
-
-type AdminTab = 'api-keys' | 'users' | 'collaborators'
 
 // ── Component ────────────────────────────────────────────────────────────────
 
 /**
- * Admin area rendered when the user clicks "Admin" in the app header.
+ * Instance-level admin area rendered when the "Admin" NavRail entry is active.
  *
- * Tab visibility rules:
- *   - "API Keys": always visible (any authenticated user).
- *   - "Users":    only visible to root.
- *   - "Collaborators": only visible when a collection is selected and the
- *       current user is a collection admin or root.
+ * Gated to root-role sessions — if the current user is not root this view is
+ * unreachable (NavRail hides the Admin entry).
  *
- * Args:
- *   activeCollectionId: The collection currently selected in the sidebar,
- *     used to scope the Collaborators panel.
+ * Exposes UsersPanel with the "Act as" callback wired to actAs() from
+ * AuthContext.  The button is hidden automatically by UsersPanel while an
+ * impersonation session is already active (prevents nested impersonation).
  */
-export function AdminView({ activeCollectionId }: AdminViewProps) {
-  const { user, grants } = useAuth()
-  const [activeTab, setActiveTab] = useState<AdminTab>('api-keys')
+export function AdminView() {
+  const { user, isImpersonating, actAs } = useAuth()
 
   if (!user) return null
 
+  // Only the real root can reach this view; impersonating sessions will not
+  // have the Admin NavRail entry visible, so this is a belt-and-suspenders guard.
   const isRoot = user.role === 'root'
-  const isCollectionAdmin = activeCollectionId
-    ? canAdmin(user, grants, activeCollectionId)
-    : false
-  const showCollaborators = isRoot || isCollectionAdmin
+  if (!isRoot) return null
+
+  // Provide the actAs callback only when NOT already impersonating — UsersPanel
+  // hides the "Act as" button when the prop is absent, blocking nested sessions.
+  const handleActAs = !isImpersonating ? actAs : undefined
 
   return (
     <div className="admin-view">
-      {/* Tab bar */}
-      <div className="admin-tabs">
-        <button
-          type="button"
-          className={`app-tab${activeTab === 'api-keys' ? ' app-tab-active' : ''}`}
-          onClick={() => setActiveTab('api-keys')}
-        >
-          API Keys
-        </button>
-        {isRoot && (
-          <button
-            type="button"
-            className={`app-tab${activeTab === 'users' ? ' app-tab-active' : ''}`}
-            onClick={() => setActiveTab('users')}
-          >
-            Users
-          </button>
-        )}
-        {showCollaborators && (
-          <button
-            type="button"
-            className={`app-tab${activeTab === 'collaborators' ? ' app-tab-active' : ''}`}
-            onClick={() => setActiveTab('collaborators')}
-          >
-            Collaborators
-          </button>
-        )}
-      </div>
-
-      {/* Tab content */}
-      <div className="admin-content">
-        {activeTab === 'api-keys' && <ApiKeysPanel />}
-        {activeTab === 'users' && isRoot && <UsersPanel />}
-        {activeTab === 'collaborators' && showCollaborators && (
-          activeCollectionId ? (
-            <CollectionAccessPanel collectionId={activeCollectionId} />
-          ) : (
-            <div className="admin-section">
-              <p className="text-muted" style={{ fontSize: 13 }}>
-                Select a collection in the sidebar to manage its collaborators.
-              </p>
-            </div>
-          )
-        )}
-      </div>
+      <UsersPanel
+        onActAs={handleActAs}
+        currentUserId={user.id}
+      />
     </div>
   )
 }

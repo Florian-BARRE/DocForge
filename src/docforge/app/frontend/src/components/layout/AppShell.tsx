@@ -1,12 +1,18 @@
 // ====== Code Summary ======
 // AppShell — the cockpit shell layout component.
 // Renders a three-region layout:
-//   - Left: NavRail (persistent collection list + global nav)
-//   - Top:  ContextBar (collection title + sub-tabs + user + theme toggle)
-//   - Body: the active zone/tab component
-// Existing screen components (PipelineTab, DocumentsTab, SearchTab, AdminView)
-// are mounted unchanged inside the body region — their internals are untouched.
-// A right-side panel slot is provided for future inspector panels.
+//   - Left:  NavRail (persistent collection list + global nav)
+//   - Top:   ImpersonationBanner (when impersonating) + ContextBar
+//   - Body:  the active zone/tab component
+//
+// Tab / view routing (UI-5 scoping):
+//   - "Access" tab in ContextBar renders CollectionAccessPanel for the active
+//     collection; visible only when the user is admin on that collection.
+//   - "Admin" NavRail entry renders AdminView (Users + Act-as); root-only.
+//   - AccountMenu in ContextBar renders ApiKeysPanel in a Drawer (every user).
+//
+// Permission gate: `write` and `isCollectionAdmin` are derived once here and
+// threaded down as props — never re-computed inside child components.
 
 // ====== Third-Party Library Imports ======
 import { useState } from 'react'
@@ -16,14 +22,16 @@ import { NavRail } from './NavRail'
 import type { GlobalView } from './NavRail'
 import { ContextBar } from './ContextBar'
 import type { CollectionTab } from './ContextBar'
+import { ImpersonationBanner } from './ImpersonationBanner'
 import { SlidePanel } from './SlidePanel'
 import { NewCollectionPanel } from './NewCollectionPanel'
 import { PipelineTab } from '../pipeline/PipelineTab'
 import { DocumentsTab } from '../documents/DocumentsTab'
 import { SearchTab } from '../search/SearchTab'
 import { AdminView } from '../admin/AdminView'
+import { CollectionAccessPanel } from '../admin/CollectionAccessPanel'
 import { ObservabilityStub } from '../observability/ObservabilityStub'
-import { canWrite as computeCanWrite } from '../../auth/permissions'
+import { canWrite as computeCanWrite, canAdmin } from '../../auth/permissions'
 import { useAuth } from '../../auth/AuthContext'
 
 // ── Component ────────────────────────────────────────────────────────────────
@@ -33,16 +41,17 @@ import { useAuth } from '../../auth/AuthContext'
  *
  * Manages:
  *   - `activeCollectionId` — which collection is selected.
- *   - `activeView` — which global nav zone is active.
- *   - `activeTab` — which collection sub-tab is active.
- *   - `activeDocId` — active document for pipeline trace mode.
- *   - `newCollectionOpen` — SlidePanel open state for collection creation.
+ *   - `activeView`         — which global nav zone is active.
+ *   - `activeTab`          — which collection sub-tab is active.
+ *   - `activeDocId`        — active document for pipeline trace mode.
+ *   - `newCollectionOpen`  — SlidePanel open state for collection creation.
  *
- * Permission gate: `write` is derived once from `canWrite()` and threaded
- * down as a prop — never called inside child components.
+ * Permission gates (derived once, threaded down as props):
+ *   - `write`              — derived from canWrite(); enables ingest/delete.
+ *   - `isCollectionAdmin`  — derived from canAdmin(); shows the Access tab.
  */
 export function AppShell() {
-  const { user, grants, logout } = useAuth()
+  const { user, grants, isImpersonating } = useAuth()
 
   // 1. Collection and navigation state.
   const [activeCollectionId, setActiveCollectionId] = useState<string | null>(null)
@@ -53,15 +62,18 @@ export function AppShell() {
 
   if (!user) return null
 
-  // 2. Compute write permission once from current auth state.
-  const write  = computeCanWrite(user, grants, activeCollectionId)
-  const isRoot = user.role === 'root'
+  // 2. Compute permission flags once from current auth state.
+  const write              = computeCanWrite(user, grants, activeCollectionId)
+  const isCollectionAdmin  = canAdmin(user, grants, activeCollectionId)
+  // Show Admin nav entry only for the true root session — not while impersonating.
+  const isRoot             = user.role === 'root'
+  const showAdmin          = isRoot && !isImpersonating
 
   // ── Handlers ──────────────────────────────────────────────────────────────
 
   /**
    * Selects a collection and resets document/trace state.
-   * Switches to the current activeTab unless we were in admin/observability.
+   * Switches to pipeline tab unless we were in admin/observability.
    */
   function handleSelectCollection(id: string): void {
     setActiveCollectionId(id)
@@ -70,6 +82,9 @@ export function AppShell() {
       setActiveView('pipeline')
       setActiveTab('pipeline')
     }
+    // The 'access' tab is admin-only and collection-specific: drop it on switch so a stale
+    // selection can't carry into a collection where the user is not an admin.
+    if (activeTab === 'access') setActiveTab('pipeline')
   }
 
   /**
@@ -85,12 +100,12 @@ export function AppShell() {
   }
 
   /**
-   * Handles global nav rail clicks. When switching to a collection zone,
-   * syncs the sub-tab so the context bar reflects the right active tab.
+   * Handles global NavRail clicks.  Syncs the sub-tab when switching to a
+   * collection zone so the ContextBar highlights the correct tab.
    */
   function handleNavigate(view: GlobalView): void {
     setActiveView(view)
-    // If the view corresponds to a collection sub-tab, sync the tab state.
+    // Keep sub-tab in sync for the three zones that map to collection tabs.
     if (view === 'pipeline' || view === 'documents' || view === 'search') {
       setActiveTab(view)
     }
@@ -99,11 +114,16 @@ export function AppShell() {
 
   /**
    * Handles collection sub-tab changes from the ContextBar.
-   * Keeps activeView in sync with the selected tab.
+   * The 'access' tab does not change the global view — it stays within the
+   * current collection context without affecting the NavRail selection.
    */
   function handleTabChange(tab: CollectionTab): void {
     setActiveTab(tab)
-    setActiveView(tab)
+    // Only sync activeView for tabs that correspond to a GlobalView entry.
+    // 'access' is collection-scoped and has no GlobalView counterpart.
+    if (tab === 'pipeline' || tab === 'documents' || tab === 'search') {
+      setActiveView(tab)
+    }
     setActiveDocId(null)
   }
 
@@ -111,13 +131,21 @@ export function AppShell() {
 
   /**
    * Resolves which zone component to render in the body region.
+   *
+   * Priority order:
+   *   1. Admin view (root-only global zone)
+   *   2. Observability stub
+   *   3. Empty state when no collection selected
+   *   4. Collection sub-tabs: Pipeline / Documents / Access / Search (default)
    */
   function renderBody() {
+    // Admin is root-only AND hidden while impersonating; if the view is stale (e.g. root
+    // clicked "Act as" from the Admin screen), fall through to the collection content so the
+    // impersonated session never lands on a blank, guarded AdminView.
     if (activeView === 'admin') {
-      return <AdminView activeCollectionId={activeCollectionId} />
-    }
-
-    if (activeView === 'observability') {
+      if (showAdmin) return <AdminView />
+      // fall through
+    } else if (activeView === 'observability') {
       return <ObservabilityStub />
     }
 
@@ -155,6 +183,13 @@ export function AppShell() {
       )
     }
 
+    // Access tab — collection admin or root only. Re-checked at render (not just by hiding
+    // the tab) so a stale 'access' selection after a collection switch can't show the panel
+    // to a non-admin; falls through to the default tab otherwise.
+    if (activeTab === 'access' && isCollectionAdmin) {
+      return <CollectionAccessPanel collectionId={activeCollectionId} />
+    }
+
     return <SearchTab collectionId={activeCollectionId} />
   }
 
@@ -169,7 +204,7 @@ export function AppShell() {
         onSelectCollection={handleSelectCollection}
         onNew={() => setNewCollectionOpen(true)}
         onNavigate={handleNavigate}
-        showAdmin={isRoot}
+        showAdmin={showAdmin}
       />
 
       {/* ── New collection slide panel ── */}
@@ -184,8 +219,11 @@ export function AppShell() {
         />
       </SlidePanel>
 
-      {/* ── Right: context bar + body ── */}
+      {/* ── Right: impersonation banner + context bar + body ── */}
       <div className="app-main">
+        {/* Impersonation warning — rendered above ContextBar for maximum visibility. */}
+        <ImpersonationBanner />
+
         <ContextBar
           activeView={activeView}
           activeCollectionId={activeCollectionId}
@@ -193,7 +231,7 @@ export function AppShell() {
           onTabChange={handleTabChange}
           username={user.username}
           isRoot={isRoot}
-          onLogout={logout}
+          isCollectionAdmin={isCollectionAdmin}
         />
 
         {/* Main content area */}

@@ -47,6 +47,34 @@ class TestTokenMint:
         with pytest.raises(TypeError):
             TokenHelpers()  # type: ignore[call-arg]
 
+    def test_extra_claims_are_embedded(self) -> None:
+        """extra_claims are merged into the token payload and survive a verify round-trip."""
+        impersonator = str(uuid.uuid4())
+        token = TokenHelpers.mint(
+            subject=str(uuid.uuid4()),
+            secret=_SECRET,
+            ttl_minutes=_TTL,
+            extra_claims={"impersonated_by": impersonator, "role": "user"},
+        )
+        claims = TokenHelpers.verify(token=token, secret=_SECRET)
+        assert claims is not None
+        assert claims["impersonated_by"] == impersonator
+        assert claims["role"] == "user"
+
+    def test_extra_claims_cannot_override_reserved_claims(self) -> None:
+        """A caller-supplied 'sub' in extra_claims must NOT re-target the token."""
+        real_subject = str(uuid.uuid4())
+        token = TokenHelpers.mint(
+            subject=real_subject,
+            secret=_SECRET,
+            ttl_minutes=_TTL,
+            extra_claims={"sub": "attacker-controlled-subject"},
+        )
+        claims = TokenHelpers.verify(token=token, secret=_SECRET)
+        assert claims is not None
+        # The genuine subject wins — the injected one is ignored.
+        assert claims["sub"] == real_subject
+
 
 class TestTokenVerify:
     """Tests for TokenHelpers.verify()."""

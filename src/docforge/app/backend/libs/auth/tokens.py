@@ -32,7 +32,14 @@ class TokenHelpers:
         raise TypeError("TokenHelpers is a static-only class and cannot be instantiated.")
 
     @classmethod
-    def mint(cls, *, subject: str, secret: str, ttl_minutes: int) -> str:
+    def mint(
+        cls,
+        *,
+        subject: str,
+        secret: str,
+        ttl_minutes: int,
+        extra_claims: dict | None = None,
+    ) -> str:
         """
         Mint a signed JWT access token for a subject (user id).
 
@@ -40,6 +47,9 @@ class TokenHelpers:
             subject (str): The token subject — the user's id (stringified UUID).
             secret (str): HS256 signing secret.
             ttl_minutes (int): Token lifetime in minutes.
+            extra_claims (dict | None): Optional additional claims to embed (e.g. an
+                ``impersonated_by`` audit claim). The reserved ``sub`` / ``iat`` / ``exp``
+                claims are protected — any same-named key here is ignored, never overrides them.
 
         Returns:
             str: The encoded, signed JWT.
@@ -52,7 +62,14 @@ class TokenHelpers:
             "exp": now + timedelta(minutes=ttl_minutes),
         }
 
-        # 2. Encode + sign
+        # 2. Merge any extra claims WITHOUT letting them shadow the reserved standard claims
+        #    (a caller-supplied "sub"/"exp" must never silently re-target or extend the token).
+        if extra_claims:
+            for key, value in extra_claims.items():
+                if key not in claims:
+                    claims[key] = value
+
+        # 3. Encode + sign
         return jwt.encode(claims, secret, algorithm=_ALGORITHM)
 
     @classmethod
