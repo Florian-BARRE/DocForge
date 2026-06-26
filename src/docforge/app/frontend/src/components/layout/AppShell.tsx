@@ -15,7 +15,7 @@
 // threaded down as props — never re-computed inside child components.
 
 // ====== Third-Party Library Imports ======
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 // ====== Internal Project Imports ======
 import { NavRail } from './NavRail'
@@ -59,6 +59,16 @@ export function AppShell() {
   const [activeTab, setActiveTab]                   = useState<CollectionTab>('pipeline')
   const [activeDocId, setActiveDocId]               = useState<string | null>(null)
   const [newCollectionOpen, setNewCollectionOpen]   = useState(false)
+
+  // Admin is root-only and hidden while impersonating. If impersonation starts while the
+  // Admin view is active (root clicked "Act as" from there), redirect to Pipeline so the
+  // impersonated session lands on a real screen (not a stale "Admin" title / empty body).
+  useEffect(() => {
+    if (isImpersonating && activeView === 'admin') {
+      setActiveView('pipeline')
+      setActiveTab('pipeline')
+    }
+  }, [isImpersonating, activeView])
 
   if (!user) return null
 
