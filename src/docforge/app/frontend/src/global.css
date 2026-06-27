@@ -467,6 +467,10 @@ textarea.input {
   font-size: 12px;
   color: var(--text-muted);
   flex-shrink: 0;
+  /* flex-column so hint text can stack below the label without breaking the row layout */
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
 }
 
 /* ── Chips ───────────────────────────────────────────────────────────────── */
@@ -4650,88 +4654,209 @@ input[type="range"]::-webkit-slider-thumb:hover { background: var(--text-muted);
 /* ── Chain Ladder ────────────────────────────────────────────────────────── */
 
 .chain-ladder {
+  /* Flex column that holds the three named sections. */
   display: flex;
   flex-direction: column;
   gap: 0;
 }
 
-.chain-ladder-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 10px;
-}
-
-.chain-ladder-label {
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.07em;
-}
-
-/* Collapsible gate settings form */
-.chain-ladder-gate-form {
-  margin-bottom: 12px;
-  padding: 10px 12px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-}
-
-.chain-ladder-gate-title {
-  font-size: 10px;
-  font-weight: 600;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  margin-bottom: 8px;
-}
-
-/* Provider stack */
+/* Provider stack — vertical list of ProviderCard + gate connectors. */
 .chain-ladder-stack {
   display: flex;
   flex-direction: column;
   gap: 0;
-  margin-bottom: 8px;
+  margin-bottom: 4px;
 }
 
-/* Terminal exhaustion zone */
-.chain-ladder-terminal {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border);
-  font-size: 11px;
-  margin-top: 4px;
-}
-
-.chain-ladder-terminal-raise {
-  border-color: rgba(239, 68, 68, 0.35);
-  background: rgba(239, 68, 68, 0.06);
-  color: var(--s-error);
-}
-
-.chain-ladder-terminal-continue {
-  border-color: rgba(245, 158, 11, 0.35);
-  background: rgba(245, 158, 11, 0.06);
-  color: var(--s-warning);
-}
-
-/* Add provider strip */
+/* Add fallback provider strip */
 .chain-ladder-add {
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-top: 12px;
+  margin-top: 10px;
   flex-wrap: wrap;
 }
 
 .chain-ladder-add-label {
   font-size: 11px;
   color: var(--text-muted);
+}
+
+/* ── Chain sections — labeled content blocks within ChainLadder ─────────── */
+
+.chain-section {
+  /* Each section: header + content, separated by a subtle divider. */
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 0;
+  border-top: 1px solid var(--border);
+}
+
+.chain-section-head {
+  /* Section title + one-line helper stacked vertically. */
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.chain-section-title {
+  /* Section heading — clear and legible, not shouted in all-caps. */
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: 0.01em;
+}
+
+.chain-section-hint {
+  /* One-line helper text below the section title. */
+  font-size: 11px;
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+
+/* ── Failure policy segmented control ───────────────────────────────────── */
+
+.failure-policy-control {
+  /* Two-button segmented control: Stop vs Continue. */
+  display: flex;
+  gap: 2px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 2px;
+  width: fit-content;
+  max-width: 100%;
+  flex-wrap: wrap;
+}
+
+.failure-policy-btn {
+  /* Each option in the segmented control — inactive state. */
+  flex: 1;
+  padding: 6px 14px;
+  font-size: 12px;
+  font-family: var(--font-ui);
+  color: var(--text-muted);
+  background: transparent;
+  border: none;
+  border-radius: calc(var(--radius-sm) - 2px);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.failure-policy-btn:hover {
+  background: var(--surface-raised);
+  color: var(--text);
+}
+
+.failure-policy-btn-active {
+  /* Selected option — elevated with shadow to signal the active choice. */
+  background: var(--surface-overlay);
+  color: var(--text);
+  font-weight: 500;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.30);
+}
+
+.failure-policy-consequence {
+  /* One-line consequence hint explaining the selected choice. */
+  font-size: 11px;
+  color: var(--text-dim);
+  line-height: 1.5;
+  margin: 0;
+}
+
+.failure-policy-degraded {
+  /* on_degraded sub-section — shown when "continue" is selected. */
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+/* ── Quality & limits section ───────────────────────────────────────────── */
+
+.gate-limits {
+  /* Container for min_score + timeout rows. */
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.gate-limit-row {
+  /* One limit: label-column (with hint) + input on the right. */
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.gate-limit-label {
+  /* Label column: title stacked over hint text. */
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text);
+  cursor: default;
+}
+
+.gate-limit-hint {
+  /* Dynamic sub-label that shows the current threshold in plain words. */
+  font-size: 10.5px;
+  font-weight: 400;
+  color: var(--text-dim);
+  line-height: 1.4;
+}
+
+/* ── Provider role badge ─────────────────────────────────────────────────── */
+
+.provider-role-badge {
+  /* Replaces the bare numeric rank — "Primary" or "Fallback N". */
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.provider-role-primary {
+  /* Primary provider — accent tint to visually distinguish it. */
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.provider-role-fallback {
+  /* Fallback providers — neutral border badge. */
+  background: var(--surface);
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+}
+
+/* ── Field hint (description shown below the label in RecursiveFieldRenderer) */
+
+.field-hint {
+  /* Small description text shown below the field label when showHint=true. */
+  display: block;
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--text-dim);
+  line-height: 1.4;
+  margin-top: 1px;
+  white-space: normal;
+}
+
+/* When a field-row has a hint, align label and input to the top instead of center. */
+.field-row-top {
+  align-items: flex-start;
 }
 
 /* ── Provider card (one entry in the ladder) ────────────────────────────── */

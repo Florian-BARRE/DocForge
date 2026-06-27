@@ -1,8 +1,8 @@
 // ====== Code Summary ======
 // ProviderCard — a single provider entry in the ChainLadder fallback ladder.
-// Shows the provider's rank badge, availability dot, name, and optional param
-// section (rendered via the injected renderChildren render-prop). Supports
-// remove, move-up, and move-down actions for ladder reordering.
+// Shows the provider's role badge (Primary / Fallback N), availability dot,
+// name, and an expandable "Settings" section for provider params (rendered via
+// the injected renderChildren render-prop). Supports reorder and remove actions.
 
 // ====== Third-Party Library Imports ======
 import { useState } from 'react'
@@ -21,7 +21,7 @@ export type RenderChildrenFn = (
 ) => ReactNode
 
 interface ProviderCardProps {
-  /** 1-based rank position in the fallback ladder. */
+  /** 1-based rank position in the fallback ladder (drives the role label). */
   rank: number
   /** Raw chain entry from the config value array. */
   entry: { id: string; [k: string]: unknown }
@@ -45,21 +45,38 @@ interface ProviderCardProps {
   writeEntry: (absPath: string, v: unknown) => void
 }
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+/**
+ * Derive a human-readable role label from a 1-based ladder rank.
+ * The first provider is "Primary"; subsequent ones are "Fallback 1", "Fallback 2", etc.
+ *
+ * Args:
+ *   rank: 1-based position in the chain.
+ *
+ * Returns:
+ *   string: Role label for display.
+ */
+function roleLabel(rank: number): string {
+  return rank === 1 ? 'Primary' : `Fallback ${rank - 1}`
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 /**
  * A single provider card in the ChainLadder fallback ladder.
  *
- * Displays the rank badge, availability status dot, provider label, and action
- * buttons (up / down / remove). When the provider has configurable params the
- * header toggles an inline params section rendered via the injected render-prop.
+ * Displays a role badge ("Primary" / "Fallback N") instead of a bare number,
+ * along with the availability dot, provider name, and reorder/remove controls.
+ * When the provider has configurable params the header toggles an inline
+ * "Settings" section rendered via the injected render-prop.
  *
  * Args:
- *   rank:           Position in the fallback ladder (1-based).
+ *   rank:           Position in the fallback ladder (1-based; drives the role label).
  *   entry:          Raw chain entry object { id, ...params }.
  *   choice:         Matching ProviderChoice from discovery (for label + params).
- *   isFirst:        Disables the move-up button.
- *   isLast:         Disables the move-down button.
+ *   isFirst:        Disables the move-up button when true.
+ *   isLast:         Disables the move-down button when true.
  *   onMoveUp:       Callback to shift the provider one position up.
  *   onMoveDown:     Callback to shift the provider one position down.
  *   onRemove:       Callback to remove the provider from the ladder.
@@ -77,6 +94,7 @@ export function ProviderCard({
   const hasParams = params.length > 0
   const displayName = choice?.label || entry.id
   const isAvailable = choice?.available ?? true
+  const role = roleLabel(rank)
 
   return (
     <div className="provider-card">
@@ -89,32 +107,37 @@ export function ProviderCard({
         onKeyDown={e => { if (hasParams && (e.key === 'Enter' || e.key === ' ')) setExpanded(v => !v) }}
         aria-expanded={hasParams ? expanded : undefined}
       >
-        {/* Rank badge */}
-        <span className="provider-card-rank" aria-label={`Provider ${rank}`}>{rank}</span>
+        {/* Role badge — "Primary" for rank 1, "Fallback N" for the rest */}
+        <span
+          className={`provider-role-badge ${rank === 1 ? 'provider-role-primary' : 'provider-role-fallback'}`}
+          aria-label={`${role} provider`}
+        >
+          {role}
+        </span>
 
-        {/* Availability dot */}
+        {/* Availability status dot */}
         <span
           className={`provider-card-avail-dot ${isAvailable ? 'provider-card-avail-dot-ok' : 'provider-card-avail-dot-missing'}`}
-          title={isAvailable ? 'Available' : 'Unavailable in this deployment'}
+          title={isAvailable ? 'Available in this deployment' : 'Unavailable in this deployment'}
           aria-label={isAvailable ? 'available' : 'unavailable'}
         />
 
         {/* Provider name */}
         <span className="provider-card-name">{displayName}</span>
 
-        {/* Availability hint for missing providers */}
+        {/* Unavailability hint */}
         {!isAvailable && (
           <span className="provider-card-unavail-hint">unavailable</span>
         )}
 
-        {/* Params expand/collapse indicator */}
+        {/* Settings expand/collapse indicator */}
         {hasParams && (
           <span className="provider-card-expand" aria-hidden="true">
-            {expanded ? '▲' : '▼'}
+            Settings {expanded ? '▲' : '▼'}
           </span>
         )}
 
-        {/* Action buttons */}
+        {/* Reorder + remove action buttons */}
         <div
           className="provider-card-actions"
           onClick={e => e.stopPropagation()}
@@ -145,7 +168,7 @@ export function ProviderCard({
         </div>
       </div>
 
-      {/* Inline params section — shown when expanded */}
+      {/* Inline settings section — shown when expanded */}
       {expanded && hasParams && (
         <div className="provider-card-params">
           {renderChildren(params, readEntry, writeEntry)}

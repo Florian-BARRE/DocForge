@@ -1,24 +1,22 @@
 // ====== Code Summary ======
-// ChainLadder — expressive fallback ladder for kind="chain" ConfigNode entries.
-// Replaces the generic ChainPicker with a visual stack that makes the escalation
-// order, gate conditions, and terminal exhaustion policy legible at a glance.
+// ChainLadder — restructured fallback ladder for kind="chain" ConfigNode entries.
 //
-// Layout (top-to-bottom):
-//   [Gate policy strip — collapsible edit section]
-//   Provider 1 card
-//   ChainGateDisplay connector (score < X → escalate)
-//   Provider 2 card
-//   ...
-//   Terminal zone (raise = stop+error · continue = degraded)
-//   [+ add provider chips]
+// Rendered in three clearly-labelled sections:
+//   1. "Providers — tried in order" — provider stack with role badges + gate connectors
+//   2. "If all providers fail"       — FailurePolicyControl (calm segmented control)
+//   3. "Quality & limits"            — GateLimits (always-visible escalation thresholds)
+//
+// The old red "Exhausted" terminal bar and the hidden "gate" toggle are gone.
+// Gate settings are now always visible in sections 2 and 3.
 
 // ====== Third-Party Library Imports ======
-import { useState } from 'react'
 import type { ReactNode } from 'react'
 
 // ====== Internal Project Imports ======
 import type { ConfigNode, ProviderChoice } from '../../api/types'
 import { ChainGateDisplay } from './ChainGateDisplay'
+import { FailurePolicyControl } from './FailurePolicyControl'
+import { GateLimits } from './GateLimits'
 import { ProviderCard } from './ProviderCard'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -41,7 +39,7 @@ interface ChainLadderProps {
   node: ConfigNode
   /**
    * Optional gate sibling ConfigNode (kind=object, path ends with ".gate").
-   * When provided, gate settings are shown between providers and can be edited.
+   * When provided, sections 2 (failure policy) and 3 (quality limits) are shown.
    */
   gateNode?: ConfigNode | null
   /** Current ordered list of chain entries from the draft value. */
@@ -52,7 +50,7 @@ interface ChainLadderProps {
   readValue: (absPath: string) => unknown
   /** Write any absolute path value (used for gate field edits). */
   writeValue: (absPath: string, v: unknown) => void
-  /** Injected recursive renderer for provider sub-params and gate fields. */
+  /** Injected recursive renderer for provider sub-params. */
   renderChildren: RenderChildrenFn
 }
 
@@ -94,49 +92,43 @@ function findGateField(gateNode: ConfigNode | null | undefined, suffix: string):
 // ── Component ─────────────────────────────────────────────────────────────────
 
 /**
- * Expressive fallback ladder for a chain ConfigNode.
+ * Three-section fallback ladder for a chain ConfigNode.
  *
- * Renders providers as a vertical stack in their escalation order with
- * ChainGateDisplay connectors showing the escalation conditions between steps.
- * The terminal zone at the bottom shows the failure_policy (raise = stop with
- * error; continue = produce a degraded result) with on_degraded annotation.
- *
- * An optional collapsible "Gate settings" section lets the user edit all gate
- * fields inline using the existing RecursiveFieldRenderer path.
+ * Section 1 shows providers in order with role badges ("Primary", "Fallback N")
+ * and plain-language gate connectors between steps. Section 2 exposes the
+ * failure_policy as a calm segmented control (no more red error bar). Section 3
+ * shows quality/timeout thresholds that were previously hidden behind a toggle.
  *
  * Args:
  *   node:           The chain ConfigNode (available choices, label).
- *   gateNode:       Optional sibling gate object for display and editing.
+ *   gateNode:       Optional sibling gate object for sections 2 and 3.
  *   value:          Current ordered array of chain entries.
  *   onChange:       Callback that receives the updated chain array.
  *   readValue:      Read accessor for absolute dot-path values.
  *   writeValue:     Write accessor for absolute dot-path values.
- *   renderChildren: Injected renderer for provider sub-params and gate children.
+ *   renderChildren: Injected renderer for provider sub-params.
  */
 export function ChainLadder({
   node, gateNode, value, onChange, readValue, writeValue, renderChildren,
 }: ChainLadderProps) {
-  const [gateOpen, setGateOpen] = useState(false)
   const chain   = value ?? []
   const choices = node.choices ?? []
 
-  // 1. Read current gate values for the display between steps.
-  const minScoreField  = findGateField(gateNode, 'min_score')
-  const durationField  = findGateField(gateNode, 'max_duration_ms')
-  const policyField    = findGateField(gateNode, 'failure_policy')
-  const degradedField  = findGateField(gateNode, 'on_degraded')
+  // 1. Read current gate field nodes and their values.
+  const minScoreField = findGateField(gateNode, 'min_score')
+  const durationField = findGateField(gateNode, 'max_duration_ms')
+  const policyField   = findGateField(gateNode, 'failure_policy')
+  const degradedField = findGateField(gateNode, 'on_degraded')
 
-  const minScore    = minScoreField  ? (readValue(minScoreField.path)  ?? 0.5)  as number : 0.5
-  const maxDuration = durationField  ? (readValue(durationField.path)  ?? null) as number | null : null
-  const policy      = policyField    ? (readValue(policyField.path)    ?? 'raise') as string : 'raise'
-  const onDegraded  = degradedField  ? (readValue(degradedField.path)  ?? 'empty') as string : 'empty'
+  const minScore    = minScoreField ? (readValue(minScoreField.path) ?? 0) as number : 0
+  const maxDuration = durationField ? (readValue(durationField.path) ?? null) as number | null : null
+  const policy      = policyField   ? (readValue(policyField.path)   ?? 'raise') as string : 'raise'
+  const onDegraded  = degradedField ? (readValue(degradedField.path) ?? 'empty') as string : 'empty'
 
-  // 2. Derive available (selectable + available) choices for the add strip.
+  // 2. Available (selectable + available) choices for the "add" strip.
   const available = choices.filter((c: ProviderChoice) => c.available && c.selectable)
 
-  const displayLabel = node.label || (node.path.split('.').pop() ?? node.path)
-
-  // ── Mutation helpers ──────────────────────────────────────────────────────
+  // ── Mutation helpers ────────────────────────────────────────────────────────
 
   function add(c: ProviderChoice) {
     onChange([...chain, { id: c.id, ...paramsDefaults(c.params ?? []) }])
@@ -165,103 +157,99 @@ export function ChainLadder({
     onChange(chain.map((item, i) => i === idx ? { ...item, [seg]: v } : item))
   }
 
-  // ── Terminal policy rendering ─────────────────────────────────────────────
-
-  const isRaise = policy === 'raise'
-  const terminalClass = isRaise ? 'chain-ladder-terminal chain-ladder-terminal-raise' : 'chain-ladder-terminal chain-ladder-terminal-continue'
-  const terminalIcon  = isRaise ? '⛔' : '⚠'
-  const terminalMsg   = isRaise
-    ? 'Exhausted — pipeline stops with error'
-    : `Exhausted — continue with degraded result (${onDegraded})`
-
-  // ── Render ────────────────────────────────────────────────────────────────
+  // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
     <div className="chain-ladder">
-      {/* Header row with label + gate toggle */}
-      <div className="chain-ladder-header">
-        <span className="chain-ladder-label">{displayLabel}</span>
-        {gateNode && (
-          <button
-            type="button"
-            className="btn btn-ghost"
-            style={{ fontSize: 11, padding: '2px 8px' }}
-            onClick={() => setGateOpen(o => !o)}
-          >
-            {gateOpen ? '▲ gate' : '▼ gate'}
-          </button>
+      {/* ── Section 1: Providers — tried in order ───────────────────────────── */}
+      <div className="chain-section" style={{ borderTop: 'none', paddingTop: 0 }}>
+        <div className="chain-section-head">
+          <span className="chain-section-title">Providers — tried in order</span>
+          <span className="chain-section-hint">
+            DocForge runs the first provider; if it fails or returns low quality, it falls back to the next.
+          </span>
+        </div>
+
+        {chain.length === 0 && available.length === 0 && (
+          <div className="picker-note">No providers available in this deployment.</div>
+        )}
+
+        {/* Provider stack with gate connectors between steps */}
+        {chain.length > 0 && (
+          <div className="chain-ladder-stack">
+            {chain.map((item, idx) => {
+              const choice = choices.find((c: ProviderChoice) => c.id === item.id)
+              return (
+                <div key={idx}>
+                  <ProviderCard
+                    rank={idx + 1}
+                    entry={item}
+                    choice={choice}
+                    isFirst={idx === 0}
+                    isLast={idx === chain.length - 1}
+                    onMoveUp={() => moveUp(idx)}
+                    onMoveDown={() => moveDown(idx)}
+                    onRemove={() => remove(idx)}
+                    renderChildren={renderChildren}
+                    readEntry={absPath => {
+                      const seg = absPath.split('.').pop() ?? absPath
+                      return (item as Record<string, unknown>)[seg]
+                    }}
+                    writeEntry={(absPath, v) => writeEntryParam(idx, absPath, v)}
+                  />
+                  {/* Gate connector between providers (not after the last one) */}
+                  {idx < chain.length - 1 && (
+                    <ChainGateDisplay
+                      minScore={minScore}
+                      maxDurationMs={maxDuration}
+                    />
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        )}
+
+        {/* Add fallback provider chips */}
+        {available.length > 0 && (
+          <div className="chain-ladder-add">
+            <span className="chain-ladder-add-label">
+              {chain.length === 0 ? 'Add a provider:' : 'Add fallback provider:'}
+            </span>
+            {available.map((c: ProviderChoice) => (
+              <button
+                key={c.id}
+                type="button"
+                className="chip"
+                onClick={() => add(c)}
+              >
+                {c.label || c.id}
+              </button>
+            ))}
+          </div>
         )}
       </div>
 
-      {/* Collapsible gate settings form */}
-      {gateOpen && gateNode && (
-        <div className="chain-ladder-gate-form">
-          <div className="chain-ladder-gate-title">Gate settings</div>
-          {renderChildren(gateNode.children ?? [], readValue, writeValue)}
-        </div>
+      {/* ── Section 2: If all providers fail ────────────────────────────────── */}
+      {gateNode && (
+        <FailurePolicyControl
+          policyNode={policyField}
+          degradedNode={degradedField}
+          policy={policy}
+          onDegraded={onDegraded}
+          writeValue={writeValue}
+        />
       )}
 
-      {/* Provider stack with gate connectors between steps */}
-      {chain.length > 0 && (
-        <div className="chain-ladder-stack">
-          {chain.map((item, idx) => {
-            const choice = choices.find((c: ProviderChoice) => c.id === item.id)
-            return (
-              <div key={idx}>
-                <ProviderCard
-                  rank={idx + 1}
-                  entry={item}
-                  choice={choice}
-                  isFirst={idx === 0}
-                  isLast={idx === chain.length - 1}
-                  onMoveUp={() => moveUp(idx)}
-                  onMoveDown={() => moveDown(idx)}
-                  onRemove={() => remove(idx)}
-                  renderChildren={renderChildren}
-                  readEntry={absPath => {
-                    const seg = absPath.split('.').pop() ?? absPath
-                    return (item as Record<string, unknown>)[seg]
-                  }}
-                  writeEntry={(absPath, v) => writeEntryParam(idx, absPath, v)}
-                />
-                {/* Gate display between providers (not after the last one) */}
-                {idx < chain.length - 1 && (
-                  <ChainGateDisplay
-                    minScore={minScore}
-                    maxDurationMs={maxDuration}
-                  />
-                )}
-              </div>
-            )
-          })}
-        </div>
-      )}
-
-      {/* Terminal exhaustion policy zone */}
-      <div className={terminalClass} title={terminalMsg}>
-        <span aria-hidden="true">{terminalIcon}</span>
-        <span>{terminalMsg}</span>
-      </div>
-
-      {/* Add provider chips */}
-      {available.length > 0 && (
-        <div className="chain-ladder-add">
-          <span className="chain-ladder-add-label">+ add</span>
-          {available.map((c: ProviderChoice) => (
-            <button
-              key={c.id}
-              type="button"
-              className="chip"
-              onClick={() => add(c)}
-            >
-              {c.label || c.id}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {chain.length === 0 && available.length === 0 && (
-        <div className="picker-note">No providers available in this deployment.</div>
+      {/* ── Section 3: Quality & limits ─────────────────────────────────────── */}
+      {gateNode && (
+        <GateLimits
+          minScoreNode={minScoreField}
+          durationNode={durationField}
+          minScore={minScore}
+          maxDurationMs={maxDuration}
+          writeValue={writeValue}
+        />
       )}
     </div>
   )

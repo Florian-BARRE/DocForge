@@ -1,13 +1,13 @@
 // ====== Code Summary ======
-// ChainGateDisplay — visual gate connector shown between provider cards in ChainLadder.
-// Renders the escalation trigger conditions (min_score, max_duration_ms) as a compact
-// labeled pill between two providers, making the fallback semantics visible at a glance.
+// ChainGateDisplay — plain-language fallback connector between provider cards.
+// Replaces technical shorthand ("score < 0.5 · >5000ms → escalate") with
+// readable prose so first-time users understand the escalation semantics.
 // Pure presentational component; all values come from props.
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface ChainGateDisplayProps {
-  /** Score threshold below which the attempt escalates (default 0.5). */
+  /** Score threshold below which the attempt escalates (0 = score-based escalation off). */
   minScore: number
   /** Per-attempt wall-clock budget in ms; null means disabled. */
   maxDurationMs: number | null
@@ -16,30 +16,33 @@ interface ChainGateDisplayProps {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 /**
- * Compact visual connector showing the escalation conditions between two ladder steps.
+ * Plain-language connector shown between consecutive provider cards in the ladder.
  *
- * Reads the gate's min_score and optional max_duration_ms and renders them as a
- * pill label between a vertical stem, giving the user an at-a-glance understanding
- * of when the engine escalates from one provider to the next.
+ * Builds a short prose sentence like "falls back if it errors or scores below 0.5"
+ * instead of the old terse notation so the escalation intent is obvious.
  *
  * Args:
- *   minScore:      Escalation score threshold (current gate value).
+ *   minScore:      Escalation score threshold (0 = score-based escalation disabled).
  *   maxDurationMs: Per-attempt timeout in ms, or null when disabled.
  */
 export function ChainGateDisplay({ minScore, maxDurationMs }: ChainGateDisplayProps) {
-  // 1. Build the condition label: score threshold + optional timeout.
-  const scorePart = `score < ${minScore}`
-  const timePart  = maxDurationMs != null ? ` · >${maxDurationMs}ms` : ''
-  const label     = `${scorePart}${timePart} → escalate`
+  // 1. Build a human-readable list of conditions that trigger escalation.
+  const conditions: string[] = []
+  if (minScore > 0) conditions.push(`scores below ${minScore}`)
+  if (maxDurationMs != null && maxDurationMs > 0) conditions.push('times out')
+
+  const conditionText = conditions.length > 0
+    ? `falls back if it errors or ${conditions.join(' or ')}`
+    : 'falls back if it errors'
 
   return (
-    <div className="chain-gate-display" aria-label={`Gate: ${label}`}>
+    <div className="chain-gate-display" aria-label={conditionText}>
       {/* Upper vertical stem */}
       <div className="chain-gate-stem" />
 
-      {/* Gate condition pill */}
-      <span className="chain-gate-pill" title={label}>
-        {label}
+      {/* Plain-language fallback condition pill */}
+      <span className="chain-gate-pill" title={conditionText}>
+        {conditionText}
       </span>
 
       {/* Lower vertical stem */}

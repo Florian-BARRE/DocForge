@@ -41,10 +41,19 @@ import { ProviderUnionPicker } from './pickers/ProviderUnionPicker'
  *   ParamSchema: Compatible schema for FieldInput.
  */
 function nodeToParamSchema(node: ConfigNode): ParamSchema {
+  const seg = node.path.split('.').pop() ?? node.path
+  // Use the backend label if provided; otherwise humanize the raw key.
+  // In both cases, apply acronym post-processing so that words like "url"
+  // and "api" are uppercased regardless of the source (backend may title-case
+  // without knowing they are acronyms, e.g. "Base Url" → "Base URL").
+  const rawLabel = node.label || humanize(seg)
+  const label = rawLabel.replace(/\b\w+/g, word =>
+    ACRONYMS.has(word.toLowerCase()) ? word.toUpperCase() : word
+  )
   return {
-    name: node.path.split('.').pop() ?? node.path,
+    name: seg,
     type: node.type ?? 'str',
-    label: node.label || (node.path.split('.').pop() ?? node.path),
+    label,
     default: node.default,
     description: node.description,
     min: node.min ?? undefined,
@@ -54,16 +63,31 @@ function nodeToParamSchema(node: ConfigNode): ParamSchema {
 }
 
 /**
- * Humanize a path segment for display as a section label.
+ * Common abbreviations that should always be fully uppercased.
+ * Keeps "Base URL", "API Key", "OCR" etc. readable in field labels.
+ */
+const ACRONYMS = new Set(['url', 'api', 'id', 'ocr', 'vlm', 'llm', 'http', 'ssl', 'jwt'])
+
+/**
+ * Humanize a snake_case path segment for display as a field or section label.
+ *
+ * Converts underscores to spaces, title-cases words, and fully uppercases known
+ * abbreviations so that "base_url" → "Base URL" and "api_key" → "API Key".
  *
  * Args:
- *   seg: Raw segment string (e.g. "split_method").
+ *   seg: Raw snake_case segment (e.g. "base_url", "split_method").
  *
  * Returns:
- *   string: Title-cased label (e.g. "Split Method").
+ *   string: Human-readable label (e.g. "Base URL", "Split Method").
  */
 function humanize(seg: string): string {
-  return seg.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+  return seg
+    .replace(/_/g, ' ')
+    .replace(/\b\w+/g, word =>
+      ACRONYMS.has(word.toLowerCase())
+        ? word.toUpperCase()
+        : word.charAt(0).toUpperCase() + word.slice(1)
+    )
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -152,6 +176,7 @@ export function RecursiveFieldRenderer({
               schema={nodeToParamSchema(node)}
               value={readValue(node.path)}
               onChange={v => writeValue(node.path, v)}
+              showHint
             />
           )
         }
@@ -164,6 +189,7 @@ export function RecursiveFieldRenderer({
               schema={nodeToParamSchema(node)}
               value={readValue(node.path)}
               onChange={v => writeValue(node.path, v)}
+              showHint
             />
           )
         }
