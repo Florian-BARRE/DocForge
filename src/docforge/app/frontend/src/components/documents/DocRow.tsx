@@ -8,6 +8,7 @@ import { useEffect, useRef, useState } from 'react'
 
 // ====== Internal Project Imports ======
 import type { Document } from '../../api/types'
+import { ConfirmDialog } from '../ui/ConfirmDialog'
 import { formatDuration } from './detail/detailHelpers'
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -32,7 +33,7 @@ interface DocRowProps {
    * Pipeline tab and activates trace mode for the given document id.
    */
   onTrace: (docId: string) => void
-  /** Called after the user confirms deletion via `window.confirm`. */
+  /** Called after the user confirms deletion in the ConfirmDialog. */
   onDelete: (docId: string) => void
   /** Called when the user selects "Re-ingest" in the overflow menu. */
   onReingest: (docId: string) => void
@@ -99,8 +100,9 @@ function statusColor(status: Document['status']): React.CSSProperties {
  * when the user clicks anywhere outside the component.
  */
 export function DocRow({ doc, collectionId: _collectionId, isStale, staleReasons, collectionPipelineVersion, onTrace, onDelete, onReingest, onOpen, canWrite = true }: DocRowProps) {
-  // 1. Local state: whether the overflow dropdown is visible.
+  // 1. Local state: overflow dropdown visibility + delete confirmation dialog.
   const [menuOpen, setMenuOpen] = useState(false)
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
 
   // 2. Close the menu when the user clicks outside the row's menu container.
@@ -127,13 +129,19 @@ export function DocRow({ doc, collectionId: _collectionId, isStale, staleReasons
   // ── Handlers ──────────────────────────────────────────────────────────────
 
   /**
-   * Requests deletion after a browser confirmation prompt.
+   * Opens the styled ConfirmDialog to gate the destructive delete action.
    */
   function handleDelete() {
     setMenuOpen(false)
-    if (window.confirm(`Delete "${filename}"? This cannot be undone.`)) {
-      onDelete(doc.id)
-    }
+    setDeleteConfirmOpen(true)
+  }
+
+  /**
+   * Executes the deletion after the user confirms in the dialog.
+   */
+  function handleDeleteConfirmed() {
+    setDeleteConfirmOpen(false)
+    onDelete(doc.id)
   }
 
   /**
@@ -147,6 +155,18 @@ export function DocRow({ doc, collectionId: _collectionId, isStale, staleReasons
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
+    <>
+    {/* Styled delete confirmation — replaces window.confirm() */}
+    <ConfirmDialog
+      open={deleteConfirmOpen}
+      title="Delete document"
+      message={`Delete "${filename}"? This removes its chunks and vectors. This cannot be undone.`}
+      confirmLabel="Delete"
+      cancelLabel="Cancel"
+      danger
+      onConfirm={handleDeleteConfirmed}
+      onCancel={() => setDeleteConfirmOpen(false)}
+    />
     <div className="doc-row">
       {/* Status dot — spinning when running */}
       <span className={dotClass(doc.status)} />
@@ -247,6 +267,7 @@ export function DocRow({ doc, collectionId: _collectionId, isStale, staleReasons
         )}
       </span>
     </div>
+    </>
   )
 }
 

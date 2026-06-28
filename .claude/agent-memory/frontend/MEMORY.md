@@ -17,6 +17,7 @@
 - [Document detail view + ValueRenderer + OverviewTab (UI-3)](detail-view.md) — tab layout, ValueRenderer classification rules, OverviewTab sections, `consumed` set gotchas, SectionBlock null-guard fix
 - [Search Lab (UI-2)](search-lab.md) — LabTuningPanel, LabDebugPanel, `useLabOverrides`, `HttpError`, vector names, overrides wiring
 - [Pipeline canvas — react-flow (R2)](react-flow-canvas.md) — `@xyflow/react` v12, `PipelineCanvas`, `StageFlowNode`, token theming, dead stubs
+- [UX consistency batch 3 (UX-B3)](ux-b3.md) — ConfirmDialog primitive, Spinner/EmptyState standardization, window.confirm→0
 
 ## Boundary
 

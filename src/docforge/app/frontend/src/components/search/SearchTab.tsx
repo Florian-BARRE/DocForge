@@ -19,6 +19,7 @@ import { SEARCH_STAGES } from '../pipeline/search-stages'
 import type { StageDefinition, StageResult } from '../pipeline/types'
 
 // ====== Local Project Imports ======
+import { EmptyState } from '../ui/primitives/EmptyState'
 import { LabDebugPanel } from './LabDebugPanel'
 import { LabTuningPanel } from './LabTuningPanel'
 import { ResultCard } from './ResultCard'
@@ -336,10 +337,11 @@ export function SearchTab({ collectionId }: SearchTabProps) {
 
         {/* Empty state */}
         {!isSearching && lastSearchInfo && results.length === 0 && !searchError && !labError && (
-          <div className="empty" style={{ padding: '32px 0' }}>
-            <div className="empty-icon">&#128269;</div>
-            <div>No results found.</div>
-          </div>
+          <EmptyState
+            icon="🔍"
+            message="No results found."
+            description="Try adjusting your query or search parameters."
+          />
         )}
 
         {/* Grouped results */}

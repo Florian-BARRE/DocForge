@@ -17,6 +17,8 @@ import {
   streamCollectionDocuments,
 } from '../../api/client'
 import type { ConfigState, Document, MetaField } from '../../api/types'
+import { EmptyState } from '../ui/primitives/EmptyState'
+import { Spinner } from '../ui/primitives/Spinner'
 import { DocDetailView } from './DocDetailView'
 import { DocRow } from './DocRow'
 import { MetadataInputForm } from './MetadataInputForm'
@@ -421,13 +423,16 @@ export function DocumentsTab({ collectionId, onTrace, canWrite = true }: Documen
       {/* ── Document list ── */}
       <div className="documents-list">
         {isLoading ? (
-          <div className="text-dim" style={{ padding: '16px 0', fontSize: 12 }}>
-            Loading documents…
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '16px 0' }}>
+            <Spinner size={14} />
+            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Loading documents…</span>
           </div>
         ) : docs.length === 0 ? (
-          <div className="text-dim" style={{ padding: '16px 0', fontSize: 12 }}>
-            No documents yet — drop a file above to get started.
-          </div>
+          <EmptyState
+            icon="📄"
+            message="No documents yet"
+            description="Drop a file above to start ingesting."
+          />
         ) : (
           docs.map(doc => (
             <DocRow

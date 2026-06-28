@@ -10,6 +10,8 @@ import { useEffect, useState } from 'react'
 // ====== Internal Project Imports ======
 import { getPage, getPageScreenshotUrl, listPages } from '../../../api/client'
 import type { Document, PageDetailResponse, PageInfo } from '../../../api/types'
+import { EmptyState } from '../../ui/primitives/EmptyState'
+import { Spinner } from '../../ui/primitives/Spinner'
 
 // ====== Local Project Imports ======
 import { PageBlockList } from './PageBlockList'
@@ -65,17 +67,24 @@ export function PagesTab({ collectionId, docId, doc }: PagesTabProps) {
   }, [collectionId, docId, selectedPage])
 
   if (doc.status !== 'done') {
-    return (
-      <div className="text-muted" style={{ fontSize: 12 }}>
-        {doc.status === 'running' || doc.status === 'pending'
-          ? 'Processing in progress…'
-          : 'No pages available.'}
-      </div>
-    )
+    if (doc.status === 'running' || doc.status === 'pending') {
+      return (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Spinner size={14} />
+          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Processing in progress…</span>
+        </div>
+      )
+    }
+    return <EmptyState message="No pages available." />
   }
 
   if (loading) {
-    return <div className="text-muted"><span className="spin">⟳</span> Loading pages…</div>
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <Spinner size={14} />
+        <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Loading pages…</span>
+      </div>
+    )
   }
 
   if (error) {
@@ -84,6 +93,11 @@ export function PagesTab({ collectionId, docId, doc }: PagesTabProps) {
 
   return (
     <div>
+      {/* Empty state — document processed but has no pages (non-page formats) */}
+      {pages.length === 0 && (
+        <EmptyState message="No pages available." description="This document has no page-level data." />
+      )}
+
       {/* Thumbnail grid */}
       <div className="pages-grid" style={{ marginBottom: selectedPage != null ? 16 : 0 }}>
         {pages.map(page => (
@@ -118,8 +132,9 @@ export function PagesTab({ collectionId, docId, doc }: PagesTabProps) {
           }}
         >
           {detailLoading ? (
-            <div className="text-muted" style={{ fontSize: 12 }}>
-              <span className="spin">⟳</span> Loading page detail…
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Spinner size={14} />
+              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Loading page detail…</span>
             </div>
           ) : pageDetail ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>

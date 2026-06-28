@@ -10,6 +10,8 @@ import { useEffect, useRef, useState } from 'react'
 // ====== Internal Project Imports ======
 import type { BlockInfo, ChunkResponse, Document } from '../../api/types'
 import { getBlockFigure, getPage, listChunks } from '../../api/client'
+import { EmptyState } from '../ui/primitives/EmptyState'
+import { Spinner } from '../ui/primitives/Spinner'
 
 // ====== Local Project Imports ======
 import { chunkPages } from './chunkHelpers'
@@ -132,15 +134,22 @@ export function ChunkBrowser({ doc, collectionId, jumpChunkId, canWrite = true }
   }
 
   if (doc.status !== 'done') {
-    return (
-      <div className="text-muted" style={{ fontSize: 12, padding: 12 }}>
-        {doc.status === 'running' || doc.status === 'pending'
-          ? 'Chunking in progress…'
-          : 'No chunks available.'}
-      </div>
-    )
+    if (doc.status === 'running' || doc.status === 'pending') {
+      return (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: 12 }}>
+          <Spinner size={14} />
+          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Chunking in progress…</span>
+        </div>
+      )
+    }
+    return <EmptyState message="No chunks available." />
   }
-  if (loading) return <div className="text-muted" style={{ padding: 12 }}><span className="spin">⟳</span> Loading chunks…</div>
+  if (loading) return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: 12 }}>
+      <Spinner size={14} />
+      <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Loading chunks…</span>
+    </div>
+  )
   if (error) return <div className="error-banner">{error}</div>
 
   return (
@@ -202,9 +211,7 @@ export function ChunkBrowser({ doc, collectionId, jumpChunkId, canWrite = true }
       {/* ── List ── */}
       <div className="chunk-browser-list">
         {view.length === 0 && (
-          <div className="text-dim" style={{ fontSize: 11, padding: 12 }}>
-            No chunks match the current filter.
-          </div>
+          <EmptyState message="No chunks match the current filters." />
         )}
         {view.map((chunk, idx) => {
           const isOpen = openId === chunk.id

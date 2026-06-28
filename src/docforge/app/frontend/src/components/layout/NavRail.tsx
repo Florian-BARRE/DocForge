@@ -11,6 +11,7 @@ import { useEffect, useState } from 'react'
 // ====== Internal Project Imports ======
 import { listCollections } from '../../api/client'
 import type { Collection } from '../../api/types'
+import { EmptyState } from '../ui/primitives/EmptyState'
 import { StatusDot } from '../ui/primitives/StatusDot'
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -257,14 +258,8 @@ export function NavRail({
             )
           })}
           {collections.length === 0 && (
-            <li style={{
-              padding: '8px 14px',
-              fontSize: 'var(--text-base)',
-              fontFamily: 'var(--font-ui)',
-              color: 'var(--text-dim)',
-              pointerEvents: 'none',
-            }}>
-              No collections
+            <li style={{ listStyle: 'none', pointerEvents: 'none' }}>
+              <EmptyState message="No collections yet" description="Click + New Collection to get started." />
             </li>
           )}
         </ul>

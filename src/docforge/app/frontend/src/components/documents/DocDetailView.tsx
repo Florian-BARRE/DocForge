@@ -11,6 +11,7 @@ import { useEffect, useState } from 'react'
 // ====== Internal Project Imports ======
 import { getDocument } from '../../api/client'
 import type { Document } from '../../api/types'
+import { Spinner } from '../ui/primitives/Spinner'
 
 // ====== Local Project Imports ======
 import { ChainTracesTab } from './detail/ChainTracesTab'
@@ -91,8 +92,9 @@ export function DocDetailView({ collectionId, docId, onBack, canWrite = true }: 
   if (isLoading) {
     return (
       <div className="doc-detail-view">
-        <div className="doc-detail-body" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <span className="text-muted"><span className="spin">⟳</span> Loading document…</span>
+        <div className="doc-detail-body" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+          <Spinner size={16} />
+          <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>Loading document…</span>
         </div>
       </div>
     )
