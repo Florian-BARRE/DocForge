@@ -8,6 +8,7 @@ import { useEffect, useRef, useState } from 'react'
 
 // ====== Internal Project Imports ======
 import type { Document } from '../../api/types'
+import { formatDuration } from './detail/detailHelpers'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -86,22 +87,6 @@ function statusColor(status: Document['status']): React.CSSProperties {
   }
 }
 
-/**
- * Formats a pipeline duration in milliseconds as a human-readable string.
- * Returns "─" when no duration is available.
- *
- * Args:
- *   ms: Duration in milliseconds, or null/undefined.
- *
- * Returns:
- *   Formatted string such as "2.3s" or "─".
- */
-function formatDuration(ms: number | null | undefined): string {
-  if (ms == null) return '─'
-  if (ms < 1000) return `${ms}ms`
-  return `${(ms / 1000).toFixed(1)}s`
-}
-
 // ── Component ────────────────────────────────────────────────────────────────
 
 /**
@@ -135,11 +120,8 @@ export function DocRow({ doc, collectionId: _collectionId, isStale, staleReasons
   // 3. Derived display values.
   const filename    = doc.filename ?? doc.id
   const chunkCount  = doc.chunk_count ?? '─'
-  const duration    = formatDuration(
-    // `pipeline_duration_ms` may not be present on older generated types; fall
-    // back gracefully by casting to any.
-    (doc as Record<string, unknown>)['pipeline_duration_ms'] as number | null,
-  )
+  // pipeline_duration_ms is now a typed field on Document; null means not yet complete.
+  const durationMs  = doc.pipeline_duration_ms
   const canTrace    = doc.status === 'done'
 
   // ── Handlers ──────────────────────────────────────────────────────────────
@@ -199,11 +181,11 @@ export function DocRow({ doc, collectionId: _collectionId, isStale, staleReasons
         </span>
       )}
 
-      {/* Status text + chunk count + duration */}
+      {/* Status text + chunk count + duration (duration hidden when null) */}
       <span className="doc-row-meta">
         <span style={statusColor(doc.status)}>{doc.status}</span>
         <span>{chunkCount !== '─' ? `${chunkCount} chunks` : '─'}</span>
-        <span>{duration}</span>
+        {durationMs != null && <span>{formatDuration(durationMs)}</span>}
       </span>
 
       {/* Actions: inline reingest (when stale, write-only) + Trace + overflow menu (write-only) */}

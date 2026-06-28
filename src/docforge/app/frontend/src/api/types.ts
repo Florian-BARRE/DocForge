@@ -174,7 +174,15 @@ export type ChainTrace = Schemas['ChainTrace']
 
 // ── Collections ───────────────────────────────────────────────────────────────
 
-export type Collection = Schemas['CollectionResponse']
+// document_count / processed_count: added server-side after the last gen:types run.
+// Optional overlay so existing client code (which only has CollectionResponse) keeps
+// compiling; callers use ?? 0 so absent values degrade to zero gracefully.
+export type Collection = Schemas['CollectionResponse'] & {
+  /** Total documents in the collection (all pipeline statuses). */
+  document_count?: number
+  /** Documents that have completed ingestion successfully (status = done). */
+  processed_count?: number
+}
 export type CollectionListResponse = Schemas['CollectionListResponse']
 
 // ── Config ────────────────────────────────────────────────────────────────────
@@ -232,6 +240,8 @@ export type Document = Omit<Schemas['DocumentResponse'], 'status'> & {
   stale_reasons?: string[]
   /** Full job history newest-first (ingestion + reingestions + retries). */
   jobs?: JobResponse[]
+  /** Wall-clock time the full pipeline run took in milliseconds (null when not yet complete). */
+  pipeline_duration_ms?: number | null
 }
 export type DocumentListResponse = Omit<Schemas['DocumentListResponse'], 'documents'> & {
   documents: Document[]

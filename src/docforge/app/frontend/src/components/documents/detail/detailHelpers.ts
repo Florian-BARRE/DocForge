@@ -22,18 +22,23 @@ export function formatFileSize(bytes: number): string {
 }
 
 /**
- * Formats a pipeline duration in milliseconds to a compact string.
+ * Formats a pipeline duration in milliseconds to a compact human-readable string.
  *
  * Args:
  *   ms: Duration in milliseconds, or null/undefined.
  *
  * Returns:
- *   Formatted string such as "2.3s" or "─".
+ *   Formatted string such as "850ms", "2.3s", "1m 44s", or "─" for absent values.
  */
 export function formatDuration(ms: number | null | undefined): string {
   if (ms == null) return '─'
-  if (ms < 1000) return `${ms}ms`
-  return `${(ms / 1000).toFixed(1)}s`
+  if (ms < 1_000) return `${ms}ms`
+  const s = ms / 1_000
+  if (s < 60) return `${s.toFixed(1)}s`
+  // Show minutes + rounded seconds for durations >= 1 minute.
+  const m = Math.floor(s / 60)
+  const rem = Math.round(s % 60)
+  return `${m}m ${rem}s`
 }
 
 /**

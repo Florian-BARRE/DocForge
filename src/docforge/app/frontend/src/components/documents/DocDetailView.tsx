@@ -112,8 +112,8 @@ export function DocDetailView({ collectionId, docId, onBack, canWrite = true }: 
   }
 
   const filename = doc.filename ?? doc.id
-  // `pipeline_duration_ms` may lag behind the generated types — cast safely.
-  const pipelineDurationMs = (doc as Record<string, unknown>)['pipeline_duration_ms'] as number | null | undefined
+  // pipeline_duration_ms is now a typed field on Document (api/types.ts overlay).
+  const pipelineDurationMs = doc.pipeline_duration_ms
 
   return (
     <div className="doc-detail-view">

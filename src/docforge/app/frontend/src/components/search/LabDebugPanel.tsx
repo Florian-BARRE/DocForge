@@ -27,6 +27,10 @@ interface LabDebugPanelProps {
  * Reads from `debug_info.effective` first (new backend format), then falls
  * back to flat keys on debug_info for backward compatibility.
  *
+ * `query_variants` handling: the current backend sends an integer COUNT, not a
+ * string array.  We try asNumber first; if the value is a string array (old
+ * backends), we store the strings and derive the count from `.length`.
+ *
  * Args:
  *   debugInfo: Raw debug_info from the search response.
  *
@@ -35,6 +39,10 @@ interface LabDebugPanelProps {
  */
 function extractEffective(debugInfo: Record<string, unknown>): SearchEffective {
   const eff = (debugInfo.effective as Record<string, unknown> | undefined) ?? debugInfo
+  const rawVariants = eff.query_variants ?? debugInfo.query_variants
+  // New backend: integer count.  Old backend: string array.
+  const variantCount   = asNumber(rawVariants)
+  const variantStrings = asStringArray(rawVariants)
   return {
     vector_mode:               asString(eff.vector_mode),
     fusion:                    asString(eff.fusion),
@@ -42,7 +50,9 @@ function extractEffective(debugInfo: Record<string, unknown>): SearchEffective {
     rerank_enabled:            asBoolean(eff.rerank_enabled),
     sparse_enabled:            asBoolean(eff.sparse_enabled),
     candidate_count:           asNumber(eff.candidate_count ?? debugInfo.candidate_limit),
-    query_variants:            asStringArray(eff.query_variants ?? debugInfo.query_variants),
+    // Integer count wins; fall back to string array length for old backends.
+    query_variant_count:       variantCount ?? variantStrings?.length,
+    query_variants:            variantStrings,
     reranked:                  asBoolean(eff.reranked),
   }
 }
@@ -84,9 +94,10 @@ export function LabDebugPanel({ debugInfo, topK }: LabDebugPanelProps) {
   const eff = extractEffective(debugInfo)
   const chips = buildChips(eff)
 
-  // 3. Variant list — show all including the original; count drives the toggle label.
-  const allVariants = eff.query_variants ?? []
-  const variantCount = allVariants.length
+  // 3. Resolve variant count: integer from new backend, or string array length from old ones.
+  //    Only show when > 1 (N=1 means original only — no expansion happened).
+  const variantCount   = eff.query_variant_count ?? 0
+  const variantStrings = eff.query_variants ?? []
 
   return (
     <div className="lab-debug-panel">
@@ -116,8 +127,15 @@ export function LabDebugPanel({ debugInfo, topK }: LabDebugPanelProps) {
         </div>
       )}
 
-      {/* ── Query variants ── */}
+      {/* ── Query variants count (new backend: integer) ── */}
       {variantCount > 1 && (
+        <div className="lab-recall-hint">
+          Query variants: {variantCount}
+        </div>
+      )}
+
+      {/* ── Query variant strings (old backends that send the actual array) ── */}
+      {variantStrings.length > 1 && (
         <div style={{ marginTop: 6 }}>
           <button
             type="button"
@@ -126,11 +144,11 @@ export function LabDebugPanel({ debugInfo, topK }: LabDebugPanelProps) {
             onClick={() => setVariantsOpen(o => !o)}
           >
             <span className="metadata-form-chevron">{variantsOpen ? '▾' : '▸'}</span>
-            <span className="lab-debug-title">{variantCount} query variants</span>
+            <span className="lab-debug-title">{variantStrings.length} query variants</span>
           </button>
           {variantsOpen && (
             <div className="lab-variants-list">
-              {allVariants.map((v, i) => (
+              {variantStrings.map((v, i) => (
                 <span key={i} className="lab-variant-chip">
                   {i === 0 ? '(original) ' : ''}{v}
                 </span>

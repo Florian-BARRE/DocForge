@@ -40,6 +40,15 @@ export interface SearchEffective {
   rerank_enabled?: boolean
   sparse_enabled?: boolean
   candidate_count?: number
+  /**
+   * Integer count of query variants expanded by the transform (new backend format).
+   * When > 1, the transform strategy expanded the original query into N variants.
+   */
+  query_variant_count?: number
+  /**
+   * Actual variant strings — only on old backends that returned an array.
+   * New backends send query_variant_count (integer) instead.
+   */
   query_variants?: string[]
   reranked?: boolean
 }

@@ -71,9 +71,10 @@ html, body, #root { height: 100%; }
   --space-8: 40px;
 
   /* ── Accent (theme.ts → palette.accent) ── */
-  --accent:       #6366f1;
-  --accent-soft:  rgba(99, 102, 241, 0.14);
-  --accent-hover: #7c7ff3;
+  --accent:             #6366f1;
+  --accent-soft:        rgba(99, 102, 241, 0.14);
+  --accent-soft-strong: rgba(99, 102, 241, 0.22);  /* stronger tint — button hover states */
+  --accent-hover:       #7c7ff3;
 
   /* ── Focus ring ── */
   --focus-ring: 0 0 0 3px rgba(99, 102, 241, 0.35);
@@ -127,8 +128,9 @@ html, body, #root { height: 100%; }
   --text-muted:      #5b6478;
   --text-dim:        #8d96a8;
 
-  --accent-soft:  rgba(99, 102, 241, 0.12);
-  --accent-hover: #4f46e5;
+  --accent-soft:        rgba(99, 102, 241, 0.12);
+  --accent-soft-strong: rgba(99, 102, 241, 0.20);  /* light theme: slightly less strong */
+  --accent-hover:       #4f46e5;
 
   --shadow-sm: 0 1px 2px rgba(20,25,40,0.06);
   --shadow-md: 0 4px 16px rgba(20,25,40,0.10);
@@ -5387,5 +5389,26 @@ input[type="range"]::-webkit-slider-thumb:hover { background: var(--text-muted);
 }
 .sfn-card:hover .sfn-handle {
   background: var(--accent) !important;
+}
+
+/* ── NavRail ── */
+/* "New Collection" footer button — token-only styles, hover via :hover pseudo-class. */
+.navrail-new-btn {
+  width: 100%;
+  padding: 7px 10px;
+  font-size: var(--text-base);
+  font-family: var(--font-ui);
+  font-weight: 500;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  text-align: center;
+  transition: background 0.12s, border-color 0.12s;
+}
+.navrail-new-btn:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft-strong);
 }
 

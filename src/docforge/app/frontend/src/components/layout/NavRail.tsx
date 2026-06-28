@@ -44,12 +44,13 @@ const NAV_ENTRIES: { key: GlobalView; icon: string; label: string }[] = [
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function docCount(col: Collection): number {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (col as any).stats?.doc_count ?? 0
+  // document_count is now a typed field on Collection (api/types.ts overlay).
+  return col.document_count ?? 0
 }
 
 function hasProcessedDocs(col: Collection): boolean {
-  return docCount(col) > 0
+  // The status dot turns green only when at least one document finished ingestion.
+  return (col.processed_count ?? 0) > 0
 }
 
 // ── Component ────────────────────────────────────────────────────────────────
@@ -274,31 +275,11 @@ export function NavRail({
           borderTop: '1px solid var(--border)',
           flexShrink: 0,
         }}>
+          {/* CSS class drives all styles + hover state (no hardcoded values). */}
           <button
             type="button"
+            className="navrail-new-btn"
             onClick={onNew}
-            style={{
-              width: '100%',
-              padding: '7px 10px',
-              fontSize: 'var(--text-base)',
-              fontFamily: 'var(--font-ui)',
-              fontWeight: 500,
-              color: 'var(--accent)',
-              background: 'var(--accent-soft)',
-              border: '1px solid transparent',
-              borderRadius: 'var(--radius-sm)',
-              cursor: 'pointer',
-              textAlign: 'center',
-              transition: 'background 0.12s, border-color 0.12s',
-            }}
-            onMouseEnter={e => {
-              (e.currentTarget as HTMLElement).style.borderColor = 'var(--accent)'
-              ;(e.currentTarget as HTMLElement).style.background = 'rgba(99,102,241,0.22)'
-            }}
-            onMouseLeave={e => {
-              (e.currentTarget as HTMLElement).style.borderColor = 'transparent'
-              ;(e.currentTarget as HTMLElement).style.background = 'var(--accent-soft)'
-            }}
           >
             + New Collection
           </button>
