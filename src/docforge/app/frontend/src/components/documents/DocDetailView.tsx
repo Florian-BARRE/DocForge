@@ -178,7 +178,11 @@ export function DocDetailView({ collectionId, docId, onBack, canWrite = true }: 
       {/* ── Tab body ── */}
       <div className="doc-detail-body">
         {activeTab === 'overview' && (
-          <OverviewTab doc={doc} pipelineDurationMs={pipelineDurationMs} />
+          <OverviewTab
+            doc={doc}
+            pipelineDurationMs={pipelineDurationMs}
+            onViewTraces={() => setActiveTab('traces')}
+          />
         )}
         {activeTab === 'ir' && (
           <IRTab doc={doc} collectionId={collectionId} />

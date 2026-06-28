@@ -4437,6 +4437,151 @@ input[type="range"]::-webkit-slider-thumb:hover { background: var(--text-muted);
 
 .stale-reason-item { color: var(--text-muted); }
 
+/* ── ValueRenderer ───────────────────────────────────────────────────────── */
+/*
+ * Generic value renderer classes.
+ * All colors via CSS vars — no hardcoded values.
+ */
+
+/* Boolean badges — reuse .tag base, override color for true/false states */
+.vr-bool-true {
+  background: var(--s-done-soft);
+  border-color: rgba(52, 211, 153, 0.30);
+  color: var(--s-done);
+  font-size: 10px;
+}
+.vr-bool-false {
+  background: var(--surface-raised);
+  border-color: var(--border);
+  color: var(--text-dim);
+  font-size: 10px;
+}
+
+/* Truncated hex hash with copy button */
+.vr-hash {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.vr-hash-text {
+  font-size: 11px;
+  color: var(--text-muted);
+  cursor: default;
+}
+.vr-copy-btn {
+  font-size: 10px;
+  color: var(--text-dim);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 1px 3px;
+  border-radius: var(--radius-sm);
+  line-height: 1;
+  transition: color 0.12s;
+}
+.vr-copy-btn:hover { color: var(--accent); }
+
+/* Count chip — used for arrays-of-objects and plain objects */
+.vr-count-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 1px 7px;
+  font-size: 10px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.vr-count-chip:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+/* Expanded array list */
+.vr-expand-list {
+  margin-top: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.vr-expand-item {
+  padding: 4px 6px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 10px;
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+/* Collapsible object KV block */
+.vr-obj-block {
+  margin-top: 4px;
+  padding: 6px 8px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  display: grid;
+  grid-template-columns: 130px 1fr;
+  gap: 2px 8px;
+}
+.vr-obj-k {
+  font-size: 10px;
+  color: var(--text-dim);
+  align-self: baseline;
+  padding-top: 1px;
+}
+.vr-obj-v {
+  font-size: 10px;
+  color: var(--text-muted);
+  word-break: break-word;
+}
+
+/* ── OverviewTab sections ─────────────────────────────────────────────────── */
+
+/* Sections are separated by a subtle top border, except the first. */
+.overview-section {
+  border-top: 1px solid var(--border);
+  padding-top: 14px;
+}
+.overview-section:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+
+/* "▼ show internal details" / "▲ hide" toggle button */
+.overview-internal-btn {
+  font-size: 10px;
+  color: var(--accent);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px 0;
+  line-height: 1;
+  transition: color 0.12s;
+}
+.overview-internal-btn:hover { color: var(--accent-hover); }
+
+/* "View in Chain traces tab →" link-button */
+.overview-traces-link {
+  font-size: 10px;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border: 1px solid rgba(99, 102, 241, 0.25);
+  border-radius: var(--radius-sm);
+  padding: 2px 8px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.12s;
+}
+.overview-traces-link:hover {
+  background: rgba(99, 102, 241, 0.20);
+}
+
 /* ── Pipeline Flow Graph (redesigned) ────────────────────────────────────── */
 
 .pipeline-flow-graph {
