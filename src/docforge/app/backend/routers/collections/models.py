@@ -39,6 +39,17 @@ class CollectionResponse(BaseModel):
     pipeline_version: str
     created_at: datetime
 
+    # Aggregated per-collection document tallies — merged in by the list route from a single
+    # grouped COUNT (no N+1). Default 0 so a collection with no documents (absent from the
+    # tally map) and any non-list construction path stay valid.
+    document_count: int = Field(
+        default=0, description="Total number of documents in the collection."
+    )
+    processed_count: int = Field(
+        default=0,
+        description="Documents successfully ingested (status='done') — drives the NavRail status dot.",
+    )
+
     model_config = {"from_attributes": True}
 
 

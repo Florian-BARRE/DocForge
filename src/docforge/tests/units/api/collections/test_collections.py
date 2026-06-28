@@ -56,6 +56,29 @@ class TestListCollections:
         for field in ("id", "name", "pipeline_version", "created_at"):
             assert field in entry, f"Missing field: {field}"
 
+    @pytest.mark.asyncio
+    async def test_list_includes_document_counts(self, client: httpx.AsyncClient) -> None:
+        """Each entry carries document_count + processed_count from the grouped tally."""
+        col_id = uuid.uuid4()
+        col = make_collection_orm(id=col_id, name="Alpha")
+        CONTEXT.collection_repo.list_all.return_value = [col]
+        CONTEXT.document_repo.counts_by_collection.return_value = {
+            col_id: {"total": 5, "done": 3}
+        }
+        entry = (await client.get("/api/v1/collections/list")).json()["collections"][0]
+        assert entry["document_count"] == 5
+        assert entry["processed_count"] == 3
+
+    @pytest.mark.asyncio
+    async def test_list_counts_default_zero_when_absent(self, client: httpx.AsyncClient) -> None:
+        """A collection with no documents (absent from the tally map) reports zero counts."""
+        col = make_collection_orm(name="Empty")
+        CONTEXT.collection_repo.list_all.return_value = [col]
+        CONTEXT.document_repo.counts_by_collection.return_value = {}
+        entry = (await client.get("/api/v1/collections/list")).json()["collections"][0]
+        assert entry["document_count"] == 0
+        assert entry["processed_count"] == 0
+
 
 class TestCreateCollection:
     """POST /api/v1/collections/create"""

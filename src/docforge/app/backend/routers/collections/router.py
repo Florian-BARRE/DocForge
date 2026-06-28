@@ -46,9 +46,21 @@ async def list_collections(
     _ = principal
     async with CONTEXT.postgres.session() as session:
         collections = await CONTEXT.collection_repo.list_all(session)
+        # Single grouped COUNT over documents (total + done per collection) — avoids an N+1
+        # over collections; collections with no documents are simply absent from the map.
+        counts = await CONTEXT.document_repo.counts_by_collection(session)
 
+    # 2. Merge the per-collection tallies onto each response item (default 0 when absent)
     return CollectionListResponse(
-        collections=[CollectionResponse.model_validate(c) for c in collections],
+        collections=[
+            CollectionResponse.model_validate(c).model_copy(
+                update={
+                    "document_count": counts.get(c.id, {}).get("total", 0),
+                    "processed_count": counts.get(c.id, {}).get("done", 0),
+                }
+            )
+            for c in collections
+        ],
         total=len(collections),
     )
 

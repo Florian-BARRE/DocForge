@@ -225,6 +225,30 @@ class TestListDocuments:
         assert "offset" in body
 
     @pytest.mark.asyncio
+    async def test_list_includes_pipeline_duration(self, client: httpx.AsyncClient) -> None:
+        """List items carry pipeline_duration_ms from the per-collection durations map."""
+        col_id = uuid.uuid4()
+        doc = make_document_orm(collection_id=col_id)
+        CONTEXT.collection_repo.get_by_id.return_value = make_collection_orm(id=col_id)
+        CONTEXT.document_repo.count_by_collection.return_value = 1
+        CONTEXT.document_repo.list_by_collection.return_value = [doc]
+        CONTEXT.job_repo.latest_done_durations_by_collection.return_value = {doc.id: 4200}
+        body = (await client.get(_col_url(col_id, "/list"))).json()
+        assert body["documents"][0]["pipeline_duration_ms"] == 4200
+
+    @pytest.mark.asyncio
+    async def test_list_duration_none_when_absent(self, client: httpx.AsyncClient) -> None:
+        """A document with no timed done job (absent from the map) reports None duration."""
+        col_id = uuid.uuid4()
+        doc = make_document_orm(collection_id=col_id)
+        CONTEXT.collection_repo.get_by_id.return_value = make_collection_orm(id=col_id)
+        CONTEXT.document_repo.count_by_collection.return_value = 1
+        CONTEXT.document_repo.list_by_collection.return_value = [doc]
+        CONTEXT.job_repo.latest_done_durations_by_collection.return_value = {}
+        body = (await client.get(_col_url(col_id, "/list"))).json()
+        assert body["documents"][0]["pipeline_duration_ms"] is None
+
+    @pytest.mark.asyncio
     async def test_list_default_pagination(self, client: httpx.AsyncClient) -> None:
         """Default limit=100, offset=0 are applied."""
         col_id = uuid.uuid4()
@@ -369,6 +393,52 @@ class TestGetDocument:
         assert body["jobs"][0]["status"] == "done"
         # Confirm the route used job_repo.list_by_document (explicit load), not a doc attribute.
         CONTEXT.job_repo.list_by_document.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_get_pipeline_duration_from_latest_done_job(
+        self, client: httpx.AsyncClient
+    ) -> None:
+        """pipeline_duration_ms is derived from the latest done job's start/finish window."""
+        import datetime
+
+        col_id = uuid.uuid4()
+        doc_id = uuid.uuid4()
+        doc = make_document_orm(id=doc_id, collection_id=col_id, implicit_meta={})
+        CONTEXT.document_repo.get_by_id.return_value = doc
+        CONTEXT.document_repo.get_stage_run_summary.return_value = {}
+
+        started = datetime.datetime(2026, 1, 1, 12, 0, 0)
+        job = MagicMock()
+        job.id = uuid.uuid4()
+        job.document_id = doc_id
+        job.collection_id = col_id
+        job.status = "done"
+        job.error = None
+        job.created_at = started
+        job.worker_id = "worker-1"
+        job.started_at = started
+        job.finished_at = started + datetime.timedelta(milliseconds=2500)
+        job.attempt = 1
+        job.current_stage = None
+        job.progress = 100
+        CONTEXT.job_repo.list_by_document.return_value = [job]
+
+        body = (await client.get(_doc_url(col_id, doc_id))).json()
+        assert body["pipeline_duration_ms"] == 2500
+
+    @pytest.mark.asyncio
+    async def test_get_pipeline_duration_none_without_done_job(
+        self, client: httpx.AsyncClient
+    ) -> None:
+        """pipeline_duration_ms is None when the document has no completed timed job."""
+        col_id = uuid.uuid4()
+        doc_id = uuid.uuid4()
+        doc = make_document_orm(id=doc_id, collection_id=col_id, implicit_meta={})
+        CONTEXT.document_repo.get_by_id.return_value = doc
+        CONTEXT.document_repo.get_stage_run_summary.return_value = {}
+        CONTEXT.job_repo.list_by_document.return_value = []
+        body = (await client.get(_doc_url(col_id, doc_id))).json()
+        assert body["pipeline_duration_ms"] is None
 
 
 # ─────────────────────────── Update ─────────────────────────────

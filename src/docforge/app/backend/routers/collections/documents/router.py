@@ -186,6 +186,8 @@ async def list_documents(
         )
         # Config history → per-document staleness vs the CURRENT config (precise + reversible).
         versions = await CONTEXT.config_repo.list_versions(session, collection_id)
+        # Latest successful pipeline duration per document — one DISTINCT ON query for the page.
+        durations = await CONTEXT.job_repo.latest_done_durations_by_collection(session, collection_id)
     version_index = DocumentStaleness.index_versions(versions)
 
     items: list[DocumentResponse] = []
@@ -193,7 +195,11 @@ async def list_documents(
         stale, reasons = DocumentStaleness.evaluate(collection, d.pipeline_version, version_index)
         items.append(
             DocumentResponse.model_validate(d).model_copy(
-                update={"stale": stale, "stale_reasons": reasons}
+                update={
+                    "stale": stale,
+                    "stale_reasons": reasons,
+                    "pipeline_duration_ms": durations.get(d.id),
+                }
             )
         )
     return DocumentListResponse(documents=items, total=total, limit=limit, offset=offset)
@@ -309,6 +315,8 @@ async def get_document(collection_id: uuid.UUID, document_id: uuid.UUID) -> Docu
         "quality_score": implicit.get("quality_score"),
         "chain_traces": list(implicit.get("chain_traces", []) or []),
         "embed_chain_traces": list(implicit.get("embed_chain_traces", []) or []),
+        # Last successful pipeline duration — derived from the already-loaded jobs (no extra query).
+        "pipeline_duration_ms": _latest_done_duration_ms(jobs),
         # Full job history (newest first) so the UI can show every ingestion / reingestion / retry
         # and retrace each one's outcome, stage, worker, timing and error.
         "jobs": [
@@ -399,6 +407,32 @@ async def delete_document(collection_id: uuid.UUID, document_id: uuid.UUID) -> D
 
 
 # ─── Private helpers ─────────────────────────────────────────────────────────
+
+def _latest_done_duration_ms(jobs: list) -> int | None:
+    """
+    Compute the wall-clock duration (ms) of a document's most recent successful job.
+
+    Mirrors ``JobRepository.latest_done_durations_by_collection`` for the single-document detail
+    path, where the full job history is already loaded — so no extra query is issued. The newest
+    ``done`` job that recorded both timestamps wins; an untimed or never-completed document → None.
+
+    Args:
+        jobs (list): The document's jobs (any order — sorted here, newest first).
+
+    Returns:
+        int | None: Duration in milliseconds, or None when there is no timed done job.
+    """
+    # 1. Pick the most recent done job
+    latest_done = next(
+        (j for j in sorted(jobs, key=lambda j: j.created_at, reverse=True) if j.status == "done"),
+        None,
+    )
+
+    # 2. Derive the wall-clock window (None unless both timestamps were recorded)
+    if latest_done is None or latest_done.started_at is None or latest_done.finished_at is None:
+        return None
+    return int((latest_done.finished_at - latest_done.started_at).total_seconds() * 1000)
+
 
 async def _get_document(collection_id: uuid.UUID, document_id: uuid.UUID):
     """Load a document and ensure it belongs to the given collection, else raise 404."""

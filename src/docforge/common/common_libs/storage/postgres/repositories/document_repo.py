@@ -305,6 +305,38 @@ class DocumentRepository(LoggerClass):
             query = query.where(DocumentModel.status == status_filter)
         return int(await session.scalar(query) or 0)
 
+    async def counts_by_collection(
+        self, session: AsyncSession
+    ) -> dict[uuid.UUID, dict[str, int]]:
+        """
+        Return per-collection document tallies in a single grouped query.
+
+        Avoids an N+1 over collections on the list endpoint: one GROUP BY returns, for every
+        collection that has at least one document, the total count and the count of successfully
+        ingested documents (``status='done'``). Collections with no documents are absent from the
+        map; callers default them to zero.
+
+        Args:
+            session (AsyncSession): Active session.
+
+        Returns:
+            dict[uuid.UUID, dict[str, int]]: ``{collection_id: {"total": int, "done": int}}``.
+        """
+        # 1. One grouped pass: total per collection + a FILTERed count of done documents
+        result = await session.execute(
+            select(
+                DocumentModel.collection_id,
+                func.count(),
+                func.count().filter(DocumentModel.status == "done"),
+            ).group_by(DocumentModel.collection_id)
+        )
+
+        # 2. Shape into a {collection_id: {total, done}} map
+        return {
+            collection_id: {"total": int(total), "done": int(done)}
+            for collection_id, total, done in result.all()
+        }
+
     async def count_blocks(self, session: AsyncSession, document_id: uuid.UUID) -> int:
         """
         Count IR blocks persisted for a document.

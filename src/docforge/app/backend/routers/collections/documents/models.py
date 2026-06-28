@@ -49,6 +49,14 @@ class DocumentResponse(BaseModel):
     has_pdf: bool = False
     has_markdown: bool = False
     indexed: bool = False
+    # Wall-clock duration of the most recent successful ingestion job, derived from the latest
+    # done job's (finished_at - started_at). None when the document has never completed a timed
+    # run — the frontend hides the duration row in that case.
+    pipeline_duration_ms: int | None = Field(
+        default=None,
+        description="Duration in ms of the latest successful ingestion job (finished_at - "
+                    "started_at); None when the document has no completed timed job.",
+    )
     # Staleness vs the collection's CURRENT config — computed by comparing the config the
     # document was processed with (its pipeline_version snapshot) to the current config.
     # Precise and reversible: a reverted config change leaves the document fresh.

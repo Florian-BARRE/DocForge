@@ -44,6 +44,18 @@ fetch (follow the URL, unauthenticated S3 GET). `figures/{block_id:path}` allows
 - files/screenshot: 404 missing / 409 doc not `done`.
 - search: 503 provider unbuildable/unreachable; 200 + `note` + empty results when retrieval disabled.
 
+## UI data fields (additive, 2026-06-28)
+- `collections/list` items carry `document_count` + `processed_count` (status='done'), merged from
+  `DocumentRepository.counts_by_collection(session)` — ONE grouped COUNT (+`func.count().filter(...)`),
+  no N+1. Defaults 0 so a collection absent from the tally map stays valid (model_copy override).
+- `DocumentResponse.pipeline_duration_ms: int | None` = latest done job's (finished_at-started_at) in ms.
+  List path: `JobRepository.latest_done_durations_by_collection(session, col_id)` (Postgres DISTINCT ON
+  (document_id) ordered created_at desc, one query/page). Detail path: `_latest_done_duration_ms(jobs)`
+  helper computes from the already-loaded jobs (no extra query). None when no timed done job.
+- MagicMock `__int__`→1, so `model_validate(mock)` coerces unset int fields then `model_copy(update=)`
+  overrides — but new repo mocks MUST set return defaults (`counts_by_collection`→{},
+  `latest_done_durations_by_collection`→{}) or model_copy injects a Mock that breaks JSON serialization.
+
 ## Recently added (post-7-tool MCP) — Briques A/C/D
 - A: `/api/v1/jobs` (list/`{id}`/`{id}/cancel`) + `/api/v1/monitoring/{queue,workers,overview,discovery}`.
 - C: the 2 SSE routes above.

@@ -107,6 +107,43 @@ class JobRepository(LoggerClass):
         )
         return list(result.scalars().all())
 
+    async def latest_done_durations_by_collection(
+        self, session: AsyncSession, collection_id: uuid.UUID
+    ) -> dict[uuid.UUID, int]:
+        """
+        Return the most recent successful pipeline duration (ms) per document in a collection.
+
+        For each document, the latest ``done`` job that recorded both a start and finish
+        timestamp is selected (Postgres ``DISTINCT ON (document_id)`` ordered newest-first),
+        and its wall-clock duration is returned in milliseconds. Documents without a timed
+        ``done`` job are simply absent from the map. One query backs the whole list page — no N+1.
+
+        Args:
+            session (AsyncSession): Active session.
+            collection_id (uuid.UUID): Parent collection.
+
+        Returns:
+            dict[uuid.UUID, int]: ``{document_id: duration_ms}`` for documents with a timed done job.
+        """
+        # 1. Latest timed 'done' job per document (DISTINCT ON requires document_id to lead order_by)
+        result = await session.execute(
+            select(JobModel.document_id, JobModel.started_at, JobModel.finished_at)
+            .where(
+                JobModel.collection_id == collection_id,
+                JobModel.status == "done",
+                JobModel.started_at.is_not(None),
+                JobModel.finished_at.is_not(None),
+            )
+            .order_by(JobModel.document_id, JobModel.created_at.desc())
+            .distinct(JobModel.document_id)
+        )
+
+        # 2. Wall-clock window → milliseconds (one entry per document with a timed done job)
+        return {
+            document_id: int((finished_at - started_at).total_seconds() * 1000)
+            for document_id, started_at, finished_at in result.all()
+        }
+
     async def get_by_id(
         self,
         session: AsyncSession,
