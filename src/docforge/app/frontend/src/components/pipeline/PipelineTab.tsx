@@ -4,6 +4,10 @@
 // PipelineGraph in "config" mode, shows StageConfigPanel inline below the graph on click.
 // Trace mode (activeDocId non-null): fetches the document, passes stageResults derived
 // from the document to PipelineGraph in "trace" mode, shows trace panels inline below.
+//
+// Unsaved-changes guard (config mode only): when a stage draft is dirty and the user
+// clicks a different stage or closes the panel, a ConfirmDialog intercepts the action
+// and asks for confirmation before discarding the unsaved edits.
 
 // ====== Standard Library Imports ======
 // (none)
@@ -14,6 +18,7 @@ import { useCallback, useEffect, useState } from 'react'
 // ====== Internal Project Imports ======
 import { getConfigState, getDiscovery, getDocument } from '../../api/client'
 import type { ConfigState, DiscoveryResponse, Document, DynamicField } from '../../api/types'
+import { ConfirmDialog } from '../ui/ConfirmDialog'
 
 // ====== Local Project Imports ======
 import { ConfigHistoryPanel } from './ConfigHistoryPanel'
@@ -44,6 +49,15 @@ interface PipelineTabProps {
    * read-only notice.  Derived from the current user's collection grant.
    */
   canWrite?: boolean
+}
+
+/**
+ * Pending navigation action held while the discard-changes dialog is open.
+ * `nextStage === null` means the user clicked "close panel"; a StageDefinition
+ * means they clicked a different stage node.
+ */
+interface PendingNavigation {
+  nextStage: StageDefinition | null
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -171,19 +185,21 @@ function buildTracePanel(
  *
  * Config mode (activeDocId === null):
  *   Fetches discovery fields and the current config state on mount, renders
- *   {@link PipelineGraph} in "config" mode, and opens a {@link SlidePanel}
+ *   {@link PipelineCanvas} in "config" mode, and opens an inline panel below
  *   containing {@link StageConfigPanel} when the user clicks a stage node.
+ *   An unsaved-changes guard (ConfirmDialog) intercepts stage switches and
+ *   panel closes when the active draft is dirty.
  *
  * Trace mode (activeDocId !== null):
  *   Fetches the selected document, derives per-stage results, renders
- *   {@link PipelineGraph} in "trace" mode with colored nodes, and opens a
- *   SlidePanel with the appropriate trace panel for the clicked stage.
- *   A trace banner at the top shows the document name with a close button.
+ *   {@link PipelineCanvas} in "trace" mode with colored nodes, and opens a
+ *   panel with the appropriate trace panel for the clicked stage.
  *
  * Args:
  *   collectionId:   Collection being configured or traced.
  *   activeDocId:    Document selected for trace mode; null for config mode.
  *   onRequestTrace: Callback to exit trace mode (called with null).
+ *   canWrite:       When false, config panels are read-only.
  */
 export function PipelineTab({
   collectionId,
@@ -202,6 +218,14 @@ export function PipelineTab({
 
   // 3. The stage node currently selected (shows inline panel below the graph).
   const [activeStage, setActiveStage] = useState<StageDefinition | null>(null)
+
+  // 3a. Dirty-draft guard: StageConfigPanel signals its isDirty state up via
+  //     onDirtyChange.  When true, stage switches and panel closes are intercepted.
+  const [isDraftDirty, setIsDraftDirty] = useState(false)
+
+  // Holds the pending navigation intent while the discard dialog is open.
+  // null entry = "close panel"; StageDefinition entry = "switch to that stage".
+  const [pendingNav, setPendingNav] = useState<PendingNavigation | null>(null)
 
   // 4. Document fetched for trace mode (null when in config mode or loading).
   const [traceDoc, setTraceDoc] = useState<Document | null>(null)
@@ -276,9 +300,56 @@ export function PipelineTab({
     }
   }, [collectionId])
 
-  // 10. Stage node click: select the stage (toggles off if same stage clicked again).
-  function handleStageClick(stage: StageDefinition) {
-    setActiveStage(prev => prev?.id === stage.id ? null : stage)
+  // 10. Reset isDraftDirty whenever the active stage changes (new stage mounts a
+  //     fresh draft; closing the panel unmounts StageConfigPanel entirely).
+  useEffect(() => {
+    setIsDraftDirty(false)
+  }, [activeStage?.id])
+
+  // ── Navigation helpers ─────────────────────────────────────────────────────
+
+  /**
+   * Attempt to navigate to nextStage (null = close panel).
+   *
+   * In config mode, if the current draft is dirty and the navigation would
+   * move away from the open stage, the action is held in pendingNav and a
+   * ConfirmDialog is shown instead of navigating immediately.
+   *
+   * Args:
+   *   nextStage: The target stage to open, or null to close the panel.
+   */
+  function requestNavigation(nextStage: StageDefinition | null): void {
+    const isSameStage = nextStage?.id === activeStage?.id
+    // Guard only applies in config mode when the panel is open and the draft
+    // is dirty, AND the user is navigating away (not re-clicking the same stage).
+    if (mode === 'config' && isDraftDirty && activeStage !== null && !isSameStage) {
+      setPendingNav({ nextStage })
+      return
+    }
+    // No guard needed (or same-stage toggle) — navigate directly.
+    setActiveStage(nextStage?.id === activeStage?.id ? null : nextStage)
+  }
+
+  /** Called when the user clicks a stage node on the canvas. */
+  function handleStageClick(stage: StageDefinition): void {
+    requestNavigation(stage)
+  }
+
+  /** Called when the user clicks the × close button on the inline panel header. */
+  function handleClosePanel(): void {
+    requestNavigation(null)
+  }
+
+  /** User confirmed they want to discard the unsaved draft and navigate. */
+  function handleDiscardConfirm(): void {
+    const next = pendingNav?.nextStage ?? null
+    setPendingNav(null)
+    setActiveStage(next)
+  }
+
+  /** User cancelled — keep the panel open with the current draft intact. */
+  function handleDiscardCancel(): void {
+    setPendingNav(null)
   }
 
   // 11. Derive stage results only when in trace mode and the document is loaded.
@@ -366,7 +437,7 @@ export function PipelineTab({
               <button
                 type="button"
                 className="btn-icon"
-                onClick={() => setActiveStage(null)}
+                onClick={handleClosePanel}
                 aria-label="Close panel"
               >
                 ×
@@ -382,6 +453,7 @@ export function PipelineTab({
                   configState={configState}
                   onSaved={handleSaved}
                   canWrite={canWrite}
+                  onDirtyChange={setIsDraftDirty}
                 />
               )}
               {mode === 'trace' && traceDoc && stageResults &&
@@ -391,6 +463,21 @@ export function PipelineTab({
           </>
         )}
       </div>
+
+      {/* ── Unsaved-changes guard dialog ── */}
+      <ConfirmDialog
+        open={pendingNav !== null}
+        title="Unsaved changes"
+        message={
+          `Discard unsaved changes to ${activeStage?.label ?? 'this stage'}? ` +
+          'Your edits will be lost.'
+        }
+        confirmLabel="Discard"
+        cancelLabel="Keep editing"
+        danger
+        onConfirm={handleDiscardConfirm}
+        onCancel={handleDiscardCancel}
+      />
     </div>
   )
 }

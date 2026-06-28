@@ -150,7 +150,7 @@ export function PipelineCanvas({
         nodesConnectable={false}
         elementsSelectable={false}
         panOnDrag
-        zoomOnScroll={false}
+        zoomOnScroll
         zoomOnPinch
         zoomOnDoubleClick={false}
         proOptions={{ hideAttribution: true }}

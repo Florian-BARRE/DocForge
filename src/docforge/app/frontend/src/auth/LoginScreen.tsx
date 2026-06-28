@@ -1,6 +1,8 @@
 // ====== Code Summary ======
 // LoginScreen — full-screen login form rendered when no authenticated user
-// is present.  Calls useAuth().login() and shows a 401-specific error message.
+// is present.  Calls useAuth().login() and shows a friendly error message.
+// 401 → "Invalid username or password." (set by AuthContext).
+// Other errors have any leading "Error:" prefix stripped before display.
 // Form follows the existing .input / .btn / .btn-primary conventions from global.css.
 
 // ====== Third-Party Library Imports ======
@@ -9,14 +11,37 @@ import { useState, FormEvent } from 'react'
 // ====== Internal Project Imports ======
 import { useAuth } from './AuthContext'
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+/**
+ * Normalise a caught login error into a display-safe string.
+ *
+ * Strips any leading "Error:" prefix that may appear in raw API error messages
+ * (e.g. when fetch throws before the response is parsed).  AuthContext already
+ * sets a human-readable message for 401 ("Invalid username or password."), so
+ * this function is mainly a defensive clean-up for edge cases.
+ *
+ * Args:
+ *   err: The caught error value (unknown type).
+ *
+ * Returns:
+ *   A trimmed, display-ready error string.
+ */
+function formatLoginError(err: unknown): string {
+  const raw = err instanceof Error ? err.message : 'Login failed.'
+  const clean = raw.replace(/^Error:\s*/i, '').trim()
+  return clean || 'Login failed.'
+}
+
 // ── Component ────────────────────────────────────────────────────────────────
 
 /**
  * Full-screen centered login form.
  *
- * Displays a username/password form.  On bad credentials (401), shows an
- * inline error message under the inputs.  Submitting while a request is in
- * flight disables the button to prevent double-sends.
+ * Displays a username/password form.  On bad credentials (401), shows the
+ * AuthContext-provided "Invalid username or password." message.  Any other
+ * error has its leading "Error:" prefix stripped.  Submitting while a request
+ * is in flight disables the button to prevent double-sends.
  */
 export function LoginScreen() {
   const { login } = useAuth()
@@ -27,7 +52,7 @@ export function LoginScreen() {
 
   /**
    * Handles form submission.  Clears any previous error, calls login(), and
-   * displays the error message on failure.
+   * displays a friendly error message on failure.
    *
    * Args:
    *   e: The native form submit event (prevents default navigation).
@@ -39,7 +64,7 @@ export function LoginScreen() {
     try {
       await login(username, password)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Login failed.')
+      setError(formatLoginError(err))
     } finally {
       setSubmitting(false)
     }
@@ -62,6 +87,7 @@ export function LoginScreen() {
               id="login-username"
               type="text"
               className="input"
+              placeholder="username"
               autoComplete="username"
               autoFocus
               required
@@ -86,7 +112,7 @@ export function LoginScreen() {
             />
           </div>
 
-          {/* Inline error — shown only on bad credentials */}
+          {/* Inline error — shown on failed login */}
           {error && (
             <div className="error-banner" role="alert">
               {error}

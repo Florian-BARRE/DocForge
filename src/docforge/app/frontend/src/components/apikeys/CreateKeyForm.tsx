@@ -41,6 +41,9 @@ export function CreateKeyForm({ collections, onCreated }: CreateKeyFormProps) {
   })
   const [submitting, setSubmitting]   = useState(false)
   const [error, setError]             = useState<string | null>(null)
+  // Bumped on successful create to force PermissionBuilder to remount and reset its
+  // internal mode/role/rows state — name + scope both clear for the next key.
+  const [permBuilderKey, setPermBuilderKey] = useState(0)
 
   // Stable reference for PermissionBuilder's onChange to avoid re-renders.
   const handlePermissionsChange = useCallback((p: Permissions) => {
@@ -72,9 +75,12 @@ export function CreateKeyForm({ collections, onCreated }: CreateKeyFormProps) {
       const created = await createApiKey(trimmedName, {
         entries: validEntries,
       })
-      // 1. Reset form state.
+      // 1. Reset form: clear name, reset permissions copy, remount PermissionBuilder.
       setName('')
       setPermissions({ entries: [{ collection_id: '*', role: 'admin' }] })
+      // Incrementing permBuilderKey unmounts and remounts PermissionBuilder so its
+      // internal mode/role/rows state also returns to the default (all-collections admin).
+      setPermBuilderKey(k => k + 1)
       // 2. Notify parent so it can display the one-time reveal callout.
       onCreated(created)
     } catch (err) {
@@ -112,6 +118,7 @@ export function CreateKeyForm({ collections, onCreated }: CreateKeyFormProps) {
           Permissions
         </div>
         <PermissionBuilder
+          key={permBuilderKey}
           onChange={handlePermissionsChange}
           collections={collections}
           disabled={submitting}

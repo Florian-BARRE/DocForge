@@ -120,6 +120,7 @@ export function OverviewCards({ overview }: OverviewCardsProps) {
       <StatCard
         label="Done"
         value={overview ? done : '—'}
+        sub={q ? `last ${q.window_minutes}m` : undefined}
         color={done > 0 ? 'var(--s-done)' : 'var(--text)'}
       />
       <StatCard

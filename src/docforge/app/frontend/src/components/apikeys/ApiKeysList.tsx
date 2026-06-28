@@ -49,10 +49,17 @@ function formatDate(iso: string | null): string {
 export function ApiKeysList({ keys, collections, onRevoked, loadError }: ApiKeysListProps) {
   const [revokingId, setRevokingId] = useState<string | null>(null)
   const [revokeErrors, setRevokeErrors] = useState<Record<string, string>>({})
+  // Show active keys by default; revoked ones accumulate and are hidden until toggled.
+  const [showRevoked, setShowRevoked] = useState(false)
 
   // Build a name-lookup map for scope summaries.
   const collectionName = (id: string): string | undefined =>
     collections.find(c => c.id === id)?.name
+
+  // Partition keys: active first (newest at top from parent), revoked after.
+  const activeKeys  = keys.filter(k => !k.revoked_at)
+  const revokedKeys = keys.filter(k =>  k.revoked_at)
+  const displayKeys = showRevoked ? [...activeKeys, ...revokedKeys] : activeKeys
 
   /**
    * Revokes a key and reports back to the parent.
@@ -160,13 +167,28 @@ export function ApiKeysList({ keys, collections, onRevoked, loadError }: ApiKeys
       {loadError && (
         <div className="error-banner">{loadError}</div>
       )}
+
       <DataTable<ApiKeySummary>
         columns={columns}
-        rows={keys}
+        rows={displayKeys}
         rowKey={k => k.id}
-        emptyMessage="No API keys yet. Create one above."
+        emptyMessage="No active API keys. Create one above."
         maxHeight="60vh"
       />
+
+      {/* Toggle for revoked keys — only shown when at least one exists. */}
+      {revokedKeys.length > 0 && (
+        <button
+          type="button"
+          className="btn btn-ghost"
+          onClick={() => setShowRevoked(v => !v)}
+          style={{ alignSelf: 'flex-start', fontSize: 11, padding: '3px 10px', marginTop: 2 }}
+        >
+          {showRevoked
+            ? `Hide revoked (${revokedKeys.length})`
+            : `Show revoked (${revokedKeys.length})`}
+        </button>
+      )}
     </div>
   )
 }

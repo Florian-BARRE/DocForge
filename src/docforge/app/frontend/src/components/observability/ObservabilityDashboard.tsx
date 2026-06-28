@@ -47,6 +47,8 @@ export function ObservabilityDashboard() {
   const [initialLoad,   setInitialLoad]   = useState(true)
   // Bumped on each SSE event to propagate refresh signal to JobsPanel.
   const [refreshToken,  setRefreshToken]  = useState(0)
+  // True while a manual refresh is in flight.
+  const [refreshing,    setRefreshing]    = useState(false)
 
   const esRef       = useRef<EventSource | null>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -108,7 +110,19 @@ export function ObservabilityDashboard() {
     }
   }, [fetchOverview])
 
-  // 3. Build collections lookup map for JobsPanel.
+  // 3. Manual refresh — re-fetches overview + resources immediately, bypassing the
+  //    SSE debounce.  JobsPanel is also told to refresh via the overview fetchOverview
+  //    path (which bumps refreshToken).
+  const handleManualRefresh = useCallback(async (): Promise<void> => {
+    setRefreshing(true)
+    try {
+      await Promise.all([fetchOverview(), fetchResources()])
+    } finally {
+      setRefreshing(false)
+    }
+  }, [fetchOverview, fetchResources])
+
+  // 5. Build collections lookup map for JobsPanel.
   const collectionsMap = useMemo<Map<string, string>>(
     () => new Map(collections.map(c => [c.id, c.name])),
     [collections],
@@ -136,6 +150,19 @@ export function ObservabilityDashboard() {
       flexDirection: 'column',
       gap: 20,
     }}>
+      {/* ── Toolbar: manual refresh ── */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <button
+          type="button"
+          className="btn btn-ghost"
+          onClick={() => { void handleManualRefresh() }}
+          disabled={refreshing}
+          style={{ fontSize: 11, padding: '3px 10px' }}
+        >
+          {refreshing ? 'Refreshing…' : 'Refresh'}
+        </button>
+      </div>
+
       {/* ── Row 1: Overview stat cards ── */}
       <OverviewCards overview={overview} />
 

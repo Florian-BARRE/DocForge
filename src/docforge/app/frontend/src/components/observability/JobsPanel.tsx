@@ -157,8 +157,8 @@ export function JobsPanel({ collectionsMap, refreshToken }: JobsPanelProps) {
     },
     {
       key: 'attempt',
-      header: 'Try',
-      width: 36,
+      header: 'Attempt',
+      width: 56,
       align: 'center',
       render: row => <Mono size={11} color="var(--text-muted)">{row.attempt}</Mono>,
     },

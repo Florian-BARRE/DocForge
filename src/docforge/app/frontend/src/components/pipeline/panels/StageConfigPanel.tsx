@@ -13,7 +13,7 @@
 // S0 delegates ingestion conditions to IngestionConditionsPanel (own draft + bar).
 
 // ====== Third-Party Library Imports ======
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 // ====== Internal Project Imports ======
 import type { ConfigNode, ConfigState, DiscoveryResponse, DynamicField } from '../../../api/types'
@@ -105,6 +105,11 @@ interface StageConfigPanelProps {
    * is replaced by a read-only notice.  Passed through to IngestionConditionsPanel.
    */
   canWrite?: boolean
+  /**
+   * Called whenever the draft's isDirty flag changes.
+   * Used by PipelineTab to gate stage-switch navigation with a confirm dialog.
+   */
+  onDirtyChange?: (isDirty: boolean) => void
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -134,6 +139,7 @@ export function StageConfigPanel({
   configState,
   onSaved,
   canWrite = true,
+  onDirtyChange,
 }: StageConfigPanelProps) {
   // 1. Try the config_tree path (preferred).
   const configTree = getUpdateConfigTree(discovery)
@@ -165,6 +171,15 @@ export function StageConfigPanel({
 
   // 4. Draft buffer — shared explicit save/discard workflow.
   const draft = useConfigDraft(collectionId, onSaved)
+
+  // Notify the parent whenever the draft's isDirty flag flips.
+  // Use a ref to hold onDirtyChange so the effect doesn't re-run when the
+  // callback identity changes (PipelineTab re-renders on activeStage changes).
+  const onDirtyChangeRef = useRef(onDirtyChange)
+  useEffect(() => { onDirtyChangeRef.current = onDirtyChange }, [onDirtyChange])
+  useEffect(() => {
+    onDirtyChangeRef.current?.(draft.isDirty)
+  }, [draft.isDirty])
 
   const [value, setValue] = useState<Record<string, unknown>>(() =>
     extractInitialValue(configState)
