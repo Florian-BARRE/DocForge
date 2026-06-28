@@ -4658,6 +4658,26 @@ input[type="range"]::-webkit-slider-thumb:hover { background: var(--text-muted);
   display: flex;
   flex-direction: column;
   gap: 0;
+  /* Add top border when used inside a multi-chain layout (not the first one). */
+}
+
+/* Group title — labels a chain+gate block in multi-chain stages (e.g., "OCR", "Classifier").
+   Sits above "Providers — tried in order" as a clear visual separator. */
+.chain-group-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: 0.02em;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border-strong);
+  margin-bottom: 0;
+}
+
+/* Add top spacing between consecutive chain-ladder groups in multi-chain stages. */
+.chain-ladder + .chain-ladder {
+  margin-top: 20px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
 }
 
 /* Provider stack — vertical list of ProviderCard + gate connectors. */

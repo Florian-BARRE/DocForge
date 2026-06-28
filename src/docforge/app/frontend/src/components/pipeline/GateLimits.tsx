@@ -78,7 +78,7 @@ export function GateLimits({
         {/* Minimum quality score — 0 means disabled */}
         {minScoreNode && (
           <div className="gate-limit-row">
-            <label className="gate-limit-label" htmlFor="gate-min-score">
+            <label className="gate-limit-label" htmlFor={`gate-min-score-${minScoreNode.path}`}>
               Minimum quality score
               <span className="gate-limit-hint">
                 {minScore > 0
@@ -87,7 +87,7 @@ export function GateLimits({
               </span>
             </label>
             <input
-              id="gate-min-score"
+              id={`gate-min-score-${minScoreNode.path}`}
               className="input"
               type="number"
               min={0}
@@ -106,7 +106,7 @@ export function GateLimits({
         {/* Per-attempt timeout — displayed in seconds, stored in ms */}
         {durationNode && (
           <div className="gate-limit-row">
-            <label className="gate-limit-label" htmlFor="gate-max-duration">
+            <label className="gate-limit-label" htmlFor={`gate-max-duration-${durationNode.path}`}>
               Timeout per attempt (s)
               <span className="gate-limit-hint">
                 {maxSec != null
@@ -115,7 +115,7 @@ export function GateLimits({
               </span>
             </label>
             <input
-              id="gate-max-duration"
+              id={`gate-max-duration-${durationNode.path}`}
               className="input"
               type="number"
               min={0}

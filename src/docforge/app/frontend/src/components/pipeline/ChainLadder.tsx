@@ -38,10 +38,16 @@ interface ChainLadderProps {
   /** The chain ConfigNode from the discovery config_tree. */
   node: ConfigNode
   /**
-   * Optional gate sibling ConfigNode (kind=object, path ends with ".gate").
+   * Optional gate sibling ConfigNode (kind=object, path ends with "gate" or "X_gate").
    * When provided, sections 2 (failure policy) and 3 (quality limits) are shown.
    */
   gateNode?: ConfigNode | null
+  /**
+   * Optional group title displayed above the three sections.
+   * Used when multiple chain+gate groups are rendered side by side (e.g., Enrich:
+   * "Classifier", "OCR", "VLM").  Omit for single-chain stages to keep it minimal.
+   */
+  groupTitle?: string
   /** Current ordered list of chain entries from the draft value. */
   value: ChainEntry[] | undefined
   /** Emit the updated chain (providers only — gate is written separately). */
@@ -109,7 +115,7 @@ function findGateField(gateNode: ConfigNode | null | undefined, suffix: string):
  *   renderChildren: Injected renderer for provider sub-params.
  */
 export function ChainLadder({
-  node, gateNode, value, onChange, readValue, writeValue, renderChildren,
+  node, gateNode, groupTitle, value, onChange, readValue, writeValue, renderChildren,
 }: ChainLadderProps) {
   const chain   = value ?? []
   const choices = node.choices ?? []
@@ -161,8 +167,15 @@ export function ChainLadder({
 
   return (
     <div className="chain-ladder">
+      {/* Group title — shown when multiple chains coexist (e.g., Enrich: Classifier / OCR / VLM) */}
+      {groupTitle && (
+        <div className="chain-group-title">{groupTitle}</div>
+      )}
+
       {/* ── Section 1: Providers — tried in order ───────────────────────────── */}
-      <div className="chain-section" style={{ borderTop: 'none', paddingTop: 0 }}>
+      {/* No top border on section 1: when groupTitle is absent it's the first item
+          in the panel; when groupTitle is present its bottom border acts as separator. */}
+      <div className="chain-section" style={{ borderTop: 'none', paddingTop: groupTitle ? undefined : 0 }}>
         <div className="chain-section-head">
           <span className="chain-section-title">Providers — tried in order</span>
           <span className="chain-section-hint">
