@@ -2541,11 +2541,13 @@ input[type="range"]::-webkit-slider-thumb:hover { background: var(--text-muted);
   transition: border-color 0.15s, background 0.15s;
   flex-shrink: 0;
   margin: 16px;
-  /* Fixed height keeps the list anchor stable. */
-  height: 80px;
+  /* Column layout to accommodate the format/size hint line. */
+  min-height: 80px;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 4px;
   font-size: 13px;
 }
 
@@ -5410,5 +5412,123 @@ input[type="range"]::-webkit-slider-thumb:hover { background: var(--text-muted);
 .navrail-new-btn:hover {
   border-color: var(--accent);
   background: var(--accent-soft-strong);
+}
+
+/* ── UX-B4: Documents toolbar ───────────────────────────────────────────── */
+
+/* Compact filter/sort bar rendered above the document list. */
+.docs-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 16px 6px;
+  flex-shrink: 0;
+}
+
+/* Name search — grows to fill available space. */
+.docs-toolbar-search {
+  flex: 1;
+  min-width: 120px;
+  height: 30px;
+  font-size: var(--text-sm);
+}
+
+/* Status and sort selects — fixed compact width. */
+.docs-toolbar-select {
+  width: auto;
+  min-width: 90px;
+  height: 30px;
+  font-size: var(--text-sm);
+}
+
+/* ── UX-B4: Drop zone format/size hint ──────────────────────────────────── */
+
+/* Small secondary line inside the drop zone showing accepted formats + max size. */
+.drop-zone-hint {
+  font-size: var(--text-xs);
+  color: var(--text-dim);
+  letter-spacing: 0.02em;
+}
+
+/* ── UX-B4: Dismissible error banner ────────────────────────────────────── */
+
+/* Replaces the small .documents-drop-error — more prominent + dismissible. */
+.docs-error-banner {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  background: var(--s-error-soft);
+  border: 1px solid rgba(248, 113, 113, 0.30);
+  color: var(--s-error);
+  border-radius: var(--radius-sm);
+  padding: 7px 10px;
+  font-size: var(--text-sm);
+  margin: 0 16px 4px;
+  flex-shrink: 0;
+}
+
+/* × dismiss button inside the error banner. */
+.docs-error-dismiss {
+  background: none;
+  border: none;
+  color: var(--s-error);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0;
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+.docs-error-dismiss:hover { opacity: 1; }
+
+/* ── UX-B4: ChunkBrowser pagination ─────────────────────────────────────── */
+
+/* Honest counter: "N shown · M of TOTAL loaded" in the toolbar. */
+.chunk-browser-counter {
+  font-size: 11px;
+  white-space: nowrap;
+  color: var(--text-dim);
+}
+
+/* "Load more" button bar below the chunk list. */
+.chunk-load-more-bar {
+  display: flex;
+  justify-content: center;
+  padding: 8px 0;
+  border-top: 1px solid var(--border);
+}
+
+/* ── UX-B4: LabDebugPanel — collapsible ─────────────────────────────────── */
+
+/* Clickable header row that toggles the debug body. */
+.lab-debug-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 6px 8px;
+  font-size: 11px;
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  flex-wrap: wrap;
+}
+.lab-debug-toggle:hover { background: var(--hover); }
+
+/* Body shown only when the panel is expanded. */
+.lab-debug-body {
+  padding: 4px 12px 8px;
+  border-top: 1px solid var(--border);
+}
+
+/* Effective-chip bar when inline in the header (no bottom margin). */
+.lab-effective-bar-inline {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  /* Flush left of the right-edge status tags. */
 }
 

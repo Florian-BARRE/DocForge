@@ -1,11 +1,11 @@
 // ====== Code Summary ======
 // DocumentsTab renders the Documents sub-tab for a selected collection.
-// It owns the document list, a compact drop-zone for uploads, a live SSE stream
-// that refreshes the list on job/stage events (with a 2 s polling fallback), and
-// delegates per-row actions to DocRow.
+// It owns the document list, a compact drop-zone for multi-file uploads, a live
+// SSE stream that refreshes the list on job/stage events (with a 2 s polling
+// fallback), a filter/sort toolbar, and delegates per-row actions to DocRow.
 
 // ====== Standard Library Imports ======
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 // ====== Internal Project Imports ======
 import {
@@ -21,7 +21,10 @@ import { EmptyState } from '../ui/primitives/EmptyState'
 import { Spinner } from '../ui/primitives/Spinner'
 import { DocDetailView } from './DocDetailView'
 import { DocRow } from './DocRow'
+import { DEFAULT_DOCS_FILTERS, DocsToolbar } from './DocsToolbar'
+import type { DocsFilters } from './DocsToolbar'
 import { MetadataInputForm } from './MetadataInputForm'
+import { formatFileSize } from './detail/detailHelpers'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -55,10 +58,13 @@ const FALLBACK_POLL_MS = 2000
  * DocumentsTab is the main view for the Documents sub-tab.
  *
  * Responsibilities:
- * - Fetches and displays the document list for the active collection.
- * - Subscribes to a collection-scoped SSE stream and refreshes the list (debounced)
- *   on job/stage events, falling back to 2 s polling if the stream fails.
- * - Provides a compact drag-and-drop upload zone at the top.
+ * - Fetches and displays the document list for the active collection,
+ *   honouring server-side status filter and sort controls in the toolbar.
+ * - Subscribes to a collection-scoped SSE stream and refreshes the list
+ *   (debounced) on job/stage events, falling back to 2 s polling if the
+ *   stream fails.
+ * - Provides a compact drag-and-drop upload zone accepting multiple files,
+ *   which are ingested sequentially with per-file progress feedback.
  * - Forwards per-row actions (trace, delete, reingest) to the API layer and
  *   refreshes the list on completion.
  */
@@ -69,11 +75,21 @@ export function DocumentsTab({ collectionId, onTrace, canWrite = true }: Documen
   const [isLoading, setIsLoading]     = useState(true)
   const [isDragging, setIsDragging]   = useState(false)
   const [isUploading, setIsUploading] = useState(false)
+  // Progress for multi-file uploads: current file index (1-based) + total.
+  const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number } | null>(null)
   const [uploadError, setUploadError] = useState<string | null>(null)
   // When set, the detail view for this document id replaces the list.
   const [detailDocId, setDetailDocId] = useState<string | null>(null)
 
-  // Collection config state — used to derive user-defined metadata fields for the form.
+  // Filter/sort state for the toolbar.  Server-side params are applied in
+  // fetchDocuments via filtersRef; nameFilter is client-side only.
+  const [filters, setFilters]   = useState<DocsFilters>(DEFAULT_DOCS_FILTERS)
+  // Ref kept in sync with state so SSE handlers always read the latest params
+  // without needing fetchDocuments to be recreated.
+  const filtersRef = useRef<DocsFilters>(DEFAULT_DOCS_FILTERS)
+
+  // Collection config state — used to derive user-defined metadata fields
+  // and the dropzone format/size hint.
   const [configState, setConfigState] = useState<ConfigState | null>(null)
   // Metadata values the user has entered — passed to ingestDocument on upload.
   const [metaValues, setMetaValues]   = useState<Record<string, unknown>>({})
@@ -97,27 +113,40 @@ export function DocumentsTab({ collectionId, onTrace, canWrite = true }: Documen
   // ── Data fetching ──────────────────────────────────────────────────────
 
   /**
-   * Fetches the full document list and updates state.
-   * Silently ignores errors (polling should not crash the tab).
+   * Fetches the document list using the current filter/sort params from
+   * filtersRef.  Silently ignores errors (polling should not crash the tab).
+   *
+   * Reads from filtersRef so that SSE handlers always use the latest filter
+   * state without requiring fetchDocuments to be recreated on every change.
    */
   const fetchDocuments = useCallback(async () => {
+    const f = filtersRef.current
     try {
-      const res = await listDocuments(collectionId)
+      const res = await listDocuments(collectionId, {
+        status:     f.statusFilter || undefined,
+        sort_by:    f.sortBy,
+        sort_order: f.sortOrder,
+      })
       setDocs(res.documents)
     } catch {
       // Intentionally suppressed — the list simply stays stale.
     }
   }, [collectionId])
 
-  // 1. Initial fetch on mount / when collectionId changes.
+  // 1. Initial fetch on mount / when collectionId changes.  Also resets the
+  //    toolbar filters so stale settings from a previous collection do not apply.
   useEffect(() => {
     setIsLoading(true)
     setUploadError(null)
     setMetaValues({})
+    // Reset toolbar filters to defaults when the active collection changes.
+    const defaults = DEFAULT_DOCS_FILTERS
+    setFilters(defaults)
+    filtersRef.current = defaults
     fetchDocuments().finally(() => setIsLoading(false))
   }, [fetchDocuments])
 
-  // 1b. Fetch config state to derive user-defined metadata fields.
+  // 1b. Fetch config state to derive user-defined metadata fields + dropzone hint.
   useEffect(() => {
     let cancelled = false
     getConfigState(collectionId)
@@ -127,7 +156,7 @@ export function DocumentsTab({ collectionId, onTrace, canWrite = true }: Documen
   }, [collectionId])
 
   // 2. Live updates — subscribe to a collection-scoped SSE stream and reload the
-  //    list (debounced) on each job/stage event. EventSource reconnects natively;
+  //    list (debounced) on each job/stage event.  EventSource reconnects natively;
   //    if it errors out we fall back to the legacy 2 s polling loop.
   useEffect(() => {
     // Debounced reload — collapses bursts of stage.progress events into one fetch.
@@ -170,32 +199,90 @@ export function DocumentsTab({ collectionId, onTrace, canWrite = true }: Documen
     }
   }, [collectionId, fetchDocuments])
 
+  // ── Toolbar handler ────────────────────────────────────────────────────
+
+  /**
+   * Handles toolbar filter/sort changes.
+   *
+   * Updates the filters state and the ref synchronously.  When server-side
+   * params (status, sort) change, triggers a list refetch immediately.
+   * nameFilter changes are client-side and do not require a round-trip.
+   *
+   * Args:
+   *   newFilters: The new filter/sort values from the toolbar.
+   */
+  function handleFiltersChange(newFilters: DocsFilters) {
+    const serverChanged =
+      newFilters.statusFilter !== filters.statusFilter ||
+      newFilters.sortBy !== filters.sortBy ||
+      newFilters.sortOrder !== filters.sortOrder
+
+    // Synchronously update the ref so the next fetchDocuments call uses the
+    // new params even before React re-renders.
+    filtersRef.current = newFilters
+    setFilters(newFilters)
+
+    if (serverChanged) {
+      void fetchDocuments()
+    }
+  }
+
+  // ── Client-side filtered view ──────────────────────────────────────────
+
+  // Apply the name filter client-side over the server-fetched page.
+  // staleDocs is derived from the full docs list (not the name-filtered view)
+  // so the reindex banner is accurate regardless of the current search.
+  const visibleDocs = useMemo(() => {
+    const q = filters.nameFilter.trim().toLowerCase()
+    if (!q) return docs
+    return docs.filter(d => (d.filename ?? d.id).toLowerCase().includes(q))
+  }, [docs, filters.nameFilter])
+
   // ── Upload handler ─────────────────────────────────────────────────────
 
   /**
-   * Uploads a single file to the backend via `ingestDocument`, then refreshes
-   * the document list.  Sets `uploadError` on failure.
+   * Uploads multiple files to the backend sequentially via `ingestDocument`,
+   * then refreshes the document list.  Aggregates errors across all files and
+   * surfaces a summary message in the error banner.
    *
    * Args:
-   *   file: The file selected by the user (drag-and-drop or file picker).
+   *   files: Array of files to upload.
    */
-  async function handleUpload(file: File) {
-    // 1. Guard against concurrent uploads.
-    if (isUploading) return
+  async function handleMultiUpload(files: File[]) {
+    if (isUploading || files.length === 0) return
     setIsUploading(true)
     setUploadError(null)
+    setUploadProgress({ current: 0, total: files.length })
 
+    const errors: string[] = []
     try {
-      // 2. Submit the file to the API, including any user-entered metadata.
-      await ingestDocument(collectionId, file, Object.keys(metaValues).length > 0 ? metaValues : undefined)
-
-      // 3. Refresh the document list to show the new entry.
+      for (let i = 0; i < files.length; i++) {
+        setUploadProgress({ current: i + 1, total: files.length })
+        try {
+          // Include user-entered metadata only when provided.
+          await ingestDocument(
+            collectionId,
+            files[i],
+            Object.keys(metaValues).length > 0 ? metaValues : undefined,
+          )
+        } catch (err) {
+          errors.push(`${files[i].name}: ${err instanceof Error ? err.message : 'Upload failed'}`)
+        }
+      }
+      // Refresh once after all files are processed.
       await fetchDocuments()
-    } catch (err) {
-      setUploadError(err instanceof Error ? err.message : 'Upload failed')
+      if (errors.length > 0) {
+        // Surface up to 3 errors; truncate the rest.
+        const shown = errors.slice(0, 3)
+        const extra = errors.length - shown.length
+        setUploadError(
+          shown.join(' | ') + (extra > 0 ? ` (+${extra} more errors)` : ''),
+        )
+      }
     } finally {
       setIsUploading(false)
-      // Reset the hidden input so the same file can be re-uploaded.
+      setUploadProgress(null)
+      // Reset the hidden input so the same files can be re-uploaded.
       if (inputRef.current) inputRef.current.value = ''
     }
   }
@@ -222,8 +309,8 @@ export function DocumentsTab({ collectionId, onTrace, canWrite = true }: Documen
   function handleDrop(e: React.DragEvent) {
     e.preventDefault()
     setIsDragging(false)
-    const file = e.dataTransfer.files[0]
-    if (file) handleUpload(file)
+    const files = Array.from(e.dataTransfer.files)
+    if (files.length > 0) void handleMultiUpload(files)
   }
 
   function handleZoneClick() {
@@ -231,8 +318,8 @@ export function DocumentsTab({ collectionId, onTrace, canWrite = true }: Documen
   }
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (file) handleUpload(file)
+    const files = Array.from(e.target.files ?? [])
+    if (files.length > 0) void handleMultiUpload(files)
   }
 
   // ── Per-row action handlers ────────────────────────────────────────────
@@ -244,6 +331,7 @@ export function DocumentsTab({ collectionId, onTrace, canWrite = true }: Documen
    *   docId: The UUID of the document to delete.
    */
   async function handleDelete(docId: string) {
+    setUploadError(null)
     try {
       await deleteDocument(collectionId, docId)
       await fetchDocuments()
@@ -259,6 +347,7 @@ export function DocumentsTab({ collectionId, onTrace, canWrite = true }: Documen
    *   docId: The UUID of the document to re-ingest.
    */
   async function handleReingest(docId: string) {
+    setUploadError(null)
     try {
       await reingestDocument(collectionId, docId)
       await fetchDocuments()
@@ -270,27 +359,19 @@ export function DocumentsTab({ collectionId, onTrace, canWrite = true }: Documen
   /**
    * Re-index every stale document sequentially.
    *
-   * There is no collection-level reindex endpoint, so this loops over the
-   * provided stale documents and calls `reingestDocument` for each, surfacing
-   * progress via `reindexProgress` and refreshing the list once complete.
-   *
    * Args:
    *   staleDocs: The documents whose pipeline version is outdated.
    */
   async function handleReindexAll(staleDocs: Document[]) {
-    // 1. Guard against an empty set or a re-entrant click.
     if (staleDocs.length === 0 || reindexProgress !== null) return
     setUploadError(null)
     setReindexProgress({ done: 0, total: staleDocs.length })
 
     try {
-      // 2. Re-ingest each stale document in order, updating progress as we go.
       for (let i = 0; i < staleDocs.length; i++) {
         await reingestDocument(collectionId, staleDocs[i].id)
         setReindexProgress({ done: i + 1, total: staleDocs.length })
       }
-
-      // 3. Refresh the list so the new statuses / versions appear.
       await fetchDocuments()
     } catch (err) {
       setUploadError(err instanceof Error ? err.message : 'Re-index failed')
@@ -300,8 +381,6 @@ export function DocumentsTab({ collectionId, onTrace, canWrite = true }: Documen
   }
 
   // ── Render ────────────────────────────────────────────────────────────────
-
-  // ── Detail view shortcut ──────────────────────────────────────────────────
 
   // When a document is selected for detail, render DocDetailView in place of
   // the list — the drop zone and list are not needed in this mode.
@@ -316,7 +395,7 @@ export function DocumentsTab({ collectionId, onTrace, canWrite = true }: Documen
     )
   }
 
-  // ── Render ────────────────────────────────────────────────────────────────
+  // ── Derived values ────────────────────────────────────────────────────────
 
   const dropZoneClass = [
     'documents-drop-zone',
@@ -325,18 +404,20 @@ export function DocumentsTab({ collectionId, onTrace, canWrite = true }: Documen
     .filter(Boolean)
     .join(' ')
 
-  // Staleness is computed server-side (precise + reversible): a document is stale only when
-  // the index-relevant config it was processed with differs from the current config.
+  // Staleness derived from the full server-fetched docs (ignores nameFilter so
+  // the reindex banner is accurate regardless of the current name search).
   const collectionPipelineVersion = configState?.pipeline_version
   const staleDocs = docs.filter(d => d.stale === true)
-
-  // Aggregate the exact per-document causes (deduplicated) for the banner.
   const staleCauses = Array.from(
     new Set(staleDocs.flatMap(d => d.stale_reasons ?? []))
   )
-
   const showReindexBanner = staleDocs.length > 0
   const isReindexing = reindexProgress !== null
+
+  // Upload label reflects per-file progress for multi-file batches.
+  const uploadLabel = uploadProgress
+    ? `Uploading ${uploadProgress.current}/${uploadProgress.total}…`
+    : 'Uploading…'
 
   return (
     <div className="documents-tab">
@@ -353,30 +434,37 @@ export function DocumentsTab({ collectionId, onTrace, canWrite = true }: Documen
             role="button"
             tabIndex={0}
             onKeyDown={e => e.key === 'Enter' && handleZoneClick()}
-            aria-label="Drop a file here or click to upload"
+            aria-label="Drop files here or click to upload"
           >
             {isUploading ? (
-              <span className="text-muted">Uploading…</span>
+              <span className="text-muted">{uploadLabel}</span>
             ) : (
-              <span className="text-muted">
-                {isDragging ? 'Drop to upload' : 'Drop a file here or click to upload'}
-              </span>
+              <>
+                <span className="text-muted">
+                  {isDragging ? 'Drop to upload' : 'Drop files here or click to upload'}
+                </span>
+                {/* Accepted formats + max size hint from collection config */}
+                {configState && (
+                  <span className="drop-zone-hint">
+                    {configState.supported_formats.slice(0, 8).map(f => f.toUpperCase()).join(' · ')}
+                    {configState.supported_formats.length > 8 ? ' …' : ''}
+                    {' · max '}
+                    {formatFileSize(configState.max_file_size_bytes)}
+                  </span>
+                )}
+              </>
             )}
           </div>
 
-          {/* Hidden file input — triggered by click on the drop zone */}
+          {/* Hidden file input — multiple files allowed */}
           <input
             ref={inputRef}
             type="file"
+            multiple
             style={{ display: 'none' }}
             onChange={handleFileChange}
           />
         </>
-      )}
-
-      {/* Upload / delete error banner */}
-      {uploadError && (
-        <div className="documents-drop-error">{uploadError}</div>
       )}
 
       {/* ── Metadata input form — only shown to users with write access ── */}
@@ -392,6 +480,26 @@ export function DocumentsTab({ collectionId, onTrace, canWrite = true }: Documen
         )
       })()}
 
+      {/* ── Filter / sort toolbar — shown when there are documents ── */}
+      {docs.length > 0 && (
+        <DocsToolbar filters={filters} onFiltersChange={handleFiltersChange} />
+      )}
+
+      {/* ── Dismissible error banner — replaces the small drop-error style ── */}
+      {uploadError && (
+        <div className="docs-error-banner">
+          <span>{uploadError}</span>
+          <button
+            type="button"
+            className="docs-error-dismiss"
+            aria-label="Dismiss error"
+            onClick={() => setUploadError(null)}
+          >
+            ×
+          </button>
+        </div>
+      )}
+
       {/* ── Reindex banner — shown to all users; action button only for write access ── */}
       {showReindexBanner && (
         <div className="reindex-banner">
@@ -402,7 +510,6 @@ export function DocumentsTab({ collectionId, onTrace, canWrite = true }: Documen
               <span className="reindex-banner-cause"> Cause: {staleCauses.join('; ')}.</span>
             )}
           </span>
-          {/* Reindex action only for users with write permission. */}
           {canWrite && (
             <div className="reindex-banner-actions">
               <button
@@ -433,8 +540,13 @@ export function DocumentsTab({ collectionId, onTrace, canWrite = true }: Documen
             message="No documents yet"
             description="Drop a file above to start ingesting."
           />
+        ) : visibleDocs.length === 0 ? (
+          <EmptyState
+            message="No matching documents"
+            description="Try changing the filename filter."
+          />
         ) : (
-          docs.map(doc => (
+          visibleDocs.map(doc => (
             <DocRow
               key={doc.id}
               doc={doc}

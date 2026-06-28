@@ -1,8 +1,9 @@
 // ====== Code Summary ======
-// LabDebugPanel — rich debug panel shown after every Search Lab query.
-// Always visible (lab always sends debug:true).  Reads the `effective` sub-object
-// from debug_info to show the actual settings the backend applied, the recall
-// funnel (candidates → top_k), and the query variants when a transform ran.
+// LabDebugPanel — collapsible rich debug panel shown after every Search Lab query.
+// Always sends debug:true so the panel is always populated after a search.
+// Collapsed by default to keep results visible; the header always shows the
+// effective chips so context is readable at a glance without expanding.
+// The body contains the recall funnel and query variant details.
 
 // ====== Third-Party Library Imports ======
 import { useState } from 'react'
@@ -71,20 +72,23 @@ function buildChips(eff: SearchEffective): string[] {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 /**
- * Rich debug panel for the Search Lab.
+ * Collapsible debug panel for the Search Lab.
  *
- * Renders three information layers, all read from debug_info:
- *   1. Effective chips — actual settings applied by the backend (mode / fusion /
- *      transform / rerank status). Uses `debug_info.effective` with a flat
- *      fallback for backward compat.
- *   2. Recall funnel — retrieved N candidates → top_k returned.
- *   3. Query variants — count + list when a transform generated variants.
+ * Collapsed by default so search results are immediately visible.
+ * The header always shows the effective chips (mode / fusion / transform /
+ * rerank), so the user can read the actual settings at a glance.
+ *
+ * When expanded, the body adds:
+ *   1. Recall funnel — retrieved N candidates → top_k returned.
+ *   2. Query variants — count + list when a transform generated variants.
  *
  * Args:
  *   debugInfo: Raw debug_info from the last SearchResponse.
  *   topK:      The top_k value sent in the request.
  */
 export function LabDebugPanel({ debugInfo, topK }: LabDebugPanelProps) {
+  // Collapsed by default — results are more important than debug metadata.
+  const [collapsed, setCollapsed] = useState(true)
   const [variantsOpen, setVariantsOpen] = useState(false)
 
   // 1. Nothing to render without a debug payload.
@@ -94,65 +98,75 @@ export function LabDebugPanel({ debugInfo, topK }: LabDebugPanelProps) {
   const eff = extractEffective(debugInfo)
   const chips = buildChips(eff)
 
-  // 3. Resolve variant count: integer from new backend, or string array length from old ones.
-  //    Only show when > 1 (N=1 means original only — no expansion happened).
+  // 3. Resolve variant count.
   const variantCount   = eff.query_variant_count ?? 0
   const variantStrings = eff.query_variants ?? []
 
   return (
     <div className="lab-debug-panel">
-      {/* ── Header ── */}
-      <div className="lab-debug-header">
+      {/* ── Header — always visible, click to expand/collapse ── */}
+      <button
+        type="button"
+        className="lab-debug-toggle"
+        onClick={() => setCollapsed(o => !o)}
+        aria-expanded={!collapsed}
+      >
+        <span className="metadata-form-chevron">{collapsed ? '▸' : '▾'}</span>
         <span className="lab-debug-title">Effective</span>
+        {/* Effective chips always visible — compact summary even when collapsed. */}
+        <div className="lab-effective-bar lab-effective-bar-inline">
+          {chips.map(chip => (
+            <span key={chip} className="lab-effective-chip">{chip}</span>
+          ))}
+        </div>
+        {/* Status tags in the header */}
         {eff.reranked && (
-          <span className="tag tag-done" style={{ fontSize: 9 }}>reranked</span>
+          <span className="tag tag-done" style={{ fontSize: 9, flexShrink: 0 }}>reranked</span>
         )}
         {eff.sparse_enabled === false && (
-          <span className="tag" style={{ fontSize: 9 }}>BM25 unavailable</span>
+          <span className="tag" style={{ fontSize: 9, flexShrink: 0 }}>BM25 unavailable</span>
         )}
-      </div>
+      </button>
 
-      {/* ── Effective chips ── */}
-      <div className="lab-effective-bar">
-        {chips.map(chip => (
-          <span key={chip} className="lab-effective-chip">{chip}</span>
-        ))}
-      </div>
+      {/* ── Body — only shown when expanded ── */}
+      {!collapsed && (
+        <div className="lab-debug-body">
+          {/* Recall funnel */}
+          {eff.candidate_count != null && (
+            <div className="lab-recall-hint">
+              Retrieved {eff.candidate_count} candidates &rarr; top {topK} returned
+              {eff.reranked ? ' (cross-encoder reranked)' : ''}
+            </div>
+          )}
 
-      {/* ── Recall funnel ── */}
-      {eff.candidate_count != null && (
-        <div className="lab-recall-hint">
-          Retrieved {eff.candidate_count} candidates &rarr; top {topK} returned
-          {eff.reranked ? ' (cross-encoder reranked)' : ''}
-        </div>
-      )}
+          {/* Query variants count (new backend: integer) */}
+          {variantCount > 1 && (
+            <div className="lab-recall-hint">
+              Query variants: {variantCount}
+            </div>
+          )}
 
-      {/* ── Query variants count (new backend: integer) ── */}
-      {variantCount > 1 && (
-        <div className="lab-recall-hint">
-          Query variants: {variantCount}
-        </div>
-      )}
-
-      {/* ── Query variant strings (old backends that send the actual array) ── */}
-      {variantStrings.length > 1 && (
-        <div style={{ marginTop: 6 }}>
-          <button
-            type="button"
-            className="lab-tuning-toggle"
-            style={{ padding: '2px 0', background: 'none', borderRadius: 0 }}
-            onClick={() => setVariantsOpen(o => !o)}
-          >
-            <span className="metadata-form-chevron">{variantsOpen ? '▾' : '▸'}</span>
-            <span className="lab-debug-title">{variantStrings.length} query variants</span>
-          </button>
-          {variantsOpen && (
-            <div className="lab-variants-list">
-              {variantStrings.map((v, i) => (
-                <span key={i} className="lab-variant-chip">
-                  {i === 0 ? '(original) ' : ''}{v}
-                </span>
-              ))}
+          {/* Query variant strings (old backends that send the actual array) */}
+          {variantStrings.length > 1 && (
+            <div style={{ marginTop: 6 }}>
+              <button
+                type="button"
+                className="lab-tuning-toggle"
+                style={{ padding: '2px 0', background: 'none', borderRadius: 0 }}
+                onClick={() => setVariantsOpen(o => !o)}
+              >
+                <span className="metadata-form-chevron">{variantsOpen ? '▾' : '▸'}</span>
+                <span className="lab-debug-title">{variantStrings.length} query variants</span>
+              </button>
+              {variantsOpen && (
+                <div className="lab-variants-list">
+                  {variantStrings.map((v, i) => (
+                    <span key={i} className="lab-variant-chip">
+                      {i === 0 ? '(original) ' : ''}{v}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>

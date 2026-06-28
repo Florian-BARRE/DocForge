@@ -1,8 +1,9 @@
 // ====== Code Summary ======
 // <ChunkBrowser> — searchable, filterable, sortable view over a document's
-// chunks.  Orchestrates data loading, the per-page block cache shared by every
-// open chunk inspector, and lazy figure-crop fetching.  Filtering/sorting lives
-// in useChunkFilter; the stats bar and the chunk cards are extracted components.
+// chunks.  Orchestrates data loading with server-side pagination (limit/offset),
+// the per-page block cache shared by every open chunk inspector, and lazy
+// figure-crop fetching.  Filtering/sorting lives in useChunkFilter; the stats
+// bar and chunk cards are extracted components.
 
 // ====== Standard Library Imports ======
 import { useEffect, useRef, useState } from 'react'
@@ -19,11 +20,18 @@ import { ChunkCard } from './ChunkRow'
 import { ChunkStats } from './ChunkStats'
 import { useChunkFilter } from './useChunkFilter'
 
+// ── Constants ─────────────────────────────────────────────────────────────────
+
+/** Number of chunks loaded per page. */
+const PAGE_SIZE = 100
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+
 interface Props {
   doc: Document
   collectionId: string
   /**
-   * When set, auto-filters the view to this chunk id and opens it.
+   * When set, auto-opens this chunk id without affecting the search input.
    * Set by DocDetailView when the user jumps from in-document search.
    */
   jumpChunkId?: string | null
@@ -34,30 +42,44 @@ interface Props {
   canWrite?: boolean
 }
 
+// ── Component ─────────────────────────────────────────────────────────────────
+
 /**
  * Searchable, filterable, sortable inspector over a document's chunks.
+ *
+ * Pagination: loads PAGE_SIZE chunks at a time from the server.  A "Load more"
+ * button appends the next page.  The counter shows how many chunks are currently
+ * loaded vs the server total, and how many match the active client-side filters.
+ *
+ * Jump-to-chunk: when jumpChunkId is set, the target chunk is opened without
+ * polluting the search input.  If the chunk is not yet in the loaded set, the
+ * browser loads additional pages until it is found.
  *
  * Args:
  *   doc:          The document whose chunks are inspected.
  *   collectionId: UUID of the owning collection.
- *   jumpChunkId:  When non-null, filters to this chunk and auto-opens it.
+ *   jumpChunkId:  When non-null, opens this chunk on arrival without affecting
+ *                 the visible text search box.
  *   canWrite:     When false, hides write-only controls (Edit tab).
  */
 export function ChunkBrowser({ doc, collectionId, jumpChunkId, canWrite = true }: Props) {
-  const [chunks, setChunks] = useState<ChunkResponse[]>([])
-  const [total, setTotal] = useState(0)
+  const [chunks, setChunks]   = useState<ChunkResponse[]>([])
+  const [total, setTotal]     = useState(0)
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [error, setError]     = useState<string | null>(null)
 
   const [openId, setOpenId] = useState<string | null>(null)
   // Track the last jumpChunkId we handled to avoid re-jumping on re-renders.
   const lastJumpRef = useRef<string | null>(null)
+  // Pending jump: set when the jump target isn't yet in the loaded set,
+  // cleared once it is found (triggers more pages to load automatically).
+  const pendingJumpRef = useRef<string | null>(null)
 
-  // Per-page block cache shared across every open chunk inspector — chunks that
-  // overlap a page only pay for it once.
-  const [pageBlocks, setPageBlocks] = useState<Record<number, BlockInfo[]>>({})
+  // Per-page block cache shared across every open chunk inspector.
+  const [pageBlocks, setPageBlocks]     = useState<Record<number, BlockInfo[]>>({})
   const [loadingPages, setLoadingPages] = useState<Set<number>>(new Set())
-  const [figureSrcs, setFigureSrcs] = useState<Record<string, string>>({})
+  const [figureSrcs, setFigureSrcs]     = useState<Record<string, string>>({})
 
   // ── Search / filter / sort state + derived view ───────────────────────────
   const {
@@ -70,13 +92,15 @@ export function ChunkBrowser({ doc, collectionId, jumpChunkId, canWrite = true }
     view,
   } = useChunkFilter(chunks)
 
-  // ── Load chunks ───────────────────────────────────────────────────────────
+  // ── Initial chunk load ────────────────────────────────────────────────────
   useEffect(() => {
     if (doc.status !== 'done') return
     let cancelled = false
     setLoading(true)
     setError(null)
-    listChunks(collectionId, doc.id, { limit: 500 })
+    setChunks([])
+    setTotal(0)
+    listChunks(collectionId, doc.id, { limit: PAGE_SIZE, offset: 0 })
       .then(res => {
         if (cancelled) return
         setChunks(res.chunks)
@@ -87,14 +111,66 @@ export function ChunkBrowser({ doc, collectionId, jumpChunkId, canWrite = true }
     return () => { cancelled = true }
   }, [doc.id, doc.status, collectionId])
 
+  // ── Auto-load more pages when a pending jump target is not yet loaded ─────
+  useEffect(() => {
+    if (!pendingJumpRef.current || loading || loadingMore) return
+
+    const found = chunks.some(c => c.id === pendingJumpRef.current)
+    if (found) {
+      // The jump target is now in the loaded set — open it.
+      setOpenId(pendingJumpRef.current)
+      pendingJumpRef.current = null
+    } else if (chunks.length < total) {
+      // Load the next page to search for the jump target.
+      void loadMore()
+    } else {
+      // All chunks loaded and target not found — clear the pending jump.
+      pendingJumpRef.current = null
+    }
+  // Intentionally excluding loadMore from deps to avoid circular dependency.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chunks, total, loading, loadingMore])
+
+  // ── Load more (next page) ─────────────────────────────────────────────────
+
+  /**
+   * Appends the next page of chunks to the loaded set.
+   *
+   * Uses the current loaded count as the offset so pages do not overlap.
+   * This is safe for sequential display where chunks are not reordered between
+   * pages by the server.
+   */
+  async function loadMore() {
+    if (loadingMore || loading || chunks.length >= total) return
+    setLoadingMore(true)
+    try {
+      const res = await listChunks(collectionId, doc.id, {
+        limit:  PAGE_SIZE,
+        offset: chunks.length,
+      })
+      setChunks(prev => [...prev, ...res.chunks])
+      setTotal(res.total)
+    } catch { /* swallow — user can retry */ }
+    setLoadingMore(false)
+  }
+
   // ── Jump to a specific chunk (from in-document search) ────────────────────
-  // When jumpChunkId changes and is new, filter the view to that id and open it.
+  // Opens the target chunk WITHOUT putting its UUID in the visible search input.
+  // If the chunk is not in the currently loaded set, sets pendingJumpRef which
+  // triggers the auto-load effect above to fetch more pages until it is found.
   useEffect(() => {
     if (!jumpChunkId || jumpChunkId === lastJumpRef.current) return
     lastJumpRef.current = jumpChunkId
-    setSearch(jumpChunkId)
-    setOpenId(jumpChunkId)
-  }, [jumpChunkId, setSearch])
+
+    const inLoadedSet = chunks.some(c => c.id === jumpChunkId)
+    if (inLoadedSet) {
+      // Chunk is already loaded — open it immediately.
+      setOpenId(jumpChunkId)
+    } else {
+      // Defer opening until the chunk appears in the loaded set.
+      pendingJumpRef.current = jumpChunkId
+    }
+  }, [jumpChunkId, chunks])
 
   // ── Propagate chunk text edits to the browser list ────────────────────────
   function onChunkUpdated(chunkId: string, updates: { raw_text: string; embed_text: string }) {
@@ -133,6 +209,8 @@ export function ChunkBrowser({ doc, collectionId, jumpChunkId, canWrite = true }
     }
   }
 
+  // ── Guard: doc not done yet ───────────────────────────────────────────────
+
   if (doc.status !== 'done') {
     if (doc.status === 'running' || doc.status === 'pending') {
       return (
@@ -144,13 +222,21 @@ export function ChunkBrowser({ doc, collectionId, jumpChunkId, canWrite = true }
     }
     return <EmptyState message="No chunks available." />
   }
+
   if (loading) return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: 12 }}>
       <Spinner size={14} />
       <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Loading chunks…</span>
     </div>
   )
+
   if (error) return <div className="error-banner">{error}</div>
+
+  // ── Counter text: honest about client filtering vs server total ───────────
+  // "12 shown · 100 of 340 loaded" or "12 / 100" when all loaded.
+  const counterText = chunks.length < total
+    ? `${view.length} shown · ${chunks.length} of ${total} loaded`
+    : `${view.length} / ${total}`
 
   return (
     <div className="chunk-browser">
@@ -162,7 +248,7 @@ export function ChunkBrowser({ doc, collectionId, jumpChunkId, canWrite = true }
         <input
           className="input"
           type="text"
-          placeholder="Search raw / embed text or chunk id…"
+          placeholder="Search raw / embed text…"
           value={search}
           onChange={e => setSearch(e.target.value)}
           style={{ flex: 1, minWidth: 200, fontSize: 12 }}
@@ -203,8 +289,9 @@ export function ChunkBrowser({ doc, collectionId, jumpChunkId, canWrite = true }
           <option value="tokens-asc">Tokens ↑</option>
           <option value="pages">First page</option>
         </select>
-        <span className="text-dim" style={{ fontSize: 11 }}>
-          {view.length}/{total}
+        {/* Honest counter: filtered view / loaded (of server total) */}
+        <span className="text-dim chunk-browser-counter">
+          {counterText}
         </span>
       </div>
 
@@ -232,6 +319,27 @@ export function ChunkBrowser({ doc, collectionId, jumpChunkId, canWrite = true }
           )
         })}
       </div>
+
+      {/* ── Load more button (shown when server has more chunks) ── */}
+      {chunks.length < total && (
+        <div className="chunk-load-more-bar">
+          <button
+            type="button"
+            className="btn"
+            onClick={() => void loadMore()}
+            disabled={loadingMore}
+          >
+            {loadingMore ? (
+              <>
+                <Spinner size={11} />
+                Loading…
+              </>
+            ) : (
+              `Load more (${total - chunks.length} remaining)`
+            )}
+          </button>
+        </div>
+      )}
     </div>
   )
 }

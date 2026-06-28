@@ -3,6 +3,9 @@
 // Shows per-query override controls (vector mode, fusion, transform, rerank,
 // weights) next to the query bar.  Each control displays the saved-config
 // baseline and marks itself as "overriding" when the user changes it.
+// Weight sliders are initialized from the collection's config baseline
+// (content_dense_weight / content_bm25_weight) and show an override dot only
+// when the user has moved them away from the baseline.
 // A "Reset to config" button clears all overrides at once.
 
 // ====== Third-Party Library Imports ======
@@ -26,6 +29,7 @@ const FUSION_OPTIONS: { value: SearchBaseline['fusion']; label: string }[] = [
   { value: 'dbsf', label: 'DBSF' },
 ]
 
+// Compact labels for the 4-option segmented control — avoids overflow.
 const TRANSFORM_OPTIONS: { value: SearchBaseline['query_transform_strategy']; label: string }[] = [
   { value: 'none',        label: 'None'        },
   { value: 'rewrite',     label: 'Rewrite'     },
@@ -46,8 +50,18 @@ interface LabTuningPanelProps {
   isOverriding: boolean
   /** Named vectors available for weight editing. */
   vectorNames: string[]
-  /** Current weight overrides (empty = use backend defaults). */
+  /** Raw weight values set by the user (keyed by vector name). */
   localWeights: Record<string, number>
+  /**
+   * Baseline weights from the collection config.
+   * Used to initialize slider display values and compute override dots.
+   */
+  weightBaseline: Record<string, number>
+  /**
+   * Weight values that differ from the baseline — what actually gets sent.
+   * Used to show the override dot on the weights row.
+   */
+  weightOverrides: Record<string, number>
   /** 422 or config-incompatibility error to show inline. */
   errorMessage: string | null
   /** Called when any single field value changes. */
@@ -77,17 +91,22 @@ function OverrideDot() {
  * When open, renders four control rows (vector mode, fusion, transform, rerank)
  * and an optional weights section for known named vectors.
  *
+ * Query transform uses a SegmentedControl for visual consistency with the
+ * other controls.  All four transform options fit within the standard lab row.
+ *
  * Args:
- *   baseline:       Saved config values (shown as annotations).
- *   display:        What the controls render (baseline + user overrides).
- *   overrides:      Which fields currently differ from baseline.
- *   isOverriding:   Whether any override is active (gates Reset button).
- *   vectorNames:    Named vectors to show weight inputs for.
- *   localWeights:   Current user-set weight overrides.
- *   errorMessage:   Inline error (422 / config incompatibility).
- *   onUpdate:       Field change callback.
- *   onUpdateWeights:Weight change callback.
- *   onReset:        Clear-all-overrides callback.
+ *   baseline:        Saved config values (shown as annotations).
+ *   display:         What the controls render (baseline + user overrides).
+ *   overrides:       Which fields currently differ from baseline.
+ *   isOverriding:    Whether any override is active (gates Reset button).
+ *   vectorNames:     Named vectors to show weight inputs for.
+ *   localWeights:    Raw user-set weight values.
+ *   weightBaseline:  Config baseline weights — slider initial display values.
+ *   weightOverrides: Weights that differ from baseline (drives the override dot).
+ *   errorMessage:    Inline error (422 / config incompatibility).
+ *   onUpdate:        Field change callback.
+ *   onUpdateWeights: Weight change callback.
+ *   onReset:         Clear-all-overrides callback.
  */
 export function LabTuningPanel({
   baseline,
@@ -96,6 +115,8 @@ export function LabTuningPanel({
   isOverriding,
   vectorNames,
   localWeights,
+  weightBaseline,
+  weightOverrides,
   errorMessage,
   onUpdate,
   onUpdateWeights,
@@ -170,22 +191,17 @@ export function LabTuningPanel({
             </span>
           </div>
 
-          {/* Query transform */}
+          {/* Query transform — SegmentedControl for visual consistency */}
           <div className="lab-control-row">
             <span className="lab-control-label">
               Query transform
               {'query_transform_strategy' in overrides && <OverrideDot />}
             </span>
-            <select
-              className="input select"
-              style={{ width: 'auto', fontSize: 11 }}
+            <SegmentedControl
+              options={TRANSFORM_OPTIONS}
               value={display.query_transform_strategy}
-              onChange={e => onUpdate('query_transform_strategy', e.target.value as SearchBaseline['query_transform_strategy'])}
-            >
-              {TRANSFORM_OPTIONS.map(o => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
-            </select>
+              onChange={v => onUpdate('query_transform_strategy', v)}
+            />
             <span className="text-dim" style={{ fontSize: 10 }}>
               config: {baseline.query_transform_strategy}
             </span>
@@ -211,24 +227,29 @@ export function LabTuningPanel({
             <div className="lab-control-row" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 4 }}>
               <span className="lab-control-label">
                 Weights
-                {Object.keys(localWeights).length > 0 && <OverrideDot />}
+                {/* Dot driven by weightOverrides — only set when user has deviated from baseline. */}
+                {Object.keys(weightOverrides).length > 0 && <OverrideDot />}
               </span>
-              {vectorNames.map(name => (
-                <div key={name} className="weight-row">
-                  <span className="weight-id">{name}</span>
-                  <input
-                    type="range"
-                    className="weight-slider"
-                    min={0} max={1} step={0.05}
-                    value={localWeights[name] ?? 0.5}
-                    onChange={e => {
-                      const updated = { ...localWeights, [name]: Number(e.target.value) }
-                      onUpdateWeights(updated)
-                    }}
-                  />
-                  <span className="weight-val">{(localWeights[name] ?? 0.5).toFixed(2)}</span>
-                </div>
-              ))}
+              {vectorNames.map(name => {
+                // Display value: user-set value when present, else config baseline.
+                const displayVal = localWeights[name] ?? weightBaseline[name] ?? 1.0
+                return (
+                  <div key={name} className="weight-row">
+                    <span className="weight-id">{name}</span>
+                    <input
+                      type="range"
+                      className="weight-slider"
+                      min={0} max={1} step={0.05}
+                      value={displayVal}
+                      onChange={e => {
+                        const updated = { ...localWeights, [name]: Number(e.target.value) }
+                        onUpdateWeights(updated)
+                      }}
+                    />
+                    <span className="weight-val">{displayVal.toFixed(2)}</span>
+                  </div>
+                )
+              })}
             </div>
           )}
 

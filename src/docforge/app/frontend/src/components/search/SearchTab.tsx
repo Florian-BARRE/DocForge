@@ -159,8 +159,10 @@ export function SearchTab({ collectionId }: SearchTabProps) {
     setLabError(null)
 
     // Build the overrides object — only changed fields, omit empty map.
-    const hasOverrides = Object.keys(lab.overrides).length > 0
-    const hasWeights = Object.keys(lab.localWeights).length > 0
+    // Use weightOverrides (diff from baseline) rather than localWeights (raw
+    // slider state) so unchanged weights are not sent to the backend.
+    const hasOverrides      = Object.keys(lab.overrides).length > 0
+    const hasWeightOverrides = Object.keys(lab.weightOverrides).length > 0
 
     try {
       const res = await searchDocuments(collectionId, q, {
@@ -168,7 +170,7 @@ export function SearchTab({ collectionId }: SearchTabProps) {
         filters: filter ?? undefined,
         debug: true,
         overrides: hasOverrides ? lab.overrides : undefined,
-        weights: hasWeights ? lab.localWeights : undefined,
+        weights: hasWeightOverrides ? lab.weightOverrides : undefined,
       })
       setResults(res.results)
       setGroups(res.groups ?? null)
@@ -298,6 +300,8 @@ export function SearchTab({ collectionId }: SearchTabProps) {
             isOverriding={lab.isOverriding}
             vectorNames={vectorNames}
             localWeights={lab.localWeights}
+            weightBaseline={lab.weightBaseline}
+            weightOverrides={lab.weightOverrides}
             errorMessage={labError}
             onUpdate={lab.update}
             onUpdateWeights={lab.updateWeights}
