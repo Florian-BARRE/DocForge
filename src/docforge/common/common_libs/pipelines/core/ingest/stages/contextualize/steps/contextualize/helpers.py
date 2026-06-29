@@ -5,10 +5,12 @@
 # (chunk.prov["heading_path"]) so the section title appears exactly once and is never repeated in the
 # body; the body is the chunk's raw_text. Kept static-only to keep the step core lean.
 
+# ====== Third-Party Library Imports ======
+from loggerplusplus import loggerplusplus
+
 # ====== Internal Project Imports ======
 from common_libs.config.pipeline import ContextualizeConfig
 from common_libs.domain import Chunk
-from loggerplusplus import loggerplusplus
 
 
 class IngestStageContextualizeStepContextualizeHelpers:

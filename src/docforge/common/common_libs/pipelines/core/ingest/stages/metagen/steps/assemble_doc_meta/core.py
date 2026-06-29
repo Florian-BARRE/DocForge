@@ -67,10 +67,16 @@ class IngestStageMetagenStepAssembleDocMeta(IngestStageMetagenStepBase):
             chain_traces=traces,
         )
 
-        self.logger.info(
+        # Only the productive path (something was generated) is a key lifecycle event; the no-op run
+        # (metagen disabled / no targets => n_generated == 0) is traced at debug so it does not spam.
+        summary = (
             f"Metagen assembled: n_generated={result.n_generated} doc_meta_keys={len(doc_meta)} "
             f"est_cost=${result.est_cost_usd:.4f}"
         )
+        if result.n_generated > 0:
+            self.logger.info(summary)
+        else:
+            self.logger.debug(summary)
         return IngestStageMetagenStepAssembleDocMetaOutput(
             chunks=data.chunks,
             doc_fields=data.doc_fields,

@@ -3,7 +3,10 @@
 # markdown and uploads it to the object store under a content-addressed key (sha256 of the markdown
 # bytes), then assembles the durable ParseResult (the parse stage's output contract consumed by enrich
 # + the worker node-cache codec). A degraded (no-parse) run skips serialisation entirely
-# (markdown_key=None), exactly like the legacy path.
+# (markdown_key=None), exactly like the legacy path. The markdown object-store key is CONTENT-ADDRESSED
+# (sha256 of the serialised markdown bytes); this INTENTIONALLY supersedes the legacy parse-node-
+# fingerprint keying — the per-node fingerprint is not exposed to a leaf step, it is now an EngineHooks
+# concern.
 
 # ====== Standard Library Imports ======
 import hashlib

@@ -129,6 +129,9 @@ class IngestStageEnrich(IngestStageBase):
         Returns:
             dict[str, Any]: The stage's fingerprint parameter dict.
         """
+        # The classifier/OCR/VLM CHAIN SIGNATURES are folded into the NODE_CACHED enrich fingerprint by
+        # the worker's EngineHooks cache hook (the chains are run-time injected services, not reachable
+        # from this method), so this method surfaces only the cache-busting capability flags.
         return {
             "ocr_enabled": self._ocr_enabled,
             "vlm_enabled": self._vlm_enabled,

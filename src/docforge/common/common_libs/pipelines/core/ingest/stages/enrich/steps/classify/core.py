@@ -8,7 +8,6 @@
 
 # ====== Standard Library Imports ======
 import hashlib
-from typing import Any
 
 # ====== Internal Project Imports ======
 from common_libs.domain.ir.models import Block, BlockType, FigureKind

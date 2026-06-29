@@ -3,6 +3,10 @@
 # caption map) and ChunkAssembler (flat / hierarchical) into a run() that turns an enriched
 # DocumentIR into retrieval chunks. Config hashing (the deterministic chunk-id input) lives here
 # because it depends on the engine's own parameters.
+#
+# REFACTOR EXCEPTION (>200 lines): the run() orchestration and the config-hash helpers form one
+# cohesive 1:1 port — the hash is computed from the very engine parameters run() consumes, so the two
+# share state and splitting them would scatter a single responsibility across files. Kept together.
 
 # ====== Standard Library Imports ======
 import hashlib

@@ -43,9 +43,10 @@ class IngestStageEmbedIndexIndexHelpers:
         """
         Assemble the named dense/sparse vector maps the Qdrant upsert consumes.
 
-        The canonical ``content_dense`` / ``content_bm25`` vectors are always present; each planned
-        semantic field contributes a named dense vector and each lexical field a named sparse vector,
-        reusing the per-field vectors the embed phase produced.
+        The canonical ``content_dense`` vector is always present; ``content_bm25`` (sparse) is added
+        only when the embed provider produced sparse vectors. Each planned semantic field contributes
+        a named dense vector and each lexical field a named sparse vector, reusing the per-field
+        vectors the embed phase produced.
 
         Args:
             plan (VectorPlan): The derived vector plan (named dense/sparse field vectors).
