@@ -41,7 +41,7 @@ class ChunkAssembler:
     @classmethod
     async def process_flat(
         cls,
-        items: list["_Segment | _Special"],
+        items: list[_Segment | _Special],
         doc_id: str,
         caption_of: dict[str, list[Block]],
         counter: Iterator[int],
@@ -94,7 +94,7 @@ class ChunkAssembler:
     @classmethod
     async def process_hierarchical(
         cls,
-        items: list["_Segment | _Special"],
+        items: list[_Segment | _Special],
         doc_id: str,
         caption_of: dict[str, list[Block]],
         counter: Iterator[int],

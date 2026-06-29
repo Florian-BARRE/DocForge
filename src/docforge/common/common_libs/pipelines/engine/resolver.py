@@ -42,10 +42,10 @@ class Resolver:
     @classmethod
     def build_input(
         cls,
-        node: "AbstractNode",
+        node: AbstractNode,
         run_input: NodeInput,
         parent_input: NodeInput,
-        siblings: dict[str, "NodeOutput"],
+        siblings: dict[str, NodeOutput],
     ) -> NodeInput:
         """
         Resolve, verify, and inject a node's typed Input from its declared bindings.
@@ -89,7 +89,7 @@ class Resolver:
 
     @classmethod
     def resolve_services(
-        cls, node: "AbstractNode", registry: "ServiceRegistry"
+        cls, node: AbstractNode, registry: ServiceRegistry
     ) -> dict[str, object]:
         """
         Resolve every service a node requires, walking up the ancestor registry chain.
@@ -124,12 +124,12 @@ class Resolver:
     @classmethod
     def _resolve_field(
         cls,
-        node: "AbstractNode",
+        node: AbstractNode,
         field_name: str,
         source: Source,
         run_input: NodeInput,
         parent_input: NodeInput,
-        siblings: dict[str, "NodeOutput"],
+        siblings: dict[str, NodeOutput],
     ) -> object:
         """
         Resolve and verify a single bound field.
@@ -178,10 +178,10 @@ class Resolver:
     @classmethod
     def _from_sibling(
         cls,
-        node: "AbstractNode",
+        node: AbstractNode,
         field_name: str,
         source: FromSibling,
-        siblings: dict[str, "NodeOutput"],
+        siblings: dict[str, NodeOutput],
     ) -> object:
         """
         Resolve a ``FromSibling`` binding against the produced-siblings registry.

@@ -76,7 +76,7 @@ class ProviderCallCache(LoggerClass):
             content_hash=content_hash,
         )
 
-    async def get(self, call_fp: str) -> "str | None":
+    async def get(self, call_fp: str) -> str | None:
         """
         Return the cached result JSON string for a completed provider call.
 

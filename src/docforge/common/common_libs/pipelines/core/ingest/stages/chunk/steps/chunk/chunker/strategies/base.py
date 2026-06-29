@@ -53,7 +53,7 @@ class SectionSplitter(Protocol):
         """Return the method id + resolved params for the deterministic chunker config hash."""
         ...
 
-    async def split_section(self, blocks: list[Block]) -> list["SplitPiece"]:
+    async def split_section(self, blocks: list[Block]) -> list[SplitPiece]:
         """
         Split a section's content blocks into pieces no larger than the token budget.
 

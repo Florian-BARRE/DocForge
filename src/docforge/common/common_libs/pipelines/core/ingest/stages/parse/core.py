@@ -48,7 +48,7 @@ class IngestStageParse(IngestStageBase):
     Context = IngestStageParseContext
     Error = IngestStageParseError
 
-    def __init__(self, parser_chain: "Chain[Any, Any]") -> None:
+    def __init__(self, parser_chain: Chain[Any, Any]) -> None:
         """
         Wire the stage around the parser chain and build its four steps.
 

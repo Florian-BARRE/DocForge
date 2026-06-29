@@ -57,7 +57,7 @@ class PipelineEngine(LoggerClass):
         self._hooks = hooks or EngineHooks()
 
     async def run(
-        self, root: AbstractNode, run: "RunContext"
+        self, root: AbstractNode, run: RunContext
     ) -> tuple[NodeOutput | None, NodeReport]:
         """
         Run a node tree from its root, returning the root output and the feedback tree.
@@ -93,11 +93,11 @@ class PipelineEngine(LoggerClass):
         self,
         node: AbstractNode,
         node_input: NodeOutput,
-        parent_ctx: "ContextBase | None",
-        registry: "ServiceRegistry",
-        run: "RunContext",
+        parent_ctx: ContextBase | None,
+        registry: ServiceRegistry,
+        run: RunContext,
         siblings: dict[str, NodeOutput],
-    ) -> tuple[NodeOutput | None, NodeReport, "PipelineError | None"]:
+    ) -> tuple[NodeOutput | None, NodeReport, PipelineError | None]:
         """
         Run a single node (composite or leaf), capturing its outcome into a report (never raising).
 
@@ -160,9 +160,9 @@ class PipelineEngine(LoggerClass):
     async def _run_composite(
         self,
         node: CompositeNode,
-        ctx: "ContextBase",
-        registry: "ServiceRegistry",
-        run: "RunContext",
+        ctx: ContextBase,
+        registry: ServiceRegistry,
+        run: RunContext,
         report: NodeReport,
     ) -> NodeOutput | None:
         """
@@ -214,8 +214,8 @@ class PipelineEngine(LoggerClass):
     async def _run_leaf(
         self,
         node: AbstractNode,
-        ctx: "ContextBase",
-        run: "RunContext",
+        ctx: ContextBase,
+        run: RunContext,
         report: NodeReport,
     ) -> NodeOutput | None:
         """
@@ -253,7 +253,7 @@ class PipelineEngine(LoggerClass):
 
     @staticmethod
     def _apply_child_policy(
-        parent: "CompositeNode", child: AbstractNode, child_error: "PipelineError"
+        parent: CompositeNode, child: AbstractNode, child_error: PipelineError
     ) -> None:
         """
         Apply a failed child's authoritative error policy.

@@ -83,7 +83,7 @@ class ChainHelpers:
         raise TypeError("ChainHelpers is a static-only class and cannot be instantiated.")
 
     @staticmethod
-    def chain_outcome_to_attempt_dicts(outcome: "ChainOutcome[Any]") -> list[dict[str, Any]]:
+    def chain_outcome_to_attempt_dicts(outcome: ChainOutcome[Any]) -> list[dict[str, Any]]:
         """
         Convert a ``ChainOutcome`` into the plain-dict shape ``ChainTrace.attempts`` expects.
 
@@ -134,7 +134,7 @@ class ChainHelpers:
         )
 
     @staticmethod
-    def gate_tripped(outcome: "ChainOutcome[Any]") -> str | None:
+    def gate_tripped(outcome: ChainOutcome[Any]) -> str | None:
         """
         Infer which gate caused the final escalation on a degraded/exhausted outcome.
 

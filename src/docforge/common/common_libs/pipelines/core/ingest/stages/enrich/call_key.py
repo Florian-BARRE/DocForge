@@ -28,7 +28,7 @@ class CallKeyHelpers:
 
     @staticmethod
     def resolve(
-        chain: "Chain[Any, Any]",
+        chain: Chain[Any, Any],
         capability: str,
         default_id: str,
         params: dict[str, Any],

@@ -40,7 +40,7 @@ class VlmRunner:
     @classmethod
     async def run_vlm(
         cls,
-        vlm_chain: "Chain[Any, Any] | None",
+        vlm_chain: Chain[Any, Any] | None,
         provider_cache: ProviderCallCache,
         crop_bytes: bytes,
         crop_hash: str,

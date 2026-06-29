@@ -9,13 +9,13 @@
 # ====== Standard Library Imports ======
 import time
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import Any
+
+# ====== Internal Project Imports ======
+from common_libs.pipelines.base.context import PipelineContextBase
 
 # ====== Local Project Imports ======
 from .models import StageTrace
-
-if TYPE_CHECKING:
-    from common_libs.pipelines.base.context import PipelineContextBase
 
 # Key under which the active ExecutionTrace lives on the pipeline context's ``aux`` store.
 _CTX_AUX_KEY = "execution_trace"
@@ -46,7 +46,7 @@ class ExecutionTrace:
     stages: list[StageTrace] = field(default_factory=list)
 
     @classmethod
-    def for_context(cls, ctx: "PipelineContextBase") -> "ExecutionTrace":
+    def for_context(cls, ctx: PipelineContextBase) -> "ExecutionTrace":
         """
         Return the trace bound to ``ctx``, creating and attaching one on first access.
 

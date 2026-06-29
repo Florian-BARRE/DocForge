@@ -23,7 +23,7 @@ class IngestStageEnrichStepOcrContext(IngestStageEnrichStepContextBase):
         return self._input
 
     @property
-    def ocr_chain(self) -> "Chain[Any, Any]":
+    def ocr_chain(self) -> Chain[Any, Any]:
         """The ordered OCR chain (empty when OCR is disabled for the collection)."""
         return self.service("ocr_chain")
 

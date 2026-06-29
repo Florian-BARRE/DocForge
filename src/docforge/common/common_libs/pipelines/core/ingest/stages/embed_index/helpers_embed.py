@@ -36,7 +36,7 @@ class IngestStageEmbedIndexEmbedHelpers:
     @classmethod
     async def embed_texts(
         cls,
-        chain: "Chain",
+        chain: Chain,
         texts: list[str],
         batch_size: int,
     ) -> tuple[list[list[float] | None], list[dict[int, float] | None] | None, list[ChainTrace]]:
@@ -100,7 +100,7 @@ class IngestStageEmbedIndexEmbedHelpers:
     @classmethod
     async def embed_values(
         cls,
-        chain: "Chain",
+        chain: Chain,
         values: list[str | None],
         batch_size: int,
     ) -> tuple[list[list[float] | None], list[dict[int, float] | None], list[ChainTrace]]:
@@ -135,7 +135,7 @@ class IngestStageEmbedIndexEmbedHelpers:
         return dense_out, sparse_out, traces
 
     @staticmethod
-    def _build_trace(outcome: "ChainOutcome") -> ChainTrace:
+    def _build_trace(outcome: ChainOutcome) -> ChainTrace:
         """
         Convert a chain outcome into the domain ChainTrace stamped on the IR.
 

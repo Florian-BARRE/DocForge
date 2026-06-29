@@ -12,15 +12,14 @@
 # by ``Chain.call`` after the loop, not here — the gate only decides per-attempt escalation.
 
 # ====== Standard Library Imports ======
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 # ====== Internal Project Imports ======
 from common_libs.providers.scoring import ScoredResult
 from common_libs.config.pipeline.chain_gate_config import ChainGateConfig  # re-exported for callers
 
 # ====== Local Project Imports ======
-if TYPE_CHECKING:
-    from .models import ChainAttempt
+from .models import ChainAttempt
 
 
 class ChainGate:
@@ -46,7 +45,7 @@ class ChainGate:
         """Read-only access to the underlying config (useful for logging)."""
         return self._cfg
 
-    def should_escalate(self, result: Any, attempt: "ChainAttempt") -> bool:
+    def should_escalate(self, result: Any, attempt: ChainAttempt) -> bool:
         """
         Decide whether the chain should try the next provider after this attempt.
 

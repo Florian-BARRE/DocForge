@@ -20,7 +20,7 @@ class IngestStageParseStepParseContext(IngestStageParseStepContextBase):
         return self._input
 
     @property
-    def parser_chain(self) -> "Chain":
+    def parser_chain(self) -> Chain:
         """The ordered parser escalation chain (docling, ...) the step drives."""
         return self.service("parser_chain")
 

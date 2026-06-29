@@ -47,7 +47,7 @@ class CacheRunner:
     @classmethod
     async def run_classify(
         cls,
-        classifier_chain: "Chain[Any, Any]",
+        classifier_chain: Chain[Any, Any],
         provider_cache: ProviderCallCache,
         crop_bytes: bytes,
         crop_hash: str,
@@ -107,7 +107,7 @@ class CacheRunner:
     @classmethod
     async def run_ocr(
         cls,
-        ocr_chain: "Chain[Any, Any] | None",
+        ocr_chain: Chain[Any, Any] | None,
         provider_cache: ProviderCallCache,
         crop_bytes: bytes,
         crop_hash: str,

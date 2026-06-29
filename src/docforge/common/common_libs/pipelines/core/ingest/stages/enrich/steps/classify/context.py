@@ -25,7 +25,7 @@ class IngestStageEnrichStepClassifyContext(IngestStageEnrichStepContextBase):
         return self._input
 
     @property
-    def classifier_chain(self) -> "Chain[Any, Any]":
+    def classifier_chain(self) -> Chain[Any, Any]:
         """The ordered figure classifier chain (built per-collection at assembly)."""
         return self.service("classifier_chain")
 

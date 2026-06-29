@@ -23,7 +23,7 @@ class IngestStageEnrichStepVlmContext(IngestStageEnrichStepContextBase):
         return self._input
 
     @property
-    def vlm_chain(self) -> "Chain[Any, Any]":
+    def vlm_chain(self) -> Chain[Any, Any]:
         """The ordered VLM chain (empty when VLM is disabled for the collection)."""
         return self.service("vlm_chain")
 

@@ -27,7 +27,7 @@ class ParseHelpers:
         raise TypeError("ParseHelpers is a static-only class and cannot be instantiated.")
 
     @staticmethod
-    def stamp_parse_trace(ir: DocumentIR, outcome: "ChainOutcome") -> DocumentIR:
+    def stamp_parse_trace(ir: DocumentIR, outcome: ChainOutcome) -> DocumentIR:
         """
         Return a new DocumentIR with the parse ChainTrace appended.
 

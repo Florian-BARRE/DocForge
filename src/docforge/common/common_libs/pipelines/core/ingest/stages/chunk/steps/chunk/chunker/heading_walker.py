@@ -83,8 +83,8 @@ class HeadingWalker:
         blocks: list[Block],
         consumed_caption_ids: set[str],
         atomic: AtomicConfig,
-        rules: list[tuple[int, "re.Pattern"]],
-    ) -> list["_Segment | _Special"]:
+        rules: list[tuple[int, re.Pattern]],
+    ) -> list[_Segment | _Special]:
         """
         Walk blocks into ordered items: content sections + atomic figure/table specials.
 
