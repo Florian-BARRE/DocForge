@@ -4,7 +4,7 @@
 # step-specific code while staying within the ingest stage's error family.
 
 # ====== Internal Project Imports ======
-from common_libs2.pipelines import StepError
+from common_libs.pipelines import StepError
 
 
 class IngestStageIngestStepError(StepError):

@@ -3,7 +3,7 @@
 # concrete stage only declares its SPEC + IO + Context + children. Abstract (never run directly).
 
 # ====== Internal Project Imports ======
-from common_libs2.pipelines import CompositeNode, NodeKind
+from common_libs.pipelines import CompositeNode, NodeKind
 
 
 class IngestStageBase(CompositeNode, abstract=True):

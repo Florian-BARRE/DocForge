@@ -4,7 +4,7 @@
 # they are appended here and the engine orders them by their input bindings.
 
 # ====== Internal Project Imports ======
-from common_libs2.pipelines import CompositeNode, NodeKind, NodeOutput, NodeSpec
+from common_libs.pipelines import CompositeNode, NodeKind, NodeOutput, NodeSpec
 
 # ====== Local Project Imports ======
 from .context import IngestContext

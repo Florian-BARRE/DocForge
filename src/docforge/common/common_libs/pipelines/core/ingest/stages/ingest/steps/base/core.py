@@ -4,7 +4,7 @@
 # never run directly): it opts out of the SPEC check with abstract=True.
 
 # ====== Internal Project Imports ======
-from common_libs2.pipelines import LeafNode, NodeKind
+from common_libs.pipelines import LeafNode, NodeKind
 
 # ====== Local Project Imports ======
 from .errors import IngestStageIngestStepError

@@ -9,7 +9,7 @@ import hashlib
 import uuid
 
 # ====== Internal Project Imports ======
-from common_libs2.pipelines import NodeSpec, ServiceRef
+from common_libs.pipelines import NodeSpec, ServiceRef
 
 # ====== Local Project Imports ======
 from ..base import IngestStageIngestStepBase

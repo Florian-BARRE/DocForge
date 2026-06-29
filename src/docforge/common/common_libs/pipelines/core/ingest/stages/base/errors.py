@@ -3,7 +3,7 @@
 # their step errors) sit under it, so the feedback tree keeps a coherent ingest error family.
 
 # ====== Internal Project Imports ======
-from common_libs2.pipelines import StageError
+from common_libs.pipelines import StageError
 
 
 class IngestStageError(StageError):

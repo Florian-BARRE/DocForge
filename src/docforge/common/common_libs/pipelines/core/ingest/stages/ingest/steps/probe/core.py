@@ -4,7 +4,7 @@
 # decision, no service, no I/O.
 
 # ====== Internal Project Imports ======
-from common_libs2.pipelines import NodeSpec
+from common_libs.pipelines import NodeSpec
 
 # ====== Local Project Imports ======
 from ..base import IngestStageIngestStepBase

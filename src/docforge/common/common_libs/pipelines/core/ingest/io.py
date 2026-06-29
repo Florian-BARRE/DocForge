@@ -5,7 +5,7 @@
 # (the only stage in this end-to-end slice).
 
 # ====== Internal Project Imports ======
-from common_libs2.pipelines import NodeInput
+from common_libs.pipelines import NodeInput
 
 # ====== Local Project Imports ======
 from .stages.ingest import IngestStageIngestOutput

@@ -3,7 +3,7 @@
 # stage contexts subclass it to narrow ``input``. Stage-level node of the context hierarchy.
 
 # ====== Internal Project Imports ======
-from common_libs2.pipelines import StageContextBase
+from common_libs.pipelines import StageContextBase
 
 
 class IngestStageContextBase(StageContextBase):

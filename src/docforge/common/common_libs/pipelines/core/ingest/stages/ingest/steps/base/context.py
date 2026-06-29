@@ -4,7 +4,7 @@
 # step-level node of the context hierarchy for this stage.
 
 # ====== Internal Project Imports ======
-from common_libs2.pipelines import StepContextBase
+from common_libs.pipelines import StepContextBase
 
 
 class IngestStageIngestStepContextBase(StepContextBase):

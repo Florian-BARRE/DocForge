@@ -5,7 +5,7 @@
 # NODE_CACHED: the whole stage is a Merkle node in the cache.
 
 # ====== Internal Project Imports ======
-from common_libs2.pipelines import CachePolicy, NodeOutput, StageKey, StageSpec
+from common_libs.pipelines import CachePolicy, NodeOutput, StageKey, StageSpec
 
 # ====== Local Project Imports ======
 from ..base import IngestStageBase

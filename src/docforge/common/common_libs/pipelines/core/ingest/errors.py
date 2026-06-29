@@ -4,7 +4,7 @@
 # top-level error type for callers to catch.
 
 # ====== Internal Project Imports ======
-from common_libs2.pipelines import PipelineError
+from common_libs.pipelines import PipelineError
 
 
 class IngestError(PipelineError):

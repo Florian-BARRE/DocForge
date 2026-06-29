@@ -7,7 +7,7 @@
 from typing import Annotated
 
 # ====== Internal Project Imports ======
-from common_libs2.pipelines import FromParent, FromSibling, NodeInput, NodeOutput
+from common_libs.pipelines import FromParent, FromSibling, NodeInput, NodeOutput
 
 
 class IngestStageIngestStepConvertInput(NodeInput):

@@ -3,7 +3,7 @@
 # to the run input; descendants link to it via ``ctx.parent``.
 
 # ====== Internal Project Imports ======
-from common_libs2.pipelines import PipelineContextBase
+from common_libs.pipelines import PipelineContextBase
 
 # ====== Local Project Imports ======
 from .io import IngestInput
