@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from common_libs.pipeline.base.stage.keys import StageKey
     from common_libs.pipeline.ingest.stages.ingest.result import IngestResult
-    from common_libs.pipeline.stages.s1_parse.core import S1Result
+    from common_libs.pipeline.ingest.stages.parsing.result import ParseResult
     from common_libs.pipeline.stages.s2_enrich import S2Result
     from common_libs.pipeline.stages.s4_chunk import S4Result
     from common_libs.pipeline.stages.s5_contextualize.core import S5Result
@@ -29,7 +29,7 @@ class EngineResult:
 
     Attributes:
         ingest_result (IngestResult): Ingestion stage output (always present).
-        parse_result (S1Result): Parse stage output (always present).
+        parse_result (ParseResult): Parse stage output (always present).
         enrich_result (S2Result | None): Enrichment stage output; None on cache error.
         chunk_result (S4Result | None): Chunking stage output.
         contextualize_result (S5Result | None): Contextualization stage output.
@@ -39,7 +39,7 @@ class EngineResult:
     """
 
     ingest_result: IngestResult
-    parse_result: S1Result
+    parse_result: ParseResult
     enrich_result: S2Result | None = None          # None only when a cache error occurs
     chunk_result: S4Result | None = None           # always populated on a successful run
     contextualize_result: S5Result | None = None   # always populated on a successful run

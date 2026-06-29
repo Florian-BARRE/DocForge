@@ -105,8 +105,8 @@ class S2EnrichStage(LoggerClass):
         Each enrichable FIGURE block is routed through ``FigureEnricher.process_block``.
 
         Args:
-            s1: S1Result (passed through for future cross-stage use; unused here).
-            ir (DocumentIR): IR produced by S1; will be enriched in a copy.
+            s1: Parse stage result (passed through for future cross-stage use; unused here).
+            ir (DocumentIR): IR produced by the parse stage; will be enriched in a copy.
 
         Returns:
             S2Result: Enriched IR plus all accounting counters for this run.

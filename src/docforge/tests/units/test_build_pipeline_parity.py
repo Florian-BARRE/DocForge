@@ -19,7 +19,7 @@ from common_libs.pipeline.assembly.chunk_stage_assembler import ChunkStageAssemb
 from common_libs.pipeline.assembly.stage_assembler import build_pipeline
 from common_libs.pipeline.stages.context import StageDeps
 from common_libs.pipeline.ingest.stages.ingest import IngestDocStage
-from common_libs.pipeline.stages.s1_parse.core import S1ParseStage
+from common_libs.pipeline.ingest.stages.parsing import ParseResources, ParsingStage
 from common_libs.pipeline.stages.s2_enrich.core import S2EnrichStage
 from common_libs.pipeline.stages.s4_chunk.core import S4ChunkStage
 from common_libs.pipeline.stages.s5_contextualize.core import S5ContextualizeStage
@@ -58,8 +58,10 @@ class TestBuildPipelineParity:
             "converter_name": "gotenberg",
             "converter_version": "8",
         }
+        # Parse is native (no legacy inner); it carries a ParseResources bundle (parser chain + s3).
+        assert isinstance(by_key["parse"], ParsingStage)
+        assert isinstance(by_key["parse"]._resources, ParseResources)
         # Each remaining stage wraps the same legacy stage type the old path constructs.
-        assert isinstance(by_key["parse"]._inner, S1ParseStage)
         assert isinstance(by_key["enrich"]._inner, S2EnrichStage)
         assert isinstance(by_key["chunk"]._inner, S4ChunkStage)
         assert isinstance(by_key["contextualize"]._inner, S5ContextualizeStage)
@@ -74,7 +76,7 @@ class TestBuildPipelineParity:
         # The assembler wires each inner stage via the SAME shared builders; the inner objects
         # must be identical to invoking those builders directly (the build_pipeline guarantee).
         assert (
-            by_key["parse"]._inner.parse_chain.signature()
+            by_key["parse"]._resources.parse_chain.signature()
             == registry._build_parser_chain(dp.parse.chain, dp.parse.gate).signature()
         )
         assert (

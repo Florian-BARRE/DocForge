@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING, Any
 from common_libs.pipeline.ingest import stages as _ingest_stages  # noqa: F401 — force @register_stage
 from common_libs.pipeline.base.stage.core import AbstractStage
 from common_libs.pipeline.ingest.stages.ingest import IngestResources
-from common_libs.pipeline.stages.s1_parse.core import S1ParseStage
+from common_libs.pipeline.ingest.stages.parsing import ParseResources
 from common_libs.pipeline.stages.s5_contextualize.core import S5ContextualizeStage
 from common_libs.pipeline.stages.s6_embed_index.core import S6EmbedIndexStage
 from common_libs.pipeline.bricks.providers.converter import GotenbergConverter
@@ -133,8 +133,10 @@ class PipelineAssembler:
             converter = GotenbergConverter(base_url=rc.GOTENBERG_URL, timeout_s=rc.GOTENBERG_TIMEOUT_S)
             return IngestResources(s3=deps.s3, converter=converter)
         if key == "parse":
+            # Parse owns its three steps; it only needs the parser chain (built via the shared
+            # registry builder) + the object store, bundled into ParseResources for stage_cls(inner).
             chain = registry._build_parser_chain(config.parse.chain, config.parse.gate)
-            return S1ParseStage(parse_chain=chain, s3=deps.s3)
+            return ParseResources(parse_chain=chain, s3=deps.s3)
         if key == "enrich":
             return registry._build_s2(config.enrich)
         if key == "chunk":

@@ -14,7 +14,7 @@ from loggerplusplus import loggerplusplus
 # ====== Internal Project Imports ======
 from common_libs.domain.ir.models import DocumentIR
 from common_libs.pipeline.ingest.stages.ingest.result import IngestResult
-from common_libs.pipeline.stages.s1_parse.core import S1Result
+from common_libs.pipeline.ingest.stages.parsing.result import ParseResult
 from common_libs.pipeline.stages.s2_enrich import S2Result
 
 
@@ -38,7 +38,7 @@ class TraceFlusher:
     def build_implicit_meta(
         ingest_result: IngestResult,
         ir: DocumentIR,
-        parse_result: S1Result,
+        parse_result: ParseResult,
         s0_fp: str,
         s1_fp: str,
         ir_key: str,
@@ -54,7 +54,7 @@ class TraceFlusher:
         Args:
             ingest_result (IngestResult): S0 stage output.
             ir (DocumentIR): Final IR (enriched when S2 ran, raw when S2 skipped).
-            parse_result (S1Result): S1 stage output.
+            parse_result (ParseResult): S1 stage output.
             s0_fp (str): S0 Merkle fingerprint.
             s1_fp (str): S1 Merkle fingerprint.
             ir_key (str): S3 key for the (pre-enrichment) DocumentIR JSON.

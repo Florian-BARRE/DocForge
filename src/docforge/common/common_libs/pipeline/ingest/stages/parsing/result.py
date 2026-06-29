@@ -1,7 +1,10 @@
 # ====== Code Summary ======
-# S1Result dataclass — output artefacts produced by the S1 parsing stage.
-# Extracted from s1_parse.py to keep the result model separately importable
-# without pulling in all of S1ParseStage's dependencies.
+# ParseResult dataclass — the canonical output contract of the parse stage (relocated from the
+# former parse result type, with byte-identical fields so the node-cache codec round-trip stays
+# unchanged). It is the artefact every downstream consumer reads (enrich, the worker node-cache
+# codec, the persist/trace layer): the canonical IR (with the parse ChainTrace stamped), the
+# markdown view's object-store key, and the per-figure crop keys. Kept in its own module so it can
+# be imported without pulling in the stage's parser-chain / object-store dependencies.
 
 # ====== Standard Library Imports ======
 from __future__ import annotations
@@ -14,9 +17,9 @@ if TYPE_CHECKING:
 
 
 @dataclass(slots=True)
-class S1Result:
+class ParseResult:
     """
-    Output artefacts produced by the S1 parsing stage.
+    Output artefacts produced by the parse stage.
 
     Attributes:
         ir (DocumentIR): The canonical IR, with the parse ChainTrace appended.
@@ -26,6 +29,9 @@ class S1Result:
         figure_crop_keys (dict[str, str]): block_id → object-store key for each figure crop.
     """
 
-    ir: DocumentIR
+    ir: "DocumentIR"
     markdown_key: str | None
     figure_crop_keys: dict[str, str]
+
+
+__all__ = ["ParseResult"]

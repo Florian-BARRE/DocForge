@@ -11,7 +11,7 @@ import json
 
 # ====== Internal Project Imports ======
 from common_libs.pipeline.ingest.stages.ingest.result import IngestResult
-from common_libs.pipeline.stages.s1_parse.core import S1Result
+from common_libs.pipeline.ingest.stages.parsing.result import ParseResult
 from common_libs.pipeline.stages.s2_enrich import S2Result
 
 
@@ -54,12 +54,12 @@ class CacheEncoder:
         ).encode("utf-8")
 
     @staticmethod
-    def encode_s1_meta(s1: S1Result, ir_key: str) -> bytes:
+    def encode_s1_meta(s1: ParseResult, ir_key: str) -> bytes:
         """
-        Serialize S1Result references to a compact JSON blob for S3 storage.
+        Serialize ParseResult references to a compact JSON blob for S3 storage.
 
         Args:
-            s1 (S1Result): S1 stage output containing S3 key references.
+            s1 (ParseResult): S1 stage output containing S3 key references.
             ir_key (str): S3 key where the DocumentIR JSON was uploaded.
 
         Returns:

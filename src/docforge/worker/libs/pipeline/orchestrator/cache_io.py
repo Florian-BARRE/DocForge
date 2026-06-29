@@ -18,7 +18,7 @@ from common_libs.storage.postgres.client import PostgresClient
 from common_libs.storage.s3.client import S3Client
 from common_libs.pipeline.caches.node_cache import NodeCache
 from common_libs.pipeline.ingest.stages.ingest.result import IngestResult
-from common_libs.pipeline.stages.s1_parse.core import S1Result
+from common_libs.pipeline.ingest.stages.parsing.result import ParseResult
 from common_libs.pipeline.stages.s2_enrich import S2Result
 
 # ====== Local Project Imports ======
@@ -108,8 +108,8 @@ class CacheIOHelpers:
         return await CacheCodec.populate_pdf_bytes(s3, ingest_result)
 
     @classmethod
-    async def restore_s1(cls, s3: S3Client, s1_meta_key: str) -> tuple[S1Result, DocumentIR]:
-        """Restore an S1Result + DocumentIR from S3 (delegates to CacheCodec)."""
+    async def restore_s1(cls, s3: S3Client, s1_meta_key: str) -> tuple[ParseResult, DocumentIR]:
+        """Restore an ParseResult + DocumentIR from S3 (delegates to CacheCodec)."""
         return await CacheCodec.restore_s1(s3, s1_meta_key)
 
     @classmethod
@@ -123,8 +123,8 @@ class CacheIOHelpers:
         return CacheEncoder.encode_s0_meta(s0)
 
     @staticmethod
-    def encode_s1_meta(s1: S1Result, ir_key: str) -> bytes:
-        """Serialize S1Result references to compact JSON bytes (delegates to CacheEncoder)."""
+    def encode_s1_meta(s1: ParseResult, ir_key: str) -> bytes:
+        """Serialize ParseResult references to compact JSON bytes (delegates to CacheEncoder)."""
         return CacheEncoder.encode_s1_meta(s1, ir_key)
 
     @staticmethod

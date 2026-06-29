@@ -18,7 +18,7 @@ from loggerplusplus import loggerplusplus
 # ====== Internal Project Imports ======
 from common_libs.storage.s3.helpers import S3Helpers
 from common_libs.pipeline.ingest.stages.ingest.result import IngestResult
-from common_libs.pipeline.stages.s1_parse.core import S1Result
+from common_libs.pipeline.ingest.stages.parsing.result import ParseResult
 from common_libs.pipeline.stages.s2_enrich import S2Result
 
 # ====== Local Project Imports ======
@@ -122,7 +122,7 @@ class S012PersistHelpers:
         doc_id: uuid.UUID,
         source_hash: str,
         ingest_result: IngestResult,
-        parse_result: S1Result,
+        parse_result: ParseResult,
         s1_fp: str,
         s0_fp: str,
         enrich_result: S2Result | None,
@@ -146,7 +146,7 @@ class S012PersistHelpers:
             doc_id (uuid.UUID): Document primary key.
             source_hash (str): SHA-256 of the original file (used to derive S3 key).
             ingest_result (IngestResult): S0 output (contributes to implicit_meta).
-            parse_result (S1Result): S1 output (contributes markdown_key to implicit_meta).
+            parse_result (ParseResult): S1 output (contributes markdown_key to implicit_meta).
             s1_fp (str): S1 Merkle fingerprint.
             s0_fp (str): S0 Merkle fingerprint.
             enrich_result (S2Result | None): S2 output, or None when S2 was skipped.

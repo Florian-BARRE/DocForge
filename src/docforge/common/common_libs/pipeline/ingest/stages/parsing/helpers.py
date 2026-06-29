@@ -1,49 +1,49 @@
 # ====== Code Summary ======
-# Stateless helpers for the S1 parse stage.
-# Contains pure IR transformations (chain-trace stamping, figure crop key patching)
-# that carry no logger dependency and are fully separated from async/S3 concerns.
+# Stateless helpers for the parse stage steps (ported verbatim from the former s1 ``S1Helpers``).
+# Contains pure IR transformations with no I/O and no logger dependency: stamping the parse
+# ChainTrace onto the IR, building a minimal empty IR for the degraded no-parse outcome, and
+# patching each figure block with its content-addressed crop key.
 
 # ====== Standard Library Imports ======
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from common_libs.pipeline.bricks.chain import ChainHelpers, ChainOutcome, chain_outcome_to_attempt_dicts
-
-# ====== Third-Party Library Imports ======
-# (none)
 # ====== Internal Project Imports ======
 from common_libs.domain.ir.models import BlockType, ChainAttemptIR, ChainTrace, DocumentIR
+from common_libs.pipeline.bricks.chain import (
+    ChainHelpers,
+    ChainOutcome,
+    chain_outcome_to_attempt_dicts,
+)
 
 if TYPE_CHECKING:
     from common_libs.pipeline.ingest.stages.ingest.result import IngestResult
 
 
-class S1Helpers:
+class ParseHelpers:
     """
-    Pure stateless helpers for the S1 parse stage.
+    Pure stateless helpers for the parse stage steps.
 
-    All methods are static — no instance state, no logger.
-    Logger discipline: no logger binding because every method is @staticmethod
-    (none uses cls.logger).  If a @classmethod is added later that logs,
-    bind ``logger = loggerplusplus.bind(identifier="S1Helpers")`` at class level.
+    All methods are static — no instance state, no logger. Every transformation returns a new
+    ``DocumentIR`` (Pydantic ``model_copy``) so the IR threaded through the context is never mutated
+    in place.
     """
 
     def __new__(cls, *args: object, **kwargs: object) -> None:
-        """Prevent instantiation — this is a static-only helper class."""
-        raise TypeError("S1Helpers is a static-only class and cannot be instantiated.")
+        """Block instantiation — this is a static-only helper class."""
+        raise TypeError("ParseHelpers is a static-only class and cannot be instantiated.")
 
     @staticmethod
     def stamp_parse_trace(ir: DocumentIR, outcome: ChainOutcome) -> DocumentIR:
         """
         Return a new DocumentIR with the parse ChainTrace appended.
 
-        Preserves all existing ``chain_traces`` entries and appends a new one
-        recording every provider attempt and which provider ultimately produced
-        the accepted IR.
+        Preserves all existing ``chain_traces`` entries and appends a new one recording every
+        provider attempt and which provider ultimately produced the accepted IR.
 
         Args:
-            ir (DocumentIR): The IR returned by the winning parser provider.
+            ir (DocumentIR): The IR returned by the winning parser provider (or the empty IR).
             outcome (ChainOutcome): The full chain execution result (attempts + winner).
 
         Returns:
@@ -66,14 +66,14 @@ class S1Helpers:
         })
 
     @staticmethod
-    def empty_ir(s0: IngestResult) -> DocumentIR:
+    def empty_ir(s0: "IngestResult") -> DocumentIR:
         """
-        Build a minimal, block-less DocumentIR for a degraded (no-parse) S1 outcome.
+        Build a minimal, block-less DocumentIR for a degraded (no-parse) parse outcome.
 
-        Used only when the parse gate's ``failure_policy="continue"`` and the chain
-        exhausted: the expert chose to let the document proceed without a parse, so the
-        document ends "done" with zero blocks (and therefore zero chunks / not indexed).
-        Carries the S0-known identity fields so downstream persistence stays consistent.
+        Used only when the parse gate's ``failure_policy="continue"`` and the chain exhausted: the
+        expert chose to let the document proceed without a parse, so it ends "done" with zero blocks
+        (and therefore zero chunks / not indexed). Carries the ingest-known identity fields so
+        downstream persistence stays consistent.
 
         Args:
             s0 (IngestResult): The ingest result (provides identity + page count).
@@ -97,13 +97,13 @@ class S1Helpers:
         """
         Return a new DocumentIR with each figure block's ``crop_key`` set.
 
-        Iterates all blocks; for FIGURE blocks that have a figure payload, sets
-        ``figure.crop_key`` to the corresponding S3 key from ``figure_crop_keys``.
-        Blocks with no entry in the map receive an empty string key.
+        Iterates all blocks; for FIGURE blocks that have a figure payload, sets ``figure.crop_key``
+        to the corresponding object-store key from ``figure_crop_keys``. Blocks with no entry in the
+        map receive an empty string key.
 
         Args:
             ir (DocumentIR): The IR whose figure blocks need crop key annotation.
-            figure_crop_keys (dict[str, str]): block_id → S3 object-store key.
+            figure_crop_keys (dict[str, str]): block_id → object-store key.
 
         Returns:
             DocumentIR: A copy of ``ir`` with all figure ``crop_key`` fields populated.
@@ -120,4 +120,4 @@ class S1Helpers:
         return ir.model_copy(update={"blocks": updated_blocks})
 
 
-__all__ = ["S1Helpers"]
+__all__ = ["ParseHelpers"]

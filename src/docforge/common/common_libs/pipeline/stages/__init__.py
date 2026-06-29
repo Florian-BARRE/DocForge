@@ -1,6 +1,4 @@
 # ------------------- Stages ------------------- #
-from .s1_parse.core import S1ParseStage
-from .s1_parse.result import S1Result
 from .s2_enrich import S2EnrichStage, S2Result
 from .s4_chunk import S4ChunkStage, S4Result
 from .s5_contextualize.core import S5ContextualizeStage
@@ -10,8 +8,6 @@ from .s6_embed_index.result import S6Result
 
 # ------------------- Public API ------------------- #
 __all__ = [
-    "S1ParseStage",
-    "S1Result",
     "S2EnrichStage",
     "S2Result",
     "S4ChunkStage",

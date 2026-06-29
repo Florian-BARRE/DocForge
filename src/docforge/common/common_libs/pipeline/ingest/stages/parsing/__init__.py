@@ -1,6 +1,14 @@
-# -------------------- Parsing stage + step --------------------- #
-from .core import ParsingStage
-from .steps import ParseStep
+# -------------------- Parsing stage ---------------------------- #
+from .core import ParseResources, ParsingStage
+from .result import ParseResult
+from .steps import FigureRenderStep, MarkdownStep, ParseStep
 
 # -------------------- Public API ------------------------------- #
-__all__ = ["ParsingStage", "ParseStep"]
+__all__ = [
+    "ParsingStage",
+    "ParseResources",
+    "ParseResult",
+    "ParseStep",
+    "FigureRenderStep",
+    "MarkdownStep",
+]

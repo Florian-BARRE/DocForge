@@ -17,7 +17,7 @@ from loggerplusplus import loggerplusplus
 from common_libs.domain.ir.models import DocumentIR
 from common_libs.storage.s3.client import S3Client
 from common_libs.pipeline.ingest.stages.ingest.result import IngestResult
-from common_libs.pipeline.stages.s1_parse.core import S1Result
+from common_libs.pipeline.ingest.stages.parsing.result import ParseResult
 from common_libs.pipeline.stages.s2_enrich import S2Result
 
 
@@ -96,16 +96,16 @@ class CacheCodec:
         )
 
     @classmethod
-    async def restore_s1(cls, s3: S3Client, s1_meta_key: str) -> tuple[S1Result, DocumentIR]:
+    async def restore_s1(cls, s3: S3Client, s1_meta_key: str) -> tuple[ParseResult, DocumentIR]:
         """
-        Restore an S1Result and DocumentIR from their S3 meta and IR JSON files.
+        Restore an ParseResult and DocumentIR from their S3 meta and IR JSON files.
 
         Args:
             s3 (S3Client): SeaweedFS object store client.
             s1_meta_key (str): S3 key of the S1 meta JSON artefact.
 
         Returns:
-            tuple[S1Result, DocumentIR]: Restored S1 result and its associated DocumentIR.
+            tuple[ParseResult, DocumentIR]: Restored S1 result and its associated DocumentIR.
         """
         # 1. Download and parse the S1 meta JSON
         raw = await s3.download(s1_meta_key)
@@ -115,8 +115,8 @@ class CacheCodec:
         ir_raw = await s3.download(meta["ir_key"])
         ir = DocumentIR.model_validate_json(ir_raw)
 
-        # 3. Rebuild the S1Result
-        parse_result = S1Result(
+        # 3. Rebuild the ParseResult
+        parse_result = ParseResult(
             ir=ir,
             markdown_key=meta["markdown_key"],
             figure_crop_keys=meta["figure_crop_keys"],
