@@ -23,11 +23,17 @@ class IngestInput(NodeInput):
         original_bytes (bytes): The raw original file bytes.
         filename (str): The original filename.
         doc_id (str | None): A pre-assigned document id, or None to mint a fresh one.
+        collection_id (str | None): Target collection (drives embed/index; None = no indexing).
+        metadata_fields (list | None): The collection's metadata field specs (embed/index).
+        doc_user_meta (dict | None): Caller-supplied per-document business metadata (metagen).
     """
 
     original_bytes: bytes
     filename: str
     doc_id: str | None = None
+    collection_id: str | None = None
+    metadata_fields: list | None = None
+    doc_user_meta: dict | None = None
 
 
 __all__ = ["IngestInput", "IngestOutput"]

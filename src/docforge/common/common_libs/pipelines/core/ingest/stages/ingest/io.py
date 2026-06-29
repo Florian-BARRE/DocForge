@@ -39,6 +39,7 @@ class IngestStageIngestOutput(NodeOutput):
         page_count (int | None): Page count of the converted PDF, or None.
         needs_ocr (bool): True when downstream parsing must OCR.
         media_type (str): Canonical MIME type of the document.
+        implicit_meta (dict): File-intrinsic metadata (lowest-precedence layer of doc_meta).
     """
 
     doc_id: str
@@ -50,6 +51,7 @@ class IngestStageIngestOutput(NodeOutput):
     page_count: int | None
     needs_ocr: bool
     media_type: str
+    implicit_meta: dict = {}
 
 
 __all__ = ["IngestStageIngestInput", "IngestStageIngestOutput"]
