@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from common_libs.pipeline.base.stage.keys import StageKey
     from common_libs.pipeline.ingest.stages.ingest.result import IngestResult
     from common_libs.pipeline.ingest.stages.parsing.result import ParseResult
-    from common_libs.pipeline.stages.s2_enrich import S2Result
+    from common_libs.pipeline.ingest.stages.enrich.result import EnrichResult
     from common_libs.pipeline.stages.s4_chunk import S4Result
     from common_libs.pipeline.stages.s5_contextualize.core import S5Result
     from common_libs.pipeline.stages.s6_embed_index.core import S6Result
@@ -30,7 +30,7 @@ class EngineResult:
     Attributes:
         ingest_result (IngestResult): Ingestion stage output (always present).
         parse_result (ParseResult): Parse stage output (always present).
-        enrich_result (S2Result | None): Enrichment stage output; None on cache error.
+        enrich_result (EnrichResult | None): Enrichment stage output; None on cache error.
         chunk_result (S4Result | None): Chunking stage output.
         contextualize_result (S5Result | None): Contextualization stage output.
         embed_result (S6Result | None): Embed+index stage output; None when no collection is set.
@@ -40,7 +40,7 @@ class EngineResult:
 
     ingest_result: IngestResult
     parse_result: ParseResult
-    enrich_result: S2Result | None = None          # None only when a cache error occurs
+    enrich_result: EnrichResult | None = None      # None only when a cache error occurs
     chunk_result: S4Result | None = None           # always populated on a successful run
     contextualize_result: S5Result | None = None   # always populated on a successful run
     embed_result: S6Result | None = None           # None when no collection_id is set

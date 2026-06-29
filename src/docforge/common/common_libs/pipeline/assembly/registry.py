@@ -32,7 +32,7 @@ from common_libs.config.pipeline import (
 from common_libs.domain.metadata.meta_field_spec import MetaFieldSpec
 from common_libs.storage.s3.client import S3Client
 from common_libs.pipeline.caches.provider_cache import ProviderCallCache
-from common_libs.pipeline.stages.s2_enrich import S2EnrichStage
+from common_libs.pipeline.ingest.stages.enrich import EnrichResources
 from common_libs.pipeline.stages.s5b_metagen import S5bMetagenStage
 
 # ====== Local Project Imports ======
@@ -75,23 +75,28 @@ class ProviderRegistry(DescribeSurface, LoggerClass):
 
     # ─── Internal stage builders ───────────────────────────────────────────────
 
-    def _build_s2(self, enrich: EnrichConfig) -> S2EnrichStage:
+    def _build_s2(self, enrich: EnrichConfig) -> EnrichResources:
         """
-        Wire S2 with classifier / OCR / VLM chains from the enrichment config.
+        Build the enrich resource bundle (classifier / OCR / VLM chains) from the enrichment config.
+
+        The native ``EnrichStage`` owns its per-capability steps; this builder only resolves the
+        chains + chart flag into the bundle the stage wires its steps around (mirrors how parse
+        returns a ``ParseResources``). ``EnrichResources.params_for_fingerprint`` surfaces the legacy
+        S2 node-cache key.
 
         Args:
             enrich (EnrichConfig): Enrichment configuration block (classifier chain,
-                OCR chain, VLM chain, and gates).
+                OCR chain, VLM chain, gates, and the chart-to-data flag).
 
         Returns:
-            S2EnrichStage: Fully wired enrichment stage ready for the pipeline.
+            EnrichResources: The chains + object store + provider cache + chart flag for the stage.
         """
         classifier_chain = self._build_classifier_chain(
             enrich.classifier_chain, enrich.classifier_gate,
         )
         ocr_chain = self._build_ocr_chain(enrich.ocr_chain, enrich.ocr_gate)
         vlm_chain = self._build_vlm_chain(enrich.vlm_chain, enrich.vlm_gate)
-        return S2EnrichStage(
+        return EnrichResources(
             classifier_chain=classifier_chain,
             ocr_chain=ocr_chain,
             vlm_chain=vlm_chain,

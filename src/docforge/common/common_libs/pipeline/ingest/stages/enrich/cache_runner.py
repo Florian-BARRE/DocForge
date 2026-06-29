@@ -1,12 +1,14 @@
 # ====== Code Summary ======
-# CacheRunner — async helpers that wrap each S2 capability (classifier, OCR, VLM)
-# behind the ProviderCallCache.  Each helper returns a (result, trace, was_hit) tuple
-# so the caller (FigureEnricher) never needs to know the cache key mechanics.
-# Cache-key resolution is delegated to CallKeyHelpers (call_key.py).
-
-from __future__ import annotations
+# CacheRunner — async helpers that wrap the classifier and OCR capabilities behind the
+# ProviderCallCache. Each helper returns a (result, trace, was_hit) tuple so the caller (the
+# classify / OCR steps) never needs to know the cache-key mechanics. Cache-key resolution is
+# delegated to CallKeyHelpers; the VLM capability lives in VlmRunner (it resolves a chart-to-data
+# schema from the concrete provider type). The cache keys are content-based, so running these per
+# capability over all figures yields the same hit/miss pattern as the legacy per-figure path.
 
 # ====== Standard Library Imports ======
+from __future__ import annotations
+
 import json
 from typing import Any
 
@@ -15,7 +17,7 @@ from loggerplusplus import loggerplusplus
 
 from common_libs.pipeline.bricks.chain import Chain
 from common_libs.providers.classifier.base import ClassificationResult
-from common_libs.providers.interfaces import OcrHint, OcrResult, VlmResult
+from common_libs.providers.interfaces import OcrHint, OcrResult
 
 # ====== Internal Project Imports ======
 from common_libs.domain.ir.models import ChainTrace, FigureKind
@@ -24,12 +26,11 @@ from common_libs.pipeline.caches.provider_cache import ProviderCallCache
 # ====== Local Project Imports ======
 from .call_key import CallKeyHelpers
 from .trace_helpers import TraceHelpers
-from .vlm_runner import VlmRunner
 
 
 class CacheRunner:
     """
-    Async helpers that execute each S2 capability through the ``ProviderCallCache``.
+    Async helpers that execute the classifier / OCR capabilities through the ``ProviderCallCache``.
 
     Each ``run_*`` class-method follows the same contract:
 
@@ -167,21 +168,6 @@ class CacheRunner:
             crop_hash, outcome.result.model_dump_json(),
         )
         return outcome.result, trace, False
-
-    @classmethod
-    async def run_vlm(
-        cls,
-        vlm_chain: Chain[Any, Any] | None,
-        provider_cache: ProviderCallCache,
-        crop_bytes: bytes,
-        crop_hash: str,
-        ocr_text: str | None,
-        use_chart_schema: bool,
-    ) -> tuple[VlmResult | None, ChainTrace, bool]:
-        """Run VLM description via the chain (delegates to VlmRunner)."""
-        return await VlmRunner.run_vlm(
-            vlm_chain, provider_cache, crop_bytes, crop_hash, ocr_text, use_chart_schema,
-        )
 
 
 # ------------------- Public API ------------------- #

@@ -23,9 +23,9 @@ if TYPE_CHECKING:
     from common_libs.pipeline.base.stage.keys import StageKey
     from common_libs.pipeline.caches.node_cache import NodeCache
     from common_libs.pipeline.caches.provider_cache import ProviderCallCache
+    from common_libs.pipeline.ingest.stages.enrich.result import EnrichResult
     from common_libs.pipeline.ingest.stages.ingest.result import IngestResult
     from common_libs.pipeline.ingest.stages.parsing.result import ParseResult
-    from common_libs.pipeline.stages.s2_enrich.models import S2Result
     from common_libs.pipeline.stages.s4_chunk.models import S4Result
     from common_libs.pipeline.stages.s5_contextualize.result import S5Result
     from common_libs.pipeline.stages.s5b_metagen.result import S5bResult
@@ -92,7 +92,7 @@ class PipelineContext:
         ingest_result (IngestResult | None): Ingest stage output.
         parse_result (ParseResult | None): Parse stage output.
         ir (DocumentIR | None): The canonical IR (set by parse, mutated by enrich).
-        enrich_result (S2Result | None): S2 (enrich) output.
+        enrich_result (EnrichResult | None): Enrich (S2) output.
         chunks (list[Chunk] | None): The current chunk set (chunk -> contextualize -> metagen).
         doc_fields (dict[str, Any]): Document-scope generated values from metagen.
         doc_meta (dict[str, Any]): Assembled document-level metadata fed to embed/index.
@@ -118,7 +118,7 @@ class PipelineContext:
     ingest_result: "IngestResult | None" = None
     parse_result: "ParseResult | None" = None
     ir: "DocumentIR | None" = None
-    enrich_result: "S2Result | None" = None
+    enrich_result: "EnrichResult | None" = None
     chunks: "list[Chunk] | None" = None
     doc_fields: dict[str, Any] = field(default_factory=dict)
     doc_meta: dict[str, Any] = field(default_factory=dict)

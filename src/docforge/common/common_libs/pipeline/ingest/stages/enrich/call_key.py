@@ -1,7 +1,10 @@
 # ====== Code Summary ======
 # CallKeyHelpers — resolves a chain's first provider into the (provider_id, provider_version,
-# call_fp) triple used to consult and persist the ProviderCallCache.  Shared by every S2
-# capability runner (classifier / OCR / VLM) so the cache-key mechanics live in one place.
+# call_fp) triple used to consult and persist the ProviderCallCache. Shared by every enrich
+# capability runner (classifier / OCR / VLM) so the cache-key mechanics live in one place. The
+# fingerprint is content-based (capability + provider id/version + params + crop hash), so it is
+# independent of iteration order — the per-capability passes produce the same keys as the legacy
+# per-figure path.
 
 # ====== Standard Library Imports ======
 from __future__ import annotations

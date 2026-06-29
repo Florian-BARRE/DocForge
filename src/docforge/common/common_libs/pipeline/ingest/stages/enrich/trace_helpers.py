@@ -1,10 +1,12 @@
 # ====== Code Summary ======
-# TraceHelpers — static factory methods for building ChainTrace IR objects used in S2.
-# Covers three cases: a genuine chain outcome, a provider-call cache hit, and a skipped stage.
-
-from __future__ import annotations
+# TraceHelpers — static factory methods for building ChainTrace IR objects used in the enrich stage.
+# Covers three cases: a genuine chain outcome, a provider-call cache hit, and a skipped capability.
+# The per-capability steps stamp these onto each figure's FigureWork so the assembled block carries
+# the same lineage shape (classify -> ocr -> vlm) the legacy per-figure path produced.
 
 # ====== Standard Library Imports ======
+from __future__ import annotations
+
 from typing import Any
 
 # ====== Third-Party Library Imports ======
@@ -18,12 +20,12 @@ from common_libs.domain.ir.models import ChainAttemptIR, ChainTrace
 
 class TraceHelpers:
     """
-    Static factory helpers for constructing ``ChainTrace`` IR objects in S2.
+    Static factory helpers for constructing ``ChainTrace`` IR objects in the enrich stage.
 
     Three trace shapes are needed:
     - ``from_outcome`` — converts a real ``ChainOutcome`` to a ``ChainTrace``.
     - ``cache_hit`` — synthetic trace for a provider-call cache hit (zero latency).
-    - ``skip`` — synthetic trace for a sub-stage that was bypassed (no chain / no provider).
+    - ``skip`` — synthetic trace for a capability that was bypassed (no chain / no provider).
     """
 
     logger = loggerplusplus.bind(identifier="TraceHelpers")
@@ -63,8 +65,8 @@ class TraceHelpers:
 
         The cache is modelled as a degenerate "provider" so the existing UI does not
         need a new shape: one attempt with ``provider_id="provider_cache"``, a success
-        badge, ``duration=0``.  The original chain's first provider id is
-        carried in the attempt's ``error`` slot so operators can see
+        badge, ``duration=0``. The original chain's first provider id is carried in the
+        attempt's ``error`` slot so operators can see
         "cache hit — would have called <original_provider>".
 
         Args:
@@ -99,7 +101,7 @@ class TraceHelpers:
     @staticmethod
     def skip(stage: str, reason: str) -> ChainTrace:
         """
-        Build a ``ChainTrace`` describing a sub-stage that was skipped.
+        Build a ``ChainTrace`` describing a capability that was skipped.
 
         Used when there is no chain configured for a capability, or when the chain
         has no providers.

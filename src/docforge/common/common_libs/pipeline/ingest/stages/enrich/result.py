@@ -1,20 +1,25 @@
 # ====== Code Summary ======
-# S2Result dataclass — the output contract of the S2 enrichment stage.
-# Carries the enriched IR plus all per-run accounting counters (call/hit counts).
-
-from __future__ import annotations
+# EnrichResult + EnrichCounters — the output contract of the enrich (S2) stage, relocated from the
+# former S2Result/S2Counters with byte-identical fields so the worker node-cache codec round-trip
+# stays unchanged. EnrichResult carries the enriched IR plus all per-run accounting counters (call /
+# cache-hit counts). EnrichCounters is the mutable accumulator the per-capability steps tick as they
+# classify / OCR / VLM / chart-extract; the terminal commit copies its values into the immutable
+# EnrichResult. Kept in its own module so it can be imported without pulling in the stage's chains.
 
 # ====== Standard Library Imports ======
-from dataclasses import dataclass
+from __future__ import annotations
 
-# ====== Third-Party Library Imports ======
-from common_libs.domain.ir.models import DocumentIR
+from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from common_libs.domain.ir.models import DocumentIR
 
 
 @dataclass(slots=True)
-class S2Result:
+class EnrichResult:
     """
-    Output of the S2 enrichment stage (counts + the enriched IR).
+    Output of the enrich (S2) stage (counts + the enriched IR).
 
     Attributes:
         ir (DocumentIR): The IR with all FIGURE blocks enriched in-place.
@@ -28,16 +33,15 @@ class S2Result:
         classifier_cache_hits (int): Number of classifier results served from cache.
     """
 
-    ir: DocumentIR
+    ir: "DocumentIR"
     figures_processed: int
     ocr_calls: int
     vlm_calls: int
     chart_extractions: int
-    # ─── Cache-aware counters (Phase A) ─────────────────────────────────────────
-    # Hits = a duplicate crop was answered from ProviderCallCache without
-    # invoking the underlying chain (zero latency).  Misses
-    # = the chain ran.  ocr_calls / vlm_calls above remain the miss counts
-    # (== number of chain invocations) for backward compatibility.
+    # ─── Cache-aware counters (per-run telemetry, not persisted in the node-cache meta) ──────────
+    # Hits = a duplicate crop was answered from ProviderCallCache without invoking the underlying
+    # chain (zero latency). Misses = the chain ran. ocr_calls / vlm_calls above remain the miss
+    # counts (== number of chain invocations); restoring from cache leaves the hit counters at 0.
     ocr_cache_hits: int = 0
     vlm_cache_hits: int = 0
     classifier_calls: int = 0
@@ -45,13 +49,13 @@ class S2Result:
 
 
 @dataclass(slots=True)
-class S2Counters:
+class EnrichCounters:
     """
-    Mutable per-run accounting accumulator for the S2 enrichment stage.
+    Mutable per-run accounting accumulator for the enrich (S2) stage.
 
-    Mirrors the counter fields of :class:`S2Result` but is mutated in place by
-    ``FigureEnricher.process_block`` as each figure is routed.  The stage copies the
-    final counter values into the immutable ``S2Result`` it returns.
+    Mirrors the counter fields of :class:`EnrichResult` but is mutated in place by the per-capability
+    steps (classify / OCR / VLM / chart) as each figure is routed. The terminal commit copies the
+    final values into the immutable :class:`EnrichResult`.
 
     Attributes:
         figures_processed (int): FIGURE blocks that completed the full routing.
@@ -75,4 +79,4 @@ class S2Counters:
 
 
 # ------------------- Public API ------------------- #
-__all__ = ["S2Result", "S2Counters"]
+__all__ = ["EnrichResult", "EnrichCounters"]

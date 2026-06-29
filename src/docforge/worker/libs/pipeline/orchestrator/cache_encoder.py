@@ -12,7 +12,7 @@ import json
 # ====== Internal Project Imports ======
 from common_libs.pipeline.ingest.stages.ingest.result import IngestResult
 from common_libs.pipeline.ingest.stages.parsing.result import ParseResult
-from common_libs.pipeline.stages.s2_enrich import S2Result
+from common_libs.pipeline.ingest.stages.enrich.result import EnrichResult
 
 
 class CacheEncoder:
@@ -75,12 +75,12 @@ class CacheEncoder:
         ).encode("utf-8")
 
     @staticmethod
-    def encode_s2_meta(s2: S2Result, ir_enriched_key: str) -> bytes:
+    def encode_s2_meta(s2: EnrichResult, ir_enriched_key: str) -> bytes:
         """
-        Serialize S2Result stats and enriched IR key to a compact JSON blob for S3 storage.
+        Serialize EnrichResult stats and enriched IR key to a compact JSON blob for S3 storage.
 
         Args:
-            s2 (S2Result): S2 stage output containing enrichment statistics.
+            s2 (EnrichResult): Enrich stage output containing enrichment statistics.
             ir_enriched_key (str): S3 key where the enriched DocumentIR JSON was uploaded.
 
         Returns:

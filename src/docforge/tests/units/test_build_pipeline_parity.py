@@ -19,8 +19,8 @@ from common_libs.pipeline.assembly.chunk_stage_assembler import ChunkStageAssemb
 from common_libs.pipeline.assembly.stage_assembler import build_pipeline
 from common_libs.pipeline.stages.context import StageDeps
 from common_libs.pipeline.ingest.stages.ingest import IngestDocStage
+from common_libs.pipeline.ingest.stages.enrich import EnrichResources
 from common_libs.pipeline.ingest.stages.parsing import ParseResources, ParsingStage
-from common_libs.pipeline.stages.s2_enrich.core import S2EnrichStage
 from common_libs.pipeline.stages.s4_chunk.core import S4ChunkStage
 from common_libs.pipeline.stages.s5_contextualize.core import S5ContextualizeStage
 from common_libs.pipeline.stages.s5b_metagen.core import S5bMetagenStage
@@ -61,8 +61,9 @@ class TestBuildPipelineParity:
         # Parse is native (no legacy inner); it carries a ParseResources bundle (parser chain + s3).
         assert isinstance(by_key["parse"], ParsingStage)
         assert isinstance(by_key["parse"]._resources, ParseResources)
+        # Enrich is native too (no legacy inner); it carries an EnrichResources bundle (the chains).
+        assert isinstance(by_key["enrich"]._resources, EnrichResources)
         # Each remaining stage wraps the same legacy stage type the old path constructs.
-        assert isinstance(by_key["enrich"]._inner, S2EnrichStage)
         assert isinstance(by_key["chunk"]._inner, S4ChunkStage)
         assert isinstance(by_key["contextualize"]._inner, S5ContextualizeStage)
         assert isinstance(by_key["metagen"]._inner, S5bMetagenStage)
@@ -80,7 +81,7 @@ class TestBuildPipelineParity:
             == registry._build_parser_chain(dp.parse.chain, dp.parse.gate).signature()
         )
         assert (
-            by_key["enrich"]._inner.params_for_fingerprint()
+            by_key["enrich"]._resources.params_for_fingerprint()
             == registry._build_s2(dp.enrich).params_for_fingerprint()
         )
         assert (

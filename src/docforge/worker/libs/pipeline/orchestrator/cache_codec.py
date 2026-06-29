@@ -18,7 +18,7 @@ from common_libs.domain.ir.models import DocumentIR
 from common_libs.storage.s3.client import S3Client
 from common_libs.pipeline.ingest.stages.ingest.result import IngestResult
 from common_libs.pipeline.ingest.stages.parsing.result import ParseResult
-from common_libs.pipeline.stages.s2_enrich import S2Result
+from common_libs.pipeline.ingest.stages.enrich.result import EnrichResult
 
 
 class CacheCodec:
@@ -124,16 +124,16 @@ class CacheCodec:
         return parse_result, ir
 
     @classmethod
-    async def restore_s2(cls, s3: S3Client, s2_meta_key: str) -> tuple[S2Result, DocumentIR]:
+    async def restore_s2(cls, s3: S3Client, s2_meta_key: str) -> tuple[EnrichResult, DocumentIR]:
         """
-        Restore an S2Result and enriched DocumentIR from their S3 meta and IR JSON files.
+        Restore an EnrichResult and enriched DocumentIR from their S3 meta and IR JSON files.
 
         Args:
             s3 (S3Client): SeaweedFS object store client.
-            s2_meta_key (str): S3 key of the S2 meta JSON artefact.
+            s2_meta_key (str): S3 key of the enrich meta JSON artefact.
 
         Returns:
-            tuple[S2Result, DocumentIR]: Restored S2 result and its enriched DocumentIR.
+            tuple[EnrichResult, DocumentIR]: Restored enrich result and its enriched DocumentIR.
         """
         # 1. Download and parse the S2 meta JSON
         raw = await s3.download(s2_meta_key)
@@ -143,8 +143,8 @@ class CacheCodec:
         ir_raw = await s3.download(meta["ir_enriched_key"])
         enriched_ir = DocumentIR.model_validate_json(ir_raw)
 
-        # 3. Rebuild the S2Result from the cached stats
-        enrich_result = S2Result(
+        # 3. Rebuild the EnrichResult from the cached stats
+        enrich_result = EnrichResult(
             ir=enriched_ir,
             figures_processed=meta["figures_processed"],
             ocr_calls=meta["ocr_calls"],

@@ -1,11 +1,14 @@
 # ====== Code Summary ======
-# VlmRunner — runs the S2 VLM capability through the ProviderCallCache.  Kept separate from
-# CacheRunner because VLM is the only capability that resolves a chart-to-data schema from
-# the concrete provider type (via a late import to avoid a circular dependency).
-
-from __future__ import annotations
+# VlmRunner — runs the enrich VLM capability through the ProviderCallCache. Kept separate from
+# CacheRunner because VLM is the only capability that resolves a chart-to-data schema from the
+# concrete provider type (via a late import to avoid a circular dependency). It returns the full
+# VlmResult (description + raw structured output) so the chart step can extract the data table from
+# the same single VLM call — the chart-to-data is a PARAMETER of this call (it changes the requested
+# schema and the cache key), never a second provider call.
 
 # ====== Standard Library Imports ======
+from __future__ import annotations
+
 from typing import Any
 
 # ====== Third-Party Library Imports ======
@@ -27,7 +30,7 @@ class VlmRunner:
     """
     Static helper that runs the VLM capability behind the provider-call cache.
 
-    Same contract as the other S2 capability runners: derive a fingerprint, consult the
+    Same contract as the other enrich capability runners: derive a fingerprint, consult the
     cache (synthetic trace on hit), else invoke the chain and persist the result.
     """
 

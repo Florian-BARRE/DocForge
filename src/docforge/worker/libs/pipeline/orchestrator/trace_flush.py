@@ -15,7 +15,7 @@ from loggerplusplus import loggerplusplus
 from common_libs.domain.ir.models import DocumentIR
 from common_libs.pipeline.ingest.stages.ingest.result import IngestResult
 from common_libs.pipeline.ingest.stages.parsing.result import ParseResult
-from common_libs.pipeline.stages.s2_enrich import S2Result
+from common_libs.pipeline.ingest.stages.enrich.result import EnrichResult
 
 
 class TraceFlusher:
@@ -42,7 +42,7 @@ class TraceFlusher:
         s0_fp: str,
         s1_fp: str,
         ir_key: str,
-        enrich_result: S2Result | None = None,
+        enrich_result: EnrichResult | None = None,
         s2_fp: str | None = None,
     ) -> dict[str, Any]:
         """
@@ -58,7 +58,7 @@ class TraceFlusher:
             s0_fp (str): S0 Merkle fingerprint.
             s1_fp (str): S1 Merkle fingerprint.
             ir_key (str): S3 key for the (pre-enrichment) DocumentIR JSON.
-            enrich_result (S2Result | None): S2 stage output, or None when S2 was skipped.
+            enrich_result (EnrichResult | None): S2 stage output, or None when S2 was skipped.
             s2_fp (str | None): S2 Merkle fingerprint, or None when S2 was skipped.
 
         Returns:

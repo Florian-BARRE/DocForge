@@ -19,7 +19,7 @@ from common_libs.storage.s3.client import S3Client
 from common_libs.pipeline.caches.node_cache import NodeCache
 from common_libs.pipeline.ingest.stages.ingest.result import IngestResult
 from common_libs.pipeline.ingest.stages.parsing.result import ParseResult
-from common_libs.pipeline.stages.s2_enrich import S2Result
+from common_libs.pipeline.ingest.stages.enrich.result import EnrichResult
 
 # ====== Local Project Imports ======
 from .cache_codec import CacheCodec
@@ -113,8 +113,8 @@ class CacheIOHelpers:
         return await CacheCodec.restore_s1(s3, s1_meta_key)
 
     @classmethod
-    async def restore_s2(cls, s3: S3Client, s2_meta_key: str) -> tuple[S2Result, DocumentIR]:
-        """Restore an S2Result + enriched DocumentIR from S3 (delegates to CacheCodec)."""
+    async def restore_s2(cls, s3: S3Client, s2_meta_key: str) -> tuple[EnrichResult, DocumentIR]:
+        """Restore an EnrichResult + enriched DocumentIR from S3 (delegates to CacheCodec)."""
         return await CacheCodec.restore_s2(s3, s2_meta_key)
 
     @staticmethod
@@ -128,8 +128,8 @@ class CacheIOHelpers:
         return CacheEncoder.encode_s1_meta(s1, ir_key)
 
     @staticmethod
-    def encode_s2_meta(s2: S2Result, ir_enriched_key: str) -> bytes:
-        """Serialize S2Result stats to compact JSON bytes (delegates to CacheEncoder)."""
+    def encode_s2_meta(s2: EnrichResult, ir_enriched_key: str) -> bytes:
+        """Serialize EnrichResult stats to compact JSON bytes (delegates to CacheEncoder)."""
         return CacheEncoder.encode_s2_meta(s2, ir_enriched_key)
 
 

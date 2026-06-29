@@ -19,7 +19,7 @@ from loggerplusplus import loggerplusplus
 from common_libs.storage.s3.helpers import S3Helpers
 from common_libs.pipeline.ingest.stages.ingest.result import IngestResult
 from common_libs.pipeline.ingest.stages.parsing.result import ParseResult
-from common_libs.pipeline.stages.s2_enrich import S2Result
+from common_libs.pipeline.ingest.stages.enrich.result import EnrichResult
 
 # ====== Local Project Imports ======
 from .deps import StageDeps
@@ -125,7 +125,7 @@ class S012PersistHelpers:
         parse_result: ParseResult,
         s1_fp: str,
         s0_fp: str,
-        enrich_result: S2Result | None,
+        enrich_result: EnrichResult | None,
         s2_fp: str,
         final_ir: Any,
         s1_cache_hit: bool,
@@ -149,7 +149,7 @@ class S012PersistHelpers:
             parse_result (ParseResult): S1 output (contributes markdown_key to implicit_meta).
             s1_fp (str): S1 Merkle fingerprint.
             s0_fp (str): S0 Merkle fingerprint.
-            enrich_result (S2Result | None): S2 output, or None when S2 was skipped.
+            enrich_result (EnrichResult | None): S2 output, or None when S2 was skipped.
             s2_fp (str): S2 Merkle fingerprint.
             final_ir (DocumentIR): Enriched IR (or raw S1 IR when S2 skipped).
             s1_cache_hit (bool): True when S1 was a cache hit (blocks already stored).
