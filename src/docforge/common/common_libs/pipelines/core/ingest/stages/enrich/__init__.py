@@ -1,5 +1,6 @@
 # ---------------------- Enrich stage ------------------------- #
 from .core import IngestStageEnrich
+from .config import IngestStageEnrichConfig
 from .context import IngestStageEnrichContext
 from .errors import IngestStageEnrichError
 from .io import IngestStageEnrichInput, IngestStageEnrichOutput
@@ -10,6 +11,7 @@ from .result import EnrichResult
 # ---------------------- Public API --------------------------- #
 __all__ = [
     "IngestStageEnrich",
+    "IngestStageEnrichConfig",
     "IngestStageEnrichContext",
     "IngestStageEnrichError",
     "IngestStageEnrichInput",

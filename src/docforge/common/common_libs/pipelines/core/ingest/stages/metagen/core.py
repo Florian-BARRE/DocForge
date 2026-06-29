@@ -15,6 +15,7 @@ from common_libs.pipelines import CachePolicy, NodeOutput, StageKey, StageSpec
 
 # ====== Local Project Imports ======
 from ..base import IngestStageBase
+from .config import IngestStageMetagenConfig
 from .context import IngestStageMetagenContext
 from .errors import IngestStageMetagenError
 from .io import IngestStageMetagenInput, IngestStageMetagenOutput
@@ -48,36 +49,36 @@ class IngestStageMetagen(IngestStageBase):
     Output = IngestStageMetagenOutput
     Context = IngestStageMetagenContext
     Error = IngestStageMetagenError
+    Config = IngestStageMetagenConfig
 
     def __init__(
         self,
         targets: list[MetaGenTarget],
         field_types: dict[str, MetaFieldSpec],
-        max_concurrency: int = 8,
-        max_budget_usd: float = 0.0,
+        config: IngestStageMetagenConfig | None = None,
     ) -> None:
         """
         Build the four metagen steps with their assembly-time config.
 
         Args:
             targets (list[MetaGenTarget]): Field bindings ``{field, prompt, scope}``; empty disables
-                the stage (every step becomes a no-op passthrough).
+                the stage (every step becomes a no-op passthrough). Derived by the assembler from the
+                collection metadata schema (not a free-form Config knob).
             field_types (dict[str, MetaFieldSpec]): Resolved type lookup for the generated fields,
-                keyed by field name. Targets whose field is absent are ignored.
-            max_concurrency (int): Maximum concurrent chunk-scope LLM calls.
-            max_budget_usd (float): Estimated-cost cap per document (0 = unlimited).
+                keyed by field name. Targets whose field is absent are ignored. Also assembler-derived.
+            config (IngestStageMetagenConfig | None): The pure-setting knobs (generation budget +
+                concurrency). When None, the default config is used.
         """
         # 1. Keep the assembly config so parity checks / describe can reach it.
         super().__init__()
+        self._config = config if config is not None else IngestStageMetagenConfig()
         self._targets = targets
         self._field_types = field_types
-        self._max_concurrency = max_concurrency
-        self._max_budget_usd = max_budget_usd
 
         # 2. Build the steps; the engine topo-orders them by their input bindings.
         self._steps = [
-            IngestStageMetagenStepBudgetGate(targets, field_types, max_budget_usd),
-            IngestStageMetagenStepChunkScope(targets, field_types, max_concurrency),
+            IngestStageMetagenStepBudgetGate(targets, field_types, self._config.max_budget_usd),
+            IngestStageMetagenStepChunkScope(targets, field_types, self._config.max_concurrency),
             IngestStageMetagenStepDocScope(targets, field_types),
             IngestStageMetagenStepAssembleDocMeta(),
         ]

@@ -16,6 +16,7 @@ from common_libs.pipelines import CachePolicy, NodeOutput, StageKey, StageSpec
 
 # ====== Local Project Imports ======
 from ..base import IngestStageBase
+from .config import IngestStageEnrichConfig
 from .context import IngestStageEnrichContext
 from .errors import IngestStageEnrichError
 from .io import IngestStageEnrichInput, IngestStageEnrichOutput
@@ -50,30 +51,35 @@ class IngestStageEnrich(IngestStageBase):
     Output = IngestStageEnrichOutput
     Context = IngestStageEnrichContext
     Error = IngestStageEnrichError
+    Config = IngestStageEnrichConfig
 
     def __init__(
         self,
+        config: IngestStageEnrichConfig | None = None,
         ocr_enabled: bool = False,
         vlm_enabled: bool = False,
-        chart_to_data: bool = False,
     ) -> None:
         """
         Build the four enrich steps in declaration order (the engine topo-orders them).
 
         Args:
-            ocr_enabled (bool): Whether an OCR chain is wired (drives the classify routing decision).
-            vlm_enabled (bool): Whether a VLM chain is wired (drives the classify routing decision).
-            chart_to_data (bool): The ``enrich.chart_to_data`` flag (drives the chart-schema decision).
+            config (IngestStageEnrichConfig | None): The stage's pure-setting knobs (chart-to-data
+                toggle). When None, the default config is used.
+            ocr_enabled (bool): Whether an OCR chain is wired (assembler-derived; drives the classify
+                routing decision).
+            vlm_enabled (bool): Whether a VLM chain is wired (assembler-derived; drives the classify
+                routing decision).
         """
         super().__init__()
+        self._config = config if config is not None else IngestStageEnrichConfig()
         self._ocr_enabled = ocr_enabled
         self._vlm_enabled = vlm_enabled
-        self._chart_to_data = chart_to_data
+        self._chart_to_data = self._config.chart_to_data
         self._steps = [
             IngestStageEnrichStepClassify(
                 ocr_enabled=ocr_enabled,
                 vlm_enabled=vlm_enabled,
-                chart_to_data=chart_to_data,
+                chart_to_data=self._config.chart_to_data,
             ),
             IngestStageEnrichStepOcr(),
             IngestStageEnrichStepVlm(),

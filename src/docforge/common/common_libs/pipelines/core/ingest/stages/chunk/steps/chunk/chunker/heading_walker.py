@@ -10,10 +10,10 @@ import re
 from loggerplusplus import loggerplusplus
 
 # ====== Internal Project Imports ======
-from common_libs.config.pipeline import AtomicConfig
 from common_libs.domain.ir.models import Block, BlockType, FigureKind
 
 # ====== Local Project Imports ======
+from ....config import AtomicConfig
 from .models import _Segment, _Special
 
 # Regex heading candidates are restricted to short, single-line blocks to avoid promoting

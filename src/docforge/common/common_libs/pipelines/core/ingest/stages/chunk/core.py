@@ -1,19 +1,17 @@
 # ====== Code Summary ======
 # IngestStageChunk — the chunk stage of the ingest pipeline (StageKey.CHUNK). It owns a single step
-# (structure-aware chunking) built around a constructor-injected chunking engine whose splitter +
-# heading rules + atomic policy + flat/hierarchical mode are assembly-time choices. IDEMPOTENT_WRITE:
-# chunk ids are deterministic (UUID5 of doc_id + block_ids + config_hash + ordinal) and the Postgres
-# upsert is idempotent, so the stage is never node-cached.
-
-# ====== Standard Library Imports ======
-from typing import Any
+# (structure-aware chunking) built around a constructor-injected chunking engine whose heading rules,
+# atomic policy, and flat/hierarchical mode come from the co-located ``Config`` while the splitter
+# instance is injected as a SERVICE (the assembler builds it from ``Config.split_method``).
+# IDEMPOTENT_WRITE: chunk ids are deterministic (UUID5 of doc_id + block_ids + config_hash + ordinal)
+# and the Postgres upsert is idempotent, so the stage is never node-cached.
 
 # ====== Internal Project Imports ======
-from common_libs.config.pipeline import AtomicConfig
 from common_libs.pipelines import CachePolicy, NodeOutput, StageKey, StageSpec
 
 # ====== Local Project Imports ======
 from ..base import IngestStageBase
+from .config import IngestStageChunkConfig
 from .context import IngestStageChunkContext
 from .errors import IngestStageChunkError
 from .io import IngestStageChunkInput, IngestStageChunkOutput
@@ -42,40 +40,35 @@ class IngestStageChunk(IngestStageBase):
     Output = IngestStageChunkOutput
     Context = IngestStageChunkContext
     Error = IngestStageChunkError
+    Config = IngestStageChunkConfig
 
     def __init__(
         self,
+        config: IngestStageChunkConfig | None = None,
         *,
         splitter: SectionSplitter | None = None,
-        heading_rules: list[Any] | None = None,
-        reinject_breadcrumb: bool = True,
-        merge_short_sections: bool = True,
-        atomic: AtomicConfig | None = None,
-        cross_references: bool = True,
-        hierarchical: bool = False,
     ) -> None:
         """
-        Build the chunking engine from the assembly-time configuration and wire the single step.
+        Build the chunking engine from the co-located config + injected splitter and wire the step.
 
         Args:
-            splitter (SectionSplitter | None): Intra-section split method. None -> a default
-                TokenBudgetSplitter.
-            heading_rules (list | None): Ordered HeadingRule-like objects promoting text to headings.
-            reinject_breadcrumb (bool): Record the section breadcrumb on each chunk.
-            merge_short_sections (bool): Pack small sibling sections together (flat mode only).
-            atomic (AtomicConfig | None): Atomic-block policy (tables/figures/formulas/captions).
-            cross_references (bool): Run the cross-reference linking pass.
-            hierarchical (bool): Emit a parent chunk per divided section over its children.
+            config (IngestStageChunkConfig | None): The structure-aware chunking knobs (heading rules,
+                merge/breadcrumb flags, atomic policy, flat/hierarchical mode, split-method choice).
+                When None, the default config is used.
+            splitter (SectionSplitter | None): The built intra-section splitter SERVICE — the assembler
+                instantiates it from ``config.split_method`` and injects it here. None -> the chunking
+                engine falls back to a default TokenBudgetSplitter.
         """
         super().__init__()
+        self._config = config if config is not None else IngestStageChunkConfig()
         chunker = StructureAwareChunker(
             splitter=splitter,
-            heading_rules=heading_rules,
-            reinject_breadcrumb=reinject_breadcrumb,
-            merge_short_sections=merge_short_sections,
-            atomic=atomic,
-            cross_references=cross_references,
-            hierarchical=hierarchical,
+            heading_rules=self._config.heading_rules,
+            reinject_breadcrumb=self._config.reinject_breadcrumb,
+            merge_short_sections=self._config.merge_short_sections,
+            atomic=self._config.atomic,
+            cross_references=self._config.cross_references,
+            hierarchical=self._config.hierarchical,
         )
         self._steps = [IngestStageChunkStepChunk(chunker)]
 

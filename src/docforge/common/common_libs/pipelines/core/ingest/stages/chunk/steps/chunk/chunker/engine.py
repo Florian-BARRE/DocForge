@@ -19,10 +19,10 @@ from typing import Any
 from loggerplusplus import LoggerClass
 
 # ====== Internal Project Imports ======
-from common_libs.config.pipeline import AtomicConfig
 from common_libs.domain.ir.models import DocumentIR
 
 # ====== Local Project Imports ======
+from ....config import AtomicConfig
 from .assemblers.dispatcher import ChunkAssembler
 from .heading_walker import HeadingWalker
 from .linker import CrossReferenceLinker

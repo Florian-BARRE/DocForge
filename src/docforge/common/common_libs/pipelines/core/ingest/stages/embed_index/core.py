@@ -10,6 +10,7 @@ from common_libs.pipelines import CachePolicy, NodeOutput, StageKey, StageSpec
 
 # ====== Local Project Imports ======
 from ..base import IngestStageBase
+from .config import IngestStageEmbedIndexConfig
 from .context import IngestStageEmbedIndexContext
 from .errors import IngestStageEmbedIndexError
 from .io import IngestStageEmbedIndexInput, IngestStageEmbedIndexOutput
@@ -21,9 +22,6 @@ from .steps import (
     IngestStageEmbedIndexStepPlanVectors,
     IngestStageEmbedIndexStepUpsertQdrant,
 )
-
-# Default texts sent per embed chain attempt (matches the legacy S6 batch size).
-_DEFAULT_EMBED_BATCH_SIZE = 64
 
 
 class IngestStageEmbedIndex(IngestStageBase):
@@ -48,19 +46,23 @@ class IngestStageEmbedIndex(IngestStageBase):
     Output = IngestStageEmbedIndexOutput
     Context = IngestStageEmbedIndexContext
     Error = IngestStageEmbedIndexError
+    Config = IngestStageEmbedIndexConfig
 
-    def __init__(self, embed_batch_size: int = _DEFAULT_EMBED_BATCH_SIZE) -> None:
+    def __init__(self, config: IngestStageEmbedIndexConfig | None = None) -> None:
         """
-        Build the six embed_index steps in declaration order (the engine topo-orders them).
+        Wire the stage around its config and build its six steps in declaration order.
 
         Args:
-            embed_batch_size (int): Texts sent per embed chain attempt (shared by both embed steps).
+            config (IngestStageEmbedIndexConfig | None): The embed batch-size knob. When None, the
+                default config is used. The engine topo-orders the resulting steps by their bindings.
         """
         super().__init__()
+        self._config = config if config is not None else IngestStageEmbedIndexConfig()
+        batch_size = self._config.embed_batch_size
         self._steps = [
             IngestStageEmbedIndexStepPlanVectors(),
-            IngestStageEmbedIndexStepEmbedContent(embed_batch_size),
-            IngestStageEmbedIndexStepEmbedFields(embed_batch_size),
+            IngestStageEmbedIndexStepEmbedContent(batch_size),
+            IngestStageEmbedIndexStepEmbedFields(batch_size),
             IngestStageEmbedIndexStepAssemblePoints(),
             IngestStageEmbedIndexStepUpsertQdrant(),
             IngestStageEmbedIndexStepPersistChunks(),
