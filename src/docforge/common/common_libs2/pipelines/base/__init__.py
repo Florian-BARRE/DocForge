@@ -19,13 +19,15 @@ from .io import (
 # ---------------------- Errors ------------------------------- #
 from .errors import NodeError, PipelineError, ResolutionError, StageError, StepError
 
-# ---------------------- Context (vertical axis) -------------- #
+# ---------------------- Context (hierarchy + vertical axis) -- #
 from .context import (
-    CapabilityRef,
-    CapabilityRegistry,
-    CapabilityView,
+    ContextBase,
+    PipelineContextBase,
     RunContext,
-    Scope,
+    ServiceRef,
+    ServiceRegistry,
+    StageContextBase,
+    StepContextBase,
 )
 
 # ---------------------- Describe schema ---------------------- #
@@ -60,10 +62,12 @@ __all__ = [
     "StageError",
     "StepError",
     # context
-    "CapabilityRef",
-    "CapabilityRegistry",
-    "CapabilityView",
-    "Scope",
+    "ContextBase",
+    "PipelineContextBase",
+    "StageContextBase",
+    "StepContextBase",
+    "ServiceRef",
+    "ServiceRegistry",
     "RunContext",
     # schema
     "NodeSchema",

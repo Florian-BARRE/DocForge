@@ -6,8 +6,6 @@
 # dependency DAG, imports nothing internal.
 
 # ====== Standard Library Imports ======
-from __future__ import annotations
-
 from enum import StrEnum
 
 

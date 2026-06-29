@@ -14,8 +14,6 @@
 # the mandatory contract docstrings.
 
 # ====== Standard Library Imports ======
-from __future__ import annotations
-
 import time
 
 # ====== Third-Party Library Imports ======
@@ -25,14 +23,13 @@ from loggerplusplus import LoggerClass
 from ..base import (
     AbstractNode,
     CachePolicy,
-    CapabilityRegistry,
     CompositeNode,
+    ContextBase,
     ErrorPolicy,
-    NodeError,
     NodeOutput,
     PipelineError,
     RunContext,
-    Scope,
+    ServiceRegistry,
 )
 
 # ====== Local Project Imports ======
@@ -74,13 +71,13 @@ class PipelineEngine(LoggerClass):
                 hierarchical report.
         """
         # 1. One-time environment prep (e.g. download original bytes).
+        self.logger.info(f"Pipeline {root.key!r} started.")
         await self._hooks.prepare(run)
 
-        # 2. Build the root's input (root has no parent → its parent input IS the run input), then
-        # drive it with an empty sibling context.
-        root_input = Resolver.build_input(root, run.run_input, run.run_input, {})
-        output, report = await self._run_node(
-            root, root_input, run.run_input, run.capabilities, run, {}
+        # 2. The root's input IS the run input — it is provided directly, never resolved from
+        # bindings (a pipeline is the source of the run data, not a consumer of upstream outputs).
+        output, report, _error = await self._run_node(
+            root, run.run_input, None, run.services, run, {}
         )
 
         # 3. Terminal lifecycle from the root's status.
@@ -96,67 +93,75 @@ class PipelineEngine(LoggerClass):
         self,
         node: AbstractNode,
         node_input: NodeOutput,
-        parent_input: NodeOutput,
-        registry: "CapabilityRegistry",
+        parent_ctx: "ContextBase | None",
+        registry: "ServiceRegistry",
         run: "RunContext",
         siblings: dict[str, NodeOutput],
-    ) -> tuple[NodeOutput | None, NodeReport]:
+    ) -> tuple[NodeOutput | None, NodeReport, "PipelineError | None"]:
         """
         Run a single node (composite or leaf), capturing its outcome into a report (never raising).
 
         Args:
             node (AbstractNode): The node to run.
             node_input (NodeOutput): The node's already-resolved typed Input.
-            parent_input (NodeOutput): The parent composite's resolved input (unused by leaves; this
-                node's own input becomes the parent input for ITS children).
-            registry (CapabilityRegistry): The capability registry visible at the parent level.
+            parent_ctx (ContextBase | None): The parent node's context (None at the root); the
+                child's context links to it so a node can walk up the tree.
+            registry (ServiceRegistry): The service registry visible at the parent level.
             run (RunContext): The run-wide state.
             siblings (dict[str, NodeOutput]): Outputs of this node's already-run siblings.
 
         Returns:
-            tuple[NodeOutput | None, NodeReport]: The node output (None on failure) and its report.
+            tuple[NodeOutput | None, NodeReport, PipelineError | None]: The node output (None on
+                failure), its report, and the failure (the wrapped error the parent re-wraps), or
+                None when the node succeeded.
         """
-        _ = parent_input  # reserved for symmetry; a node's own input is what flows to its children
-        # 1. Push this node's local capabilities so its subtree can resolve them (vertical axis).
-        local = node.local_capabilities()
+        # 1. Push this node's local services so its subtree can resolve them (vertical axis).
+        local = node.local_services()
         scoped_registry = registry.child(local) if local else registry
 
         report = NodeReport(
             key=node.key,
             kind=str(node.KIND),
-            inputs=list(getattr(node_input, "model_fields", {}).keys()),
+            inputs=list(type(node_input).model_fields.keys()),
         )
         started = time.perf_counter()
         output: NodeOutput | None = None
+        error: PipelineError | None = None
         try:
-            # 2. Resolve the capabilities the node declared it requires.
-            capabilities = Resolver.resolve_capabilities(node, scoped_registry)
+            # 2. Resolve the node's required services and build its concrete context.
+            services = Resolver.resolve_services(node, scoped_registry)
+            ctx = node.Context(node_input, services, parent_ctx)
 
-            # 3. Composite -> drive children; leaf -> run the work through the middleware.
+            # 3. Composite -> drive children (it re-wraps a failing child in node.Error); leaf ->
+            # run the work through the middleware (its execute may raise its own typed error).
             if isinstance(node, CompositeNode):
-                output = await self._run_composite(node, node_input, scoped_registry, run, report)
+                output = await self._run_composite(node, ctx, scoped_registry, run, report)
             else:
-                output = await self._run_leaf(node, node_input, capabilities, run, report)
+                output = await self._run_leaf(node, ctx, run, report)
             if report.status == ReportStatus.PENDING:
                 report.status = ReportStatus.OK
         except PipelineError as exc:
+            error = exc
             report.status = ReportStatus.FAILED
             report.error = ErrorInfo.from_exception(exc)
+            self.logger.warning(f"Node {node.key!r} failed ({exc.code}): {exc}")
             await self._hooks.on_error(node, exc, run)
-        except Exception as exc:  # wrap any non-pipeline exception as a node failure
-            wrapped = NodeError(str(exc), node_key=node.key, node_kind=node.KIND, cause=exc)
+        except Exception as exc:  # wrap a raw exception in THIS node's own Error type
+            wrapped = node.Error(str(exc), node_key=node.key, node_kind=node.KIND, cause=exc)
+            error = wrapped
             report.status = ReportStatus.FAILED
             report.error = ErrorInfo.from_exception(wrapped)
+            self.logger.warning(f"Node {node.key!r} raised {type(exc).__name__}: {exc}")
             await self._hooks.on_error(node, wrapped, run)
         finally:
             report.duration_ms = int((time.perf_counter() - started) * 1000)
-        return output, report
+        return output, report, error
 
     async def _run_composite(
         self,
         node: CompositeNode,
-        node_input: NodeOutput,
-        registry: "CapabilityRegistry",
+        ctx: "ContextBase",
+        registry: "ServiceRegistry",
         run: "RunContext",
         report: NodeReport,
     ) -> NodeOutput | None:
@@ -165,8 +170,9 @@ class PipelineEngine(LoggerClass):
 
         Args:
             node (CompositeNode): The composite node.
-            node_input (NodeOutput): The composite's resolved input (the children's parent input).
-            registry (CapabilityRegistry): The registry visible to the children.
+            ctx (ContextBase): The composite's own context — its ``input`` is the children's parent
+                input and ``ctx`` itself is their parent context.
+            registry (ServiceRegistry): The registry visible to the children.
             run (RunContext): The run-wide state.
             report (NodeReport): The composite's report (children appended here).
 
@@ -175,29 +181,28 @@ class PipelineEngine(LoggerClass):
         """
         outputs: dict[str, NodeOutput] = {}
         for child in self._topo_order(node.children):
-            # 1. Resolve the child's typed input from sibling outputs + parent input + run input.
+            # 1. Resolve the child's typed input; a resolution failure is a child failure.
             try:
-                child_input = Resolver.build_input(child, run.run_input, node_input, outputs)
+                child_input = Resolver.build_input(child, run.run_input, ctx.input, outputs)
             except PipelineError as exc:
                 child_report = NodeReport(
                     key=child.key, kind=str(child.KIND), status=ReportStatus.FAILED,
                     error=ErrorInfo.from_exception(exc),
                 )
                 report.add_child(child_report)
-                if not self._tolerate(child, child_report, report):
-                    return None
+                self._apply_child_policy(node, child, exc)  # raises node.Error if FAIL
                 continue
 
-            # 2. Run the child; record its report.
-            child_output, child_report = await self._run_node(
-                child, child_input, node_input, registry, run, outputs
+            # 2. Run the child (linking it to this composite's context); record its report.
+            child_output, child_report, child_error = await self._run_node(
+                child, child_input, ctx, registry, run, outputs
             )
             report.add_child(child_report)
 
-            # 3. On child failure, apply the child's authoritative error policy.
-            if child_report.status == ReportStatus.FAILED:
-                if not self._tolerate(child, child_report, report):
-                    return None
+            # 3. On child failure, apply its authoritative policy: FAIL re-wraps + propagates,
+            # SKIP/DEGRADE continue without the child's output.
+            if child_error is not None:
+                self._apply_child_policy(node, child, child_error)
                 continue
 
             # 4. Success -> publish the child's output for its downstream siblings.
@@ -209,8 +214,7 @@ class PipelineEngine(LoggerClass):
     async def _run_leaf(
         self,
         node: AbstractNode,
-        node_input: NodeOutput,
-        capabilities: object,
+        ctx: "ContextBase",
         run: "RunContext",
         report: NodeReport,
     ) -> NodeOutput | None:
@@ -219,8 +223,7 @@ class PipelineEngine(LoggerClass):
 
         Args:
             node (AbstractNode): The leaf node.
-            node_input (NodeOutput): Its resolved typed Input.
-            capabilities (object): Its resolved ``CapabilityView``.
+            ctx (ContextBase): The node's resolved context (input + services), passed to ``execute``.
             run (RunContext): The run-wide state.
             report (NodeReport): The leaf's report (status set here for skip/cache).
 
@@ -240,35 +243,42 @@ class PipelineEngine(LoggerClass):
                 report.status = ReportStatus.CACHE_HIT
                 return cached
 
-        # 3. Miss — pre-run prep, execute, then store + post-run epilogue.
+        # 3. Miss — pre-run prep, execute (the node reads its context), then store + post-run.
         await self._hooks.before_node(node, run)
-        output = await node.execute(Scope(input=node_input, capabilities=capabilities))
+        output = await node.execute(ctx)
         if getattr(node.SPEC, "cache_policy", None) == CachePolicy.NODE_CACHED:
             await self._hooks.cache_store(node, output, run)
         await self._hooks.after_node(node, output, run)
         return output
 
     @staticmethod
-    def _tolerate(
-        child: AbstractNode, child_report: NodeReport, parent_report: NodeReport
-    ) -> bool:
+    def _apply_child_policy(
+        parent: "CompositeNode", child: AbstractNode, child_error: "PipelineError"
+    ) -> None:
         """
-        Apply a failed child's error policy: tolerate (continue) or propagate (fail the parent).
+        Apply a failed child's authoritative error policy.
+
+        On FAIL, the parent RE-WRAPS the child's error in its own ``Error`` type (with the child
+        error as ``cause``) and raises it — so the failure climbs the tree as a recursive cause
+        chain (step error -> stage error -> pipeline error). On SKIP/DEGRADE, it returns and the run
+        continues without the child's output.
 
         Args:
+            parent (CompositeNode): The composite whose child failed.
             child (AbstractNode): The failed child.
-            child_report (NodeReport): Its report (its error is copied up on propagation).
-            parent_report (NodeReport): The parent report (failed here on propagation).
+            child_error (PipelineError): The child's failure (becomes the wrapped ``cause``).
 
-        Returns:
-            bool: True to continue the run (SKIP/DEGRADE); False to fail the parent (FAIL).
+        Raises:
+            PipelineError: The parent's wrapped error, when the child's policy is FAIL.
         """
         if child.error_policy == ErrorPolicy.FAIL:
-            parent_report.status = ReportStatus.FAILED
-            parent_report.error = child_report.error
-            return False
+            raise parent.Error(
+                f"{parent.KIND}:{parent.key!r} failed because child {child.key!r} failed.",
+                node_key=parent.key,
+                node_kind=parent.KIND,
+                cause=child_error,
+            )
         # SKIP / DEGRADE — the child stays FAILED in the report; the run continues without its output.
-        return True
 
     @staticmethod
     def _topo_order(nodes: list[AbstractNode]) -> list[AbstractNode]:

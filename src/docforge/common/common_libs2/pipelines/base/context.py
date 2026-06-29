@@ -1,22 +1,16 @@
 # ====== Code Summary ======
-# The run-context primitives — the vertical (capability) axis and the per-node Scope.
-#   - CapabilityRef: how a node NAMES a capability it requires (a serialisable Pydantic descriptor).
-#   - CapabilityRegistry: a hierarchical store. Resolution walks UP the ancestor chain, so a deeper
-#     level specialises/overrides the broader one — the "more specialised the deeper you go"
-#     mechanism, expressed as lexical-scope resolution.
-#   - CapabilityView: the resolved, read-only set handed to a node for its run.
-#   - Scope: what a leaf node receives in execute() — its resolved typed Input + its capabilities.
-#   - RunContext: the run-wide state (the pipeline input + the root capability registry) that flows
-#     down to every descendant.
-# The registry / view / scope / run-context are runtime CARRIERS: they hold live infrastructure
-# handles (S3/Postgres/Qdrant clients) that are not serialisable by nature, so they stay lightweight
-# dataclasses — only the descriptive CapabilityRef is a Pydantic model.
+# The context layer — what every node receives to do its work, as a hierarchical class tree that
+# mirrors the node tree. ``ContextBase`` is the universal machinery (the node's resolved ``input``,
+# the ``services`` it requires, and a ``parent`` link to walk up). The three KIND bases
+# (PipelineContextBase / StageContextBase / StepContextBase) differentiate the levels; concrete nodes
+# subclass the matching base in their own ``context.py`` and add typed accessors (``ctx.input`` /
+# ``ctx.parser``). ``ServiceRef`` is how a node declares a service it needs; ``ServiceRegistry`` is the
+# hierarchical store the engine resolves them from (a node author never touches it). ``RunContext`` is
+# the engine's run-level handle (the run input + the root service registry).
 
 # ====== Standard Library Imports ======
-from __future__ import annotations
-
 from dataclasses import dataclass, field
-from typing import Any, Generic, TypeVar
+from typing import Any
 
 # ====== Third-Party Library Imports ======
 from pydantic import BaseModel, ConfigDict
@@ -25,15 +19,17 @@ from pydantic import BaseModel, ConfigDict
 from .errors import ResolutionError
 from .io import NodeInput
 
-InputT = TypeVar("InputT", bound=NodeInput)
 
-
-class CapabilityRef(BaseModel):
+class ServiceRef(BaseModel):
     """
-    A serialisable reference to a capability a node requires (resolved up the ancestor chain).
+    A serialisable reference to a service a node requires (resolved up the registry chain).
+
+    A *service* is a built, live handle a node uses to work — an S3/Postgres/Qdrant client or an
+    instantiated brick from a ``capabilities/`` folder (e.g. a Parser). Declared in a node's
+    ``REQUIRES``; the engine resolves it and exposes it on the node's context.
 
     Attributes:
-        name (str): Lookup name in the capability registry (e.g. ``"s3"``, ``"ocr_chain"``).
+        name (str): Lookup name in the service registry (e.g. ``"s3"``, ``"parser"``).
         description (str): One-line description, surfaced by describe().
     """
 
@@ -44,119 +40,119 @@ class CapabilityRef(BaseModel):
 
 
 @dataclass(frozen=True, slots=True)
-class CapabilityRegistry:
+class ServiceRegistry:
     """
-    Hierarchical capability store — the vertical resolution axis (runtime carrier).
+    Hierarchical service store — the vertical resolution axis (runtime carrier).
 
-    A node entering the tree may push a child registry carrying its own (more specialised)
-    capabilities; resolution checks the local layer first, then walks up to the parent, so a local
-    capability overrides a broader ancestor one.
+    A node entering the tree may push a child registry carrying its own (more specialised) services;
+    resolution checks the local layer first, then walks up to the parent, so a local service
+    overrides a broader ancestor one.
 
     Attributes:
-        items (dict[str, Any]): Capabilities provided at THIS level (live handles, not serialisable).
-        parent (CapabilityRegistry | None): The enclosing (broader) level, or None at the root.
+        items (dict[str, Any]): Services provided at THIS level (live handles, not serialisable).
+        parent (ServiceRegistry | None): The enclosing (broader) level, or None at the root.
     """
 
     items: dict[str, Any] = field(default_factory=dict)
-    parent: "CapabilityRegistry | None" = None
+    parent: "ServiceRegistry | None" = None
 
     def resolve(self, name: str) -> Any | None:
-        """
-        Resolve a capability by name, local layer first then up the ancestor chain.
-
-        Args:
-            name (str): Capability lookup name.
-
-        Returns:
-            Any | None: The capability, or None when no level provides it.
-        """
+        """Resolve a service by name, local layer first then up the ancestor chain."""
         if name in self.items:
             return self.items[name]
         if self.parent is not None:
             return self.parent.resolve(name)
         return None
 
-    def child(self, items: dict[str, Any]) -> "CapabilityRegistry":
-        """
-        Return a new registry layer that specialises this one with ``items``.
-
-        Args:
-            items (dict[str, Any]): Capabilities owned by the deeper level.
-
-        Returns:
-            CapabilityRegistry: A child registry whose parent is ``self``.
-        """
-        return CapabilityRegistry(items=items, parent=self)
+    def child(self, items: dict[str, Any]) -> "ServiceRegistry":
+        """Return a new registry layer that specialises this one with ``items``."""
+        return ServiceRegistry(items=items, parent=self)
 
 
-@dataclass(frozen=True, slots=True)
-class CapabilityView:
+class ContextBase:
     """
-    The resolved, read-only capabilities handed to a single node for its run (runtime carrier).
+    Universal machinery every node's context inherits — its input, its services, and its parent.
 
-    Attributes:
-        items (dict[str, Any]): Resolved name -> capability (exactly the node's declared ``REQUIRES``).
+    Node authors never construct this; the engine builds the node's concrete ``Context`` subclass and
+    hands it to ``execute``. Concrete contexts narrow ``input`` and add typed service accessors.
     """
 
-    items: dict[str, Any] = field(default_factory=dict)
-
-    def get(self, name: str) -> Any | None:
-        """Return a resolved capability by name, or None if the node did not require it."""
-        return self.items.get(name)
-
-    def require(self, name: str) -> Any:
+    def __init__(
+        self,
+        node_input: NodeInput,
+        services: dict[str, Any],
+        parent: "ContextBase | None" = None,
+    ) -> None:
         """
-        Return a resolved capability by name, raising when absent.
+        Args:
+            node_input (NodeInput): The node's resolved typed input.
+            services (dict[str, Any]): The resolved services the node declared in ``REQUIRES``.
+            parent (ContextBase | None): The parent node's context, or None at the root.
+        """
+        self._input = node_input
+        self._services = services
+        self._parent = parent
+
+    @property
+    def input(self) -> NodeInput:
+        """The node's resolved typed input (concrete contexts narrow the return type)."""
+        return self._input
+
+    @property
+    def parent(self) -> "ContextBase | None":
+        """The parent node's context (walk up the tree), or None at the root."""
+        return self._parent
+
+    def service(self, name: str) -> Any:
+        """
+        Return a resolved service by name, raising when the node did not require it.
 
         Args:
-            name (str): Capability name (must be in the node's declared ``REQUIRES``).
-
-        Returns:
-            Any: The resolved capability.
+            name (str): Service name (must be in the node's declared ``REQUIRES``).
 
         Raises:
-            ResolutionError: When the capability was not resolved for this node.
+            ResolutionError: When the service was not resolved for this node.
         """
-        if name not in self.items:
+        if name not in self._services:
             raise ResolutionError(
-                f"Capability {name!r} was not resolved for this node (is it in REQUIRES?).",
-                code="capability_missing",
+                f"Service {name!r} was not resolved for this node (is it in REQUIRES?).",
+                code="service_missing",
             )
-        return self.items[name]
+        return self._services[name]
 
 
-@dataclass(frozen=True, slots=True)
-class Scope(Generic[InputT]):
-    """
-    Everything a leaf node receives to do its work: its resolved input + its capabilities.
+class PipelineContextBase(ContextBase):
+    """Base context for a pipeline-level node."""
 
-    Attributes:
-        input (InputT): The node's typed, verified Input (built by the resolver).
-        capabilities (CapabilityView): The resolved capabilities the node declared it requires.
-    """
 
-    input: InputT
-    capabilities: CapabilityView
+class StageContextBase(ContextBase):
+    """Base context for a stage-level node."""
+
+
+class StepContextBase(ContextBase):
+    """Base context for a step-level node."""
 
 
 @dataclass(slots=True)
 class RunContext:
     """
-    Run-wide state that flows down to every descendant of the root pipeline (runtime carrier).
+    The engine's run-level handle (not part of the per-node context tree).
 
     Attributes:
         run_input (NodeInput): The pipeline's input — the source of every ``FromRunInput`` binding.
-        capabilities (CapabilityRegistry): The root capability registry (broadest level).
+        services (ServiceRegistry): The root service registry (broadest level).
     """
 
     run_input: NodeInput
-    capabilities: CapabilityRegistry
+    services: ServiceRegistry
 
 
 __all__ = [
-    "CapabilityRef",
-    "CapabilityRegistry",
-    "CapabilityView",
-    "Scope",
+    "ServiceRef",
+    "ServiceRegistry",
+    "ContextBase",
+    "PipelineContextBase",
+    "StageContextBase",
+    "StepContextBase",
     "RunContext",
 ]

@@ -7,20 +7,19 @@
 # Two axes: input bindings resolve HORIZONTALLY (sibling outputs / run input); capabilities resolve
 # VERTICALLY (up the ancestor registry).
 
-# ====== Standard Library Imports ======
-from __future__ import annotations
+# ====== Third-Party Library Imports ======
+from loggerplusplus import loggerplusplus
 
 # ====== Internal Project Imports ======
 from ..base import (
     AbstractNode,
-    CapabilityRegistry,
-    CapabilityView,
     FromParent,
     FromRunInput,
     FromSibling,
     NodeInput,
     NodeOutput,
     ResolutionError,
+    ServiceRegistry,
     Source,
     input_bindings,
 )
@@ -33,6 +32,8 @@ class Resolver:
     Stateless: every method takes exactly the registries it reads, so it is trivially testable and
     the engine stays the only owner of run state.
     """
+
+    logger = loggerplusplus.bind(identifier="Resolver")
 
     def __new__(cls, *args: object, **kwargs: object) -> None:  # type: ignore[misc]
         """Block instantiation — this is a static-only helper class."""
@@ -78,6 +79,7 @@ class Resolver:
         try:
             return node.Input(**values)
         except Exception as exc:  # validation failure = a contract violation, surfaced precisely
+            cls.logger.debug(f"Input validation failed for node {node.key!r}: {exc}")
             raise ResolutionError(
                 f"Input {node.Input.__name__!r} of node {node.key!r} failed validation: {exc}",
                 node_key=node.key,
@@ -86,35 +88,38 @@ class Resolver:
             ) from exc
 
     @classmethod
-    def resolve_capabilities(
-        cls, node: "AbstractNode", registry: "CapabilityRegistry"
-    ) -> CapabilityView:
+    def resolve_services(
+        cls, node: "AbstractNode", registry: "ServiceRegistry"
+    ) -> dict[str, object]:
         """
-        Resolve every capability a node requires, walking up the ancestor registry chain.
+        Resolve every service a node requires, walking up the ancestor registry chain.
 
         Args:
             node (AbstractNode): The node whose ``REQUIRES`` is being resolved.
-            registry (CapabilityRegistry): The registry visible at the node's level.
+            registry (ServiceRegistry): The registry visible at the node's level.
 
         Returns:
-            CapabilityView: The resolved capabilities (exactly the node's ``REQUIRES``).
+            dict[str, object]: The resolved services (exactly the node's ``REQUIRES``).
 
         Raises:
-            ResolutionError: When a required capability is provided by no level.
+            ResolutionError: When a required service is provided by no level.
         """
         items: dict[str, object] = {}
         for ref in node.REQUIRES:
             value = registry.resolve(ref.name)
             if value is None:
+                cls.logger.debug(
+                    f"Service {ref.name!r} unresolved for node {node.key!r} (no ancestor provides it)."
+                )
                 raise ResolutionError(
-                    f"Node {node.key!r} requires capability {ref.name!r}, "
+                    f"Node {node.key!r} requires service {ref.name!r}, "
                     f"which no ancestor level provides.",
                     node_key=node.key,
-                    code="capability_unresolved",
-                    context={"capability": ref.name},
+                    code="service_unresolved",
+                    context={"service": ref.name},
                 )
             items[ref.name] = value
-        return CapabilityView(items=items)
+        return items
 
     @classmethod
     def _resolve_field(
@@ -157,6 +162,10 @@ class Resolver:
 
         # 2. Verify presence for a required binding.
         if value is None and source.required:
+            cls.logger.debug(
+                f"Binding {field_name!r} of node {node.key!r} unresolved "
+                f"(source {type(source).__name__})."
+            )
             raise ResolutionError(
                 f"{node.Input.__name__}.{field_name} (node {node.key!r}) is required but "
                 f"resolved to None from its declared source.",
@@ -166,8 +175,9 @@ class Resolver:
             )
         return value
 
-    @staticmethod
+    @classmethod
     def _from_sibling(
+        cls,
         node: "AbstractNode",
         field_name: str,
         source: FromSibling,
@@ -189,6 +199,10 @@ class Resolver:
             ResolutionError: When the producer sibling has not produced an output.
         """
         if source.producer not in siblings:
+            cls.logger.debug(
+                f"Producer {source.producer!r} has no output for binding {field_name!r} "
+                f"of node {node.key!r}."
+            )
             raise ResolutionError(
                 f"{node.Input.__name__}.{field_name} (node {node.key!r}) consumes the output of "
                 f"sibling {source.producer!r}, which has produced nothing (not run / skipped).",

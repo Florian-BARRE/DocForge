@@ -11,8 +11,6 @@
 # lives in the engine, so a node stays a small, testable, declarative box.
 
 # ====== Standard Library Imports ======
-from __future__ import annotations
-
 from abc import ABC, abstractmethod
 from typing import Any, ClassVar, Generic, TypeVar
 
@@ -20,7 +18,8 @@ from typing import Any, ClassVar, Generic, TypeVar
 from loggerplusplus import LoggerClass
 
 # ====== Local Project Imports ======
-from .context import CapabilityRef, Scope
+from .context import ContextBase, ServiceRef
+from .errors import NodeError, PipelineError
 from .io import CompositeOutput, FromSibling, NodeInput, NodeOutput, input_bindings
 from .enums import ErrorPolicy, NodeKind
 from .schema import NodeSchema
@@ -47,7 +46,12 @@ class AbstractNode(ABC, LoggerClass, Generic[InputT, OutputT]):
     KIND: ClassVar[NodeKind]
     Input: ClassVar[type[NodeInput]] = NodeInput
     Output: ClassVar[type[NodeOutput]] = NodeOutput
-    REQUIRES: ClassVar[tuple[CapabilityRef, ...]] = ()
+    Context: ClassVar[type[ContextBase]] = ContextBase
+    # The error this node wraps a failure in: the engine wraps a failing child's error in the
+    # parent's ``Error`` (building the recursive cause chain), and wraps a raw exception raised by a
+    # leaf in its own ``Error``. Concrete nodes declare their level-specific class.
+    Error: ClassVar[type[PipelineError]] = NodeError
+    REQUIRES: ClassVar[tuple[ServiceRef, ...]] = ()
 
     def __init_subclass__(cls, *, abstract: bool = False, **kwargs: Any) -> None:
         """
@@ -107,15 +111,15 @@ class AbstractNode(ABC, LoggerClass, Generic[InputT, OutputT]):
                 producers.append(source.producer)
         return tuple(producers)
 
-    def local_capabilities(self) -> dict[str, Any]:
+    def local_services(self) -> dict[str, Any]:
         """
-        The capabilities this node OWNS and pushes onto the registry for its subtree.
+        The services this node OWNS and pushes onto the registry for its subtree.
 
         Override to specialise the vertical axis at this level (deeper = more specialised). The base
         provides none.
 
         Returns:
-            dict[str, Any]: Capability name -> capability, empty by default.
+            dict[str, Any]: Service name -> service, empty by default.
         """
         return {}
 
@@ -181,12 +185,13 @@ class LeafNode(AbstractNode[InputT, OutputT], ABC, abstract=True):
     """
 
     @abstractmethod
-    async def execute(self, scope: Scope[InputT]) -> OutputT:
+    async def execute(self, ctx: ContextBase) -> OutputT:
         """
-        Do the node's work from a fully-resolved scope.
+        Do the node's work from its fully-resolved context.
 
         Args:
-            scope (Scope[InputT]): The resolved typed input + the required capabilities.
+            ctx (ContextBase): The node's context — its resolved typed ``input`` + its required
+                services (concrete nodes receive their own ``Context`` subclass).
 
         Returns:
             OutputT: This node's typed output.

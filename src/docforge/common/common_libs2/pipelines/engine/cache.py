@@ -7,8 +7,6 @@
 # middleware has a typed contract to target.
 
 # ====== Standard Library Imports ======
-from __future__ import annotations
-
 from typing import Protocol, runtime_checkable
 
 # ====== Internal Project Imports ======

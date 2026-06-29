@@ -5,9 +5,6 @@
 # Serialisable Pydantic models (frozen): a node's contract lives in a single source of truth that the
 # engine, the resolver, and describe() all read, and that the API can emit as-is.
 
-# ====== Standard Library Imports ======
-from __future__ import annotations
-
 # ====== Third-Party Library Imports ======
 from pydantic import BaseModel, ConfigDict, Field
 

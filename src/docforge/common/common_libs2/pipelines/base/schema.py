@@ -4,9 +4,6 @@
 # tree (pipeline -> stages -> steps) with its dependencies and required capabilities, with zero
 # hardcoded text. Pure Pydantic, no behaviour.
 
-# ====== Standard Library Imports ======
-from __future__ import annotations
-
 # ====== Third-Party Library Imports ======
 from pydantic import BaseModel, Field
 

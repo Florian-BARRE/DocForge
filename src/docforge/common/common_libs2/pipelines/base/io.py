@@ -8,8 +8,7 @@
 # at the bottom of the DAG.
 
 # ====== Standard Library Imports ======
-from __future__ import annotations
-
+from dataclasses import dataclass
 from typing import Annotated, get_args, get_origin, get_type_hints
 
 # ====== Third-Party Library Imports ======
@@ -47,12 +46,18 @@ class CompositeOutput(NodeOutput):
     children: dict[str, NodeOutput] = {}
 
 
-class Source(BaseModel):
-    """Serialisable marker base for an input-field binding source (resolved by the engine)."""
+@dataclass(frozen=True, slots=True)
+class Source:
+    """
+    Marker base for an input-field binding source (resolved by the engine).
 
-    model_config = ConfigDict(frozen=True)
+    A frozen dataclass on purpose: these markers live in ``Annotated`` field metadata, where a
+    Pydantic model would be mis-read as the field's type. They stay serialisable (``asdict``) and are
+    projected into the Pydantic ``NodeSchema`` by ``describe()`` for the wire.
+    """
 
 
+@dataclass(frozen=True, slots=True)
 class FromSibling(Source):
     """
     Bind an input field to the output of a sibling node (the horizontal data axis).
@@ -72,6 +77,7 @@ class FromSibling(Source):
     required: bool = True
 
 
+@dataclass(frozen=True, slots=True)
 class FromParent(Source):
     """
     Bind an input field to a field of the PARENT composite's resolved input (the down axis).
@@ -88,6 +94,7 @@ class FromParent(Source):
     required: bool = True
 
 
+@dataclass(frozen=True, slots=True)
 class FromRunInput(Source):
     """
     Bind an input field to a field of the pipeline run input (available to every descendant).

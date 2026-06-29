@@ -7,8 +7,6 @@
 # NodeReport is mutable because the engine fills it in as the node runs.
 
 # ====== Standard Library Imports ======
-from __future__ import annotations
-
 from enum import StrEnum
 
 # ====== Third-Party Library Imports ======
@@ -41,14 +39,16 @@ class ReportStatus(StrEnum):
 
 class ErrorInfo(BaseModel):
     """
-    Structured, serialisable snapshot of a failure, extracted from a raised ``PipelineError``.
+    Structured, serialisable snapshot of a failure — recursive, mirroring the wrapped cause chain.
 
     Attributes:
         type (str): The exception class name.
-        message (str): The human-readable message.
-        code (str | None): The stable machine code.
+        message (str): The human-readable message for this occurrence.
+        code (str | None): The stable machine code (the error family identity).
+        description (str | None): Human-readable description of the failure family (UI-facing).
         where (str | None): The node key the failure is attributed to.
         retryable (bool): Advisory hint carried by ``NodeError`` subclasses.
+        cause (ErrorInfo | None): The wrapped underlying failure (the next level down the tree).
     """
 
     model_config = ConfigDict(frozen=True)
@@ -56,29 +56,42 @@ class ErrorInfo(BaseModel):
     type: str
     message: str
     code: str | None = None
+    description: str | None = None
     where: str | None = None
     retryable: bool = False
+    cause: "ErrorInfo | None" = None
 
     @classmethod
-    def from_exception(cls, exc: BaseException) -> "ErrorInfo":
+    def from_exception(cls, exc: BaseException, _depth: int = 0) -> "ErrorInfo":
         """
-        Build an ``ErrorInfo`` from any exception, enriching from ``PipelineError`` when present.
+        Build an ``ErrorInfo`` from any exception, recursing into its ``__cause__`` chain.
 
         Args:
             exc (BaseException): The raised exception.
+            _depth (int): Internal recursion guard against pathological cause chains.
 
         Returns:
-            ErrorInfo: The structured snapshot.
+            ErrorInfo: The structured snapshot, with ``cause`` set from ``exc.__cause__``.
         """
+        # 1. Recurse into the wrapped cause (bounded, and never into self).
+        cause: "ErrorInfo | None" = None
+        underlying = getattr(exc, "__cause__", None)
+        if underlying is not None and underlying is not exc and _depth < 20:
+            cause = cls.from_exception(underlying, _depth + 1)
+
+        # 2. Pull the structured fields a PipelineError exposes (plain exceptions get defaults).
         code = exc.code if isinstance(exc, PipelineError) else None
+        description = type(exc).description if isinstance(exc, PipelineError) else None
         where = exc.node_key if isinstance(exc, PipelineError) else None
         retryable = exc.retryable if isinstance(exc, NodeError) else False
         return cls(
             type=type(exc).__name__,
             message=str(exc),
             code=code,
+            description=description,
             where=where,
             retryable=retryable,
+            cause=cause,
         )
 
 
@@ -109,6 +122,7 @@ class NodeReport(BaseModel):
         self.children.append(report)
 
 
+ErrorInfo.model_rebuild()
 NodeReport.model_rebuild()
 
 

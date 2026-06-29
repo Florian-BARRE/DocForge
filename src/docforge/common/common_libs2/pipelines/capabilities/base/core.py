@@ -6,8 +6,6 @@
 # packages and specialise downward into the pipeline tree.
 
 # ====== Standard Library Imports ======
-from __future__ import annotations
-
 from typing import Protocol, runtime_checkable
 
 
