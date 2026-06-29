@@ -19,6 +19,8 @@ class NodeSchema(BaseModel):
         description (str): One-line description.
         consumes (list[str]): Keys of the sibling nodes whose output this node consumes (the edges).
         requires (list[str]): Names of the capabilities this node requires.
+        config_schema (dict | None): JSON schema of the node's per-collection Config (None when the
+            node has no configurable knobs) — the discovery UI renders the editing form from it.
         children (list[NodeSchema]): Child schemas, in declaration order.
     """
 
@@ -28,6 +30,7 @@ class NodeSchema(BaseModel):
     description: str = Field(default="", description="One-line description of the node.")
     consumes: list[str] = Field(default_factory=list, description="Sibling keys consumed.")
     requires: list[str] = Field(default_factory=list, description="Required capability names.")
+    config_schema: dict | None = Field(default=None, description="JSON schema of the node config.")
     children: list["NodeSchema"] = Field(default_factory=list, description="Child node schemas.")
 
 

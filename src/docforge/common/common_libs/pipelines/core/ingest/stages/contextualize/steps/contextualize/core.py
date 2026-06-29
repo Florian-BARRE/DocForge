@@ -5,10 +5,10 @@
 # and returns the same chunk list plus the contextualization tally.
 
 # ====== Internal Project Imports ======
-from common_libs.config.pipeline import ContextualizeConfig
 from common_libs.pipelines import NodeSpec
 
 # ====== Local Project Imports ======
+from ...config import IngestStageContextualizeConfig
 from ...result import IngestStageContextualizeResult
 from ..base import IngestStageContextualizeStepBase
 from .context import IngestStageContextualizeStepContextualizeContext
@@ -38,12 +38,12 @@ class IngestStageContextualizeStepContextualize(IngestStageContextualizeStepBase
     Context = IngestStageContextualizeStepContextualizeContext
     Error = IngestStageContextualizeStepContextualizeError
 
-    def __init__(self, config: ContextualizeConfig) -> None:
+    def __init__(self, config: IngestStageContextualizeConfig) -> None:
         """
         Wire the step around its contextualization config.
 
         Args:
-            config (ContextualizeConfig): Header-template controls (toggles + separators).
+            config (IngestStageContextualizeConfig): Header-template controls (toggles + separators).
         """
         super().__init__()
         self._config = config

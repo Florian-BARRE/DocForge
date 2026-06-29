@@ -16,6 +16,9 @@ from .io import (
     input_bindings,
 )
 
+# ---------------------- Config (hierarchy) ------------------- #
+from .config import NodeConfig, PipelineConfigBase, StageConfigBase, StepConfigBase
+
 # ---------------------- Errors ------------------------------- #
 from .errors import NodeError, PipelineError, ResolutionError, StageError, StepError
 
@@ -55,6 +58,11 @@ __all__ = [
     "FromParent",
     "FromRunInput",
     "input_bindings",
+    # config
+    "NodeConfig",
+    "PipelineConfigBase",
+    "StageConfigBase",
+    "StepConfigBase",
     # errors
     "PipelineError",
     "ResolutionError",

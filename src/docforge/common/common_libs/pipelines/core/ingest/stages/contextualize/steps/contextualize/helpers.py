@@ -9,8 +9,10 @@
 from loggerplusplus import loggerplusplus
 
 # ====== Internal Project Imports ======
-from common_libs.config.pipeline import ContextualizeConfig
 from common_libs.domain import Chunk
+
+# ====== Local Project Imports ======
+from ...config import IngestStageContextualizeConfig
 
 
 class IngestStageContextualizeStepContextualizeHelpers:
@@ -26,7 +28,7 @@ class IngestStageContextualizeStepContextualizeHelpers:
         )
 
     @classmethod
-    def build_embed_text(cls, chunk: Chunk, doc_title: str, cfg: ContextualizeConfig) -> str:
+    def build_embed_text(cls, chunk: Chunk, doc_title: str, cfg: IngestStageContextualizeConfig) -> str:
         """
         Build embed_text = [doc title] + section breadcrumb + chunk body.
 
@@ -37,7 +39,7 @@ class IngestStageContextualizeStepContextualizeHelpers:
         Args:
             chunk (Chunk): Chunk whose embed_text is to be assembled.
             doc_title (str): Document title from the IR metadata (already stripped).
-            cfg (ContextualizeConfig): Header-template controls (toggles + separators).
+            cfg (IngestStageContextualizeConfig): Header-template controls (toggles + separators).
 
         Returns:
             str: The assembled embed_text string.

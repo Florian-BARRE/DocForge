@@ -18,6 +18,7 @@ from typing import Any, ClassVar, Generic, TypeVar
 from loggerplusplus import LoggerClass
 
 # ====== Local Project Imports ======
+from .config import NodeConfig
 from .context import ContextBase, ServiceRef
 from .errors import NodeError, PipelineError
 from .io import CompositeOutput, FromSibling, NodeInput, NodeOutput, input_bindings
@@ -47,6 +48,10 @@ class AbstractNode(ABC, LoggerClass, Generic[InputT, OutputT]):
     Input: ClassVar[type[NodeInput]] = NodeInput
     Output: ClassVar[type[NodeOutput]] = NodeOutput
     Context: ClassVar[type[ContextBase]] = ContextBase
+    # The node's per-collection configuration (the knobs the assembler fills from the stored JSON and
+    # passes to __init__). Self-describing: describe() emits its JSON schema for the discovery UI. The
+    # empty base means "no configurable knobs"; concrete nodes declare their own.
+    Config: ClassVar[type[NodeConfig]] = NodeConfig
     # The error this node wraps a failure in: the engine wraps a failing child's error in the
     # parent's ``Error`` (building the recursive cause chain), and wraps a raw exception raised by a
     # leaf in its own ``Error``. Concrete nodes declare their level-specific class.
@@ -127,9 +132,14 @@ class AbstractNode(ABC, LoggerClass, Generic[InputT, OutputT]):
         """
         Emit the self-describing schema for this node (children added by ``CompositeNode``).
 
+        Includes the node's Config JSON schema when it declares one, so the discovery API can render
+        the per-collection editing form for this node with zero hardcoded text.
+
         Returns:
-            NodeSchema: Identity + dependencies + required capabilities.
+            NodeSchema: Identity + dependencies + required services + config schema.
         """
+        # Emit the config JSON schema only when the node declares a real Config (not the empty base).
+        config_schema = self.Config.model_json_schema() if self.Config is not NodeConfig else None
         return NodeSchema(
             kind=self.KIND,
             key=self.key,
@@ -137,6 +147,7 @@ class AbstractNode(ABC, LoggerClass, Generic[InputT, OutputT]):
             description=self.description,
             consumes=list(self.consumes()),
             requires=[ref.name for ref in self.REQUIRES],
+            config_schema=config_schema,
         )
 
 

@@ -6,11 +6,11 @@
 # upserts that consume embed_text.
 
 # ====== Internal Project Imports ======
-from common_libs.config.pipeline import ContextualizeConfig
 from common_libs.pipelines import CachePolicy, NodeOutput, StageKey, StageSpec
 
 # ====== Local Project Imports ======
 from ..base import IngestStageBase
+from .config import IngestStageContextualizeConfig
 from .context import IngestStageContextualizeContext
 from .errors import IngestStageContextualizeError
 from .io import IngestStageContextualizeInput, IngestStageContextualizeOutput
@@ -38,17 +38,18 @@ class IngestStageContextualize(IngestStageBase):
     Output = IngestStageContextualizeOutput
     Context = IngestStageContextualizeContext
     Error = IngestStageContextualizeError
+    Config = IngestStageContextualizeConfig
 
-    def __init__(self, config: ContextualizeConfig | None = None) -> None:
+    def __init__(self, config: IngestStageContextualizeConfig | None = None) -> None:
         """
-        Wire the stage around the contextualization config and build its single step.
+        Wire the stage around its config and build its single step.
 
         Args:
-            config (ContextualizeConfig | None): Header-template controls (doc title / breadcrumb
-                toggles + separators). When None, a default ``ContextualizeConfig`` is used.
+            config (IngestStageContextualizeConfig | None): The header-template knobs (doc title /
+                breadcrumb toggles + separators). When None, the default config is used.
         """
         super().__init__()
-        self._config = config if config is not None else ContextualizeConfig()
+        self._config = config if config is not None else IngestStageContextualizeConfig()
         self._steps = [IngestStageContextualizeStepContextualize(self._config)]
 
     @property
