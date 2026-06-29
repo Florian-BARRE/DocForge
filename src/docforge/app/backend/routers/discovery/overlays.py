@@ -15,10 +15,13 @@ from common_libs.search.field_index import CONTENT_DENSE, CONTENT_SPARSE, FieldI
 from .models import Choice, DynamicField, ParamSchema
 
 # (route_function_name, field_path) → choice-source tag. The whole hand-authored surface.
-# Sources: "pipeline" (deployment, from describe_stages); "filters"/"weights"/"metadata" (collection).
+# Sources: "pipeline" (deployment, from describe_stages); "filters"/"weights"/"metadata" (collection);
+# "metagen_targets" (collection — the generated-field options for pipeline.metagen.targets[*].field).
+# For "pipeline"/"metagen_targets" the tuple's first element is the body PREFIX the source roots at
+# ("pipeline" on create, "patch.pipeline" on update) so the emitted field paths line up with setPath.
 OVERLAYS: dict[str, list[tuple[str, str]]] = {
-    "create_collection": [("pipeline", "pipeline")],
-    "update_config": [("patch.pipeline", "pipeline")],
+    "create_collection": [("pipeline", "pipeline"), ("pipeline", "metagen_targets")],
+    "update_config": [("patch.pipeline", "pipeline"), ("patch.pipeline", "metagen_targets")],
     "search_collection": [("filters", "filters"), ("weights", "weights")],
     "search_within_document": [("filters", "filters"), ("weights", "weights")],
     "ingest_document": [("metadata", "metadata")],
@@ -90,6 +93,9 @@ def build_dynamic_fields(
     for field_path, source in OVERLAYS.get(route_name, []):
         if source == "pipeline":
             out.extend(_pipeline_dynamic_fields(stages, prefix=f"{field_path}."))
+        elif source == "metagen_targets":
+            # field_path is the body prefix ("pipeline" / "patch.pipeline") the target list roots at.
+            out.append(_metagen_target_field(prefix=f"{field_path}.", schema_fields=schema_fields))
         else:
             out.append(_collection_dynamic_field(source, schema_fields))
     return out
@@ -215,6 +221,47 @@ def _metadata_choice(field: dict[str, Any]) -> Choice:
         id=field["field_name"], label=field["field_name"],
         note="required" if field.get("required") else "optional",
         fields=[ParamSchema.model_validate(value)],
+    )
+
+
+def _metagen_target_field(
+    prefix: str, schema_fields: list[dict[str, Any]] | None
+) -> DynamicField:
+    """
+    Overlay the ``metagen.targets[].field`` picker with the collection's generated field names.
+
+    The describer renders ``pipeline.metagen.targets`` as a generic ``object_list`` whose ``field``
+    child is a free string; this overlay injects the actual choosable options — the metadata fields
+    authored with ``origin="generated"`` — so the UI offers a dropdown bound to the same path the
+    object_list item renders (``{prefix}metagen.targets[].field``). The describer stays generic;
+    only the option set is collection data.
+
+    Args:
+        prefix (str): The body prefix the target list roots at ("pipeline." / "patch.pipeline.").
+        schema_fields (list[dict] | None): The collection's normalized metadata fields, or None when
+            no collection_id was supplied (the field comes back unresolved).
+
+    Returns:
+        DynamicField: The (resolved or unresolved) target-field option overlay.
+    """
+    field_path = f"{prefix}metagen.targets[].field"
+    # 1. Unresolved: no collection_id → cannot list its generated fields yet.
+    if schema_fields is None:
+        return DynamicField(
+            field_path=field_path, capability="metagen_target", kind="enum",
+            scope="collection", resolved=False,
+            note="Re-request with ?collection_id=<uuid> to resolve the generated-field options.",
+        )
+    # 2. Resolved: one Choice per origin="generated" field (the only valid metagen targets).
+    choices = [
+        Choice(id=f["field_name"], label=f["field_name"], note=f.get("field_type", "string"))
+        for f in schema_fields
+        if f.get("origin") == "generated"
+    ]
+    return DynamicField(
+        field_path=field_path, capability="metagen_target", kind="enum",
+        scope="collection", resolved=True, choices=choices,
+        note="Pick a generated metadata field (origin='generated') for this metagen target.",
     )
 
 

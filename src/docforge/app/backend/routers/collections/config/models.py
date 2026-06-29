@@ -4,7 +4,7 @@
 
 # ====== Standard Library Imports ======
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 # ====== Third-Party Library Imports ======
 from pydantic import BaseModel, Field
@@ -43,6 +43,10 @@ class ConfigMetaField(BaseModel):
     semantic: bool
     enum_values: list[str] | None = None
     is_system: bool
+    # Field provenance: 'system' (pipeline-extracted), 'user' (uploaded values), or 'generated'
+    # (produced by S5b at ingestion). Defaults to 'user' for backward-compatible deserialization of
+    # config blobs persisted before the origin discriminator existed.
+    origin: Literal["system", "user", "generated"] = "user"
 
 
 class ConfigStateResponse(BaseModel):

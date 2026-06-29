@@ -2,7 +2,7 @@
 # Chain provenance models: ChainAttemptIR and ChainTrace.
 # These two models are tightly related — ChainTrace aggregates ChainAttemptIR records —
 # so they share a file per the tightly-related exception.
-# Filled by providers.chain.Chain.call and stamped on the IR for audit purposes.
+# Filled by the chain brick (pipeline.bricks.chain.Chain.call) and stamped on the IR for audit.
 
 # ====== Third-Party Library Imports ======
 from pydantic import BaseModel, Field
@@ -12,7 +12,7 @@ class ChainAttemptIR(BaseModel):
     """
     Serialisable record of one provider attempt within a stage's chain.
 
-    Mirrors ``providers.chain.ChainAttempt`` so the IR can be persisted as jsonb
+    Mirrors ``pipeline.bricks.chain.ChainAttempt`` so the IR can be persisted as jsonb
     and round-tripped through Postgres without the dataclass dependency.  The
     stage code converts each ``ChainAttempt`` into a ``ChainAttemptIR`` at the
     boundary so the IR layer stays free of provider imports.

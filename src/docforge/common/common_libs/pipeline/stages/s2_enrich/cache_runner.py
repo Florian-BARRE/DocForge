@@ -13,7 +13,7 @@ from typing import Any
 # ====== Third-Party Library Imports ======
 from loggerplusplus import loggerplusplus
 
-from common_libs.providers.chain import Chain
+from common_libs.pipeline.bricks.chain import Chain
 from common_libs.providers.classifier.base import ClassificationResult
 from common_libs.providers.interfaces import OcrHint, OcrResult, VlmResult
 

@@ -18,6 +18,9 @@
 - [Search Lab (UI-2)](search-lab.md) — LabTuningPanel, LabDebugPanel, `useLabOverrides`, `HttpError`, vector names, overrides wiring
 - [Pipeline canvas — react-flow (R2)](react-flow-canvas.md) — `@xyflow/react` v12, `PipelineCanvas`, `StageFlowNode`, token theming, dead stubs
 - [UX consistency batch 3 (UX-B3)](ux-b3.md) — ConfirmDialog primitive, Spinner/EmptyState standardization, window.confirm→0
+- [ObjectListPicker pattern](object-list-picker.md) — generic object_list repeater; item-local read/write via last-segment extraction (mirrors ChainLadder.writeEntryParam)
+- [S5b metagen UI wiring](s5b-metagen-ui.md) — origin overlay on MetaField, object_list ConfigNode, MetagenPreview, warning-banner CSS, s5b stage definition
+- [gen:types cannot run without backend](gen-types-constraint.md) — use overlay intersections in types.ts; never hand-edit generated.ts
 
 ## Boundary
 

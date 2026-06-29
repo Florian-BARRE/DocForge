@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from common_libs.providers.chain import ChainHelpers, ChainOutcome, chain_outcome_to_attempt_dicts
+from common_libs.pipeline.bricks.chain import ChainHelpers, ChainOutcome, chain_outcome_to_attempt_dicts
 
 # ====== Third-Party Library Imports ======
 # (none)

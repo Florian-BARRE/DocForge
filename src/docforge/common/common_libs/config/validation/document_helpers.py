@@ -59,4 +59,7 @@ class ConfigFieldNormalizer:
             "semantic": bool(src.get("semantic", False)),
             "enum_values": src.get("enum_values"),
             "is_system": bool(src.get("is_system", False)),
+            # Provenance discriminator: 'system' (pipeline-extracted), 'user' (uploaded values),
+            # 'generated' (produced by S5b). Carried end-to-end so generated fields round-trip.
+            "origin": src.get("origin", "user") or "user",
         }

@@ -21,6 +21,7 @@ from .routers import (
     health_router,
     jobs_router,
     limits_router,
+    metagen_router,
     monitoring_router,
     pages_router,
     search_router,
@@ -86,6 +87,7 @@ def create_app(app_name: str, debug: bool, version: str = "0.1.0", description: 
     app.include_router(router=collection_router,   prefix=COL, dependencies=auth)
     app.include_router(router=config_router,     prefix=f"{COL}/{{collection_id}}/config", dependencies=auth)
     app.include_router(router=limits_router,      prefix=f"{COL}/{{collection_id}}/limits", dependencies=auth)
+    app.include_router(router=metagen_router,     prefix=f"{COL}/{{collection_id}}/metagen", dependencies=auth)
     # document_router authenticates PER-ROUTE (each route carries its own require_capability,
     # which chains to require_principal) — NOT at include level. This is required because its SSE
     # /stream route needs the header-OR-query SSE dependency, and an include-level header-only

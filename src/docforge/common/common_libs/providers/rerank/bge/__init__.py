@@ -2,7 +2,6 @@
 from .config import BgeRerankerConfig
 
 # ------------------- Provider ------------------- #
-from .provider import BgeRerankProvider
 
 # ------------------- Public API ------------------- #
-__all__ = ["BgeRerankerConfig", "BgeRerankProvider"]
+__all__ = ["BgeRerankerConfig"]

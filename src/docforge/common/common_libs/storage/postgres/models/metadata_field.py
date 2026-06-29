@@ -45,6 +45,13 @@ class MetadataFieldModel(Base):
     semantic: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     enum_values: Mapped[list[str] | None] = mapped_column(ARRAY(String), nullable=True)
     is_system: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # Field provenance: 'system' (pipeline-extracted), 'user' (caller-authored, uploaded values),
+    # or 'generated' (caller-authored, values produced by S5b at ingestion). Kept alongside the
+    # legacy is_system flag (migration 017). Plain VARCHAR(20) — matches the project convention of
+    # storing role/status discriminators as strings with no DB CHECK/enum type.
+    origin: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="user", server_default="user"
+    )
 
     # Relationship
     collection: Mapped[CollectionModel] = relationship(back_populates="metadata_fields")

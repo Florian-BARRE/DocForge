@@ -108,7 +108,7 @@ def test_lock_for_returns_stable_lock_per_key() -> None:
 @pytest.mark.asyncio
 async def test_docling_converter_loaded_once_across_instances(monkeypatch) -> None:
     """Two DoclingBackend instances (per-job rebuilds) share ONE converter load."""
-    from common_libs.providers.parser.docling.core import DoclingBackend
+    from common_libs.pipeline.bricks.providers.parser.docling.core import DoclingBackend
 
     calls = {"n": 0}
     sentinel = object()
@@ -134,7 +134,7 @@ async def test_docling_converter_loaded_once_across_instances(monkeypatch) -> No
 @pytest.mark.asyncio
 async def test_vit_onnx_session_loaded_once_across_instances(monkeypatch) -> None:
     """Two VitOnnxClassifier instances share ONE ONNX session load for the same path+device."""
-    from common_libs.providers.classifier.vit_onnx.provider import VitOnnxClassifier
+    from common_libs.pipeline.bricks.providers.classifier.vit_onnx.provider import VitOnnxClassifier
 
     calls = {"n": 0}
 

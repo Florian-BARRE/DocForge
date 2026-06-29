@@ -141,15 +141,20 @@ class ConfigNode(BaseModel):
     Attributes:
         path (str): Full absolute dot-path (e.g. ``pipeline.embed.gate.min_score``) — the
             key the frontend's setPath/patch writes to.
-        kind (str): ``scalar`` · ``enum`` · ``object`` · ``chain`` · ``provider_union``.
+        kind (str): ``scalar`` · ``enum`` · ``object`` · ``object_list`` · ``chain`` ·
+            ``provider_union``.
         label (str): Human-readable label.
         description (str): Tooltip / help text.
         default (Any): Default value (scalars/enums only; None for containers).
         resolved (bool): False when a ``collection_id`` is needed but absent (badge, not per-leaf).
-        type (str | None): kind=scalar — ``bool`` · ``int`` · ``float`` · ``str`` · ``secret``.
+        type (str | None): kind=scalar — ``bool`` · ``int`` · ``float`` · ``str`` · ``secret`` ·
+            ``text`` (multiline).
         min / max (Any): kind=scalar — numeric bounds, when present.
         options (list[Any] | None): kind=enum — the allowed values.
         children (list[ConfigNode]): kind=object — nested nodes.
+        item_schema (list[ConfigNode]): kind=object_list — the described nodes of ONE list item
+            (e.g. a metagen target's ``field`` / ``prompt`` / ``scope``); the UI renders an
+            add/remove repeater of these.
         multi (bool): kind=chain/provider_union — chain=True, single union=False.
         optional (bool): kind=provider_union — the union may be unset (a disabled choice).
         capability (str): kind=chain/provider_union — the registry category.
@@ -175,6 +180,9 @@ class ConfigNode(BaseModel):
 
     # kind=object
     children: list["ConfigNode"] = Field(default_factory=list)
+
+    # kind=object_list — the described nodes of one repeated item (e.g. a metagen target).
+    item_schema: list["ConfigNode"] = Field(default_factory=list)
 
     # kind=chain / provider_union
     multi: bool = False

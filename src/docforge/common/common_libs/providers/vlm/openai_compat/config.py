@@ -17,7 +17,10 @@ from common_libs.config.pipeline._registry import register
 from common_libs.config.pipeline.spec_utils import flatten_provider_spec as _flatten_provider_spec
 
 # ====== Local Project Imports ======
-from .provider import OpenAICompatVlmProvider
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from common_libs.pipeline.bricks.providers.vlm.openai_compat.provider import OpenAICompatVlmProvider
 
 _DEFAULT_EXTERNAL_BASE_URL = "https://api.openai.com/v1"
 
@@ -60,6 +63,7 @@ class OpenAICompatVlmConfig(BaseModel):
             raise ValueError("OpenAICompatVlmConfig.build(): model is required.")
         if self.locality == "external" and not self.api_key:
             raise ValueError("OpenAICompatVlmConfig.build(): api_key is required for locality='external'.")
+        from common_libs.pipeline.bricks.providers.vlm.openai_compat.provider import OpenAICompatVlmProvider  # lazy runtime brick (L3)
         return OpenAICompatVlmProvider(
             api_base_url=self.base_url or _DEFAULT_EXTERNAL_BASE_URL,
             model=self.model,

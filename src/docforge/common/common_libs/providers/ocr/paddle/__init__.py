@@ -2,7 +2,6 @@
 from .config import PaddleOcrConfig
 
 # ------------------- Provider ------------------- #
-from .provider import PaddleOcrProvider
 
 # ------------------- Public API ------------------- #
-__all__ = ["PaddleOcrConfig", "PaddleOcrProvider"]
+__all__ = ["PaddleOcrConfig"]

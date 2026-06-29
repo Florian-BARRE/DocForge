@@ -1,6 +1,7 @@
 # ====== Code Summary ======
-# ProviderRegistry — resolves a declarative PipelineConfig into concrete pipeline stages
-# (spec §6: locality → provider → device).
+# ProviderRegistry — provides the per-stage inner builders (parser / S2 / metagen / embed chains)
+# from a declarative PipelineConfig (spec §6: locality → provider → device), which the dynamic
+# stage assembler (assembly.build_pipeline) composes into the pipeline; also describes the surface.
 #
 # Every provider is a ProviderSpec (id + params).  Params supplied in the request (e.g. a
 # Mistral API key typed into the playground) take precedence over deployment env defaults —
@@ -19,31 +20,29 @@ from typing import Any
 # ====== Third-Party Library Imports ======
 from loggerplusplus import LoggerClass
 
-from common_libs.providers.chain import Chain
-from common_libs.providers.chain_gate import ChainGateConfig
+from common_libs.pipeline.bricks.chain import Chain
+from common_libs.pipeline.bricks.chain.gate import ChainGateConfig
 
 # ====== Internal Project Imports ======
 from common_libs.config.pipeline import (
     EnrichConfig,
-    PipelineConfig,
+    MetaGenConfig,
     ProviderSpec,
 )
+from common_libs.domain.metadata.meta_field_spec import MetaFieldSpec
 from common_libs.storage.s3.client import S3Client
 from common_libs.pipeline.caches.provider_cache import ProviderCallCache
 from common_libs.pipeline.stages.s2_enrich import S2EnrichStage
-from common_libs.pipeline.stages.s4_chunk import S4ChunkStage
-from common_libs.pipeline.stages.s5_contextualize.core import S5ContextualizeStage
+from common_libs.pipeline.stages.s5b_metagen import S5bMetagenStage
 
 # ====== Local Project Imports ======
 from .chain_builders import ChainBuilderHelpers
-from .chunk_stage_assembler import ChunkStageAssembler
 from .describe import DescribeSurface
-from .resolved import ResolvedStages
 
 
 class ProviderRegistry(DescribeSurface, LoggerClass):
     """
-    Resolves PipelineConfig → instantiated stages, and describes the configurable surface.
+    Provides the per-stage inner builders from a PipelineConfig, and describes the configurable surface.
 
     Shared infrastructure (S3, provider cache) and deployment credential/endpoint defaults
     come from construction; per-run provider choices + params come from the PipelineConfig.
@@ -74,61 +73,6 @@ class ProviderRegistry(DescribeSurface, LoggerClass):
         self._provider_cache = provider_cache
         self._cfg = runtime_config
 
-    # ─── Stage resolution ──────────────────────────────────────────────────────
-
-    def build_stages(self, config: PipelineConfig) -> ResolvedStages:
-        """
-        Resolve a PipelineConfig into concrete pipeline stages.
-
-        Validates each requested provider against availability (credential-aware) and raises
-        ProviderUnavailableError (→ HTTP 422) when a knob cannot be honored.
-
-        Args:
-            config (PipelineConfig): The per-run pipeline configuration.
-
-        Returns:
-            ResolvedStages: parse_chain + S2/S4/S5 stages — always all present (S6 is owned
-                by the caller's infra as it holds a live Qdrant connection).
-
-        Raises:
-            ProviderUnavailableError: When a requested provider cannot run here.
-        """
-        parse_chain = self._build_parser_chain(config.parse.chain, config.parse.gate)
-        s2 = self._build_s2(config.enrich)
-        s4 = ChunkStageAssembler.build_chunk_stage(self._cfg, config.chunk)
-        s5 = S5ContextualizeStage(config=config.contextualize)
-
-        return ResolvedStages(parse_chain=parse_chain, s2=s2, s4=s4, s5=s5)
-
-    def build_enrich_and_chunk_stages(
-        self,
-        config: PipelineConfig,
-    ) -> tuple[S2EnrichStage, S4ChunkStage, S5ContextualizeStage]:  # type: ignore[name-defined]
-        """
-        Build S2, S4, S5 from a typed PipelineConfig — for the startup default stack.
-
-        Called by entrypoint.py and worker.py to replace the 9 direct provider
-        instantiations with a single config-driven call.  S6 is built per-job by
-        StageEngine._build_s6_from_config() and is excluded here.
-
-        Args:
-            config (PipelineConfig): Fully typed pipeline config (from build_default_pipeline).
-
-        Returns:
-            tuple: (S2EnrichStage, S4ChunkStage, S5ContextualizeStage) ready to inject.
-        """
-        # 1. Build S2 (every sub-stage is now a Chain[T, R]).
-        s2 = self._build_s2(config.enrich)
-
-        # 2. Build S4 splitter from config
-        splitter = ChunkStageAssembler.build_splitter(self._cfg, config.chunk.split_method)
-        s4 = S4ChunkStage(splitter=splitter)
-
-        # 3. S5 carries its own contextualization config (header template / separators).
-        s5 = S5ContextualizeStage(config=config.contextualize)
-
-        return s2, s4, s5
-
     # ─── Internal stage builders ───────────────────────────────────────────────
 
     def _build_s2(self, enrich: EnrichConfig) -> S2EnrichStage:
@@ -155,6 +99,87 @@ class ProviderRegistry(DescribeSurface, LoggerClass):
             provider_cache=self._provider_cache,
             chart_to_data=enrich.chart_to_data,
         )
+
+    def _build_metagen(
+        self,
+        metagen: MetaGenConfig,
+        metadata_fields: list[Any] | None,
+    ) -> S5bMetagenStage:
+        """
+        Wire S5b from the metagen config + the collection's generated metadata fields.
+
+        ``METAGEN_ENABLED`` is a deployment kill-switch: when false the stage is built with an
+        empty target list (a no-op) regardless of config. ``METAGEN_MAX_BUDGET_USD`` caps the
+        estimated per-document spend. The provider chain is built like the VLM chain (None when no
+        provider configured → the stage no-ops). The ``field_types`` lookup resolves each target's
+        declared type/enum from the metadata schema.
+
+        Args:
+            metagen (MetaGenConfig): The metagen config block.
+            metadata_fields (list | None): The collection's metadata field specs.
+
+        Returns:
+            S5bMetagenStage: The wired metagen stage.
+        """
+        # The per-collection metagen config is the contract: a collection that declares a chain +
+        # targets drives the stage on its own (mirrors every other per-collection provider config).
+        # METAGEN_ENABLED is the DEFAULT-pipeline kill-switch only (build_default_pipeline), NOT a
+        # gate on an explicitly-configured collection — gating targets here silently dropped a
+        # collection's bindings while still building the chain, no-op'ing the stage.
+        chain = ChainBuilderHelpers.build_metagen_chain(self._cfg, metagen.chain, metagen.gate)
+        targets = list(metagen.targets)
+        field_types = self._resolve_metagen_field_types(metadata_fields, metagen.targets)
+        budget = float(getattr(self._cfg, "METAGEN_MAX_BUDGET_USD", 0.0))
+        return S5bMetagenStage(
+            llm_chain=chain,
+            targets=targets,
+            field_types=field_types,
+            provider_cache=self._provider_cache,
+            max_concurrency=metagen.max_concurrency,
+            max_budget_usd=budget,
+        )
+
+    @staticmethod
+    def _resolve_metagen_field_types(
+        metadata_fields: list[Any] | None,
+        targets: list[Any],
+    ) -> dict[str, MetaFieldSpec]:
+        """
+        Build the type/enum lookup for the generated fields a metagen target references.
+
+        Only fields authored as ``origin == "generated"`` AND referenced by a target are kept — the
+        S5b stage must never write into a system/user field. Accepts both dict snapshots (the worker
+        passes plain dicts decoupled from the ORM session) and ORM rows.
+
+        Args:
+            metadata_fields (list | None): The collection's metadata field specs.
+            targets (list[MetaGenTarget]): The configured metagen targets.
+
+        Returns:
+            dict[str, MetaFieldSpec]: ``field_name → MetaFieldSpec`` for the eligible generated fields.
+        """
+        # 1. Nothing to resolve without fields or targets.
+        if not metadata_fields or not targets:
+            return {}
+
+        def _attr(obj: Any, name: str, default: Any = None) -> Any:
+            return obj.get(name, default) if isinstance(obj, dict) else getattr(obj, name, default)
+
+        target_names = {t.field for t in targets}
+        field_types: dict[str, MetaFieldSpec] = {}
+        # 2. Keep only generated fields that a target actually binds.
+        for field in metadata_fields:
+            name = _attr(field, "field_name")
+            if not name or name not in target_names or _attr(field, "origin") != "generated":
+                continue
+            field_types[name] = MetaFieldSpec(
+                field_name=name,
+                field_type=_attr(field, "field_type", "string"),
+                enum_values=_attr(field, "enum_values"),
+                required=bool(_attr(field, "required", False)),
+                origin="generated",
+            )
+        return field_types
 
     # ─── Chain builders (thin delegators to ChainBuilderHelpers) ────────────────
 

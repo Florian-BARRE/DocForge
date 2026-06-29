@@ -12,8 +12,7 @@ auto_import(__name__)  # imports each provider folder — triggers @register dec
 from .base import ConverterProvider
 
 # ------------------- Providers (one folder each) ------------------- #
-from .gotenberg import GotenbergConfig, GotenbergConverter
-from .gotenberg.provider import GOTENBERG_FORMATS, NATIVE_PDF_FORMATS
+from .gotenberg import GotenbergConfig
 
 # ------------------- Discriminated Union ------------------- #
 # Built dynamically from all registered converter configs.
@@ -24,7 +23,4 @@ __all__ = [
     "ConverterConfig",
     "ConverterProvider",
     "GotenbergConfig",
-    "GotenbergConverter",
-    "GOTENBERG_FORMATS",
-    "NATIVE_PDF_FORMATS",
 ]

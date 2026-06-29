@@ -19,6 +19,8 @@ import type {
   IngestResponse,
   JobListResponse,
   MeResponse,
+  MetagenPreviewRequest,
+  MetagenPreviewResponse,
   MetadataUpdateResponse,
   MonitoringOverviewResponse,
   MonitoringResourcesResponse,
@@ -511,3 +513,28 @@ export const listJobs = (params?: {
  */
 export const cancelJob = (id: string): Promise<CancelJobResponse> =>
   request<CancelJobResponse>(`/jobs/${id}/cancel`, { method: 'POST' })
+
+// ── Metagen preview (S5b) ──────────────────────────────────────────────────
+//
+// Dry-run preview: generate a single metadata value via the configured LLM chain
+// for one field/chunk pair without running a full ingestion.
+// Requires CONFIG_WRITE capability. Returns 422 when no chain or target is set.
+
+/**
+ * Preview LLM metadata generation for one field using sample text or a stored chunk.
+ *
+ * Args:
+ *   collectionId: Target collection.
+ *   body:         Preview request — field_name + exactly one of chunk_id / sample_text.
+ *
+ * Returns:
+ *   MetagenPreviewResponse: Generated value, token/cost estimate, provider, degraded flag.
+ */
+export const previewMetagen = (
+  collectionId: string,
+  body: MetagenPreviewRequest,
+): Promise<MetagenPreviewResponse> =>
+  request<MetagenPreviewResponse>(`/collections/${collectionId}/metagen/preview`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  })

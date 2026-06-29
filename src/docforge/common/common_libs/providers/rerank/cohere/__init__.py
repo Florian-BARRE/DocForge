@@ -2,7 +2,6 @@
 from .config import CohereRerankConfig
 
 # ------------------- Provider ------------------- #
-from .provider import CohereRerankProvider
 
 # ------------------- Public API ------------------- #
-__all__ = ["CohereRerankConfig", "CohereRerankProvider"]
+__all__ = ["CohereRerankConfig"]

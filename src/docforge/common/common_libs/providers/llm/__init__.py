@@ -11,11 +11,10 @@ auto_import(__name__)
 from .base import LLMProvider
 
 # ─────────────────── Providers (one folder each) ───────────────────── #
-from .openai_compat import OpenAICompatLLMConfig, OpenAICompatLLMProvider
+from .openai_compat import OpenAICompatLLMConfig
 
 # ─────────────────── Public API ───────────────────────────────────── #
 __all__ = [
     "LLMProvider",
     "OpenAICompatLLMConfig",
-    "OpenAICompatLLMProvider",
 ]

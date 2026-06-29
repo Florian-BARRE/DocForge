@@ -352,3 +352,71 @@ docker-compose.dev.yml           # mcp volume mount + DEBUG
 - **Bearer auth** via custom Starlette middleware (built-in FastMCP auth is OAuth2/overkill); HTTP mode refuses to boot without `MCP_AUTH_TOKEN`.
 - **51 tools** (was 36 at P8) across all **15** backend routers = health(1)+discovery(1)+auth(5)+users(4)+collections(3)+config(5)+limits(2)+access(3)+documents(6)+search(2)+files(4)+chunks(3)+pages(4)+jobs(3)+monitoring(5). Search exposes filters/weights/debug; page screenshot returns an MCP `Image`. Post-P8 additions: Brique D limits/resources (`get_collection_limits`/`update_collection_limits`/`get_monitoring_resources`), then the full auth system (2026-06-24) — `auth` (login/me/keys CRUD), `users` (root-only user mgmt), `access` (per-collection grants). The 2 SSE routes (`documents/stream`, `monitoring/stream`) are intentionally NOT tools — MCP has no streaming primitive; their REST snapshot companions are the substitute. The MCP→DocForge transport carries a static bearer (`api_token`) for `AUTH_ENABLED=true` instances; the `login` tool returns a JWT informationally and does NOT reconfigure the transport.
 - Windows gotcha: log messages must stay ASCII (cp1252 console can't encode `→`); use `->`.
+
+---
+
+## S5b — LLM-generated metadata (metagen)
+
+> Per-chunk / per-document LLM metadata generation during ingestion. Two-step model: the field is
+> authored in the collection metadata schema (`origin="generated"`); `pipeline.metagen.targets` binds
+> a provider + per-target `{field, prompt, scope}`; the JSON output schema is auto-derived from the
+> field's type. Stage order S4→S5→**S5b**→S6. RPI: `docs/rpi/chunk-llm-metadata/{research,plan,implementation}.md`.
+
+```
+common/migrations/versions/016_chunk_derived_meta.py       # chunk.derived_meta JSONB + GIN (head was 015)
+common/migrations/versions/017_metadata_field_origin.py    # metadata_field.origin VARCHAR(20) system|user|generated
+common/common_libs/domain/ir/chunk.py                      # +derived_meta: dict (per-chunk channel, distinct from prov)
+common/common_libs/domain/metadata/meta_field_spec.py      # +origin Literal
+common/common_libs/domain/metadata/{system_fields,metadata_helpers}.py  # origin="system" forced; schema_field_dicts emits origin
+common/common_libs/config/pipeline/stages/metagen_config.py  # NEW MetaGenConfig + MetaGenTarget(field,prompt,scope)
+common/common_libs/config/pipeline/pipeline.py             # +metagen field; build_default_pipeline env-gates METAGEN_*
+common/base_config/runtime/base_config.py                  # +METAGEN_ENABLED, METAGEN_MAX_BUDGET_USD
+common/common_libs/pipeline/stages/s5b_metagen/           # NEW core.py (S5bMetagenStage) + result.py + schema_builder.py + helpers.py
+  schema_builder.py                                         #   MetagenSchemaBuilder — strict JSON schema from field type
+common/common_libs/providers/llm/base.py                  # +generate_json(prompt, schema) on Protocol
+common/common_libs/providers/llm/openai_compat/{provider,json_helpers}.py  # generate_json: strict response_format + reask + graceful {} + tool fallback
+common/common_libs/pipeline/assembly/{chain_builders,registry,resolved,config_describer}.py
+                                                           #   build_metagen_chain; build S5b + field_types lookup; ResolvedStages.s5b;
+                                                           #   config_describer object_list kind + text ui hint + ("MetaGenConfig","llm") category
+common/common_libs/search/field_index/helpers.py          # resolve_field_text: chunk.derived_meta (chunk-scope) before doc_meta (doc-scope)
+common/common_libs/storage/postgres/repositories/chunk_repo.py  # bulk_insert ON CONFLICT DO UPDATE (derived_meta+embed_text); SELECT derived_meta
+common/common_libs/storage/postgres/repositories/config_repo_helpers.py  # build_field persists origin
+common/common_libs/storage/postgres/models/metadata_field.py    # +origin column
+common/common_libs/config/admission/validator.py          # skip origin="generated" in required/unknown-field checks
+common/common_libs/config/validation/validator/metagen_checks.py  # NEW MetagenChecks (8 issue codes); wired in validator/core.py
+common/common_libs/config/validation/{document,document_helpers}.py  # origin threading + merge guard
+worker/libs/pipeline/orchestrator/{core,s456_runner,stage_resolver}.py  # s5b threaded; run after S5; doc_fields→doc_meta before doc_user_meta
+worker/libs/pipeline/worker/worker_bootstrap.py           # unpack 4-tuple + inject s5b into StageEngine
+app/backend/routers/collections/metagen/                  # NEW POST /collections/{id}/metagen/preview (dry-run, CONFIG_WRITE)
+app/backend/libs/metagen/preview.py                       # NEW MetagenPreviewService (one generate_json, no cache/persist)
+app/backend/routers/discovery/{models,overlays}.py        # ConfigNode.item_schema; metagen.targets[].field options = generated field names
+app/backend/routers/collections/config/models.py          # ConfigMetaField.origin
+app/backend/{app,routers/__init__}.py                     # register metagen_router under /api/v1
+app/frontend/src/components/ui/pickers/ObjectListPicker.tsx  # NEW generic list[model] repeater (kind=object_list)
+app/frontend/src/components/inspect/MetagenPreview.tsx    # NEW dry-run preview (chunk picker → /metagen/preview)
+app/frontend/src/components/ui/{RecursiveFieldRenderer,FieldInput}.tsx  # object_list dispatch; type="text" → Textarea
+app/frontend/src/components/pipeline/panels/IngestionConditionsPanel.tsx  # "Gen." origin column + tag-llm
+app/frontend/src/components/pipeline/{panels/StageConfigPanel,stages}.ts(x)  # s5b stage definition + panel
+app/frontend/src/{api/client,api/types,global.css}        # previewMetagen client; types; warning-banner CSS
+services/docforge/.env(.example)                          # METAGEN_ENABLED / METAGEN_MAX_BUDGET_USD
+```
+
+### Key decisions — S5b
+- **Two-step, three surfaces** (validated vs Azure AI Search): *generate* (`pipeline.metagen.targets`) ≠
+  *persist* (the `metadata_field` row, `origin="generated"`) ≠ *query behavior* (filterable/lexical/semantic
+  on the field). The metadata schema stays the single source of truth for field identity + searchability.
+- **Chunk identity unchanged**: S5b runs after S4 (ids already minted). The `ON CONFLICT (id) DO NOTHING`
+  → `DO UPDATE SET derived_meta, embed_text` is a verified-safe superset (re-ingest with a changed prompt
+  persists new `derived_meta`; nothing else relied on insert-only). ⚠️ supersedes the P4 DO-NOTHING note.
+- **Structured output strict** (OpenAI rules): root object, `additionalProperties:false`, all required,
+  optionals `["T","null"]`, unsupported keywords stripped; one combined `generate_json` call per chunk;
+  bounded reask + graceful `{}` (never fails the doc). `MetaFieldType` is `string[]` (not `keyword_list`),
+  `bool` (not `boolean`) — schema_builder accepts `keyword_list` only as a defensive alias.
+- **Generic renderer**: `kind="object_list"` works for ANY `list[model]` (no stage special-casing);
+  `targets[].field` enum options injected by a discovery overlay (collection's generated field names).
+- **Validation pre-spend**: `MetagenChecks` blocks at 422 (target→non-generated/missing field, duplicate,
+  bad scope, no provider) before any LLM call; generated fields exempt from upload-time required checks.
+- **Reindex**: prompt/target/scope change under `pipeline.metagen` → reindex; searchable toggle on the
+  field → reindex; filterable-only flip → no reindex (same as user fields). No metagen-specific strip needed.
+- **DeviceManager does NOT apply** (HTTP LLM); provider URL+secret per-collection in DB, never `.env`.
+- Env gate `METAGEN_ENABLED=false` + empty `MetaGenConfig` = no-op ⇒ fully backward compatible.

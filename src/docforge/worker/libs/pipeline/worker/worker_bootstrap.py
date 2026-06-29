@@ -1,8 +1,9 @@
 # ====== Code Summary ======
 # WorkerBootstrap — builds every infrastructure dependency the arq pipeline worker needs
-# (Postgres, SeaweedFS, repositories, caches, provider registry, default stages, Qdrant, and
-# the assembled StageEngine) and stores them in the arq context.  Extracted from worker.py so
-# the WorkerSettings module stays a thin arq wiring file.
+# (Postgres, SeaweedFS, repositories, caches, provider registry, Qdrant, and the DynamicStageEngine)
+# and stores them in the arq context.  Extracted from worker.py so the WorkerSettings module stays
+# a thin arq wiring file. Ingestion runs exclusively through the self-describing dynamic engine
+# (assembly.build_pipeline + the AbstractPipeline engine); the legacy hand-wired StageEngine is gone.
 
 # ====== Standard Library Imports ======
 from __future__ import annotations
@@ -16,18 +17,14 @@ from loggerplusplus import loggerplusplus
 
 # ====== Internal Project Imports ======
 from config import RUNTIME_CONFIG
-from common_libs.config.pipeline import build_default_pipeline
 from common_libs.observability.events import EventPublisher
 from common_libs.observability.heartbeat import HeartbeatWriter
 from libs.observability.metrics import MetricsCollector
 from common_libs.pipeline.assembly import ProviderRegistry
+from common_libs.pipeline.assembly.stage_registry import auto_import_stages
 from common_libs.pipeline.caches.node_cache import NodeCache
 from common_libs.pipeline.caches.provider_cache import ProviderCallCache
-from libs.pipeline.engine import StageEngine
-from common_libs.pipeline.stages.s0_ingest.core import S0IngestStage
-from common_libs.pipeline.stages.s1_parse.core import S1ParseStage
-from common_libs.pipeline.stages.s6_embed_index.core import S6EmbedIndexStage
-from common_libs.providers.converter import GotenbergConverter
+from libs.pipeline.dynamic import DynamicStageEngine
 from common_libs.storage.postgres.client import PostgresClient
 from common_libs.storage.postgres.repositories import (
     BlockRepository,
@@ -90,11 +87,7 @@ class WorkerBootstrap:
         await s3.connect()
         _logger.info(f"Worker: SeaweedFS S3 connected.")
 
-        # 3. Instantiate core providers (S0/S1) + repositories + caches
-        converter = GotenbergConverter(
-            base_url=RUNTIME_CONFIG.GOTENBERG_URL,
-            timeout_s=RUNTIME_CONFIG.GOTENBERG_TIMEOUT_S,
-        )
+        # 3. Repositories + caches (S0's Gotenberg converter is built inside the dynamic engine).
         document_repo = DocumentRepository()
         block_repo = BlockRepository()
         chunk_repo = ChunkRepository()
@@ -106,26 +99,13 @@ class WorkerBootstrap:
             s3=s3, provider_cache=provider_cache, runtime_config=RUNTIME_CONFIG,
         )
 
-        # 5. Build parse chain + S2/S4/S5 stages from the default PipelineConfig
-        default_pipeline = build_default_pipeline(RUNTIME_CONFIG)
-        default_parse_chain = registry._build_parser_chain(
-            default_pipeline.parse.chain, default_pipeline.parse.gate,
-        )
-        s2_stage, s4_stage, s5_stage = registry.build_enrich_and_chunk_stages(default_pipeline)
-        _logger.info(
-            f"Worker: S1/S2/S4/S5 ready via registry "
-            f"(parse_chain={default_parse_chain.signature()}, "
-            f"split={default_pipeline.chunk.split_method.id})"
-        )
-
-        # 6. Connect to Qdrant; the S6 embed chain is built per-job from the collection config.
+        # 5. Connect to Qdrant; the S6 embed chain is built per-job from the collection config.
         qdrant = await cls._connect_qdrant()
-        s6_stage: S6EmbedIndexStage | None = None
 
-        # 7. Assemble the stage engine
-        engine = StageEngine(
-            s0=S0IngestStage(s3=s3, converter=converter),
-            s1=S1ParseStage(parse_chain=default_parse_chain, s3=s3),
+        # 6. Assemble the dynamic stage engine (the sole ingestion path). auto_import_stages()
+        # forces every @register_stage to fire so build_pipeline sees the full stage catalog.
+        auto_import_stages()
+        engine = DynamicStageEngine(
             s3=s3,
             postgres=postgres,
             node_cache=node_cache,
@@ -133,13 +113,11 @@ class WorkerBootstrap:
             document_repo=document_repo,
             block_repo=block_repo,
             chunk_repo=chunk_repo,
-            s2=s2_stage,
-            s4=s4_stage,
-            s5=s5_stage,
-            s6=s6_stage,
             registry=registry,
             qdrant=qdrant,
+            runtime_config=RUNTIME_CONFIG,
         )
+        _logger.info(f"Worker: dynamic stage engine ready.")
 
         # 8. Store everything in the arq context
         ctx["postgres"] = postgres

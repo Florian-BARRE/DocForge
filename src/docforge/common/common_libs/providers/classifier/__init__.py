@@ -10,8 +10,8 @@ auto_import(__name__)
 from .base import ClassificationResult, FigureClassifier
 
 # ------------------- Providers (one folder each) ------------------- #
-from .layout_labels import LayoutLabelsClassifier, LayoutLabelsConfig
-from .vit_onnx import VitOnnxClassifier, VitOnnxConfig
+from .layout_labels import LayoutLabelsConfig
+from .vit_onnx import VitOnnxConfig
 
 # ------------------- Discriminated Union ------------------- #
 ClassifierConfig = build_union(get_configs("classifier"))
@@ -21,8 +21,6 @@ __all__ = [
     "ClassificationResult",
     "ClassifierConfig",
     "FigureClassifier",
-    "LayoutLabelsClassifier",
     "LayoutLabelsConfig",
-    "VitOnnxClassifier",
     "VitOnnxConfig",
 ]

@@ -77,8 +77,20 @@ class AdmissionValidator:
         issues: list[dict[str, Any]] = []
         fields = {f.field_name: f for f in (collection.metadata_fields or [])}
 
+        # Generated fields (origin="generated") are produced by S5b at ingestion, never uploaded.
+        # They are exempt from the required + type/enum checks below exactly like system fields, and
+        # remain in ``fields`` so a value a caller mistakenly sends for one is silently ignored
+        # rather than rejected by the unknown-field policy. Logged for traceability.
+        generated = [n for n, f in fields.items() if getattr(f, "origin", "user") == "generated"]
+        if generated:
+            cls.logger.debug(
+                f"Admission: {len(generated)} generated field(s) exempt from upload checks: {generated}"
+            )
+
         for name, f in fields.items():
-            if f.is_system:
+            # Skip pipeline-derived (system) and S5b-produced (generated) fields — neither is part
+            # of an upload payload, so requiring or type-checking them here would be wrong.
+            if f.is_system or getattr(f, "origin", "user") == "generated":
                 continue
             if name in user_meta:
                 value = user_meta[name]
@@ -92,6 +104,8 @@ class AdmissionValidator:
                 issues.append({"code": "missing_required", "status": 422, "field": name,
                                "message": f"Required field {name!r} is missing from the payload."})
 
+        # System and generated fields stay in ``fields``, so a payload key matching one of them is
+        # never reported as unknown (generated values are simply produced by S5b, not by the upload).
         unknown = [k for k in user_meta if k not in fields]
         if unknown and collection.unknown_field_policy == "reject":
             issues.append({"code": "unknown_field", "status": 422, "field": ",".join(unknown),

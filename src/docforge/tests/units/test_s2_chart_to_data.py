@@ -15,8 +15,8 @@ import pytest
 
 # ====== Internal Project Imports ======
 from common_libs.domain.ir.models import FigureKind
-from common_libs.providers.chain import Chain
-from common_libs.providers.chain_gate import ChainGate, ChainGateConfig
+from common_libs.pipeline.bricks.chain import Chain
+from common_libs.pipeline.bricks.chain.gate import ChainGate, ChainGateConfig
 from common_libs.providers.results.vlm_result import VlmResult
 from common_libs.pipeline.stages.s2_enrich.figure_routing import FigureRoutingHelpers
 from common_libs.pipeline.stages.s2_enrich.models import S2Counters

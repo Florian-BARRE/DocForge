@@ -12,7 +12,7 @@ migrations; the worker never does.
 - Repos: `common_libs/storage/postgres/repositories/` (collection/document/config/job/block/chunk + helpers).
 - Run head: `docker compose exec docforge sh -c 'cd /app/common && alembic upgrade head'`.
 
-## Chain so far (001→014)
+## Chain so far (001→017)
 
 | Rev | What |
 |---|---|
@@ -30,6 +30,9 @@ migrations; the worker never does.
 | 012 | drop collection.allowed_providers (dead write-only ARRAY(String), always '{}'; downgrade re-adds NOT NULL default '{}') |
 | 013 | drop budget cols: collection.budget_cap_usd (010, nullable Float) + job.budget_spent (001, NOT NULL Float default '0.0'); collection.max_in_flight KEPT |
 | 014 | drop provider_call.cost (001, NOT NULL Float default '0.0') — last budget sentinel; downgrade re-adds exact 001 shape (safe on populated table) |
+| 015 | keys-only authz: add api_key.permissions (JSONB nullable, NULL=full), DROP collection_grant (destructive); downgrade re-creates 011 grant shape |
+| 016 | S5b metagen: chunk.derived_meta JSONB NOT NULL DEFAULT '{}' + GIN ix_chunk_derived_meta (per-chunk LLM-generated metadata; additive/safe) |
+| 017 | S5b metagen: metadata_field.origin VARCHAR(20) NOT NULL DEFAULT 'user'; backfill 'system' WHERE is_system=true; is_system KEPT |
 
 ## Auth schema (011)
 
@@ -52,7 +55,31 @@ migrations; the worker never does.
 - Repos use absolute imports `from common_libs.storage.postgres.models import …` (job_repo style),
   NOT the older relative `from ..models import` (collection_repo style). Both exist; prefer absolute.
 
+## S5b metagen schema (016/017)
+
+- `chunk.derived_meta` (JSONB, NOT NULL, server_default `'{}'`): per-chunk map
+  `{generated_field_name: value}` written by S5b for **chunk-scope** targets. Document-scope generated
+  values go into `doc_meta`, NOT here. Retrieval reads it via `resolve_field_text` (chunk-scope) ahead
+  of the `doc_meta` fallback. GIN index `ix_chunk_derived_meta` for future containment/key filters.
+  No ORM model for chunk (raw-SQL `chunk_repo`, pipeline-owned) — derived_meta lives only in the
+  migration + domain dataclass `domain/ir/chunk.py` (pipeline adds the field there).
+- `metadata_field.origin` VARCHAR(20) NOT NULL DEFAULT `'user'`. Three values:
+  `system|user|generated`. **Plain VARCHAR, no DB CHECK/enum** (same convention as role/status cols).
+  `is_system` is KEPT (not removed) — origin is additive; backfill set `'system'` WHERE is_system.
+  Python side: `MetaFieldSpec.origin` + `ConfigMetaField.origin` are `Literal["system","user",
+  "generated"] = "user"`; ORM `MetadataFieldModel.origin` has `default+server_default="user"`;
+  `system_fields.py` SYSTEM_METADATA_FIELDS each carry `"origin": "system"`.
+- `generated` fields: caller-authored in the metadata schema (searchable toggles live there), values
+  produced by S5b at ingestion (referenced by `pipeline.metagen.targets[*].field`). Admission must
+  SKIP origin=generated in required/unknown checks (backend); they are never uploaded.
+
 ## Rules learned
+
+- Plan revision numbers can be STALE: the plan named these 009/010 (written when head was 008) but
+  the live chain head was 015 → authored as 016/017. ALWAYS derive the next number from the actual
+  `alembic history`/file list, never trust a plan/doc's hardcoded revision number.
+- `alembic history`/`heads` run OFFLINE (no DB) and verify chain linkage from the script files alone —
+  use them to confirm a single linear head. CWD must be `common/` (script_location is relative).
 
 - A model edit is incomplete without a paired migration (correct `down_revision`, next `00N_`, English docstring).
 - Always write a real `downgrade()`. For drops/renames/type changes, prefer additive → backfill →

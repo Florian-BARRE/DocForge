@@ -145,3 +145,93 @@ class TestReindexDiffCritical:
         assert relevant is True
         # embedding + parse + searchable field → at least three distinct reasons
         assert len(reasons) >= 3
+
+
+class TestReindexDiffMetagen:
+    """Metagen-specific reindex classification (S5b pipeline.metagen section + generated fields)."""
+
+    def test_metagen_prompt_change_is_critical(self) -> None:
+        """Changing a target's prompt changes the LLM output → reindex required.
+
+        pipeline.metagen lives in the non-search pipeline section, so any change triggers
+        the stage-level comparison and flags a reindex.
+        """
+        relevant, reasons = _diff(
+            {"metagen": {"targets": [{"field": "kw", "prompt": "Extract keywords.", "scope": "chunk"}]}},
+            {"metagen": {"targets": [{"field": "kw", "prompt": "Extract 5 keywords.", "scope": "chunk"}]}},
+            [], [],
+        )
+        assert relevant is True
+        assert any("metagen" in r for r in reasons)
+
+    def test_metagen_target_scope_change_is_critical(self) -> None:
+        """Changing a target's scope (chunk→document) changes which embedding call is made."""
+        relevant, reasons = _diff(
+            {"metagen": {"targets": [{"field": "kw", "prompt": "x", "scope": "chunk"}]}},
+            {"metagen": {"targets": [{"field": "kw", "prompt": "x", "scope": "document"}]}},
+            [], [],
+        )
+        assert relevant is True
+        assert any("metagen" in r for r in reasons)
+
+    def test_metagen_new_target_added_is_critical(self) -> None:
+        """Adding a new target generates a field that was previously null → reindex."""
+        relevant, reasons = _diff(
+            {"metagen": {"targets": [{"field": "kw", "prompt": "x", "scope": "chunk"}]}},
+            {"metagen": {"targets": [
+                {"field": "kw", "prompt": "x", "scope": "chunk"},
+                {"field": "summary", "prompt": "y", "scope": "document"},
+            ]}},
+            [], [],
+        )
+        assert relevant is True
+        assert any("metagen" in r for r in reasons)
+
+    def test_metagen_chain_provider_change_is_critical(self) -> None:
+        """Changing the LLM provider chain changes the generated values → reindex."""
+        relevant, _ = _diff(
+            {"metagen": {"chain": [{"id": "openai"}]}},
+            {"metagen": {"chain": [{"id": "mistral"}]}},
+            [], [],
+        )
+        assert relevant is True
+
+    def test_metagen_no_change_is_non_critical(self) -> None:
+        """Identical metagen configs → no reindex."""
+        cfg = {"metagen": {"targets": [{"field": "kw", "prompt": "x", "scope": "chunk"}]}}
+        relevant, reasons = _diff(cfg, cfg, [], [])
+        assert relevant is False
+        assert reasons == []
+
+    def test_generated_field_semantic_toggle_is_critical(self) -> None:
+        """A generated metadata field gaining semantic=True requires embedding the field → reindex."""
+        old = [{"field_name": "kw", "semantic": False, "lexical": False, "origin": "generated"}]
+        new = [{"field_name": "kw", "semantic": True, "lexical": False, "origin": "generated"}]
+        relevant, reasons = _diff({}, {}, old, new)
+        assert relevant is True
+        assert any("kw" in r for r in reasons)
+
+    def test_generated_field_lexical_toggle_is_critical(self) -> None:
+        """A generated field gaining lexical indexing also requires reindex."""
+        old = [{"field_name": "summary", "semantic": False, "lexical": False, "origin": "generated"}]
+        new = [{"field_name": "summary", "semantic": False, "lexical": True, "origin": "generated"}]
+        relevant, reasons = _diff({}, {}, old, new)
+        assert relevant is True
+        assert any("summary" in r for r in reasons)
+
+    def test_generated_field_filterable_only_change_is_non_critical(self) -> None:
+        """Toggling filterable on a generated field (no searchable vectors) → no reindex."""
+        old = [{"field_name": "kw", "semantic": False, "lexical": False, "filterable": False}]
+        new = [{"field_name": "kw", "semantic": False, "lexical": False, "filterable": True}]
+        relevant, reasons = _diff({}, {}, old, new)
+        assert relevant is False
+        assert reasons == []
+
+    def test_metagen_failure_policy_change_is_non_critical(self) -> None:
+        """Toggling metagen chain failure_policy is non-reindex (run-behavior only)."""
+        relevant, _ = _diff(
+            {"metagen": {"chain": [{"id": "openai", "gate": {"failure_policy": "raise"}}]}},
+            {"metagen": {"chain": [{"id": "openai", "gate": {"failure_policy": "continue"}}]}},
+            [], [],
+        )
+        assert relevant is False

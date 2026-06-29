@@ -13,7 +13,7 @@ from typing import Any
 # ====== Third-Party Library Imports ======
 from loggerplusplus import LoggerClass
 
-from common_libs.providers.chain import Chain
+from common_libs.pipeline.bricks.chain import Chain
 
 # ====== Internal Project Imports ======
 from common_libs.domain.ir.models import (

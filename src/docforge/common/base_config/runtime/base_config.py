@@ -102,6 +102,13 @@ class BaseRuntimeConfig(EnvConfigLoader):
     CHUNK_MAX_TOKENS: int = env("CHUNK_MAX_TOKENS", cast=int, default="512")
     CHUNK_OVERLAP_BLOCKS: int = env("CHUNK_OVERLAP_BLOCKS", cast=int, default="0")
 
+    # ───── S5b Metagen (LLM-generated metadata) ─────
+    # METAGEN_ENABLED is a deployment kill-switch: when false the S5b stage is forced to a no-op
+    # regardless of a collection's metagen targets. METAGEN_MAX_BUDGET_USD caps estimated LLM spend
+    # per document (0 = unlimited); both mirror the disabled-by-default OCR/VLM enrichment posture.
+    METAGEN_ENABLED: bool = env("METAGEN_ENABLED", cast=bool, default="false")
+    METAGEN_MAX_BUDGET_USD: float = env("METAGEN_MAX_BUDGET_USD", cast=float, default="0.0")
+
     # ───── Qdrant vector store (infra — app search + worker S6 index) ─────
     QDRANT_HOST: str = env("QDRANT_HOST", default="localhost")
     QDRANT_PORT: int = env("QDRANT_PORT", cast=int, default="6333")

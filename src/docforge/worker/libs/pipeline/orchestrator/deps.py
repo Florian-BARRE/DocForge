@@ -1,8 +1,7 @@
 # ====== Code Summary ======
 # StageDeps frozen dataclass — bundles the shared infrastructure dependencies
-# passed to S012Runner and S456Runner.  A single frozen instance is created by
-# StageEngine.__init__ and shared across all runner objects, avoiding repeated
-# kwargs at every call site.
+# passed to the dynamic engine hooks (WorkerEngineHooks) and the cache/persist
+# helpers, avoiding repeated kwargs at every call site.
 
 # ====== Standard Library Imports ======
 from __future__ import annotations
@@ -25,10 +24,10 @@ if TYPE_CHECKING:
 @dataclass(frozen=True)
 class StageDeps:
     """
-    Frozen container of shared infrastructure dependencies for stage runners.
+    Frozen container of shared infrastructure dependencies for the dynamic engine.
 
-    Passed once to S012Runner and S456Runner at construction time so individual
-    run methods do not need to accept these as repeated keyword arguments.
+    Built once by ``DynamicStageEngine`` and handed to ``WorkerEngineHooks`` + the cache/persist
+    helpers, so individual calls do not need to accept these as repeated keyword arguments.
 
     Attributes:
         s3 (S3Client): SeaweedFS object store client.

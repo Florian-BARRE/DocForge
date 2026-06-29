@@ -16,7 +16,10 @@ from common_libs.config.pipeline._registry import register
 from common_libs.config.pipeline.spec_utils import flatten_provider_spec as _flatten_provider_spec
 
 # ====== Local Project Imports ======
-from .provider import GotenbergConverter
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from common_libs.pipeline.bricks.providers.converter.gotenberg.provider import GotenbergConverter
 
 
 @register("converter")
@@ -46,6 +49,7 @@ class GotenbergConfig(BaseModel):
 
     def build(self) -> GotenbergConverter:
         """Instantiate GotenbergConverter from this config."""
+        from common_libs.pipeline.bricks.providers.converter.gotenberg.provider import GotenbergConverter  # lazy runtime brick (L3)
         return GotenbergConverter(base_url=self.base_url, timeout_s=self.timeout_s)
 
     def merge_defaults(self, cfg: Any) -> GotenbergConfig:

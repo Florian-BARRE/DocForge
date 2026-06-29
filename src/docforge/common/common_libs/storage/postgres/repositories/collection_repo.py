@@ -90,6 +90,11 @@ class CollectionRepository(LoggerClass):
                     semantic=bool(spec.get("semantic", False)),
                     enum_values=spec.get("enum_values"),
                     is_system=bool(spec.get("is_system", False)),
+                    # Persist provenance (system | user | generated). Without this the column
+                    # defaulted to "user", which silently disabled S5b metagen: the worker's
+                    # field_types lookup keeps only origin=="generated" fields, so every metagen
+                    # target was filtered out and the stage no-op'd.
+                    origin=spec.get("origin", "user") or "user",
                 )
             )
         await session.flush()

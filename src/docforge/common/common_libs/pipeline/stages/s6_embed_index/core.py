@@ -4,6 +4,13 @@
 # and one sparse vector per `lexical` field, upserts them to Qdrant, and persists chunks to
 # Postgres. The metadata schema + per-document field values drive which vectors are built.
 # Batched embedding is delegated to S6Embedder (s6_embedder.py).
+#
+# The stage exposes the two phases SEPARATELY — embed() (provider chain → S6EmbedArtifacts) and
+# index() (Qdrant upsert + Postgres persist) — so the native pipeline can drive them as two steps
+# (EmbedStep + IndexStep). run() is kept as their byte-identical composition for direct callers.
+#
+# REFACTOR EXCEPTION (>200 lines): the embed/index phase methods + their shared field-embedding
+# helper form one cohesive stage; the overage is dominated by the mandatory Google-style docstrings.
 
 # ====== Standard Library Imports ======
 from __future__ import annotations
@@ -14,7 +21,7 @@ from typing import Any
 from loggerplusplus import LoggerClass
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from common_libs.providers.chain import Chain
+from common_libs.pipeline.bricks.chain import Chain
 
 # ====== Internal Project Imports ======
 from common_libs.domain.ir.chunk import Chunk
@@ -27,6 +34,7 @@ from common_libs.storage.postgres.repositories.chunk_repo import ChunkRepository
 from common_libs.storage.qdrant.client import QdrantStorageClient
 
 # ====== Local Project Imports ======
+from .embed_artifacts import S6EmbedArtifacts
 from .embedder import S6Embedder
 from .helpers import S6IndexHelpers
 from .result import S6Result
@@ -88,6 +96,10 @@ class S6EmbedIndexStage(LoggerClass):
         """
         Embed, index to Qdrant (multi-field hybrid), and persist to Postgres.
 
+        Kept as the byte-identical composition of ``embed`` then ``index`` (the native pipeline now
+        drives those two phases as separate steps; this method preserves the single-call contract
+        for any direct caller and documents the embed->index order).
+
         Args:
             chunks (list[Chunk]): Contextualized chunks from S5 (embed_text populated).
             collection_name (str): Qdrant collection to upsert into.
@@ -98,31 +110,92 @@ class S6EmbedIndexStage(LoggerClass):
         Returns:
             S6Result: Counts of embedded, upserted, inserted items + field-vector count.
         """
-        self.logger.info(f"S6 started: chunks={len(chunks)} collection={collection_name!r}")
+        # 1. Embed phase (provider chain), then 2. index phase (Qdrant upsert + Postgres persist).
+        artifacts = await self.embed(chunks, metadata_fields, doc_meta)
+        return await self.index(artifacts, chunks, collection_name, session, metadata_fields, doc_meta)
+
+    async def embed(
+        self,
+        chunks: list[Chunk],
+        metadata_fields: list[Any] | None = None,
+        doc_meta: dict[str, Any] | None = None,
+    ) -> S6EmbedArtifacts | None:
+        """
+        Embed phase: run the embed chain over chunk bodies + metadata-field values.
+
+        Args:
+            chunks (list[Chunk]): Contextualized chunks (embed_text populated).
+            metadata_fields (list | None): Collection metadata field defs (drive the vector plan).
+            doc_meta (dict | None): Document-level field values (implicit + user meta).
+
+        Returns:
+            S6EmbedArtifacts | None: The vectors + plan for the index phase, or None when there are
+                no chunks (the index phase then returns an empty result — matching the legacy early
+                return that performed no Qdrant/Postgres I/O).
+        """
+        self.logger.info(f"S6 embed: chunks={len(chunks)}")
         if not chunks:
-            return S6Result(0, 0, 0, collection_name)
+            return None
 
-        # Reset per-run trace accumulator; each batch contributes one ChainTrace.
+        # 0. Reset per-run trace accumulator; each batch contributes one ChainTrace.
         self._embedder.begin_run()
-
         doc_meta = doc_meta or {}
         plan = FieldIndexHelpers.derive_vector_plan(metadata_fields or [])
 
-        # 0. Hierarchical mode: parents (referenced by a child's parent_id) carry the full section
+        # 1. Hierarchical mode: parents (referenced by a child's parent_id) carry the full section
         #    text for context but are NOT indexed in Qdrant — only their children are searched.
         #    Every chunk (parents included) is still persisted to Postgres for hydration.
         parent_ids = {c.parent_id for c in chunks if c.parent_id}
         index_chunks = [c for c in chunks if c.id not in parent_ids]
 
-        # 1. Embed the chunk body (content_dense + content_bm25) for the indexed chunks
+        # 2. Embed the chunk body (content_dense + content_bm25) for the indexed chunks.
         content_dense, content_sparse = await self._embedder.embed_texts(
             [c.embed_text for c in index_chunks]
         )
 
-        # 2. Embed each metadata field's per-chunk value once (reused for dense and/or sparse)
+        # 3. Embed each metadata field's per-chunk value once (reused for dense and/or sparse).
         field_dense, field_sparse = await self._embed_fields(plan, index_chunks, doc_meta)
 
-        # 3. Ensure the collection carries every named vector the schema needs
+        return S6EmbedArtifacts(
+            index_chunks=index_chunks,
+            content_dense=content_dense,
+            content_sparse=content_sparse,
+            field_dense=field_dense,
+            field_sparse=field_sparse,
+            plan=plan,
+        )
+
+    async def index(
+        self,
+        artifacts: S6EmbedArtifacts | None,
+        chunks: list[Chunk],
+        collection_name: str,
+        session: AsyncSession,
+        metadata_fields: list[Any] | None = None,
+        doc_meta: dict[str, Any] | None = None,
+    ) -> S6Result:
+        """
+        Index phase: ensure the collection, upsert multi-vector points, persist chunks to Postgres.
+
+        Args:
+            artifacts (S6EmbedArtifacts | None): Vectors + plan from ``embed`` (None ⇒ no chunks).
+            chunks (list[Chunk]): All chunks (parents included) to persist to Postgres.
+            collection_name (str): Qdrant collection to upsert into.
+            session (AsyncSession): Active Postgres session for chunk persistence.
+            metadata_fields (list | None): Collection metadata field defs (payload assembly).
+            doc_meta (dict | None): Document-level field values (payload assembly).
+
+        Returns:
+            S6Result: Counts of embedded, upserted, inserted items + field-vector count. The empty
+                (no-chunks) result performs no Qdrant/Postgres I/O — byte-identical to the legacy guard.
+        """
+        # 0. No chunks: legacy early return — no ensure_collection / upsert / persist side effects.
+        if artifacts is None:
+            return S6Result(0, 0, 0, collection_name)
+        doc_meta = doc_meta or {}
+        plan = artifacts.plan
+
+        # 1. Ensure the collection carries every named vector the schema needs.
         await self._qdrant.ensure_collection(
             collection_name,
             dense_dim=self.dimension,
@@ -130,21 +203,21 @@ class S6EmbedIndexStage(LoggerClass):
             field_sparse_names=plan.sparse_vector_names,
         )
 
-        # 4. Assemble named-vector maps (content + per field)
-        dense_by_vector: dict[str, list[list[float] | None]] = {CONTENT_DENSE: content_dense}
+        # 2. Assemble named-vector maps (content + per field).
+        dense_by_vector: dict[str, list[list[float] | None]] = {CONTENT_DENSE: artifacts.content_dense}
         for fv in plan.dense:
-            dense_by_vector[fv.vector] = field_dense[fv.name]
+            dense_by_vector[fv.vector] = artifacts.field_dense[fv.name]
         sparse_by_vector: dict[str, list[dict[int, float] | None]] = {}
-        if content_sparse is not None:
-            sparse_by_vector[CONTENT_SPARSE] = content_sparse
+        if artifacts.content_sparse is not None:
+            sparse_by_vector[CONTENT_SPARSE] = artifacts.content_sparse
         for fv in plan.sparse:
-            sparse_by_vector[fv.vector] = field_sparse[fv.name]
+            sparse_by_vector[fv.vector] = artifacts.field_sparse[fv.name]
 
-        # 5. Upsert the indexed chunks to Qdrant + persist ALL chunks to Postgres (both idempotent)
-        payloads = [S6IndexHelpers.build_payload(c, metadata_fields or [], doc_meta) for c in index_chunks]
+        # 3. Upsert the indexed chunks to Qdrant + persist ALL chunks to Postgres (both idempotent).
+        payloads = [S6IndexHelpers.build_payload(c, metadata_fields or [], doc_meta) for c in artifacts.index_chunks]
         n_upserted = await self._qdrant.upsert_points(
             collection_name=collection_name,
-            chunk_ids=[c.id for c in index_chunks],
+            chunk_ids=[c.id for c in artifacts.index_chunks],
             dense_by_vector=dense_by_vector,
             sparse_by_vector=sparse_by_vector,
             payloads=payloads,
@@ -153,11 +226,11 @@ class S6EmbedIndexStage(LoggerClass):
 
         n_field_vectors = len(plan.dense) + len(plan.sparse)
         self.logger.info(
-            f"S6 done: embedded={len(index_chunks)} qdrant={n_upserted} persisted={len(chunks)} "
+            f"S6 done: embedded={len(artifacts.index_chunks)} qdrant={n_upserted} persisted={len(chunks)} "
             f"field_vectors={n_field_vectors} collection={collection_name!r}"
         )
         return S6Result(
-            len(index_chunks), n_upserted, len(chunks), collection_name, n_field_vectors,
+            len(artifacts.index_chunks), n_upserted, len(chunks), collection_name, n_field_vectors,
             chain_traces=list(self._embedder.batch_traces),
         )
 

@@ -105,14 +105,15 @@ class FieldIndexHelpers:
         """
         Resolve the text value of a metadata field for a given chunk.
 
-        Chunk-level fields come from the chunk's provenance; everything else (file-intrinsic,
-        pipeline-derived doc stats, and custom business fields) comes from ``doc_meta`` — the
-        merge of the document's implicit_meta + user_meta + a few derived values.
+        Resolution order: chunk provenance (hardcoded chunk-level keys) → chunk ``derived_meta``
+        (S5b chunk-scope generated fields) → ``doc_meta`` (file-intrinsic, pipeline-derived doc
+        stats, document-scope generated values, and custom business fields). The merged ``doc_meta``
+        is the document's implicit_meta + user_meta + document-scope generated values + derived stats.
 
         Args:
             field_name (str): The metadata field name.
-            chunk (Any): A Chunk (uses ``.prov``, ``.token_count``).
-            doc_meta (dict): Document-level field values (implicit + user meta).
+            chunk (Any): A Chunk (uses ``.prov``, ``.token_count``, ``.derived_meta``).
+            doc_meta (dict): Document-level field values (implicit + user + document-scope generated).
 
         Returns:
             str | None: The field's text value, or None when absent/empty (→ no vector emitted).
@@ -129,10 +130,33 @@ class FieldIndexHelpers:
             return ",".join(bts) if bts else None
         if field_name == "token_count":
             return str(getattr(chunk, "token_count", "") or "") or None
-        # 2. Document-level / custom fields — sourced from the merged document metadata
-        value = doc_meta.get(field_name)
+        # 2. Chunk-scope generated fields (S5b) — sourced from the chunk's own derived_meta, ahead of
+        #    the document-scope fallback so a per-chunk value wins over any broadcast doc-level value.
+        derived = getattr(chunk, "derived_meta", {}) or {}
+        if field_name in derived:
+            return FieldIndexHelpers._stringify(derived.get(field_name))
+        # 3. Document-level / custom fields — sourced from the merged document metadata
+        return FieldIndexHelpers._stringify(doc_meta.get(field_name))
+
+    @staticmethod
+    def _stringify(value: Any) -> str | None:
+        """
+        Coerce a resolved field value into index text, or None when empty.
+
+        A list (e.g. a ``keyword_list`` / ``string[]`` generated field) is comma-joined; ``None``
+        and the empty string collapse to None so no vector / payload entry is emitted.
+
+        Args:
+            value (Any): The raw resolved value (scalar, list, or None).
+
+        Returns:
+            str | None: The text representation, or None when absent/empty.
+        """
         if value is None or value == "":
             return None
+        if isinstance(value, list):
+            joined = ",".join(str(v) for v in value if v is not None and v != "")
+            return joined or None
         return str(value)
 
     @staticmethod

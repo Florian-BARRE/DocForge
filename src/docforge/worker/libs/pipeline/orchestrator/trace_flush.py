@@ -1,7 +1,7 @@
 # ====== Code Summary ======
 # TraceFlusher — static helper that assembles the implicit_meta dict for a document
 # record update and flushes S6 embed-chain traces back onto the document.
-# Extracted from StageEngine._build_implicit_meta to keep each concern in its own module.
+# Used by the dynamic engine's persist + embed-trace hooks (WorkerEngineHooks).
 
 # ====== Standard Library Imports ======
 from __future__ import annotations

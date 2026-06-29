@@ -233,5 +233,9 @@ class ConfigDocument:
                 })
             else:
                 spec["is_system"] = False
+                # A custom field may only be 'user' or 'generated'; never let it claim 'system'
+                # provenance (which is reserved for the catalog fields injected above).
+                if spec.get("origin") == "system":
+                    spec["origin"] = "user"
                 by_name[name] = spec
         return list(by_name.values())

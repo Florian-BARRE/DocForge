@@ -12,8 +12,8 @@ auto_import(__name__)
 from .base import OcrProvider
 
 # ------------------- Providers (one folder each) ------------------- #
-from .mistral import MistralOcrConfig, MistralOcrProvider
-from .paddle import PaddleOcrConfig, PaddleOcrProvider
+from .mistral import MistralOcrConfig
+from .paddle import PaddleOcrConfig
 
 # ------------------- Discriminated Union ------------------- #
 OcrProviderConfig = build_union(get_configs("ocr"))
@@ -21,9 +21,7 @@ OcrProviderConfig = build_union(get_configs("ocr"))
 # ------------------- Public API ------------------- #
 __all__ = [
     "MistralOcrConfig",
-    "MistralOcrProvider",
     "OcrProvider",
     "OcrProviderConfig",
     "PaddleOcrConfig",
-    "PaddleOcrProvider",
 ]

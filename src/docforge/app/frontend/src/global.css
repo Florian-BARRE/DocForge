@@ -5532,3 +5532,209 @@ input[type="range"]::-webkit-slider-thumb:hover { background: var(--text-muted);
   /* Flush left of the right-edge status tags. */
 }
 
+/* ── S5b MetaGen — tag variants ─────────────────────────────────────────── */
+
+/* Amber "generated" pill — shown in the Origin column when origin="generated". */
+.meta-tag-llm {
+  background: color-mix(in srgb, var(--s-warning) 15%, transparent);
+  color: var(--s-warning);
+  font-size: 10px;
+}
+
+/* Dim "no prompt" badge — shown next to the generated tag when the field has no
+   bound target in pipeline.metagen.targets. */
+.meta-tag-no-prompt {
+  background: color-mix(in srgb, var(--text-dim) 12%, transparent);
+  color: var(--text-dim);
+  font-size: 10px;
+  font-style: italic;
+  margin-left: 4px;
+}
+
+/* ── Warning banner — amber token-driven variant of .info-banner ─────────── */
+/* Used for cost/volume signalling near the MetaGen targets editor.           */
+
+.warning-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  background: var(--s-warning-soft);
+  border: 1px solid color-mix(in srgb, var(--s-warning) 35%, transparent);
+  color: var(--text-muted);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  font-size: var(--text-sm);
+  margin-top: 10px;
+  line-height: var(--line-base, 1.5);
+}
+.warning-banner strong {
+  color: var(--s-warning);
+}
+
+/* ── ObjectListPicker ────────────────────────────────────────────────────── */
+
+.object-list-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin: 8px 0;
+}
+
+/* Header row: label + description hint stacked vertically. */
+.object-list-picker-header {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 8px;
+}
+
+.object-list-picker-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: 0.01em;
+}
+
+.object-list-picker-hint {
+  font-size: 11px;
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+
+/* Individual item card. */
+.object-list-picker-item {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  background: var(--surface-raised);
+}
+
+/* Item header: index badge + remove button aligned to opposite ends. */
+.object-list-picker-item-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.object-list-picker-item-index {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+/* Inner container for the item fields — slight left indent for visual grouping. */
+.object-list-picker-item-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* ── MetagenPreview ─────────────────────────────────────────────────────── */
+
+.metagen-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px 0;
+}
+
+/* Label + input aligned horizontally (mirrors .field-row). */
+.metagen-preview-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.metagen-preview-label {
+  font-size: 12px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  min-width: 48px;
+}
+
+/* Chunk picker area — picker controls + chunk body preview. */
+.metagen-preview-chunk-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* Truncated chunk body shown below the chunk picker for context. */
+.metagen-preview-chunk-body {
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 6px 8px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 120px;
+  overflow: auto;
+}
+
+/* Result block: generated value + meta strip. */
+.metagen-preview-result {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+}
+
+/* "Generated value" block: label + value pre. */
+.metagen-preview-value-block {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.metagen-preview-value-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.metagen-preview-value {
+  font-size: 12px;
+  font-family: var(--font-mono);
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 6px 8px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0;
+}
+
+/* Meta strip: token count + cost + scope + provider in a row. */
+.metagen-preview-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.metagen-preview-meta-item {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+/* Empty state when no generated fields are defined. */
+.metagen-preview-empty {
+  padding: 8px 0;
+}
+

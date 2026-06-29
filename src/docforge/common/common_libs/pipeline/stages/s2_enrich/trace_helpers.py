@@ -10,7 +10,7 @@ from typing import Any
 # ====== Third-Party Library Imports ======
 from loggerplusplus import loggerplusplus
 
-from common_libs.providers.chain import ChainHelpers, ChainOutcome, chain_outcome_to_attempt_dicts
+from common_libs.pipeline.bricks.chain import ChainHelpers, ChainOutcome, chain_outcome_to_attempt_dicts
 
 # ====== Internal Project Imports ======
 from common_libs.domain.ir.models import ChainAttemptIR, ChainTrace

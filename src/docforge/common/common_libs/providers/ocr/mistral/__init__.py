@@ -2,7 +2,6 @@
 from .config import MistralOcrConfig
 
 # ------------------- Provider ------------------- #
-from .provider import MistralOcrProvider
 
 # ------------------- Public API ------------------- #
-__all__ = ["MistralOcrConfig", "MistralOcrProvider"]
+__all__ = ["MistralOcrConfig"]

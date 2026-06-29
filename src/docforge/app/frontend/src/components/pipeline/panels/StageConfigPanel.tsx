@@ -16,12 +16,13 @@
 import { useEffect, useRef, useState } from 'react'
 
 // ====== Internal Project Imports ======
-import type { ConfigNode, ConfigState, DiscoveryResponse, DynamicField } from '../../../api/types'
+import type { ConfigNode, ConfigState, DiscoveryResponse, DynamicField, MetaField } from '../../../api/types'
 import { useConfigDraft } from '../../../hooks/useConfigDraft'
 import { ConfigSaveBar } from '../../ui/ConfigSaveBar'
 import { DynamicFieldsGroup } from '../../ui/DynamicFieldsGroup'
 import { RecursiveFieldRenderer } from '../../ui/RecursiveFieldRenderer'
 import { readPath, setPath } from '../../ui/pathUtils'
+import { MetagenPreview } from '../../inspect/MetagenPreview'
 
 // ====== Local Project Imports ======
 import type { StageDefinition } from '../types'
@@ -236,6 +237,17 @@ export function StageConfigPanel({
     ? (subtree.children ?? []).length > 0 || (subtree.choices ?? []).length > 0
     : stageFields.length > 0
 
+  // S5b: compute generated fields + current target array for cost signalling and preview.
+  // Computed unconditionally (no hook calls) — used only when stage.id === 's5b'.
+  const s5bGeneratedFields: MetaField[] = configState
+    ? (configState.metadata_fields as MetaField[]).filter(f => f.origin === 'generated')
+    : []
+  const s5bTargets: Array<Record<string, unknown>> = Array.isArray(value.targets)
+    ? value.targets as Array<Record<string, unknown>>
+    : []
+  const s5bChunkTargets = s5bTargets.filter(t => !t.scope || t.scope === 'chunk')
+  const s5bDocTargets   = s5bTargets.filter(t => t.scope === 'document')
+
   return (
     <div className="stage-config-panel">
       {/* S0-specific: ingestion conditions have their own draft buffer + save bar. */}
@@ -279,6 +291,39 @@ export function StageConfigPanel({
               onChange={handleChange}
               discovery={discovery ?? undefined}
             />
+          )}
+
+          {/* S5b-specific: cost/volume warning + MetagenPreview dry-run panel.
+              The warning banner uses the amber token-driven .warning-banner class.
+              The preview is surfaced here so it sits right below the targets editor. */}
+          {stage.id === 's5b' && (
+            <>
+              {s5bTargets.length > 0 && (
+                <div className="warning-banner" style={{ marginTop: 12 }}>
+                  <strong>LLM call volume — </strong>
+                  {s5bChunkTargets.length > 0 && (
+                    <span>
+                      {s5bChunkTargets.length} chunk-scope target{s5bChunkTargets.length !== 1 ? 's' : ''} generate 1 LLM call per chunk per document.&nbsp;
+                    </span>
+                  )}
+                  {s5bDocTargets.length > 0 && (
+                    <span>
+                      {s5bDocTargets.length} document-scope target{s5bDocTargets.length !== 1 ? 's' : ''} generate 1 LLM call per document.&nbsp;
+                    </span>
+                  )}
+                  Changing a prompt or a generated field&apos;s searchable toggle triggers full
+                  reprocessing of affected documents.
+                </div>
+              )}
+
+              <div className="stage-conditions-section" style={{ marginTop: 16 }}>
+                <div className="stage-conditions-title">Try a prompt</div>
+                <MetagenPreview
+                  collectionId={collectionId}
+                  generatedFields={s5bGeneratedFields}
+                />
+              </div>
+            </>
           )}
 
           {/* Save bar — S0 has its own bar inside IngestionConditionsPanel. */}

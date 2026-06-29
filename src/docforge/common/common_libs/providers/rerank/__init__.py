@@ -15,16 +15,14 @@ from .base import RerankProvider
 # reranker image). The HTTP client BgeRerankProvider stays exported — it is the shared rerank client
 # reused by BgeServerRerankConfig.build(). BgeRerankerConfig is exported only for backward-compat
 # reference; being unregistered, it is absent from the rerank discriminated union.
-from .bge import BgeRerankerConfig, BgeRerankProvider
+from .bge import BgeRerankerConfig
 from .bge_server import BgeServerRerankConfig
-from .cohere import CohereRerankConfig, CohereRerankProvider
+from .cohere import CohereRerankConfig
 
 # ─────────────────── Public API ───────────────────────────────────── #
 __all__ = [
     "RerankProvider",
     "BgeRerankerConfig",
-    "BgeRerankProvider",
     "BgeServerRerankConfig",
     "CohereRerankConfig",
-    "CohereRerankProvider",
 ]

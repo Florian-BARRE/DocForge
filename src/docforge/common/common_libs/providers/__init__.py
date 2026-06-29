@@ -1,12 +1,12 @@
-# ------------------- Interfaces ------------------- #
-# ------------------- Chain ------------------- #
-from .chain import Chain
+# ------------------- Contracts only (L1) ------------------- #
+# This package now exposes ONLY provider CONTRACTS — the Protocol interfaces, result dataclasses,
+# device value-types, and the classifier result/base. The provider RUNTIME implementations moved to
+# the pipeline bricks (common_libs.pipeline.bricks.providers.<family>) in the P1b inc-4b config/
+# runtime split; the Chain brick moved to common_libs.pipeline.bricks.chain (inc-4a). Import any
+# runtime from the bricks, never from this package. The @register provider CONFIG classes stay in
+# their per-family config.py modules (discovered via auto_import) and are imported from there.
 
-# ------------------- Converter ------------------- #
-from .converter import GOTENBERG_FORMATS, NATIVE_PDF_FORMATS, GotenbergConverter
-
-# ------------------- Device Manager ------------------- #
-from .device import Device, DeviceCapability, DeviceManager
+# ------------------- Provider Protocol interfaces ------------------- #
 from .interfaces import (
     ConverterProvider,
     ConvertResult,
@@ -22,25 +22,11 @@ from .interfaces import (
     VlmResult,
 )
 
-# ------------------- OCR Providers (P3) ------------------- #
-from .ocr import MistralOcrProvider, PaddleOcrProvider
+# ------------------- Device value-types ------------------- #
+from .device import Device, DeviceCapability, DeviceSnapshot
 
-# ------------------- Parser ------------------- #
-from .parser import DoclingBackend
-
-# ------------------- VLM Providers (P3) ------------------- #
-from .vlm import OpenAICompatVlmProvider
-
-# ------------------- Classifier (P3) ------------------- #
-from .classifier import (
-    ClassificationResult,
-    FigureClassifier,
-    LayoutLabelsClassifier,
-    VitOnnxClassifier,
-)
-
-# ------------------- Embed Providers (P4) ------------------- #
-from .embed import CompositeEmbedProvider, OpenAICompatEmbedProvider, TeiEmbedProvider
+# ------------------- Classifier contracts ------------------- #
+from .classifier import ClassificationResult, FigureClassifier
 
 # ------------------- Public API ------------------- #
 __all__ = [
@@ -49,29 +35,16 @@ __all__ = [
     "ConverterProvider",
     "Device",
     "DeviceCapability",
-    "DeviceManager",
-    "DoclingBackend",
+    "DeviceSnapshot",
     "EmbedProvider",
     "EmbedResult",
     "FigureClassifier",
-    "GOTENBERG_FORMATS",
-    "GotenbergConverter",
-    "LayoutLabelsClassifier",
-    "CompositeEmbedProvider",
-    "MistralOcrProvider",
-    "NATIVE_PDF_FORMATS",
     "OcrHint",
     "OcrProvider",
     "OcrResult",
-    "OpenAICompatEmbedProvider",
-    "OpenAICompatVlmProvider",
-    "PaddleOcrProvider",
     "ParserProvider",
-    "Chain",
     "RerankProvider",
     "RerankResult",
-    "TeiEmbedProvider",
-    "VitOnnxClassifier",
     "VlmProvider",
     "VlmResult",
 ]

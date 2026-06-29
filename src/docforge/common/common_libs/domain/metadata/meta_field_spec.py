@@ -3,6 +3,9 @@
 # Defines the three orthogonal search roles (filterable / lexical / semantic) and their
 # RRF fusion weights for the DocForge retrieval system.
 
+# ====== Standard Library Imports ======
+from typing import Literal
+
 # ====== Third-Party Library Imports ======
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -30,3 +33,7 @@ class MetaFieldSpec(BaseModel):
     semantic: bool = False
     enum_values: list[str] | None = None
     is_system: bool = False
+    # Field provenance — 'system' (pipeline-extracted), 'user' (caller-authored, uploaded values),
+    # 'generated' (caller-authored, values produced by S5b at ingestion). Defaults to 'user'; system
+    # fields are forced to 'system' in system_fields.py.
+    origin: Literal["system", "user", "generated"] = "user"

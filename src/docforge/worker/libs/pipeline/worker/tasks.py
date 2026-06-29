@@ -14,10 +14,11 @@ from arq.worker import Retry
 from loggerplusplus import loggerplusplus
 
 from common_libs.config.pipeline import PipelineConfig
+from common_libs.domain.metadata import MetadataHelpers
 from common_libs.observability.events import EventPublisher
 
 # ====== Internal Project Imports ======
-from libs.pipeline.engine import StageEngine
+from libs.pipeline.dynamic import DynamicStageEngine
 from common_libs.storage.postgres.client import PostgresClient
 from common_libs.storage.postgres.repositories import (
     CollectionRepository,
@@ -46,7 +47,7 @@ async def run_pipeline_task(
     Lifecycle:
     1. Transition job status → running.
     2. Download the original file from S3 (uploaded at admission by the API).
-    3. Delegate to StageEngine.run() — fingerprint, cache check, stage execution, persist.
+    3. Delegate to DynamicStageEngine.run() — fingerprint, cache check, stage execution, persist.
     4. Transition job status → done (or failed on error, then re-raise so arq retries).
 
     The task receives ``document_id`` and ``source_hash`` rather than raw bytes to keep
@@ -65,7 +66,7 @@ async def run_pipeline_task(
     Returns:
         dict: Summary of the completed run (document_id, job_id, stage fingerprints).
     """
-    engine: StageEngine = ctx["engine"]
+    engine: DynamicStageEngine = ctx["engine"]
     postgres: PostgresClient = ctx["postgres"]
     job_repo: JobRepository = ctx["job_repo"]
     collection_repo: CollectionRepository = ctx["collection_repo"]
@@ -117,14 +118,12 @@ async def run_pipeline_task(
             collection = await collection_repo.get_by_id(session, uuid.UUID(collection_id))
             if collection is not None:
                 pipeline_config = PipelineConfig.from_dict(collection.pipeline)
-                # Snapshot metadata fields as plain dicts (decoupled from the ORM session).
-                metadata_fields = [
-                    {
-                        "field_name": f.field_name, "field_type": f.field_type,
-                        "filterable": f.filterable, "lexical": f.lexical, "semantic": f.semantic,
-                    }
-                    for f in collection.metadata_fields
-                ]
+                # Snapshot metadata fields as plain dicts (decoupled from the ORM session) via the
+                # canonical normalizer — carries the full key set (field_type/enum_values/required/
+                # is_system/origin), so S6's searchable schema AND S5b's generated-field resolution
+                # (origin == "generated") both see complete data. A hand-rolled subset here silently
+                # broke S5b (missing ``origin`` filtered out every metagen target).
+                metadata_fields = MetadataHelpers.schema_field_dicts(collection.metadata_fields)
             # User-provided business metadata for this document (values for custom fields)
             doc = await document_repo.get_by_id(session, doc_uuid)
             if doc is not None and doc.user_meta:

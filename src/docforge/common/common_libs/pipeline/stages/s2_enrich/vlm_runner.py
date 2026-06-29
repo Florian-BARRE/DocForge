@@ -11,7 +11,7 @@ from typing import Any
 # ====== Third-Party Library Imports ======
 from loggerplusplus import loggerplusplus
 
-from common_libs.providers.chain import Chain
+from common_libs.pipeline.bricks.chain import Chain
 from common_libs.providers.interfaces import VlmResult
 
 # ====== Internal Project Imports ======
@@ -81,7 +81,7 @@ class VlmRunner:
             )
 
         # 3. Resolve chart schema from provider type — late import avoids a circular dep.
-        from common_libs.providers.vlm import OpenAICompatVlmProvider  # noqa: PLC0415
+        from common_libs.pipeline.bricks.providers.vlm import OpenAICompatVlmProvider  # noqa: PLC0415
 
         schema = (
             OpenAICompatVlmProvider.chart_schema()

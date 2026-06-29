@@ -19,7 +19,10 @@ from common_libs.config.pipeline._registry import register
 from common_libs.config.pipeline.spec_utils import flatten_provider_spec as _flatten_provider_spec
 
 # ====== Local Project Imports ======
-from .provider import VitOnnxClassifier
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from common_libs.pipeline.bricks.providers.classifier.vit_onnx.provider import VitOnnxClassifier
 
 
 @register("classifier")
@@ -77,6 +80,7 @@ class VitOnnxConfig(BaseModel):
                 f"VitOnnxConfig.build(): model_path not found: {self.model_path!r}. "
                 f"Provide a valid path to a .onnx classifier model file."
             )
+        from common_libs.pipeline.bricks.providers.classifier.vit_onnx.provider import VitOnnxClassifier  # lazy runtime brick (L3)
         return VitOnnxClassifier(model_path=self.model_path, use_gpu=self._use_gpu)
 
     def merge_defaults(self, cfg: Any) -> VitOnnxConfig:

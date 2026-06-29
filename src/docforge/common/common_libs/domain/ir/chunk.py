@@ -29,4 +29,5 @@ class Chunk:
     token_count: int                 # estimated token count of raw_text
     strategy: str                    # chunk kind/method ("token_budget", "semantic", "figure", "table", "section_parent"…)
     prov: dict = field(default_factory=dict)  # aggregated provenance: {pages, block_count, block_types, heading_path, linked_chunk_ids}
+    derived_meta: dict = field(default_factory=dict)  # S5b LLM-generated chunk-scope metadata: {generated_field_name: value}
     parent_id: str | None = None     # hierarchical mode: id of the section parent chunk (None for flat / parent chunks)

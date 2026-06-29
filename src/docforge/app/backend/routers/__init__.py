@@ -19,6 +19,9 @@ from .collections.config.router import router as config_router
 # ----------------- Collection limits -------------- #
 from .collections.limits.router import router as limits_router
 
+# ----------------- Collection metagen ------------- #
+from .collections.metagen.router import router as metagen_router
+
 # -------------------- Documents ------------------ #
 from .collections.documents.router import router as document_router
 
@@ -48,6 +51,7 @@ __all__ = [
     "collection_router",
     "config_router",
     "limits_router",
+    "metagen_router",
     "document_router",
     "search_router",
     "files_router",

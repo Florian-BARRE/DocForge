@@ -196,4 +196,6 @@ class ConfigRepoHelpers:
             semantic=bool(spec.get("semantic", False)),
             enum_values=spec.get("enum_values"),
             is_system=bool(spec.get("is_system", False)),
+            # Persist the provenance discriminator (migration 017): 'system' / 'user' / 'generated'.
+            origin=spec.get("origin", "user") or "user",
         )

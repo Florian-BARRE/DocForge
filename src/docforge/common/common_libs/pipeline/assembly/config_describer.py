@@ -55,6 +55,9 @@ _FIELD_CATEGORY_MAP: dict[tuple[str, str], str] = {
     ("EmbedConfig", "sparse"): "embed",
     ("RerankConfig", "chain"): "rerank",
     ("QueryTransformConfig", "llm"): "llm",
+    # MetaGenConfig.chain is an LLM provider escalation chain (rendered via the ChainLadder), exactly
+    # like a rerank/embed chain. (The field is named `chain`, not `llm` — it is a list, not a scalar.)
+    ("MetaGenConfig", "chain"): "llm",
 }
 
 # Provider categories whose @register decorators must have fired before the walk, so
@@ -242,12 +245,17 @@ class ConfigDescriberHelpers:
                 defs=defs,
             )
 
-        # 4. Scalar → scalar node (None when not a single-control scalar, e.g. list[obj]/dict).
+        # 4. List of model objects (e.g. metagen.targets) → object_list with a recursive item schema.
+        item_schema, item_name = cls._resolve_list_item(prop, defs)
+        if item_schema is not None:
+            return cls._object_list_node(path, field_name, prop, item_schema, item_name, defs)
+
+        # 5. Scalar → scalar node (None when not a single-control scalar, e.g. dict/map).
         scalar = _scalar_ui_type(prop)
         if scalar is not None:
             return cls._scalar_node(path, field_name, prop, scalar)
 
-        # 5. Not renderable as a single control (e.g. heading_rules list, field_weights map).
+        # 6. Not renderable as a single control (e.g. field_weights map).
         return None
 
     # ─── Leaf builders ──────────────────────────────────────────────────────────
@@ -256,6 +264,10 @@ class ConfigDescriberHelpers:
     def _scalar_node(cls, path: str, field_name: str, prop: dict[str, Any], scalar: str) -> ConfigNodeDict:
         """Build a ``kind=scalar`` node, masking credential-named fields as ``secret``."""
         ui_type = "secret" if scalar == "str" and _is_secret_key(field_name) else scalar
+        # A field annotated with json_schema_extra={"ui": "text"} (e.g. a metagen prompt) renders as
+        # a multiline textarea — the frontend keys off type="text" vs the single-line "str".
+        if prop.get("ui") == "text":
+            ui_type = "text"
         node: ConfigNodeDict = {
             "path": path,
             "kind": "scalar",
@@ -527,6 +539,78 @@ class ConfigDescriberHelpers:
                 if "properties" in target:
                     return target, name
         return None, ""
+
+    @classmethod
+    def _resolve_list_item(cls, prop: dict[str, Any], defs: dict[str, Any]) -> tuple[dict[str, Any] | None, str]:
+        """
+        Resolve an ``array``-typed property whose items are a model object into (item schema, name).
+
+        Handles a direct ``type=array`` and an ``anyOf``/``oneOf`` array branch (Optional[list[...]]).
+        Returns (None, "") for non-array fields or arrays of scalars (which are not object_lists).
+
+        Args:
+            prop (dict): The field property.
+            defs (dict): Shared ``$defs``.
+
+        Returns:
+            tuple[dict | None, str]: (item object schema, item model name), or (None, "").
+        """
+        # 1. Find the array's `items` schema (direct or via an anyOf/oneOf branch).
+        items: Any = None
+        if prop.get("type") == "array":
+            items = prop.get("items")
+        else:
+            for branch in cls._branches(prop):
+                if branch.get("type") == "array":
+                    items = branch.get("items")
+                    break
+        # 2. Resolve the item as a model object (a $ref or inline object with properties).
+        if not isinstance(items, dict):
+            return None, ""
+        return cls._resolve_object(items, defs)
+
+    @classmethod
+    def _object_list_node(
+        cls,
+        path: str,
+        field_name: str,
+        prop: dict[str, Any],
+        item_schema: dict[str, Any],
+        item_name: str,
+        defs: dict[str, Any],
+    ) -> ConfigNodeDict:
+        """
+        Build a ``kind=object_list`` node — a repeater whose item template is a recursed model.
+
+        The ``item_schema`` carries the described children of ONE item (e.g. a metagen target's
+        ``field`` / ``prompt`` / ``scope``); the frontend renders an add/remove list of these.
+
+        Args:
+            path (str): Absolute dot-path of the list field.
+            field_name (str): The list field name.
+            prop (dict): The field property (for label/description).
+            item_schema (dict): The item model's JSON schema (resolved object).
+            item_name (str): The item model name.
+            defs (dict): Shared ``$defs``.
+
+        Returns:
+            ConfigNodeDict: The object_list node with a recursive ``item_schema``.
+        """
+        item_obj = cls._object_node(
+            path=f"{path}[]",
+            label=item_name,
+            description="",
+            model_name=item_name,
+            properties=item_schema.get("properties", {}),
+            defs=defs,
+        )
+        return {
+            "path": path,
+            "kind": "object_list",
+            "label": cls._label_from(prop, field_name),
+            "description": prop.get("description", ""),
+            "item_schema": item_obj["children"],
+        }
 
     @classmethod
     def _numeric_bounds(cls, prop: dict[str, Any]) -> tuple[Any, Any]:

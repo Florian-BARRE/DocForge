@@ -10,17 +10,17 @@ auto_import(__name__)
 
 # ---------------------- Base ---------------------- #
 from .base import EmbedProvider
-from .composite import CompositeEmbedProvider
 
 # ------------------- Providers (one folder each) ------------------- #
 from .bge_server import BgeServerEmbedConfig
-from .openai_compat import OpenAICompatEmbedConfig, OpenAICompatEmbedProvider
+from .openai_compat import OpenAICompatEmbedConfig
 
 # `tei` is no longer a registered embed CHOICE (bge_server replaced the off-the-shelf TEI image).
-# The HTTP client TeiEmbedProvider stays exported — it is the shared embed client reused by
-# BgeServerEmbedConfig.build(). TeiEmbedConfig is exported only for backward-compat reference;
-# being unregistered, it is absent from the EmbedProviderConfig discriminated union below.
-from .tei import TeiEmbedConfig, TeiEmbedProvider
+# The runtime TeiEmbedProvider moved to the pipeline brick
+# common_libs.pipeline.bricks.providers.embed (P1b inc-4b config/runtime split); only the
+# (unregistered, backward-compat) TeiEmbedConfig is exported here — it is absent from the
+# EmbedProviderConfig discriminated union below.
+from .tei import TeiEmbedConfig
 
 # ------------------- Discriminated Union ------------------- #
 EmbedProviderConfig = build_union(get_configs("embed"))
@@ -28,11 +28,8 @@ EmbedProviderConfig = build_union(get_configs("embed"))
 # ------------------- Public API ------------------- #
 __all__ = [
     "EmbedProvider",
-    "CompositeEmbedProvider",
     "EmbedProviderConfig",
     "BgeServerEmbedConfig",
     "OpenAICompatEmbedConfig",
-    "OpenAICompatEmbedProvider",
     "TeiEmbedConfig",
-    "TeiEmbedProvider",
 ]

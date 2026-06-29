@@ -3,7 +3,8 @@
 #
 # Lives in ``common_libs/config/`` (a config-layer leaf): it imports only standard-library
 # and third-party packages, never other DocForge buckets. The runtime object (ChainGate)
-# stays in ``common_libs/providers/chain_gate.py`` and imports this config from here.
+# lives in the chain brick ``common_libs/pipeline/bricks/chain/gate.py`` and imports this config
+# from here.
 
 # ====== Standard Library Imports ======
 from typing import Literal

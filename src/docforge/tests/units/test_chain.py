@@ -12,12 +12,12 @@ from __future__ import annotations
 import pytest
 
 # ====== Internal Project Imports ======
-from common_libs.providers.chain import (
+from common_libs.pipeline.bricks.chain import (
     Chain,
     ChainExhaustedError,
     ChainOutcome,
 )
-from common_libs.providers.chain_gate import ChainGate, ChainGateConfig
+from common_libs.pipeline.bricks.chain.gate import ChainGate, ChainGateConfig
 
 
 class _ScoredResult:

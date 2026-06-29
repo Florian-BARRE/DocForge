@@ -9,14 +9,15 @@
 # The class is KEPT (unregistered) only so existing stored pipelines with `id == "tei"` can be
 # referenced during backward-compat normalization; EmbedConfig rewrites such specs to "bge_server"
 # BEFORE the discriminated-union dispatch, so a TeiEmbedConfig instance is never produced.
-# The HTTP client (TeiEmbedProvider, in provider.py) stays the shared embed client used by
-# BgeServerEmbedConfig.build().
+# The HTTP client runtime (TeiEmbedProvider) now lives in the pipeline brick
+# common_libs.pipeline.bricks.providers.embed and is the shared embed client used by
+# BgeServerEmbedConfig.build() (lazy-imported there).
 
 # ====== Standard Library Imports ======
 from __future__ import annotations
 
 import socket
-from typing import Any, ClassVar, Literal
+from typing import TYPE_CHECKING, Any, ClassVar, Literal
 from urllib.parse import urlparse
 
 # ====== Third-Party Library Imports ======
@@ -25,8 +26,10 @@ from pydantic import BaseModel, Field, model_validator
 # ====== Internal Project Imports ======
 from common_libs.config.pipeline.spec_utils import flatten_provider_spec as _flatten_provider_spec
 
-# ====== Local Project Imports ======
-from .provider import TeiEmbedProvider
+if TYPE_CHECKING:
+    # Type-only import of the runtime brick (L3); build() lazy-imports it at runtime so this
+    # config-layer module has no module-level upward import into the pipeline.
+    from common_libs.pipeline.bricks.providers.embed import TeiEmbedProvider
 
 
 class TeiEmbedConfig(BaseModel):
@@ -71,13 +74,19 @@ class TeiEmbedConfig(BaseModel):
         """Flatten legacy {id, params:{}} DB shape to a flat dict before validation."""
         return _flatten_provider_spec(v)
 
-    def build(self) -> TeiEmbedProvider:
+    def build(self) -> "TeiEmbedProvider":
         """
         Instantiate TeiEmbedProvider from this config.
+
+        Lazy-imports the runtime brick (L3) so this config-layer module has no module-level
+        upward import into the pipeline.
 
         Returns:
             TeiEmbedProvider: Ready-to-use provider instance.
         """
+        # 1. Lazy import the runtime — function-local to keep the import graph acyclic.
+        from common_libs.pipeline.bricks.providers.embed import TeiEmbedProvider
+
         return TeiEmbedProvider(
             base_url=self.base_url or "http://bge_server:80",
             model=self.model,

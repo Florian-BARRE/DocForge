@@ -11,6 +11,7 @@ from typing import Any
 # ====== Local Project Imports ======
 from .locality_checks import LocalityChecks
 from .metadata_checks import MetadataChecks
+from .metagen_checks import MetagenChecks
 from .pipeline_checks import PipelineChecks
 from .provider_checks import ProviderChecks
 
@@ -26,6 +27,7 @@ class ConfigValidator:
     4. Locality ↔ provider conflicts.
     5. Provider selectability and availability.
     6. Metadata field schema sanity.
+    7. Metagen targets ↔ generated metadata fields coherence (S5b).
 
     Produces a flat list of issues (errors + warnings).  A config with any ``error`` issue must
     not be applied; warnings are advisory (e.g. a remote provider whose key is not yet set).
@@ -66,5 +68,9 @@ class ConfigValidator:
 
         # 4. Metadata schema sanity
         MetadataChecks.check_metadata(doc.get("metadata_fields", []), issues)
+
+        # 5. Metagen (S5b) targets ↔ generated metadata fields coherence. Runs AFTER MetadataChecks
+        # so a target can be validated against the (already sanity-checked) generated field set.
+        MetagenChecks.check_metagen(doc, issues)
 
         return issues

@@ -11,7 +11,7 @@
 from __future__ import annotations
 
 import socket
-from typing import Any, ClassVar, Literal
+from typing import TYPE_CHECKING, Any, ClassVar, Literal
 from urllib.parse import urlparse
 
 # ====== Third-Party Library Imports ======
@@ -21,9 +21,10 @@ from pydantic import BaseModel, Field, model_validator
 from common_libs.config.pipeline._registry import register
 from common_libs.config.pipeline.spec_utils import flatten_provider_spec as _flatten_provider_spec
 
-# ====== Local Project Imports ======
-# bge_server speaks the TEI HTTP contract → it reuses the TEI HTTP client provider.
-from ..tei.provider import TeiEmbedProvider
+if TYPE_CHECKING:
+    # Type-only import of the runtime brick (L3). At runtime build() lazy-imports it so this
+    # config-layer (L1) module never has a module-level upward import into the pipeline brick.
+    from common_libs.pipeline.bricks.providers.embed import TeiEmbedProvider
 
 # Canonical URL of the local bge service (compose service `bge_server`). A structural default
 # (a service name, not a secret) — a collection may override it per-collection.
@@ -71,8 +72,15 @@ class BgeServerEmbedConfig(BaseModel):
         """Flatten legacy {id, params:{}} DB shape to a flat dict before validation."""
         return _flatten_provider_spec(v)
 
-    def build(self) -> TeiEmbedProvider:
-        """Instantiate the (TEI-protocol) HTTP embed provider pointed at bge_server."""
+    def build(self) -> "TeiEmbedProvider":
+        """Instantiate the (TEI-protocol) HTTP embed provider pointed at bge_server.
+
+        Lazy-imports the runtime brick so this config-layer module carries no module-level
+        upward import into the pipeline (the boundary fix for the providers→bricks split).
+        """
+        # 1. Lazy import the runtime (L3) — function-local to keep the import graph acyclic.
+        from common_libs.pipeline.bricks.providers.embed import TeiEmbedProvider
+
         return TeiEmbedProvider(
             base_url=self.base_url or _DEFAULT_BGE_URL,
             model=self.model,

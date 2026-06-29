@@ -20,7 +20,10 @@ from common_libs.config.pipeline._registry import register
 from common_libs.config.pipeline.spec_utils import flatten_provider_spec as _flatten_provider_spec
 
 # ====== Local Project Imports ======
-from .core import DoclingBackend
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from common_libs.pipeline.bricks.providers.parser.docling.core import DoclingBackend
 
 
 @register("parser")
@@ -68,6 +71,7 @@ class DoclingConfig(BaseModel):
         Returns:
             DoclingBackend: Configured backend instance.
         """
+        from common_libs.pipeline.bricks.providers.parser.docling.core import DoclingBackend  # lazy runtime brick (L3)
         return DoclingBackend(use_gpu=self._use_gpu)
 
     def merge_defaults(self, cfg: Any) -> DoclingConfig:

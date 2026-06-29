@@ -10,14 +10,13 @@ auto_import(__name__)
 from .base import ParserProvider
 
 # ------------------- Providers (one folder each) ------------------- #
-from .docling import DoclingBackend, DoclingConfig
+from .docling import DoclingConfig
 
 # ------------------- Discriminated Union ------------------- #
 ParserConfig = build_union(get_configs("parser"))
 
 # ------------------- Public API ------------------- #
 __all__ = [
-    "DoclingBackend",
     "DoclingConfig",
     "ParserConfig",
     "ParserProvider",

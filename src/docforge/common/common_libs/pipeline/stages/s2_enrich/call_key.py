@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import Any
 
 # ====== Third-Party Library Imports ======
-from common_libs.providers.chain import Chain
+from common_libs.pipeline.bricks.chain import Chain
 
 # ====== Internal Project Imports ======
 from common_libs.pipeline.caches.provider_cache import ProviderCallCache

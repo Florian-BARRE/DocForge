@@ -16,7 +16,10 @@ from common_libs.config.pipeline._registry import register
 from common_libs.config.pipeline.spec_utils import flatten_provider_spec as _flatten_provider_spec
 
 # ====== Local Project Imports ======
-from .provider import OpenAICompatEmbedProvider
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from common_libs.pipeline.bricks.providers.embed.openai_compat.provider import OpenAICompatEmbedProvider
 
 # Default cloud endpoint used when an external config omits base_url.
 _DEFAULT_EXTERNAL_BASE_URL = "https://api.openai.com/v1"
@@ -69,6 +72,7 @@ class OpenAICompatEmbedConfig(BaseModel):
             raise ValueError("OpenAICompatEmbedConfig.build(): api_key is required for locality='external'.")
         if self.locality == "local" and not base_url:
             raise ValueError("OpenAICompatEmbedConfig.build(): base_url is required for locality='local'.")
+        from common_libs.pipeline.bricks.providers.embed.openai_compat.provider import OpenAICompatEmbedProvider  # lazy runtime brick (L3)
         return OpenAICompatEmbedProvider(
             base_url=base_url,
             locality=self.locality,

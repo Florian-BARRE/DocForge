@@ -1,10 +1,9 @@
 # ====== Code Summary ======
-# S012PersistHelpers — persists the document's IR after S0/S1/S2 complete.
-# Inserts the IR blocks (only on the first run) and flips the document status to ``parsed``
-# (an intermediate state) with its derived implicit_meta.  The terminal ``done`` status is
-# only written by the engine AFTER S4/S5/S6 succeed, so a document never reads as fully
-# ingested while its chunks/vectors are missing.  Extracted from S012Runner to keep the
-# runner focused on the per-stage caching pattern.
+# S012PersistHelpers — persists the document's IR after S0/S1/S2 complete (called from the dynamic
+# engine's after-enrich hook). Inserts the IR blocks (only on the first run) and flips the document
+# status to ``parsed`` (an intermediate state) with its derived implicit_meta.  The terminal ``done``
+# status is only written AFTER S4/S5/S6 succeed, so a document never reads as fully ingested while
+# its chunks/vectors are missing.
 
 # ====== Standard Library Imports ======
 from __future__ import annotations

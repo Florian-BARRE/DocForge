@@ -12,7 +12,7 @@ import uuid
 from loggerplusplus import LoggerClass
 
 # ====== Internal Project Imports ======
-from common_libs.providers.converter import (
+from common_libs.pipeline.bricks.providers.converter import (
     GOTENBERG_FORMATS,
     NATIVE_PDF_FORMATS,
     GotenbergConverter,

@@ -30,6 +30,7 @@ from backend.routers import (
     health_router,
     jobs_router,
     limits_router,
+    metagen_router,
     monitoring_router,
     pages_router,
     search_router,
@@ -64,6 +65,7 @@ def _make_test_app() -> FastAPI:
     app.include_router(router=files_router,      prefix=f"{DOC}/{{document_id}}")
     app.include_router(router=chunks_router,     prefix=f"{DOC}/{{document_id}}/chunks")
     app.include_router(router=pages_router,      prefix=f"{DOC}/{{document_id}}/pages")
+    app.include_router(router=metagen_router,    prefix=f"{COL}/{{collection_id}}/metagen")
     app.include_router(router=jobs_router,       prefix=f"{V1}/jobs")
     app.include_router(router=monitoring_router, prefix=f"{V1}/monitoring")
     return app

@@ -18,8 +18,8 @@ from backend.libs.observability.queue import QueueIntrospector
 from common_libs.pipeline.assembly import ProviderRegistry
 from common_libs.pipeline.caches.node_cache import NodeCache
 from common_libs.pipeline.caches.provider_cache import ProviderCallCache
-from common_libs.providers.converter import GotenbergConverter
-from common_libs.providers.device_manager import DeviceManager
+from common_libs.pipeline.bricks.providers.converter import GotenbergConverter
+from common_libs.pipeline.bricks.providers.device import DeviceManager
 from backend.libs.search.hybrid.service import HybridSearchService
 from backend.libs.search.metadata_indexer.indexer import MetadataIndexer
 from backend.libs.auth import AuthService

@@ -20,11 +20,22 @@ from .describe_helpers import _param, _rules
 # ------------------- Registry -------------------- #
 from .registry import ProviderRegistry
 
-# ------------------- Resolved -------------------- #
-from .resolved import ResolvedStages
-
 # ------------------- Stage Descriptors -------------- #
 from .stage_descriptors import StageDescriptorHelpers
+
+# ------------------- Stage Registry (dynamic-architecture; PR-2) ----- #
+# Only the registry + DAG primitives are exported here. `build_pipeline` lives in
+# `stage_assembler` and is imported from that submodule directly — importing it here would create
+# a cycle (stage_assembler imports the adapters, which import this package for @register_stage).
+from .stage_registry import (
+    ROOT_CONTEXT_KEYS,
+    StageWiringError,
+    auto_import_stages,
+    get_stages,
+    register_stage,
+    topo_order,
+    validate_wiring,
+)
 
 # ------------------- Public API ------------------- #
 __all__ = [
@@ -34,10 +45,17 @@ __all__ = [
     "ConfigNodeDict",
     "ProviderRegistry",
     "ProviderUnavailableError",
-    "ResolvedStages",
     "StageDescriptorHelpers",
     "describe_config_tree",
     "_params_from_model",
     "_param",
     "_rules",
+    # Stage registry (PR-2)
+    "ROOT_CONTEXT_KEYS",
+    "StageWiringError",
+    "auto_import_stages",
+    "get_stages",
+    "register_stage",
+    "topo_order",
+    "validate_wiring",
 ]

@@ -52,8 +52,13 @@ class ChunkRepository(LoggerClass):
         Bulk-insert a list of chunks into the ``chunk`` table.
 
         Uses a single-statement multi-row insert for efficiency.
-        Existing rows with the same ``id`` are silently skipped (ON CONFLICT DO NOTHING)
-        to support idempotent re-ingestion.
+
+        Idempotency-contract shift (vs the P4 ``ON CONFLICT DO NOTHING``): a re-ingest with the
+        same chunk id now UPDATEs the re-derivable columns — ``derived_meta`` (S5b output) and
+        ``embed_text`` (S5 output) — so editing a metagen prompt / contextualization template and
+        re-running refreshes those values in place. The chunk id (UUID v5 of doc+blocks+config_hash)
+        and its immutable structural columns are unchanged on conflict, so this stays a safe superset
+        of the old behavior. S6's Qdrant upsert remains the indexing idempotency mechanism.
 
         Args:
             session (AsyncSession): Active SQLAlchemy async session.
@@ -80,6 +85,7 @@ class ChunkRepository(LoggerClass):
                 "token_count": c.token_count,
                 "strategy": c.strategy,
                 "prov": json.dumps(c.prov),
+                "derived_meta": json.dumps(c.derived_meta),
                 "parent_id": c.parent_id,
             }
             for c in ordered
@@ -90,11 +96,14 @@ class ChunkRepository(LoggerClass):
                 """
                 INSERT INTO chunk
                     (id, document_id, config_hash, block_ids,
-                     raw_text, embed_text, token_count, strategy, prov, parent_id)
+                     raw_text, embed_text, token_count, strategy, prov, derived_meta, parent_id)
                 VALUES
                     (:id, :document_id, :config_hash, :block_ids,
-                     :raw_text, :embed_text, :token_count, :strategy, CAST(:prov AS jsonb), :parent_id)
-                ON CONFLICT (id) DO NOTHING
+                     :raw_text, :embed_text, :token_count, :strategy,
+                     CAST(:prov AS jsonb), CAST(:derived_meta AS jsonb), :parent_id)
+                ON CONFLICT (id) DO UPDATE SET
+                    derived_meta = EXCLUDED.derived_meta,
+                    embed_text = EXCLUDED.embed_text
                 """
             ),
             rows,
@@ -130,7 +139,7 @@ class ChunkRepository(LoggerClass):
                     embed_text = COALESCE(:embed_text, embed_text)
                 WHERE id = :chunk_id
                 RETURNING id, document_id, config_hash, block_ids,
-                          raw_text, embed_text, token_count, strategy, prov, parent_id
+                          raw_text, embed_text, token_count, strategy, prov, derived_meta, parent_id
                 """
             ),
             {"chunk_id": chunk_id, "raw_text": raw_text, "embed_text": embed_text},
@@ -158,7 +167,7 @@ class ChunkRepository(LoggerClass):
             text(
                 """
                 SELECT id, document_id, config_hash, block_ids,
-                       raw_text, embed_text, token_count, strategy, prov, parent_id
+                       raw_text, embed_text, token_count, strategy, prov, derived_meta, parent_id
                 FROM chunk
                 WHERE id = :chunk_id
                 """
@@ -195,7 +204,7 @@ class ChunkRepository(LoggerClass):
             text(
                 """
                 SELECT id, document_id, config_hash, block_ids,
-                       raw_text, embed_text, token_count, strategy, prov, parent_id
+                       raw_text, embed_text, token_count, strategy, prov, derived_meta, parent_id
                 FROM chunk
                 WHERE id = ANY(:ids)
                 """
@@ -227,7 +236,7 @@ class ChunkRepository(LoggerClass):
                 text(
                     """
                     SELECT id, document_id, config_hash, block_ids,
-                           raw_text, embed_text, token_count, strategy, prov, parent_id
+                           raw_text, embed_text, token_count, strategy, prov, derived_meta, parent_id
                     FROM chunk
                     WHERE document_id = :doc_id AND config_hash = :config_hash
                     ORDER BY (prov->>'pages')::text
@@ -240,7 +249,7 @@ class ChunkRepository(LoggerClass):
                 text(
                     """
                     SELECT id, document_id, config_hash, block_ids,
-                           raw_text, embed_text, token_count, strategy, prov, parent_id
+                           raw_text, embed_text, token_count, strategy, prov, derived_meta, parent_id
                     FROM chunk
                     WHERE document_id = :doc_id
                     ORDER BY (prov->>'pages')::text

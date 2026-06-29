@@ -64,6 +64,9 @@ class MetadataHelpers:
                 "lexical": bool(MetadataHelpers.field_attr(f, "lexical", False)),
                 "enum_values": MetadataHelpers.field_attr(f, "enum_values"),
                 "is_system": bool(MetadataHelpers.field_attr(f, "is_system", False)),
+                # Provenance — lets the discovery overlay surface origin="generated" fields as the
+                # selectable options for pipeline.metagen.targets[*].field.
+                "origin": MetadataHelpers.field_attr(f, "origin", "user") or "user",
             }
             for f in metadata_fields
         ]

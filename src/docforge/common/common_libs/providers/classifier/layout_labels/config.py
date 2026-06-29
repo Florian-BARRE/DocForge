@@ -13,7 +13,10 @@ from common_libs.config.pipeline._registry import register
 from common_libs.config.pipeline.spec_utils import flatten_provider_spec as _flatten_provider_spec
 
 # ====== Local Project Imports ======
-from .provider import LayoutLabelsClassifier
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from common_libs.pipeline.bricks.providers.classifier.layout_labels.provider import LayoutLabelsClassifier
 
 
 @register("classifier")
@@ -36,6 +39,7 @@ class LayoutLabelsConfig(BaseModel):
 
     def build(self) -> LayoutLabelsClassifier:
         """Instantiate LayoutLabelsClassifier from this config."""
+        from common_libs.pipeline.bricks.providers.classifier.layout_labels.provider import LayoutLabelsClassifier  # lazy runtime brick (L3)
         return LayoutLabelsClassifier()
 
     def merge_defaults(self, cfg: Any) -> LayoutLabelsConfig:

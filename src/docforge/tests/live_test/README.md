@@ -26,3 +26,20 @@ Override endpoints with `DOCFORGE_TEST_API_URL` / `DOCFORGE_TEST_QDRANT_URL` /
 ingestion+structure / hybrid search / config CRUD+rollback / metadata ±reindex / staleness /
 reingest / dedup / files+pages+chunks / jobs+monitoring+limits / SSE streams / cascade-delete
 (no orphans) / negative contract paths (415/413/400/422/404).
+
+## S5b metagen — opt-in, cost-bounded (`test_metagen_live.py`)
+
+Calls a real LLM, so it is **skipped by default even when the stack is up** — it only runs when you
+point it at an OpenAI-compatible endpoint. The default path makes **exactly ONE LLM call** (a
+`scope="document"` field on a single tiny HTML doc), so it's safe for a quick paid smoke test.
+
+```bash
+DOCFORGE_TEST_METAGEN_LLM_URL=https://api.openai.com/v1 \
+DOCFORGE_TEST_METAGEN_LLM_MODEL=gpt-4o-mini \
+DOCFORGE_TEST_METAGEN_LLM_KEY=sk-... \
+DOCFORGE_TEST_METAGEN_LLM_LOCALITY=external \
+  uv run pytest tests/live_test/test_metagen_live.py -v -s
+```
+`KEY` defaults to `local` and `LOCALITY` to `external`; point `URL` at a local OpenAI-compat server
+(e.g. vLLM/Ollama) to run it free. Without `URL`+`MODEL` the tests skip. There is no per-chunk live
+test by default (cost); gate one behind `DOCFORGE_TEST_METAGEN_CHUNK_SCOPE=true` if ever added.

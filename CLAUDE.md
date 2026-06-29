@@ -5,7 +5,7 @@ Spec complète : `SPEC-docforge-document-intelligence-platform.md`
 
 ---
 
-## Phase courante : P7 — Search pipeline engine ✅ done
+## Phase courante : S5b metagen — LLM-generated metadata ✅ done
 
 | Phase | Statut | Contenu |
 |---|---|---|
@@ -16,6 +16,7 @@ Spec complète : `SPEC-docforge-document-intelligence-platform.md`
 | **P5** | ✅ done | Collections schema + pipeline update + reindex, hybrid search, chunks router, markdown endpoint |
 | **P6** | ✅ done | UI React (workspace unifié, drag-and-drop, live status, recherche hybride) + MCP server |
 | **P7** | ✅ done | SearchPipelineEngine : query transform (rewrite/HyDE/multi_query) + cross-encoder reranking (BGE/Cohere) |
+| **S5b** | ✅ done | LLM-generated metadata stage (S4→S5→**S5b**→S6) : champs `origin="generated"` déclarés dans le schéma collection, `pipeline.metagen.targets` lie provider+prompt+scope (chunk/document), JSON schema auto-dérivé du type ; `chunk.derived_meta` + preview dry-run + budget gate `METAGEN_*`. RPI : `docs/rpi/chunk-llm-metadata/` |
 
 > Phase file inventory and key decisions per phase → `.claude/rules/phases.md`
 

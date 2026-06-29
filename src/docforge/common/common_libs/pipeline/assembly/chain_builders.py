@@ -12,9 +12,10 @@ import os
 from typing import Any
 
 # ====== Third-Party Library Imports ======
-from common_libs.providers.chain import Chain
-from common_libs.providers.chain_gate import ChainGate, ChainGateConfig
+from common_libs.pipeline.bricks.chain import Chain
+from common_libs.pipeline.bricks.chain.gate import ChainGate, ChainGateConfig
 from common_libs.providers.classifier.vit_onnx.config import VitOnnxConfig
+from common_libs.providers.llm.openai_compat.config import OpenAICompatLLMConfig
 from common_libs.providers.ocr.mistral.config import MistralOcrConfig
 from common_libs.providers.ocr.paddle.config import PaddleOcrConfig
 from common_libs.providers.parser.docling import DoclingConfig
@@ -180,6 +181,54 @@ class ChainBuilderHelpers:
         return Chain(stage="vlm", providers=built, gate=ChainGate(gate_cfg))
 
     @staticmethod
+    def build_metagen_chain(
+        cfg: Any,
+        specs: list[ProviderSpec],
+        gate_cfg: ChainGateConfig,
+    ) -> Chain[Any, Any] | None:
+        """
+        Build the S5b metagen LLM escalation chain.
+
+        Returns None when ``specs`` is empty — disables metagen generation entirely (the stage
+        treats a None chain as a no-op). Mirrors ``build_vlm_chain``: the only valid id is
+        ``openai_compat`` (locality 'local' or 'external'); local needs a base_url, external
+        additionally needs an api_key (both per-collection, never from env).
+
+        Args:
+            cfg (Any): RUNTIME_CONFIG — deployment defaults merged into each spec.
+            specs (list[ProviderSpec]): Typed LLM configs (OpenAICompatLLMConfig).
+            gate_cfg (ChainGateConfig): Escalation + exhaustion policy.
+
+        Returns:
+            Chain[LLMProvider, dict] | None: Wired metagen chain, or None when no provider is set.
+
+        Raises:
+            ProviderUnavailableError: When a requested provider cannot be instantiated.
+        """
+        if not specs:
+            return None
+        built: list[Any] = []
+        for spec in specs:
+            merged = spec.merge_defaults(cfg)
+            if not isinstance(merged, OpenAICompatLLMConfig):
+                raise ProviderUnavailableError(
+                    "metagen", getattr(merged, "id", str(merged)),
+                    "Unknown metagen LLM provider id. Valid id: 'openai_compat' (locality 'local' or 'external').",
+                )
+            # Local needs a base_url; external additionally needs an api_key.
+            if not merged.base_url and merged.locality == "local":
+                raise ProviderUnavailableError(
+                    "metagen", "openai_compat", "No LLM base URL configured.",
+                )
+            if merged.locality == "external" and (not merged.api_key or merged.api_key == "local"):
+                raise ProviderUnavailableError(
+                    "metagen", "openai_compat",
+                    "No API key — set it in the collection's metagen LLM provider config.",
+                )
+            built.append(merged.build())
+        return Chain(stage="metagen", providers=built, gate=ChainGate(gate_cfg))
+
+    @staticmethod
     def build_embed_chain(
         cfg: Any,
         specs: list[ProviderSpec],
@@ -214,7 +263,7 @@ class ChainBuilderHelpers:
         for spec in specs:
             dense_provider = spec.merge_defaults(cfg).build()
             if sparse_provider is not None:
-                from common_libs.providers.embed.composite import CompositeEmbedProvider
+                from common_libs.pipeline.bricks.providers.embed.composite import CompositeEmbedProvider
                 built.append(CompositeEmbedProvider(dense=dense_provider, sparse=sparse_provider))
             else:
                 built.append(dense_provider)

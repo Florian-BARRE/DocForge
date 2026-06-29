@@ -31,6 +31,7 @@ import type { ConfigNode } from '../../api/types'
 import { FieldInput } from './FieldInput'
 import type { ParamSchema } from '../../api/types'
 import { ChainLadder } from '../pipeline/ChainLadder'
+import { ObjectListPicker } from './pickers/ObjectListPicker'
 import { ProviderUnionPicker } from './pickers/ProviderUnionPicker'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -304,6 +305,22 @@ export function RecursiveFieldRenderer({
               key={key}
               node={node}
               value={currentVal as Record<string, unknown> | null | undefined}
+              onChange={v => writeValue(node.path, v)}
+              renderChildren={renderChildren}
+            />
+          )
+        }
+
+        // ── object_list ─────────────────────────────────────────────────
+        // Generic repeater for list[model] nodes (e.g., pipeline.metagen.targets).
+        // Each item recurses node.item_schema via the renderChildren render-prop.
+        // GENERIC — never special-cases the model name or field names.
+        if (node.kind === 'object_list') {
+          return (
+            <ObjectListPicker
+              key={key}
+              node={node}
+              value={readValue(node.path) as Record<string, unknown>[] | undefined}
               onChange={v => writeValue(node.path, v)}
               renderChildren={renderChildren}
             />

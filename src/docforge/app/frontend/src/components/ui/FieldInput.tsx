@@ -130,6 +130,29 @@ export function FieldInput({ schema, value, onChange, disabled, showHint = false
     )
   }
 
+  // Multi-line text area — emitted when the backend sets ui:"text" on a string field
+  // (e.g. MetaGenTarget.prompt).  Always uses field-row-top layout since the textarea
+  // is taller than a single-line input.
+  if (type === 'text') {
+    return (
+      <label className="field-row field-row-top" title={description}>
+        <span className="field-label">
+          {displayLabel}
+          {hint}
+        </span>
+        <textarea
+          className="input"
+          rows={4}
+          value={String(current ?? '')}
+          onChange={e => onChange(e.target.value || undefined)}
+          disabled={disabled}
+          placeholder={description}
+          style={{ resize: 'vertical' }}
+        />
+      </label>
+    )
+  }
+
   // Default: string input.
   return (
     <label className={`field-row${hint ? ' field-row-top' : ''}`} title={description}>

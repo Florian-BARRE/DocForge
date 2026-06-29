@@ -7,7 +7,7 @@
 import asyncio
 
 from common_libs.config.pipeline.stages.embed_config import EmbedConfig
-from common_libs.providers.embed.composite import CompositeEmbedProvider
+from common_libs.pipeline.bricks.providers.embed.composite import CompositeEmbedProvider
 from common_libs.providers.results.embed_result import EmbedResult
 
 

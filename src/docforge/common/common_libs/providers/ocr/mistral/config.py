@@ -16,7 +16,10 @@ from common_libs.config.pipeline._registry import register
 from common_libs.config.pipeline.spec_utils import flatten_provider_spec as _flatten_provider_spec
 
 # ====== Local Project Imports ======
-from .provider import MistralOcrProvider
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from common_libs.pipeline.bricks.providers.ocr.mistral.provider import MistralOcrProvider
 
 
 @register("ocr")
@@ -55,6 +58,7 @@ class MistralOcrConfig(BaseModel):
                 "MistralOcrConfig.build(): api_key is required. "
                 "Call merge_defaults(cfg) first or supply the key explicitly."
             )
+        from common_libs.pipeline.bricks.providers.ocr.mistral.provider import MistralOcrProvider  # lazy runtime brick (L3)
         return MistralOcrProvider(
             api_key=self.api_key,
             api_url=self.base_url,

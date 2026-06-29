@@ -42,7 +42,7 @@ metadata:
 - [ ] New env vars: shared → `BaseRuntimeConfig` (`common/base_config/runtime/base_config.py`); app/worker-only → the per-app `RUNTIME_CONFIG(BaseRuntimeConfig)` subclass; plus `services/docforge/.env`
 - [ ] Schema change: Alembic migration present in `common/migrations/versions/`
 - [ ] New pipeline stage: wired as DAG node in `worker/libs/pipeline/engine.py`
-- [ ] New stage: idempotency guaranteed (Postgres ON CONFLICT DO NOTHING, Qdrant upsert)
+- [ ] New stage: idempotency guaranteed (Postgres ON CONFLICT; Qdrant upsert). NOTE: chunk_repo is now `DO UPDATE SET derived_meta, embed_text` (NOT DO-NOTHING) — verified-safe superset, see [[metagen_s5b]]
 
 ## Topic memory files (read on demand)
 
@@ -62,6 +62,8 @@ metadata:
 - [embed_continue_batch_misalignment](embed_continue_batch_misalignment.md) — S6 embed `continue` skips a degraded batch → content_dense misaligned vs index_chunks (wrong/None Qdrant vectors) + IndexError in embed_values; positionally-consumed chain results must emit same-length placeholders, not drop the batch
 - [recursive_describer_vs_flat](recursive_describer_vs_flat.md) — discovery has 2 describe surfaces (flat dynamic_fields vs recursive config_tree); they diverge on provider defaults (recursive walks class schema, skips merge_defaults); field→category map is the only union-field glue (silent gap if a union field is unmapped); class-schema walk = no secret leak
 - [bbox_normalized_overlay](bbox_normalized_overlay.md) — IR bbox is normalized [0,1] (Provenance + renderer.py *page_w/h); frontend overlays must use bbox*100% NOT divide by naturalWidth/zoom (else boxes collapse to corner); screenshot `<img>` auth via getPageScreenshotUrl ?token=
+- [metagen_s5b](metagen_s5b.md) — S5b LLM-metadata feature review map: chunk_repo DO UPDATE is a verified-safe superset; doc_fields-before-user merge; generated-field admission exemption; recurring hygiene gaps (missing .env vars, nullable-enum)
+- [stray_claude_dir_under_src](stray_claude_dir_under_src.md) — multi-agent batches can write agent-memory to src/**/.claude/ (NOT gitignored) instead of repo-root; scan git status for `?? src/**/.claude/`
 - [warning_swallowed_on_unmount](warning_swallowed_on_unmount.md) — React edit form that setWarning() then calls onSaved() which closes/unmounts the form never shows the warning; lift it to a persisting parent surface
 
 > Component-scoped memory lives with the component agents: **`mcp`** agent (`agent-memory/mcp/`) for
@@ -81,6 +83,18 @@ metadata:
   `cfg.model_dump(exclude={"id"})` to get the params dict, or `getattr(cfg, "base_url", "")`
   for a single attribute. The legacy `ProviderSpec(id, params)` is kept only for back-compat
   in DB loading.
+- **Per-collection config gated on a deployment env flag** (S5b metagen, 2026-06-29): `_build_metagen`
+  did `targets = list(metagen.targets) if METAGEN_ENABLED else []`, so a collection that explicitly
+  configured the stage was silently no-op'd unless the global flag was on — violates "collection =
+  contract". A `*_ENABLED` env flag must gate the DEFAULT pipeline only (`build_default_pipeline`),
+  never an explicitly-configured per-collection block. Watch for half-gating (chain built but bindings
+  dropped) — it produces a stage that looks wired but does nothing.
+- **Hand-rolled field/dict snapshots that drift from the canonical normalizer** (S5b, 2026-06-29):
+  `tasks.py` rebuilt the worker's `metadata_fields` dicts inline and omitted the new `origin` key,
+  silently disabling generated-field resolution. And `collection_repo.create` built `MetadataFieldModel`
+  inline without `origin`, so create-collection never persisted it (update-config did). When a column/
+  field is added, grep ALL construction sites — prefer the single normalizer (`schema_field_dicts` /
+  `build_field`) over inline dict/model literals. Mocked unit tests passed; only the live run caught it.
 - Validator capability strings drifting from `ProviderRegistry.describe_stages()` ids
   (seen: `chunk_strategy` vs `split_method`). Verify both sides agree before adding a
   `_check_one("<cap>", …)` call — a mismatch makes every collection create raise

@@ -12,7 +12,7 @@ auto_import(__name__)
 from .base import VlmProvider
 
 # ------------------- Providers (one folder each) ------------------- #
-from .openai_compat import OpenAICompatVlmConfig, OpenAICompatVlmProvider
+from .openai_compat import OpenAICompatVlmConfig
 
 # ------------------- Discriminated Union ------------------- #
 VlmProviderConfig = build_union(get_configs("vlm"))
@@ -20,7 +20,6 @@ VlmProviderConfig = build_union(get_configs("vlm"))
 # ------------------- Public API ------------------- #
 __all__ = [
     "OpenAICompatVlmConfig",
-    "OpenAICompatVlmProvider",
     "VlmProvider",
     "VlmProviderConfig",
 ]

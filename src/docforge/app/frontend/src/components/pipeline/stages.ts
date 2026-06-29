@@ -57,6 +57,15 @@ export const INGESTION_STAGES: StageDefinition[] = [
     optional: false,
   },
   {
+    id: 's5b',
+    label: 'MetaGen',
+    icon: '⚡',
+    description: 'LLM-generated metadata fields per chunk/document (opt-in, enabled when targets is non-empty)',
+    fieldPathPrefix: 'pipeline.metagen',
+    // S5b is opt-in — rendered with a dashed border when targets is empty.
+    optional: true,
+  },
+  {
     id: 's6',
     label: 'Embed',
     icon: '🔢',

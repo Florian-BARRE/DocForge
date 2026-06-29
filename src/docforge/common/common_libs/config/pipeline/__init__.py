@@ -26,6 +26,7 @@ from .stages.contextualize_config import ContextualizeConfig
 from .stages.embed_config import EmbedConfig
 from .stages.enrich_config import EnrichConfig
 from .stages.heading_rule import AtomicConfig, HeadingRule
+from .stages.metagen_config import MetaGenConfig, MetaGenTarget
 from .stages.parse_config import ParseConfig
 
 # ─────────────────── Top-level Pipeline ───────────────────────────── #
@@ -58,6 +59,8 @@ __all__ = [
     "ChunkConfig",
     "ContextualizeConfig",
     "EmbedConfig",
+    "MetaGenConfig",
+    "MetaGenTarget",
     "PipelineConfig",
     "build_default_pipeline",
     "flatten_provider_spec",

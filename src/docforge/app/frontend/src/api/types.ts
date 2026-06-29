@@ -108,7 +108,7 @@ export interface ConfigNode {
   /** Absolute dot-path, e.g. "patch.pipeline.embed.gate.min_score". */
   path: string
   /** Discriminator that drives the rendering dispatch. */
-  kind: 'scalar' | 'enum' | 'object' | 'chain' | 'provider_union'
+  kind: 'scalar' | 'enum' | 'object' | 'chain' | 'provider_union' | 'object_list'
   label: string
   description: string
   default: unknown
@@ -125,6 +125,14 @@ export interface ConfigNode {
 
   // ── kind=object ──
   children?: ConfigNode[] | null
+
+  // ── kind=object_list ──
+  /**
+   * Schema for one item in the list.  Each ConfigNode describes a field on the item model.
+   * Paths use the last segment as the key; the full path is used for label/hint only.
+   * Added server-side (migration S5b); overlay until next gen:types run.
+   */
+  item_schema?: ConfigNode[] | null
 
   // ── kind=chain / provider_union ──
   /** True for chains (multi-provider), false for single provider_union. */
@@ -187,7 +195,12 @@ export type CollectionListResponse = Schemas['CollectionListResponse']
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
-export type MetaField = Schemas['ConfigMetaField']
+// origin is added server-side after the last gen:types run (migration 010).
+// Overlay keeps this in sync until the next regeneration.
+export type MetaField = Schemas['ConfigMetaField'] & {
+  /** Field origin: 'user' (hand-authored), 'system' (auto-extracted), 'generated' (LLM S5b). */
+  origin?: 'user' | 'system' | 'generated' | null
+}
 export type AppliedIssue = Schemas['AppliedIssue']
 // reindex_reasons overlays the generated type until the next `npm run gen:types`:
 // exact, human-readable causes of a required reindex (empty for non-critical changes).
@@ -488,6 +501,41 @@ export interface JobListResponse {
 export interface CancelJobResponse {
   cancelled: boolean
   id: string
+}
+
+// ── S5b Metagen preview ───────────────────────────────────────────────────────
+//
+// Hand-written because the metagen router is new (post last gen:types run).
+// Mirrors the Pydantic models in backend/routers/collections/metagen/models.py.
+
+/** Request body for POST /collections/{id}/metagen/preview. */
+export interface MetagenPreviewRequest {
+  /** Name of the generated metadata field to preview (must have origin="generated"). */
+  field_name: string
+  /** UUID of a chunk to use as input (mutually exclusive with sample_text). */
+  chunk_id?: string | null
+  /** Raw text to use as the chunk body for the preview call (mutually exclusive with chunk_id). */
+  sample_text?: string | null
+}
+
+/** Response body from POST /collections/{id}/metagen/preview. */
+export interface MetagenPreviewResponse {
+  /** The field that was generated. */
+  field_name: string
+  /** Generation scope used (chunk | document). */
+  scope: 'chunk' | 'document'
+  /** Parsed generated value (typed per the field's declared type). */
+  value: unknown
+  /** Raw LLM output string before parsing. */
+  raw: string
+  /** Approximate token count for this call. */
+  token_estimate: number
+  /** Approximate cost in USD for this call. */
+  cost_estimate: number
+  /** Provider ID that handled the call (e.g. "local_llm"). */
+  provider: string
+  /** True when the provider returned a degraded/fallback result. */
+  degraded: boolean
 }
 
 // ── Re-export everything from the generated namespace for callers that prefer

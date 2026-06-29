@@ -1,7 +1,7 @@
 # ====== Code Summary ======
-# EngineResult dataclass — aggregated output of a StageEngine pipeline run.
-# Extracted from core.py to allow lightweight imports of the result type
-# without pulling in the full orchestrator dependency tree.
+# EngineResult dataclass — aggregated output of a DynamicStageEngine pipeline run.
+# Kept in its own module so the result type imports lightly, without pulling in
+# the engine's dependency tree.
 
 # ====== Standard Library Imports ======
 from __future__ import annotations
@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 @dataclass(slots=True)
 class EngineResult:
     """
-    Aggregated output of a StageEngine pipeline run (S0 → S1 → S2 → S4 → S5 → S6).
+    Aggregated output of a dynamic-engine pipeline run (S0 → S1 → S2 → S4 → S5 → S6).
 
     Carries per-stage results, Merkle fingerprints, and cache hit flags.
     Stage results are None when their stage is disabled or not configured.
