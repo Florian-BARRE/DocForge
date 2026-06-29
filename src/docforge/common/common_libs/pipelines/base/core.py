@@ -19,11 +19,11 @@ from loggerplusplus import LoggerClass
 
 # ====== Local Project Imports ======
 from .config import NodeConfig
-from .context import ContextBase, ServiceRef
+from .context import ChainRef, ContextBase, ServiceRef
 from .errors import NodeError, PipelineError
 from .io import CompositeOutput, FromSibling, NodeInput, NodeOutput, input_bindings
 from .enums import ErrorPolicy, NodeKind
-from .schema import NodeSchema
+from .schema import ChainSchema, NodeSchema, ProviderSchema
 from .spec import NodeSpec
 
 InputT = TypeVar("InputT", bound=NodeInput)
@@ -140,6 +140,8 @@ class AbstractNode(ABC, LoggerClass, Generic[InputT, OutputT]):
         """
         # Emit the config JSON schema only when the node declares a real Config (not the empty base).
         config_schema = self.Config.model_json_schema() if self.Config is not NodeConfig else None
+        # Emit a chain slot (gate + provider catalog) for every ChainRef the node requires.
+        chains = [self._chain_schema(ref) for ref in self.REQUIRES if isinstance(ref, ChainRef)]
         return NodeSchema(
             kind=self.KIND,
             key=self.key,
@@ -148,6 +150,42 @@ class AbstractNode(ABC, LoggerClass, Generic[InputT, OutputT]):
             consumes=list(self.consumes()),
             requires=[ref.name for ref in self.REQUIRES],
             config_schema=config_schema,
+            chains=chains,
+        )
+
+    @staticmethod
+    def _chain_schema(ref: ChainRef) -> ChainSchema:
+        """
+        Resolve a chain slot's discovery schema: the escalation gate + the provider catalog.
+
+        The provider configs self-register on import (``@register(category)``), so importing the
+        category package populates the catalog. Imports are lazy so the heavy provider packages are
+        pulled only when a chain node is actually described.
+
+        Args:
+            ref (ChainRef): The chain slot declaration (name + category).
+
+        Returns:
+            ChainSchema: name + category + gate schema + the catalog of available providers.
+        """
+        # 1. Lazily import the category package so its provider configs register, then pull them.
+        import importlib
+
+        from common_libs.config.pipeline._registry import get_configs
+        from common_libs.config.pipeline.chain_gate_config import ChainGateConfig
+
+        importlib.import_module(f"common_libs.providers.{ref.category}")
+
+        # 2. Build the provider catalog (each provider's config schema) + the gate schema.
+        providers = [
+            ProviderSchema(id=pid, config_schema=cls.model_json_schema())
+            for pid, cls in get_configs(ref.category).items()
+        ]
+        return ChainSchema(
+            name=ref.name,
+            category=ref.category,
+            gate_schema=ChainGateConfig.model_json_schema(),
+            providers=providers,
         )
 
 

@@ -7,7 +7,7 @@
 # work list through unchanged.
 
 # ====== Internal Project Imports ======
-from common_libs.pipelines import NodeSpec, ServiceRef
+from common_libs.pipelines import ChainRef, NodeSpec, ServiceRef
 
 # ====== Local Project Imports ======
 from ...cache_runner import CacheRunner
@@ -35,7 +35,7 @@ class IngestStageEnrichStepOcr(IngestStageEnrichStepBase):
     Context = IngestStageEnrichStepOcrContext
     Error = IngestStageEnrichStepOcrError
     REQUIRES = (
-        ServiceRef(name="ocr_chain", description="Ordered OCR chain (empty when disabled)."),
+        ChainRef(name="ocr_chain", category="ocr", description="Ordered OCR chain (empty when disabled)."),
         ServiceRef(name="provider_cache", description="Cross-document provider-call cache."),
     )
 

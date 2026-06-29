@@ -6,7 +6,7 @@
 # the run degraded. It requires the parser chain service.
 
 # ====== Internal Project Imports ======
-from common_libs.pipelines import NodeSpec, ServiceRef
+from common_libs.pipelines import ChainRef, NodeSpec
 
 # ====== Local Project Imports ======
 from ...helpers import ParseHelpers
@@ -37,7 +37,11 @@ class IngestStageParseStepParse(IngestStageParseStepBase):
     Context = IngestStageParseStepParseContext
     Error = IngestStageParseStepParseError
     REQUIRES = (
-        ServiceRef(name="parser_chain", description="Ordered parser escalation chain (docling, ...)."),
+        ChainRef(
+            name="parser_chain",
+            category="parser",
+            description="Ordered parser escalation chain (docling, ...).",
+        ),
     )
 
     async def execute(

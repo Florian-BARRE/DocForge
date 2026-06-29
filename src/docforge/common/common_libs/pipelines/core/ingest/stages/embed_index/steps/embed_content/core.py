@@ -6,7 +6,7 @@
 # chain as its only required service; the batch size is a construction-time config.
 
 # ====== Internal Project Imports ======
-from common_libs.pipelines import NodeSpec, ServiceRef
+from common_libs.pipelines import ChainRef, NodeSpec
 
 # ====== Local Project Imports ======
 from ...helpers_embed import IngestStageEmbedIndexEmbedHelpers
@@ -36,7 +36,7 @@ class IngestStageEmbedIndexStepEmbedContent(IngestStageEmbedIndexStepBase):
     Output = IngestStageEmbedIndexStepEmbedContentOutput
     Context = IngestStageEmbedIndexStepEmbedContentContext
     Error = IngestStageEmbedIndexStepEmbedContentError
-    REQUIRES = (ServiceRef(name="embed_chain", description="Ordered embed provider chain."),)
+    REQUIRES = (ChainRef(name="embed_chain", category="embed", description="Ordered embed provider chain."),)
 
     def __init__(self, embed_batch_size: int) -> None:
         """

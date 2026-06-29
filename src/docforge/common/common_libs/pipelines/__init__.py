@@ -2,6 +2,7 @@
 from .base import (
     AbstractNode,
     CachePolicy,
+    ChainRef,
     CompositeNode,
     CompositeOutput,
     ContextBase,
@@ -71,6 +72,7 @@ __all__ = [
     "StageContextBase",
     "StepContextBase",
     "ServiceRef",
+    "ChainRef",
     "ServiceRegistry",
     "RunContext",
     # engine

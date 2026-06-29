@@ -11,7 +11,7 @@ from typing import Any
 # ====== Internal Project Imports ======
 from common_libs.config.pipeline.stages.metagen_config import MetaGenTarget
 from common_libs.domain import MetaFieldSpec
-from common_libs.pipelines import NodeSpec, ServiceRef
+from common_libs.pipelines import ChainRef, NodeSpec
 
 # ====== Local Project Imports ======
 from ..base import IngestStageMetagenStepBase, MetagenPromptHelpers
@@ -41,7 +41,7 @@ class IngestStageMetagenStepBudgetGate(IngestStageMetagenStepBase):
     Output = IngestStageMetagenStepBudgetGateOutput
     Context = IngestStageMetagenStepBudgetGateContext
     Error = IngestStageMetagenStepBudgetGateError
-    REQUIRES = (ServiceRef(name="llm_chain", description="Ordered LLM provider chain."),)
+    REQUIRES = (ChainRef(name="llm_chain", category="llm", description="Ordered LLM provider chain."),)
 
     def __init__(
         self,

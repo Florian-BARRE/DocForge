@@ -12,7 +12,7 @@ from typing import Any
 # ====== Internal Project Imports ======
 from common_libs.config.pipeline.stages.metagen_config import MetaGenTarget
 from common_libs.domain import MetaFieldSpec
-from common_libs.pipelines import NodeSpec, ServiceRef
+from common_libs.pipelines import ChainRef, NodeSpec, ServiceRef
 
 # ====== Local Project Imports ======
 from ..base import (
@@ -47,7 +47,7 @@ class IngestStageMetagenStepChunkScope(IngestStageMetagenStepBase):
     Context = IngestStageMetagenStepChunkScopeContext
     Error = IngestStageMetagenStepChunkScopeError
     REQUIRES = (
-        ServiceRef(name="llm_chain", description="Ordered LLM provider chain."),
+        ChainRef(name="llm_chain", category="llm", description="Ordered LLM provider chain."),
         ServiceRef(name="provider_cache", description="Cross-document provider-call cache."),
     )
 

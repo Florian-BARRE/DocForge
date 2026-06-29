@@ -24,6 +24,7 @@ from .errors import NodeError, PipelineError, ResolutionError, StageError, StepE
 
 # ---------------------- Context (hierarchy + vertical axis) -- #
 from .context import (
+    ChainRef,
     ContextBase,
     PipelineContextBase,
     RunContext,
@@ -34,7 +35,7 @@ from .context import (
 )
 
 # ---------------------- Describe schema ---------------------- #
-from .schema import NodeSchema
+from .schema import ChainSchema, NodeSchema, ProviderSchema
 
 # ---------------------- Node contracts ----------------------- #
 from .core import AbstractNode, CompositeNode, LeafNode
@@ -75,10 +76,13 @@ __all__ = [
     "StageContextBase",
     "StepContextBase",
     "ServiceRef",
+    "ChainRef",
     "ServiceRegistry",
     "RunContext",
     # schema
     "NodeSchema",
+    "ChainSchema",
+    "ProviderSchema",
     # contracts
     "AbstractNode",
     "CompositeNode",

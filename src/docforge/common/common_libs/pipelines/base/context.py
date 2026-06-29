@@ -39,6 +39,24 @@ class ServiceRef(BaseModel):
     description: str = ""
 
 
+class ChainRef(ServiceRef):
+    """
+    A ServiceRef for a provider-escalation CHAIN — adds the provider ``category``.
+
+    One declaration, two jobs:
+    - RUNTIME (as a ServiceRef): the engine injects the BUILT chain under ``name`` (``ctx.<name>``).
+    - DISCOVERY: ``category`` lets describe() enumerate the available providers for that category (the
+      provider catalog) and emit the chain's config schema (gate + each provider's config), so the UI
+      can render the per-collection chain editor with zero hardcoded text.
+
+    Attributes:
+        category (str): Provider category this chain serves (e.g. ``"ocr"``, ``"vlm"``, ``"parser"``,
+            ``"embed"``, ``"llm"``, ``"classifier"``).
+    """
+
+    category: str
+
+
 @dataclass(frozen=True, slots=True)
 class ServiceRegistry:
     """
@@ -149,6 +167,7 @@ class RunContext:
 
 __all__ = [
     "ServiceRef",
+    "ChainRef",
     "ServiceRegistry",
     "ContextBase",
     "PipelineContextBase",

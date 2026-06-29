@@ -8,7 +8,7 @@
 # a second provider call - so the cache key matches the legacy path exactly.
 
 # ====== Internal Project Imports ======
-from common_libs.pipelines import NodeSpec, ServiceRef
+from common_libs.pipelines import ChainRef, NodeSpec, ServiceRef
 
 # ====== Local Project Imports ======
 from ...vlm_runner import VlmRunner
@@ -39,7 +39,7 @@ class IngestStageEnrichStepVlm(IngestStageEnrichStepBase):
     Context = IngestStageEnrichStepVlmContext
     Error = IngestStageEnrichStepVlmError
     REQUIRES = (
-        ServiceRef(name="vlm_chain", description="Ordered VLM chain (empty when disabled)."),
+        ChainRef(name="vlm_chain", category="vlm", description="Ordered VLM chain (empty when disabled)."),
         ServiceRef(name="provider_cache", description="Cross-document provider-call cache."),
     )
 

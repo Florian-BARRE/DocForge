@@ -11,7 +11,7 @@ import hashlib
 
 # ====== Internal Project Imports ======
 from common_libs.domain.ir.models import Block, BlockType, FigureKind
-from common_libs.pipelines import NodeSpec, ServiceRef
+from common_libs.pipelines import ChainRef, NodeSpec, ServiceRef
 
 # ====== Local Project Imports ======
 from ...cache_runner import CacheRunner
@@ -45,7 +45,7 @@ class IngestStageEnrichStepClassify(IngestStageEnrichStepBase):
     Context = IngestStageEnrichStepClassifyContext
     Error = IngestStageEnrichStepClassifyError
     REQUIRES = (
-        ServiceRef(name="classifier_chain", description="Ordered figure classifier chain."),
+        ChainRef(name="classifier_chain", category="classifier", description="Ordered figure classifier chain."),
         ServiceRef(name="object_store", description="Content-addressed blob store (crop downloads)."),
         ServiceRef(name="provider_cache", description="Cross-document provider-call cache."),
     )
