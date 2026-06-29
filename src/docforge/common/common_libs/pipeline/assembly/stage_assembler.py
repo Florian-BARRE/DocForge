@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING, Any
 # (get_stages), never referenced by name here.
 from common_libs.pipeline.ingest import stages as _ingest_stages  # noqa: F401 — force @register_stage
 from common_libs.pipeline.base.stage.core import AbstractStage
-from common_libs.pipeline.stages.s0_ingest.core import S0IngestStage
+from common_libs.pipeline.ingest.stages.ingest import IngestResources
 from common_libs.pipeline.stages.s1_parse.core import S1ParseStage
 from common_libs.pipeline.stages.s5_contextualize.core import S5ContextualizeStage
 from common_libs.pipeline.stages.s6_embed_index.core import S6EmbedIndexStage
@@ -126,11 +126,12 @@ class PipelineAssembler:
             StageWiringError: When ``key`` has no known inner builder.
         """
         if key == "ingest":
-            # S0 is constant (not config-driven); its converter comes from RUNTIME_CONFIG (held by
-            # the registry as ._cfg, mirroring how S012ParamHelpers reaches the converter today).
+            # Ingest is constant (not config-driven); its converter comes from RUNTIME_CONFIG (held
+            # by the registry as ._cfg). The native stage owns its steps; it only needs the object
+            # store + converter brick, bundled into IngestResources for the uniform stage_cls(inner).
             rc = registry._cfg
             converter = GotenbergConverter(base_url=rc.GOTENBERG_URL, timeout_s=rc.GOTENBERG_TIMEOUT_S)
-            return S0IngestStage(s3=deps.s3, converter=converter)
+            return IngestResources(s3=deps.s3, converter=converter)
         if key == "parse":
             chain = registry._build_parser_chain(config.parse.chain, config.parse.gate)
             return S1ParseStage(parse_chain=chain, s3=deps.s3)

@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 
 # ====== Internal Project Imports ======
-from common_libs.pipeline.stages.s0_ingest.core import S0Result
+from common_libs.pipeline.ingest.stages.ingest.result import IngestResult
 from common_libs.pipeline.stages.s1_parse.core import S1Result
 from common_libs.pipeline.stages.s2_enrich import S2Result
 
@@ -27,12 +27,12 @@ class CacheEncoder:
         raise TypeError("CacheEncoder is a static-only class and cannot be instantiated.")
 
     @staticmethod
-    def encode_s0_meta(s0: S0Result) -> bytes:
+    def encode_s0_meta(s0: IngestResult) -> bytes:
         """
-        Serialize S0Result to a compact JSON blob for S3 storage.
+        Serialize IngestResult to a compact JSON blob for S3 storage.
 
         Args:
-            s0 (S0Result): S0 stage output to serialize.
+            s0 (IngestResult): S0 stage output to serialize.
 
         Returns:
             bytes: UTF-8 encoded compact JSON suitable for S3 upload.

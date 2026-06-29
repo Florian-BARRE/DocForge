@@ -15,6 +15,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from common_libs.pipeline.ingest.stages.ingest.result import IngestResult
     from common_libs.storage.s3.client import S3Client
 
 # ====== Third-Party Library Imports ======
@@ -26,7 +27,6 @@ from common_libs.pipeline.bricks.chain import Chain
 from common_libs.domain.ir.models import DocumentIR
 
 # ====== Local Project Imports ======
-from ..s0_ingest import S0Result
 from .helpers import S1Helpers
 from .renderer import S1Renderer
 from .result import S1Result
@@ -69,12 +69,12 @@ class S1ParseStage(LoggerClass):
         """Expose the chain so the engine can fingerprint its signature."""
         return self._parse_chain
 
-    async def run(self, s0: S0Result, fingerprint: str | None = None) -> S1Result:
+    async def run(self, s0: IngestResult, fingerprint: str | None = None) -> S1Result:
         """
         Execute the S1 parse stage.
 
         Args:
-            s0 (S0Result): Output from the S0 ingestion stage (PDF bytes must be set).
+            s0 (IngestResult): Output from the ingest stage (PDF bytes must be set).
             fingerprint (str | None): P2 stage fingerprint used for the markdown S3 key.
 
         Returns:

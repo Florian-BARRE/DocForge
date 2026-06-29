@@ -1,7 +1,7 @@
 # ====== Code Summary ======
-# Stateless helpers for the S0 ingestion stage: SHA-256 hashing, extension extraction,
-# MIME-type lookup, PDF page counting, and raster-page detection.  Heuristic PDF probes
-# log a warning on a degraded fallback so the degradation is never truly silent.
+# Stateless helpers for the ingest stage steps: SHA-256 hashing, extension extraction, MIME-type
+# lookup, PDF page counting, raster-page detection, and implicit-metadata assembly. Heuristic PDF
+# probes log a warning on a degraded fallback so the degradation is never truly silent.
 
 # ====== Standard Library Imports ======
 from __future__ import annotations
@@ -13,22 +13,22 @@ from typing import Any
 from loggerplusplus import loggerplusplus
 
 
-class S0IngestHelpers:
+class IngestHelpers:
     """
-    Stateless utility helpers for the S0 ingestion stage.
+    Stateless utility helpers for the ingest stage steps.
 
-    All methods are pure functions with no dependency on external services or instance
-    state.  The bound logger is only used to surface degraded heuristic fallbacks (page
-    count / raster detection) so a malformed PDF never degrades silently.
+    All methods are pure functions with no dependency on external services or instance state.
+    The bound logger is only used to surface degraded heuristic fallbacks (page count / raster
+    detection) so a malformed PDF never degrades silently.
     """
 
-    logger = loggerplusplus.bind(identifier="S0IngestHelpers")
+    logger = loggerplusplus.bind(identifier="IngestHelpers")
 
     def __new__(cls, *args: object, **kwargs: object) -> None:
         """Block instantiation — this is a static-only class."""
-        raise TypeError("S0IngestHelpers is a static-only class and cannot be instantiated.")
+        raise TypeError("IngestHelpers is a static-only class and cannot be instantiated.")
 
-    # ─── MIME type lookup table (module-level constant) ────────────────────────
+    # ─── MIME type lookup table (class-level constant) ────────────────────────
     _MIME_MAP: dict[str, str] = {
         "pdf": "application/pdf",
         "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -52,7 +52,7 @@ class S0IngestHelpers:
         """
         Compute the SHA-256 hex digest of raw file bytes.
 
-        Used as the content-address key for all S3 artifacts.
+        Used as the content-address key for all object-store artifacts.
 
         Args:
             data (bytes): Raw file bytes to hash.
@@ -92,16 +92,16 @@ class S0IngestHelpers:
         Returns:
             str: MIME type string (e.g. ``"application/pdf"``).
         """
-        return S0IngestHelpers._MIME_MAP.get(extension, "application/octet-stream")
+        return IngestHelpers._MIME_MAP.get(extension, "application/octet-stream")
 
     @classmethod
     def count_pages_fast(cls, pdf_bytes: bytes) -> int:
         """
         Count the number of pages in a PDF using PyMuPDF without a full parse.
 
-        Returns 1 as a safe fallback if PyMuPDF is unavailable or the bytes are
-        not a valid PDF.  The fallback is a degraded heuristic (S1 is the authority
-        on the real page count), so it is logged rather than raised — but never silent.
+        Returns 1 as a safe fallback if PyMuPDF is unavailable or the bytes are not a valid PDF.
+        The fallback is a degraded heuristic (parse is the authority on the real page count), so it
+        is logged rather than raised — but never silent.
 
         Args:
             pdf_bytes (bytes): Raw PDF bytes.
@@ -124,10 +124,10 @@ class S0IngestHelpers:
         """
         Return True if at least one page has no extractable text layer.
 
-        Per spec §4.2: PyMuPDF.get_text() empty → scanned/raster page.
-        Pages with a native text layer never need OCR (spec cost-saving principle 1).
-        A probe failure is a degraded heuristic (OCR routing happens later in S2 anyway),
-        so it is logged and treated as "no raster pages" — but never silent.
+        Per spec §4.2: PyMuPDF.get_text() empty → scanned/raster page. Pages with a native text
+        layer never need OCR (spec cost-saving principle 1). A probe failure is a degraded heuristic
+        (OCR routing happens later in enrich anyway), so it is logged and treated as "no raster
+        pages" — but never silent.
 
         Args:
             pdf_bytes (bytes): Raw PDF bytes.
@@ -160,8 +160,8 @@ class S0IngestHelpers:
         """
         Build the file-intrinsic implicit metadata dictionary (spec §7.3).
 
-        This dict is stored alongside the S0Result and surfaced to downstream
-        stages as read-only context about the original file.
+        This dict is stored alongside the IngestResult and surfaced to downstream stages as
+        read-only context about the original file.
 
         Args:
             filename (str): Original upload filename.
@@ -182,3 +182,6 @@ class S0IngestHelpers:
             "page_count": page_count,
             "has_scanned_pages": needs_ocr,
         }
+
+
+__all__ = ["IngestHelpers"]

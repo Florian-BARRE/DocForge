@@ -1,11 +1,12 @@
 # ====== Code Summary ======
-# Parity tests for the four native ingest stages migrated in P1b increment 2 (ingest/chunk/
-# contextualize/metagen), each replacing the adapter of the same name. They assert byte-for-byte
-# contract parity with the adapters they replaced: identical forced ClassVars (KEY/AFTER/IO/cache/
-# error, plus NODE_TYPE/NODE_VERSION for the node-cached ingest stage), the same ctx round-trip
-# (read CONSUMES -> delegate -> write PRODUCES), the S0 fingerprint_params (converter name/version),
-# and the metagen doc_meta merge precedence (implicit < generated < user). build_pipeline still
-# yields the canonical 7-stage topo order with these stages now NATIVE. Everything is mocked.
+# Tests for the native ingest stages. The ingest (S0) stage is decomposed into THREE real steps
+# (ContentAddressStep -> ConvertStep -> ProbeStep); chunk/contextualize/metagen remain single
+# delegating steps. The ingest tests assert: the three steps run in order, each step's declared
+# IO + behaviour (sha256 + original upload; PDF route native/office/unknown + PDF upload; OCR-fork
+# probe + implicit_meta + IngestResult assembly), the converter-identity fingerprint params, and
+# end-to-end output parity (the IngestResult fields feeding parse). The chunk/contextualize/metagen
+# tests assert their single-step ctx round-trip + the metagen doc_meta merge precedence. build_pipeline
+# still yields the canonical 7-stage topo order with these stages native. Everything is mocked.
 
 # ====== Standard Library Imports ======
 from types import SimpleNamespace
@@ -22,10 +23,17 @@ from common_libs.pipeline.assembly.stage_assembler import build_pipeline
 from common_libs.pipeline.base import CachePolicy, ErrorPolicy
 from common_libs.pipeline.ingest.stages.chunk import ChunkStage, ChunkStep
 from common_libs.pipeline.ingest.stages.contextualize import ContextualizeStage, ContextualizeStep
-from common_libs.pipeline.ingest.stages.ingest import IngestDocStage, IngestDocStep
+from common_libs.pipeline.ingest.stages.ingest import (
+    ContentAddressStep,
+    ConvertStep,
+    IngestDocStage,
+    IngestResources,
+    IngestResult,
+    ProbeStep,
+)
+from common_libs.pipeline.ingest.stages.ingest.scratch import INGEST_SCRATCH_KEY, IngestScratch
 from common_libs.pipeline.ingest.stages.metagen import MetagenStage, MetagenStep
 from common_libs.pipeline.stages.context import PipelineContext, StageDeps
-from common_libs.pipeline.stages.s0_ingest.core import S0IngestStage
 from common_libs.pipeline.stages.s4_chunk.core import S4ChunkStage
 from common_libs.pipeline.stages.s5_contextualize.core import S5ContextualizeStage
 from common_libs.pipeline.stages.s5b_metagen.core import S5bMetagenStage
@@ -45,6 +53,21 @@ def _fake_ir(language: str = "en") -> SimpleNamespace:
     return SimpleNamespace(
         language=language, n_pages=3, blocks=["b0", "b1"], figure_blocks=["f0"], table_blocks=[]
     )
+
+
+def _mock_converter(name: str = "gotenberg", version: str = "8") -> MagicMock:
+    """A mock GotenbergConverter exposing name/version + an awaitable convert()."""
+    converter = MagicMock()
+    converter.name = name
+    converter.version = version
+    converter.convert = AsyncMock()
+    return converter
+
+
+def _resources(s3: MagicMock | None = None, converter: MagicMock | None = None) -> IngestResources:
+    """Build an IngestResources bundle with mocked object store + converter."""
+    s3 = s3 if s3 is not None else MagicMock(upload=AsyncMock())
+    return IngestResources(s3=s3, converter=converter if converter is not None else _mock_converter())
 
 
 # ─── ClassVar matrix: native stages declare the same contract as the adapters they replaced ───
@@ -74,34 +97,184 @@ class TestNativeStageClassVars:
         # The node cache keys on the StageKey (ingest) + code_version "1.0".
         assert IngestDocStage.SPEC.key == "ingest"
         assert IngestDocStage.SPEC.code_version == "1.0"
-        converter = SimpleNamespace(name="gotenberg", version="8")
-        assert IngestDocStage(SimpleNamespace(_converter=converter)).key == "ingest"
+        assert IngestDocStage(_resources()).key == "ingest"
 
 
-class TestIngestStage:
-    """ingest stage: ctx round-trip + the S0 fingerprint params (converter name/version)."""
+# ─── Ingest stage: the three real steps + their IO + end-to-end output parity ─────────────
 
-    def test_single_native_step(self) -> None:
-        assert isinstance(IngestDocStage(SimpleNamespace(_converter=None)).steps[0], IngestDocStep)
+
+class TestIngestStageStructure:
+    """The ingest stage assembles three real steps in order with the declared per-step IO."""
+
+    def test_three_native_steps_in_order(self) -> None:
+        steps = IngestDocStage(_resources()).steps
+        assert [type(s) for s in steps] == [ContentAddressStep, ConvertStep, ProbeStep]
+
+    def test_step_io_contracts(self) -> None:
+        assert ContentAddressStep.CONSUMES == ("original_bytes", "filename", "doc_id")
+        assert ContentAddressStep.PRODUCES == ("source_hash", INGEST_SCRATCH_KEY)
+        assert ConvertStep.CONSUMES == ("original_bytes", "filename", INGEST_SCRATCH_KEY)
+        assert ConvertStep.PRODUCES == (INGEST_SCRATCH_KEY,)
+        assert ProbeStep.CONSUMES == ("original_bytes", "filename", INGEST_SCRATCH_KEY)
+        assert ProbeStep.PRODUCES == ("ingest_result",)
 
     def test_fingerprint_params_surfaces_converter(self) -> None:
-        inner = SimpleNamespace(_converter=SimpleNamespace(name="gotenberg", version="8"))
-        assert IngestDocStage(inner).fingerprint_params() == {
-            "converter_name": "gotenberg",
-            "converter_version": "8",
-        }
+        stage = IngestDocStage(_resources(converter=_mock_converter("gotenberg", "8")))
+        assert stage.fingerprint_params() == {"converter_name": "gotenberg", "converter_version": "8"}
+
+
+class TestContentAddressStep:
+    """The content-address step hashes the original, uploads it, and seeds the scratch."""
 
     @pytest.mark.asyncio
-    async def test_run_round_trip(self) -> None:
-        result = SimpleNamespace(source_hash="HASH")
-        inner = _inner(result)
-        ctx = PipelineContext(original_bytes=b"data", filename="f.pdf", doc_id="DID")
+    async def test_hash_upload_and_seed_scratch(self) -> None:
+        import hashlib
 
-        await IngestDocStage(inner).run(ctx)
+        s3 = MagicMock(upload=AsyncMock())
+        ctx = PipelineContext(original_bytes=b"hello", filename="report.docx", doc_id="DID")
 
-        inner.run.assert_awaited_once_with(b"data", "f.pdf", "DID")
-        assert ctx.ingest_result is result
-        assert ctx.source_hash == "HASH"
+        await ContentAddressStep(s3).run(ctx)
+
+        # sha256("hello") is deterministic — the content address must equal it.
+        expected_hash = hashlib.sha256(b"hello").hexdigest()
+        assert ctx.source_hash == expected_hash
+        scratch = ctx.aux[INGEST_SCRATCH_KEY]
+        assert scratch.doc_id == "DID"
+        assert scratch.source_hash == expected_hash
+        assert scratch.original_format == "docx"
+        assert scratch.original_key.endswith(expected_hash)
+        s3.upload.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_mints_doc_id_when_absent(self) -> None:
+        ctx = PipelineContext(original_bytes=b"x", filename="f.pdf", doc_id=None)
+        await ContentAddressStep(MagicMock(upload=AsyncMock())).run(ctx)
+        # A None doc_id is replaced by a freshly minted UUID string (parity with legacy S0).
+        assert ctx.aux[INGEST_SCRATCH_KEY].doc_id
+
+
+class TestConvertStep:
+    """The convert step routes by format, uploads the derived PDF, and fills the scratch."""
+
+    def _ctx_with_scratch(self, filename: str, fmt: str, original_bytes: bytes = b"src") -> PipelineContext:
+        ctx = PipelineContext(original_bytes=original_bytes, filename=filename)
+        ctx.aux[INGEST_SCRATCH_KEY] = IngestScratch(
+            doc_id="DID", source_hash="HASH", original_format=fmt, original_key="originals/HASH"
+        )
+        return ctx
+
+    @pytest.mark.asyncio
+    async def test_native_pdf_passes_through(self) -> None:
+        converter = _mock_converter()
+        ctx = self._ctx_with_scratch("f.pdf", "pdf", original_bytes=b"PDFDATA")
+        s3 = MagicMock(upload=AsyncMock())
+
+        await ConvertStep(s3, converter).run(ctx)
+
+        scratch = ctx.aux[INGEST_SCRATCH_KEY]
+        assert scratch.pdf_bytes == b"PDFDATA"          # passthrough — original bytes reused
+        assert scratch.pdf_key.endswith("HASH/pdf")
+        converter.convert.assert_not_awaited()          # native PDFs never hit Gotenberg
+        s3.upload.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_office_routes_to_converter(self) -> None:
+        converter = _mock_converter()
+        converter.convert.return_value = SimpleNamespace(pdf_bytes=b"CONVERTED", page_count=5)
+        ctx = self._ctx_with_scratch("f.docx", "docx", original_bytes=b"DOCX")
+
+        await ConvertStep(MagicMock(upload=AsyncMock()), converter).run(ctx)
+
+        scratch = ctx.aux[INGEST_SCRATCH_KEY]
+        assert scratch.pdf_bytes == b"CONVERTED"
+        assert scratch.page_count == 5
+        converter.convert.assert_awaited_once_with(b"DOCX", "f.docx")
+
+    @pytest.mark.asyncio
+    async def test_unknown_format_passes_through_without_converter(self) -> None:
+        converter = _mock_converter()
+        ctx = self._ctx_with_scratch("f.xyz", "xyz", original_bytes=b"RAW")
+
+        await ConvertStep(MagicMock(upload=AsyncMock()), converter).run(ctx)
+
+        assert ctx.aux[INGEST_SCRATCH_KEY].pdf_bytes == b"RAW"   # degraded passthrough
+        converter.convert.assert_not_awaited()
+
+
+class TestProbeStep:
+    """The probe step detects the OCR fork, builds implicit_meta, and emits the IngestResult."""
+
+    @pytest.mark.asyncio
+    async def test_assembles_ingest_result(self) -> None:
+        ctx = PipelineContext(original_bytes=b"abc", filename="report.docx")
+        ctx.aux[INGEST_SCRATCH_KEY] = IngestScratch(
+            doc_id="DID",
+            source_hash="HASH",
+            original_format="docx",
+            original_key="originals/HASH",
+            pdf_bytes=b"PDF",
+            pdf_key="derived/HASH/pdf",
+            page_count=4,
+        )
+
+        await ProbeStep().run(ctx)
+
+        result = ctx.ingest_result
+        assert isinstance(result, IngestResult)
+        assert result.doc_id == "DID"
+        assert result.source_hash == "HASH"
+        assert result.original_format == "docx"
+        assert result.pdf_bytes == b"PDF"
+        assert result.page_count == 4
+        assert result.file_size == 3                    # len(b"abc")
+        # Fake PDF bytes make the PyMuPDF probe fall back → no raster pages detected.
+        assert result.needs_ocr is False
+        # implicit_meta packages the file-intrinsic fields the downstream stages read.
+        assert result.implicit_meta == {
+            "filename": "report.docx",
+            "extension": "docx",
+            "file_size": 3,
+            "source_hash": "HASH",
+            "page_count": 4,
+            "has_scanned_pages": False,
+        }
+
+
+class TestIngestStageEndToEnd:
+    """The stage runs its three steps in order, producing the IngestResult that feeds parse."""
+
+    @pytest.mark.asyncio
+    async def test_native_pdf_full_run(self) -> None:
+        import hashlib
+
+        s3 = MagicMock(upload=AsyncMock())
+        stage = IngestDocStage(_resources(s3=s3, converter=_mock_converter()))
+        ctx = PipelineContext(original_bytes=b"PDFBYTES", filename="doc.pdf", doc_id="DID")
+
+        await stage.run(ctx)
+
+        assert ctx.source_hash == hashlib.sha256(b"PDFBYTES").hexdigest()
+        result = ctx.ingest_result
+        assert result.doc_id == "DID"
+        assert result.original_format == "pdf"
+        assert result.pdf_bytes == b"PDFBYTES"          # native passthrough survives end-to-end
+        assert result.original_filename == "doc.pdf"
+        # Two uploads: the original then the derived PDF.
+        assert s3.upload.await_count == 2
+
+    @pytest.mark.asyncio
+    async def test_office_full_run_uses_converter(self) -> None:
+        converter = _mock_converter()
+        converter.convert.return_value = SimpleNamespace(pdf_bytes=b"CONVERTED", page_count=7)
+        stage = IngestDocStage(_resources(converter=converter))
+        ctx = PipelineContext(original_bytes=b"DOCXBYTES", filename="doc.docx", doc_id="DID")
+
+        await stage.run(ctx)
+
+        result = ctx.ingest_result
+        assert result.pdf_bytes == b"CONVERTED"
+        assert result.page_count == 7
+        converter.convert.assert_awaited_once_with(b"DOCXBYTES", "doc.docx")
 
 
 class TestChunkStage:
@@ -160,7 +333,6 @@ class TestMetagenStage:
         inner.run.assert_awaited_once_with(["c0"], ir)
         assert ctx.metagen_result is result
         assert ctx.chunks == ["meta0"]
-        assert ctx.doc_fields == {"summary": "x"}
         # The metagen stage closes the IO graph by assembling doc_meta for S6.
         assert ctx.doc_meta["summary"] == "x"
         assert ctx.doc_meta["language"] == "en"
@@ -190,7 +362,7 @@ class TestMetagenStage:
 
 
 class TestNativeStagesInBuildPipeline:
-    """build_pipeline yields the canonical order; the four migrated stages are NATIVE types."""
+    """build_pipeline yields the canonical order; the migrated stages are NATIVE types."""
 
     def test_order_unchanged_and_stages_native(self) -> None:
         registry = ProviderRegistry(s3=MagicMock(), provider_cache=MagicMock(), runtime_config=RUNTIME_CONFIG)
@@ -200,9 +372,9 @@ class TestNativeStagesInBuildPipeline:
 
         assert [s.SPEC.key for s in stages] == _CANONICAL_ORDER
         by_key = {s.SPEC.key: s for s in stages}
-        # Each migrated stage is the native type wrapping the same legacy implementation.
+        # The ingest stage is native (it owns its steps; no legacy inner stage).
         assert isinstance(by_key["ingest"], IngestDocStage)
-        assert isinstance(by_key["ingest"]._inner, S0IngestStage)
+        assert by_key["ingest"].fingerprint_params()["converter_name"] == "gotenberg"
         assert isinstance(by_key["chunk"], ChunkStage)
         assert isinstance(by_key["chunk"]._inner, S4ChunkStage)
         assert isinstance(by_key["contextualize"], ContextualizeStage)

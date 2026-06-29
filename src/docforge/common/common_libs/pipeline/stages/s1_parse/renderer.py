@@ -13,6 +13,7 @@ import hashlib
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from common_libs.pipeline.ingest.stages.ingest.result import IngestResult
     from common_libs.storage.s3.client import S3Client
 
 # ====== Third-Party Library Imports ======
@@ -22,9 +23,6 @@ from loggerplusplus import LoggerClass
 from common_libs.domain.ir.models import DocumentIR
 from common_libs.domain.ir.serializer import MarkdownSerializer
 from common_libs.storage.s3.helpers import S3Helpers
-
-# ====== Local Project Imports ======
-from ..s0_ingest import S0Result
 
 
 class S1Renderer(LoggerClass):
@@ -50,7 +48,7 @@ class S1Renderer(LoggerClass):
         self._md_serializer = MarkdownSerializer()
 
     async def render_and_upload(
-        self, s0: S0Result, ir: DocumentIR
+        self, s0: IngestResult, ir: DocumentIR
     ) -> dict[str, str]:
         """
         Crop all figure bboxes from the PDF and upload them to SeaweedFS.
@@ -143,7 +141,7 @@ class S1Renderer(LoggerClass):
         return figure_crops
 
     async def upload_markdown(
-        self, s0: S0Result, ir: DocumentIR, fingerprint: str | None = None
+        self, s0: IngestResult, ir: DocumentIR, fingerprint: str | None = None
     ) -> str:
         """Serialise the IR to faithful markdown and upload to SeaweedFS."""
         markdown_text = self._md_serializer.serialize(ir)

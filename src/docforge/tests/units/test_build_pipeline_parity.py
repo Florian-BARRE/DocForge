@@ -18,7 +18,7 @@ from common_libs.pipeline.assembly import ProviderRegistry
 from common_libs.pipeline.assembly.chunk_stage_assembler import ChunkStageAssembler
 from common_libs.pipeline.assembly.stage_assembler import build_pipeline
 from common_libs.pipeline.stages.context import StageDeps
-from common_libs.pipeline.stages.s0_ingest.core import S0IngestStage
+from common_libs.pipeline.ingest.stages.ingest import IngestDocStage
 from common_libs.pipeline.stages.s1_parse.core import S1ParseStage
 from common_libs.pipeline.stages.s2_enrich.core import S2EnrichStage
 from common_libs.pipeline.stages.s4_chunk.core import S4ChunkStage
@@ -51,8 +51,14 @@ class TestBuildPipelineParity:
         deps = StageDeps(s3=MagicMock(), postgres=MagicMock(), chunk_repo=MagicMock())
         by_key = {s.key: s for s in build_pipeline(dp, registry, deps, qdrant=MagicMock())}
 
-        # Each adapter wraps the same legacy stage type the old path constructs.
-        assert isinstance(by_key["ingest"]._inner, S0IngestStage)
+        # The ingest stage is native (no legacy inner); it carries its converter resource and
+        # surfaces the converter identity as its node fingerprint params.
+        assert isinstance(by_key["ingest"], IngestDocStage)
+        assert by_key["ingest"].fingerprint_params() == {
+            "converter_name": "gotenberg",
+            "converter_version": "8",
+        }
+        # Each remaining stage wraps the same legacy stage type the old path constructs.
         assert isinstance(by_key["parse"]._inner, S1ParseStage)
         assert isinstance(by_key["enrich"]._inner, S2EnrichStage)
         assert isinstance(by_key["chunk"]._inner, S4ChunkStage)

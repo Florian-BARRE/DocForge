@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from common_libs.pipeline.base.stage.keys import StageKey
-    from common_libs.pipeline.stages.s0_ingest.core import S0Result
+    from common_libs.pipeline.ingest.stages.ingest.result import IngestResult
     from common_libs.pipeline.stages.s1_parse.core import S1Result
     from common_libs.pipeline.stages.s2_enrich import S2Result
     from common_libs.pipeline.stages.s4_chunk import S4Result
@@ -28,7 +28,7 @@ class EngineResult:
     Stage results are None when their stage is disabled or not configured.
 
     Attributes:
-        ingest_result (S0Result): Ingestion stage output (always present).
+        ingest_result (IngestResult): Ingestion stage output (always present).
         parse_result (S1Result): Parse stage output (always present).
         enrich_result (S2Result | None): Enrichment stage output; None on cache error.
         chunk_result (S4Result | None): Chunking stage output.
@@ -38,7 +38,7 @@ class EngineResult:
         from_cache (dict[StageKey, bool]): Per-stage cache hit flags (keyed by StageKey).
     """
 
-    ingest_result: S0Result
+    ingest_result: IngestResult
     parse_result: S1Result
     enrich_result: S2Result | None = None          # None only when a cache error occurs
     chunk_result: S4Result | None = None           # always populated on a successful run

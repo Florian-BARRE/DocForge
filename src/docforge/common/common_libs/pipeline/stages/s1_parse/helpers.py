@@ -16,7 +16,7 @@ from common_libs.pipeline.bricks.chain import ChainHelpers, ChainOutcome, chain_
 from common_libs.domain.ir.models import BlockType, ChainAttemptIR, ChainTrace, DocumentIR
 
 if TYPE_CHECKING:
-    from ..s0_ingest import S0Result
+    from common_libs.pipeline.ingest.stages.ingest.result import IngestResult
 
 
 class S1Helpers:
@@ -66,7 +66,7 @@ class S1Helpers:
         })
 
     @staticmethod
-    def empty_ir(s0: S0Result) -> DocumentIR:
+    def empty_ir(s0: IngestResult) -> DocumentIR:
         """
         Build a minimal, block-less DocumentIR for a degraded (no-parse) S1 outcome.
 
@@ -76,7 +76,7 @@ class S1Helpers:
         Carries the S0-known identity fields so downstream persistence stays consistent.
 
         Args:
-            s0 (S0Result): The S0 ingestion result (provides identity + page count).
+            s0 (IngestResult): The ingest result (provides identity + page count).
 
         Returns:
             DocumentIR: An empty IR (no blocks, quality_score=0.0).

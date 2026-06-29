@@ -16,7 +16,7 @@ from loggerplusplus import loggerplusplus
 # ====== Internal Project Imports ======
 from common_libs.domain.ir.models import DocumentIR
 from common_libs.storage.s3.client import S3Client
-from common_libs.pipeline.stages.s0_ingest.core import S0Result
+from common_libs.pipeline.ingest.stages.ingest.result import IngestResult
 from common_libs.pipeline.stages.s1_parse.core import S1Result
 from common_libs.pipeline.stages.s2_enrich import S2Result
 
@@ -39,9 +39,9 @@ class CacheCodec:
     # ─── S3 restore helpers ───────────────────────────────────────────────────
 
     @classmethod
-    async def restore_s0(cls, s3: S3Client, s0_meta_key: str) -> S0Result:
+    async def restore_s0(cls, s3: S3Client, s0_meta_key: str) -> IngestResult:
         """
-        Restore an S0Result from its S3 meta JSON.
+        Restore an IngestResult from its S3 meta JSON.
 
         ``pdf_bytes`` is set to None (lazy) and populated only if S1 is a miss.
 
@@ -50,11 +50,11 @@ class CacheCodec:
             s0_meta_key (str): S3 key of the S0 meta JSON artefact.
 
         Returns:
-            S0Result: Restored S0 result with ``pdf_bytes=None`` (populated lazily on S1 miss).
+            IngestResult: Restored S0 result with ``pdf_bytes=None`` (populated lazily on S1 miss).
         """
         raw = await s3.download(s0_meta_key)
         meta: dict[str, Any] = json.loads(raw)
-        return S0Result(
+        return IngestResult(
             doc_id=meta["doc_id"],
             source_hash=meta["source_hash"],
             original_key=meta["original_key"],
@@ -69,19 +69,19 @@ class CacheCodec:
         )
 
     @classmethod
-    async def populate_pdf_bytes(cls, s3: S3Client, ingest_result: S0Result) -> S0Result:
+    async def populate_pdf_bytes(cls, s3: S3Client, ingest_result: IngestResult) -> IngestResult:
         """
-        Download PDF bytes from S3 into an S0Result that was restored from cache.
+        Download PDF bytes from S3 into an IngestResult that was restored from cache.
 
         Args:
             s3 (S3Client): SeaweedFS object store client.
-            ingest_result (S0Result): Cache-restored S0 result with ``pdf_bytes=None``.
+            ingest_result (IngestResult): Cache-restored S0 result with ``pdf_bytes=None``.
 
         Returns:
-            S0Result: A new S0Result identical to the input with ``pdf_bytes`` populated.
+            IngestResult: A new IngestResult identical to the input with ``pdf_bytes`` populated.
         """
         pdf_bytes = await s3.download(ingest_result.pdf_key)
-        return S0Result(
+        return IngestResult(
             doc_id=ingest_result.doc_id,
             source_hash=ingest_result.source_hash,
             original_key=ingest_result.original_key,

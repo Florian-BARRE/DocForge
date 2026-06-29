@@ -48,6 +48,39 @@ contract. Frozen plan: `docs/rpi/dynamic-stage-architecture/plan.md`; current-st
   comparisons + str/StageKey dict lookups still work, but new code should use StageKey. DEFERRED to R2
   (per the user): real multi-step decomposition + deleting the legacy `stages/sN_*` inner-stage internals
   (R1 kept the 1-step-per-stage delegation + the wrapper result objects, renamed only).
+- **R2-ingest (DONE, 871 units green):** the INGEST stage got REAL step decomposition + the legacy
+  `stages/s0_ingest/` package was **DELETED** (grep-proof zero `s0_ingest`/`S0Result` code refs). Three
+  real steps under `ingest/stages/ingest/steps/`, run in order by the AbstractStage template:
+  **ContentAddressStep** (consumes original_bytes/filename/doc_id → sha256 + mint doc_id + upload
+  original → writes `source_hash` + seeds `ctx.aux["ingest_scratch"]`); **ConvertStep** (consumes
+  original_bytes/filename/scratch → native passthrough / Gotenberg / unknown-fallback fork + upload PDF
+  → fills scratch pdf_bytes/pdf_key/page_count); **ProbeStep** (consumes scratch → detect_raster_pages
+  needs_ocr + build_implicit_meta + assemble `ingest_result`). Inter-step hand-off = a mutable
+  `IngestScratch` dataclass in `ctx.aux` (scratch.py, key `INGEST_SCRATCH_KEY`) — same ctx.aux pattern
+  as embed_index. Pure logic ported from the legacy `S0IngestHelpers` → `IngestHelpers` (helpers.py).
+  Key facts:
+  - **`S0Result` → `IngestResult`** (renamed + relocated to `ingest/stages/ingest/result.py`; SAME
+    fields, so the worker cache codec JSON round-trip + parse consumption are byte-identical). It is a
+    SHARED contract: 8 importers repointed — `stages/s1_parse/{core,helpers,renderer}` (TYPE_CHECKING-only
+    guarded imports — see cycle note) + worker `orchestrator/{cache_codec,cache_encoder,cache_io,result,
+    s012_persist,trace_flush}`.
+  - **CIRCULAR-IMPORT GOTCHA:** importing anything under `ingest/stages/ingest/` runs
+    `ingest/stages/__init__` which eager-imports ALL native stages incl. `parsing` → `parsing/core`
+    imports `S1ParseStage` from `stages/s1_parse/core`. So s1_parse importing `IngestResult` at MODULE
+    TOP creates a back-edge → "cannot import name 'S1ParseStage'" collection error. FIX: s1_parse's
+    IngestResult imports are TYPE_CHECKING-only (all three files already had `from __future__ import
+    annotations`; IngestResult is used only in annotations). Worker importers can use runtime imports
+    (worker is never imported by stages → eager load is acyclic).
+  - **Stage construction changed:** `IngestDocStage` no longer takes a legacy `_inner`; it takes an
+    `IngestResources(s3, converter)` frozen bundle (defined in `ingest/stages/ingest/core.py`) and builds
+    its 3 steps. `stage_assembler._build_inner("ingest")` returns `IngestResources(...)` (keeps the
+    uniform `stage_cls(inner)` call). `fingerprint_params()` is OVERRIDDEN on the stage to return
+    `{"converter_name","converter_version"}` from `self._resources.converter` — preserves the legacy S0
+    node-cache key exactly (NODE_CACHED + key=StageKey.INGEST + code_version="1.0").
+  - Tests: `test_native_ingest_stages.py` rewritten with per-step + end-to-end ingest tests (mock
+    s3.upload + converter; fake PDF bytes → fitz fallback gives page_count=1/needs_ocr=False
+    deterministically). `test_build_pipeline_parity.py` ingest assertion now checks the native type +
+    converter fingerprint (no `_inner`).
 - **P1b inc-1 (DONE):** physical reorg skeleton + PARSE migrated native. See "P1b reorg" below.
 - **P1b inc-2 (DONE):** ingest/chunk/contextualize/metagen migrated native (855 units green).
 - **P1b inc-3 (DONE):** enrich (S2) + embed_index (S6) migrated native; the `adapters/` package +

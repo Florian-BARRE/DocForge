@@ -17,7 +17,7 @@ from common_libs.domain.ir.models import DocumentIR
 from common_libs.storage.postgres.client import PostgresClient
 from common_libs.storage.s3.client import S3Client
 from common_libs.pipeline.caches.node_cache import NodeCache
-from common_libs.pipeline.stages.s0_ingest.core import S0Result
+from common_libs.pipeline.ingest.stages.ingest.result import IngestResult
 from common_libs.pipeline.stages.s1_parse.core import S1Result
 from common_libs.pipeline.stages.s2_enrich import S2Result
 
@@ -98,13 +98,13 @@ class CacheIOHelpers:
     # ─── S3 codec delegators (implementation in CacheCodec) ───────────────────
 
     @classmethod
-    async def restore_s0(cls, s3: S3Client, s0_meta_key: str) -> S0Result:
-        """Restore an S0Result from its S3 meta JSON (delegates to CacheCodec)."""
+    async def restore_s0(cls, s3: S3Client, s0_meta_key: str) -> IngestResult:
+        """Restore an IngestResult from its S3 meta JSON (delegates to CacheCodec)."""
         return await CacheCodec.restore_s0(s3, s0_meta_key)
 
     @classmethod
-    async def populate_pdf_bytes(cls, s3: S3Client, ingest_result: S0Result) -> S0Result:
-        """Lazy-load PDF bytes into a cache-restored S0Result (delegates to CacheCodec)."""
+    async def populate_pdf_bytes(cls, s3: S3Client, ingest_result: IngestResult) -> IngestResult:
+        """Lazy-load PDF bytes into a cache-restored IngestResult (delegates to CacheCodec)."""
         return await CacheCodec.populate_pdf_bytes(s3, ingest_result)
 
     @classmethod
@@ -118,8 +118,8 @@ class CacheIOHelpers:
         return await CacheCodec.restore_s2(s3, s2_meta_key)
 
     @staticmethod
-    def encode_s0_meta(s0: S0Result) -> bytes:
-        """Serialize an S0Result to compact JSON bytes (delegates to CacheEncoder)."""
+    def encode_s0_meta(s0: IngestResult) -> bytes:
+        """Serialize an IngestResult to compact JSON bytes (delegates to CacheEncoder)."""
         return CacheEncoder.encode_s0_meta(s0)
 
     @staticmethod
