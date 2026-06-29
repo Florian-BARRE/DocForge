@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 # ====== Internal Project Imports ======
-from common_libs.pipelines.bricks.chain import ChainAttempt
+from common_libs.pipelines.capabilities.chain import ChainAttempt
 
 
 @dataclass

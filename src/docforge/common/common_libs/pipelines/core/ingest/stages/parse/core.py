@@ -10,7 +10,7 @@ from typing import Any
 
 # ====== Internal Project Imports ======
 from common_libs.pipelines import CachePolicy, NodeOutput, StageKey, StageSpec
-from common_libs.pipelines.bricks.chain import Chain
+from common_libs.pipelines.capabilities.chain import Chain
 
 # ====== Local Project Imports ======
 from ..base import IngestStageBase

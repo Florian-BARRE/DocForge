@@ -14,8 +14,8 @@ import blake3 as _blake3
 
 # ====== Internal Project Imports ======
 from common_libs.domain import ChainAttemptIR, ChainTrace
-from common_libs.pipelines.bricks.caches import compute_call_fingerprint
-from common_libs.pipelines.bricks.chain import Chain, ChainHelpers
+from common_libs.pipelines.capabilities.caches import compute_call_fingerprint
+from common_libs.pipelines.capabilities.chain import Chain, ChainHelpers
 
 # ====== Local Project Imports ======
 from .prompts import METAGEN_MAX_OUTPUT_TOKENS

@@ -4,7 +4,7 @@
 # at assembly and injected as a service.
 
 # ====== Internal Project Imports ======
-from common_libs.pipelines.bricks.chain import Chain
+from common_libs.pipelines.capabilities.chain import Chain
 
 # ====== Local Project Imports ======
 from ..base import IngestStageEmbedIndexStepContextBase

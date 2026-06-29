@@ -12,7 +12,7 @@ from loggerplusplus import loggerplusplus
 
 # ====== Internal Project Imports ======
 from common_libs.domain.ir.models import ChainAttemptIR, ChainTrace
-from common_libs.pipelines.bricks.chain import (
+from common_libs.pipelines.capabilities.chain import (
     ChainHelpers,
     ChainOutcome,
     chain_outcome_to_attempt_dicts,

@@ -1,10 +1,19 @@
-# ---------------------- Contract ----------------------------- #
-from .base import Capability
+# ---------------------- Chain (provider escalation) ---------- #
+from .chain import Chain, ChainExhaustedError, ChainHelpers, ChainOutcome
 
-# ---------------------- Families (scaffolding) --------------- #
-# Concrete capability families land here as they are ported:
-#   chain/        provider-escalation mechanism (gate + budget + call-cache)
-#   providers/    parser, ocr, vlm, embed, rerank, llm, classifier, converter, device
+# ---------------------- Caches ------------------------------- #
+from .caches import ProviderCallCache, compute_call_fingerprint, compute_fingerprint
 
 # ---------------------- Public API --------------------------- #
-__all__ = ["Capability"]
+# Reusable pipeline mechanisms injected as services into the stages: the provider escalation Chain,
+# the cross-document ProviderCallCache, and the Merkle fingerprint. Tracking models live under
+# .tracking (imported directly where needed). Provider IMPLEMENTATIONS live in common_libs.providers.
+__all__ = [
+    "Chain",
+    "ChainOutcome",
+    "ChainHelpers",
+    "ChainExhaustedError",
+    "ProviderCallCache",
+    "compute_fingerprint",
+    "compute_call_fingerprint",
+]

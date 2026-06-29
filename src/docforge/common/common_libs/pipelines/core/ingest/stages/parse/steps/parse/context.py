@@ -4,7 +4,7 @@
 # deciding escalation. The concrete per-collection chain is built at assembly and injected.
 
 # ====== Internal Project Imports ======
-from common_libs.pipelines.bricks.chain import Chain
+from common_libs.pipelines.capabilities.chain import Chain
 
 # ====== Local Project Imports ======
 from ..base import IngestStageParseStepContextBase

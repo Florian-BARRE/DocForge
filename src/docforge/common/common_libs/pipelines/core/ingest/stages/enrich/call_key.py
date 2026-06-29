@@ -10,8 +10,8 @@
 from typing import Any
 
 # ====== Internal Project Imports ======
-from common_libs.pipelines.bricks.caches import ProviderCallCache
-from common_libs.pipelines.bricks.chain import Chain
+from common_libs.pipelines.capabilities.caches import ProviderCallCache
+from common_libs.pipelines.capabilities.chain import Chain
 
 
 class CallKeyHelpers:
