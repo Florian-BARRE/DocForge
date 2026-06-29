@@ -20,7 +20,7 @@ from common_libs.config.pipeline.spec_utils import flatten_provider_spec as _fla
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from common_libs.pipeline.bricks.providers.llm.openai_compat.provider import OpenAICompatLLMProvider
+    from common_libs.providers.llm.openai_compat.provider import OpenAICompatLLMProvider
 
 _DEFAULT_EXTERNAL_BASE_URL = "https://api.openai.com/v1"
 _DEFAULT_LOCAL_BASE_URL = "http://localhost:8080/v1"
@@ -60,7 +60,7 @@ class OpenAICompatLLMConfig(BaseModel):
         if self.locality == "external" and (not self.api_key or self.api_key == "local"):
             raise ValueError("OpenAICompatLLMConfig.build(): api_key is required for locality='external'.")
         base_url = self.base_url or (_DEFAULT_EXTERNAL_BASE_URL if self.locality == "external" else _DEFAULT_LOCAL_BASE_URL)
-        from common_libs.pipeline.bricks.providers.llm.openai_compat.provider import OpenAICompatLLMProvider  # lazy runtime brick (L3)
+        from common_libs.providers.llm.openai_compat.provider import OpenAICompatLLMProvider  # lazy runtime brick (L3)
         return OpenAICompatLLMProvider(
             base_url=base_url,
             locality=self.locality,

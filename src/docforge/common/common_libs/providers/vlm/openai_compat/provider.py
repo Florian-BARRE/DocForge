@@ -7,7 +7,7 @@
 from __future__ import annotations
 
 # ====== Local Project Imports ======
-from common_libs.pipeline.bricks.providers.vlm._openai_compat_base import _OpenAICompatVlmBase
+from common_libs.providers.vlm._openai_compat_base import _OpenAICompatVlmBase
 
 # Locality-dependent defaults: local networks are fast; cloud APIs need a longer ceiling.
 _LOCAL_TIMEOUT_S = 30

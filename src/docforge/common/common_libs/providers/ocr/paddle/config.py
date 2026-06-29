@@ -23,7 +23,7 @@ from common_libs.config.pipeline.spec_utils import flatten_provider_spec as _fla
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from common_libs.pipeline.bricks.providers.ocr.paddle.provider import PaddleOcrProvider
+    from common_libs.providers.ocr.paddle.provider import PaddleOcrProvider
 
 
 @register("ocr")
@@ -70,7 +70,7 @@ class PaddleOcrConfig(BaseModel):
         Returns:
             PaddleOcrProvider: Configured provider instance.
         """
-        from common_libs.pipeline.bricks.providers.ocr.paddle.provider import PaddleOcrProvider  # lazy runtime brick (L3)
+        from common_libs.providers.ocr.paddle.provider import PaddleOcrProvider  # lazy runtime brick (L3)
         return PaddleOcrProvider(use_gpu=self._use_gpu)
 
     def merge_defaults(self, cfg: Any) -> PaddleOcrConfig:

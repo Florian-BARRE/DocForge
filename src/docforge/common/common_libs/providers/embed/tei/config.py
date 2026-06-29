@@ -10,7 +10,7 @@
 # referenced during backward-compat normalization; EmbedConfig rewrites such specs to "bge_server"
 # BEFORE the discriminated-union dispatch, so a TeiEmbedConfig instance is never produced.
 # The HTTP client runtime (TeiEmbedProvider) now lives in the pipeline brick
-# common_libs.pipeline.bricks.providers.embed and is the shared embed client used by
+# common_libs.providers.embed and is the shared embed client used by
 # BgeServerEmbedConfig.build() (lazy-imported there).
 
 # ====== Standard Library Imports ======
@@ -29,7 +29,7 @@ from common_libs.config.pipeline.spec_utils import flatten_provider_spec as _fla
 if TYPE_CHECKING:
     # Type-only import of the runtime brick (L3); build() lazy-imports it at runtime so this
     # config-layer module has no module-level upward import into the pipeline.
-    from common_libs.pipeline.bricks.providers.embed import TeiEmbedProvider
+    from common_libs.providers.embed import TeiEmbedProvider
 
 
 class TeiEmbedConfig(BaseModel):
@@ -85,7 +85,7 @@ class TeiEmbedConfig(BaseModel):
             TeiEmbedProvider: Ready-to-use provider instance.
         """
         # 1. Lazy import the runtime — function-local to keep the import graph acyclic.
-        from common_libs.pipeline.bricks.providers.embed import TeiEmbedProvider
+        from common_libs.providers.embed import TeiEmbedProvider
 
         return TeiEmbedProvider(
             base_url=self.base_url or "http://bge_server:80",

@@ -24,7 +24,7 @@ from common_libs.config.pipeline.spec_utils import flatten_provider_spec as _fla
 if TYPE_CHECKING:
     # Type-only import of the runtime brick (L3). At runtime build() lazy-imports it so this
     # config-layer (L1) module never has a module-level upward import into the pipeline brick.
-    from common_libs.pipeline.bricks.providers.embed import TeiEmbedProvider
+    from common_libs.providers.embed import TeiEmbedProvider
 
 # Canonical URL of the local bge service (compose service `bge_server`). A structural default
 # (a service name, not a secret) — a collection may override it per-collection.
@@ -79,7 +79,7 @@ class BgeServerEmbedConfig(BaseModel):
         upward import into the pipeline (the boundary fix for the providers→bricks split).
         """
         # 1. Lazy import the runtime (L3) — function-local to keep the import graph acyclic.
-        from common_libs.pipeline.bricks.providers.embed import TeiEmbedProvider
+        from common_libs.providers.embed import TeiEmbedProvider
 
         return TeiEmbedProvider(
             base_url=self.base_url or _DEFAULT_BGE_URL,

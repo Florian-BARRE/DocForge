@@ -19,7 +19,7 @@ from common_libs.config.pipeline.spec_utils import flatten_provider_spec as _fla
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from common_libs.pipeline.bricks.providers.rerank.cohere.provider import CohereRerankProvider
+    from common_libs.providers.rerank.cohere.provider import CohereRerankProvider
 
 
 @register("rerank")
@@ -63,7 +63,7 @@ class CohereRerankConfig(BaseModel):
             raise ValueError(
                 "CohereRerankConfig.build(): api_key is required for the Cohere Rerank API."
             )
-        from common_libs.pipeline.bricks.providers.rerank.cohere.provider import CohereRerankProvider  # lazy runtime brick (L3)
+        from common_libs.providers.rerank.cohere.provider import CohereRerankProvider  # lazy runtime brick (L3)
         return CohereRerankProvider(api_key=self.api_key, model=self.model)
 
     def merge_defaults(self, cfg: Any) -> CohereRerankConfig:

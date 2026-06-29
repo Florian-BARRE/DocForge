@@ -29,7 +29,7 @@ from common_libs.config.pipeline.spec_utils import flatten_provider_spec as _fla
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from common_libs.pipeline.bricks.providers.rerank.bge.provider import BgeRerankProvider
+    from common_libs.providers.rerank.bge.provider import BgeRerankProvider
 
 
 class BgeRerankerConfig(BaseModel):
@@ -74,7 +74,7 @@ class BgeRerankerConfig(BaseModel):
         Returns:
             BgeRerankProvider: Ready-to-use reranking provider instance.
         """
-        from common_libs.pipeline.bricks.providers.rerank.bge.provider import BgeRerankProvider  # lazy runtime brick (L3)
+        from common_libs.providers.rerank.bge.provider import BgeRerankProvider  # lazy runtime brick (L3)
         return BgeRerankProvider(
             base_url=self.base_url,
             batch_size=self.batch_size,

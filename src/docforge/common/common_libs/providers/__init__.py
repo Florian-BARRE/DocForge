@@ -1,10 +1,9 @@
 # ------------------- Contracts only (L1) ------------------- #
 # This package now exposes ONLY provider CONTRACTS — the Protocol interfaces, result dataclasses,
-# device value-types, and the classifier result/base. The provider RUNTIME implementations moved to
-# the pipeline bricks (common_libs.pipeline.bricks.providers.<family>) in the P1b inc-4b config/
-# runtime split; the Chain brick moved to common_libs.pipeline.bricks.chain (inc-4a). Import any
-# runtime from the bricks, never from this package. The @register provider CONFIG classes stay in
-# their per-family config.py modules (discovered via auto_import) and are imported from there.
+# device value-types, and the classifier result/base. The provider RUNTIME implementations live in
+# the per-family runtime modules (common_libs.providers.<family>); import any runtime from its own
+# family module, never from this top-level package, to preserve the layering. The @register provider
+# CONFIG classes stay in their per-family config.py modules (discovered via auto_import).
 
 # ------------------- Provider Protocol interfaces ------------------- #
 from .interfaces import (

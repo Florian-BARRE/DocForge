@@ -8,7 +8,7 @@
 from __future__ import annotations
 
 # ====== Local Project Imports ======
-from common_libs.pipeline.bricks.providers.embed._openai_compat_base import _OpenAICompatBase
+from common_libs.providers.embed._openai_compat_base import _OpenAICompatBase
 
 
 class OpenAICompatEmbedProvider(_OpenAICompatBase):

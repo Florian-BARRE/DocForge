@@ -23,7 +23,7 @@ from common_libs.config.pipeline.spec_utils import flatten_provider_spec as _fla
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from common_libs.pipeline.bricks.providers.rerank.bge.provider import BgeRerankProvider
+    from common_libs.providers.rerank.bge.provider import BgeRerankProvider
 
 # Canonical URL of the local bge service (compose service `bge_server`) — a structural default
 # (a service name, not a secret); a collection may override it per-collection.
@@ -65,7 +65,7 @@ class BgeServerRerankConfig(BaseModel):
 
     def build(self) -> BgeRerankProvider:
         """Instantiate the (TEI-protocol) HTTP rerank provider pointed at bge_server."""
-        from common_libs.pipeline.bricks.providers.rerank.bge.provider import BgeRerankProvider  # lazy runtime brick (L3)
+        from common_libs.providers.rerank.bge.provider import BgeRerankProvider  # lazy runtime brick (L3)
         return BgeRerankProvider(
             base_url=self.base_url or _DEFAULT_BGE_URL,
             batch_size=self.batch_size,
