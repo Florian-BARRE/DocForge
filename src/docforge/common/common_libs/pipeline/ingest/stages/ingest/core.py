@@ -4,10 +4,10 @@
 # the injected ingestion implementation. The class is named IngestDocStage (not IngestStage) so it
 # does not collide with the ingest-family stage base ``IngestStage``.
 #
-# Parity contract (must equal the old s0 adapter): KEY="ingest", NODE_TYPE="s0", AFTER=(),
-# CONSUMES=("file_bytes","filename","doc_id"), PRODUCES=("s0_result","source_hash"),
-# CACHE_POLICY=NODE_CACHED, ON_ERROR=FAIL_DOC, NODE_VERSION="1.0", and fingerprint_params()=
-# {"converter_name": ..., "converter_version": ...} — NODE_TYPE "s0" + the overridden
+# Parity contract (must equal the old s0 adapter): KEY="ingest", key=StageKey.INGEST, AFTER=(),
+# CONSUMES=("file_bytes","filename","doc_id"), PRODUCES=("ingest_result","source_hash"),
+# CACHE_POLICY=NODE_CACHED, ON_ERROR=FAIL_DOC, code_version="1.0", and fingerprint_params()=
+# {"converter_name": ..., "converter_version": ...} — key=StageKey.INGEST + the overridden
 # fingerprint_params reproduce the legacy S0 node-cache key exactly.
 
 # ====== Standard Library Imports ======
@@ -17,7 +17,7 @@ from typing import ClassVar
 
 # ====== Internal Project Imports ======
 from common_libs.pipeline.assembly.stage_registry import register_stage
-from common_libs.pipeline.base.stage.model import CachePolicy, ErrorPolicy
+from common_libs.pipeline.base.stage.model import CachePolicy, ErrorPolicy, StageKey, StageSpec
 from common_libs.pipeline.base.step.core import AbstractStep
 from common_libs.pipeline.ingest.stages.base.stage import IngestStage
 from common_libs.pipeline.stages.s0_ingest.core import S0IngestStage
@@ -37,20 +37,19 @@ class IngestDocStage(IngestStage):
     to the legacy engine.
     """
 
-    KEY: ClassVar[str] = "ingest"
-    NAME: ClassVar[str] = "Ingest"
-    DESCRIPTION: ClassVar[str] = (
-        "Content-address the original, convert office formats to PDF, detect the OCR fork, "
-        "and upload artifacts to the object store."
+    SPEC: ClassVar[StageSpec] = StageSpec(
+        key=StageKey.INGEST,
+        name="Ingest",
+        description=(
+            "Content-address the original, convert office formats to PDF, detect the OCR fork, "
+            "and upload artifacts to the object store."
+        ),
+        after=(),
+        consumes=("original_bytes", "filename", "doc_id"),
+        produces=("ingest_result", "source_hash"),
+        cache_policy=CachePolicy.NODE_CACHED,
+        error_policy=ErrorPolicy.FAIL_DOC,
     )
-    AFTER: ClassVar[tuple[str, ...]] = ()
-    CONFIG: ClassVar[None] = None
-    CONSUMES: ClassVar[tuple[str, ...]] = ("file_bytes", "filename", "doc_id")
-    PRODUCES: ClassVar[tuple[str, ...]] = ("s0_result", "source_hash")
-    CACHE_POLICY: ClassVar[CachePolicy] = CachePolicy.NODE_CACHED
-    ON_ERROR: ClassVar[ErrorPolicy] = ErrorPolicy.FAIL_DOC
-    # Legacy node id/type so the fingerprint hex + stage_run rows match the old engine exactly.
-    NODE_TYPE: ClassVar[str] = "s0"
 
     def __init__(self, inner: S0IngestStage) -> None:
         """
@@ -74,7 +73,7 @@ class IngestDocStage(IngestStage):
         Surface the legacy S0 node fingerprint params (converter name + version).
 
         Overrides the inherited step-aggregate so the dynamic engine reproduces the legacy S0
-        node-cache key exactly (with ``NODE_TYPE="s0"`` and ``NODE_VERSION="1.0"``). Reads the
+        node-cache key exactly (with ``key=StageKey.INGEST`` and ``code_version="1.0"``). Reads the
         ingestion stage's private converter, as the legacy ``S012ParamHelpers.s0_params`` does.
 
         Returns:

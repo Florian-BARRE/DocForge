@@ -23,7 +23,7 @@ class MetagenStep(IngestStep):
     """
     Native metagen step — generates per-chunk/per-doc metadata and assembles the final doc_meta.
 
-    Reads ``chunks``/``ir``/``s0_result``/``doc_user_meta``; writes ``s5b_result``, ``chunks``,
+    Reads ``chunks``/``ir``/``ingest_result``/``doc_user_meta``; writes ``metagen_result``, ``chunks``,
     ``doc_fields`` and the merged ``doc_meta``.
     """
 
@@ -33,8 +33,8 @@ class MetagenStep(IngestStep):
         "Generate LLM-derived metadata per chunk (derived_meta) and per document (doc_fields) "
         "via the metagen provider chain."
     )
-    CONSUMES: ClassVar[tuple[str, ...]] = ("chunks", "ir", "s0_result", "doc_user_meta")
-    PRODUCES: ClassVar[tuple[str, ...]] = ("s5b_result", "chunks", "doc_fields", "doc_meta")
+    CONSUMES: ClassVar[tuple[str, ...]] = ("chunks", "ir", "ingest_result", "doc_user_meta")
+    PRODUCES: ClassVar[tuple[str, ...]] = ("metagen_result", "chunks", "doc_fields", "doc_meta")
 
     def __init__(self, metagen: "S5bMetagenStage") -> None:
         """
@@ -57,7 +57,7 @@ class MetagenStep(IngestStep):
         result = await self._metagen.run(ctx.chunks, ctx.ir)
 
         # 2. Write the declared PRODUCES back; the doc-scope values feed the doc_meta merge.
-        ctx.s5b_result = result
+        ctx.metagen_result = result
         ctx.chunks = result.chunks
         ctx.doc_fields = result.doc_fields
 
@@ -77,14 +77,14 @@ class MetagenStep(IngestStep):
         so a user value always overrides a generated one, which overrides an implicit one.
 
         Args:
-            ctx (PipelineContext): The mutable run accumulator (provides s0_result, ir, doc_user_meta).
+            ctx (PipelineContext): The mutable run accumulator (provides ingest_result, ir, doc_user_meta).
             doc_fields (dict[str, Any]): The document-scope generated values from this stage.
 
         Returns:
             dict[str, Any]: The assembled document-level metadata.
         """
         ir = ctx.ir
-        s0 = ctx.s0_result
+        s0 = ctx.ingest_result
         implicit = (getattr(s0, "implicit_meta", None) or {}) if s0 is not None else {}
         return {
             **implicit,

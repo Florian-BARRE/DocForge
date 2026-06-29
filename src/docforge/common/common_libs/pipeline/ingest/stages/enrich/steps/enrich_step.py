@@ -29,7 +29,7 @@ class EnrichStep(IngestStep):
     """
     Native enrich step — delegates to the legacy S2 enrichment logic, threading IO via the context.
 
-    Reads ``s1_result`` + ``ir``; writes ``s2_result`` and the enriched ``ir``.
+    Reads ``parse_result`` + ``ir``; writes ``enrich_result`` and the enriched ``ir``.
     """
 
     KEY: ClassVar[str] = "enrich"
@@ -38,8 +38,8 @@ class EnrichStep(IngestStep):
         "Classify each figure and route it through OCR / VLM / chart-to-data chains, enriching "
         "the IR in place."
     )
-    CONSUMES: ClassVar[tuple[str, ...]] = ("s1_result", "ir")
-    PRODUCES: ClassVar[tuple[str, ...]] = ("s2_result", "ir")
+    CONSUMES: ClassVar[tuple[str, ...]] = ("parse_result", "ir")
+    PRODUCES: ClassVar[tuple[str, ...]] = ("enrich_result", "ir")
 
     def __init__(self, enricher: "S2EnrichStage") -> None:
         """
@@ -59,10 +59,10 @@ class EnrichStep(IngestStep):
             ctx (PipelineContext): The mutable run accumulator.
         """
         # 1. Enrich the figures of the current IR (per-figure classify + route, byte-identical).
-        result = await self._enricher.run(ctx.s1_result, ctx.ir)
+        result = await self._enricher.run(ctx.parse_result, ctx.ir)
 
         # 2. Write the declared PRODUCES back; the enriched IR replaces the prior one.
-        ctx.s2_result = result
+        ctx.enrich_result = result
         ctx.ir = result.ir
 
 

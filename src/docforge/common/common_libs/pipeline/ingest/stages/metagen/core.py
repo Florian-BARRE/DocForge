@@ -11,7 +11,7 @@ from typing import ClassVar
 
 # ====== Internal Project Imports ======
 from common_libs.pipeline.assembly.stage_registry import register_stage
-from common_libs.pipeline.base.stage.model import CachePolicy, ErrorPolicy
+from common_libs.pipeline.base.stage.model import CachePolicy, ErrorPolicy, StageKey, StageSpec
 from common_libs.pipeline.base.step.core import AbstractStep
 from common_libs.pipeline.ingest.stages.base.stage import IngestStage
 from common_libs.pipeline.stages.s5b_metagen.core import S5bMetagenStage
@@ -30,18 +30,19 @@ class MetagenStage(IngestStage):
     also assembles ``doc_meta`` (the document-level merge) so the embed/index stage can consume it.
     """
 
-    KEY: ClassVar[str] = "metagen"
-    NAME: ClassVar[str] = "Metagen"
-    DESCRIPTION: ClassVar[str] = (
-        "Generate LLM-derived metadata per chunk (derived_meta) and per document (doc_fields) "
-        "via the metagen provider chain."
+    SPEC: ClassVar[StageSpec] = StageSpec(
+        key=StageKey.METAGEN,
+        name="Metagen",
+        description=(
+            "Generate LLM-derived metadata per chunk (derived_meta) and per document (doc_fields) "
+            "via the metagen provider chain."
+        ),
+        after=(StageKey.CONTEXTUALIZE,),
+        consumes=("chunks", "ir", "ingest_result", "doc_user_meta"),
+        produces=("metagen_result", "chunks", "doc_fields", "doc_meta"),
+        cache_policy=CachePolicy.IDEMPOTENT_WRITE,
+        error_policy=ErrorPolicy.FAIL_DOC,
     )
-    AFTER: ClassVar[tuple[str, ...]] = ("contextualize",)
-    CONFIG: ClassVar[None] = None
-    CONSUMES: ClassVar[tuple[str, ...]] = ("chunks", "ir", "s0_result", "doc_user_meta")
-    PRODUCES: ClassVar[tuple[str, ...]] = ("s5b_result", "chunks", "doc_fields", "doc_meta")
-    CACHE_POLICY: ClassVar[CachePolicy] = CachePolicy.IDEMPOTENT_WRITE
-    ON_ERROR: ClassVar[ErrorPolicy] = ErrorPolicy.FAIL_DOC
 
     def __init__(self, inner: S5bMetagenStage) -> None:
         """

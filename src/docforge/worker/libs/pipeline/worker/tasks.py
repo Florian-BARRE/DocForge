@@ -169,12 +169,12 @@ async def run_pipeline_task(
             "stage_fingerprints": result.stage_fingerprints,
             "from_cache": result.from_cache,
             "n_chunks": (
-                result.s4_result.n_text_chunks
-                + result.s4_result.n_figure_chunks
-                + result.s4_result.n_table_chunks
-                + result.s4_result.n_parent_chunks
-            ) if result.s4_result is not None else 0,
-            "n_indexed": result.s6_result.n_upserted_qdrant if result.s6_result is not None else 0,
+                result.chunk_result.n_text_chunks
+                + result.chunk_result.n_figure_chunks
+                + result.chunk_result.n_table_chunks
+                + result.chunk_result.n_parent_chunks
+            ) if result.chunk_result is not None else 0,
+            "n_indexed": result.embed_result.n_upserted_qdrant if result.embed_result is not None else 0,
         }
 
     except Exception as exc:

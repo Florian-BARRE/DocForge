@@ -11,7 +11,7 @@ from typing import ClassVar
 
 # ====== Internal Project Imports ======
 from common_libs.pipeline.assembly.stage_registry import register_stage
-from common_libs.pipeline.base.stage.model import CachePolicy, ErrorPolicy
+from common_libs.pipeline.base.stage.model import CachePolicy, ErrorPolicy, StageKey, StageSpec
 from common_libs.pipeline.base.step.core import AbstractStep
 from common_libs.pipeline.ingest.stages.base.stage import IngestStage
 from common_libs.pipeline.stages.s4_chunk.core import S4ChunkStage
@@ -29,18 +29,19 @@ class ChunkStage(IngestStage):
     the chunking implementation; the run/track/fingerprint/describe machinery is inherited.
     """
 
-    KEY: ClassVar[str] = "chunk"
-    NAME: ClassVar[str] = "Chunk"
-    DESCRIPTION: ClassVar[str] = (
-        "Split the enriched IR into retrieval chunks using heading-hierarchy-aware, "
-        "structure-aware chunking."
+    SPEC: ClassVar[StageSpec] = StageSpec(
+        key=StageKey.CHUNK,
+        name="Chunk",
+        description=(
+            "Split the enriched IR into retrieval chunks using heading-hierarchy-aware, "
+            "structure-aware chunking."
+        ),
+        after=(StageKey.ENRICH,),
+        consumes=("ir",),
+        produces=("chunk_result", "chunks"),
+        cache_policy=CachePolicy.IDEMPOTENT_WRITE,
+        error_policy=ErrorPolicy.FAIL_DOC,
     )
-    AFTER: ClassVar[tuple[str, ...]] = ("enrich",)
-    CONFIG: ClassVar[None] = None
-    CONSUMES: ClassVar[tuple[str, ...]] = ("ir",)
-    PRODUCES: ClassVar[tuple[str, ...]] = ("s4_result", "chunks")
-    CACHE_POLICY: ClassVar[CachePolicy] = CachePolicy.IDEMPOTENT_WRITE
-    ON_ERROR: ClassVar[ErrorPolicy] = ErrorPolicy.FAIL_DOC
 
     def __init__(self, inner: S4ChunkStage) -> None:
         """

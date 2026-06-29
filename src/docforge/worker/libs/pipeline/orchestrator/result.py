@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from common_libs.pipeline.base.stage.keys import StageKey
     from common_libs.pipeline.stages.s0_ingest.core import S0Result
     from common_libs.pipeline.stages.s1_parse.core import S1Result
     from common_libs.pipeline.stages.s2_enrich import S2Result
@@ -27,21 +28,21 @@ class EngineResult:
     Stage results are None when their stage is disabled or not configured.
 
     Attributes:
-        s0_result (S0Result): Ingestion stage output (always present).
-        s1_result (S1Result): Parse stage output (always present).
-        s2_result (S2Result | None): Enrichment stage output; None on cache error.
-        s4_result (S4Result | None): Chunking stage output.
-        s5_result (S5Result | None): Contextualization stage output.
-        s6_result (S6Result | None): Embed+index stage output; None when no collection is set.
-        stage_fingerprints (dict[str, str]): Per-stage Merkle fingerprints.
-        from_cache (dict[str, bool]): Per-stage cache hit flags.
+        ingest_result (S0Result): Ingestion stage output (always present).
+        parse_result (S1Result): Parse stage output (always present).
+        enrich_result (S2Result | None): Enrichment stage output; None on cache error.
+        chunk_result (S4Result | None): Chunking stage output.
+        contextualize_result (S5Result | None): Contextualization stage output.
+        embed_result (S6Result | None): Embed+index stage output; None when no collection is set.
+        stage_fingerprints (dict[StageKey, str]): Per-stage Merkle fingerprints (keyed by StageKey).
+        from_cache (dict[StageKey, bool]): Per-stage cache hit flags (keyed by StageKey).
     """
 
-    s0_result: S0Result
-    s1_result: S1Result
-    s2_result: S2Result | None = None          # None only when a cache error occurs
-    s4_result: S4Result | None = None          # always populated on a successful run
-    s5_result: S5Result | None = None          # always populated on a successful run
-    s6_result: S6Result | None = None          # None when no collection_id is set
-    stage_fingerprints: dict[str, str] = field(default_factory=dict)
-    from_cache: dict[str, bool] = field(default_factory=dict)
+    ingest_result: S0Result
+    parse_result: S1Result
+    enrich_result: S2Result | None = None          # None only when a cache error occurs
+    chunk_result: S4Result | None = None           # always populated on a successful run
+    contextualize_result: S5Result | None = None   # always populated on a successful run
+    embed_result: S6Result | None = None           # None when no collection_id is set
+    stage_fingerprints: "dict[StageKey, str]" = field(default_factory=dict)
+    from_cache: "dict[StageKey, bool]" = field(default_factory=dict)

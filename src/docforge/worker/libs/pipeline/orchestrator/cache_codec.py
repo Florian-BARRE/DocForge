@@ -69,30 +69,30 @@ class CacheCodec:
         )
 
     @classmethod
-    async def populate_pdf_bytes(cls, s3: S3Client, s0_result: S0Result) -> S0Result:
+    async def populate_pdf_bytes(cls, s3: S3Client, ingest_result: S0Result) -> S0Result:
         """
         Download PDF bytes from S3 into an S0Result that was restored from cache.
 
         Args:
             s3 (S3Client): SeaweedFS object store client.
-            s0_result (S0Result): Cache-restored S0 result with ``pdf_bytes=None``.
+            ingest_result (S0Result): Cache-restored S0 result with ``pdf_bytes=None``.
 
         Returns:
             S0Result: A new S0Result identical to the input with ``pdf_bytes`` populated.
         """
-        pdf_bytes = await s3.download(s0_result.pdf_key)
+        pdf_bytes = await s3.download(ingest_result.pdf_key)
         return S0Result(
-            doc_id=s0_result.doc_id,
-            source_hash=s0_result.source_hash,
-            original_key=s0_result.original_key,
+            doc_id=ingest_result.doc_id,
+            source_hash=ingest_result.source_hash,
+            original_key=ingest_result.original_key,
             pdf_bytes=pdf_bytes,
-            pdf_key=s0_result.pdf_key,
-            page_count=s0_result.page_count,
-            original_filename=s0_result.original_filename,
-            original_format=s0_result.original_format,
-            file_size=s0_result.file_size,
-            needs_ocr=s0_result.needs_ocr,
-            implicit_meta=s0_result.implicit_meta,
+            pdf_key=ingest_result.pdf_key,
+            page_count=ingest_result.page_count,
+            original_filename=ingest_result.original_filename,
+            original_format=ingest_result.original_format,
+            file_size=ingest_result.file_size,
+            needs_ocr=ingest_result.needs_ocr,
+            implicit_meta=ingest_result.implicit_meta,
         )
 
     @classmethod
@@ -116,12 +116,12 @@ class CacheCodec:
         ir = DocumentIR.model_validate_json(ir_raw)
 
         # 3. Rebuild the S1Result
-        s1_result = S1Result(
+        parse_result = S1Result(
             ir=ir,
             markdown_key=meta["markdown_key"],
             figure_crop_keys=meta["figure_crop_keys"],
         )
-        return s1_result, ir
+        return parse_result, ir
 
     @classmethod
     async def restore_s2(cls, s3: S3Client, s2_meta_key: str) -> tuple[S2Result, DocumentIR]:
@@ -144,14 +144,14 @@ class CacheCodec:
         enriched_ir = DocumentIR.model_validate_json(ir_raw)
 
         # 3. Rebuild the S2Result from the cached stats
-        s2_result = S2Result(
+        enrich_result = S2Result(
             ir=enriched_ir,
             figures_processed=meta["figures_processed"],
             ocr_calls=meta["ocr_calls"],
             vlm_calls=meta["vlm_calls"],
             chart_extractions=meta["chart_extractions"],
         )
-        return s2_result, enriched_ir
+        return enrich_result, enriched_ir
 
 
 # ------------------- Public API ------------------- #

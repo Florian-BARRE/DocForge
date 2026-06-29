@@ -26,9 +26,9 @@ class ParseStep(IngestStep):
     """
     Native parse step — delegates to the legacy S1 parse logic, threading IO via the context.
 
-    Reads ``s0_result`` and the parse-node fingerprint (``ctx.fingerprints["parse"]`` — the same
+    Reads ``ingest_result`` and the parse-node fingerprint (``ctx.fingerprints["parse"]`` — the same
     fingerprint that keys the markdown S3 blob, exactly as legacy ``run_s1`` passed ``s1_fp``);
-    writes ``s1_result`` and the canonical ``ir``.
+    writes ``parse_result`` and the canonical ``ir``.
     """
 
     KEY: ClassVar[str] = "parse"
@@ -37,8 +37,8 @@ class ParseStep(IngestStep):
         "Parse the PDF into the canonical IR via the parser chain, render figure crops, and "
         "serialise the markdown view."
     )
-    CONSUMES: ClassVar[tuple[str, ...]] = ("s0_result",)
-    PRODUCES: ClassVar[tuple[str, ...]] = ("s1_result", "ir")
+    CONSUMES: ClassVar[tuple[str, ...]] = ("ingest_result",)
+    PRODUCES: ClassVar[tuple[str, ...]] = ("parse_result", "ir")
 
     def __init__(self, parser: "S1ParseStage") -> None:
         """
@@ -69,10 +69,10 @@ class ParseStep(IngestStep):
         # 1. Drive the parser. The fingerprint passed is THIS node's (parse) fingerprint — the
         # caching middleware populates ctx.fingerprints["parse"] before the stage runs, and that
         # value keys the markdown S3 blob (legacy run_s1 passed s1_fp for exactly this reason).
-        result = await self._parser.run(ctx.s0_result, ctx.fingerprints.get(self.KEY))
+        result = await self._parser.run(ctx.ingest_result, ctx.fingerprints.get(self.KEY))
 
         # 2. Write the declared PRODUCES back onto the context.
-        ctx.s1_result = result
+        ctx.parse_result = result
         ctx.ir = result.ir
 
 

@@ -1,7 +1,7 @@
 # ====== Code Summary ======
 # AbstractPipeline — the top level of Pipeline -> Stage -> Step, and the ENGINE itself (there is
 # no separate engine module). run(ctx) walks its topologically-ordered stages and, per stage,
-# applies the common middleware: compute the Merkle node fingerprint (node_type=KEY,
+# applies the common middleware: compute the Merkle node fingerprint (node_type=stage.key,
 # code_version=NODE_VERSION, params=stage.fingerprint_params(), inputs=upstream-producer fps);
 # NODE_CACHED → consult/populate the node cache via the injected hooks (skip on hit); else run;
 # wrap every run fail-closed and dispatch the stage's declarative ON_ERROR; emit progress + unified
@@ -102,7 +102,7 @@ class AbstractPipeline(ABC, LoggerClass):
         # 1. Open the run trace and perform one-time setup (e.g. download original bytes).
         trace = ExecutionTrace.for_context(ctx)
         trace.begin_pipeline(self.KEY, self.NAME)
-        self.logger.info(f"Pipeline {self.KEY!r} started: stages={[s.KEY for s in self._stages]}")
+        self.logger.info(f"Pipeline {self.KEY!r} started: stages={[s.key for s in self._stages]}")
 
         try:
             await self._hooks.prepare(ctx)
@@ -112,16 +112,16 @@ class AbstractPipeline(ABC, LoggerClass):
             total = len(self._stages) or 1
             for idx, stage in enumerate(self._stages, start=1):
                 fingerprint = self._stage_fingerprint(stage, ctx, produced_by)
-                ctx.fingerprints[stage.KEY] = fingerprint
+                ctx.fingerprints[stage.key] = fingerprint
                 try:
                     await self._execute_stage(stage, ctx, fingerprint)
                 except Exception as exc:
                     if not await self._handle_stage_error(stage, ctx, exc):
                         raise
                 # Record this stage as the producer of its declared keys for downstream fingerprints.
-                for key in stage.PRODUCES:
-                    produced_by[key] = stage.KEY
-                await self._report(stage.KEY, int(idx / total * 100))
+                for key in stage.produces:
+                    produced_by[key] = stage.key
+                await self._report(stage.key, int(idx / total * 100))
 
             # 3. Terminal success — flip the document to ``done`` (no-op without hooks).
             await self._hooks.mark_done(ctx)
@@ -150,7 +150,7 @@ class AbstractPipeline(ABC, LoggerClass):
         # 1. Gate: a stage the hooks veto (e.g. embed/index without a collection) is skipped.
         # Checked before anything else so a gated stage incurs no cache read or 'running' marker.
         if not await hooks.should_run(stage, ctx):
-            ctx.from_cache.setdefault(stage.KEY, False)
+            ctx.from_cache.setdefault(stage.key, False)
             self._record_synthetic_stage(ctx, stage, skipped=True)
             await hooks.on_skipped(stage, ctx)
             return
@@ -158,18 +158,18 @@ class AbstractPipeline(ABC, LoggerClass):
         # 2. NODE_CACHED: consult the cache FIRST — a hit must not be preceded by before_stage,
         # whose 'running' marker (node_cache.start) would otherwise delete the cached 'done' row
         # and turn every hit into a miss. On a hit, load the artefact into ctx and skip the run.
-        if stage.CACHE_POLICY == CachePolicy.NODE_CACHED and await hooks.cache_load(stage, ctx, fingerprint):
-            ctx.from_cache[stage.KEY] = True
+        if stage.cache_policy == CachePolicy.NODE_CACHED and await hooks.cache_load(stage, ctx, fingerprint):
+            ctx.from_cache[stage.key] = True
             self._record_synthetic_stage(ctx, stage, cache_hit=True)
             await hooks.after_stage(stage, ctx)
             return
 
         # 3. Miss / idempotent-write: NOW fire the pre-run prep (mark 'running'/'processing', hydrate
         # inputs), run the stage (its own run() opens the trace), then store the NODE_CACHED artefact.
-        ctx.from_cache.setdefault(stage.KEY, False)
+        ctx.from_cache.setdefault(stage.key, False)
         await hooks.before_stage(stage, ctx)
         await self._run_stage_tracked(stage, ctx)
-        if stage.CACHE_POLICY == CachePolicy.NODE_CACHED:
+        if stage.cache_policy == CachePolicy.NODE_CACHED:
             await hooks.cache_store(stage, ctx, fingerprint)
         await hooks.after_stage(stage, ctx)
 
@@ -192,7 +192,7 @@ class AbstractPipeline(ABC, LoggerClass):
         """
         Compute the Merkle node fingerprint with the same wrapper as the legacy s012_runner.
 
-        ``node_type`` is the stage's ``node_type`` (its ``NODE_TYPE`` or, by default, its ``KEY`` —
+        ``node_type`` is the stage's ``key`` (the canonical StageKey —
         the NODE_CACHED adapters pin the legacy ``s0``/``s1``/``s2`` ids), ``code_version`` its
         ``NODE_VERSION``, ``params`` its ``fingerprint_params()``, and the inputs are the
         fingerprints of the upstream stages that produce this stage's ``CONSUMES`` keys (deduped, in
@@ -208,7 +208,7 @@ class AbstractPipeline(ABC, LoggerClass):
             str: The blake3 Merkle fingerprint for this node.
         """
         inputs: list[str] = []
-        for key in stage.CONSUMES:
+        for key in stage.consumes:
             producer = produced_by.get(key)
             if producer is not None:
                 upstream_fp = ctx.fingerprints.get(producer)
@@ -218,8 +218,8 @@ class AbstractPipeline(ABC, LoggerClass):
             # Root stage: seed with the content address (legacy S0 input = [source_hash]).
             inputs = [ctx.source_hash or ""]
         return compute_fingerprint(
-            node_type=stage.node_type,
-            code_version=stage.NODE_VERSION,
+            node_type=stage.key,
+            code_version=stage.code_version,
             params=stage.fingerprint_params(),
             input_fingerprints=inputs,
         )
@@ -242,7 +242,7 @@ class AbstractPipeline(ABC, LoggerClass):
             skipped (bool): True when bypassed via the ``should_run`` gate.
         """
         trace = ExecutionTrace.for_context(ctx)
-        node = trace.begin_stage(stage.KEY, stage.NAME)
+        node = trace.begin_stage(stage.key, stage.name)
         node.cache_hit = cache_hit
         node.skipped = skipped
         node.succeeded = True
@@ -270,28 +270,28 @@ class AbstractPipeline(ABC, LoggerClass):
         await self._hooks.on_error(stage, ctx, exc)
 
         # 1. FAIL_DOC — fail-closed: mark the doc failed (hook) and propagate.
-        if stage.ON_ERROR == ErrorPolicy.FAIL_DOC:
+        if stage.error_policy == ErrorPolicy.FAIL_DOC:
             self.logger.error(
-                f"Stage {stage.KEY!r} failed ({type(exc).__name__}: {exc}) — "
+                f"Stage {stage.key!r} failed ({type(exc).__name__}: {exc}) — "
                 f"ON_ERROR=fail_doc -> marking failed + propagating."
             )
             await self._hooks.mark_failed(ctx)
             return False
 
         # 2. SKIP — drop the stage's output and continue.
-        if stage.ON_ERROR == ErrorPolicy.SKIP:
+        if stage.error_policy == ErrorPolicy.SKIP:
             trace.mark_last_stage_skipped()
             self.logger.warning(
-                f"Stage {stage.KEY!r} failed ({type(exc).__name__}: {exc}) — "
+                f"Stage {stage.key!r} failed ({type(exc).__name__}: {exc}) — "
                 f"ON_ERROR=skip -> continuing without its output."
             )
             return True
 
         # 3. DEGRADE — continue in a degraded state (partial / no output).
-        if stage.ON_ERROR == ErrorPolicy.DEGRADE:
+        if stage.error_policy == ErrorPolicy.DEGRADE:
             trace.mark_last_stage_degraded()
             self.logger.warning(
-                f"Stage {stage.KEY!r} failed ({type(exc).__name__}: {exc}) — "
+                f"Stage {stage.key!r} failed ({type(exc).__name__}: {exc}) — "
                 f"ON_ERROR=degrade -> continuing degraded."
             )
             return True
@@ -345,12 +345,12 @@ class AbstractPipeline(ABC, LoggerClass):
             ValueError: On an unknown ``AFTER`` reference or a dependency cycle.
         """
         # 1. Index stages by key and validate every AFTER edge resolves.
-        by_key: dict[str, AbstractStage] = {s.KEY: s for s in stages}
+        by_key: dict[str, AbstractStage] = {s.key: s for s in stages}
         for stage in stages:
-            for dep in stage.AFTER:
+            for dep in stage.after:
                 if dep not in by_key:
                     raise ValueError(
-                        f"Stage {stage.KEY!r} declares AFTER={dep!r} but no such stage exists."
+                        f"Stage {stage.key!r} declares AFTER={dep!r} but no such stage exists."
                     )
 
         # 2. Kahn's algorithm, preserving declaration order among ready stages.
@@ -358,13 +358,13 @@ class AbstractPipeline(ABC, LoggerClass):
         resolved: list[str] = []
         ordered: list[AbstractStage] = []
         while remaining:
-            ready = [s for s in remaining if all(dep in resolved for dep in s.AFTER)]
+            ready = [s for s in remaining if all(dep in resolved for dep in s.after)]
             if not ready:
-                cyclic = ", ".join(s.KEY for s in remaining)
+                cyclic = ", ".join(s.key for s in remaining)
                 raise ValueError(f"Cycle in stage dependency graph among: {cyclic}.")
             for stage in ready:
                 ordered.append(stage)
-                resolved.append(stage.KEY)
+                resolved.append(stage.key)
                 remaining.remove(stage)
         return ordered
 

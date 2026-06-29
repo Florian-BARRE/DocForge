@@ -15,7 +15,7 @@ from typing import ClassVar
 
 # ====== Internal Project Imports ======
 from common_libs.pipeline.assembly.stage_registry import register_stage
-from common_libs.pipeline.base.stage.model import CachePolicy, ErrorPolicy
+from common_libs.pipeline.base.stage.model import CachePolicy, ErrorPolicy, StageKey, StageSpec
 from common_libs.pipeline.base.step.core import AbstractStep
 from common_libs.pipeline.ingest.stages.base.stage import IngestStage
 from common_libs.pipeline.stages.s6_embed_index.core import S6EmbedIndexStage
@@ -34,18 +34,19 @@ class EmbedIndexStage(IngestStage):
     inner implementation is shared by both steps; the embed→index vectors flow through the context.
     """
 
-    KEY: ClassVar[str] = "embed_index"
-    NAME: ClassVar[str] = "Embed & Index"
-    DESCRIPTION: ClassVar[str] = (
-        "Embed chunk bodies + metadata fields, upsert multi-vector points to Qdrant, and persist "
-        "chunks to Postgres."
+    SPEC: ClassVar[StageSpec] = StageSpec(
+        key=StageKey.EMBED_INDEX,
+        name="Embed & Index",
+        description=(
+            "Embed chunk bodies + metadata fields, upsert multi-vector points to Qdrant, and persist "
+            "chunks to Postgres."
+        ),
+        after=(StageKey.METAGEN,),
+        consumes=("chunks", "collection_id", "metadata_fields", "doc_meta"),
+        produces=("embed_result",),
+        cache_policy=CachePolicy.IDEMPOTENT_WRITE,
+        error_policy=ErrorPolicy.FAIL_DOC,
     )
-    AFTER: ClassVar[tuple[str, ...]] = ("metagen",)
-    CONFIG: ClassVar[None] = None
-    CONSUMES: ClassVar[tuple[str, ...]] = ("chunks", "collection_id", "metadata_fields", "doc_meta")
-    PRODUCES: ClassVar[tuple[str, ...]] = ("s6_result",)
-    CACHE_POLICY: ClassVar[CachePolicy] = CachePolicy.IDEMPOTENT_WRITE
-    ON_ERROR: ClassVar[ErrorPolicy] = ErrorPolicy.FAIL_DOC
 
     def __init__(self, inner: S6EmbedIndexStage) -> None:
         """

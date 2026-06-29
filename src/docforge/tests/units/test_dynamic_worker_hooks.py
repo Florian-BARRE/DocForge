@@ -104,7 +104,7 @@ class TestWorkerEngineHooks:
     async def test_prepare_marks_failed_when_original_missing(self) -> None:
         document_repo = _RecordingDocumentRepo()
         hooks = WorkerEngineHooks(_legacy_deps(s3=_FailingDownloadS3(), document_repo=document_repo))
-        ctx = PipelineContext(doc_id=uuid.uuid4(), source_hash="deadbeef" * 8, file_bytes=None)
+        ctx = PipelineContext(doc_id=uuid.uuid4(), source_hash="deadbeef" * 8, original_bytes=None)
 
         with pytest.raises(KeyError, match="Object not found"):
             await hooks.prepare(ctx)
@@ -115,8 +115,8 @@ class TestWorkerEngineHooks:
     @pytest.mark.asyncio
     async def test_should_run_gates_embed_index_on_collection(self) -> None:
         hooks = WorkerEngineHooks(_legacy_deps())
-        embed_stage = SimpleNamespace(KEY="embed_index")
-        chunk_stage = SimpleNamespace(KEY="chunk")
+        embed_stage = SimpleNamespace(key="embed_index")
+        chunk_stage = SimpleNamespace(key="chunk")
 
         # No collection -> embed/index skipped; a collection -> it runs. Other stages always run.
         assert await hooks.should_run(embed_stage, PipelineContext(collection_id=None)) is False
@@ -129,7 +129,7 @@ class TestWorkerEngineHooks:
         hooks = WorkerEngineHooks(_legacy_deps(chunk_repo=chunk_repo))
         ctx = PipelineContext(chunks=["chunk-a", "chunk-b"], collection_id=None)
 
-        await hooks.on_skipped(SimpleNamespace(KEY="embed_index"), ctx)
+        await hooks.on_skipped(SimpleNamespace(key="embed_index"), ctx)
 
         # No collection -> chunks land in Postgres only (no Qdrant indexing), no status flip.
         assert chunk_repo.inserted == 2
@@ -156,7 +156,7 @@ class TestDynamicEngineCollectionGate:
     async def test_raises_when_collection_set_but_no_embed_index(self, monkeypatch) -> None:
         # build_pipeline returns a stage list WITHOUT embed_index (mirrors no-Qdrant build).
         monkeypatch.setattr(
-            engine_module, "build_pipeline", lambda *a, **k: [SimpleNamespace(KEY="chunk")]
+            engine_module, "build_pipeline", lambda *a, **k: [SimpleNamespace(key="chunk")]
         )
         engine = DynamicStageEngine(
             s3=MagicMock(), postgres=MagicMock(), node_cache=MagicMock(),

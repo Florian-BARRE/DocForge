@@ -45,14 +45,14 @@ class TestEnrichStage:
     """The native EnrichStage matches the deleted s2 adapter contract; describe models 4 steps."""
 
     def test_classvars(self) -> None:
-        assert EnrichStage.KEY == "enrich"
-        assert EnrichStage.AFTER == ("parse",)
-        assert EnrichStage.CONSUMES == ("s1_result", "ir")
-        assert EnrichStage.PRODUCES == ("s2_result", "ir")
-        assert EnrichStage.CACHE_POLICY == CachePolicy.NODE_CACHED
-        assert EnrichStage.ON_ERROR == ErrorPolicy.FAIL_DOC
-        assert EnrichStage.NODE_TYPE == "s2"
-        assert EnrichStage.NODE_VERSION == "1.0"
+        assert EnrichStage.SPEC.key == "enrich"
+        assert EnrichStage.SPEC.after == ("parse",)
+        assert EnrichStage.SPEC.consumes == ("parse_result", "ir")
+        assert EnrichStage.SPEC.produces == ("enrich_result", "ir")
+        assert EnrichStage.SPEC.cache_policy == CachePolicy.NODE_CACHED
+        assert EnrichStage.SPEC.error_policy == ErrorPolicy.FAIL_DOC
+        assert EnrichStage.SPEC.key == "enrich"
+        assert EnrichStage.SPEC.code_version == "1.0"
 
     def test_single_executing_step(self) -> None:
         inner = MagicMock()
@@ -65,7 +65,7 @@ class TestEnrichStage:
         inner = MagicMock()
         inner.params_for_fingerprint = MagicMock(return_value=legacy)
         assert EnrichStage(inner).fingerprint_params() == legacy
-        assert EnrichStage(inner).node_type == "s2"
+        assert EnrichStage(inner).key == "enrich"
 
     @pytest.mark.asyncio
     async def test_run_round_trip(self) -> None:
@@ -73,12 +73,12 @@ class TestEnrichStage:
         result = SimpleNamespace(ir="ENRICHED_IR")
         inner = MagicMock()
         inner.run = AsyncMock(return_value=result)
-        ctx = PipelineContext(s1_result=s1, ir="RAW_IR")
+        ctx = PipelineContext(parse_result=s1, ir="RAW_IR")
 
         await EnrichStage(inner).run(ctx)
 
         inner.run.assert_awaited_once_with(s1, "RAW_IR")
-        assert ctx.s2_result is result
+        assert ctx.enrich_result is result
         assert ctx.ir == "ENRICHED_IR"
 
     def test_describe_models_four_conceptual_steps(self) -> None:
@@ -115,12 +115,12 @@ class TestEmbedIndexStage:
     """The native EmbedIndexStage matches the deleted s6 adapter contract; 2 REAL steps (embed/index)."""
 
     def test_classvars(self) -> None:
-        assert EmbedIndexStage.KEY == "embed_index"
-        assert EmbedIndexStage.AFTER == ("metagen",)
-        assert EmbedIndexStage.CONSUMES == ("chunks", "collection_id", "metadata_fields", "doc_meta")
-        assert EmbedIndexStage.PRODUCES == ("s6_result",)
-        assert EmbedIndexStage.CACHE_POLICY == CachePolicy.IDEMPOTENT_WRITE
-        assert EmbedIndexStage.ON_ERROR == ErrorPolicy.FAIL_DOC
+        assert EmbedIndexStage.SPEC.key == "embed_index"
+        assert EmbedIndexStage.SPEC.after == ("metagen",)
+        assert EmbedIndexStage.SPEC.consumes == ("chunks", "collection_id", "metadata_fields", "doc_meta")
+        assert EmbedIndexStage.SPEC.produces == ("embed_result",)
+        assert EmbedIndexStage.SPEC.cache_policy == CachePolicy.IDEMPOTENT_WRITE
+        assert EmbedIndexStage.SPEC.error_policy == ErrorPolicy.FAIL_DOC
 
     def test_two_real_steps(self) -> None:
         steps = EmbedIndexStage(MagicMock()).steps
@@ -168,7 +168,7 @@ class TestEmbedIndexStage:
             metadata_fields=[],
             doc_meta={"k": "v"},
         )
-        assert ctx.s6_result is result
+        assert ctx.embed_result is result
 
     @pytest.mark.asyncio
     async def test_stage_run_threads_embed_to_index_via_ctx(
@@ -189,7 +189,7 @@ class TestEmbedIndexStage:
 
         inner.embed.assert_awaited_once_with(["c0"], [], {"k": "v"})
         assert inner.index.await_args.args[0] is artifacts
-        assert ctx.s6_result is result
+        assert ctx.embed_result is result
 
     def test_describe_models_embed_and_index_steps(self) -> None:
         inner = MagicMock()
@@ -213,11 +213,11 @@ class TestBuildPipelineParity:
         dp = build_default_pipeline(RUNTIME_CONFIG)
         deps = StageDeps(s3=MagicMock(), postgres=MagicMock(), chunk_repo=MagicMock())
         stages = build_pipeline(dp, registry, deps, qdrant=MagicMock())
-        return {"registry": registry, "dp": dp, "stages": stages, "by_key": {s.KEY: s for s in stages}}
+        return {"registry": registry, "dp": dp, "stages": stages, "by_key": {s.SPEC.key: s for s in stages}}
 
     def test_order_and_native_types(self) -> None:
         ctx = self._build()
-        assert [s.KEY for s in ctx["stages"]] == _CANONICAL_ORDER
+        assert [s.SPEC.key for s in ctx["stages"]] == _CANONICAL_ORDER
         assert isinstance(ctx["by_key"]["enrich"], EnrichStage)
         assert isinstance(ctx["by_key"]["enrich"]._inner, S2EnrichStage)
         assert isinstance(ctx["by_key"]["embed_index"], EmbedIndexStage)

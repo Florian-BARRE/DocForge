@@ -36,13 +36,13 @@ class TraceFlusher:
 
     @staticmethod
     def build_implicit_meta(
-        s0_result: S0Result,
+        ingest_result: S0Result,
         ir: DocumentIR,
-        s1_result: S1Result,
+        parse_result: S1Result,
         s0_fp: str,
         s1_fp: str,
         ir_key: str,
-        s2_result: S2Result | None = None,
+        enrich_result: S2Result | None = None,
         s2_fp: str | None = None,
     ) -> dict[str, Any]:
         """
@@ -52,27 +52,27 @@ class TraceFlusher:
         When S2 ran, enrichment stats (ocr_calls, vlm_calls, …) are included.
 
         Args:
-            s0_result (S0Result): S0 stage output.
+            ingest_result (S0Result): S0 stage output.
             ir (DocumentIR): Final IR (enriched when S2 ran, raw when S2 skipped).
-            s1_result (S1Result): S1 stage output.
+            parse_result (S1Result): S1 stage output.
             s0_fp (str): S0 Merkle fingerprint.
             s1_fp (str): S1 Merkle fingerprint.
             ir_key (str): S3 key for the (pre-enrichment) DocumentIR JSON.
-            s2_result (S2Result | None): S2 stage output, or None when S2 was skipped.
+            enrich_result (S2Result | None): S2 stage output, or None when S2 was skipped.
             s2_fp (str | None): S2 Merkle fingerprint, or None when S2 was skipped.
 
         Returns:
             dict: Implicit metadata dict for the document record.
         """
         meta: dict[str, Any] = {
-            **s0_result.implicit_meta,
+            **ingest_result.implicit_meta,
             "n_blocks": len(ir.blocks),
             "n_figures": len(ir.figure_blocks),
             "n_tables": len(ir.table_blocks),
             "s0_fingerprint": s0_fp,
             "s1_fingerprint": s1_fp,
             "ir_key": ir_key,
-            "markdown_key": s1_result.markdown_key,
+            "markdown_key": parse_result.markdown_key,
             # Chain lineage from S1 (parse).  Each entry is a ChainTrace dict ready for the
             # frontend to render: stage, final_provider, attempts[].  Empty when the parse
             # chain was a no-op (single provider, never escalated).
@@ -81,18 +81,18 @@ class TraceFlusher:
             # Surfaced in the inspector so operators can see why a chain escalated.
             "quality_score": ir.quality_score,
         }
-        if s2_result is not None and s2_fp is not None:
+        if enrich_result is not None and s2_fp is not None:
             meta["s2_fingerprint"] = s2_fp
-            meta["figures_enriched"] = s2_result.figures_processed
-            meta["ocr_calls"] = s2_result.ocr_calls
-            meta["vlm_calls"] = s2_result.vlm_calls
-            meta["chart_extractions"] = s2_result.chart_extractions
+            meta["figures_enriched"] = enrich_result.figures_processed
+            meta["ocr_calls"] = enrich_result.ocr_calls
+            meta["vlm_calls"] = enrich_result.vlm_calls
+            meta["chart_extractions"] = enrich_result.chart_extractions
             # Provider-call cache statistics so the UI can show how often dedup
             # saved an OCR/VLM/classifier API call across repeating crops.
-            meta["ocr_cache_hits"] = s2_result.ocr_cache_hits
-            meta["vlm_cache_hits"] = s2_result.vlm_cache_hits
-            meta["classifier_calls"] = s2_result.classifier_calls
-            meta["classifier_cache_hits"] = s2_result.classifier_cache_hits
+            meta["ocr_cache_hits"] = enrich_result.ocr_cache_hits
+            meta["vlm_cache_hits"] = enrich_result.vlm_cache_hits
+            meta["classifier_calls"] = enrich_result.classifier_calls
+            meta["classifier_cache_hits"] = enrich_result.classifier_cache_hits
             # Enriched IR may have ADDITIONAL chain_traces (none today, but reserve the slot
             # so a future S2-level stage trace can ride here without changing the schema).
             if ir.chain_traces:

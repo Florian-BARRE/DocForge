@@ -12,7 +12,7 @@ from typing import ClassVar
 
 # ====== Internal Project Imports ======
 from common_libs.pipeline.assembly.stage_registry import register_stage
-from common_libs.pipeline.base.stage.model import CachePolicy, ErrorPolicy
+from common_libs.pipeline.base.stage.model import CachePolicy, ErrorPolicy, StageKey, StageSpec
 from common_libs.pipeline.base.step.core import AbstractStep
 from common_libs.pipeline.ingest.stages.base.stage import IngestStage
 from common_libs.pipeline.stages.s5_contextualize.core import S5ContextualizeStage
@@ -31,18 +31,19 @@ class ContextualizeStage(IngestStage):
     machinery is inherited.
     """
 
-    KEY: ClassVar[str] = "contextualize"
-    NAME: ClassVar[str] = "Contextualize"
-    DESCRIPTION: ClassVar[str] = (
-        "Build each chunk's embed_text from the document title, heading breadcrumb, and chunk "
-        "body."
+    SPEC: ClassVar[StageSpec] = StageSpec(
+        key=StageKey.CONTEXTUALIZE,
+        name="Contextualize",
+        description=(
+            "Build each chunk's embed_text from the document title, heading breadcrumb, and chunk "
+            "body."
+        ),
+        after=(StageKey.CHUNK,),
+        consumes=("chunks", "ir"),
+        produces=("contextualize_result", "chunks"),
+        cache_policy=CachePolicy.IDEMPOTENT_WRITE,
+        error_policy=ErrorPolicy.FAIL_DOC,
     )
-    AFTER: ClassVar[tuple[str, ...]] = ("chunk",)
-    CONFIG: ClassVar[None] = None
-    CONSUMES: ClassVar[tuple[str, ...]] = ("chunks", "ir")
-    PRODUCES: ClassVar[tuple[str, ...]] = ("s5_result", "chunks")
-    CACHE_POLICY: ClassVar[CachePolicy] = CachePolicy.IDEMPOTENT_WRITE
-    ON_ERROR: ClassVar[ErrorPolicy] = ErrorPolicy.FAIL_DOC
 
     def __init__(self, inner: S5ContextualizeStage) -> None:
         """

@@ -50,17 +50,17 @@ class CacheDispatch:
         """
         if key == "ingest":
             s0 = await CacheIOHelpers.restore_s0(s3, output_ref)
-            ctx.s0_result = s0
+            ctx.ingest_result = s0
             ctx.source_hash = s0.source_hash
             return True
         if key == "parse":
             s1, ir = await CacheIOHelpers.restore_s1(s3, output_ref)
-            ctx.s1_result = s1
+            ctx.parse_result = s1
             ctx.ir = ir
             return True
         if key == "enrich":
             s2, ir = await CacheIOHelpers.restore_s2(s3, output_ref)
-            ctx.s2_result = s2
+            ctx.enrich_result = s2
             ctx.ir = ir
             return True
         return False
@@ -82,19 +82,19 @@ class CacheDispatch:
         source_hash = ctx.source_hash or ""
         if key == "ingest":
             meta_key = S3Helpers.key_s0_meta(source_hash, fingerprint)
-            await s3.upload(meta_key, CacheIOHelpers.encode_s0_meta(ctx.s0_result), "application/json")
+            await s3.upload(meta_key, CacheIOHelpers.encode_s0_meta(ctx.ingest_result), "application/json")
             return meta_key
         if key == "parse":
             ir_key = S3Helpers.key_ir(source_hash, fingerprint)
             await s3.upload(ir_key, ctx.ir.model_dump_json().encode("utf-8"), "application/json")
             meta_key = S3Helpers.key_s1_meta(source_hash, fingerprint)
-            await s3.upload(meta_key, CacheIOHelpers.encode_s1_meta(ctx.s1_result, ir_key), "application/json")
+            await s3.upload(meta_key, CacheIOHelpers.encode_s1_meta(ctx.parse_result, ir_key), "application/json")
             return meta_key
         if key == "enrich":
             ir_key = S3Helpers.key_ir_enriched(source_hash, fingerprint)
             await s3.upload(ir_key, ctx.ir.model_dump_json().encode("utf-8"), "application/json")
             meta_key = S3Helpers.key_s2_meta(source_hash, fingerprint)
-            await s3.upload(meta_key, CacheIOHelpers.encode_s2_meta(ctx.s2_result, ir_key), "application/json")
+            await s3.upload(meta_key, CacheIOHelpers.encode_s2_meta(ctx.enrich_result, ir_key), "application/json")
             return meta_key
         return None
 

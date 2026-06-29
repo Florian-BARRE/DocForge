@@ -2,7 +2,7 @@
 from .pipeline import AbstractPipeline, EngineHooks, PipelineSchema
 
 # -------------------- Stage ------------------------------------------- #
-from .stage import AbstractStage, CachePolicy, ErrorPolicy, StageSchema
+from .stage import AbstractStage, CachePolicy, ErrorPolicy, StageKey, StageSchema, StageSpec
 
 # -------------------- Step -------------------------------------------- #
 from .step import AbstractStep, ChainStep, StepSchema
@@ -15,6 +15,8 @@ __all__ = [
     "PipelineSchema",
     # Stage
     "AbstractStage",
+    "StageKey",
+    "StageSpec",
     "StageSchema",
     "CachePolicy",
     "ErrorPolicy",

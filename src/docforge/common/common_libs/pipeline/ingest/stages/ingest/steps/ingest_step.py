@@ -22,7 +22,7 @@ class IngestDocStep(IngestStep):
     """
     Native ingest step — delegates to the legacy S0 ingestion logic, threading IO via the context.
 
-    Reads ``file_bytes``/``filename``/``doc_id``; writes ``s0_result`` and ``source_hash``.
+    Reads ``file_bytes``/``filename``/``doc_id``; writes ``ingest_result`` and ``source_hash``.
     """
 
     KEY: ClassVar[str] = "ingest"
@@ -32,7 +32,7 @@ class IngestDocStep(IngestStep):
         "and upload artifacts to the object store."
     )
     CONSUMES: ClassVar[tuple[str, ...]] = ("file_bytes", "filename", "doc_id")
-    PRODUCES: ClassVar[tuple[str, ...]] = ("s0_result", "source_hash")
+    PRODUCES: ClassVar[tuple[str, ...]] = ("ingest_result", "source_hash")
 
     def __init__(self, ingestor: "S0IngestStage") -> None:
         """
@@ -54,10 +54,10 @@ class IngestDocStep(IngestStep):
         # 1. Thread doc_id verbatim: the document row is pre-created in Postgres, so a None here
         # would make S0 mint a fresh id and orphan that row.
         doc_id = str(ctx.doc_id) if ctx.doc_id is not None else None
-        result = await self._ingestor.run(ctx.file_bytes, ctx.filename, doc_id)
+        result = await self._ingestor.run(ctx.original_bytes, ctx.filename, doc_id)
 
         # 2. Write the declared PRODUCES back onto the context.
-        ctx.s0_result = result
+        ctx.ingest_result = result
         ctx.source_hash = result.source_hash
 
 

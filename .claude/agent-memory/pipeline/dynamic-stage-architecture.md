@@ -31,6 +31,23 @@ contract. Frozen plan: `docs/rpi/dynamic-stage-architecture/plan.md`; current-st
 - **PR-4 (DONE):** flipped the flag live on GPU — full pipeline live suite passed (258).
 - **PR-5 (DONE):** dynamic engine is now the **SOLE** path. The flag is GONE. The legacy orchestrator
   is DELETED — see "PR-5 deletions" below. Suite: 844 units green.
+- **R1 foundation cleanup (DONE, 863 units green):** the "ugly typing" pass. (a) `StageKey(StrEnum)`
+  in `base/stage/keys.py` (ingest/parse/enrich/chunk/contextualize/metagen/embed_index) is the ONE
+  source of stage identity — it REPLACED both the stringly `KEY` ClassVar AND the legacy `NODE_TYPE`
+  "s0"/"s1"/"s2" cache ids. **NODE_TYPE + the `node_type` property are DELETED**; the node cache +
+  Merkle fingerprint now key on `stage.key` (StageKey) directly → one-time cold cache miss (authorized,
+  pre-prod). (b) `StageSpec` (frozen dataclass in `base/stage/model.py`) consolidates the former ~9
+  per-stage ClassVars into ONE `SPEC: ClassVar[StageSpec]`; `AbstractStage.__init_subclass__` enforces
+  just SPEC; `key/name/after/consumes/produces/cache_policy/error_policy/code_version` are delegating
+  properties. CONFIG stays a separate optional ClassVar (default None). (c) PipelineContext fields
+  renamed off `sN_result`: `file_bytes→original_bytes`, `s0..s6_result→ingest/parse/enrich/chunk/
+  contextualize/metagen/embed_result`; `fingerprints`/`from_cache` typed `dict[StageKey,…]`. EngineResult
+  mirrors the rename (no s0/s1/s2 re-key in `_build_result`). **BOUNDARY (settled):** StageKey is for
+  stage identity / `after` / node-cache only; `consumes`/`produces`/`ROOT_CONTEXT_KEYS` stay plain str
+  PipelineContext field names — never conflated. StrEnum interop means literal "parse"/"embed_index"
+  comparisons + str/StageKey dict lookups still work, but new code should use StageKey. DEFERRED to R2
+  (per the user): real multi-step decomposition + deleting the legacy `stages/sN_*` inner-stage internals
+  (R1 kept the 1-step-per-stage delegation + the wrapper result objects, renamed only).
 - **P1b inc-1 (DONE):** physical reorg skeleton + PARSE migrated native. See "P1b reorg" below.
 - **P1b inc-2 (DONE):** ingest/chunk/contextualize/metagen migrated native (855 units green).
 - **P1b inc-3 (DONE):** enrich (S2) + embed_index (S6) migrated native; the `adapters/` package +

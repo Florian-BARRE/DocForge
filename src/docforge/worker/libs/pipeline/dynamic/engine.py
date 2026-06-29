@@ -129,7 +129,7 @@ class DynamicStageEngine(LoggerClass):
         stages = build_pipeline(config, self._registry, self._deps, self._qdrant, metadata_fields)
 
         # 2. Collection gate (build-time half): a collection set but no indexing stage = fail loudly.
-        if collection_id is not None and not any(s.KEY == "embed_index" for s in stages):
+        if collection_id is not None and not any(s.key == "embed_index" for s in stages):
             raise RuntimeError(
                 f"S6 indexing required for collection {collection_id!r} but no embed provider / "
                 f"Qdrant is available. Check the collection embed.provider config and QDRANT_HOST."
@@ -138,7 +138,7 @@ class DynamicStageEngine(LoggerClass):
         # 3. Thread a typed context and drive the generic engine with the worker lifecycle hooks.
         ctx = PipelineContext(
             deps=self._deps, doc_id=doc_id, source_hash=source_hash, filename=filename,
-            file_bytes=file_bytes, collection_id=collection_id, metadata_fields=metadata_fields,
+            original_bytes=file_bytes, collection_id=collection_id, metadata_fields=metadata_fields,
             doc_user_meta=doc_user_meta,
         )
         pipeline = IngestPipeline(stages, progress_cb=progress_cb, hooks=WorkerEngineHooks(self._legacy_deps))
@@ -150,10 +150,10 @@ class DynamicStageEngine(LoggerClass):
     @staticmethod
     def _build_result(ctx: PipelineContext) -> EngineResult:
         """
-        Assemble a legacy-shaped EngineResult from the accumulated context.
+        Assemble the EngineResult from the accumulated context.
 
-        Fingerprints + cache flags are re-keyed to the legacy ``s0``/``s1``/``s2`` ids so any
-        downstream reader of EngineResult sees the same shape as the StageEngine produced.
+        Per-stage results are taken from their domain-named context fields; fingerprints + cache
+        flags are carried verbatim (keyed by ``StageKey``, no legacy s0/s1/s2 re-keying).
 
         Args:
             ctx (PipelineContext): The accumulated run context.
@@ -161,16 +161,15 @@ class DynamicStageEngine(LoggerClass):
         Returns:
             EngineResult: The aggregated run output.
         """
-        key_map = {"s0": "ingest", "s1": "parse", "s2": "enrich"}
         return EngineResult(
-            s0_result=ctx.s0_result,
-            s1_result=ctx.s1_result,
-            s2_result=ctx.s2_result,
-            s4_result=ctx.s4_result,
-            s5_result=ctx.s5_result,
-            s6_result=ctx.s6_result,
-            stage_fingerprints={legacy: ctx.fingerprints.get(new, "") for legacy, new in key_map.items()},
-            from_cache={legacy: ctx.from_cache.get(new, False) for legacy, new in key_map.items()},
+            ingest_result=ctx.ingest_result,
+            parse_result=ctx.parse_result,
+            enrich_result=ctx.enrich_result,
+            chunk_result=ctx.chunk_result,
+            contextualize_result=ctx.contextualize_result,
+            embed_result=ctx.embed_result,
+            stage_fingerprints=dict(ctx.fingerprints),
+            from_cache=dict(ctx.from_cache),
         )
 
 

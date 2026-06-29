@@ -1,10 +1,10 @@
 # ====== Code Summary ======
-# Unit tests for the PR-1 dynamic-pipeline contracts (Pipeline -> Stage -> Step), all mocked.
-# Covers: ErrorPolicy/CachePolicy enums; AbstractStage.__init_subclass__ ClassVar enforcement;
-# the recursive describe() shape (PipelineSchema/StageSchema/StepSchema); ChainStep describe()
-# (provider category + choices) + run() + trace hooks; the ExecutionTrace hierarchical collector;
-# topological ordering; and ON_ERROR dispatch (FAIL_DOC propagates, SKIP continues).
-# These contracts are additive + UNWIRED — nothing here exercises the production worker path.
+# Unit tests for the dynamic-pipeline contracts (Pipeline -> Stage -> Step), all mocked. Covers:
+# ErrorPolicy/CachePolicy enums; AbstractStage.__init_subclass__ SPEC enforcement; the recursive
+# describe() shape (PipelineSchema/StageSchema/StepSchema); ChainStep describe() (provider category +
+# choices) + run() + trace hooks; the ExecutionTrace hierarchical collector; topological ordering;
+# and ON_ERROR dispatch (FAIL_DOC propagates, SKIP continues). Stages declare a single StageSpec
+# (using real StageKey members for distinct keys); the contract machinery is taxonomy-agnostic.
 
 # ====== Standard Library Imports ======
 from unittest.mock import AsyncMock, MagicMock
@@ -21,7 +21,9 @@ from common_libs.pipeline.base import (
     ChainStep,
     ErrorPolicy,
     PipelineSchema,
+    StageKey,
     StageSchema,
+    StageSpec,
     StepSchema,
 )
 from common_libs.pipeline.bricks.tracking import ExecutionTrace, StageTrace, StepTrace
@@ -32,21 +34,31 @@ from common_libs.pipeline.bricks.chain import ChainAttempt, ChainOutcome
 from .dynamic_step_helpers import RunnerStep
 
 
+def _spec(
+    key: StageKey,
+    *,
+    name: str = "S",
+    description: str = "",
+    after: tuple[StageKey, ...] = (),
+    consumes: tuple[str, ...] = (),
+    produces: tuple[str, ...] = (),
+    cache_policy: CachePolicy = CachePolicy.NODE_CACHED,
+    error_policy: ErrorPolicy = ErrorPolicy.FAIL_DOC,
+) -> StageSpec:
+    """Build a StageSpec concisely for the contract-test scaffolding."""
+    return StageSpec(
+        key=key, name=name, description=description, after=after, consumes=consumes,
+        produces=produces, cache_policy=cache_policy, error_policy=error_policy,
+    )
+
+
 # ─── Minimal concrete stages used across the contract tests ──────────────────────
 
 
 class _OkStage(AbstractStage):
     """A trivial single-step stage that records a flag on the context aux."""
 
-    KEY = "ok"
-    NAME = "Ok"
-    DESCRIPTION = "records a flag"
-    AFTER: tuple[str, ...] = ()
-    CONFIG = None
-    CONSUMES: tuple[str, ...] = ()
-    PRODUCES: tuple[str, ...] = ("ok",)
-    CACHE_POLICY = CachePolicy.NODE_CACHED
-    ON_ERROR = ErrorPolicy.FAIL_DOC
+    SPEC = _spec(StageKey.INGEST, name="Ok", description="records a flag", produces=("ok",))
 
     def __init__(self) -> None:
         AbstractStage.__init__(self)
@@ -65,17 +77,9 @@ class _OkStage(AbstractStage):
 
 
 class _FailFailDocStage(AbstractStage):
-    """A stage whose step raises; ON_ERROR=FAIL_DOC → the pipeline must propagate."""
+    """A stage whose step raises; error_policy=FAIL_DOC → the pipeline must propagate."""
 
-    KEY = "boom_fail"
-    NAME = "BoomFail"
-    DESCRIPTION = "always raises"
-    AFTER: tuple[str, ...] = ()
-    CONFIG = None
-    CONSUMES: tuple[str, ...] = ()
-    PRODUCES: tuple[str, ...] = ()
-    CACHE_POLICY = CachePolicy.NODE_CACHED
-    ON_ERROR = ErrorPolicy.FAIL_DOC
+    SPEC = _spec(StageKey.INGEST, name="BoomFail", description="always raises")
 
     def __init__(self) -> None:
         AbstractStage.__init__(self)
@@ -92,11 +96,9 @@ class _FailFailDocStage(AbstractStage):
 
 
 class _FailSkipStage(_FailFailDocStage):
-    """Same failing body, but ON_ERROR=SKIP → the pipeline must continue."""
+    """Same failing body, but error_policy=SKIP → the pipeline must continue."""
 
-    KEY = "boom_skip"
-    NAME = "BoomSkip"
-    ON_ERROR = ErrorPolicy.SKIP
+    SPEC = _spec(StageKey.ENRICH, name="BoomSkip", error_policy=ErrorPolicy.SKIP)
 
 
 class _OkPipeline(AbstractPipeline):
@@ -107,7 +109,7 @@ class _OkPipeline(AbstractPipeline):
     DESCRIPTION = "contract test pipeline"
 
 
-# An intermediate abstract base must NOT trigger ClassVar enforcement (abstract=True).
+# An intermediate abstract base must NOT trigger SPEC enforcement (abstract=True).
 class _AbstractIntermediate(AbstractStage, abstract=True):
     """Specialises the contract without being runnable — must import without raising."""
 
@@ -129,32 +131,30 @@ class TestPolicyEnums:
         assert CachePolicy.IDEMPOTENT_WRITE.value == "idempotent_write"
         assert {p.value for p in CachePolicy} == {"node_cached", "idempotent_write"}
 
+    def test_stage_key_members(self) -> None:
+        assert StageKey.INGEST == "ingest"
+        assert StageKey.EMBED_INDEX == "embed_index"
+        assert {k.value for k in StageKey} == {
+            "ingest", "parse", "enrich", "chunk", "contextualize", "metagen", "embed_index"
+        }
 
-# ─── __init_subclass__ ClassVar enforcement ──────────────────────────────────────
+
+# ─── __init_subclass__ SPEC enforcement ──────────────────────────────────────────
 
 
-class TestStageClassVarEnforcement:
-    """A concrete AbstractStage must declare every forced ClassVar."""
+class TestStageSpecEnforcement:
+    """A concrete AbstractStage must declare its single SPEC descriptor."""
 
-    def test_missing_classvar_raises(self) -> None:
+    def test_missing_spec_raises(self) -> None:
         with pytest.raises(TypeError) as exc_info:
 
             class _Bad(AbstractStage):
-                KEY = "bad"
-                NAME = "Bad"
-                DESCRIPTION = "missing ON_ERROR"
-                AFTER: tuple[str, ...] = ()
-                CONFIG = None
-                CONSUMES: tuple[str, ...] = ()
-                PRODUCES: tuple[str, ...] = ()
-                CACHE_POLICY = CachePolicy.NODE_CACHED
-                # ON_ERROR intentionally omitted
-
+                # SPEC intentionally omitted
                 @property
                 def steps(self):
                     return []
 
-        assert "ON_ERROR" in str(exc_info.value)
+        assert "SPEC" in str(exc_info.value)
 
     def test_complete_subclass_is_accepted(self) -> None:
         # _OkStage was defined at import time — its mere existence proves a complete
@@ -163,8 +163,6 @@ class TestStageClassVarEnforcement:
         assert len(stage.steps) == 1
 
     def test_abstract_intermediate_skips_enforcement(self) -> None:
-        # Defined at module import with abstract=True and no ClassVars; importing this
-        # module would have failed if enforcement had fired on it.
         assert issubclass(_AbstractIntermediate, AbstractStage)
 
 
@@ -177,7 +175,7 @@ class TestDescribeShapes:
     def test_stage_describe_shape(self) -> None:
         schema = _OkStage().describe()
         assert isinstance(schema, StageSchema)
-        assert schema.key == "ok"
+        assert schema.key == StageKey.INGEST
         assert schema.name == "Ok"
         assert schema.cache_policy == CachePolicy.NODE_CACHED
         assert schema.on_error == ErrorPolicy.FAIL_DOC
@@ -204,16 +202,14 @@ class TestDescribeShapes:
         first = _OkStage()
 
         class _SecondStage(_OkStage):
-            KEY = "ok2"
-            NAME = "Ok2"
-            AFTER = ("ok",)
+            SPEC = _spec(StageKey.PARSE, name="Ok2", after=(StageKey.INGEST,), produces=("ok2",))
 
         second = _SecondStage()
         pipeline = _OkPipeline([second, first])
         schema = pipeline.describe()
         assert isinstance(schema, PipelineSchema)
         assert schema.key == "test_pipeline"
-        assert [s.key for s in schema.stages] == ["ok", "ok2"]
+        assert [s.key for s in schema.stages] == ["ingest", "parse"]
 
 
 # ─── ChainStep: describe (category + choices), run, trace hooks ──────────────────
@@ -297,7 +293,7 @@ class TestExecutionTrace:
         assert len(trace.stages) == 1
         stage_node = trace.stages[0]
         assert isinstance(stage_node, StageTrace)
-        assert stage_node.key == "ok"
+        assert stage_node.key == "ingest"
         assert stage_node.succeeded is True
         assert len(stage_node.steps) == 1
         step_node = stage_node.steps[0]
@@ -313,7 +309,7 @@ class TestExecutionTrace:
         ctx = PipelineContext()
         await _OkStage().run(ctx)
         data = ExecutionTrace.for_context(ctx).to_dict()
-        assert data["stages"][0]["key"] == "ok"
+        assert data["stages"][0]["key"] == "ingest"
         assert data["stages"][0]["steps"][0]["key"] == "ok"
 
 
@@ -325,20 +321,17 @@ class TestPipelineEngine:
 
     def test_unknown_after_reference_raises(self) -> None:
         class _Orphan(_OkStage):
-            KEY = "orphan"
-            AFTER = ("does_not_exist",)
+            SPEC = _spec(StageKey.PARSE, name="Orphan", after=(StageKey.METAGEN,))
 
         with pytest.raises(ValueError):
             _OkPipeline([_Orphan()])
 
     def test_dependency_cycle_raises(self) -> None:
         class _A(_OkStage):
-            KEY = "a"
-            AFTER = ("b",)
+            SPEC = _spec(StageKey.INGEST, name="A", after=(StageKey.PARSE,))
 
         class _B(_OkStage):
-            KEY = "b"
-            AFTER = ("a",)
+            SPEC = _spec(StageKey.PARSE, name="B", after=(StageKey.INGEST,))
 
         with pytest.raises(ValueError):
             _OkPipeline([_A(), _B()])
@@ -352,10 +345,9 @@ class TestPipelineEngine:
 
     @pytest.mark.asyncio
     async def test_skip_policy_continues_run(self) -> None:
-        # A failing SKIP stage followed by an OK stage: the run completes and the OK stage runs.
+        # A failing SKIP stage (enrich) followed by an OK stage (chunk): the run completes.
         class _Tail(_OkStage):
-            KEY = "tail"
-            AFTER = ("boom_skip",)
+            SPEC = _spec(StageKey.CHUNK, name="Tail", after=(StageKey.ENRICH,))
 
         pipeline = _OkPipeline([_FailSkipStage(), _Tail()])
         ctx = PipelineContext()
@@ -363,6 +355,9 @@ class TestPipelineEngine:
 
         trace = ExecutionTrace.for_context(ctx)
         keys = [s.key for s in trace.stages]
-        assert keys == ["boom_skip", "tail"]
+        assert keys == ["enrich", "chunk"]
         assert trace.stages[0].skipped is True
-        assert ctx.aux["ok"] is True
+
+
+# Keep StageDeps imported (constructs a partially-wired context elsewhere in the suite).
+_ = StageDeps

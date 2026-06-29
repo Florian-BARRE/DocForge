@@ -53,10 +53,10 @@ class WorkerEngineHooks(EngineHooks, LoggerClass):
 
     async def prepare(self, ctx: "PipelineContext") -> None:
         """Download the original bytes when absent (fail-closed: mark failed + re-raise)."""
-        if ctx.file_bytes is not None:
+        if ctx.original_bytes is not None:
             return
         try:
-            ctx.file_bytes = await self._deps.s3.download(S3Helpers.key_original(ctx.source_hash))
+            ctx.original_bytes = await self._deps.s3.download(S3Helpers.key_original(ctx.source_hash))
         except Exception as exc:
             self.logger.error(
                 f"Original download failed for doc_id={ctx.doc_id} "
@@ -69,31 +69,31 @@ class WorkerEngineHooks(EngineHooks, LoggerClass):
         """Flip to 'processing' (ingest), mark the node 'running', and hydrate the PDF (parse)."""
         deps = self._deps
         # 1. Document enters 'processing' as the first stage begins (mirrors legacy run_s0).
-        if stage.KEY == "ingest":
+        if stage.key == "ingest":
             async with deps.postgres.session() as session:
                 await deps.document_repo.update_status(session, ctx.doc_id, "processing")
 
         # 2. Node-cached stages record a 'running' stage_run row keyed by the LEGACY node id
-        # (stage.node_type = "s0"/"s1"/"s2") so the row matches the legacy engine. This fires only
+        # (stage.key = "s0"/"s1"/"s2") so the row matches the legacy engine. This fires only
         # on the post-miss/pre-run path (the engine calls before_stage after a cache miss), so the
         # 'running' marker never clobbers a cached 'done' row.
-        if stage.CACHE_POLICY == CachePolicy.NODE_CACHED:
+        if stage.cache_policy == CachePolicy.NODE_CACHED:
             async with deps.postgres.session() as session:
-                await deps.node_cache.start(session, ctx.doc_id, stage.node_type, ctx.fingerprints[stage.KEY])
+                await deps.node_cache.start(session, ctx.doc_id, stage.key, ctx.fingerprints[stage.key])
 
         # 3. Parse needs PDF bytes; hydrate from S3 when S0 was a cache hit (lazy pdf_bytes).
-        if stage.KEY == "parse" and ctx.s0_result is not None and ctx.s0_result.pdf_bytes is None:
-            ctx.s0_result = await CacheIOHelpers.populate_pdf_bytes(deps.s3, ctx.s0_result)
+        if stage.key == "parse" and ctx.ingest_result is not None and ctx.ingest_result.pdf_bytes is None:
+            ctx.ingest_result = await CacheIOHelpers.populate_pdf_bytes(deps.s3, ctx.ingest_result)
 
     async def should_run(self, stage: "AbstractStage", ctx: "PipelineContext") -> bool:
         """Gate embed/index on a collection being set; every other stage always runs."""
-        if stage.KEY == "embed_index":
+        if stage.key == "embed_index":
             return ctx.collection_id is not None
         return True
 
     async def on_skipped(self, stage: "AbstractStage", ctx: "PipelineContext") -> None:
         """When embed/index is skipped (no collection), persist chunks to Postgres only."""
-        if stage.KEY != "embed_index":
+        if stage.key != "embed_index":
             return
         if self._deps.chunk_repo is None or not ctx.chunks:
             return
@@ -104,43 +104,43 @@ class WorkerEngineHooks(EngineHooks, LoggerClass):
         self, stage: "AbstractStage", ctx: "PipelineContext", fingerprint: str
     ) -> bool:
         """Consult the node cache; on hit, restore the stage outputs onto the context."""
-        # Node-cache row is keyed by the legacy node id (stage.node_type); the artefact codec is
+        # Node-cache row is keyed by the legacy node id (stage.key); the artefact codec is
         # dispatched by the semantic KEY (ingest/parse/enrich).
         ref = await CacheIOHelpers.check(
-            self._deps.postgres, self._deps.node_cache, ctx.doc_id, stage.node_type, fingerprint
+            self._deps.postgres, self._deps.node_cache, ctx.doc_id, stage.key, fingerprint
         )
         if ref is None:
             return False
-        return await CacheDispatch.load(stage.KEY, self._deps.s3, ref, ctx)
+        return await CacheDispatch.load(stage.key, self._deps.s3, ref, ctx)
 
     async def cache_store(
         self, stage: "AbstractStage", ctx: "PipelineContext", fingerprint: str
     ) -> None:
         """Upload the freshly-run stage's artefacts and record them in the node cache."""
-        ref = await CacheDispatch.store(stage.KEY, self._deps.s3, ctx, fingerprint)
+        ref = await CacheDispatch.store(stage.key, self._deps.s3, ctx, fingerprint)
         if ref is not None:
             await CacheIOHelpers.store(
-                self._deps.postgres, self._deps.node_cache, ctx.doc_id, stage.node_type, fingerprint, ref
+                self._deps.postgres, self._deps.node_cache, ctx.doc_id, stage.key, fingerprint, ref
             )
 
     async def after_stage(self, stage: "AbstractStage", ctx: "PipelineContext") -> None:
         """Persist the IR after enrich; flush embed-chain traces after embed/index."""
-        if stage.KEY == "enrich":
+        if stage.key == "enrich":
             await self._persist_after_enrich(ctx)
-        elif stage.KEY == "embed_index":
+        elif stage.key == "embed_index":
             await self._flush_embed_traces(ctx)
 
     async def on_error(
         self, stage: "AbstractStage", ctx: "PipelineContext", exc: Exception
     ) -> None:
         """Mark a node-cached stage's row 'failed' (mirrors the legacy guarded_run failure path)."""
-        if stage.CACHE_POLICY != CachePolicy.NODE_CACHED:
+        if stage.cache_policy != CachePolicy.NODE_CACHED:
             return
-        fingerprint = ctx.fingerprints.get(stage.KEY)
+        fingerprint = ctx.fingerprints.get(stage.key)
         if not fingerprint:
             return
         async with self._deps.postgres.session() as session:
-            await self._deps.node_cache.fail(session, ctx.doc_id, stage.node_type, fingerprint)
+            await self._deps.node_cache.fail(session, ctx.doc_id, stage.key, fingerprint)
 
     async def mark_failed(self, ctx: "PipelineContext") -> None:
         """Flip the document to 'failed' (tolerant — never masks the original stage error)."""
@@ -156,11 +156,11 @@ class WorkerEngineHooks(EngineHooks, LoggerClass):
             self._deps,
             ctx.doc_id,
             ctx.source_hash,
-            ctx.s0_result,
-            ctx.s1_result,
+            ctx.ingest_result,
+            ctx.parse_result,
             ctx.fingerprints["parse"],
             ctx.fingerprints["ingest"],
-            ctx.s2_result,
+            ctx.enrich_result,
             ctx.fingerprints["enrich"],
             ctx.ir,
             ctx.from_cache.get("parse", False),
@@ -169,7 +169,7 @@ class WorkerEngineHooks(EngineHooks, LoggerClass):
 
     async def _flush_embed_traces(self, ctx: "PipelineContext") -> None:
         """Append the S6 embed-chain traces onto the document's implicit_meta (lineage parity)."""
-        s6 = ctx.s6_result
+        s6 = ctx.embed_result
         if s6 is None or not s6.chain_traces:
             return
         async with self._deps.postgres.session() as session:

@@ -36,7 +36,7 @@ _STAGE_PACKAGES = ("common_libs.pipeline.ingest.stages",)
 # Context keys available BEFORE any stage runs (externally-provided run inputs). Used as the
 # wiring-validation roots: a stage may consume these without any prior stage producing them.
 ROOT_CONTEXT_KEYS: frozenset[str] = frozenset(
-    {"file_bytes", "filename", "doc_id", "collection_id", "metadata_fields", "doc_user_meta"}
+    {"original_bytes", "filename", "doc_id", "collection_id", "metadata_fields", "doc_user_meta"}
 )
 
 
@@ -59,7 +59,7 @@ class StageRegistryCatalog:
     @staticmethod
     def register_stage(cls: type[AbstractStage]) -> type[AbstractStage]:
         """
-        Class decorator: register a stage class in the global catalog, keyed by ``cls.KEY``.
+        Class decorator: register a stage class in the global catalog, keyed by ``cls.SPEC.key``.
 
         Args:
             cls (type[AbstractStage]): The concrete stage class to register.
@@ -67,7 +67,7 @@ class StageRegistryCatalog:
         Returns:
             type[AbstractStage]: The class unchanged (decorator identity).
         """
-        _STAGES[cls.KEY] = cls
+        _STAGES[cls.SPEC.key] = cls
         return cls
 
     @staticmethod
@@ -114,12 +114,12 @@ class StageRegistryCatalog:
             StageWiringError: On an ``AFTER`` reference to an unknown stage, or a dependency cycle.
         """
         # 1. Validate every AFTER edge resolves to a known stage.
-        by_key = {s.KEY: s for s in stages}
+        by_key = {s.SPEC.key: s for s in stages}
         for stage in stages:
-            for dep in stage.AFTER:
+            for dep in stage.SPEC.after:
                 if dep not in by_key:
                     raise StageWiringError(
-                        f"Stage {stage.KEY!r} declares AFTER={dep!r} but no such stage is registered."
+                        f"Stage {stage.SPEC.key!r} declares AFTER={dep!r} but no such stage is registered."
                     )
 
         # 2. Kahn's algorithm, preserving declaration order among ready stages.
@@ -127,13 +127,13 @@ class StageRegistryCatalog:
         resolved: set[str] = set()
         ordered: list[type[AbstractStage]] = []
         while remaining:
-            ready = [s for s in remaining if all(dep in resolved for dep in s.AFTER)]
+            ready = [s for s in remaining if all(dep in resolved for dep in s.SPEC.after)]
             if not ready:
-                cyclic = ", ".join(s.KEY for s in remaining)
+                cyclic = ", ".join(s.SPEC.key for s in remaining)
                 raise StageWiringError(f"Cycle in stage dependency graph among: {cyclic}.")
             for stage in ready:
                 ordered.append(stage)
-                resolved.add(stage.KEY)
+                resolved.add(stage.SPEC.key)
                 remaining.remove(stage)
         return ordered
 
@@ -164,18 +164,18 @@ class StageRegistryCatalog:
         produced: set[str] = set(ROOT_CONTEXT_KEYS)
         for stage in ordered:
             # 1. Declared IO keys must be real context fields.
-            for key in (*stage.CONSUMES, *stage.PRODUCES):
+            for key in (*stage.SPEC.consumes, *stage.SPEC.produces):
                 if key not in valid_keys:
                     raise StageWiringError(
-                        f"Stage {stage.KEY!r} declares IO key {key!r} that is not a PipelineContext field."
+                        f"Stage {stage.SPEC.key!r} declares IO key {key!r} that is not a PipelineContext field."
                     )
             # 2. Everything consumed must already be produced (or be a root input).
-            missing = set(stage.CONSUMES) - produced
+            missing = set(stage.SPEC.consumes) - produced
             if missing:
                 raise StageWiringError(
-                    f"Stage {stage.KEY!r} consumes {sorted(missing)} which no upstream stage produces."
+                    f"Stage {stage.SPEC.key!r} consumes {sorted(missing)} which no upstream stage produces."
                 )
-            produced |= set(stage.PRODUCES)
+            produced |= set(stage.SPEC.produces)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -184,7 +184,7 @@ class StageRegistryCatalog:
 
 
 def register_stage(cls: type[AbstractStage]) -> type[AbstractStage]:
-    """Class decorator: register a stage class in the global catalog (keyed by ``cls.KEY``)."""
+    """Class decorator: register a stage class in the global catalog (keyed by ``cls.SPEC.key``)."""
     return StageRegistryCatalog.register_stage(cls)
 
 

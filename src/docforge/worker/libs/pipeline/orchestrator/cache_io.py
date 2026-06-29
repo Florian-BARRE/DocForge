@@ -103,9 +103,9 @@ class CacheIOHelpers:
         return await CacheCodec.restore_s0(s3, s0_meta_key)
 
     @classmethod
-    async def populate_pdf_bytes(cls, s3: S3Client, s0_result: S0Result) -> S0Result:
+    async def populate_pdf_bytes(cls, s3: S3Client, ingest_result: S0Result) -> S0Result:
         """Lazy-load PDF bytes into a cache-restored S0Result (delegates to CacheCodec)."""
-        return await CacheCodec.populate_pdf_bytes(s3, s0_result)
+        return await CacheCodec.populate_pdf_bytes(s3, ingest_result)
 
     @classmethod
     async def restore_s1(cls, s3: S3Client, s1_meta_key: str) -> tuple[S1Result, DocumentIR]:

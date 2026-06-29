@@ -20,7 +20,7 @@ class ChunkStep(IngestStep):
     """
     Native chunk step — delegates to the legacy S4 chunking logic, threading IO via the context.
 
-    Reads ``ir``; writes ``s4_result`` and ``chunks``.
+    Reads ``ir``; writes ``chunk_result`` and ``chunks``.
     """
 
     KEY: ClassVar[str] = "chunk"
@@ -30,7 +30,7 @@ class ChunkStep(IngestStep):
         "structure-aware chunking."
     )
     CONSUMES: ClassVar[tuple[str, ...]] = ("ir",)
-    PRODUCES: ClassVar[tuple[str, ...]] = ("s4_result", "chunks")
+    PRODUCES: ClassVar[tuple[str, ...]] = ("chunk_result", "chunks")
 
     def __init__(self, chunker: "S4ChunkStage") -> None:
         """
@@ -53,7 +53,7 @@ class ChunkStep(IngestStep):
         result = await self._chunker.run(ctx.ir)
 
         # 2. Write the declared PRODUCES back onto the context.
-        ctx.s4_result = result
+        ctx.chunk_result = result
         ctx.chunks = result.chunks
 
 

@@ -22,7 +22,7 @@ class ContextualizeStep(IngestStep):
     """
     Native contextualize step — pure logic (no provider chain), threading IO via the context.
 
-    Reads ``chunks`` + ``ir``; writes ``s5_result`` and the contextualized ``chunks``.
+    Reads ``chunks`` + ``ir``; writes ``contextualize_result`` and the contextualized ``chunks``.
     """
 
     KEY: ClassVar[str] = "contextualize"
@@ -32,7 +32,7 @@ class ContextualizeStep(IngestStep):
         "body."
     )
     CONSUMES: ClassVar[tuple[str, ...]] = ("chunks", "ir")
-    PRODUCES: ClassVar[tuple[str, ...]] = ("s5_result", "chunks")
+    PRODUCES: ClassVar[tuple[str, ...]] = ("contextualize_result", "chunks")
 
     def __init__(self, contextualizer: "S5ContextualizeStage") -> None:
         """
@@ -55,7 +55,7 @@ class ContextualizeStep(IngestStep):
         result = await self._contextualizer.run(ctx.chunks, ctx.ir)
 
         # 2. Write the declared PRODUCES back onto the context.
-        ctx.s5_result = result
+        ctx.contextualize_result = result
         ctx.chunks = result.chunks
 
 

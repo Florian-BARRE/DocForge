@@ -3,7 +3,7 @@
 # parse adapter). They assert the migrated stage is byte-for-byte equivalent to what the adapter
 # declared: identical forced ClassVars (KEY/AFTER/IO/cache/error/NODE_TYPE/NODE_VERSION), identical
 # fingerprint_params (the parse_chain signature, NOT the inherited step-aggregate), the same
-# ctx round-trip (reads s0_result + the parse-node fingerprint, writes s1_result + ir), and that
+# ctx round-trip (reads ingest_result + the parse-node fingerprint, writes parse_result + ir), and that
 # build_pipeline still yields the canonical 7-stage topo order with parse now a native ParsingStage.
 # Everything is mocked — no live stack.
 
@@ -40,22 +40,22 @@ class TestParsingStageClassVars:
     """The native ParsingStage declares the exact contract the former s1 adapter did."""
 
     def test_identity_and_io(self) -> None:
-        assert ParsingStage.KEY == "parse"
-        assert ParsingStage.NAME == "Parse"
-        assert ParsingStage.AFTER == ("ingest",)
+        assert ParsingStage.SPEC.key == "parse"
+        assert ParsingStage.SPEC.name == "Parse"
+        assert ParsingStage.SPEC.after == ("ingest",)
         assert ParsingStage.CONFIG is None
-        assert ParsingStage.CONSUMES == ("s0_result",)
-        assert ParsingStage.PRODUCES == ("s1_result", "ir")
+        assert ParsingStage.SPEC.consumes == ("ingest_result",)
+        assert ParsingStage.SPEC.produces == ("parse_result", "ir")
 
     def test_policies_and_node_identity(self) -> None:
-        # NODE_TYPE "s1" + NODE_VERSION "1.0" are the legacy cache identity (byte-identical keys).
-        assert ParsingStage.CACHE_POLICY == CachePolicy.NODE_CACHED
-        assert ParsingStage.ON_ERROR == ErrorPolicy.FAIL_DOC
-        assert ParsingStage.NODE_TYPE == "s1"
-        assert ParsingStage.NODE_VERSION == "1.0"
+        # The node cache keys on the StageKey (parse) + code_version "1.0".
+        assert ParsingStage.SPEC.cache_policy == CachePolicy.NODE_CACHED
+        assert ParsingStage.SPEC.error_policy == ErrorPolicy.FAIL_DOC
+        assert ParsingStage.SPEC.key == "parse"
+        assert ParsingStage.SPEC.code_version == "1.0"
 
     def test_node_type_property_pins_legacy_s1(self) -> None:
-        assert ParsingStage(_parser_mock()).node_type == "s1"
+        assert ParsingStage(_parser_mock()).key == "parse"
 
 
 class TestParsingStageFingerprint:
@@ -78,7 +78,7 @@ class TestParsingStageRoundTrip:
     async def test_run_reads_fingerprint_and_writes_produces(self) -> None:
         parser = _parser_mock(ir="IR")
         result = parser.run.return_value
-        ctx = PipelineContext(s0_result=object())
+        ctx = PipelineContext(ingest_result=object())
         # The parse-node fingerprint keys the markdown blob — the step must read its OWN node key
         # ("parse"), never the upstream ingest key (legacy run_s1 passed s1_fp for this reason).
         ctx.fingerprints["parse"] = "PARSE_FP"
@@ -86,8 +86,8 @@ class TestParsingStageRoundTrip:
 
         await ParsingStage(parser).run(ctx)
 
-        parser.run.assert_awaited_once_with(ctx.s0_result, "PARSE_FP")
-        assert ctx.s1_result is result
+        parser.run.assert_awaited_once_with(ctx.ingest_result, "PARSE_FP")
+        assert ctx.parse_result is result
         assert ctx.ir == "IR"
 
 
@@ -100,8 +100,8 @@ class TestParsingStageInBuildPipeline:
         deps = StageDeps(s3=MagicMock(), postgres=MagicMock(), chunk_repo=MagicMock())
         stages = build_pipeline(dp, registry, deps, qdrant=MagicMock())
 
-        assert [s.KEY for s in stages] == _CANONICAL_ORDER
-        by_key = {s.KEY: s for s in stages}
+        assert [s.SPEC.key for s in stages] == _CANONICAL_ORDER
+        by_key = {s.SPEC.key: s for s in stages}
         # parse is the native stage (not an adapter) wrapping the same legacy parse implementation.
         assert isinstance(by_key["parse"], ParsingStage)
         assert isinstance(by_key["parse"]._inner, S1ParseStage)
@@ -110,7 +110,7 @@ class TestParsingStageInBuildPipeline:
         registry = ProviderRegistry(s3=MagicMock(), provider_cache=MagicMock(), runtime_config=RUNTIME_CONFIG)
         dp = build_default_pipeline(RUNTIME_CONFIG)
         deps = StageDeps(s3=MagicMock(), postgres=MagicMock(), chunk_repo=MagicMock())
-        by_key = {s.KEY: s for s in build_pipeline(dp, registry, deps, qdrant=MagicMock())}
+        by_key = {s.SPEC.key: s for s in build_pipeline(dp, registry, deps, qdrant=MagicMock())}
 
         # The inner parse chain signature is identical to invoking the shared builder directly,
         # and the stage's fingerprint_params surfaces exactly that signature (legacy parity).

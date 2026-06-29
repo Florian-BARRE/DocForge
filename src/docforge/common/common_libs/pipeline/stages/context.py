@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from common_libs.domain.ir.chunk import Chunk
     from common_libs.domain.ir.models import DocumentIR
+    from common_libs.pipeline.base.stage.keys import StageKey
     from common_libs.pipeline.caches.node_cache import NodeCache
     from common_libs.pipeline.caches.provider_cache import ProviderCallCache
     from common_libs.pipeline.stages.s0_ingest.result import S0Result
@@ -88,43 +89,46 @@ class PipelineContext:
         collection_id (str | None): Target Qdrant collection name, or None (no indexing).
         metadata_fields (list[Any] | None): Per-collection metadata field specs.
         doc_user_meta (dict[str, Any] | None): User-supplied business metadata at ingest.
-        s0_result (S0Result | None): S0 (ingest) output.
-        s1_result (S1Result | None): S1 (parse) output.
+        ingest_result (S0Result | None): S0 (ingest) output.
+        parse_result (S1Result | None): S1 (parse) output.
         ir (DocumentIR | None): The canonical IR (set by parse, mutated by enrich).
-        s2_result (S2Result | None): S2 (enrich) output.
+        enrich_result (S2Result | None): S2 (enrich) output.
         chunks (list[Chunk] | None): The current chunk set (chunk -> contextualize -> metagen).
         doc_fields (dict[str, Any]): Document-scope generated values from metagen.
         doc_meta (dict[str, Any]): Assembled document-level metadata fed to embed/index.
-        s4_result (S4Result | None): S4 (chunk) output.
-        s5_result (S5Result | None): S5 (contextualize) output.
-        s5b_result (S5bResult | None): S5b (metagen) output.
-        s6_result (S6Result | None): S6 (embed + index) output.
+        chunk_result (S4Result | None): S4 (chunk) output.
+        contextualize_result (S5Result | None): S5 (contextualize) output.
+        metagen_result (S5bResult | None): S5b (metagen) output.
+        embed_result (S6Result | None): S6 (embed + index) output.
         fingerprints (dict[str, str]): Per-stage Merkle fingerprints (cache keys).
         from_cache (dict[str, bool]): Per-stage cache-hit flags.
         aux (dict[str, Any]): Free-form scratch space (holds the ExecutionTrace).
     """
 
     deps: "StageDeps | None" = None
+    # ─── Run inputs (the externally-provided roots) ───
     doc_id: "str | uuid.UUID | None" = None
     source_hash: str | None = None
     filename: str | None = None
-    file_bytes: bytes | None = None
+    original_bytes: bytes | None = None
     collection_id: str | None = None
     metadata_fields: "list[Any] | None" = None
     doc_user_meta: "dict[str, Any] | None" = None
-    s0_result: "S0Result | None" = None
-    s1_result: "S1Result | None" = None
+    # ─── Per-stage domain outputs (named by the stage that produces them) ───
+    ingest_result: "S0Result | None" = None
+    parse_result: "S1Result | None" = None
     ir: "DocumentIR | None" = None
-    s2_result: "S2Result | None" = None
+    enrich_result: "S2Result | None" = None
     chunks: "list[Chunk] | None" = None
     doc_fields: dict[str, Any] = field(default_factory=dict)
     doc_meta: dict[str, Any] = field(default_factory=dict)
-    s4_result: "S4Result | None" = None
-    s5_result: "S5Result | None" = None
-    s5b_result: "S5bResult | None" = None
-    s6_result: "S6Result | None" = None
-    fingerprints: dict[str, str] = field(default_factory=dict)
-    from_cache: dict[str, bool] = field(default_factory=dict)
+    chunk_result: "S4Result | None" = None
+    contextualize_result: "S5Result | None" = None
+    metagen_result: "S5bResult | None" = None
+    embed_result: "S6Result | None" = None
+    # ─── Per-stage cache bookkeeping (keyed by the canonical StageKey) ───
+    fingerprints: "dict[StageKey, str]" = field(default_factory=dict)
+    from_cache: "dict[StageKey, bool]" = field(default_factory=dict)
     aux: dict[str, Any] = field(default_factory=dict)
 
 

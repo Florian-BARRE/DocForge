@@ -54,28 +54,28 @@ class TestNativeStageClassVars:
     """Each native stage pins today's ordering, IO, cache policy, and error policy."""
 
     _CASES = [
-        (IngestDocStage, "ingest", CachePolicy.NODE_CACHED, (), ("file_bytes", "filename", "doc_id"), ("s0_result", "source_hash")),
-        (ChunkStage, "chunk", CachePolicy.IDEMPOTENT_WRITE, ("enrich",), ("ir",), ("s4_result", "chunks")),
-        (ContextualizeStage, "contextualize", CachePolicy.IDEMPOTENT_WRITE, ("chunk",), ("chunks", "ir"), ("s5_result", "chunks")),
-        (MetagenStage, "metagen", CachePolicy.IDEMPOTENT_WRITE, ("contextualize",), ("chunks", "ir", "s0_result", "doc_user_meta"), ("s5b_result", "chunks", "doc_fields", "doc_meta")),
+        (IngestDocStage, "ingest", CachePolicy.NODE_CACHED, (), ("original_bytes", "filename", "doc_id"), ("ingest_result", "source_hash")),
+        (ChunkStage, "chunk", CachePolicy.IDEMPOTENT_WRITE, ("enrich",), ("ir",), ("chunk_result", "chunks")),
+        (ContextualizeStage, "contextualize", CachePolicy.IDEMPOTENT_WRITE, ("chunk",), ("chunks", "ir"), ("contextualize_result", "chunks")),
+        (MetagenStage, "metagen", CachePolicy.IDEMPOTENT_WRITE, ("contextualize",), ("chunks", "ir", "ingest_result", "doc_user_meta"), ("metagen_result", "chunks", "doc_fields", "doc_meta")),
     ]
 
     @pytest.mark.parametrize("cls,key,cache,after,consumes,produces", _CASES)
     def test_classvars(self, cls, key, cache, after, consumes, produces) -> None:
-        assert cls.KEY == key
-        assert cls.CACHE_POLICY == cache
-        assert cls.AFTER == after
-        assert cls.CONSUMES == consumes
-        assert cls.PRODUCES == produces
-        assert cls.ON_ERROR == ErrorPolicy.FAIL_DOC
+        assert cls.SPEC.key == key
+        assert cls.SPEC.cache_policy == cache
+        assert cls.SPEC.after == after
+        assert cls.SPEC.consumes == consumes
+        assert cls.SPEC.produces == produces
+        assert cls.SPEC.error_policy == ErrorPolicy.FAIL_DOC
         assert cls.CONFIG is None
 
     def test_ingest_node_identity_pins_legacy_s0(self) -> None:
-        # NODE_TYPE "s0" + NODE_VERSION "1.0" reproduce the legacy S0 node-cache key.
-        assert IngestDocStage.NODE_TYPE == "s0"
-        assert IngestDocStage.NODE_VERSION == "1.0"
+        # The node cache keys on the StageKey (ingest) + code_version "1.0".
+        assert IngestDocStage.SPEC.key == "ingest"
+        assert IngestDocStage.SPEC.code_version == "1.0"
         converter = SimpleNamespace(name="gotenberg", version="8")
-        assert IngestDocStage(SimpleNamespace(_converter=converter)).node_type == "s0"
+        assert IngestDocStage(SimpleNamespace(_converter=converter)).key == "ingest"
 
 
 class TestIngestStage:
@@ -95,12 +95,12 @@ class TestIngestStage:
     async def test_run_round_trip(self) -> None:
         result = SimpleNamespace(source_hash="HASH")
         inner = _inner(result)
-        ctx = PipelineContext(file_bytes=b"data", filename="f.pdf", doc_id="DID")
+        ctx = PipelineContext(original_bytes=b"data", filename="f.pdf", doc_id="DID")
 
         await IngestDocStage(inner).run(ctx)
 
         inner.run.assert_awaited_once_with(b"data", "f.pdf", "DID")
-        assert ctx.s0_result is result
+        assert ctx.ingest_result is result
         assert ctx.source_hash == "HASH"
 
 
@@ -119,7 +119,7 @@ class TestChunkStage:
         await ChunkStage(inner).run(ctx)
 
         inner.run.assert_awaited_once_with("IR")
-        assert ctx.s4_result is result
+        assert ctx.chunk_result is result
         assert ctx.chunks == ["c0", "c1"]
 
 
@@ -138,7 +138,7 @@ class TestContextualizeStage:
         await ContextualizeStage(inner).run(ctx)
 
         inner.run.assert_awaited_once_with(["c0"], "IR")
-        assert ctx.s5_result is result
+        assert ctx.contextualize_result is result
         assert ctx.chunks == ["ctx0"]
 
 
@@ -153,12 +153,12 @@ class TestMetagenStage:
         ir = _fake_ir()
         result = SimpleNamespace(chunks=["meta0"], doc_fields={"summary": "x"})
         inner = _inner(result)
-        ctx = PipelineContext(chunks=["c0"], ir=ir, s0_result=SimpleNamespace(implicit_meta={}))
+        ctx = PipelineContext(chunks=["c0"], ir=ir, ingest_result=SimpleNamespace(implicit_meta={}))
 
         await MetagenStage(inner).run(ctx)
 
         inner.run.assert_awaited_once_with(["c0"], ir)
-        assert ctx.s5b_result is result
+        assert ctx.metagen_result is result
         assert ctx.chunks == ["meta0"]
         assert ctx.doc_fields == {"summary": "x"}
         # The metagen stage closes the IO graph by assembling doc_meta for S6.
@@ -175,7 +175,7 @@ class TestMetagenStage:
         ctx = PipelineContext(
             chunks=["c"],
             ir=ir,
-            s0_result=SimpleNamespace(implicit_meta={"k": "implicit", "i": "imp_only"}),
+            ingest_result=SimpleNamespace(implicit_meta={"k": "implicit", "i": "imp_only"}),
             doc_user_meta={"k": "user"},
         )
 
@@ -198,8 +198,8 @@ class TestNativeStagesInBuildPipeline:
         deps = StageDeps(s3=MagicMock(), postgres=MagicMock(), chunk_repo=MagicMock())
         stages = build_pipeline(dp, registry, deps, qdrant=MagicMock())
 
-        assert [s.KEY for s in stages] == _CANONICAL_ORDER
-        by_key = {s.KEY: s for s in stages}
+        assert [s.SPEC.key for s in stages] == _CANONICAL_ORDER
+        by_key = {s.SPEC.key: s for s in stages}
         # Each migrated stage is the native type wrapping the same legacy implementation.
         assert isinstance(by_key["ingest"], IngestDocStage)
         assert isinstance(by_key["ingest"]._inner, S0IngestStage)

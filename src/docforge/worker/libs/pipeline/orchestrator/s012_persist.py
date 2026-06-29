@@ -121,11 +121,11 @@ class S012PersistHelpers:
         deps: StageDeps,
         doc_id: uuid.UUID,
         source_hash: str,
-        s0_result: S0Result,
-        s1_result: S1Result,
+        ingest_result: S0Result,
+        parse_result: S1Result,
         s1_fp: str,
         s0_fp: str,
-        s2_result: S2Result | None,
+        enrich_result: S2Result | None,
         s2_fp: str,
         final_ir: Any,
         s1_cache_hit: bool,
@@ -145,18 +145,18 @@ class S012PersistHelpers:
             deps (StageDeps): Frozen container of all shared infra (Postgres, repos).
             doc_id (uuid.UUID): Document primary key.
             source_hash (str): SHA-256 of the original file (used to derive S3 key).
-            s0_result (S0Result): S0 output (contributes to implicit_meta).
-            s1_result (S1Result): S1 output (contributes markdown_key to implicit_meta).
+            ingest_result (S0Result): S0 output (contributes to implicit_meta).
+            parse_result (S1Result): S1 output (contributes markdown_key to implicit_meta).
             s1_fp (str): S1 Merkle fingerprint.
             s0_fp (str): S0 Merkle fingerprint.
-            s2_result (S2Result | None): S2 output, or None when S2 was skipped.
+            enrich_result (S2Result | None): S2 output, or None when S2 was skipped.
             s2_fp (str): S2 Merkle fingerprint.
             final_ir (DocumentIR): Enriched IR (or raw S1 IR when S2 skipped).
             s1_cache_hit (bool): True when S1 was a cache hit (blocks already stored).
             s2_cache_hit (bool): True when S2 was a cache hit.
         """
         # Blocks must only be inserted on the first run; cache hits mean they exist already.
-        blocks_already_in_db = s1_cache_hit and (s2_result is None or s2_cache_hit)
+        blocks_already_in_db = s1_cache_hit and (enrich_result is None or s2_cache_hit)
         async with deps.postgres.session() as session:
             if not blocks_already_in_db:
                 await deps.block_repo.bulk_insert(
@@ -169,13 +169,13 @@ class S012PersistHelpers:
                 page_count=final_ir.n_pages,
                 language=final_ir.language,
                 implicit_meta=TraceFlusher.build_implicit_meta(
-                    s0_result=s0_result,
+                    ingest_result=ingest_result,
                     ir=final_ir,
-                    s1_result=s1_result,
+                    parse_result=parse_result,
                     s0_fp=s0_fp,
                     s1_fp=s1_fp,
                     ir_key=S3Helpers.key_ir(source_hash, s1_fp),
-                    s2_result=s2_result,
+                    enrich_result=enrich_result,
                     s2_fp=s2_fp,
                 ),
             )

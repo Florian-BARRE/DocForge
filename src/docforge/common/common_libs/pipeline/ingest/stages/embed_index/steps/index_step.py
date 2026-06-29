@@ -27,7 +27,7 @@ class IndexStep(IngestStep):
     Native index step — opens a local Postgres session and runs the Qdrant upsert + PG persist.
 
     Reads ``ctx.aux["embed_artifacts"]`` + ``chunks``/``collection_id``/``metadata_fields``/
-    ``doc_meta``; writes ``s6_result``.
+    ``doc_meta``; writes ``embed_result``.
     """
 
     KEY: ClassVar[str] = "index"
@@ -36,7 +36,7 @@ class IndexStep(IngestStep):
         "Upsert multi-vector points to Qdrant and persist chunks to Postgres (both idempotent)."
     )
     CONSUMES: ClassVar[tuple[str, ...]] = (EMBED_ARTIFACTS_KEY, "chunks", "collection_id", "metadata_fields", "doc_meta")
-    PRODUCES: ClassVar[tuple[str, ...]] = ("s6_result",)
+    PRODUCES: ClassVar[tuple[str, ...]] = ("embed_result",)
 
     def __init__(self, embed_indexer: "S6EmbedIndexStage") -> None:
         """
@@ -73,7 +73,7 @@ class IndexStep(IngestStep):
             )
 
         # 3. Write the declared PRODUCES back onto the context.
-        ctx.s6_result = result
+        ctx.embed_result = result
 
 
 __all__ = ["IndexStep"]

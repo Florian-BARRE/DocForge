@@ -25,112 +25,105 @@ from common_libs.pipeline.base.step.core import AbstractStep, ChainStep
 from common_libs.pipeline.bricks.tracking import ExecutionTrace, StageTrace, StepTrace
 
 # ====== Local Project Imports ======
-from .model import CachePolicy, ErrorPolicy, StageSchema
+from .keys import StageKey
+from .model import CachePolicy, ErrorPolicy, StageSchema, StageSpec
 
 if TYPE_CHECKING:
     from common_libs.pipeline.stages.context import PipelineContext
 
-# Sentinel marking a required ClassVar that a concrete subclass has not declared.
+# Sentinel marking the required SPEC a concrete subclass has not declared.
 _UNSET = object()
 
 
 class AbstractStage(ABC, LoggerClass):
     """
-    Universal stage contract — declares identity/IO/policy, inherits all execution logic.
+    Universal stage contract — declares ONE ``SPEC`` descriptor, inherits all execution logic.
 
-    Forced ClassVars (enforced on every concrete subclass via ``__init_subclass__``):
-        KEY (str): Stable stage identifier, unique within the pipeline.
-        NAME (str): Human-readable stage name.
-        DESCRIPTION (str): One-line description.
-        AFTER (tuple[str, ...]): Keys of stages this stage must run after (the DAG edges).
-        CONFIG (Any): The stage's Pydantic config model class, or ``None``.
-        CONSUMES (tuple[str, ...]): Context keys read.
-        PRODUCES (tuple[str, ...]): Context keys written.
-        CACHE_POLICY (CachePolicy): How the pipeline caches the stage.
-        ON_ERROR (ErrorPolicy): What the pipeline does when the stage raises.
-
-    Optional ClassVar (has a default, not forced):
-        NODE_VERSION (str): Stage code version — bumped to invalidate the node cache. Fed as
-            ``code_version`` to ``compute_fingerprint`` by the caching middleware (PR-3), exactly
-            as the legacy ``_S{0,1,2}_NODE_VERSION`` constants do today.
-
-    A concrete stage additionally implements the ``steps`` property. An intermediate abstract
-    base (one that specialises the contract without being runnable) opts out of the ClassVar
-    check with ``class IngestStage(AbstractStage, abstract=True): ...``.
+    A concrete stage declares a single ``SPEC: ClassVar[StageSpec]`` (its identity/ordering/IO/cache
+    /error/code-version) and implements the ``steps`` property; everything else — the run/track
+    template, fingerprint aggregation, describe(), and the per-field accessors (``key``/``name``/
+    ``after``/…) — is inherited and reads from ``SPEC``. ``__init_subclass__`` enforces exactly ONE
+    thing: a concrete subclass declares ``SPEC``. An intermediate abstract base (one that specialises
+    the contract without being runnable) opts out with ``class X(AbstractStage, abstract=True): ...``.
     """
 
-    # ─── Forced identity / ordering / IO / policy ClassVars (annotation-only on the base) ───
-    KEY: ClassVar[str]
-    NAME: ClassVar[str]
-    DESCRIPTION: ClassVar[str]
-    AFTER: ClassVar[tuple[str, ...]]
-    CONFIG: ClassVar[Any]
-    CONSUMES: ClassVar[tuple[str, ...]]
-    PRODUCES: ClassVar[tuple[str, ...]]
-    CACHE_POLICY: ClassVar[CachePolicy]
-    ON_ERROR: ClassVar[ErrorPolicy]
+    # The single forced descriptor (annotation-only on the base; declared by each concrete stage).
+    SPEC: ClassVar[StageSpec]
 
-    # Optional: the stage's code version, fed as ``code_version`` to the node fingerprint (PR-3).
-    NODE_VERSION: ClassVar[str] = "1.0"
-
-    # Optional: the cache identity of this node (fingerprint ``node_type`` + node-cache ``node_id``).
-    # Empty ("") means "use the KEY"; the NODE_CACHED adapters override it to the legacy ids
-    # ("s0"/"s1"/"s2") so cache keys + stage_run rows stay byte-identical to the legacy engine.
-    NODE_TYPE: ClassVar[str] = ""
-
-    _REQUIRED_CLASSVARS: ClassVar[tuple[str, ...]] = (
-        "KEY",
-        "NAME",
-        "DESCRIPTION",
-        "AFTER",
-        "CONFIG",
-        "CONSUMES",
-        "PRODUCES",
-        "CACHE_POLICY",
-        "ON_ERROR",
-    )
+    # Optional Pydantic config model class for the stage (None for config-less stages). Not part of
+    # the identity SPEC; surfaced by describe() when present.
+    CONFIG: ClassVar[Any] = None
 
     def __init_subclass__(cls, *, abstract: bool = False, **kwargs: Any) -> None:
         """
-        Enforce the forced ClassVar contract on every concrete stage subclass.
+        Enforce that every concrete stage subclass declares its ``SPEC``.
 
         Args:
             abstract (bool): Pass ``abstract=True`` for an intermediate base that specialises
-                the contract without being a runnable stage — it skips the ClassVar check.
+                the contract without being a runnable stage — it skips the SPEC check.
 
         Raises:
-            TypeError: When a concrete subclass omits one or more required ClassVars.
+            TypeError: When a concrete subclass omits ``SPEC``.
         """
         super().__init_subclass__(**kwargs)
         if abstract:
             return
-        missing = [
-            name
-            for name in cls._REQUIRED_CLASSVARS
-            if getattr(cls, name, _UNSET) is _UNSET
-        ]
-        if missing:
+        if getattr(cls, "SPEC", _UNSET) is _UNSET:
             raise TypeError(
-                f"{cls.__name__} is a concrete AbstractStage but does not declare the "
-                f"required ClassVar(s): {', '.join(missing)}."
+                f"{cls.__name__} is a concrete AbstractStage but does not declare its "
+                f"SPEC: ClassVar[StageSpec]."
             )
 
     def __init__(self) -> None:
         """Initialise the stage's logger."""
         LoggerClass.__init__(self)
 
+    # ─── SPEC-delegating accessors (one source of truth for stage identity/IO/policy) ───
+
     @property
-    def node_type(self) -> str:
-        """
-        The cache identity: the node fingerprint ``node_type`` AND the node-cache ``node_id``.
+    def key(self) -> StageKey:
+        """Canonical stage identifier (also the node-cache + fingerprint node id)."""
+        return self.SPEC.key
 
-        Defaults to the stage ``KEY``; a stage overrides ``NODE_TYPE`` to pin a legacy id
-        (e.g. ``"s0"``) so its Merkle fingerprint + stage_run rows match the legacy engine exactly.
+    @property
+    def name(self) -> str:
+        """Human-readable stage name."""
+        return self.SPEC.name
 
-        Returns:
-            str: ``self.NODE_TYPE`` when set, else ``self.KEY``.
-        """
-        return self.NODE_TYPE or self.KEY
+    @property
+    def description(self) -> str:
+        """One-line description of the stage."""
+        return self.SPEC.description
+
+    @property
+    def after(self) -> tuple[StageKey, ...]:
+        """Stage keys this stage must run after (the DAG edges)."""
+        return self.SPEC.after
+
+    @property
+    def consumes(self) -> tuple[str, ...]:
+        """Context field names the stage reads."""
+        return self.SPEC.consumes
+
+    @property
+    def produces(self) -> tuple[str, ...]:
+        """Context field names the stage writes."""
+        return self.SPEC.produces
+
+    @property
+    def cache_policy(self) -> CachePolicy:
+        """How the pipeline caches the stage."""
+        return self.SPEC.cache_policy
+
+    @property
+    def error_policy(self) -> ErrorPolicy:
+        """What the pipeline does when the stage raises."""
+        return self.SPEC.error_policy
+
+    @property
+    def code_version(self) -> str:
+        """Stage code version fed as ``code_version`` to the node fingerprint."""
+        return self.SPEC.code_version
 
     @property
     @abstractmethod
@@ -150,7 +143,7 @@ class AbstractStage(ABC, LoggerClass):
         """
         # 1. Open a stage node on the run's execution trace.
         trace = ExecutionTrace.for_context(ctx)
-        stage_node = trace.begin_stage(self.KEY, self.NAME)
+        stage_node = trace.begin_stage(self.key, self.name)
 
         # 2. Run each step under per-step tracking; mark the stage succeeded only if all do.
         try:
@@ -217,14 +210,14 @@ class AbstractStage(ABC, LoggerClass):
         config = self.CONFIG
         config_name = config.__name__ if isinstance(config, type) else None
         return StageSchema(
-            key=self.KEY,
-            name=self.NAME,
-            description=self.DESCRIPTION,
-            after=list(self.AFTER),
-            consumes=list(self.CONSUMES),
-            produces=list(self.PRODUCES),
-            cache_policy=self.CACHE_POLICY,
-            on_error=self.ON_ERROR,
+            key=self.key,
+            name=self.name,
+            description=self.description,
+            after=[str(k) for k in self.after],
+            consumes=list(self.consumes),
+            produces=list(self.produces),
+            cache_policy=self.cache_policy,
+            on_error=self.error_policy,
             config=config_name,
             steps=[step.describe() for step in self.steps],
         )

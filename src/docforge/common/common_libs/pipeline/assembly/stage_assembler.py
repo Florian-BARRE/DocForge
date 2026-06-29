@@ -92,8 +92,8 @@ class PipelineAssembler:
         # 2. Build each stage's inner implementation and wrap it in its native stage (skip a None S6).
         stages: list[AbstractStage] = []
         for stage_cls in ordered:
-            inner = cls._build_inner(stage_cls.KEY, config, provider_registry, deps, qdrant, metadata_fields)
-            if stage_cls.KEY == "embed_index" and inner is None:
+            inner = cls._build_inner(stage_cls.SPEC.key, config, provider_registry, deps, qdrant, metadata_fields)
+            if stage_cls.SPEC.key == "embed_index" and inner is None:
                 continue
             stages.append(stage_cls(inner))
         return stages

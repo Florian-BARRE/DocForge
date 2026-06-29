@@ -44,12 +44,12 @@ class TestBuildPipelineParity:
         dp = build_default_pipeline(RUNTIME_CONFIG)
         deps = StageDeps(s3=MagicMock(), postgres=MagicMock(), chunk_repo=MagicMock())
         stages = build_pipeline(dp, registry, deps, qdrant=MagicMock())
-        assert [s.KEY for s in stages] == _CANONICAL_ORDER
+        assert [s.key for s in stages] == _CANONICAL_ORDER
 
     def test_inner_stage_types_match_legacy(self, registry: ProviderRegistry) -> None:
         dp = build_default_pipeline(RUNTIME_CONFIG)
         deps = StageDeps(s3=MagicMock(), postgres=MagicMock(), chunk_repo=MagicMock())
-        by_key = {s.KEY: s for s in build_pipeline(dp, registry, deps, qdrant=MagicMock())}
+        by_key = {s.key: s for s in build_pipeline(dp, registry, deps, qdrant=MagicMock())}
 
         # Each adapter wraps the same legacy stage type the old path constructs.
         assert isinstance(by_key["ingest"]._inner, S0IngestStage)
@@ -63,7 +63,7 @@ class TestBuildPipelineParity:
     def test_inner_chains_have_identical_signatures(self, registry: ProviderRegistry) -> None:
         dp = build_default_pipeline(RUNTIME_CONFIG)
         deps = StageDeps(s3=MagicMock(), postgres=MagicMock(), chunk_repo=MagicMock())
-        by_key = {s.KEY: s for s in build_pipeline(dp, registry, deps, qdrant=MagicMock())}
+        by_key = {s.key: s for s in build_pipeline(dp, registry, deps, qdrant=MagicMock())}
 
         # The assembler wires each inner stage via the SAME shared builders; the inner objects
         # must be identical to invoking those builders directly (the build_pipeline guarantee).
@@ -91,6 +91,6 @@ class TestBuildPipelineParity:
         dp = build_default_pipeline(RUNTIME_CONFIG)
         deps = StageDeps(s3=MagicMock(), postgres=MagicMock(), chunk_repo=MagicMock())
         stages = build_pipeline(dp, registry, deps, qdrant=None)
-        keys = [s.KEY for s in stages]
+        keys = [s.key for s in stages]
         assert "embed_index" not in keys
         assert keys == _CANONICAL_ORDER[:-1]

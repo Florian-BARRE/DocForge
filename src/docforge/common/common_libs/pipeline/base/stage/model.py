@@ -1,20 +1,25 @@
 # ====== Code Summary ======
-# Stage-level declarative enums + the self-describing StageSchema.
-#   - ErrorPolicy: the stage's declarative ON_ERROR contract read by AbstractPipeline.run on a
-#     stage exception (FAIL_DOC propagates fail-closed; SKIP/DEGRADE continue the run).
-#   - CachePolicy: how the pipeline middleware caches the stage (NODE_CACHED = Merkle node cache,
-#     today's S0/S1/S2; IDEMPOTENT_WRITE = PG/Qdrant ON CONFLICT idempotency, today's S4/S5/S5b/S6).
+# Stage-level declarative enums + the frozen StageSpec descriptor + the self-describing StageSchema.
+#   - ErrorPolicy: the stage's declarative error contract read by AbstractPipeline.run on a stage
+#     exception (FAIL_DOC propagates fail-closed; SKIP/DEGRADE continue the run).
+#   - CachePolicy: how the pipeline middleware caches the stage (NODE_CACHED = Merkle node cache;
+#     IDEMPOTENT_WRITE = PG/Qdrant ON CONFLICT idempotency).
+#   - StageSpec: the ONE frozen descriptor each concrete stage declares (`SPEC`) — it consolidates
+#     the former ~9 per-stage ClassVars (key/name/description/after/consumes/produces/cache_policy/
+#     error_policy/code_version) into a single typed value; AbstractStage reads everything from it.
 #   - StageSchema: the middle node of the describe tree, recursing into StepSchema leaves.
 
 # ====== Standard Library Imports ======
 from __future__ import annotations
 
+from dataclasses import dataclass
 from enum import StrEnum
 
 # ====== Third-Party Library Imports ======
 from pydantic import BaseModel, Field
 
 # ====== Internal Project Imports ======
+from common_libs.pipeline.base.stage.keys import StageKey
 from common_libs.pipeline.base.step.model import StepSchema
 
 
@@ -47,6 +52,38 @@ class CachePolicy(StrEnum):
     IDEMPOTENT_WRITE = "idempotent_write"
 
 
+@dataclass(frozen=True, slots=True)
+class StageSpec:
+    """
+    Frozen identity/IO/policy descriptor a concrete stage declares as its single ``SPEC`` ClassVar.
+
+    Replaces the former per-stage ClassVar soup. Everything the engine/registry/describe needs about
+    a stage's contract lives here; ``AbstractStage`` exposes each field via a delegating property.
+
+    Attributes:
+        key (StageKey): Canonical stage identifier (also the node-cache + fingerprint node id).
+        name (str): Human-readable stage name.
+        description (str): One-line description.
+        after (tuple[StageKey, ...]): Stage keys this stage must run after (the DAG edges).
+        consumes (tuple[str, ...]): Context field names the stage reads.
+        produces (tuple[str, ...]): Context field names the stage writes.
+        cache_policy (CachePolicy): How the pipeline caches the stage.
+        error_policy (ErrorPolicy): What the pipeline does when the stage raises.
+        code_version (str): Stage code version, fed as ``code_version`` to the node fingerprint;
+            bump to invalidate the node cache.
+    """
+
+    key: StageKey
+    name: str
+    description: str
+    after: tuple[StageKey, ...]
+    consumes: tuple[str, ...]
+    produces: tuple[str, ...]
+    cache_policy: CachePolicy
+    error_policy: ErrorPolicy
+    code_version: str = "1.0"
+
+
 class StageSchema(BaseModel):
     """
     Self-description of a single stage — recurses into its steps.
@@ -76,4 +113,4 @@ class StageSchema(BaseModel):
     steps: list[StepSchema] = Field(default_factory=list, description="Ordered step schemas.")
 
 
-__all__ = ["ErrorPolicy", "CachePolicy", "StageSchema"]
+__all__ = ["ErrorPolicy", "CachePolicy", "StageKey", "StageSpec", "StageSchema"]

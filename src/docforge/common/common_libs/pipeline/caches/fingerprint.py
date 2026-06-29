@@ -44,7 +44,7 @@ class FingerprintHelpers:
         produces a different fingerprint, triggering cache invalidation downstream.
 
         Args:
-            node_type (str): Logical node identifier (e.g. ``"s0"``, ``"s1"``).
+            node_type (str): Logical node identifier (e.g. ``"ingest"``, ``"parse"``).
             code_version (str): Node implementation version (e.g. ``"1.0"``).
             params (dict): Node configuration parameters (must be JSON-serialisable).
             input_fingerprints (list[str]): Fingerprints of upstream nodes in dependency order.
