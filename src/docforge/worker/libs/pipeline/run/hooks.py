@@ -14,12 +14,13 @@
 
 # ====== Standard Library Imports ======
 import uuid
+from typing import Awaitable, Callable
 
 # ====== Third-Party Library Imports ======
 from loggerplusplus import LoggerClass
 
 # ====== Internal Project Imports ======
-from common_libs.pipelines.flow import Context, EngineHooks, Node, NodeOutput, RunContext
+from common_libs.pipelines.flow import Context, EngineHooks, Node, NodeKind, NodeOutput, RunContext
 from common_libs.storage.s3.helpers import S3Helpers
 
 # ====== Local Project Imports ======
@@ -31,10 +32,15 @@ from .persist import IngestPersistHelpers
 # The three NODE_CACHED ingest stages — the only nodes whose fingerprint + S3 codec the hooks manage.
 _NODE_CACHED_STAGES: frozenset[str] = frozenset({"ingest", "parse", "enrich"})
 
-# The seven top-level stage ids — the granularity at which the hooks capture outputs + persist.
-_STAGES: frozenset[str] = frozenset(
-    {"ingest", "parse", "enrich", "chunk", "contextualize", "metagen", "embed_index"}
+# The seven top-level stage ids in pipeline order — the granularity at which the hooks capture
+# outputs + persist, and the basis of the coarse stage-boundary progress percentage.
+_STAGE_ORDER: tuple[str, ...] = (
+    "ingest", "parse", "enrich", "chunk", "contextualize", "metagen", "embed_index",
 )
+_STAGES: frozenset[str] = frozenset(_STAGE_ORDER)
+
+# An async ``(stage_id, percent) -> None`` callback the worker forwards to the job row + the SSE bus.
+ProgressCb = Callable[[str, int], Awaitable[None]]
 
 
 class WorkerEngineHooks(EngineHooks, LoggerClass):
@@ -47,17 +53,26 @@ class WorkerEngineHooks(EngineHooks, LoggerClass):
     fingerprint / persist helpers.
     """
 
-    def __init__(self, infra: IngestInfra, doc_id: uuid.UUID, source_hash: str) -> None:
+    def __init__(
+        self,
+        infra: IngestInfra,
+        doc_id: uuid.UUID,
+        source_hash: str,
+        progress_cb: ProgressCb | None = None,
+    ) -> None:
         """
         Args:
             infra (IngestInfra): The injected worker infra (S3, Postgres, node cache, repos).
             doc_id (uuid.UUID): The document id (the node-cache row key + status target).
             source_hash (str): The original's content address (original download + codec S3 keys).
+            progress_cb (ProgressCb | None): Optional async callback fired at each stage boundary
+                with ``(stage_id, percent)`` — the worker forwards it to the job row + the SSE bus.
         """
         LoggerClass.__init__(self)
         self._infra = infra
         self._doc_id = doc_id
         self._source_hash = source_hash
+        self._progress_cb = progress_cb
         # Per-run accumulators — fresh per instance, never shared across jobs.
         self._fingerprints: dict[str, str] = {}
         self._from_cache: dict[str, bool] = {}
@@ -137,10 +152,12 @@ class WorkerEngineHooks(EngineHooks, LoggerClass):
             self._from_cache[node.id] = False
             return None
 
-        # 3. Hit — decode the typed stage output from S3 and capture it for the result.
+        # 3. Hit — decode the typed stage output from S3 and capture it for the result. A cache hit
+        #    short-circuits after_node, so the stage-boundary progress is reported here instead.
         output = await StageOutputCodec.decode(node.id, output_ref, self._infra.object_store)
         self._from_cache[node.id] = True
         self._stage_outputs[node.id] = output
+        await self._report_progress(node.id)
         return output
 
     async def cache_store(
@@ -158,7 +175,9 @@ class WorkerEngineHooks(EngineHooks, LoggerClass):
         self, node: Node, ctx: Context, output: NodeOutput, run: RunContext
     ) -> None:
         """Capture stage outputs; persist IR after enrich and flush embed traces after embed/index."""
-        if node.id not in _STAGES:
+        # Only the top-level stage GROUPS — never an inner action that happens to share a stage id
+        # (a single-node stage like chunk / contextualize names its child after the stage).
+        if not (node.KIND == NodeKind.GROUP and node.id in _STAGES):
             return
         # 1. Capture every freshly-run stage output (cache hits are captured in cache_load).
         self._stage_outputs[node.id] = output
@@ -170,6 +189,8 @@ class WorkerEngineHooks(EngineHooks, LoggerClass):
             await IngestPersistHelpers.flush_embed_traces(
                 self._infra, self._doc_id, output.embed_result
             )
+        # 4. Coarse stage-boundary progress (telemetry only — failures must not fail the run).
+        await self._report_progress(node.id)
 
     async def on_error(self, node: Node, exc: Exception, run: RunContext) -> None:
         """Mark a failed NODE_CACHED stage's row 'failed' so the next run re-executes it."""
@@ -187,6 +208,16 @@ class WorkerEngineHooks(EngineHooks, LoggerClass):
     async def mark_done(self, run: RunContext) -> None:
         """Flip the document to the terminal 'done' status (every stage succeeded)."""
         await IngestPersistHelpers.mark_done(self._infra, self._doc_id)
+
+    async def _report_progress(self, stage_id: str) -> None:
+        """Fire the coarse stage-boundary progress callback (telemetry — never fails the run)."""
+        if self._progress_cb is None:
+            return
+        percent = round((_STAGE_ORDER.index(stage_id) + 1) / len(_STAGE_ORDER) * 100)
+        try:
+            await self._progress_cb(stage_id, percent)
+        except Exception as exc:  # progress is best-effort telemetry, never a run failure
+            self.logger.warning(f"Progress callback failed at stage {stage_id!r}: {exc}")
 
     def _source_hash_for(self, key: str, ctx: Context, output: NodeOutput) -> str:
         """

@@ -88,6 +88,7 @@ class IngestRunner(LoggerClass):
         metadata_fields: list | None = None,
         collection_id: str | None = None,
         doc_user_meta: dict | None = None,
+        progress_cb: Any = None,
     ) -> IngestRunResult:
         """
         Run one document through the ingest pipeline and return the aggregated result.
@@ -101,6 +102,7 @@ class IngestRunner(LoggerClass):
             metadata_fields (list | None): The collection metadata schema (feeds metagen / embed).
             collection_id (str | None): Target collection (None -> no indexing; embed/index gated off).
             doc_user_meta (dict | None): Caller-supplied per-document business metadata.
+            progress_cb (Any): Optional async ``(stage_id, percent) -> None`` stage-boundary callback.
 
         Returns:
             IngestRunResult: Status + per-stage fingerprints + cache flags + chunk/embed tallies.
@@ -109,7 +111,7 @@ class IngestRunner(LoggerClass):
         pipeline, registry = self._builder.build(pipeline_config, self._clients, metadata_fields)
 
         # 2. Fresh per-run hooks (lifecycle + cache state) and run input.
-        hooks = WorkerEngineHooks(self._infra, doc_id, source_hash)
+        hooks = WorkerEngineHooks(self._infra, doc_id, source_hash, progress_cb=progress_cb)
         run = RunContext(
             run_input=IngestRunInput(
                 original_bytes=original_bytes,

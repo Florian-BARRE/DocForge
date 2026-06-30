@@ -18,7 +18,7 @@ from common_libs.domain.metadata import MetadataHelpers
 from common_libs.observability.events import EventPublisher
 
 # ====== Internal Project Imports ======
-from libs.pipeline.dynamic import DynamicStageEngine
+from libs.pipeline.run import IngestRunner
 from common_libs.storage.postgres.client import PostgresClient
 from common_libs.storage.postgres.repositories import (
     CollectionRepository,
@@ -66,7 +66,7 @@ async def run_pipeline_task(
     Returns:
         dict: Summary of the completed run (document_id, job_id, stage fingerprints).
     """
-    engine: DynamicStageEngine = ctx["engine"]
+    runner: IngestRunner = ctx["runner"]
     postgres: PostgresClient = ctx["postgres"]
     job_repo: JobRepository = ctx["job_repo"]
     collection_repo: CollectionRepository = ctx["collection_repo"]
@@ -129,16 +129,18 @@ async def run_pipeline_task(
             if doc is not None and doc.user_meta:
                 doc_user_meta = dict(doc.user_meta)
 
-    # 3. Run the stage engine — it downloads the original from S3 internally
+    # 3. Run the flow ingest runner — the worker prepare() hook downloads the original from S3
+    #    (originals/{source_hash}) when no bytes are supplied, keeping the Redis payload small.
+    #    A document ingested without a collection (no indexing) still needs a pipeline contract to
+    #    parse/enrich/chunk — fall back to the default config when none was loaded.
     try:
-        result = await engine.run(
+        result = await runner.run(
             doc_id=doc_uuid,
             source_hash=source_hash,
             filename=filename,
-            pipeline_version=pipeline_version,
-            file_bytes=None,   # engine downloads from S3: originals/{source_hash}
+            original_bytes=b"",   # empty -> the prepare hook downloads from S3 by source_hash
             collection_id=collection_id,
-            pipeline_config=pipeline_config,
+            pipeline_config=pipeline_config or PipelineConfig(),
             metadata_fields=metadata_fields,
             doc_user_meta=doc_user_meta,
             progress_cb=_progress_cb,
