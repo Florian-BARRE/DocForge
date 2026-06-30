@@ -21,6 +21,9 @@ from .context import Context, RunContext, ServiceRegistry
 # ---------------------- Resolver ----------------------------- #
 from .resolver import InputResolver, ResolutionError
 
+# ---------------------- Describe schema ---------------------- #
+from .schema import NodeSchema, TransitionSchema
+
 # ---------------------- Nodes -------------------------------- #
 from .node import ActionNode, GroupNode, Node
 
@@ -47,6 +50,8 @@ __all__ = [
     "Context",
     "InputResolver",
     "ResolutionError",
+    "NodeSchema",
+    "TransitionSchema",
     # nodes + engine
     "Node",
     "ActionNode",

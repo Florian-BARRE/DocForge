@@ -12,11 +12,13 @@ from typing import ClassVar
 
 # ====== Third-Party Library Imports ======
 from loggerplusplus import LoggerClass
+from pydantic import BaseModel
 
 # ====== Local Project Imports ======
 from .context import Context
 from .enums import NodeKind
 from .io import NodeInput, NodeOutput
+from .schema import NodeSchema, TransitionSchema
 from .transition import Transition
 
 
@@ -26,6 +28,8 @@ class Node(ABC, LoggerClass):
     KIND: ClassVar[NodeKind]
     Input: ClassVar[type[NodeInput]] = NodeInput
     Output: ClassVar[type[NodeOutput]] = NodeOutput
+    # The node's per-collection config (a Pydantic model); None when the node has no configurable knobs.
+    Config: ClassVar[type[BaseModel] | None] = None
 
     def __init__(self, node_id: str) -> None:
         """
@@ -34,6 +38,16 @@ class Node(ABC, LoggerClass):
         """
         LoggerClass.__init__(self)
         self.id = node_id
+
+    def describe(self) -> NodeSchema:
+        """
+        Emit the self-describing schema of this node (a group adds its children + transitions).
+
+        Returns:
+            NodeSchema: id + kind + the node's config JSON schema.
+        """
+        config_schema = self.Config.model_json_schema() if self.Config is not None else None
+        return NodeSchema(id=self.id, kind=self.KIND, config_schema=config_schema)
 
 
 class ActionNode(Node):
@@ -113,6 +127,22 @@ class GroupNode(Node):
             NodeOutput: The group's output.
         """
         return terminal
+
+    def describe(self) -> NodeSchema:
+        """
+        Emit the group's schema: its own identity/config plus its children and the wiring transitions.
+
+        Returns:
+            NodeSchema: id + kind + config + child schemas + the transitions (edges + conditions).
+        """
+        # 1. Start from the base node schema, then add the graph (children + edges).
+        schema = super().describe()
+        schema.nodes = [child.describe() for child in self.nodes]
+        schema.transitions = [
+            TransitionSchema(source=t.source, target=t.target, when=t.when, threshold=t.threshold)
+            for t in self.transitions
+        ]
+        return schema
 
 
 __all__ = ["Node", "ActionNode", "GroupNode"]
