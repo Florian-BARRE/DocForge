@@ -22,13 +22,15 @@ class IngestStageEmbedIndexInput(NodeInput):
     Attributes:
         chunks (list[Chunk]): Contextualised chunks (embed_text + derived_meta populated) from metagen.
         doc_meta (dict): Merged document-level metadata (implicit < generated < user) from metagen.
-        collection_id (str): Target collection — the stage runs only when a collection is set.
+        collection_id (str | None): Target collection — the stage runs only when a collection is set;
+            None resolves cleanly so the engine's should_run gate can skip the whole stage (the chunks
+            are then persisted to Postgres only).
         metadata_fields (list | None): Collection metadata field defs (drive the vector plan + payload).
     """
 
     chunks: Annotated[list[Chunk], FromSibling(producer="metagen", field="chunks")]
     doc_meta: Annotated[dict[str, Any], FromSibling(producer="metagen", field="doc_meta")]
-    collection_id: Annotated[str, FromRunInput()]
+    collection_id: Annotated[str | None, FromRunInput(required=False)]
     metadata_fields: Annotated[list[Any] | None, FromRunInput(required=False)]
 
 
