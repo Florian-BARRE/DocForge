@@ -30,6 +30,8 @@ class Node(ABC, LoggerClass):
     Output: ClassVar[type[NodeOutput]] = NodeOutput
     # The node's per-collection config (a Pydantic model); None when the node has no configurable knobs.
     Config: ClassVar[type[BaseModel] | None] = None
+    # When True, the engine consults the EngineHooks node cache for this node (load/store by fingerprint).
+    CACHED: ClassVar[bool] = False
 
     def __init__(self, node_id: str) -> None:
         """

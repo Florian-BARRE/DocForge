@@ -53,7 +53,9 @@ class Transition:
         if self.when == Condition.ON_FAILURE:
             return failed
         if self.when == Condition.SCORE_BELOW:
-            return (not failed) and _score(output) < self.threshold
+            # Escalate to the next candidate when this one is not good enough: it FAILED, or it
+            # succeeded but its quality score is below the threshold (the chain semantics).
+            return failed or _score(output) < self.threshold
         return False
 
 

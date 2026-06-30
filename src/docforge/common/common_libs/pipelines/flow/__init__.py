@@ -24,6 +24,12 @@ from .resolver import InputResolver, ResolutionError
 # ---------------------- Describe schema ---------------------- #
 from .schema import NodeSchema, TransitionSchema
 
+# ---------------------- Feedback tree ------------------------ #
+from .report import ErrorInfo, FlowFailure, NodeReport, ReportStatus
+
+# ---------------------- Hooks (I/O seam) --------------------- #
+from .hooks import EngineHooks
+
 # ---------------------- Nodes -------------------------------- #
 from .node import ActionNode, GroupNode, Node
 
@@ -52,6 +58,12 @@ __all__ = [
     "ResolutionError",
     "NodeSchema",
     "TransitionSchema",
+    # feedback + hooks
+    "ReportStatus",
+    "ErrorInfo",
+    "NodeReport",
+    "FlowFailure",
+    "EngineHooks",
     # nodes + engine
     "Node",
     "ActionNode",
