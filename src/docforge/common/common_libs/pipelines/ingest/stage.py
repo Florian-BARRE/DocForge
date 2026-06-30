@@ -38,6 +38,8 @@ class IngestStageOutput(NodeOutput):
     page_count: int | None
     needs_ocr: bool
     media_type: str
+    # File-intrinsic metadata (lowest-precedence layer of the document's doc_meta).
+    implicit_meta: dict
 
 
 class IngestStage(GroupNode):
@@ -79,7 +81,30 @@ class IngestStage(GroupNode):
             page_count=cv.page_count,
             needs_ocr=pr.needs_ocr,
             media_type=pr.media_type,
+            implicit_meta=self._build_implicit_meta(ca, cv, pr),
         )
+
+    @staticmethod
+    def _build_implicit_meta(ca: NodeOutput, cv: NodeOutput, pr: NodeOutput) -> dict:
+        """
+        Build the file-intrinsic implicit metadata (the lowest-precedence doc_meta layer).
+
+        Args:
+            ca (NodeOutput): The content-address output (filename / format / size / hash).
+            cv (NodeOutput): The convert output (PDF page count).
+            pr (NodeOutput): The probe output (the OCR hint).
+
+        Returns:
+            dict: File-intrinsic metadata keyed by spec field names.
+        """
+        return {
+            "filename": ca.filename,
+            "extension": ca.original_format,
+            "file_size": ca.file_size,
+            "source_hash": ca.source_hash,
+            "page_count": cv.page_count,
+            "has_scanned_pages": pr.needs_ocr,
+        }
 
 
 __all__ = ["IngestStage", "IngestStageInput", "IngestStageOutput"]

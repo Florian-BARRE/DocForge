@@ -26,6 +26,9 @@ class IngestContentAddressOutput(NodeOutput):
     source_hash: str
     original_format: str
     original_key: str
+    # File-intrinsic facts carried through for the ingest stage's implicit_meta assembly.
+    filename: str
+    file_size: int
 
 
 class IngestContentAddress(ActionNode):
@@ -59,7 +62,11 @@ class IngestContentAddress(ActionNode):
             f"sha256={source_hash[:12]}."
         )
         return IngestContentAddressOutput(
-            source_hash=source_hash, original_format=original_format, original_key=original_key
+            source_hash=source_hash,
+            original_format=original_format,
+            original_key=original_key,
+            filename=filename,
+            file_size=len(data),
         )
 
 
