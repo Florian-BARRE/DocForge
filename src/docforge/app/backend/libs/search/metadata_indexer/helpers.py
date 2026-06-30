@@ -12,7 +12,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from common_libs.pipeline.bricks.providers.embed import TeiEmbedProvider
+    from common_libs.providers.embed import TeiEmbedProvider
     from common_libs.storage.qdrant.client import QdrantStorageClient
 
 # ====== Internal Project Imports ======

@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException
 # ====== Internal Project Imports ======
 from backend.context import CONTEXT
 from backend.libs.auth import Capability, require_capability
+from backend.libs.discovery import describe_stages
 from backend.libs.utils.error_handling import auto_handle_errors
 from backend.routers.collections.config.models import (
     ConfigHistoryResponse,
@@ -190,7 +191,7 @@ async def _validate_and_apply(
     doc = ConfigDocument.resolve_pipeline(doc)
 
     # 2. Run the coherence validator; block on any error-severity issue
-    issues = ConfigValidator.validate(doc, CONTEXT.registry.describe_stages()["stages"])
+    issues = ConfigValidator.validate(doc, describe_stages()["stages"])
     errors = [i for i in issues if i["severity"] == "error"]
     if errors:
         # 422 — the resolved config has at least one error-severity coherence issue.

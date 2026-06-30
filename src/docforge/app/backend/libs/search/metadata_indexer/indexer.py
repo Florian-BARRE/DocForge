@@ -20,7 +20,7 @@ from loggerplusplus import LoggerClass
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # ====== Internal Project Imports ======
-from common_libs.pipeline.bricks.providers.embed import TeiEmbedProvider
+from common_libs.providers.embed import TeiEmbedProvider
 from common_libs.search.field_index import (
     CONTENT_DENSE,
     CONTENT_SPARSE,

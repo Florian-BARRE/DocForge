@@ -29,12 +29,10 @@ from backend.libs.admission import ResourceAdmitter
 from backend.libs.auth import AuthService
 from backend.libs.search.metadata_indexer.indexer import MetadataIndexer
 from backend.libs.search.hybrid.service import HybridSearchService
-from common_libs.pipeline.caches.node_cache import NodeCache
-from common_libs.pipeline.caches.provider_cache import ProviderCallCache
-from common_libs.pipeline.bricks.providers.converter import GotenbergConverter
-from common_libs.pipeline.bricks.providers.device import DeviceManager
+from backend.libs.device import DeviceManager
+from common_libs.pipelines.capabilities.caches import NodeCache, ProviderCallCache
+from common_libs.providers.converter import GotenbergConverter
 from common_libs.providers.embed import BgeServerEmbedConfig
-from common_libs.pipeline.assembly import ProviderRegistry
 from common_libs.storage.postgres.client import PostgresClient
 from common_libs.storage.postgres.repositories import (
     ApiKeyRepository,
@@ -59,16 +57,15 @@ def _build_app() -> FastAPI:
     2. Instantiate storage clients (Postgres, S3).
     3. Instantiate all repositories (collections, documents, blocks, jobs).
     4. Instantiate the device manager, Gotenberg converter, and resource-admission gate.
-    5. Instantiate pipeline caches (NodeCache, ProviderCallCache) and the provider registry.
-    6. Build the query-time search stack — Qdrant client, TEI embed provider,
-       HybridSearchService and MetadataIndexer (None when TEI/Qdrant is unreachable).
+    5. Instantiate the pipeline caches the app touches directly (NodeCache, ProviderCallCache).
+    6. Build the query-time search stack — Qdrant client, embed provider,
+       HybridSearchService and MetadataIndexer (None when the embed host/Qdrant is unreachable).
     7. Create and return the FastAPI app (lifespan connects storage + arq pool).
 
     Note:
-        The backend never runs the ingestion pipeline (S0 → S6) — that is the arq
-        worker's job (see libs/pipeline/worker/worker_bootstrap.py).  The backend only
-        needs the query-time search stack, storage, and the registry for config
-        validation and schema discovery.
+        The backend never runs the ingestion pipeline (S0 → S6) — that is the arq worker's job.
+        The backend only needs the query-time search stack, storage, and the stateless
+        ProviderCatalog (backend.libs.discovery) for config validation and schema discovery.
 
     Returns:
         FastAPI: The configured application instance, ready for uvicorn.
@@ -140,21 +137,15 @@ def _build_app() -> FastAPI:
         timeout_s=RUNTIME_CONFIG.GOTENBERG_TIMEOUT_S,
     )
 
-    # 6. Instantiate P2 pipeline infrastructure
-    CONTEXT.node_cache = NodeCache()
+    # 6. Instantiate P2 pipeline infrastructure (the only caches the app touches directly).
+    # node_cache: invalidated on document delete/reingest. provider_cache: the per-search
+    # provider-call cache. v2 NodeCache takes the Postgres client (the stage_run store).
+    # The removed ProviderRegistry is replaced by the stateless ProviderCatalog
+    # (backend.libs.discovery) — config validation + discovery read it directly, no wiring needed.
+    CONTEXT.node_cache = NodeCache(postgres=CONTEXT.postgres)
     CONTEXT.provider_cache = ProviderCallCache(postgres=CONTEXT.postgres, s3=CONTEXT.s3)
 
-    # 7. Provider registry — resolves a per-run PipelineConfig into concrete stages.
-    # Used by the search router (per-collection search pipelines) and by config
-    # validation / schema discovery (describe_stages).  The ingestion stages are built
-    # by the arq worker, not here — the backend never runs the ingestion pipeline.
-    CONTEXT.registry = ProviderRegistry(
-        s3=CONTEXT.s3,
-        provider_cache=CONTEXT.provider_cache,
-        runtime_config=RUNTIME_CONFIG,
-    )
-
-    # 8. Qdrant client + shared query-time embed provider.
+    # 7. Qdrant client + shared query-time embed provider.
     # The query-time provider feeds HybridSearchService + MetadataIndexer. It is built from the
     # bge_server provider's STRUCTURAL default (local bge model host) — NOT from any env var:
     # provider URLs/secrets are per-collection now. Per-collection SEARCH still builds its own
@@ -180,7 +171,7 @@ def _build_app() -> FastAPI:
         chunk_repo=CONTEXT.chunk_repo,
     )
 
-    # 9. Create FastAPI app (lifespan connects storage + arq pool)
+    # 8. Create FastAPI app (lifespan connects storage + arq pool)
     fastapi_app = create_app(
         app_name=RUNTIME_CONFIG.FASTAPI_APP_NAME,
         debug=RUNTIME_CONFIG.FASTAPI_DEBUG_MODE,
@@ -188,7 +179,7 @@ def _build_app() -> FastAPI:
         description="DocForge — Document Intelligence Platform",
     )
 
-    # 10. Mount the compiled React frontend as static files.
+    # 9. Mount the compiled React frontend as static files.
     # Only mounted when the dist directory exists (i.e., after `npm run build`).
     # In dev, Vite serves the frontend separately on :5173 with HMR.
     # The frontend lives in the backend tree (src/backend/frontend/dist) — computed

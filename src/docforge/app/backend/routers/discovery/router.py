@@ -16,10 +16,10 @@ from fastapi.routing import APIRoute
 # ====== Internal Project Imports ======
 from common_libs.config.pipeline import PipelineConfig
 from common_libs.domain.metadata import schema_field_dicts
-from common_libs.pipeline.assembly.config_describer import describe as describe_config_tree
 
 # ====== Local Project Imports ======
 from ...context import CONTEXT
+from ...libs.discovery import describe as describe_config_tree
 from ...libs.utils.error_handling import auto_handle_errors
 from .models import (
     ConfigNode,
@@ -55,8 +55,9 @@ async def get_discovery(request: Request, collection_id: uuid.UUID | None = None
     openapi = request.app.openapi()
     paths = openapi.get("paths", {})
 
-    # 2. Choice sources: deployment pipeline (always) + the collection schema (only when scoped)
-    stages = CONTEXT.registry.describe_stages()["stages"]
+    # 2. Choice sources: the collection schema (only when scoped). The full pipeline knob surface is
+    # carried by the recursive config_tree below (built from PipelineConfig), so the deployment-scoped
+    # flat overlay no longer needs a separate `stages` describe — only collection-scoped overlays remain.
     schema_fields = await _load_schema_fields(collection_id) if collection_id is not None else None
 
     # 2b. Recursive config tree (describe(PipelineConfig)) per config-bearing route prefix — built
@@ -75,7 +76,7 @@ async def get_discovery(request: Request, collection_id: uuid.UUID | None = None
             if op is None:
                 continue
             endpoints.append(_build_endpoint(
-                route_name, method, route.path, route.tags, op, stages, schema_fields, config_trees,
+                route_name, method, route.path, route.tags, op, schema_fields, config_trees,
             ))
 
     return DiscoveryResponse(
@@ -99,9 +100,9 @@ def _build_config_trees() -> dict[str, ConfigNode]:
     Returns:
         dict[str, ConfigNode]: route function name → its config tree.
     """
-    # 1. Describe PipelineConfig once per distinct root path (the registry's runtime config drives
-    #    provider availability — same source the flat describe surface reads).
-    cfg = CONTEXT.registry._cfg
+    # 1. Describe PipelineConfig once per distinct root path. RUNTIME_CONFIG drives the provider
+    #    selectable hook (no network probe — the config_describer is I/O-free by contract).
+    cfg = CONTEXT.RUNTIME_CONFIG
     by_prefix: dict[str, ConfigNode] = {}
     for prefix in set(CONFIG_BEARING_ROUTES.values()):
         by_prefix[prefix] = ConfigNode.model_validate(describe_config_tree(PipelineConfig, cfg, root_path=prefix))
@@ -125,7 +126,6 @@ def _build_endpoint(
     path: str,
     tags: list[str],
     op: dict[str, Any],
-    stages: list[dict[str, Any]],
     schema_fields: list[dict[str, Any]] | None,
     config_trees: dict[str, ConfigNode],
 ) -> EndpointDescriptor:
@@ -141,7 +141,7 @@ def _build_endpoint(
         query_params=[_field_descriptor(p) for p in params if p.get("in") == "query"],
         input=_input_contract(op),
         output=_output_contract(op),
-        dynamic_fields=build_dynamic_fields(route_name, stages, schema_fields),
+        dynamic_fields=build_dynamic_fields(route_name, schema_fields),
         # ADDITIVE: config-bearing routes (create/update) also carry the recursive tree; all
         # other routes leave it None. The flat dynamic_fields stays until the frontend cuts over.
         config_tree=config_trees.get(route_name),

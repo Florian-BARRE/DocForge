@@ -32,7 +32,7 @@ if TYPE_CHECKING:
     from config import RUNTIME_CONFIG
     from common_libs.observability.heartbeat import HeartbeatReader
     from backend.libs.observability.queue import QueueIntrospector
-    from common_libs.pipeline.bricks.providers.device import DeviceManager
+    from backend.libs.device import DeviceManager
     from common_libs.storage.postgres.client import PostgresClient
     from common_libs.storage.postgres.repositories import JobRepository
 

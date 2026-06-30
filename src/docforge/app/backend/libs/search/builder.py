@@ -53,7 +53,7 @@ def build_search_pipeline(
     embed_provider = embed_spec.merge_defaults(runtime_config).build()
     sparse_spec = getattr(pipeline.embed, "sparse", None)
     if sparse_spec is not None:
-        from common_libs.pipeline.bricks.providers.embed.composite import CompositeEmbedProvider
+        from common_libs.providers.embed import CompositeEmbedProvider
 
         sparse_provider = sparse_spec.merge_defaults(runtime_config).build()
         embed_provider = CompositeEmbedProvider(dense=embed_provider, sparse=sparse_provider)

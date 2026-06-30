@@ -1,9 +1,11 @@
 # ====== Code Summary ======
 # The dynamic-overlay layer for /discovery: the ONLY hand-authored artifact — a tiny map binding a
 # free-form/choice field of an endpoint (by route function name + field path) to a choice-source.
-# Resolvers reuse what already exists: ProviderRegistry.describe_stages() for the pipeline, and the
-# collection's metadata schema (+ the retrieval engine's vector plan) for search/ingest. The map is
-# validated against the live routes at startup, so a renamed handler fails loudly, never silently.
+# Resolvers reuse what already exists: the collection's metadata schema (+ the retrieval engine's
+# vector plan) for search/ingest/metagen choices. The full pipeline knob surface is now carried by the
+# recursive config_tree (built from PipelineConfig by backend.libs.discovery.config_describer), which
+# is strictly richer than the old flat per-stage overlay — so only collection-scoped overlays remain
+# here. The map is validated against the live routes at startup, so a renamed handler fails loudly.
 
 # ====== Standard Library Imports ======
 from typing import Any
@@ -15,13 +17,14 @@ from common_libs.search.field_index import CONTENT_DENSE, CONTENT_SPARSE, FieldI
 from .models import Choice, DynamicField, ParamSchema
 
 # (route_function_name, field_path) → choice-source tag. The whole hand-authored surface.
-# Sources: "pipeline" (deployment, from describe_stages); "filters"/"weights"/"metadata" (collection);
-# "metagen_targets" (collection — the generated-field options for pipeline.metagen.targets[*].field).
-# For "pipeline"/"metagen_targets" the tuple's first element is the body PREFIX the source roots at
-# ("pipeline" on create, "patch.pipeline" on update) so the emitted field paths line up with setPath.
+# Sources: "filters"/"weights"/"metadata" (collection); "metagen_targets" (collection — the
+# generated-field options for pipeline.metagen.targets[*].field). The deployment-wide pipeline knobs
+# are NOT overlaid here anymore — they live in the recursive config_tree. For "metagen_targets" the
+# tuple's first element is the body PREFIX the source roots at ("pipeline" on create, "patch.pipeline"
+# on update) so the emitted field paths line up with setPath.
 OVERLAYS: dict[str, list[tuple[str, str]]] = {
-    "create_collection": [("pipeline", "pipeline"), ("pipeline", "metagen_targets")],
-    "update_config": [("patch.pipeline", "pipeline"), ("patch.pipeline", "metagen_targets")],
+    "create_collection": [("pipeline", "metagen_targets")],
+    "update_config": [("patch.pipeline", "metagen_targets")],
     "search_collection": [("filters", "filters"), ("weights", "weights")],
     "search_within_document": [("filters", "filters"), ("weights", "weights")],
     "ingest_document": [("metadata", "metadata")],
@@ -74,7 +77,6 @@ def validate_overlay_route_names(route_names: set[str]) -> None:
 
 def build_dynamic_fields(
     route_name: str,
-    stages: list[dict[str, Any]],
     schema_fields: list[dict[str, Any]] | None,
 ) -> list[DynamicField]:
     """
@@ -82,7 +84,6 @@ def build_dynamic_fields(
 
     Args:
         route_name (str): Route function name (the overlay key).
-        stages (list[dict]): ``describe_stages()["stages"]`` (deployment choices).
         schema_fields (list[dict] | None): The collection's normalized metadata fields, or None when
             no collection_id was supplied (collection-scoped fields come back unresolved).
 
@@ -91,81 +92,12 @@ def build_dynamic_fields(
     """
     out: list[DynamicField] = []
     for field_path, source in OVERLAYS.get(route_name, []):
-        if source == "pipeline":
-            out.extend(_pipeline_dynamic_fields(stages, prefix=f"{field_path}."))
-        elif source == "metagen_targets":
+        if source == "metagen_targets":
             # field_path is the body prefix ("pipeline" / "patch.pipeline") the target list roots at.
             out.append(_metagen_target_field(prefix=f"{field_path}.", schema_fields=schema_fields))
         else:
             out.append(_collection_dynamic_field(source, schema_fields))
     return out
-
-
-# ─── Pipeline (deployment-scoped) ──────────────────────────────────────────────
-
-def _pipeline_dynamic_fields(stages: list[dict[str, Any]], prefix: str) -> list[DynamicField]:
-    """
-    Emit one DynamicField per pipeline knob, re-keyed onto the body path.
-
-    Two kinds are emitted so the UI can surface *every* tunable param:
-
-    - ``kind`` from the group (``single``/``multi``/``optional``) — provider/method picker.
-    - ``kind="scalar"`` — a single typed scalar (bool / int / float / str) for stage-level
-      params such as ``enrich.chart_to_data`` or ``chunk.reinject_breadcrumb``.  These are
-      surfaced as overlays so the frontend can iterate ``endpoint.dynamic_fields`` and find
-      every adjustable knob in one pass, instead of having to fetch a separate ``stages``
-      payload for the scalars.
-    """
-    out: list[DynamicField] = []
-    for stage in stages:
-        # 1. Provider / method groups → choice picker
-        for group in stage.get("groups", []):
-            out.append(DynamicField(
-                field_path=f"{prefix}{group['key']}",
-                capability=group.get("capability", ""),
-                kind=group.get("kind", "single"),
-                scope="deployment",
-                resolved=True,
-                choices=[_provider_choice(p) for p in group.get("providers", [])],
-            ))
-        # 2. Stage-level scalar params (chart_to_data, reinject_breadcrumb, …)
-        for param in stage.get("params", []):
-            # The registry historically emits scalar entries with ``name`` (dot-path) +
-            # ``type``/``default``/``description``.  Wrap them into a single Choice so the
-            # ChoicePicker scalar branch can render a FieldInput from ``choices[0].fields[0]``
-            # without inventing a new transport shape.
-            try:
-                spec = ParamSchema.model_validate({
-                    "name": param.get("name") or param.get("key"),
-                    "type": param.get("type", "str"),
-                    "label": param.get("label", ""),
-                    "default": param.get("default"),
-                    "description": param.get("description") or param.get("note") or "",
-                })
-            except Exception:
-                continue
-            out.append(DynamicField(
-                field_path=f"{prefix}{spec.name}",
-                capability=f"pipeline_param:{spec.type}",
-                kind="scalar",
-                scope="deployment",
-                resolved=True,
-                choices=[Choice(id=spec.name, label=spec.label or spec.name, fields=[spec])],
-            ))
-    return out
-
-
-def _provider_choice(provider: dict[str, Any]) -> Choice:
-    """Map a describe_stages provider option to a discovery Choice (its params = conditional fields)."""
-    return Choice(
-        id=provider["id"],
-        label=provider.get("label", ""),
-        available=bool(provider.get("available", False)),
-        selectable=bool(provider.get("selectable", False)),
-        default=bool(provider.get("default", False)),
-        note=provider.get("note", ""),
-        fields=[ParamSchema.model_validate(p) for p in provider.get("params", [])],
-    )
 
 
 # ─── Collection-scoped (filters / weights / metadata) ──────────────────────────

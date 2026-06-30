@@ -19,12 +19,11 @@ from loggerplusplus import LoggerClass
 # ====== Internal Project Imports ======
 from common_libs.config.pipeline import PipelineConfig
 from common_libs.domain.metadata.meta_field_spec import MetaFieldSpec
-from common_libs.pipeline.assembly.availability import ProviderUnavailableError
-from common_libs.pipeline.assembly.chain_builders import ChainBuilderHelpers
-from common_libs.pipeline.stages.s5b_metagen import MetagenSchemaBuilder
-from common_libs.pipeline.stages.s5b_metagen.helpers import (
+from common_libs.pipelines.builder.chain_builder import ChainBuilder
+from common_libs.pipelines.metagen.helpers import (
     METAGEN_MAX_OUTPUT_TOKENS,
-    MetagenHelpers,
+    MetagenPromptHelpers,
+    MetagenSchemaBuilder,
 )
 
 # Coarse input-token proxy: ~4 characters per token (matches the metagen budget heuristic).
@@ -125,7 +124,7 @@ class MetagenPreviewService(LoggerClass):
         # 4. Build the strict schema + rule block (identical to S5b) and the scope-specific prompt.
         field_types = {field_name: spec}
         schema = MetagenSchemaBuilder.build_json_schema([target], field_types)
-        rules = MetagenHelpers.field_rules([target], field_types)
+        rules = MetagenPromptHelpers.field_rules([target], field_types)
         prompt = self._build_prompt(target.scope, rules, heading_path, content_text)
 
         # 5. Run ONE generate_json call (no cache, no persistence) and shape the result.
@@ -135,7 +134,7 @@ class MetagenPreviewService(LoggerClass):
             )
         )
         data = outcome.result if isinstance(outcome.result, dict) else {}
-        cost = MetagenHelpers.estimate_call_cost(prompt, METAGEN_MAX_OUTPUT_TOKENS)
+        cost = MetagenPromptHelpers.estimate_call_cost(prompt, METAGEN_MAX_OUTPUT_TOKENS)
         tokens = int(len(prompt) / _CHARS_PER_TOKEN) + METAGEN_MAX_OUTPUT_TOKENS
         self.logger.info(
             f"Metagen preview: field={field_name!r} scope={target.scope} "
@@ -153,7 +152,11 @@ class MetagenPreviewService(LoggerClass):
 
     def _build_chain(self, metagen: Any) -> Any:
         """
-        Build the metagen LLM chain, translating a missing/invalid provider into a preview error.
+        Build the metagen LLM chain (category "llm"), translating a bad provider into a preview error.
+
+        The v2 ChainBuilder is PURE — it does NO availability probe (that is a config-validation /
+        monitoring concern), so the only failure here is a provider config that cannot be instantiated
+        (e.g. an incomplete per-collection URL/secret), which is surfaced as a preview error.
 
         Args:
             metagen (MetaGenConfig): The collection's metagen config block.
@@ -162,14 +165,16 @@ class MetagenPreviewService(LoggerClass):
             Chain: The wired LLM chain.
 
         Raises:
-            MetagenPreviewError: When no provider is configured or it cannot be instantiated.
+            MetagenPreviewError: When no provider is configured or one cannot be instantiated.
         """
+        # 1. Build the LLM escalation chain from the collection's per-collection provider specs.
         try:
-            chain = ChainBuilderHelpers.build_metagen_chain(self._cfg, metagen.chain, metagen.gate)
-        except ProviderUnavailableError as exc:
+            chain = ChainBuilder(self._cfg).build("llm", list(metagen.chain), metagen.gate)
+        except Exception as exc:
             # The collection's metagen provider config is incomplete (e.g. missing base_url/api_key).
             raise MetagenPreviewError(str(exc)) from exc
-        if chain is None or not chain.providers:
+        # 2. An empty chain (no providers) means nothing is configured — surface a clear error.
+        if not chain.providers:
             raise MetagenPreviewError(
                 "No LLM provider configured for metagen — add one to the metagen chain."
             )
@@ -179,8 +184,8 @@ class MetagenPreviewService(LoggerClass):
     def _build_prompt(scope: str, rules: str, heading_path: str, content_text: str) -> str:
         """Build the scope-appropriate extraction prompt (chunk vs document)."""
         if scope == "document":
-            return MetagenHelpers.build_doc_prompt(rules, "", content_text)
-        return MetagenHelpers.build_chunk_prompt(rules, heading_path, content_text)
+            return MetagenPromptHelpers.build_doc_prompt(rules, "", content_text)
+        return MetagenPromptHelpers.build_chunk_prompt(rules, heading_path, content_text)
 
     @staticmethod
     def _resolve_spec(metadata_fields: list[Any], field_name: str) -> MetaFieldSpec | None:

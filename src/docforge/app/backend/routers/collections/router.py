@@ -15,6 +15,7 @@ from sqlalchemy.exc import IntegrityError
 # ====== Internal Project Imports ======
 from backend.context import CONTEXT
 from backend.libs.auth import Capability, Principal, require_capability, require_principal
+from backend.libs.discovery import describe_stages
 from backend.libs.utils.error_handling import auto_handle_errors
 from backend.routers.collections.config.models import ConfigStateResponse
 from backend.routers.collections.models import (
@@ -93,7 +94,7 @@ async def create_collection(
     })
 
     # 2. Validate the resolved pipeline against the deployment's live stage schema before persisting
-    issues = ConfigValidator.validate(config_doc, CONTEXT.registry.describe_stages()["stages"])
+    issues = ConfigValidator.validate(config_doc, describe_stages()["stages"])
     errors = [i for i in issues if i["severity"] == "error"]
     if errors:
         # 422 — the requested pipeline config has at least one error-severity coherence issue.

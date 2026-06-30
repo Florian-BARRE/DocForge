@@ -15,11 +15,9 @@ from backend.libs.admission import ResourceAdmitter
 from common_libs.observability.events import EventBroadcaster, EventPublisher
 from common_libs.observability.heartbeat import HeartbeatReader
 from backend.libs.observability.queue import QueueIntrospector
-from common_libs.pipeline.assembly import ProviderRegistry
-from common_libs.pipeline.caches.node_cache import NodeCache
-from common_libs.pipeline.caches.provider_cache import ProviderCallCache
-from common_libs.pipeline.bricks.providers.converter import GotenbergConverter
-from common_libs.pipeline.bricks.providers.device import DeviceManager
+from backend.libs.device import DeviceManager
+from common_libs.pipelines.capabilities.caches import NodeCache, ProviderCallCache
+from common_libs.providers.converter import GotenbergConverter
 from backend.libs.search.hybrid.service import HybridSearchService
 from backend.libs.search.metadata_indexer.indexer import MetadataIndexer
 from backend.libs.auth import AuthService
@@ -77,9 +75,12 @@ class CONTEXT:
     auth_service: AuthService
 
     # ── Pipeline (P2 / P3 / P4) ─────────────────────────────────────────────
+    # The app never RUNS ingestion (the worker does). It keeps only the caches it touches directly:
+    # node_cache for document cache invalidation on delete/reingest, provider_cache for the per-search
+    # provider-call cache. The removed ProviderRegistry is replaced by the stateless ProviderCatalog
+    # (backend.libs.discovery) — config validation + discovery read it directly, no CONTEXT attr needed.
     node_cache: NodeCache
     provider_cache: ProviderCallCache
-    registry: ProviderRegistry  # resolves per-run PipelineConfig → concrete stages
 
     # ── Observability (Brique A) ─────────────────────────────────────────────
     # Read-only views over Redis telemetry, all sharing the arq_pool connection.
