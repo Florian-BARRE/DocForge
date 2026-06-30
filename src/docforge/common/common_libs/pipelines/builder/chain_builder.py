@@ -18,9 +18,6 @@ from common_libs.config.pipeline.chain_gate_config import ChainGateConfig
 from common_libs.pipelines.capabilities.chain import Chain
 from common_libs.pipelines.capabilities.chain.gate import ChainGate
 
-# ====== Local Project Imports ======
-from .errors import ChainBuildError
-
 
 class ChainBuilder(LoggerClass):
     """
@@ -56,13 +53,13 @@ class ChainBuilder(LoggerClass):
         Raises:
             ChainBuildError: If any declared provider is unavailable (fail-fast before ingestion).
         """
-        # 1. Instantiate each provider in declaration order (merge env defaults + availability gate).
+        # 1. Instantiate each provider in declaration order (merge env defaults, then build).
+        #    No availability/reachability probe here: build() stays PURE (no network I/O). Provider
+        #    reachability is a pre-spend concern of the config-validation layer; an unreachable
+        #    provider degrades gracefully through the chain gate at call time.
         built = []
         for spec in specs:
             merged = spec.merge_defaults(self._defaults)
-            available, reason = type(merged).availability(self._defaults)
-            if not available:
-                raise ChainBuildError(category, getattr(merged, "id", "?"), reason)
             built.append(merged.build())
 
         # 2. Wrap in a Chain — empty list yields an empty no-op chain (never None).

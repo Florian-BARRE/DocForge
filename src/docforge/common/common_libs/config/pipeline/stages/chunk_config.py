@@ -72,38 +72,17 @@ class ChunkConfig(BaseModel):
     @model_validator(mode="after")
     def _set_default_split_method(self) -> ChunkConfig:
         """
-        Coerce split_method into a typed config instance.
+        Default split_method to a token-budget spec dict when unset.
 
-        When None: default to TokenBudgetConfig.
-        When a dict: validate via the discriminated union (triggers @register imports).
+        ``split_method`` stays a plain dict in the STORED config (this is the storage/discovery
+        shape). The pipeline builder's adapter is what types it into the node's split-method config
+        at build time. The config layer must NOT import the pipelines layer (DAG: config sits below
+        pipelines), so no typed coercion happens here — only the default fill.
         """
-        # Lazy imports to preserve the leaf constraint.
-        from typing import Annotated
-
-        from pydantic import Field as _F
-        from pydantic import TypeAdapter
-
-        from common_libs.pipeline.stages.s4_chunk.strategies.params import (
-            SemanticConfig,
-            SentenceWindowConfig,
-            TokenBudgetConfig,
-        )
-
         if self.split_method is None:
-            object.__setattr__(self, "split_method", TokenBudgetConfig())
-            return self
-
-        if isinstance(self.split_method, (TokenBudgetConfig, SemanticConfig, SentenceWindowConfig)):
-            # Already a typed instance — nothing to do.
-            return self
-
-        if isinstance(self.split_method, dict):
-            # Dict → validate via the typed discriminated union.
-            union = Annotated[
-                TokenBudgetConfig | SemanticConfig | SentenceWindowConfig,
-                _F(discriminator="id"),
-            ]
-            adapter = TypeAdapter(union)
-            object.__setattr__(self, "split_method", adapter.validate_python(self.split_method))
-
+            object.__setattr__(
+                self,
+                "split_method",
+                {"id": "token_budget", "max_tokens": 512, "overlap_blocks": 0},
+            )
         return self

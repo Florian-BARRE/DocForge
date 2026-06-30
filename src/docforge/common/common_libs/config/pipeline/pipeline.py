@@ -148,7 +148,6 @@ def build_default_pipeline(cfg: Any) -> PipelineConfig:
     from common_libs.providers.classifier.layout_labels.config import LayoutLabelsConfig
     from common_libs.providers.embed.bge_server.config import BgeServerEmbedConfig
     from common_libs.providers.parser.docling import DoclingConfig
-    from common_libs.pipeline.stages.s4_chunk.strategies.params import TokenBudgetConfig
 
     # 1. Parser chain
     # GPU usage is a deployment decision resolved from DOCLING_USE_GPU via merge_defaults()
@@ -176,12 +175,13 @@ def build_default_pipeline(cfg: Any) -> PipelineConfig:
         vlm_chain=vlm_chain,
     )
 
-    # 5. Chunking
+    # 5. Chunking — split_method is a plain spec dict (the builder's adapter types it at build time).
     chunk_cfg = ChunkConfig(
-        split_method=TokenBudgetConfig(
-            max_tokens=getattr(cfg, "CHUNK_MAX_TOKENS", 512),
-            overlap_blocks=getattr(cfg, "CHUNK_OVERLAP_BLOCKS", 0),
-        )
+        split_method={
+            "id": "token_budget",
+            "max_tokens": getattr(cfg, "CHUNK_MAX_TOKENS", 512),
+            "overlap_blocks": getattr(cfg, "CHUNK_OVERLAP_BLOCKS", 0),
+        }
     )
 
     # 6. Embedding chain

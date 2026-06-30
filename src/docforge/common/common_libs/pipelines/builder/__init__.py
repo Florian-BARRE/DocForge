@@ -11,6 +11,9 @@ from .splitter_builder import SplitterBuilder
 # ---------------------- Pipeline builder --------------------- #
 from .core import IngestPipelineBuilder
 
+# ---------------------- Config adapter ----------------------- #
+from .db_adapter import IngestBuildSpecAdapter
+
 # ---------------------- Public API --------------------------- #
 __all__ = [
     "PipelineBuildError",
@@ -21,4 +24,5 @@ __all__ = [
     "ChainBuilder",
     "SplitterBuilder",
     "IngestPipelineBuilder",
+    "IngestBuildSpecAdapter",
 ]
