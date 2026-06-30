@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
-from common_libs.pipeline.bricks.providers.llm.openai_compat.provider import OpenAICompatLLMProvider
+from common_libs.providers.llm.openai_compat.provider import OpenAICompatLLMProvider
 
 
 # ─── Helpers ────────────────────────────────────────────────────────────────────
@@ -82,7 +82,7 @@ def _patch_httpx(responses: list[MagicMock]):
     async def _aexit(*args, **kwargs):
         return None
 
-    patcher = patch("common_libs.pipeline.bricks.providers.llm.openai_compat.provider.httpx.AsyncClient")
+    patcher = patch("common_libs.providers.llm.openai_compat.provider.httpx.AsyncClient")
     return patcher, _aenter, _aexit, mock_client
 
 

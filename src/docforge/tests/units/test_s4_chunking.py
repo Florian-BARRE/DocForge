@@ -8,7 +8,9 @@ import pytest
 from common_libs.domain.ir.models.block import Block
 from common_libs.domain.ir.models.enums import BlockType
 from common_libs.domain.ir.models.provenance import Provenance
-from common_libs.pipeline.stages.s4_chunk.helpers import ChunkingHelpers
+from common_libs.pipelines.core.ingest.stages.chunk.steps.chunk.chunker.text_helpers import (
+    ChunkingHelpers,
+)
 
 
 def _prov(page: int = 0) -> Provenance:

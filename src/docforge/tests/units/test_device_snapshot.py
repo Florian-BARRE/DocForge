@@ -8,7 +8,7 @@ from __future__ import annotations
 
 # ====== Internal Project Imports ======
 from common_libs.providers.device import DeviceSnapshot
-from common_libs.pipeline.bricks.providers.device.manager import DeviceManager
+from backend.libs.device.manager import DeviceManager
 
 
 class TestDeviceSnapshot:

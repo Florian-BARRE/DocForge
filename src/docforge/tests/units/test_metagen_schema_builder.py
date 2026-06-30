@@ -14,7 +14,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from common_libs.domain.metadata.meta_field_spec import MetaFieldSpec
-from common_libs.pipeline.stages.s5b_metagen.schema_builder import MetagenSchemaBuilder
+from common_libs.pipelines.metagen.helpers.schema_builder import MetagenSchemaBuilder
 
 
 # ─── Helpers ────────────────────────────────────────────────────────────────────
