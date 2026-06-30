@@ -56,10 +56,5 @@ class Transition:
             return (not failed) and _score(output) < self.threshold
         return False
 
-    def carries_data(self) -> bool:
-        """Whether the target consumes the source's OUTPUT (sequential) vs the same input (alternative)."""
-        # An ``always`` edge is a successor (data flows); a conditional edge is an alternative branch.
-        return self.when == Condition.ALWAYS
-
 
 __all__ = ["Transition"]

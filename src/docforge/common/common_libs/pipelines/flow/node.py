@@ -1,26 +1,31 @@
 # ====== Code Summary ======
-# The two node types of the flow tree. Node is the shared base (an id + its kind). ActionNode is a
-# leaf — one elementary unit of work exposing ``execute``. GroupNode contains child nodes wired by
-# transitions; its behaviour (sequence vs escalation vs fallback) is NOT a subclass — it EMERGES from
-# the conditions on its transitions, so the same class expresses every control shape. A group exposes
-# its children, its entry node (where the flow starts), and the outgoing edges of any child.
+# The two node types of the flow tree. Node is the shared base: an id + its kind + the typed IO it
+# declares (Input/Output). ActionNode is a leaf — one elementary unit of work whose ``execute`` reads
+# its resolved Input + the injected services from the Context. GroupNode contains child nodes wired by
+# transitions; its behaviour (sequence vs escalation vs fallback) EMERGES from the conditions on its
+# edges, not from a subclass. A group turns its children's outputs into its own typed Output via
+# ``assemble`` (default: the terminal node's output — the natural shape for an escalation).
 
 # ====== Standard Library Imports ======
 from abc import ABC, abstractmethod
-from typing import Any, ClassVar
+from typing import ClassVar
 
 # ====== Third-Party Library Imports ======
 from loggerplusplus import LoggerClass
 
 # ====== Local Project Imports ======
+from .context import Context
 from .enums import NodeKind
+from .io import NodeInput, NodeOutput
 from .transition import Transition
 
 
 class Node(ABC, LoggerClass):
-    """Shared base of every flow node — an identity and its kind. Pure: it never drives itself."""
+    """Shared base of every flow node — an identity, its kind, and its typed IO contract."""
 
     KIND: ClassVar[NodeKind]
+    Input: ClassVar[type[NodeInput]] = NodeInput
+    Output: ClassVar[type[NodeOutput]] = NodeOutput
 
     def __init__(self, node_id: str) -> None:
         """
@@ -37,15 +42,16 @@ class ActionNode(Node):
     KIND = NodeKind.ACTION
 
     @abstractmethod
-    async def execute(self, data: Any) -> Any:
+    async def execute(self, ctx: Context) -> NodeOutput:
         """
-        Perform the action on its input and return its output.
+        Perform the action and return its typed output.
 
         Args:
-            data (Any): The node's input (its predecessor's output, or the group input).
+            ctx (Context): The resolved typed input (``ctx.input``) + the injected services
+                (``ctx.service("...")``).
 
         Returns:
-            Any: The node's output (may carry a ``score`` consumed by a ``score_below`` edge).
+            NodeOutput: The node's output (may carry a ``score`` consumed by a ``score_below`` edge).
         """
         ...
 
@@ -54,9 +60,10 @@ class GroupNode(Node):
     """
     A node containing child nodes wired by transitions; its control shape emerges from the edges.
 
-    All-``always`` edges -> a sequence; ``score_below`` edges -> an escalation (the old chain);
-    ``on_failure`` edges -> a fallback. The flow starts at ``entry`` and follows the first firing
-    outgoing edge of each node until a node has no firing edge (the terminal).
+    All-``always`` edges -> a sequence; ``score_below`` edges -> an escalation; ``on_failure`` edges ->
+    a fallback. The flow starts at ``entry`` and follows the first firing outgoing edge of each node
+    until a node has no firing edge (the terminal). ``assemble`` turns the children's outputs into the
+    group's typed Output.
     """
 
     KIND = NodeKind.GROUP
@@ -89,6 +96,23 @@ class GroupNode(Node):
     def outgoing(self, node_id: str) -> list[Transition]:
         """Return the transitions leaving a child node, in declaration order (first-firing wins)."""
         return [t for t in self.transitions if t.source == node_id]
+
+    def assemble(self, outputs: dict[str, NodeOutput], terminal: NodeOutput) -> NodeOutput:
+        """
+        Turn the children's outputs into the group's typed Output.
+
+        Default: the terminal node's output IS the group output (the natural shape for an escalation,
+        where every candidate shares the group's Output type). A sequence group that must combine
+        several children overrides this to build its Output from ``outputs``.
+
+        Args:
+            outputs (dict[str, NodeOutput]): Every child output collected during the flow, by node id.
+            terminal (NodeOutput): The output of the node where the flow terminated.
+
+        Returns:
+            NodeOutput: The group's output.
+        """
+        return terminal
 
 
 __all__ = ["Node", "ActionNode", "GroupNode"]
