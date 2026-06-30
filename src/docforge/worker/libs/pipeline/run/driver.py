@@ -1,10 +1,10 @@
 # ====== Code Summary ======
-# IngestRunner — the per-job driver that runs one document through the node-engine ingest pipeline.
-# It replaces the legacy DynamicStageEngine: given a job (the document identity + the collection's
-# stored PipelineConfig + metadata schema) it adapts the config into the builder's typed input, builds
-# the live pipeline + service registry, constructs a FRESH per-run WorkerEngineHooks, runs the engine,
-# and assembles the IngestRunResult the arq task reads. The infra (clients + repos + caches) is wired
-# once at worker bootstrap and reused across jobs; only the hooks + pipeline are per-run.
+# IngestRunner — the per-job driver that runs one document through the flow ingest pipeline. Given a
+# job (the document identity + the collection's stored PipelineConfig + metadata schema) it builds the
+# live flow pipeline + service registry via the FlowPipelineBuilder, constructs a FRESH per-run
+# WorkerEngineHooks, runs the FlowEngine, and assembles the IngestRunResult the arq task reads. The
+# infra (clients + repos + caches) is wired once at worker bootstrap and reused across jobs; only the
+# hooks + pipeline are per-run.
 
 # ====== Standard Library Imports ======
 import uuid
@@ -14,13 +14,10 @@ from typing import Any
 from loggerplusplus import LoggerClass
 
 # ====== Internal Project Imports ======
-from common_libs.pipelines import PipelineEngine, RunContext
-from common_libs.pipelines.builder import (
-    IngestBuildSpecAdapter,
-    IngestClients,
-    IngestPipelineBuilder,
-)
-from common_libs.pipelines.core.ingest.io import IngestInput
+from common_libs.pipelines.build import FlowPipelineBuilder
+from common_libs.pipelines.builder import IngestClients
+from common_libs.pipelines.flow import FlowEngine, RunContext
+from common_libs.pipelines.run_input import IngestRunInput
 
 # ====== Local Project Imports ======
 from .deps import IngestInfra
@@ -30,7 +27,7 @@ from .result import IngestRunResult
 
 class IngestRunner(LoggerClass):
     """
-    Drives one ingest job on the node engine (adapt config -> build -> run with the worker hooks).
+    Drives one ingest job on the flow engine (build -> run with the worker hooks -> assemble result).
 
     Built once at worker bootstrap with the long-lived infra; ``run`` is called per job. The pipeline
     is rebuilt fresh per run from the stable stored config (it carries live handles), and a fresh
@@ -78,7 +75,7 @@ class IngestRunner(LoggerClass):
             block_repo=block_repo,
             chunk_repo=chunk_repo,
         )
-        self._builder = IngestPipelineBuilder(defaults_cfg)
+        self._builder = FlowPipelineBuilder(defaults_cfg)
 
     async def run(
         self,
@@ -108,16 +105,13 @@ class IngestRunner(LoggerClass):
         Returns:
             IngestRunResult: Status + per-stage fingerprints + cache flags + chunk/embed tallies.
         """
-        # 1. Adapt the stored config into the builder's typed input.
-        spec = IngestBuildSpecAdapter.from_pipeline_config(pipeline_config, metadata_fields)
+        # 1. Build the live pipeline + its service registry from the stored config.
+        pipeline, registry = self._builder.build(pipeline_config, self._clients, metadata_fields)
 
-        # 2. Build the live pipeline + its service registry.
-        pipeline, registry = self._builder.build(spec, self._clients)
-
-        # 3. Fresh per-run hooks (lifecycle + cache state) and run input.
+        # 2. Fresh per-run hooks (lifecycle + cache state) and run input.
         hooks = WorkerEngineHooks(self._infra, doc_id, source_hash)
         run = RunContext(
-            run_input=IngestInput(
+            run_input=IngestRunInput(
                 original_bytes=original_bytes,
                 filename=filename,
                 doc_id=str(doc_id),
@@ -128,8 +122,8 @@ class IngestRunner(LoggerClass):
             services=registry,
         )
 
-        # 4. Run the engine with the worker lifecycle hooks, then assemble the result.
-        _output, report = await PipelineEngine(hooks).run(pipeline, run)
+        # 3. Run the engine with the worker lifecycle hooks, then assemble the result.
+        _output, report = await FlowEngine(hooks).run(pipeline, run)
         self.logger.info(f"Ingest run for doc_id={doc_id} finished: status={report.status}.")
         return self._build_result(report, hooks)
 
