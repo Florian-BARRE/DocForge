@@ -1,20 +1,2 @@
-# ---------------------- Enrich stage ------------------------- #
-from .core import IngestStageEnrich
-from .config import IngestStageEnrichConfig
-from .context import IngestStageEnrichContext
-from .errors import IngestStageEnrichError
-from .io import IngestStageEnrichInput, IngestStageEnrichOutput
-
-# ---------------------- Result contract ---------------------- #
-from .result import EnrichResult
-
-# ---------------------- Public API --------------------------- #
-__all__ = [
-    "IngestStageEnrich",
-    "IngestStageEnrichConfig",
-    "IngestStageEnrichContext",
-    "IngestStageEnrichError",
-    "IngestStageEnrichInput",
-    "IngestStageEnrichOutput",
-    "EnrichResult",
-]
+# The v1 stage/step nodes are deleted; the flow stage package replaces them. What survives here is
+# the REUSED pure domain logic imported by the flow nodes (and the builder) via full module path.

@@ -1,17 +1,1 @@
-# ---------------------- Chunk step --------------------------- #
-from .core import IngestStageChunkStepChunk
-from .context import IngestStageChunkStepChunkContext
-from .errors import IngestStageChunkStepChunkError
-from .io import (
-    IngestStageChunkStepChunkInput,
-    IngestStageChunkStepChunkOutput,
-)
-
-# ---------------------- Public API --------------------------- #
-__all__ = [
-    "IngestStageChunkStepChunk",
-    "IngestStageChunkStepChunkContext",
-    "IngestStageChunkStepChunkError",
-    "IngestStageChunkStepChunkInput",
-    "IngestStageChunkStepChunkOutput",
-]
+# The v1 chunk step node is deleted; only the chunker/ package (reused by the flow chunk node) remains.

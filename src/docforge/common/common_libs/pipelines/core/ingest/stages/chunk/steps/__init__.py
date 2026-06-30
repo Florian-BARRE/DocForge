@@ -1,17 +1,1 @@
-# ---------------------- Step family base --------------------- #
-from .base import (
-    IngestStageChunkStepBase,
-    IngestStageChunkStepContextBase,
-    IngestStageChunkStepError,
-)
-
-# ---------------------- Steps -------------------------------- #
-from .chunk import IngestStageChunkStepChunk
-
-# ---------------------- Public API --------------------------- #
-__all__ = [
-    "IngestStageChunkStepBase",
-    "IngestStageChunkStepContextBase",
-    "IngestStageChunkStepError",
-    "IngestStageChunkStepChunk",
-]
+# Only the structure-aware chunker package survives under chunk/ (the flow chunk node imports it).

@@ -1,18 +1,3 @@
-# ---------------------- Metagen stage ------------------------ #
-from .core import IngestStageMetagen
-from .config import IngestStageMetagenConfig
-from .context import IngestStageMetagenContext
-from .errors import IngestStageMetagenError
-from .io import IngestStageMetagenInput, IngestStageMetagenOutput
-from .result import IngestStageMetagenResult
-
-# ---------------------- Public API --------------------------- #
-__all__ = [
-    "IngestStageMetagen",
-    "IngestStageMetagenConfig",
-    "IngestStageMetagenContext",
-    "IngestStageMetagenError",
-    "IngestStageMetagenInput",
-    "IngestStageMetagenOutput",
-    "IngestStageMetagenResult",
-]
+# Only the per-stage Config class survives here (imported by full path by the builder adapter);
+# the v1 stage/step nodes are deleted — the flow stage package replaces them.
+from .config import *  # noqa: F401,F403 — re-export the stage Config

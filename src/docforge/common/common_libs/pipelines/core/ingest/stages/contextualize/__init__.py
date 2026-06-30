@@ -1,18 +1,3 @@
-# ---------------------- Contextualize stage (node manifest) -- #
-from .core import IngestStageContextualize
-from .config import IngestStageContextualizeConfig
-from .context import IngestStageContextualizeContext
-from .errors import IngestStageContextualizeError
-from .io import IngestStageContextualizeInput, IngestStageContextualizeOutput
-from .result import IngestStageContextualizeResult
-
-# ---------------------- Public API --------------------------- #
-__all__ = [
-    "IngestStageContextualize",
-    "IngestStageContextualizeConfig",
-    "IngestStageContextualizeContext",
-    "IngestStageContextualizeError",
-    "IngestStageContextualizeInput",
-    "IngestStageContextualizeOutput",
-    "IngestStageContextualizeResult",
-]
+# Only the per-stage Config class survives here (imported by full path by the builder adapter);
+# the v1 stage/step nodes are deleted — the flow stage package replaces them.
+from .config import *  # noqa: F401,F403 — re-export the stage Config
