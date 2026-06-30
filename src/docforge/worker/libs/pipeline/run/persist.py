@@ -1,10 +1,10 @@
 # ====== Code Summary ======
-# IngestPersistHelpers — the Postgres side-effects of the ingest lifecycle, ported from the legacy
-# s012_persist + trace_flush and retargeted to the new node-engine stage outputs. It owns: building
-# the document's implicit_meta (file-intrinsic + IR-derived stats + S3 refs + fingerprints + chain
-# lineage), persisting the IR blocks and flipping the document to the intermediate 'parsed' status
-# after the enrich stage, flushing the embed-chain traces after embed/index, and the terminal
-# 'done' / 'failed' document transitions. Pure I/O helper over the injected IngestInfra.
+# IngestPersistHelpers — the Postgres side-effects of the ingest lifecycle, retargeted to the v2 flow
+# stage outputs. It owns: building the document's implicit_meta (file-intrinsic layer from the ingest
+# output + IR-derived stats + S3 refs + fingerprints + chain lineage + enrich telemetry), persisting
+# the IR blocks and flipping the document to the intermediate 'parsed' status after the enrich stage,
+# flushing the embed-chain traces after embed/index, and the terminal 'done' / 'failed' transitions.
+# Pure I/O helper over the injected IngestInfra.
 
 # ====== Standard Library Imports ======
 import uuid
@@ -14,9 +14,6 @@ from typing import Any
 from loggerplusplus import loggerplusplus
 
 # ====== Internal Project Imports ======
-from common_libs.pipelines.core.ingest.stages.enrich.result import EnrichResult
-from common_libs.pipelines.core.ingest.stages.ingest.io import IngestStageIngestOutput
-from common_libs.pipelines.core.ingest.stages.parse.result import ParseResult
 from common_libs.storage.s3.helpers import S3Helpers
 
 # ====== Local Project Imports ======
@@ -39,26 +36,26 @@ class IngestPersistHelpers:
 
     @staticmethod
     def build_implicit_meta(
-        ingest_output: IngestStageIngestOutput,
+        ingest_output: Any,
         ir: Any,
-        parse_result: ParseResult,
+        markdown_key: str | None,
         ingest_fp: str,
         parse_fp: str,
         ir_key: str,
-        enrich_result: EnrichResult | None,
+        enrich_output: Any | None,
         enrich_fp: str | None,
     ) -> dict[str, Any]:
         """
         Assemble the document's implicit_meta from the ingest / parse / enrich artefacts.
 
         Args:
-            ingest_output (IngestStageIngestOutput): The ingest stage output (file-intrinsic meta).
+            ingest_output (IngestStageOutput): The ingest stage output (carries implicit_meta).
             ir (DocumentIR): The final IR (enriched when enrich ran).
-            parse_result (ParseResult): The parse artefact (markdown key).
+            markdown_key (str | None): The markdown view key from the parse stage output.
             ingest_fp (str): Ingest stage fingerprint.
             parse_fp (str): Parse stage fingerprint.
             ir_key (str): S3 key of the (pre-enrichment) IR JSON.
-            enrich_result (EnrichResult | None): The enrich stage output, or None when skipped.
+            enrich_output (EnrichStageOutput | None): The enrich stage output, or None when skipped.
             enrich_fp (str | None): Enrich stage fingerprint, or None.
 
         Returns:
@@ -73,22 +70,22 @@ class IngestPersistHelpers:
             "s0_fingerprint": ingest_fp,
             "s1_fingerprint": parse_fp,
             "ir_key": ir_key,
-            "markdown_key": parse_result.markdown_key,
+            "markdown_key": markdown_key,
             "chain_traces": [t.model_dump() for t in ir.chain_traces],
             "quality_score": ir.quality_score,
         }
 
-        # 2. Enrichment layer (counters + provider-cache hits) when the enrich stage ran.
-        if enrich_result is not None and enrich_fp is not None:
+        # 2. Enrichment telemetry (counters + provider-cache hits) when the enrich stage ran.
+        if enrich_output is not None and enrich_fp is not None:
             meta["s2_fingerprint"] = enrich_fp
-            meta["figures_enriched"] = enrich_result.figures_processed
-            meta["ocr_calls"] = enrich_result.ocr_calls
-            meta["vlm_calls"] = enrich_result.vlm_calls
-            meta["chart_extractions"] = enrich_result.chart_extractions
-            meta["ocr_cache_hits"] = enrich_result.ocr_cache_hits
-            meta["vlm_cache_hits"] = enrich_result.vlm_cache_hits
-            meta["classifier_calls"] = enrich_result.classifier_calls
-            meta["classifier_cache_hits"] = enrich_result.classifier_cache_hits
+            meta["figures_enriched"] = enrich_output.figures_processed
+            meta["ocr_calls"] = enrich_output.ocr_calls
+            meta["vlm_calls"] = enrich_output.vlm_calls
+            meta["chart_extractions"] = enrich_output.chart_extractions
+            meta["ocr_cache_hits"] = enrich_output.ocr_cache_hits
+            meta["vlm_cache_hits"] = enrich_output.vlm_cache_hits
+            meta["classifier_calls"] = enrich_output.classifier_calls
+            meta["classifier_cache_hits"] = enrich_output.classifier_cache_hits
         return meta
 
     @classmethod
@@ -97,12 +94,11 @@ class IngestPersistHelpers:
         infra: IngestInfra,
         doc_id: uuid.UUID,
         source_hash: str,
-        ingest_output: IngestStageIngestOutput,
-        parse_result: ParseResult,
-        ir: Any,
+        ingest_output: Any,
+        parse_output: Any,
+        enrich_output: Any,
         ingest_fp: str,
         parse_fp: str,
-        enrich_result: EnrichResult | None,
         enrich_fp: str | None,
         parse_cache_hit: bool,
         enrich_cache_hit: bool,
@@ -118,18 +114,20 @@ class IngestPersistHelpers:
             infra (IngestInfra): The worker infra bundle.
             doc_id (uuid.UUID): The document id.
             source_hash (str): Content address (drives the IR S3 key).
-            ingest_output (IngestStageIngestOutput): The ingest stage output.
-            parse_result (ParseResult): The parse artefact.
-            ir (DocumentIR): The final (enriched) IR whose blocks are persisted.
+            ingest_output (IngestStageOutput): The ingest stage output (implicit_meta source).
+            parse_output (ParseStageOutput): The parse stage output (markdown key).
+            enrich_output (EnrichStageOutput): The enrich stage output (the final enriched IR + counters).
             ingest_fp (str): Ingest stage fingerprint.
             parse_fp (str): Parse stage fingerprint.
-            enrich_result (EnrichResult | None): The enrich stage output, or None when skipped.
             enrich_fp (str | None): Enrich stage fingerprint, or None.
             parse_cache_hit (bool): Whether the parse stage was a cache hit.
             enrich_cache_hit (bool): Whether the enrich stage was a cache hit.
         """
-        # 1. Blocks already exist when both parse and enrich were served from cache.
-        blocks_already_in_db = parse_cache_hit and (enrich_result is None or enrich_cache_hit)
+        # 1. The final enriched IR is the one whose blocks are persisted.
+        ir = enrich_output.ir
+
+        # 2. Blocks already exist when both parse and enrich were served from cache.
+        blocks_already_in_db = parse_cache_hit and enrich_cache_hit
         async with infra.postgres.session() as session:
             if not blocks_already_in_db:
                 await infra.block_repo.bulk_insert(
@@ -144,11 +142,11 @@ class IngestPersistHelpers:
                 implicit_meta=cls.build_implicit_meta(
                     ingest_output=ingest_output,
                     ir=ir,
-                    parse_result=parse_result,
+                    markdown_key=parse_output.markdown_key,
                     ingest_fp=ingest_fp,
                     parse_fp=parse_fp,
                     ir_key=S3Helpers.key_ir(source_hash, parse_fp),
-                    enrich_result=enrich_result,
+                    enrich_output=enrich_output,
                     enrich_fp=enrich_fp,
                 ),
             )
@@ -163,7 +161,7 @@ class IngestPersistHelpers:
         Args:
             infra (IngestInfra): The worker infra bundle.
             doc_id (uuid.UUID): The document id.
-            embed_result (IngestStageEmbedIndexResult | None): The embed/index stage output.
+            embed_result (EmbedIndexResult | None): The embed/index stage result.
         """
         # 1. Nothing to flush when embed/index did not run or produced no traces.
         if embed_result is None or not embed_result.chain_traces:
