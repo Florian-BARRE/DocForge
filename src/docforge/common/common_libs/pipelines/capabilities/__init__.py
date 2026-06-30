@@ -6,8 +6,9 @@ from .caches import ProviderCallCache, compute_call_fingerprint, compute_fingerp
 
 # ---------------------- Public API --------------------------- #
 # Reusable pipeline mechanisms injected as services into the stages: the provider escalation Chain,
-# the cross-document ProviderCallCache, and the Merkle fingerprint. Tracking models live under
-# .tracking (imported directly where needed). Provider IMPLEMENTATIONS live in common_libs.providers.
+# the cross-document ProviderCallCache, and the Merkle fingerprint. Execution feedback is the engine's
+# NodeReport tree (engine/report.py), not a tracking collector. Provider IMPLEMENTATIONS live in
+# common_libs.providers.
 __all__ = [
     "Chain",
     "ChainOutcome",

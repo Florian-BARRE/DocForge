@@ -10,9 +10,6 @@ from .resolver import Resolver
 # ---------------------- Feedback tree ------------------------ #
 from .report import ErrorInfo, NodeReport, ReportStatus
 
-# ---------------------- Caching seam ------------------------- #
-from .cache import FingerprintPort, NullFingerprint
-
 # ---------------------- Public API --------------------------- #
 __all__ = [
     "PipelineEngine",
@@ -21,6 +18,4 @@ __all__ = [
     "NodeReport",
     "ReportStatus",
     "ErrorInfo",
-    "FingerprintPort",
-    "NullFingerprint",
 ]

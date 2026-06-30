@@ -7,7 +7,8 @@
 # immutable provider list set at construction time.
 #
 # Per-attempt execution, score extraction, and log emission are delegated to
-# ChainRunHelpers (run_helpers.py) to keep this file under 200 lines.
+# ChainRunHelpers (run_helpers.py). REFACTOR EXCEPTION (~220 lines): the remainder is the cohesive
+# Chain class + its public API docstrings; splitting it further would scatter one contract.
 
 # ====== Standard Library Imports ======
 from collections.abc import Awaitable, Callable
