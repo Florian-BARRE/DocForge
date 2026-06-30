@@ -56,6 +56,8 @@ metadata:
 - [Search result-count semantics](search-result-count-semantics.md) — request top_k is authoritative; candidate_k = pre-rerank pool (clamped >= top_k); top_n + grouping.group_by REMOVED (extra="ignore"); enabled+empty rerank chain → 422 via PipelineChecks._check_rerank_chain.
 - [Chain failure-policy model](chain-failure-policy.md) — CHUNK 2: gate failure_policy(raise/continue)+on_degraded; ChainExhaustedError; max_duration_ms now enforced; per-stage defaults (parse/embed=raise, enrich=continue); degraded flag in ChainTrace; reindex strips policy keys.
 - [Dynamic stage architecture](dynamic-stage-architecture.md) — Pipeline→Stage→Step→Brick self-describing refactor (strangler); PR-1 DONE = base contracts+context+tracking+7 adapters, UNWIRED (worker still uses legacy StageEngine); forced ClassVars, AFTER-topo ordering, PR sequence.
+- [Flow-engine stage port](flow-engine-stage-port.md) — branch rewrite/pipelines-node-engine: porting a v1 stage to common_libs/pipelines/flow (FromParent→FromGroupInput, FromSibling→FromNode, Step→ActionNode w/ ctx.service); exemplars ingest/parse; inter-stage spine; offline FlowEngine validation recipe.
+- [Flow engine stage ports](flow-engine-stage-ports.md) — the NEW generic FlowEngine (`common_libs/pipelines/` plural): ActionNode/GroupNode/Transition, inter-stage binding spine, v1-reuse port pattern; ingest+parse+chunk done.
 
 ## Stage file map
 
