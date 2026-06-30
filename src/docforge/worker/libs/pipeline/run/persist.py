@@ -126,7 +126,10 @@ class IngestPersistHelpers:
         # 1. The final enriched IR is the one whose blocks are persisted.
         ir = enrich_output.ir
 
-        # 2. Blocks already exist when both parse and enrich were served from cache.
+        # 2. Blocks already exist when both parse and enrich were served from cache. (This persist runs
+        #    only on a fresh enrich run — the engine short-circuits after_node on an enrich cache hit;
+        #    that is sound because an enrich hit means THIS doc_id already ran enrich to 'done' on a
+        #    prior miss, which persisted the blocks + 'parsed' + implicit_meta then.)
         blocks_already_in_db = parse_cache_hit and enrich_cache_hit
         async with infra.postgres.session() as session:
             if not blocks_already_in_db:

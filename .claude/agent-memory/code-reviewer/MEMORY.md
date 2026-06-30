@@ -65,6 +65,7 @@ metadata:
 - [metagen_s5b](metagen_s5b.md) — S5b LLM-metadata feature review map: chunk_repo DO UPDATE is a verified-safe superset; doc_fields-before-user merge; generated-field admission exemption; recurring hygiene gaps (missing .env vars, nullable-enum)
 - [stray_claude_dir_under_src](stray_claude_dir_under_src.md) — multi-agent batches can write agent-memory to src/**/.claude/ (NOT gitignored) instead of repo-root; scan git status for `?? src/**/.claude/`
 - [warning_swallowed_on_unmount](warning_swallowed_on_unmount.md) — React edit form that setWarning() then calls onSaved() which closes/unmounts the form never shows the warning; lift it to a persisting parent surface
+- [fingerprint_stage_flag_gap](fingerprint_stage_flag_gap.md) — v2 flow node-cache: a stage-level flag (enrich.chart_to_data) not folded into the Merkle fingerprint → stale cached enrich output; enumerate every stage ctor arg vs fingerprint_params/chain signatures
 
 > Component-scoped memory lives with the component agents: **`mcp`** agent (`agent-memory/mcp/`) for
 > the `src/mcp/` HTTP-client invariant + REST endpoint map; **`bge-server`** agent

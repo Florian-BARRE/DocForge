@@ -63,6 +63,9 @@ class EnrichStage(GroupNode):
             vlm_enabled (bool): Whether a VLM chain is wired (drives the classify routing decision).
             chart_to_data (bool): The ``enrich.chart_to_data`` flag (drives the chart-schema decision).
         """
+        # Retained for the node-cache fingerprint: it is a plain flag (not a chain), so the worker
+        # cannot reach it via a chain signature — fingerprint_params surfaces it explicitly.
+        self._chart_to_data = chart_to_data
         super().__init__(
             "enrich",
             [
@@ -118,6 +121,19 @@ class EnrichStage(GroupNode):
             vlm_cache_hits=vlm.vlm_cache_hits,
             chart_extractions=chart.chart_extractions,
         )
+
+    def fingerprint_params(self) -> dict:
+        """
+        Surface the enrich stage's plain-flag knobs as a node-cache key dimension.
+
+        The ocr/vlm/classifier provider identity is folded by the worker via the injected chain
+        signatures, but ``chart_to_data`` is a plain boolean (not a chain), so it must be surfaced
+        here — otherwise toggling it serves a stale enriched IR from the node cache on re-ingest.
+
+        Returns:
+            dict: ``{"chart_to_data": <bool>}``.
+        """
+        return {"chart_to_data": bool(self._chart_to_data)}
 
 
 __all__ = ["EnrichStage", "EnrichStageInput", "EnrichStageOutput"]

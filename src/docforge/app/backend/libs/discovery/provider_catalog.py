@@ -68,7 +68,7 @@ class ProviderCatalog:
     performs NO network I/O.
     """
 
-    logger_registered: bool = False
+    _registered: bool = False
 
     def __new__(cls, *args: object, **kwargs: object) -> None:
         """Block instantiation — this is a static-only catalog."""
@@ -85,7 +85,7 @@ class ProviderCatalog:
         ``@register``-decorated in the pipelines layer).
         """
         # 1. Already bootstrapped in this process → the registry is permanent, nothing to do.
-        if cls.logger_registered:
+        if cls._registered:
             return
         # 2. Fire every provider category's @register decorators.
         for package in _AUTO_IMPORT_PACKAGES:
@@ -93,7 +93,7 @@ class ProviderCatalog:
         # 3. Register the three chunk split-method configs under "split_method" (plain co-located
         #    configs in the pipelines layer — the app registers them so the catalog is complete).
         cls.__register_split_methods()
-        cls.logger_registered = True
+        cls._registered = True
 
     @staticmethod
     def __register_split_methods() -> None:

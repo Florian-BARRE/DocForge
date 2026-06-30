@@ -99,7 +99,14 @@ class FlowPipelineBuilder(LoggerClass):
                 continue
             merged = provider.merge_defaults(self._defaults)
             parsers.append(node_cls(node_id=getattr(provider, "id"), use_gpu=getattr(merged, "_use_gpu", False)))
-        return parsers or [DoclingParse()]
+        if parsers:
+            return parsers
+        # Fallback to a default Docling candidate when no KNOWN parser was configured — still resolve
+        # the deployment GPU flag from the defaults (never hardcode CPU on a GPU host).
+        from common_libs.providers.parser.docling.config import DoclingConfig
+
+        use_gpu = bool(getattr(DoclingConfig().merge_defaults(self._defaults), "_use_gpu", False))
+        return [DoclingParse(use_gpu=use_gpu)]
 
     def __build_stages(self, spec: Any, chains: dict[str, Any], parsers: list) -> list:
         """Instantiate the 7 stages with their config + the built parsers/chain-derived flags."""
