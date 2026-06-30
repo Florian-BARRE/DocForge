@@ -1,16 +1,3 @@
-# ---------------------- Pipeline ----------------------------- #
-from .core import IngestPipeline
-
-# ---------------------- Context / IO / errors ---------------- #
-from .context import IngestContext
-from .errors import IngestError
-from .io import IngestInput, IngestOutput
-
-# ---------------------- Public API --------------------------- #
-__all__ = [
-    "IngestPipeline",
-    "IngestContext",
-    "IngestError",
-    "IngestInput",
-    "IngestOutput",
-]
+# The v1 IngestPipeline node + its context/io/errors are deleted (ingestion runs on the flow engine).
+# This package now only carries the REUSED pieces under stages/* (pure helpers + per-stage Config
+# classes) that the flow stage nodes + the builder import by their full module path.
