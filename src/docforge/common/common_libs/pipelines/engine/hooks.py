@@ -4,9 +4,14 @@
 # all-no-op default so the engine runs end-to-end with no infrastructure (used by unit tests and the
 # standalone lab). A deployment (the worker) subclasses it to reproduce the real lifecycle, keeping
 # all that I/O OUT of the nodes themselves.
+#
+# The middleware applies to EVERY node (a NODE_CACHED stage is cached as one unit; a gate can veto a
+# whole stage), so the per-node hooks receive the node's resolved Context (its typed Input + services)
+# — the worker needs it to compute the cache fingerprint (upstream fingerprints + chain signatures),
+# to read a stage's input on a skip, and to persist a stage's output.
 
 # ====== Internal Project Imports ======
-from ..base import AbstractNode, NodeOutput, RunContext
+from ..base import AbstractNode, ContextBase, NodeOutput, RunContext
 
 
 class EngineHooks:
@@ -17,9 +22,11 @@ class EngineHooks:
     Concrete deployments override only the methods they need:
 
     - ``prepare``: one-time setup before the root runs (e.g. download original bytes).
-    - ``should_run`` / ``on_skipped``: a per-node gate (e.g. skip embed/index without a collection).
+    - ``should_run`` / ``on_skipped``: a per-node gate (e.g. skip the embed/index stage without a
+      collection, persisting chunks to Postgres only).
     - ``before_node`` / ``after_node``: per-node epilogues (e.g. mark 'running', persist artefacts).
-    - ``cache_load`` / ``cache_store``: node-cache read/write keyed by the node fingerprint.
+    - ``cache_load`` / ``cache_store``: node-cache read/write keyed by the node fingerprint (only
+      consulted for ``CachePolicy.NODE_CACHED`` nodes).
     - ``on_error`` / ``mark_failed`` / ``mark_done``: failure + terminal lifecycle.
     """
 
@@ -27,27 +34,33 @@ class EngineHooks:
         """One-time setup before the root node runs."""
         return None
 
-    async def should_run(self, node: AbstractNode, run: RunContext) -> bool:
+    async def should_run(self, node: AbstractNode, ctx: ContextBase, run: RunContext) -> bool:
         """Return False to skip a node (the engine then calls ``on_skipped``)."""
         return True
 
-    async def on_skipped(self, node: AbstractNode, run: RunContext) -> None:
-        """Side effect for a node skipped by the gate (e.g. a PG-only persistence fallback)."""
+    async def on_skipped(self, node: AbstractNode, ctx: ContextBase, run: RunContext) -> None:
+        """Side effect for a node skipped by the gate (e.g. a Postgres-only persistence fallback)."""
         return None
 
-    async def before_node(self, node: AbstractNode, run: RunContext) -> None:
-        """Run immediately before a leaf node executes."""
+    async def before_node(self, node: AbstractNode, ctx: ContextBase, run: RunContext) -> None:
+        """Run immediately before a node executes (its children, or a leaf body)."""
         return None
 
-    async def after_node(self, node: AbstractNode, output: NodeOutput, run: RunContext) -> None:
-        """Run immediately after a leaf node executes successfully."""
+    async def after_node(
+        self, node: AbstractNode, ctx: ContextBase, output: NodeOutput, run: RunContext
+    ) -> None:
+        """Run immediately after a node executes successfully."""
         return None
 
-    async def cache_load(self, node: AbstractNode, run: RunContext) -> NodeOutput | None:
+    async def cache_load(
+        self, node: AbstractNode, ctx: ContextBase, run: RunContext
+    ) -> NodeOutput | None:
         """Load a node's cached output. Return the output on a hit, None on a miss."""
         return None
 
-    async def cache_store(self, node: AbstractNode, output: NodeOutput, run: RunContext) -> None:
+    async def cache_store(
+        self, node: AbstractNode, ctx: ContextBase, output: NodeOutput, run: RunContext
+    ) -> None:
         """Persist a freshly-run node's output under its fingerprint."""
         return None
 

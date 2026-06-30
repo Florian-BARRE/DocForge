@@ -132,12 +132,9 @@ class PipelineEngine(LoggerClass):
             services = Resolver.resolve_services(node, scoped_registry)
             ctx = node.Context(node_input, services, parent_ctx)
 
-            # 3. Composite -> drive children (it re-wraps a failing child in node.Error); leaf ->
-            # run the work through the middleware (its execute may raise its own typed error).
-            if isinstance(node, CompositeNode):
-                output = await self._run_composite(node, ctx, scoped_registry, run, report)
-            else:
-                output = await self._run_leaf(node, ctx, run, report)
+            # 3. Gate / node-cache / hook middleware wraps EVERY node (so a NODE_CACHED stage is
+            # cached as one unit and a gate can veto a whole stage), then dispatches composite/leaf.
+            output = await self._run_with_middleware(node, ctx, scoped_registry, run, report)
             if report.status == ReportStatus.PENDING:
                 report.status = ReportStatus.OK
         except PipelineError as exc:
@@ -211,44 +208,56 @@ class PipelineEngine(LoggerClass):
 
         return node.aggregate(outputs)
 
-    async def _run_leaf(
+    async def _run_with_middleware(
         self,
         node: AbstractNode,
         ctx: ContextBase,
+        registry: ServiceRegistry,
         run: RunContext,
         report: NodeReport,
     ) -> NodeOutput | None:
         """
-        Run a leaf node through the gate / cache / hook middleware.
+        Run any node through the gate / node-cache / hook middleware.
+
+        Applies uniformly to composites and leaves: a vetoed node is skipped, a NODE_CACHED node may
+        hit the cache (short-circuiting its whole subtree, for a stage), otherwise the node's body
+        runs (children for a composite, ``execute`` for a leaf) bracketed by before/after hooks and a
+        cache store. The node's resolved ``ctx`` is threaded to every hook (the worker needs it to
+        fingerprint, gate, and persist).
 
         Args:
-            node (AbstractNode): The leaf node.
-            ctx (ContextBase): The node's resolved context (input + services), passed to ``execute``.
+            node (AbstractNode): The node to run.
+            ctx (ContextBase): The node's resolved context (typed input + services).
+            registry (ServiceRegistry): The registry visible to a composite's children.
             run (RunContext): The run-wide state.
-            report (NodeReport): The leaf's report (status set here for skip/cache).
+            report (NodeReport): The node's report (status set here for skip/cache).
 
         Returns:
-            NodeOutput | None: The leaf's output, or None when skipped.
+            NodeOutput | None: The node's output, or None when skipped.
         """
         # 1. Gate — a vetoed node is skipped (no cache read, no run).
-        if not await self._hooks.should_run(node, run):
+        if not await self._hooks.should_run(node, ctx, run):
             report.status = ReportStatus.SKIPPED
-            await self._hooks.on_skipped(node, run)
+            await self._hooks.on_skipped(node, ctx, run)
             return None
 
-        # 2. Node cache — a hit short-circuits the run.
-        if getattr(node.SPEC, "cache_policy", None) == CachePolicy.NODE_CACHED:
-            cached = await self._hooks.cache_load(node, run)
+        # 2. Node cache — a hit short-circuits the node and its whole subtree.
+        node_cached = getattr(node.SPEC, "cache_policy", None) == CachePolicy.NODE_CACHED
+        if node_cached:
+            cached = await self._hooks.cache_load(node, ctx, run)
             if cached is not None:
                 report.status = ReportStatus.CACHE_HIT
                 return cached
 
-        # 3. Miss — pre-run prep, execute (the node reads its context), then store + post-run.
-        await self._hooks.before_node(node, run)
-        output = await node.execute(ctx)
-        if getattr(node.SPEC, "cache_policy", None) == CachePolicy.NODE_CACHED:
-            await self._hooks.cache_store(node, output, run)
-        await self._hooks.after_node(node, output, run)
+        # 3. Miss — pre-run hook, run the body (children or leaf), store, post-run hook.
+        await self._hooks.before_node(node, ctx, run)
+        if isinstance(node, CompositeNode):
+            output = await self._run_composite(node, ctx, registry, run, report)
+        else:
+            output = await node.execute(ctx)
+        if node_cached:
+            await self._hooks.cache_store(node, ctx, output, run)
+        await self._hooks.after_node(node, ctx, output, run)
         return output
 
     @staticmethod
