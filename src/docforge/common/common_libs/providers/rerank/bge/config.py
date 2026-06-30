@@ -15,9 +15,7 @@
 # ====== Standard Library Imports ======
 from __future__ import annotations
 
-import socket
 from typing import Any, ClassVar, Literal
-from urllib.parse import urlparse
 
 # ====== Third-Party Library Imports ======
 from pydantic import BaseModel, Field, model_validator
@@ -101,23 +99,16 @@ class BgeRerankerConfig(BaseModel):
     @classmethod
     def availability(cls, cfg: Any) -> tuple[bool, str]:
         """
-        Probe the structural-default bge server for reachability.
+        Static capability description (no network probe — reachability is /monitoring's concern).
 
         Args:
-            cfg: Unused — the per-collection base_url is not visible here.
+            cfg: Unused — the per-collection base_url decides where the provider points.
 
         Returns:
-            tuple[bool, str]: (is_available, human-readable description).
+            tuple[bool, str]: (always True, a static human-readable description).
         """
         _ = cfg
-        base_url = "http://bge_server:80"
-        try:
-            p = urlparse(base_url)
-            host, port = p.hostname or "bge_server", p.port or 80
-            with socket.create_connection((host, port), timeout=1):
-                return True, "BGE reranker · http://bge_server:80"
-        except OSError:
-            return False, "bge reranker not reachable at http://bge_server:80"
+        return True, "BGE reranker · cross-encoder (TEI contract)"
 
 
 __all__ = ["BgeRerankerConfig"]

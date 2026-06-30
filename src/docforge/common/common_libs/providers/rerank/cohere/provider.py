@@ -10,8 +10,6 @@ from __future__ import annotations
 import httpx
 from loggerplusplus import LoggerClass
 
-_COHERE_RERANK_URL = "https://api.cohere.com/v2/rerank"
-
 
 class CohereRerankProvider(LoggerClass):
     """
@@ -25,17 +23,19 @@ class CohereRerankProvider(LoggerClass):
         _model (str): Cohere rerank model identifier (e.g. ``rerank-v3.5``).
     """
 
-    def __init__(self, api_key: str, model: str) -> None:
+    def __init__(self, api_key: str, model: str, base_url: str = "https://api.cohere.com/v2/rerank") -> None:
         """
         Initialize the Cohere reranking provider.
 
         Args:
             api_key (str): Cohere API key — required, must not be empty.
             model (str): Cohere rerank model (e.g. ``rerank-v3.5``).
+            base_url (str): Cohere rerank endpoint (from the per-collection config; vendor default).
         """
         LoggerClass.__init__(self)
         self._api_key = api_key
         self._model = model
+        self._base_url = base_url
         self.logger.info(f"CohereRerankProvider initialized — model={self._model}")
 
     async def rerank(self, query: str, texts: list[str]) -> list[float]:
@@ -62,7 +62,7 @@ class CohereRerankProvider(LoggerClass):
         # 1. Send all candidates to Cohere in one request
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.post(
-                _COHERE_RERANK_URL,
+                self._base_url,
                 headers={
                     "Authorization": f"Bearer {self._api_key}",
                     "Content-Type": "application/json",

@@ -42,6 +42,10 @@ class CohereRerankConfig(BaseModel):
     id: Literal["cohere_rerank"] = "cohere_rerank"
     api_key: str = Field(default="", description="Cohere API key — REQUIRED.")
     model: str = Field(default="rerank-v3.5", description="Cohere rerank model.")
+    base_url: str = Field(
+        default="https://api.cohere.com/v2/rerank",
+        description="Cohere rerank endpoint — the vendor default, overridable per-collection (proxy).",
+    )
 
     @model_validator(mode="before")
     @classmethod
@@ -64,7 +68,7 @@ class CohereRerankConfig(BaseModel):
                 "CohereRerankConfig.build(): api_key is required for the Cohere Rerank API."
             )
         from common_libs.providers.rerank.cohere.provider import CohereRerankProvider  # lazy runtime brick (L3)
-        return CohereRerankProvider(api_key=self.api_key, model=self.model)
+        return CohereRerankProvider(api_key=self.api_key, model=self.model, base_url=self.base_url)
 
     def merge_defaults(self, cfg: Any) -> CohereRerankConfig:
         """

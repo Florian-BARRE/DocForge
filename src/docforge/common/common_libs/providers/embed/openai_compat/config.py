@@ -21,9 +21,6 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from common_libs.providers.embed.openai_compat.provider import OpenAICompatEmbedProvider
 
-# Default cloud endpoint used when an external config omits base_url.
-_DEFAULT_EXTERNAL_BASE_URL = "https://api.openai.com/v1"
-
 
 @register("embed")
 class OpenAICompatEmbedConfig(BaseModel):
@@ -45,7 +42,9 @@ class OpenAICompatEmbedConfig(BaseModel):
     locality: Literal["local", "external"] = Field(
         default="local", description="'local' (self-hosted, api_key optional) or 'external' (cloud, api_key required)."
     )
-    base_url: str = Field(default="", description="Server URL (empty external → OpenAI default).")
+    base_url: str = Field(
+        default="", description="Server URL (per-collection) — required, no implicit cloud default."
+    )
     api_key: str = Field(default="", description="Bearer token — required when locality='external'.")
     model: str = Field(default="text-embedding-3-large", description="Embedding model.")
     batch_size: int = Field(default=32, ge=1, le=256, description="Max texts per batch.")
@@ -59,22 +58,26 @@ class OpenAICompatEmbedConfig(BaseModel):
 
     def build(self) -> OpenAICompatEmbedProvider:
         """
-        Instantiate the provider; require api_key for external, base_url for local.
+        Instantiate the provider; require base_url (per-collection), and api_key for external.
 
         Raises:
-            ValueError: When external without api_key, or local without base_url.
+            ValueError: When base_url is missing, or external without api_key.
 
         Returns:
             OpenAICompatEmbedProvider: Configured provider.
         """
-        base_url = self.base_url or (_DEFAULT_EXTERNAL_BASE_URL if self.locality == "external" else "")
+        # base_url is ALWAYS per-collection — there is no implicit cloud default (never silently
+        # point an "openai_compat" provider at api.openai.com).
+        if not self.base_url:
+            raise ValueError(
+                "OpenAICompatEmbedConfig.build(): base_url is required (per-collection) — "
+                "no implicit cloud default."
+            )
         if self.locality == "external" and not self.api_key:
             raise ValueError("OpenAICompatEmbedConfig.build(): api_key is required for locality='external'.")
-        if self.locality == "local" and not base_url:
-            raise ValueError("OpenAICompatEmbedConfig.build(): base_url is required for locality='local'.")
         from common_libs.providers.embed.openai_compat.provider import OpenAICompatEmbedProvider  # lazy runtime brick (L3)
         return OpenAICompatEmbedProvider(
-            base_url=base_url,
+            base_url=self.base_url,
             locality=self.locality,
             api_key=self.api_key,
             model=self.model,

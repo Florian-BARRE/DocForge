@@ -7,9 +7,7 @@
 # ====== Standard Library Imports ======
 from __future__ import annotations
 
-import socket
-from typing import Any, ClassVar, Literal
-from urllib.parse import urlparse
+from typing import TYPE_CHECKING, Any, ClassVar, Literal
 
 # ====== Third-Party Library Imports ======
 from pydantic import BaseModel, Field, model_validator
@@ -20,14 +18,8 @@ from common_libs.config.pipeline.spec_utils import flatten_provider_spec as _fla
 
 # ====== Local Project Imports ======
 # bge_server speaks the TEI /rerank contract → it reuses the same HTTP client provider.
-from typing import TYPE_CHECKING
-
 if TYPE_CHECKING:
     from common_libs.providers.rerank.bge.provider import BgeRerankProvider
-
-# Canonical URL of the local bge service (compose service `bge_server`) — a structural default
-# (a service name, not a secret); a collection may override it per-collection.
-_DEFAULT_BGE_URL = "http://bge_server:80"
 
 
 @register("rerank")
@@ -53,7 +45,10 @@ class BgeServerRerankConfig(BaseModel):
     locality: Literal["local", "external"] = Field(
         default="local", description="'local' (self-hosted bge) or 'external' (remote endpoint)."
     )
-    base_url: str = Field(default=_DEFAULT_BGE_URL, description="bge_server URL (per-collection).")
+    base_url: str = Field(
+        default="http://bge_server:80",
+        description="bge_server URL — defaults to the local compose service, overridable per-collection.",
+    )
     api_key: str = Field(default="", description="Optional bearer token (secured endpoints).")
     batch_size: int = Field(default=32, ge=1, le=256, description="Max texts per batch request.")
 
@@ -67,7 +62,7 @@ class BgeServerRerankConfig(BaseModel):
         """Instantiate the (TEI-protocol) HTTP rerank provider pointed at bge_server."""
         from common_libs.providers.rerank.bge.provider import BgeRerankProvider  # lazy runtime brick (L3)
         return BgeRerankProvider(
-            base_url=self.base_url or _DEFAULT_BGE_URL,
+            base_url=self.base_url,
             batch_size=self.batch_size,
             locality=self.locality,
             api_key=self.api_key,
@@ -80,14 +75,9 @@ class BgeServerRerankConfig(BaseModel):
 
     @classmethod
     def availability(cls, cfg: Any) -> tuple[bool, str]:
-        """Probe the default bge service URL (cfg ignored — no env-sourced provider config)."""
+        """Static capability description (no network probe — reachability is /monitoring's concern)."""
         _ = cfg
-        try:
-            p = urlparse(_DEFAULT_BGE_URL)
-            with socket.create_connection((p.hostname or "bge_server", p.port or 80), timeout=1):
-                return True, f"BGE reranker · {_DEFAULT_BGE_URL}"
-        except OSError:
-            return False, f"bge reranker not reachable at {_DEFAULT_BGE_URL}"
+        return True, "BGE-reranker-v2-m3 · cross-encoder (local bge_server)"
 
 
 __all__ = ["BgeServerRerankConfig"]

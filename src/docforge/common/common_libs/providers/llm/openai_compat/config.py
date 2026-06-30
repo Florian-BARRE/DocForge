@@ -22,9 +22,6 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from common_libs.providers.llm.openai_compat.provider import OpenAICompatLLMProvider
 
-_DEFAULT_EXTERNAL_BASE_URL = "https://api.openai.com/v1"
-_DEFAULT_LOCAL_BASE_URL = "http://localhost:8080/v1"
-
 
 @register("llm")
 class OpenAICompatLLMConfig(BaseModel):
@@ -43,7 +40,9 @@ class OpenAICompatLLMConfig(BaseModel):
     locality: Literal["local", "external"] = Field(
         default="local", description="'local' (self-hosted) or 'external' (cloud OpenAI, api_key required)."
     )
-    base_url: str = Field(default="", description="Chat server URL (empty external → OpenAI default).")
+    base_url: str = Field(
+        default="", description="Chat server URL (per-collection) — required, no implicit default."
+    )
     api_key: str = Field(default="local", description="Bearer token; required for external, 'local' for self-hosted.")
     model: str = Field(default="gpt-4o-mini", description="Model identifier.")
     max_tokens: int = Field(default=512, ge=1, description="Default maximum tokens to generate.")
@@ -56,13 +55,19 @@ class OpenAICompatLLMConfig(BaseModel):
         return _flatten_provider_spec(v)
 
     def build(self) -> OpenAICompatLLMProvider:
-        """Instantiate the provider; external requires api_key."""
+        """Instantiate the provider; base_url is required, external also requires api_key."""
+        # base_url is ALWAYS per-collection — no implicit cloud/local default (never silently point an
+        # "openai_compat" LLM at api.openai.com or localhost).
+        if not self.base_url:
+            raise ValueError(
+                "OpenAICompatLLMConfig.build(): base_url is required (per-collection) — "
+                "no implicit default."
+            )
         if self.locality == "external" and (not self.api_key or self.api_key == "local"):
             raise ValueError("OpenAICompatLLMConfig.build(): api_key is required for locality='external'.")
-        base_url = self.base_url or (_DEFAULT_EXTERNAL_BASE_URL if self.locality == "external" else _DEFAULT_LOCAL_BASE_URL)
         from common_libs.providers.llm.openai_compat.provider import OpenAICompatLLMProvider  # lazy runtime brick (L3)
         return OpenAICompatLLMProvider(
-            base_url=base_url,
+            base_url=self.base_url,
             locality=self.locality,
             api_key=self.api_key,
             model=self.model,

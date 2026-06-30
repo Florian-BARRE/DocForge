@@ -280,10 +280,11 @@ class TestExternalLocality:
             )
 
     def test_external_with_api_key_constructs_ok(self) -> None:
-        """A valid external provider can be constructed without error."""
+        """A valid external provider can be constructed without error (base_url is per-collection)."""
         provider = OpenAICompatLLMProvider(
-            base_url="",
+            base_url="https://api.openai.com/v1",
             locality="external",
             api_key="sk-test123",
         )
         assert provider._locality == "external"
+        assert provider._base_url == "https://api.openai.com/v1"

@@ -22,8 +22,6 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from common_libs.providers.vlm.openai_compat.provider import OpenAICompatVlmProvider
 
-_DEFAULT_EXTERNAL_BASE_URL = "https://api.openai.com/v1"
-
 
 @register("vlm")
 class OpenAICompatVlmConfig(BaseModel):
@@ -43,7 +41,9 @@ class OpenAICompatVlmConfig(BaseModel):
     locality: Literal["local", "external"] = Field(
         default="local", description="'local' (self-hosted) or 'external' (cloud, api_key required)."
     )
-    base_url: str = Field(default="", description="Server URL (empty external → OpenAI default).")
+    base_url: str = Field(
+        default="", description="Server URL (per-collection) — required, no implicit cloud default."
+    )
     model: str = Field(default="", description="Vision model identifier.")
     api_key: str = Field(default="", description="Bearer token; required for external, optional for local.")
     timeout_s: int = Field(default=0, ge=0, le=600, description="HTTP timeout in seconds (0 = locality default).")
@@ -56,16 +56,21 @@ class OpenAICompatVlmConfig(BaseModel):
         return _flatten_provider_spec(v)
 
     def build(self) -> OpenAICompatVlmProvider:
-        """Instantiate the provider; local requires base_url, external requires api_key."""
-        if not self.base_url and self.locality == "local":
-            raise ValueError("OpenAICompatVlmConfig.build(): base_url is required for locality='local'.")
+        """Instantiate the provider; base_url + model are required, external requires api_key."""
+        # base_url is ALWAYS per-collection — no implicit cloud default (never silently point an
+        # "openai_compat" VLM at api.openai.com).
+        if not self.base_url:
+            raise ValueError(
+                "OpenAICompatVlmConfig.build(): base_url is required (per-collection) — "
+                "no implicit cloud default."
+            )
         if not self.model:
             raise ValueError("OpenAICompatVlmConfig.build(): model is required.")
         if self.locality == "external" and not self.api_key:
             raise ValueError("OpenAICompatVlmConfig.build(): api_key is required for locality='external'.")
         from common_libs.providers.vlm.openai_compat.provider import OpenAICompatVlmProvider  # lazy runtime brick (L3)
         return OpenAICompatVlmProvider(
-            api_base_url=self.base_url or _DEFAULT_EXTERNAL_BASE_URL,
+            api_base_url=self.base_url,
             model=self.model,
             locality=self.locality,
             api_key=self.api_key,

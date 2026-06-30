@@ -17,9 +17,6 @@ from loggerplusplus import LoggerClass
 # ====== Local Project Imports ======
 from .json_helpers import OpenAICompatJsonHelpers
 
-# Default cloud endpoint used when an external config omits base_url.
-_DEFAULT_EXTERNAL_BASE_URL = "https://api.openai.com/v1"
-
 
 class OpenAICompatLLMProvider(LoggerClass):
     """
@@ -43,7 +40,7 @@ class OpenAICompatLLMProvider(LoggerClass):
         Initialize the OpenAI-compatible LLM provider.
 
         Args:
-            base_url (str): Chat-completions base URL (cloud default applied for external).
+            base_url (str): Chat-completions base URL (per-collection; no implicit cloud default).
             locality (str): "local" or "external" — sets the auth policy.
             api_key (str): Bearer token. Required (non-empty) when locality == "external".
             model (str): Model identifier sent in the request.
@@ -58,7 +55,9 @@ class OpenAICompatLLMProvider(LoggerClass):
         LoggerClass.__init__(self)
         if locality == "external" and not api_key:
             raise ValueError("OpenAICompatLLMProvider: api_key is required when locality='external'.")
-        self._base_url = (base_url or (_DEFAULT_EXTERNAL_BASE_URL if locality == "external" else "")).rstrip("/")
+        if not base_url:
+            raise ValueError("OpenAICompatLLMProvider: base_url is required (per-collection).")
+        self._base_url = base_url.rstrip("/")
         self._locality = locality
         self._api_key = api_key
         self._model = model
