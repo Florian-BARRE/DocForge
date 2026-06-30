@@ -50,6 +50,7 @@ class EnrichStage(GroupNode):
 
     Input = EnrichStageInput
     Output = EnrichStageOutput
+    CACHED = True  # the whole stage is a Merkle node in the worker node-cache
 
     def __init__(
         self, ocr_enabled: bool = False, vlm_enabled: bool = False, chart_to_data: bool = False

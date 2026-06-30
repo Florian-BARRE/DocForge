@@ -47,6 +47,7 @@ class IngestStage(GroupNode):
 
     Input = IngestStageInput
     Output = IngestStageOutput
+    CACHED = True  # the whole stage is a Merkle node in the worker node-cache
 
     def __init__(self) -> None:
         """Wire the three ingest nodes as a sequence (``always`` edges)."""

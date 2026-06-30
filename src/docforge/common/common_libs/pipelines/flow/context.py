@@ -24,9 +24,14 @@ class ServiceRegistry:
         return self.items.get(name)
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(slots=True)
 class RunContext:
-    """The run-wide handle: the pipeline run input (source of every FromRunInput) + the services."""
+    """
+    The run-wide handle: the pipeline run input (source of every FromRunInput) + the services.
+
+    Not frozen: the worker's ``prepare`` hook may reassign ``run_input`` on the re-ingest path (to
+    inject the original bytes downloaded by content address) before the root node runs.
+    """
 
     run_input: NodeInput
     services: ServiceRegistry

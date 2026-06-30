@@ -46,6 +46,7 @@ class ParseStage(GroupNode):
 
     Input = ParseStageInput
     Output = ParseStageOutput
+    CACHED = True  # the whole stage is a Merkle node in the worker node-cache
 
     def __init__(self, parsers: list[ParserNode], accept_threshold: float = 0.8) -> None:
         """
@@ -81,6 +82,23 @@ class ParseStage(GroupNode):
             markdown_key=terminal.markdown_key,
             figure_crop_keys=terminal.figure_crop_keys,
         )
+
+    def fingerprint_params(self) -> dict:
+        """
+        Surface the parser candidates' identity as the parse node-cache key dimension.
+
+        In the v2 model the parsers are NODES (the ``select`` escalation), not an injected chain, so
+        the worker's node fingerprint folds their identity from here: any change to the candidate set
+        / order / per-parser deployment flag busts the parse node cache. This is the node-engine
+        equivalent of the legacy parser-chain signature.
+
+        Returns:
+            dict: ``{"parsers": [[parser_id, use_gpu], ...]}`` in escalation order.
+        """
+        select = self.node("select")
+        return {
+            "parsers": [[p.id, bool(getattr(p, "_use_gpu", False))] for p in select.nodes]
+        }
 
 
 __all__ = ["ParseStage", "ParseStageInput", "ParseStageOutput"]
