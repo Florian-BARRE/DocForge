@@ -31,9 +31,18 @@ class EnrichStageInput(NodeInput):
 
 
 class EnrichStageOutput(NodeOutput):
-    """The assembled enrich output - the enriched IR consumed by the chunk stage."""
+    """The assembled enrich output - the enriched IR + the per-capability telemetry counters."""
 
     ir: DocumentIR
+    # Enrichment telemetry (folded into the document implicit_meta + the job lineage by the worker).
+    figures_processed: int = 0
+    classifier_calls: int = 0
+    classifier_cache_hits: int = 0
+    ocr_calls: int = 0
+    ocr_cache_hits: int = 0
+    vlm_calls: int = 0
+    vlm_cache_hits: int = 0
+    chart_extractions: int = 0
 
 
 class EnrichStage(GroupNode):
@@ -88,10 +97,26 @@ class EnrichStage(GroupNode):
             EnrichStageOutput: The single fully-enriched IR.
         """
         # 1. Materialise the final work list onto the classified IR (one rebuild for the whole stage).
-        classified_ir = outputs["classify"].ir
-        final_works = outputs["chart"].figure_works
-        enriched_ir = EnrichIRWriter.apply(classified_ir, final_works)
-        return EnrichStageOutput(ir=enriched_ir)
+        classify, ocr, vlm, chart = (
+            outputs["classify"],
+            outputs["ocr"],
+            outputs["vlm"],
+            outputs["chart"],
+        )
+        enriched_ir = EnrichIRWriter.apply(classify.ir, chart.figure_works)
+
+        # 2. Fold each capability node's counters into the stage telemetry.
+        return EnrichStageOutput(
+            ir=enriched_ir,
+            figures_processed=classify.figures_processed,
+            classifier_calls=classify.classifier_calls,
+            classifier_cache_hits=classify.classifier_cache_hits,
+            ocr_calls=ocr.ocr_calls,
+            ocr_cache_hits=ocr.ocr_cache_hits,
+            vlm_calls=vlm.vlm_calls,
+            vlm_cache_hits=vlm.vlm_cache_hits,
+            chart_extractions=chart.chart_extractions,
+        )
 
 
 __all__ = ["EnrichStage", "EnrichStageInput", "EnrichStageOutput"]
