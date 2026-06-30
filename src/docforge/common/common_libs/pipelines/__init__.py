@@ -1,83 +1,16 @@
-# ---------------------- Contracts (base) --------------------- #
-from .base import (
-    AbstractNode,
-    CachePolicy,
-    ChainRef,
-    CompositeNode,
-    CompositeOutput,
-    ContextBase,
-    ErrorPolicy,
-    FromParent,
-    FromRunInput,
-    FromSibling,
-    LeafNode,
-    NodeConfig,
-    NodeError,
-    NodeInput,
-    NodeKind,
-    NodeOutput,
-    NodeSpec,
-    PipelineConfigBase,
-    PipelineContextBase,
-    PipelineError,
-    ResolutionError,
-    RunContext,
-    StageConfigBase,
-    StepConfigBase,
-    ServiceRef,
-    ServiceRegistry,
-    StageContextBase,
-    StageError,
-    StageKey,
-    StageSpec,
-    StepContextBase,
-    StepError,
-)
+# The v1 node-engine (base node machinery + engine/) is deleted — ingestion runs on the flow engine
+# (common_libs.pipelines.flow). What survives at this top level is the per-collection CONFIG CONTRACTS
+# the stage Config classes subclass (the self-describing, frozen settings the builder instantiates).
+# Everything else is imported from its own package: flow / build / builder / capabilities / the stage
+# packages (ingest, parse, enrich, chunk, contextualize, metagen, embed_index).
 
-# ---------------------- Engine ------------------------------- #
-from .engine import EngineHooks, NodeReport, PipelineEngine, ReportStatus
+# ---------------------- Config contracts --------------------- #
+from .base import NodeConfig, PipelineConfigBase, StageConfigBase, StepConfigBase
 
 # ---------------------- Public API --------------------------- #
 __all__ = [
-    # contracts
-    "AbstractNode",
-    "CompositeNode",
-    "LeafNode",
-    "NodeInput",
-    "NodeOutput",
-    "CompositeOutput",
-    "NodeSpec",
-    "StageSpec",
-    "StageKey",
-    "NodeKind",
-    "CachePolicy",
-    "ErrorPolicy",
-    "FromSibling",
-    "FromParent",
-    "FromRunInput",
-    # config hierarchy
     "NodeConfig",
     "PipelineConfigBase",
     "StageConfigBase",
     "StepConfigBase",
-    # errors
-    "PipelineError",
-    "ResolutionError",
-    "NodeError",
-    "StageError",
-    "StepError",
-    # context hierarchy + services
-    "ContextBase",
-    "PipelineContextBase",
-    "StageContextBase",
-    "StepContextBase",
-    "ServiceRef",
-    "ChainRef",
-    "ServiceRegistry",
-    "RunContext",
-    # engine
-    "PipelineEngine",
-    "EngineHooks",
-    "NodeReport",
-    "ReportStatus",
 ]
