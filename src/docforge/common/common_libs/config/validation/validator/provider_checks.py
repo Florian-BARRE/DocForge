@@ -61,9 +61,13 @@ class ProviderChecks:
         # 1. Parse chain — every provider in declaration order
         for parse in pipeline.parse.chain:
             ProviderChecks._check_one("parse", parse.id, _params_dict(parse), index, issues)
-        # 1b. Chunk split method (decision-tree-by-method): unknown id → error; semantic needs TEI
+        # 1b. Chunk split method (decision-tree-by-method): unknown id → error; semantic needs TEI.
+        #     split_method is stored as a plain dict (the storage/discovery contract), so read it
+        #     dict-aware rather than as a typed object.
         split = pipeline.chunk.split_method
-        ProviderChecks._check_one("split_method", split.id, _params_dict(split), index, issues)
+        split_id = split.get("id") if isinstance(split, dict) else getattr(split, "id", None)
+        if split_id is not None:
+            ProviderChecks._check_one("split_method", split_id, _params_dict(split), index, issues)
         # 2. S2 enrichment chains — classifier / ocr / vlm
         for classifier in pipeline.enrich.classifier_chain:
             ProviderChecks._check_one(
@@ -139,6 +143,9 @@ def _params_dict(provider: Any) -> dict[str, Any]:
     Returns:
         dict: Provider parameters as a plain dict.
     """
+    # 0. Plain dict provider spec (the post-refactor split_method storage shape) → drop the id.
+    if isinstance(provider, dict):
+        return {k: v for k, v in provider.items() if k != "id"}
     # 1. Typed Pydantic v2 config → flat dict excluding the discriminator
     if hasattr(provider, "model_dump"):
         try:

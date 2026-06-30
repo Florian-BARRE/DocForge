@@ -42,8 +42,9 @@ class TestPipelineConfigBackCompat:
         keyed = {"stages": {"chunk": {"split_method": {"id": "token_budget", "max_tokens": 999}}}}
         cfg_flat = PipelineConfig.from_dict(flat)
         cfg_keyed = PipelineConfig.from_dict(keyed)
-        assert cfg_flat.chunk.split_method.max_tokens == 999
-        assert cfg_keyed.chunk.split_method.max_tokens == 999
+        # split_method is stored as a plain dict (the storage/discovery contract), not a typed object.
+        assert cfg_flat.chunk.split_method["max_tokens"] == 999
+        assert cfg_keyed.chunk.split_method["max_tokens"] == 999
         assert cfg_flat.to_dict() == cfg_keyed.to_dict()
 
     def test_property_shims_return_typed_subconfigs(self) -> None:

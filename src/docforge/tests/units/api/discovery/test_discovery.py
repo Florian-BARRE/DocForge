@@ -68,17 +68,28 @@ class TestDiscovery:
         assert cc["output"]["schema_ref"].split("/")[-1] in schemas
 
     @pytest.mark.asyncio
-    async def test_create_collection_pipeline_overlay(self, client: httpx.AsyncClient) -> None:
-        CONTEXT.registry.describe_stages.return_value = _STAGES
+    async def test_create_collection_pipeline_config_tree(self, client: httpx.AsyncClient) -> None:
+        """The chunk split-method providers are surfaced on the recursive config_tree (the pipeline
+        provider overlay was removed — providers now live in the config_tree, not dynamic_fields)."""
         body = (await client.get("/api/v1/discovery")).json()
         cc = _by_route(body)["create_collection"]
-        dfs = {d["field_path"]: d for d in cc["dynamic_fields"]}
-        assert "pipeline.chunk.split_method" in dfs
-        sm = dfs["pipeline.chunk.split_method"]
-        ids = [c["id"] for c in sm["choices"]]
-        assert ids == ["token_budget", "semantic"]
-        tb = next(c for c in sm["choices"] if c["id"] == "token_budget")
-        assert tb["fields"][0]["name"] == "max_tokens"
+        tree = cc["config_tree"]
+        assert tree is not None, "create_collection must carry the recursive config_tree"
+
+        # 1. Find the chunk split_method node anywhere in the recursive tree.
+        def _walk(node: dict):
+            yield node
+            for child in node.get("children") or []:
+                yield from _walk(child)
+
+        split = next(
+            (n for n in _walk(tree) if str(n.get("path", "")).endswith("chunk.split_method")), None
+        )
+        assert split is not None, "config_tree must expose chunk.split_method"
+
+        # 2. Its provider catalog must list the built-in split methods (none dropped).
+        serialized = str(split)
+        assert "token_budget" in serialized and "semantic" in serialized
 
     @pytest.mark.asyncio
     async def test_search_filters_unresolved_without_collection(self, client: httpx.AsyncClient) -> None:

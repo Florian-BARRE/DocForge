@@ -1,6 +1,7 @@
 # ====== Code Summary ======
-# Unit tests for the discovery overlay layer: the route-key drift guard and the pure resolvers
-# (pipeline stages → DynamicFields; collection schema → filters/weights, resolved vs unresolved).
+# Unit tests for the discovery overlay layer: the route-key drift guard and the collection-scoped
+# resolvers (collection schema → filters/weights/metadata + metagen targets, resolved vs unresolved).
+# The pipeline-provider overlay was removed — providers are now carried by the recursive config_tree.
 
 import pytest
 
@@ -9,23 +10,6 @@ from backend.routers.discovery.overlays import (
     build_dynamic_fields,
     validate_overlay_route_names,
 )
-
-# A minimal describe_stages-style stub: one stage with a single-select chunk_strategy group.
-_STAGES = [
-    {
-        "id": "s4", "groups": [
-            {
-                "key": "chunk.split_method", "kind": "single", "capability": "chunk_strategy",
-                "providers": [
-                    {"id": "token_budget", "label": "Token budget", "available": True, "selectable": True,
-                     "default": True, "note": "", "params": [
-                         {"name": "max_tokens", "type": "int", "default": 512, "min": 64, "max": 4096}]},
-                    {"id": "semantic", "label": "Semantic", "available": False, "selectable": True, "params": []},
-                ],
-            },
-        ],
-    },
-]
 
 _SCHEMA_FIELDS = [
     {"field_name": "dossier", "field_type": "string", "filterable": True, "semantic": True,
@@ -46,32 +30,15 @@ class TestOverlayDriftGuard:
             validate_overlay_route_names({"create_collection"})  # missing the rest
 
 
-class TestPipelineOverlay:
-    def test_create_collection_pipeline_fields(self) -> None:
-        fields = build_dynamic_fields("create_collection", _STAGES, None)
-        # create_collection emits the pipeline overlays + the (unresolved) metagen-target overlay.
-        f = next(f for f in fields if f.field_path == "pipeline.chunk.split_method")
-        assert f.kind == "single" and f.capability == "chunk_strategy" and f.scope == "deployment"
-        ids = [c.id for c in f.choices]
-        assert ids == ["token_budget", "semantic"]
-        # Conditional fields come from the provider params (model-derived)
-        tb = next(c for c in f.choices if c.id == "token_budget")
-        assert tb.fields[0].name == "max_tokens" and tb.fields[0].min == 64
-
-    def test_update_config_prefix(self) -> None:
-        fields = build_dynamic_fields("update_config", _STAGES, None)
-        assert fields[0].field_path == "patch.pipeline.chunk.split_method"
-
-
 class TestCollectionOverlay:
     def test_unresolved_without_collection(self) -> None:
-        fields = build_dynamic_fields("search_collection", _STAGES, None)
+        fields = build_dynamic_fields("search_collection", None)
         by_path = {f.field_path: f for f in fields}
         assert set(by_path) == {"filters", "weights"}
         assert all(f.resolved is False and f.scope == "collection" for f in fields)
 
     def test_filters_resolved_from_schema(self) -> None:
-        fields = build_dynamic_fields("search_collection", _STAGES, _SCHEMA_FIELDS)
+        fields = build_dynamic_fields("search_collection", _SCHEMA_FIELDS)
         filters = next(f for f in fields if f.field_path == "filters")
         assert filters.resolved is True
         ids = {c.id for c in filters.choices}
@@ -82,14 +49,14 @@ class TestCollectionOverlay:
         assert "in" in op_field.enum
 
     def test_weights_resolved_includes_content_and_named_vectors(self) -> None:
-        fields = build_dynamic_fields("search_collection", _STAGES, _SCHEMA_FIELDS)
+        fields = build_dynamic_fields("search_collection", _SCHEMA_FIELDS)
         weights = next(f for f in fields if f.field_path == "weights")
         ids = {c.id for c in weights.choices}
         assert "content_dense" in ids and "content_bm25" in ids
         assert "meta_dossier_dense" in ids  # dossier is semantic → named dense vector
 
     def test_ingest_metadata_only_custom_fields(self) -> None:
-        fields = build_dynamic_fields("ingest_document", _STAGES, _SCHEMA_FIELDS)
+        fields = build_dynamic_fields("ingest_document", _SCHEMA_FIELDS)
         meta = fields[0]
         assert meta.field_path == "metadata"
         ids = {c.id for c in meta.choices}
@@ -122,19 +89,19 @@ class TestMetagenTargetOverlay:
 
     def test_create_collection_includes_metagen_overlay(self) -> None:
         """create_collection always emits the metagen-target overlay (may be unresolved)."""
-        fields = build_dynamic_fields("create_collection", _STAGES, None)
+        fields = build_dynamic_fields("create_collection", None)
         paths = {f.field_path for f in fields}
         assert "pipeline.metagen.targets[].field" in paths
 
     def test_update_config_includes_metagen_overlay_with_patch_prefix(self) -> None:
         """update_config uses the 'patch.pipeline.' prefix for the metagen overlay."""
-        fields = build_dynamic_fields("update_config", _STAGES, None)
+        fields = build_dynamic_fields("update_config", None)
         paths = {f.field_path for f in fields}
         assert "patch.pipeline.metagen.targets[].field" in paths
 
     def test_unresolved_when_schema_fields_none(self) -> None:
         """Without a collection context (schema_fields=None) the field comes back unresolved."""
-        fields = build_dynamic_fields("create_collection", _STAGES, None)
+        fields = build_dynamic_fields("create_collection", None)
         metagen_field = next(
             f for f in fields if f.field_path == "pipeline.metagen.targets[].field"
         )
@@ -144,7 +111,7 @@ class TestMetagenTargetOverlay:
 
     def test_resolved_from_generated_fields_only(self) -> None:
         """With schema_fields, the overlay resolves with only origin='generated' choices."""
-        fields = build_dynamic_fields("create_collection", _STAGES, _SCHEMA_WITH_GENERATED)
+        fields = build_dynamic_fields("create_collection", _SCHEMA_WITH_GENERATED)
         metagen_field = next(
             f for f in fields if f.field_path == "pipeline.metagen.targets[].field"
         )
@@ -162,7 +129,7 @@ class TestMetagenTargetOverlay:
              "semantic": False, "lexical": False, "enum_values": None, "required": False,
              "is_system": False, "origin": "user"},
         ]
-        fields = build_dynamic_fields("create_collection", _STAGES, no_generated)
+        fields = build_dynamic_fields("create_collection", no_generated)
         metagen_field = next(
             f for f in fields if f.field_path == "pipeline.metagen.targets[].field"
         )
@@ -171,7 +138,7 @@ class TestMetagenTargetOverlay:
 
     def test_choice_label_and_note_are_field_name_and_type(self) -> None:
         """Each Choice has id=field_name, label=field_name, note=field_type."""
-        fields = build_dynamic_fields("create_collection", _STAGES, _SCHEMA_WITH_GENERATED)
+        fields = build_dynamic_fields("create_collection", _SCHEMA_WITH_GENERATED)
         metagen_field = next(
             f for f in fields if f.field_path == "pipeline.metagen.targets[].field"
         )
@@ -181,7 +148,7 @@ class TestMetagenTargetOverlay:
 
     def test_metagen_overlay_kind_is_enum(self) -> None:
         """The metagen-target overlay uses kind='enum' (single-select from a fixed list)."""
-        fields = build_dynamic_fields("create_collection", _STAGES, _SCHEMA_WITH_GENERATED)
+        fields = build_dynamic_fields("create_collection", _SCHEMA_WITH_GENERATED)
         metagen_field = next(
             f for f in fields if f.field_path == "pipeline.metagen.targets[].field"
         )
