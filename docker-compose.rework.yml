@@ -1,0 +1,148 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# DocForge REWORK stack — fully separate from the legacy docker-compose.yml
+# (distinct container names, volumes, network and host-port range 10040-10049,
+# so both stacks can run side by side during the transition).
+#
+#   Stores only (local app/worker via uv):  docker compose -f docker-compose.rework.yml up -d
+#   Full stack (containerised app+worker):  docker compose -f docker-compose.rework.yml --profile full up -d --build
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+  # ── FastAPI app — light image (design surface + admission + monitoring) ─────
+  rework_app:
+    build:
+      context: src/docforge-rework
+      dockerfile: app/Dockerfile
+    image: docforge-rework-app:latest
+    container_name: docforge-rework-app
+    profiles: ["full"]
+    ports:
+      - "10040:8000"              # Public API (firewall: only 10000-11000 open)
+    env_file:
+      - services/docforge-rework/.env
+    environment:
+      # In-container endpoints override the localhost dev values from the .env.
+      POSTGRES_DSN: postgresql+asyncpg://docforge:docforge@rework_postgres:5432/docforge
+      REDIS_URL: redis://rework_redis:6379/0
+      QDRANT_URL: http://rework_qdrant:6333
+      # botocore rejects '_' in hostnames — the hyphenated container_name resolves on the network
+      S3_ENDPOINT_URL: http://docforge-rework-seaweedfs:8333
+    depends_on:
+      rework_postgres:
+        condition: service_healthy
+      rework_redis:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - rework_net
+
+  # ── arq worker — heavy image (pipeline execution + persistence) ─────────────
+  rework_worker:
+    build:
+      context: src/docforge-rework
+      dockerfile: worker/Dockerfile
+    image: docforge-rework-worker:latest
+    container_name: docforge-rework-worker
+    profiles: ["full"]
+    env_file:
+      - services/docforge-rework/.env
+    environment:
+      POSTGRES_DSN: postgresql+asyncpg://docforge:docforge@rework_postgres:5432/docforge
+      REDIS_URL: redis://rework_redis:6379/0
+      QDRANT_URL: http://rework_qdrant:6333
+      # botocore rejects '_' in hostnames — the hyphenated container_name resolves on the network
+      S3_ENDPOINT_URL: http://docforge-rework-seaweedfs:8333
+    depends_on:
+      rework_postgres:
+        condition: service_healthy
+      rework_redis:
+        condition: service_started
+      rework_seaweedfs:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - rework_net
+
+  # ── PostgreSQL 16 — the tabular source of truth ─────────────────────────────
+  rework_postgres:
+    image: postgres:16-bookworm
+    container_name: docforge-rework-postgres
+    ports:
+      - "10041:5432"              # Operator/local-dev access (alembic, psql)
+    env_file:
+      - services/docforge-rework/postgres.env
+    volumes:
+      - rework_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U docforge"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - rework_net
+
+  # ── Redis 7 — the arq job queue (transport only, no monitoring truth) ───────
+  rework_redis:
+    image: redis:7-bookworm
+    container_name: docforge-rework-redis
+    ports:
+      - "10042:6379"              # Local-dev access (app enqueue / worker listen)
+    volumes:
+      - rework_redis_data:/data
+    restart: unless-stopped
+    networks:
+      - rework_net
+
+  # ── Qdrant — vector store (named dense + sparse per collection) ─────────────
+  rework_qdrant:
+    image: qdrant/qdrant:latest
+    container_name: docforge-rework-qdrant
+    ports:
+      - "10043:6333"              # REST API (local dev + operator inspection)
+    volumes:
+      - rework_qdrant_data:/qdrant/storage
+    restart: unless-stopped
+    networks:
+      - rework_net
+
+  # ── SeaweedFS — S3-compatible blob store (content-addressed objects) ────────
+  rework_seaweedfs:
+    image: chrislusf/seaweedfs:latest
+    container_name: docforge-rework-seaweedfs
+    command: >
+      server
+      -dir=/data
+      -s3
+      -s3.port=8333
+      -master.volumeSizeLimitMB=256
+      -volume.max=0
+    ports:
+      - "10044:8333"              # S3 API (local dev + operator inspection)
+    volumes:
+      - rework_seaweedfs_data:/data
+    restart: unless-stopped
+    networks:
+      - rework_net
+
+  # ── Gotenberg 8 — office→PDF conversion used by the intake converter node ───
+  rework_gotenberg:
+    image: gotenberg/gotenberg:8
+    container_name: docforge-rework-gotenberg
+    # Large office documents convert in ~20-25s warm but exceed the default 30s deadline
+    # cold (LibreOffice spin-up) — raise the API timeout so borderline files never 503.
+    command: ["gotenberg", "--api-timeout=180s"]
+    ports:
+      - "10045:3000"              # HTTP conversion API (collection configs point here)
+    restart: unless-stopped
+    networks:
+      - rework_net
+
+volumes:
+  rework_postgres_data:
+  rework_redis_data:
+  rework_qdrant_data:
+  rework_seaweedfs_data:
+
+networks:
+  rework_net:

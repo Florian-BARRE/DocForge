@@ -1,0 +1,41 @@
+# ====== Code Summary ======
+# Typed service locator for DocForge. All shared services are accessed via CONTEXT —
+# never imported directly in route files. Values are assigned in entrypoint.py at startup.
+
+# ====== Third-Party Library Imports ======
+from loggerplusplus import LoggerPlusPlus
+
+# ====== Internal Project Imports ======
+from config import RUNTIME_CONFIG
+from shared_libs.pipelines.build import PipelineBuilder
+from shared_libs.pipelines.edit import GraphEditor
+from shared_libs.pipelines.ingest.stages import StageCompiler
+from shared_libs.pipelines.validation import GraphValidator
+from shared_libs.services.db import Database
+
+# ====== Local Project Imports ======
+from .utils.queue import QueueClient
+
+
+class CONTEXT:
+    """
+    Shared application context — typed service locator.
+
+    Type annotations only. All values are assigned at startup in entrypoint.py.
+    Access via CONTEXT.<attribute> anywhere in the codebase.
+    Never instantiate this class.
+    """
+
+    # ── Core infrastructure ──────────────────────────────────────────────────
+    logger: LoggerPlusPlus
+    RUNTIME_CONFIG: type[RUNTIME_CONFIG]
+
+    # ── Pipeline design surface ──────────────────────────────────────────────
+    pipeline_builder: PipelineBuilder
+    graph_validator: GraphValidator
+    graph_editor: GraphEditor
+    stage_compiler: StageCompiler
+
+    # ── Stores + queue (admission writes and status reads — execution is the worker's) ──
+    database: Database
+    queue: QueueClient

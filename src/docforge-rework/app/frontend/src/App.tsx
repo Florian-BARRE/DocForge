@@ -1,0 +1,41 @@
+// ====== Code Summary ======
+// The composition root: owns the current View and dispatches to the one matching page. Hand-
+// rolled routing (no router dependency) — a plain useState<View> is enough for this app's depth.
+
+import { useState } from "react";
+import { CollectionDetailPage } from "./features/collections/CollectionDetailPage";
+import { CollectionEditPage } from "./features/collections/CollectionEditPage";
+import { CollectionPipelinePage } from "./features/collections/CollectionPipelinePage";
+import { CollectionsPage } from "./features/collections/CollectionsPage";
+import { CollectionWizard } from "./features/collections/wizard/CollectionWizard";
+import { DocumentPage } from "./features/explorer/DocumentPage";
+import { DocumentsPage } from "./features/explorer/DocumentsPage";
+import { JobDetailPage } from "./features/monitoring/JobDetailPage";
+import { JobsPage } from "./features/monitoring/JobsPage";
+import { WorkersPanel } from "./features/monitoring/WorkersPanel";
+import { TopBar } from "./shell/TopBar";
+import type { View } from "./shell/view";
+
+export function App() {
+  const [view, setView] = useState<View>({ name: "collections" });
+
+  return (
+    <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
+      <TopBar view={view} onNavigate={setView} />
+      <div style={{ flex: 1, minHeight: 0 }}>
+        {view.name === "collections" && <CollectionsPage onNavigate={setView} />}
+        {view.name === "new-collection" && <CollectionWizard onNavigate={setView} />}
+        {view.name === "collection" && <CollectionDetailPage collectionId={view.collectionId} onNavigate={setView} />}
+        {view.name === "collection-edit" && <CollectionEditPage collectionId={view.collectionId} onNavigate={setView} />}
+        {view.name === "collection-pipeline" && <CollectionPipelinePage collectionId={view.collectionId} onNavigate={setView} />}
+        {view.name === "collection-jobs" && <JobsPage collectionId={view.collectionId} onNavigate={setView} />}
+        {view.name === "collection-documents" && <DocumentsPage collectionId={view.collectionId} onNavigate={setView} />}
+        {view.name === "document" && (
+          <DocumentPage collectionId={view.collectionId} documentId={view.documentId} onNavigate={setView} />
+        )}
+        {view.name === "job" && <JobDetailPage jobId={view.jobId} collectionId={view.collectionId} onNavigate={setView} />}
+        {view.name === "workers" && <WorkersPanel onNavigate={setView} />}
+      </div>
+    </div>
+  );
+}

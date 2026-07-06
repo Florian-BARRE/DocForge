@@ -37,6 +37,7 @@ repos, config, domain models, search/observability wiring). NOT the ingestion pi
   reuse `search.rerank.empty_chain`; `debug_info.effective` shape; embed provider never overridable.
 - [Collection sub-router wiring](collection-subrouter-wiring.md) — 3-step registration for a per-collection sub-router + discovery overlay pattern + capability convention (used by metagen preview endpoint)
 - [Metagen/LLM validation gap](metagen-llm-validation-gap.md) — describe_stages omits the LLM category; ProviderChecks can't validate metagen/query_transform; MetagenChecks codes + check_metagen(doc, issues) signature
+- [docforge-rework explorer API](docforge-rework-explorer-api.md) — REWORK tree (shared_libs Database façade): explorer/blobs router wiring, chunk bulk-read seams, field-name resolution; gotchas — `_IncludedRouter` means introspect via `openapi()["paths"]` not `app.routes`; S3 endpoint underscore host 500s all S3
 
 ## Brique D (resource admission) — post-budget-purge
 

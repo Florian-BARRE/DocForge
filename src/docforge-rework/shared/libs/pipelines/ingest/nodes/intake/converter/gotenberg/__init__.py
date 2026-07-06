@@ -1,0 +1,6 @@
+# ---------------------- Node ---------------------- #
+# Importing core runs the @NodeRegistry.register decorator, so the node self-registers.
+from .core import ConverterGotenbergNode
+
+# ------------------- Public API ------------------- #
+__all__ = ["ConverterGotenbergNode"]

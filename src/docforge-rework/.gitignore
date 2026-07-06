@@ -1,0 +1,11 @@
+# ── Local PyCharm-only junction ─────────────────────────────────────────────
+# `shared_libs` is a Windows directory junction pointing at `shared/libs`. It exists ONLY so
+# PyCharm statically resolves the `shared_libs.*` imports (PyCharm can't follow the runtime
+# `register_package_alias` in runtime_config). It is a local dev aid — never commit it.
+/shared_libs/
+
+# ── Environments & caches ───────────────────────────────────────────────────
+/.venv/
+__pycache__/
+*.pyc
+/.ruff_cache/

@@ -1,0 +1,14 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# DocForge REWORK — GPU overrides. Use ON TOP of the base (+ dev) files:
+#   docker compose -f docker-compose.rework.yml -f docker-compose.rework.dev.yml #                  -f docker-compose.rework.gpu.yml --profile full up -d
+#
+# NOTE: no special image is needed — the LOCKED Linux torch wheel is already a CUDA
+# build (2.10.0+cu128); granting the device is the only missing piece. Requires the
+# NVIDIA Container Toolkit (Docker Desktop/WSL2 ships it).
+# bge_server (embeddings) already runs its own GPU image from the legacy compose.
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+  rework_worker:
+    # Service-level GPU grant — equivalent to `docker run --gpus all`.
+    gpus: all

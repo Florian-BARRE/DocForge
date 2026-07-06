@@ -1,0 +1,72 @@
+# ====== Code Summary ======
+# The transfer objects crossing the façade boundary: IngestionPayload bundles everything the worker
+# persists at the end of a pure pipeline run (one transaction), IRBundle is the full raw+enriched
+# IR for inspection, SearchHit is one hydrated search result. Plain dataclasses over the ORM rows —
+# the façade methods stay readable instead of taking fifteen parameters.
+
+# ====== Standard Library Imports ======
+from dataclasses import dataclass, field
+
+# ====== Internal Project Imports ======
+from shared_libs.services.db.postgresql.tables import (
+    Block,
+    BlockEnrichment,
+    BlockFigure,
+    BlockTable,
+    Chunk,
+    ChunkBlock,
+    ChunkMetadata,
+    ChunkQuery,
+    DocumentMetadata,
+    EnrichmentAttempt,
+    EntityMention,
+    Page,
+    SourceKind,
+)
+
+
+@dataclass(slots=True)
+class IngestionPayload:
+    """Everything a pipeline run produced for one document — persisted in ONE transaction."""
+
+    # Facts the pipeline learned (None = not learned / unchanged).
+    title: str | None = None
+    language: str | None = None
+    page_count: int | None = None
+    source_kind: SourceKind | None = None
+    pdf_blob_hash: str | None = None
+    simhash: str | None = None
+    # The rows, per domain.
+    pages: list[Page] = field(default_factory=list)
+    document_metadata: list[DocumentMetadata] = field(default_factory=list)
+    blocks: list[Block] = field(default_factory=list)
+    block_tables: list[BlockTable] = field(default_factory=list)
+    block_figures: list[BlockFigure] = field(default_factory=list)
+    enrichments: list[BlockEnrichment] = field(default_factory=list)
+    attempts: list[EnrichmentAttempt] = field(default_factory=list)
+    chunks: list[Chunk] = field(default_factory=list)
+    composition: list[ChunkBlock] = field(default_factory=list)
+    chunk_metadata: list[ChunkMetadata] = field(default_factory=list)
+    chunk_queries: list[ChunkQuery] = field(default_factory=list)
+    entities: list[EntityMention] = field(default_factory=list)
+
+
+@dataclass(slots=True)
+class IRBundle:
+    """A document's full IR for inspection — the raw parse side and the enriched side."""
+
+    blocks: list[Block]
+    tables: list[BlockTable]
+    figures: list[BlockFigure]
+    enrichments: list[BlockEnrichment]
+
+
+@dataclass(slots=True)
+class SearchHit:
+    """One hydrated search result — the Postgres chunk row plus its fused Qdrant score."""
+
+    chunk: Chunk
+    score: float
+
+
+__all__ = ["IngestionPayload", "IRBundle", "SearchHit"]

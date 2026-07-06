@@ -1,0 +1,217 @@
+"""Chunk stage: shared projection rules, the 3 methods (structure/fixed/semantic), family/blob
+wiring, and the 5 audit fixes (cyclic parent, oversized atomic, run-on hard-cut, caption fusion).
+
+Ported from the scratchpad's test_chunk_stage.py.
+"""
+
+from shared_libs.pipelines.build import PipelineBuilder
+from shared_libs.pipelines.engine import FlowEngine
+from shared_libs.pipelines.ingest.nodes.chunk.base import BaseChunkerConfig, PassageProjector
+from shared_libs.pipelines.ingest.nodes.chunk.base.io import ChunkerConsumes
+from shared_libs.pipelines.ingest.nodes.chunk.fixed_size import (
+    ChunkerFixedSizeConfig,
+    ChunkerFixedSizeNode,
+)
+from shared_libs.pipelines.ingest.nodes.chunk.semantic import (
+    ChunkerSemanticConfig,
+    ChunkerSemanticNode,
+)
+from shared_libs.pipelines.ingest.nodes.chunk.structure_aware import (
+    ChunkerStructureAwareConfig,
+    ChunkerStructureAwareNode,
+)
+from shared_libs.pipelines.registry import NodeRegistry
+from shared_libs.pipelines.validation import GraphValidator
+from shared_libs.public_models import (
+    Block,
+    BlockType,
+    DocumentIR,
+    FigureEnrichment,
+    Provenance,
+    TableData,
+)
+
+
+def _blk(bid, btype, order, page=0, text=None, parent=None, level=None, table=None, figure=None) -> Block:
+    return Block(id=bid, block_type=btype, reading_order=order, parent_id=parent, level=level,
+                 provenance=Provenance(page=page, bbox=(0.1, 0.1, 0.9, 0.9)),
+                 text=text, table=table, figure=figure)
+
+
+LONG = " ".join(f"Sentence number {i} talks about the same important subject." for i in range(40))
+IR = DocumentIR(doc_id="doc1", source_hash="h", n_pages=2, blocks=[
+    _blk("h1", BlockType.HEADING, 0, text="Introduction", level=1),
+    _blk("p1", BlockType.PARAGRAPH, 1, text="Cats are small felines. They purr loudly.", parent="h1"),
+    _blk("fig1", BlockType.FIGURE, 2, text="Figure 1: a cat", parent="h1",
+        figure=FigureEnrichment(description="A ginger cat sleeping.", ocr_text="CAT-01")),
+    _blk("deco", BlockType.FIGURE, 3, parent="h1", figure=FigureEnrichment()),   # nothing to say
+    _blk("hf", BlockType.HEADER_FOOTER, 4, text="Page 1 - Confidential"),        # excluded
+    _blk("h2", BlockType.HEADING, 5, text="Results", level=1, page=1),
+    _blk("t1", BlockType.TABLE, 6, parent="h2", page=1,
+        table=TableData(cells=[["Metric", "Value"], ["Accuracy", "0.93"]], n_rows=2, n_cols=2, has_header=True)),
+    _blk("p2", BlockType.PARAGRAPH, 7, text=LONG, parent="h2", page=1),
+])
+
+
+def test_shared_projection_composition_rules() -> None:
+    passages = PassageProjector.project(IR, BaseChunkerConfig())
+    by_first_block = {passage.block_ids[0]: passage for passage in passages}
+    assert [ps.block_ids[0] for ps in passages] == ["h1", "p1", "fig1", "h2", "t1", "p2"]
+
+    fig = by_first_block["fig1"]
+    assert fig.atomic
+    assert "Figure 1: a cat" in fig.text
+    assert "ginger cat" in fig.text
+    assert "CAT-01" in fig.text
+    assert "deco" not in by_first_block
+    assert "hf" not in by_first_block
+
+    table = by_first_block["t1"]
+    assert table.atomic
+    assert "| Metric | Value |" in table.text
+    assert "| --- | --- |" in table.text
+    assert by_first_block["p2"].heading_path == ["Results"]
+    assert by_first_block["p2"].section_key == ["h2"]
+    assert by_first_block["h1"].section_key == ["h1"]  # a heading belongs to its own section
+
+
+async def test_structure_aware_respects_sections_and_splits_oversized_paragraph() -> None:
+    node = ChunkerStructureAwareNode(
+        id="c", config=ChunkerStructureAwareConfig(target_tokens=120, max_tokens=200, min_tokens=10)
+    )
+    out = await node.run(ChunkerConsumes(ir=IR))
+    chunks = out.chunks
+    assert len(chunks) >= 3
+
+    intro = [c for c in chunks if c.heading_path == ["Introduction"]]
+    results = [c for c in chunks if c.heading_path == ["Results"]]
+    assert intro and results
+    assert all(c.token_count <= 200 for c in chunks)  # hard cap respected (LONG was split)
+    assert any("ginger cat" in c.text for c in intro)  # figure meaning inside the flow
+    assert chunks == sorted(chunks, key=lambda c: c.ordinal)
+    assert all(c.chunk_id == f"doc1#c{c.ordinal}" for c in chunks)
+    assert results[0].page_start == 1
+    assert "| Metric | Value |" in results[0].text
+
+
+async def test_fixed_size_windows_with_repeated_overlap() -> None:
+    node = ChunkerFixedSizeNode(id="c", config=ChunkerFixedSizeConfig(chunk_tokens=80, overlap_tokens=20))
+    out = await node.run(ChunkerConsumes(ir=IR))
+    windows = out.chunks
+    assert len(windows) >= 3
+    assert all(c.token_count <= 80 + 25 for c in windows)  # joins add a few tokens
+    overlapped = any(
+        windows[i].text.split("\n\n")[-1] in windows[i + 1].text for i in range(len(windows) - 1)
+    )
+    assert overlapped  # some tail passage repeated at the next window's start
+
+
+def test_fixed_size_rejects_overlap_greater_or_equal_to_window() -> None:
+    try:
+        ChunkerFixedSizeConfig(chunk_tokens=100, overlap_tokens=100)
+        raise AssertionError("overlap >= window not rejected")
+    except ValueError:
+        pass
+
+
+class FakeSemantic(ChunkerSemanticNode):
+    KIND = "test_chunk_stage_fake_semantic"
+    NAME = "F"
+    SUMMARY = "t"
+
+    async def _embed(self, texts: list[str]) -> list[list[float]]:
+        # topic A = cats -> [1,0]; topic B = finance -> [0,1]
+        return [[1.0, 0.0] if "cat" in t.lower() else [0.0, 1.0] for t in texts]
+
+
+async def test_semantic_cuts_at_the_topic_shift() -> None:
+    topics = DocumentIR(doc_id="d2", source_hash="h", n_pages=1, blocks=[
+        _blk("a1", BlockType.PARAGRAPH, 0, text="Cats purr. Cats sleep a lot. A cat hunts mice."),
+        _blk("b1", BlockType.PARAGRAPH, 1, text="Markets fell today. Inflation rose sharply. Bonds dropped."),
+    ])
+    node = FakeSemantic(id="c", config=ChunkerSemanticConfig(
+        base_url="http://fake", model="fake", buffer_size=0, breakpoint_percentile=80.0,
+        min_tokens=0, max_tokens=500))
+    out = await node.run(ChunkerConsumes(ir=topics))
+    chunks = out.chunks
+    assert len(chunks) == 2, [c.text for c in chunks]
+    assert "cat" in chunks[0].text.lower()
+    assert "Markets" in chunks[1].text
+    assert chunks[0].block_ids == ["a1"]
+    assert chunks[1].block_ids == ["b1"]
+
+
+def test_family_registration_and_describe_expose_the_ui_contract() -> None:
+    kinds = NodeRegistry.kinds("chunker")
+    assert {"structure_aware", "fixed_size", "semantic"} <= set(kinds)
+    described = ChunkerStructureAwareNode.describe()
+    for key in ("target_tokens", "overlap_tokens", "hard_section_boundaries", "figures_atomic", "tokenizer_encoding"):
+        assert key in described.config_schema["properties"], key
+    assert [(s.name, s.artefact_type) for s in described.consumes] == [("ir", "DocumentIR")]
+    assert [(s.name, s.artefact_type) for s in described.produces] == [("chunks", "list[Chunk]")]
+
+
+async def test_chunk_stage_blob_builds_validates_and_runs() -> None:
+    blob = {
+        "node_type": "group", "id": "chunk_stage",
+        "nodes": [{"node_type": "action", "id": "chunk", "family": "chunker",
+                   "kind": "structure_aware", "config": {"target_tokens": 256, "overlap_tokens": 32}}],
+        "bindings": {"chunk": {"ir": {"source": "run", "field_name": "ir"}}},
+    }
+    group = PipelineBuilder().build(blob)
+    assert GraphValidator().validate(group) == []
+    output, _record = await FlowEngine().execute(group, {"ir": IR})
+    assert output.chunks
+    assert output.chunks[0].heading_path == ["Introduction"]
+
+
+def test_f1_cyclic_parent_chain_does_not_hang_the_projection() -> None:
+    cyclic = DocumentIR(doc_id="d3", source_hash="h", n_pages=1, blocks=[
+        _blk("hx", BlockType.HEADING, 0, text="A", level=1, parent="hy"),
+        _blk("hy", BlockType.HEADING, 1, text="B", level=2, parent="hx"),
+        _blk("px", BlockType.PARAGRAPH, 2, text="Text.", parent="hx"),
+    ])
+    assert len(PassageProjector.project(cyclic, BaseChunkerConfig())) == 3
+
+
+async def test_f2_oversized_atomic_table_stands_alone_over_both_methods() -> None:
+    bigcells = [[f"metric {i}", f"value number {i}", f"comment about metric {i}"] for i in range(30)]
+    big = DocumentIR(doc_id="d4", source_hash="h", n_pages=1, blocks=[
+        _blk("q1", BlockType.PARAGRAPH, 0, text="Small intro sentence here."),
+        _blk("q2", BlockType.PARAGRAPH, 1, text="Another small sentence follows."),
+        _blk("tbig", BlockType.TABLE, 2, table=TableData(cells=bigcells, n_rows=30, n_cols=3, has_header=False)),
+        _blk("q3", BlockType.PARAGRAPH, 3, text="A closing sentence."),
+    ])
+    for node in (
+        ChunkerFixedSizeNode(id="c", config=ChunkerFixedSizeConfig(chunk_tokens=40, overlap_tokens=15)),
+        ChunkerStructureAwareNode(id="c", config=ChunkerStructureAwareConfig(
+            target_tokens=40, max_tokens=60, min_tokens=0, overlap_tokens=15)),
+    ):
+        out = await node.run(ChunkerConsumes(ir=big))
+        table_chunks = [c for c in out.chunks if "tbig" in c.block_ids]
+        assert len(table_chunks) == 1
+        assert table_chunks[0].block_ids == ["tbig"]
+
+
+async def test_f4_boundaryless_run_on_is_hard_cut() -> None:
+    runon = DocumentIR(doc_id="d5", source_hash="h", n_pages=1, blocks=[
+        _blk("r1", BlockType.PARAGRAPH, 0, text="mot " * 400)])
+    out = await ChunkerStructureAwareNode(
+        id="c", config=ChunkerStructureAwareConfig(target_tokens=60, max_tokens=80, min_tokens=0)
+    ).run(ChunkerConsumes(ir=runon))
+    assert out.chunks
+    assert all(c.token_count <= 85 for c in out.chunks)
+
+
+def test_f5_docling_style_caption_fuses_into_the_figure_unit() -> None:
+    capir = DocumentIR(doc_id="d6", source_hash="h", n_pages=1, blocks=[
+        _blk("cap1", BlockType.CAPTION, 0, text="Figure 1: revenue by quarter"),
+        _blk("figx", BlockType.FIGURE, 1, figure=FigureEnrichment(description="A bar chart of revenue.", ocr_text="Q1 Q2")),
+        _blk("pz", BlockType.PARAGRAPH, 2, text="Trailing text."),
+    ])
+    passages = PassageProjector.project(capir, BaseChunkerConfig())
+    assert [p.block_ids for p in passages] == [["cap1", "figx"], ["pz"]]
+    fused = passages[0]
+    assert fused.atomic
+    assert "Figure 1: revenue by quarter" in fused.text
+    assert "bar chart" in fused.text
