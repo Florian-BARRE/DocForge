@@ -87,6 +87,13 @@ async def test_real_rapidocr_reads_a_rendered_image_through_the_node_contract() 
     """A REAL onnxruntime OCR pass (the ``worker`` dependency group provides it in .venv)."""
     import io
 
+    import pytest
+
+    # Real-provider test: it needs the heavy `worker` group (pillow + rapidocr-onnxruntime).
+    # When the suite runs on the dev group alone, skip rather than error on the missing modules.
+    pytest.importorskip("PIL")
+    pytest.importorskip("rapidocr_onnxruntime")
+
     from PIL import Image, ImageDraw
 
     image = Image.new("RGB", (420, 90), "white")

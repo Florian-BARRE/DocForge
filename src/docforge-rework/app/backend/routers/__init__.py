@@ -7,6 +7,9 @@ from .documents.router import router as documents_router
 # -------------------- Explorer (document read surface) ------------------- #
 from .explorer.router import router as explorer_router
 
+# -------------------- Search (retrieval read surface) ------------------- #
+from .search.router import router as search_router
+
 # -------------------- Blobs (byte streaming) ------------------- #
 from .blobs.router import router as blobs_router
 
@@ -24,6 +27,7 @@ __all__ = [
     "collections_router",
     "documents_router",
     "explorer_router",
+    "search_router",
     "blobs_router",
     "jobs_router",
     "pipelines_router",

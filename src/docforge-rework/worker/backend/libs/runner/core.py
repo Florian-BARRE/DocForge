@@ -9,7 +9,7 @@
 from loggerplusplus import LoggerClass
 
 # ====== Internal Project Imports ======
-from shared_libs.pipelines.base import NodeExecutionRecord
+from shared_libs.pipelines.base import NodeExecutionRecord, NodeStatus
 from shared_libs.pipelines.build import GroupNodeBlob, PipelineBuilder
 from shared_libs.pipelines.engine import FlowEngine, ProgressCallback
 from shared_libs.pipelines.validation import GraphValidator
@@ -33,6 +33,32 @@ class PipelineRunner(LoggerClass):
         self._builder = PipelineBuilder()
         self._validator = GraphValidator()
         self._engine = FlowEngine()
+
+    @staticmethod
+    def __failed_node_reason(record: NodeExecutionRecord) -> str | None:
+        """
+        Find the deepest node that actually raised and format it for the job error.
+
+        A group's own ``error`` is None — the fatal cause is a FAILED leaf nested in its
+        children. Walking depth-first turns the opaque "see the execution record" into the
+        actual node and message (e.g. "parse (docling): ModuleNotFoundError: ...").
+
+        Args:
+            record (NodeExecutionRecord): The run's root execution record.
+
+        Returns:
+            str | None: "node_id (kind): ErrorType: message" for the failing node, or None
+            when no FAILED leaf carries an error.
+        """
+        # 1. Depth-first — a nested failure is more specific than the group above it.
+        for child in record.children:
+            reason = PipelineRunner.__failed_node_reason(child)
+            if reason:
+                return reason
+        # 2. This node is the culprit only if it FAILED with a captured error.
+        if record.status == NodeStatus.FAILED and record.error is not None:
+            return f"{record.node_id} ({record.kind}): {record.error.error_type}: {record.error.message}"
+        return None
 
     async def run(
         self,
@@ -77,7 +103,10 @@ class PipelineRunner(LoggerClass):
 
         # 4. A failed run surfaces the engine's error, verbatim.
         if output is None:
-            reason = record.error.message if record.error else "see the execution record"
+            reason = (
+                self.__failed_node_reason(record)
+                or (record.error.message if record.error else "see the execution record")
+            )
             raise PipelineRunError(f"pipeline run failed: {reason}")
 
         # 5. The OUTPUT CONTRACT: the final node must deliver the RunBundle.

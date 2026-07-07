@@ -75,6 +75,7 @@ FROZEN legacy — don't review it unless explicitly asked.
 - [reindex_staleness_coherence](reindex_staleness_coherence.md) — reindex_diff shared between config version-bump + per-doc staleness; the fragile transient `_reindex_reasons`.
 - [secret_roundtrip](secret_roundtrip.md) — `ConfigDocument.merge_patch` preserves redacted secrets — validated correct, do NOT flag.
 - [search_pipeline_antipatterns](search_pipeline_antipatterns.md) — recurring correctness/coherence issues in the search pipeline (engine, rerank, fusion).
+- [rework_search_endpoint](rework_search_endpoint.md) — rework hybrid-search read path: named-vector-via-constants, openai dense-only degrade, secret handling, and the never-ingested→500 facade gap.
 
 ### Auth & scoping
 - [auth_keys_only_capabilities](auth_keys_only_capabilities.md) — AUTH keys-only model: capability taxonomy + require_capability; null=full-access footgun; what NOT to flag.

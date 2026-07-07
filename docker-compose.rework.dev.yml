@@ -35,8 +35,11 @@ services:
       - ${HOME}/.cache/huggingface:/root/.cache/huggingface
     environment:
       DEV_MODE: "true"
-    # --watch restarts the worker on any source change (watchfiles is in the base deps).
-    command: ["arq", "entrypoint.WorkerSettings", "--watch", "/app"]
+    # Hot-reload the arq worker on source edits. arq's own --watch only recreates the asyncio
+    # Worker with ALREADY-imported (stale) modules, so code changes never take effect. Wrapping the
+    # whole process in `watchfiles` (a base dep via fastapi[standard]) does a real kill+restart that
+    # re-imports everything. Watch the mounted source roots only.
+    command: ["watchfiles", "arq entrypoint.WorkerSettings", "/app/shared", "/app/worker"]
 
   # ── Vite dev server — hot-reloading frontend, dev-only service ───────────────
   rework_frontend:

@@ -15,6 +15,7 @@ from .routers import (
     jobs_router,
     pipelines_router,
     scalar_router,
+    search_router,
 )
 
 
@@ -48,6 +49,9 @@ def create_app(
     # API v1 — the document explorer (read surface) and the blob byte stream.
     app.include_router(router=explorer_router, prefix="/api/v1")
     app.include_router(router=blobs_router, prefix="/api/v1")
+
+    # API v1 — hybrid retrieval search over a collection.
+    app.include_router(router=search_router, prefix="/api/v1")
 
     return app
 

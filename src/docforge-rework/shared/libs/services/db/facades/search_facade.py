@@ -54,6 +54,10 @@ class SearchFacade(LoggerClass):
         """
         # 1. The vector side — fused (chunk_id, score) pairs.
         name = DatabaseHelpers.qdrant_collection_name(collection_id)
+        # A collection provisions its Qdrant space lazily at first indexing — searching one that was
+        # created but never ingested has no space to query yet. Empty results, not a 500.
+        if not await self._qdrant.raw.collection_exists(name):
+            return []
         scored = await QdrantSearchApi.hybrid(
             self._qdrant.raw,
             name,
