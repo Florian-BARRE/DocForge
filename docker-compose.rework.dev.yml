@@ -30,8 +30,9 @@ services:
     volumes:
       - ./src/docforge-rework/worker:/app/worker
       - ./src/docforge-rework/shared:/app/shared
-      # Reuse the host's HF cache: docling's models are already downloaded there.
-      - ${USERPROFILE}/.cache/huggingface:/root/.cache/huggingface
+      # Reuse the host's HF cache so docling never re-downloads models.
+      # ${HOME} on Linux; on Windows/Docker Desktop export HOME or swap for ${USERPROFILE}.
+      - ${HOME}/.cache/huggingface:/root/.cache/huggingface
     environment:
       DEV_MODE: "true"
     # --watch restarts the worker on any source change (watchfiles is in the base deps).
