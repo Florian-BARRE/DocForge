@@ -117,12 +117,16 @@ services:
       -dir=/data
       -s3
       -s3.port=8333
+      -s3.config=/etc/seaweedfs/s3_config.json
       -master.volumeSizeLimitMB=256
       -volume.max=0
     ports:
       - "10044:8333"              # S3 API (local dev + operator inspection)
     volumes:
       - rework_seaweedfs_data:/data
+      # S3 identity so authenticated clients (the app/worker sign with S3_ACCESS_KEY/SECRET)
+      # are accepted — without it SeaweedFS rejects every signed request with AccessDenied.
+      - ./services/docforge-rework/s3_config.json:/etc/seaweedfs/s3_config.json:ro
     restart: unless-stopped
     networks:
       - rework_net

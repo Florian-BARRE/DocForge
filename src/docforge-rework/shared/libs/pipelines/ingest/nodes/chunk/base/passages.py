@@ -2,7 +2,8 @@
 # The COMMON projection every chunking method starts from: the enriched IR flattened into an
 # ordered list of Passages. The composition RULES live here — once, for all methods: a figure and
 # its meaning (the ADJACENT CAPTION block, folded in + VLM description + OCR text) become ONE
-# ATOMIC unit that no method may split; a table renders to markdown (atomic, caption folded in
+# ATOMIC unit that no method may split, rendered as an explicitly MARKED block so machine-derived
+# text never reads as document prose; a table renders to markdown (atomic, caption folded in
 # too); headings carry the section identity; decorative or empty figures contribute nothing;
 # header/footer noise is excluded. Every text is token-counted, and a boundary-less oversized
 # text hard-cuts at token level — nothing non-atomic may exceed a method's cap.
@@ -145,14 +146,13 @@ class PassageProjector:
             rendered = ChunkerHelpers.render_table(block.table)
             text = f"{caption}\n{rendered}" if caption else rendered
             return text, config.tables_atomic
-        # 3. THE figure rule: the image and its meaning travel as ONE unit — the adjacent
-        #    caption + the figure's own text + VLM description + OCR text joined; an empty
-        #    figure (e.g. decorative) contributes nothing.
+        # 3. THE figure rule: the image and its meaning travel as ONE unit, rendered as an
+        #    explicitly MARKED block (leading `[Image]`, OCR labelled) so machine-derived text
+        #    never reads as prose; an empty figure (e.g. decorative) contributes nothing.
         if block.block_type == BlockType.FIGURE:
             if not config.include_figures or block.figure is None:
                 return None
-            parts = [caption, block.text, block.figure.description, block.figure.ocr_text]
-            text = "\n".join(part.strip() for part in parts if part and part.strip())
+            text = ChunkerHelpers.render_figure(block.figure, caption, block.text)
             return (text, config.figures_atomic) if text else None
         # 4. Every other block contributes its native text.
         if block.text and block.text.strip():

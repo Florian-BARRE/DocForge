@@ -259,9 +259,12 @@ breadcrumb, préfixe LLM…). **Un seul contrat pour toutes les méthodes** : `{
 
 ### Le socle commun (`chunker/base/`) — la projection + les RÈGLES DE COMPOSITION
 Quelle que soit la méthode, l'IR est d'abord projeté en **passages** ordonnés, règles appliquées UNE fois :
-- **Figure + sens = UNE unité ATOMIQUE** : le **bloc CAPTION adjacent** (les parseurs émettent la caption
-  comme bloc séparé — la projection le replie dans l'unité, block_ids inclus) + description VLM + texte OCR,
-  insécables (`figures_atomic`) — une figure vide (decorative) n'apporte rien ;
+- **Figure + sens = UNE unité ATOMIQUE**, rendue avec des **marqueurs explicites** pour que le contenu dérivé
+  d'image ne se confonde jamais avec de la prose native dans le texte du chunk :
+  `[Image: <kind>] <caption> <texte natif>`, puis la **description VLM** sur sa ligne, le **texte OCR** sous
+  `[OCR]`, et la grille `chart_to_data` sous `[Data]` (table markdown, 1re ligne = en-tête). Le **bloc CAPTION
+  adjacent** est replié dans l'unité (les parseurs l'émettent séparé — block_ids inclus) ; parties vides
+  ignorées ; insécable (`figures_atomic`) — une figure vide (decorative, marqueur seul) n'apporte rien ;
 - **Table → markdown**, atomique (`tables_atomic`), caption adjacente repliée aussi — jamais coupée en deux ;
 - header/footer exclus · `heading_path` + identité de section calculés (l'arbre de titres du parse ; **garde
   anti-cycle** sur une chaîne de parents corrompue) ;

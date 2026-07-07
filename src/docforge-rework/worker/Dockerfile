@@ -66,6 +66,19 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PATH="/opt/venv/bin:${PATH}" \
     TIKTOKEN_CACHE_DIR=/opt/tiktoken_cache
 
+# System shared libraries the model stack loads at runtime. docling's PDF/image path and the
+# OpenCV pulled by rapidocr-onnxruntime link against X11/GL client libs even when run headless —
+# without them the parse stage dies at import (e.g. "libxcb.so.1: cannot open shared object file").
+# --no-install-recommends keeps the layer minimal; the apt lists are dropped to shrink the image.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libgl1 \
+        libglib2.0-0 \
+        libxcb1 \
+        libxrender1 \
+        libxext6 \
+        libsm6 \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app/worker
 
 # Copy the prebuilt virtual environment and the baked tokenizer cache from the builder.

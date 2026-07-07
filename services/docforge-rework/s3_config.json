@@ -1,0 +1,14 @@
+{
+  "identities": [
+    {
+      "name": "docforge",
+      "credentials": [
+        {
+          "accessKey": "docforge",
+          "secretKey": "docforge_dev_secret"
+        }
+      ],
+      "actions": ["Admin", "Read", "Write", "List", "Tagging"]
+    }
+  ]
+}

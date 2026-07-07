@@ -39,8 +39,10 @@ dependencies = [
 # uv sources are ignored for transitive deps and torch resolves from PyPI (the multi-GiB CUDA build,
 # which fills a CPU dev VM's disk). The worker image selects the variant via ARG TORCH_VARIANT.
 [project.optional-dependencies]
-cpu = ["torch"]
-gpu = ["torch"]
+# torchvision MUST come from the same wheel index as torch — a PyPI torchvision compiled against a
+# different torch fails at import with "operator torchvision::nms does not exist" (ABI mismatch).
+cpu = ["torch", "torchvision"]
+gpu = ["torch", "torchvision"]
 
 [tool.uv]
 # Deps-only project: do not build/install the local tree as a package — the apps run
@@ -55,6 +57,10 @@ conflicts = [
 # Route torch to the correct wheel index per active extra. pytorch-cpu = ~200 MB CPU-only wheel
 # (no nvidia-* payload); pytorch-cu124 = CUDA 12.4 wheels for a GPU host.
 torch = [
+    { index = "pytorch-cpu", extra = "cpu" },
+    { index = "pytorch-cu124", extra = "gpu" },
+]
+torchvision = [
     { index = "pytorch-cpu", extra = "cpu" },
     { index = "pytorch-cu124", extra = "gpu" },
 ]
@@ -79,6 +85,9 @@ dev = [
 ]
 worker = [
     "docling>=2.108.0",
+    # docling pulls transformers transitively with NO upper bound; uv resolves the latest (5.x),
+    # whose AutoProcessor API breaks docling 2.108 (ModuleNotFoundError at parse). Pin to 4.x.
+    "transformers>=4.46,<5",
     "pillow>=12.3.0",
     "pypdfium2>=5.11.0",
     "rapidocr-onnxruntime>=1.4.4",

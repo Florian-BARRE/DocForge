@@ -27,6 +27,7 @@ from shared_libs.public_models import (
     BlockType,
     DocumentIR,
     FigureEnrichment,
+    FigureKind,
     Provenance,
     TableData,
 )
@@ -60,9 +61,10 @@ def test_shared_projection_composition_rules() -> None:
 
     fig = by_first_block["fig1"]
     assert fig.atomic
+    assert fig.text.startswith("[Image:")           # explicit marker, not bare prose
     assert "Figure 1: a cat" in fig.text
     assert "ginger cat" in fig.text
-    assert "CAT-01" in fig.text
+    assert "[OCR] CAT-01" in fig.text                # OCR labelled distinctly from the description
     assert "deco" not in by_first_block
     assert "hf" not in by_first_block
 
@@ -201,6 +203,90 @@ async def test_f4_boundaryless_run_on_is_hard_cut() -> None:
     ).run(ChunkerConsumes(ir=runon))
     assert out.chunks
     assert all(c.token_count <= 85 for c in out.chunks)
+
+
+def test_figure_text_is_wrapped_in_an_explicit_image_marker() -> None:
+    marked = DocumentIR(doc_id="d7", source_hash="h", n_pages=1, blocks=[
+        _blk("fchart", BlockType.FIGURE, 0, text="Figure 2: quarterly revenue",
+             figure=FigureEnrichment(kind=FigureKind.CHART, description="Revenue climbs each quarter.",
+                                     ocr_text="Q1 100 Q2 140")),
+        _blk("fdeco", BlockType.FIGURE, 1, figure=FigureEnrichment(kind=FigureKind.DECORATIVE)),
+    ])
+    passages = PassageProjector.project(marked, BaseChunkerConfig())
+    assert [p.block_ids[0] for p in passages] == ["fchart"]   # decorative figure drops out
+
+    text = passages[0].text
+    lines = text.splitlines()
+    # 1. Leading marker carries the figure kind and the native caption text.
+    assert lines[0] == "[Image: chart] Figure 2: quarterly revenue"
+    # 2. VLM description follows, framed as image-derived by the marker above.
+    assert "Revenue climbs each quarter." in lines
+    # 3. OCR text is present but labelled distinctly, never mistaken for the description.
+    assert "[OCR] Q1 100 Q2 140" in lines
+    # 4. Description and OCR stay verbatim in the text → still retrieval-friendly.
+    assert "Revenue climbs each quarter." in text and "Q1 100 Q2 140" in text
+    # 5. No chart-to-data extraction on this figure → no [Data] block.
+    assert "[Data]" not in text
+
+
+def test_figure_chart_to_data_renders_a_marked_markdown_table() -> None:
+    charted = DocumentIR(doc_id="d8", source_hash="h", n_pages=1, blocks=[
+        _blk("frev", BlockType.FIGURE, 0, text="Figure 1: Quarterly revenue by quarter, 2025.",
+             figure=FigureEnrichment(
+                 kind=FigureKind.CHART, description="Revenue rises across the year.",
+                 data_table=[["Quarter", "Value"], ["Q1", "100"], ["Q2", "140"], ["Q4", "180"]])),
+    ])
+    text = PassageProjector.project(charted, BaseChunkerConfig())[0].text
+
+    # 1. The extracted grid is appended under a distinct [Data] marker, after the description.
+    assert "[Data]" in text
+    assert text.index("Revenue rises across the year.") < text.index("[Data]")
+    # 2. First grid row is the markdown header; the data rows follow verbatim.
+    lines = text.splitlines()
+    assert "| Quarter | Value |" in lines
+    assert "| --- | --- |" in lines
+    assert "| Q1 | 100 |" in lines
+    assert "| Q4 | 180 |" in lines
+
+
+def test_figure_with_only_a_data_table_still_produces_a_marked_chunk() -> None:
+    data_only = DocumentIR(doc_id="d9", source_hash="h", n_pages=1, blocks=[
+        _blk("fdata", BlockType.FIGURE, 0,
+             figure=FigureEnrichment(kind=FigureKind.CHART,
+                                     data_table=[["A", "B"], ["1", "2"]])),
+    ])
+    passages = PassageProjector.project(data_only, BaseChunkerConfig())
+    assert len(passages) == 1                       # a data-only figure is NOT dropped
+    text = passages[0].text
+    assert text.startswith("[Image: chart]")        # marker still present
+    assert "[Data]" in text
+    assert "| A | B |" in text.splitlines()
+
+
+def test_figure_with_empty_data_table_emits_no_data_block() -> None:
+    empty = DocumentIR(doc_id="d10", source_hash="h", n_pages=1, blocks=[
+        _blk("fempty", BlockType.FIGURE, 0, text="Figure 3: a photo",
+             figure=FigureEnrichment(kind=FigureKind.PHOTO, description="A landscape.", data_table=[])),
+    ])
+    text = PassageProjector.project(empty, BaseChunkerConfig())[0].text
+    assert "[Data]" not in text                      # empty grid contributes nothing
+    assert "A landscape." in text
+
+
+def test_figure_data_table_cells_are_sanitized() -> None:
+    dirty = DocumentIR(doc_id="d11", source_hash="h", n_pages=1, blocks=[
+        _blk("fdirty", BlockType.FIGURE, 0,
+             figure=FigureEnrichment(kind=FigureKind.CHART,
+                                     data_table=[["Series", "Note"], ["A | B", "line1\nline2"]])),
+    ])
+    text = PassageProjector.project(dirty, BaseChunkerConfig())[0].text
+    lines = text.splitlines()
+    # 1. A pipe inside a cell is escaped, not a phantom column separator.
+    assert "| A \\| B | line1 line2 |" in lines
+    # 2. The newline is flattened so the logical row stays on one markdown line.
+    assert "line1\nline2" not in text
+    # 3. The header separator still lands right after the header row (2 columns).
+    assert lines[lines.index("| Series | Note |") + 1] == "| --- | --- |"
 
 
 def test_f5_docling_style_caption_fuses_into_the_figure_unit() -> None:

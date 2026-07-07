@@ -12,7 +12,7 @@ from typing import Any
 from loggerplusplus import loggerplusplus
 
 # ====== Internal Project Imports ======
-from shared_libs.public_models import TableData
+from shared_libs.public_models import FigureEnrichment, TableData
 
 # Sentence boundary: end punctuation followed by whitespace and an uppercase/digit start.
 _SENTENCE_BOUNDARY = re.compile(r"(?<=[.!?])\s+(?=[A-Z0-9À-Ü])")
@@ -42,6 +42,43 @@ class ChunkerHelpers:
                 encoder = tiktoken.get_encoding(encoding_name)
                 cls._encoders[encoding_name] = encoder
         return encoder
+
+    @staticmethod
+    def __sanitize_cell(cell: str) -> str:
+        """Escape pipes and flatten line breaks so a cell stays within one markdown column."""
+        return cell.replace("\\", "\\\\").replace("|", "\\|").replace("\n", " ").replace("\r", " ")
+
+    @staticmethod
+    def __markdown_grid(rows: list[list[str]], has_header: bool) -> str | None:
+        """
+        Render a row-major string grid as a markdown table.
+
+        Cells are sanitized (pipes escaped, line breaks flattened) so a value carrying ``|`` or a
+        newline — routine in VLM chart-to-data extraction — cannot inject phantom columns or split
+        a logical row (which would push the separator mid-table). Ragged rows are right-padded to
+        the widest row so the pipe count stays aligned.
+
+        Args:
+            rows (list[list[str]]): Row-major cells.
+            has_header (bool): Insert a header separator after the first row.
+
+        Returns:
+            str | None: The markdown table, or None for a degenerate grid with no columns.
+        """
+        # 1. Column count from the widest row; a grid with no columns renders nothing.
+        n_cols = max((len(row) for row in rows), default=0)
+        if n_cols == 0:
+            return None
+        # 2. Sanitize + right-pad every row so each logical row is exactly n_cols aligned cells.
+        lines: list[str] = []
+        for row in rows:
+            cells = [ChunkerHelpers.__sanitize_cell(cell) for cell in row]
+            cells += [""] * (n_cols - len(cells))
+            lines.append("| " + " | ".join(cells) + " |")
+        # 3. Header separator sits right after the first row when flagged.
+        if has_header:
+            lines.insert(1, "|" + " --- |" * n_cols)
+        return "\n".join(lines)
 
     @classmethod
     def count_tokens(cls, text: str, encoding_name: str) -> int:
@@ -108,11 +145,48 @@ class ChunkerHelpers:
         Returns:
             str: A markdown table (with a separator row when a header is flagged).
         """
-        # 1. One markdown row per grid row; the header separator only when flagged.
-        lines = ["| " + " | ".join(row) + " |" for row in table.cells]
-        if table.has_header and len(lines) >= 1:
-            lines.insert(1, "|" + " --- |" * table.n_cols)
-        return "\n".join(lines)
+        return ChunkerHelpers.__markdown_grid(table.cells, table.has_header) or ""
+
+    @staticmethod
+    def render_figure(
+        figure: FigureEnrichment, caption: str | None, native_text: str | None
+    ) -> str | None:
+        """
+        Render a figure's meaning as an EXPLICITLY MARKED block for the chunkable text.
+
+        A figure's meaning is machine-derived (a VLM description, OCR text): folded into a chunk
+        without a marker it reads as if it were a real paragraph of the document. Every part is
+        wrapped so a reader — and the retrieval text, which keeps the content verbatim — can tell
+        image-derived content from prose. The ``[Image: <kind>]`` and ``[OCR]`` labels are
+        structural: kept short and language-neutral (the corpus is multilingual).
+
+        Args:
+            figure (FigureEnrichment): The figure slot carrying kind, description and OCR text.
+            caption (str | None): The adjacent caption block text, if any.
+            native_text (str | None): The figure block's own native text, if any.
+
+        Returns:
+            str | None: The marked figure block, or None when the figure carries no content
+            (a decorative figure with no caption, description or OCR contributes nothing).
+        """
+        # 1. Caption + native text are real document prose describing the figure; the marker
+        #    frames the whole block as image-derived so the caption cannot pass for a paragraph.
+        header_bits = [bit.strip() for bit in (caption, native_text) if bit and bit.strip()]
+        header = " ".join([f"[Image: {figure.kind.value}]", *header_bits])
+        # 2. The machine-derived meaning, each part labelled distinctly (OCR ≠ description ≠ data).
+        lines = [header]
+        if figure.description and figure.description.strip():
+            lines.append(figure.description.strip())
+        if figure.ocr_text and figure.ocr_text.strip():
+            lines.append(f"[OCR] {figure.ocr_text.strip()}")
+        # 3. Chart-to-data extraction rendered as a marked markdown table (first row = header);
+        #    an empty or degenerate grid contributes nothing.
+        data_grid = ChunkerHelpers.__markdown_grid(figure.data_table or [], has_header=True)
+        if data_grid:
+            lines.append("[Data]")
+            lines.append(data_grid)
+        # 4. A lone marker line means no real content — a decorative figure contributes nothing.
+        return "\n".join(lines) if header_bits or len(lines) > 1 else None
 
 
 __all__ = ["ChunkerHelpers"]
