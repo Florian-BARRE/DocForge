@@ -41,6 +41,8 @@ services:
     build:
       context: src/docforge-rework
       dockerfile: worker/Dockerfile
+      args:
+        TORCH_VARIANT: cpu        # CPU torch (~200 MB); GPU: build --build-arg TORCH_VARIANT=gpu + BGE toolkit
     image: docforge-rework-worker:latest
     container_name: docforge-rework-worker
     profiles: ["full"]

@@ -26,11 +26,17 @@ ENV UV_PROJECT_ENVIRONMENT=/opt/venv
 # only rebuild when pyproject.toml or uv.lock changes.
 COPY pyproject.toml uv.lock ./
 
+# Torch wheel variant: cpu (default, ~200 MB) or gpu (CUDA 12.4, multi-GiB).
+# CPU keeps the image small enough for a CPU dev VM; docling runs fine on CPU torch.
+#   GPU: docker build --build-arg TORCH_VARIANT=gpu ...  (+ NVIDIA Container Toolkit on the host)
+ARG TORCH_VARIANT=cpu
+
 # Install the locked dependencies for the WORKER image.
 # --frozen: fail if the lock is out of sync; --no-dev: skip dev tooling;
-# --group worker: the heavy model runtimes only this image needs.
+# --group worker: the heavy model runtimes only this image needs;
+# --extra ${TORCH_VARIANT}: steers torch to the cpu (or gpu) wheel index (see pyproject uv sources).
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev --group worker
+    uv sync --frozen --no-dev --group worker --extra "${TORCH_VARIANT}"
 
 # Pre-populate the tiktoken cache (the chunker's tokenizer): the first get_encoding()
 # downloads BPE data over the network — baked here so runtime needs no egress.

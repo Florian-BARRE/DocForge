@@ -34,10 +34,40 @@ dependencies = [
     "tiktoken>=0.13.0",
 ]
 
+# Torch is a transitive dep of docling (worker group). Declared here as a DIRECT dep split across
+# cpu/gpu extras so uv sources can steer it to the right wheel index — without a direct declaration
+# uv sources are ignored for transitive deps and torch resolves from PyPI (the multi-GiB CUDA build,
+# which fills a CPU dev VM's disk). The worker image selects the variant via ARG TORCH_VARIANT.
+[project.optional-dependencies]
+cpu = ["torch"]
+gpu = ["torch"]
+
 [tool.uv]
 # Deps-only project: do not build/install the local tree as a package — the apps run
 # from source via sys.path (entrypoint bootstrap).
 package = false
+# cpu and gpu torch are mutually exclusive — uv enforces this at lock time.
+conflicts = [
+    [{ extra = "cpu" }, { extra = "gpu" }],
+]
+
+[tool.uv.sources]
+# Route torch to the correct wheel index per active extra. pytorch-cpu = ~200 MB CPU-only wheel
+# (no nvidia-* payload); pytorch-cu124 = CUDA 12.4 wheels for a GPU host.
+torch = [
+    { index = "pytorch-cpu", extra = "cpu" },
+    { index = "pytorch-cu124", extra = "gpu" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cu124"
+url = "https://download.pytorch.org/whl/cu124"
+explicit = true
 
 [dependency-groups]
 # Dev tooling — installed by `uv sync` locally, excluded from runtime images.
