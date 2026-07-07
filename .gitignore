@@ -68,3 +68,8 @@ htmlcov/
 
 # Playwright MCP session artifacts (snapshots / console logs from browser-driven checks)
 .playwright-mcp/
+
+# The pipeline BUILD module (blob models + PipelineBuilder) is SOURCE, not a build
+# artifact - re-include it from the global build/ rule above.
+!src/docforge-rework/shared/libs/pipelines/build/
+!src/docforge-rework/shared/libs/pipelines/build/**
