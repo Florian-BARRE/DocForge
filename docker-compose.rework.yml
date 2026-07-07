@@ -138,11 +138,50 @@ services:
     networks:
       - rework_net
 
+  # ── BGE model host — the SAME image as the legacy stack (embed BGE-M3 + rerank) ──
+  # No profile: it is a backing service like the stores, so `up` (without --profile full)
+  # starts it too for local `uv` dev. A collection's embed node points at it via base_url:
+  #   in-network  → http://bge_server:80   (the rework_net alias below)
+  #   from host   → http://localhost:10047
+  rework_bge_server:
+    build:
+      context: src                # bge_server lives at src/bge_server (sibling of docforge-rework)
+      dockerfile: bge_server/Dockerfile
+      args:
+        TORCH_VARIANT: cpu        # ~2 GB CPU image; GPU: build --build-arg TORCH_VARIANT=gpu + BGE_DEVICE=cuda
+    image: docforge-bge-server:latest   # reuse the legacy-built image if present (no rebuild)
+    container_name: docforge-rework-bge-server
+    env_file:
+      - services/bge_server/.env
+    ports:
+      - "10047:80"                # Operator access: http://localhost:10047/health
+    volumes:
+      - rework_bge_models:/models # HF cache (HF_HOME=/models) — weights persist across restarts
+    healthcheck:
+      # stdlib probe (the slim runtime has no curl); generous start_period for the first
+      # weights download (~4.4 GiB) + two-model load.
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:80/health', timeout=5).status == 200 else 1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 300s
+    deploy:
+      resources:
+        limits:
+          cpus: "4"
+          memory: 6g
+    restart: unless-stopped
+    networks:
+      rework_net:
+        aliases:
+          - bge_server            # so a collection's default base_url http://bge_server:80 resolves
+
 volumes:
   rework_postgres_data:
   rework_redis_data:
   rework_qdrant_data:
   rework_seaweedfs_data:
+  rework_bge_models:
 
 networks:
   rework_net:
