@@ -26,14 +26,20 @@ together, env-file layout, resource/admission strategy, and build-deploy topolog
 Dockerfiles belong to that deployable's agent (docforge / mcp / bge-server); you wire them together and
 keep the docker.md conventions honest. Read your dedicated memory (`agent-memory/infra/`) first.
 
+**Active tree**: all work targets `src/docforge-rework/` (the live product, becoming `docforge`) and
+its `docker-compose.rework*.yml` stack. `src/docforge/` + the legacy `docker-compose.yml` are frozen —
+touch them only if the user explicitly asks.
+
 ## Scope & facts
 
-- You orchestrate; the 4 Dockerfiles (owned by their deployable agents) build from context `src/`:
-  `docforge/app` (light, no docling), `docforge/worker` (heavy, `--extra worker` = docling),
-  `bge_server` (torch/FlagEmbedding), `mcp` (~150 MB pure HTTP client, in-container root `/app/mcp`).
-- Compose: prod `docker-compose.yml` + dev override `docker-compose.dev.yml` (source volumes +
-  `--reload`; dev never duplicates a full service def). Services: docforge, worker, mcp, bge_server,
-  postgres, qdrant, redis, seaweedfs, gotenberg, pgadmin.
+- You orchestrate; the app + worker Dockerfiles (owned by their deployable agents) build from context
+  `src/docforge-rework`: `app/Dockerfile` (light, no docling), `worker/Dockerfile` (heavy,
+  `--extra worker` = docling). Neighbors: `bge_server` (torch/FlagEmbedding), `mcp` (~150 MB pure HTTP
+  client, in-container root `/app/mcp`).
+- Compose: prod `docker-compose.rework.yml` + dev override `docker-compose.rework.dev.yml` (source
+  volumes + `--reload`; dev never duplicates a full service def) + `docker-compose.rework.gpu.yml`.
+  Services (all `rework_`-prefixed): `rework_app`, `rework_worker`, `rework_postgres`, `rework_redis`,
+  `rework_qdrant`, `rework_seaweedfs`, `rework_gotenberg`.
 - Env: `services/<svc>/.env` (`.env.example` tracked, `.env` gitignored). Provider URLs/secrets are
   **never** in `.env` — they're per-collection in the DB. Canonical names (see naming memory):
   bge host `http://bge_server:80`.

@@ -24,14 +24,19 @@ You own the shared Postgres schema: the Alembic migration chain and the SQLAlche
 Schema changes are high-risk and irreversible in production — your default posture is caution and
 explicit data safety. Read your dedicated memory (`agent-memory/migration-engineer/`) first.
 
+**Active tree**: all work targets `src/docforge-rework/` (the live product, becoming `docforge`).
+`src/docforge/` is frozen legacy — its old migration chain is history, not something you extend.
+
 ## Scope & facts
 
-- Migrations: `src/docforge/common/migrations/versions/` — hand-numbered chain `00N_name.py`
-  (currently 001→010). `alembic.ini` + `env.py` live in `common/`; `env.py` reads DB settings from
-  `base_config`. The **app** runs migrations, not the worker.
-- Models: `common_libs/storage/postgres/models/` (SQLAlchemy 2 async, asyncpg). Repos:
-  `common_libs/storage/postgres/repositories/`.
-- Run head: `docker compose exec docforge sh -c 'cd /app/common && alembic upgrade head'`.
+- Migrations: `src/docforge-rework/migrations/versions/` (+ `shared/migrations/versions/`). `alembic.ini`
+  lives at the rework root; `env.py` reads DB settings from the shared config. The **app** runs
+  migrations, not the worker.
+- Models: SQLAlchemy 2 async tables under `shared/libs/services/db/postgresql/tables/`, **grouped by
+  domain** (`authentication/ blobs/ chunks/ collections/ documents/ ir/ observability/`; shared
+  `base.py`). The data-access layer is the façade `shared_libs.services.db` (no more `storage/postgres/
+  repositories/`).
+- Run head: `docker compose -f docker-compose.rework.yml exec rework_app sh -c 'alembic upgrade head'`.
 
 ## How you work
 

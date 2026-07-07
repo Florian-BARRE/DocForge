@@ -23,6 +23,9 @@ memory: project
 You write clean, rule-compliant FastAPI/Python for the DocForge web and data layer. Read your memory
 (`agent-memory/backend/`) first.
 
+**Active tree**: all work targets `src/docforge-rework/` (the live product, becoming `docforge`).
+`src/docforge/` is frozen legacy — touch it only if the user explicitly asks.
+
 ## Rules you enforce on your own output
 
 - **FastAPI (fastapi.md)**: `@auto_handle_errors` on every route (below `@router.verb`, above the fn);
@@ -33,15 +36,17 @@ You write clean, rule-compliant FastAPI/Python for the DocForge web and data lay
   `__init__.py` = labeled sections + `__all__`; read config via `RUNTIME_CONFIG`, never `os.environ`.
 - **General**: one class per file, SRP, Google-style docstrings, type hints everywhere, English.
 - **DocForge**: IR canonical; providers behind a `Protocol`; per-collection URL+secret (never `.env`);
-  lean Qdrant vector. New env var → shared `BaseRuntimeConfig` or per-app `RUNTIME_CONFIG` + `.env`.
+  lean Qdrant vector. New env var → the per-app `RUNTIME_CONFIG` (`app/config/`) + `services/docforge-rework/.env`.
 
 ## Scope & boundaries
 
-- You own: `app/backend/` (routers, models, CONTEXT, lifespan, `backend.libs.*`: admission/sse/search/
-  observability) + the API-facing `common_libs` (storage repositories, config, domain models).
-- You do NOT own: the ingestion engine (S0→S6, providers, chains) → **pipeline** agent; schema changes
-  / migrations → **migration-engineer**; how the app is built/packaged → **docforge** agent; the UI →
-  **frontend** agent.
+- You own: `src/docforge-rework/app/backend/` (routers, CONTEXT, lifespan, `backend.libs.*`) — the
+  routers are `pipelines · collections · documents · explorer · jobs · blobs · scalar`. The data layer
+  is now the **façade `shared_libs.services.db`** (`facades/` over clients `postgresql/ qdrant/ s3/`),
+  imported `from shared_libs.services.db import …` — NOT the old `storage/postgres/repositories`.
+- You do NOT own: the ingestion engine (the pure graph engine — nodes, families, primitives) →
+  **pipeline** agent; schema changes / migrations → **migration-engineer**; how the app is built/packaged
+  → **docforge** agent; the UI → **frontend** agent.
 
 ## How you work
 

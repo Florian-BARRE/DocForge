@@ -7,12 +7,15 @@ metadata:
 
 # Code Reviewer Memory
 
+Reviews target the ACTIVE product `src/docforge-rework/` (being renamed `docforge`). `src/docforge/` is
+FROZEN legacy — don't review it unless explicitly asked.
+
 ## Non-negotiable rules (from feedback)
 
-- **Docker + docker compose (v2)** — `docker build`, `docker compose up`; never `podman` or legacy `docker-compose`
+- **Docker + docker compose (v2)** — never `podman` or legacy `docker-compose`
 - **SeaweedFS only** — never write MinIO anywhere
 - **loggerplusplus only** — no `print()`, no direct loguru import
-- **LoggerClass.__init__(self) required** — every subclass must call it explicitly
+- **LoggerClass.__init__(self) required** — every instanciable subclass must call it explicitly
 - **RUNTIME_CONFIG first** — always the first internal import in entry points
 - **English only** — all code, comments, docstrings, variable names
 
@@ -20,7 +23,7 @@ metadata:
 
 - [ ] Every instanciable class: inherits `LoggerClass`, calls `LoggerClass.__init__(self)`
 - [ ] No `print()` or `import loguru` anywhere in application code
-- [ ] All log messages are f-strings: `self.logger.info(f"Done")` not `self.logger.info("Done")`
+- [ ] All log messages are f-strings
 - [ ] Import order: stdlib → third-party → `from config import ...` → relative imports
 - [ ] File header: `# ====== Code Summary ======` (except `__init__.py`)
 - [ ] `__init__.py`: labeled sections + `__all__`
@@ -34,122 +37,63 @@ metadata:
 - [ ] `CONTEXT.attr` used for all services — never import instances directly in routers
 - [ ] `hasattr(CONTEXT, "attr")` guards in `lifespan.py` `finally` block
 
-## Review checklist — DocForge invariants
+## Review checklist — DocForge invariants (rework tree)
 
 - [ ] IR is canonical — no code writes raw markdown/PDF as source of truth
-- [ ] Every provider implements its `Protocol` — duck-typed, no concrete coupling
-- [ ] No device logic (CUDA/CPU) inside individual providers — only in `DeviceManager`
-- [ ] New env vars: shared → `BaseRuntimeConfig` (`common/base_config/runtime/base_config.py`); app/worker-only → the per-app `RUNTIME_CONFIG(BaseRuntimeConfig)` subclass; plus `services/docforge/.env`
-- [ ] Schema change: Alembic migration present in `common/migrations/versions/`
-- [ ] New pipeline stage: wired as DAG node in `worker/libs/pipeline/engine.py`
-- [ ] New stage: idempotency guaranteed (Postgres ON CONFLICT; Qdrant upsert). NOTE: chunk_repo is now `DO UPDATE SET derived_meta, embed_text` (NOT DO-NOTHING) — verified-safe superset, see [[metagen_s5b]]
+- [ ] **Node purity** — a pipeline node does Consume→Produce with ZERO DB/S3/Qdrant I/O; persistence
+      happens at the edges in the worker via the `shared_libs.services.db` `Database` façade
+- [ ] Every slot AND every config field carries a `description` (a test rejects undescribed ones)
+- [ ] Device (CUDA/CPU) is a deployment env decision — never a per-collection provider config field
+- [ ] A broken pipeline blob returns as DATA (`valid=false` + issues) via `GraphValidator`, never HTTP
+- [ ] New env var: shared → the common base config; app-only → `app/config/runtime_config.py`;
+      worker-only → `worker/config/runtime_config.py` (+ the matching `services/*/.env`)
+- [ ] Schema change: Alembic migration present in `src/docforge-rework/shared/migrations/versions/`
+- [ ] New node: registered in a family under `shared/libs/pipelines/` (`nodes/<family>/` for generic
+      providers, `ingest/nodes/<stage>/` for stage nodes); declares family/kind + typed described slots
+      via `describe()`; `UNIQUE_IN_GRAPH` set correctly
+- [ ] Idempotency at persistence edges (Postgres upsert; Qdrant upsert) — see [[db-layer-review-heuristics]]
 
 ## Topic memory files (read on demand)
 
-- [auth_keys_only_capabilities](auth_keys_only_capabilities.md) — AUTH-A keys-only model: capability taxonomy + require_capability enforcement; null=full-access footgun + jobs-cancel cross-collection gap (both pre-existing/by-design — flag as risk not bug); cap↔route map; migration 015
-- [layer_dag](layer_dag.md) — libs layer DAG import rules to enforce, esp. storage vs search
-- [reindex_staleness_coherence](reindex_staleness_coherence.md) — reindex_diff shared between config bump + per-doc staleness; fragile transient `_reindex_reasons`
-- [secret_roundtrip](secret_roundtrip.md) — `ConfigDocument.merge_patch` preserves redacted secrets — validated, do NOT flag
-- [page_indexing_zero_based](page_indexing_zero_based.md) — page numbers are 0-indexed end to end; page-1-as-first is off-by-one
-- [search_pipeline_antipatterns](search_pipeline_antipatterns.md) — P7 search pipeline (engine, rerank, fusion) recurring issues
-- [observability-brick-a](observability-brick-a.md) — Brique A audit anti-patterns (queue/metrics/heartbeat/events + jobs/monitoring routers)
-- [async_teardown_swallow](async_teardown_swallow.md) — flag `except (CancelledError, Exception): pass` + unlogged `_run` safety nets that hide async worker crashes (hand-rolled queue/worker designs)
-- [deployment_knob_privateattr](deployment_knob_privateattr.md) — sanctioned way to remove a per-collection provider knob (use_gpu): PrivateAttr + env in merge_defaults + extra="ignore"; flat frontend PickerValue twin
-- [provider_removal_legacy_alias](provider_removal_legacy_alias.md) — sanctioned way to remove a registered provider CHOICE (tei→bge_server): unregister+keep class, mode="before" id-alias rewrite ahead of the union, all 4 config paths normalize via resolve_pipeline; review checklist
-- [extra_ignore_provider_field_removal](extra_ignore_provider_field_removal.md) — sanctioned way to remove a dead config FIELD (top_n/group_by/use_gpu): ConfigDict(extra="ignore") drops stored key (no 422); review checklist; do NOT flag as compat gap
-- [locality_empty_chain_nameerror](locality_empty_chain_nameerror.md) — latent NameError: code after `for x in seq` using `x` crashes on empty seq; fixed in locality_checks embed.chain dead block
-- [deletion_batch_residue](deletion_batch_residue.md) — feature-purge batches: identifier-grep is clean yet orphaned env vars (base_config/.env) + stale docstrings survive; run a 2nd feature-word grep; consistently-threaded sentinel columns (provider_call.cost=0.0) are out-of-scope follow-ups, not danglers
-- [embed_continue_batch_misalignment](embed_continue_batch_misalignment.md) — S6 embed `continue` skips a degraded batch → content_dense misaligned vs index_chunks (wrong/None Qdrant vectors) + IndexError in embed_values; positionally-consumed chain results must emit same-length placeholders, not drop the batch
-- [recursive_describer_vs_flat](recursive_describer_vs_flat.md) — discovery has 2 describe surfaces (flat dynamic_fields vs recursive config_tree); they diverge on provider defaults (recursive walks class schema, skips merge_defaults); field→category map is the only union-field glue (silent gap if a union field is unmapped); class-schema walk = no secret leak
-- [bbox_normalized_overlay](bbox_normalized_overlay.md) — IR bbox is normalized [0,1] (Provenance + renderer.py *page_w/h); frontend overlays must use bbox*100% NOT divide by naturalWidth/zoom (else boxes collapse to corner); screenshot `<img>` auth via getPageScreenshotUrl ?token=
-- [metagen_s5b](metagen_s5b.md) — S5b LLM-metadata feature review map: chunk_repo DO UPDATE is a verified-safe superset; doc_fields-before-user merge; generated-field admission exemption; recurring hygiene gaps (missing .env vars, nullable-enum)
-- [stray_claude_dir_under_src](stray_claude_dir_under_src.md) — multi-agent batches can write agent-memory to src/**/.claude/ (NOT gitignored) instead of repo-root; scan git status for `?? src/**/.claude/`
-- [warning_swallowed_on_unmount](warning_swallowed_on_unmount.md) — React edit form that setWarning() then calls onSaved() which closes/unmounts the form never shows the warning; lift it to a persisting parent surface
-- [fingerprint_stage_flag_gap](fingerprint_stage_flag_gap.md) — v2 flow node-cache: a stage-level flag (enrich.chart_to_data) not folded into the Merkle fingerprint → stale cached enrich output; enumerate every stage ctor arg vs fingerprint_params/chain signatures
+### Engine, nodes & IR
+- [describe-reflection-fragility](describe-reflection-fragility.md) — `describe()` reads `annotation.__name__` and crashes on union/optional slots; one bad slot breaks the whole palette.
+- [foreach-primitive-traps](foreach-primitive-traps.md) — ForEach/WhenEquals/SlotTypes traps: non-Artifact item_type crash, ValidationError escaping per-node try, no ge=1 guard, progress/trace duplication.
+- [pipeline-engine-edge-selection](pipeline-engine-edge-selection.md) — FlowEngine ranks edges by specificity (ScoreBelow>WhenEquals>OnSuccess/OnFailure>Always); cross-rank fixed, SAME-rank fan-out still order-dependent.
+- [fingerprint_stage_flag_gap](fingerprint_stage_flag_gap.md) — node-cache: a stage-level flag (not a chain field) dropped from the Merkle fingerprint → stale cached output.
+- [enrich-trace-and-failure-traps](enrich-trace-and-failure-traps.md) — enrich: byte-carrying artefacts bloat the execution trace ~8x, `enrich_apply` mutates run_input in place, one flaky figure fails the doc.
+- [contextualize-llm-perchunk-traps](contextualize-llm-perchunk-traps.md) — per-chunk-LLM node traps (the shape metagen copies): O(n²) doc-view rebuild, whitespace flattening, over-broad keep_raw try.
+- [metagen-embed-node-traps](metagen-embed-node-traps.md) — metagen + embed node traps: chunk-metagen overwrites generated_meta on chaining, duplicate targets dedupe, datetime hint dropped; openai_compat factory consumer count.
+- [model-cache-concurrency](model-cache-concurrency.md) — ModelCache per-lib inference-locking: which heavy providers MUST serialize inference and which must not.
+- [locality_empty_chain_nameerror](locality_empty_chain_nameerror.md) — latent NameError: code after a for-loop using the loop var crashes on an empty iterable.
+- [rework-stage-layer-vision](rework-stage-layer-vision.md) — post-vision map (2026-07-05): stage-layer substrate vs UI-dead vs advanced-only; the SchemaForm misplacement + double-wrap wart.
+- [layer_dag](layer_dag.md) — libs layer DAG import rules to enforce, esp. storage vs search.
+- [page_indexing_zero_based](page_indexing_zero_based.md) — page numbers are 0-indexed end to end; page-1-as-first is off-by-one.
+- [bbox_normalized_overlay](bbox_normalized_overlay.md) — IR bbox is normalized [0,1]; overlay code that scales by page points/zoom collapses boxes to the corner.
 
-> Component-scoped memory lives with the component agents: **`mcp`** agent (`agent-memory/mcp/`) for
-> the `src/mcp/` HTTP-client invariant + REST endpoint map; **`bge-server`** agent
-> (`agent-memory/bge-server/`) for the `src/bge_server/` model host. Consult them when reviewing
-> those trees; this file holds the cross-cutting product rules.
+### Data layer, config & search
+- [db-layer-review-heuristics](db-layer-review-heuristics.md) — rework FK-only store pitfalls: self-FK insert batching, unindexed FKs, enum value binding, Qdrant filter/slug gaps.
+- [reindex_staleness_coherence](reindex_staleness_coherence.md) — reindex_diff shared between config version-bump + per-doc staleness; the fragile transient `_reindex_reasons`.
+- [secret_roundtrip](secret_roundtrip.md) — `ConfigDocument.merge_patch` preserves redacted secrets — validated correct, do NOT flag.
+- [search_pipeline_antipatterns](search_pipeline_antipatterns.md) — recurring correctness/coherence issues in the search pipeline (engine, rerank, fusion).
 
-## Common anti-patterns seen in this codebase
+### Auth & scoping
+- [auth_keys_only_capabilities](auth_keys_only_capabilities.md) — AUTH keys-only model: capability taxonomy + require_capability; null=full-access footgun; what NOT to flag.
+- [collection_scope_idor](collection_scope_idor.md) — every `{collection_id}/{document_id}` route MUST check `doc.collection_id == collection_id` or it's a cross-collection IDOR.
+- [stale-scoped-tab-bypasses-gate](stale-scoped-tab-bypasses-gate.md) — per-collection sub-tab state survives a collection switch and bypasses a gate that only HIDES the tab.
 
-- Passing `collection_id` as a positional arg instead of keyword — causes silent None
-- Forgetting `await` on async repo methods — Python won't warn, returns coroutine object
-- Hardcoding `http://localhost:8000` instead of using `RUNTIME_CONFIG.DOCFORGE_API_URL`
-- Using `os.environ.get()` in application code — must use `RUNTIME_CONFIG` instead
-- Returning raw `dict` from a route instead of a Pydantic model
-- Accessing `.params` on a typed Pydantic provider config (DoclingConfig, TeiEmbedConfig, …) —
-  post the flat-config refactor these have **flat top-level fields**, no `.params`. Use
-  `cfg.model_dump(exclude={"id"})` to get the params dict, or `getattr(cfg, "base_url", "")`
-  for a single attribute. The legacy `ProviderSpec(id, params)` is kept only for back-compat
-  in DB loading.
-- **Per-collection config gated on a deployment env flag** (S5b metagen, 2026-06-29): `_build_metagen`
-  did `targets = list(metagen.targets) if METAGEN_ENABLED else []`, so a collection that explicitly
-  configured the stage was silently no-op'd unless the global flag was on — violates "collection =
-  contract". A `*_ENABLED` env flag must gate the DEFAULT pipeline only (`build_default_pipeline`),
-  never an explicitly-configured per-collection block. Watch for half-gating (chain built but bindings
-  dropped) — it produces a stage that looks wired but does nothing.
-- **Hand-rolled field/dict snapshots that drift from the canonical normalizer** (S5b, 2026-06-29):
-  `tasks.py` rebuilt the worker's `metadata_fields` dicts inline and omitted the new `origin` key,
-  silently disabling generated-field resolution. And `collection_repo.create` built `MetadataFieldModel`
-  inline without `origin`, so create-collection never persisted it (update-config did). When a column/
-  field is added, grep ALL construction sites — prefer the single normalizer (`schema_field_dicts` /
-  `build_field`) over inline dict/model literals. Mocked unit tests passed; only the live run caught it.
-- Validator capability strings drifting from `ProviderRegistry.describe_stages()` ids
-  (seen: `chunk_strategy` vs `split_method`). Verify both sides agree before adding a
-  `_check_one("<cap>", …)` call — a mismatch makes every collection create raise
-  `Unknown <cap> provider 'token_budget'`.
-- Returning a SQLAlchemy model from a `repo.create()` without refreshing relations needed
-  outside the session — triggers `DetachedInstanceError` on lazy load. Use
-  `await session.refresh(collection, attribute_names=[...])` before returning.
-- Registry params using `"key"` instead of `"name"` (ParamSchema's required field).
-  Caused `/api/v1/discovery` to 500 silently — the UI then showed an empty form for
-  every endpoint. Always serialize provider/stage params with `{"name": ..., "type": ...}`,
-  never `{"key": ..., "note": ...}`. The discovery overlay validates via
-  `ParamSchema.model_validate()` and will fail loudly on drift.
-- Adding a pipeline param (chart_to_data, hierarchical, …) without emitting a
-  DynamicField overlay — the UI cannot surface it. `discovery/overlays.py`'s
-  `_pipeline_dynamic_fields` now emits `kind="scalar"` for every stage-level param;
-  the matching frontend branch is `ScalarPicker` in `ChoicePicker.tsx`. Both sides
-  must agree on the kind enum (DynamicFieldKind in `types.ts`).
+### Frontend & SSE
+- [antipattern-static-dom-ids](antipattern-static-dom-ids.md) — hardcoded HTML id/htmlFor break when a component renders more than once on the same screen.
+- [frontend-sse-lifecycle](frontend-sse-lifecycle.md) — the canonical EventSource lifecycle every SSE-consuming React component must mirror.
+- [frontend-sse-polling-fallback](frontend-sse-polling-fallback.md) — SSE polling-fallback anti-pattern: onerror starts polling never stopped after auto-reconnect → permanent double-fetch.
+- [sse-broadcaster-patterns](sse-broadcaster-patterns.md) — EventBroadcaster fan-out review points: set-iteration safety, silent Redis-drop, the justified no-response_model exception.
+- [warning_swallowed_on_unmount](warning_swallowed_on_unmount.md) — a form that sets a local warning THEN calls onSaved (closing the form) never shows the warning.
 
-## Frontend architecture invariants
+### Review hygiene & observability
+- [observability-brick-a](observability-brick-a.md) — Brique A observability audit anti-patterns (queue/metrics/heartbeat/events + jobs/monitoring routers).
+- [async_teardown_swallow](async_teardown_swallow.md) — async worker/task teardown that swallows all exceptions silently, hiding genuine crashes.
+- [deletion_batch_residue](deletion_batch_residue.md) — on feature-purge batches, identifier-grep misses orphaned env vars + stale docstrings; check both explicitly.
+- [stray_claude_dir_under_src](stray_claude_dir_under_src.md) — multi-agent batches can write agent-memory to `src/**/.claude/` (NOT gitignored); scan git status for it.
 
-- Forms are NEVER hand-coded per endpoint. The primitives are
-  `<RequestForm endpoint=… discovery=…>` (static body + query + root overlays) and
-  `<DynamicFieldsGroup fields=… prefix=…>` (nested overlays grouped by sub-path,
-  e.g. `pipeline` for create, `patch.pipeline` for update_config). Five canonical
-  consumers: CollectionStep, ConfigStep, IngestStep, SearchView, BrowseView —
-  if a new view fetches an endpoint with a body or query, it MUST go through
-  RequestForm so adding a backend Pydantic field surfaces automatically.
-- Any addition to a Pydantic request model is a UI feature: there is no separate
-  UI ticket. Verify the new field appears by reloading /discovery in the browser.
-
-## Chain framework invariants (Phase A — generalised provider chains)
-
-- Every ML stage uses `common_libs.providers.chain.Chain[T, R]` — parse, classifier, OCR,
-  VLM, embed. New providers plug in by exposing `score() -> float | None` on
-  their result type (see `common_libs/providers/scoring.py::ScoredResult`).
-- Pipeline config fields are ALWAYS `chain: list[…]` + `gate: ChainGateConfig`
-  (or `<stage>_chain` + `<stage>_gate` inside `EnrichConfig`). A legacy
-  `{provider: {...}}` blob is lifted via `_lift_provider_to_chain` so old
-  DB rows still load. Adding `provider:` instead of `chain:` is a regression.
-- Chain attempt traces are persisted on the IR:
-  - `DocumentIR.chain_traces` for stage-level chains (parse, embed).
-  - `Block.chain_traces` for block-scoped chains (classifier, OCR, VLM per figure).
-  - `DocumentIR.quality_score` carries the parser's intrinsic quality estimate
-    consumed by the parse chain gate.
-- Discovery emits `kind="multi"` for every chain field path and
-  `kind="scalar"` for every `<stage>.gate.min_score` (and stage-level scalar
-  params). The UI's existing `MultiPicker` + `ScalarPicker` render them for
-  free — no per-stage frontend code.
-- Logging format is canonical: `[CHAIN <stage>] attempt N/M provider=X
-  score=… duration_ms=… → escalate|final`. Any chain user MUST go through
-  `Chain.call()`; bypassing it skips traces, logs, and the gate.
-- Stage classes accept their chain instance, never a single provider:
-  `S1ParseStage(parse_chain=…)`, `S2EnrichStage(classifier_chain=…,
-  ocr_chain=…, vlm_chain=…)`, `S6EmbedIndexStage(embed_chain=…)`. The
-  registry's `_build_<stage>_chain` helpers are the single construction
-  point — entrypoint/worker MUST go through them, not instantiate
-  providers directly.
+> Component-scoped memory lives with the component agents: **mcp** (`agent-memory/mcp/`) for the
+> `src/mcp/` HTTP-client invariant + REST endpoint map; **bge-server** (`agent-memory/bge-server/`) for
+> the `src/bge_server/` model host. This file holds the cross-cutting product rules.

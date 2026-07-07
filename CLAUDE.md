@@ -1,38 +1,37 @@
 # DocForge — CLAUDE.md
 
-Document intelligence platform: multi-format → IR canonique → enrichissement → chunking → retrieval hybride.
+Plateforme de document intelligence : multi-format → **IR canonique** → enrichissement → chunking →
+contextualisation → métadonnées générées → embeddings → **retrieval hybride**.
 Spec complète : `SPEC-docforge-document-intelligence-platform.md`
+Pipeline (doc vivante, LA référence) : `src/docforge-rework/PIPELINE.md`
 
 ---
 
-## Phase courante : S5b metagen — LLM-generated metadata ✅ done
+## ⚠️ Migration en cours — deux arbres de code
 
-| Phase | Statut | Contenu |
+| Arbre | Rôle | Statut |
 |---|---|---|
-| **P1** | ✅ done | S0/S1, Postgres + SeaweedFS, Gotenberg, Docling, FastAPI |
-| **P2** | ✅ done | Merkle-DAG fingerprints, node cache, provider-call cache, arq workers, dry_run |
-| **P3** | ✅ done | S2 classifieur figures, OCR/VLM routing, grounding, chart-to-data, chaînes d'escalade, budget |
-| **P4** | ✅ done | S4 chunking structure-aware, S5 contextualisation, S6 BGE-M3 + Qdrant multi-vecteurs |
-| **P5** | ✅ done | Collections schema + pipeline update + reindex, hybrid search, chunks router, markdown endpoint |
-| **P6** | ✅ done | UI React (workspace unifié, drag-and-drop, live status, recherche hybride) + MCP server |
-| **P7** | ✅ done | SearchPipelineEngine : query transform (rewrite/HyDE/multi_query) + cross-encoder reranking (BGE/Cohere) |
-| **S5b** | ✅ done | LLM-generated metadata stage (S4→S5→**S5b**→S6) : champs `origin="generated"` déclarés dans le schéma collection, `pipeline.metagen.targets` lie provider+prompt+scope (chunk/document), JSON schema auto-dérivé du type ; `chunk.derived_meta` + preview dry-run + budget gate `METAGEN_*`. RPI : `docs/rpi/chunk-llm-metadata/` |
+| **`src/docforge-rework/`** | **LE PRODUIT ACTIF** — moteur graphe v2, stage-rail studio | 🟢 tout le dev ici · **deviendra `docforge`** |
+| `src/docforge/` | Ancien produit (moteur statique S0→S6) | 🔴 legacy, gelé, en voie de suppression |
 
-> Phase file inventory and key decisions per phase → `.claude/rules/phases.md`
+> **Règle** : tout nouveau travail va dans **`src/docforge-rework/`**. Ne touche à `src/docforge/`
+> que si l'utilisateur le demande explicitement. Le legacy sera supprimé et le rework renommé.
 
 ---
 
-## Commandes (dev / test / build)
+## Commandes — stack rework (par défaut)
 
-- **Prod (CPU)** : `docker compose -f docker-compose.yml up -d`
-- **Dev (CPU, hot reload)** : `docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build -d` (ou `/dev`).
-- **Dev + GPU (fast)** : `docker compose -f docker-compose.yml -f docker-compose.dev.yml -f docker-compose.gpu.yml up -d --build` — builds the ~9.5 GB GPU images for `bge_server` + `worker`; requires NVIDIA Container Toolkit. First build ~15-20 min; subsequent builds reuse the uv cache layer.
-- **Tests unitaires** : depuis `src/docforge/` → `uv run --project common pytest tests/units` (ou `/test`). 418 tests, tout mocké.
-- **Tests live** (stack up requise) : `uv run --project common pytest tests/live_test` — ingestion réelle via le service `bge_server`.
-- **Build images** : `docker compose build` (app → `docforge/app/Dockerfile`, worker → `docforge/worker/Dockerfile`, bge_server → `bge_server/Dockerfile`).
-- **Migrations** : `docker compose exec docforge sh -c 'cd /app/common && alembic upgrade head'`.
+- **Dev (hot reload)** : `docker compose -f docker-compose.rework.yml -f docker-compose.rework.dev.yml up --build -d`
+- **Prod** : `docker compose -f docker-compose.rework.yml up -d`
+- **Tests unitaires** : `cd src/docforge-rework && uv run pytest tests/units` (projet uv autonome, tout mocké)
+- **Un seul test** : `uv run pytest tests/units/engine/test_x.py::TestClass::test_method` (`-x`, `-k <expr>`)
+- **Tests live** (stack up requise) : `uv run pytest -m live`
+- **Lint / typecheck** : `uv run ruff check .` (+ `ruff format .`) et `uv run mypy .`
+- **Migrations** : `docker compose -f docker-compose.rework.yml exec rework_app sh -c 'alembic upgrade head'`
+- **Ports dev** : API `10040` · postgres `10041` · redis `10042` · qdrant `10043` · seaweedfs `10044` · gotenberg `10045` (firewall VM : `10000–11000`).
 
-> Multi-root : pytest tourne depuis `src/docforge/` (`pytest.ini`) ; `--project common` car le pyproject deps-only est dans `common/`. Si `uv run` râle, `unset VIRTUAL_ENV` d'abord.
+> **Legacy stack** (`src/docforge/`, gelée) : `docker-compose.yml` + tests depuis `src/docforge/`
+> (`uv run --project common pytest tests/units`). Conservée pour référence, ne pas faire évoluer.
 
 ---
 
@@ -40,119 +39,94 @@ Spec complète : `SPEC-docforge-document-intelligence-platform.md`
 
 <important>
 1. **L'IR est canonique** — markdown/PDF/HTML sont des vues générées, jamais sources.
-2. **Tout provider est interchangeable** derrière une interface `Protocol` ; **URL + secret par collection** (en DB), jamais en `.env`.
-3. **`DeviceManager` centralise GPU/CPU** — aucune logique device dans les briques.
-4. **Locality gate** — résolution à 3 niveaux : locality → provider → device.
-5. **Vecteur maigre** — seuls les champs filtrables dans Qdrant ; le riche est en Postgres.
-6. **Collection = contrat** — validation fail-fast avant toute dépense.
+2. **Pipeline PURE** — un node = `Config` + `Consomme → Produit`, **zéro DB/S3**. Le worker persiste
+   aux bords via la façade `Database` ; le contrat de collection arrive en **run input**.
+3. **Provider interchangeable dans sa famille** — URL + secret **par collection** (en DB), jamais en `.env`.
+4. **Collection = contrat** — validation fail-fast au **build du graphe** avant toute dépense.
+5. **Config `extra="forbid"`** — un typo dans le blob fait **échouer le build**, jamais ignoré silencieusement.
+6. **Vecteur maigre** — seuls les champs filtrables dans Qdrant ; le riche est en Postgres.
+7. **`DeviceManager` centralise GPU/CPU** — aucune logique device dans les nodes.
 </important>
 
 ---
 
-## Architecture
+## Architecture — le moteur graphe (v2)
+
+**7 étapes** : `INTAKE → PARSE → ENRICH → CHUNK → CONTEXTUALIZE → METAGEN → EMBED`.
+Détail complet des étapes, nodes, artefacts et décisions → **`PIPELINE.md`**. Mécanique du graphe :
+
+- **Transitions** (contrôle) : `OnSuccess` (défaut) · `OnFailure` (recovery/escalade) ·
+  `ScoreBelow(seuil)` (escalade qualité) · `WhenEquals(field, val)` (le switch) · `Always`.
+  **Priorité** : `ScoreBelow > WhenEquals > OnSuccess/OnFailure > Always`.
+- **Bindings** (données) : `FromRunInput` · `FromNode(node, field)` (n'importe quel amont) ·
+  `FromGroupInput` · `FromFirst(candidats)` (jointure après embranchement). Slots typés (`Artifact` ou `list[Artifact]`).
+- **`ForEach`** : sous-graphe par item (`over` / `item_field` / `max_concurrency`) ; tous les terminaux
+  produisent le MÊME `Artifact` → `items: list[T]`.
+- **Familles** (palette UI, kinds sans redondance) : `intake · converter · parser · render · enrich ·
+  chunker · contextualize · metagen` + capacités génériques `embed · ocr · vlm · llm`.
+- **`UNIQUE_IN_GRAPH`** : rejette une 2e instance d'un kind single-use au build (`duplicate_unique_node`).
+
+---
+
+## Structure — `src/docforge-rework/` (3 racines, un projet uv)
 
 ```
-REST API (FastAPI) ──→ arq workers (P2+)
-                              ↓
-                    Stage engine (DAG + double cache P2+)
-                    S0 ─→ S1 ─→ S2 ─→ S3 ─→ S4 ─→ S5 ─→ S6
-                              ↓                    ↓
-                         Postgres 16           SeaweedFS/S3
-                         (source of truth)     (blobs content-addressed)
-                                                    ↓
-                                              Qdrant (P4+)
+shared/libs/                 # SOCLE PARTAGÉ — importé via l'alias `shared_libs`
+  pipelines/                 #   LE MOTEUR PUR : base/ (node·graph·transition·slots·io·foreach·group)
+                             #     engine/ (core·resolver·progress) · edit/ (GraphEditor) · validation/ (GraphValidator)
+    nodes/                   #     capacités génériques : llm · ocr · vlm · embed · openai_compat (factory partagée)
+    ingest/                  #     LA pipeline : nodes/ groupés par étape · stages/ (StageCompiler) · build/ (PipelineBuilder)
+  public_models/ir/          #   DocumentIR + artefacts publics (SourceDocument, Chunk, EnrichmentEntry…)
+  services/db/               #   façade `Database` → facades/ (auth·collections·documents·ingestion·jobs·metagen·search)
+                             #     + clients postgresql/ (apis + tables SQLAlchemy) · qdrant/ · s3/
+app/                         # APP FASTAPI + FRONTEND
+  backend/routers/           #   pipelines · collections · documents · explorer · jobs · blobs · scalar
+  frontend/                  #   React (features/ · shell/ routing maison) — stage-rail UI + API headless
+  config/                    #   RUNTIME_CONFIG ; register_package_alias(`shared_libs`) + backend/libs sur sys.path
+worker/                      # WORKER ARQ
+  backend/libs/              #   runner/ (exécute la pipeline pure) · persistence/ (translator IR→DB) · jobs/ (core·progress)
+migrations/ · shared/migrations/   # Alembic
+tests/units/{api,edit,engine,nodes,stages,validation,worker} · tests/live
 ```
+
+> **Imports** : `from shared_libs.<x> import …`. Le `sys.path` est câblé par le `config` de chaque app
+> (`RuntimePathHelpers` : `register_package_alias` + `add_to_python_path`), donc **`config` (donc `RUNTIME_CONFIG`)
+> s'importe en PREMIER** dans chaque entrypoint. En test, `tests/conftest.py` installe l'alias `shared_libs`
+> **une seule fois** (le `NodeRegistry` est un état global process — un double alias casserait).
+
+---
 
 ## Stack
 
 | Couche | Choix |
 |---|---|
-| Runtime | Python 3.12 + FastAPI + Pydantic v2 |
+| Runtime | Python 3.12 · FastAPI · Pydantic v2 · **arq + Redis** (worker) |
 | DB | PostgreSQL 16 (SQLAlchemy 2 async + asyncpg + Alembic) |
-| Object store | SeaweedFS (aioboto3, S3-compat) |
-| Workers | arq + Redis (P2) |
-| Parse | Docling (défaut), MinerU/Marker (routés, P3+), Tika (fallback couverture) |
-| OCR | olmOCR-2/PaddleOCR (GPU), Mistral OCR API (CPU+API) |
-| VLM | Qwen2.5-VL via vLLM (local) ou toute API OpenAI-compat |
-| Embed | BGE-M3 (TEI GPU / ONNX CPU) |
-| Vector DB | Qdrant (named dense + sparse BM25) |
-| Conversion | Gotenberg (LibreOffice + Chromium, HTTP API) |
-| Hash | blake3 (fingerprints), sha256 (content-addressing) |
+| Object store | SeaweedFS (aioboto3, S3-compat) · **Qdrant** (named dense + sparse) |
+| Parse | Docling (défaut ; MinerU/Marker en escalade prête) |
+| OCR / VLM | RapidOCR (local) · Mistral OCR (API) · VLM OpenAI-compat (Qwen2.5-VL…) |
+| Embed | **BGE-M3** via `src/bge_server` (dense+sparse) ou tout endpoint OpenAI-compat (dense) |
+| Conversion | Gotenberg (LibreOffice + Chromium) |
+| Hash | sha256 (content-addressing) · blake3 (fingerprints de cache) |
 | Conteneurs | **Docker + docker compose** |
-
-## GPU Strategy
-
-Serveur-agnostique : GPU (CUDA 11.8, V100) quand disponible, fallback CPU+API.
-`DeviceManager` gère la détection — jamais dans les providers individuels.
 
 ---
 
-## Structure du projet
+## Composants voisins (hors `docforge-rework/`)
 
-Code éclaté en **3 racines sous `src/`** (+ le MCP), selon qui consomme quoi. DAG strict :
-`domain(0) ← config(1) ← providers(1) ← storage(2) ← search(2) ← pipeline(3)`.
-Règle d'or : une couche n'importe jamais une couche au-dessus d'elle.
+- `src/bge_server/` — serveur local BGE-M3 (embed dense+sparse + rerank, TEI-compatible).
+- `src/mcp/` — MCP standalone, **client HTTP pur** de l'API DocForge (aucun import domaine).
 
-```
-src/
-  docforge/                 # LE PRODUIT : app + worker + socle commun (travaillent ensemble)
-    common/                 # SOCLE PARTAGÉ — chargé par app ET worker
-      pyproject.toml        #   contrat de deps (deps-only) + uv.lock ; `--extra worker` = docling
-      base_config/          #   BaseRuntimeConfig (vars communes + setup logging) — hérité par les 2 apps
-      migrations/  alembic.ini  #   Alembic du schéma partagé (env.py → base_config ; lancées par l'app)
-      common_libs/          #   importé `from common_libs.<bucket> import …`
-        domain/             #     L0 — modèles purs (IR, Chunk, metadata)
-        config/             #     L1 — PipelineConfig, validation, admission
-        providers/          #     L1 — capacités ML (converter/parser/ocr/vlm/embed/rerank/llm/device…)
-        storage/            #     L2 — postgres/ + qdrant/ + s3/
-        search/field_index/ #     L2 — schéma de champs (partagé : S6 + query)
-        observability/      #     events/ + heartbeat/ (partagés)
-        pipeline/           #     L3 — caches/, assembly/ (registry), stages/ (S0–S6)
-    app/                    # APP FASTAPI — image légère (sans docling)
-      Dockerfile  entrypoint.py
-      config/               #   RUNTIME_CONFIG(BaseRuntimeConfig) + vars web (FASTAPI/CORS/SSE/ADMISSION)
-      backend/              #   app, CONTEXT, lifespan, routers + TOUT le dédié app sous backend/libs :
-        libs/               #     `from backend.libs.<x>` : utils(error_handling,sse), admission,
-                            #     search/{hybrid,metadata_indexer,pipeline,builder}, observability/queue
-      frontend/             #   React + Vite (dist/ servi en statique)
-    worker/                 # WORKER ARQ — image lourde (+ docling)
-      Dockerfile  entrypoint.py   #   cible arq : `arq entrypoint.WorkerSettings`
-      config/               #   RUNTIME_CONFIG(BaseRuntimeConfig) + vars worker (WORKER_*, OBS_METRICS)
-      libs/                 #   dédié `from libs.<x>` : pipeline/{engine,orchestrator,worker}, observability/metrics
-    tests/                  # tests docforge (app + worker testés ensemble)
-  mcp/                      # MCP standalone (client HTTP pur, aucun import domaine)
-  bge_server/               # serveur local BGE-M3 (embed dense+sparse + rerank, TEI-compatible)
-services/                   # .env par service (docforge, postgres, seaweedfs, gotenberg, redis, pgadmin)
-docker-compose.yml          # Prod (app→docforge/app/Dockerfile, worker→docforge/worker/Dockerfile)
-docker-compose.dev.yml      # Dev overrides (volumes common+app + --reload)
-```
+---
 
-> Conso ressources & plafonds CPU/RAM par service → `docs/deployment-resources.md`
+## Règles (`.claude/rules/`)
 
-### Deux apps, un socle : `common_libs.*` vs `libs.*` (+ config par héritage)
-
-`base_config` + `common_libs.*` (dans `src/docforge/common/`) = **socle partagé**, chargé par les DEUX
-apps. Chacune a en plus son `config` (`RUNTIME_CONFIG(BaseRuntimeConfig)` + vars dédiées) et son code
-**dédié**, résolu par app au runtime. Les deux points d'entrée s'appellent `entrypoint.py` (app : uvicorn ;
-worker : `arq entrypoint.WorkerSettings`) et bootstrappent `sys.path` (`docforge/common` + leur dossier)
-avant d'importer `config`. Import partagé → `from common_libs.<bucket> import …`.
-
-| Racine | Modules (namespace) | Lancé par |
-|---|---|---|
-| `docforge/common/` | `common_libs.*` (+ `base_config`, `migrations`) : domain, config, providers, storage, observability events/heartbeat, search/field_index, pipeline caches/assembly/**stages** | les deux |
-| `docforge/app/` | `backend.*` (le package FastAPI) + `backend.libs.*` : utils/admission/sse, search hybrid/metadata_indexer/pipeline, observability/queue | uvicorn |
-| `docforge/worker/` | `libs.*` : pipeline engine/orchestrator/worker, observability/metrics | arq |
-
-> Les **stages** (S0→S6) vivent en `common_libs` (pas en worker) car le registry partagé
-> (`pipeline/assembly`) les importe **statiquement**. L'app ne lance jamais l'ingestion : elle enqueue
-> un job, le worker l'exécute. Image app ~2-3 GB plus légère (docling = `--extra worker`).
-> `RUNTIME_CONFIG` **hérite** de `BaseRuntimeConfig` : le commun ne porte QUE les vars lues par les libs
-> partagées ; web-only (FASTAPI/SSE/ADMISSION) et worker-only (WORKER_*/OBS_METRICS) vivent côté app/worker.
-> Fichiers >200 lignes = signal de découpage ; exceptions cohésives documentées en docstring.
-
-## Règles
-
+- `architecture.md` : moteur graphe (nodes/edges/foreach/validation) + les 3 racines — cheat-sheet pour éditer la pipeline
 - `general.md` : OOP, English, docstrings Google-style, type hints partout
 - `python.md` : uv, loggerplusplus, configplusplus, LoggerClass, import order
 - `fastapi.md` : CONTEXT, lifespan, `@auto_handle_errors`, structure routers
-- `docker.md` : multi-stage, **Docker**, Dockerfiles entièrement commentés en anglais
+- `docker.md` : multi-stage, Dockerfiles commentés en anglais
+- `orchestrator.md` : routing des agents spécialisés (toujours chargée)
+
+> Historique des phases de l'ancien produit → `docs/archive/phases-legacy.md`.
+> Fichiers >200 lignes = signal de découpage.

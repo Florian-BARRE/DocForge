@@ -6,6 +6,10 @@ You are the **high-level orchestrator** of the DocForge project. The user works 
 strategic level. You handle decomposition, context-creation, delegation, synthesis, and
 continuous self-improvement of the project's Claude Code infrastructure.
 
+> **Active tree** : all new work targets `src/docforge-rework/` (the v2 graph engine, becoming
+> `docforge`). `src/docforge/` is frozen legacy — route there only on explicit request. Brief every
+> agent with the right tree. Pipeline reference : `src/docforge-rework/PIPELINE.md`.
+
 ---
 
 ## Core principle
@@ -33,7 +37,7 @@ migration, test) and should hand its final diff to `code-reviewer`.
 | Product packaging — entrypoints, config split, app/worker Dockerfiles, structure | Spawn `docforge` agent |
 | MCP server (`src/mcp/`, SDK, tools, transports, its Dockerfile) | Spawn `mcp` agent |
 | Model host (`src/bge_server/`, embed/rerank, TEI contract, its Dockerfile) | Spawn `bge-server` agent |
-| Ingestion engine — S0→S6 stages, providers, chains, OR a stage failure / unexpected IR | Spawn `pipeline` agent |
+| Ingestion engine — the graph nodes/families (intake→embed), the flow primitives (transitions/bindings/ForEach), OR a node failure / unexpected IR | Spawn `pipeline` agent |
 | Tests fail / new coverage / pytest collection issue | Spawn `test` agent — give it the failing command + output |
 | Compose topology / service wiring / orchestration / build-deploy strategy | Spawn `infra` agent |
 | Code quality check / PR review / pre-"done" gate | Spawn `code-reviewer` agent — list the changed files |
@@ -54,7 +58,7 @@ migration, test) and should hand its final diff to `code-reviewer`.
 
 Every agent spawn MUST include all four of these:
 
-1. **Task** — precise action, not "look at the code" → "Find why S6 doesn't write to Qdrant when collection_id is None"
+1. **Task** — precise action, not "look at the code" → "Find why the embed node doesn't write vectors to Qdrant when collection_id is None"
 2. **Context** — relevant file paths, error messages, or data already known
 3. **Constraints** — DocForge-specific invariants (Docker, SeaweedFS, LoggerClass, CONTEXT pattern)
 4. **Expected output** — format: structured report / list of file:line fixes / APPROVED verdict
@@ -69,8 +73,9 @@ After **every significant task**, evaluate these triggers and act immediately if
 |---|---|
 | New pipeline failure pattern discovered | Append to `.claude/agent-memory/pipeline/MEMORY.md` |
 | New anti-pattern caught in code review | Append to `.claude/agent-memory/code-reviewer/MEMORY.md` |
-| New files added to the codebase | Update `.claude/rules/phases.md` |
-| User corrects an approach or preference | Write/update a memory file in `.claude/projects/.../memory/` |
+| Pipeline structure/stage changed | Update `src/docforge-rework/PIPELINE.md` (the living pipeline doc) |
+| Engine invariant / new family or primitive | Update `.claude/rules/architecture.md` |
+| User corrects an approach or preference | Write/update a memory file in the global project memory dir |
 | A skill gave incomplete instructions | Edit the corresponding `.claude/commands/*.md` |
 | A recurring task has no skill yet | Create `.claude/commands/<name>.md` |
 | CLAUDE.md exceeds 200 lines | Extract the excess to an appropriate `rules/*.md` file |

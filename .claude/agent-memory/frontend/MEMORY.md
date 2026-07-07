@@ -1,64 +1,47 @@
 # Frontend Craftsman — Memory Index
 
-Two frontend trees exist. **`src/docforge-rework/app/frontend/`** is the active clean-slate
-rewrite — most new work should land there. `src/docforge/app/frontend/` is the legacy v1 product.
-Their conventions differ in places (see below) — don't apply one tree's rule to the other blindly.
+The React UI of the ACTIVE product: **`src/docforge-rework/app/frontend/`** (being renamed `docforge`).
+The legacy `src/docforge/app/frontend/` is FROZEN — don't apply its conventions here.
 
-## Core rules — legacy (`src/docforge/app/frontend/`)
+## Core rules (rework)
 
-- Theme tokens from `src/theme.ts` only (dark-first: base `#0d0f18`, indigo accent `#6366f1`) — no hardcoded colors, no external UI library.
-- One component per file, grouped by feature (`components/<feature>/X.tsx`), small + single-purpose. English everywhere.
-- **Forms never hand-coded per endpoint** — use `<RequestForm endpoint= discovery=>` + `<DynamicFieldsGroup fields= prefix=>` (discovery-driven); new backend Pydantic fields surface automatically via `/discovery` reload.
-- `api/generated.ts` = OpenAPI types — **regenerate with `npm run gen:types`**, never hand-edit (stale file breaks `tsc`). `tsconfig` has `noEmit: true`.
-- Dynamic field kinds: `MultiPicker` (`kind="multi"`), `ScalarPicker` (`kind="scalar"`), `ChoicePicker`. `DynamicFieldKind` enum in `types.ts` must match backend discovery overlay.
-- SSE via native `EventSource` (auto-reconnect); polling fallback torn down once events resume. Token passed as `?token=` query param.
-
-## Core rules — rework (`src/docforge-rework/app/frontend/`)
-
-- Hand-rolled routing, no router dependency: `shell/view.ts` defines `View` as one discriminated
-  union; `App.tsx` is the ONLY file that switches on `view.name`; every page takes its view's
-  params + a single `onNavigate: Navigate` prop.
-- No `RequestForm`/`DynamicFieldsGroup`/`generated.ts`/`gen:types` here — that legacy discovery-driven
-  primitive set was not carried over (confirmed absent as of 2026-07-05). `api/<feature>.ts` files
-  hand-mirror the backend Pydantic models verbatim (own comment says so) behind a typed client —
-  no OpenAPI codegen step exists yet in this tree.
-- Two different "generic form" mechanisms coexist here — don't conflate them:
-  - `features/pipeline-editor/inspector/SchemaForm.tsx` + `SchemaField.tsx` — genuinely JSON-Schema
+- **Hand-rolled routing, no router dependency:** `shell/view.ts` defines `View` as one discriminated
+  union; `App.tsx` is the ONLY file that switches on `view.name`; every page takes its view's params +
+  a single `onNavigate: Navigate` prop. See [[shell-hand-rolled-routing]].
+- **Page remount = free refetch:** pages render behind `{view.name === "x" && <Page/>}` in `App.tsx`,
+  so navigating away/back unmounts + remounts — `useEffect(load, [id])` on mount guarantees fresh data,
+  no manual cache invalidation after a mutation.
+- **Theme tokens only** (`src/theme.ts`): base `#0f1115`, blue accent `#4f8cff`. No hardcoded colors,
+  no external UI library. One component per file, grouped by feature, small + single-purpose, English.
+- **Two "generic form" mechanisms coexist — don't conflate:**
+  - `features/pipeline-editor/inspector/SchemaForm.tsx` (+ `SchemaField.tsx`) — genuinely JSON-Schema
     driven, renders any node's `config_schema` from the describe/palette API. Reused as-is by
-    `features/stage-rail/` (import path stays `../pipeline-editor/inspector/SchemaForm`).
-  - `features/collections/wizard/*` — a bespoke hand-built multi-step domain wizard (identity →
-    schema → review). Intentionally NOT generic: collection create/edit is a multi-step UX with
-    its own validation, not a single-endpoint form. See [[collection-edit-wizard]].
-- **Pipeline UI = two studios, one routed.** `features/stage-rail/` (vertical fixed-shape rail) is
-  the DEFAULT since 2026-07-02, embedded by `CollectionPipelinePage`. `features/pipeline-editor/`
-  (the react-flow canvas) is UNROUTED but still in the tree for a future advanced mode — don't
-  delete it, don't wire it back without being asked. See [[stage-rail]].
-- Theme tokens (`src/theme.ts`) differ from the legacy palette: base `#0f1115`, blue accent
-  `#4f8cff` (legacy is indigo `#6366f1`). Same "tokens only, no hardcoded colors" rule applies.
-- Page remount = free refetch: pages render behind `{view.name === "x" && <Page/>}` conditionals in
-  `App.tsx`, so navigating away and back always unmounts/remounts the page component —
-  `useEffect(load, [id])` on mount is enough to guarantee fresh data, no manual cache invalidation
-  needed after a mutation. See [[collection-edit-wizard]].
+    `features/stage-rail/`.
+  - `features/collections/wizard/*` — a bespoke hand-built multi-step domain wizard (identity → schema
+    → review). Intentionally NOT generic. See [[collection-edit-wizard]].
+- **Pipeline UI = two studios, one routed.** `features/stage-rail/` (vertical fixed-shape rail) is the
+  DEFAULT (since 2026-07-02), embedded by `CollectionPipelinePage`. `features/pipeline-editor/` (the
+  react-flow canvas) is UNROUTED but kept for a future advanced mode — don't delete or rewire it
+  unasked. Pipeline edits are server-owned (`POST /edit`), not client-side blob mutation. See
+  [[stage-rail]], [[pipeline-editor-server-owned-edit]].
+- **API types:** `api/<feature>.ts` files hand-mirror the backend Pydantic models behind a typed
+  client. `npm run gen:types` codegen needs a LIVE backend at `OPENAPI_URL`; for new backend fields
+  without one, use overlay intersections in `types.ts` — see [[gen-types-constraint]].
 
-## Topic files — rework
+## Topic files
 
-- [Collection edit wizard (dual-mode form)](collection-edit-wizard.md) — `CollectionWizard` mode="create"|"edit" + initial prefill; fetch-wrapper page pattern; needs_reindex banner
-- [Stage rail (fixed-shape pipeline UI)](stage-rail.md) — replaced the canvas editor as default; `stages/view`+`stages/apply` contract; generic config-schema resolution; chain accent token
-- [Document explorer](document-explorer.md) — collection→documents→document tabs; page-level lazy per-tab fetch cache; cross-tab jump-to-block via always-mounted+CSS-hidden rows; 0-based page numbering gotcha
-
-## Topic files — legacy
-
-- [Auth / API Keys / Shell / Permissions threading (AUTH-B)](auth-b.md) — root-only login, JWT, `canWrite` prop threading, NavRail, AppShell; supersedes [[ui5-auth-admin-scoping]]
-- [Document detail view + ValueRenderer + OverviewTab (UI-3)](detail-view.md) — tab layout, ValueRenderer classification rules, OverviewTab sections, `consumed` set gotchas, SectionBlock null-guard fix
-- [Search Lab (UI-2)](search-lab.md) — LabTuningPanel, LabDebugPanel, `useLabOverrides`, `HttpError`, vector names, overrides wiring
-- [Pipeline canvas — react-flow (R2)](react-flow-canvas.md) — `@xyflow/react` v12, `PipelineCanvas`, `StageFlowNode`, token theming, dead stubs
-- [UX consistency batch 3 (UX-B3)](ux-b3.md) — ConfirmDialog primitive, Spinner/EmptyState standardization, window.confirm→0
-- [ObjectListPicker pattern](object-list-picker.md) — generic object_list repeater; item-local read/write via last-segment extraction (mirrors ChainLadder.writeEntryParam)
-- [S5b metagen UI wiring](s5b-metagen-ui.md) — origin overlay on MetaField, object_list ConfigNode, MetagenPreview, warning-banner CSS, s5b stage definition
-- [gen:types cannot run without backend](gen-types-constraint.md) — use overlay intersections in types.ts; never hand-edit generated.ts
+- [Shell hand-rolled routing](shell-hand-rolled-routing.md) — the navigation pattern: a discriminated View union + useState, no router dependency.
+- [Stage rail](stage-rail.md) — vertical fixed-shape pipeline UI; replaced the canvas as default; `stages/view`+`stages/apply` contract; fallback chains = the chain-accent primitive.
+- [Pipeline editor — server-owned edit](pipeline-editor-server-owned-edit.md) — migrated from client-side blob mutation to server-owned `POST /edit`; the one deliberate exception (typing debounce).
+- [Collection edit wizard](collection-edit-wizard.md) — `CollectionWizard` reused in edit mode (mode/initial props) to PATCH collections; fetch-wrapper page pattern for prefilling a dual-mode form.
+- [Document explorer](document-explorer.md) — collection→documents→document tabs; per-tab lazy fetch cached at the page level; cross-tab jump-to-block.
+- [Auth (AUTH-B)](auth-b.md) — simplified root-only auth: AuthContext, API keys, shell/nav, AppShell, prop threading.
+- [gen:types constraint](gen-types-constraint.md) — `npm run gen:types` requires a running backend at `OPENAPI_URL`; use overlay intersections in `types.ts` for new backend fields.
+- [Backend enum gotchas](backend-enum-gotchas.md) — two backend enum surprises found building the collections/monitoring UI; verify before trusting a "queued"/enum assumption.
+- [Collection model created_at gap](collection-model-created-at-gap.md) — `CollectionModel` (API) omits `created_at` though the DB row has it — hand to backend before adding a "created" column.
+- [Empty-group blob validates](empty-group-blob-validates.md) — an empty pipeline group is NOT a valid 422 case; the validator skips the entry-node check when there are no children.
 
 ## Boundary
 
 UI code only. REST contract changes → **backend** agent. Build/serve of `dist/` → **docforge** agent.
-Adding a backend Pydantic field IS a UI feature (no separate ticket) — verify via `/discovery`
-(legacy) or a page reload against the live backend (rework, no discovery endpoint there).
+Adding a backend Pydantic field IS a UI feature (no separate ticket) — verify against the live backend.

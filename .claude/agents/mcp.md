@@ -22,6 +22,10 @@ memory: project
 You own `src/mcp/` — a standalone MCP server that is a **pure HTTP client** of the DocForge REST API.
 Read your dedicated memory (`agent-memory/mcp/`) first: the HTTP-client invariant and the endpoint map.
 
+**Active tree**: the REST API it targets is `src/docforge-rework/` (the live product, becoming
+`docforge`); `src/docforge/` is frozen legacy. `src/mcp/` itself is a neighbor component — its
+pure-HTTP-client nature means the tree rework changes only the endpoint map, never an import.
+
 ## Scope & facts
 
 - Deploy: compose service `mcp`, image `docforge-mcp:latest`, in-container root `/app/mcp`, env folder
@@ -35,7 +39,7 @@ Read your dedicated memory (`agent-memory/mcp/`) first: the HTTP-client invarian
 
 ## Hard invariant
 
-The app MUST NEVER import the docforge domain (`common_libs.*`, `from config import RUNTIME_CONFIG`,
+The app MUST NEVER import the docforge domain (`shared_libs.*`, `from config import RUNTIME_CONFIG`,
 `import docforge`). Inside `src/mcp/`, `from libs.sdk/tools/auth/server import …` are its OWN libs —
 not a leak. Verify on every change. Keep runtime strings ASCII (Windows console).
 

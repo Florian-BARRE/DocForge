@@ -1,7 +1,20 @@
 # Backend Craftsman — Memory Index
 
-The FastAPI web + data layer: `src/docforge/app/backend/` + the API-facing `common_libs` (storage
-repos, config, domain models, search/observability wiring). NOT the ingestion pipeline.
+The FastAPI web + data layer of the ACTIVE product `src/docforge-rework/` (soon renamed `docforge`):
+`app/backend/` (routers pipelines/collections/documents/explorer/jobs/blobs) + the API-facing
+`shared_libs` — the `services.db` façade (facades/ + clients postgresql/qdrant/s3) and `public_models`.
+NOT the ingestion engine (that's `shared/libs/pipelines/` → **pipeline** agent).
+
+## Ground truth (rework tree)
+
+- Three roots: `shared/` (`shared_libs.*`), `app/` (`backend.*`), `worker/` (`backend.libs.*`).
+  `config` (→ `RUNTIME_CONFIG`) imports FIRST in each entrypoint (registers the `shared_libs` alias +
+  puts `backend/libs` on `sys.path`). New env var → the app's `app/config/runtime_config.py` (web-only)
+  or `worker/config/runtime_config.py` (worker-only); shared vars in the common base config.
+- Data layer is the façade `shared_libs.services.db` — routers/services call a facade, never a raw
+  client. Tables at `shared/libs/services/db/postgresql/tables/` grouped by domain (authentication/
+  blobs/chunks/collections/documents/ir/observability).
+- Tests: `cd src/docforge-rework && uv run pytest tests/units` (subtree `api/`). Lint: `uv run ruff check .`; types: `uv run mypy .`.
 
 ## Rule checklist (enforce on your own output)
 
@@ -10,47 +23,30 @@ repos, config, domain models, search/observability wiring). NOT the ingestion pi
   `lifespan.py` `finally` guarded with `hasattr(CONTEXT, "attr")`; API prefix `/api/v1` defined once.
 - Python: `LoggerClass.__init__(self)` on every instanciable class; no `print()`; log messages are
   f-strings; 4 labeled import sections; `# ====== Code Summary ======` header; `__init__.py` = sections
-  + `__all__`; config via `RUNTIME_CONFIG` only (new var → `BaseRuntimeConfig` if shared, else per-app
-  subclass + `services/docforge/.env`).
-- Return Pydantic models, never raw dicts. Verbose error handling: assert/emit exact HTTP codes
-  (415/413/422 admissibility → 429/409 resource → after dedup). See [[verbose-error-handling-convention]].
+  + `__all__`; config via `RUNTIME_CONFIG` only (new var → the app's `config/runtime_config.py`).
+- Return Pydantic models, never raw dicts. Verbose error handling: assert/emit exact HTTP codes.
+- A broken pipeline blob comes back as DATA (`valid=false` + issues), never an HTTP error — fail-fast
+  validation lives in the engine's `GraphValidator`, surfaced by the router.
 
-## Anti-patterns seen here (from past reviews)
+## Anti-patterns (timeless — from past reviews)
 
-- `collection_id` passed positionally → silently `None` in `enqueue_job`. Always keyword.
-- Missing `await` on async repo methods (returns a coroutine, no warning).
-- Typed Pydantic provider configs have FLAT fields post-refactor — no `.params`; use
-  `cfg.model_dump(exclude={"id"})`. Registry params use `"name"` (not `"key"`) — drift 500s `/discovery`.
-- Return SQLAlchemy model needing relations outside the session → `DetachedInstanceError`; `await
-  session.refresh(obj, attribute_names=[...])` first.
-- Adding a Pydantic field without the discovery overlay → UI can't surface it (`discovery/overlays.py`).
+- `collection_id` / any id passed positionally → silently `None` downstream. Always keyword.
+- Missing `await` on async façade/repo methods (returns a coroutine, no warning).
+- Returning a SQLAlchemy model needing relations outside the session → `DetachedInstanceError`;
+  `await session.refresh(obj, attribute_names=[...])` first.
+- `_IncludedRouter` wrapping means you must introspect the surface via `app.openapi()["paths"]`, NOT
+  `app.routes`. See [[docforge-rework-explorer-api]].
 
-## API surface
+## Topic files
 
-- [API surface map](api-surface-map.md) — 12 routers / 38 routes; prefix algebra; the 2 SSE routes +
-  1 bytes route; files/* return a pre-signed URL (not bytes); ingest error ladder. MCP mirrors 36 tools.
-- [Discovery config_tree](discovery-config-tree.md) — recursive schema-driven describer (CHUNK D1);
-  auto_import must use `common_libs.providers.*` (legacy `libs.providers.*` silently fails); field→
-  category glue; ConfigNode/ProviderChoice mutual forward refs need model_rebuild; ADDITIVE to flat.
-- [Search overrides (Search Lab)](search-overrides.md) — per-REQUEST `overrides` shadow pipeline.search
-  for one query (never persisted); merge+validate in `backend/libs/search/overrides.py`; 422 guards
-  reuse `search.rerank.empty_chain`; `debug_info.effective` shape; embed provider never overridable.
-- [Collection sub-router wiring](collection-subrouter-wiring.md) — 3-step registration for a per-collection sub-router + discovery overlay pattern + capability convention (used by metagen preview endpoint)
-- [Metagen/LLM validation gap](metagen-llm-validation-gap.md) — describe_stages omits the LLM category; ProviderChecks can't validate metagen/query_transform; MetagenChecks codes + check_metagen(doc, issues) signature
-- [docforge-rework explorer API](docforge-rework-explorer-api.md) — REWORK tree (shared_libs Database façade): explorer/blobs router wiring, chunk bulk-read seams, field-name resolution; gotchas — `_IncludedRouter` means introspect via `openapi()["paths"]` not `app.routes`; S3 endpoint underscore host 500s all S3
-
-## Brique D (resource admission) — post-budget-purge
-
-Budget/spend was fully removed (2026-06-25); only the **capacity (429)** path survives. `ResourceAdmitter`
-gates on queue depth + global/per-collection in-flight only (no 409). Per-collection limit = `max_in_flight`
-column on `collection` (the only resource cap). `JobModel` has no `budget_spent`; `JobResponse` has no budget
-field. Admission models (`ResourceLimits`/`AdmissionSnapshot`/`AdmissionDecision`) carry no budget fields.
-Limits sub-router (`collections/{id}/limits`) GET/PUT only `max_in_flight` + `in_flight`. `job_repo` has no
-`sum_budget_by_collection`; `update_status`/`mark_finished` take no `budget_spent`. Worker-side cost write
-(`worker/libs/pipeline/orchestrator/*`, `s2_enrich`) is **pipeline-owned**, not backend.
+- [API surface map](api-surface-map.md) — authoritative /api/v1 shape: routers, routes, prefix algebra, the SSE routes, the bytes route, files-return-URL-not-bytes distinction.
+- [Auth keys-only model](auth-keys-only-model.md) — root account + permissioned API keys with per-collection capabilities; replaces the old grant/collaborator/impersonation model.
+- [Collection sub-router wiring](collection-subrouter-wiring.md) — 3-step registration for a new per-collection sub-router + the discovery-overlay/capability pattern.
+- [docforge-rework explorer API](docforge-rework-explorer-api.md) — explorer/blobs router wiring over the `shared_libs` db façade; chunk bulk-read seams; the `_IncludedRouter` introspection + S3 underscore-host gotchas.
+- [Search overrides (Search Lab)](search-overrides.md) — per-REQUEST `overrides` shadow the search config for one query (never persisted); merge point, validation, `debug_info.effective` shape.
 
 ## Boundary
 
-You own routers/services/repos/config/models on the request→response path. Ingestion engine (S0→S6,
-providers, chains) → **pipeline**. Schema/migrations → **migration-engineer**. UI → **frontend**.
+Routers/services/façade-callers/config/models on the request→response path. Ingestion engine
+(`shared/libs/pipelines/`) → **pipeline**. Schema/migrations → **migration-engineer**. UI → **frontend**.
 Packaging → **docforge**. Hand non-trivial diffs to **code-reviewer**.

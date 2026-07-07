@@ -1,72 +1,50 @@
 ---
 name: pipeline-memory
-description: Pipeline architecture + runtime failure patterns, service endpoints, env flags, stage file map
+description: Pipeline architecture for the docforge-rework pure graph engine — node contract, families, graph mechanics, validation, and live topic pointers
 metadata:
   type: project
 ---
 
 # Pipeline — Memory Index
 
-## Known failure patterns
+The ingestion engine of the ACTIVE product `src/docforge-rework/`: a **pure graph engine** at
+`shared/libs/pipelines/` (base/engine/edit/validation/nodes/ingest). Reference doc:
+`src/docforge-rework/PIPELINE.md`; cheat-sheet: `.claude/rules/architecture.md`.
 
-| Symptom | Root cause | Fix |
-|---|---|---|
-| Reingest "original not found" → doc stuck `pending` | S0 download in `engine.run` step 2 is OUTSIDE the fail-closed guards; OR the repro races a collection-delete / polls stale chunks | Wrap step-2 download → `mark_failed`+raise; verify reingest by polling REAL status, not `wait_done`. See [[reingest-failclosed-and-corpus-phrases]] |
-| "Search misses a doc by its own phrase" | corpus `searchable_phrase` shared across all formats of a (type,lang) pair → not distinctive | raise `top_k` (>=~20-30) or scope to one doc. See [[reingest-failclosed-and-corpus-phrases]] |
-| S6 skips Qdrant | `collection_id=None` in `arq_pool.enqueue_job()` | `documents/router.py` — pass `collection_id=str(collection_id)` |
-| Chunk count = 0 | `S4_ENABLED=false` | Set `S4_ENABLED=true` in `services/docforge/.env` |
-| S2 silently skips all figures | `S2_ENRICH_ENABLED=false` | Set `S2_ENRICH_ENABLED=true` |
-| bge unreachable | Wrong `TEI_BASE_URL` or `bge_server` container down | Check `services/docforge/.env` + `docker compose ps bge` + `docker compose logs bge` (first boot is slow — downloads BGE-M3 + reranker from HF) |
-| Qdrant collection missing | `ensure_collection()` failed | Check `QDRANT_HOST`/`QDRANT_PORT` connectivity |
-| SeaweedFS 403 on upload | Bucket not initialized | Call `POST /api/v1/collections` to provision the bucket |
-| Docling parse returns empty IR | Corrupted PDF or Gotenberg timeout | Check Gotenberg logs: `docker compose logs gotenberg` |
-| arq job stuck in `running` | Worker crashed during stage | Check `docker compose logs worker --tail=100` |
+## Node contract
 
-## Service endpoints (dev)
+A node is **pure**: `Config` (a `NodeConfig`, `extra="forbid"`) + Consume→Produce, **zero DB/S3 I/O**.
+It declares via `describe()`: typed IN/OUT slots (each `Artifact`/`list[Artifact]` **must** carry a
+description or a test rejects it), `family`/`kind`, `UNIQUE_IN_GRAPH`, `scored`, `switch_fields`,
+`error_policy`. Persistence happens at the edges IN THE WORKER via the `Database` façade — never inside
+a node.
 
-| Service | URL | Health check |
-|---|---|---|
-| API | http://localhost:8000 | GET /api/v1/health |
-| API docs | http://localhost:8000/docs | browser |
-| Gotenberg | http://localhost:3000 | GET /health |
-| SeaweedFS | http://localhost:8333 | GET /status |
-| SeaweedFS Filer | http://localhost:8888 | GET / |
-| Qdrant | http://localhost:6333 | GET /healthz |
-| bge_server | http://localhost:10026 | GET /health |
-| Redis | redis://localhost:6379 | `redis-cli ping` |
-| PostgreSQL | localhost:5432 | `pg_isready` |
+## Families & placement
 
-## Key env flags
+- Stage-dedicated: `intake · converter · parser · render · enrich · chunker · contextualize · metagen`.
+  Generic reusable: `embed · ocr · vlm · llm` (+ the `openai_compat` factory).
+- Kind convention: no family+kind redundancy — `(ocr, mistral)` not `mistral_ocr`. A new provider = one
+  more kind in its family, interchangeable in the UI, zero engine change.
+- Where to put it: generic provider → `shared/libs/pipelines/nodes/<family>/`; ingest-stage node →
+  `shared/libs/pipelines/ingest/nodes/<stage>/`; any DB/S3/Qdrant access → a **façade** under
+  `shared/libs/services/db/facades/`, called by the worker.
 
-| Flag | Default | Controls |
-|---|---|---|
-| `S2_ENRICH_ENABLED` | false | S2 OCR/VLM enrichment |
-| `S4_ENABLED` | false | S4 structure-aware chunking |
-| `S6_ENABLED` | false | S6 BGE-M3 embed + Qdrant indexing |
-| `ENRICH_MAX_BUDGET_USD` | 0.0 | Budget cap (0 = unlimited) |
-| `TEI_BASE_URL` | http://bge_server:80 | bge embed service URL (stopgap; provider URLs migrating to per-collection DB config) |
-| `BGE_RERANKER_URL` | http://bge_server:80 | bge rerank service URL |
-| `QDRANT_HOST` | qdrant | Qdrant hostname |
+## Graph mechanics (`shared_libs.pipelines.base`)
 
-## Architectural notes
+- Transitions (control): `OnSuccess · OnFailure · ScoreBelow(t) · WhenEquals(field,val) · Always`.
+  Selection priority: `ScoreBelow > WhenEquals > OnSuccess/OnFailure > Always`.
+- Bindings (data): `FromRunInput · FromNode(node_id, field) · FromGroupInput · FromFirst([…])`.
+- `ForEach`: sub-graph per item; body terminals produce the SAME single-slot Artifact → `items: list`
+  (order preserved, one execution record per item, an item failure fails loudly).
+- `UNIQUE_IN_GRAPH=True` → a 2nd instance of the kind is a wiring error (`duplicate_unique_node`).
+- Validation (`GraphValidator`, before any spend): single entry · no cycle · no ambiguous fan-out ·
+  upstream bindings present + type-compatible · `ScoreBelow` ⇒ producer is `scored` · single-use
+  uniqueness. A broken blob returns as DATA (`valid=false` + issues), never an HTTP error.
 
-- [Ingestion config audit](ingestion-config-audit.md) — per-option S0-S6 wiring map: DEAD config (enrich.chart_to_data, allowed_providers, gate max_duration/cost), discovery gaps (chunk.atomic.*, heading_rules, embed.sparse), two config surfaces (collection columns vs pipeline blob).
-- [Device not in config](device-not-in-config.md) — GPU/device is a deployment env decision (DOCLING/PADDLE/VIT_USE_GPU + DeviceManager), never a per-collection `use_gpu` provider config Field; the no-Field + PrivateAttr + extra="ignore" pattern.
-- [Embed/rerank providers + bge_server aliases](embed-providers-and-tei-alias.md) — embed={bge_server,openai_compat}, rerank={bge_server,cohere_rerank}; legacy `tei`/`bge_reranker` ids alias→bge_server via shared `spec_utils.normalize_legacy_id` (configs unregistered, HTTP clients kept). Compose `reranker` TEI service now redundant (infra follow-up).
-- [Search result-count semantics](search-result-count-semantics.md) — request top_k is authoritative; candidate_k = pre-rerank pool (clamped >= top_k); top_n + grouping.group_by REMOVED (extra="ignore"); enabled+empty rerank chain → 422 via PipelineChecks._check_rerank_chain.
-- [Chain failure-policy model](chain-failure-policy.md) — CHUNK 2: gate failure_policy(raise/continue)+on_degraded; ChainExhaustedError; max_duration_ms now enforced; per-stage defaults (parse/embed=raise, enrich=continue); degraded flag in ChainTrace; reindex strips policy keys.
-- [Dynamic stage architecture](dynamic-stage-architecture.md) — Pipeline→Stage→Step→Brick self-describing refactor (strangler); PR-1 DONE = base contracts+context+tracking+7 adapters, UNWIRED (worker still uses legacy StageEngine); forced ClassVars, AFTER-topo ordering, PR sequence.
-- [Flow-engine stage port](flow-engine-stage-port.md) — branch rewrite/pipelines-node-engine: porting a v1 stage to common_libs/pipelines/flow (FromParent→FromGroupInput, FromSibling→FromNode, Step→ActionNode w/ ctx.service); exemplars ingest/parse; inter-stage spine; offline FlowEngine validation recipe.
-- [Flow engine stage ports](flow-engine-stage-ports.md) — the NEW generic FlowEngine (`common_libs/pipelines/` plural): ActionNode/GroupNode/Transition, inter-stage binding spine, v1-reuse port pattern; ingest+parse+chunk done.
+## Topic files
 
-## Stage file map
-
-| Stage | File |
-|---|---|
-| S0 | `src/docforge/common/common_libs/pipeline/stages/s0_ingest/core.py` |
-| S1 | `src/docforge/common/common_libs/pipeline/stages/s1_parse/core.py` |
-| S2 | `src/docforge/common/common_libs/pipeline/stages/s2_enrich/core.py` |
-| S4 | `src/docforge/common/common_libs/pipeline/stages/s4_chunk/core.py` |
-| S5 | `src/docforge/common/common_libs/pipeline/stages/s5_contextualize/core.py` |
-| S6 | `src/docforge/common/common_libs/pipeline/stages/s6_embed_index/core.py` |
-| Engine | `src/docforge/worker/libs/pipeline/engine.py` |
+- [Device not in config](device-not-in-config.md) — GPU/device is a deployment env decision, never a per-collection provider config field.
+- [Flow-engine stage ports](flow-engine-stage-ports.md) — the generic graph engine (`shared/libs/pipelines/`): node/transition model, inter-stage binding spine, and how v1 stages were ported.
+- [Provider raise-on-failure](provider_raise_on_failure.md) — providers must RAISE on engine failure (not return a degraded result) so the escalation chain advances.
+- [Search result-count semantics](search-result-count-semantics.md) — request `top_k` is authoritative; `candidate_k` is the pre-rerank pool; `top_n`/`grouping.group_by` removed.
+- [Stage layer](stage-layer.md) — the product-level stage view over the ingest graph: where it lives, its invariants, the state-based compiler design.

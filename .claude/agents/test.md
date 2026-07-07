@@ -23,17 +23,22 @@ memory: project
 You own the DocForge test apparatus and its non-obvious multi-root collection setup — authoring,
 fixing, running, and shaping coverage strategy. Read your dedicated memory (`agent-memory/test/`) first.
 
+**Active tree**: all work targets `src/docforge-rework/` (the live product, becoming `docforge`).
+`src/docforge/` is frozen legacy with its own old suite — touch it only if the user explicitly asks.
+
 ## Scope & facts
 
-- Run from `src/docforge/` (where `pytest.ini` + root `conftest.py` live):
-  `unset VIRTUAL_ENV && uv run --project common pytest tests/units` — 418 tests, **fully mocked** (no
-  real services). `--project common` because the deps-only pyproject is in `common/`.
-- Live: `tests/live_test` needs the full stack `up` AND `bge_server` ready (real ingestion, slow on
-  CPU; auto-skips when unreachable).
-- Tree: `tests/{units,live_test,libs,fixtures,corpus}`. `libs/` = test helpers, `corpus/` = sample docs.
-- Gotcha: a stale `VIRTUAL_ENV` points at the mcp venv → always `unset` first.
-- Known constraint: app `libs.*` and worker `libs.*` are different namespaces — a single test process
-  cannot import both (the multi-root path setup is a documented follow-up).
+- Run from `src/docforge-rework/` (where `pytest.ini` + root `conftest.py` live), a **single
+  self-contained uv project**: `uv run pytest tests/units` — **fully mocked** (no real services).
+  No more `--project common`.
+- The root `conftest.py` installs the `shared_libs` package alias and the worker's `backend/libs`
+  import root **ONCE** per session (the `NodeRegistry` is process-global state); the app's own root is
+  added lazily by the `fastapi_app` fixture in `tests/units/api/conftest.py`.
+- Live: `tests/live` needs the full stack `up` AND `bge_server` ready (real ingestion, slow on CPU;
+  auto-skips when unreachable).
+- Tree: `tests/{units,live}` — units grouped by area (`api/ edit/ engine/ nodes/ stages/ validation/
+  worker/`).
+- Gotcha: a stale `VIRTUAL_ENV` (e.g. the mcp venv) breaks `uv run` → `unset VIRTUAL_ENV` first.
 
 ## How you work
 

@@ -23,6 +23,10 @@ You own `src/bge_server/` — a standalone, single-file FastAPI service that hos
 dense+sparse embedding AND BGE-reranker-v2-m3 rerank over the TEI HTTP contract. Read your dedicated
 memory (`agent-memory/bge-server/`) first: the contract, env vars, rationale, and deployment names.
 
+**Active tree**: the consumer is `src/docforge-rework/` (the live product, becoming `docforge`);
+`src/docforge/` is frozen legacy. `src/bge_server/` itself is a neighbor component, unchanged by the
+rework.
+
 ## Scope & facts
 
 - Files: `app.py`, `Dockerfile`, `requirements.txt`, `README.md`. No `libs/`, no `config/` package.
@@ -37,8 +41,8 @@ memory (`agent-memory/bge-server/`) first: the contract, env vars, rationale, an
 - This is **INFRA** (a model host) — explicitly OUTSIDE the docforge layer DAG. It imports nothing
   from docforge; docforge reaches it only over HTTP via per-collection config.
 - If the compose service / hostname ever changes, the structural default `http://bge_server:80` must
-  change in lockstep across the embed/rerank/semantic config defaults in `common_libs` — flag this to
-  the **docforge** agent.
+  change in lockstep across the embed/rerank/semantic node config defaults in `shared_libs` (the embed
+  family `bge_server` kind + the `openai_compat` consumers) — flag this to the **docforge** agent.
 - All runtime-emitted strings stay ASCII (Windows cp1252 console — use `->`, never the arrow char).
 
 ## How you work
