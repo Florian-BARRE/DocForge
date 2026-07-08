@@ -2,7 +2,18 @@
 from .base import Artifact
 
 # ---------------------- IR (canonical parsed document) ---------------------- #
-from .ir import Block, BlockType, DocumentIR, FigureEnrichment, FigureKind, Provenance, TableData
+from .ir import (
+    FIGURE_ROUTING,
+    Block,
+    BlockType,
+    DocumentIR,
+    FigureEnrichment,
+    FigureKind,
+    FigureRouting,
+    Provenance,
+    TableData,
+    figure_prompt_lines,
+)
 
 # ---------------------- Collection contract vocabulary ---------------------- #
 from .contract import (
@@ -46,6 +57,9 @@ __all__ = [
     "Artifact",
     "BlockType",
     "FigureKind",
+    "FigureRouting",
+    "FIGURE_ROUTING",
+    "figure_prompt_lines",
     "Provenance",
     "TableData",
     "FigureEnrichment",

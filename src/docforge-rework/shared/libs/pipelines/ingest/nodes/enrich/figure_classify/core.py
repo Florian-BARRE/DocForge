@@ -17,20 +17,17 @@ from pydantic import Field
 from shared_libs.pipelines.base import ActionNode, NodeInput, ScoredOutput
 from shared_libs.pipelines.nodes.openai_compat import OpenAICompatHelpers
 from shared_libs.pipelines.registry import NodeRegistry
-from shared_libs.public_models import FigureItem, FigureKind
+from shared_libs.public_models import FigureItem, FigureKind, figure_prompt_lines
 
 # ====== Local Project Imports ======
 from .config import FigureClassifyConfig
 from .helpers import FigureClassifyHelpers
 
-# The classification instruction: one word among the five classes, nothing else.
+# The classification instruction: one word among the classes, nothing else. The per-class lines are
+# DERIVED from the single-source figure routing, so the prompt never drifts from FigureKind.
 _CLASSIFY_PROMPT = (
     "Classify this image into EXACTLY ONE of these classes and answer with that single word:\n"
-    "- photo: a photograph or natural illustration\n"
-    "- scanned_text: an image that is mostly printed or handwritten TEXT (a scanned page/region)\n"
-    "- chart: a data visualisation (bar/line/pie chart, plot)\n"
-    "- diagram: a schematic (architecture, flowchart, circuit, map)\n"
-    "- decorative: a logo, separator, banner or ornament with no informative content"
+    + figure_prompt_lines()
 )
 
 # Confidence granted to a heuristic decision (high: the geometric evidence is strong).

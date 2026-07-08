@@ -19,6 +19,7 @@ from shared_libs.pipelines.base import (
     WhenEquals,
 )
 from shared_libs.pipelines.build.blob import ActionNodeBlob, GroupNodeBlob
+from shared_libs.public_models import FigureKind
 
 # ====== Local Project Imports ======
 from .spec import StageSpecs
@@ -67,14 +68,45 @@ class EnrichBodyBuilder:
                 continue
             cls.__append_branch(branch.slot, branch.figure_kind, chain, nodes, transitions, bindings)
 
-        # 3. The decorative / fallback terminal — a visible, zero-spend skip.
+        # 3. The decorative / fallback terminal — a visible, zero-spend skip every decorative class
+        #    routes to (no chain, no model call).
         nodes.append(ActionNodeBlob(id=cls.SKIP_ID, family="enrich", kind="figure_entry"))
-        transitions.append(cls.__switch(StageSpecs.DECORATIVE_KIND, cls.SKIP_ID))
+        for decorative_kind in StageSpecs.DECORATIVE_KINDS:
+            transitions.append(cls.__switch(decorative_kind, cls.SKIP_ID))
         bindings[cls.SKIP_ID] = {"figure": FromNode(node_id=cls.CLASSIFY_ID, field_name="figure")}
+
+        # 4. Build guard: every class the classifier can stamp MUST have an outgoing route, or the
+        #    item would stall on 'classify' at run and fail the whole document. Reject at BUILD.
+        cls.__assert_full_coverage(transitions)
 
         return GroupNodeBlob(
             id=cls.BODY_ID, nodes=nodes, transitions=transitions, bindings=bindings
         )
+
+    @classmethod
+    def __assert_full_coverage(cls, transitions: list[Transition]) -> None:
+        """
+        Fail the build when a classifier class has no outgoing when_equals route.
+
+        Args:
+            transitions (list[Transition]): The body transitions assembled so far.
+
+        Raises:
+            ValueError: When a FigureKind the classifier can emit is left unrouted — a wiring
+                error that would otherwise stall the item at run and fail the whole document.
+        """
+        routed = {
+            transition.condition.equals
+            for transition in transitions
+            if transition.from_node_id == cls.CLASSIFY_ID
+            and isinstance(transition.condition, WhenEquals)
+        }
+        unrouted = {kind.value for kind in FigureKind} - routed
+        if unrouted:
+            raise ValueError(
+                f"enrich body: classifier classes with no routing branch: {sorted(unrouted)}. "
+                "Add a branch (via FIGURE_ROUTING) or mark the class decorative."
+            )
 
     @classmethod
     def __switch(cls, figure_kind: str, to_node_id: str) -> Transition:

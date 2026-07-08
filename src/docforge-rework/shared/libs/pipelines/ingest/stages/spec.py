@@ -12,6 +12,9 @@
 from dataclasses import dataclass, field
 from enum import StrEnum
 
+# ====== Internal Project Imports ======
+from shared_libs.public_models import FIGURE_ROUTING
+
 
 class StageKind(StrEnum):
     """
@@ -94,6 +97,38 @@ class FigureBranch:
     description: str
 
 
+def _figure_branches() -> tuple[FigureBranch, ...]:
+    """
+    Derive the enrich branch table from the figure routing — one branch per non-decorative class.
+
+    The chain slot follows the fixed ``<class>_<family>`` convention (e.g. scanned_text + ocr →
+    ``scanned_text_ocr``), so the studio slot key stays a stage-layer concern derived from the
+    shared taxonomy rather than a hand-authored literal.
+
+    Returns:
+        tuple[FigureBranch, ...]: One branch per enriched FigureKind, in routing-table order.
+    """
+    branches: list[FigureBranch] = []
+    for kind, routing in FIGURE_ROUTING.items():
+        if routing.family is None:  # decorative → no branch, handled by the skip terminal.
+            continue
+        branches.append(
+            FigureBranch(
+                figure_kind=kind.value,
+                slot=f"{kind.value}_{routing.family}",
+                family=routing.family,
+                title=routing.title,
+                description=routing.description,
+            )
+        )
+    return tuple(branches)
+
+
+def _decorative_kinds() -> tuple[str, ...]:
+    """Return the figure classes routed to the zero-spend skip terminal (no chain, no model)."""
+    return tuple(kind.value for kind, routing in FIGURE_ROUTING.items() if routing.decorative)
+
+
 class StageSpecs:
     """Static access to the canonical stage skeleton and the enrich branch table."""
 
@@ -173,34 +208,14 @@ class StageSpecs:
         ),
     )
 
-    # The fixed model-call sites of the enrich loop — one chain slot per figure class (decorative
-    # has no chain: it is a zero-spend skip).
-    FIGURE_BRANCHES: tuple[FigureBranch, ...] = (
-        FigureBranch(
-            figure_kind="scanned_text", slot="scanned_text_ocr", family="ocr",
-            title="Scanned-text OCR",
-            description="Read the text of a scanned region — a cheap local reader first, a robust "
-            "one rescuing low scores and failures.",
-        ),
-        FigureBranch(
-            figure_kind="photo", slot="photo_vlm", family="vlm",
-            title="Photo caption",
-            description="Caption a photograph or natural illustration for retrieval.",
-        ),
-        FigureBranch(
-            figure_kind="chart", slot="chart_vlm", family="vlm",
-            title="Chart reading",
-            description="Read a chart and transcribe its underlying data as a table.",
-        ),
-        FigureBranch(
-            figure_kind="diagram", slot="diagram_vlm", family="vlm",
-            title="Diagram rewrite",
-            description="Rewrite a schematic or diagram as searchable text.",
-        ),
-    )
+    # The fixed model-call sites of the enrich loop — one chain slot per figure class, DERIVED from
+    # the single-source figure routing (decorative classes have no chain: they are a zero-spend
+    # skip). Adding a FigureKind updates FIGURE_ROUTING once and this table follows.
+    FIGURE_BRANCHES: tuple[FigureBranch, ...] = _figure_branches()
 
-    # The figure class routed to the zero-spend skip terminal (no chain, no model).
-    DECORATIVE_KIND = "decorative"
+    # The figure classes routed to the zero-spend skip terminal (no chain, no model), derived from
+    # the same single source — every class here is a decorative kind of the routing table.
+    DECORATIVE_KINDS: tuple[str, ...] = _decorative_kinds()
 
     @classmethod
     def meta(cls, key: str) -> StageMeta:
