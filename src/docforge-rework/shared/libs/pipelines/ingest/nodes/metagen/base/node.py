@@ -1,25 +1,20 @@
 # ====== Code Summary ======
-# BaseMetagenNode — the shared machinery of the two metagen nodes (document / chunk scope):
-# resolve the node's TARGETS against the contract (loudly — a target naming an unknown or
-# non-generated field is a config error), group them by endpoint per the grouping knob, run the
-# structured-output calls through the shared factory, and coerce every returned value to its
-# contract type. Children implement run() — WHAT text is generated on and WHERE values land.
-
-# ====== Standard Library Imports ======
-from typing import Any
+# BaseMetagenNode — the shared, model-free machinery of the metagen family: resolve the node's TARGETS
+# against the contract (loudly — a target naming an unknown or non-generated field is a config error)
+# and build the word-capped document view. The structured-output call itself is NOT here anymore: it
+# was externalised into the generic structgen chain, so this base only does the loud, pre-spend work
+# its PREP children (BaseMetagenPrep) turn into GenerationRequest artefacts.
 
 # ====== Third-Party Library Imports ======
-from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, ConfigDict
 
 # ====== Internal Project Imports ======
 from shared_libs.pipelines.base import ActionNode
-from shared_libs.pipelines.nodes.openai_compat import OpenAICompatConfig, OpenAICompatHelpers
-from shared_libs.pipelines.nodes.structgen.base import StructGenHelpers
+from shared_libs.pipelines.nodes.openai_compat import OpenAICompatConfig
 from shared_libs.public_models import CollectionContract, FieldOrigin, FieldScope, MetadataFieldSpec
 
 # ====== Local Project Imports ======
-from .config import BaseMetagenConfig, MetagenGrouping, MetagenOnError
+from .config import BaseMetagenConfig
 from .helpers import MetagenHelpers
 
 
@@ -122,69 +117,6 @@ class BaseMetagenNode(ActionNode):
                 f"{scope.value}-scope field(s) — check the targeted fields' scope"
             )
         return resolved
-
-    async def _generate(
-        self, schema: dict[str, Any], system_prompt: str, text: str, endpoint: OpenAICompatConfig
-    ) -> dict[str, Any]:
-        """One structured-output call (overridable hook) — the schema forces the shape."""
-        config: BaseMetagenConfig = self.config
-        model = OpenAICompatHelpers.chat(
-            endpoint, temperature=config.temperature, max_tokens=config.max_tokens
-        )
-        structured = model.with_structured_output(schema)
-        result = await structured.ainvoke(
-            [SystemMessage(content=system_prompt), HumanMessage(content=text)]
-        )
-        return dict(result)
-
-    async def _generate_values(
-        self, text: str, targets: list[ResolvedTarget]
-    ) -> dict[str, Any]:
-        """
-        Fill the targets from one text: group by endpoint (per the grouping knob), call, coerce.
-
-        Args:
-            text (str): The text the values are extracted from.
-            targets (list[ResolvedTarget]): What to fill.
-
-        Returns:
-            dict: Field name → coerced value (failed/uncoercible fields absent).
-        """
-        config: BaseMetagenConfig = self.config
-
-        # 1. The call groups: per endpoint in combined mode, one per field in per_field mode.
-        groups: dict[tuple[str, ...], list[ResolvedTarget]] = {}
-        for index, target in enumerate(targets):
-            key: tuple[str, ...] = (
-                target.endpoint.base_url, target.endpoint.api_key, target.endpoint.model,
-            )
-            if config.grouping == MetagenGrouping.PER_FIELD:
-                key = (*key, str(index))
-            groups.setdefault(key, []).append(target)
-
-        # 2. One structured call per group; a failure drops the group's fields (or fails).
-        values: dict[str, Any] = {}
-        for group in groups.values():
-            schema = StructGenHelpers.object_schema(
-                [(target.spec, target.instruction) for target in group]
-            )
-            try:
-                raw = await self._generate(schema, config.system_prompt, text, group[0].endpoint)
-            except Exception as exc:
-                if config.on_error == MetagenOnError.FAIL:
-                    raise
-                self.logger.warning(
-                    f"Metagen '{self.KIND}' dropped {len(group)} field(s) "
-                    f"({', '.join(t.spec.field_name for t in group)}): "
-                    f"{type(exc).__name__}: {exc}"
-                )
-                continue
-            # 3. STRICT coercion — a wrong-typed value is dropped, never stored.
-            for target in group:
-                coerced = StructGenHelpers.coerce(raw.get(target.spec.field_name), target.spec.field_type)
-                if coerced is not None:
-                    values[target.spec.field_name] = coerced
-        return values
 
     @staticmethod
     def _document_text(texts: list[str], max_words: int) -> str:

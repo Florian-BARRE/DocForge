@@ -29,7 +29,7 @@ class IngestPipeline:
     # GENERIC capability families its enrichment relies on.
     FAMILIES = (
         "intake", "converter", "parser", "render", "enrich", "chunker",
-        "contextualize", "metagen", "embed", "deliver", "ocr", "vlm", "llm",
+        "contextualize", "metagen", "embed", "deliver", "ocr", "vlm", "llm", "structgen",
     )
 
     # The artefacts the RUN hands to the graph — the sources a FromRunInput binding can target.

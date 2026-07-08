@@ -1,11 +1,12 @@
 # ====== Code Summary ======
-# MetagenPrepConfig — the config of a metagen PREP node. It is today's BaseMetagenConfig MINUS the
-# two knobs that become graph mechanics once the model call is externalised into a structgen chain:
-# ``on_error`` (a fail-soft skip terminal is now a graph EDGE, not a node flag) and ``max_concurrency``
-# (moves onto the ForEach that runs the per-item chain). Everything a prep needs to SHAPE the calls it
-# emits lives here: the default endpoint (the fields carried onto each GenerationRequest), the per-field
-# TARGETS (prompt + endpoint override), the grouping knob (one call per endpoint or one per field), the
-# system prompt, and the generation caps.
+# MetagenPrepConfig — the config of a metagen PREP node, which doubles as the metagen STAGE config the
+# studio edits. It carries everything a prep needs to SHAPE the calls it emits (the default endpoint
+# each GenerationRequest inherits, the per-field TARGETS, the grouping knob, the system prompt and the
+# generation caps) PLUS the two STAGE-EXECUTION knobs — ``on_error`` and ``max_concurrency`` — that
+# became graph mechanics when the model call was externalised into a structgen chain. Those two are NOT
+# consumed by the prep's run(): they are read by the stage assembler to shape the ForEach the prep is
+# wrapped in (its concurrency) and the fail-soft skip terminal of its body (the on_error edge). Parking
+# them on the stage's anchor node keeps them user-editable through the very same config the view exposes.
 
 # ====== Third-Party Library Imports ======
 from pydantic import Field
@@ -14,11 +15,11 @@ from pydantic import Field
 from shared_libs.pipelines.nodes.openai_compat import OpenAICompatConfig
 
 # ====== Local Project Imports ======
-from ..base import DEFAULT_METAGEN_PROMPT, MetagenGrouping, MetagenTarget
+from ..base import DEFAULT_METAGEN_PROMPT, MetagenGrouping, MetagenOnError, MetagenTarget
 
 
 class MetagenPrepConfig(OpenAICompatConfig):
-    """Shared metagen-prep config — the default endpoint plus the per-field bindings and call shape."""
+    """Shared metagen-prep config — the default endpoint, the per-field bindings and the stage knobs."""
 
     targets: list[MetagenTarget] = Field(
         default_factory=list,
@@ -38,6 +39,15 @@ class MetagenPrepConfig(OpenAICompatConfig):
     max_document_words: int = Field(
         default=4000, gt=0,
         description="Hard cap on the document text handed to the model (document scope; truncated).",
+    )
+    max_concurrency: int = Field(
+        default=4, ge=1,
+        description="Stage knob (read by the assembler): how many requests the ForEach runs at once.",
+    )
+    on_error: MetagenOnError = Field(
+        default=MetagenOnError.SKIP_FIELDS,
+        description="Stage knob (read by the assembler): skip_fields wires a fail-soft skip terminal "
+        "so a failed request drops its fields; fail lets the failure propagate as an item failure.",
     )
 
 

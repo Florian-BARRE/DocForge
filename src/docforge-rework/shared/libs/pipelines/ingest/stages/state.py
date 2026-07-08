@@ -42,9 +42,14 @@ class PipelineState(BaseModel):
         chunker_config (dict): The chunker node's config.
         stack (list[StackMethod]): The ordered contextualize methods (empty = stage off).
         metachunk_on (bool): Whether chunk-scope metadata generation is enabled.
-        metachunk_config (dict): The chunk-metagen node's config.
+        metachunk_config (dict): The chunk-metagen PREP node's config (the default endpoint each
+            emitted GenerationRequest carries + the call shape).
+        metachunk_chain (ChainSpec): The chunk-metagen structgen fallback chain — a single provider
+            is a 1-step chain. Non-scored: escalation is failure-only. Its trivial default is one
+            openai_compatible step with an empty config, inheriting the per-request endpoint.
         metadoc_on (bool): Whether document-scope metadata generation is enabled.
-        metadoc_config (dict): The document-metagen node's config.
+        metadoc_config (dict): The document-metagen PREP node's config (default endpoint + shape).
+        metadoc_chain (ChainSpec): The document-metagen structgen fallback chain (as above).
         embed_on (bool): Whether the embed stage is enabled.
         embed_chain (ChainSpec): The embedder as a fallback chain — a single provider is a 1-step
             chain (its head is the selected embedder). Non-scored: escalation is failure-only.
@@ -66,8 +71,18 @@ class PipelineState(BaseModel):
     stack: list[StackMethod] = Field(default_factory=list)
     metachunk_on: bool = True
     metachunk_config: dict = Field(default_factory=dict)
+    metachunk_chain: ChainSpec = Field(
+        default_factory=lambda: ChainSpec(
+            family="structgen", steps=[ChainStep(kind="openai_compatible")]
+        )
+    )
     metadoc_on: bool = True
     metadoc_config: dict = Field(default_factory=dict)
+    metadoc_chain: ChainSpec = Field(
+        default_factory=lambda: ChainSpec(
+            family="structgen", steps=[ChainStep(kind="openai_compatible")]
+        )
+    )
     embed_on: bool = True
     embed_chain: ChainSpec = Field(
         default_factory=lambda: ChainSpec(family="embed", steps=[ChainStep(kind="bge_server")])

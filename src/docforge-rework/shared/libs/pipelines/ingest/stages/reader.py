@@ -2,16 +2,17 @@
 # StateReader — parses an ingestion blob back into a PipelineState (the inverse of the assembler).
 # It derives the stage-level truth FROM the graph by family first (so renamed node ids still read):
 # which optional stages are present, the selected provider kinds and their configs, the ordered
-# contextualize stack, and — the subtle part — the enrich chains, walked out of the per-figure loop
-# body (each classifier when_equals branch → its ordered model providers, reading the score_below
-# escalation off the edges). What the reader captures, the assembler re-emits verbatim, so a
-# view→apply→view round-trip is stable.
+# contextualize stack, and — the subtle part — the loops. There are now THREE ForEach loops (enrich +
+# the two metagen scopes), so the enrich loop is told apart by its BODY (only it carries a
+# figure_classify), and each metagen ladder is read via MetagenReader (its prep + structgen chain).
+# The generic chain walk is delegated to ChainWalker. What the reader captures, the assembler re-emits
+# verbatim, so a view→apply→view round-trip is stable.
 
 # ====== Third-Party Library Imports ======
 from loggerplusplus import loggerplusplus
 
 # ====== Internal Project Imports ======
-from shared_libs.pipelines.base import ScoreBelow, WhenEquals
+from shared_libs.pipelines.base import WhenEquals
 from shared_libs.pipelines.build.blob import (
     ActionNodeBlob,
     ForEachNodeBlob,
@@ -21,6 +22,8 @@ from shared_libs.pipelines.build.blob import (
 from shared_libs.pipelines.edit.topology import BlobTopology
 
 # ====== Local Project Imports ======
+from .chain_walk import ChainWalker
+from .metagen_read import MetagenReader
 from .models import ChainStep, StackMethod
 from .spec import StageSpecs
 from .state import ChainSpec, PipelineState
@@ -49,7 +52,9 @@ class StateReader:
         """
         ordered = BlobTopology.ordered_nodes(blob)
         actions = {node.id: node for node in ordered if isinstance(node, ActionNodeBlob)}
-        loop = next((n for n in ordered if isinstance(n, ForEachNodeBlob)), None)
+        enrich_loop = cls.__enrich_loop(ordered)
+        chunk_prep = MetagenReader.prep(ordered, "chunk_prep")
+        doc_prep = MetagenReader.prep(ordered, "document_prep")
 
         chunker = cls.__by_family(ordered, "chunker")
 
@@ -58,23 +63,25 @@ class StateReader:
             parse_chain=cls.__linear_chain(blob, ordered, "parser", "docling"),
             render_on=cls.__by_family(ordered, "render") is not None,
             render_config=cls.__config_of(cls.__by_family(ordered, "render")),
-            enrich_on=loop is not None,
+            enrich_on=enrich_loop is not None,
             chunker_kind=chunker.kind if chunker else "structure_aware",
             chunker_config=dict(chunker.config) if chunker else {},
             stack=cls.__stack(ordered),
-            metachunk_on=cls.__metagen(ordered, "chunk") is not None,
-            metachunk_config=cls.__config_of(cls.__metagen(ordered, "chunk")),
-            metadoc_on=cls.__metagen(ordered, "document") is not None,
-            metadoc_config=cls.__config_of(cls.__metagen(ordered, "document")),
+            metachunk_on=chunk_prep is not None,
+            metachunk_config=cls.__config_of(chunk_prep),
+            metachunk_chain=MetagenReader.chain(ordered, chunk_prep),
+            metadoc_on=doc_prep is not None,
+            metadoc_config=cls.__config_of(doc_prep),
+            metadoc_chain=MetagenReader.chain(ordered, doc_prep),
             embed_on=cls.__by_family(ordered, "embed") is not None,
             embed_chain=cls.__linear_chain(blob, ordered, "embed", "bge_server"),
         )
-        # 2. Enrich internals — the classifier config and the per-class chains.
-        if loop is not None:
-            classify = cls.__body_classify(loop.body)
+        # Enrich internals — the classifier config and the per-class chains (read off the loop body).
+        if enrich_loop is not None:
+            classify = cls.__body_classify(enrich_loop.body)
             if classify is not None:
                 state.classify_config = dict(classify.config)
-            state.chains = cls.__derive_chains(loop.body)
+            state.chains = cls.__derive_chains(enrich_loop.body)
         return state
 
     @classmethod
@@ -85,11 +92,15 @@ class StateReader:
         )
 
     @classmethod
-    def __metagen(cls, ordered: list[NodeBlob], kind: str) -> ActionNodeBlob | None:
-        """The metagen node of a given scope kind (chunk / document)."""
+    def __enrich_loop(cls, ordered: list[NodeBlob]) -> ForEachNodeBlob | None:
+        """The enrich per-figure loop — the only ForEach whose body carries a figure_classify.
+
+        Three ForEach loops now share the root (enrich + the two metagen scopes); a metagen body has
+        structgen/skip nodes and NO classifier, so the classifier presence disambiguates cleanly.
+        """
         return next(
             (n for n in ordered
-             if isinstance(n, ActionNodeBlob) and n.family == "metagen" and n.kind == kind),
+             if isinstance(n, ForEachNodeBlob) and cls.__body_classify(n.body) is not None),
             None,
         )
 
@@ -139,7 +150,7 @@ class StateReader:
             head = by_id.get(head_id) if head_id else None
             if head is None or head.family not in _MODEL_FAMILIES:
                 continue
-            steps = cls.__walk_chain(body.transitions, by_id, head, _MODEL_FAMILIES)
+            steps = ChainWalker.walk(body.transitions, by_id, head, _MODEL_FAMILIES)
             if steps:
                 chains[branch.slot] = ChainSpec(family=head.family, steps=steps)
         return chains
@@ -167,20 +178,8 @@ class StateReader:
         }
         if not nodes:
             return ChainSpec(family=family, steps=[ChainStep(kind=default_kind)])
-        head = cls.__chain_head(blob.transitions, nodes, {family})
-        return ChainSpec(family=family, steps=cls.__walk_chain(blob.transitions, nodes, head, {family}))
-
-    @classmethod
-    def __chain_head(
-        cls, transitions: list, by_id: dict[str, ActionNodeBlob], families: set[str]
-    ) -> ActionNodeBlob:
-        """The chain's head — the only family node no in-family escalation edge points at."""
-        targeted = {
-            t.to_node_id for t in transitions
-            if t.from_node_id in by_id and t.to_node_id in by_id
-            and by_id[t.to_node_id].family in families
-        }
-        return next((node for nid, node in by_id.items() if nid not in targeted), next(iter(by_id.values())))
+        head = ChainWalker.head(blob.transitions, nodes, {family})
+        return ChainSpec(family=family, steps=ChainWalker.walk(blob.transitions, nodes, head, {family}))
 
     @classmethod
     def __switch_target(cls, body: GroupNodeBlob, classify_id: str, figure_kind: str) -> str | None:
@@ -190,48 +189,6 @@ class StateReader:
                     and isinstance(transition.condition, WhenEquals)
                     and transition.condition.equals == figure_kind):
                 return transition.to_node_id
-        return None
-
-    @classmethod
-    def __walk_chain(
-        cls, transitions: list, by_id: dict[str, ActionNodeBlob], head: ActionNodeBlob,
-        families: set[str],
-    ) -> list[ChainStep]:
-        """Follow a chain's providers, reading the score_below escalation off the edges."""
-        steps: list[ChainStep] = []
-        current: ActionNodeBlob | None = head
-        seen: set[str] = set()
-        while current is not None and current.family in families and current.id not in seen:
-            seen.add(current.id)
-            score_below = cls.__score_below(transitions, current.id, by_id, families)
-            steps.append(ChainStep(kind=current.kind, config=dict(current.config),
-                                   score_below=score_below))
-            current = cls.__next_step(transitions, current.id, by_id, families)
-        return steps
-
-    @classmethod
-    def __score_below(
-        cls, transitions: list, node_id: str, by_id: dict[str, ActionNodeBlob], families: set[str]
-    ) -> float | None:
-        """The threshold of the ScoreBelow edge escalating this step to the next chain node."""
-        for transition in transitions:
-            if (transition.from_node_id == node_id
-                    and isinstance(transition.condition, ScoreBelow)
-                    and transition.to_node_id in by_id
-                    and by_id[transition.to_node_id].family in families):
-                return transition.condition.threshold
-        return None
-
-    @classmethod
-    def __next_step(
-        cls, transitions: list, node_id: str, by_id: dict[str, ActionNodeBlob], families: set[str]
-    ) -> ActionNodeBlob | None:
-        """The next chain provider a step escalates to (score_below / on_failure target)."""
-        for transition in transitions:
-            target = by_id.get(transition.to_node_id)
-            if (transition.from_node_id == node_id and target is not None
-                    and target.family in families):
-                return target
         return None
 
 

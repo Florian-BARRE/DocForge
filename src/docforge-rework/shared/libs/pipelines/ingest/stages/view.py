@@ -70,6 +70,12 @@ class StageViewer:
     # Chain-capable provider stages → the state ChainSpec they carry (head = selected provider).
     __CHAIN_STAGES = {StageKey.PARSE: "parse_chain", StageKey.EMBED: "embed_chain"}
 
+    # Metagen stages → the state field of their structgen ladder (a TOGGLE that ALSO carries a
+    # chain, like enrich: its config is the prep endpoint, its chain is the model ladder).
+    __METAGEN_CHAINS = {
+        StageKey.METAGEN_CHUNK: "metachunk_chain", StageKey.METAGEN_DOCUMENT: "metadoc_chain",
+    }
+
     @classmethod
     def __provider(cls, meta, state: PipelineState) -> tuple[str | None, list[str]]:
         """The selected kind + the family's available kinds (provider stages only)."""
@@ -103,6 +109,9 @@ class StageViewer:
         # chain (a 1-entry list for the stock 1-step default, the full chain when longer).
         if key in cls.__CHAIN_STAGES:
             return [cls.__stage_chain_view(key, state)]
+        # Metagen stages carry a structgen ladder alongside their prep config.
+        if key in cls.__METAGEN_CHAINS:
+            return [cls.__metagen_chain_view(key, state)]
         if key != StageKey.ENRICH:
             return []
         views: list[ChainView] = []
@@ -129,6 +138,17 @@ class StageViewer:
         return ChainView(
             slot=meta.key, title=meta.title, description=meta.description,
             family=family, available=NodeRegistry.kinds(family),
+            steps=list(chain.steps),
+        )
+
+    @classmethod
+    def __metagen_chain_view(cls, key: str, state: PipelineState) -> ChainView:
+        """A metagen stage's structgen ladder, as a single ChainView keyed by the stage."""
+        meta = StageSpecs.meta(key)
+        chain: ChainSpec = getattr(state, cls.__METAGEN_CHAINS[key])
+        return ChainView(
+            slot=meta.key, title=meta.title, description=meta.description,
+            family="structgen", available=NodeRegistry.kinds("structgen"),
             steps=list(chain.steps),
         )
 

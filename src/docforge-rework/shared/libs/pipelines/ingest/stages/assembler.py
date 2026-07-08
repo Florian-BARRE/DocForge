@@ -97,11 +97,22 @@ class IngestAssembler:
         bindings["chunk"] = {"ir": ir_final}
         cls.__bind_stack(bindings, state, ctx_ids, by_key["chunk"].output)
         if state.metachunk_on:
-            bindings["meta_chunk"] = {"chunks": chunks_pre_meta,
-                                      "contract": FromRunInput(field_name=_CONTRACT)}
+            # prep reads the pre-meta chunks + contract; apply merges the loop's values back onto
+            # those same pre-meta chunks. chunks_final then reads apply's output.
+            bindings["meta_chunk_prep"] = {"chunks": chunks_pre_meta,
+                                           "contract": FromRunInput(field_name=_CONTRACT)}
+            bindings["meta_chunk_apply"] = {
+                "chunks": chunks_pre_meta,
+                "values": FromNode(node_id="meta_chunk_loop", field_name="items"),
+            }
         if state.metadoc_on:
-            bindings["meta_doc"] = {"chunks": chunks_final,
-                                    "contract": FromRunInput(field_name=_CONTRACT)}
+            # prep builds the document view from the fully-annotated chunks; apply joins the loop's
+            # values into one document meta (it needs only the values, not the chunks).
+            bindings["meta_doc_prep"] = {"chunks": chunks_final,
+                                         "contract": FromRunInput(field_name=_CONTRACT)}
+            bindings["meta_doc_apply"] = {
+                "values": FromNode(node_id="meta_doc_loop", field_name="items"),
+            }
         if state.embed_on:
             # Embed may be a chain: every step consumes the SAME face (chunks spine + contract), so
             # bind it onto each step id (a single embedder's only exit is 'embed' — byte-identical).
@@ -153,7 +164,7 @@ class IngestAssembler:
         if state.render_on:
             slots["pages"] = FromNode(node_id="figures", field_name="pages")
         if state.metadoc_on:
-            slots["document_meta"] = FromNode(node_id="meta_doc", field_name="meta")
+            slots["document_meta"] = FromNode(node_id="meta_doc_apply", field_name="meta")
         # The embed anchor is the stage's convergence — FromNode for one embedder, FromFirst a chain.
         if state.embed_on and embed_output is not None:
             slots["embeddings"] = embed_output

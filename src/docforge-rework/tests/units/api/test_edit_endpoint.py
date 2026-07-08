@@ -15,16 +15,16 @@ def test_edit_endpoint_removes_a_node_and_bridges_the_gap(client) -> None:
 
     response = client.post(
         surface["edit_url"],
-        json={"blob": stock_blob, "operations": [{"op": "remove_node", "node_id": "meta_doc"}]},
+        json={"blob": stock_blob, "operations": [{"op": "remove_node", "node_id": "meta_doc_apply"}]},
     )
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["valid"] is True
     assert body["issues"] == []
     assert body["edit_error"] is None
-    assert not any(node["id"] == "meta_doc" for node in body["blob"]["nodes"])
+    assert not any(node["id"] == "meta_doc_apply" for node in body["blob"]["nodes"])
     assert any(
-        t["from_node_id"] == "meta_chunk" and t["to_node_id"] == "embed"
+        t["from_node_id"] == "meta_doc_loop" and t["to_node_id"] == "embed"
         for t in body["blob"]["transitions"]
     ), "bridged transition must be present in the response blob"
 
@@ -40,4 +40,4 @@ def test_edit_endpoint_returns_data_not_a_500_for_an_impossible_op(client) -> No
     body = response.json()
     assert body["valid"] is False
     assert body["edit_error"]
-    assert any(node["id"] == "meta_doc" for node in body["blob"]["nodes"]), "original blob echoed on edit_error"
+    assert any(node["id"] == "meta_doc_apply" for node in body["blob"]["nodes"]), "original blob echoed on edit_error"

@@ -61,6 +61,16 @@ _CHAIN_STAGES = {
     StageKey.EMBED: ("embed_chain", "embed"),
 }
 
+# Metagen chains → (state field holding the structgen ChainSpec, the family). Unlike _CHAIN_STAGES
+# these are NOT provider stages: metagen is a TOGGLE whose editable config is the PREP endpoint
+# (_CONFIGS), while its model ladder is a slot-less SetChain over the structgen family (non-scored,
+# so score thresholds are dropped). Kept apart so set_config keeps hitting the prep config, and only
+# set_chain reaches the ladder.
+_METAGEN_CHAINS = {
+    StageKey.METAGEN_CHUNK: ("metachunk_chain", "structgen"),
+    StageKey.METAGEN_DOCUMENT: ("metadoc_chain", "structgen"),
+}
+
 # Stage key → the state config field its primary node exposes (chain stages edit their chain head).
 _CONFIGS = {
     StageKey.RENDER: "render_config",
@@ -153,10 +163,16 @@ class StageCompiler(LoggerClass):
                 state.classify_config = dict(stock.classify_config)
             if not state.chains:
                 state.chains = {slot: spec.model_copy(deep=True) for slot, spec in stock.chains.items()}
-        elif stage == StageKey.METAGEN_CHUNK and not state.metachunk_config:
-            state.metachunk_config = dict(stock.metachunk_config)
-        elif stage == StageKey.METAGEN_DOCUMENT and not state.metadoc_config:
-            state.metadoc_config = dict(stock.metadoc_config)
+        elif stage == StageKey.METAGEN_CHUNK:
+            if not state.metachunk_config:
+                state.metachunk_config = dict(stock.metachunk_config)
+            if not state.metachunk_chain.steps:
+                state.metachunk_chain = stock.metachunk_chain.model_copy(deep=True)
+        elif stage == StageKey.METAGEN_DOCUMENT:
+            if not state.metadoc_config:
+                state.metadoc_config = dict(stock.metadoc_config)
+            if not state.metadoc_chain.steps:
+                state.metadoc_chain = stock.metadoc_chain.model_copy(deep=True)
         elif stage == StageKey.EMBED and not state.embed_chain.steps[0].config:
             # Re-enabling embed restores the stock 1-step chain (its config was gone with the node).
             state.embed_chain = stock.embed_chain
@@ -253,13 +269,23 @@ class StageCompiler(LoggerClass):
     def __set_stage_chain(
         self, state: PipelineState, stage: str, steps: list, notices: list[str]
     ) -> None:
-        """Rebuild a chain-capable linear stage's own scored chain (parse today)."""
-        if stage not in _CHAIN_STAGES:
+        """Rebuild a slot-less stage chain — a chain-capable linear stage (parse) or a metagen ladder."""
+        mapping = _CHAIN_STAGES if stage in _CHAIN_STAGES else (
+            _METAGEN_CHAINS if stage in _METAGEN_CHAINS else None
+        )
+        if mapping is None:
             notices.append(f"stage '{stage}' has no chain to set")
             return
-        field, family = _CHAIN_STAGES[stage]
-        # 1. A required, non-removable stage must keep at least one provider — an empty chain would
-        #    leave the pipeline without that step, so keep the current chain and warn.
+        field, family = mapping[stage]
+        self.__rebuild_stage_chain(state, stage, field, family, steps, notices)
+
+    def __rebuild_stage_chain(
+        self, state: PipelineState, stage: str, field: str, family: str, steps: list,
+        notices: list[str],
+    ) -> None:
+        """Apply the family-level chain rules and set a slot-less stage chain (parse / metagen)."""
+        # 1. A chain must keep at least one provider — an empty chain would leave the stage without
+        #    its step (parse) or its ladder (metagen), so keep the current chain and warn.
         if not steps:
             notices.append(f"stage '{stage}' needs at least one provider — kept the current chain")
             return
@@ -268,7 +294,8 @@ class StageCompiler(LoggerClass):
         if unknown:
             notices.extend(unknown)
             return
-        # 3. Complete each step's config build-safe, then apply the family-level chain rules.
+        # 3. Complete each step's config build-safe, then apply the family-level chain rules (structgen
+        #    is non-scored, so drop_unscored_thresholds strips any score_below with a notice).
         completed = ChainRules.complete_steps(family, steps)
         completed, threshold_notice = ChainRules.drop_unscored_thresholds(family, completed)
         if threshold_notice:

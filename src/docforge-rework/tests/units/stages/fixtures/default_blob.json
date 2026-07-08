@@ -47,12 +47,12 @@
     "bundle": {
       "chunks": {
         "field_name": "chunks",
-        "node_id": "meta_chunk",
+        "node_id": "meta_chunk_apply",
         "source": "node"
       },
       "document_meta": {
         "field_name": "meta",
-        "node_id": "meta_doc",
+        "node_id": "meta_doc_apply",
         "source": "node"
       },
       "embeddings": {
@@ -116,7 +116,7 @@
     "embed": {
       "chunks": {
         "field_name": "chunks",
-        "node_id": "meta_chunk",
+        "node_id": "meta_chunk_apply",
         "source": "node"
       },
       "contract": {
@@ -143,7 +143,19 @@
         "source": "node"
       }
     },
-    "meta_chunk": {
+    "meta_chunk_apply": {
+      "chunks": {
+        "field_name": "chunks",
+        "node_id": "ctx_breadcrumb",
+        "source": "node"
+      },
+      "values": {
+        "field_name": "items",
+        "node_id": "meta_chunk_loop",
+        "source": "node"
+      }
+    },
+    "meta_chunk_prep": {
       "chunks": {
         "field_name": "chunks",
         "node_id": "ctx_breadcrumb",
@@ -154,10 +166,17 @@
         "source": "run"
       }
     },
-    "meta_doc": {
+    "meta_doc_apply": {
+      "values": {
+        "field_name": "items",
+        "node_id": "meta_doc_loop",
+        "source": "node"
+      }
+    },
+    "meta_doc_prep": {
       "chunks": {
         "field_name": "chunks",
-        "node_id": "meta_chunk",
+        "node_id": "meta_chunk_apply",
         "source": "node"
       },
       "contract": {
@@ -515,8 +534,69 @@
         "model": "llm-default"
       },
       "family": "metagen",
-      "id": "meta_chunk",
-      "kind": "chunk",
+      "id": "meta_chunk_prep",
+      "kind": "chunk_prep",
+      "node_type": "action"
+    },
+    {
+      "body": {
+        "bindings": {
+          "gen_0": {
+            "request": {
+              "field_name": "request",
+              "source": "group"
+            }
+          },
+          "skip": {
+            "request": {
+              "field_name": "request",
+              "source": "group"
+            }
+          }
+        },
+        "id": "metagen_path",
+        "node_type": "group",
+        "nodes": [
+          {
+            "config": {},
+            "family": "structgen",
+            "id": "gen_0",
+            "kind": "openai_compatible",
+            "node_type": "action"
+          },
+          {
+            "config": {},
+            "family": "metagen",
+            "id": "skip",
+            "kind": "metagen_skip",
+            "node_type": "action"
+          }
+        ],
+        "transitions": [
+          {
+            "condition": {
+              "kind": "on_failure"
+            },
+            "from_node_id": "gen_0",
+            "to_node_id": "skip"
+          }
+        ]
+      },
+      "id": "meta_chunk_loop",
+      "item_field": "request",
+      "max_concurrency": 4,
+      "node_type": "foreach",
+      "over": {
+        "field_name": "requests",
+        "node_id": "meta_chunk_prep",
+        "source": "node"
+      }
+    },
+    {
+      "config": {},
+      "family": "metagen",
+      "id": "meta_chunk_apply",
+      "kind": "chunk_apply",
       "node_type": "action"
     },
     {
@@ -525,8 +605,69 @@
         "model": "llm-default"
       },
       "family": "metagen",
-      "id": "meta_doc",
-      "kind": "document",
+      "id": "meta_doc_prep",
+      "kind": "document_prep",
+      "node_type": "action"
+    },
+    {
+      "body": {
+        "bindings": {
+          "gen_0": {
+            "request": {
+              "field_name": "request",
+              "source": "group"
+            }
+          },
+          "skip": {
+            "request": {
+              "field_name": "request",
+              "source": "group"
+            }
+          }
+        },
+        "id": "metagen_path",
+        "node_type": "group",
+        "nodes": [
+          {
+            "config": {},
+            "family": "structgen",
+            "id": "gen_0",
+            "kind": "openai_compatible",
+            "node_type": "action"
+          },
+          {
+            "config": {},
+            "family": "metagen",
+            "id": "skip",
+            "kind": "metagen_skip",
+            "node_type": "action"
+          }
+        ],
+        "transitions": [
+          {
+            "condition": {
+              "kind": "on_failure"
+            },
+            "from_node_id": "gen_0",
+            "to_node_id": "skip"
+          }
+        ]
+      },
+      "id": "meta_doc_loop",
+      "item_field": "request",
+      "max_concurrency": 4,
+      "node_type": "foreach",
+      "over": {
+        "field_name": "requests",
+        "node_id": "meta_doc_prep",
+        "source": "node"
+      }
+    },
+    {
+      "config": {},
+      "family": "metagen",
+      "id": "meta_doc_apply",
+      "kind": "document_apply",
       "node_type": "action"
     },
     {
@@ -600,6 +741,34 @@
       "condition": {
         "kind": "on_success"
       },
+      "from_node_id": "meta_chunk_prep",
+      "to_node_id": "meta_chunk_loop"
+    },
+    {
+      "condition": {
+        "kind": "on_success"
+      },
+      "from_node_id": "meta_chunk_loop",
+      "to_node_id": "meta_chunk_apply"
+    },
+    {
+      "condition": {
+        "kind": "on_success"
+      },
+      "from_node_id": "meta_doc_prep",
+      "to_node_id": "meta_doc_loop"
+    },
+    {
+      "condition": {
+        "kind": "on_success"
+      },
+      "from_node_id": "meta_doc_loop",
+      "to_node_id": "meta_doc_apply"
+    },
+    {
+      "condition": {
+        "kind": "on_success"
+      },
       "from_node_id": "address",
       "to_node_id": "parse"
     },
@@ -636,20 +805,20 @@
         "kind": "on_success"
       },
       "from_node_id": "ctx_breadcrumb",
-      "to_node_id": "meta_chunk"
+      "to_node_id": "meta_chunk_prep"
     },
     {
       "condition": {
         "kind": "on_success"
       },
-      "from_node_id": "meta_chunk",
-      "to_node_id": "meta_doc"
+      "from_node_id": "meta_chunk_apply",
+      "to_node_id": "meta_doc_prep"
     },
     {
       "condition": {
         "kind": "on_success"
       },
-      "from_node_id": "meta_doc",
+      "from_node_id": "meta_doc_apply",
       "to_node_id": "embed"
     },
     {

@@ -5,7 +5,8 @@ drifting the stock blob is pinned HERE: a single checked-in snapshot of
 ``IngestAssembler.assemble(default_state()).model_dump(mode="json")``. If a change to the assembler,
 the state defaults or any stage builder alters the default blob, this test fails loudly and the
 snapshot must be regenerated ON PURPOSE (never blindly). To regenerate after an intended change:
-``fixtures/default_blob.json`` = json.dumps(blob.model_dump(mode="json"), sort_keys=True).
+``fixtures/default_blob.json`` = json.dumps(blob.model_dump(mode="json"), sort_keys=True, indent=2)
+(pretty-printed so its diff stays readable — the test compares dicts, so the layout is cosmetic).
 """
 
 import json

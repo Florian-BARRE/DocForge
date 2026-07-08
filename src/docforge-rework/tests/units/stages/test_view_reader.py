@@ -17,7 +17,8 @@ from shared_libs.pipelines.ingest.stages import DisableStage, StageViewer, State
 EXPECTED_TOP_LEVEL_IDS = [
     "probe", "admit", "convert", "pdf_probe", "address", "parse", "figures",
     "extract", "per_figure", "apply", "chunk", "ctx_meta", "ctx_breadcrumb",
-    "meta_chunk", "meta_doc", "embed", "bundle",
+    "meta_chunk_prep", "meta_chunk_loop", "meta_chunk_apply",
+    "meta_doc_prep", "meta_doc_loop", "meta_doc_apply", "embed", "bundle",
 ]
 
 EXPECTED_STAGE_ORDER = [

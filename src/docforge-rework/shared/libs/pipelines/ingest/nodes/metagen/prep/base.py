@@ -30,8 +30,9 @@ class BaseMetagenPrep(BaseMetagenNode):
         """
         Group the resolved targets per the grouping knob and emit one request per group.
 
-        Mirrors ``BaseMetagenNode._generate_values`` grouping (combined = one call per endpoint,
-        per_field = one call per field) but emits the calls as artefacts instead of running them.
+        Applies the grouping knob (combined = one call per endpoint, per_field = one call per
+        field) but emits each call group as a GenerationRequest artefact instead of running it —
+        the structgen chain in the ForEach body runs them.
 
         Args:
             text (str): The text every request in this batch extracts from.

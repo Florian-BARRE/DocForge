@@ -22,11 +22,13 @@ import pytest
 
 from shared_libs.pipelines.build import PipelineBuilder
 from shared_libs.pipelines.ingest.stages import (
+    ChainSpec,
     IngestAssembler,
     StageViewer,
     StateReader,
     default_state,
 )
+from shared_libs.pipelines.ingest.stages.models import ChainStep
 from shared_libs.pipelines.validation import GraphValidator
 
 TOGGLE_FIELDS = ("render_on", "enrich_on", "metachunk_on", "metadoc_on", "embed_on")
@@ -106,20 +108,51 @@ def test_every_combination_rebindings_match_the_toggle_state(combo) -> None:
     # 2. bundle.pages exists iff render is on.
     assert ("pages" in bindings["bundle"]) == render_on, combo
 
-    # 3. bundle.document_meta exists iff metagen_document is on, and reads meta_doc.
+    # 3. bundle.document_meta exists iff metagen_document is on, and reads the document apply node.
     assert ("document_meta" in bindings["bundle"]) == metadoc_on, combo
     if metadoc_on:
-        assert bindings["bundle"]["document_meta"].node_id == "meta_doc"
+        assert bindings["bundle"]["document_meta"].node_id == "meta_doc_apply"
 
     # 4. bundle.embeddings exists iff embed is on, and reads embed.
     assert ("embeddings" in bindings["bundle"]) == embed_on, combo
     if embed_on:
         assert bindings["bundle"]["embeddings"].node_id == "embed"
 
-    # 5. meta_chunk/meta_doc/embed nodes are present in the node list iff their toggle is on.
+    # 5. the metagen prep/loop/apply, embed and render/enrich nodes are present iff their toggle is on.
     node_ids = {n.id for n in blob.nodes}
-    assert ("meta_chunk" in node_ids) == metachunk_on, combo
-    assert ("meta_doc" in node_ids) == metadoc_on, combo
+    assert ("meta_chunk_prep" in node_ids) == metachunk_on, combo
+    assert ("meta_chunk_loop" in node_ids) == metachunk_on, combo
+    assert ("meta_chunk_apply" in node_ids) == metachunk_on, combo
+    assert ("meta_doc_prep" in node_ids) == metadoc_on, combo
+    assert ("meta_doc_apply" in node_ids) == metadoc_on, combo
     assert ("embed" in node_ids) == embed_on, combo
     assert ("figures" in node_ids) == render_on, combo
     assert ("per_figure" in node_ids) == enrich_on, combo
+
+
+def test_two_step_metagen_chain_round_trips_and_is_idempotent() -> None:
+    """A 2-step structgen ladder on both metagen scopes survives compile → read → compile.
+
+    The multi-loop reader must disambiguate the two metagen loops from the enrich loop AND from
+    each other (by the prep the loop's ``over`` reads), then walk each structgen ladder back — so
+    a non-default chain is not silently collapsed to the stock 1-step default.
+    """
+    ladder = ChainSpec(family="structgen", steps=[
+        ChainStep(kind="openai_compatible", config={"base_url": "http://cheap", "model": "small"}),
+        ChainStep(kind="openai_compatible", config={"base_url": "http://robust", "model": "big"}),
+    ])
+    state = default_state().model_copy(update={
+        "metachunk_chain": ladder.model_copy(deep=True),
+        "metadoc_chain": ladder.model_copy(deep=True),
+    })
+
+    blob = IngestAssembler.assemble(state)
+    assert GraphValidator().validate(PipelineBuilder().build(blob)) == []
+
+    read_back = StateReader.read(blob)
+    assert [s.kind for s in read_back.metachunk_chain.steps] == ["openai_compatible", "openai_compatible"]
+    assert read_back.metachunk_chain.steps[1].config == {"base_url": "http://robust", "model": "big"}
+    assert [s.kind for s in read_back.metadoc_chain.steps] == ["openai_compatible", "openai_compatible"]
+
+    # compile → read → compile is a fixed point: re-assembling the read-back state is byte-identical.
+    assert IngestAssembler.assemble(read_back).model_dump(mode="json") == blob.model_dump(mode="json")

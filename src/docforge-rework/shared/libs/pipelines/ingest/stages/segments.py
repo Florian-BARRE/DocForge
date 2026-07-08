@@ -18,10 +18,12 @@ from loggerplusplus import loggerplusplus
 from shared_libs.pipelines.base import Binding, FromNode, Transition
 from shared_libs.pipelines.build.blob import ActionNodeBlob, ForEachNodeBlob
 from shared_libs.pipelines.build.chain import ChainFragmentBuilder, ChainStepSpec
+from shared_libs.pipelines.ingest.nodes.metagen.base import MetagenOnError
 
 # ====== Local Project Imports ======
 from .enrich_body import EnrichBodyBuilder
-from .state import PipelineState
+from .metagen_body import MetagenBodyBuilder
+from .state import ChainSpec, PipelineState
 
 # Human ids for the contextualize stack nodes, so the stock stack keeps its historical ids.
 _CTX_IDS = {"doc_meta": "ctx_meta", "breadcrumb": "ctx_breadcrumb", "sliding": "ctx_sliding",
@@ -91,13 +93,15 @@ class SegmentBuilder:
         if state.stack:
             segments.append(cls.__contextualize(state))
         if state.metachunk_on:
-            segments.append(
-                cls.__single("metagen_chunk", "meta_chunk", "metagen", "chunk", state.metachunk_config, "chunks")
-            )
+            segments.append(cls.__metagen(
+                "metagen_chunk", "meta_chunk", "chunk_prep", "chunk_apply", "chunks",
+                state.metachunk_config, state.metachunk_chain,
+            ))
         if state.metadoc_on:
-            segments.append(
-                cls.__single("metagen_document", "meta_doc", "metagen", "document", state.metadoc_config, "meta")
-            )
+            segments.append(cls.__metagen(
+                "metagen_document", "meta_doc", "document_prep", "document_apply", "meta",
+                state.metadoc_config, state.metadoc_chain,
+            ))
         if state.embed_on:
             segments.append(cls.__embed(state))
         segments.append(cls.__single("deliver", "bundle", "deliver", "bundle", {}, "bundle"))
@@ -216,6 +220,43 @@ class SegmentBuilder:
             key="enrich", head="extract", exits=["apply"], nodes=nodes, transitions=transitions,
             output=FromNode(node_id="apply", field_name="ir"),
         )
+
+    @classmethod
+    def __metagen(
+        cls, key: str, prefix: str, prep_kind: str, apply_kind: str, output_field: str,
+        prep_config: dict, chain: ChainSpec,
+    ) -> Segment:
+        """A metagen stage: prep → ForEach(structgen chain [+ skip]) → apply (mirrors __enrich).
+
+        The prep emits one GenerationRequest per call group; the ForEach runs the structgen chain
+        per request (a fail-soft skip terminal or a propagating failure per the stage's on_error);
+        the apply merges the produced values back. ``max_concurrency`` and ``on_error`` are read off
+        the prep config — the stage-execution knobs the assembler shapes the loop/body with.
+        """
+        prep_id, loop_id, apply_id = f"{prefix}_prep", f"{prefix}_loop", f"{prefix}_apply"
+        nodes = [
+            ActionNodeBlob(id=prep_id, family="metagen", kind=prep_kind, config=dict(prep_config)),
+            ForEachNodeBlob(
+                id=loop_id, over=FromNode(node_id=prep_id, field_name="requests"),
+                item_field="request", max_concurrency=int(prep_config.get("max_concurrency", 4)),
+                body=MetagenBodyBuilder.build(chain, cls.__on_error(prep_config)),
+            ),
+            ActionNodeBlob(id=apply_id, family="metagen", kind=apply_kind),
+        ]
+        transitions = [
+            Transition(from_node_id=prep_id, to_node_id=loop_id),
+            Transition(from_node_id=loop_id, to_node_id=apply_id),
+        ]
+        return Segment(
+            key=key, head=prep_id, exits=[apply_id], nodes=nodes, transitions=transitions,
+            output=FromNode(node_id=apply_id, field_name=output_field),
+        )
+
+    @staticmethod
+    def __on_error(prep_config: dict) -> MetagenOnError:
+        """The stage's fail policy read off the prep config (defaults to the fail-soft skip)."""
+        raw = prep_config.get("on_error")
+        return MetagenOnError(raw) if raw else MetagenOnError.SKIP_FIELDS
 
     @classmethod
     def __contextualize(cls, state: PipelineState) -> Segment:

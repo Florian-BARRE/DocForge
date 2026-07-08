@@ -15,8 +15,8 @@ from shared_libs.pipelines.edit import (
 
 
 def test_set_binding_none_unbinds_a_slot(editor, default_blob) -> None:
-    unbound = editor.apply(default_blob, [SetBinding(node_id="meta_doc", slot="contract", binding=None)])
-    assert "contract" not in unbound.bindings["meta_doc"]
+    unbound = editor.apply(default_blob, [SetBinding(node_id="meta_doc_prep", slot="contract", binding=None)])
+    assert "contract" not in unbound.bindings["meta_doc_prep"]
 
 
 def test_set_binding_sets_a_real_binding(editor, default_blob) -> None:
@@ -37,8 +37,8 @@ def test_set_binding_on_unknown_node_raises_edit_error(editor, default_blob) -> 
 
 def test_set_binding_unbinding_an_already_unbound_slot_is_a_clean_no_op(editor, default_blob) -> None:
     """Unbinding a slot that was never set must not raise — SetBinding(None) is idempotent."""
-    edited = editor.apply(default_blob, [SetBinding(node_id="meta_doc", slot="ghost_slot", binding=None)])
-    assert "ghost_slot" not in edited.bindings.get("meta_doc", {})
+    edited = editor.apply(default_blob, [SetBinding(node_id="meta_doc_prep", slot="ghost_slot", binding=None)])
+    assert "ghost_slot" not in edited.bindings.get("meta_doc_prep", {})
 
 
 def test_set_after_reprositions_a_node_keeping_the_edge_condition(editor, builder, validator, default_blob) -> None:
@@ -66,9 +66,9 @@ def test_set_after_unknown_predecessor_raises_edit_error(editor, default_blob) -
 def test_set_condition_replaces_an_existing_edges_condition(editor, default_blob) -> None:
     edited = editor.apply(
         default_blob,
-        [SetCondition(from_node_id="meta_chunk", to_node_id="meta_doc", condition=OnFailure())],
+        [SetCondition(from_node_id="meta_chunk_apply", to_node_id="meta_doc_prep", condition=OnFailure())],
     )
-    edge = next(t for t in edited.transitions if t.from_node_id == "meta_chunk" and t.to_node_id == "meta_doc")
+    edge = next(t for t in edited.transitions if t.from_node_id == "meta_chunk_apply" and t.to_node_id == "meta_doc_prep")
     assert isinstance(edge.condition, OnFailure)
 
 

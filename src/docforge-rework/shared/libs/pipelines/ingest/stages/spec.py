@@ -180,14 +180,14 @@ class StageSpecs:
         ),
         StageMeta(
             key=StageKey.METAGEN_CHUNK, kind=StageKind.TOGGLE, removable=True,
-            family="metagen", primary_node="meta_chunk",
+            family="metagen", primary_node="meta_chunk_prep",
             title="Chunk metadata",
             description="Fill the contract's generated chunk-scope fields with an LLM, one "
             "structured generation per chunk.",
         ),
         StageMeta(
             key=StageKey.METAGEN_DOCUMENT, kind=StageKind.TOGGLE, removable=True,
-            family="metagen", primary_node="meta_doc",
+            family="metagen", primary_node="meta_doc_prep",
             title="Document metadata",
             description="Fill the contract's generated document-scope fields with an LLM from a "
             "view of the document.",
