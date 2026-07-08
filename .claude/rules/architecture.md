@@ -14,16 +14,29 @@ paths:
 Un node est **pur** : `Config` (une `NodeConfig`, `extra="forbid"`) + `Consomme → Produit`, **zéro I/O
 DB/S3**. Il déclare via `describe()` : ses slots typés IN/OUT (classe d'`Artifact` ou `list[Artifact]`,
 chacun **décrit** — un slot sans description est rejeté par test), sa `family`/`kind`, `UNIQUE_IN_GRAPH`,
-`scored`, `switch_fields`, `error_policy`. La persistance se fait **aux bords, dans le worker** (façade
-`Database`), jamais dans un node.
+`scored`, `switch_fields`, `error_policy`, **`selectable`** (défaut `True` ; les nodes internes de câblage —
+prep/apply/skip/keep_raw — le mettent `False` : cachés du picker de méthodes de la palette via l'unique
+chokepoint `NodeRegistry.catalog`, mais toujours dans le registre — `kinds()`/`get()`/`describe()` les
+atteignent). La persistance se fait **aux bords, dans le worker** (façade `Database`), jamais dans un node.
 
 ## Les familles (palette UI)
 
 Dédiées à une étape : `intake · converter · parser · render · enrich · chunker · contextualize · metagen`.
-Génériques réutilisables : `embed · ocr · vlm · llm` (+ la factory `openai_compat`).
+Génériques réutilisables : `embed · ocr · vlm · llm · structgen` (+ la factory `openai_compat`).
 **Convention kinds** : jamais de redondance famille+kind (`(ocr, mistral)`, pas `mistral_ocr` ;
 `(contextualize, llm)`, pas `llm_context`). Un nouveau provider = un kind de plus dans sa famille,
 interchangeable dans l'UI — rien à changer au moteur.
+
+## Les chaînes de fallback (tout appel d'interface, P1–P6 terminé)
+
+Un node d'action qui appelle une interface standard (`parser`/`ocr`/`vlm`/`embed`/`llm`/`structgen`) délègue à
+une **chaîne = providers en nodes + transitions de fallback dans le graphe** — `ScoreBelow(seuil)` si la famille
+est `scored` (auto-dérivé : `Produces` sous-classe `ScoredOutput`), sinon `OnFailure` — convergeant en `FromFirst`
+(meilleur d'abord). Motif uniforme `prep → chaîne → finalize` (métagen/contextualize : `prep → ForEach(chaîne
+[+ terminal fail-soft]) → apply`). **Un provider unique = une chaîne à 1 étape** (byte-identique à un node seul).
+Socle : `ChainFragmentBuilder` (build/), `ChainRules.resolve()` + `ChainWalker` (stages/, lecture inverse
+famille-paramétrée). Éditée par `set_chain` (stage à slot) ou, pour le stack contextualize, la `ChainSpec` portée
+par chaque `StackMethod` via `set_stack`.
 
 ## La mécanique du graphe (`shared_libs.pipelines.base`)
 
