@@ -53,14 +53,22 @@ pipelines/ingest/nodes/
 ├── parse/          parser/docling · figure_render
 ├── enrich/         figure_extract · figure_classify · figure_entry · enrich_apply
 ├── chunk/          base · structure_aware · fixed_size · semantic (à plat — l'étape EST la famille)
-├── contextualize/  base · breadcrumb · doc_meta · sliding · llm
-└── metagen/        base · document · chunk
+├── contextualize/  base(helpers·enums) · breadcrumb · doc_meta · sliding · llm(=prep) · llm_apply* · keep_raw*
+└── metagen/        base · prep(chunk·document) · apply(chunk·document) · skip*
 ```
+*(`*` = nodes internes de câblage, `SELECTABLE=False` — cachés du picker de méthodes de la palette.)*
 
 Les **familles** (palette UI) suivent les étapes — chaque nom est UNIQUE et sans ambiguïté : `intake` ·
 `converter` · `parser` · `render` (figure_render) · `enrich` · `chunker` · `contextualize` · `metagen` — plus les capacités
-génériques `embed` · `ocr` · `vlm` · `llm`. Convention kinds : jamais de redondance famille+kind (`(ocr, mistral)` comme
+génériques `embed` · `ocr` · `vlm` · `llm` · `structgen`. Convention kinds : jamais de redondance famille+kind (`(ocr, mistral)` comme
 `(llm, mistral)` ; `(contextualize, llm)` — pas de suffixes `_ocr`/`_context`).
+
+> **Tout appel d'interface standard est une CHAÎNE externalisée (P1–P6, terminé).** Un node d'action qui
+> appelle un `parser`/`ocr`/`vlm`/`embed`/`llm`/`structgen` ne cache plus l'appel : il délègue à une **chaîne =
+> providers en nodes + transitions de fallback dans le graphe** (`ScoreBelow(seuil)` si la famille est `scored`,
+> sinon `OnFailure`), convergeant en `FromFirst` (meilleur d'abord). Motif uniforme `prep → chaîne → finalize`.
+> **Un provider unique = une chaîne à 1 étape** (byte-identique à avant). Socle partagé : `ChainFragmentBuilder`,
+> `ChainRules.resolve()`, le `ChainWalker` (lecture inverse) réutilisés partout.
 
 ---
 
@@ -320,9 +328,17 @@ d'IR, la face reste uniforme) : `full` = tout le document (tronqué à `max_docu
 `section` (défaut) = les chunks frères de même `heading_path` · **repli** : un chunk hors section bascule sur
 `window` = ± `window_chunks` voisins.
 
-**Dégradation** : les appels tournent sous une borne de concurrence interne ; un échec modèle sur UN chunk le
-laisse **brut** (`on_error=keep_raw`, loggé) — le document n'échoue jamais pour un 503 ; `fail` pour les runs
-stricts. **Ordre par défaut recommandé** : `doc_meta → breadcrumb → llm` (du général au spécifique).
+**Dégradation** : un échec modèle sur UN chunk le laisse **brut** (`on_error=keep_raw`, loggé) — le document
+n'échoue jamais pour un 503 ; `fail` pour les runs stricts. **Ordre par défaut recommandé** : `doc_meta →
+breadcrumb → llm` (du général au spécifique).
+
+**Externalisé en chaîne (P6)** : la méthode `llm` ne cache plus l'appel modèle — elle compile en
+`prep → ForEach(chaîne llm générique [+ keep_raw]) → apply`. Le `prep` (kind `llm`, la méthode pickable)
+construit la vue **une fois** et émet un `Prompt` par chunk **dans l'ordre** ; le corps du ForEach est une
+**chaîne de providers `llm`** avec fallback `OnFailure` (le llm n'est pas `scored` → pas de `ScoreBelow`),
+terminée par `keep_raw` (Completion vide → `_with_context` no-op → chunk brut) quand `on_error=keep_raw` ;
+`apply` recolle les complétions aux chunks **par ordre** (`zip(strict=True)`, 1 chunk → 1 appel). La méthode
+porte sa `ChainSpec` dans le `StackMethod` (éditée via `set_stack`) — un provider unique = une chaîne à 1 étape.
 
 **Prouvé e2e** : chaque méthode isolée (rendu, repli hors-section, bornes de mots, copies jamais mutées) ·
 les scopes du LLM vérifiés par capture (la section ne voit pas les autres sections ; le repli window inclut les
@@ -339,12 +355,20 @@ Le **type du champ force la sortie** via structured output (schéma JSON dériv�
 retournée subit une **coercition stricte** (`"2024"` → int, ISO → datetime normalisé, liste nettoyée) — une
 valeur incoercible est **absente**, jamais fausse en base.
 
-| Kind | Contrat | Consomme | Produit |
-|---|---|---|---|
-| **document** ✅ | les champs `scope=DOCUMENT` | `chunks` (la vue document = leurs textes bruts, plafonnée `max_document_words`) · `contract` (run) | `meta : GeneratedDocumentMeta{values}` |
-| **chunk** ✅ | les champs `scope=CHUNK` | `chunks` · `contract` | `chunks` (`generated_meta` rempli en copies) — le texte ENRICHI nourrit le modèle |
+**Externalisé en chaîne (P5)** : metagen fait de la **génération STRUCTURÉE** (`with_structured_output(schema)`,
+schéma dérivé du `FieldType`, coercition stricte) via une capacité générique **`structgen`** (`schema → GeneratedValues`,
+l'analogue de `vlm → EnrichmentEntry`). Chaque scope compile en `prep → ForEach(chaîne structgen [+ skip]) → apply` :
+le `prep` groupe les champs par la molette `grouping` et émet une `GenerationRequest` par groupe ; le corps du ForEach
+est une **chaîne de providers `structgen`** avec fallback `OnFailure` (non-`scored`), terminée par `skip` (valeurs
+absentes) quand `on_error=skip_fields` ; l'`apply` recolle les valeurs par `chunk_id` (metagen est 1 chunk → N groupes,
+donc clé et non ordre — à la différence de contextualize/llm).
 
-**La config** (commune, + le endpoint par défaut hérité d'`OpenAICompatConfig`) :
+| Scope | Nodes externalisés | Consomme → Produit |
+|---|---|---|
+| **document** ✅ | `document_prep → ForEach(chaîne structgen [+ skip]) → document_apply` | `chunks` (vue doc, plafonnée `max_document_words`) · `contract` (run) → `meta : GeneratedDocumentMeta{values}` |
+| **chunk** ✅ | `chunk_prep → ForEach(chaîne structgen [+ skip]) → chunk_apply` | `chunks` (texte ENRICHI) · `contract` → `chunks` (`generated_meta` rempli en copies) |
+
+**La config du prep** (commune, + le endpoint par défaut hérité d'`OpenAICompatConfig`, porté par chaque `GenerationRequest`) :
 - **`targets`** : les liaisons par champ `{field · prompt (vide = auto-dérivé nom+type) · base_url/api_key/model
   (vides = défaut du node)}` — vide = TOUS les champs generated du scope ; un target inconnu/non-generated →
   **échec bruyant avant toute dépense** ; un sous-ensemble = plusieurs instances légitimes (`UNIQUE_IN_GRAPH=False`) ;
