@@ -1,6 +1,6 @@
 # ====== Code Summary ======
 # BaseVlmNode — the abstract base of every VLM provider, a PER-ITEM node closing an enrich branch:
-# it describes one figure (the crop, plus the OCR text already in the figure's ``context``) and
+# it describes one figure (the crop, plus the OCR text already in the figure's ``read_text``) and
 # emits the branch's terminal EnrichmentEntry. The base composes the instruction (system prompt +
 # the chart-to-table request when enabled) and post-processes the answer (table block parsed into
 # rows and stripped). Children implement ONLY `_describe(image, context, system_prompt)`.
@@ -51,7 +51,7 @@ class BaseVlmNode(ActionNode):
         prompt = config.system_prompt + (_TABLE_INSTRUCTION if config.extract_table else "")
 
         # 2. Run the provider.
-        answer, _confidence = await self._describe(data.figure.image, data.figure.context, prompt)
+        answer, _confidence = await self._describe(data.figure.image, data.figure.read_text, prompt)
 
         # 3. Post-process: pull the table rows out of the answer when they were requested.
         description, data_table = (
@@ -63,7 +63,7 @@ class BaseVlmNode(ActionNode):
             entry=EnrichmentEntry(
                 block_id=data.figure.block_id,
                 kind=data.figure.kind,
-                ocr_text=data.figure.context or None,
+                ocr_text=data.figure.read_text or None,
                 description=description or None,
                 data_table=data_table,
             )

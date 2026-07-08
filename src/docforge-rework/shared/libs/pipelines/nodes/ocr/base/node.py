@@ -1,6 +1,6 @@
 # ====== Code Summary ======
 # BaseOcrNode — the abstract base of every OCR provider, a PER-ITEM node: it reads one figure's
-# crop and relays the figure with its ``context`` filled, scored by the provider's confidence.
+# crop and relays the figure with its ``read_text`` filled, scored by the provider's confidence.
 # Escalation is pure graph: a ScoreBelow (or OnFailure) transition to the next provider; the
 # convergence back is a FromFirst binding. Children implement ONLY `_read(image)`.
 
@@ -27,21 +27,21 @@ class BaseOcrNode(ActionNode):
 
     async def run(self, data: OcrConsumes) -> OcrProduces:
         """
-        Read the figure's crop and relay the figure with its context filled.
+        Read the figure's crop and relay the figure with its read_text filled.
 
         Args:
             data (OcrConsumes): The figure to read.
 
         Returns:
             OcrProduces: An updated COPY of the figure (instances are shared across concurrent
-            items) with ``context`` set to the reading, scored by the provider's confidence.
+            items) with ``read_text`` set to the reading, scored by the provider's confidence.
         """
         # 1. Run the provider's engine on the crop.
         text, score = await self._read(data.figure.image)
         self.logger.debug(f"OCR '{self.KIND}' read {len(text)} chars (score {score:.2f})")
 
         # 2. Relay an updated copy — the item itself is never mutated.
-        return OcrProduces(figure=data.figure.model_copy(update={"context": text}), score=score)
+        return OcrProduces(figure=data.figure.model_copy(update={"read_text": text}), score=score)
 
 
 __all__ = ["BaseOcrNode"]

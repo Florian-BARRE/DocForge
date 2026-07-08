@@ -74,7 +74,7 @@ class FakeVlm(BaseVlmNode):
 
 async def test_vlm_base_flow_composes_prompt_and_closes_the_entry() -> None:
     node = FakeVlm(id="v", config=BaseVlmConfig(system_prompt="Read this chart.", extract_table=True))
-    figure = FigureItem(block_id="fig1", image=b"png", kind="chart", context="ocr said: hello")
+    figure = FigureItem(block_id="fig1", image=b"png", kind="chart", read_text="ocr said: hello")
     out = await node.run(VlmConsumes(figure=figure))
     assert out.entry.block_id == "fig1"
     assert out.entry.kind == "chart"
@@ -105,6 +105,6 @@ async def test_real_rapidocr_reads_a_rendered_image_through_the_node_contract() 
     source = FigureItem(block_id="f1", image=buf.getvalue())
     result = await ocr.run(OcrConsumes(figure=source))
     assert result.score > 0.5
-    assert "1500" in result.figure.context.replace(" ", "")
-    assert source.context == ""  # the input item was NOT mutated (copy relay)
+    assert "1500" in result.figure.read_text.replace(" ", "")
+    assert source.read_text == ""  # the input item was NOT mutated (copy relay)
     assert "rapidocr_onnxruntime" in sys.modules  # loaded lazily, on use

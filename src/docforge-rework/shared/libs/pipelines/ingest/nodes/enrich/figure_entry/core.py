@@ -1,6 +1,6 @@
 # ====== Code Summary ======
 # The figure_entry node — the model-free terminal of an enrich branch. It closes a figure's run
-# with an EnrichmentEntry built from what the figure already carries (kind, OCR context), spending
+# with an EnrichmentEntry built from what the figure already carries (kind, OCR read_text), spending
 # nothing. Two roles on the graph: the EXPLICIT decorative skip (the collection contract requires
 # every branch to end on an entry — skipping is a visible node, not an absence), and the terminal
 # of an OCR-only branch (scanned text without a VLM complement).
@@ -41,7 +41,7 @@ class FigureEntryNode(ActionNode):
     SUMMARY = "Close an enrich branch with what the figure already carries (no model call)."
     HOW_IT_WORKS = (
         "Builds the terminal EnrichmentEntry from the figure's stamped kind and accumulated OCR "
-        "context. Wire it as the decorative branch (zero spend, but the skip stays visible on the "
+        "read_text. Wire it as the decorative branch (zero spend, but the skip stays visible on the "
         "graph) or after an OCR when no VLM complement is wanted."
     )
     Config = FigureEntryConfig
@@ -63,7 +63,7 @@ class FigureEntryNode(ActionNode):
             entry=EnrichmentEntry(
                 block_id=data.figure.block_id,
                 kind=data.figure.kind,
-                ocr_text=data.figure.context or None,
+                ocr_text=data.figure.read_text or None,
             )
         )
 
