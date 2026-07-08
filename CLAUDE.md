@@ -42,7 +42,9 @@ Pipeline (doc vivante, LA référence) : `src/docforge-rework/PIPELINE.md`
 2. **Pipeline PURE** — un node = `Config` + `Consomme → Produit`, **zéro DB/S3**. Le worker persiste
    aux bords via la façade `Database` ; le contrat de collection arrive en **run input**.
 3. **Provider interchangeable dans sa famille** — URL + secret **par collection** (en DB), jamais en `.env`.
-4. **Collection = contrat** — validation fail-fast au **build du graphe** avant toute dépense.
+4. **Collection = contrat** — fail-fast **structurel** au **build du graphe** (topologie + forme de config)
+   avant toute dépense. ⚠️ La **connectivité** (URL/clé joignables) n'est **PAS** vérifiée au build : un
+   `base_url`/`api_key` faux construit proprement et échoue au **run** (un `preflight()` par node reste à faire).
 5. **Config `extra="forbid"`** — un typo dans le blob fait **échouer le build**, jamais ignoré silencieusement.
 6. **Vecteur maigre** — seuls les champs filtrables dans Qdrant ; le riche est en Postgres.
 7. **`DeviceManager` centralise GPU/CPU** — aucune logique device dans les nodes.

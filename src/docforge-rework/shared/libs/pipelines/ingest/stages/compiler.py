@@ -246,7 +246,15 @@ class StageCompiler(LoggerClass):
 
     @staticmethod
     def __empty_value(annotation: object) -> Any:
-        """A build-safe zero value for a required field of the given annotation."""
+        """
+        A build-safe zero value for a required field of the given annotation.
+
+        LIMITATION: this fills a required int/float with 0/0.0 and does NOT honour a declared
+        lower bound — a required numeric field with ``Field(gt=0)`` would fail ``model_validate``
+        at assembly (a ``build_error``, surfaced as fixable data, never a crash). Unsupported by
+        design today: every provider's required fields are strings (base_url/api_key/model). Add
+        bound-awareness here only when a required-and-bounded numeric config field first appears.
+        """
         return {str: "", int: 0, float: 0.0, bool: False, list: [], dict: {}}.get(annotation, "")
 
 

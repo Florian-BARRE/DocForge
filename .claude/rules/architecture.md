@@ -38,11 +38,16 @@ interchangeable dans l'UI — rien à changer au moteur.
   `duplicate_unique_node`). `False` quand la répétition est légitime (providers en escalade, terminaux
   multi-branches).
 
-## La validation (avant toute dépense — `GraphValidator`)
+## La validation (structurelle, avant toute dépense — `GraphValidator`)
 
 Entrée unique · pas de cycle · pas de fan-out ambigu · bindings amont présents + types compatibles ·
 `ScoreBelow` ⇒ producteur `scored` · unicité des nodes single-use. Un blob cassé revient en **donnée**
 (`valid=false` + `issues`, `build_error` si inconstruisible) — jamais en erreur HTTP.
+
+> **Portée honnête** : la validation est **structurelle** (topologie + forme de config `extra="forbid"`).
+> Elle ne teste **PAS la connectivité** : un `base_url`/`api_key` faux ou injoignable construit proprement
+> et n'échoue qu'au **run** (surfacé par `job.error` qui nomme le node fautif). Un `preflight()` optionnel
+> par node — joignabilité/creds après `bind`, avant la 1re dépense — reste à ajouter.
 
 ## Les 3 racines et l'import model
 

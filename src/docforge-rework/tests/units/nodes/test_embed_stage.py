@@ -82,7 +82,7 @@ class FakeDenseOnly(BaseEmbedderNode):
 
 
 async def test_batching_enriched_text_linkage_and_sparse_present() -> None:
-    node = FakeEmbed(id="e", config=BaseEmbedConfig(model="fake-m3", batch_size=2))
+    node = FakeEmbed(id="e", config=BaseEmbedConfig(model="fake-m3", batch_size=2, embed_semantic_fields=True))
     out = await node.run(EmbedConsumes(chunks=CHUNKS, contract=CONTRACT))
     emb = out.embeddings
     assert emb.model == "fake-m3"
@@ -96,7 +96,7 @@ async def test_batching_enriched_text_linkage_and_sparse_present() -> None:
 
 
 async def test_semantic_chunk_fields_get_named_vectors_only_where_present() -> None:
-    node = FakeEmbed(id="e", config=BaseEmbedConfig(model="fake-m3", batch_size=2))
+    node = FakeEmbed(id="e", config=BaseEmbedConfig(model="fake-m3", batch_size=2, embed_semantic_fields=True))
     out = await node.run(EmbedConsumes(chunks=CHUNKS, contract=CONTRACT))
     emb = out.embeddings
     assert set(emb.items[0].fields) == {"keywords"}

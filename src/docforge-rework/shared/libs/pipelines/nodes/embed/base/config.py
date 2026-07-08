@@ -21,9 +21,11 @@ class BaseEmbedConfig(NodeConfig):
         "does not support them).",
     )
     embed_semantic_fields: bool = Field(
-        default=True,
+        default=False,
         description="Also embed each SEMANTIC chunk-scope contract field's value as a named "
-        "per-field vector.",
+        "per-field vector. OFF by default: ingest writes these vectors but the search path does "
+        "not query them yet, so leaving it on pays embedding + storage for unread vectors. Turn "
+        "on once the semantic meta-field read side is wired (see the search endpoint).",
     )
 
 
