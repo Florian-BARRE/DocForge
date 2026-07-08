@@ -96,6 +96,98 @@ async def test_structure_aware_respects_sections_and_splits_oversized_paragraph(
     assert "| Metric | Value |" in results[0].text
 
 
+TINY_SECTION = (
+    "This short section describes a minor topic in only a couple of plain sentences, "
+    "each kept deliberately small so the whole section stays well under the minimum."
+)
+BULK = " ".join(f"Bulk sentence {i} elaborates at length on the single dense section." for i in range(30))
+
+
+def _many_tiny_sections_ir() -> DocumentIR:
+    """An IR of 12 sub-min_tokens sections followed by one large standalone section."""
+    blocks: list[Block] = []
+    order = 0
+    for index in range(12):
+        blocks.append(_blk(f"h{index}", BlockType.HEADING, order, text=f"Section {index}", level=1))
+        order += 1
+        blocks.append(_blk(f"p{index}", BlockType.PARAGRAPH, order, text=TINY_SECTION, parent=f"h{index}"))
+        order += 1
+    blocks.append(_blk("hbulk", BlockType.HEADING, order, text="Bulk", level=1))
+    blocks.append(_blk("pbulk", BlockType.PARAGRAPH, order + 1, text=BULK, parent="hbulk"))
+    return DocumentIR(doc_id="tiny", source_hash="h", n_pages=1, blocks=blocks)
+
+
+async def test_structure_aware_coalesces_consecutive_tiny_sections_toward_target() -> None:
+    ir = _many_tiny_sections_ir()
+    config = ChunkerStructureAwareConfig(target_tokens=256, max_tokens=512, min_tokens=64)
+    node = ChunkerStructureAwareNode(id="c", config=config)
+    chunks = (await node.run(ChunkerConsumes(ir=ir))).chunks
+
+    # 1. The 12 tiny sections no longer become 12 chunks — they coalesce far below one-per-section.
+    assert 2 <= len(chunks) <= 5, [(c.heading_path, c.token_count) for c in chunks]
+
+    # 2. Coalescing crosses section boundaries: some chunk unions blocks from >= 2 tiny sections,
+    #    and it has grown past min_tokens (trending toward the target, not a lone fragment).
+    tiny_ids = {f"h{i}" for i in range(12)} | {f"p{i}" for i in range(12)}
+    coalesced = [c for c in chunks if len({b for b in c.block_ids if b in tiny_ids}) >= 2]
+    assert coalesced
+    assert any(c.token_count > config.min_tokens for c in coalesced)
+
+    # 3. heading_path stays HONEST — the twelve sections are unrelated level-1 siblings, so their
+    #    common ancestry is empty; a coalesced chunk must not claim to live under any one of them.
+    assert chunks[0].heading_path == []
+
+    # 4. The large section still stands ALONE in its own chunk — no neighbour glued onto it.
+    bulk = [c for c in chunks if "pbulk" in c.block_ids]
+    assert len(bulk) == 1
+    assert bulk[0].block_ids == ["pbulk"]
+    assert bulk[0].heading_path == ["Bulk"]
+    assert bulk[0].token_count > config.target_tokens
+
+    # 5. Merging never breaches the hard cap.
+    assert all(c.token_count <= config.max_tokens for c in chunks)
+
+
+async def test_structure_aware_real_section_does_not_absorb_a_following_fragment() -> None:
+    # A real section (min <= x < target) directly followed by a tiny one: the fragment must NOT
+    # glue onto the real section — a fragment-born run is the only run allowed to absorb.
+    real_body = " ".join(f"Sentence {i} keeps this section comfortably above the minimum." for i in range(12))
+    ir = DocumentIR(doc_id="mix", source_hash="h", n_pages=1, blocks=[
+        _blk("hr", BlockType.HEADING, 0, text="Real", level=1),
+        _blk("pr", BlockType.PARAGRAPH, 1, text=real_body, parent="hr"),
+        _blk("ht", BlockType.HEADING, 2, text="Tiny", level=1),
+        _blk("pt", BlockType.PARAGRAPH, 3, text="A tiny trailing note.", parent="ht"),
+    ])
+    config = ChunkerStructureAwareConfig(target_tokens=256, max_tokens=512, min_tokens=64)
+    chunks = (await ChunkerStructureAwareNode(id="c", config=config).run(ChunkerConsumes(ir=ir))).chunks
+
+    real = [c for c in chunks if "pr" in c.block_ids]
+    tiny = [c for c in chunks if "pt" in c.block_ids]
+    assert len(real) == 1 and len(tiny) == 1
+    assert real[0].chunk_id != tiny[0].chunk_id           # the fragment stayed OUT of the real section
+    assert "pt" not in real[0].block_ids
+    assert config.min_tokens <= real[0].token_count       # the real section really was above min
+    assert real[0].heading_path == ["Real"]               # single-section chunk keeps its exact path
+
+
+async def test_structure_aware_coalesced_nested_sections_report_the_shared_ancestor() -> None:
+    # Two tiny SUBSECTIONS under a common chapter coalesce; their common heading_path prefix is
+    # the shared chapter, not empty and not a single subsection.
+    ir = DocumentIR(doc_id="nest", source_hash="h", n_pages=1, blocks=[
+        _blk("chap", BlockType.HEADING, 0, text="Chapter", level=1),
+        _blk("sa", BlockType.HEADING, 1, text="Alpha", level=2, parent="chap"),
+        _blk("pa", BlockType.PARAGRAPH, 2, text="A tiny note under alpha.", parent="sa"),
+        _blk("sb", BlockType.HEADING, 3, text="Beta", level=2, parent="chap"),
+        _blk("pb", BlockType.PARAGRAPH, 4, text="A tiny note under beta.", parent="sb"),
+    ])
+    config = ChunkerStructureAwareConfig(target_tokens=256, max_tokens=512, min_tokens=64)
+    chunks = (await ChunkerStructureAwareNode(id="c", config=config).run(ChunkerConsumes(ir=ir))).chunks
+
+    assert len(chunks) == 1                                # everything is tiny → one coalesced chunk
+    assert {"pa", "pb"} <= set(chunks[0].block_ids)        # both subsections merged across the boundary
+    assert chunks[0].heading_path == ["Chapter"]           # the shared ancestor, not [] nor a subsection
+
+
 async def test_fixed_size_windows_with_repeated_overlap() -> None:
     node = ChunkerFixedSizeNode(id="c", config=ChunkerFixedSizeConfig(chunk_tokens=80, overlap_tokens=20))
     out = await node.run(ChunkerConsumes(ir=IR))
@@ -164,7 +256,10 @@ async def test_chunk_stage_blob_builds_validates_and_runs() -> None:
     assert GraphValidator().validate(group) == []
     output, _record = await FlowEngine().execute(group, {"ir": IR})
     assert output.chunks
-    assert output.chunks[0].heading_path == ["Introduction"]
+    # The tiny Introduction and the tiny Results heading/table are both sub-min_tokens and coalesce
+    # across the boundary; their common ancestry is empty, so the first chunk honestly reports [].
+    assert "h1" in output.chunks[0].block_ids
+    assert output.chunks[0].heading_path == []
 
 
 def test_f1_cyclic_parent_chain_does_not_hang_the_projection() -> None:

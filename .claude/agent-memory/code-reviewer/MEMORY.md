@@ -65,6 +65,7 @@ FROZEN legacy — don't review it unless explicitly asked.
 - [metagen-embed-node-traps](metagen-embed-node-traps.md) — metagen + embed node traps: chunk-metagen overwrites generated_meta on chaining, duplicate targets dedupe, datetime hint dropped; openai_compat factory consumer count.
 - [model-cache-concurrency](model-cache-concurrency.md) — ModelCache per-lib inference-locking: which heavy providers MUST serialize inference and which must not.
 - [locality_empty_chain_nameerror](locality_empty_chain_nameerror.md) — latent NameError: code after a for-loop using the loop var crashes on an empty iterable.
+- [coalesce-fragment-run-guard](coalesce-fragment-run-guard.md) — greedy coalesce-small passes guarding only the incoming size let a sub-target REAL unit absorb fragments; needs a fragment-run origin flag.
 - [rework-stage-layer-vision](rework-stage-layer-vision.md) — post-vision map (2026-07-05): stage-layer substrate vs UI-dead vs advanced-only; the SchemaForm misplacement + double-wrap wart.
 - [layer_dag](layer_dag.md) — libs layer DAG import rules to enforce, esp. storage vs search.
 - [page_indexing_zero_based](page_indexing_zero_based.md) — page numbers are 0-indexed end to end; page-1-as-first is off-by-one.

@@ -51,6 +51,38 @@ class BaseChunkerNode(ActionNode):
             taken += passage.token_count
         return seed
 
+    @staticmethod
+    def __common_heading_path(group: list[Passage]) -> list[str]:
+        """
+        The heading_path all passages in a group share — their common section ancestry.
+
+        A single-section group returns that section's exact path (every passage shares it). A
+        coalesced multi-section group returns only the shared ancestor prefix — `[]` when the
+        sections are unrelated (e.g. sibling level-1 sections) — so the chunk never falsely claims
+        to live under the first passage's section. Ancestry is compared by section_key IDENTITY
+        (heading ids), not by heading TEXT, since two distinct sections may share a title.
+
+        Args:
+            group (list[Passage]): The passages of one chunk-to-be, in reading order.
+
+        Returns:
+            list[str]: The common heading-path prefix (texts), top-down.
+        """
+        # 1. Shrink a shared depth down to the shortest common section_key prefix in the group.
+        reference = group[0]
+        depth = len(reference.section_key)
+        for passage in group[1:]:
+            common = 0
+            for ref_id, other_id in zip(reference.section_key, passage.section_key):
+                if ref_id != other_id:
+                    break
+                common += 1
+            depth = min(depth, common)
+            if depth == 0:
+                break
+        # 2. Project that identity depth onto the first passage's heading TEXTS.
+        return reference.heading_path[:depth]
+
     def __finalize(self, ir: DocumentIR, groups: list[list[Passage]]) -> list[Chunk]:
         """Turn each passage group into a Chunk."""
         config: BaseChunkerConfig = self.config
@@ -69,7 +101,7 @@ class BaseChunkerNode(ActionNode):
                     text=text,
                     block_ids=block_ids,
                     token_count=ChunkerHelpers.count_tokens(text, config.tokenizer_encoding),
-                    heading_path=group[0].heading_path,
+                    heading_path=self.__common_heading_path(group),
                     page_start=min(passage.page_start for passage in group),
                     page_end=max(passage.page_end for passage in group),
                 )

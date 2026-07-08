@@ -16,8 +16,15 @@ order the contextualize stack. The stage layer publishes this as a vertical rail
 
 **How to apply / where it lives:** `shared/libs/pipelines/ingest/stages/`
 - `spec.py` — `StageSpecs.ORDER` = the 10 canonical stages (intake, parse, render, enrich, chunk,
-  contextualize, metagen_chunk, metagen_document, embed, deliver) + `FIGURE_BRANCHES` (the enrich
-  chain slots: scanned_text_ocr, photo_vlm, chart_vlm, diagram_vlm). Rename a stage HERE, all sides follow.
+  contextualize, metagen_chunk, metagen_document, embed, deliver). Rename a stage HERE, all sides follow.
+- Figure taxonomy is SINGLE-SOURCE at `FigureKind` (`public_models/ir/enums.py`) + its companion
+  `FIGURE_ROUTING` table (`public_models/ir/figure_routing.py`, keyed by FigureKind: family or
+  None=decorative, title/description, classifier prompt line). `StageSpecs.FIGURE_BRANCHES` (slot =
+  `<class>_<family>`) and `DECORATIVE_KINDS` are DERIVED from it; the classifier `_CLASSIFY_PROMPT`
+  derives via `figure_prompt_lines()`. DO NOT re-hand-list branches/prompt. Double guard vs drift:
+  import-time (a FigureKind absent from FIGURE_ROUTING raises at import) + build-time
+  (`EnrichBodyBuilder.__assert_full_coverage` fails the collection build if any classifier class has
+  no when_equals route). Coverage locked by `tests/units/stages/test_figure_routing.py`.
 - `state.py::PipelineState` + `default_state()` — the canonical model BETWEEN blob and view.
 - `assembler.py::IngestAssembler.assemble(state)` — the SINGLE owner of wiring (control-flow chain +
   the IR spine parse→render→enrich and chunks spine chunk→contextualize→metagen). `default_blob()` is
