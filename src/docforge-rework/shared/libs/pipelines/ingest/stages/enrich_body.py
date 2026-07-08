@@ -9,16 +9,14 @@
 
 # ====== Internal Project Imports ======
 from shared_libs.pipelines.base import (
-    FromFirst,
     FromGroupInput,
     FromNode,
-    OnFailure,
     OnSuccess,
-    ScoreBelow,
     Transition,
     WhenEquals,
 )
 from shared_libs.pipelines.build.blob import ActionNodeBlob, GroupNodeBlob
+from shared_libs.pipelines.build.chain import ChainFragment, ChainFragmentBuilder, ChainStepSpec
 from shared_libs.public_models import FigureKind
 
 # ====== Local Project Imports ======
@@ -121,53 +119,48 @@ class EnrichBodyBuilder:
         cls, slot: str, figure_kind: str, chain: ChainSpec,
         nodes: list, transitions: list[Transition], bindings: dict[str, dict],
     ) -> None:
-        """Append one class branch: its chain nodes, escalation edges and terminal."""
-        # 1. The chain's provider nodes, each reading the classified figure.
-        step_ids = [f"{slot}_{index}" for index in range(len(chain.steps))]
-        for step_id, step in zip(step_ids, chain.steps, strict=True):
-            nodes.append(
-                ActionNodeBlob(id=step_id, family=chain.family, kind=step.kind, config=dict(step.config))
-            )
-            bindings[step_id] = {"figure": FromNode(node_id=cls.CLASSIFY_ID, field_name="figure")}
+        """Append one class branch: its chain fragment, the entry switch and its terminal."""
+        # 1. Build the provider chain fragment (step nodes, escalation edges, per-step bindings).
+        #    OCR steps produce a raw `figure`, closed on a model-free entry; VLM steps produce the
+        #    `entry` terminal artefact themselves.
+        frag = ChainFragmentBuilder.build(
+            prefix=slot,
+            family=chain.family,
+            steps=[
+                ChainStepSpec(kind=step.kind, config=dict(step.config), score_below=step.score_below)
+                for step in chain.steps
+            ],
+            step_inputs={"figure": FromNode(node_id=cls.CLASSIFY_ID, field_name="figure")},
+            output_field="figure" if chain.family == "ocr" else "entry",
+            scored=True,
+        )
+        nodes.extend(frag.nodes)
+        bindings.update(frag.bindings)
 
-        # 2. Enter the branch on the routed class; escalate step→step on low score, fall through
-        #    on failure — the last step is the final say.
-        transitions.append(cls.__switch(figure_kind, step_ids[0]))
-        for current_id, next_id, step in zip(step_ids, step_ids[1:], chain.steps, strict=False):
-            if step.score_below is not None:
-                transitions.append(Transition(
-                    from_node_id=current_id, to_node_id=next_id,
-                    condition=ScoreBelow(threshold=step.score_below),
-                ))
-            transitions.append(Transition(
-                from_node_id=current_id, to_node_id=next_id, condition=OnFailure()
-            ))
+        # 2. Site concern — enter the branch on the routed class, then splice the escalation edges.
+        transitions.append(cls.__switch(figure_kind, frag.heads[0]))
+        transitions.extend(frag.transitions)
 
         # 3. Close the branch on its terminal artefact (EnrichmentEntry).
         if chain.family == "ocr":
-            cls.__close_ocr(slot, step_ids, nodes, transitions, bindings)
+            cls.__close_ocr(slot, frag, nodes, transitions, bindings)
         # VLM/LLM providers each produce the terminal entry themselves — nothing to add.
 
     @classmethod
     def __close_ocr(
-        cls, slot: str, step_ids: list[str],
+        cls, slot: str, frag: ChainFragment,
         nodes: list, transitions: list[Transition], bindings: dict[str, dict],
     ) -> None:
         """Close an OCR chain on a model-free figure_entry fed best-first by whichever step ran."""
         terminal_id = f"{slot}_entry"
         nodes.append(ActionNodeBlob(id=terminal_id, family="enrich", kind="figure_entry"))
         # Every step, on success, closes the branch on the shared terminal.
-        for step_id in step_ids:
+        for step_id in frag.exits:
             transitions.append(Transition(
                 from_node_id=step_id, to_node_id=terminal_id, condition=OnSuccess()
             ))
-        # The join reads the FIRST candidate that produced — best (last) step first.
-        bindings[terminal_id] = {
-            "figure": FromFirst(candidates=[
-                FromNode(node_id=step_id, field_name="figure")
-                for step_id in reversed(step_ids)
-            ])
-        }
+        # The join reads whichever step produced — best-first, as computed by the fragment.
+        bindings[terminal_id] = {"figure": frag.output}
 
 
 __all__ = ["EnrichBodyBuilder"]

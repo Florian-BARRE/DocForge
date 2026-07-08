@@ -73,3 +73,7 @@ htmlcov/
 # artifact - re-include it from the global build/ rule above.
 !src/docforge-rework/shared/libs/pipelines/build/
 !src/docforge-rework/shared/libs/pipelines/build/**
+
+# The build/ unit-test package mirrors that source module - also SOURCE, not an artifact.
+!src/docforge-rework/tests/units/build/
+!src/docforge-rework/tests/units/build/**
