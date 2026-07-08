@@ -46,8 +46,8 @@ class PipelineState(BaseModel):
         metadoc_on (bool): Whether document-scope metadata generation is enabled.
         metadoc_config (dict): The document-metagen node's config.
         embed_on (bool): Whether the embed stage is enabled.
-        embed_kind (str): The selected embedder kind.
-        embed_config (dict): The embedder node's config.
+        embed_chain (ChainSpec): The embedder as a fallback chain — a single provider is a 1-step
+            chain (its head is the selected embedder). Non-scored: escalation is failure-only.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -69,8 +69,9 @@ class PipelineState(BaseModel):
     metadoc_on: bool = True
     metadoc_config: dict = Field(default_factory=dict)
     embed_on: bool = True
-    embed_kind: str = "bge_server"
-    embed_config: dict = Field(default_factory=dict)
+    embed_chain: ChainSpec = Field(
+        default_factory=lambda: ChainSpec(family="embed", steps=[ChainStep(kind="bge_server")])
+    )
 
 
 # The default endpoints of the stock pipeline — compose-internal services, overridden per collection
@@ -124,7 +125,10 @@ def default_state() -> PipelineState:
         ],
         metachunk_config={"base_url": "http://llm:8000/v1", "model": "llm-default"},
         metadoc_config={"base_url": "http://llm:8000/v1", "model": "llm-default"},
-        embed_config={"base_url": "http://bge_server:8008"},
+        embed_chain=ChainSpec(
+            family="embed",
+            steps=[ChainStep(kind="bge_server", config={"base_url": "http://bge_server:8008"})],
+        ),
     )
 
 

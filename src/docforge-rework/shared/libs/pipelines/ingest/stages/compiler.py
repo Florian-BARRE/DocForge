@@ -47,27 +47,27 @@ _TOGGLES = {
     StageKey.EMBED: "embed_on",
 }
 
-# Stage key → (state field for the provider kind, state field for its config). Parse is NOT here:
-# it is a scored chain, so SetProvider(parse) is sugar for a 1-step chain (see __set_provider).
+# Stage key → (state field for the provider kind, state field for its config). Parse and embed are
+# NOT here: they are fallback chains, so SetProvider is sugar for a 1-step chain (see __set_provider).
 _PROVIDERS = {
     StageKey.CHUNK: ("chunker_kind", "chunker_config"),
-    StageKey.EMBED: ("embed_kind", "embed_config"),
 }
 
 # Chain-capable linear stages → (state field holding the ChainSpec, the registry family). These are
-# provider stages whose provider is a scored fallback chain, edited with a slot-less SetChain.
+# provider stages whose provider is a fallback chain, edited with a slot-less SetChain. Parse is
+# scored (ScoreBelow escalation); embed is not (failure-only) — the family's scored flag decides.
 _CHAIN_STAGES = {
     StageKey.PARSE: ("parse_chain", "parser"),
+    StageKey.EMBED: ("embed_chain", "embed"),
 }
 
-# Stage key → the state config field its primary node exposes (parse edits its chain head directly).
+# Stage key → the state config field its primary node exposes (chain stages edit their chain head).
 _CONFIGS = {
     StageKey.RENDER: "render_config",
     StageKey.ENRICH: "classify_config",
     StageKey.CHUNK: "chunker_config",
     StageKey.METAGEN_CHUNK: "metachunk_config",
     StageKey.METAGEN_DOCUMENT: "metadoc_config",
-    StageKey.EMBED: "embed_config",
 }
 
 
@@ -157,8 +157,9 @@ class StageCompiler(LoggerClass):
             state.metachunk_config = dict(stock.metachunk_config)
         elif stage == StageKey.METAGEN_DOCUMENT and not state.metadoc_config:
             state.metadoc_config = dict(stock.metadoc_config)
-        elif stage == StageKey.EMBED and not state.embed_config:
-            state.embed_config = dict(stock.embed_config)
+        elif stage == StageKey.EMBED and not state.embed_chain.steps[0].config:
+            # Re-enabling embed restores the stock 1-step chain (its config was gone with the node).
+            state.embed_chain = stock.embed_chain
 
     def __cascade_disable(self, state: PipelineState, stage: str, notices: list[str]) -> None:
         """Disabling a stage disables the stages that require it."""
@@ -196,13 +197,19 @@ class StageCompiler(LoggerClass):
                 return
             state.intake_configs[node] = dict(config)
             return
-        # 2. Parse is a chain — editing its config edits the head step (the selected parser).
-        if stage == StageKey.PARSE:
-            head, *rest = state.parse_chain.steps
-            state.parse_chain = ChainSpec(
-                family=state.parse_chain.family,
+        # 2. A chain stage (parse, embed) — editing its config edits the head step (the selected
+        #    provider); the fuller chain is edited with SetChain.
+        if stage in _CHAIN_STAGES:
+            field, _ = _CHAIN_STAGES[stage]
+            chain: ChainSpec = getattr(state, field)
+            if not chain.steps:
+                notices.append(f"stage '{stage}' has no provider to configure")
+                return
+            head, *rest = chain.steps
+            setattr(state, field, ChainSpec(
+                family=chain.family,
                 steps=[head.model_copy(update={"config": dict(config)}), *rest],
-            )
+            ))
             return
         # 3. Every other stage exposes a single config field.
         field = _CONFIGS.get(stage)

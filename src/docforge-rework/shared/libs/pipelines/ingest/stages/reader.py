@@ -52,11 +52,10 @@ class StateReader:
         loop = next((n for n in ordered if isinstance(n, ForEachNodeBlob)), None)
 
         chunker = cls.__by_family(ordered, "chunker")
-        embed = cls.__by_family(ordered, "embed")
 
         state = PipelineState(
             intake_configs=cls.__intake_configs(actions),
-            parse_chain=cls.__parse_chain(blob, ordered),
+            parse_chain=cls.__linear_chain(blob, ordered, "parser", "docling"),
             render_on=cls.__by_family(ordered, "render") is not None,
             render_config=cls.__config_of(cls.__by_family(ordered, "render")),
             enrich_on=loop is not None,
@@ -67,9 +66,8 @@ class StateReader:
             metachunk_config=cls.__config_of(cls.__metagen(ordered, "chunk")),
             metadoc_on=cls.__metagen(ordered, "document") is not None,
             metadoc_config=cls.__config_of(cls.__metagen(ordered, "document")),
-            embed_on=embed is not None,
-            embed_kind=embed.kind if embed else "bge_server",
-            embed_config=dict(embed.config) if embed else {},
+            embed_on=cls.__by_family(ordered, "embed") is not None,
+            embed_chain=cls.__linear_chain(blob, ordered, "embed", "bge_server"),
         )
         # 2. Enrich internals — the classifier config and the per-class chains.
         if loop is not None:
@@ -147,15 +145,30 @@ class StateReader:
         return chains
 
     @classmethod
-    def __parse_chain(cls, blob: GroupNodeBlob, ordered: list[NodeBlob]) -> ChainSpec:
-        """Read the parser stage back as a chain — 1 provider round-trips to a 1-step ChainSpec."""
-        parsers = {
-            n.id: n for n in ordered if isinstance(n, ActionNodeBlob) and n.family == "parser"
+    def __linear_chain(
+        cls, blob: GroupNodeBlob, ordered: list[NodeBlob], family: str, default_kind: str
+    ) -> ChainSpec:
+        """Read a chain-capable linear stage back as a chain (parse / embed).
+
+        A single provider round-trips to a 1-step ChainSpec; a missing stage yields the stock 1-step
+        default so a re-enable starts from a valid provider.
+
+        Args:
+            blob (GroupNodeBlob): The blob whose top-level transitions carry the escalation edges.
+            ordered (list[NodeBlob]): The topologically ordered nodes.
+            family (str): The registry family whose nodes form the chain (``parser`` / ``embed``).
+            default_kind (str): The stock kind used when the stage is absent from the blob.
+
+        Returns:
+            ChainSpec: The stage's chain (family + ordered steps with their score thresholds).
+        """
+        nodes = {
+            n.id: n for n in ordered if isinstance(n, ActionNodeBlob) and n.family == family
         }
-        if not parsers:
-            return ChainSpec(family="parser", steps=[ChainStep(kind="docling")])
-        head = cls.__chain_head(blob.transitions, parsers, {"parser"})
-        return ChainSpec(family="parser", steps=cls.__walk_chain(blob.transitions, parsers, head, {"parser"}))
+        if not nodes:
+            return ChainSpec(family=family, steps=[ChainStep(kind=default_kind)])
+        head = cls.__chain_head(blob.transitions, nodes, {family})
+        return ChainSpec(family=family, steps=cls.__walk_chain(blob.transitions, nodes, head, {family}))
 
     @classmethod
     def __chain_head(

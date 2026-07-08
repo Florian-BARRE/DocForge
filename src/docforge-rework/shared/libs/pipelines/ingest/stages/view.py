@@ -15,7 +15,7 @@ from shared_libs.pipelines.registry import NodeRegistry
 # ====== Local Project Imports ======
 from .models import ChainView, StageCatalog, StageView
 from .spec import StageKey, StageSpecs
-from .state import PipelineState
+from .state import ChainSpec, PipelineState
 
 
 class StageViewer:
@@ -67,40 +67,42 @@ class StageViewer:
             StageKey.EMBED: state.embed_on,
         }.get(key, True)
 
+    # Chain-capable provider stages → the state ChainSpec they carry (head = selected provider).
+    __CHAIN_STAGES = {StageKey.PARSE: "parse_chain", StageKey.EMBED: "embed_chain"}
+
     @classmethod
     def __provider(cls, meta, state: PipelineState) -> tuple[str | None, list[str]]:
         """The selected kind + the family's available kinds (provider stages only)."""
         if meta.kind != "provider":
             return None, []
-        head = state.parse_chain.steps[0] if state.parse_chain.steps else None
-        selected = {
-            StageKey.PARSE: head.kind if head else None,
-            StageKey.CHUNK: state.chunker_kind,
-            StageKey.EMBED: state.embed_kind,
-        }.get(meta.key)
+        if meta.key in cls.__CHAIN_STAGES:
+            head = cls.__chain(state, meta.key).steps[0] if cls.__chain(state, meta.key).steps else None
+            selected: str | None = head.kind if head else None
+        else:
+            selected = {StageKey.CHUNK: state.chunker_kind}.get(meta.key)
         return selected, NodeRegistry.kinds(meta.family) if meta.family else []
 
     @classmethod
     def __config(cls, key: str, state: PipelineState) -> dict | None:
         """The single editable config a stage exposes (None for composite/stack stages)."""
-        head = state.parse_chain.steps[0] if state.parse_chain.steps else None
+        if key in cls.__CHAIN_STAGES:
+            steps = cls.__chain(state, key).steps
+            return dict(steps[0].config) if steps else {}
         return {
-            StageKey.PARSE: head.config if head else {},
             StageKey.RENDER: state.render_config,
             StageKey.ENRICH: state.classify_config,
             StageKey.CHUNK: state.chunker_config,
             StageKey.METAGEN_CHUNK: state.metachunk_config,
             StageKey.METAGEN_DOCUMENT: state.metadoc_config,
-            StageKey.EMBED: state.embed_config,
         }.get(key)
 
     @classmethod
     def __chains(cls, key: str, state: PipelineState) -> list[ChainView]:
-        """The model chains a stage exposes — parse's scored chain, or the enrich per-class sites."""
-        # Parse is a chain-capable provider stage: it carries its own single ordered chain (a
-        # 1-entry list for the stock 1-step default, the full chain when a stronger parser follows).
-        if key == StageKey.PARSE:
-            return [cls.__parse_chain_view(state)]
+        """The model chains a stage exposes — a provider stage's own chain, or the enrich sites."""
+        # Parse and embed are chain-capable provider stages: each carries its own single ordered
+        # chain (a 1-entry list for the stock 1-step default, the full chain when longer).
+        if key in cls.__CHAIN_STAGES:
+            return [cls.__stage_chain_view(key, state)]
         if key != StageKey.ENRICH:
             return []
         views: list[ChainView] = []
@@ -114,14 +116,20 @@ class StageViewer:
         return views
 
     @classmethod
-    def __parse_chain_view(cls, state: PipelineState) -> ChainView:
-        """The parse stage's own scored chain, as a single ChainView keyed by the stage."""
-        meta = StageSpecs.meta(StageKey.PARSE)
-        family = meta.family or "parser"
+    def __chain(cls, state: PipelineState, key: str) -> ChainSpec:
+        """The ChainSpec a chain-capable stage holds in the state."""
+        return getattr(state, cls.__CHAIN_STAGES[key])
+
+    @classmethod
+    def __stage_chain_view(cls, key: str, state: PipelineState) -> ChainView:
+        """A chain-capable provider stage's own chain, as a single ChainView keyed by the stage."""
+        meta = StageSpecs.meta(key)
+        chain = cls.__chain(state, key)
+        family = meta.family or chain.family
         return ChainView(
             slot=meta.key, title=meta.title, description=meta.description,
             family=family, available=NodeRegistry.kinds(family),
-            steps=list(state.parse_chain.steps),
+            steps=list(chain.steps),
         )
 
     @classmethod

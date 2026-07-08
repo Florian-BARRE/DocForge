@@ -99,9 +99,7 @@ class SegmentBuilder:
                 cls.__single("metagen_document", "meta_doc", "metagen", "document", state.metadoc_config, "meta")
             )
         if state.embed_on:
-            segments.append(
-                cls.__single("embed", "embed", "embed", state.embed_kind, state.embed_config, "embeddings")
-            )
+            segments.append(cls.__embed(state))
         segments.append(cls.__single("deliver", "bundle", "deliver", "bundle", {}, "bundle"))
         return segments
 
@@ -170,6 +168,31 @@ class SegmentBuilder:
         return Segment(
             key="parse", head=fragment.heads[0], exits=fragment.exits, nodes=fragment.nodes,
             transitions=fragment.transitions, output=fragment.output, bindings=fragment.bindings,
+        )
+
+    @classmethod
+    def __embed(cls, state: PipelineState) -> Segment:
+        """The embedder stage — a 1-step chain is a lone ``embed`` node; >1 step is a chain.
+
+        Embed is NON-scored: the fragment escalates on failure only (no ScoreBelow). Unlike parse,
+        the consumed face (the chunks spine + contract) depends on which chunks-spine stages are
+        enabled, so it is NOT known here — the assembler threads it onto every step id centrally.
+        """
+        chain = state.embed_chain
+        # 1. A single provider stays exactly the stock lone node (byte-identical default).
+        if len(chain.steps) == 1:
+            step = chain.steps[0]
+            return cls.__single("embed", "embed", "embed", step.kind, dict(step.config), "embeddings")
+        # 2. A failure-only fallback chain — scored=False, so no ScoreBelow edges are emitted.
+        fragment = ChainFragmentBuilder.build(
+            prefix="embed", family="embed",
+            steps=[ChainStepSpec(kind=s.kind, config=dict(s.config), score_below=s.score_below)
+                   for s in chain.steps],
+            step_inputs={}, output_field="embeddings", scored=False,
+        )
+        return Segment(
+            key="embed", head=fragment.heads[0], exits=fragment.exits, nodes=fragment.nodes,
+            transitions=fragment.transitions, output=fragment.output,
         )
 
     @classmethod

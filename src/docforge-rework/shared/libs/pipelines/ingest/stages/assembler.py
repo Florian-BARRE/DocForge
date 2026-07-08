@@ -103,9 +103,13 @@ class IngestAssembler:
             bindings["meta_doc"] = {"chunks": chunks_final,
                                     "contract": FromRunInput(field_name=_CONTRACT)}
         if state.embed_on:
-            bindings["embed"] = {"chunks": chunks_final,
-                                 "contract": FromRunInput(field_name=_CONTRACT)}
-        bindings["bundle"] = cls.__bundle_bindings(state, ir_final, chunks_final)
+            # Embed may be a chain: every step consumes the SAME face (chunks spine + contract), so
+            # bind it onto each step id (a single embedder's only exit is 'embed' — byte-identical).
+            embed_face = {"chunks": chunks_final, "contract": FromRunInput(field_name=_CONTRACT)}
+            for step_id in by_key["embed"].exits:
+                bindings[step_id] = dict(embed_face)
+        embed_output = by_key["embed"].output if state.embed_on else None
+        bindings["bundle"] = cls.__bundle_bindings(state, ir_final, chunks_final, embed_output)
         return bindings
 
     @classmethod
@@ -138,7 +142,10 @@ class IngestAssembler:
             previous = FromNode(node_id=ctx_id, field_name="chunks")
 
     @classmethod
-    def __bundle_bindings(cls, state: PipelineState, ir_final: Binding, chunks_final: Binding) -> dict:
+    def __bundle_bindings(
+        cls, state: PipelineState, ir_final: Binding, chunks_final: Binding,
+        embed_output: Binding | None,
+    ) -> dict:
         """The delivery bindings — optional slots left unbound when their stage is off."""
         slots: dict = {"ingest": FromNode(node_id="address", field_name="ingest"),
                        "ir": ir_final,
@@ -147,8 +154,9 @@ class IngestAssembler:
             slots["pages"] = FromNode(node_id="figures", field_name="pages")
         if state.metadoc_on:
             slots["document_meta"] = FromNode(node_id="meta_doc", field_name="meta")
-        if state.embed_on:
-            slots["embeddings"] = FromNode(node_id="embed", field_name="embeddings")
+        # The embed anchor is the stage's convergence — FromNode for one embedder, FromFirst a chain.
+        if state.embed_on and embed_output is not None:
+            slots["embeddings"] = embed_output
         return slots
 
 
