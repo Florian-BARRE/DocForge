@@ -181,6 +181,12 @@ persistance. ⚠️ Sur un scan, un score de parse bas est NORMAL — ne pas con
 OCR avec escalade, décrire, puis replier le tout dans l'IR. **Tout est graphe** : l'aiguillage par classe =
 des transitions `WhenEquals` visibles, l'escalade OCR = un `ScoreBelow` par item, la convergence = `FromFirst`.
 
+> **Source unique de la taxonomie** : les 5 classes, leurs branches (`FIGURE_BRANCHES`), les classes
+> decorative et le prompt du classifieur **dérivent tous** de `FigureKind` via `public_models/ir/figure_routing.py`.
+> Ajouter une classe = une entrée dans `FIGURE_ROUTING` ; une classe sans branche **échoue à l'import ET au
+> build** (garde), plus jamais silencieusement au runtime. La lecture OCR voyage sous `FigureItem.read_text`
+> (renommé depuis `context`, qui prêtait à confusion avec `Chunk.context`).
+
 ```mermaid
 flowchart TB
     classDef artefact fill:#eef4fb,stroke:#4a7ab5,stroke-width:1px
@@ -281,15 +287,16 @@ Quelle que soit la méthode, l'IR est d'abord projeté en **passages** ordonnés
 
 | Kind | Config propre | Principe |
 |---|---|---|
-| **structure_aware** ✅ | `target_tokens`=512 · `max_tokens`=1024 · `min_tokens`=64 · `overlap_tokens`=0 · `hard_section_boundaries`=true | Empaquette LE LONG de l'arbre : frontière de section = coupe dure (ou préférée), vise le target, fusionne les fins de section trop petites, overlap optionnel (coupes de taille uniquement) |
+| **structure_aware** ✅ | `target_tokens`=512 · `max_tokens`=1024 · `min_tokens`=64 · `overlap_tokens`=0 · `hard_section_boundaries`=true | Empaquette LE LONG de l'arbre : frontière de section = coupe dure pour toute section ≥ `min_tokens`, **MAIS** les sections consécutives **< `min_tokens`** sont **fusionnées à travers les frontières** jusqu'à `min(target, max)` (fin de la sur-fragmentation ; une grosse section n'absorbe jamais et n'est jamais absorbée). Le `heading_path` d'un chunk fusionné = **préfixe commun** des sections coalescées (`[]` si non liées, l'ancêtre partagé sinon). Overlap optionnel (coupes de taille uniquement) |
 | **fixed_size** ✅ | `chunk_tokens`=512 · `overlap_tokens`=64 (< chunk, validé) | La classique : fenêtres de N tokens, aveugle à la structure, queue répétée en overlap |
 | **semantic** ✅ | `base_url` · `api_key` · `model` · `buffer_size`=1 · `breakpoint_percentile`=90 · `min_tokens` · `max_tokens` · `timeout_seconds` | **Embedding-windows** : phrases → fenêtres de contexte embeddées (endpoint openai-compat : bge_server, OpenAI…) → coupe là où la distance cosinus SAUTE (percentile) = au changement de sujet ; bornes de taille ensuite |
 
 *(La famille est ouverte : `late_chunking`, `page_based`… s'ajouteront comme un provider de plus.)*
 
 **Prouvé e2e** : projection (figure fusionnée atomique, table markdown, decorative/header-footer exclus,
-sections calculées) · structure_aware (sections jamais mélangées, paragraphe géant coupé en phrases, ids/ordinaux/
-pages/block_ids cohérents) · fixed_size (fenêtres + overlap répété, overlap ≥ fenêtre rejeté au build) ·
+sections calculées) · structure_aware (grosses sections jamais mélangées ; **petites sections consécutives
+< `min_tokens` coalescées** à travers les frontières, `heading_path` = préfixe commun ; paragraphe géant coupé
+en phrases, ids/ordinaux/pages/block_ids cohérents) · fixed_size (fenêtres + overlap répété, overlap ≥ fenêtre rejeté au build) ·
 semantic (faux embeddings 2 topics → **la coupe tombe exactement au changement de sujet**) · blob build+validate+run.
 
 ---
@@ -372,9 +379,11 @@ Le texte embeddé est l'**`enriched_text`** (toute la raison d'être du contextu
 | **openai_compatible** ✅ | `/v1/embeddings` via la factory | dense seul (le protocole n'a pas de sparse — axe sauté proprement, loggé) |
 
 **Config commune** : `model` (provenance, stocké avec les vecteurs) · `batch_size=32` · `embed_sparse=true` ·
-**`embed_semantic_fields=true`** — les champs chunk-scope `semantic=True` du contrat sont embeddés en **vecteurs
-nommés par champ** (`fields["keywords"]` — seulement les chunks qui portent une valeur ; une liste se rend en
-texte joint). Doc-scope sémantique : hors v1 (les points Qdrant sont des chunks).
+**`embed_semantic_fields=false`** (défaut) — quand activé, les champs chunk-scope `semantic=True` du contrat
+sont embeddés en **vecteurs nommés par champ** (`fields["keywords"]` — seulement les chunks qui portent une
+valeur ; une liste se rend en texte joint). ⚠️ **OFF par défaut** : l'ingest écrivait ces vecteurs mais le
+**search ne les interroge pas encore** — on payait embedding + stockage pour du non-lu. À réactiver quand le
+read-side sémantique sera câblé (feature). Doc-scope sémantique : hors v1 (les points Qdrant sont des chunks).
 
 **Échec = fatal** (pas de dégradation ici : un chunk sans vecteur est ininde­xable).
 
