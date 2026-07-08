@@ -12,7 +12,7 @@ from typing import Any
 from loggerplusplus import loggerplusplus
 
 # ====== Internal Project Imports ======
-from shared_libs.public_models import FieldType, MetadataFieldSpec
+from shared_libs.public_models import FieldScope, FieldType, MetadataFieldSpec
 
 # One JSON-schema fragment per contract field type (nullable: the prompt allows honest absence).
 _TYPE_SCHEMAS: dict[FieldType, dict[str, Any]] = {
@@ -39,9 +39,25 @@ class MetagenHelpers:
         raise TypeError("MetagenHelpers is a static-only class and cannot be instantiated.")
 
     @staticmethod
-    def auto_prompt(spec: MetadataFieldSpec) -> str:
-        """The default per-field instruction when the config binds no prompt."""
-        return f"Extract the value of '{spec.field_name}' ({spec.field_type.value}) from the text."
+    def auto_prompt(spec: MetadataFieldSpec, scope: FieldScope) -> str:
+        """
+        The default per-field instruction when the config binds no prompt.
+
+        A GENERATED field is synthesized, not copied: the instruction asks the model to
+        produce the field from the whole {scope} rather than to extract a span of the text
+        (extractive wording makes a generated summary/title echo a heading verbatim).
+
+        Args:
+            spec (MetadataFieldSpec): The field to generate (name + contract type).
+            scope (FieldScope): The generation granularity — document or chunk.
+
+        Returns:
+            str: A generative, scope-aware instruction for this field.
+        """
+        return (
+            f"Generate the '{spec.field_name}' ({spec.field_type.value}) for this "
+            f"{scope.value}, synthesizing it from the {scope.value}'s content."
+        )
 
     @staticmethod
     def object_schema(fields: list[tuple[MetadataFieldSpec, str]]) -> dict[str, Any]:

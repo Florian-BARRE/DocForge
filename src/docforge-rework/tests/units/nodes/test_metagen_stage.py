@@ -10,6 +10,7 @@ import pytest
 
 from shared_libs.pipelines.build import PipelineBuilder
 from shared_libs.pipelines.engine import FlowEngine
+from shared_libs.pipelines.ingest.nodes.metagen.base.helpers import MetagenHelpers
 from shared_libs.pipelines.ingest.nodes.metagen.chunk.core import (
     MetagenChunkConfig,
     MetagenChunkConsumes,
@@ -188,6 +189,24 @@ async def test_f1_chained_metagen_nodes_merge_generated_meta_without_clobbering(
     node = FakeChunkNode(id="c", config=MetagenChunkConfig(base_url="http://x", model="m"))
     out = await node.run(MetagenChunkConsumes(chunks=pre, contract=CONTRACT))
     assert out.chunks[0].generated_meta == {"topic": "cats", "keywords": ["cats", "bonds"]}
+
+
+def test_auto_prompt_is_generative_and_scope_aware() -> None:
+    doc_spec = _spec("summary", FieldType.STRING, FieldScope.DOCUMENT)
+    chunk_spec = _spec("keywords", FieldType.KEYWORD_LIST, FieldScope.CHUNK)
+
+    doc_prompt = MetagenHelpers.auto_prompt(doc_spec, FieldScope.DOCUMENT)
+    chunk_prompt = MetagenHelpers.auto_prompt(chunk_spec, FieldScope.CHUNK)
+
+    # 1. Generative, not extractive: the model must synthesize, never copy a span.
+    for prompt in (doc_prompt, chunk_prompt):
+        assert "extract" not in prompt.lower()
+        assert "from the text" not in prompt.lower()
+        assert prompt.startswith("Generate ")
+
+    # 2. Scope-aware: each prompt names its own granularity.
+    assert "document" in doc_prompt and "chunk" not in doc_prompt
+    assert "chunk" in chunk_prompt and "document" not in chunk_prompt
 
 
 async def test_f2_duplicate_target_field_is_rejected_loudly() -> None:

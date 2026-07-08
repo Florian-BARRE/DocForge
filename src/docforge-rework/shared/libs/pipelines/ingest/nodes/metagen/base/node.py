@@ -83,7 +83,7 @@ class BaseMetagenNode(ActionNode):
             return [
                 ResolvedTarget(
                     spec=spec,
-                    instruction=MetagenHelpers.auto_prompt(spec),
+                    instruction=MetagenHelpers.auto_prompt(spec, scope),
                     endpoint=self.__endpoint(),
                 )
                 for spec in generated.values()
@@ -111,7 +111,7 @@ class BaseMetagenNode(ActionNode):
             resolved.append(
                 ResolvedTarget(
                     spec=spec,
-                    instruction=target.prompt or MetagenHelpers.auto_prompt(spec),
+                    instruction=target.prompt or MetagenHelpers.auto_prompt(spec, scope),
                     endpoint=self.__endpoint(target.base_url, target.api_key, target.model),
                 )
             )
