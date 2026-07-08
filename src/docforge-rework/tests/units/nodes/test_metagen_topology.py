@@ -1,11 +1,11 @@
-"""P5b parity: the externalised metagen topology (prep -> ForEach(structgen chain [+ skip]) -> apply)
-reproduces the OLD monolithic metagen node, for both scopes.
+"""The externalised metagen topology (prep -> ForEach(structgen chain [+ skip]) -> apply), for both
+scopes — the shape the P5c stage rewire emits.
 
-The hand-assembled blob mirrors what the P5c stage rewire will emit. A FAKE structgen kind returns the
-same canned answers the old FakeDoc/FakeChunk nodes return, so the ONLY thing under test is the new
-topology — not the (already proven) coercion path. We run the OLD node directly on the same input and
-assert equality: the cleanest parity proof. on_error is verified as a GRAPH EDGE (skip terminal vs a
-propagating item failure), and the loud bad-target guard is verified to still fire in prep.
+A FAKE structgen kind returns canned answers so the ONLY thing under test is the new topology (the
+coercion path is proven in test_structgen.py). The absolute expected values below were locked in P5b
+against the (now-deleted) monolithic metagen node — parity is frozen here as literal assertions.
+on_error is verified as a GRAPH EDGE (skip terminal vs a propagating item failure), and the loud
+bad-target guard is verified to still fire in prep.
 """
 
 import uuid
@@ -15,16 +15,6 @@ import pytest
 from shared_libs.pipelines.build import PipelineBuilder
 from shared_libs.pipelines.engine import FlowEngine
 from shared_libs.pipelines.ingest.nodes.metagen.base import MetagenOnError
-from shared_libs.pipelines.ingest.nodes.metagen.chunk.core import (
-    MetagenChunkConfig,
-    MetagenChunkConsumes,
-    MetagenChunkNode,
-)
-from shared_libs.pipelines.ingest.nodes.metagen.document.core import (
-    MetagenDocumentConfig,
-    MetagenDocumentConsumes,
-    MetagenDocumentNode,
-)
 from shared_libs.pipelines.ingest.nodes.metagen.prep.chunk import (
     MetagenChunkPrepConfig,
     MetagenChunkPrepConsumes,
@@ -102,39 +92,15 @@ class FakeStructGenNode(StructGenOpenAICompatibleNode):
     SUMMARY = "t"
 
     async def _generate(self, schema, request, endpoint):
-        # Mirror the OLD chunk node: a chunk-scope request over the sentinel text fails (a 503). The
-        # document view also contains the sentinel, but the OLD document node never fails — so only a
-        # chunk-scope request (chunk_id set) refuses, keeping parity across both scopes.
+        # A chunk-scope request over the sentinel text fails (a 503); the document view also carries
+        # the sentinel but its requests have chunk_id=None, so only chunk-scope requests refuse.
         if request.chunk_id is not None and FAIL_SENTINEL in request.text:
             raise RuntimeError("model 503")
         return {name: ANSWERS.get(name) for name in schema["properties"]}
 
 
-# The old monolithic nodes share the same fake generation (parity is judged on the topology, not I/O).
-@NodeRegistry.register("metagen")
-class OldFakeDocNode(MetagenDocumentNode):
-    KIND = "test_topology_old_document"
-    NAME = "F"
-    SUMMARY = "t"
-
-    async def _generate(self, schema, system_prompt, text, endpoint):
-        return {name: ANSWERS[name] for name in schema["properties"]}
-
-
-@NodeRegistry.register("metagen")
-class OldFakeChunkNode(MetagenChunkNode):
-    KIND = "test_topology_old_chunk"
-    NAME = "F"
-    SUMMARY = "t"
-
-    async def _generate(self, schema, system_prompt, text, endpoint):
-        if FAIL_SENTINEL in text:
-            raise RuntimeError("model 503")
-        return {name: ANSWERS[name] for name in schema["properties"]}
-
-
 # ---------------------------------------------------------------------------
-# Blob assembly — the new topology as a dict blob (what P5c will emit).
+# Blob assembly — the new topology as a dict blob (what P5c emits).
 # ---------------------------------------------------------------------------
 
 _ENDPOINT = {"base_url": "http://x", "model": "m"}
@@ -227,7 +193,7 @@ def test_fallback_chain_topology_builds_and_validates() -> None:
 
 
 # ---------------------------------------------------------------------------
-# 2. Behaviour parity vs the OLD monolithic node (chunk + document, both groupings).
+# 2. Behaviour of the topology (chunk + document, both groupings) — frozen expected values.
 # ---------------------------------------------------------------------------
 
 
@@ -237,63 +203,45 @@ async def _run_new(blob: dict, chunks: list[Chunk]) -> object:
     return output
 
 
-async def test_chunk_parity_combined_grouping() -> None:
+async def test_chunk_combined_grouping() -> None:
     prep_config = {**_ENDPOINT, "grouping": "combined"}
-    # NEW topology — skip_fields so the "sharply" chunk drops its fields (the doc survives).
+    # skip_fields so the "sharply" chunk drops its fields (the doc survives).
     new = await _run_new(_chunk_blob(prep_config, MetagenOnError.SKIP_FIELDS), CHUNKS)
-    # OLD node on the identical input.
-    old = await OldFakeChunkNode(
-        id="c", config=MetagenChunkConfig(**_ENDPOINT, grouping="combined")
-    ).run(MetagenChunkConsumes(chunks=CHUNKS, contract=CONTRACT))
-
     new_meta = [chunk.generated_meta for chunk in new.chunks]
-    old_meta = [chunk.generated_meta for chunk in old.chunks]
-    assert new_meta == old_meta
     assert new_meta == [{"keywords": ["cats", "bonds"]}, {}]  # relevance dropped, c1 503 -> skipped
 
 
-async def test_chunk_parity_per_field_grouping() -> None:
+async def test_chunk_per_field_grouping() -> None:
     prep_config = {**_ENDPOINT, "grouping": "per_field"}
     new = await _run_new(_chunk_blob(prep_config, MetagenOnError.SKIP_FIELDS), CHUNKS)
-    old = await OldFakeChunkNode(
-        id="c", config=MetagenChunkConfig(**_ENDPOINT, grouping="per_field")
-    ).run(MetagenChunkConsumes(chunks=CHUNKS, contract=CONTRACT))
-    assert [c.generated_meta for c in new.chunks] == [c.generated_meta for c in old.chunks]
+    assert [c.generated_meta for c in new.chunks] == [{"keywords": ["cats", "bonds"]}, {}]
 
 
-async def test_chunk_parity_merge_not_clobber() -> None:
+async def test_chunk_merge_not_clobber() -> None:
     """A chunk already carrying generated_meta keeps it — the topology merges, never clobbers."""
     pre = [
         CHUNKS[0].model_copy(update={"generated_meta": {"topic": "cats"}}),
         CHUNKS[1],
     ]
-    new = await _run_new({**_chunk_blob({**_ENDPOINT}, MetagenOnError.SKIP_FIELDS)}, pre)
-    old = await OldFakeChunkNode(id="c", config=MetagenChunkConfig(**_ENDPOINT)).run(
-        MetagenChunkConsumes(chunks=pre, contract=CONTRACT)
-    )
-    assert [c.generated_meta for c in new.chunks] == [c.generated_meta for c in old.chunks]
+    new = await _run_new(_chunk_blob({**_ENDPOINT}, MetagenOnError.SKIP_FIELDS), pre)
     assert new.chunks[0].generated_meta == {"topic": "cats", "keywords": ["cats", "bonds"]}
 
 
-async def test_document_parity_combined_grouping() -> None:
+async def test_document_combined_grouping() -> None:
     new = await _run_new(_document_blob({**_ENDPOINT, "grouping": "combined"}, MetagenOnError.FAIL), CHUNKS)
-    old = await OldFakeDocNode(
-        id="d", config=MetagenDocumentConfig(**_ENDPOINT, grouping="combined")
-    ).run(MetagenDocumentConsumes(chunks=CHUNKS, contract=CONTRACT))
-    assert new.meta.values == old.meta.values
     assert new.meta.values == {
         "summary": "A report about cats and bonds.", "year": 2024,
         "published_at": "2024-03-01T10:00:00",
     }
 
 
-async def test_document_parity_per_field_grouping_joins_multiple_values() -> None:
+async def test_document_per_field_grouping_joins_multiple_values() -> None:
     """per_field -> one request (hence one GeneratedValues) per field; document_apply joins them all."""
     new = await _run_new(_document_blob({**_ENDPOINT, "grouping": "per_field"}, MetagenOnError.FAIL), CHUNKS)
-    old = await OldFakeDocNode(
-        id="d", config=MetagenDocumentConfig(**_ENDPOINT, grouping="per_field")
-    ).run(MetagenDocumentConsumes(chunks=CHUNKS, contract=CONTRACT))
-    assert new.meta.values == old.meta.values
+    assert new.meta.values == {
+        "summary": "A report about cats and bonds.", "year": 2024,
+        "published_at": "2024-03-01T10:00:00",
+    }
     assert set(new.meta.values) == {"summary", "year", "published_at"}  # three groups joined
 
 

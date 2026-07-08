@@ -48,6 +48,7 @@ class MetagenChunkApplyNode(ActionNode):
     """Merge the structgen loop's chunk-scope values back onto their chunks."""
 
     KIND = "chunk_apply"
+    SELECTABLE = False  # internal wiring — the stage builder emits it, not a user-picked method
     NAME = "Chunk metadata apply"
     SUMMARY = "Merge the generated chunk-scope values back onto their chunks (by chunk_id)."
     HOW_IT_WORKS = (

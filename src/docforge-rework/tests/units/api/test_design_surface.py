@@ -83,10 +83,34 @@ def test_full_palette_carries_run_inputs_mechanics_and_artefacts() -> None:
     assert full.artefacts["Chunk"].json_schema["properties"]
 
 
+def test_palette_hides_internal_kinds_but_keeps_them_registered() -> None:
+    """Internal wiring nodes (prep/apply/skip terminals a stage builder emits) are SELECTABLE=False:
+    the discovery palette never offers them as a stage method, yet they stay registered and
+    describable for the graph engine."""
+    palette = {family.family: {node.kind for node in family.nodes} for family in IngestPipeline.palette().families}
+    internal = {
+        "metagen": {"chunk_prep", "document_prep", "chunk_apply", "document_apply", "metagen_skip"},
+        "contextualize": {"llm_prep", "llm_apply", "keep_raw"},
+    }
+    for family, kinds in internal.items():
+        # 1. Hidden from the palette's stage-method picker.
+        assert palette[family].isdisjoint(kinds), (family, palette[family] & kinds)
+        # 2. Still registered AND describable — the engine reaches them by (family, kind).
+        for kind in kinds:
+            described = NodeRegistry.get(family, kind).describe()
+            assert described.selectable is False
+            assert described.kind == kind
+
+
+def test_selectable_defaults_true_for_a_user_facing_method() -> None:
+    """A real stage method (a chunker) stays selectable — the palette offers it."""
+    assert NodeRegistry.get("chunker", "structure_aware").describe().selectable is True
+
+
 def test_default_blob_covers_all_stages_and_validates_clean() -> None:
     blob = IngestPipeline.default_blob()
     ids = [node.id for node in blob.nodes]
-    for expected in ("probe", "parse", "per_figure", "chunk", "ctx_breadcrumb", "meta_chunk", "meta_doc", "embed", "bundle"):
+    for expected in ("probe", "parse", "per_figure", "chunk", "ctx_breadcrumb", "meta_chunk_prep", "meta_doc_apply", "embed", "bundle"):
         assert expected in ids, expected
     issues = GraphValidator().validate(PipelineBuilder().build(blob))
     assert issues == [], issues

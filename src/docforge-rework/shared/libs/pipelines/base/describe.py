@@ -53,6 +53,10 @@ class NodeDescription(BaseModel):
         error_policy (ErrorPolicy): The node's failure stance.
         unique_in_graph (bool): True when at most ONE instance of this node belongs in a graph
             (the UI badges it once placed; the validator rejects duplicates).
+        selectable (bool): True when a user may pick this node as a stage METHOD from the palette.
+            Internal wiring nodes (prep/apply/skip terminals a stage builder emits automatically)
+            set it False so the discovery palette hides them, while they stay registered and
+            describable for the graph engine.
         scored (bool): True when the node's output carries a quality score — the UI can offer a
             ``score_below`` escalation edge FROM this node (auto-derived from Produces).
         switch_fields (dict): Output fields meant for ``when_equals`` routing, with their closed
@@ -70,6 +74,7 @@ class NodeDescription(BaseModel):
     produces: list[IoSlot] = Field(default_factory=list)
     error_policy: ErrorPolicy = ErrorPolicy.FAIL
     unique_in_graph: bool = False
+    selectable: bool = True
     scored: bool = False
     switch_fields: dict[str, list[str]] = Field(default_factory=dict)
 

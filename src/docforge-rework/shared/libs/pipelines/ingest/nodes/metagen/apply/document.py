@@ -43,6 +43,7 @@ class MetagenDocumentApplyNode(ActionNode):
     """Merge the structgen loop's document-scope values into one GeneratedDocumentMeta."""
 
     KIND = "document_apply"
+    SELECTABLE = False  # internal wiring — the stage builder emits it, not a user-picked method
     NAME = "Document metadata apply"
     SUMMARY = "Merge the generated document-scope values into one document metadata artefact."
     HOW_IT_WORKS = (

@@ -47,6 +47,9 @@ class AbstractNode(ABC, LoggerClass):
         ERROR_POLICY (ErrorPolicy): The node's failure stance.
         UNIQUE_IN_GRAPH (bool): True when the node is meant to appear AT MOST ONCE per graph
             (structural utilities like admission). Providers stay False — chains repeat them.
+        SELECTABLE (bool): True when a user may pick this node as a stage METHOD from the palette.
+            Internal wiring nodes a stage builder emits automatically (prep/apply/skip terminals)
+            set it False: the discovery palette hides them, yet they stay registered + describable.
         SWITCH_FIELDS (dict): Output fields meant for ``when_equals`` routing with their closed
             value sets (a classifier declares them; empty for everything else).
     """
@@ -58,6 +61,7 @@ class AbstractNode(ABC, LoggerClass):
     HOW_IT_WORKS: str | None = None
     ERROR_POLICY: ErrorPolicy = ErrorPolicy.FAIL
     UNIQUE_IN_GRAPH: bool = False
+    SELECTABLE: bool = True
     SWITCH_FIELDS: dict[str, list[str]] = {}
 
     def __init__(self, id: str) -> None:
@@ -191,6 +195,7 @@ class ActionNode(AbstractNode, ABC):
             produces=produces,
             error_policy=cls.ERROR_POLICY,
             unique_in_graph=cls.UNIQUE_IN_GRAPH,
+            selectable=cls.SELECTABLE,
             scored=issubclass(cls.Produces, ScoredOutput),
             switch_fields=dict(cls.SWITCH_FIELDS),
         )

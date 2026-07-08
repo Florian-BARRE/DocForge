@@ -9,16 +9,13 @@
 # ====== Standard Library Imports ======
 import asyncio
 
-# ====== Third-Party Library Imports ======
-from langchain_core.messages import HumanMessage, SystemMessage
-
 # ====== Internal Project Imports ======
 from shared_libs.pipelines.nodes.openai_compat import OpenAICompatHelpers
 from shared_libs.pipelines.registry import NodeRegistry
 from shared_libs.public_models import Chunk
 
 # ====== Local Project Imports ======
-from ..base import BaseContextualizerNode, ContextualizerConsumes
+from ..base import BaseContextualizerNode, ContextualizerConsumes, ContextualizeViewHelpers
 from .config import ContextualizerLlmConfig, DocumentScope, OnChunkError
 
 
@@ -37,35 +34,13 @@ class ContextualizerLlmNode(BaseContextualizerNode):
     )
     Config = ContextualizerLlmConfig
 
-    def __truncate(self, text: str) -> str:
-        """Apply the hard word cap — a text UNDER the cap keeps its structure untouched."""
-        config: ContextualizerLlmConfig = self.config
-        words = text.split()
-        if len(words) <= config.max_document_words:
-            return text
-        # Truncate from the start — documents introduce themselves there.
-        return " ".join(words[: config.max_document_words])
-
-    def __full_view(self, chunks: list[Chunk]) -> str:
-        """The whole-document view — chunk-independent, built ONCE per run."""
-        return self.__truncate("\n\n".join(chunk.text for chunk in chunks))
-
     def __scoped_view(self, index: int, chunks: list[Chunk], full_view: str | None) -> str:
         """The document text the model reads to situate chunks[index] (scope rules + fallback)."""
         config: ContextualizerLlmConfig = self.config
-        target = chunks[index]
-
-        # 1. FULL: reuse the per-run view (never rebuild it per chunk).
-        if config.document_scope == DocumentScope.FULL:
-            return full_view if full_view is not None else self.__full_view(chunks)
-
-        # 2. SECTION: the chunk's siblings; a section-less chunk falls back to the window.
-        if config.document_scope == DocumentScope.SECTION and target.heading_path:
-            members = [chunk for chunk in chunks if chunk.heading_path == target.heading_path]
-        else:
-            start = max(0, index - config.window_chunks)
-            members = chunks[start: index + config.window_chunks + 1]
-        return self.__truncate("\n\n".join(member.text for member in members))
+        return ContextualizeViewHelpers.scoped_view(
+            index, chunks, config.document_scope, config.window_chunks,
+            config.max_document_words, full_view,
+        )
 
     async def __situate_guarded(
         self, index: int, chunks: list[Chunk], full_view: str | None
@@ -93,15 +68,7 @@ class ContextualizerLlmNode(BaseContextualizerNode):
             config, temperature=config.temperature, max_tokens=config.max_tokens
         )
         answer = await model.ainvoke(
-            [
-                SystemMessage(content=config.system_prompt),
-                HumanMessage(
-                    content=(
-                        f"<document>\n{document}\n</document>\n\n"
-                        f"<chunk>\n{chunk_text}\n</chunk>"
-                    )
-                ),
-            ]
+            ContextualizeViewHelpers.situate_messages(config.system_prompt, document, chunk_text)
         )
         return str(answer.content)
 
@@ -118,7 +85,7 @@ class ContextualizerLlmNode(BaseContextualizerNode):
         config: ContextualizerLlmConfig = self.config
         # 1. The full view is chunk-independent — O(n) once instead of O(n²) per chunk.
         full_view = (
-            self.__full_view(chunks)
+            ContextualizeViewHelpers.full_view(chunks, config.max_document_words)
             if config.document_scope == DocumentScope.FULL and chunks
             else None
         )

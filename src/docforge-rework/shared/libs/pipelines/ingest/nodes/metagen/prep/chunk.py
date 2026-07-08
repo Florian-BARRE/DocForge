@@ -47,6 +47,7 @@ class MetagenChunkPrepNode(BaseMetagenPrep):
     """Emit the CHUNK-scope generation requests declared by the contract, chunk by chunk."""
 
     KIND = "chunk_prep"
+    SELECTABLE = False  # internal wiring — the stage builder emits it, not a user-picked method
     NAME = "Chunk metadata prep"
     SUMMARY = "Emit one structured-generation request per chunk from the contract's chunk-scope fields."
     HOW_IT_WORKS = (

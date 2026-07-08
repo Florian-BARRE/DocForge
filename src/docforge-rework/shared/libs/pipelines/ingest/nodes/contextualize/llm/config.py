@@ -4,9 +4,6 @@
 # the chunk (cost/quality trade-off), with explicit fallback rules; degradation policy decides
 # what a per-chunk failure does.
 
-# ====== Standard Library Imports ======
-from enum import StrEnum
-
 # ====== Third-Party Library Imports ======
 from pydantic import Field
 
@@ -14,29 +11,12 @@ from pydantic import Field
 from shared_libs.pipelines.nodes.openai_compat import OpenAICompatConfig
 
 # ====== Local Project Imports ======
-from ..base import BaseContextualizerConfig
-
-# The Anthropic contextual-retrieval instruction: answer with the situating snippet, nothing else.
-DEFAULT_SITUATE_PROMPT = (
-    "You situate a chunk within its source document to improve search retrieval. "
-    "Given the document content and one chunk of it, answer ONLY with 1-2 short sentences "
-    "stating what the chunk is about and where it belongs in the document. No preamble."
+from ..base import (
+    DEFAULT_SITUATE_PROMPT,
+    BaseContextualizerConfig,
+    DocumentScope,
+    OnChunkError,
 )
-
-
-class DocumentScope(StrEnum):
-    """What the model reads to situate a chunk — the cost/quality knob."""
-
-    FULL = "full"        # the whole document text (best quality, costly on large docs)
-    SECTION = "section"  # the chunk's section siblings (the balanced default)
-    WINDOW = "window"    # ± window_chunks neighbours (cheapest)
-
-
-class OnChunkError(StrEnum):
-    """What a per-chunk model failure does."""
-
-    KEEP_RAW = "keep_raw"  # the chunk passes through un-contextualised (logged)
-    FAIL = "fail"          # the node fails (strict runs)
 
 
 class ContextualizerLlmConfig(BaseContextualizerConfig, OpenAICompatConfig):

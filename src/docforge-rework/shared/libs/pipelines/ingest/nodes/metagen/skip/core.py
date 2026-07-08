@@ -40,6 +40,7 @@ class MetagenSkipNode(ActionNode):
     """The fail-soft ForEach terminal — emit empty values so the document survives a failed request."""
 
     KIND = "metagen_skip"
+    SELECTABLE = False  # internal fail-soft ForEach terminal — the stage builder emits it
     NAME = "Metagen skip"
     SUMMARY = "Emit empty generated values for a request whose generation chain failed."
     HOW_IT_WORKS = (

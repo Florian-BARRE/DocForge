@@ -47,6 +47,7 @@ class MetagenDocumentPrepNode(BaseMetagenPrep):
     """Emit the DOCUMENT-scope generation requests declared by the contract, in one pass."""
 
     KIND = "document_prep"
+    SELECTABLE = False  # internal wiring — the stage builder emits it, not a user-picked method
     NAME = "Document metadata prep"
     SUMMARY = "Emit the structured-generation requests for the contract's document-scope fields."
     HOW_IT_WORKS = (

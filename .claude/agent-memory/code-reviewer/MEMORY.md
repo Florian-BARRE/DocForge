@@ -58,7 +58,9 @@ FROZEN legacy — don't review it unless explicitly asked.
 ### Engine, nodes & IR
 - [describe-reflection-fragility](describe-reflection-fragility.md) — `describe()` reads `annotation.__name__` and crashes on union/optional slots; one bad slot breaks the whole palette.
 - [foreach-primitive-traps](foreach-primitive-traps.md) — ForEach/WhenEquals/SlotTypes traps: non-Artifact item_type crash, ValidationError escaping per-node try, no ge=1 guard, progress/trace duplication.
+- [foreach-chain-terminal-item-type](foreach-chain-terminal-item-type.md) — chain+OnFailure→skip ForEach body: item_type() sees only the static skip exit; safe iff every step+terminal produces the SAME single-slot artefact (runtime re-check fails loud, never silent).
 - [pipeline-engine-edge-selection](pipeline-engine-edge-selection.md) — FlowEngine ranks edges by specificity (ScoreBelow>WhenEquals>OnSuccess/OnFailure>Always); cross-rank fixed, SAME-rank fan-out still order-dependent.
+- [foreach-sibling-duplicate-ids-safe](foreach-sibling-duplicate-ids-safe.md) — sibling ForEach bodies may reuse the same group/node ids; ids are per-scope. Nothing (engine lookup, trace tree, progress roots, persistence, no cache) assumes global uniqueness — not a finding by itself.
 - [fingerprint_stage_flag_gap](fingerprint_stage_flag_gap.md) — node-cache: a stage-level flag (not a chain field) dropped from the Merkle fingerprint → stale cached output.
 - [enrich-trace-and-failure-traps](enrich-trace-and-failure-traps.md) — enrich: byte-carrying artefacts bloat the execution trace ~8x, `enrich_apply` mutates run_input in place, one flaky figure fails the doc.
 - [contextualize-llm-perchunk-traps](contextualize-llm-perchunk-traps.md) — per-chunk-LLM node traps (the shape metagen copies): O(n²) doc-view rebuild, whitespace flattening, over-broad keep_raw try.
@@ -68,6 +70,7 @@ FROZEN legacy — don't review it unless explicitly asked.
 - [coalesce-fragment-run-guard](coalesce-fragment-run-guard.md) — greedy coalesce-small passes guarding only the incoming size let a sub-target REAL unit absorb fragments; needs a fragment-run origin flag.
 - [rework-stage-layer-vision](rework-stage-layer-vision.md) — post-vision map (2026-07-05): stage-layer substrate vs UI-dead vs advanced-only; the SchemaForm misplacement + double-wrap wart.
 - [layer_dag](layer_dag.md) — libs layer DAG import rules to enforce, esp. storage vs search.
+- [public_models_pipelines_import_cycle](public_models_pipelines_import_cycle.md) — P5a made public_models ↔ pipelines.base a bidirectional cycle resolved only by __init__ line ordering; layering inversion to watch.
 - [page_indexing_zero_based](page_indexing_zero_based.md) — page numbers are 0-indexed end to end; page-1-as-first is off-by-one.
 - [bbox_normalized_overlay](bbox_normalized_overlay.md) — IR bbox is normalized [0,1]; overlay code that scales by page points/zoom collapses boxes to the corner.
 
@@ -95,6 +98,9 @@ FROZEN legacy — don't review it unless explicitly asked.
 - [async_teardown_swallow](async_teardown_swallow.md) — async worker/task teardown that swallows all exceptions silently, hiding genuine crashes.
 - [deletion_batch_residue](deletion_batch_residue.md) — on feature-purge batches, identifier-grep misses orphaned env vars + stale docstrings; check both explicitly.
 - [stray_claude_dir_under_src](stray_claude_dir_under_src.md) — multi-agent batches can write agent-memory to `src/**/.claude/` (NOT gitignored); scan git status for it.
+- [static-builder-method-order](static-builder-method-order.md) — static builders under pipelines/ put public `build` before private helpers (deviates from python.md); grade LOW/non-blocking, matches the local convention.
+- [antipattern-chain-kind-raises](antipattern-chain-kind-raises.md) — StageCompiler chain/provider paths must validate a user kind against NodeRegistry.kinds BEFORE NodeRegistry.get (which raises KeyError); its contract is "nonsensical action = notice, never an exception". Fixed in P3, keep as a review heuristic.
+- [selectable-flag-discovery-only](selectable-flag-discovery-only.md) — P6a SELECTABLE flag hides internal wiring nodes from the palette method-picker; discovery-surface ONLY, single chokepoint at NodeRegistry.catalog, must never leak into blob/graph/validation.
 
 > Component-scoped memory lives with the component agents: **mcp** (`agent-memory/mcp/`) for the
 > `src/mcp/` HTTP-client invariant + REST endpoint map; **bge-server** (`agent-memory/bge-server/`) for

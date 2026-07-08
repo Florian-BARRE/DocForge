@@ -163,18 +163,22 @@ class NodeRegistry:
     @classmethod
     def catalog(cls, family: str) -> list[NodeDescription]:
         """
-        Return the palette cards of every node registered in a family.
+        Return the palette cards of the SELECTABLE nodes registered in a family.
 
         Each card is the class's describe() — built without instantiating, so the UI can list
-        the available bricks and their config schemas before anything is configured.
+        the available bricks and their config schemas before anything is configured. Nodes flagged
+        ``SELECTABLE = False`` (internal wiring a stage builder emits automatically — prep/apply
+        nodes, fail-soft terminals) are omitted: they stay registered and reachable via ``get`` /
+        ``kinds`` / ``describe``, but the discovery palette never offers them as a stage method.
 
         Args:
             family (str): Capability family.
 
         Returns:
-            list[NodeDescription]: One type-card per registered node.
+            list[NodeDescription]: One type-card per selectable registered node.
         """
-        return [node_class.describe() for node_class in cls._store.get(family, {}).values()]
+        cards = [node_class.describe() for node_class in cls._store.get(family, {}).values()]
+        return [card for card in cards if card.selectable]
 
     @classmethod
     def register_family(cls, family: str, title: str, description: str, mode: FamilyMode) -> None:
