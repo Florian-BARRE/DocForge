@@ -14,9 +14,6 @@
 # resurrect a previous edited config. The stage view flags this on every disabled removable stage so
 # the UI can warn before a toggle-off discards edits.
 
-# ====== Standard Library Imports ======
-from typing import Any
-
 # ====== Third-Party Library Imports ======
 from loggerplusplus import LoggerClass
 
@@ -26,7 +23,9 @@ from shared_libs.pipelines.registry import NodeRegistry
 
 # ====== Local Project Imports ======
 from .assembler import IngestAssembler
+from .chain_rules import ChainRules
 from .models import (
+    ChainStep,
     DisableStage,
     EnableStage,
     SetChain,
@@ -48,16 +47,21 @@ _TOGGLES = {
     StageKey.EMBED: "embed_on",
 }
 
-# Stage key → (state field for the provider kind, state field for its config).
+# Stage key → (state field for the provider kind, state field for its config). Parse is NOT here:
+# it is a scored chain, so SetProvider(parse) is sugar for a 1-step chain (see __set_provider).
 _PROVIDERS = {
-    StageKey.PARSE: ("parser_kind", "parser_config"),
     StageKey.CHUNK: ("chunker_kind", "chunker_config"),
     StageKey.EMBED: ("embed_kind", "embed_config"),
 }
 
-# Stage key → the state config field its primary node exposes.
+# Chain-capable linear stages → (state field holding the ChainSpec, the registry family). These are
+# provider stages whose provider is a scored fallback chain, edited with a slot-less SetChain.
+_CHAIN_STAGES = {
+    StageKey.PARSE: ("parse_chain", "parser"),
+}
+
+# Stage key → the state config field its primary node exposes (parse edits its chain head directly).
 _CONFIGS = {
-    StageKey.PARSE: "parser_config",
     StageKey.RENDER: "render_config",
     StageKey.ENRICH: "classify_config",
     StageKey.CHUNK: "chunker_config",
@@ -165,16 +169,21 @@ class StageCompiler(LoggerClass):
 
     def __set_provider(self, state: PipelineState, stage: str, kind: str, notices: list[str]) -> None:
         """Swap an exclusive stage's kind and reset its config to build-safe schema defaults."""
-        if stage not in _PROVIDERS:
+        meta = StageSpecs.meta(stage) if stage in {*_PROVIDERS, *_CHAIN_STAGES} else None
+        # 1. A chain-capable provider stage (parse): picking a provider is sugar for a 1-step chain.
+        if stage in _CHAIN_STAGES:
+            self.__set_stage_chain(state, stage, [ChainStep(kind=kind)], notices)
+            return
+        # 2. A single-provider stage (chunk, embed): swap the kind, reset its config.
+        if meta is None:
             notices.append(f"stage '{stage}' has no provider to set")
             return
-        meta = StageSpecs.meta(stage)
         if kind not in NodeRegistry.kinds(meta.family or ""):
             notices.append(f"'{kind}' is not a '{meta.family}' provider")
             return
         kind_field, config_field = _PROVIDERS[stage]
         setattr(state, kind_field, kind)
-        setattr(state, config_field, self.__reset_config(meta.family or "", kind))
+        setattr(state, config_field, ChainRules.reset_config(meta.family or "", kind))
 
     def __set_config(
         self, state: PipelineState, stage: str, node: str | None, config: dict, notices: list[str]
@@ -187,7 +196,15 @@ class StageCompiler(LoggerClass):
                 return
             state.intake_configs[node] = dict(config)
             return
-        # 2. Every other stage exposes a single config field.
+        # 2. Parse is a chain — editing its config edits the head step (the selected parser).
+        if stage == StageKey.PARSE:
+            head, *rest = state.parse_chain.steps
+            state.parse_chain = ChainSpec(
+                family=state.parse_chain.family,
+                steps=[head.model_copy(update={"config": dict(config)}), *rest],
+            )
+            return
+        # 3. Every other stage exposes a single config field.
         field = _CONFIGS.get(stage)
         if field is None:
             notices.append(f"stage '{stage}' has no editable config")
@@ -195,6 +212,16 @@ class StageCompiler(LoggerClass):
         setattr(state, field, dict(config))
 
     def __set_chain(
+        self, state: PipelineState, stage: str, slot: str | None, steps: list, notices: list[str]
+    ) -> None:
+        """Rebuild a fallback chain — an enrich per-figure site (slot), or the stage itself (no slot)."""
+        # A slot names an enrich per-figure model-call site; no slot means the stage IS the chain.
+        if slot is None:
+            self.__set_stage_chain(state, stage, steps, notices)
+            return
+        self.__set_enrich_chain(state, stage, slot, steps, notices)
+
+    def __set_enrich_chain(
         self, state: PipelineState, stage: str, slot: str, steps: list, notices: list[str]
     ) -> None:
         """Rebuild the chain at one enrich model-call site (the branch is recompiled on assembly)."""
@@ -206,18 +233,41 @@ class StageCompiler(LoggerClass):
         except KeyError:
             notices.append(f"unknown chain slot '{slot}'")
             return
-        # Each step's config is completed with build-safe defaults (same rule as
-        # set_provider): a required api_key/base_url becomes "" — the blob always BUILDS,
-        # and the gap surfaces as a fillable field, never a 500.
-        completed = [
-            step.model_copy(
-                update={"config": {**self.__reset_config(branch.family, step.kind), **step.config}}
-            )
-            for step in steps
-        ]
+        # An unknown step kind is DATA, not an exception — leave the chain unchanged with a notice.
+        unknown = ChainRules.unknown_kind_notices(branch.family, steps)
+        if unknown:
+            notices.extend(unknown)
+            return
+        completed = ChainRules.complete_steps(branch.family, steps)
         state.chains[slot] = ChainSpec(family=branch.family, steps=completed)
         if not steps:
             notices.append(f"chain '{slot}' emptied — figures of this class will be skipped")
+
+    def __set_stage_chain(
+        self, state: PipelineState, stage: str, steps: list, notices: list[str]
+    ) -> None:
+        """Rebuild a chain-capable linear stage's own scored chain (parse today)."""
+        if stage not in _CHAIN_STAGES:
+            notices.append(f"stage '{stage}' has no chain to set")
+            return
+        field, family = _CHAIN_STAGES[stage]
+        # 1. A required, non-removable stage must keep at least one provider — an empty chain would
+        #    leave the pipeline without that step, so keep the current chain and warn.
+        if not steps:
+            notices.append(f"stage '{stage}' needs at least one provider — kept the current chain")
+            return
+        # 2. An unknown step kind is DATA, not an exception — leave the chain unchanged with a notice.
+        unknown = ChainRules.unknown_kind_notices(family, steps)
+        if unknown:
+            notices.extend(unknown)
+            return
+        # 3. Complete each step's config build-safe, then apply the family-level chain rules.
+        completed = ChainRules.complete_steps(family, steps)
+        completed, threshold_notice = ChainRules.drop_unscored_thresholds(family, completed)
+        if threshold_notice:
+            notices.append(threshold_notice)
+        notices.extend(ChainRules.duplicate_unique_notices(family, completed))
+        setattr(state, field, ChainSpec(family=family, steps=completed))
 
     def __set_stack(
         self, state: PipelineState, stage: str, steps: list, notices: list[str]
@@ -228,34 +278,12 @@ class StageCompiler(LoggerClass):
             return
         state.stack = [
             step.model_copy(
-                update={"config": {**self.__reset_config("contextualize", step.kind), **step.config}}
+                update={"config": {**ChainRules.reset_config("contextualize", step.kind), **step.config}}
             )
             for step in steps
         ]
         if not steps:
             notices.append("contextualize stack emptied — chunks carry no added context")
-
-    def __reset_config(self, family: str, kind: str) -> dict[str, Any]:
-        """Schema-default config for a kind — required (default-less) fields filled build-safe."""
-        node_class = NodeRegistry.get(family, kind)
-        config: dict[str, Any] = {}
-        for name, field in node_class.Config.model_fields.items():
-            if field.is_required():
-                config[name] = self.__empty_value(field.annotation)
-        return config
-
-    @staticmethod
-    def __empty_value(annotation: object) -> Any:
-        """
-        A build-safe zero value for a required field of the given annotation.
-
-        LIMITATION: this fills a required int/float with 0/0.0 and does NOT honour a declared
-        lower bound — a required numeric field with ``Field(gt=0)`` would fail ``model_validate``
-        at assembly (a ``build_error``, surfaced as fixable data, never a crash). Unsupported by
-        design today: every provider's required fields are strings (base_url/api_key/model). Add
-        bound-awareness here only when a required-and-bounded numeric config field first appears.
-        """
-        return {str: "", int: 0, float: 0.0, bool: False, list: [], dict: {}}.get(annotation, "")
 
 
 __all__ = ["StageCompiler"]

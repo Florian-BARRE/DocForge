@@ -1,0 +1,663 @@
+{
+  "bindings": {
+    "address": {
+      "pdf": {
+        "field_name": "pdf",
+        "node_id": "convert",
+        "source": "node"
+      },
+      "probe": {
+        "field_name": "probe",
+        "node_id": "pdf_probe",
+        "source": "node"
+      },
+      "source": {
+        "field_name": "source",
+        "node_id": "admit",
+        "source": "node"
+      }
+    },
+    "admit": {
+      "contract": {
+        "field_name": "contract",
+        "source": "run"
+      },
+      "probe": {
+        "field_name": "probe",
+        "node_id": "probe",
+        "source": "node"
+      },
+      "source": {
+        "field_name": "source",
+        "source": "run"
+      }
+    },
+    "apply": {
+      "entries": {
+        "field_name": "items",
+        "node_id": "per_figure",
+        "source": "node"
+      },
+      "ir": {
+        "field_name": "ir",
+        "node_id": "figures",
+        "source": "node"
+      }
+    },
+    "bundle": {
+      "chunks": {
+        "field_name": "chunks",
+        "node_id": "meta_chunk",
+        "source": "node"
+      },
+      "document_meta": {
+        "field_name": "meta",
+        "node_id": "meta_doc",
+        "source": "node"
+      },
+      "embeddings": {
+        "field_name": "embeddings",
+        "node_id": "embed",
+        "source": "node"
+      },
+      "ingest": {
+        "field_name": "ingest",
+        "node_id": "address",
+        "source": "node"
+      },
+      "ir": {
+        "field_name": "ir",
+        "node_id": "apply",
+        "source": "node"
+      },
+      "pages": {
+        "field_name": "pages",
+        "node_id": "figures",
+        "source": "node"
+      }
+    },
+    "chunk": {
+      "ir": {
+        "field_name": "ir",
+        "node_id": "apply",
+        "source": "node"
+      }
+    },
+    "convert": {
+      "probe": {
+        "field_name": "probe",
+        "node_id": "probe",
+        "source": "node"
+      },
+      "source": {
+        "field_name": "source",
+        "node_id": "admit",
+        "source": "node"
+      }
+    },
+    "ctx_breadcrumb": {
+      "chunks": {
+        "field_name": "chunks",
+        "node_id": "ctx_meta",
+        "source": "node"
+      }
+    },
+    "ctx_meta": {
+      "chunks": {
+        "field_name": "chunks",
+        "node_id": "chunk",
+        "source": "node"
+      },
+      "source": {
+        "field_name": "source",
+        "source": "run"
+      }
+    },
+    "embed": {
+      "chunks": {
+        "field_name": "chunks",
+        "node_id": "meta_chunk",
+        "source": "node"
+      },
+      "contract": {
+        "field_name": "contract",
+        "source": "run"
+      }
+    },
+    "extract": {
+      "ir": {
+        "field_name": "ir",
+        "node_id": "figures",
+        "source": "node"
+      }
+    },
+    "figures": {
+      "ingest": {
+        "field_name": "ingest",
+        "node_id": "address",
+        "source": "node"
+      },
+      "ir": {
+        "field_name": "ir",
+        "node_id": "parse",
+        "source": "node"
+      }
+    },
+    "meta_chunk": {
+      "chunks": {
+        "field_name": "chunks",
+        "node_id": "ctx_breadcrumb",
+        "source": "node"
+      },
+      "contract": {
+        "field_name": "contract",
+        "source": "run"
+      }
+    },
+    "meta_doc": {
+      "chunks": {
+        "field_name": "chunks",
+        "node_id": "meta_chunk",
+        "source": "node"
+      },
+      "contract": {
+        "field_name": "contract",
+        "source": "run"
+      }
+    },
+    "parse": {
+      "source": {
+        "field_name": "ingest",
+        "node_id": "address",
+        "source": "node"
+      }
+    },
+    "pdf_probe": {
+      "pdf": {
+        "field_name": "pdf",
+        "node_id": "convert",
+        "source": "node"
+      }
+    },
+    "probe": {
+      "source": {
+        "field_name": "source",
+        "source": "run"
+      }
+    }
+  },
+  "id": "ingest_pipeline",
+  "node_type": "group",
+  "nodes": [
+    {
+      "config": {},
+      "family": "intake",
+      "id": "probe",
+      "kind": "format_probe",
+      "node_type": "action"
+    },
+    {
+      "config": {},
+      "family": "intake",
+      "id": "admit",
+      "kind": "admission",
+      "node_type": "action"
+    },
+    {
+      "config": {
+        "base_url": "http://gotenberg:3000"
+      },
+      "family": "converter",
+      "id": "convert",
+      "kind": "gotenberg",
+      "node_type": "action"
+    },
+    {
+      "config": {},
+      "family": "intake",
+      "id": "pdf_probe",
+      "kind": "pdf_probe",
+      "node_type": "action"
+    },
+    {
+      "config": {},
+      "family": "intake",
+      "id": "address",
+      "kind": "content_address",
+      "node_type": "action"
+    },
+    {
+      "config": {},
+      "family": "parser",
+      "id": "parse",
+      "kind": "docling",
+      "node_type": "action"
+    },
+    {
+      "config": {},
+      "family": "render",
+      "id": "figures",
+      "kind": "figure_render",
+      "node_type": "action"
+    },
+    {
+      "config": {},
+      "family": "enrich",
+      "id": "extract",
+      "kind": "figure_extract",
+      "node_type": "action"
+    },
+    {
+      "body": {
+        "bindings": {
+          "chart_vlm_0": {
+            "figure": {
+              "field_name": "figure",
+              "node_id": "classify",
+              "source": "node"
+            }
+          },
+          "classify": {
+            "figure": {
+              "field_name": "figure",
+              "source": "group"
+            }
+          },
+          "diagram_vlm_0": {
+            "figure": {
+              "field_name": "figure",
+              "node_id": "classify",
+              "source": "node"
+            }
+          },
+          "entry": {
+            "figure": {
+              "field_name": "figure",
+              "node_id": "classify",
+              "source": "node"
+            }
+          },
+          "photo_vlm_0": {
+            "figure": {
+              "field_name": "figure",
+              "node_id": "classify",
+              "source": "node"
+            }
+          },
+          "scanned_text_ocr_0": {
+            "figure": {
+              "field_name": "figure",
+              "node_id": "classify",
+              "source": "node"
+            }
+          },
+          "scanned_text_ocr_1": {
+            "figure": {
+              "field_name": "figure",
+              "node_id": "classify",
+              "source": "node"
+            }
+          },
+          "scanned_text_ocr_entry": {
+            "figure": {
+              "candidates": [
+                {
+                  "field_name": "figure",
+                  "node_id": "scanned_text_ocr_1",
+                  "source": "node"
+                },
+                {
+                  "field_name": "figure",
+                  "node_id": "scanned_text_ocr_0",
+                  "source": "node"
+                }
+              ],
+              "source": "first"
+            }
+          }
+        },
+        "id": "figure_path",
+        "node_type": "group",
+        "nodes": [
+          {
+            "config": {
+              "base_url": "http://vlm:8000/v1",
+              "model": "qwen2.5-vl"
+            },
+            "family": "enrich",
+            "id": "classify",
+            "kind": "figure_classify",
+            "node_type": "action"
+          },
+          {
+            "config": {},
+            "family": "ocr",
+            "id": "scanned_text_ocr_0",
+            "kind": "rapidocr",
+            "node_type": "action"
+          },
+          {
+            "config": {
+              "api_key": "SET_ME"
+            },
+            "family": "ocr",
+            "id": "scanned_text_ocr_1",
+            "kind": "mistral",
+            "node_type": "action"
+          },
+          {
+            "config": {},
+            "family": "enrich",
+            "id": "scanned_text_ocr_entry",
+            "kind": "figure_entry",
+            "node_type": "action"
+          },
+          {
+            "config": {
+              "base_url": "http://vlm:8000/v1",
+              "model": "qwen2.5-vl",
+              "system_prompt": "Caption this photo for retrieval."
+            },
+            "family": "vlm",
+            "id": "photo_vlm_0",
+            "kind": "openai_compatible",
+            "node_type": "action"
+          },
+          {
+            "config": {
+              "base_url": "http://vlm:8000/v1",
+              "extract_table": true,
+              "model": "qwen2.5-vl",
+              "system_prompt": "Read this chart and transcribe its data for retrieval."
+            },
+            "family": "vlm",
+            "id": "chart_vlm_0",
+            "kind": "openai_compatible",
+            "node_type": "action"
+          },
+          {
+            "config": {
+              "base_url": "http://vlm:8000/v1",
+              "model": "qwen2.5-vl",
+              "system_prompt": "Rewrite this diagram as searchable text."
+            },
+            "family": "vlm",
+            "id": "diagram_vlm_0",
+            "kind": "openai_compatible",
+            "node_type": "action"
+          },
+          {
+            "config": {},
+            "family": "enrich",
+            "id": "entry",
+            "kind": "figure_entry",
+            "node_type": "action"
+          }
+        ],
+        "transitions": [
+          {
+            "condition": {
+              "equals": "scanned_text",
+              "field": "kind",
+              "kind": "when_equals"
+            },
+            "from_node_id": "classify",
+            "to_node_id": "scanned_text_ocr_0"
+          },
+          {
+            "condition": {
+              "kind": "score_below",
+              "threshold": 0.4
+            },
+            "from_node_id": "scanned_text_ocr_0",
+            "to_node_id": "scanned_text_ocr_1"
+          },
+          {
+            "condition": {
+              "kind": "on_failure"
+            },
+            "from_node_id": "scanned_text_ocr_0",
+            "to_node_id": "scanned_text_ocr_1"
+          },
+          {
+            "condition": {
+              "kind": "on_success"
+            },
+            "from_node_id": "scanned_text_ocr_0",
+            "to_node_id": "scanned_text_ocr_entry"
+          },
+          {
+            "condition": {
+              "kind": "on_success"
+            },
+            "from_node_id": "scanned_text_ocr_1",
+            "to_node_id": "scanned_text_ocr_entry"
+          },
+          {
+            "condition": {
+              "equals": "photo",
+              "field": "kind",
+              "kind": "when_equals"
+            },
+            "from_node_id": "classify",
+            "to_node_id": "photo_vlm_0"
+          },
+          {
+            "condition": {
+              "equals": "chart",
+              "field": "kind",
+              "kind": "when_equals"
+            },
+            "from_node_id": "classify",
+            "to_node_id": "chart_vlm_0"
+          },
+          {
+            "condition": {
+              "equals": "diagram",
+              "field": "kind",
+              "kind": "when_equals"
+            },
+            "from_node_id": "classify",
+            "to_node_id": "diagram_vlm_0"
+          },
+          {
+            "condition": {
+              "equals": "decorative",
+              "field": "kind",
+              "kind": "when_equals"
+            },
+            "from_node_id": "classify",
+            "to_node_id": "entry"
+          }
+        ]
+      },
+      "id": "per_figure",
+      "item_field": "figure",
+      "max_concurrency": 4,
+      "node_type": "foreach",
+      "over": {
+        "field_name": "figures",
+        "node_id": "extract",
+        "source": "node"
+      }
+    },
+    {
+      "config": {},
+      "family": "enrich",
+      "id": "apply",
+      "kind": "enrich_apply",
+      "node_type": "action"
+    },
+    {
+      "config": {},
+      "family": "chunker",
+      "id": "chunk",
+      "kind": "structure_aware",
+      "node_type": "action"
+    },
+    {
+      "config": {},
+      "family": "contextualize",
+      "id": "ctx_meta",
+      "kind": "doc_meta",
+      "node_type": "action"
+    },
+    {
+      "config": {},
+      "family": "contextualize",
+      "id": "ctx_breadcrumb",
+      "kind": "breadcrumb",
+      "node_type": "action"
+    },
+    {
+      "config": {
+        "base_url": "http://llm:8000/v1",
+        "model": "llm-default"
+      },
+      "family": "metagen",
+      "id": "meta_chunk",
+      "kind": "chunk",
+      "node_type": "action"
+    },
+    {
+      "config": {
+        "base_url": "http://llm:8000/v1",
+        "model": "llm-default"
+      },
+      "family": "metagen",
+      "id": "meta_doc",
+      "kind": "document",
+      "node_type": "action"
+    },
+    {
+      "config": {
+        "base_url": "http://bge_server:8008"
+      },
+      "family": "embed",
+      "id": "embed",
+      "kind": "bge_server",
+      "node_type": "action"
+    },
+    {
+      "config": {},
+      "family": "deliver",
+      "id": "bundle",
+      "kind": "bundle",
+      "node_type": "action"
+    }
+  ],
+  "transitions": [
+    {
+      "condition": {
+        "kind": "on_success"
+      },
+      "from_node_id": "probe",
+      "to_node_id": "admit"
+    },
+    {
+      "condition": {
+        "kind": "on_success"
+      },
+      "from_node_id": "admit",
+      "to_node_id": "convert"
+    },
+    {
+      "condition": {
+        "kind": "on_success"
+      },
+      "from_node_id": "convert",
+      "to_node_id": "pdf_probe"
+    },
+    {
+      "condition": {
+        "kind": "on_success"
+      },
+      "from_node_id": "pdf_probe",
+      "to_node_id": "address"
+    },
+    {
+      "condition": {
+        "kind": "on_success"
+      },
+      "from_node_id": "extract",
+      "to_node_id": "per_figure"
+    },
+    {
+      "condition": {
+        "kind": "on_success"
+      },
+      "from_node_id": "per_figure",
+      "to_node_id": "apply"
+    },
+    {
+      "condition": {
+        "kind": "on_success"
+      },
+      "from_node_id": "ctx_meta",
+      "to_node_id": "ctx_breadcrumb"
+    },
+    {
+      "condition": {
+        "kind": "on_success"
+      },
+      "from_node_id": "address",
+      "to_node_id": "parse"
+    },
+    {
+      "condition": {
+        "kind": "on_success"
+      },
+      "from_node_id": "parse",
+      "to_node_id": "figures"
+    },
+    {
+      "condition": {
+        "kind": "on_success"
+      },
+      "from_node_id": "figures",
+      "to_node_id": "extract"
+    },
+    {
+      "condition": {
+        "kind": "on_success"
+      },
+      "from_node_id": "apply",
+      "to_node_id": "chunk"
+    },
+    {
+      "condition": {
+        "kind": "on_success"
+      },
+      "from_node_id": "chunk",
+      "to_node_id": "ctx_meta"
+    },
+    {
+      "condition": {
+        "kind": "on_success"
+      },
+      "from_node_id": "ctx_breadcrumb",
+      "to_node_id": "meta_chunk"
+    },
+    {
+      "condition": {
+        "kind": "on_success"
+      },
+      "from_node_id": "meta_chunk",
+      "to_node_id": "meta_doc"
+    },
+    {
+      "condition": {
+        "kind": "on_success"
+      },
+      "from_node_id": "meta_doc",
+      "to_node_id": "embed"
+    },
+    {
+      "condition": {
+        "kind": "on_success"
+      },
+      "from_node_id": "embed",
+      "to_node_id": "bundle"
+    }
+  ]
+}

@@ -51,14 +51,12 @@ class StateReader:
         actions = {node.id: node for node in ordered if isinstance(node, ActionNodeBlob)}
         loop = next((n for n in ordered if isinstance(n, ForEachNodeBlob)), None)
 
-        parser = cls.__by_family(ordered, "parser")
         chunker = cls.__by_family(ordered, "chunker")
         embed = cls.__by_family(ordered, "embed")
 
         state = PipelineState(
             intake_configs=cls.__intake_configs(actions),
-            parser_kind=parser.kind if parser else "docling",
-            parser_config=dict(parser.config) if parser else {},
+            parse_chain=cls.__parse_chain(blob, ordered),
             render_on=cls.__by_family(ordered, "render") is not None,
             render_config=cls.__config_of(cls.__by_family(ordered, "render")),
             enrich_on=loop is not None,
@@ -143,10 +141,33 @@ class StateReader:
             head = by_id.get(head_id) if head_id else None
             if head is None or head.family not in _MODEL_FAMILIES:
                 continue
-            steps = cls.__walk_chain(body, by_id, head)
+            steps = cls.__walk_chain(body.transitions, by_id, head, _MODEL_FAMILIES)
             if steps:
                 chains[branch.slot] = ChainSpec(family=head.family, steps=steps)
         return chains
+
+    @classmethod
+    def __parse_chain(cls, blob: GroupNodeBlob, ordered: list[NodeBlob]) -> ChainSpec:
+        """Read the parser stage back as a chain — 1 provider round-trips to a 1-step ChainSpec."""
+        parsers = {
+            n.id: n for n in ordered if isinstance(n, ActionNodeBlob) and n.family == "parser"
+        }
+        if not parsers:
+            return ChainSpec(family="parser", steps=[ChainStep(kind="docling")])
+        head = cls.__chain_head(blob.transitions, parsers, {"parser"})
+        return ChainSpec(family="parser", steps=cls.__walk_chain(blob.transitions, parsers, head, {"parser"}))
+
+    @classmethod
+    def __chain_head(
+        cls, transitions: list, by_id: dict[str, ActionNodeBlob], families: set[str]
+    ) -> ActionNodeBlob:
+        """The chain's head — the only family node no in-family escalation edge points at."""
+        targeted = {
+            t.to_node_id for t in transitions
+            if t.from_node_id in by_id and t.to_node_id in by_id
+            and by_id[t.to_node_id].family in families
+        }
+        return next((node for nid, node in by_id.items() if nid not in targeted), next(iter(by_id.values())))
 
     @classmethod
     def __switch_target(cls, body: GroupNodeBlob, classify_id: str, figure_kind: str) -> str | None:
@@ -160,42 +181,43 @@ class StateReader:
 
     @classmethod
     def __walk_chain(
-        cls, body: GroupNodeBlob, by_id: dict[str, ActionNodeBlob], head: ActionNodeBlob
+        cls, transitions: list, by_id: dict[str, ActionNodeBlob], head: ActionNodeBlob,
+        families: set[str],
     ) -> list[ChainStep]:
-        """Follow a branch's model providers, reading the score_below escalation off the edges."""
+        """Follow a chain's providers, reading the score_below escalation off the edges."""
         steps: list[ChainStep] = []
         current: ActionNodeBlob | None = head
         seen: set[str] = set()
-        while current is not None and current.family in _MODEL_FAMILIES and current.id not in seen:
+        while current is not None and current.family in families and current.id not in seen:
             seen.add(current.id)
-            score_below = cls.__score_below(body, current.id, by_id)
+            score_below = cls.__score_below(transitions, current.id, by_id, families)
             steps.append(ChainStep(kind=current.kind, config=dict(current.config),
                                    score_below=score_below))
-            current = cls.__next_model(body, current.id, by_id)
+            current = cls.__next_step(transitions, current.id, by_id, families)
         return steps
 
     @classmethod
     def __score_below(
-        cls, body: GroupNodeBlob, node_id: str, by_id: dict[str, ActionNodeBlob]
+        cls, transitions: list, node_id: str, by_id: dict[str, ActionNodeBlob], families: set[str]
     ) -> float | None:
-        """The threshold of the ScoreBelow edge escalating this step to the next model node."""
-        for transition in body.transitions:
+        """The threshold of the ScoreBelow edge escalating this step to the next chain node."""
+        for transition in transitions:
             if (transition.from_node_id == node_id
                     and isinstance(transition.condition, ScoreBelow)
                     and transition.to_node_id in by_id
-                    and by_id[transition.to_node_id].family in _MODEL_FAMILIES):
+                    and by_id[transition.to_node_id].family in families):
                 return transition.condition.threshold
         return None
 
     @classmethod
-    def __next_model(
-        cls, body: GroupNodeBlob, node_id: str, by_id: dict[str, ActionNodeBlob]
+    def __next_step(
+        cls, transitions: list, node_id: str, by_id: dict[str, ActionNodeBlob], families: set[str]
     ) -> ActionNodeBlob | None:
-        """The next model provider a step escalates to (score_below / on_failure target)."""
-        for transition in body.transitions:
+        """The next chain provider a step escalates to (score_below / on_failure target)."""
+        for transition in transitions:
             target = by_id.get(transition.to_node_id)
             if (transition.from_node_id == node_id and target is not None
-                    and target.family in _MODEL_FAMILIES):
+                    and target.family in families):
                 return target
         return None
 

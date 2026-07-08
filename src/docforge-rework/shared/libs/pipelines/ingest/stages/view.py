@@ -72,8 +72,9 @@ class StageViewer:
         """The selected kind + the family's available kinds (provider stages only)."""
         if meta.kind != "provider":
             return None, []
+        head = state.parse_chain.steps[0] if state.parse_chain.steps else None
         selected = {
-            StageKey.PARSE: state.parser_kind,
+            StageKey.PARSE: head.kind if head else None,
             StageKey.CHUNK: state.chunker_kind,
             StageKey.EMBED: state.embed_kind,
         }.get(meta.key)
@@ -82,8 +83,9 @@ class StageViewer:
     @classmethod
     def __config(cls, key: str, state: PipelineState) -> dict | None:
         """The single editable config a stage exposes (None for composite/stack stages)."""
+        head = state.parse_chain.steps[0] if state.parse_chain.steps else None
         return {
-            StageKey.PARSE: state.parser_config,
+            StageKey.PARSE: head.config if head else {},
             StageKey.RENDER: state.render_config,
             StageKey.ENRICH: state.classify_config,
             StageKey.CHUNK: state.chunker_config,
@@ -94,7 +96,11 @@ class StageViewer:
 
     @classmethod
     def __chains(cls, key: str, state: PipelineState) -> list[ChainView]:
-        """The per-class model chains of the enrich stage (empty elsewhere)."""
+        """The model chains a stage exposes — parse's scored chain, or the enrich per-class sites."""
+        # Parse is a chain-capable provider stage: it carries its own single ordered chain (a
+        # 1-entry list for the stock 1-step default, the full chain when a stronger parser follows).
+        if key == StageKey.PARSE:
+            return [cls.__parse_chain_view(state)]
         if key != StageKey.ENRICH:
             return []
         views: list[ChainView] = []
@@ -106,6 +112,17 @@ class StageViewer:
                 steps=list(spec.steps) if spec else [],
             ))
         return views
+
+    @classmethod
+    def __parse_chain_view(cls, state: PipelineState) -> ChainView:
+        """The parse stage's own scored chain, as a single ChainView keyed by the stage."""
+        meta = StageSpecs.meta(StageKey.PARSE)
+        family = meta.family or "parser"
+        return ChainView(
+            slot=meta.key, title=meta.title, description=meta.description,
+            family=family, available=NodeRegistry.kinds(family),
+            steps=list(state.parse_chain.steps),
+        )
 
     @classmethod
     def __notes(cls, meta, state: PipelineState, enabled: bool) -> str | None:

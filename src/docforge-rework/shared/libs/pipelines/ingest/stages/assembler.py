@@ -1,47 +1,29 @@
 # ====== Code Summary ======
 # IngestAssembler — turns a PipelineState into a validated-shape ingestion blob. It is the SINGLE
-# owner of the pipeline's wiring: it lays the enabled stages out as a linear control-flow chain and
-# threads the DATA SPINES (the IR spine parse→render→enrich, the chunks spine chunk→contextualize→
-# metagen) so every consumer always reads the nearest enabled producer. A stage contributes a
-# _Segment exposing its EXITS (the nodes the next stage is wired from) and each spine anchor is a
-# Binding, not a bare (node, field) tuple — so a multi-exit provider chain can occupy a linear
-# stage slot (later phases) without any consumer changing. Because the assembler recomputes wiring
-# from the enabled set, the compiler can toggle any stage and still emit a blob that builds: the
-# "no doubt, coherent end to end" guarantee lives here. default_blob() is just assemble(default_state()).
+# owner of the pipeline's wiring: it lays the enabled stage SEGMENTS (built by SegmentBuilder) out
+# as a linear control-flow chain and threads the DATA SPINES (the IR spine parse→render→enrich, the
+# chunks spine chunk→contextualize→metagen) so every consumer always reads the nearest enabled
+# producer. Each spine anchor is read straight from the producing segment's ``output`` Binding — a
+# plain FromNode for a stock stage, a best-first FromFirst for a chain occupying that slot — so a
+# multi-exit provider chain can fill a linear stage slot without any consumer changing. Because the
+# assembler recomputes wiring from the enabled set, the compiler can toggle any stage and still emit
+# a blob that builds: the "no doubt, coherent end to end" guarantee lives here. default_blob() is
+# just assemble(default_state()).
 
 # ====== Third-Party Library Imports ======
 from loggerplusplus import loggerplusplus
 
 # ====== Internal Project Imports ======
 from shared_libs.pipelines.base import Binding, FromNode, FromRunInput, Transition
-from shared_libs.pipelines.build.blob import ActionNodeBlob, ForEachNodeBlob, GroupNodeBlob
+from shared_libs.pipelines.build.blob import GroupNodeBlob
 
 # ====== Local Project Imports ======
-from .enrich_body import EnrichBodyBuilder
+from .segments import Segment, SegmentBuilder
 from .state import PipelineState
 
 # The run-input field names the entry nodes bind to (kept local to avoid importing the pipeline).
 _SOURCE = "source"
 _CONTRACT = "contract"
-
-# Human ids for the contextualize stack nodes, so the stock stack keeps its historical ids.
-_CTX_IDS = {"doc_meta": "ctx_meta", "breadcrumb": "ctx_breadcrumb", "sliding": "ctx_sliding",
-            "llm": "ctx_llm"}
-
-
-class _Segment:
-    """One stage's contribution to the blob: its ordered nodes and internal transitions.
-
-    A segment exposes ``exits`` (not a single tail): the node ids the next stage must be wired
-    from. A stock single-node stage has ``exits == [its node]``; a chain occupying a stage slot
-    (later phases) may expose several exits, one per provider step that can be the one that ran.
-    """
-
-    def __init__(self, head: str, exits: list[str], nodes: list, transitions: list) -> None:
-        self.head = head
-        self.exits = exits
-        self.nodes = nodes
-        self.transitions = transitions
 
 
 class IngestAssembler:
@@ -64,7 +46,7 @@ class IngestAssembler:
             GroupNodeBlob: A blob whose enabled stages are chained and correctly bound.
         """
         # 1. Build the segment of every ENABLED stage, in canonical order.
-        segments = cls.__segments(state)
+        segments = SegmentBuilder.all(state)
 
         # 2. Flatten nodes + internal transitions, then chain each segment's exits → next head.
         nodes: list = []
@@ -77,122 +59,43 @@ class IngestAssembler:
                 transitions.append(Transition(from_node_id=exit_id, to_node_id=current.head))
 
         # 3. Thread the data spines across whichever stages are on.
-        bindings = cls.__bindings(state)
+        bindings = cls.__bindings(state, segments)
         return GroupNodeBlob(id="ingest_pipeline", nodes=nodes, transitions=transitions,
                              bindings=bindings)
 
     @classmethod
     def contextualize_ids(cls, state: PipelineState) -> list[str]:
         """The node ids of the contextualize stack, in order (unique per method occurrence)."""
-        ids: list[str] = []
-        for method in state.stack:
-            base = _CTX_IDS.get(method.kind, f"ctx_{method.kind}")
-            candidate, suffix = base, 2
-            while candidate in ids:
-                candidate = f"{base}_{suffix}"
-                suffix += 1
-            ids.append(candidate)
-        return ids
+        return SegmentBuilder.contextualize_ids(state)
 
     @classmethod
-    def __segments(cls, state: PipelineState) -> list[_Segment]:
-        """The ordered segments of the enabled stages."""
-        segments = [cls.__intake(state), cls.__parse(state)]
-        if state.render_on:
-            segments.append(cls.__single("figures", "render", "figure_render", state.render_config))
-        if state.enrich_on:
-            segments.append(cls.__enrich(state))
-        segments.append(cls.__single("chunk", "chunker", state.chunker_kind, state.chunker_config))
-        if state.stack:
-            segments.append(cls.__contextualize(state))
-        if state.metachunk_on:
-            segments.append(cls.__single("meta_chunk", "metagen", "chunk", state.metachunk_config))
-        if state.metadoc_on:
-            segments.append(cls.__single("meta_doc", "metagen", "document", state.metadoc_config))
-        if state.embed_on:
-            segments.append(cls.__single("embed", "embed", state.embed_kind, state.embed_config))
-        segments.append(cls.__single("bundle", "deliver", "bundle", {}))
-        return segments
-
-    @classmethod
-    def __single(cls, node_id: str, family: str, kind: str, config: dict) -> _Segment:
-        """A one-node stage segment (parse, render, chunk, metagen, embed, deliver)."""
-        node = ActionNodeBlob(id=node_id, family=family, kind=kind, config=dict(config))
-        return _Segment(head=node_id, exits=[node_id], nodes=[node], transitions=[])
-
-    @classmethod
-    def __intake(cls, state: PipelineState) -> _Segment:
-        """The fixed 5-node intake chain (probe → admit → convert → pdf_probe → address)."""
-        spec = [("probe", "intake", "format_probe"), ("admit", "intake", "admission"),
-                ("convert", "converter", "gotenberg"), ("pdf_probe", "intake", "pdf_probe"),
-                ("address", "intake", "content_address")]
-        nodes = [
-            ActionNodeBlob(id=nid, family=fam, kind=kind, config=dict(state.intake_configs.get(nid, {})))
-            for nid, fam, kind in spec
-        ]
-        ids = [nid for nid, _, _ in spec]
-        chain = [Transition(from_node_id=a, to_node_id=b) for a, b in zip(ids, ids[1:], strict=False)]
-        return _Segment(head="probe", exits=["address"], nodes=nodes, transitions=chain)
-
-    @classmethod
-    def __parse(cls, state: PipelineState) -> _Segment:
-        """The parser stage (its own segment so its kind stays selectable)."""
-        return cls.__single("parse", "parser", state.parser_kind, state.parser_config)
-
-    @classmethod
-    def __enrich(cls, state: PipelineState) -> _Segment:
-        """The enrich segment: figure_extract → per_figure loop → enrich_apply."""
-        nodes = [
-            ActionNodeBlob(id="extract", family="enrich", kind="figure_extract"),
-            ForEachNodeBlob(
-                id="per_figure",
-                over=FromNode(node_id="extract", field_name="figures"),
-                item_field="figure", max_concurrency=4,
-                body=EnrichBodyBuilder.build(state.classify_config, state.chains),
-            ),
-            ActionNodeBlob(id="apply", family="enrich", kind="enrich_apply"),
-        ]
-        transitions = [
-            Transition(from_node_id="extract", to_node_id="per_figure"),
-            Transition(from_node_id="per_figure", to_node_id="apply"),
-        ]
-        return _Segment(head="extract", exits=["apply"], nodes=nodes, transitions=transitions)
-
-    @classmethod
-    def __contextualize(cls, state: PipelineState) -> _Segment:
-        """The ordered contextualize stack segment (each method chained onto the previous)."""
-        ids = cls.contextualize_ids(state)
-        nodes = [
-            ActionNodeBlob(id=nid, family="contextualize", kind=method.kind, config=dict(method.config))
-            for nid, method in zip(ids, state.stack, strict=True)
-        ]
-        chain = [Transition(from_node_id=a, to_node_id=b) for a, b in zip(ids, ids[1:], strict=False)]
-        return _Segment(head=ids[0], exits=[ids[-1]], nodes=nodes, transitions=chain)
-
-    @classmethod
-    def __bindings(cls, state: PipelineState) -> dict[str, dict]:
+    def __bindings(cls, state: PipelineState, segments: list[Segment]) -> dict[str, dict]:
         """Thread every stage's data spine — each consumer reads the nearest enabled producer."""
-        # 1. The spine anchors — the Binding each downstream slot reads. A stock stage anchors to a
-        #    single producer (FromNode); a chain occupying that slot (later phases) supplies its own
-        #    convergence Binding here without touching any consumer.
-        ir_pre_enrich = cls.__anchor("figures" if state.render_on else "parse", "ir")
-        ir_final = cls.__anchor("apply", "ir") if state.enrich_on else ir_pre_enrich
+        # 1. The spine anchors — read straight from each stage segment's own ``output`` Binding, so a
+        #    stock stage (FromNode) and a chain occupying that slot (a best-first FromFirst) rebind
+        #    every downstream consumer identically, and exits can never drift from the convergence.
+        by_key = {segment.key: segment for segment in segments}
+        ir_pre_enrich = (by_key.get("render") or by_key["parse"]).output
+        ir_final = by_key["enrich"].output if "enrich" in by_key else ir_pre_enrich
         ctx_ids = cls.contextualize_ids(state)
-        chunks_pre_meta = cls.__anchor(ctx_ids[-1] if ctx_ids else "chunk", "chunks")
-        chunks_final = cls.__anchor("meta_chunk", "chunks") if state.metachunk_on else chunks_pre_meta
+        chunks_pre_meta = (by_key.get("contextualize") or by_key["chunk"]).output
+        chunks_final = by_key["metagen_chunk"].output if "metagen_chunk" in by_key else chunks_pre_meta
 
         bindings: dict[str, dict] = {}
+        # Each stage segment carries its own internal node bindings (a chain's per-step face); the
+        # spine/cross-stage bindings below thread the rest.
+        for segment in segments:
+            bindings.update(segment.bindings)
         cls.__bind_intake(bindings, state)
-        bindings["parse"] = {"source": FromNode(node_id="address", field_name="ingest")}
         if state.render_on:
             bindings["figures"] = {"ingest": FromNode(node_id="address", field_name="ingest"),
-                                   "ir": FromNode(node_id="parse", field_name="ir")}
+                                   "ir": by_key["parse"].output}
         if state.enrich_on:
             bindings["extract"] = {"ir": ir_pre_enrich}
             bindings["apply"] = {"ir": ir_pre_enrich,
                                  "entries": FromNode(node_id="per_figure", field_name="items")}
         bindings["chunk"] = {"ir": ir_final}
-        cls.__bind_stack(bindings, state, ctx_ids)
+        cls.__bind_stack(bindings, state, ctx_ids, by_key["chunk"].output)
         if state.metachunk_on:
             bindings["meta_chunk"] = {"chunks": chunks_pre_meta,
                                       "contract": FromRunInput(field_name=_CONTRACT)}
@@ -220,16 +123,19 @@ class IngestAssembler:
                                "probe": FromNode(node_id="pdf_probe", field_name="probe")}
 
     @classmethod
-    def __bind_stack(cls, bindings: dict[str, dict], state: PipelineState, ctx_ids: list[str]) -> None:
+    def __bind_stack(
+        cls, bindings: dict[str, dict], state: PipelineState, ctx_ids: list[str],
+        chunk_output: Binding,
+    ) -> None:
         """Chain the contextualize stack onto the chunker and thread doc_meta's source."""
-        previous: Binding = cls.__anchor("chunk", "chunks")
+        previous: Binding = chunk_output
         for ctx_id, method in zip(ctx_ids, state.stack, strict=True):
             slots: dict = {"chunks": previous}
             # doc_meta additionally renders the run's declared document metadata.
             if method.kind == "doc_meta":
                 slots["source"] = FromRunInput(field_name=_SOURCE)
             bindings[ctx_id] = slots
-            previous = cls.__anchor(ctx_id, "chunks")
+            previous = FromNode(node_id=ctx_id, field_name="chunks")
 
     @classmethod
     def __bundle_bindings(cls, state: PipelineState, ir_final: Binding, chunks_final: Binding) -> dict:
@@ -244,11 +150,6 @@ class IngestAssembler:
         if state.embed_on:
             slots["embeddings"] = FromNode(node_id="embed", field_name="embeddings")
         return slots
-
-    @staticmethod
-    def __anchor(node_id: str, field_name: str) -> Binding:
-        """A single-producer spine anchor — the Binding a downstream slot reads from a stock stage."""
-        return FromNode(node_id=node_id, field_name=field_name)
 
 
 __all__ = ["IngestAssembler"]

@@ -194,13 +194,17 @@ class SetStageConfig(BaseModel):
 
 
 class SetChain(BaseModel):
-    """Rebuild a fallback chain at one model-call site of the enrich stage."""
+    """Rebuild a fallback chain — an enrich per-figure site, or a chain-capable stage itself."""
 
     model_config = ConfigDict(extra="forbid")
 
     action: Literal["set_chain"] = "set_chain"
-    stage: str = Field(description="Key of the stage owning the chain (enrich).")
-    slot: str = Field(description="Slot key of the model-call site (e.g. scanned_text_ocr).")
+    stage: str = Field(description="Key of the stage owning the chain (enrich, or a provider stage).")
+    slot: str | None = Field(
+        default=None,
+        description="Slot key of an enrich model-call site (e.g. scanned_text_ocr); null = the "
+        "stage itself is the chain site (e.g. parse).",
+    )
     steps: list[ChainStep] = Field(
         description="The ordered providers of the chain (cheap → robust; last has the final say)."
     )
