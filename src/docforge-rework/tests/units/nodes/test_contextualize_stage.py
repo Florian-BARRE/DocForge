@@ -1,13 +1,10 @@
-"""Contextualize stage: 4 stackable methods, LLM scopes + keep_raw, stacked blob prefix order,
-and the UNIQUE_IN_GRAPH doctrine (singletons rejected on duplication, repeatables pass).
-
-Ported from the scratchpad's test_contextualize_stage.py.
+"""Contextualize stage: the pure stackable methods (breadcrumb / doc_meta / sliding), the llm method's
+described scope rules, and the UNIQUE_IN_GRAPH doctrine (singletons rejected on duplication, the llm
+method repeatable). The llm method's runtime behaviour (per-chunk situating, keep_raw, full scope) now
+lives in the externalised topology, covered by test_contextualize_topology.py and test_stack.py.
 """
 
-import pytest
-
 from shared_libs.pipelines.build import PipelineBuilder
-from shared_libs.pipelines.engine import FlowEngine
 from shared_libs.pipelines.ingest.nodes.contextualize.base import ContextualizerConsumes
 from shared_libs.pipelines.ingest.nodes.contextualize.breadcrumb import (
     ContextualizerBreadcrumbConfig,
@@ -18,15 +15,11 @@ from shared_libs.pipelines.ingest.nodes.contextualize.doc_meta import (
     ContextualizerDocMetaNode,
 )
 from shared_libs.pipelines.ingest.nodes.contextualize.doc_meta.core import DocMetaConsumes
-from shared_libs.pipelines.ingest.nodes.contextualize.llm import (
-    ContextualizerLlmConfig,
-    ContextualizerLlmNode,
-)
+from shared_libs.pipelines.ingest.nodes.contextualize.llm import ContextualizerLlmNode
 from shared_libs.pipelines.ingest.nodes.contextualize.sliding import (
     ContextualizerSlidingConfig,
     ContextualizerSlidingNode,
 )
-from shared_libs.pipelines.registry import NodeRegistry
 from shared_libs.pipelines.validation import GraphValidator
 from shared_libs.public_models import Chunk, SourceDocument
 
@@ -80,86 +73,6 @@ async def test_sliding_context_uses_prev_tail_and_next_head() -> None:
     out = await node.run(ContextualizerConsumes(chunks=CHUNKS))
     assert out.chunks[0].context == "They sleep …"  # head of next only (no prev)
     assert out.chunks[1].context == "… felines that purr.\nBond markets …"
-
-
-SEEN_DOCS: dict[str, str] = {}
-
-
-@NodeRegistry.register("contextualize")
-class FakeLlm(ContextualizerLlmNode):
-    KIND = "test_contextualize_fake_llm"
-    NAME = "F"
-    SUMMARY = "t"
-
-    async def _situate(self, document: str, chunk_text: str) -> str:
-        if "sharply" in chunk_text:
-            raise RuntimeError("model 503")
-        SEEN_DOCS[chunk_text[:12]] = document
-        return f"SITUATED[{chunk_text[:8]}]"
-
-
-async def test_llm_context_section_scope_and_window_fallback_and_keep_raw() -> None:
-    SEEN_DOCS.clear()
-    cfg = ContextualizerLlmConfig(base_url="http://fake", model="fake", document_scope="section", window_chunks=1)
-    out = await FakeLlm(id="l", config=cfg).run(ContextualizerConsumes(chunks=CHUNKS))
-
-    # section scope: chunk 0's document view = its section siblings (chunks 0+1), not Finance
-    assert "purr" in SEEN_DOCS["Cats are sma"]
-    assert "sleep" in SEEN_DOCS["Cats are sma"]
-    assert "Bond" not in SEEN_DOCS["Cats are sma"]
-    # section-less chunk 3 fell back to the window scope (neighbour 2 included)
-    assert "Bond markets" in SEEN_DOCS["No section h"]
-    # keep_raw: the failing chunk (2) stayed raw, the document survived
-    assert out.chunks[2].context == ""
-    assert out.chunks[0].context == "SITUATED[Cats are]"
-
-
-async def test_llm_context_on_error_fail_raises_in_strict_mode() -> None:
-    strict = ContextualizerLlmConfig(base_url="http://fake", model="fake", on_error="fail")
-    with pytest.raises(RuntimeError):
-        await FakeLlm(id="l", config=strict).run(ContextualizerConsumes(chunks=CHUNKS))
-
-
-async def test_f1_f2_full_scope_view_precomputed_once_and_structure_preserved() -> None:
-    SEEN_DOCS.clear()
-    full_cfg = ContextualizerLlmConfig(base_url="http://fake", model="fake", document_scope="full")
-    safe_chunks = [c for c in CHUNKS if "sharply" not in c.text]
-    await FakeLlm(id="l", config=full_cfg).run(ContextualizerConsumes(chunks=safe_chunks))
-    views = list(SEEN_DOCS.values())
-    assert all(view is views[0] for view in views), "full view must be built ONCE and reused"
-    assert "\n\n" in views[0], "structure must be preserved under the cap"
-
-
-async def test_stacked_blob_wires_meta_then_breadcrumb_then_llm_in_prefix_order() -> None:
-    kinds = NodeRegistry.kinds("contextualize")
-    assert {"breadcrumb", "doc_meta", "sliding", "llm"} <= set(kinds)
-
-    blob = {
-        "node_type": "group", "id": "ctx_stage",
-        "nodes": [
-            {"node_type": "action", "id": "meta", "family": "contextualize", "kind": "doc_meta",
-             "config": {"fields": ["title"]}},
-            {"node_type": "action", "id": "crumb", "family": "contextualize", "kind": "breadcrumb", "config": {}},
-            {"node_type": "action", "id": "situate", "family": "contextualize",
-             "kind": "test_contextualize_fake_llm", "config": {"base_url": "http://fake", "model": "fake"}},
-        ],
-        "transitions": [
-            {"from_node_id": "meta", "to_node_id": "crumb"},
-            {"from_node_id": "crumb", "to_node_id": "situate"},
-        ],
-        "bindings": {
-            "meta": {"chunks": {"source": "run", "field_name": "chunks"},
-                     "source": {"source": "run", "field_name": "source"}},
-            "crumb": {"chunks": {"source": "node", "node_id": "meta", "field_name": "chunks"}},
-            "situate": {"chunks": {"source": "node", "node_id": "crumb", "field_name": "chunks"}},
-        },
-    }
-    group = PipelineBuilder().build(blob)
-    assert GraphValidator().validate(group) == []
-    output, _record = await FlowEngine().execute(group, {"chunks": CHUNKS, "source": SOURCE})
-    lines = output.chunks[0].context.split("\n")
-    assert lines == ["title: Annual Report", "Section: Animals > Cats", "SITUATED[Cats are]"]
-    assert output.chunks[0].text == CHUNKS[0].text
 
 
 def test_describe_exposes_the_scope_rules_to_the_ui() -> None:

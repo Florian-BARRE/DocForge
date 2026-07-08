@@ -23,6 +23,7 @@ from shared_libs.pipelines.edit.topology import BlobTopology
 
 # ====== Local Project Imports ======
 from .chain_walk import ChainWalker
+from .contextualize_read import ContextualizeReader
 from .metagen_read import MetagenReader
 from .models import ChainStep, StackMethod
 from .spec import StageSpecs
@@ -121,12 +122,13 @@ class StateReader:
 
     @classmethod
     def __stack(cls, ordered: list[NodeBlob]) -> list[StackMethod]:
-        """The ordered contextualize methods (root order = application order)."""
-        return [
-            StackMethod(kind=node.kind, config=dict(node.config))
-            for node in ordered
-            if isinstance(node, ActionNodeBlob) and node.family == "contextualize"
-        ]
+        """The ordered contextualize methods (root order = application order).
+
+        Delegated to ContextualizeReader: a simple method is one node, while the llm method is the
+        externalised prep → ForEach(llm chain [+ keep_raw]) → apply topology whose chain is walked
+        out of the loop body and whose apply is skipped.
+        """
+        return ContextualizeReader.stack(ordered)
 
     @classmethod
     def __body_classify(cls, body: GroupNodeBlob) -> ActionNodeBlob | None:

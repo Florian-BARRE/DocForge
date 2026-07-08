@@ -15,14 +15,44 @@ filtering there hides internal kinds from BOTH the lean and full palette while `
 via the palette). No blob/graph change — discovery output only.
 
 **Kinds marked `SELECTABLE=False`:** metagen `chunk_prep · document_prep · chunk_apply · document_apply
-· metagen_skip`; contextualize `llm_prep · llm_apply · keep_raw`. These are stage-builder wiring
+· metagen_skip`; contextualize `llm_apply · keep_raw` (post-P6b: `llm_prep` was renamed to `llm` and
+made `SELECTABLE=True` — it IS the user-pickable method now). These are stage-builder wiring
 (prep/apply nodes + fail-soft ForEach terminals), never a user-picked stage METHOD. Test:
 `test_design_surface.py::test_palette_hides_internal_kinds_but_keeps_them_registered` (palette disjoint
 from the internal set, each internal kind still `NodeRegistry.get(...).describe()`-able).
 
-**Contextualize LLM externalization (P6a, done — P6b pending):** mirrors P5 metagen. The inline
-`(contextualize, llm)` monolith (`nodes/contextualize/llm/`) is being externalised into
+**Contextualize LLM externalization (P6b, DONE):** mirrors P5 metagen, adapted to a STACK position.
+The inline `(contextualize, llm)` monolith was DELETED; the prep IS now the canonical
+`(contextualize, llm)` (kind renamed `llm_prep→llm`, `SELECTABLE=True`, lives in `nodes/contextualize/llm/`,
+`llm_prep/` dir removed). The stage layer emits, per llm stack position,
 `prep → ForEach(over=prep.prompts, item=prompt, body=generic-llm chain [+ keep_raw]) → llm_apply`.
+- `StackMethod.chain: ChainSpec | None` (models.py) — None for simple methods (doc_meta/breadcrumb/
+  sliding), the generic-`llm` chain for the llm method, edited via **SetStack** (NOT a position-addressed
+  SetChain). `ChainSpec` MOVED from state.py → models.py (state re-exports it) so StackMethod can carry it
+  without a models↔state import cycle.
+- `stages/contextualize_stack.py` (`StackPosition` dataclass + `ContextualizeStack.positions(state)`) is
+  the richer successor of the deleted `contextualize_ids`, consumed by BOTH `SegmentBuilder.__contextualize`
+  (node emission) and `IngestAssembler.__bind_stack` (spine threading). Ids: `ctx_llm{,_loop,_apply}`,
+  `ctx_llm_2{...}` — llm position repeatable (two situating passes legit). `apply.chunks` binds the SAME
+  incoming chunks as the prep (like metagen's meta_chunk_apply), `apply.completions=FromNode(loop,"items")`.
+- `stages/contextualize_body.py` (`ContextualizeBodyBuilder`) = MetagenBodyBuilder sibling: llm NON-scored
+  (OnFailure-only, no ScoreBelow), `step_inputs={"prompt": FromGroupInput("prompt")}`, `keep_raw` terminal
+  wired OnFailure off the last step when on_error==keep_raw. Body id `ctx_path`, keep id `keep`.
+- `stages/contextualize_read.py` (`ContextualizeReader`) walks the stack: an `llm` prep starts a position,
+  finds its loop (`over.node_id==prep.id`), walks the generic-`llm` chain via `ChainWalker` (family `{"llm"}`;
+  keep_raw is family contextualize → naturally excluded), SKIPS the paired `llm_apply`. `reader.__stack`
+  delegates to it. `on_error` round-trips through the PREP config (not re-derived from body).
+- Compiler `__set_stack` resolves each llm method's chain via `ChainRules` (complete_steps +
+  drop_unscored_thresholds + duplicate_unique + unknown-kind). View surfaces one ChainView per llm method.
+  Round-trip idempotent for 1-step AND 2-step llm stacks (`test_stack.py`).
+- **BYTE-SAFE:** default stack is doc_meta+breadcrumb (no llm) → `default_blob.json` UNCHANGED (simple-method
+  path still emits exactly `ctx_meta`/`ctx_breadcrumb`). REAL-VIEW parity proven with a fake llm that ECHOES
+  the document view (section + full scope) — the prep's view flows through prep→chain→apply.
+
+**(historical) Contextualize LLM externalization (P6a):** the intermediate step — the monolith STILL
+existed and the prep used a TEMPORARY kind `llm_prep` (byte-safe: NodeRegistry rejects a duplicate kind, so
+the replacement couldn't register as `llm` while the monolith held it). P6b did the atomic delete+rename.
+The prep → ForEach shape was:
 The chain unit is the GENERIC `llm` family (`LlmChatConsumes{prompt} → LlmChatProduces{completion}`),
 NOT a dedicated contextualize kind — contextualize is strictly 1 chunk → 1 prompt → 1 completion, so the
 apply node joins by POSITION (`zip(chunks, completions, strict=True)`), no chunk_id keying (unlike

@@ -21,13 +21,11 @@ from shared_libs.pipelines.build.chain import ChainFragmentBuilder, ChainStepSpe
 from shared_libs.pipelines.ingest.nodes.metagen.base import MetagenOnError
 
 # ====== Local Project Imports ======
+from .contextualize_body import ContextualizeBodyBuilder
+from .contextualize_stack import ContextualizeStack
 from .enrich_body import EnrichBodyBuilder
 from .metagen_body import MetagenBodyBuilder
 from .state import ChainSpec, PipelineState
-
-# Human ids for the contextualize stack nodes, so the stock stack keeps its historical ids.
-_CTX_IDS = {"doc_meta": "ctx_meta", "breadcrumb": "ctx_breadcrumb", "sliding": "ctx_sliding",
-            "llm": "ctx_llm"}
 
 
 @dataclass(frozen=True)
@@ -106,19 +104,6 @@ class SegmentBuilder:
             segments.append(cls.__embed(state))
         segments.append(cls.__single("deliver", "bundle", "deliver", "bundle", {}, "bundle"))
         return segments
-
-    @classmethod
-    def contextualize_ids(cls, state: PipelineState) -> list[str]:
-        """The node ids of the contextualize stack, in order (unique per method occurrence)."""
-        ids: list[str] = []
-        for method in state.stack:
-            base = _CTX_IDS.get(method.kind, f"ctx_{method.kind}")
-            candidate, suffix = base, 2
-            while candidate in ids:
-                candidate = f"{base}_{suffix}"
-                suffix += 1
-            ids.append(candidate)
-        return ids
 
     @classmethod
     def __single(
@@ -260,16 +245,44 @@ class SegmentBuilder:
 
     @classmethod
     def __contextualize(cls, state: PipelineState) -> Segment:
-        """The ordered contextualize stack segment (each method chained onto the previous)."""
-        ids = cls.contextualize_ids(state)
-        nodes = [
-            ActionNodeBlob(id=nid, family="contextualize", kind=method.kind, config=dict(method.config))
-            for nid, method in zip(ids, state.stack, strict=True)
-        ]
-        chain = [Transition(from_node_id=a, to_node_id=b) for a, b in zip(ids, ids[1:], strict=False)]
+        """The ordered contextualize stack segment — simple methods are one node, llm externalises.
+
+        A simple method (doc_meta, breadcrumb, sliding) is a single node. The llm method emits a
+        prep → ForEach(over=prep.prompts, item=prompt, generic-llm chain [+ keep_raw]) → apply, with
+        internal prep→loop and loop→apply edges; each slot's ``tail`` is then chained onto the next
+        slot's ``head``. The chunks spine is threaded centrally by the assembler off each ``output``.
+        """
+        positions = ContextualizeStack.positions(state)
+        nodes: list = []
+        transitions: list[Transition] = []
+        # 1. Emit each slot's node(s) + its own internal transitions.
+        for position in positions:
+            if not position.is_llm:
+                nodes.append(ActionNodeBlob(
+                    id=position.head_id, family="contextualize", kind=position.method.kind,
+                    config=dict(position.method.config),
+                ))
+                continue
+            nodes.append(ActionNodeBlob(
+                id=position.head_id, family="contextualize", kind="llm",
+                config=dict(position.method.config),
+            ))
+            nodes.append(ForEachNodeBlob(
+                id=position.loop_id,
+                over=FromNode(node_id=position.head_id, field_name="prompts"),
+                item_field="prompt",
+                max_concurrency=int(position.method.config.get("max_concurrency", 4)),
+                body=ContextualizeBodyBuilder.build(position.chain, position.on_error),
+            ))
+            nodes.append(ActionNodeBlob(id=position.apply_id, family="contextualize", kind="llm_apply"))
+            transitions.append(Transition(from_node_id=position.head_id, to_node_id=position.loop_id))
+            transitions.append(Transition(from_node_id=position.loop_id, to_node_id=position.apply_id))
+        # 2. Chain each slot's tail onto the next slot's head.
+        for previous, current in zip(positions, positions[1:], strict=False):
+            transitions.append(Transition(from_node_id=previous.tail_id, to_node_id=current.head_id))
         return Segment(
-            key="contextualize", head=ids[0], exits=[ids[-1]], nodes=nodes, transitions=chain,
-            output=FromNode(node_id=ids[-1], field_name="chunks"),
+            key="contextualize", head=positions[0].head_id, exits=[positions[-1].tail_id],
+            nodes=nodes, transitions=transitions, output=positions[-1].output,
         )
 
 

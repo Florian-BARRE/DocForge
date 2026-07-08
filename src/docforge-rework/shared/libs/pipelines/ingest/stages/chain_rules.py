@@ -99,6 +99,38 @@ class ChainRules:
         return notices
 
     @classmethod
+    def resolve(
+        cls, family: str, steps: list[ChainStep]
+    ) -> tuple[list[ChainStep] | None, list[str]]:
+        """Apply the full family chain rules to a proposed non-empty chain.
+
+        Guards unknown kinds, then completes each step's config build-safe, drops score thresholds
+        on a non-scored family (failure-only escalation) and flags repeated single-use kinds. Shared
+        by the slot-less stage chains (parse / metagen) and the contextualize stack's llm chain.
+
+        Args:
+            family (str): The registry family every step draws its kind from.
+            steps (list[ChainStep]): The proposed chain steps (assumed non-empty by the caller).
+
+        Returns:
+            tuple[list[ChainStep] | None, list[str]]: The completed steps and the notices, OR
+            ``(None, notices)`` when a step kind is unknown — the caller must leave the chain
+            unchanged, since completing an unknown kind would call ``NodeRegistry.get`` and RAISE.
+        """
+        # 1. An unknown kind is DATA, not an exception — signal "leave unchanged" with a notice.
+        unknown = cls.unknown_kind_notices(family, steps)
+        if unknown:
+            return None, unknown
+        # 2. Complete build-safe, drop unscored thresholds, flag single-use repeats.
+        notices: list[str] = []
+        completed = cls.complete_steps(family, steps)
+        completed, threshold_notice = cls.drop_unscored_thresholds(family, completed)
+        if threshold_notice:
+            notices.append(threshold_notice)
+        notices.extend(cls.duplicate_unique_notices(family, completed))
+        return completed, notices
+
+    @classmethod
     def family_scored(cls, family: str) -> bool:
         """Whether a family's producers are score-bearing (gates ScoreBelow escalation)."""
         kinds = NodeRegistry.kinds(family)

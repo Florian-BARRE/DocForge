@@ -18,6 +18,7 @@ from shared_libs.pipelines.base import Binding, FromNode, FromRunInput, Transiti
 from shared_libs.pipelines.build.blob import GroupNodeBlob
 
 # ====== Local Project Imports ======
+from .contextualize_stack import ContextualizeStack, StackPosition
 from .segments import Segment, SegmentBuilder
 from .state import PipelineState
 
@@ -64,11 +65,6 @@ class IngestAssembler:
                              bindings=bindings)
 
     @classmethod
-    def contextualize_ids(cls, state: PipelineState) -> list[str]:
-        """The node ids of the contextualize stack, in order (unique per method occurrence)."""
-        return SegmentBuilder.contextualize_ids(state)
-
-    @classmethod
     def __bindings(cls, state: PipelineState, segments: list[Segment]) -> dict[str, dict]:
         """Thread every stage's data spine — each consumer reads the nearest enabled producer."""
         # 1. The spine anchors — read straight from each stage segment's own ``output`` Binding, so a
@@ -77,7 +73,7 @@ class IngestAssembler:
         by_key = {segment.key: segment for segment in segments}
         ir_pre_enrich = (by_key.get("render") or by_key["parse"]).output
         ir_final = by_key["enrich"].output if "enrich" in by_key else ir_pre_enrich
-        ctx_ids = cls.contextualize_ids(state)
+        positions = ContextualizeStack.positions(state)
         chunks_pre_meta = (by_key.get("contextualize") or by_key["chunk"]).output
         chunks_final = by_key["metagen_chunk"].output if "metagen_chunk" in by_key else chunks_pre_meta
 
@@ -95,7 +91,7 @@ class IngestAssembler:
             bindings["apply"] = {"ir": ir_pre_enrich,
                                  "entries": FromNode(node_id="per_figure", field_name="items")}
         bindings["chunk"] = {"ir": ir_final}
-        cls.__bind_stack(bindings, state, ctx_ids, by_key["chunk"].output)
+        cls.__bind_stack(bindings, positions, by_key["chunk"].output)
         if state.metachunk_on:
             # prep reads the pre-meta chunks + contract; apply merges the loop's values back onto
             # those same pre-meta chunks. chunks_final then reads apply's output.
@@ -139,18 +135,28 @@ class IngestAssembler:
 
     @classmethod
     def __bind_stack(
-        cls, bindings: dict[str, dict], state: PipelineState, ctx_ids: list[str],
-        chunk_output: Binding,
+        cls, bindings: dict[str, dict], positions: list[StackPosition], chunk_output: Binding,
     ) -> None:
-        """Chain the contextualize stack onto the chunker and thread doc_meta's source."""
+        """Chain the contextualize stack onto the chunker, thread doc_meta's source and the llm apply.
+
+        Each slot's ``head`` reads the previous slot's chunks; the next slot then reads THIS slot's
+        ``output``. For an llm slot the apply additionally merges the loop's completions back onto the
+        SAME incoming chunks its prep read (like metagen's apply binds the pre-meta chunks) — the join
+        is positional, so the incoming chunks and the loop's items line up one-to-one.
+        """
         previous: Binding = chunk_output
-        for ctx_id, method in zip(ctx_ids, state.stack, strict=True):
+        for position in positions:
             slots: dict = {"chunks": previous}
             # doc_meta additionally renders the run's declared document metadata.
-            if method.kind == "doc_meta":
+            if position.method.kind == "doc_meta":
                 slots["source"] = FromRunInput(field_name=_SOURCE)
-            bindings[ctx_id] = slots
-            previous = FromNode(node_id=ctx_id, field_name="chunks")
+            bindings[position.head_id] = slots
+            if position.is_llm:
+                bindings[position.apply_id] = {
+                    "chunks": previous,
+                    "completions": FromNode(node_id=position.loop_id, field_name="items"),
+                }
+            previous = position.output
 
     @classmethod
     def __bundle_bindings(

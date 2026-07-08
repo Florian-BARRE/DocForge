@@ -1,15 +1,14 @@
 """The externalised llm-contextualize topology (prep -> ForEach(llm chain [+ keep_raw]) -> llm_apply),
-the shape P6b will make the contextualize LLM stage emit.
+the shape the contextualize LLM stage emits.
 
-Unlike the metagen topology (whose monolith was deleted), the llm contextualize MONOLITH still exists
-in P6a, so parity is proven DIRECTLY: the same fake situating function drives both a monolith node and
-the new topology, and the grown chunk.context must be identical. A FAKE llm kind returns canned
-completions (it recovers the chunk text from the prompt the prep built), so the ONLY thing under test
-is the new topology. on_error is verified as a GRAPH EDGE (a keep_raw terminal vs a propagating item
-failure), and the prep is verified to emit one prompt per chunk, in order, never skipping.
+The old monolithic contextualizer node is GONE (P6b deleted it and made the prep the canonical
+(contextualize, llm)), so parity is proven against a REFERENCE reconstructed from the same fake
+situating function the monolith used (a chunk that carries the fail sentinel stays raw, every other
+chunk grows the canned snippet). A FAKE llm kind returns canned completions (it recovers the chunk
+text from the prompt the prep built), so the ONLY thing under test is the new topology. on_error is
+verified as a GRAPH EDGE (a keep_raw terminal vs a propagating item failure), and the prep is verified
+to emit one prompt per chunk, in order, never skipping.
 """
-
-import pytest
 
 from shared_libs.pipelines.base import (
     FromGroupInput,
@@ -21,17 +20,10 @@ from shared_libs.pipelines.build import PipelineBuilder
 from shared_libs.pipelines.build.blob import ActionNodeBlob, GroupNodeBlob
 from shared_libs.pipelines.build.chain import ChainFragmentBuilder, ChainStepSpec
 from shared_libs.pipelines.engine import FlowEngine
-from shared_libs.pipelines.ingest.nodes.contextualize.base import ContextualizerConsumes
 from shared_libs.pipelines.ingest.nodes.contextualize.llm import (
     ContextualizerLlmConfig,
+    ContextualizerLlmConsumes,
     ContextualizerLlmNode,
-)
-from shared_libs.pipelines.ingest.nodes.contextualize.llm_prep.config import (
-    ContextualizerLlmPrepConfig,
-)
-from shared_libs.pipelines.ingest.nodes.contextualize.llm_prep.core import (
-    ContextualizerLlmPrepConsumes,
-    ContextualizerLlmPrepNode,
 )
 from shared_libs.pipelines.nodes.llm.base import BaseLlmChatNode, LlmChatProduces
 from shared_libs.pipelines.registry import NodeRegistry
@@ -58,12 +50,16 @@ SAFE_CHUNKS = [chunk for chunk in CHUNKS if "sharply" not in chunk.text]
 
 FAIL_SENTINEL = "sharply"  # a chunk the fake situating call refuses (a simulated 503)
 FAKE_LLM_KIND = "test_ctx_topology_fake_llm"
-FAKE_MONOLITH_KIND = "test_ctx_topology_fake_monolith"
 
 
 def _situate(chunk_text: str) -> str:
     """The canned situating snippet — depends on the CHUNK only, so a mis-order is detectable."""
     return f"SITUATED[{chunk_text[:8]}]"
+
+
+def _reference_contexts(chunks: list[Chunk]) -> list[str]:
+    """The grown context the OLD monolith would produce: the snippet per chunk, raw on the sentinel."""
+    return ["" if FAIL_SENTINEL in chunk.text else _situate(chunk.text) for chunk in chunks]
 
 
 def _chunk_text_of(prompt) -> str:
@@ -95,22 +91,8 @@ class FakeLlmNode(BaseLlmChatNode):
         return LlmChatProduces(completion=Completion(text=_situate(chunk_text)))
 
 
-@NodeRegistry.register("contextualize")
-class FakeMonolithNode(ContextualizerLlmNode):
-    """The OLD monolith with the same canned situating function — the parity reference."""
-
-    KIND = FAKE_MONOLITH_KIND
-    NAME = "F"
-    SUMMARY = "t"
-
-    async def _situate(self, document: str, chunk_text: str) -> str:
-        if FAIL_SENTINEL in chunk_text:
-            raise RuntimeError("model 503")
-        return _situate(chunk_text)
-
-
 # ---------------------------------------------------------------------------
-# Blob assembly — the new topology as a dict blob (what P6b will emit), body inlined here.
+# Blob assembly — the new topology as a dict blob (what the stage emits), body inlined here.
 # ---------------------------------------------------------------------------
 
 
@@ -140,13 +122,13 @@ def _body(chain_steps: list[dict], keep_raw: bool) -> GroupNodeBlob:
 
 
 def _blob(prep_config: dict, keep_raw: bool, chain_steps: list[dict] | None = None) -> dict:
-    """prep(llm_prep) -> ForEach(over=prep.prompts, item=prompt, llm chain [+ keep_raw]) -> llm_apply."""
+    """prep(llm) -> ForEach(over=prep.prompts, item=prompt, llm chain [+ keep_raw]) -> llm_apply."""
     body = _body(chain_steps or [{"kind": FAKE_LLM_KIND}], keep_raw)
     return {
         "node_type": "group",
         "id": "contextualize_llm",
         "nodes": [
-            {"node_type": "action", "id": "prep", "family": "contextualize", "kind": "llm_prep",
+            {"node_type": "action", "id": "prep", "family": "contextualize", "kind": "llm",
              "config": prep_config},
             {"node_type": "foreach", "id": "loop", "item_field": "prompt", "max_concurrency": 4,
              "over": {"source": "node", "node_id": "prep", "field_name": "prompts"},
@@ -170,14 +152,6 @@ async def _run_new(blob: dict, chunks: list[Chunk]) -> object:
     group = PipelineBuilder().build(blob)
     output, _record = await FlowEngine().execute(group, {"chunks": chunks})
     return output
-
-
-async def _run_monolith(scope: str, chunks: list[Chunk], on_error: str = "keep_raw") -> list[Chunk]:
-    config = ContextualizerLlmConfig(
-        base_url="http://fake", model="fake", document_scope=scope, window_chunks=1, on_error=on_error
-    )
-    out = await FakeMonolithNode(id="m", config=config).run(ContextualizerConsumes(chunks=chunks))
-    return out.chunks
 
 
 # ---------------------------------------------------------------------------
@@ -210,24 +184,23 @@ def test_fallback_chain_topology_builds_and_validates() -> None:
 
 
 async def test_prep_emits_one_prompt_per_chunk_in_order() -> None:
-    prep = ContextualizerLlmPrepNode(id="p", config=ContextualizerLlmPrepConfig(document_scope="section"))
-    out = await prep.run(ContextualizerLlmPrepConsumes(chunks=CHUNKS))
+    prep = ContextualizerLlmNode(id="p", config=ContextualizerLlmConfig(document_scope="section"))
+    out = await prep.run(ContextualizerLlmConsumes(chunks=CHUNKS))
     assert len(out.prompts) == len(CHUNKS)
     # Each prompt carries its OWN chunk's text, in order — the join key the apply node zips on.
     assert [_chunk_text_of(prompt) for prompt in out.prompts] == [chunk.text for chunk in CHUNKS]
 
 
 # ---------------------------------------------------------------------------
-# 3. Parity with the monolith — same grown chunk.context (1-step chain, order-correct, keep_raw).
+# 3. Parity with the reconstructed reference — same grown chunk.context (order-correct, keep_raw).
 # ---------------------------------------------------------------------------
 
 
-async def test_topology_matches_monolith_section_scope() -> None:
-    """1-step chain + order-correct application + keep_raw in one comparison: old == new."""
-    old = await _run_monolith("section", CHUNKS)
+async def test_topology_matches_reference_section_scope() -> None:
+    """1-step chain + order-correct application + keep_raw in one comparison: new == reference."""
     new = await _run_new(_blob({"document_scope": "section", "window_chunks": 1}, keep_raw=True), CHUNKS)
     assert new is not None
-    assert [chunk.context for chunk in new.chunks] == [chunk.context for chunk in old]
+    assert [chunk.context for chunk in new.chunks] == _reference_contexts(CHUNKS)
     # order-correct: each chunk grew with ITS OWN snippet (a mis-order would swap these).
     assert new.chunks[0].context == "SITUATED[Cats are]"
     assert new.chunks[1].context == "SITUATED[They sle]"
@@ -235,10 +208,9 @@ async def test_topology_matches_monolith_section_scope() -> None:
     assert new.chunks[2].context == ""
 
 
-async def test_topology_matches_monolith_full_scope() -> None:
-    old = await _run_monolith("full", SAFE_CHUNKS)
+async def test_topology_matches_reference_full_scope() -> None:
     new = await _run_new(_blob({"document_scope": "full"}, keep_raw=True), SAFE_CHUNKS)
-    assert [chunk.context for chunk in new.chunks] == [chunk.context for chunk in old]
+    assert [chunk.context for chunk in new.chunks] == _reference_contexts(SAFE_CHUNKS)
 
 
 # ---------------------------------------------------------------------------
@@ -255,10 +227,6 @@ async def test_keep_raw_survives_a_failed_chunk() -> None:
 
 async def test_fail_propagates_as_an_item_failure() -> None:
     """fail: no keep_raw terminal, so the failed chunk fails the ForEach item and the whole run."""
-    # The monolith raises in strict mode...
-    with pytest.raises(RuntimeError):
-        await _run_monolith("section", CHUNKS, on_error="fail")
-    # ...and the topology without a keep_raw terminal fails the run loudly.
     group = PipelineBuilder().build(_blob({"document_scope": "section"}, keep_raw=False))
     output, record = await FlowEngine().execute(group, {"chunks": CHUNKS})
     assert output is None

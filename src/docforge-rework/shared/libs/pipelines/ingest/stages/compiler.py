@@ -32,6 +32,7 @@ from .models import (
     SetProvider,
     SetStack,
     SetStageConfig,
+    StackMethod,
     StageAction,
 )
 from .reader import StateReader
@@ -289,35 +290,52 @@ class StageCompiler(LoggerClass):
         if not steps:
             notices.append(f"stage '{stage}' needs at least one provider — kept the current chain")
             return
-        # 2. An unknown step kind is DATA, not an exception — leave the chain unchanged with a notice.
-        unknown = ChainRules.unknown_kind_notices(family, steps)
-        if unknown:
-            notices.extend(unknown)
+        # 2. Apply the shared family chain rules; an unknown kind leaves the chain unchanged.
+        completed, chain_notices = ChainRules.resolve(family, steps)
+        notices.extend(chain_notices)
+        if completed is None:
             return
-        # 3. Complete each step's config build-safe, then apply the family-level chain rules (structgen
-        #    is non-scored, so drop_unscored_thresholds strips any score_below with a notice).
-        completed = ChainRules.complete_steps(family, steps)
-        completed, threshold_notice = ChainRules.drop_unscored_thresholds(family, completed)
-        if threshold_notice:
-            notices.append(threshold_notice)
-        notices.extend(ChainRules.duplicate_unique_notices(family, completed))
         setattr(state, field, ChainSpec(family=family, steps=completed))
 
     def __set_stack(
         self, state: PipelineState, stage: str, steps: list, notices: list[str]
     ) -> None:
-        """Rebuild the ordered contextualize stack (empty disables the stage)."""
+        """Rebuild the ordered contextualize stack (empty disables the stage).
+
+        Each method's config is completed build-safe (the llm method's config edits its PREP node).
+        The llm method additionally carries a generic-llm chain, resolved through the shared chain
+        rules (build-safe steps, non-scored so any score threshold is dropped, single-use guards).
+        """
         if stage != StageKey.CONTEXTUALIZE:
             notices.append(f"stage '{stage}' has no stack to set")
             return
-        state.stack = [
-            step.model_copy(
-                update={"config": {**ChainRules.reset_config("contextualize", step.kind), **step.config}}
-            )
-            for step in steps
-        ]
+        resolved: list = []
+        for step in steps:
+            method = step.model_copy(update={
+                "config": {**ChainRules.reset_config("contextualize", step.kind), **step.config}
+            })
+            if step.kind == "llm":
+                method = self.__resolve_llm_chain(method, notices)
+            resolved.append(method)
+        state.stack = resolved
         if not steps:
             notices.append("contextualize stack emptied — chunks carry no added context")
+
+    @staticmethod
+    def __resolve_llm_chain(method: StackMethod, notices: list[str]) -> StackMethod:
+        """Apply the generic-llm family chain rules to an llm method's chain (non-scored, failure-only).
+
+        An unknown step kind is DATA — the chain is left as proposed with a notice (completing it
+        would raise). Otherwise the steps are completed build-safe, any score threshold is stripped
+        (llm is non-scored) and single-use repeats are flagged before the build rejects them.
+        """
+        chain = method.chain or ChainSpec(family="llm", steps=[ChainStep(kind="openai_compatible")])
+        chain_steps = chain.steps or [ChainStep(kind="openai_compatible")]
+        completed, chain_notices = ChainRules.resolve("llm", chain_steps)
+        notices.extend(chain_notices)
+        # An unknown kind (completed is None) keeps the proposed steps as-is; else the completed ones.
+        steps = chain_steps if completed is None else completed
+        return method.model_copy(update={"chain": ChainSpec(family="llm", steps=steps)})
 
 
 __all__ = ["StageCompiler"]

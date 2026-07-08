@@ -1,55 +1,49 @@
 # ====== Code Summary ======
-# Config of the llm contextualizer — Anthropic-style contextual retrieval: an LLM writes
-# a short situating snippet per chunk. The DOCUMENT SCOPE decides what the model reads to situate
-# the chunk (cost/quality trade-off), with explicit fallback rules; degradation policy decides
-# what a per-chunk failure does.
+# ContextualizerLlmConfig — the config of the (contextualize, llm) method, which doubles as the
+# contextualize LLM STAGE config the studio edits. It carries everything the node needs to SHAPE the
+# situating prompts it emits (the situating instruction and the DOCUMENT SCOPE rules that decide what
+# each chunk's view contains) PLUS the two STAGE-EXECUTION knobs — ``max_concurrency`` and
+# ``on_error`` — that are graph mechanics: the model call is externalised into a generic-llm ForEach
+# chain, so this node makes NO model call and holds NO endpoint (the endpoint + generation params live
+# on the llm chain steps the ForEach body runs). ``max_concurrency`` and ``on_error`` are read by the
+# stage assembler to shape the ForEach (its concurrency) and its fail-soft keep_raw terminal.
 
 # ====== Third-Party Library Imports ======
 from pydantic import Field
 
-# ====== Internal Project Imports ======
-from shared_libs.pipelines.nodes.openai_compat import OpenAICompatConfig
-
 # ====== Local Project Imports ======
-from ..base import (
-    DEFAULT_SITUATE_PROMPT,
-    BaseContextualizerConfig,
-    DocumentScope,
-    OnChunkError,
-)
+from ..base import DEFAULT_SITUATE_PROMPT, BaseContextualizerConfig, DocumentScope, OnChunkError
 
 
-class ContextualizerLlmConfig(BaseContextualizerConfig, OpenAICompatConfig):
-    """Generation + scope rules of the situating model (endpoint fields inherited)."""
+class ContextualizerLlmConfig(BaseContextualizerConfig):
+    """The situating instruction + document-scope rules, plus the two stage-execution knobs."""
 
-    model: str = Field(description="Model used to situate the chunks.")
     system_prompt: str = Field(
         default=DEFAULT_SITUATE_PROMPT,
-        description="The situating instruction (the answer becomes the chunk's context piece).",
+        description="The situating instruction (the model's answer becomes the chunk's context piece).",
     )
-    max_tokens: int = Field(default=120, gt=0, description="Generation cap for the situating snippet.")
-    temperature: float = Field(default=0.0, ge=0.0, le=2.0, description="Sampling temperature.")
     document_scope: DocumentScope = Field(
         default=DocumentScope.SECTION,
         description="What the model reads: full document / the chunk's section (falls back to "
         "window when the chunk has no section) / ± window_chunks neighbours.",
     )
     window_chunks: int = Field(
-        default=2, ge=1, description="Neighbours on each side for the window scope (and the "
-        "section fallback)."
+        default=2, ge=1,
+        description="Neighbours on each side for the window scope (and the section fallback).",
     )
     max_document_words: int = Field(
-        default=4000,
-        gt=0,
+        default=4000, gt=0,
         description="Hard cap on the document text handed to the model (truncated from the "
         "start, where documents introduce themselves).",
     )
     max_concurrency: int = Field(
-        default=4, ge=1, description="Simultaneous model calls (internal bound)."
+        default=4, ge=1,
+        description="Stage knob (read by the assembler): how many prompts the ForEach runs at once.",
     )
     on_error: OnChunkError = Field(
         default=OnChunkError.KEEP_RAW,
-        description="Per-chunk failure policy: keep the chunk raw (default) or fail the node.",
+        description="Stage knob (read by the assembler): keep_raw wires a fail-soft terminal so a "
+        "failed chunk stays raw; fail lets the failure propagate as an item failure.",
     )
 
 

@@ -112,6 +112,11 @@ class StageViewer:
         # Metagen stages carry a structgen ladder alongside their prep config.
         if key in cls.__METAGEN_CHAINS:
             return [cls.__metagen_chain_view(key, state)]
+        # Contextualize is a stack, but each llm method carries its own generic-llm chain: surface one
+        # ChainView per llm method so the UI shows its available kinds + current steps (edited via
+        # SetStack, so these views are informational — the chain lives on the StackMethod).
+        if key == StageKey.CONTEXTUALIZE:
+            return cls.__stack_chain_views(state)
         if key != StageKey.ENRICH:
             return []
         views: list[ChainView] = []
@@ -140,6 +145,23 @@ class StageViewer:
             family=family, available=NodeRegistry.kinds(family),
             steps=list(chain.steps),
         )
+
+    @classmethod
+    def __stack_chain_views(cls, state: PipelineState) -> list[ChainView]:
+        """One ChainView per llm stack method — its generic-llm chain + the family's available kinds."""
+        views: list[ChainView] = []
+        for index, method in enumerate(state.stack):
+            if method.kind != "llm":
+                continue
+            chain = method.chain
+            views.append(ChainView(
+                slot=f"contextualize.{index}",
+                title="LLM context chain",
+                description="The fallback chain the situating model call escalates through.",
+                family="llm", available=NodeRegistry.kinds("llm"),
+                steps=list(chain.steps) if chain else [],
+            ))
+        return views
 
     @classmethod
     def __metagen_chain_view(cls, key: str, state: PipelineState) -> ChainView:

@@ -90,7 +90,7 @@ def test_palette_hides_internal_kinds_but_keeps_them_registered() -> None:
     palette = {family.family: {node.kind for node in family.nodes} for family in IngestPipeline.palette().families}
     internal = {
         "metagen": {"chunk_prep", "document_prep", "chunk_apply", "document_apply", "metagen_skip"},
-        "contextualize": {"llm_prep", "llm_apply", "keep_raw"},
+        "contextualize": {"llm_apply", "keep_raw"},
     }
     for family, kinds in internal.items():
         # 1. Hidden from the palette's stage-method picker.

@@ -44,6 +44,25 @@ class ChainStep(BaseModel):
     )
 
 
+class ChainSpec(BaseModel):
+    """A fallback chain's canonical state — its family and its ordered steps.
+
+    Defined here (beside ChainStep) so a StackMethod can carry its own chain without the models
+    module importing the state module (which would be a cycle). The state module re-exports it.
+
+    Attributes:
+        family (str): The model family the chain draws from (ocr / vlm / llm).
+        steps (list[ChainStep]): The ordered providers of the chain (cheap → robust).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    family: str = Field(description="The model family the chain draws from (ocr / vlm / llm).")
+    steps: list[ChainStep] = Field(
+        default_factory=list, description="The ordered providers of the chain."
+    )
+
+
 class ChainView(BaseModel):
     """
     A fallback chain the user can build at one model-call site of a stage.
@@ -75,15 +94,26 @@ class StackMethod(BaseModel):
     """
     One method of a stackable stage — a node in the ordered composition.
 
+    A simple method (doc_meta, breadcrumb, sliding) compiles to a single node and carries no chain.
+    The ``llm`` method compiles to a ``prep → ForEach(llm chain [+ keep_raw]) → apply`` topology, so
+    it additionally carries the generic-``llm`` fallback ``chain`` its ForEach body runs — edited in
+    place through SetStack (the chain is part of the method, not a separate position-addressed edit).
+
     Attributes:
         kind (str): Registry kind within the stack's family (e.g. ``doc_meta``, ``breadcrumb``).
-        config (dict): The method's config.
+        config (dict): The method's config (for ``llm``, the prep's view/scope + stage knobs).
+        chain (ChainSpec | None): The method's model chain — ``None`` for a simple method, the
+            generic-``llm`` chain the ForEach body runs for the ``llm`` method.
     """
 
     model_config = ConfigDict(extra="forbid")
 
     kind: str = Field(description="Registry kind within the stack's family.")
     config: dict[str, Any] = Field(default_factory=dict, description="The method's config.")
+    chain: ChainSpec | None = Field(
+        default=None,
+        description="The method's model chain (llm method only; null for a simple method).",
+    )
 
 
 class StageView(BaseModel):
@@ -236,6 +266,7 @@ type StageAction = Annotated[
 
 __all__ = [
     "ChainStep",
+    "ChainSpec",
     "ChainView",
     "StackMethod",
     "StageView",

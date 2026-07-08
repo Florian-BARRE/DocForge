@@ -105,3 +105,4 @@ FROZEN legacy — don't review it unless explicitly asked.
 > Component-scoped memory lives with the component agents: **mcp** (`agent-memory/mcp/`) for the
 > `src/mcp/` HTTP-client invariant + REST endpoint map; **bge-server** (`agent-memory/bge-server/`) for
 > the `src/bge_server/` model host. This file holds the cross-cutting product rules.
+- [Stages package method-order convention](stages-method-order.md) — static builder classes put the public entrypoint first, privates below; do not flag as a python.md violation

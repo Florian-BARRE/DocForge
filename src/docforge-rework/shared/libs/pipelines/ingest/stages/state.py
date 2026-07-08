@@ -11,18 +11,7 @@
 from pydantic import BaseModel, ConfigDict, Field
 
 # ====== Local Project Imports ======
-from .models import ChainStep, StackMethod
-
-
-class ChainSpec(BaseModel):
-    """A fallback chain's canonical state — its family and its ordered steps."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    family: str = Field(description="The model family the chain draws from (ocr / vlm / llm).")
-    steps: list[ChainStep] = Field(
-        default_factory=list, description="The ordered providers of the chain."
-    )
+from .models import ChainSpec, ChainStep, StackMethod
 
 
 class PipelineState(BaseModel):
