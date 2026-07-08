@@ -5,7 +5,7 @@
 # relationship over them, so keeping every artefact under one base keeps that check honest.
 
 # ====== Third-Party Library Imports ======
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class Artifact(BaseModel):
@@ -18,4 +18,19 @@ class Artifact(BaseModel):
     """
 
 
-__all__ = ["Artifact"]
+class NodeConfig(BaseModel):
+    """
+    Base class for a node's CONFIG face (the serialized, UI-editable knobs).
+
+    Lives in public_models (the bottom vocabulary layer) so config value-objects that are also
+    embedded in artefacts (e.g. OpenAICompatConfig, carried by a GenerationRequest) need no
+    upward import into the pipelines layer.
+
+    extra="forbid" is the point: a typo in a stored pipeline blob ("do_ocrr") must fail the build
+    loudly instead of being silently ignored — a config the user believes is set MUST be applied.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+
+__all__ = ["Artifact", "NodeConfig"]

@@ -43,6 +43,12 @@ from .chunk import Chunk
 # ---------------------- Metagen (generated metadata) ---------------------- #
 from .metagen import GeneratedDocumentMeta
 
+# ---------------------- OpenAI-compatible endpoint (shared config vocabulary) ---------------------- #
+from .endpoint import OpenAICompatConfig
+
+# ---------------------- Structured generation (structgen capability I/O) ---------------------- #
+from .structgen import GeneratedValues, GenerationField, GenerationRequest
+
 # ---------------------- Embeddings (vectors, chunk-linked) ---------------------- #
 from .embed import ChunkEmbeddings, ChunkVectors, SparseVector
 
@@ -82,6 +88,10 @@ __all__ = [
     "EnrichmentEntry",
     "Chunk",
     "GeneratedDocumentMeta",
+    "OpenAICompatConfig",
+    "GenerationField",
+    "GenerationRequest",
+    "GeneratedValues",
     "SparseVector",
     "ChunkVectors",
     "ChunkEmbeddings",

@@ -21,16 +21,10 @@ from typing import Annotated, Literal
 # ====== Third-Party Library Imports ======
 from pydantic import BaseModel, ConfigDict, Field
 
-
-class NodeConfig(BaseModel):
-    """
-    Base class for a node's CONFIG face (the serialized, UI-editable knobs).
-
-    extra="forbid" is the point: a typo in a stored pipeline blob ("do_ocrr") must fail the build
-    loudly instead of being silently ignored — a config the user believes is set MUST be applied.
-    """
-
-    model_config = ConfigDict(extra="forbid")
+# ====== Internal Project Imports ======
+# NodeConfig lives in public_models (the bottom vocabulary layer) and is re-exported here so every
+# node config keeps importing it from ``pipelines.base`` unchanged — see [[public_models_pipelines_import_cycle]].
+from shared_libs.public_models.base import NodeConfig
 
 
 class NodeInput(BaseModel):

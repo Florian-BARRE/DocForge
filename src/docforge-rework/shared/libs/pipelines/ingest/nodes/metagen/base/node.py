@@ -15,6 +15,7 @@ from pydantic import BaseModel, ConfigDict
 # ====== Internal Project Imports ======
 from shared_libs.pipelines.base import ActionNode
 from shared_libs.pipelines.nodes.openai_compat import OpenAICompatConfig, OpenAICompatHelpers
+from shared_libs.pipelines.nodes.structgen.base import StructGenHelpers
 from shared_libs.public_models import CollectionContract, FieldOrigin, FieldScope, MetadataFieldSpec
 
 # ====== Local Project Imports ======
@@ -164,7 +165,7 @@ class BaseMetagenNode(ActionNode):
         # 2. One structured call per group; a failure drops the group's fields (or fails).
         values: dict[str, Any] = {}
         for group in groups.values():
-            schema = MetagenHelpers.object_schema(
+            schema = StructGenHelpers.object_schema(
                 [(target.spec, target.instruction) for target in group]
             )
             try:
@@ -180,7 +181,7 @@ class BaseMetagenNode(ActionNode):
                 continue
             # 3. STRICT coercion — a wrong-typed value is dropped, never stored.
             for target in group:
-                coerced = MetagenHelpers.coerce(raw.get(target.spec.field_name), target.spec.field_type)
+                coerced = StructGenHelpers.coerce(raw.get(target.spec.field_name), target.spec.field_type)
                 if coerced is not None:
                     values[target.spec.field_name] = coerced
         return values
