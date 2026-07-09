@@ -78,6 +78,19 @@ def test_empty_stack_disables_the_contextualize_stage(compiler) -> None:
     assert read_back.stack == []
 
 
+def test_unknown_stack_method_is_a_notice_not_a_raise(compiler) -> None:
+    """An unknown method kind is DATA — the stack is left unchanged with a notice, never a 500."""
+    default = IngestPipeline.default_blob()
+    before = StateReader.read(default).stack
+
+    result, notices = compiler.apply(
+        default, SetStack(stage="contextualize", steps=[StackMethod(kind="does_not_exist")])
+    )
+
+    assert "does_not_exist" in " ".join(notices)
+    assert StateReader.read(result).stack == before  # unchanged, no partial mutation
+
+
 # ---------------------------------------------------------------------------
 # The llm method — externalised topology (prep / loop / apply / keep_raw) + repeated distinct ids.
 # ---------------------------------------------------------------------------

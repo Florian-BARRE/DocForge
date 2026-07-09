@@ -15,11 +15,19 @@ is never validated against `NodeRegistry.kinds(family)` first. `NodeRegistry.get
 **raises KeyError** on an unknown kind (registry.py ~line 137), so an invalid kind crashes instead
 of becoming a notice.
 
-Known exposure (Phase 3 chain-generalization): `SetProvider(parse, <bad kind>)` routes through the
-chain path (`__set_provider` → `__set_stage_chain`) and skips the `kind not in NodeRegistry.kinds`
-guard that the single-provider branch (chunk/embed) has — so it raises where `SetProvider(chunk,
-<bad kind>)` cleanly emits `'<kind>' is not a '<family>' provider`. Same latent gap in
-`__set_enrich_chain` / `__set_stage_chain` / `__set_stack` for `SetChain`/`SetStack`.
+Status (audited 2026-07-09, commit ca39197): the chain paths are now GUARDED —
+`__set_enrich_chain` uses `ChainRules.unknown_kind_notices`, and `__set_stage_chain` /
+`__set_provider(parse|embed)` route through `ChainRules.resolve` which returns `(None, notices)`
+on an unknown kind. `SetProvider(chunk, <bad>)` is guarded by an explicit
+`kind not in NodeRegistry.kinds` check. The nested llm chain in `__resolve_llm_chain` is guarded
+too. **The ONE remaining hole: `StageCompiler.__set_stack` (compiler.py:314-315)** calls
+`ChainRules.reset_config("contextualize", step.kind)` on each StackMethod kind with NO unknown-kind
+guard → `NodeRegistry.get` raises KeyError. Reproduced: `SetStack(stage="contextualize",
+steps=[StackMethod(kind="does_not_exist")])` raises `KeyError` instead of a notice; in the
+`/ingest/stages/apply` route (router.py:199, `stage_compiler.apply` NOT wrapped in try) it becomes
+a 500. No test covers set_stack with a bad kind. Fix: prepend a
+`NodeRegistry.kinds("contextualize")` membership check per step and emit a notice, mirroring
+`__set_provider`'s chunk branch.
 
 **Why:** the studio UI only offers registry kinds, so it's low real-world reachability — but the
 headless/`/apply` surface and tests can send arbitrary kinds, and the compiler's whole design

@@ -45,7 +45,6 @@ class StackPosition:
         output (Binding): The slot's downstream anchor — ``FromNode(tail_id, "chunks")``.
         loop_id (str | None): The ForEach id (llm only).
         apply_id (str | None): The apply id (llm only; equals ``tail_id``).
-        keep_raw_id (str | None): The body-local fail-soft terminal id (llm + keep_raw; informational).
         chain (ChainSpec | None): The generic-llm chain the ForEach body runs (llm only).
         on_error (OnChunkError | None): The keep_raw / fail policy shaping the body (llm only).
     """
@@ -56,7 +55,6 @@ class StackPosition:
     output: Binding
     loop_id: str | None = None
     apply_id: str | None = None
-    keep_raw_id: str | None = None
     chain: ChainSpec | None = None
     on_error: OnChunkError | None = None
 
@@ -110,7 +108,7 @@ class ContextualizeStack:
         return StackPosition(
             method=method, head_id=base, tail_id=apply_id,
             output=FromNode(node_id=apply_id, field_name="chunks"),
-            loop_id=loop_id, apply_id=apply_id, keep_raw_id="keep",
+            loop_id=loop_id, apply_id=apply_id,
             chain=method.chain or cls.__default_chain(),
             on_error=cls.__on_error(method.config),
         )

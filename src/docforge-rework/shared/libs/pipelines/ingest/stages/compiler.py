@@ -146,12 +146,14 @@ class StageCompiler(LoggerClass):
             self.__cascade_disable(state, stage, notices)
 
     def __cascade_enable(self, state: PipelineState, stage: str, notices: list[str]) -> None:
-        """Enabling a stage enables the stages it requires."""
+        """Enabling a stage enables the stages it requires — transitively (to a fixpoint)."""
         for required in StageSpecs.meta(stage).requires:
             if required in _TOGGLES and not getattr(state, _TOGGLES[required]):
                 setattr(state, _TOGGLES[required], True)
                 self.__restore_defaults(state, required)
                 notices.append(f"enabled '{required}' because '{stage}' depends on it")
+                # Recurse so a required stage's OWN requirements are pulled in too (requires is a DAG).
+                self.__cascade_enable(state, required, notices)
 
     @staticmethod
     def __restore_defaults(state: PipelineState, stage: str) -> None:
@@ -179,11 +181,13 @@ class StageCompiler(LoggerClass):
             state.embed_chain = stock.embed_chain
 
     def __cascade_disable(self, state: PipelineState, stage: str, notices: list[str]) -> None:
-        """Disabling a stage disables the stages that require it."""
+        """Disabling a stage disables the stages that require it — transitively (to a fixpoint)."""
         for meta in StageSpecs.ORDER:
             if stage in meta.requires and meta.key in _TOGGLES and getattr(state, _TOGGLES[meta.key]):
                 setattr(state, _TOGGLES[meta.key], False)
                 notices.append(f"disabled '{meta.key}' because it depends on '{stage}'")
+                # Recurse so a dependent's OWN dependents are disabled too (no orphaned enabled node).
+                self.__cascade_disable(state, meta.key, notices)
 
     def __set_provider(self, state: PipelineState, stage: str, kind: str, notices: list[str]) -> None:
         """Swap an exclusive stage's kind and reset its config to build-safe schema defaults."""
@@ -308,6 +312,14 @@ class StageCompiler(LoggerClass):
         """
         if stage != StageKey.CONTEXTUALIZE:
             notices.append(f"stage '{stage}' has no stack to set")
+            return
+        # An unknown method kind is DATA, not an exception — completing its config would call
+        # NodeRegistry.get and RAISE, so leave the stack unchanged with a notice (as every sibling
+        # chain/provider edit does; this is the one path the P3 guard had missed).
+        available = set(NodeRegistry.kinds("contextualize"))
+        unknown = [step.kind for step in steps if step.kind not in available]
+        if unknown:
+            notices.extend(f"'{kind}' is not a 'contextualize' method" for kind in unknown)
             return
         resolved: list = []
         for step in steps:
