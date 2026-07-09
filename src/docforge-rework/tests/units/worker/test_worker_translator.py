@@ -128,7 +128,9 @@ def test_qdrant_point_has_named_vectors_and_lean_payload(translated) -> None:
     assert point.dense["content_dense"] == [1.0, 2.0, 3.0]
     assert point.dense["meta_keywords_dense"] == [9.0, 9.0, 9.0]
     assert point.sparse["content_bm25"].indices == [4]
-    assert point.payload == {"document_id": str(DOC), "chunk_index": 0, "keywords": ["cats"]}
+    assert point.payload == {
+        "document_id": str(DOC), "chunk_index": 0, "enabled": True, "keywords": ["cats"]
+    }
     assert translated.dense_dim == 3
 
 
@@ -164,6 +166,9 @@ def test_disabled_by_role_chunk_persists_as_a_row_but_gets_no_qdrant_point() -> 
     body_uuid = next(r.id for r in out.payload.chunks if r.chunk_index == 0)
     assert len(out.points) == 1
     assert out.points[0].point_id == str(body_uuid)
+    # 4. The body point's payload carries the lean `enabled` flag (=true via the role policy), so
+    #    the P5 search filter can match on it and the P5 toggle can flip it without re-embedding.
+    assert out.points[0].payload["enabled"] is True
 
 
 def test_identical_artefact_bytes_are_deduplicated_into_one_blob_row() -> None:

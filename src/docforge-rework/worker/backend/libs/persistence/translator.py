@@ -16,7 +16,7 @@ from typing import Any
 from loggerplusplus import loggerplusplus
 
 # ====== Internal Project Imports ======
-from shared_libs.public_models import FieldOrigin, RunBundle
+from shared_libs.public_models import FieldOrigin, RunBundle, role_default_enabled
 from shared_libs.services.db.facades import IngestionPayload
 from shared_libs.services.db.postgresql.tables import (
     Blob,
@@ -207,6 +207,10 @@ class RunTranslator:
             payload: dict[str, Any] = {
                 "document_id": str(document_id),
                 "chunk_index": source.ordinal,
+                # Lean filterable scalar the P5 search filter matches on. Sourced from the single
+                # role policy (not hardcoded true) so it stays honest if the embed policy changes:
+                # today only effective-enabled chunks are embedded, so every ingested point is true.
+                "enabled": role_default_enabled(source.role),
                 **{
                     name: value
                     for name, value in source.generated_meta.items()
