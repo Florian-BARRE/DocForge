@@ -35,3 +35,4 @@ Alembic + SQLAlchemy 2 async (asyncpg). The **app** runs migrations; the worker 
 ## Topic file
 
 - [Migration chain conventions](migration-chain-conventions.md) — how the DocForge Alembic chain is structured: numbering, revision-id style, docstring/data-safety conventions to match.
+- [Enable/disable columns](enable-disable-columns.md) — document.enabled, chunk.role, chunk.enabled_override semantics + effective-state formula; run migrations from the HOST (container env.py path bug).

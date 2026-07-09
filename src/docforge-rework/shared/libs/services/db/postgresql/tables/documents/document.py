@@ -9,7 +9,7 @@ import uuid
 from enum import StrEnum
 
 # ====== Third-Party Library Imports ======
-from sqlalchemy import BigInteger, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import BigInteger, Boolean, ForeignKey, Integer, String, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 # ====== Local Project Imports ======
@@ -61,6 +61,9 @@ class Document(Base, UUIDPrimaryKey, TimestampedMixin):
         value_enum(DocumentStatus), nullable=False, default=DocumentStatus.PENDING
     )
     pipeline_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    # The user's document-level searchability toggle — a plain on/off (documents have no role).
+    # Disabling hides every chunk of the document from retrieval regardless of chunk-level state.
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
 
 
 __all__ = ["Document", "DocumentStatus", "SourceKind"]

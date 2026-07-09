@@ -43,6 +43,15 @@ class Chunk(Base, TimestampedMixin):
     token_count: Mapped[int] = mapped_column(Integer, nullable=False)
     simhash: Mapped[str | None] = mapped_column(String(64), nullable=True)  # near-dup signature
     is_indexed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # The pipeline's structural classification — a ChunkRole value ("body" / "header_footer" /
+    # "toc" / "boilerplate"). Stored as a plain VARCHAR (like block.block_type) so the Python
+    # StrEnum owns the value set and new roles need no PG enum ALTER. Drives the default enabled
+    # state via role_default_enabled(); existing rows backfill to "body".
+    role: Mapped[str] = mapped_column(String(32), nullable=False, server_default="body")
+    # The user's per-chunk manual override of searchability. NULL = no override → defer to
+    # role_default_enabled(role); True/False = an explicit user choice that wins over the role
+    # default. Effective enabled state = enabled_override ?? role_default_enabled(role).
+    enabled_override: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
 
 
 __all__ = ["Chunk"]
