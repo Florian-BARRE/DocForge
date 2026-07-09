@@ -29,7 +29,7 @@ from shared_libs.services.db.s3 import S3Object
 # ====== Local Project Imports ======
 from ...context import CONTEXT
 from ...utils.error_handling import auto_handle_errors
-from .models import UploadAccepted
+from .models import DocumentEnabledResponse, EnabledPatch, UploadAccepted
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
@@ -115,6 +115,31 @@ async def upload_document(
     await CONTEXT.queue.enqueue_ingest(str(created.id), str(job.id))
     CONTEXT.logger.info(f"Admitted '{filename}' as {created.id} (job {job.id})")
     return UploadAccepted(document_id=str(created.id), job_id=str(job.id))
+
+
+@router.patch("/{document_id}/enabled", response_model=DocumentEnabledResponse)
+@auto_handle_errors
+async def set_document_enabled(
+    document_id: uuid.UUID, patch: EnabledPatch
+) -> DocumentEnabledResponse:
+    """
+    Toggle a document's searchability (reversible, no re-ingest) — a single Postgres flag.
+
+    Search excludes a disabled document's chunks via a bounded exclusion fed from this flag, so no
+    Qdrant point is touched here (no per-chunk fan-out).
+
+    Returns:
+        DocumentEnabledResponse: The document id and its new state; 404 when the document is unknown.
+    """
+    # 1. The facade flips documents.enabled; False means the id never existed.
+    existed = await CONTEXT.database.enablement.set_document_enabled(
+        document_id, patch.enabled
+    )
+    if not existed:
+        raise HTTPException(status_code=404, detail=f"Document {document_id} not found.")
+
+    # 2. Echo the applied state.
+    return DocumentEnabledResponse(document_id=str(document_id), enabled=patch.enabled)
 
 
 __all__ = ["router"]

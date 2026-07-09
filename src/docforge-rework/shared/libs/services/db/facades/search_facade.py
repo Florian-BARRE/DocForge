@@ -12,8 +12,15 @@ from collections.abc import Sequence
 from loggerplusplus import LoggerClass
 
 from shared_libs.services.db.postgresql import PostgresClient
-from shared_libs.services.db.postgresql.apis import ChunkApi
-from shared_libs.services.db.qdrant import Condition, QdrantClient, QdrantSearchApi, SparseVec
+from shared_libs.services.db.postgresql.apis import ChunkApi, DocumentApi
+from shared_libs.services.db.qdrant import (
+    Condition,
+    Match,
+    MatchAny,
+    QdrantClient,
+    QdrantSearchApi,
+    SparseVec,
+)
 
 # ====== Local Project Imports ======
 from .helpers import DatabaseHelpers
@@ -58,18 +65,30 @@ class SearchFacade(LoggerClass):
         # created but never ingested has no space to query yet. Empty results, not a 500.
         if not await self._qdrant.raw.collection_exists(name):
             return []
+        # 2. Enforce the searchability invariants, unbypassable from the router: exclude the points
+        #    of disabled chunks (the `enabled` payload flag) and of disabled documents (a bounded
+        #    must_not over a cheap Postgres lookup — a doc toggle stays one PG flag, no Qdrant fan-out).
+        search_conditions = [*conditions, Match(field="enabled", value=True)]
+        async with self._postgres.session() as session:
+            disabled_doc_ids = await DocumentApi.list_disabled_ids(session, collection_id)
+        exclusions = (
+            [MatchAny(field="document_id", values=[str(doc_id) for doc_id in disabled_doc_ids])]
+            if disabled_doc_ids
+            else []
+        )
         scored = await QdrantSearchApi.hybrid(
             self._qdrant.raw,
             name,
             dense=dense,
             sparse=sparse,
-            conditions=conditions,
+            conditions=search_conditions,
+            exclusions=exclusions,
             limit=limit,
             prefetch_limit=prefetch_limit,
         )
         if not scored:
             return []
-        # 2. Hydrate the rich side from Postgres, preserving the fusion order.
+        # 3. Hydrate the rich side from Postgres, preserving the fusion order.
         async with self._postgres.session() as session:
             chunks = await ChunkApi.get_by_ids(
                 session, [uuid.UUID(chunk_id) for chunk_id, _ in scored]

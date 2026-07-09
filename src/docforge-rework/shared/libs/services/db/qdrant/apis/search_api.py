@@ -11,7 +11,7 @@ from collections.abc import Sequence
 from qdrant_client import AsyncQdrantClient, models
 
 # ====== Local Project Imports ======
-from ..vectors import Condition, Match, MatchAny, Range, SparseVec
+from ..vectors import Condition, Match, MatchAny, SparseVec
 
 
 class QdrantSearchApi:
@@ -21,28 +21,33 @@ class QdrantSearchApi:
         raise TypeError("QdrantSearchApi is a static-only class and cannot be instantiated.")
 
     @staticmethod
-    def _to_filter(conditions: Sequence[Condition]) -> models.Filter:
-        """Translate the clean conditions into a qdrant Filter (all ANDed under ``must``)."""
-        musts: list[models.FieldCondition] = []
-        for cond in conditions:
-            if isinstance(cond, Match):
-                musts.append(
-                    models.FieldCondition(key=cond.field, match=models.MatchValue(value=cond.value))
-                )
-            elif isinstance(cond, MatchAny):
-                musts.append(
-                    models.FieldCondition(key=cond.field, match=models.MatchAny(any=cond.values))
-                )
-            elif isinstance(cond, Range):
-                # Datetime bounds need qdrant's DatetimeRange; numeric bounds its Range.
-                range_cls = models.DatetimeRange if cond.is_datetime else models.Range
-                musts.append(
-                    models.FieldCondition(
-                        key=cond.field,
-                        range=range_cls(gte=cond.gte, lte=cond.lte, gt=cond.gt, lt=cond.lt),
-                    )
-                )
-        return models.Filter(must=musts)
+    def _to_field_condition(cond: Condition) -> models.FieldCondition:
+        """Translate one clean condition into a qdrant FieldCondition."""
+        if isinstance(cond, Match):
+            return models.FieldCondition(key=cond.field, match=models.MatchValue(value=cond.value))
+        if isinstance(cond, MatchAny):
+            return models.FieldCondition(key=cond.field, match=models.MatchAny(any=cond.values))
+        # Range — datetime bounds need qdrant's DatetimeRange; numeric bounds its Range.
+        range_cls = models.DatetimeRange if cond.is_datetime else models.Range
+        return models.FieldCondition(
+            key=cond.field,
+            range=range_cls(gte=cond.gte, lte=cond.lte, gt=cond.gt, lt=cond.lt),
+        )
+
+    @staticmethod
+    def _to_filter(
+        conditions: Sequence[Condition], exclusions: Sequence[Condition]
+    ) -> models.Filter:
+        """
+        Translate the clean conditions into a qdrant Filter.
+
+        ``conditions`` are ANDed under ``must`` (a point must match all of them); ``exclusions``
+        go under ``must_not`` (a point matching any of them is dropped) — the mechanism the search
+        facade uses to hide the disabled documents' points.
+        """
+        musts = [QdrantSearchApi._to_field_condition(cond) for cond in conditions]
+        must_nots = [QdrantSearchApi._to_field_condition(cond) for cond in exclusions]
+        return models.Filter(must=musts, must_not=must_nots)
 
     # qdrant-client's `query` params (Prefetch + query_points) are 25+-member Unions that PyCharm
     # truncates and mis-flags — FusionQuery / SparseVector ARE valid but sit past the truncation.
@@ -56,6 +61,7 @@ class QdrantSearchApi:
         dense: dict[str, list[float]] | None = None,
         sparse: dict[str, SparseVec] | None = None,
         conditions: Sequence[Condition] = (),
+        exclusions: Sequence[Condition] = (),
         limit: int = 10,
         prefetch_limit: int | None = None,
     ) -> list[tuple[str, float]]:
@@ -68,6 +74,8 @@ class QdrantSearchApi:
             dense (dict | None): vector name → query dense vector.
             sparse (dict | None): vector name → query sparse vector.
             conditions (Sequence[Condition]): Filters on the filterable payload fields (ANDed).
+            exclusions (Sequence[Condition]): Filters whose matches are DROPPED (``must_not``) —
+                the disabled-document exclusion set.
             limit (int): Number of fused results.
             prefetch_limit (int | None): Candidates fetched PER BRANCH before fusion; defaults to
                 an over-sampling of the final limit (a branch pool of exactly `limit` starves RRF).
@@ -78,7 +86,11 @@ class QdrantSearchApi:
         # 1. Build the payload filter (once) and apply it to every prefetch branch, each branch
         #    over-sampling so the fusion picks from a deep enough candidate pool.
         depth = prefetch_limit if prefetch_limit is not None else max(limit * 4, 100)
-        query_filter = QdrantSearchApi._to_filter(conditions) if conditions else None
+        query_filter = (
+            QdrantSearchApi._to_filter(conditions, exclusions)
+            if conditions or exclusions
+            else None
+        )
         prefetch: list[models.Prefetch] = []
         for vec_name, vector in (dense or {}).items():
             prefetch.append(

@@ -21,4 +21,23 @@ class UploadAccepted(BaseModel):
     duplicate: bool = Field(default=False, description="Already ingested — nothing re-run.")
 
 
-__all__ = ["UploadAccepted"]
+class EnabledPatch(BaseModel):
+    """The desired searchability state for a document or chunk (the reversible toggle)."""
+
+    enabled: bool = Field(description="True to make it searchable, False to hide it from search.")
+
+
+class DocumentEnabledResponse(BaseModel):
+    """
+    The state of a document after toggling its searchability.
+
+    Attributes:
+        document_id (str): The toggled document.
+        enabled (bool): Its new searchability state.
+    """
+
+    document_id: str = Field(description="The toggled document's UUID.")
+    enabled: bool = Field(description="The new searchability state.")
+
+
+__all__ = ["UploadAccepted", "EnabledPatch", "DocumentEnabledResponse"]

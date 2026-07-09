@@ -4,6 +4,7 @@
 # and a chunk with its composition + generated metadata. The IR models live in models_ir.py.
 
 # ====== Standard Library Imports ======
+import uuid
 from datetime import datetime
 from typing import Any
 
@@ -95,10 +96,64 @@ class ChunkInfo(BaseModel):
     )
 
 
+class ChunkEnabledPatch(BaseModel):
+    """The desired searchability state for one chunk (its enabled_override)."""
+
+    enabled: bool = Field(description="True to make the chunk searchable, False to hide it.")
+
+
+class BulkChunkEnabledPatch(BaseModel):
+    """Toggle several chunks' searchability to the same state in one call (the UI's multi-select)."""
+
+    chunk_ids: list[uuid.UUID] = Field(
+        min_length=1, description="The chunks to toggle (at least one)."
+    )
+    enabled: bool = Field(description="The state to apply to every listed chunk.")
+
+
+class ChunkEnabledResult(BaseModel):
+    """
+    The outcome of toggling one chunk's searchability.
+
+    Attributes:
+        chunk_id (str): The toggled chunk.
+        enabled (bool): The recomputed EFFECTIVE state (override ?? role default).
+        reindex_required (bool): True only when enabling a chunk that was never embedded — it has
+            no Qdrant point, so it is NOT searchable until a later on-demand re-embed runs.
+    """
+
+    chunk_id: str = Field(description="The toggled chunk's UUID.")
+    enabled: bool = Field(description="The recomputed effective searchability state.")
+    reindex_required: bool = Field(
+        description="True when a never-embedded chunk was enabled — needs a deferred re-embed."
+    )
+
+
+class BulkChunkEnabledResponse(BaseModel):
+    """
+    The per-chunk outcomes of a bulk toggle plus the ids that did not resolve to a chunk.
+
+    Attributes:
+        results (list[ChunkEnabledResult]): One outcome per KNOWN chunk.
+        not_found (list[str]): Requested ids with no matching chunk (skipped, not an error).
+    """
+
+    results: list[ChunkEnabledResult] = Field(
+        default_factory=list, description="One outcome per known chunk."
+    )
+    not_found: list[str] = Field(
+        default_factory=list, description="Requested ids with no matching chunk."
+    )
+
+
 __all__ = [
     "MetadataValue",
     "DocumentListItem",
     "DocumentDetail",
     "PageInfo",
     "ChunkInfo",
+    "ChunkEnabledPatch",
+    "BulkChunkEnabledPatch",
+    "ChunkEnabledResult",
+    "BulkChunkEnabledResponse",
 ]

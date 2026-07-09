@@ -11,7 +11,7 @@ from collections.abc import Sequence
 from loggerplusplus import loggerplusplus
 
 # ====== Internal Project Imports ======
-from shared_libs.services.db.facades import IRBundle
+from shared_libs.services.db.facades import ChunkToggle, IRBundle
 from shared_libs.services.db.postgresql.tables import (
     Chunk,
     ChunkMetadata,
@@ -22,7 +22,14 @@ from shared_libs.services.db.postgresql.tables import (
 )
 
 # ====== Local Project Imports ======
-from .models import ChunkInfo, DocumentDetail, DocumentListItem, MetadataValue, PageInfo
+from .models import (
+    ChunkEnabledResult,
+    ChunkInfo,
+    DocumentDetail,
+    DocumentListItem,
+    MetadataValue,
+    PageInfo,
+)
 from .models_ir import DocumentIRModel, IRBlock, IREnrichment, IRFigure, IRTable
 
 
@@ -178,6 +185,15 @@ class ExplorerHelpers:
             parent_id=str(chunk.parent_id) if chunk.parent_id is not None else None,
             block_ids=block_ids,
             metadata=metadata,
+        )
+
+    @staticmethod
+    def chunk_toggle(outcome: ChunkToggle) -> ChunkEnabledResult:
+        """Map a facade toggle outcome to its response model (effective state + reindex flag)."""
+        return ChunkEnabledResult(
+            chunk_id=str(outcome.chunk_id),
+            enabled=outcome.enabled,
+            reindex_required=outcome.reindex_required,
         )
 
 

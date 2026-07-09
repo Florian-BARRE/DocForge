@@ -5,6 +5,7 @@
 
 # ====== Standard Library Imports ======
 import uuid
+from collections.abc import Sequence
 
 # ====== Third-Party Library Imports ======
 from sqlalchemy import delete, select
@@ -34,6 +35,16 @@ class DocumentApi:
     async def get(session: AsyncSession, document_id: uuid.UUID) -> Document | None:
         """Fetch a document by id, or None."""
         return await session.get(Document, document_id)
+
+    @staticmethod
+    async def get_by_ids(
+        session: AsyncSession, document_ids: Sequence[uuid.UUID]
+    ) -> list[Document]:
+        """Fetch documents by id — used to resolve a set of chunks back to their collections."""
+        if not document_ids:
+            return []
+        result = await session.execute(select(Document).where(Document.id.in_(document_ids)))
+        return list(result.scalars().all())
 
     @staticmethod
     async def find(
@@ -69,6 +80,47 @@ class DocumentApi:
         document = await session.get(Document, document_id)
         if document is not None:
             document.status = status
+
+    @staticmethod
+    async def set_enabled(
+        session: AsyncSession, document_id: uuid.UUID, enabled: bool
+    ) -> bool:
+        """
+        Flip a document's searchability toggle (the reversible enable/disable flag).
+
+        A pure Postgres flip — search reads this flag to exclude a disabled document's chunks,
+        so no Qdrant point ever has to be touched (no per-chunk fan-out on a doc-level toggle).
+
+        Args:
+            session (AsyncSession): The unit of work.
+            document_id (uuid.UUID): The document to toggle.
+            enabled (bool): The new searchability state.
+
+        Returns:
+            bool: Whether the document existed (False → the router raises a 404).
+        """
+        document = await session.get(Document, document_id)
+        if document is None:
+            return False
+        document.enabled = enabled
+        return True
+
+    @staticmethod
+    async def list_disabled_ids(
+        session: AsyncSession, collection_id: uuid.UUID
+    ) -> list[uuid.UUID]:
+        """
+        Return the ids of a collection's DISABLED documents — the search exclusion set.
+
+        Bounded by the document count of one collection (not chunks), so the resulting
+        ``must_not document_id in {...}`` Qdrant clause stays a single cheap membership filter.
+        """
+        result = await session.execute(
+            select(Document.id).where(
+                Document.collection_id == collection_id, Document.enabled.is_(False)
+            )
+        )
+        return list(result.scalars().all())
 
     @staticmethod
     async def update_facts(

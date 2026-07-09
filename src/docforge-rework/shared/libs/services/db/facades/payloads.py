@@ -5,6 +5,7 @@
 # the façade methods stay readable instead of taking fifteen parameters.
 
 # ====== Standard Library Imports ======
+import uuid
 from dataclasses import dataclass, field
 
 # ====== Internal Project Imports ======
@@ -69,4 +70,21 @@ class SearchHit:
     score: float
 
 
-__all__ = ["IngestionPayload", "IRBundle", "SearchHit"]
+@dataclass(slots=True)
+class ChunkToggle:
+    """
+    The outcome of toggling one chunk's searchability.
+
+    Attributes:
+        chunk_id (uuid.UUID): The toggled chunk.
+        enabled (bool): The recomputed EFFECTIVE state (override ?? role default).
+        reindex_required (bool): True only when enabling a chunk that was never embedded (it has
+            no Qdrant point yet, so it is NOT searchable until a later on-demand re-embed runs).
+    """
+
+    chunk_id: uuid.UUID
+    enabled: bool
+    reindex_required: bool
+
+
+__all__ = ["IngestionPayload", "IRBundle", "SearchHit", "ChunkToggle"]

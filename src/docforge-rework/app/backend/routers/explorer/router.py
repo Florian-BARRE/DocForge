@@ -16,7 +16,16 @@ from fastapi import APIRouter, HTTPException
 from ...context import CONTEXT
 from ...utils.error_handling import auto_handle_errors
 from .helpers import ExplorerHelpers
-from .models import ChunkInfo, DocumentDetail, DocumentListItem, PageInfo
+from .models import (
+    BulkChunkEnabledPatch,
+    BulkChunkEnabledResponse,
+    ChunkEnabledPatch,
+    ChunkEnabledResult,
+    ChunkInfo,
+    DocumentDetail,
+    DocumentListItem,
+    PageInfo,
+)
 from .models_ir import DocumentIRModel
 
 router = APIRouter(tags=["explorer"])
@@ -134,6 +143,58 @@ async def get_document_chunks(document_id: uuid.UUID) -> list[ChunkInfo]:
         )
         for chunk in chunks
     ]
+
+
+@router.patch("/chunks/{chunk_id}/enabled", response_model=ChunkEnabledResult)
+@auto_handle_errors
+async def set_chunk_enabled(
+    chunk_id: uuid.UUID, patch: ChunkEnabledPatch
+) -> ChunkEnabledResult:
+    """
+    Toggle one chunk's searchability (reversible, no re-embed).
+
+    Sets the chunk's enabled_override; the facade recomputes the effective state and flips the
+    chunk's Qdrant point payload. A chunk that was never embedded has no point to flip and comes
+    back with reindex_required=True (it stays non-searchable until a later on-demand embed).
+
+    Returns:
+        ChunkEnabledResult: The recomputed state + reindex flag; 404 when the chunk is unknown.
+    """
+    # 1. The facade toggles the (single) chunk; an empty result means the id never existed.
+    outcomes = await CONTEXT.database.enablement.set_chunks_enabled([chunk_id], patch.enabled)
+    if not outcomes:
+        raise HTTPException(status_code=404, detail=f"Chunk {chunk_id} not found.")
+
+    # 2. Shape the single outcome.
+    return ExplorerHelpers.chunk_toggle(outcomes[0])
+
+
+@router.patch("/chunks/enabled", response_model=BulkChunkEnabledResponse)
+@auto_handle_errors
+async def set_chunks_enabled(patch: BulkChunkEnabledPatch) -> BulkChunkEnabledResponse:
+    """
+    Toggle several chunks' searchability to the same state in one call (the UI multi-select).
+
+    Unknown ids are reported in ``not_found`` rather than failing the whole request; each known
+    chunk carries its own reindex_required flag (a never-embedded chunk being enabled).
+
+    Returns:
+        BulkChunkEnabledResponse: The per-chunk outcomes plus the ids that matched no chunk.
+    """
+    # 1. Toggle all requested chunks in one facade call.
+    outcomes = await CONTEXT.database.enablement.set_chunks_enabled(
+        patch.chunk_ids, patch.enabled
+    )
+
+    # 2. The ids that resolved to no chunk (requested minus returned).
+    found = {outcome.chunk_id for outcome in outcomes}
+    not_found = [str(chunk_id) for chunk_id in patch.chunk_ids if chunk_id not in found]
+
+    # 3. Shape the per-chunk outcomes and the gap.
+    return BulkChunkEnabledResponse(
+        results=[ExplorerHelpers.chunk_toggle(outcome) for outcome in outcomes],
+        not_found=not_found,
+    )
 
 
 @router.delete("/documents/{document_id}", status_code=204)
