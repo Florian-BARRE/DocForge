@@ -25,11 +25,13 @@ from shared_libs.pipelines.validation import GraphValidator
 from shared_libs.public_models import (
     Block,
     BlockType,
+    ChunkRole,
     DocumentIR,
     FigureEnrichment,
     FigureKind,
     Provenance,
     TableData,
+    role_default_enabled,
 )
 
 
@@ -57,7 +59,8 @@ IR = DocumentIR(doc_id="doc1", source_hash="h", n_pages=2, blocks=[
 def test_shared_projection_composition_rules() -> None:
     passages = PassageProjector.project(IR, BaseChunkerConfig())
     by_first_block = {passage.block_ids[0]: passage for passage in passages}
-    assert [ps.block_ids[0] for ps in passages] == ["h1", "p1", "fig1", "h2", "t1", "p2"]
+    # Header/footer is no longer dropped — it is projected as a HEADER_FOOTER-role passage.
+    assert [ps.block_ids[0] for ps in passages] == ["h1", "p1", "fig1", "hf", "h2", "t1", "p2"]
 
     fig = by_first_block["fig1"]
     assert fig.atomic
@@ -65,8 +68,12 @@ def test_shared_projection_composition_rules() -> None:
     assert "Figure 1: a cat" in fig.text
     assert "ginger cat" in fig.text
     assert "[OCR] CAT-01" in fig.text                # OCR labelled distinctly from the description
-    assert "deco" not in by_first_block
-    assert "hf" not in by_first_block
+    assert "deco" not in by_first_block             # empty/decorative figure still drops out
+
+    # Header/footer is KEPT but structurally labelled (disabled-by-role downstream); body is body.
+    assert by_first_block["hf"].role == ChunkRole.HEADER_FOOTER
+    assert by_first_block["hf"].text == "Page 1 - Confidential"
+    assert by_first_block["p1"].role == ChunkRole.BODY
 
     table = by_first_block["t1"]
     assert table.atomic
@@ -75,6 +82,63 @@ def test_shared_projection_composition_rules() -> None:
     assert by_first_block["p2"].heading_path == ["Results"]
     assert by_first_block["p2"].section_key == ["h2"]
     assert by_first_block["h1"].section_key == ["h1"]  # a heading belongs to its own section
+
+
+ROLE_IR = DocumentIR(doc_id="roles", source_hash="h", n_pages=2, blocks=[
+    _blk("toc_h", BlockType.HEADING, 0, text="Table of Contents", level=1),
+    _blk("toc_a", BlockType.LIST_ITEM, 1, text="1. Introduction .......... 1", parent="toc_h"),
+    _blk("toc_b", BlockType.LIST_ITEM, 2, text="2. Results .......... 4", parent="toc_h"),
+    _blk("hf0", BlockType.HEADER_FOOTER, 3, text="Confidential — page 1"),
+    _blk("intro_h", BlockType.HEADING, 4, text="Introduction", level=1, page=1),
+    _blk("intro_p", BlockType.PARAGRAPH, 5, text="Cats are small felines. They purr loudly.",
+         parent="intro_h", page=1),
+    _blk("hf1", BlockType.HEADER_FOOTER, 6, text="Confidential — page 2", page=1),
+])
+
+
+async def test_furniture_is_kept_as_disabled_by_role_chunks_and_toc_is_classified() -> None:
+    node = ChunkerStructureAwareNode(
+        id="c", config=ChunkerStructureAwareConfig(target_tokens=256, max_tokens=512, min_tokens=0)
+    )
+    chunks = (await node.run(ChunkerConsumes(ir=ROLE_IR))).chunks
+
+    by_role: dict[ChunkRole, list] = {}
+    for chunk in chunks:
+        by_role.setdefault(chunk.role, []).append(chunk)
+
+    # 1. Every structural role reached a chunk — nothing was dropped on ingest (reversible).
+    assert set(by_role) == {ChunkRole.BODY, ChunkRole.HEADER_FOOTER, ChunkRole.TOC}
+
+    # 2. The ToC section (heading + its list-like body) is classified from the heading title.
+    toc_blocks = {b for c in by_role[ChunkRole.TOC] for b in c.block_ids}
+    assert {"toc_h", "toc_a", "toc_b"} <= toc_blocks
+
+    # 3. Header/footer furniture is kept, grouped per page (one chunk per page's furniture).
+    hf_pages = sorted(c.page_start for c in by_role[ChunkRole.HEADER_FOOTER])
+    assert hf_pages == [0, 1]
+    assert all("Confidential" in c.text for c in by_role[ChunkRole.HEADER_FOOTER])
+
+    # 4. Body keeps its role; furniture is disabled-by-role, body is enabled — the single policy.
+    assert any("felines" in c.text for c in by_role[ChunkRole.BODY])
+    assert all(role_default_enabled(c.role) for c in by_role[ChunkRole.BODY])
+    assert not any(role_default_enabled(c.role) for c in by_role[ChunkRole.TOC])
+    assert not any(role_default_enabled(c.role) for c in by_role[ChunkRole.HEADER_FOOTER])
+
+    # 5. Furniture is appended AFTER the body — body chunks keep contiguous leading ordinals, so a
+    #    method's neighbour/window logic over body is unaffected, and ordinals stay stable UUIDs.
+    last_body = max(c.ordinal for c in by_role[ChunkRole.BODY])
+    assert all(c.ordinal > last_body for c in by_role[ChunkRole.HEADER_FOOTER] + by_role[ChunkRole.TOC])
+    assert [c.chunk_id for c in chunks] == [f"roles#c{c.ordinal}" for c in chunks]
+
+
+def test_toc_matching_is_conservative_full_title_only() -> None:
+    # A section whose title merely CONTAINS a ToC word must NOT be misread as scaffolding.
+    ir = DocumentIR(doc_id="notoc", source_hash="h", n_pages=1, blocks=[
+        _blk("h", BlockType.HEADING, 0, text="Table of contributions", level=1),
+        _blk("p", BlockType.PARAGRAPH, 1, text="Real body content here.", parent="h"),
+    ])
+    passages = PassageProjector.project(ir, BaseChunkerConfig())
+    assert all(p.role == ChunkRole.BODY for p in passages)
 
 
 async def test_structure_aware_respects_sections_and_splits_oversized_paragraph() -> None:

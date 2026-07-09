@@ -15,6 +15,7 @@ from shared_libs.pipelines.registry import NodeRegistry
 from shared_libs.pipelines.validation import GraphValidator
 from shared_libs.public_models import (
     Chunk,
+    ChunkRole,
     CollectionContract,
     FieldOrigin,
     FieldScope,
@@ -108,6 +109,37 @@ async def test_semantic_chunk_fields_get_named_vectors_only_where_present() -> N
     assert "finance" in field_texts  # list rendered as joined text
     # relevance (not semantic) and summary (doc scope) got NO vectors
     assert all("0.9" not in t for call in node.dense_calls for t in call)
+
+
+async def test_disabled_by_role_chunks_are_not_embedded_but_the_rest_are() -> None:
+    # Furniture chunks (header/footer, toc) must incur NO vector spend, yet the body chunks around
+    # them embed normally — the vectors are chunk_id-linked, so the disabled ones are simply absent.
+    mixed = [
+        _chunk(0, "Body one."),
+        Chunk(chunk_id="d#c1", ordinal=1, text="Confidential — page 1", role=ChunkRole.HEADER_FOOTER),
+        _chunk(2, "Body two."),
+        Chunk(chunk_id="d#c3", ordinal=3, text="1. Intro .... 1", role=ChunkRole.TOC),
+    ]
+    node = FakeEmbed(id="e", config=BaseEmbedConfig(model="m", batch_size=8))
+    out = await node.run(EmbedConsumes(chunks=mixed, contract=CONTRACT))
+
+    # 1. Only the two body chunks got vectors; the furniture chunks are absent from the linkage.
+    embedded_ids = {item.chunk_id for item in out.embeddings.items}
+    assert embedded_ids == {"d#c0", "d#c2"}
+    # 2. No provider call ever saw the furniture text — the cost was truly skipped, not discarded.
+    embedded_texts = [t for call in node.dense_calls for t in call]
+    assert not any("Confidential" in t or "Intro" in t for t in embedded_texts)
+
+
+async def test_all_disabled_chunks_yield_empty_embeddings_without_spend() -> None:
+    only_furniture = [
+        Chunk(chunk_id="d#c0", ordinal=0, text="Header", role=ChunkRole.HEADER_FOOTER),
+        Chunk(chunk_id="d#c1", ordinal=1, text="Contents", role=ChunkRole.TOC),
+    ]
+    node = FakeEmbed(id="e", config=BaseEmbedConfig(model="m"))
+    out = await node.run(EmbedConsumes(chunks=only_furniture, contract=CONTRACT))
+    assert out.embeddings.items == []
+    assert node.dense_calls == []  # no batch was ever issued
 
 
 async def test_embed_semantic_fields_false_disables_per_field_vectors() -> None:

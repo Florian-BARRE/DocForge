@@ -1,9 +1,10 @@
 # ====== Code Summary ======
 # BaseChunkerNode — the abstract base of every chunking method. The shared frame: project the
-# enriched IR into passages (the composition rules, applied ONCE for all methods), hand them to
-# the method's `_split` hook (which only decides the GROUPING), then finalise every group into a
-# Chunk (id, ordinal, joined text, block union, token recount, section, page span). A method is
-# thus ~one algorithm, nothing else.
+# enriched IR into passages (the composition rules, applied ONCE for all methods), hand the BODY
+# passages to the method's `_split` hook (which only decides the GROUPING), keep the furniture
+# (header/footer, toc) passages as small per-role/per-page chunks OUTSIDE the method (never mixed
+# into a body chunk), then finalise every group into a Chunk (id, ordinal, joined text, block
+# union, token recount, section, page span, role). A method is thus ~one algorithm, nothing else.
 
 # ====== Standard Library Imports ======
 import asyncio
@@ -11,7 +12,7 @@ from abc import abstractmethod
 
 # ====== Internal Project Imports ======
 from shared_libs.pipelines.base import ActionNode
-from shared_libs.public_models import Chunk, DocumentIR
+from shared_libs.public_models import Chunk, ChunkRole, DocumentIR
 
 # ====== Local Project Imports ======
 from .config import BaseChunkerConfig
@@ -83,8 +84,30 @@ class BaseChunkerNode(ActionNode):
         # 2. Project that identity depth onto the first passage's heading TEXTS.
         return reference.heading_path[:depth]
 
+    @staticmethod
+    def __group_furniture(furniture: list[Passage]) -> list[list[Passage]]:
+        """
+        Group furniture passages into one small chunk per (role, page).
+
+        Furniture (header/footer, toc) is disabled-by-role, so it must never be packed into a
+        body chunk nor pollute a method's grouping — but it is KEPT (reversible, inspectable).
+        A running header/footer has no single reading position (it repeats per page), so the
+        page is the natural, provenance-preserving granularity; a ToC spanning several pages
+        yields one small chunk per page likewise. Groups keep their first-appearance order.
+
+        Args:
+            furniture (list[Passage]): The non-body passages, in reading order.
+
+        Returns:
+            list[list[Passage]]: One homogeneous-role group per (role, page), document-ordered.
+        """
+        buckets: dict[tuple[ChunkRole, int], list[Passage]] = {}
+        for passage in furniture:
+            buckets.setdefault((passage.role, passage.page_start), []).append(passage)
+        return list(buckets.values())
+
     def __finalize(self, ir: DocumentIR, groups: list[list[Passage]]) -> list[Chunk]:
-        """Turn each passage group into a Chunk."""
+        """Turn each passage group into a Chunk (role taken from the homogeneous group)."""
         config: BaseChunkerConfig = self.config
         chunks: list[Chunk] = []
         for group in groups:
@@ -102,6 +125,7 @@ class BaseChunkerNode(ActionNode):
                     block_ids=block_ids,
                     token_count=ChunkerHelpers.count_tokens(text, config.tokenizer_encoding),
                     heading_path=self.__common_heading_path(group),
+                    role=group[0].role,
                     page_start=min(passage.page_start for passage in group),
                     page_end=max(passage.page_end for passage in group),
                 )
@@ -129,15 +153,20 @@ class BaseChunkerNode(ActionNode):
             self.logger.warning(f"Document '{data.ir.doc_id}' projected to zero passages")
             return ChunkerProduces(chunks=[])
 
-        # 3. The method decides the grouping.
-        groups = await self._split(passages)
+        # 3. Only BODY passages flow through the method's grouping; furniture (header/footer, toc)
+        #    is kept as its own small per-role/per-page chunks, never mixed into a body chunk.
+        body = [passage for passage in passages if passage.role is ChunkRole.BODY]
+        furniture = [passage for passage in passages if passage.role is not ChunkRole.BODY]
+        groups = await self._split(body)
+        groups.extend(self.__group_furniture(furniture))
 
         # 4. Finalise into chunks. NOTE: caps are SOFT at the join margin — packing sums the
         #    passages' counts, and the "\n\n" joins add a few tokens; token_count is the honest
         #    recount on the final text.
         chunks = self.__finalize(data.ir, groups)
         self.logger.info(
-            f"Chunked '{data.ir.doc_id}': {len(passages)} passage(s) -> {len(chunks)} chunk(s)"
+            f"Chunked '{data.ir.doc_id}': {len(passages)} passage(s) -> {len(chunks)} chunk(s) "
+            f"({len(furniture)} furniture passage(s) kept as disabled-by-role chunks)"
         )
         return ChunkerProduces(chunks=chunks)
 

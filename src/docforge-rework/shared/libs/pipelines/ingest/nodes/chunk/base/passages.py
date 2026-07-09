@@ -4,19 +4,37 @@
 # its meaning (the ADJACENT CAPTION block, folded in + VLM description + OCR text) become ONE
 # ATOMIC unit that no method may split, rendered as an explicitly MARKED block so machine-derived
 # text never reads as document prose; a table renders to markdown (atomic, caption folded in
-# too); headings carry the section identity; decorative or empty figures contribute nothing;
-# header/footer noise is excluded. Every text is token-counted, and a boundary-less oversized
-# text hard-cuts at token level — nothing non-atomic may exceed a method's cap.
+# too); headings carry the section identity; decorative or empty figures contribute nothing.
+# Header/footer furniture and table-of-contents scaffolding are NOT dropped: each passage carries
+# a structural `role` (body by default) so downstream can keep them as disabled chunks. Every text
+# is token-counted, and a boundary-less oversized text hard-cuts at token level — nothing
+# non-atomic may exceed a method's cap.
 
 # ====== Third-Party Library Imports ======
 from pydantic import BaseModel, Field
 
 # ====== Internal Project Imports ======
-from shared_libs.public_models import Block, BlockType, DocumentIR
+from shared_libs.public_models import Block, BlockType, ChunkRole, DocumentIR
 
 # ====== Local Project Imports ======
 from .config import BaseChunkerConfig
 from .helpers import ChunkerHelpers
+
+# Conservative, extensible allow-list of section titles that mark a table-of-contents section.
+# Matched on the FULL normalized heading text (exact, never substring) so a real section like
+# "Table of contributions" cannot be misread as scaffolding. Multilingual by design (the corpus
+# is): add a title here when a language's ToC heading is confirmed. There is deliberately NO
+# boilerplate allow-list — no reliable IR signal exists yet, so BOILERPLATE stays reserved.
+_TOC_TITLES = frozenset(
+    {
+        "contents",
+        "table of contents",
+        "toc",
+        "sommaire",
+        "table des matières",
+        "índice",
+    }
+)
 
 
 class Passage(BaseModel):
@@ -31,6 +49,9 @@ class Passage(BaseModel):
             compare on (texts may collide, ids cannot).
         atomic (bool): True when no method may split this unit (figure+meaning, table).
         token_count (int): Token count of ``text``.
+        role (ChunkRole): Structural classification of this unit (body / header-footer / toc);
+            body by default. Furniture (non-body) passages are kept as disabled chunks, never
+            mixed into a body chunk.
         page_start (int): First source page.
         page_end (int): Last source page.
     """
@@ -41,6 +62,7 @@ class Passage(BaseModel):
     section_key: list[str] = Field(default_factory=list)
     atomic: bool = False
     token_count: int = 0
+    role: ChunkRole = ChunkRole.BODY
     page_start: int = 0
     page_end: int = 0
 
@@ -131,22 +153,45 @@ class PassageProjector:
                     break
         return attached
 
+    @staticmethod
+    def __role_for(block: Block, heading_path: list[str]) -> ChunkRole:
+        """
+        Classify a block's structural role from IR signals (conservative, best-effort).
+
+        Header/footer is an explicit IR block type. A table-of-contents is inferred from the
+        section a block lives under: any heading in its ancestry whose FULL normalized text is a
+        known ToC title (exact match, never substring) marks the whole section — heading and its
+        list-like body alike — as scaffolding. Everything else is body. Boilerplate has no
+        reliable IR signal yet, so it is never assigned here (the role stays reserved).
+
+        Args:
+            block (Block): The IR block behind the passage.
+            heading_path (list[str]): The block's heading ancestry TEXTS, top-down.
+
+        Returns:
+            ChunkRole: The structural role of the passage this block produces.
+        """
+        # 1. Header/footer furniture is labelled directly from the IR block type.
+        if block.block_type == BlockType.HEADER_FOOTER:
+            return ChunkRole.HEADER_FOOTER
+        # 2. A ToC section is inferred from the ancestry — any heading matching a known ToC title.
+        if any(heading.strip().lower() in _TOC_TITLES for heading in heading_path):
+            return ChunkRole.TOC
+        return ChunkRole.BODY
+
     @classmethod
     def __block_text(
         cls, block: Block, config: BaseChunkerConfig, caption: str | None
     ) -> tuple[str, bool] | None:
         """A block's textual contribution → (text, atomic), or None when it contributes nothing."""
-        # 1. Header/footer noise never reaches a chunk.
-        if block.block_type == BlockType.HEADER_FOOTER:
-            return None
-        # 2. A table renders to markdown, atomically by default, its caption folded in above.
+        # 1. A table renders to markdown, atomically by default, its caption folded in above.
         if block.block_type == BlockType.TABLE:
             if not config.include_tables or block.table is None or not block.table.cells:
                 return None
             rendered = ChunkerHelpers.render_table(block.table)
             text = f"{caption}\n{rendered}" if caption else rendered
             return text, config.tables_atomic
-        # 3. THE figure rule: the image and its meaning travel as ONE unit, rendered as an
+        # 2. THE figure rule: the image and its meaning travel as ONE unit, rendered as an
         #    explicitly MARKED block (leading `[Image]`, OCR labelled) so machine-derived text
         #    never reads as prose; an empty figure (e.g. decorative) contributes nothing.
         if block.block_type == BlockType.FIGURE:
@@ -154,7 +199,7 @@ class PassageProjector:
                 return None
             text = ChunkerHelpers.render_figure(block.figure, caption, block.text)
             return (text, config.figures_atomic) if text else None
-        # 4. Every other block contributes its native text.
+        # 3. Every other block — header/footer furniture included — contributes its native text.
         if block.text and block.text.strip():
             return block.text.strip(), False
         return None
@@ -201,6 +246,7 @@ class PassageProjector:
                     section_key=section_key,
                     atomic=atomic,
                     token_count=ChunkerHelpers.count_tokens(text, config.tokenizer_encoding),
+                    role=cls.__role_for(block, heading_path),
                     page_start=min(member.provenance.page for member in unit_blocks),
                     page_end=max(member.provenance.page for member in unit_blocks),
                 )

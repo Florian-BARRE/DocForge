@@ -16,6 +16,7 @@ from shared_libs.public_models import (
     BlockType,
     Chunk,
     ChunkEmbeddings,
+    ChunkRole,
     ChunkVectors,
     DocumentIR,
     FieldOrigin,
@@ -129,6 +130,40 @@ def test_qdrant_point_has_named_vectors_and_lean_payload(translated) -> None:
     assert point.sparse["content_bm25"].indices == [4]
     assert point.payload == {"document_id": str(DOC), "chunk_index": 0, "keywords": ["cats"]}
     assert translated.dense_dim == 3
+
+
+def test_disabled_by_role_chunk_persists_as_a_row_but_gets_no_qdrant_point() -> None:
+    """A disabled-by-role chunk reaches persistence (inspectable, re-enablable) with NO vector.
+
+    This is the P3 delivery contract at the bundle -> persistence boundary: the chunker keeps
+    furniture as chunks and the embedder skips them, so the bundle carries a body chunk WITH a
+    vector item and a header/footer chunk WITHOUT one. Both must become chunk rows; only the body
+    one becomes a Qdrant point (linkage is by chunk_id — the disabled chunk is simply not listed).
+    """
+    bundle = RunBundle(
+        ingest=IntakeResult(source_hash="h", pdf_content=None, page_count=1),
+        ir=DocumentIR(doc_id="d", source_hash="h", n_pages=1, blocks=[]),
+        pages=PageRenders(pages=[]),
+        chunks=[
+            Chunk(chunk_id="d#c0", ordinal=0, text="Cats purr.", role=ChunkRole.BODY),
+            Chunk(chunk_id="d#c1", ordinal=1, text="Confidential — page 1",
+                  role=ChunkRole.HEADER_FOOTER),
+        ],
+        embeddings=ChunkEmbeddings(model="m", dimension=3, items=[
+            ChunkVectors(chunk_id="d#c0", dense=[1.0, 2.0, 3.0])]),  # body only, furniture skipped
+    )
+    out = RunTranslator.translate(uuid.uuid4(), bundle, schema=[], strategy="s", config_hash="c")
+
+    # 1. BOTH chunks are persisted as rows — the disabled one is not lost.
+    assert {row.chunk_index for row in out.payload.chunks} == {0, 1}
+    # 2. The furniture row carries its ROLE (not the "body" server_default) — so it resolves
+    #    effective-disabled downstream, not silently re-enabled as body.
+    furniture_row = next(r for r in out.payload.chunks if r.chunk_index == 1)
+    assert furniture_row.role == ChunkRole.HEADER_FOOTER.value
+    # 3. Exactly ONE Qdrant point, for the body chunk — the furniture carries no vector.
+    body_uuid = next(r.id for r in out.payload.chunks if r.chunk_index == 0)
+    assert len(out.points) == 1
+    assert out.points[0].point_id == str(body_uuid)
 
 
 def test_identical_artefact_bytes_are_deduplicated_into_one_blob_row() -> None:

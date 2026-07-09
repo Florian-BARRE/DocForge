@@ -1,8 +1,11 @@
 # ====== Code Summary ======
-# BaseEmbedderNode — the abstract base of every embedder. The shared frame: batch the chunks'
-# ENRICHED texts through the provider hooks (dense required, sparse optional), then embed the
+# BaseEmbedderNode — the abstract base of every embedder. The shared frame: keep only the chunks
+# whose role is enabled by default (role_default_enabled is THE single policy: body embeds,
+# furniture like header/footer & toc does not — no vector spend on unsearchable chunks), batch
+# their ENRICHED texts through the provider hooks (dense required, sparse optional), embed the
 # SEMANTIC chunk-field values as named per-field vectors, and assemble the chunk-linked output.
-# Embedding is NOT optional (a chunk without vectors cannot be indexed): any provider failure
+# Disabled chunks simply get NO vectors (they still flow to persistence via the chunk artefact,
+# inspectable + re-enablable). Embedding an enabled chunk is NOT optional: any provider failure
 # fails the node — no degradation here.
 
 # ====== Standard Library Imports ======
@@ -17,6 +20,7 @@ from shared_libs.public_models import (
     CollectionContract,
     FieldScope,
     SparseVector,
+    role_default_enabled,
 )
 
 # ====== Local Project Imports ======
@@ -87,30 +91,36 @@ class BaseEmbedderNode(ActionNode):
 
     async def run(self, data: EmbedConsumes) -> EmbedProduces:
         """
-        Embed every chunk (enriched text) + the semantic field values.
+        Embed every ENABLED chunk (enriched text) + the semantic field values.
+
+        Only chunks whose role is enabled by default are embedded — furniture (header/footer, toc)
+        gets no vectors and no spend. Disabled chunks keep flowing to persistence via the chunk
+        artefact; they are simply absent from the chunk_id-linked vectors here.
 
         Args:
             data (EmbedConsumes): The final chunks + the contract.
 
         Returns:
-            EmbedProduces: One ChunkVectors per chunk, chunk_id-linked, in chunk order.
+            EmbedProduces: One ChunkVectors per ENABLED chunk, chunk_id-linked, in chunk order.
         """
         config: BaseEmbedConfig = self.config
-        if not data.chunks:
+        # 1. THE single policy: embed only role-default-enabled chunks (body); skip the furniture.
+        enabled = [chunk for chunk in data.chunks if role_default_enabled(chunk.role)]
+        if not enabled:
             return EmbedProduces(embeddings=ChunkEmbeddings(model=config.model))
 
-        # 1. The main pair: the ENRICHED text of every chunk, batched.
-        texts = [chunk.enriched_text for chunk in data.chunks]
+        # 2. The main pair: the ENRICHED text of every enabled chunk, batched.
+        texts = [chunk.enriched_text for chunk in enabled]
         dense, sparse_vectors = await self.__embed_all(texts, sparse=config.embed_sparse)
 
-        # 2. The named per-field vectors of the semantic chunk fields.
+        # 3. The named per-field vectors of the semantic chunk fields (enabled chunks only).
         field_vectors = (
-            await self.__embed_semantic_fields(data.chunks, data.contract)
+            await self.__embed_semantic_fields(enabled, data.contract)
             if config.embed_semantic_fields
             else {}
         )
 
-        # 3. Assemble, chunk_id-linked, in chunk order.
+        # 4. Assemble, chunk_id-linked, in enabled-chunk order.
         items = [
             ChunkVectors(
                 chunk_id=chunk.chunk_id,
@@ -122,10 +132,11 @@ class BaseEmbedderNode(ActionNode):
                     if index in per_chunk
                 },
             )
-            for index, chunk in enumerate(data.chunks)
+            for index, chunk in enumerate(enabled)
         ]
         self.logger.info(
-            f"Embedded {len(items)} chunk(s) "
+            f"Embedded {len(items)}/{len(data.chunks)} chunk(s) "
+            f"({len(data.chunks) - len(enabled)} skipped by role) "
             f"(dense dim {len(dense[0])}, sparse: {sparse_vectors is not None}, "
             f"semantic fields: {sorted(field_vectors)})"
         )
