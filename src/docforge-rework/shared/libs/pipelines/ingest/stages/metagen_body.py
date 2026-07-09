@@ -1,17 +1,16 @@
 # ====== Code Summary ======
-# Builds the per-request ForEach BODY of a metagen stage from a structgen chain spec — the one place
-# the metagen model-call topology lives. It is the SIMPLER sibling of EnrichBodyBuilder: no classifier
-# switch, just one linear fallback chain. Each structgen step, on success, IS a terminal producing the
-# body's uniform GeneratedValues artefact (an OnFailure edge escalates to the next provider). The
-# on_error policy is a GRAPH EDGE, not a node flag: when it is skip_fields a model-free metagen_skip
-# terminal is wired OnFailure off the chain's last step (the document survives, only that request's
-# fields drop); when it is fail there is no such terminal, so a final-step failure propagates as a
-# ForEach item failure — the document fails (the ForEach "item failure = loud failure" contract).
+# Thin metagen-flavoured shim over the shared ForEachChainBodyBuilder — it holds only the metagen
+# knobs (the body id/prefix, the ``request`` loop face, the ``values`` output, and the ``metagen_skip``
+# fail-soft terminal) and maps the stage's MetagenOnError onto the optional terminal. The reusable
+# "prep → ForEach(chain [+ fail-soft terminal]) → apply" body topology lives in the shared builder; the
+# on_error policy stays a GRAPH EDGE, not a node flag: skip_fields → a model-free metagen_skip terminal
+# wired OnFailure off the chain's last step (the document survives, only that request's fields drop);
+# fail → no terminal, so a final-step failure propagates as a loud ForEach item failure.
 
 # ====== Internal Project Imports ======
-from shared_libs.pipelines.base import FromGroupInput, OnFailure, Transition
-from shared_libs.pipelines.build.blob import ActionNodeBlob, GroupNodeBlob
-from shared_libs.pipelines.build.chain import ChainFragmentBuilder, ChainStepSpec
+from shared_libs.pipelines.build.blob import GroupNodeBlob
+from shared_libs.pipelines.build.chain import ChainStepSpec
+from shared_libs.pipelines.build.foreach_chain_body import FailSoftTerminal, ForEachChainBodyBuilder
 from shared_libs.pipelines.ingest.nodes.metagen.base import MetagenOnError
 
 # ====== Local Project Imports ======
@@ -24,6 +23,7 @@ class MetagenBodyBuilder:
     BODY_ID = "metagen_path"
     CHAIN_PREFIX = "gen"
     SKIP_ID = "skip"
+    GROUP_FIELD = "request"
     OUTPUT_FIELD = "values"
 
     def __new__(cls, *args: object, **kwargs: object) -> None:
@@ -43,36 +43,25 @@ class MetagenBodyBuilder:
         Returns:
             GroupNodeBlob: The ForEach body group (id ``metagen_path``).
         """
-        # 1. The structgen chain — each step reads the loop's request; NON-scored (escalate on
-        #    failure only). Every step, on success, is itself a body terminal producing GeneratedValues.
-        fragment = ChainFragmentBuilder.build(
-            prefix=cls.CHAIN_PREFIX,
+        # 1. skip_fields is the only mode that adds the fail-soft terminal; fail leaves it absent.
+        terminal = (
+            FailSoftTerminal(node_id=cls.SKIP_ID, family="metagen", kind="metagen_skip")
+            if on_error == MetagenOnError.SKIP_FIELDS
+            else None
+        )
+
+        # 2. Delegate the shared body topology, feeding it the metagen-specific face and terminal.
+        return ForEachChainBodyBuilder.build(
+            body_id=cls.BODY_ID,
+            chain_prefix=cls.CHAIN_PREFIX,
             family=chain.family,
             steps=[
                 ChainStepSpec(kind=step.kind, config=dict(step.config), score_below=step.score_below)
                 for step in chain.steps
             ],
-            step_inputs={"request": FromGroupInput(field_name="request")},
+            group_field=cls.GROUP_FIELD,
             output_field=cls.OUTPUT_FIELD,
-            scored=False,
-        )
-        nodes: list = list(fragment.nodes)
-        transitions: list[Transition] = list(fragment.transitions)
-        bindings: dict[str, dict] = dict(fragment.bindings)
-
-        # 2. skip_fields: the fail-soft terminal — the chain's last step routes here OnFailure when
-        #    every provider has failed, so the document survives (only this request's fields drop).
-        if on_error == MetagenOnError.SKIP_FIELDS:
-            nodes.append(ActionNodeBlob(id=cls.SKIP_ID, family="metagen", kind="metagen_skip"))
-            transitions.append(
-                Transition(
-                    from_node_id=fragment.exits[-1], to_node_id=cls.SKIP_ID, condition=OnFailure()
-                )
-            )
-            bindings[cls.SKIP_ID] = {"request": FromGroupInput(field_name="request")}
-
-        return GroupNodeBlob(
-            id=cls.BODY_ID, nodes=nodes, transitions=transitions, bindings=bindings
+            terminal=terminal,
         )
 
 
