@@ -1,34 +1,63 @@
 // ====== Code Summary ======
-// One chunk's full card — index, size, indexed flag, its text, generated metadata and the source
-// blocks it was assembled from.
+// One chunk's full card — index, size, indexed flag, structural role, enable/disable toggle, its
+// text, generated metadata and the source blocks it was assembled from. Greyed out while its
+// effective state is disabled.
 
+import { useState } from "react";
 import type { ChunkInfo } from "../../../api/explorer";
 import { Chip } from "../../../components/Chip";
 import { theme } from "../../../theme";
 import { ChunkMetadataBlock } from "../metadata/ChunkMetadataBlock";
 import { ChunkBlockLinks } from "./ChunkBlockLinks";
+import { ChunkEnabledToggle } from "./ChunkEnabledToggle";
+import { ChunkRoleBadge } from "./ChunkRoleBadge";
 import { ChunkText } from "./ChunkText";
 
 interface ChunkCardProps {
   chunk: ChunkInfo;
+  selected: boolean;
+  onToggleSelect: (chunkId: string) => void;
   onJumpToBlock: (blockId: string) => void;
+  onEnabledChanged: (chunkId: string, enabled: boolean) => void;
 }
 
-export function ChunkCard({ chunk, onJumpToBlock }: ChunkCardProps) {
+export function ChunkCard({ chunk, selected, onToggleSelect, onJumpToBlock, onEnabledChanged }: ChunkCardProps) {
+  const [reindexNote, setReindexNote] = useState(false);
+
   return (
     <div
       style={{
         display: "flex", flexDirection: "column", gap: theme.space.s,
         background: theme.color.card, border: `1px solid ${theme.color.line}`,
         borderRadius: theme.radius.m, padding: theme.space.m,
+        opacity: chunk.enabled ? 1 : 0.55,
       }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: theme.space.s }}>
+        <input type="checkbox" checked={selected} onChange={() => onToggleSelect(chunk.id)} />
         <strong style={{ fontSize: theme.font.size.m }}>#{chunk.chunk_index}</strong>
         <span style={{ color: theme.color.dim, fontSize: theme.font.size.xs }}>{chunk.token_count} tokens</span>
         <Chip tone={chunk.is_indexed ? "ok" : "dim"}>{chunk.is_indexed ? "indexed" : "not indexed"}</Chip>
         <span style={{ color: theme.color.dim, fontSize: theme.font.size.xs }}>{chunk.strategy}</span>
+        <ChunkRoleBadge role={chunk.role} />
+        {!chunk.enabled && <Chip tone="warn">disabled</Chip>}
+        <span style={{ marginLeft: "auto" }}>
+          <ChunkEnabledToggle
+            chunkId={chunk.id}
+            enabled={chunk.enabled}
+            onChanged={(enabled, reindexRequired) => {
+              onEnabledChanged(chunk.id, enabled);
+              setReindexNote(reindexRequired);
+            }}
+          />
+        </span>
       </div>
+
+      {reindexNote && (
+        <div style={{ color: theme.color.warn, fontSize: theme.font.size.xs }}>
+          Enabled, but this chunk was never embedded — it won't be searchable until re-indexed.
+        </div>
+      )}
 
       <ChunkText text={chunk.text} />
 

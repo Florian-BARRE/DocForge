@@ -19,12 +19,14 @@ import {
 } from "../../api/explorer";
 import { BackLink } from "../../components/BackLink";
 import { Button } from "../../components/Button";
+import { Chip } from "../../components/Chip";
 import { ErrorState } from "../../components/ErrorState";
 import { LoadingState } from "../../components/LoadingState";
 import { TabNav } from "../../components/TabNav";
 import type { Navigate } from "../../shell/view";
 import { theme } from "../../theme";
 import { ChunksTab } from "./chunks/ChunksTab";
+import { DocumentEnabledToggle } from "./DocumentEnabledToggle";
 import { DocumentStatusChip } from "./DocumentStatusChip";
 import { formatBytes, formatDateTime } from "./format";
 import { IRTab } from "./ir/IRTab";
@@ -99,6 +101,14 @@ export function DocumentPage({ collectionId, documentId, onNavigate }: DocumentP
     setActiveTab("ir");
   };
 
+  const handleDocumentEnabledChanged = (enabled: boolean) => {
+    setDocument((prev) => (prev ? { ...prev, enabled } : prev));
+  };
+
+  const handleChunkEnabledChanged = (chunkId: string, enabled: boolean) => {
+    setChunks((prev) => (prev ? prev.map((chunk) => (chunk.id === chunkId ? { ...chunk, enabled } : chunk)) : prev));
+  };
+
   const handleDelete = async () => {
     setDeleting(true);
     try {
@@ -119,6 +129,8 @@ export function DocumentPage({ collectionId, documentId, onNavigate }: DocumentP
       <div style={{ display: "flex", alignItems: "center", gap: theme.space.s, margin: `${theme.space.s}px 0` }}>
         <h1 style={{ fontSize: theme.font.size.xl, wordBreak: "break-word" }}>{document.filename}</h1>
         <DocumentStatusChip status={document.status} />
+        {!document.enabled && <Chip tone="warn">disabled</Chip>}
+        <DocumentEnabledToggle documentId={documentId} enabled={document.enabled} onChanged={handleDocumentEnabledChanged} />
       </div>
       <div style={{ color: theme.color.dim, fontSize: theme.font.size.s, marginBottom: theme.space.m }}>
         {document.format.toUpperCase()} · {document.page_count ?? "—"} page(s) · {formatBytes(document.file_size)} · created {formatDateTime(document.created_at)}
@@ -160,7 +172,7 @@ export function DocumentPage({ collectionId, documentId, onNavigate }: DocumentP
           (chunksError ? (
             <ErrorState message={chunksError} onRetry={loadChunks} />
           ) : chunks ? (
-            <ChunksTab chunks={chunks} onJumpToBlock={jumpToBlock} />
+            <ChunksTab chunks={chunks} onJumpToBlock={jumpToBlock} onChunkEnabledChanged={handleChunkEnabledChanged} />
           ) : (
             <LoadingState label="loading chunks…" />
           ))}

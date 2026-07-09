@@ -4,16 +4,24 @@
 // models (see /openapi.json) — nothing invented.
 
 import type { FieldOrigin } from "./collections";
-import { apiFetch } from "./http";
+import { apiFetch, jsonInit } from "./http";
 
 const DOCUMENTS_BASE = "/api/v1/documents";
 const COLLECTIONS_BASE = "/api/v1/collections";
 const BLOBS_BASE = "/api/v1/blobs";
+const CHUNKS_BASE = "/api/v1/chunks";
 
 export type DocumentStatus = "pending" | "processing" | "done" | "failed";
 export type SourceKind = "digital_born" | "scanned" | "mixed";
 export type EnrichmentKind = "classify" | "ocr" | "vlm" | "chart_to_data" | "table_summary";
 export type EnrichmentStatus = "ok" | "failed" | "skipped";
+
+/**
+ * A chunk's structural classification, assigned by the pipeline (not a user choice). Drives the
+ * default effective-enabled state: only `body` is searchable by default — every other role
+ * defaults off and needs an explicit enable to become searchable.
+ */
+export type ChunkRole = "body" | "header_footer" | "toc" | "boilerplate";
 
 /** One row of a collection's document catalogue (the browse list). */
 export interface DocumentListItem {
@@ -26,6 +34,8 @@ export interface DocumentListItem {
   created_at: string | null;
   title: string;
   language: string | null;
+  /** The document-level searchability toggle — disabling hides every chunk regardless of role. */
+  enabled: boolean;
 }
 
 /** One resolved metadata value — the schema field name, its stored value, and who filled it. */
@@ -54,6 +64,8 @@ export interface DocumentDetail {
   pipeline_version: string;
   created_at: string | null;
   metadata: MetadataValue[];
+  /** The document-level searchability toggle — disabling hides every chunk regardless of role. */
+  enabled: boolean;
 }
 
 /** One page's geometry, routing and its render blob reference. */
@@ -129,6 +141,39 @@ export interface ChunkInfo {
   parent_id: string | null;
   block_ids: string[];
   metadata: MetadataValue[];
+  /** Structural classification assigned by the pipeline — drives the default enabled state. */
+  role: ChunkRole;
+  /** The recomputed EFFECTIVE searchability state (enabled_override ?? role_default_enabled). */
+  enabled: boolean;
+}
+
+/** The desired searchability state for one chunk (its enabled_override). */
+export interface ChunkEnabledPatch {
+  enabled: boolean;
+}
+
+/**
+ * The outcome of toggling one chunk's searchability.
+ *
+ * `reindex_required` is true only when enabling a chunk that was never embedded — it has no
+ * Qdrant point, so it is NOT searchable until a later on-demand re-embed runs.
+ */
+export interface ChunkEnabledResult {
+  chunk_id: string;
+  enabled: boolean;
+  reindex_required: boolean;
+}
+
+/** Toggle several chunks' searchability to the same state in one call (the UI's multi-select). */
+export interface BulkChunkEnabledPatch {
+  chunk_ids: string[];
+  enabled: boolean;
+}
+
+/** The per-chunk outcomes of a bulk toggle plus the ids that did not resolve to a chunk. */
+export interface BulkChunkEnabledResponse {
+  results: ChunkEnabledResult[];
+  not_found: string[];
 }
 
 export function listDocuments(collectionId: string): Promise<DocumentListItem[]> {
@@ -153,6 +198,16 @@ export function getDocumentChunks(id: string): Promise<ChunkInfo[]> {
 
 export function deleteDocument(id: string): Promise<void> {
   return apiFetch(`${DOCUMENTS_BASE}/${id}`, { method: "DELETE" });
+}
+
+/** Toggle one chunk's searchability (reversible, no re-embed). */
+export function setChunkEnabled(id: string, enabled: boolean): Promise<ChunkEnabledResult> {
+  return apiFetch(`${CHUNKS_BASE}/${id}/enabled`, jsonInit("PATCH", { enabled }));
+}
+
+/** Toggle several chunks' searchability to the same state in one call (the multi-select bar). */
+export function setChunksEnabled(chunkIds: string[], enabled: boolean): Promise<BulkChunkEnabledResponse> {
+  return apiFetch(`${CHUNKS_BASE}/enabled`, jsonInit("PATCH", { chunk_ids: chunkIds, enabled }));
 }
 
 /** Direct blob URL — used verbatim as an `<img src>` or a canonical-PDF link. */

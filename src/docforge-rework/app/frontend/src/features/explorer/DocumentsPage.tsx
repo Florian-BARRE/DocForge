@@ -39,6 +39,10 @@ export function DocumentsPage({ collectionId, onNavigate }: DocumentsPageProps) 
     load();
   };
 
+  const handleEnabledChanged = (documentId: string, enabled: boolean) => {
+    setDocuments((prev) => (prev ? prev.map((doc) => (doc.id === documentId ? { ...doc, enabled } : doc)) : prev));
+  };
+
   return (
     <div style={{ padding: theme.space.l, overflowY: "auto", height: "100%" }}>
       <BackLink label="Collection" onClick={() => onNavigate({ name: "collection", collectionId })} />
@@ -59,6 +63,7 @@ export function DocumentsPage({ collectionId, onNavigate }: DocumentsPageProps) 
               <th style={{ ...headStyle, textAlign: "right" }}>Pages</th>
               <th style={{ ...headStyle, textAlign: "right" }}>Size</th>
               <th style={headStyle}>Created</th>
+              <th style={headStyle}>Enabled</th>
               <th style={headStyle} />
             </tr>
           </thead>
@@ -69,6 +74,7 @@ export function DocumentsPage({ collectionId, onNavigate }: DocumentsPageProps) 
                 document={doc}
                 onOpen={() => onNavigate({ name: "document", collectionId, documentId: doc.id })}
                 onDelete={() => handleDelete(doc.id)}
+                onEnabledChanged={(enabled) => handleEnabledChanged(doc.id, enabled)}
               />
             ))}
           </tbody>
