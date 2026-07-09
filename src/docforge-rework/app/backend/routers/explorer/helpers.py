@@ -11,6 +11,7 @@ from collections.abc import Sequence
 from loggerplusplus import loggerplusplus
 
 # ====== Internal Project Imports ======
+from shared_libs.public_models import ChunkRole, role_default_enabled
 from shared_libs.services.db.facades import ChunkToggle, IRBundle
 from shared_libs.services.db.postgresql.tables import (
     Chunk,
@@ -77,6 +78,7 @@ class ExplorerHelpers:
             created_at=document.created_at,
             title=document.title,
             language=document.language,
+            enabled=document.enabled,
         )
 
     @staticmethod
@@ -99,6 +101,7 @@ class ExplorerHelpers:
             simhash=document.simhash,
             pipeline_version=document.pipeline_version,
             created_at=document.created_at,
+            enabled=document.enabled,
             metadata=metadata,
         )
 
@@ -170,9 +173,9 @@ class ExplorerHelpers:
         )
 
     # -------------------- chunks --------------------
-    @staticmethod
+    @classmethod
     def chunk(
-        chunk: Chunk, block_ids: list[str], metadata: list[MetadataValue]
+        cls, chunk: Chunk, block_ids: list[str], metadata: list[MetadataValue]
     ) -> ChunkInfo:
         """Map a chunk row + its composition and metadata to the explorer model."""
         return ChunkInfo(
@@ -185,7 +188,19 @@ class ExplorerHelpers:
             parent_id=str(chunk.parent_id) if chunk.parent_id is not None else None,
             block_ids=block_ids,
             metadata=metadata,
+            role=chunk.role,
+            enabled=cls._effective_enabled(chunk),
         )
+
+    @staticmethod
+    def _effective_enabled(chunk: Chunk) -> bool:
+        """Resolve a chunk's effective searchability: the user override wins, else the role default."""
+        # 1. An explicit user override always wins over the structural default.
+        if chunk.enabled_override is not None:
+            return chunk.enabled_override
+
+        # 2. No override — defer to the single role -> default-enabled policy.
+        return role_default_enabled(ChunkRole(chunk.role))
 
     @staticmethod
     def chunk_toggle(outcome: ChunkToggle) -> ChunkEnabledResult:

@@ -39,6 +39,9 @@ class DocumentListItem(BaseModel):
     created_at: datetime | None = Field(default=None, description="Admission timestamp.")
     title: str = Field(description="Learned title ('' before parse).")
     language: str | None = Field(default=None, description="Detected language (None before parse).")
+    enabled: bool = Field(
+        description="Document-level searchability toggle; False hides all its chunks from retrieval."
+    )
 
 
 class DocumentDetail(BaseModel):
@@ -60,6 +63,9 @@ class DocumentDetail(BaseModel):
     simhash: str | None = Field(default=None, description="Near-duplicate signature (or None).")
     pipeline_version: str = Field(description="Pipeline config identity the run used.")
     created_at: datetime | None = Field(default=None, description="Admission timestamp.")
+    enabled: bool = Field(
+        description="Document-level searchability toggle; False hides all its chunks from retrieval."
+    )
     metadata: list[MetadataValue] = Field(
         default_factory=list, description="Document-level values (declared and generated)."
     )
@@ -86,6 +92,12 @@ class ChunkInfo(BaseModel):
     text: str = Field(description="The enriched, embedded text.")
     token_count: int = Field(description="Token length of the enriched text.")
     is_indexed: bool = Field(description="Whether the chunk is upserted into Qdrant.")
+    role: str = Field(
+        description="Structural classification (body/header_footer/toc/boilerplate) set by the pipeline."
+    )
+    enabled: bool = Field(
+        description="Effective searchability: enabled_override when set, else the role's default."
+    )
     strategy: str = Field(description="The chunking strategy that produced it.")
     parent_id: str | None = Field(default=None, description="Parent chunk (hierarchical chunking).")
     block_ids: list[str] = Field(
