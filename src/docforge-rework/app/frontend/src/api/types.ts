@@ -254,8 +254,14 @@ export interface ChainStep {
   score_below: number | null;
 }
 
-/** A fallback chain the user can build at one model-call site of a stage (enrich's OCR/VLM
- *  sites) — flagged with its family so the UI can colour it apart from the linear rail. */
+/** A fallback chain the user can build at one model-call site of a stage — a chain-capable
+ *  provider/toggle stage's OWN chain (parse, embed, metagen chunk/document; `slot` equals the
+ *  stage's own `key`, and the action to edit it must be sent with `slot: null`), or one of
+ *  enrich's per-figure-class sites (`slot` is the branch key, e.g. `scanned_text_ocr`). The
+ *  contextualize `llm` method's chain is ALSO surfaced here (`slot: "contextualize.{index}"`) for
+ *  read/display purposes only — it is edited through the stack's `StackMethod.chain`, never a
+ *  direct `set_chain` (the compiler only recognises `stage="enrich"` slot edits). Flagged with its
+ *  family so the UI can colour it apart from the linear rail. */
 export interface ChainView {
   slot: string;
   title: string;
@@ -265,10 +271,21 @@ export interface ChainView {
   steps: ChainStep[];
 }
 
-/** One method of a stackable stage (contextualize) — a node in the ordered composition. */
+/** A fallback chain's canonical state — its family and its ordered steps. Carried inline by a
+ *  StackMethod (the `llm` method's own chain) rather than addressed by a chain-list slot. */
+export interface ChainSpec {
+  family: string;
+  steps: ChainStep[];
+}
+
+/** One method of a stackable stage (contextualize) — a node in the ordered composition. A simple
+ *  method (doc_meta, breadcrumb, sliding) carries no chain; `llm` additionally carries the generic-
+ *  `llm` fallback chain its ForEach body runs, edited in place through `set_stack` (the chain is
+ *  part of the method, not a separate slot-addressed `set_chain` edit). */
 export interface StackMethod {
   kind: string;
   config: Record<string, unknown>;
+  chain?: ChainSpec | null;
 }
 
 /** The product-level view of one pipeline stage — everything the rail renders for it. */
@@ -314,5 +331,5 @@ export type StageAction =
   | { action: "disable_stage"; stage: string }
   | { action: "set_provider"; stage: string; kind: string }
   | { action: "set_config"; stage: string; node?: string | null; config: Record<string, unknown> }
-  | { action: "set_chain"; stage: string; slot: string; steps: ChainStep[] }
+  | { action: "set_chain"; stage: string; slot: string | null; steps: ChainStep[] }
   | { action: "set_stack"; stage: string; steps: StackMethod[] };

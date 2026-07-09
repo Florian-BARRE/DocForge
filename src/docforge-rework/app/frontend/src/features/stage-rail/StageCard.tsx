@@ -1,8 +1,12 @@
 // ====== Code Summary ======
 // One vertical entry of the stage rail: switch + title + description + requires hint, its notes
 // banner, and its content area shaped by `kind` — a provider picker, a config form, an ordered
-// stack, and/or its fallback chains. Disabled stages stay fully visible (greyed) so the whole
-// canonical chain is always on screen, per the fixed-shape mandate.
+// stack, and/or its fallback chains. Every chain-bearing stage renders `ChainSection` GENERICALLY
+// (parse/embed's own chain, metagen chunk/document's structgen ladder, enrich's per-figure sites) —
+// EXCEPT the stack stage (contextualize): its `chains` entries are informational duplicates of each
+// `llm` method's OWN chain, rendered instead inline inside StackEditor/StackMethodCard, because the
+// compiler has no slot to accept a direct edit there. Disabled stages stay fully visible (greyed)
+// so the whole canonical chain is always on screen, per the fixed-shape mandate.
 
 import { Chip } from "../../components/Chip";
 import type { Palette, StageView } from "../../api/types";
@@ -77,7 +81,7 @@ export function StageCard({ stage, palette, actions }: StageCardProps) {
           )}
           {stage.kind === "toggle" && <StageConfigForm stage={stage} palette={palette} actions={actions} />}
           {stage.kind === "stack" && <StackEditor stage={stage} palette={palette} actions={actions} />}
-          {stage.chains.map((chain) => (
+          {stage.kind !== "stack" && stage.chains.map((chain) => (
             <ChainSection key={chain.slot} stageKey={stage.key} chain={chain} palette={palette} actions={actions} />
           ))}
         </div>

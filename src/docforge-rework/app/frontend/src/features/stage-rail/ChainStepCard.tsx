@@ -1,14 +1,16 @@
 // ====== Code Summary ======
 // One fallback attempt in a chain — "N. name — escalate if score < X or on failure". The last
 // step is terminal (its threshold is meaningless: there is nothing left to escalate to), so its
-// score input is replaced by a plain "final attempt" label. Config is collapsed by default.
+// score input is replaced by a plain "final attempt" label. A NON-scored family (embed/llm/
+// structgen) has no threshold at all — its fallback is failure-only, and the compiler silently
+// drops any score_below sent for it, so the input is never even offered (see `scored`). Config is
+// collapsed by default.
 
 import { useState } from "react";
 import { SchemaForm } from "../../components/schema-form/SchemaForm";
 import { inputStyle } from "../../components/inputStyle";
 import type { ChainStep, NodeCard } from "../../api/types";
 import { theme } from "../../theme";
-import type { StageRailActions } from "./actions";
 import { hasConfigFields } from "./state/paletteLookup";
 
 const iconButton: React.CSSProperties = {
@@ -17,20 +19,22 @@ const iconButton: React.CSSProperties = {
 };
 
 interface ChainStepCardProps {
-  stageKey: string;
-  slot: string;
   step: ChainStep;
   index: number;
   isLast: boolean;
+  /** Whether this step's family carries a score a threshold can escalate on — gates the input. */
+  scored: boolean;
   card?: NodeCard;
-  actions: StageRailActions;
   onMoveUp: () => void;
   onMoveDown: () => void;
   onRemove: () => void;
+  onConfigChange: (field: string, value: unknown) => void;
+  /** Absent for a non-scored chain — the threshold row degrades to a plain failure-only label. */
+  onScoreBelowChange?: (value: number | null) => void;
 }
 
 export function ChainStepCard({
-  stageKey, slot, step, index, isLast, card, actions, onMoveUp, onMoveDown, onRemove,
+  step, index, isLast, scored, card, onMoveUp, onMoveDown, onRemove, onConfigChange, onScoreBelowChange,
 }: ChainStepCardProps) {
   const [expanded, setExpanded] = useState(false);
   const configurable = hasConfigFields(card);
@@ -53,27 +57,25 @@ export function ChainStepCard({
       <div style={{ marginTop: theme.space.xs, display: "flex", alignItems: "center", gap: theme.space.s, fontSize: theme.font.size.xs, color: theme.color.dim }}>
         {isLast ? (
           <span>final attempt — always accepted, no escalation</span>
-        ) : (
+        ) : scored ? (
           <>
             <span>escalate to the next step when score &lt;</span>
             <input
               type="number" step="0.05" min={0} max={1}
               value={step.score_below ?? ""}
               placeholder="on failure only"
-              onChange={(e) => actions.setChainStepScoreBelow(stageKey, slot, index, e.target.value === "" ? null : Number(e.target.value))}
+              onChange={(e) => onScoreBelowChange?.(e.target.value === "" ? null : Number(e.target.value))}
               style={{ ...inputStyle, width: 90 }}
             />
             <span>or on failure</span>
           </>
+        ) : (
+          <span>falls through to the next step on failure — no quality threshold for this provider</span>
         )}
       </div>
       {expanded && configurable && card && (
         <div style={{ marginTop: theme.space.s }}>
-          <SchemaForm
-            schema={card.config_schema}
-            values={step.config}
-            onChange={(field, value) => actions.setChainStepConfig(stageKey, slot, index, field, value)}
-          />
+          <SchemaForm schema={card.config_schema} values={step.config} onChange={onConfigChange} />
         </div>
       )}
     </div>

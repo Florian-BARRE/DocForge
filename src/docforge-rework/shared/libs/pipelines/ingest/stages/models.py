@@ -131,7 +131,9 @@ class StageView(BaseModel):
         provider (str | None): The currently selected kind (provider stages).
         available (list[str]): The kinds offered by the family (provider stages).
         config (dict | None): The current node config (single-config stages; None otherwise).
-        chains (list[ChainView]): The per-site model chains (enrich; empty elsewhere).
+        chains (list[ChainView]): The stage's fallback chains — parse/embed (one), metagen (one per
+            scope), the enrich per-figure-site chains, and one per contextualize llm method; empty
+            for a stage with no model-call site.
         stack (list[StackMethod]): The ordered methods (contextualize; empty elsewhere).
         requires (list[str]): Keys of the stages this one depends on.
         notes (str | None): A caveat shown to the user (e.g. a required config to fill).

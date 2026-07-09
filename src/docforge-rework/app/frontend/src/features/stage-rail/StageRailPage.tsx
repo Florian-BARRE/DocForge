@@ -20,8 +20,9 @@ import { NoticesBar } from "./NoticesBar";
 import { StageCard } from "./StageCard";
 import { StageRailHeader } from "./StageRailHeader";
 import {
-  buildSetChainAction, buildSetConfigAction, buildSetStackAction,
-  localSetChainStepConfig, localSetChainStepScoreBelow, localSetStackMethodConfig, localSetStageConfig,
+  buildSetChainAction, buildSetConfigAction, buildSetStackAction, buildSetStackMethodChainAction,
+  localSetChainStepConfig, localSetChainStepScoreBelow, localSetStackMethodConfig, localSetStackMethodChainStepConfig,
+  localSetStageConfig,
 } from "./state/stageOps";
 import type { StageAction } from "../../api/types";
 
@@ -172,6 +173,15 @@ export function StageRailPage({ initialBlob, onBlobChange, onSave, title, subtit
     setChainStepScoreBelow: (stageKey, slot, index, value) => applyLocalThenDebounced(
       (s) => localSetChainStepScoreBelow(s, stageKey, slot, index, value),
       (s) => buildSetChainAction(s, stageKey, slot),
+    ),
+    setStackMethodChainSteps: (stageKey, methodIndex, steps) =>
+      applyAction(buildSetStackMethodChainAction(stagesLatestRef.current ?? [], stageKey, methodIndex, steps)),
+    setStackMethodChainStepConfig: (stageKey, methodIndex, stepIndex, field, value) => applyLocalThenDebounced(
+      (s) => localSetStackMethodChainStepConfig(s, stageKey, methodIndex, stepIndex, field, value),
+      (s) => buildSetStackMethodChainAction(
+        s, stageKey, methodIndex,
+        s.find((st) => st.key === stageKey)?.stack[methodIndex]?.chain?.steps ?? [],
+      ),
     ),
   }), [applyAction, applyLocalThenDebounced]);
 

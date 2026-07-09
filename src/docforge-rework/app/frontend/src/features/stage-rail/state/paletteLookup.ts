@@ -21,6 +21,19 @@ export function hasConfigFields(card: NodeCard | undefined): boolean {
 }
 
 /**
+ * Whether a chain family's providers carry a score a `score_below` escalation can read.
+ *
+ * Mirrors the engine's own rule (`Produces` subclassing `ScoredOutput` — parser/ocr/vlm are
+ * scored, embed/llm/structgen are not) via the honest per-node `scored` flag the palette already
+ * carries — no family name is special-cased here. A chain whose family reports unscored MUST NOT
+ * offer a threshold input: the compiler silently drops any `score_below` on a non-scored chain
+ * (failure-only fallback), so showing the field would be a lie.
+ */
+export function familyIsScored(palette: Palette, family: string): boolean {
+  return findFamily(palette, family)?.nodes.some((n) => n.scored) ?? false;
+}
+
+/**
  * The node card that owns a TOGGLE stage's own top-level `config` (render/enrich/metagen_*).
  *
  * A toggle stage exposes exactly one editable config, but the family it draws from may list

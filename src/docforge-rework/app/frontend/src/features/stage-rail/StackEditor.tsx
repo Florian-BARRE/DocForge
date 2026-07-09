@@ -53,6 +53,8 @@ export function StackEditor({ stage, palette, actions }: StackEditorProps) {
           isFirst={index === 0}
           isLast={index === stage.stack.length - 1}
           card={findNodeCard(palette, family, method.kind)}
+          chainView={method.kind === "llm" ? stage.chains.find((c) => c.slot === `contextualize.${index}`) : undefined}
+          palette={palette}
           actions={actions}
           onMoveUp={() => move(index, index - 1)}
           onMoveDown={() => move(index, index + 1)}

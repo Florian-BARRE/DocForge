@@ -21,4 +21,11 @@ export interface StageRailActions {
   setChainStepConfig: (stageKey: string, slot: string, index: number, field: string, value: unknown) => void;
   /** Typing a chain step's escalation threshold — debounced. */
   setChainStepScoreBelow: (stageKey: string, slot: string, index: number, value: number | null) => void;
+  /** Discrete edit (add/remove/reorder) of a stack method's OWN nested chain (the `llm` method's
+   *  fallback ladder) — a full `set_stack` replacement under the hood, sent immediately. */
+  setStackMethodChainSteps: (stageKey: string, methodIndex: number, steps: ChainStep[]) => void;
+  /** Typing a step's own config field inside a stack method's nested chain — debounced. */
+  setStackMethodChainStepConfig: (
+    stageKey: string, methodIndex: number, stepIndex: number, field: string, value: unknown,
+  ) => void;
 }

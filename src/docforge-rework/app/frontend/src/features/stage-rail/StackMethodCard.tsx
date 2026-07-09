@@ -1,12 +1,15 @@
 // ====== Code Summary ======
-// One method of a stackable stage (contextualize) — name/summary, reorder/remove controls, and
-// its own config collapsed by default (most methods, like breadcrumb, need no tuning at all).
+// One method of a stackable stage (contextualize) — name/summary, reorder/remove controls, its own
+// config collapsed by default (most methods, like breadcrumb, need no tuning at all), and — for the
+// `llm` method only — its OWN nested fallback chain (StackMethodChainSection), the subtlest chain
+// surface in the rail.
 
 import { useState } from "react";
 import { SchemaForm } from "../../components/schema-form/SchemaForm";
-import type { NodeCard, StackMethod } from "../../api/types";
+import type { ChainView, NodeCard, Palette, StackMethod } from "../../api/types";
 import { theme } from "../../theme";
 import type { StageRailActions } from "./actions";
+import { StackMethodChainSection } from "./StackMethodChainSection";
 import { hasConfigFields } from "./state/paletteLookup";
 
 const iconButton: React.CSSProperties = {
@@ -21,6 +24,10 @@ interface StackMethodCardProps {
   isFirst: boolean;
   isLast: boolean;
   card?: NodeCard;
+  /** The `contextualize.{index}` chain view the backend surfaces for the `llm` method — present
+   *  iff `method.kind === "llm"`. */
+  chainView?: ChainView;
+  palette: Palette;
   actions: StageRailActions;
   onMoveUp: () => void;
   onMoveDown: () => void;
@@ -28,7 +35,7 @@ interface StackMethodCardProps {
 }
 
 export function StackMethodCard({
-  stageKey, method, index, isFirst, isLast, card, actions, onMoveUp, onMoveDown, onRemove,
+  stageKey, method, index, isFirst, isLast, card, chainView, palette, actions, onMoveUp, onMoveDown, onRemove,
 }: StackMethodCardProps) {
   const [expanded, setExpanded] = useState(false);
   const configurable = hasConfigFields(card);
@@ -56,6 +63,11 @@ export function StackMethodCard({
             onChange={(field, value) => actions.setStackMethodConfig(stageKey, index, field, value)}
           />
         </div>
+      )}
+      {chainView && (
+        <StackMethodChainSection
+          stageKey={stageKey} methodIndex={index} chainView={chainView} palette={palette} actions={actions}
+        />
       )}
     </div>
   );
