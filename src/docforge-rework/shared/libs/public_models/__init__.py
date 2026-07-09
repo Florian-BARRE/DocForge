@@ -39,6 +39,7 @@ from .enrich import EnrichmentEntry, FigureItem
 
 # ---------------------- Chunks (retrieval units) ---------------------- #
 from .chunk import Chunk
+from .chunk_role import ChunkRole, role_default_enabled
 
 # ---------------------- Metagen (generated metadata) ---------------------- #
 from .metagen import GeneratedDocumentMeta
@@ -87,6 +88,8 @@ __all__ = [
     "FigureItem",
     "EnrichmentEntry",
     "Chunk",
+    "ChunkRole",
+    "role_default_enabled",
     "GeneratedDocumentMeta",
     "OpenAICompatConfig",
     "GenerationField",

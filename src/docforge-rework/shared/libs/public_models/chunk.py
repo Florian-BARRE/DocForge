@@ -13,6 +13,7 @@ from pydantic import Field
 
 # ====== Local Project Imports ======
 from .base import Artifact
+from .chunk_role import ChunkRole
 
 
 class Chunk(Artifact):
@@ -26,6 +27,9 @@ class Chunk(Artifact):
         block_ids (list[str]): The IR blocks this chunk is made of, in reading order.
         token_count (int): Token count of ``text`` (the chunker's tokenizer).
         heading_path (list[str]): Section ancestry, top-down (e.g. ["Chapter 2", "Results"]).
+        role (ChunkRole): Structural classification of this chunk (body / header-footer / toc /
+            boilerplate); assigned by the pipeline, drives the default enabled state. Defaults to
+            BODY so every chunk stays searchable until a classifier assigns a real role.
         page_start (int): First source page covered (0-indexed).
         page_end (int): Last source page covered (0-indexed).
         context (str): Retrieval context ACCUMULATED by the contextualize stage (each method
@@ -41,6 +45,7 @@ class Chunk(Artifact):
     block_ids: list[str] = Field(default_factory=list)
     token_count: int = 0
     heading_path: list[str] = Field(default_factory=list)
+    role: ChunkRole = ChunkRole.BODY
     page_start: int = 0
     page_end: int = 0
     context: str = ""
