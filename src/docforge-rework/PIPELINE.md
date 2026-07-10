@@ -280,7 +280,14 @@ Quelle que soit la méthode, l'IR est d'abord projeté en **passages** ordonnés
   adjacent** est replié dans l'unité (les parseurs l'émettent séparé — block_ids inclus) ; parties vides
   ignorées ; insécable (`figures_atomic`) — une figure vide (decorative, marqueur seul) n'apporte rien ;
 - **Table → markdown**, atomique (`tables_atomic`), caption adjacente repliée aussi — jamais coupée en deux ;
-- header/footer exclus · `heading_path` + identité de section calculés (l'arbre de titres du parse ; **garde
+- **mobilier structurel classé par `role`, gardé mais désactivé** (jamais droppé — inspectable/réactivable, non
+  embeddé) : `header_footer` (type de bloc IR), `toc` (titre = match exact de l'allow-list), et **`boilerplate` =
+  répétition inter-pages** (un pré-pass mappe le texte normalisé de chaque bloc à ses pages **distinctes** ;
+  au-delà de `boilerplate_min_pages`, défaut 3 → BOILERPLATE ; `detect_repeated_boilerplate` on/off par collection).
+  Ces passages partent en chunks-mobilier séparés (`role_default_enabled` → `enabled=false`), **retirés du texte body** ;
+- un **heading orphelin** (titre sans corps propre) n'est jamais un chunk isolé : replié en breadcrumb dans la
+  section suivante (ou la précédente s'il est en fin) ;
+- `heading_path` + identité de section calculés (l'arbre de titres du parse ; **garde
   anti-cycle** sur une chaîne de parents corrompue) ;
 - comptage **tiktoken** exact (`tokenizer_encoding`, défaut cl100k_base ; premier chargement **hors event loop** —
   pré-charger le cache BPE dans l'image worker : suivi infra) ;
