@@ -142,7 +142,9 @@ services:
       - "10045:3000"              # HTTP conversion API (collection configs point here)
     restart: unless-stopped
     networks:
-      - rework_net
+      rework_net:
+        aliases:
+          - gotenberg             # so a collection's default base_url http://gotenberg:3000 resolves
 
   # ── BGE model host — the SAME image as the legacy stack (embed BGE-M3 + rerank) ──
   # No profile: it is a backing service like the stores, so `up` (without --profile full)

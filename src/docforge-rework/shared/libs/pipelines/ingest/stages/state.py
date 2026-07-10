@@ -131,7 +131,7 @@ def default_state() -> PipelineState:
         metadoc_config={"base_url": "http://llm:8000/v1", "model": "llm-default"},
         embed_chain=ChainSpec(
             family="embed",
-            steps=[ChainStep(kind="bge_server", config={"base_url": "http://bge_server:8008"})],
+            steps=[ChainStep(kind="bge_server", config={"base_url": "http://bge_server:80"})],
         ),
     )
 

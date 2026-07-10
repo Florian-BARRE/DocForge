@@ -19,7 +19,7 @@ from ..base import BaseEmbedConfig, BaseEmbedderNode
 class EmbedBgeServerConfig(BaseEmbedConfig):
     """bge_server endpoint (the model is fixed server-side — the field is provenance)."""
 
-    base_url: str = Field(description="bge_server endpoint (e.g. http://bge_server:8008).")
+    base_url: str = Field(description="bge_server endpoint (e.g. http://bge_server:80).")
     api_key: str = Field(default="", description="Bearer token when the server requires one.")
     model: str = Field(
         default="BAAI/bge-m3",

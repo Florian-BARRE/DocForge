@@ -672,7 +672,7 @@
     },
     {
       "config": {
-        "base_url": "http://bge_server:8008"
+        "base_url": "http://bge_server:80"
       },
       "family": "embed",
       "id": "embed",
