@@ -46,6 +46,7 @@ NOT the ingestion engine (that's `shared/libs/pipelines/` → **pipeline** agent
 - [Search overrides (Search Lab)](search-overrides.md) — per-REQUEST `overrides` shadow the search config for one query (never persisted); merge point, validation, `debug_info.effective` shape.
 - [Hybrid search endpoint](hybrid-search-endpoint.md) — POST /collections/{id}/search: embeds the query with the collection's OWN embed node (reuses its hooks), names vectors via VectorNames constants, filters→Conditions, un-ingested guard in SearchFacade.
 - [Enable/disable searchability](enable-disable-searchability.md) — reversible chunk/doc toggle: search-exclusion injected in SearchFacade (unbypassable), EnablementFacade flips payload via set_payload (never re-embed), is_indexed = "has a point", never-embedded → reindex_required.
+- [Test backend import wiring](test-backend-import-wiring.md) — in `tests/units/api`, defer every `from backend...` import until the `fastapi_app` fixture has set `sys.path`; a module-top import fails collection with `ModuleNotFoundError: backend`.
 
 ## Boundary
 

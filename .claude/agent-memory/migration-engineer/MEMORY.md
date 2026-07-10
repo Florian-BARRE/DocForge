@@ -15,7 +15,11 @@ Alembic + SQLAlchemy 2 async (asyncpg). The **app** runs migrations; the worker 
   (+ `base.py`). This is the source of the autogenerate target metadata.
 - Data access is the `shared_libs.services.db` façade (facades/ + clients postgresql/qdrant/s3) —
   worker persists at the edges; nodes never touch the DB.
-- Run head: `docker compose -f docker-compose.rework.yml exec rework_app sh -c 'alembic upgrade head'`.
+- Run head: `docker compose -f docker-compose.rework.yml exec rework_app sh -c 'alembic -c /app/shared/alembic.ini upgrade head'`.
+  The **`-c` is required in-container** (cwd is `/app/app`, ini is at `/app/shared/`); `alembic.ini` uses
+  `script_location = %(here)s/migrations` (cwd-independent). `env.py` ONLINE mode runs **async over asyncpg**
+  (`create_async_engine` + `run_sync`) — the runtime image has NO psycopg2 (dev-only dep); offline `--sql`
+  keeps the psycopg2 URL string. Works identically on host (`uv run alembic ...` from `shared/`) and container.
   `alembic history`/`heads` run OFFLINE (no DB) and verify chain linkage from the script files alone.
 
 ## Timeless authoring conventions
@@ -35,4 +39,4 @@ Alembic + SQLAlchemy 2 async (asyncpg). The **app** runs migrations; the worker 
 ## Topic file
 
 - [Migration chain conventions](migration-chain-conventions.md) — how the DocForge Alembic chain is structured: numbering, revision-id style, docstring/data-safety conventions to match.
-- [Enable/disable columns](enable-disable-columns.md) — document.enabled, chunk.role, chunk.enabled_override semantics + effective-state formula; run migrations from the HOST (container env.py path bug).
+- [Enable/disable columns](enable-disable-columns.md) — document.enabled, chunk.role, chunk.enabled_override semantics + effective-state formula (the in-container env.py path/psycopg2 bugs are now FIXED — migrations run in-container via async env.py, see Layout above).

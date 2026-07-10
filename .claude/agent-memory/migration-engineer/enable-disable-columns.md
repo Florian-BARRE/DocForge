@@ -26,11 +26,13 @@ are pipeline-assigned structural labels whose `StrEnum` lives in the pure layer
 (`public_models`/IR), kept out of the tables layer so new members need no PG enum ALTER. See
 [[migration-chain-conventions]] (enums stay plain VARCHAR).
 
-**Operational gotcha — run migrations from the HOST, not the container.** The documented
-`docker compose … exec rework_app 'alembic upgrade head'` currently CRASHES: `shared/migrations/
-env.py` computes the `.env` dir as `Path(__file__).resolve().parents[4]`, which assumes the host
-tree depth (`src/docforge-rework/shared/migrations/env.py` → `…/services/docforge-rework`). Inside
-the container the tree is shallower (`/app/shared/migrations/env.py`), so `parents[4]` raises
-`IndexError`. Until env.py is made container-aware, apply/verify from
-`src/docforge-rework/shared/` on the host — the host `services/docforge-rework/.env` already points
-`POSTGRES_DSN` at `localhost:10041` (the mapped dev postgres the container shares).
+**Operational note — migrations now run in-container AND on host (the old crashes are fixed).**
+Three bugs were resolved: (1) the `parents[4]` `IndexError` — the `.env` load is now guarded by
+`if "POSTGRES_DSN" not in os.environ:` so the whole host-only block is skipped in containers (which
+inject the DSN); (2) `alembic.ini` uses `script_location = %(here)s/migrations` so it resolves from
+any cwd; (3) `env.py` ONLINE mode runs **async over asyncpg** (`create_async_engine` + `run_sync`)
+instead of the sync psycopg2 driver that the runtime image doesn't ship. In-container command (the
+`-c` is required — cwd is `/app/app`, ini at `/app/shared/`):
+`docker compose … exec rework_app sh -c 'alembic -c /app/shared/alembic.ini upgrade head'`. Host still
+works via `uv run alembic …` from `src/docforge-rework/shared/` (its `.env` points `POSTGRES_DSN` at
+`localhost:10041`, the shared dev postgres).

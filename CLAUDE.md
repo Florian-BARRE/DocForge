@@ -27,7 +27,8 @@ Pipeline (doc vivante, LA référence) : `src/docforge-rework/PIPELINE.md`
 - **Un seul test** : `uv run pytest tests/units/engine/test_x.py::TestClass::test_method` (`-x`, `-k <expr>`)
 - **Tests live** (stack up requise) : `uv run pytest -m live`
 - **Lint / typecheck** : `uv run ruff check .` (+ `ruff format .`) et `uv run mypy .`
-- **Migrations** : `docker compose -f docker-compose.rework.yml exec rework_app sh -c 'alembic upgrade head'`
+- **Frontend TS (gate)** : `docker compose -f docker-compose.rework.yml -f docker-compose.rework.dev.yml exec rework_frontend sh -c 'cd /frontend && npx tsc --noEmit && npm run build'` — node_modules est **container-side** (volume `rework_frontend_modules`) ; le stub host root-owned est un simple point de montage Docker, jamais `npm install` côté host.
+- **Migrations** : `docker compose -f docker-compose.rework.yml exec rework_app sh -c 'alembic -c /app/shared/alembic.ini upgrade head'` (env.py tourne en async sur asyncpg — pas de psycopg2 dans l'image runtime).
 - **Ports dev** : API `10040` · postgres `10041` · redis `10042` · qdrant `10043` · seaweedfs `10044` · gotenberg `10045` (firewall VM : `10000–11000`).
 
 > **Legacy stack** (`src/docforge/`, gelée) : `docker-compose.yml` + tests depuis `src/docforge/`
