@@ -17,6 +17,9 @@ from shared_libs.public_models import FigureEnrichment, TableData
 # Sentence boundary: end punctuation followed by whitespace and an uppercase/digit start.
 _SENTENCE_BOUNDARY = re.compile(r"(?<=[.!?])\s+(?=[A-Z0-9À-Ü])")
 
+# Any run of whitespace — collapsed to a single space when normalizing text for exact-match compares.
+_WHITESPACE_RUN = re.compile(r"\s+")
+
 
 class ChunkerHelpers:
     """Static utility helpers for the chunker family."""
@@ -119,6 +122,23 @@ class ChunkerHelpers:
             encoder.decode(tokens[start: start + max_tokens])
             for start in range(0, len(tokens), max_tokens)
         ]
+
+    @staticmethod
+    def normalize_text(text: str) -> str:
+        """
+        Normalize a text for conservative exact-match comparison (repetition / duplicate detection).
+
+        Lowercased, stripped and whitespace-collapsed so that the SAME passage rendered with
+        cosmetic spacing differences on two pages still compares equal — the deliberate, minimal
+        normalization that keeps repeated-boilerplate and duplicate-heading detection conservative.
+
+        Args:
+            text (str): The raw text.
+
+        Returns:
+            str: The normalized comparison key (empty when the text is blank).
+        """
+        return _WHITESPACE_RUN.sub(" ", text.strip().lower())
 
     @staticmethod
     def split_sentences(text: str) -> list[str]:

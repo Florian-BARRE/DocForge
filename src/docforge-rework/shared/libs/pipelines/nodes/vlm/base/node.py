@@ -17,6 +17,21 @@ from .config import BaseVlmConfig
 from .helpers import BaseVlmHelpers
 from .io import VlmConsumes, VlmProduces
 
+# Prepended to EVERY figure system prompt — a node-level invariant, not a per-collection knob.
+# A chat VLM left to itself falls into assistant mode on an unlabelled figure (a bar chart with no
+# printed values): it addresses the user and asks them to "share the data" instead of describing
+# what it sees, and that deflection text then gets embedded verbatim as chunk content. The guard
+# forces a standalone visual description and forbids every deflection an assistant would emit.
+_DESCRIPTION_GUARD = (
+    "You are a vision description engine indexing figures for retrieval. Describe ONLY what is "
+    "visually present, as a self-contained passage. NEVER address a reader, NEVER ask for more "
+    "information or data, NEVER offer to help, and NEVER state that you cannot see the values — you "
+    "always can. When exact numbers or categories are not printed on the figure, describe the "
+    "visual pattern instead: the number of bars, series, slices or lines, their relative heights or "
+    "proportions, the overall trend, and any title, legend, axis labels or meaningful colours; give "
+    "approximate or relative magnitudes rather than refusing. Output the description text only."
+)
+
 # Appended to the system prompt when chart-to-table extraction is enabled.
 _TABLE_INSTRUCTION = (
     "\n\nAdditionally, END your answer with the underlying data as rows inside a fenced block:\n"
@@ -47,8 +62,13 @@ class BaseVlmNode(ActionNode):
             table rows when requested).
         """
         config: BaseVlmConfig = self.config
-        # 1. The system prompt IS the behaviour; chart-to-table appends its output contract.
-        prompt = config.system_prompt + (_TABLE_INSTRUCTION if config.extract_table else "")
+        # 1. The always-on guard rail frames the behaviour, the per-class prompt drives it, and
+        #    chart-to-table appends its output contract. The guard is a node invariant: it is never
+        #    removable by config, so a user's custom prompt cannot reopen the deflection failure mode.
+        prompt = (
+            f"{_DESCRIPTION_GUARD}\n\n{config.system_prompt}"
+            + (_TABLE_INSTRUCTION if config.extract_table else "")
+        )
 
         # 2. Run the provider.
         answer, _confidence = await self._describe(data.figure.image, data.figure.read_text, prompt)

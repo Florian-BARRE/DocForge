@@ -84,6 +84,71 @@ class BaseChunkerNode(ActionNode):
         # 2. Project that identity depth onto the first passage's heading TEXTS.
         return reference.heading_path[:depth]
 
+    def __absorb_orphan_headings(self, body: list[Passage]) -> list[Passage]:
+        """
+        Fold every body-and-heading-only passage with no section of its own into a neighbour.
+
+        A bare heading whose section holds no real content (a stray duplicate title, a heading
+        above an empty section) would otherwise pack into its OWN tiny standalone chunk. Such a
+        heading is carried FORWARD as a breadcrumb onto the next kept passage; a trailing orphan
+        with nothing after it merges BACKWARD so its title is never lost. Populated sections are
+        untouched — their heading shares its section key with real content, so it is never orphan.
+
+        Args:
+            body (list[Passage]): The body passages, in reading order.
+
+        Returns:
+            list[Passage]: The body with orphan headings folded into their neighbours.
+        """
+        # 1. A heading id owns a section only when non-heading content lives under it.
+        owned = {sid for passage in body if not passage.heading_only for sid in passage.section_key}
+        # 2. Carry each orphan heading forward onto the next real passage (accumulating runs).
+        kept: list[Passage] = []
+        pending: Passage | None = None
+        for passage in body:
+            if passage.heading_only and (not passage.section_key or passage.section_key[-1] not in owned):
+                pending = self.__fold_headings(pending, passage)
+                continue
+            kept.append(passage if pending is None else self.__prepend_heading(pending, passage))
+            pending = None
+        # 3. A trailing orphan heading has no forward target — merge it backward, else drop it.
+        if pending is not None and kept:
+            kept[-1] = self.__append_heading(kept[-1], pending)
+        return kept
+
+    def __fold_headings(self, pending: Passage | None, orphan: Passage) -> Passage:
+        """Accumulate consecutive orphan headings into one carried unit (exact duplicates dropped)."""
+        if pending is None:
+            return orphan
+        if ChunkerHelpers.normalize_text(orphan.text) == ChunkerHelpers.normalize_text(pending.text):
+            return pending
+        return self.__join(pending, orphan, f"{pending.text}\n{orphan.text}", lead=pending)
+
+    def __prepend_heading(self, heading: Passage, passage: Passage) -> Passage:
+        """Prefix a carried heading as the passage's breadcrumb (skipped when it duplicates it)."""
+        if ChunkerHelpers.normalize_text(heading.text) == ChunkerHelpers.normalize_text(
+            passage.text.split("\n", 1)[0]
+        ):
+            return self.__join(heading, passage, passage.text, lead=passage)
+        return self.__join(heading, passage, f"{heading.text}\n\n{passage.text}", lead=passage)
+
+    def __append_heading(self, passage: Passage, heading: Passage) -> Passage:
+        """Merge a trailing orphan heading backward onto the previous passage so its title survives."""
+        return self.__join(passage, heading, f"{passage.text}\n\n{heading.text}", lead=passage)
+
+    def __join(self, first: Passage, second: Passage, text: str, lead: Passage) -> Passage:
+        """Merge two passages into ``lead``'s identity with an explicit text and recounted tokens."""
+        config: BaseChunkerConfig = self.config
+        return lead.model_copy(
+            update={
+                "text": text,
+                "block_ids": [*first.block_ids, *second.block_ids],
+                "token_count": ChunkerHelpers.count_tokens(text, config.tokenizer_encoding),
+                "page_start": min(first.page_start, second.page_start),
+                "page_end": max(first.page_end, second.page_end),
+            }
+        )
+
     @staticmethod
     def __group_furniture(furniture: list[Passage]) -> list[list[Passage]]:
         """
@@ -153,9 +218,13 @@ class BaseChunkerNode(ActionNode):
             self.logger.warning(f"Document '{data.ir.doc_id}' projected to zero passages")
             return ChunkerProduces(chunks=[])
 
-        # 3. Only BODY passages flow through the method's grouping; furniture (header/footer, toc)
-        #    is kept as its own small per-role/per-page chunks, never mixed into a body chunk.
-        body = [passage for passage in passages if passage.role is ChunkRole.BODY]
+        # 3. Only BODY passages flow through the method's grouping; furniture (header/footer, toc,
+        #    boilerplate) is kept as its own small per-role/per-page chunks, never mixed into a body
+        #    chunk. Orphan headings (bare titles with no section of their own) are folded into a
+        #    neighbour first, so no heading becomes a standalone one-line chunk.
+        body = self.__absorb_orphan_headings(
+            [passage for passage in passages if passage.role is ChunkRole.BODY]
+        )
         furniture = [passage for passage in passages if passage.role is not ChunkRole.BODY]
         groups = await self._split(body)
         groups.extend(self.__group_furniture(furniture))

@@ -460,3 +460,126 @@ def test_f5_docling_style_caption_fuses_into_the_figure_unit() -> None:
     assert fused.atomic
     assert "Figure 1: revenue by quarter" in fused.text
     assert "bar chart" in fused.text
+
+
+# ============================ FIX 2 — repeated-boilerplate detection ============================
+
+_BOILER = "Objective one grow. Objective two scale. Objective three win."
+
+
+def _deck_ir(pages: int = 6) -> DocumentIR:
+    """A slide deck: each page has a unique body PLUS the SAME objectives block (boilerplate)."""
+    blocks: list[Block] = []
+    order = 0
+    for page in range(1, pages + 1):
+        blocks.append(_blk(f"h{page}", BlockType.HEADING, order, page=page, text=f"Slide {page}", level=1))
+        order += 1
+        blocks.append(_blk(f"body{page}", BlockType.PARAGRAPH, order, page=page, parent=f"h{page}",
+                           text=f"Unique paragraph {page} discussing a genuinely distinct topic here."))
+        order += 1
+        blocks.append(_blk(f"obj{page}", BlockType.LIST_ITEM, order, page=page, parent=f"h{page}", text=_BOILER))
+        order += 1
+    return DocumentIR(doc_id="deck", source_hash="h", n_pages=pages, blocks=blocks)
+
+
+def test_fix2_text_repeated_across_pages_is_classified_boilerplate() -> None:
+    # The objectives block recurs on 6 distinct pages (>= default min_pages=3) → BOILERPLATE, and
+    # BOILERPLATE is default-disabled (never embedded); the per-page unique bodies stay BODY.
+    passages = PassageProjector.project(_deck_ir(6), BaseChunkerConfig())
+    boiler = [p for p in passages if p.role is ChunkRole.BOILERPLATE]
+    assert len(boiler) == 6                                   # one per repeating occurrence
+    assert all(p.text == _BOILER for p in boiler)
+    assert not role_default_enabled(ChunkRole.BOILERPLATE)    # disabled-by-role, like header/footer
+    assert all(p.role is ChunkRole.BODY for p in passages if p.block_ids[0].startswith("body"))
+
+
+async def test_fix2_boilerplate_is_removed_from_body_chunks_and_kept_as_disabled_chunks() -> None:
+    # The behavioral acceptance: the repeated block must NOT leak into any body chunk's text, and
+    # must survive only as its own BOILERPLATE, default-disabled chunk(s).
+    node = ChunkerStructureAwareNode(
+        id="c", config=ChunkerStructureAwareConfig(target_tokens=256, max_tokens=512, min_tokens=0))
+    chunks = (await node.run(ChunkerConsumes(ir=_deck_ir(6)))).chunks
+
+    body = [c for c in chunks if c.role is ChunkRole.BODY]
+    boiler = [c for c in chunks if c.role is ChunkRole.BOILERPLATE]
+    assert body and boiler
+    assert not any(_BOILER in c.text for c in body)           # the leak is gone from body chunks
+    assert all(_BOILER in c.text for c in boiler)             # kept, verbatim, out of the body
+    assert all(not role_default_enabled(c.role) for c in boiler)  # non-embedded by default
+
+
+def test_fix2_repetition_within_a_single_page_stays_body() -> None:
+    # The SAME text three times on ONE page is not cross-page repetition → it stays BODY.
+    ir = DocumentIR(doc_id="one", source_hash="h", n_pages=1, blocks=[
+        _blk("a", BlockType.PARAGRAPH, 0, page=0, text=_BOILER),
+        _blk("b", BlockType.PARAGRAPH, 1, page=0, text=_BOILER),
+        _blk("c", BlockType.PARAGRAPH, 2, page=0, text=_BOILER),
+    ])
+    passages = PassageProjector.project(ir, BaseChunkerConfig())
+    assert all(p.role is ChunkRole.BODY for p in passages)    # distinct pages, not occurrences
+
+
+def test_fix2_detection_is_configurable_off_and_by_threshold() -> None:
+    ir = _deck_ir(4)                                          # repeats on 4 distinct pages
+    # 1. Switch OFF → the config knob is actually read; nothing is boilerplate.
+    off = PassageProjector.project(ir, BaseChunkerConfig(detect_repeated_boilerplate=False))
+    assert all(p.role is ChunkRole.BODY for p in off)
+    # 2. Threshold above the observed repetition (5 > 4) → not enough pages, stays body.
+    high = PassageProjector.project(ir, BaseChunkerConfig(boilerplate_min_pages=5))
+    assert all(p.role is ChunkRole.BODY for p in high)
+    # 3. Threshold at the repetition count (4) → caught.
+    at = PassageProjector.project(ir, BaseChunkerConfig(boilerplate_min_pages=4))
+    assert any(p.role is ChunkRole.BOILERPLATE for p in at)
+
+
+# ============================ FIX 3 — heading-only orphan passages ============================
+
+async def test_fix3_orphan_heading_does_not_become_a_standalone_chunk() -> None:
+    # A stray heading with no body of its own (nothing lives under it) must not be its own chunk;
+    # it is folded FORWARD as the next section's breadcrumb, and its title is not lost.
+    ir = DocumentIR(doc_id="orph", source_hash="h", n_pages=1, blocks=[
+        _blk("h1", BlockType.HEADING, 0, text="Real section", level=1),
+        _blk("p1", BlockType.PARAGRAPH, 1, text="Body of the real section, several plain words here.", parent="h1"),
+        _blk("stray", BlockType.HEADING, 2, text="Section: Contexte", level=1),   # no body under it
+        _blk("h2", BlockType.HEADING, 3, text="Next section", level=1),
+        _blk("p2", BlockType.PARAGRAPH, 4, text="Body of the next section, also several plain words.", parent="h2"),
+    ])
+    node = ChunkerStructureAwareNode(
+        id="c", config=ChunkerStructureAwareConfig(target_tokens=256, max_tokens=512, min_tokens=0))
+    chunks = (await node.run(ChunkerConsumes(ir=ir))).chunks
+
+    assert not any(c.text.strip() == "Section: Contexte" for c in chunks)   # never standalone
+    assert any("Section: Contexte" in c.text for c in chunks)               # title preserved forward
+    stray_chunk = next(c for c in chunks if "Section: Contexte" in c.text)
+    assert "stray" in stray_chunk.block_ids and "p2" in stray_chunk.block_ids  # merged into next body
+
+
+async def test_fix3_trailing_orphan_heading_merges_backward() -> None:
+    # A trailing heading with nothing after it (e.g. before a content-less tail) merges BACKWARD
+    # onto the previous chunk so its title survives rather than being dropped.
+    ir = DocumentIR(doc_id="tail", source_hash="h", n_pages=1, blocks=[
+        _blk("h1", BlockType.HEADING, 0, text="Only section", level=1),
+        _blk("p1", BlockType.PARAGRAPH, 1, text="The sole body paragraph of the document here.", parent="h1"),
+        _blk("tail", BlockType.HEADING, 2, text="Appendix", level=1),           # trailing, no body
+    ])
+    node = ChunkerStructureAwareNode(
+        id="c", config=ChunkerStructureAwareConfig(target_tokens=256, max_tokens=512, min_tokens=0))
+    chunks = (await node.run(ChunkerConsumes(ir=ir))).chunks
+
+    assert not any(c.text.strip() == "Appendix" for c in chunks)            # not a standalone chunk
+    merged = next(c for c in chunks if "Appendix" in c.text)
+    assert "p1" in merged.block_ids and "tail" in merged.block_ids          # folded backward
+
+
+async def test_fix3_populated_section_heading_is_not_treated_as_orphan() -> None:
+    # A heading that owns real content keeps packing with its body — no regression.
+    ir = DocumentIR(doc_id="ok", source_hash="h", n_pages=1, blocks=[
+        _blk("h1", BlockType.HEADING, 0, text="Populated", level=1),
+        _blk("p1", BlockType.PARAGRAPH, 1, text="A comfortably sized body paragraph of real content.", parent="h1"),
+    ])
+    node = ChunkerStructureAwareNode(
+        id="c", config=ChunkerStructureAwareConfig(target_tokens=256, max_tokens=512, min_tokens=0))
+    chunks = (await node.run(ChunkerConsumes(ir=ir))).chunks
+    assert len(chunks) == 1
+    assert chunks[0].block_ids == ["h1", "p1"]                              # heading + its body, together
+    assert chunks[0].heading_path == ["Populated"]

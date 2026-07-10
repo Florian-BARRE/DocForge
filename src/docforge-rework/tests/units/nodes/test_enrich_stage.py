@@ -80,7 +80,12 @@ class FakeVlm(BaseVlmNode):
 
     async def _describe(self, image: bytes, context: str, system_prompt: str) -> tuple[str, float]:
         CALLS["vlm"] += 1
-        answer = f"DESC[{system_prompt.splitlines()[0][:18]}|ctx={context or '-'}]"
+        # The node prepends an always-on anti-deflection guard before the per-class prompt. Echo
+        # the per-class first line (after the guard separator) so class-specific assertions hold,
+        # plus a flag proving the guard reached the prompt (locks the FIX-1 invariant).
+        guard_ok = "NEVER ask for more" in system_prompt
+        per_class = system_prompt.split("\n\n", 1)[-1].splitlines()[0][:80]
+        answer = f"DESC[{'guard+' if guard_ok else 'NOGUARD+'}{per_class}|ctx={context or '-'}]"
         if "```table" in system_prompt:
             answer += "\n```table\nX | Y\n1 | 2\n```"
         return answer, 1.0
@@ -214,6 +219,9 @@ def test_scanned_hard_figure_escalates_via_score_below(run_result) -> None:
 def test_photo_chart_diagram_get_class_specific_treatment(run_result) -> None:
     _output, _record, figures = run_result
     assert figures["f_photo"].kind == FigureKind.PHOTO
+    # The anti-deflection guard is prepended to EVERY figure prompt (node invariant, FIX 1)...
+    assert figures["f_photo"].description.startswith("DESC[guard+")
+    # ...ahead of the still-distinct per-class prompt.
     assert "Caption this photo" in figures["f_photo"].description
     assert figures["f_photo"].ocr_text is None
     assert figures["f_chart"].kind == FigureKind.CHART

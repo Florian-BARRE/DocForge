@@ -33,6 +33,18 @@ class BaseChunkerConfig(NodeConfig):
         default=True,
         description="A figure and its meaning travel as ONE unsplittable unit.",
     )
+    detect_repeated_boilerplate: bool = Field(
+        default=True,
+        description="Classify passages whose normalized text recurs across many pages as "
+        "BOILERPLATE (repeated inter-slide/inter-page furniture); such chunks are kept but "
+        "disabled-by-role, exactly like header/footer, so they are never embedded.",
+    )
+    boilerplate_min_pages: int = Field(
+        default=3,
+        ge=2,
+        description="A text is boilerplate only when its normalized form appears on at least this "
+        "many DISTINCT pages (exact-match, conservative). Raise it to demand more repetition.",
+    )
 
 
 __all__ = ["BaseChunkerConfig"]

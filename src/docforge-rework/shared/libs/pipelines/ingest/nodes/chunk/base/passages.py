@@ -23,8 +23,8 @@ from .helpers import ChunkerHelpers
 # Conservative, extensible allow-list of section titles that mark a table-of-contents section.
 # Matched on the FULL normalized heading text (exact, never substring) so a real section like
 # "Table of contributions" cannot be misread as scaffolding. Multilingual by design (the corpus
-# is): add a title here when a language's ToC heading is confirmed. There is deliberately NO
-# boilerplate allow-list — no reliable IR signal exists yet, so BOILERPLATE stays reserved.
+# is): add a title here when a language's ToC heading is confirmed. BOILERPLATE is NOT allow-list
+# driven: it is inferred structurally from cross-page repetition (see ``__repeated_texts``).
 _TOC_TITLES = frozenset(
     {
         "contents",
@@ -49,9 +49,12 @@ class Passage(BaseModel):
             compare on (texts may collide, ids cannot).
         atomic (bool): True when no method may split this unit (figure+meaning, table).
         token_count (int): Token count of ``text``.
-        role (ChunkRole): Structural classification of this unit (body / header-footer / toc);
-            body by default. Furniture (non-body) passages are kept as disabled chunks, never
-            mixed into a body chunk.
+        role (ChunkRole): Structural classification of this unit (body / header-footer / toc /
+            boilerplate); body by default. Furniture (non-body) passages are kept as disabled
+            chunks, never mixed into a body chunk.
+        heading_only (bool): True when this unit is a bare section heading with no body of its own
+            (a HEADING block's native text, nothing else). Such a unit must never stand alone as a
+            chunk — the base node merges an orphan heading forward into the next section.
         page_start (int): First source page.
         page_end (int): Last source page.
     """
@@ -63,6 +66,7 @@ class Passage(BaseModel):
     atomic: bool = False
     token_count: int = 0
     role: ChunkRole = ChunkRole.BODY
+    heading_only: bool = False
     page_start: int = 0
     page_end: int = 0
 
@@ -154,19 +158,60 @@ class PassageProjector:
         return attached
 
     @staticmethod
-    def __role_for(block: Block, heading_path: list[str]) -> ChunkRole:
+    def __repeated_texts(blocks: list[Block], config: BaseChunkerConfig) -> frozenset[str]:
+        """
+        Build the set of normalized texts that recur across enough DISTINCT pages to be boilerplate.
+
+        Repeated inter-page/inter-slide furniture (a fixed objectives list on every slide, a
+        recurring notice) has no IR block type, yet it must not be embedded once per page. It is
+        inferred here structurally: a text is boilerplate when its normalized form appears on at
+        least ``boilerplate_min_pages`` DISTINCT provenance pages (distinct pages, never raw
+        occurrences — two copies on one page are not repetition). Exact normalized match keeps it
+        conservative; the whole pass is skipped when the knob is off.
+
+        Args:
+            blocks (list[Block]): The document's blocks (any order).
+            config (BaseChunkerConfig): The chunker config (thresholds + on/off switch).
+
+        Returns:
+            frozenset[str]: Normalized texts recurring on >= ``boilerplate_min_pages`` pages.
+        """
+        # 1. Disabled → nothing is boilerplate; the role is never assigned.
+        if not config.detect_repeated_boilerplate:
+            return frozenset()
+        # 2. Map each normalized text to the SET of pages it appears on (distinct pages only).
+        pages_by_text: dict[str, set[int]] = {}
+        for block in blocks:
+            if not (block.text and block.text.strip()):
+                continue
+            key = ChunkerHelpers.normalize_text(block.text)
+            if key:
+                pages_by_text.setdefault(key, set()).add(block.provenance.page)
+        # 3. Keep only the texts spanning enough distinct pages to be furniture, not real content.
+        return frozenset(
+            key
+            for key, pages in pages_by_text.items()
+            if len(pages) >= config.boilerplate_min_pages
+        )
+
+    @staticmethod
+    def __role_for(
+        block: Block, heading_path: list[str], boilerplate_texts: frozenset[str]
+    ) -> ChunkRole:
         """
         Classify a block's structural role from IR signals (conservative, best-effort).
 
         Header/footer is an explicit IR block type. A table-of-contents is inferred from the
         section a block lives under: any heading in its ancestry whose FULL normalized text is a
         known ToC title (exact match, never substring) marks the whole section — heading and its
-        list-like body alike — as scaffolding. Everything else is body. Boilerplate has no
-        reliable IR signal yet, so it is never assigned here (the role stays reserved).
+        list-like body alike — as scaffolding. Boilerplate is inferred last: a block whose
+        normalized text recurs across many pages (precomputed set) is repeated furniture. The more
+        specific structural signals (header/footer, ToC) take precedence; everything else is body.
 
         Args:
             block (Block): The IR block behind the passage.
             heading_path (list[str]): The block's heading ancestry TEXTS, top-down.
+            boilerplate_texts (frozenset[str]): Normalized texts flagged as cross-page boilerplate.
 
         Returns:
             ChunkRole: The structural role of the passage this block produces.
@@ -177,6 +222,9 @@ class PassageProjector:
         # 2. A ToC section is inferred from the ancestry — any heading matching a known ToC title.
         if any(heading.strip().lower() in _TOC_TITLES for heading in heading_path):
             return ChunkRole.TOC
+        # 3. Repeated cross-page text is boilerplate — kept, but disabled-by-role (never embedded).
+        if block.text and ChunkerHelpers.normalize_text(block.text) in boilerplate_texts:
+            return ChunkRole.BOILERPLATE
         return ChunkRole.BODY
 
     @classmethod
@@ -216,11 +264,13 @@ class PassageProjector:
         Returns:
             list[Passage]: Reading-ordered passages, token-counted, section-tagged.
         """
-        # 1. Reading order + parent index for the ancestry walks; captions claimed by their unit.
+        # 1. Reading order + parent index for the ancestry walks; captions claimed by their unit;
+        #    the cross-page repetition set precomputed once for the boilerplate role.
         blocks = sorted(ir.blocks, key=lambda block: block.reading_order)
         by_id = {block.id: block for block in blocks}
         captions = cls.__attach_captions(blocks)
         consumed_captions = {caption.id for caption in captions.values()}
+        boilerplate_texts = cls.__repeated_texts(blocks, config)
 
         # 2. One passage per contributing block, rules applied; a fused caption contributes its
         #    block id and page span to the unit that absorbed it.
@@ -246,7 +296,8 @@ class PassageProjector:
                     section_key=section_key,
                     atomic=atomic,
                     token_count=ChunkerHelpers.count_tokens(text, config.tokenizer_encoding),
-                    role=cls.__role_for(block, heading_path),
+                    role=cls.__role_for(block, heading_path, boilerplate_texts),
+                    heading_only=block.block_type == BlockType.HEADING,
                     page_start=min(member.provenance.page for member in unit_blocks),
                     page_end=max(member.provenance.page for member in unit_blocks),
                 )
