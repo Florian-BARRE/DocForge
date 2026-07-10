@@ -29,6 +29,7 @@ from shared_libs.services.db.s3 import S3Object
 # ====== Local Project Imports ======
 from ...context import CONTEXT
 from ...utils.error_handling import auto_handle_errors
+from ...utils.pipeline_validation import PipelineBlobValidator
 from .models import DocumentEnabledResponse, EnabledPatch, UploadAccepted
 
 router = APIRouter(prefix="/documents", tags=["documents"])
@@ -59,17 +60,22 @@ async def upload_document(
     if collection is None:
         raise HTTPException(status_code=404, detail=f"Collection {collection_id} not found.")
 
-    # 2. Content-address the upload — the SAME identity the pipeline computes (sha256).
+    # 2. Fail-fast on a STALE contract, BEFORE any spend: a stored pipeline blob that no longer
+    #    builds (e.g. it names a node kind the registry no longer knows) is a 422 here — nothing
+    #    is read, stored, admitted or enqueued. Structural (no I/O), so cheap on every upload.
+    PipelineBlobValidator.validate(collection.pipeline)
+
+    # 3. Content-address the upload — the SAME identity the pipeline computes (sha256).
     content = await file.read()
     source_hash = hashlib.sha256(content).hexdigest()
     version = _pipeline_version(collection.pipeline)
 
-    # 3. Dedup: same content + same pipeline config in this collection → nothing to re-run.
+    # 4. Dedup: same content + same pipeline config in this collection → nothing to re-run.
     existing = await CONTEXT.database.ingestion.find_duplicate(collection_id, source_hash, version)
     if existing is not None:
         return UploadAccepted(document_id=str(existing.id), job_id="", duplicate=True)
 
-    # 4. Declared metadata: parse + resolve field names against the schema (structural check
+    # 5. Declared metadata: parse + resolve field names against the schema (structural check
     #    only — types/required are the pipeline admission node's job).
     try:
         declared: dict = json.loads(metadata)
@@ -83,7 +89,7 @@ async def upload_document(
             status_code=422, detail=f"Unknown metadata field(s) for this collection: {unknown}"
         )
 
-    # 5. Store the ORIGINAL bytes BEFORE enqueueing (key = source_hash — the worker refetches).
+    # 6. Store the ORIGINAL bytes BEFORE enqueueing (key = source_hash — the worker refetches).
     filename = file.filename or "upload"
     mime = file.content_type or "application/octet-stream"
     await CONTEXT.database.ingestion.store_blobs(
@@ -92,7 +98,7 @@ async def upload_document(
               size_bytes=len(content), kind=BlobKind.ORIGINAL)],
     )
 
-    # 6. Admission — document + job + declared metadata, ONE transaction.
+    # 7. Admission — document + job + declared metadata, ONE transaction.
     #    source_kind starts DIGITAL_BORN; the pipeline learns the real one (update_facts).
     document = Document(
         collection_id=collection_id,
@@ -111,7 +117,7 @@ async def upload_document(
     ]
     created, job = await CONTEXT.database.ingestion.admit(document, Job(), rows)
 
-    # 7. Hand over to the worker — the queue message carries IDS ONLY.
+    # 8. Hand over to the worker — the queue message carries IDS ONLY.
     await CONTEXT.queue.enqueue_ingest(str(created.id), str(job.id))
     CONTEXT.logger.info(f"Admitted '{filename}' as {created.id} (job {job.id})")
     return UploadAccepted(document_id=str(created.id), job_id=str(job.id))

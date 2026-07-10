@@ -11,7 +11,6 @@ import uuid
 from fastapi import APIRouter, HTTPException
 
 # ====== Internal Project Imports ======
-from shared_libs.pipelines.build import BuildError
 from shared_libs.pipelines.ingest import IngestPipeline
 from shared_libs.public_models import FieldOrigin, FieldScope
 from shared_libs.services.db.postgresql.tables import Collection, MetadataField
@@ -19,6 +18,7 @@ from shared_libs.services.db.postgresql.tables import Collection, MetadataField
 # ====== Local Project Imports ======
 from ...context import CONTEXT
 from ...utils.error_handling import auto_handle_errors
+from ...utils.pipeline_validation import PipelineBlobValidator
 from .models import (
     CollectionModel,
     CreateCollectionRequest,
@@ -70,23 +70,6 @@ def _validate_fields(fields: list[FieldSpecModel]) -> None:
             )
 
 
-def _validate_pipeline(blob: dict) -> None:
-    """Build + validate a pipeline blob — 422 with every issue when broken."""
-    try:
-        group = CONTEXT.pipeline_builder.build(blob)
-    except BuildError as exc:
-        raise HTTPException(status_code=422, detail=f"Pipeline blob cannot be built: {exc}")
-    issues = CONTEXT.graph_validator.validate(group)
-    if issues:
-        raise HTTPException(
-            status_code=422,
-            detail=[
-                {"code": issue.code.value, "location": issue.location, "message": issue.message}
-                for issue in issues
-            ],
-        )
-
-
 @router.get("", response_model=list[CollectionModel])
 @auto_handle_errors
 async def list_collections() -> list[CollectionModel]:
@@ -136,7 +119,7 @@ async def create_collection(request: CreateCollectionRequest) -> CollectionModel
 
     # 2. The pipeline blob: the caller's, or the product default — validated either way.
     blob = request.pipeline or IngestPipeline.default_blob().model_dump(mode="json")
-    _validate_pipeline(blob)
+    PipelineBlobValidator.validate(blob)
 
     # 3. Create contract + schema in one transaction (slug collisions → explicit 422).
     rows = [
@@ -190,7 +173,7 @@ async def update_collection(
 
     # 3. A new pipeline never reaches storage broken.
     if request.pipeline is not None:
-        _validate_pipeline(request.pipeline)
+        PipelineBlobValidator.validate(request.pipeline)
 
     # 4. Identity/limits (no-op when untouched).
     if any(v is not None for v in (request.name, request.supported_formats,
