@@ -1,7 +1,9 @@
 # ====== Code Summary ======
 # The breadcrumb contextualizer — renders each chunk's heading_path (computed at chunking time)
-# as a section trail prefix ("Chapitre 2 > Résultats"). Zero cost, local, and one of the highest
-# retrieval gains per token: the section trail disambiguates chunks lexically AND semantically.
+# as a section trail ("Analyse financière › Marge brute"). Zero cost, local, and one of the highest
+# retrieval gains per token: the section trail disambiguates chunks lexically AND semantically. It
+# CONTINUES the doc anchor already in context (from doc_meta) as ONE trail line — it joins with its
+# own separator and drops a leading level that merely repeats the anchor (the anchored section).
 
 # ====== Third-Party Library Imports ======
 from pydantic import Field
@@ -18,10 +20,14 @@ class ContextualizerBreadcrumbConfig(BaseContextualizerConfig):
     """Breadcrumb rendering knobs."""
 
     template: str = Field(
-        default="Section: {path}",
-        description="Rendered piece; {path} is the joined heading trail.",
+        default="{path}",
+        description="Rendered piece; {path} is the joined heading trail (no fixed prefix — the "
+        "trail reads as the continuation of the doc anchor).",
     )
-    separator: str = Field(default=" > ", description="Joiner between heading levels.")
+    separator: str = Field(
+        default=" › ",
+        description="Joiner between heading levels AND onto the doc anchor already in context.",
+    )
     max_depth: int = Field(
         default=0, ge=0, description="Deepest levels kept (0 = the whole trail)."
     )
@@ -35,23 +41,36 @@ class ContextualizerBreadcrumbNode(BaseContextualizerNode):
     NAME = "Breadcrumb"
     SUMMARY = "Prefix each chunk with its section trail (heading path)."
     HOW_IT_WORKS = (
-        "Renders the chunk's heading_path through the template ('Section: A > B'); a chunk "
-        "outside any section gets nothing. Zero cost — the trail was computed at chunking time."
+        "Renders the chunk's heading_path through the template ('A › B') as ONE trail continuing "
+        "the doc anchor already in context; a chunk outside any section gets nothing, and a level "
+        "that merely repeats the anchor is dropped. Zero cost — the trail was computed at chunking."
     )
     Config = ContextualizerBreadcrumbConfig
     UNIQUE_IN_GRAPH = True
+
+    def _context_joiner(self) -> str:
+        """Attach the section trail onto the doc anchor with the trail separator (ONE prefix line)."""
+        return self.config.separator
 
     async def _context_for(
         self, index: int, chunks: list[Chunk], data: ContextualizerConsumes
     ) -> str | None:
         """Render the chunk's section trail (None outside any section)."""
         config: ContextualizerBreadcrumbConfig = self.config
-        # 1. Keep the deepest max_depth levels (0 = all), then render.
+        # 1. Keep the deepest max_depth levels (0 = all).
         path = chunks[index].heading_path
         if not path:
             return None
         if config.max_depth > 0:
             path = path[-config.max_depth:]
+        # 2. Drop a leading level that repeats the doc anchor already ending the accumulated trail
+        #    (this chunk lives in the anchored section) — the prefix must name it only once.
+        existing = chunks[index].context
+        if existing and existing.split(config.separator)[-1].strip() == path[0].strip():
+            path = path[1:]
+        if not path:
+            return None
+        # 3. Render the (deduped) trail; the joiner attaches it onto the anchor as one line.
         return config.template.format(path=config.separator.join(path))
 
 

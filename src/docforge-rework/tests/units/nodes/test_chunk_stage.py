@@ -201,10 +201,12 @@ async def test_structure_aware_coalesces_consecutive_tiny_sections_toward_target
     #    common ancestry is empty; a coalesced chunk must not claim to live under any one of them.
     assert chunks[0].heading_path == []
 
-    # 4. The large section still stands ALONE in its own chunk — no neighbour glued onto it.
+    # 4. The large section still stands ALONE in its own chunk — no neighbour glued onto it. Its
+    #    OWN heading ("Bulk") is carried as provenance (block id only, no repeated title in body),
+    #    so the chunk spans the heading + its paragraph but no other section's blocks.
     bulk = [c for c in chunks if "pbulk" in c.block_ids]
     assert len(bulk) == 1
-    assert bulk[0].block_ids == ["pbulk"]
+    assert bulk[0].block_ids == ["hbulk", "pbulk"]
     assert bulk[0].heading_path == ["Bulk"]
     assert bulk[0].token_count > config.target_tokens
 

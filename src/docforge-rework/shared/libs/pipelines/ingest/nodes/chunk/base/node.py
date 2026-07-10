@@ -86,35 +86,53 @@ class BaseChunkerNode(ActionNode):
 
     def __absorb_orphan_headings(self, body: list[Passage]) -> list[Passage]:
         """
-        Fold every body-and-heading-only passage with no section of its own into a neighbour.
+        Fold every heading-only passage into a neighbour so no bare title becomes body prose.
 
-        A bare heading whose section holds no real content (a stray duplicate title, a heading
-        above an empty section) would otherwise pack into its OWN tiny standalone chunk. Such a
-        heading is carried FORWARD as a breadcrumb onto the next kept passage; a trailing orphan
-        with nothing after it merges BACKWARD so its title is never lost. Populated sections are
-        untouched — their heading shares its section key with real content, so it is never orphan.
+        A heading whose section OWNS real content is redundant as body text: its title is already
+        carried by the heading_path the breadcrumb renders, so it contributes NO prose — only its
+        block id travels forward (provenance) onto the section's first kept passage, never a
+        repeated leaf title. A bare heading whose section holds no real content (a stray duplicate
+        title, a heading above an empty section) has no such carrier, so it is folded FORWARD as a
+        breadcrumb onto the next kept passage; a trailing orphan merges BACKWARD so its title is
+        never lost.
 
         Args:
             body (list[Passage]): The body passages, in reading order.
 
         Returns:
-            list[Passage]: The body with orphan headings folded into their neighbours.
+            list[Passage]: The body with heading-only passages folded into their neighbours.
         """
         # 1. A heading id owns a section only when non-heading content lives under it.
         owned = {sid for passage in body if not passage.heading_only for sid in passage.section_key}
-        # 2. Carry each orphan heading forward onto the next real passage (accumulating runs).
+        # 2. Walk the body: an owned heading yields only its block id (no double title); an orphan
+        #    heading is carried forward as text; real passages absorb both pending contributions.
         kept: list[Passage] = []
         pending: Passage | None = None
+        carried_ids: list[str] = []
         for passage in body:
-            if passage.heading_only and (not passage.section_key or passage.section_key[-1] not in owned):
-                pending = self.__fold_headings(pending, passage)
+            if passage.heading_only:
+                if passage.section_key and passage.section_key[-1] in owned:
+                    carried_ids.extend(passage.block_ids)
+                else:
+                    pending = self.__fold_headings(pending, passage)
                 continue
-            kept.append(passage if pending is None else self.__prepend_heading(pending, passage))
-            pending = None
-        # 3. A trailing orphan heading has no forward target — merge it backward, else drop it.
+            passage = passage if pending is None else self.__prepend_heading(pending, passage)
+            kept.append(self.__carry_ids(passage, carried_ids))
+            pending, carried_ids = None, []
+        # 3. Trailing pendings have no forward target — merge the orphan text backward, keep the
+        #    owned block ids as provenance on the last kept passage (else both are dropped).
         if pending is not None and kept:
             kept[-1] = self.__append_heading(kept[-1], pending)
+        if carried_ids and kept:
+            kept[-1] = self.__carry_ids(kept[-1], carried_ids)
         return kept
+
+    @staticmethod
+    def __carry_ids(passage: Passage, block_ids: list[str]) -> Passage:
+        """Prepend carried owned-heading block ids onto a passage (provenance only, no added text)."""
+        if not block_ids:
+            return passage
+        return passage.model_copy(update={"block_ids": [*block_ids, *passage.block_ids]})
 
     def __fold_headings(self, pending: Passage | None, orphan: Passage) -> Passage:
         """Accumulate consecutive orphan headings into one carried unit (exact duplicates dropped)."""

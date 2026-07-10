@@ -39,33 +39,73 @@ CHUNKS = [
 async def test_breadcrumb_renders_the_section_trail() -> None:
     node = ContextualizerBreadcrumbNode(id="b", config=ContextualizerBreadcrumbConfig())
     out = await node.run(ContextualizerConsumes(chunks=CHUNKS))
-    assert out.chunks[0].context == "Section: Animals > Cats"
+    assert out.chunks[0].context == "Animals › Cats"  # no "Section:" noise
     assert out.chunks[3].context == ""  # no section -> nothing
     assert out.chunks[0].text == CHUNKS[0].text  # raw untouched
     assert CHUNKS[0].context == ""  # input copies, never mutated
-    assert out.chunks[0].enriched_text.startswith("Section: Animals > Cats\n\n")
+    assert out.chunks[0].enriched_text.startswith("Animals › Cats\n\n")
 
 
 async def test_breadcrumb_max_depth_truncates_the_trail() -> None:
     node = ContextualizerBreadcrumbNode(id="b", config=ContextualizerBreadcrumbConfig(max_depth=1))
     out = await node.run(ContextualizerConsumes(chunks=CHUNKS))
-    assert out.chunks[0].context == "Section: Cats"
+    assert out.chunks[0].context == "Cats"
 
 
 SOURCE = SourceDocument(filename="r.pdf", content=b"x",
                         declared_meta={"title": "Annual Report", "author": "ACME", "year": 2024})
+NO_TITLE = SourceDocument(filename="r.pptx", content=b"x", declared_meta={})
 
 
-async def test_doc_meta_selected_fields() -> None:
-    node = ContextualizerDocMetaNode(id="m", config=ContextualizerDocMetaConfig(fields=["title", "author"]))
-    out = await node.run(DocMetaConsumes(chunks=CHUNKS, source=SOURCE))
-    assert out.chunks[0].context == "title: Annual Report · author: ACME"
-
-
-async def test_doc_meta_defaults_to_all_declared_fields() -> None:
+async def test_doc_meta_anchors_on_the_declared_title() -> None:
     node = ContextualizerDocMetaNode(id="m", config=ContextualizerDocMetaConfig())
     out = await node.run(DocMetaConsumes(chunks=CHUNKS, source=SOURCE))
-    assert "year: 2024" in out.chunks[0].context
+    assert all(chunk.context == "Annual Report" for chunk in out.chunks)  # one anchor, every chunk
+
+
+async def test_doc_meta_falls_back_to_the_first_level_one_heading() -> None:
+    # (C) No declared title (e.g. the PPTX parser sets none) → anchor on the first top-level heading.
+    node = ContextualizerDocMetaNode(id="m", config=ContextualizerDocMetaConfig())
+    out = await node.run(DocMetaConsumes(chunks=CHUNKS, source=NO_TITLE))
+    assert all(chunk.context == "Animals" for chunk in out.chunks)  # CHUNKS[0].heading_path[0]
+
+
+async def _default_stack(chunks: list[Chunk], source: SourceDocument) -> list[Chunk]:
+    """Run the stock zero-cost stack (doc_meta → breadcrumb) exactly as the default blob wires it."""
+    meta = await ContextualizerDocMetaNode(id="m", config=ContextualizerDocMetaConfig()).run(
+        DocMetaConsumes(chunks=chunks, source=source)
+    )
+    trail = await ContextualizerBreadcrumbNode(id="b", config=ContextualizerBreadcrumbConfig()).run(
+        ContextualizerConsumes(chunks=meta.chunks)
+    )
+    return trail.chunks
+
+
+async def test_default_stack_builds_one_anchored_trail_nested() -> None:
+    # (B) Nested headings → the full "<doc> › A › B" trail on ONE clean line, no duplicate title.
+    chunks = [
+        Chunk(chunk_id="d#c0", ordinal=0, text="Marge en hausse.",
+              heading_path=["Analyse financière", "Marge brute"]),
+    ]
+    out = await _default_stack(chunks, NO_TITLE)  # anchor = first level-1 heading here
+    assert out[0].context == "Analyse financière › Marge brute"  # anchor IS heading_path[0]: no dup
+
+
+async def test_default_stack_flat_deck_anchors_each_slide() -> None:
+    # (D) Flat deck (all level-1) → "<doc anchor> › <slide title>", no dup, no empty "Section:".
+    deck = [
+        Chunk(chunk_id="d#c0", ordinal=0, text="Titre.", heading_path=["Rapport annuel 2026"]),
+        Chunk(chunk_id="d#c1", ordinal=1, text="Marge.", heading_path=["Marge brute"]),
+    ]
+    out = await _default_stack(deck, NO_TITLE)
+    assert out[0].context == "Rapport annuel 2026"  # anchor slide: named once, not doubled
+    assert out[1].context == "Rapport annuel 2026 › Marge brute"  # anchored, one clean trail
+
+
+async def test_default_stack_declared_title_anchors_a_flat_deck() -> None:
+    deck = [Chunk(chunk_id="d#c0", ordinal=0, text="Marge.", heading_path=["Marge brute"])]
+    out = await _default_stack(deck, SOURCE)  # declared title beats the first heading
+    assert out[0].context == "Annual Report › Marge brute"
 
 
 async def test_sliding_context_uses_prev_tail_and_next_head() -> None:

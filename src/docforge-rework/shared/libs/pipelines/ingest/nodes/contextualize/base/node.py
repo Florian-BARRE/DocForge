@@ -26,13 +26,18 @@ class BaseContextualizerNode(ActionNode):
     Produces = ContextualizerProduces
 
     @staticmethod
-    def _with_context(chunk: Chunk, piece: str | None) -> Chunk:
-        """Append a context piece to a chunk — always a COPY, raw text untouched."""
+    def _with_context(chunk: Chunk, piece: str | None, joiner: str = "\n") -> Chunk:
+        """Append a context piece to a chunk under ``joiner`` — always a COPY, raw text untouched."""
         if not piece or not piece.strip():
             return chunk
         piece = piece.strip()
-        context = f"{chunk.context}\n{piece}" if chunk.context else piece
+        context = f"{chunk.context}{joiner}{piece}" if chunk.context else piece
         return chunk.model_copy(update={"context": context})
+
+    def _context_joiner(self) -> str:
+        """Separator this method's piece attaches under the accumulated context with (newline by
+        default; a trail method joins with its own separator to keep ONE continuous prefix line)."""
+        return "\n"
 
     @abstractmethod
     async def _context_for(
@@ -49,7 +54,11 @@ class BaseContextualizerNode(ActionNode):
         pieces = await asyncio.gather(
             *(self._context_for(index, chunks, data) for index in range(len(chunks)))
         )
-        return [self._with_context(chunk, piece) for chunk, piece in zip(chunks, pieces, strict=True)]
+        joiner = self._context_joiner()
+        return [
+            self._with_context(chunk, piece, joiner)
+            for chunk, piece in zip(chunks, pieces, strict=True)
+        ]
 
     async def run(self, data: ContextualizerConsumes) -> ContextualizerProduces:
         """
