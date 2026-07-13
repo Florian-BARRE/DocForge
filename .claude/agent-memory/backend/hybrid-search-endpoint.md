@@ -37,6 +37,18 @@ RRF fusion + Postgres hydration to `CONTEXT.database.search.hybrid`.
   metadata are NOT on it — the response exposes chunk-row scalars (id, document_id, text,
   chunk_index, token_count). Adding heading_path/metadata would need a SearchFacade/SearchHit extension.
 
+**Engine is inline-capable (for the graph-based search redesign, 2026-07):** `FlowEngine`
+(`shared/libs/pipelines/engine/core.py:47`, `execute` at :435) is a PURE stateless async class — zero
+arq/redis/worker imports. `PipelineRunner` (`worker/backend/libs/runner/core.py`) is likewise pure
+(imports only `shared_libs.pipelines.*` + `public_models`); it lives under `worker/` but is not
+worker-bound. The ONLY arq coupling is `worker/backend/libs/jobs/core.py` (the `ingest_document` task
+wrapper). So a search graph CAN be built+validated+run INLINE in the API request (sub-second), via
+`FlowEngine.execute(..., timeout_seconds=<short>)` — no worker queue. Ingestion is async-via-arq;
+search must be inline. Note: `PipelineRunner`'s output contract is ingestion-specific (`RunBundle`,
+runner/core.py:112-118) — search needs its own thin runner / `SearchBundle` contract. All read-side
+facade methods retrieval needs are read-only: `collections.get`, `collections.get_schema`,
+`search.hybrid`, `ChunkApi.get_by_ids`, `DocumentApi.list_disabled_ids`, `collection_exists`.
+
 **Current app.py wiring reality (supersedes stale notes in [[api-surface-map]]):** each router
 self-prefixes and is mounted with `app.include_router(router=..., prefix="/api/v1")`; the search
 router uses NO prefix and owns the explicit path `/collections/{collection_id}/search` (explorer

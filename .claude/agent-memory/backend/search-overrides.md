@@ -5,6 +5,13 @@ metadata:
   type: project
 ---
 
+> ⚠️ STALE ERA (verified gone 2026-07-13). This describes a `SearchPipelineEngine` /
+> `build_search_pipeline` / `backend/libs/search/overrides.py` architecture that **no longer exists**
+> in `src/docforge-rework/`. The current search path is a DIRECT facade call (see
+> [[hybrid-search-endpoint]]): no override merge, no `pipeline.search` typed config — `collection.search`
+> is an untyped JSONB blob read ad-hoc in the router. A NEW graph-based search pipeline is being
+> DESIGNED (2026-07). Kept only as a record of the retired override surface; do not treat as current.
+
 The `POST .../documents/search` (+ `/{document_id}/search`) request carries an optional
 `overrides` object (`SearchOverrides`, in the search router `models.py`) that shadows the
 collection's stored `pipeline.search` for ONE query — never persisted.
