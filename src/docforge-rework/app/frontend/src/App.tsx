@@ -13,6 +13,7 @@ import { DocumentsPage } from "./features/explorer/DocumentsPage";
 import { JobDetailPage } from "./features/monitoring/JobDetailPage";
 import { JobsPage } from "./features/monitoring/JobsPage";
 import { WorkersPanel } from "./features/monitoring/WorkersPanel";
+import { SearchLabPage } from "./features/search/SearchLabPage";
 import { TopBar } from "./shell/TopBar";
 import type { View } from "./shell/view";
 
@@ -30,6 +31,7 @@ export function App() {
         {view.name === "collection-pipeline" && <CollectionPipelinePage collectionId={view.collectionId} onNavigate={setView} />}
         {view.name === "collection-jobs" && <JobsPage collectionId={view.collectionId} onNavigate={setView} />}
         {view.name === "collection-documents" && <DocumentsPage collectionId={view.collectionId} onNavigate={setView} />}
+        {view.name === "collection-search" && <SearchLabPage collectionId={view.collectionId} onNavigate={setView} />}
         {view.name === "document" && (
           <DocumentPage collectionId={view.collectionId} documentId={view.documentId} onNavigate={setView} />
         )}

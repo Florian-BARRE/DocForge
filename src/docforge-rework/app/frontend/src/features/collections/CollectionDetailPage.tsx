@@ -73,6 +73,7 @@ export function CollectionDetailPage({ collectionId, onNavigate }: CollectionDet
         <Button onClick={() => onNavigate({ name: "collection-edit", collectionId })}>Edit collection</Button>
         <Button onClick={() => onNavigate({ name: "collection-pipeline", collectionId })}>Edit pipeline</Button>
         <Button onClick={() => onNavigate({ name: "collection-documents", collectionId })}>Documents</Button>
+        <Button onClick={() => onNavigate({ name: "collection-search", collectionId })}>Search</Button>
         <Button onClick={() => onNavigate({ name: "collection-jobs", collectionId })}>Jobs</Button>
         <Button onClick={() => setShowUpload((v) => !v)}>{showUpload ? "Hide upload" : "Upload"}</Button>
         <div style={{ marginLeft: "auto", display: "flex", gap: theme.space.s }}>

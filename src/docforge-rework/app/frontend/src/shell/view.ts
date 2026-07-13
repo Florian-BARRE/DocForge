@@ -11,6 +11,7 @@ export type View =
   | { name: "collection-pipeline"; collectionId: string }
   | { name: "collection-jobs"; collectionId: string }
   | { name: "collection-documents"; collectionId: string }
+  | { name: "collection-search"; collectionId: string }
   | { name: "document"; collectionId: string; documentId: string }
   | { name: "job"; collectionId: string; jobId: string }
   | { name: "workers" };
