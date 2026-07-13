@@ -14,6 +14,7 @@ from shared_libs.pipelines.validation import GraphValidator
 from shared_libs.services.db import Database
 
 # ====== Local Project Imports ======
+from .libs.search import SearchService
 from .utils.queue import QueueClient
 
 
@@ -39,3 +40,8 @@ class CONTEXT:
     # ── Stores + queue (admission writes and status reads — execution is the worker's) ──
     database: Database
     queue: QueueClient
+
+    # ── Search execution (the graph-based search pipeline runs INLINE in the request) ──
+    # The /collections/{id}/search endpoint is NOT cut over to this yet; it is the invocation
+    # seam for the search graph (a later phase wires it to a route).
+    search_service: SearchService

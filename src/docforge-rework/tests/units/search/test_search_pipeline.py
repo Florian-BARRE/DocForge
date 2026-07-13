@@ -1,0 +1,187 @@
+"""The search pipeline: the default graph builds + validates clean, and executes end-to-end to a
+ranked SearchResult with a MOCKED CollectionReadPort (no Qdrant, no Postgres) and a fake, HTTP-free
+embedder — proving the graph is real, not scaffolding.
+
+Wave 1 (pipeline agent): artefacts + families + must-have nodes + facade + port interface. The
+engine/builder/validator are reused verbatim; the read port is bound by hand here exactly as Wave 2's
+request-context resolver will bind it before FlowEngine.execute.
+"""
+
+import asyncio
+
+import pytest
+
+from shared_libs.pipelines.base import ActionNode
+from shared_libs.pipelines.build import PipelineBuilder
+from shared_libs.pipelines.engine import FlowEngine
+from shared_libs.pipelines.nodes.embed.base import BaseEmbedConfig, BaseEmbedderNode
+from shared_libs.pipelines.registry import NodeRegistry
+from shared_libs.pipelines.search import (
+    COLLECTION_READ_CAPABILITY,
+    CollectionReadPort,
+    SearchPipeline,
+)
+from shared_libs.pipelines.validation import GraphValidator
+from shared_libs.public_models.search import (
+    Candidate,
+    EncodedQuery,
+    Hit,
+    QueryFilters,
+    RawQuery,
+    SearchContract,
+    SearchResult,
+)
+
+
+# ---------------------- Test doubles ---------------------- #
+class _FakeEmbedConfig(BaseEmbedConfig):
+    """Config of the HTTP-free test embedder."""
+
+
+@NodeRegistry.register("embed")
+class FakeEmbedNode(BaseEmbedderNode):
+    """A deterministic, HTTP-free embedder the encode node rebuilds from the contract."""
+
+    # 'fake_' prefix: the design-surface test skips it, and it never enters a real palette.
+    KIND = "fake_embed"
+    NAME = "Fake embedder"
+    SUMMARY = "Deterministic embedder for tests (no HTTP)."
+    Config = _FakeEmbedConfig
+
+    async def _embed_dense(self, texts: list[str]) -> list[list[float]]:
+        """A fixed 4-d dense vector per text — no network."""
+        return [[0.1, 0.2, 0.3, 0.4] for _ in texts]
+
+
+class MockCollectionReadPort(CollectionReadPort):
+    """A read port that returns 3 fake candidates and hydrates them — no store."""
+
+    def __init__(self) -> None:
+        self.hybrid_calls: list[tuple[dict, int]] = []
+        self.hydrated_ids: list[str] = []
+
+    async def hybrid_search(self, encoded, filters, limit, rescore_pool_size=None):
+        """Return 3 fake candidates, best-first (records the call for assertions)."""
+        assert isinstance(encoded, EncodedQuery)
+        self.hybrid_calls.append((filters, limit))
+        return [
+            Candidate(chunk_id="c1", score=0.9, source="hybrid"),
+            Candidate(chunk_id="c2", score=0.7, source="hybrid"),
+            Candidate(chunk_id="c3", score=0.5, source="hybrid"),
+        ]
+
+    async def hydrate(self, chunk_ids):
+        """Hydrate each id into a Hit carrying document_id/text/metadata."""
+        self.hydrated_ids = list(chunk_ids)
+        return {
+            chunk_id: Hit(
+                chunk_id=chunk_id,
+                document_id=f"doc-{chunk_id}",
+                text=f"text of {chunk_id}",
+                metadata={"k": chunk_id},
+            )
+            for chunk_id in chunk_ids
+        }
+
+
+def _fake_run_input() -> dict:
+    """The minimal search run-input: a raw query, empty filters, a fake-embedder contract."""
+    return {
+        "query": RawQuery(text="  Hello World  ", top_k=3, flags={}),
+        "filters": QueryFilters(filters={}),
+        "contract": SearchContract(
+            collection_id="col-1",
+            embed_kind="fake_embed",
+            embed_config={"model": "fake", "embed_sparse": False},
+            filterable_fields=[],
+        ),
+    }
+
+
+def _bind_read_port(group, port: CollectionReadPort) -> None:
+    """Inject the read port into every port-backed node (what Wave 2's resolver does)."""
+    for child in group.children:
+        if isinstance(child, ActionNode):
+            child.bind({COLLECTION_READ_CAPABILITY: port})
+
+
+# ---------------------- Tests ---------------------- #
+def test_search_default_blob_builds_and_validates_clean() -> None:
+    """The default search graph builds and validates with ZERO structural issues."""
+    blob = SearchPipeline.default_blob()
+    ids = [node.id for node in blob.nodes]
+    assert ids == ["normalize", "encode", "retrieve", "hydrate", "deliver"]
+
+    group = PipelineBuilder().build(blob)
+    issues = GraphValidator().validate(group)
+    assert issues == [], issues
+
+
+def test_search_graph_executes_end_to_end_to_a_ranked_result() -> None:
+    """With a mocked port + fake embedder, the graph runs to a SearchResult of 3 ranked hits."""
+    group = PipelineBuilder().build(SearchPipeline.default_blob())
+    port = MockCollectionReadPort()
+    _bind_read_port(group, port)
+
+    output, record = asyncio.run(FlowEngine().execute(group, _fake_run_input()))
+
+    # 1. The run succeeded and produced the terminal contract.
+    assert record.status.value == "success", record
+    result: SearchResult = output.result
+    assert isinstance(result, SearchResult)
+
+    # 2. Three hits, ranked best-first, hydrated, labelled by the original query.
+    assert result.query == "  Hello World  "  # the ORIGINAL text, not the normalised form
+    assert [hit.chunk_id for hit in result.hits] == ["c1", "c2", "c3"]
+    assert [hit.rank for hit in result.hits] == [1, 2, 3]
+    assert [hit.document_id for hit in result.hits] == ["doc-c1", "doc-c2", "doc-c3"]
+    assert result.hits[0].score == 0.9
+    assert result.debug == {"hit_count": 3}
+
+    # 3. The retrieve node drove the port with the over-sampled candidate_k (max(3*4, 100) = 100).
+    assert port.hybrid_calls == [({}, 100)]
+    assert port.hydrated_ids == ["c1", "c2", "c3"]
+
+
+def test_search_palette_lists_the_registered_families() -> None:
+    """The palette exposes every search family with described nodes (must-have kinds present)."""
+    palette = SearchPipeline.palette()
+    by_family = {family.family: {node.kind for node in family.nodes} for family in palette.families}
+    assert "normalize" in by_family["query"]
+    assert "collection" in by_family["encode"]
+    assert "hybrid" in by_family["retrieve"]
+    assert "hydrate" in by_family["postprocess"]
+    assert "hits" in by_family["deliver"]
+    # Every family carries UI metadata (title + description), like the ingest palette.
+    assert all(family.title and family.description for family in palette.families)
+
+
+def test_search_placeholders_are_registered_but_hidden() -> None:
+    """The future methods are registered (discoverable) yet SELECTABLE=False (out of the palette)."""
+    hidden = {
+        "query": {"understand", "rewrite", "multi", "hyde"},
+        "retrieve": {"dense", "sparse"},
+        "fuse": {"rrf", "weighted"},
+        "rerank": {"colbert", "cross_encoder", "llm"},
+        "postprocess": {"dedup_document", "mmr", "parent_expand", "assemble"},
+    }
+    palette = {f.family: {n.kind for n in f.nodes} for f in SearchPipeline.palette().families}
+    for family, kinds in hidden.items():
+        # 1. Hidden from the palette's method picker.
+        assert palette[family].isdisjoint(kinds), (family, palette[family] & kinds)
+        # 2. Still registered + describable, and rerank placeholders advertise scored=True.
+        for kind in kinds:
+            described = NodeRegistry.get(family, kind).describe()
+            assert described.selectable is False
+    assert NodeRegistry.get("rerank", "colbert").describe().scored is True
+
+
+@pytest.mark.parametrize("kind", ["understand", "colbert", "rrf", "mmr"])
+def test_placeholder_bodies_raise(kind: str) -> None:
+    """A placeholder never runs — its body raises NotImplementedError if ever invoked."""
+    family = {"understand": "query", "colbert": "rerank", "rrf": "fuse", "mmr": "postprocess"}[kind]
+    node_class = NodeRegistry.get(family, kind)
+    node = node_class(id="x", config=node_class.Config())
+    with pytest.raises(NotImplementedError):
+        # The body raises before it ever reads its input — no valid Consumes needed.
+        asyncio.run(node.run(None))

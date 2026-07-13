@@ -83,6 +83,11 @@ class DocumentsFacade(LoggerClass):
         async with self._postgres.session() as session:
             return await ChunkApi.get_for_document(session, document_id)
 
+    async def get_chunks_by_ids(self, chunk_ids: list[uuid.UUID]) -> list[Chunk]:
+        """Fetch chunks by id — the search-graph hydration path (bulk read, read-only)."""
+        async with self._postgres.session() as session:
+            return await ChunkApi.get_by_ids(session, chunk_ids)
+
     async def get_chunk_composition(self, chunk_id: uuid.UUID) -> list[ChunkBlock]:
         """Which IR blocks compose a chunk, in assembly order — recompute the raw form from it."""
         async with self._postgres.session() as session:

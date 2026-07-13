@@ -10,6 +10,7 @@ from loggerplusplus import loggerplusplus
 
 # ====== Internal Project Imports ======
 from backend import CONTEXT, create_app
+from backend.libs.search import SearchService
 from backend.utils.queue import QueueClient
 from config import RUNTIME_CONFIG  # MUST be first — registers backend/libs/ on sys.path
 from shared_libs.pipelines.build import PipelineBuilder
@@ -47,6 +48,10 @@ def _build_app() -> FastAPI:
         ),
     )
     CONTEXT.queue = QueueClient(RUNTIME_CONFIG.REDIS_URL)
+
+    # 3b. Search execution — the graph-based search pipeline runs inline (not the arq worker). The
+    # runner is stateless; the read port is constructed per-request from the database facade.
+    CONTEXT.search_service = SearchService(CONTEXT.database)
 
     # 3. Create the FastAPI application with all routers registered.
     fastapi_app = create_app(

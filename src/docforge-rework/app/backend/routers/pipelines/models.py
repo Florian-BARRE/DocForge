@@ -168,10 +168,11 @@ class PipelineSurface(BaseModel):
         edit_url (str): POST — advanced: apply graph operations server-side (blob + operations
             in, healed blob + issues + described tree out); the healing semantics live next to
             the validator.
-        stages_view_url (str): POST — the stage view of a blob + its validity (blob in, ordered
-            stages + valid + issues out) — the product UI's one-call open.
-        stages_apply_url (str): POST — compile a stage action into the blob (blob + action in,
-            recompiled blob + stage view + issues + notices out).
+        stages_view_url (str | None): POST — the stage view of a blob + its validity (blob in,
+            ordered stages + valid + issues out) — the product UI's one-call open. None when the
+            pipeline has no stage rail (the stage layer is ingest-coupled today).
+        stages_apply_url (str | None): POST — compile a stage action into the blob (blob + action
+            in, recompiled blob + stage view + issues + notices out). None when unsupported.
     """
 
     key: str
@@ -180,8 +181,8 @@ class PipelineSurface(BaseModel):
     design_url: str
     inspect_url: str
     edit_url: str
-    stages_view_url: str
-    stages_apply_url: str
+    stages_view_url: str | None = None
+    stages_apply_url: str | None = None
 
 
 class PipelineIndexResponse(BaseModel):
