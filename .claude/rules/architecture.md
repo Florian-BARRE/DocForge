@@ -62,6 +62,20 @@ Entrée unique · pas de cycle · pas de fan-out ambigu · bindings amont prése
 > et n'échoue qu'au **run** (surfacé par `job.error` qui nomme le node fautif). Un `preflight()` optionnel
 > par node — joignabilité/creds après `bind`, avant la 1re dépense — reste à ajouter.
 
+## Deux pipeline kinds sur le MÊME moteur (`PipelineRegistry`)
+
+Le moteur ne code en dur **aucune** pipeline. `pipeline_registry.PipelineRegistry` mappe `key → façade`
+(`ingest` · `search`) ; le routeur `pipelines/` l'itère (`/pipelines/{key}`). **Ingestion** tourne async
+dans le worker ; **search** tourne INLINE dans la requête API (sub-seconde, zéro arq) via un `SearchRunner`
+app-side (`build → validate → bind → FlowEngine.execute → assert SearchResult`). Familles search dédiées :
+`query · encode · retrieve · fuse · rerank · postprocess` (+ `deliver`). Détail : `docs/rpi/search-pipeline/`.
+
+**Le seam `bind()` est vivant** (n'était que du scaffolding mort). Un node peut recevoir une **capacité
+read-only** (`self._capabilities`) — le `CollectionReadPort` de search est injecté ainsi APRÈS `build`,
+AVANT `execute` (le moteur n'appelle **jamais** `bind()` — c'est au runner de walker `group.children`, **y
+compris les corps de `ForEach`**). Un node reste **pur** : il peut LIRE (provider ou store read-only via
+capacité injectée) mais n'ÉCRIT jamais. Un accès write reste une façade au bord worker.
+
 ## Les 3 racines et l'import model
 
 | Racine | Namespace | Rôle |
