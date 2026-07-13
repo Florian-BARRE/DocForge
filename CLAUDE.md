@@ -21,8 +21,8 @@ Pipeline (doc vivante, LA référence) : `src/docforge-rework/PIPELINE.md`
 
 ## Commandes — stack rework (par défaut)
 
-- **Dev (hot reload)** : `docker compose -f docker-compose.rework.yml -f docker-compose.rework.dev.yml up --build -d`
-- **Prod** : `docker compose -f docker-compose.rework.yml up -d`
+- **Dev (hot reload)** : `docker compose -f docker-compose.rework.yml -f docker-compose.rework.dev.yml --profile full up --build -d` — `--profile full` est **obligatoire** : app/worker/frontend sont sous `profiles: ["full"]` (sans lui seuls les stores démarrent, et le compose rejette `rework_frontend depends on undefined service rework_app`).
+- **Prod** : `docker compose -f docker-compose.rework.yml --profile full up -d`
 - **Tests unitaires** : `cd src/docforge-rework && uv run pytest tests/units` (projet uv autonome, tout mocké)
 - **Un seul test** : `uv run pytest tests/units/engine/test_x.py::TestClass::test_method` (`-x`, `-k <expr>`)
 - **Tests live** (stack up requise) : `uv run pytest -m live`

@@ -16,6 +16,12 @@ services:
     image: docforge-rework-app:latest
     container_name: docforge-rework-app
     profiles: ["full"]
+    # Docker's embedded resolver (127.0.0.11) has no external upstream on this VM, so containers
+    # cannot resolve public hostnames (api.openai.com, api.mistral.ai): every external VLM/LLM/metagen
+    # provider call fails with APIConnectionError. Pin public resolvers so provider calls resolve.
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
     ports:
       - "10040:8000"              # Public API (firewall: only 10000-11000 open)
     env_file:
@@ -46,6 +52,11 @@ services:
     image: docforge-rework-worker:latest
     container_name: docforge-rework-worker
     profiles: ["full"]
+    # Same reason as rework_app: the worker runs the figure VLM + metagen LLM provider calls, which
+    # target external hostnames Docker's embedded resolver can't reach. Pin public resolvers.
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
     env_file:
       - services/docforge-rework/.env
     environment:

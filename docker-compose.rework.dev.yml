@@ -45,6 +45,11 @@ services:
   rework_frontend:
     image: node:22-bookworm-slim
     container_name: docforge-rework-frontend
+    # Same "full" profile as its depends_on target rework_app — otherwise the frontend sits in the
+    # default profile while rework_app does not, and compose rejects the project with
+    # "rework_frontend depends on undefined service rework_app". Everything comes up together under
+    # `--profile full` (see the dev command below).
+    profiles: ["full"]
     working_dir: /frontend
     volumes:
       - ./src/docforge-rework/app/frontend:/frontend
