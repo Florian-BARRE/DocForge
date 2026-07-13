@@ -21,7 +21,9 @@ no Qdrant cost"), yet still flow to the delivery bundle + persistence with raw t
   it renders its native text and labels it via `__role_for(block, heading_path)`:
   HEADER_FOOTER block-type → HEADER_FOOTER; ToC inferred from ancestry (any heading whose FULL
   normalized text ∈ `_TOC_TITLES` allow-list — EXACT match, never substring, so "Table of
-  contributions" stays BODY). BOILERPLATE is reserved (no reliable IR signal yet).
+  contributions" stays BODY). BOILERPLATE is now assigned too (2026-07 live audit): a pre-pass
+  `__repeated_texts` flags text recurring across >= `boilerplate_min_pages` DISTINCT pages — see
+  [[chunker-role-routing]].
 - `BaseChunkerNode.run` partitions: only BODY passages go through `_split` (the method's grouping);
   furniture is grouped by (role, page) in `__group_furniture` and APPENDED AFTER body. Rationale:
   running header/footer has no single reading position; appending keeps body chunk ordinals/

@@ -48,8 +48,12 @@ NOT the ingestion engine (that's `shared/libs/pipelines/` → **pipeline** agent
 - [Enable/disable searchability](enable-disable-searchability.md) — reversible chunk/doc toggle: search-exclusion injected in SearchFacade (unbypassable), EnablementFacade flips payload via set_payload (never re-embed), is_indexed = "has a point", never-embedded → reindex_required.
 - [Test backend import wiring](test-backend-import-wiring.md) — in `tests/units/api`, defer every `from backend...` import until the `fastapi_app` fixture has set `sys.path`; a module-top import fails collection with `ModuleNotFoundError: backend`.
 
+- [Pipeline blob validation](pipeline-blob-validation.md) — `PipelineBlobValidator` is the single build+validate chokepoint; called on collection create/update AND before every document enqueue (stale stored blob → 422 naming the node, spends nothing).
+
 ## Boundary
 
 Routers/services/façade-callers/config/models on the request→response path. Ingestion engine
 (`shared/libs/pipelines/`) → **pipeline**. Schema/migrations → **migration-engineer**. UI → **frontend**.
 Packaging → **docforge**. Hand non-trivial diffs to **code-reviewer**.
+
+- [ColBERT third named vector wiring](colbert-named-vector.md) — content_colbert end-to-end: persistence (multivector, content-point-only, byte-bounded upsert) + search late-interaction re-score, flag off by default.

@@ -7,3 +7,5 @@ device resolver), `backend/` (routers, context, lifespan). Device policy configu
 (auto/cuda/cpu). Models loaded once at startup via FlagEmbedding (torch), CPU by default.
 
 - [model-host-contract](model-host-contract.md) — endpoints, env vars, why it replaced off-the-shelf TEI, and how docforge consumes it
+
+- [FlagEmbedding M3 internals](flagembedding-m3-internals.md) — pooling=CLS (not mean), one shared forward pass derives dense/sparse/colbert, no public raw-hidden-state API.

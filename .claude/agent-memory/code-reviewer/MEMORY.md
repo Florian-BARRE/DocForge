@@ -80,6 +80,7 @@ FROZEN legacy — don't review it unless explicitly asked.
 - [secret_roundtrip](secret_roundtrip.md) — `ConfigDocument.merge_patch` preserves redacted secrets — validated correct, do NOT flag.
 - [search_pipeline_antipatterns](search_pipeline_antipatterns.md) — recurring correctness/coherence issues in the search pipeline (engine, rerank, fusion).
 - [rework_search_endpoint](rework_search_endpoint.md) — rework hybrid-search read path: named-vector-via-constants, openai dense-only degrade, secret handling, and the never-ingested→500 facade gap.
+- [multivector-upsert-byte-limit](multivector-upsert-byte-limit.md) — ColBERT/multivector upserts must batch by ESTIMATED BYTES: a full-precision colbert batch crosses Qdrant's 32 MB max_request_size → instant 400 + connection reset masquerading as httpx.ReadError; intermittent by token count.
 
 ### Auth & scoping
 - [auth_keys_only_capabilities](auth_keys_only_capabilities.md) — AUTH keys-only model: capability taxonomy + require_capability; null=full-access footgun; what NOT to flag.
@@ -107,3 +108,5 @@ FROZEN legacy — don't review it unless explicitly asked.
 > the `src/bge_server/` model host. This file holds the cross-cutting product rules.
 - [Stages package method-order convention](stages-method-order.md) — static builder classes put the public entrypoint first, privates below; do not flag as a python.md violation
 - [Translator drops artefact fields](translator-drops-artefact-fields.md) — a new Chunk/IR artefact field must also be set in worker translator.py ORM row, else the DB row silently uses server_default
+- [Inert-scaffolding antipattern](inert-scaffolding-antipattern.md) — green tests + unchanged golden on a claimed BEHAVIOR fix is a signal to grep for consumers, not a pass; a truncated agent ships config/fields/helpers with no wiring
+- [ColBERT late-interaction review](colbert-late-interaction-review.md) — content_colbert 3rd-vector: inner-prefetch filter placement, colbert=None byte-identity, colbert_dim-from-first-chunk fragility, flag-as-vector-presence proxy gap (one-way-door 500), metadata isolation
