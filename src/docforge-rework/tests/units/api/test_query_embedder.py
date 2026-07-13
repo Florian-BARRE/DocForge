@@ -39,15 +39,36 @@ class _FakeHybridNode(BaseEmbedderNode):
         return [SparseVector(indices=[3, 9], values=[0.7, 0.8]) for _ in texts]
 
 
+class _FakeColbertNode(BaseEmbedderNode):
+    """A provider that also emits ColBERT multi-vectors (bge_server with embed_colbert on)."""
+
+    KIND = "fake_colbert"
+    NAME = "Fake colbert"
+    SUMMARY = "Test embedder with a ColBERT axis."
+    Config = BaseEmbedConfig
+
+    async def _embed_dense(self, texts: list[str]) -> list[list[float]]:
+        return [[0.5, 0.6] for _ in texts]
+
+    def _wants_colbert(self) -> bool:
+        return True
+
+    async def _embed_colbert(self, texts: list[str]) -> list[list[list[float]]]:
+        # One token-vector matrix per input — here a fixed 2-token x 2-dim matrix.
+        return [[[0.1, 0.2], [0.3, 0.4]] for _ in texts]
+
+
 @pytest.fixture
 def registered_fakes():
     """Register the fake embedders under the 'embed' family, then remove them (global registry)."""
     embed = NodeRegistry._store.setdefault("embed", {})
     embed["fake_dense_only"] = _FakeDenseOnlyNode
     embed["fake_hybrid"] = _FakeHybridNode
+    embed["fake_colbert"] = _FakeColbertNode
     yield
     embed.pop("fake_dense_only", None)
     embed.pop("fake_hybrid", None)
+    embed.pop("fake_colbert", None)
 
 
 def _blob(kind: str, **config) -> ActionNodeBlob:
@@ -80,3 +101,22 @@ async def test_sparse_gate_off_skips_sparse(fastapi_app, registered_fakes) -> No
 
     _, sparse = await QueryEmbedder(_blob("fake_hybrid", embed_sparse=False)).embed("hello")
     assert sparse is None
+
+
+async def test_colbert_provider_exposes_wants_and_embeds_the_query_matrix(
+    fastapi_app, registered_fakes
+) -> None:
+    """A ColBERT provider reports wants_colbert True and returns the query's token matrix."""
+    from backend.routers.search.embedder import QueryEmbedder
+
+    embedder = QueryEmbedder(_blob("fake_colbert"))
+    assert embedder.wants_colbert() is True
+    matrix = await embedder.embed_colbert("hello")
+    assert matrix == [[0.1, 0.2], [0.3, 0.4]]  # the [0] of the one-element batch
+
+
+async def test_non_colbert_provider_reports_wants_false(fastapi_app, registered_fakes) -> None:
+    """A provider without ColBERT reports wants_colbert False (the graceful-guard signal)."""
+    from backend.routers.search.embedder import QueryEmbedder
+
+    assert QueryEmbedder(_blob("fake_hybrid")).wants_colbert() is False

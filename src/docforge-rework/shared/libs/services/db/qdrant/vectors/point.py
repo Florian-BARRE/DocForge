@@ -1,8 +1,9 @@
 # ====== Code Summary ======
 # The clean, qdrant-free input types for the store: a `SparseVec` (BM25 indices+values) and a
-# `QdrantPoint` (its id = the chunk id, its named dense/sparse vectors, and its LEAN payload). The
-# Database façade builds these; QdrantStore converts them to qdrant-client structs internally, so
-# qdrant types never leak upward.
+# `QdrantPoint` (its id = the chunk id, its named dense/sparse/multivector vectors, and its LEAN
+# payload). The Database façade builds these; QdrantStore converts them to qdrant-client structs
+# internally, so qdrant types never leak upward. `multivector` carries the ColBERT late-interaction
+# tokens (content point only) — a dedicated field, never overloading the flat `dense` map.
 
 # ====== Standard Library Imports ======
 from dataclasses import dataclass, field
@@ -25,6 +26,7 @@ class QdrantPoint:
     payload: dict[str, Any]
     dense: dict[str, list[float]] = field(default_factory=dict)   # vector name → dense vector
     sparse: dict[str, SparseVec] = field(default_factory=dict)    # vector name → sparse vector
+    multivector: dict[str, list[list[float]]] = field(default_factory=dict)  # name → ColBERT tokens
 
 
 __all__ = ["SparseVec", "QdrantPoint"]

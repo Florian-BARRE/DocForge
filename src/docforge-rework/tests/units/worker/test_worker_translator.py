@@ -171,6 +171,34 @@ def test_disabled_by_role_chunk_persists_as_a_row_but_gets_no_qdrant_point() -> 
     assert out.points[0].payload["enabled"] is True
 
 
+def test_colbert_multivector_lands_on_content_point_only() -> None:
+    """A chunk with a ColBERT multi-vector emits it on the content point under content_colbert,
+    and NEVER onto a meta_<slug>_dense metadata vector."""
+    bundle = _bundle()
+    # 3 tokens x 4 dims — a fake ColBERT multi-vector alongside the existing dense/sparse/fields.
+    bundle.embeddings.items[0].colbert = [
+        [0.1, 0.2, 0.3, 0.4],
+        [0.5, 0.6, 0.7, 0.8],
+        [0.9, 1.0, 1.1, 1.2],
+    ]
+    out = RunTranslator.translate(DOC, bundle, _schema(), strategy="s", config_hash="c")
+
+    point = out.points[0]
+    # 1. The ColBERT tokens ride in `multivector`, keyed by the content_colbert name.
+    assert point.multivector["content_colbert"] == bundle.embeddings.items[0].colbert
+    # 2. The metadata vector is untouched — ColBERT never mirrors onto meta_<slug>_dense.
+    assert "content_colbert" not in point.dense
+    assert point.dense["meta_keywords_dense"] == [9.0, 9.0, 9.0]
+
+
+def test_chunk_without_colbert_emits_an_empty_multivector() -> None:
+    """A chunk whose provider produced no ColBERT vector emits an EMPTY multivector map (the
+    content_colbert named vector is simply absent from the point)."""
+    out = RunTranslator.translate(DOC, _bundle(), _schema(), strategy="s", config_hash="c")
+    assert _bundle().embeddings.items[0].colbert is None  # the fixture has no ColBERT
+    assert out.points[0].multivector == {}
+
+
 def test_identical_artefact_bytes_are_deduplicated_into_one_blob_row() -> None:
     """Two PageRenders with IDENTICAL bytes must register exactly one blob row/object."""
     bundle = RunBundle(

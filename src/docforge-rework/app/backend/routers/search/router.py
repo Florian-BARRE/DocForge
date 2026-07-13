@@ -8,6 +8,7 @@
 
 # ====== Standard Library Imports ======
 import uuid
+from typing import Any
 
 # ====== Third-Party Library Imports ======
 from fastapi import APIRouter, HTTPException
@@ -48,7 +49,8 @@ async def search_collection(collection_id: uuid.UUID, request: SearchRequest) ->
         )
 
     # 3. Embed the QUERY with the collection's own embedder (dense always, sparse when supported).
-    dense_vector, sparse_vector = await QueryEmbedder(embed_blob).embed(request.query)
+    embedder = QueryEmbedder(embed_blob)
+    dense_vector, sparse_vector = await embedder.embed(request.query)
 
     # 4. Name the query vectors with the SAME constants the persistence side writes.
     dense: dict[str, list[float]] = {VectorNames.CONTENT_DENSE: dense_vector}
@@ -56,7 +58,37 @@ async def search_collection(collection_id: uuid.UUID, request: SearchRequest) ->
         {VectorNames.CONTENT_SPARSE: sparse_vector} if sparse_vector is not None else None
     )
 
-    # 5. Translate the requested filters into typed Conditions over the filterable fields.
+    # 5. Resolve the late-interaction decision: the request overrides, else the collection's
+    #    search config, else off. The pool size follows the same request-over-config precedence.
+    search_config = collection.search or {}
+    use_late_interaction = (
+        request.use_late_interaction
+        if request.use_late_interaction is not None
+        else bool(search_config.get("use_late_interaction", False))
+    )
+    rescore_pool_size = request.rescore_pool_size or int(
+        search_config.get("rescore_pool_size", 100)
+    )
+
+    # 6. Embed the ColBERT query only when late interaction is on. GRACEFUL GUARD: if the flag is
+    #    on but the collection was never ingested with ColBERT (its embedder emits none), degrade
+    #    to standard hybrid and surface why — never a 500.
+    colbert: list[list[float]] | None = None
+    debug_info: dict[str, Any] | None = None
+    if use_late_interaction:
+        if embedder.wants_colbert():
+            colbert = await embedder.embed_colbert(request.query)
+        else:
+            debug_info = {
+                "late_interaction_skipped": "collection has no colbert vectors — "
+                "re-ingest with embed_colbert"
+            }
+            CONTEXT.logger.info(
+                f"Collection {collection_id}: late interaction requested but no ColBERT "
+                f"vectors — degrading to standard hybrid"
+            )
+
+    # 7. Translate the requested filters into typed Conditions over the filterable fields.
     schema = await CONTEXT.database.collections.get_schema(collection_id)
     conditions, invalid = SearchHelpers.build_conditions(request.filters, schema)
     if invalid:
@@ -65,17 +97,23 @@ async def search_collection(collection_id: uuid.UUID, request: SearchRequest) ->
             detail=f"Not a filterable field for this collection: {sorted(invalid)}",
         )
 
-    # 6. Delegate the vector fusion + Postgres hydration to the facade.
+    # 8. Delegate the vector fusion (or ColBERT re-score) + Postgres hydration to the facade.
     hits = await CONTEXT.database.search.hybrid(
         collection_id,
         dense=dense,
         sparse=sparse,
         conditions=conditions,
         limit=request.limit,
+        colbert=colbert,
+        rescore_pool_size=rescore_pool_size,
     )
 
-    # 7. Shape the flat, client-facing response.
-    return SearchResponse(query=request.query, hits=[SearchHelpers.to_hit(hit) for hit in hits])
+    # 9. Shape the flat, client-facing response.
+    return SearchResponse(
+        query=request.query,
+        hits=[SearchHelpers.to_hit(hit) for hit in hits],
+        debug_info=debug_info,
+    )
 
 
 __all__ = ["router"]

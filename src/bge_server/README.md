@@ -2,15 +2,17 @@
 
 A small, fully local embedding + reranking server that hosts:
 
-- **BAAI/bge-m3** via `BGEM3FlagModel` -- producing both **dense** (1024-dim L2-normalized) and
-  **native multilingual sparse** (lexical weights) vectors in one pass.
+- **BAAI/bge-m3** via `BGEM3FlagModel` -- producing **dense** (1024-dim L2-normalized),
+  **native multilingual sparse** (lexical weights), and **native ColBERT** (per-token multi-vector)
+  representations from the same loaded model instance.
 - **BAAI/bge-reranker-v2-m3** via `FlagReranker` -- cross-encoder reranking with sigmoid-normalized
   scores.
 
 Both models run via **FlagEmbedding (torch)**, loaded once at startup on CPU by default. The service
 speaks the **same HTTP contract as HuggingFace TEI** (`/embed`, `/embed_sparse`, `/rerank`, `/health`)
 so DocForge drives it with the **existing `tei` embed provider and `bge_reranker` rerank provider --
-no new provider code needed**.
+no new provider code needed**. `/embed_colbert` is an additional, internal-only DocForge convention
+(no TEI equivalent).
 
 ## Why this and not TEI / Infinity
 
@@ -30,6 +32,16 @@ no new provider code needed**.
 Rerank scores are sigmoid-normalized to `[0, 1]`. Results are returned in **input order** -- the
 DocForge `bge_reranker` provider re-sorts by index.
 
+## Endpoint (internal DocForge convention -- NOT part of the TEI contract)
+
+| Method | Path | Request body | Response |
+|---|---|---|---|
+| POST | `/embed_colbert` | `{"inputs": "..." or ["..."], "truncate": true}` | `[[[float, ...], ...], ...]` (per text, per-token 1024-dim vectors, variable length) |
+
+BGE-M3's native ColBERT multi-vector head -- one L2-normalized 1024-dim vector per real token
+(length = token count - 1, CLS row dropped). TEI has no colbert primitive, so this endpoint has no
+upstream contract to mirror; it exists solely for DocForge-internal late-interaction use cases.
+
 ## Source layout
 
 ```
@@ -46,7 +58,7 @@ src/bge_server/
     batching/
       models.py          # BatchItem/EmbedItem/RerankItem dataclasses + QueueFullError
       worker.py          # BatchQueueWorker(LoggerClass) -- one generic micro-batcher per op
-      engine.py          # BatchingEngine(LoggerClass) -- owns 3 workers + shared model_lock
+      engine.py          # BatchingEngine(LoggerClass) -- owns 4 workers + shared model_lock
   backend/
     app.py               # create_app() -- FastAPI factory, registers routers
     context.py           # CONTEXT static service locator (CONFIG + bge_models + batching_engine)
@@ -55,7 +67,7 @@ src/bge_server/
       error_handling.py  # @auto_handle_errors decorator for all routes
     routers/
       health/            # GET /health
-      inference/         # POST /embed, /embed_sparse, /rerank (routes through batching engine)
+      inference/         # POST /embed, /embed_sparse, /embed_colbert, /rerank (through batching engine)
   tests/unit/
     test_batching.py     # unit tests for the batching engine (mocked models, no torch)
 services/bge_server/

@@ -44,6 +44,8 @@ class SearchFacade(LoggerClass):
         conditions: Sequence[Condition] = (),
         limit: int = 10,
         prefetch_limit: int | None = None,
+        colbert: list[list[float]] | None = None,
+        rescore_pool_size: int = 100,
     ) -> list[SearchHit]:
         """
         Search a collection and return hydrated hits, best first.
@@ -55,9 +57,12 @@ class SearchFacade(LoggerClass):
             conditions (Sequence[Condition]): Filters on the filterable metadata fields.
             limit (int): Number of fused results.
             prefetch_limit (int | None): Per-branch candidate depth (defaults to an over-sample).
+            colbert (list[list[float]] | None): The query's ColBERT multi-vector; when given, the
+                search becomes a late-interaction re-score over the fused pool (MAX_SIM).
+            rescore_pool_size (int): Size of the fused pool the ColBERT stage re-scores.
 
         Returns:
-            list[SearchHit]: Hydrated chunks with their fused scores, in fusion order.
+            list[SearchHit]: Hydrated chunks with their scores, best first.
         """
         # 1. The vector side — fused (chunk_id, score) pairs.
         name = DatabaseHelpers.qdrant_collection_name(collection_id)
@@ -85,6 +90,8 @@ class SearchFacade(LoggerClass):
             exclusions=exclusions,
             limit=limit,
             prefetch_limit=prefetch_limit,
+            colbert=colbert,
+            rescore_pool_size=rescore_pool_size,
         )
         if not scored:
             return []

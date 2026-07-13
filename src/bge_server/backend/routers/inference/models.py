@@ -1,7 +1,10 @@
 # ====== Code Summary ======
-# Pydantic request and response models for POST /embed, POST /embed_sparse, and POST /rerank.
-# All shapes are frozen to the TEI contract so the DocForge `tei` embed provider and
-# `bge_reranker` rerank provider can drive this service without any provider-side changes.
+# Pydantic request and response models for POST /embed, POST /embed_sparse, POST /embed_colbert,
+# and POST /rerank. The /embed, /embed_sparse, and /rerank shapes are frozen to the TEI contract
+# so the DocForge `tei` embed provider and `bge_reranker` rerank provider can drive this service
+# without any provider-side changes. /embed_colbert is an internal DocForge convention (BGE-M3
+# native colbert head, no TEI equivalent) — its response shape has no wrapper model, mirroring
+# how /embed itself returns a bare `list[list[float]]` with no pydantic model.
 
 # ====== Third-Party Library Imports ======
 from pydantic import BaseModel, Field
@@ -66,3 +69,9 @@ class RerankResult(BaseModel):
 
     index: int = Field(..., description="Position of this candidate in the input texts list.")
     score: float = Field(..., description="Sigmoid-normalized reranking score in [0, 1].")
+
+
+# Per input text, a list of per-token 1024-dim L2-normalized float vectors (variable length
+# per text). Documents the POST /embed_colbert response shape — not a pydantic model, mirroring
+# the un-wrapped `list[list[float]]` response of POST /embed.
+ColbertTokenVectors = list[list[list[float]]]

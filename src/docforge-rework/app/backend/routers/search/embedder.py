@@ -5,7 +5,8 @@
 # hooks on a one-element batch — the node's public run() is built for whole chunk sets + a contract,
 # which is far more machinery than a single query needs. Provider stays interchangeable: bge_server
 # yields dense + sparse, an OpenAI-compatible endpoint yields dense only (sparse skipped gracefully).
-# The embed config may carry an api_key — it is NEVER logged.
+# When the collection was indexed with ColBERT, it also embeds the query's late-interaction
+# multi-vector (same provider hook) for the search-side re-score. The api_key is NEVER logged.
 
 # ====== Standard Library Imports ======
 from typing import cast
@@ -75,6 +76,34 @@ class QueryEmbedder(LoggerClass):
         # 2. Sparse — only when the collection's embedder carries the lexical axis.
         sparse = await self.__maybe_sparse(query)
         return dense, sparse
+
+    def wants_colbert(self) -> bool:
+        """
+        Whether this collection's embedder produces the ColBERT axis.
+
+        This is the collection's single source of truth for late interaction — it mirrors the same
+        flag the ingest side reads, so a query only asks for a ColBERT vector when the chunks were
+        actually indexed with one (the graceful-guard signal, no extra Qdrant round-trip).
+
+        Returns:
+            bool: True when the embedder is configured to emit ColBERT multi-vectors.
+        """
+        return self._node._wants_colbert()
+
+    async def embed_colbert(self, query: str) -> list[list[float]]:
+        """
+        Embed the query into its ColBERT multi-vector (one token vector per token).
+
+        Only called when late interaction is on AND ``wants_colbert()`` is True — the same
+        provider hook the ingest side used, on a one-element batch.
+
+        Args:
+            query (str): The query text.
+
+        Returns:
+            list[list[float]]: The query's per-token vectors, for the MAX_SIM re-score.
+        """
+        return (await self._node._embed_colbert([query]))[0]
 
 
 __all__ = ["QueryEmbedder"]

@@ -1,6 +1,6 @@
 # ====== Code Summary ======
-# BatchingEngine: owns three BatchQueueWorkers (dense / sparse / rerank) and the single shared
-# asyncio.Lock that serializes all model calls. Public submit_* coroutines create a Future,
+# BatchingEngine: owns four BatchQueueWorkers (dense / sparse / colbert / rerank) and the single
+# shared asyncio.Lock that serializes all model calls. Public submit_* coroutines create a Future,
 # wrap it in the appropriate BatchItem, enqueue it, and await the result. Protected _process_*
 # methods flatten the batch, run the model call under the lock via asyncio.to_thread, and scatter
 # results back to each item's future. Rerank scatter re-numbers indices 0..n-1 per request.
@@ -22,14 +22,14 @@ if TYPE_CHECKING:
 
 class BatchingEngine(LoggerClass):
     """
-    Composes three BatchQueueWorkers (dense / sparse / rerank) with a shared model lock.
+    Composes four BatchQueueWorkers (dense / sparse / colbert / rerank) with a shared model lock.
 
     Architecture:
     - One worker per op-type so batches form independently per op.
-    - One asyncio.Lock shared across all workers: dense and sparse both call the same
-      embed_model instance; concurrent forward passes on shared torch/tokenizer/CUDA state
-      are unsafe. The lock serialises all model calls while still allowing batch formation
-      to overlap.
+    - One asyncio.Lock shared across all workers: dense, sparse, and colbert all call the
+      same embed_model instance; concurrent forward passes on shared torch/tokenizer/CUDA
+      state are unsafe. The lock serialises all model calls while still allowing batch
+      formation to overlap.
     - submit_* coroutines are the only public interface: create Future -> enqueue item ->
       await Future. QueueFullError propagates to the caller unchanged.
 
@@ -50,8 +50,8 @@ class BatchingEngine(LoggerClass):
         Args:
             models (BgeModelsService): Loaded BGE model service. Must have load() called before
                 the engine is started.
-            max_length (int): Max token length forwarded to encode_dense / encode_sparse.
-                Comes from BGE_M3_MAX_LENGTH config.
+            max_length (int): Max token length forwarded to encode_dense / encode_sparse /
+                encode_colbert. Comes from BGE_M3_MAX_LENGTH config.
             max_batch_size (int): Maximum total cost (units) per batch across all three workers.
             max_wait_ms (int): Batch formation window in milliseconds.
             max_queue_size (int): Per-worker bounded queue capacity.
@@ -82,6 +82,13 @@ class BatchingEngine(LoggerClass):
             max_wait_ms=max_wait_ms,
             max_queue_size=max_queue_size,
             process_fn=self._process_sparse,
+        )
+        self._colbert_worker = BatchQueueWorker(
+            name="colbert",
+            max_batch_size=max_batch_size,
+            max_wait_ms=max_wait_ms,
+            max_queue_size=max_queue_size,
+            process_fn=self._process_colbert,
         )
         self._rerank_worker = BatchQueueWorker(
             name="rerank",
@@ -164,6 +171,40 @@ class BatchingEngine(LoggerClass):
                 if not item.future.done():
                     item.future.set_exception(exc)
 
+    async def _process_colbert(self, batch: list[BatchItem]) -> None:
+        """
+        Flatten, run colbert encode under the model lock, scatter results back.
+
+        Args:
+            batch (list[BatchItem]): Batch of EmbedItem instances from the colbert worker.
+        """
+        items: list[EmbedItem] = [i for i in batch if isinstance(i, EmbedItem)]
+        try:
+            # 1. Flatten texts + record offsets
+            flat_texts: list[str] = []
+            offsets: list[tuple[int, int]] = []
+            for item in items:
+                start = len(flat_texts)
+                flat_texts.extend(item.texts)
+                offsets.append((start, len(flat_texts)))
+
+            # 2. Lock + to_thread (same embed_model as dense/sparse — mandatory serialisation)
+            max_length = self._max_length
+            async with self._model_lock:
+                token_vec_lists: list[list[list[float]]] = await asyncio.to_thread(
+                    self._models.encode_colbert, flat_texts, max_length
+                )
+
+            # 3. Scatter by offsets
+            for item, (start, end) in zip(items, offsets):
+                if not item.future.done():
+                    item.future.set_result(token_vec_lists[start:end])
+
+        except Exception as exc:
+            for item in items:
+                if not item.future.done():
+                    item.future.set_exception(exc)
+
     async def _process_rerank(self, batch: list[BatchItem]) -> None:
         """
         Flatten all (query, text) pairs, score in one model call, scatter per-request results.
@@ -208,12 +249,13 @@ class BatchingEngine(LoggerClass):
 
     def start(self) -> None:
         """
-        Start all three background worker tasks.
+        Start all four background worker tasks.
 
         Must be called from within the FastAPI lifespan (after the event loop is running).
         """
         self._dense_worker.start()
         self._sparse_worker.start()
+        self._colbert_worker.start()
         self._rerank_worker.start()
         self.logger.info(
             f"BatchingEngine started "
@@ -224,14 +266,16 @@ class BatchingEngine(LoggerClass):
 
     async def stop(self) -> None:
         """
-        Stop all three workers in order, draining pending futures before model unload.
+        Stop all four workers in order, draining pending futures before model unload.
 
-        Shutdown order: dense -> sparse -> rerank. Each stop() drains its queue and resolves
-        all pending futures with QueueFullError so no client request hangs indefinitely.
+        Shutdown order: dense -> sparse -> colbert -> rerank. Each stop() drains its queue
+        and resolves all pending futures with QueueFullError so no client request hangs
+        indefinitely.
         """
         self.logger.info(f"BatchingEngine stopping...")
         await self._dense_worker.stop()
         await self._sparse_worker.stop()
+        await self._colbert_worker.stop()
         await self._rerank_worker.stop()
         self.logger.info(f"BatchingEngine stopped")
 
@@ -278,6 +322,29 @@ class BatchingEngine(LoggerClass):
         future: asyncio.Future[list[list[dict[str, int | float]]]] = loop.create_future()
         item = EmbedItem(future=future, cost=len(texts), texts=texts)
         self._sparse_worker.submit(item)
+        return await future
+
+    async def submit_embed_colbert(self, texts: list[str]) -> list[list[list[float]]]:
+        """
+        Submit a ColBERT multi-vector embedding request and await its result.
+
+        Not part of the TEI contract — an internal DocForge convention (BGE-M3's native
+        colbert head, shares the same embed_model instance as dense/sparse).
+
+        Args:
+            texts (list[str]): Texts to embed. Must be non-empty (caller's responsibility).
+
+        Returns:
+            list[list[list[float]]]: Per input text, a list of per-token 1024-dim vectors
+                (variable length per text).
+
+        Raises:
+            QueueFullError: When the colbert worker queue is at capacity.
+        """
+        loop = asyncio.get_running_loop()
+        future: asyncio.Future[list[list[list[float]]]] = loop.create_future()
+        item = EmbedItem(future=future, cost=len(texts), texts=texts)
+        self._colbert_worker.submit(item)
         return await future
 
     async def submit_rerank(

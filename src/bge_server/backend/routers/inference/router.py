@@ -1,9 +1,11 @@
 # ====== Code Summary ======
-# Route definitions for POST /embed, POST /embed_sparse, and POST /rerank.
-# These three endpoints implement the TEI HTTP contract so the DocForge `tei` embed provider
-# and `bge_reranker` rerank provider can drive this service with zero provider-side changes.
-# All inference is delegated to CONTEXT.batching_engine; no model logic here.
-# Back-pressure: QueueFullError from the engine is translated to HTTP 503 with Retry-After: 1.
+# Route definitions for POST /embed, POST /embed_sparse, POST /embed_colbert, and POST /rerank.
+# /embed, /embed_sparse, and /rerank implement the TEI HTTP contract so the DocForge `tei` embed
+# provider and `bge_reranker` rerank provider can drive this service with zero provider-side
+# changes. /embed_colbert is an internal DocForge convention (not part of TEI) exposing BGE-M3's
+# native ColBERT multi-vector head. All inference is delegated to CONTEXT.batching_engine; no
+# model logic here. Back-pressure: QueueFullError from the engine is translated to HTTP 503 with
+# Retry-After: 1.
 
 # ====== Third-Party Library Imports ======
 from fastapi import APIRouter, HTTPException
@@ -16,7 +18,7 @@ from libs.batching import QueueFullError
 
 # ====== Local Project Imports ======
 from .helpers import InferenceHelpers
-from .models import EmbedRequest, RerankRequest, RerankResult, SparseToken
+from .models import ColbertTokenVectors, EmbedRequest, RerankRequest, RerankResult, SparseToken
 
 router = APIRouter()
 
@@ -106,6 +108,45 @@ async def embed_sparse(req: EmbedRequest) -> list[list[SparseToken]]:
 
     # 5. Wrap each dict into the typed SparseToken model for response validation
     return [[SparseToken(**tok) for tok in row] for row in raw]
+
+
+@router.post("/embed_colbert", response_model=list[list[list[float]]])
+@auto_handle_errors
+async def embed_colbert(req: EmbedRequest) -> ColbertTokenVectors:
+    """
+    ColBERT multi-vector embeddings -- BGE-M3 native, NOT part of the TEI contract.
+
+    Encodes each input text into a variable-length list of per-token 1024-dim
+    L2-normalized float vectors using BGE-M3's colbert head. Internal DocForge
+    convention only; no upstream TEI endpoint to mirror.
+
+    Concurrency: requests are submitted to the batching engine's colbert queue.
+
+    Args:
+        req (EmbedRequest): Request body with texts to embed.
+
+    Returns:
+        list[list[list[float]]]: Per input text, a list of per-token 1024-dim vectors.
+    """
+    # 1. Normalize the TEI inputs field (str | list[str]) into a list
+    texts = InferenceHelpers.as_list(req.inputs)
+
+    # 2. Log batch size at DEBUG — never log text contents (may be large / sensitive)
+    logger.debug(f"POST /embed_colbert: {len(texts)} inputs")
+
+    # 3. Empty input — return immediately without touching the engine
+    if not texts:
+        return []
+
+    # 4. Submit to the colbert batching worker; translate back-pressure to HTTP 503
+    try:
+        return await CONTEXT.batching_engine.submit_embed_colbert(texts)
+    except QueueFullError:
+        raise HTTPException(
+            status_code=503,
+            detail={"error": "server overloaded — try again shortly"},
+            headers={"Retry-After": "1"},
+        )
 
 
 @router.post("/rerank", response_model=list[RerankResult])

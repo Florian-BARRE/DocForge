@@ -1,7 +1,7 @@
 # ====== Code Summary ======
 # Unit tests for the dynamic-batching engine (BatchingEngine + BatchQueueWorker).
 # BgeModelsService is fully mocked — no torch, no FlagEmbedding, no GPU required.
-# Covers: batch-by-size, batch-by-wait, dense/sparse offset scatter, rerank per-request
+# Covers: batch-by-size, batch-by-wait, dense/sparse/colbert offset scatter, rerank per-request
 # re-indexing, QueueFullError on full queue, graceful stop resolving pending futures,
 # and batch-level error isolation.
 
@@ -24,6 +24,7 @@ from libs.batching.worker import BatchQueueWorker
 def _make_mock_models(
     dense_result: list[list[float]] | None = None,
     sparse_result: list[list[dict]] | None = None,
+    colbert_result: list[list[list[float]]] | None = None,
     flat_scores: list[float] | None = None,
 ) -> MagicMock:
     """
@@ -32,6 +33,7 @@ def _make_mock_models(
     Args:
         dense_result: Return value for encode_dense.
         sparse_result: Return value for encode_sparse.
+        colbert_result: Return value for encode_colbert.
         flat_scores: Return value for compute_rerank_scores_flat.
 
     Returns:
@@ -42,6 +44,8 @@ def _make_mock_models(
         mock.encode_dense.return_value = dense_result
     if sparse_result is not None:
         mock.encode_sparse.return_value = sparse_result
+    if colbert_result is not None:
+        mock.encode_colbert.return_value = colbert_result
     if flat_scores is not None:
         mock.compute_rerank_scores_flat.return_value = flat_scores
     return mock
@@ -211,6 +215,42 @@ async def test_sparse_scatter_offsets() -> None:
 
     assert ra == tok_a
     assert rb == tok_b
+
+
+# ── Test: colbert scatter offsets ────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_colbert_scatter_offsets() -> None:
+    """
+    Two colbert requests receive the correct per-text token-vector-list slices from the
+    flat encode_colbert result. Verifies variable-length (per text) nested lists survive
+    the flatten -> encode -> scatter round trip unchanged.
+    """
+    # text_a -> 1 text with 3 token vectors; text_b -> 2 texts with 2 and 4 token vectors
+    vecs_a = [[[0.1] * 1024, [0.2] * 1024, [0.3] * 1024]]
+    vecs_b = [[[0.4] * 1024, [0.5] * 1024], [[0.6] * 1024] * 4]
+
+    models = _make_mock_models(colbert_result=vecs_a + vecs_b)
+    engine = _make_engine(models, max_batch_size=100, max_wait_ms=50)
+    engine.start()
+
+    try:
+        ra, rb = await asyncio.gather(
+            engine.submit_embed_colbert(["t1"]),
+            engine.submit_embed_colbert(["t2", "t3"]),
+        )
+    finally:
+        await engine.stop()
+
+    models.encode_colbert.assert_called_once()
+    assert ra == vecs_a
+    assert rb == vecs_b
+    # Variable per-text token counts preserved through the round trip
+    assert len(ra[0]) == 3
+    assert len(rb[0]) == 2
+    assert len(rb[1]) == 4
+    assert len(ra[0][0]) == 1024
 
 
 # ── Test: rerank per-request re-indexing ─────────────────────────────────────

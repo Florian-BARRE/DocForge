@@ -18,6 +18,9 @@ class VectorNames:
     # named vector cannot be added to an existing Qdrant collection without a reindex; an unused
     # sparse vector costs nothing.
     CONTENT_QUERIES_SPARSE = "content_queries_bm25"
+    # The chunk body's ColBERT multi-vector (one token vector per token, MAX_SIM late interaction).
+    # Content point only — never mirrored onto the meta_<slug>_dense metadata vectors.
+    CONTENT_COLBERT = "content_colbert"
 
     def __new__(cls, *args: object, **kwargs: object) -> None:
         raise TypeError("VectorNames is a static-only class and cannot be instantiated.")

@@ -48,6 +48,7 @@ class TranslatedRun:
     blob_rows: list[Blob] = field(default_factory=list)
     points: list[QdrantPoint] = field(default_factory=list)
     dense_dim: int = 0
+    colbert_dim: int | None = None
 
 
 class RunTranslator:
@@ -227,10 +228,21 @@ class RunTranslator:
                 if item.sparse
                 else {}
             )
+            # The ColBERT multi-vector lands on the CONTENT point only — never mirrored onto the
+            # meta_<slug>_dense metadata vectors built from item.fields above.
+            multivector = (
+                {VectorNames.CONTENT_COLBERT: item.colbert} if item.colbert else {}
+            )
             out.points.append(
-                QdrantPoint(point_id=str(chunk_uuid), payload=payload, dense=dense, sparse=sparse)
+                QdrantPoint(
+                    point_id=str(chunk_uuid), payload=payload,
+                    dense=dense, sparse=sparse, multivector=multivector,
+                )
             )
         out.dense_dim = bundle.embeddings.dimension if bundle.embeddings else 0
+        # colbert_dim drives whether `ensure` declares the content_colbert multi-vector; None means
+        # this embed produced no ColBERT axis, so no ColBERT vector is declared on the collection.
+        out.colbert_dim = bundle.embeddings.colbert_dim if bundle.embeddings else None
 
     @classmethod
     def translate(

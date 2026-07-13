@@ -65,7 +65,7 @@ def wired(fastapi_app, monkeypatch):
     from backend.context import CONTEXT
     from backend.routers.search import router as search_module
 
-    collection = SimpleNamespace(pipeline=_pipeline_with_embed())
+    collection = SimpleNamespace(pipeline=_pipeline_with_embed(), search={})
     monkeypatch.setattr(
         CONTEXT.database.collections, "get", AsyncMock(return_value=collection)
     )

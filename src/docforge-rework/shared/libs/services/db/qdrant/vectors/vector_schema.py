@@ -30,6 +30,37 @@ class QdrantVectorSchema:
         return config
 
     @staticmethod
+    def colbert_config(dim: int) -> dict[str, models.VectorParams]:
+        """
+        The chunk body's ColBERT multi-vector (MAX_SIM late interaction), content point only.
+
+        Storage mitigation — a ColBERT vector is ~30x the size of one dense vector (one token
+        vector per token), so it is pushed on_disk and scalar-quantized to int8; both keep the
+        heavy multi-vector out of RAM while the MAX_SIM comparator does the late-interaction score.
+
+        Args:
+            dim (int): Dimension of each per-token ColBERT vector.
+
+        Returns:
+            dict[str, models.VectorParams]: The single ``content_colbert`` named-vector config.
+        """
+        return {
+            VectorNames.CONTENT_COLBERT: models.VectorParams(
+                size=dim,
+                distance=models.Distance.COSINE,
+                multivector_config=models.MultiVectorConfig(
+                    comparator=models.MultiVectorComparator.MAX_SIM
+                ),
+                on_disk=True,
+                quantization_config=models.ScalarQuantization(
+                    scalar=models.ScalarQuantizationConfig(
+                        type=models.ScalarType.INT8, always_ram=False
+                    )
+                ),
+            )
+        }
+
+    @staticmethod
     def sparse_config(lexical_fields: Sequence[str]) -> dict[str, models.SparseVectorParams]:
         """Named sparse (BM25) vectors: the chunk body, the doc2query questions, and one per
         lexical metadata field."""

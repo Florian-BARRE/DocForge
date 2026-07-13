@@ -291,6 +291,48 @@ class BgeModelsService(LoggerClass):
         )
         return result
 
+    def encode_colbert(self, texts: list[str], max_length: int) -> list[list[list[float]]]:
+        """
+        Encode a batch of texts into BGE-M3's native ColBERT multi-vector representation.
+
+        Not part of the TEI contract — an internal DocForge convention. Reuses the same
+        loaded ``embed_model`` instance as ``encode_dense``/``encode_sparse`` (one shared
+        forward pass internally computes dense/sparse/colbert heads together; requesting
+        colbert alone here still costs its own forward pass since this call only asks for
+        the colbert head).
+
+        Args:
+            texts (list[str]): Texts to embed. Must be non-empty.
+            max_length (int): Maximum token length for truncation.
+
+        Returns:
+            list[list[list[float]]]: Per input text, a list of per-token 1024-dim
+                L2-normalized float vectors. Token count varies per text
+                (= attention_mask.sum() - 1, i.e. real tokens minus the CLS row).
+        """
+        device = self._resolved_device or "unknown"
+        n = len(texts)
+        self.logger.debug(f"encode_colbert: {n} texts, max_length={max_length}, device={device}")
+
+        # 1. Run encode requesting only the colbert head; time the model call itself
+        t0 = time.perf_counter()
+        out = self.embed_model.encode(
+            texts,
+            return_dense=False,
+            return_sparse=False,
+            return_colbert_vecs=True,
+            max_length=max_length,
+        )
+        elapsed = time.perf_counter() - t0
+
+        # 2. Convert per-text numpy arrays ([n_tokens x 1024]) to nested Python lists
+        result = [vecs.tolist() for vecs in out["colbert_vecs"]]
+        self.logger.debug(
+            f"encode_colbert: {n} texts -> {len(result)} token-vector-lists in {elapsed:.3f}s "
+            f"(device={device})"
+        )
+        return result
+
     def compute_rerank_scores_flat(self, pairs: list[list[str]]) -> list[float]:
         """
         Score a flat list of [query, text] pairs and return raw float scores.

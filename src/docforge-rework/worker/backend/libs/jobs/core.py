@@ -119,7 +119,8 @@ async def ingest_document(ctx: dict[str, Any], document_id: str, job_id: str) ->
         await database.ingestion.save(doc_uuid, translated.payload)
         if translated.points:
             await database.ingestion.index(
-                document.collection_id, translated.dense_dim, translated.points
+                document.collection_id, translated.dense_dim, translated.points,
+                colbert_dim=translated.colbert_dim,
             )
         await database.jobs.mark_done(job_uuid, finished_at=datetime.now(UTC))
 
