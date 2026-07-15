@@ -68,7 +68,25 @@ different space). `documents_facade.get_chunks_by_ids` = bulk read-only hydratio
 
 **LIVE PARITY PROVEN**: the graph returns byte-identical hits+scores to the facade endpoint on the
 default path; ColBERT late-interaction re-scores correctly through the nodes. `SearchService.search(
-collection_id, query, top_k=, use_late_interaction=)` is the invocation seam (endpoint NOT cut over yet).
+collection_id, query, top_k=, use_late_interaction=, rescore_pool_size=)` is the invocation seam.
+
+## Wave 3 — endpoint CUT OVER to the graph (2a26eac), all backlog closed
+
+`POST /collections/{id}/search` now runs the graph via `CONTEXT.search_service` (was hand-rolling
+embed + `database.search.hybrid`). The router keeps its guards (404/409, and the 422 filterability
+gate runs BEFORE the graph — the graph trusts filters) and the ColBERT graceful-degradation
+`debug_info` note (via `QueryEmbedder(embed_blob).wants_colbert()`, capability check only — it no
+longer embeds). `SearchService` threads `rescore_pool_size` onto the retrieve node's config before
+build (`__inject_rescore_pool_size`; drift → warning, not a silent drop). `SearchResult.hits` map to
+the flat `SearchResponse` via `SearchHelpers.to_hit_model` (chunk_index/token_count lifted from
+`Hit.metadata`). Live-verified byte-identical to captured pre-cutover baselines (A limit=10, B
+late-interaction, C degradation note, D 404, E 422); the rescore override is live-proven to reach the
+node (pool=1 → 1 hit vs 6). `SearchService` has NO unit-test home (app-`backend` namespace collision)
+— it is covered live, not by pytest.
+
+NEXT PHASE (decided, not started): `collection.search` becomes an editable GRAPH BLOB (like
+`collection.pipeline`), the service runs the stored blob instead of `default_blob()`, + Alembic
+migration of the existing flat tuning dicts. That is what makes search "as configurable as ingestion".
 
 **bind() walk must cover ForEach bodies** (fixed): the runner's walk recurses into `Group` AND
 `ForEach.body` (both Groups) — a port-backed node inside a ForEach (future multi-query graph) would
@@ -77,11 +95,13 @@ NOTE: `SearchRunner` has NO unit-test home — the conftest deliberately omits t
 (app/worker top-level `backend` namespace collision), so app-side search tests go through the HTTP
 `client` fixture, never `from backend...`. The ForEach fix is covered by an in-container check, not pytest.
 
-## Code-review backlog — deferred to the endpoint CUTOVER (graph is headless-only today)
+## Code-review backlog — ALL CLOSED at cutover
 
-- **Palette leak (MEDIUM)**: `deliver` is one global family; ingest's `bundle` and search's `hits` both
-  register under it and both are selectable, so each pipeline's palette shows the other's terminal.
-  Scope kinds per pipeline kind before any UI consumes the search palette.
+- **Palette leak (MEDIUM) → FIXED (873c21d)**: see [[shared-family-palette-scoping]] — each facade
+  scopes the shared `deliver` family via a `FAMILY_KINDS` allowlist; search palette shows only `hits`,
+  ingest only `bundle`. Live-confirmed on `/pipelines/{search,ingest}`.
+- **Metadata parity (LOW) → VERIFIED**: `to_hit_model` lifts chunk_index/token_count from `Hit.metadata`;
+  live baselines A/B match the pre-cutover SearchResponse byte-for-byte.
 - **Double hydration (MEDIUM) → FIXED**: extracted `SearchFacade.hybrid_ids` (lean `(chunk_id, score)`
   retrieval — the collection_exists short-circuit + the `enabled=False`/disabled-doc `must_not`
   exclusion + `QdrantSearchApi.hybrid`, NO Postgres hydration); `hybrid` now calls it and only adds the
