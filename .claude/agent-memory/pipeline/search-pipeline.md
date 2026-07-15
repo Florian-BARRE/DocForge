@@ -84,9 +84,29 @@ late-interaction, C degradation note, D 404, E 422); the rescore override is liv
 node (pool=1 → 1 hit vs 6). `SearchService` has NO unit-test home (app-`backend` namespace collision)
 — it is covered live, not by pytest.
 
-NEXT PHASE (decided, not started): `collection.search` becomes an editable GRAPH BLOB (like
-`collection.pipeline`), the service runs the stored blob instead of `default_blob()`, + Alembic
-migration of the existing flat tuning dicts. That is what makes search "as configurable as ingestion".
+## Wave 4 — collection.search IS an editable search graph blob (8e3a371)
+
+DONE. `collection.search` (existing JSONB column, no DDL) is now a SEARCH GRAPH BLOB, the analog of
+`collection.pipeline`. `SearchService.__resolve_blob`: run the collection's stored graph when it
+carries a topology (`"nodes"`), else `SearchPipeline.default_blob().model_dump(mode="json")`; `{}` is
+the sentinel = stock default. `rescore_pool_size` per-query override injected onto the resolved dict.
+NO Alembic migration — every row was already `{}` (nothing to migrate); the router just stopped
+reading the flat tuning dict (behaviour-preserving, all `{}`).
+
+**Write is fail-fast (principle #4).** `app/backend/utils/search_blob_validation.py::SearchBlobValidator`
+composes the shared structural `PipelineBlobValidator` + a TERMINAL-CONTRACT check: it builds the
+graph and asserts an exit node's `Produces` yields a `SearchResult` (mirrors the runner's runtime
+assert at BUILD time, via `GraphTopology.exits` + `SlotTypes.element`). A non-search topology, or a
+non-empty dict without `"nodes"`, is rejected 422 on PATCH — never stored to 500 on every query.
+**Read safety net**: a `SearchRunError` from a stored graph maps to 422 (never a 500) in the search
+router. Both live-proven. `SearchService` still has no pytest home (app-`backend` namespace) — the
+resolution is unit-tested via mocks + covered live; the write-validation is covered via the HTTP
+`client` fixture.
+
+REMAINING toward "search fully like ingestion": a UI stage-rail for the search kind
+(`supports_stages=False` today — only the headless `/pipelines/search/edit` surface exists); the
+search-pipeline extension phases P2–P5 (rerank/colbert node, decompose retrieve+fuse, query
+transforms, post-process) per `docs/rpi/search-pipeline/research.md`.
 
 **bind() walk must cover ForEach bodies** (fixed): the runner's walk recurses into `Group` AND
 `ForEach.body` (both Groups) — a port-backed node inside a ForEach (future multi-query graph) would

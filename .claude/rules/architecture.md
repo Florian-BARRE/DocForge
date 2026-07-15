@@ -70,6 +70,14 @@ dans le worker ; **search** tourne INLINE dans la requête API (sub-seconde, zé
 app-side (`build → validate → bind → FlowEngine.execute → assert SearchResult`). Familles search dédiées :
 `query · encode · retrieve · fuse · rerank · postprocess` (+ `deliver`). Détail : `docs/rpi/search-pipeline/`.
 
+**Deux blobs par collection, symétriques** : `collection.pipeline` (blob ingest, run au worker) et
+`collection.search` (blob search, run inline par `SearchService.__resolve_blob` ; `{}` = défaut stock).
+Chacun validé **au write** en fail-fast : `PipelineBlobValidator` (structurel) pour ingest ; pour search,
+`SearchBlobValidator` ajoute le **contrat terminal** (un exit doit produire un `SearchResult`, via
+`GraphTopology.exits` + le `Produces` du node) — un graphe non-search est rejeté 422 à l'écriture, jamais
+un 500 au run. La famille `deliver` étant partagée, chaque façade **scope sa palette** par `FAMILY_KINDS`
+(ingest→`bundle`, search→`hits`).
+
 **Le seam `bind()` est vivant** (n'était que du scaffolding mort). Un node peut recevoir une **capacité
 read-only** (`self._capabilities`) — le `CollectionReadPort` de search est injecté ainsi APRÈS `build`,
 AVANT `execute` (le moteur n'appelle **jamais** `bind()` — c'est au runner de walker `group.children`, **y
