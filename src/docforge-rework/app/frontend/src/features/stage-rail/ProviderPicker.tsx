@@ -7,7 +7,7 @@ import { inputStyle } from "../../components/inputStyle";
 import type { Palette, StageView } from "../../api/types";
 import { theme } from "../../theme";
 import type { StageRailActions } from "./actions";
-import { findNodeCard } from "./state/paletteLookup";
+import { findNodeCard } from "../../components/schema-form/paletteLookup";
 
 interface ProviderPickerProps {
   stage: StageView;

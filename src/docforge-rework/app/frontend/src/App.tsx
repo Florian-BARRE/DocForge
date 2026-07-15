@@ -6,6 +6,7 @@ import { useState } from "react";
 import { CollectionDetailPage } from "./features/collections/CollectionDetailPage";
 import { CollectionEditPage } from "./features/collections/CollectionEditPage";
 import { CollectionPipelinePage } from "./features/collections/CollectionPipelinePage";
+import { CollectionSearchPage } from "./features/collections/CollectionSearchPage";
 import { CollectionsPage } from "./features/collections/CollectionsPage";
 import { CollectionWizard } from "./features/collections/wizard/CollectionWizard";
 import { DocumentPage } from "./features/explorer/DocumentPage";
@@ -29,6 +30,7 @@ export function App() {
         {view.name === "collection" && <CollectionDetailPage collectionId={view.collectionId} onNavigate={setView} />}
         {view.name === "collection-edit" && <CollectionEditPage collectionId={view.collectionId} onNavigate={setView} />}
         {view.name === "collection-pipeline" && <CollectionPipelinePage collectionId={view.collectionId} onNavigate={setView} />}
+        {view.name === "collection-search-pipeline" && <CollectionSearchPage collectionId={view.collectionId} onNavigate={setView} />}
         {view.name === "collection-jobs" && <JobsPage collectionId={view.collectionId} onNavigate={setView} />}
         {view.name === "collection-documents" && <DocumentsPage collectionId={view.collectionId} onNavigate={setView} />}
         {view.name === "collection-search" && <SearchLabPage collectionId={view.collectionId} onNavigate={setView} />}

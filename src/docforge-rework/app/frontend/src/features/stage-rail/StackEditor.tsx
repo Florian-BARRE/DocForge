@@ -10,7 +10,7 @@ import type { Palette, StageView } from "../../api/types";
 import { theme } from "../../theme";
 import type { StageRailActions } from "./actions";
 import { StackMethodCard } from "./StackMethodCard";
-import { findFamily, findNodeCard } from "./state/paletteLookup";
+import { findFamily, findNodeCard } from "../../components/schema-form/paletteLookup";
 
 interface StackEditorProps {
   stage: StageView;

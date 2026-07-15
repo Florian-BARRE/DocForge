@@ -12,7 +12,7 @@ import { inputStyle } from "../../components/inputStyle";
 import type { ChainStep, Palette } from "../../api/types";
 import { theme } from "../../theme";
 import { ChainStepCard } from "./ChainStepCard";
-import { findNodeCard } from "./state/paletteLookup";
+import { findNodeCard } from "../../components/schema-form/paletteLookup";
 
 interface ChainStepListProps {
   steps: ChainStep[];

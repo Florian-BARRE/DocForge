@@ -10,7 +10,7 @@ import type { ChainView, Palette } from "../../api/types";
 import { theme } from "../../theme";
 import type { StageRailActions } from "./actions";
 import { ChainStepList } from "./ChainStepList";
-import { familyIsScored } from "./state/paletteLookup";
+import { familyIsScored } from "../../components/schema-form/paletteLookup";
 
 interface StackMethodChainSectionProps {
   stageKey: string;

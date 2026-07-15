@@ -9,6 +9,7 @@ export type View =
   | { name: "collection"; collectionId: string }
   | { name: "collection-edit"; collectionId: string }
   | { name: "collection-pipeline"; collectionId: string }
+  | { name: "collection-search-pipeline"; collectionId: string }
   | { name: "collection-jobs"; collectionId: string }
   | { name: "collection-documents"; collectionId: string }
   | { name: "collection-search"; collectionId: string }

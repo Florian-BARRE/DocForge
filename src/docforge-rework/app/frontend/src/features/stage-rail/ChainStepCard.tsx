@@ -11,7 +11,7 @@ import { SchemaForm } from "../../components/schema-form/SchemaForm";
 import { inputStyle } from "../../components/inputStyle";
 import type { ChainStep, NodeCard } from "../../api/types";
 import { theme } from "../../theme";
-import { hasConfigFields } from "./state/paletteLookup";
+import { hasConfigFields } from "../../components/schema-form/paletteLookup";
 
 const iconButton: React.CSSProperties = {
   background: "none", border: `1px solid ${theme.color.line}`, borderRadius: theme.radius.s,

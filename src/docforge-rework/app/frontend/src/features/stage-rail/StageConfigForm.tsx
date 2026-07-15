@@ -6,7 +6,7 @@
 import { SchemaForm } from "../../components/schema-form/SchemaForm";
 import type { Palette, StageView } from "../../api/types";
 import type { StageRailActions } from "./actions";
-import { findNodeCard, primaryNodeCard } from "./state/paletteLookup";
+import { findNodeCard, primaryNodeCard } from "../../components/schema-form/paletteLookup";
 
 interface StageConfigFormProps {
   stage: StageView;

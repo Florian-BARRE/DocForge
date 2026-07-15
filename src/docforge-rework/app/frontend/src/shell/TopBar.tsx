@@ -6,8 +6,8 @@ import { theme } from "../theme";
 import type { Navigate, View } from "./view";
 
 const COLLECTIONS_VIEWS: View["name"][] = [
-  "collections", "new-collection", "collection", "collection-edit", "collection-pipeline", "collection-jobs",
-  "collection-documents", "document", "job",
+  "collections", "new-collection", "collection", "collection-edit", "collection-pipeline",
+  "collection-search-pipeline", "collection-jobs", "collection-documents", "document", "job",
 ];
 
 interface TopBarProps {

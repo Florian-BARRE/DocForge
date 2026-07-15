@@ -10,7 +10,7 @@ import type { ChainView, NodeCard, Palette, StackMethod } from "../../api/types"
 import { theme } from "../../theme";
 import type { StageRailActions } from "./actions";
 import { StackMethodChainSection } from "./StackMethodChainSection";
-import { hasConfigFields } from "./state/paletteLookup";
+import { hasConfigFields } from "../../components/schema-form/paletteLookup";
 
 const iconButton: React.CSSProperties = {
   background: "none", border: `1px solid ${theme.color.line}`, borderRadius: theme.radius.s,

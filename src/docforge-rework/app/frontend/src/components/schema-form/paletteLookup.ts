@@ -1,11 +1,12 @@
 // ====== Code Summary ======
-// Small, generic lookups over the palette — the ONLY place a stage/chain/stack card resolves its
-// node description. Nothing here names a specific family or stage: a provider/chain/stack member
-// is always matched by (family, kind), and the "primary" config-bearing node of a toggle stage is
-// found generically (the family member whose schema actually declares fields), so a new backend
-// family or a renamed node needs zero change here.
+// Small, generic lookups over the palette — the ONLY place any config-form-driven card (the
+// ingestion stage rail, the search pipeline editor) resolves its node description. Nothing here
+// names a specific family, stage or pipeline kind: a provider/chain/stack/node member is always
+// matched by (family, kind), and the "primary" config-bearing node of a toggle stage is found
+// generically (the family member whose schema actually declares fields), so a new backend family
+// or a renamed node needs zero change here.
 
-import type { FamilyCatalog, NodeCard, Palette } from "../../../api/types";
+import type { FamilyCatalog, NodeCard, Palette } from "../../api/types";
 
 export function findFamily(palette: Palette, family: string): FamilyCatalog | undefined {
   return palette.families.find((f) => f.family === family);

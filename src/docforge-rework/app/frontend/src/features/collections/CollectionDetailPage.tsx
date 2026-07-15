@@ -72,6 +72,7 @@ export function CollectionDetailPage({ collectionId, onNavigate }: CollectionDet
       <div style={{ display: "flex", gap: theme.space.s, marginBottom: theme.space.l }}>
         <Button onClick={() => onNavigate({ name: "collection-edit", collectionId })}>Edit collection</Button>
         <Button onClick={() => onNavigate({ name: "collection-pipeline", collectionId })}>Edit pipeline</Button>
+        <Button onClick={() => onNavigate({ name: "collection-search-pipeline", collectionId })}>Edit search pipeline</Button>
         <Button onClick={() => onNavigate({ name: "collection-documents", collectionId })}>Documents</Button>
         <Button onClick={() => onNavigate({ name: "collection-search", collectionId })}>Search</Button>
         <Button onClick={() => onNavigate({ name: "collection-jobs", collectionId })}>Jobs</Button>
