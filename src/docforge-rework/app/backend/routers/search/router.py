@@ -1,8 +1,9 @@
 # ====== Code Summary ======
 # The search router — the retrieval READ path behind a collection. It stays the thin request-side
-# gate (404 unknown collection · 409 no embed node · 422 non-filterable filter) and resolves the
-# per-query late-interaction / rescore-pool knobs against the collection's search config, then
-# DELEGATES the actual retrieval to the graph-based search pipeline via CONTEXT.search_service (the
+# gate (404 unknown collection · 409 no embed node · 422 non-filterable filter) and reads the
+# per-query late-interaction / rescore-pool knobs from the REQUEST (collection.search is a search
+# GRAPH blob now, resolved by the service, not a tuning dict), then DELEGATES the actual retrieval
+# to the graph-based search pipeline via CONTEXT.search_service (the
 # graph embeds the query with the collection's own embedder and runs the hybrid fusion + hydration).
 # The router keeps the filterability gate (the graph trusts the filters it is handed) and reproduces
 # the ColBERT-degradation diagnostic, then flattens the graph's Hits into the client response.
@@ -16,6 +17,7 @@ from fastapi import APIRouter, HTTPException
 
 # ====== Local Project Imports ======
 from ...context import CONTEXT
+from ...libs.search import SearchRunError
 from ...utils.error_handling import auto_handle_errors
 from .embedder import QueryEmbedder
 from .helpers import SearchHelpers
@@ -50,17 +52,11 @@ async def search_collection(collection_id: uuid.UUID, request: SearchRequest) ->
             status_code=409, detail="Collection has no embed node — search is unavailable."
         )
 
-    # 3. Resolve the late-interaction / pool-size knobs: the request overrides, else the
-    #    collection's search config, else off / the store default (100).
-    search_config = collection.search or {}
-    use_late_interaction = (
-        request.use_late_interaction
-        if request.use_late_interaction is not None
-        else bool(search_config.get("use_late_interaction", False))
-    )
-    rescore_pool_size = request.rescore_pool_size or int(
-        search_config.get("rescore_pool_size", 100)
-    )
+    # 3. Resolve the per-query knobs from the REQUEST only. collection.search is now a search GRAPH
+    #    blob (topology), not a tuning dict — the retrieve node's own config / the port default
+    #    governs the pool size when the request omits it. None → off / defer to the node default.
+    use_late_interaction = request.use_late_interaction or False
+    rescore_pool_size = request.rescore_pool_size
 
     # 4. GRACEFUL GUARD: if late interaction is on but the collection was never ingested with
     #    ColBERT (its embedder emits none), degrade to standard hybrid and surface why — never a
@@ -86,15 +82,25 @@ async def search_collection(collection_id: uuid.UUID, request: SearchRequest) ->
             detail=f"Not a filterable field for this collection: {sorted(invalid)}",
         )
 
-    # 6. Delegate the retrieval to the graph-based search pipeline.
-    result = await CONTEXT.search_service.search(
-        collection_id,
-        request.query,
-        top_k=request.limit,
-        filters=request.filters,
-        use_late_interaction=use_late_interaction,
-        rescore_pool_size=rescore_pool_size,
-    )
+    # 6. Delegate the retrieval to the graph-based search pipeline. A stored search graph that is
+    #    not a valid search pipeline (e.g. one that predates the write-time SearchBlobValidator, or
+    #    was injected out-of-band) makes the runner raise SearchRunError — map it to a clean 422
+    #    naming the stored graph as the culprit, so an invalid blob is never surfaced as a 500.
+    try:
+        result = await CONTEXT.search_service.search(
+            collection_id,
+            request.query,
+            top_k=request.limit,
+            filters=request.filters,
+            use_late_interaction=use_late_interaction,
+            rescore_pool_size=rescore_pool_size,
+        )
+    except SearchRunError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=f"The collection's stored search graph is invalid — re-save its search "
+                   f"blob. ({exc})",
+        )
 
     # 7. Shape the flat, client-facing response from the graph's Hits.
     return SearchResponse(

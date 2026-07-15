@@ -44,7 +44,9 @@ class CollectionModel(BaseModel):
     needs_reindex: bool = Field(description="True when a config change requires reindexing.")
     created_at: datetime | None = Field(default=None, description="Creation timestamp.")
     pipeline: dict[str, Any] = Field(description="The ingestion pipeline blob (the graph).")
-    search: dict[str, Any] = Field(description="The search config blob.")
+    search: dict[str, Any] = Field(
+        description="The search pipeline graph blob ({} = use the stock default)."
+    )
     fields: list[FieldSpecModel] = Field(default_factory=list, description="The metadata schema.")
 
 
@@ -84,7 +86,10 @@ class UpdateCollectionRequest(BaseModel):
     pipeline: dict[str, Any] | None = Field(
         default=None, description="New pipeline blob (validated before being stored)."
     )
-    search: dict[str, Any] | None = Field(default=None, description="New search config blob.")
+    search: dict[str, Any] | None = Field(
+        default=None,
+        description="New search pipeline graph blob ({} = stock default; validated before storage).",
+    )
     note: str | None = Field(default=None, description="Version note shown in the history.")
 
 

@@ -19,10 +19,10 @@ class SearchRequest(BaseModel):
         limit (int): Number of fused results to return.
         filters (dict | None): Exact/any-of constraints on the collection's FILTERABLE fields —
             a scalar becomes an equality match, a list becomes a set-membership (any-of) match.
-        use_late_interaction (bool | None): Opt into the ColBERT re-score. None defers to the
-            collection's search config (default off); True/False overrides it for this query.
+        use_late_interaction (bool | None): Opt into the ColBERT re-score. None → off for this
+            query; True/False sets it for this query.
         rescore_pool_size (int | None): Size of the fused candidate pool the ColBERT stage
-            re-scores. None defers to the collection's search config (default 100).
+            re-scores. None → the retrieve node's own config / the store default governs.
     """
 
     query: str = Field(min_length=1, description="The natural-language query to search for.")
@@ -33,15 +33,14 @@ class SearchRequest(BaseModel):
     )
     use_late_interaction: bool | None = Field(
         default=None,
-        description="Opt into the ColBERT late-interaction re-score. None defers to the "
-        "collection's search config; True/False overrides it for this query.",
+        description="Opt into the ColBERT late-interaction re-score for this query. None → off.",
     )
     rescore_pool_size: int | None = Field(
         default=None,
         ge=1,
         le=1000,
-        description="Fused candidate pool size the ColBERT stage re-scores. None defers to the "
-        "collection's search config (default 100).",
+        description="Fused candidate pool size the ColBERT stage re-scores. None → the retrieve "
+        "node's own config / the store default governs.",
     )
 
     @field_validator("query")

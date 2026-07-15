@@ -19,6 +19,7 @@ from shared_libs.services.db.postgresql.tables import Collection, MetadataField
 from ...context import CONTEXT
 from ...utils.error_handling import auto_handle_errors
 from ...utils.pipeline_validation import PipelineBlobValidator
+from ...utils.search_blob_validation import SearchBlobValidator
 from .models import (
     CollectionModel,
     CreateCollectionRequest,
@@ -174,6 +175,21 @@ async def update_collection(
     # 3. A new pipeline never reaches storage broken.
     if request.pipeline is not None:
         PipelineBlobValidator.validate(request.pipeline)
+
+    # 3b. A new search blob is a search GRAPH blob. Only two shapes are valid: {} (the sentinel
+    #     "use the stock default", always allowed) or a real topology carrying a "nodes" list. A
+    #     non-empty dict WITHOUT "nodes" would be stored then silently ignored at read (__resolve_blob
+    #     falls back to the default) — reject it up front. A real topology is validated not just
+    #     structurally but as a genuine SEARCH pipeline (it must terminate on a SearchResult), so a
+    #     non-search graph cannot be stored to 500 on every subsequent query.
+    if request.search is not None and request.search != {}:
+        if "nodes" not in request.search:
+            raise HTTPException(
+                status_code=422,
+                detail="collection.search must be empty ({} = stock default) or a search graph "
+                       "blob with a 'nodes' list.",
+            )
+        SearchBlobValidator.validate(request.search)
 
     # 4. Identity/limits (no-op when untouched).
     if any(v is not None for v in (request.name, request.supported_formats,

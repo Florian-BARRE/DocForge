@@ -111,17 +111,20 @@ def test_flag_off_forwards_false(client, wired, monkeypatch) -> None:
     assert search.await_args.kwargs["use_late_interaction"] is False
 
 
-def test_flag_defaults_to_collection_search_config(client, wired, monkeypatch) -> None:
-    """None on the request defers to collection.search — on there ⇒ the flag + pool flow."""
+def test_knobs_come_from_the_request_only(client, wired, monkeypatch) -> None:
+    """collection.search is a topology blob now, not a tuning dict — with no request flag the
+    router forwards off / None, whatever the stored blob contains (the retrieve node's own config /
+    the store default governs the pool)."""
     _patch_embedder(monkeypatch, _ColbertEmbedder)
     search, collection = wired
-    collection.search = {"use_late_interaction": True, "rescore_pool_size": 33}
+    # A stored search GRAPH blob (has "nodes") — must NOT be mined for tuning knobs.
+    collection.search = {"id": "custom", "nodes": [{"id": "n", "family": "query", "kind": "normalize"}]}
 
     response = client.post(URL, json={"query": "q"})  # no request flag
     assert response.status_code == 200, response.text
     kwargs = search.await_args.kwargs
-    assert kwargs["use_late_interaction"] is True
-    assert kwargs["rescore_pool_size"] == 33
+    assert kwargs["use_late_interaction"] is False
+    assert kwargs["rescore_pool_size"] is None
 
 
 def test_graceful_guard_degrades_without_colbert_vectors(client, wired, monkeypatch) -> None:

@@ -94,7 +94,9 @@ def test_search_delegates_to_service_and_shapes_hits(client, wired) -> None:
     assert kwargs["top_k"] == 5
     assert kwargs["filters"] == {"topic": "ai"}
     assert kwargs["use_late_interaction"] is False
-    assert kwargs["rescore_pool_size"] == 100
+    # collection.search is a topology blob now, not a tuning dict — with no request override the
+    # router forwards None and the retrieve node's own config / the store default governs.
+    assert kwargs["rescore_pool_size"] is None
 
     # 3. The hit is the flat view of the graph Hit (index/tokens lifted out of metadata).
     hit = response.json()["hits"][0]
@@ -146,6 +148,26 @@ def test_search_unknown_collection_is_404(client, fastapi_app, monkeypatch) -> N
         json={"query": "q"},
     )
     assert response.status_code == 404, response.text
+
+
+def test_search_invalid_stored_graph_is_422_not_500(client, wired, monkeypatch) -> None:
+    """A stored search graph that the runner rejects (SearchRunError) is mapped to a clean 422 at
+    the HTTP boundary — never a 500 with a traceback."""
+    from backend.context import CONTEXT
+    from backend.libs.search import SearchRunError
+
+    monkeypatch.setattr(
+        CONTEXT.search_service,
+        "search",
+        AsyncMock(side_effect=SearchRunError("final node produced RankedHits")),
+    )
+    response = client.post(
+        "/api/v1/collections/33333333-3333-3333-3333-333333333333/search",
+        json={"query": "q"},
+    )
+    # 1. The invalid stored graph surfaces as a 422 naming the stored search graph, not a 500.
+    assert response.status_code == 422, response.text
+    assert "stored search graph is invalid" in response.text
 
 
 def test_search_no_embed_node_is_409(client, fastapi_app, monkeypatch) -> None:

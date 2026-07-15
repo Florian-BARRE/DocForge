@@ -1,11 +1,11 @@
 # ====== Code Summary ======
 # SearchService — the app-side coordinator that runs the graph-based search pipeline against a real
-# collection. It is the single invocation seam for the search graph (the /collections/{id}/search
-# endpoint is NOT cut over to it yet — that is a later phase). Given a collection id + a raw query,
-# it: loads the collection + its schema, builds the SearchContract run-input (the collection's OWN
-# embedder, for the shared vector space), constructs the read-only CollectionReadPort scoped to that
-# collection (the disabled-point exclusion baked in), assembles the run-input, and runs the stock
-# search blob inline through the SearchRunner. Returns the terminal SearchResult.
+# collection. It is the single invocation seam for the search graph. Given a collection id + a raw
+# query, it: loads the collection + its schema, builds the SearchContract run-input (the collection's
+# OWN embedder, for the shared vector space), constructs the read-only CollectionReadPort scoped to
+# that collection (the disabled-point exclusion baked in), assembles the run-input, RESOLVES the
+# search blob to run (the collection's own stored search graph when it carries one, else the stock
+# default), and runs it inline through the SearchRunner. Returns the terminal SearchResult.
 
 # ====== Standard Library Imports ======
 import uuid
@@ -14,7 +14,6 @@ import uuid
 from loggerplusplus import LoggerClass
 
 # ====== Internal Project Imports ======
-from shared_libs.pipelines.build import GroupNodeBlob
 from shared_libs.pipelines.search import SearchPipeline
 from shared_libs.public_models.search import QueryFilters, RawQuery, SearchResult
 from shared_libs.services.db import Database
@@ -49,9 +48,32 @@ class SearchService(LoggerClass):
         self._database = database
         self._runner = SearchRunner()
 
-    def __inject_rescore_pool_size(self, blob: GroupNodeBlob, rescore_pool_size: int) -> None:
+    def __resolve_blob(self, stored: dict) -> dict:
         """
-        Set the retrieve node's re-score pool depth in-place on the stock search blob.
+        Pick the search blob to run: the collection's own stored graph, else the stock default.
+
+        The ``collection.search`` column is a SEARCH GRAPH BLOB (the search analog of
+        ``collection.pipeline``). A built blob is a group carrying a ``"nodes"`` list; ``{}`` (or
+        anything without ``"nodes"``) is the sentinel meaning "the collection has no configured
+        search — use the product's stock topology". This is the seam that makes search as
+        configurable as ingestion.
+
+        Args:
+            stored (dict): The raw ``collection.search`` value.
+
+        Returns:
+            dict: The blob to run, always in plain-dict form (the runner accepts either form; a
+            dict lets the pool-size override mutate one uniform shape).
+        """
+        # 1. A stored graph (has "nodes") is the collection's OWN configured search — run it.
+        if stored.get("nodes"):
+            return stored
+        # 2. Empty / sentinel → the stock default, serialised to the same plain-dict form.
+        return SearchPipeline.default_blob().model_dump(mode="json")
+
+    def __inject_rescore_pool_size(self, blob: dict, rescore_pool_size: int) -> None:
+        """
+        Set the retrieve node's re-score pool depth in-place on the resolved search blob.
 
         The graph's retrieve node reads its pool size from its NODE CONFIG
         (``RetrieveHybridConfig.rescore_pool_size``), which the default blob leaves at None (the
@@ -59,16 +81,16 @@ class SearchService(LoggerClass):
         value onto the retrieve action node's raw config before build.
 
         Args:
-            blob (GroupNodeBlob): The freshly built stock search blob (mutated in place).
+            blob (dict): The resolved search blob in dict form (mutated in place).
             rescore_pool_size (int): The per-query fused-pool depth the ColBERT re-score works over.
         """
-        # 1. Locate the retrieve action node in the flat stock blob and set its config key.
-        for node in blob.nodes:
-            if getattr(node, "id", None) == _RETRIEVE_NODE_ID:
-                node.config[_RESCORE_POOL_SIZE_KEY] = rescore_pool_size
+        # 1. Locate the retrieve action node in the flat blob and set its config key.
+        for node in blob.get("nodes", []):
+            if node.get("id") == _RETRIEVE_NODE_ID:
+                node.setdefault("config", {})[_RESCORE_POOL_SIZE_KEY] = rescore_pool_size
                 return
-        # 2. Not finding it means the stock topology drifted from _RETRIEVE_NODE_ID — the override
-        #    would be silently lost, so surface it rather than degrade to the default unnoticed.
+        # 2. Not finding it means the topology has no retrieve node — the override would be
+        #    silently lost, so surface it rather than degrade to the default unnoticed.
         self.logger.warning(
             f"rescore_pool_size override dropped: no '{_RETRIEVE_NODE_ID}' node in the search blob"
         )
@@ -128,9 +150,12 @@ class SearchService(LoggerClass):
             "contract": contract,
         }
 
-        # 5. Run the stock search graph inline (the per-collection search blob is a later phase);
-        #    a per-query pool override is written onto the retrieve node's config before build.
-        blob = SearchPipeline.default_blob()
+        # 5. Resolve which search graph to run: the collection's OWN stored blob when it carries a
+        #    topology, else the stock default. A per-query pool override is written onto the
+        #    retrieve node's config before build. A broken stored blob makes the runner raise
+        #    SearchRunError (at build + validate); the SEARCH ROUTER maps that to a 422 at the HTTP
+        #    boundary, so an invalid stored graph is never surfaced as a 500.
+        blob = self.__resolve_blob(collection.search)
         if rescore_pool_size is not None:
             self.__inject_rescore_pool_size(blob, rescore_pool_size)
         return await self._runner.run(

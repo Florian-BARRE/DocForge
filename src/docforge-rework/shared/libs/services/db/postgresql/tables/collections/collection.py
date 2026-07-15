@@ -1,7 +1,7 @@
 # ====== Code Summary ======
-# The `collection` table — a collection's ingestion contract, kept lean: its name, the document
-# formats it accepts, the per-file size cap, the reindex flag, and its two config blobs (the
-# pipeline config and the search config). Everything else the audit needs (embedding model,
+# The `collection` table — a collection's contract, kept lean: its name, the document formats it
+# accepts, the per-file size cap, the reindex flag, and its two graph blobs (the ingestion pipeline
+# graph and the search pipeline graph). Everything else the audit needs (embedding model,
 # versioning) is derived from, or lives inside, the pipeline config — not duplicated as columns.
 
 # ====== Third-Party Library Imports ======
@@ -22,8 +22,9 @@ class Collection(Base, UUIDPrimaryKey, TimestampedMixin):
     supported_formats: Mapped[list[str]] = mapped_column(ARRAY(String), nullable=False)
     max_file_size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
     needs_reindex: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    pipeline: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)  # pipeline config blob
-    search: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)    # search config blob
+    pipeline: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)  # ingestion graph blob
+    # A SEARCH GRAPH BLOB (a serialized search-pipeline topology); {} = use the stock default.
+    search: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     # created_at + updated_at come from TimestampedMixin
 
 
