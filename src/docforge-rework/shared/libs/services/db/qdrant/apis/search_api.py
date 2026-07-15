@@ -43,7 +43,8 @@ class QdrantSearchApi:
 
         ``conditions`` are ANDed under ``must`` (a point must match all of them); ``exclusions``
         go under ``must_not`` (a point matching any of them is dropped) — the mechanism the search
-        facade uses to hide the disabled documents' points.
+        facade uses to hide disabled points: the ``enabled==false`` chunk flag and the disabled
+        documents' ids.
         """
         musts = [QdrantSearchApi._to_field_condition(cond) for cond in conditions]
         must_nots = [QdrantSearchApi._to_field_condition(cond) for cond in exclusions]
@@ -87,7 +88,7 @@ class QdrantSearchApi:
             sparse (dict | None): vector name → query sparse vector.
             conditions (Sequence[Condition]): Filters on the filterable payload fields (ANDed).
             exclusions (Sequence[Condition]): Filters whose matches are DROPPED (``must_not``) —
-                the disabled-document exclusion set.
+                the searchability exclusion set (the ``enabled==false`` chunk flag + disabled docs).
             limit (int): Number of fused (or re-scored) results.
             prefetch_limit (int | None): Candidates fetched PER BRANCH before fusion; defaults to
                 an over-sampling of the final limit (a branch pool of exactly `limit` starves RRF).

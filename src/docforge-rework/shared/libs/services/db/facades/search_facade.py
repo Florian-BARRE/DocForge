@@ -70,17 +70,21 @@ class SearchFacade(LoggerClass):
         # created but never ingested has no space to query yet. Empty results, not a 500.
         if not await self._qdrant.raw.collection_exists(name):
             return []
-        # 2. Enforce the searchability invariants, unbypassable from the router: exclude the points
-        #    of disabled chunks (the `enabled` payload flag) and of disabled documents (a bounded
-        #    must_not over a cheap Postgres lookup — a doc toggle stays one PG flag, no Qdrant fan-out).
-        search_conditions = [*conditions, Match(field="enabled", value=True)]
+        # 2. Enforce the searchability invariants, unbypassable from the router, via must_not only:
+        #    drop a point when `enabled` is explicitly False (a disabled chunk, or a boilerplate role
+        #    that defaults disabled) or when its document is disabled (bounded must_not over a cheap
+        #    Postgres lookup — a doc toggle stays one PG flag, no Qdrant fan-out). Excluding on
+        #    `enabled=False` (rather than requiring `enabled=True`) is migration-free and self-healing:
+        #    a legacy point that predates the `enabled` payload write has no such flag, so it is not
+        #    matched and stays searchable — treated as enabled by default, no Qdrant backfill needed.
+        search_conditions = [*conditions]
         async with self._postgres.session() as session:
             disabled_doc_ids = await DocumentApi.list_disabled_ids(session, collection_id)
-        exclusions = (
-            [MatchAny(field="document_id", values=[str(doc_id) for doc_id in disabled_doc_ids])]
-            if disabled_doc_ids
-            else []
-        )
+        exclusions: list[Condition] = [Match(field="enabled", value=False)]
+        if disabled_doc_ids:
+            exclusions.append(
+                MatchAny(field="document_id", values=[str(doc_id) for doc_id in disabled_doc_ids])
+            )
         scored = await QdrantSearchApi.hybrid(
             self._qdrant.raw,
             name,
