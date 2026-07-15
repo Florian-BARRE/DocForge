@@ -14,6 +14,7 @@ import pytest
 from shared_libs.pipelines.base import ActionNode
 from shared_libs.pipelines.build import PipelineBuilder
 from shared_libs.pipelines.engine import FlowEngine
+from shared_libs.pipelines.ingest import IngestPipeline
 from shared_libs.pipelines.nodes.embed.base import BaseEmbedConfig, BaseEmbedderNode
 from shared_libs.pipelines.registry import NodeRegistry
 from shared_libs.pipelines.search import (
@@ -154,6 +155,26 @@ def test_search_palette_lists_the_registered_families() -> None:
     assert "hits" in by_family["deliver"]
     # Every family carries UI metadata (title + description), like the ingest palette.
     assert all(family.title and family.description for family in palette.families)
+
+
+def test_deliver_family_is_scoped_per_pipeline_kind() -> None:
+    """The SHARED ``deliver`` family shows only each pipeline kind's own terminal — no leak.
+
+    ``deliver`` is registered by both pipelines (search's ``hits``, ingestion's ``bundle``). Each
+    palette must scope the family to its own kind: the search palette must NOT list ``bundle`` and
+    the ingest palette must NOT list ``hits``. Scoped in both the default and the full palette.
+    """
+    for full in (False, True):
+        search_deliver = _deliver_kinds(SearchPipeline.palette(full=full))
+        ingest_deliver = _deliver_kinds(IngestPipeline.palette(full=full))
+        assert search_deliver == {"hits"}, (full, search_deliver)
+        assert ingest_deliver == {"bundle"}, (full, ingest_deliver)
+
+
+def _deliver_kinds(palette) -> set[str]:
+    """Extract the set of kinds the palette lists under the ``deliver`` family."""
+    deliver = next(family for family in palette.families if family.family == "deliver")
+    return {node.kind for node in deliver.nodes}
 
 
 def test_search_placeholders_are_registered_but_hidden() -> None:

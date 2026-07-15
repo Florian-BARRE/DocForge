@@ -27,6 +27,11 @@ class SearchPipeline:
         "query", "encode", "retrieve", "fuse", "rerank", "postprocess", "deliver",
     )
 
+    # Per-family kind allowlist for SHARED families: ``deliver`` is reused by ingestion, so its
+    # palette view must be scoped to search's own terminal kind (``hits``) — otherwise ingestion's
+    # ``bundle`` would leak into the search palette. Exclusive families stay unrestricted.
+    FAMILY_KINDS: dict[str, set[str]] = {"deliver": {"hits"}}
+
     # The artefacts the RUN hands to the graph — the sources a FromRunInput binding can target.
     RUN_INPUTS = (
         IoSlot(
@@ -67,9 +72,10 @@ class SearchPipeline:
         Returns:
             Palette: One FamilyCatalog per family; the advanced blocks when ``full``.
         """
-        # 1. The families every consumer needs (node cards: labels, config schema, I/O).
+        # 1. The families every consumer needs (node cards: labels, config schema, I/O). A shared
+        #    family is scoped to this pipeline kind's own kinds via the FAMILY_KINDS allowlist.
         families = [
-            FamilyCatalog.from_family(family)
+            FamilyCatalog.from_family(family, cls.FAMILY_KINDS.get(family))
             for family in cls.FAMILIES
             if family in NodeRegistry.families()
         ]

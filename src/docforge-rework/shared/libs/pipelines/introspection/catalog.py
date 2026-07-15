@@ -37,15 +37,30 @@ class FamilyCatalog(BaseModel):
     nodes: list[NodeDescription]
 
     @classmethod
-    def from_family(cls, family: str) -> "FamilyCatalog":
-        """Build one family's catalogue: its declared metadata + every node card."""
+    def from_family(cls, family: str, kinds: set[str] | None = None) -> "FamilyCatalog":
+        """
+        Build one family's catalogue: its declared metadata + its node cards.
+
+        Args:
+            family (str): Capability family to describe.
+            kinds (set[str] | None): Optional allowlist. When given, only node cards whose
+                kind is in the set are kept — used to scope a SHARED family (e.g. ``deliver``)
+                to the kinds that belong to the requesting pipeline kind. When ``None``, every
+                registered node card of the family is listed (the default).
+
+        Returns:
+            FamilyCatalog: The family's metadata and its (optionally filtered) node cards.
+        """
         info = NodeRegistry.family_info(family)
+        nodes = NodeRegistry.catalog(family)
+        if kinds is not None:
+            nodes = [node for node in nodes if node.kind in kinds]
         return cls(
             family=family,
             title=info.title if info else family,
             description=info.description if info else "",
             mode=info.mode if info else FamilyMode.STAGE,
-            nodes=NodeRegistry.catalog(family),
+            nodes=nodes,
         )
 
 

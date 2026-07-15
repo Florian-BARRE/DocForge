@@ -32,6 +32,11 @@ class IngestPipeline:
         "contextualize", "metagen", "embed", "deliver", "ocr", "vlm", "llm", "structgen",
     )
 
+    # Per-family kind allowlist for SHARED families: ``deliver`` is reused by search, so its palette
+    # view must be scoped to ingestion's own terminal kind (``bundle``) — otherwise search's
+    # ``hits`` would leak into the ingestion palette. Exclusive families stay unrestricted.
+    FAMILY_KINDS: dict[str, set[str]] = {"deliver": {"bundle"}}
+
     # The artefacts the RUN hands to the graph — the sources a FromRunInput binding can target.
     # Declared here (not guessed by the UI) so the entry wiring stays backend-described.
     RUN_INPUTS = (
@@ -69,9 +74,10 @@ class IngestPipeline:
         Returns:
             Palette: One FamilyCatalog per family; the advanced blocks when ``full``.
         """
-        # 1. The families every consumer needs (node cards: labels, config schema, I/O).
+        # 1. The families every consumer needs (node cards: labels, config schema, I/O). A shared
+        #    family is scoped to this pipeline kind's own kinds via the FAMILY_KINDS allowlist.
         families = [
-            FamilyCatalog.from_family(family)
+            FamilyCatalog.from_family(family, cls.FAMILY_KINDS.get(family))
             for family in cls.FAMILIES
             if family in NodeRegistry.families()
         ]
