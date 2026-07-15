@@ -1,41 +1,44 @@
 ---
 name: hybrid-search-endpoint
-description: The POST /api/v1/collections/{id}/search router — how the query is embedded with the collection's own embedder and how vectors are named
+description: The POST /api/v1/collections/{id}/search router — now DELEGATES to CONTEXT.search_service (graph pipeline); router is a thin 404/409/422 gate + ColBERT-degradation diagnostic + Hit mapper
 metadata:
   type: project
 ---
 
 `POST /api/v1/collections/{collection_id}/search` (`app/backend/routers/search/`) turns a query
-string into ranked hydrated chunk hits. Body `{query, limit=10, filters?}`; delegates the Qdrant
-RRF fusion + Postgres hydration to `CONTEXT.database.search.hybrid`.
+string into ranked hydrated chunk hits. Body `{query, limit=10, filters?, use_late_interaction?,
+rescore_pool_size?}`.
 
-**Why it exists:** the `SearchFacade.hybrid` took PRE-COMPUTED query vectors and no router exposed it
-+ nothing embedded the query. This router closes that gap.
+**⚠️ CUT OVER TO THE GRAPH (2026-07-15):** the router NO LONGER hand-rolls retrieval. It DELEGATES to
+`CONTEXT.search_service.search(collection_id, query, top_k=, filters=, use_late_interaction=,
+rescore_pool_size=)` → `SearchResult`. The graph (SearchPipeline default blob) now embeds the query
+(its own `encode` node reuses the collection embedder) and runs hybrid fusion + hydration. The router
+is a THIN gate + diagnostic layer only. It no longer calls `CONTEXT.database.search.hybrid`,
+`QueryEmbedder.embed()`/`.embed_colbert()`, or `VectorNames`/`SparseVec` (those imports were removed).
 
-**How to apply / non-obvious wiring:**
-- Query embedding REUSES the collection's own embed node (provider-interchangeable). `QueryEmbedder`
-  (`embedder.py`) rebuilds the node from the stored blob: `NodeRegistry.get("embed", blob.kind)` →
-  `class.Config(**blob.config)` (extra="forbid" re-validates) → instantiate → call the node's
-  `_embed_dense([query])` / `_embed_sparse([query])` hooks directly. NOT `run()` — run() needs a whole
-  chunk set + contract. Calling the protected hooks is deliberate (engine nodes are the pipeline
-  agent's territory — consume, don't modify). No `bind()` needed: the embed hooks use only `self.config`.
-- The embed node lives ANYWHERE in the pipeline blob tree — `SearchHelpers.embed_node_blob` walks
-  groups (`nodes`) and foreach bodies (`body`) recursively, matching `family == "embed"` (single-use).
-- Vector names come from `VectorNames.CONTENT_DENSE` / `.CONTENT_SPARSE` constants (the SAME the
-  worker's `RunTranslator` writes) — NEVER string-literal "content_dense"/"content_bm25".
-- Sparse is graceful: dense always; sparse dict only when `config.embed_sparse` AND the provider
-  returns vectors (openai_compatible has no sparse → dense-only search, no error).
-- Filters → Conditions in `SearchHelpers.build_conditions`: scalar → `Match`, list → `MatchAny`, only
-  over fields flagged `filterable`; a non-filterable/unknown field → 422 (checked before any search).
-- Rejection ladder: 404 unknown collection · 409 no embed node wired · 422 bad filter field
-  (also 422 on a blank/whitespace-only query — `SearchRequest` field_validator strips + rejects).
-- Un-ingested collection guard lives in `SearchFacade.hybrid` (the reusable seam), NOT the router: a
-  collection provisions its Qdrant space lazily at first indexing, so `hybrid` does
-  `if not await self._qdrant.raw.collection_exists(name): return []` before `query_points`. Searching a
-  created-but-never-ingested collection yields 200 + empty hits, never a 500.
-- `SearchHit` (facade payload) carries only `chunk` (Chunk row) + `score`. heading_path and resolved
-  metadata are NOT on it — the response exposes chunk-row scalars (id, document_id, text,
-  chunk_index, token_count). Adding heading_path/metadata would need a SearchFacade/SearchHit extension.
+**What the router STILL owns (parity-critical, in order):**
+- 404 when `collections.get` is None.
+- 409 when `SearchHelpers.embed_node_blob(collection.pipeline)` is None (blob still located here — for
+  the 409 AND the ColBERT-capability check).
+- Resolve `use_late_interaction` + `rescore_pool_size` request-over-`collection.search`-config (request
+  wins; else config; else off / 100). These are forwarded to the service, not used locally.
+- ColBERT degradation note: if `use_late_interaction` on but `QueryEmbedder(embed_blob).wants_colbert()`
+  is False → `debug_info={"late_interaction_skipped":"collection has no colbert vectors — re-ingest
+  with embed_colbert"}` + log line; else None. `QueryEmbedder` is kept ONLY for this capability check
+  (its `.embed()`/`.embed_colbert()` are dead in the router — the graph's `encode` node embeds now, and
+  degrades gracefully itself: it only embeds colbert when the flag is on AND `embedder._wants_colbert()`).
+- 422 filterability gate: `SearchHelpers.build_conditions(request.filters, schema)` — raise 422 on
+  `invalid` BEFORE the service call (the graph trusts the filters; only `invalid` is used, conditions
+  discarded). Blank/whitespace query → 422 via `SearchRequest` field_validator.
+- Map `SearchResult.hits` (public_models `Hit`) → `SearchHitModel` via `SearchHelpers.to_hit_model(hit)`:
+  `chunk_id/document_id/score/text` off the Hit, `chunk_index`/`token_count` lifted from `Hit.metadata`
+  (the read port hydrates them there). The old `to_hit(SearchHit)` mapper was removed.
+- `rescore_pool_size` override: `SearchService.search` accepts it and, when not None, injects it into the
+  retrieve node's config (`RetrieveHybridConfig.rescore_pool_size`) on the default blob BEFORE build
+  (`__inject_rescore_pool_size` finds the `id="retrieve"` ActionNodeBlob and sets `config[...]`). The
+  router always passes a concrete int (default 100), so the injection always fires → parity with the old
+  facade default. Un-ingested-collection empty-result guard now lives inside the graph's read port /
+  SearchFacade, not the router.
 
 **Engine is inline-capable (for the graph-based search redesign, 2026-07):** `FlowEngine`
 (`shared/libs/pipelines/engine/core.py:47`, `execute` at :435) is a PURE stateless async class — zero

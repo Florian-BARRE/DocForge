@@ -44,7 +44,7 @@ NOT the ingestion engine (that's `shared/libs/pipelines/` → **pipeline** agent
 - [Collection sub-router wiring](collection-subrouter-wiring.md) — 3-step registration for a new per-collection sub-router + the discovery-overlay/capability pattern.
 - [docforge-rework explorer API](docforge-rework-explorer-api.md) — explorer/blobs router wiring over the `shared_libs` db façade; chunk bulk-read seams; the `_IncludedRouter` introspection + S3 underscore-host gotchas.
 - [Search overrides (Search Lab)](search-overrides.md) — ⚠️ STALE ERA (gone 2026-07): a retired `SearchPipelineEngine`/override-merge surface; current path is a direct facade call.
-- [Hybrid search endpoint](hybrid-search-endpoint.md) — POST /collections/{id}/search: embeds the query with the collection's OWN embed node (reuses its hooks), names vectors via VectorNames constants, filters→Conditions, un-ingested guard in SearchFacade.
+- [Hybrid search endpoint](hybrid-search-endpoint.md) — POST /collections/{id}/search NOW delegates to CONTEXT.search_service (graph pipeline, 2026-07-15); router = thin 404/409/422 gate + ColBERT-degradation note + Hit→SearchHitModel mapper.
 - [Enable/disable searchability](enable-disable-searchability.md) — reversible chunk/doc toggle: search-exclusion injected in SearchFacade (unbypassable), EnablementFacade flips payload via set_payload (never re-embed), is_indexed = "has a point", never-embedded → reindex_required.
 - [Test backend import wiring](test-backend-import-wiring.md) — in `tests/units/api`, defer every `from backend...` import until the `fastapi_app` fixture has set `sys.path`; a module-top import fails collection with `ModuleNotFoundError: backend`.
 

@@ -1,15 +1,15 @@
-"""Search router: the query-to-hits wiring with the stores and the embedder mocked out. Asserts the
-route embeds via the collection's embedder, names the query vectors with the persistence constants
-(content_dense / content_bm25), maps filters to typed Conditions over the filterable fields, and
-shapes the hydrated hits — plus the 404 / 409 / 422 rejection ladder. No network, no live stack."""
+"""Search router: the query-to-hits wiring with the graph-based search pipeline mocked out at the
+CONTEXT.search_service seam. Asserts the route stays the request-side gate (404 / 409 / 422 ladder),
+resolves the query knobs, DELEGATES retrieval to the search service with the right arguments, and
+flattens the graph's Hits (chunk_index/token_count lifted out of Hit.metadata) into the client
+response. No network, no live stack, no hand-rolled facade retrieval."""
 
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
 
-from shared_libs.services.db.facades import SearchHit
-from shared_libs.services.db.qdrant import Match, MatchAny, SparseVec, VectorNames
+from shared_libs.public_models.search import Hit, SearchResult
 
 
 # A minimal pipeline blob carrying one embed action node (bge_server, sparse on).
@@ -39,31 +39,27 @@ def _schema() -> list:
     ]
 
 
-def _chunk(index: int) -> SimpleNamespace:
-    return SimpleNamespace(
-        id=f"11111111-1111-1111-1111-00000000000{index}",
-        document_id="22222222-2222-2222-2222-222222222222",
-        text=f"chunk text {index}",
-        chunk_index=index,
-        token_count=10 + index,
+def _result(query: str) -> SearchResult:
+    """A one-hit SearchResult; chunk_index/token_count ride in Hit.metadata (as the graph emits)."""
+    return SearchResult(
+        query=query,
+        hits=[
+            Hit(
+                chunk_id="11111111-1111-1111-1111-000000000001",
+                document_id="22222222-2222-2222-2222-222222222222",
+                score=0.42,
+                rank=1,
+                text="chunk text 1",
+                metadata={"chunk_index": 3, "token_count": 42},
+            )
+        ],
     )
-
-
-class _FakeEmbedder:
-    """Stands in for QueryEmbedder — returns fixed vectors, no HTTP."""
-
-    def __init__(self, blob) -> None:
-        self.blob = blob
-
-    async def embed(self, query: str):
-        return [0.1, 0.2, 0.3], SparseVec(indices=[7], values=[0.9])
 
 
 @pytest.fixture
 def wired(fastapi_app, monkeypatch):
-    """Patch CONTEXT stores + the embedder; return the captured hybrid() call kwargs."""
+    """Patch the collection reads + the search service; return the captured search() mock."""
     from backend.context import CONTEXT
-    from backend.routers.search import router as search_module
 
     collection = SimpleNamespace(pipeline=_pipeline_with_embed(), search={})
     monkeypatch.setattr(
@@ -72,10 +68,9 @@ def wired(fastapi_app, monkeypatch):
     monkeypatch.setattr(
         CONTEXT.database.collections, "get_schema", AsyncMock(return_value=_schema())
     )
-    hybrid = AsyncMock(return_value=[SearchHit(chunk=_chunk(1), score=0.42)])
-    monkeypatch.setattr(CONTEXT.database.search, "hybrid", hybrid)
-    monkeypatch.setattr(search_module, "QueryEmbedder", _FakeEmbedder)
-    return hybrid
+    search = AsyncMock(side_effect=lambda _cid, query, **_kw: _result(query))
+    monkeypatch.setattr(CONTEXT.search_service, "search", search)
+    return search
 
 
 def test_search_route_is_registered(fastapi_app) -> None:
@@ -84,8 +79,8 @@ def test_search_route_is_registered(fastapi_app) -> None:
     assert "post" in paths["/api/v1/collections/{collection_id}/search"]
 
 
-def test_search_builds_named_vectors_conditions_and_hits(client, wired) -> None:
-    """Happy path: content vectors named by the constants, a Match filter, and a shaped hit."""
+def test_search_delegates_to_service_and_shapes_hits(client, wired) -> None:
+    """Happy path: the service is called with resolved knobs, and the graph Hit is flattened."""
     # 1. A query with a scalar filter on the filterable field.
     response = client.post(
         "/api/v1/collections/33333333-3333-3333-3333-333333333333/search",
@@ -93,38 +88,36 @@ def test_search_builds_named_vectors_conditions_and_hits(client, wired) -> None:
     )
     assert response.status_code == 200, response.text
 
-    # 2. The facade was called with the persistence-side vector names.
+    # 2. Retrieval was delegated to the search service with the resolved arguments.
     kwargs = wired.await_args.kwargs
-    assert set(kwargs["dense"]) == {VectorNames.CONTENT_DENSE}
-    assert set(kwargs["sparse"]) == {VectorNames.CONTENT_SPARSE}
-    assert kwargs["dense"][VectorNames.CONTENT_DENSE] == [0.1, 0.2, 0.3]
-    assert kwargs["limit"] == 5
+    assert wired.await_args.args[1] == "how does it work"
+    assert kwargs["top_k"] == 5
+    assert kwargs["filters"] == {"topic": "ai"}
+    assert kwargs["use_late_interaction"] is False
+    assert kwargs["rescore_pool_size"] == 100
 
-    # 3. The scalar filter became a typed exact-match Condition.
-    conditions = kwargs["conditions"]
-    assert conditions == [Match(field="topic", value="ai")]
-
-    # 4. The hit is the flat view of the hydrated SearchHit.
+    # 3. The hit is the flat view of the graph Hit (index/tokens lifted out of metadata).
     hit = response.json()["hits"][0]
     assert hit["chunk_id"] == "11111111-1111-1111-1111-000000000001"
     assert hit["document_id"] == "22222222-2222-2222-2222-222222222222"
     assert hit["score"] == 0.42
     assert hit["text"] == "chunk text 1"
+    assert hit["chunk_index"] == 3
+    assert hit["token_count"] == 42
 
 
-def test_search_list_filter_becomes_match_any(client, wired) -> None:
-    """A list filter value maps to a set-membership (any-of) Condition."""
+def test_search_passes_list_filter_verbatim(client, wired) -> None:
+    """A list filter value reaches the service unchanged — the graph trusts the filter map."""
     response = client.post(
         "/api/v1/collections/33333333-3333-3333-3333-333333333333/search",
         json={"query": "q", "filters": {"topic": ["ai", "ml"]}},
     )
     assert response.status_code == 200, response.text
-    conditions = wired.await_args.kwargs["conditions"]
-    assert conditions == [MatchAny(field="topic", values=["ai", "ml"])]
+    assert wired.await_args.kwargs["filters"] == {"topic": ["ai", "ml"]}
 
 
 def test_search_non_filterable_field_is_422(client, wired) -> None:
-    """A filter on a non-filterable field is rejected before any vector search."""
+    """A filter on a non-filterable field is rejected before the service is invoked."""
     response = client.post(
         "/api/v1/collections/33333333-3333-3333-3333-333333333333/search",
         json={"query": "q", "filters": {"note": "x"}},
@@ -134,7 +127,7 @@ def test_search_non_filterable_field_is_422(client, wired) -> None:
 
 
 def test_search_blank_query_is_422(client, wired) -> None:
-    """A whitespace-only query is rejected before it reaches the embedder."""
+    """A whitespace-only query is rejected before it reaches the service."""
     response = client.post(
         "/api/v1/collections/33333333-3333-3333-3333-333333333333/search",
         json={"query": "   "},

@@ -2,8 +2,8 @@
 # SearchHelpers — the pure, store-free mapping the search route leans on: locate the embed node in a
 # collection's serialised pipeline blob (walking groups and foreach bodies), translate a simple
 # {field: value} filter map into typed Qdrant Conditions over the FILTERABLE fields (reporting the
-# fields that are not filterable so the route can 422), and flatten a hydrated SearchHit into its
-# client model. Kept out of router.py so the route stays pure orchestration.
+# fields that are not filterable so the route can 422), and flatten a graph Hit into its client
+# model. Kept out of router.py so the route stays pure orchestration.
 
 # ====== Standard Library Imports ======
 from collections.abc import Iterator, Sequence
@@ -14,7 +14,7 @@ from loggerplusplus import loggerplusplus
 
 # ====== Internal Project Imports ======
 from shared_libs.pipelines.build import ActionNodeBlob
-from shared_libs.services.db.facades import SearchHit
+from shared_libs.public_models.search import Hit
 from shared_libs.services.db.postgresql.tables import MetadataField
 from shared_libs.services.db.qdrant import Condition, Match, MatchAny
 
@@ -95,16 +95,29 @@ class SearchHelpers:
         return conditions, invalid
 
     @staticmethod
-    def to_hit(hit: SearchHit) -> SearchHitModel:
-        """Flatten a hydrated SearchHit (chunk row + fused score) into its client model."""
-        chunk = hit.chunk
+    def to_hit_model(hit: Hit) -> SearchHitModel:
+        """
+        Flatten a graph Hit (the search pipeline's terminal unit) into its client model.
+
+        The graph's Hit carries the ranking fields directly (chunk_id, document_id, score, text);
+        chunk_index and token_count ride along in ``Hit.metadata`` (the read port hydrates them
+        there), so they are lifted out here into the flat client shape.
+
+        Args:
+            hit (Hit): One hydrated, ranked hit produced by the search pipeline.
+
+        Returns:
+            SearchHitModel: The flat, client-facing view of the hit.
+        """
+        # 1. chunk_index/token_count live in the hydrated metadata bag (never on the Hit's spine).
+        metadata = hit.metadata or {}
         return SearchHitModel(
-            chunk_id=str(chunk.id),
-            document_id=str(chunk.document_id),
+            chunk_id=hit.chunk_id,
+            document_id=hit.document_id,
             score=hit.score,
-            text=chunk.text,
-            chunk_index=chunk.chunk_index,
-            token_count=chunk.token_count,
+            text=hit.text or "",
+            chunk_index=metadata["chunk_index"],
+            token_count=metadata["token_count"],
         )
 
 
