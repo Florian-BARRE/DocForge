@@ -87,10 +87,16 @@ NOTE: `SearchRunner` has NO unit-test home — the conftest deliberately omits t
   for the port; leave hydration to the hydrate node.
 - **Metadata parity (LOW)**: verify delivered `Hit.metadata` vs the live SearchResponse before cutover.
 
-## Product finding — enable/disable payload migration gap (NOT a search bug)
+## Product finding — enable/disable payload migration gap → FIXED (5776654)
 
-`search_facade.hybrid` adds `Match(enabled=True)`. Points ingested BEFORE the enable/disable Qdrant-
-payload write have no `enabled` field → **every search returns 0 hits** on pre-migration collections
-(observed: DemoCollection, and two colbert collections with EMPTY payload from a pre-fix partial run).
-Fresh collections (payload `{document_id, chunk_index, enabled=True}`) search fine. Fix belongs to the
-enable/disable feature (backfill or default-true match), not the search pipeline. See [[search-result-count-semantics]].
+Was: `search_facade.hybrid` added a positive `Match(enabled=True)`, which Qdrant matches only on
+points that CARRY the flag. Points ingested BEFORE the enable/disable payload write have no `enabled`
+field → **every search returned 0 hits** on pre-migration collections (observed: DemoCollection, and
+two colbert collections with EMPTY payload from a pre-fix partial run).
+
+Fixed migration-free by INVERTING the guard: the enabled flag moved from a `must` condition to a
+`must_not` exclusion `Match(enabled=False)` (alongside the disabled-document `MatchAny`). A point with
+no flag is not matched by `enabled=False` → stays searchable (default-enabled); only an explicit
+`enabled=False` (disabled chunk / boilerplate role) is dropped. Self-healing, no Qdrant backfill.
+Live-verified: DemoCollection 0 → 62 hits. Rule if you ever re-touch this: **never require
+`enabled=True` positively** — legacy payloads lack the field. Exclude the negative instead.
