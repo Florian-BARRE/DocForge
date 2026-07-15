@@ -135,6 +135,7 @@ class SearchPipeline:
             },
             "hydrate": {
                 "candidates": FromNode(node_id="retrieve", field_name="candidates"),
+                "spec": FromNode(node_id="normalize", field_name="spec"),
             },
             "deliver": {
                 "ranked": FromNode(node_id="hydrate", field_name="ranked"),

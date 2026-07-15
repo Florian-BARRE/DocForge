@@ -76,5 +76,5 @@ async def test_hybrid_has_no_exclusion_when_no_disabled_docs(monkeypatch) -> Non
 
     # 3. No positive enabled requirement in conditions; the enabled==false guard is the sole must_not.
     kwargs = hybrid.await_args.kwargs
-    assert kwargs["conditions"] == []
+    assert list(kwargs["conditions"]) == []
     assert kwargs["exclusions"] == [Match(field="enabled", value=False)]

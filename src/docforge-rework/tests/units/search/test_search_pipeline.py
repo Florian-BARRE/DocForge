@@ -144,6 +144,55 @@ def test_search_graph_executes_end_to_end_to_a_ranked_result() -> None:
     assert port.hydrated_ids == ["c1", "c2", "c3"]
 
 
+class CuttingReadPort(CollectionReadPort):
+    """A port whose retrieval pool is larger than top_k and out of score order — proves the cut."""
+
+    def __init__(self) -> None:
+        self.hydrated_ids: list[str] = []
+
+    async def hybrid_search(self, encoded, filters, limit, rescore_pool_size=None):
+        """Return 5 candidates in NON-descending order so ranking-before-cut is observable."""
+        return [
+            Candidate(chunk_id="lo", score=0.1, source="hybrid"),
+            Candidate(chunk_id="top", score=0.9, source="hybrid"),
+            Candidate(chunk_id="mid", score=0.5, source="hybrid"),
+            Candidate(chunk_id="hi", score=0.7, source="hybrid"),
+            Candidate(chunk_id="bot", score=0.2, source="hybrid"),
+        ]
+
+    async def hydrate(self, chunk_ids):
+        """Record exactly which ids were hydrated (the cut set) and shape them into Hits."""
+        self.hydrated_ids = list(chunk_ids)
+        return {
+            chunk_id: Hit(
+                chunk_id=chunk_id, document_id=f"doc-{chunk_id}", text=chunk_id, metadata={}
+            )
+            for chunk_id in chunk_ids
+        }
+
+
+def test_hydrate_node_cuts_to_top_k_and_hydrates_only_the_cut_set() -> None:
+    """The pool is ranked then cut to top_k; ONLY the cut set is hydrated (no wholesale hydration)."""
+    group = PipelineBuilder().build(SearchPipeline.default_blob())
+    port = CuttingReadPort()
+    _bind_read_port(group, port)
+
+    run_input = _fake_run_input()
+    run_input["query"] = RawQuery(text="hello", top_k=2, flags={})
+
+    output, record = asyncio.run(FlowEngine().execute(group, run_input))
+
+    # 1. Only the 2 highest-scored candidates were hydrated, in descending score order.
+    assert record.status.value == "success", record
+    assert port.hydrated_ids == ["top", "hi"]
+
+    # 2. The delivered result carries exactly those 2, ranked 1..2 (not the full pool of 5).
+    result: SearchResult = output.result
+    assert [hit.chunk_id for hit in result.hits] == ["top", "hi"]
+    assert [hit.rank for hit in result.hits] == [1, 2]
+    assert [hit.score for hit in result.hits] == [0.9, 0.7]
+
+
 def test_search_palette_lists_the_registered_families() -> None:
     """The palette exposes every search family with described nodes (must-have kinds present)."""
     palette = SearchPipeline.palette()

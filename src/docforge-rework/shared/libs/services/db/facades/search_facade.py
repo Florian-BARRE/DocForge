@@ -35,6 +35,74 @@ class SearchFacade(LoggerClass):
         self._postgres = postgres
         self._qdrant = qdrant
 
+    async def hybrid_ids(
+        self,
+        collection_id: uuid.UUID,
+        *,
+        dense: dict[str, list[float]] | None = None,
+        sparse: dict[str, SparseVec] | None = None,
+        conditions: Sequence[Condition] = (),
+        limit: int = 10,
+        prefetch_limit: int | None = None,
+        colbert: list[list[float]] | None = None,
+        rescore_pool_size: int = 100,
+    ) -> list[tuple[str, float]]:
+        """
+        Run a collection's filtered hybrid search and return lean (chunk_id, score) pairs only.
+
+        The retrieval half of :meth:`hybrid` — the vector side and the unbypassable searchability
+        exclusion — WITHOUT any Postgres hydration. The disabled-chunk / disabled-document exclusion
+        invariant lives here, and here only, so every caller (the graph read port and :meth:`hybrid`)
+        inherits it without re-deriving it.
+
+        Args:
+            collection_id (uuid.UUID): The collection to search.
+            dense (dict | None): vector name → query dense vector (content and/or meta fields).
+            sparse (dict | None): vector name → query sparse vector.
+            conditions (Sequence[Condition]): Filters on the filterable metadata fields.
+            limit (int): Number of fused results.
+            prefetch_limit (int | None): Per-branch candidate depth (defaults to an over-sample).
+            colbert (list[list[float]] | None): The query's ColBERT multi-vector; when given, the
+                search becomes a late-interaction re-score over the fused pool (MAX_SIM).
+            rescore_pool_size (int): Size of the fused pool the ColBERT stage re-scores.
+
+        Returns:
+            list[tuple[str, float]]: (chunk_id, fused score) pairs, best first (empty when the
+                collection has no Qdrant space yet or nothing matched).
+        """
+        # 1. The vector side — fused (chunk_id, score) pairs.
+        name = DatabaseHelpers.qdrant_collection_name(collection_id)
+        # A collection provisions its Qdrant space lazily at first indexing — searching one that was
+        # created but never ingested has no space to query yet. Empty results, not a 500.
+        if not await self._qdrant.raw.collection_exists(name):
+            return []
+        # 2. Enforce the searchability invariants, unbypassable from the router, via must_not only:
+        #    drop a point when `enabled` is explicitly False (a disabled chunk, or a boilerplate role
+        #    that defaults disabled) or when its document is disabled (bounded must_not over a cheap
+        #    Postgres lookup — a doc toggle stays one PG flag, no Qdrant fan-out). Excluding on
+        #    `enabled=False` (rather than requiring `enabled=True`) is migration-free and self-healing:
+        #    a legacy point that predates the `enabled` payload write has no such flag, so it is not
+        #    matched and stays searchable — treated as enabled by default, no Qdrant backfill needed.
+        async with self._postgres.session() as session:
+            disabled_doc_ids = await DocumentApi.list_disabled_ids(session, collection_id)
+        exclusions: list[Condition] = [Match(field="enabled", value=False)]
+        if disabled_doc_ids:
+            exclusions.append(
+                MatchAny(field="document_id", values=[str(doc_id) for doc_id in disabled_doc_ids])
+            )
+        return await QdrantSearchApi.hybrid(
+            self._qdrant.raw,
+            name,
+            dense=dense,
+            sparse=sparse,
+            conditions=conditions,
+            exclusions=exclusions,
+            limit=limit,
+            prefetch_limit=prefetch_limit,
+            colbert=colbert,
+            rescore_pool_size=rescore_pool_size,
+        )
+
     async def hybrid(
         self,
         collection_id: uuid.UUID,
@@ -64,34 +132,12 @@ class SearchFacade(LoggerClass):
         Returns:
             list[SearchHit]: Hydrated chunks with their scores, best first.
         """
-        # 1. The vector side — fused (chunk_id, score) pairs.
-        name = DatabaseHelpers.qdrant_collection_name(collection_id)
-        # A collection provisions its Qdrant space lazily at first indexing — searching one that was
-        # created but never ingested has no space to query yet. Empty results, not a 500.
-        if not await self._qdrant.raw.collection_exists(name):
-            return []
-        # 2. Enforce the searchability invariants, unbypassable from the router, via must_not only:
-        #    drop a point when `enabled` is explicitly False (a disabled chunk, or a boilerplate role
-        #    that defaults disabled) or when its document is disabled (bounded must_not over a cheap
-        #    Postgres lookup — a doc toggle stays one PG flag, no Qdrant fan-out). Excluding on
-        #    `enabled=False` (rather than requiring `enabled=True`) is migration-free and self-healing:
-        #    a legacy point that predates the `enabled` payload write has no such flag, so it is not
-        #    matched and stays searchable — treated as enabled by default, no Qdrant backfill needed.
-        search_conditions = [*conditions]
-        async with self._postgres.session() as session:
-            disabled_doc_ids = await DocumentApi.list_disabled_ids(session, collection_id)
-        exclusions: list[Condition] = [Match(field="enabled", value=False)]
-        if disabled_doc_ids:
-            exclusions.append(
-                MatchAny(field="document_id", values=[str(doc_id) for doc_id in disabled_doc_ids])
-            )
-        scored = await QdrantSearchApi.hybrid(
-            self._qdrant.raw,
-            name,
+        # 1. Retrieve the lean (chunk_id, score) pairs — exclusion invariant lives in hybrid_ids.
+        scored = await self.hybrid_ids(
+            collection_id,
             dense=dense,
             sparse=sparse,
-            conditions=search_conditions,
-            exclusions=exclusions,
+            conditions=conditions,
             limit=limit,
             prefetch_limit=prefetch_limit,
             colbert=colbert,
@@ -99,7 +145,7 @@ class SearchFacade(LoggerClass):
         )
         if not scored:
             return []
-        # 3. Hydrate the rich side from Postgres, preserving the fusion order.
+        # 2. Hydrate the rich side from Postgres, preserving the fusion order.
         async with self._postgres.session() as session:
             chunks = await ChunkApi.get_by_ids(
                 session, [uuid.UUID(chunk_id) for chunk_id, _ in scored]

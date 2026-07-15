@@ -82,9 +82,18 @@ NOTE: `SearchRunner` has NO unit-test home — the conftest deliberately omits t
 - **Palette leak (MEDIUM)**: `deliver` is one global family; ingest's `bundle` and search's `hits` both
   register under it and both are selectable, so each pipeline's palette shows the other's terminal.
   Scope kinds per pipeline kind before any UI consumes the search palette.
-- **Double hydration (MEDIUM)**: `search_facade.hybrid` fully hydrates then the port throws it away and
-  the `hydrate` node re-fetches (≥100-row pool twice). Add a lean `(chunk_id, score)` facade retrieval
-  for the port; leave hydration to the hydrate node.
+- **Double hydration (MEDIUM) → FIXED**: extracted `SearchFacade.hybrid_ids` (lean `(chunk_id, score)`
+  retrieval — the collection_exists short-circuit + the `enabled=False`/disabled-doc `must_not`
+  exclusion + `QdrantSearchApi.hybrid`, NO Postgres hydration); `hybrid` now calls it and only adds the
+  hydration step (exclusion invariant lives in ONE place). The port builds `Candidate`s straight from
+  the tuples — the pool is hydrated exactly once, by the hydrate node.
+- **top_k cut in the hydrate node → DONE (graph parity)**: the default graph now cuts to top_k at
+  `hydrate` (`postprocess/hydrate/core.py`). Its Consumes gained `spec: QuerySpec` (bound
+  `FromNode("normalize","spec")` in `SearchPipeline.default_blob`); `run()` RANKS the pool by score
+  desc, takes `spec.top_k`, then hydrates ONLY that cut set (never the full over-sampled pool).
+  `candidate_k` over-sampling in `normalize` STAYS (a future rerank consumes the pool) — the cut is at
+  hydrate only. Fewer-than-top_k possible (a cut candidate whose row vanished is dropped, same as the
+  facade path). Live parity re-proven: top_k=10 returns exactly the 10 endpoint hits, same order.
 - **Metadata parity (LOW)**: verify delivered `Hit.metadata` vs the live SearchResponse before cutover.
 
 ## Product finding — enable/disable payload migration gap → FIXED (5776654)

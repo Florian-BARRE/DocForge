@@ -1,10 +1,12 @@
 # ====== Code Summary ======
 # CollectionReadPortImpl — the concrete, read-only CollectionReadPort a search graph reaches through
 # the engine's bind() seam. It is the ONLY component in the search request path that touches the raw
-# data facades: a retrieve/hydrate node never imports a store. hybrid_search delegates to
-# SearchFacade.hybrid, which already bakes in the disabled-chunk / disabled-document exclusion
-# (search_facade.py) — so the unbypassable exclusion comes for free and no composed graph can fetch
-# a disabled point. hydrate delegates to the documents facade's bulk chunk read. Constructed
+# data facades: a retrieve/hydrate node never imports a store. hybrid_search delegates to the LEAN
+# SearchFacade.hybrid_ids, which bakes in the disabled-chunk / disabled-document exclusion
+# (search_facade.py) and returns (chunk_id, score) pairs WITHOUT hydration — so the unbypassable
+# exclusion comes for free, no composed graph can fetch a disabled point, and the candidate pool is
+# hydrated exactly once (by the hydrate node, on the cut top_k). hydrate delegates to the documents
+# facade's bulk chunk read. Constructed
 # per-request, scoped to one collection; carries no cross-request state.
 
 # ====== Standard Library Imports ======
@@ -72,8 +74,10 @@ class CollectionReadPortImpl(CollectionReadPort, LoggerClass):
         """
         Run the collection's filtered hybrid search and return candidates, best-first.
 
-        The disabled-chunk / disabled-document exclusion is enforced inside SearchFacade.hybrid, so
-        it can never be bypassed here whatever the graph wiring.
+        The disabled-chunk / disabled-document exclusion is enforced inside SearchFacade.hybrid_ids,
+        so it can never be bypassed here whatever the graph wiring. Retrieval stays lean here: the
+        facade returns (chunk_id, score) pairs with NO Postgres hydration — the hydrate node fetches
+        the rich fields for the cut top_k only, so the candidate pool is never hydrated twice.
 
         Args:
             encoded (EncodedQuery): The query's vectors (dense always; sparse/colbert when present).
@@ -95,8 +99,9 @@ class CollectionReadPortImpl(CollectionReadPort, LoggerClass):
             else None
         )
 
-        # 2. Delegate to the facade — the exclusion invariant lives inside it (reused, not re-derived).
-        hits = await self._database.search.hybrid(
+        # 2. Delegate to the LEAN facade retrieval — exclusion invariant lives inside it (reused,
+        #    not re-derived), and it returns (chunk_id, score) pairs with NO Postgres hydration.
+        scored = await self._database.search.hybrid_ids(
             self._collection_id,
             dense=dense,
             sparse=sparse,
@@ -106,11 +111,11 @@ class CollectionReadPortImpl(CollectionReadPort, LoggerClass):
             rescore_pool_size=rescore_pool_size or _DEFAULT_RESCORE_POOL_SIZE,
         )
 
-        # 3. Map the hydrated hits down to lean candidates — the hydrate step re-fetches the rich
-        #    fields, keeping the port's two methods honest to the CollectionReadPort contract.
+        # 3. Build lean candidates straight from the pairs — the pool is hydrated exactly once, by
+        #    the hydrate node on the cut top_k. Provenance is the retrieval branch.
         candidates = [
-            Candidate(chunk_id=str(hit.chunk.id), score=hit.score, source=_RETRIEVAL_SOURCE)
-            for hit in hits
+            Candidate(chunk_id=chunk_id, score=score, source=_RETRIEVAL_SOURCE)
+            for chunk_id, score in scored
         ]
         self.logger.debug(
             f"Hybrid search on {self._collection_id} returned {len(candidates)} candidate(s)"
