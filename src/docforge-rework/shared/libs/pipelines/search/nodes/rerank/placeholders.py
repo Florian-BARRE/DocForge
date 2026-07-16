@@ -1,8 +1,9 @@
 # ====== Code Summary ======
-# Future rerank methods (SELECTABLE=False): ColBERT MAX_SIM, cross-encoder, and LLM listwise. Their
-# shared OUTPUT face subclasses ScoredOutput, so describe().scored is True and a ScoreBelow
-# escalation edge is legal on any of them (the escalation chain the research doc plans for P2).
-# Registered with typed described faces for discoverability; bodies raise until then.
+# Future rerank methods (SELECTABLE=False): ColBERT MAX_SIM and LLM listwise. Their shared OUTPUT
+# face subclasses ScoredOutput, so describe().scored is True and a ScoreBelow escalation edge is
+# legal on either of them (the escalation chain the research doc plans for P2). Registered with typed
+# described faces for discoverability; bodies raise until then. The cross-encoder method is no longer
+# a placeholder — it is the real, selectable node in the cross_encoder/ subpackage.
 
 # ====== Third-Party Library Imports ======
 from pydantic import Field
@@ -53,18 +54,6 @@ class RerankColbertNode(PlaceholderNode):
 
 
 @NodeRegistry.register("rerank")
-class RerankCrossEncoderNode(PlaceholderNode):
-    """Cross-encoder re-score via a reranker endpoint (future)."""
-
-    KIND = "cross_encoder"
-    NAME = "Cross-encoder rerank"
-    SUMMARY = "Re-score each candidate with a cross-encoder reranker (query, passage) pair."
-    Config = _RerankPlaceholderConfig
-    Consumes = _RerankTextConsumes
-    Produces = _ScoredRerankProduces
-
-
-@NodeRegistry.register("rerank")
 class RerankLlmNode(PlaceholderNode):
     """LLM listwise re-ranking judge (future — the escalation target)."""
 
@@ -76,4 +65,4 @@ class RerankLlmNode(PlaceholderNode):
     Produces = _ScoredRerankProduces
 
 
-__all__ = ["RerankColbertNode", "RerankCrossEncoderNode", "RerankLlmNode"]
+__all__ = ["RerankColbertNode", "RerankLlmNode"]

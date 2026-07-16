@@ -146,5 +146,71 @@ class SearchPipeline:
             id="search_pipeline", nodes=nodes, transitions=transitions, bindings=bindings
         )
 
+    @classmethod
+    def rerank_blob(cls) -> GroupNodeBlob:
+        """
+        The fusion + cross-encoder rerank search topology — the canonical "rerank on" blob.
+
+        The stock ``default_blob`` fusion chain with ONE node inserted between retrieve and hydrate:
+        normalize → encode → retrieve → RERANK → hydrate → deliver. The rerank node re-scores the
+        fused pool's top candidates with the in-stack cross-encoder and emits a plain CandidateSet,
+        so the hydrate node still does the ranking + top_k cut, its Consumes unchanged. This is the
+        blob the UI's rerank toggle stores; the reranker config stays in the blob (the user never
+        edits it). A single linear OnSuccess chain — no tuning.
+
+        Returns:
+            GroupNodeBlob: The serialised fusion + rerank topology (nodes, transitions, bindings).
+        """
+        # 1. The fusion chain's nodes plus the cross-encoder rerank node (empty config = defaults).
+        nodes = [
+            ActionNodeBlob(id="normalize", family="query", kind="normalize"),
+            ActionNodeBlob(id="encode", family="encode", kind="collection"),
+            ActionNodeBlob(id="retrieve", family="retrieve", kind="hybrid"),
+            ActionNodeBlob(id="rerank", family="rerank", kind="cross_encoder"),
+            ActionNodeBlob(id="hydrate", family="postprocess", kind="hydrate"),
+            ActionNodeBlob(id="deliver", family="deliver", kind="hits"),
+        ]
+
+        # 2. The linear control flow — rerank slots in between retrieve and hydrate.
+        transitions = [
+            Transition(from_node_id="normalize", to_node_id="encode"),
+            Transition(from_node_id="encode", to_node_id="retrieve"),
+            Transition(from_node_id="retrieve", to_node_id="rerank"),
+            Transition(from_node_id="rerank", to_node_id="hydrate"),
+            Transition(from_node_id="hydrate", to_node_id="deliver"),
+        ]
+
+        # 3. The data wiring — rerank reads the fused pool from retrieve + the query text from
+        #    normalize; hydrate's candidates are rebound onto rerank's re-scored output.
+        bindings = {
+            "normalize": {
+                "query": FromRunInput(field_name="query"),
+                "filters": FromRunInput(field_name="filters"),
+            },
+            "encode": {
+                "spec": FromNode(node_id="normalize", field_name="spec"),
+                "contract": FromRunInput(field_name="contract"),
+            },
+            "retrieve": {
+                "spec": FromNode(node_id="normalize", field_name="spec"),
+                "encoded": FromNode(node_id="encode", field_name="encoded"),
+            },
+            "rerank": {
+                "candidates": FromNode(node_id="retrieve", field_name="candidates"),
+                "spec": FromNode(node_id="normalize", field_name="spec"),
+            },
+            "hydrate": {
+                "candidates": FromNode(node_id="rerank", field_name="candidates"),
+                "spec": FromNode(node_id="normalize", field_name="spec"),
+            },
+            "deliver": {
+                "ranked": FromNode(node_id="hydrate", field_name="ranked"),
+                "query": FromRunInput(field_name="query"),
+            },
+        }
+        return GroupNodeBlob(
+            id="search_pipeline", nodes=nodes, transitions=transitions, bindings=bindings
+        )
+
 
 __all__ = ["SearchPipeline"]

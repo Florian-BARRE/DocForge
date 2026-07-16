@@ -232,7 +232,7 @@ def test_search_placeholders_are_registered_but_hidden() -> None:
         "query": {"understand", "rewrite", "multi", "hyde"},
         "retrieve": {"dense", "sparse"},
         "fuse": {"rrf", "weighted"},
-        "rerank": {"colbert", "cross_encoder", "llm"},
+        "rerank": {"colbert", "llm"},
         "postprocess": {"dedup_document", "mmr", "parent_expand", "assemble"},
     }
     palette = {f.family: {n.kind for n in f.nodes} for f in SearchPipeline.palette().families}
