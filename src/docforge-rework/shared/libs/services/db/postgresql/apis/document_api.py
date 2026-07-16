@@ -6,15 +6,23 @@
 # ====== Standard Library Imports ======
 import uuid
 from collections.abc import Sequence
+from typing import Any
 
 # ====== Third-Party Library Imports ======
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # ====== Internal Project Imports ======
-from shared_libs.public_models import FieldOrigin
+from shared_libs.public_models import FieldOrigin, FieldScope
 
-from ..tables import Document, DocumentMetadata, DocumentStatus, Page, SourceKind
+from ..tables import (
+    Document,
+    DocumentMetadata,
+    DocumentStatus,
+    MetadataField,
+    Page,
+    SourceKind,
+)
 
 
 class DocumentApi:
@@ -175,6 +183,37 @@ class DocumentApi:
             select(DocumentMetadata).where(DocumentMetadata.document_id == document_id)
         )
         return list(result.scalars().all())
+
+    @staticmethod
+    async def get_filterable_metadata(
+        session: AsyncSession, document_id: uuid.UUID
+    ) -> dict[str, Any]:
+        """
+        Return a document's FILTERABLE document-scope metadata as ``{field_name: decoded value}``.
+
+        Joins each value to its schema field and keeps only the fields declared ``filterable`` and
+        ``document``-scoped (any origin — user- and generated-supplied alike). This is exactly the
+        set that must be denormalised onto every chunk's Qdrant payload to become a search filter.
+        The JSONB value comes back already decoded by the driver, so the plain Python value (string,
+        number or list) is what lands on the payload.
+
+        Args:
+            session (AsyncSession): The unit of work.
+            document_id (uuid.UUID): The document whose filterable metadata is read.
+
+        Returns:
+            dict[str, Any]: Field name → its decoded document-scope value.
+        """
+        result = await session.execute(
+            select(MetadataField.field_name, DocumentMetadata.value)
+            .join(MetadataField, MetadataField.id == DocumentMetadata.field_id)
+            .where(
+                DocumentMetadata.document_id == document_id,
+                MetadataField.filterable.is_(True),
+                MetadataField.scope == FieldScope.DOCUMENT,
+            )
+        )
+        return {name: value for name, value in result.all()}
 
     @staticmethod
     async def replace_metadata(

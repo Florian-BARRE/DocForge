@@ -72,6 +72,30 @@ class ChunkApi:
         return list(result.scalars().all())
 
     @staticmethod
+    async def get_indexed_ids_for_document(
+        session: AsyncSession, document_id: uuid.UUID
+    ) -> list[uuid.UUID]:
+        """
+        Return the ids of a document's INDEXED chunks — the Qdrant point ids to patch.
+
+        Only indexed chunks own a point, so this is the exact set a payload denormalisation
+        (document-scope filterable metadata → chunk payload) may target. Id-only, no text loaded.
+
+        Args:
+            session (AsyncSession): The unit of work.
+            document_id (uuid.UUID): The document whose indexed chunk ids are returned.
+
+        Returns:
+            list[uuid.UUID]: The indexed chunk ids (each equals its Qdrant point id).
+        """
+        result = await session.execute(
+            select(Chunk.id).where(
+                Chunk.document_id == document_id, Chunk.is_indexed.is_(True)
+            )
+        )
+        return list(result.scalars().all())
+
+    @staticmethod
     async def get_composition(session: AsyncSession, chunk_id: uuid.UUID) -> list[ChunkBlock]:
         """Return a chunk's block memberships, in assembly order (to recompute the raw chunk)."""
         result = await session.execute(

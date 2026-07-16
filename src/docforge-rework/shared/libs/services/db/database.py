@@ -20,6 +20,7 @@ from .facades import (
     CollectionsFacade,
     DocumentsFacade,
     EnablementFacade,
+    FilterSyncFacade,
     IngestionFacade,
     JobsFacade,
     MetagenFacade,
@@ -36,6 +37,7 @@ class Database(LoggerClass):
         ingestion (IngestionFacade): The worker's persistence path (admit, blobs, save, index).
         documents (DocumentsFacade): Reading, inspection (raw/enriched IR, chunks), deletion.
         enablement (EnablementFacade): Reversible enable/disable of documents/chunks (flag + payload).
+        filters (FilterSyncFacade): Denormalise document-scope filterable metadata onto chunk points.
         metagen (MetagenFacade): Post-hoc generated chunk metadata (PG + Qdrant, no re-ingest).
         search (SearchFacade): Hybrid filtered search + Postgres hydration.
         jobs (JobsFacade): Ingestion job lifecycle + stage timeline.
@@ -59,6 +61,7 @@ class Database(LoggerClass):
         self.ingestion = IngestionFacade(postgres, qdrant, s3)
         self.documents = DocumentsFacade(postgres, qdrant, s3)
         self.enablement = EnablementFacade(postgres, qdrant)
+        self.filters = FilterSyncFacade(postgres, qdrant)
         self.metagen = MetagenFacade(postgres, qdrant)
         self.search = SearchFacade(postgres, qdrant)
         self.jobs = JobsFacade(postgres)

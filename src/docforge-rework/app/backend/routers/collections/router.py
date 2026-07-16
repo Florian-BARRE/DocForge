@@ -58,6 +58,13 @@ def _to_model(collection: Collection, fields: list[MetadataField]) -> Collection
     )
 
 
+# Payload keys the chunk point owns for its own machinery (id, ordinal, enable-filter). A
+# filterable field is denormalised onto the point by NAME, so a field sharing one of these would
+# overwrite it and corrupt search/deletion — reserved regardless of the current filterable flag,
+# which can be toggled on later.
+_RESERVED_PAYLOAD_KEYS = frozenset({"document_id", "chunk_index", "enabled"})
+
+
 def _validate_fields(fields: list[FieldSpecModel]) -> None:
     """Schema-level guards with explicit 422s (mirror of the DB CHECK constraints)."""
     for spec in fields:
@@ -68,6 +75,14 @@ def _validate_fields(fields: list[FieldSpecModel]) -> None:
                 status_code=422,
                 detail=f"Field '{spec.field_name}': chunk scope is reserved for generated "
                        f"fields — user-declared metadata is document-level.",
+            )
+        # A field name must never shadow a reserved chunk-payload key (it would overwrite it
+        # when denormalised onto the point, breaking the enabled-filter or deletion-by-document).
+        if spec.field_name in _RESERVED_PAYLOAD_KEYS:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Field name '{spec.field_name}' is reserved — pick another name "
+                       f"(reserved: {sorted(_RESERVED_PAYLOAD_KEYS)}).",
             )
 
 

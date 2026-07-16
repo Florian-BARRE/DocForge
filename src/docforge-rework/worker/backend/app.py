@@ -10,7 +10,7 @@ from arq.connections import RedisSettings
 from config import RUNTIME_CONFIG
 
 # ====== Local Project Imports ======
-from .libs.jobs import ingest_document
+from .libs.jobs import backfill_collection_filters, ingest_document
 from .lifespan import shutdown, startup
 
 
@@ -25,7 +25,7 @@ def create_worker_settings() -> type:
     class WorkerSettings:
         """The queue server: listens on Redis, runs up to max_jobs tasks in parallel."""
 
-        functions = [ingest_document]
+        functions = [ingest_document, backfill_collection_filters]
         on_startup = startup
         on_shutdown = shutdown
         redis_settings = RedisSettings.from_dsn(RUNTIME_CONFIG.REDIS_URL)
