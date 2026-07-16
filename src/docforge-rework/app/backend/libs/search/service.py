@@ -15,7 +15,13 @@ from loggerplusplus import LoggerClass
 
 # ====== Internal Project Imports ======
 from shared_libs.pipelines.search import SearchPipeline
-from shared_libs.public_models.search import QueryFilters, RawQuery, SearchResult
+from shared_libs.public_models.search import (
+    QueryFilters,
+    RawQuery,
+    SearchResult,
+    SearchTarget,
+    default_content_targets,
+)
 from shared_libs.services.db import Database
 
 # ====== Local Project Imports ======
@@ -102,6 +108,7 @@ class SearchService(LoggerClass):
         *,
         top_k: int = 10,
         filters: dict | None = None,
+        search_targets: list[SearchTarget] | None = None,
         use_late_interaction: bool = False,
         rescore_pool_size: int | None = None,
     ) -> SearchResult:
@@ -113,6 +120,8 @@ class SearchService(LoggerClass):
             query (str): The raw natural-language query.
             top_k (int): How many hits to return.
             filters (dict | None): The raw field → value filter map (None = no filters).
+            search_targets (list[SearchTarget] | None): The fields × modalities to search (content
+                and/or metadata). None searches content on both axes (unchanged default).
             use_late_interaction (bool): Opt into the ColBERT re-score (when the collection
                 indexed ColBERT).
             rescore_pool_size (int | None): Per-query override for the fused candidate-pool depth
@@ -139,11 +148,13 @@ class SearchService(LoggerClass):
         # 3. Construct the read port scoped to this collection (exclusion baked into the facade).
         read_port = CollectionReadPortImpl(self._database, collection_id)
 
-        # 4. Assemble the search run-input the graph binds by FromRunInput.
+        # 4. Assemble the search run-input the graph binds by FromRunInput. None targets fall back
+        #    to the content default so an untouched query behaves exactly as before targets existed.
         run_input = {
             "query": RawQuery(
                 text=query,
                 top_k=top_k,
+                search_targets=search_targets or default_content_targets(),
                 flags={_LATE_INTERACTION_FLAG: use_late_interaction},
             ),
             "filters": QueryFilters(filters=filters or {}),

@@ -61,7 +61,7 @@ class MockCollectionReadPort(CollectionReadPort):
         self.hybrid_calls: list[tuple[dict, int]] = []
         self.hydrated_ids: list[str] = []
 
-    async def hybrid_search(self, encoded, filters, limit, rescore_pool_size=None):
+    async def hybrid_search(self, encoded, filters, limit, targets=None, rescore_pool_size=None):
         """Return 3 fake candidates, best-first (records the call for assertions)."""
         assert isinstance(encoded, EncodedQuery)
         self.hybrid_calls.append((filters, limit))
@@ -150,7 +150,7 @@ class CuttingReadPort(CollectionReadPort):
     def __init__(self) -> None:
         self.hydrated_ids: list[str] = []
 
-    async def hybrid_search(self, encoded, filters, limit, rescore_pool_size=None):
+    async def hybrid_search(self, encoded, filters, limit, targets=None, rescore_pool_size=None):
         """Return 5 candidates in NON-descending order so ranking-before-cut is observable."""
         return [
             Candidate(chunk_id="lo", score=0.1, source="hybrid"),

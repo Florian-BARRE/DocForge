@@ -13,7 +13,7 @@ from abc import ABC, abstractmethod
 from typing import Any
 
 # ====== Internal Project Imports ======
-from shared_libs.public_models.search import Candidate, EncodedQuery, Hit
+from shared_libs.public_models.search import Candidate, EncodedQuery, Hit, SearchTarget
 
 # The key a bound capabilities mapping stores the read port under (never string-literalled in a node).
 COLLECTION_READ_CAPABILITY = "collection_read"
@@ -35,18 +35,23 @@ class CollectionReadPort(ABC):
         encoded: EncodedQuery,
         filters: dict,
         limit: int,
+        targets: list[SearchTarget],
         rescore_pool_size: int | None = None,
     ) -> list[Candidate]:
         """
         Run the collection's filtered hybrid search and return candidates, best-first.
 
         The implementation MUST bake in the searchability exclusion (enabled chunks only, disabled
-        documents removed) so a disabled point can never surface, whatever the graph wiring.
+        documents removed) so a disabled point can never surface, whatever the graph wiring. The
+        ``targets`` select WHICH named vectors the SAME query vectors are compared against — content
+        and/or metadata fields, each on its semantic (dense) and/or lexical (sparse) axis; resolving
+        a target to its Qdrant vector name is the implementation's concern, kept out of the nodes.
 
         Args:
             encoded (EncodedQuery): The query's vectors (dense always; sparse/colbert when present).
             filters (dict): The structured filter map (field → value) to constrain the search.
             limit (int): The candidate depth to return (the QuerySpec's ``candidate_k``).
+            targets (list[SearchTarget]): The fields × modalities to search (content and/or metadata).
             rescore_pool_size (int | None): The fused-pool size a late-interaction re-score works
                 over; None to leave the store's default.
 

@@ -70,11 +70,14 @@ class RetrieveHybridNode(PortBackedNode):
             RetrieveHybridProduces: The candidate pool in fusion order.
         """
         config: RetrieveHybridConfig = self.config
-        # 1. One read through the injected port — the exclusion invariant lives inside it.
+        # 1. One read through the injected port — the exclusion invariant lives inside it. The
+        #    spec's search targets select which named vectors (content and/or metadata) it queries;
+        #    the port owns the target → vector-name resolution, so the node stays store-agnostic.
         candidates = await self._read_port.hybrid_search(
             encoded=data.encoded,
             filters=data.spec.filters,
             limit=data.spec.candidate_k,
+            targets=data.spec.search_targets,
             rescore_pool_size=config.rescore_pool_size,
         )
         self.logger.debug(f"Retrieved {len(candidates)} candidate(s) (depth {data.spec.candidate_k})")

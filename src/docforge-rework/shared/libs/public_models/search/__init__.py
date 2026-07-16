@@ -1,6 +1,9 @@
 # ---------------------- Value objects (nested in the flow artefacts) ---------------------- #
 from .elements import Candidate, Hit
 
+# ---------------------- Search selection (what to search) ---------------------- #
+from .target import CONTENT_FIELD, SearchTarget, default_content_targets
+
 # ---------------------- Run inputs (the typed entry contract) ---------------------- #
 from .request import QueryFilters, RawQuery
 from .contract import SearchContract
@@ -18,6 +21,9 @@ from .result import SearchResult
 __all__ = [
     "Candidate",
     "Hit",
+    "SearchTarget",
+    "CONTENT_FIELD",
+    "default_content_targets",
     "RawQuery",
     "QueryFilters",
     "SearchContract",

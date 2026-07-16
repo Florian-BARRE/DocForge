@@ -82,8 +82,11 @@ class SearchContractBuilder:
                 f"Collection {collection.id} has no embed node — search is unavailable."
             )
 
-        # 2. The fields flagged filterable are the only ones a filter may target downstream.
+        # 2. The three orthogonal searchability surfaces drive the query-side validation: filterable
+        #    (payload filters), semantic (dense meta vector), lexical (sparse BM25 meta vector).
         filterable = [row.field_name for row in schema if row.filterable]
+        semantic = [row.field_name for row in schema if row.semantic]
+        lexical = [row.field_name for row in schema if row.lexical]
 
         # 3. Assemble the run-input contract (embed config re-validated when the encode node runs).
         return SearchContract(
@@ -91,6 +94,8 @@ class SearchContractBuilder:
             embed_kind=embed_node["kind"],
             embed_config=dict(embed_node.get("config", {})),
             filterable_fields=filterable,
+            semantic_fields=semantic,
+            lexical_fields=lexical,
         )
 
 

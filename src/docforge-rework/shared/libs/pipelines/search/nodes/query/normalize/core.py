@@ -10,7 +10,12 @@ from pydantic import Field
 # ====== Internal Project Imports ======
 from shared_libs.pipelines.base import ActionNode, NodeConfig, NodeInput, NodeOutput
 from shared_libs.pipelines.registry import NodeRegistry
-from shared_libs.public_models.search import QueryFilters, QuerySpec, RawQuery
+from shared_libs.public_models.search import (
+    QueryFilters,
+    QuerySpec,
+    RawQuery,
+    default_content_targets,
+)
 
 
 class QueryNormalizeConfig(NodeConfig):
@@ -76,13 +81,18 @@ class QueryNormalizeNode(ActionNode):
         top_k = data.query.top_k
         candidate_k = max(top_k * config.candidate_multiplier, config.candidate_floor)
 
-        # 3. Assemble the retrieval-ready spec (filters/flags carried through untouched).
+        # 3. Carry the caller's field × modality selection through; an empty list falls back to the
+        #    content default so a spec never reaches retrieval with zero targets to search.
+        targets = list(data.query.search_targets) or default_content_targets()
+
+        # 4. Assemble the retrieval-ready spec (filters/flags carried through untouched).
         spec = QuerySpec(
             text=text,
             filters=dict(data.filters.filters),
             language=None,
             top_k=top_k,
             candidate_k=candidate_k,
+            search_targets=targets,
             flags=dict(data.query.flags),
         )
         self.logger.debug(f"Normalized query (top_k={top_k}, candidate_k={candidate_k})")

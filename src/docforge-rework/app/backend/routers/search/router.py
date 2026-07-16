@@ -82,7 +82,15 @@ async def search_collection(collection_id: uuid.UUID, request: SearchRequest) ->
             detail=f"Not a filterable field for this collection: {sorted(invalid)}",
         )
 
-    # 6. Delegate the retrieval to the graph-based search pipeline. A stored search graph that is
+    # 6. Gate the search targets the same way — a target naming a field/vector the collection never
+    #    indexed (or a selection with no modality) is a caller error rejected 422 before any spend.
+    target_errors = SearchHelpers.validate_search_targets(request.search_in, schema)
+    if target_errors:
+        raise HTTPException(
+            status_code=422, detail=f"Invalid search target(s): {target_errors}"
+        )
+
+    # 7. Delegate the retrieval to the graph-based search pipeline. A stored search graph that is
     #    not a valid search pipeline (e.g. one that predates the write-time SearchBlobValidator, or
     #    was injected out-of-band) makes the runner raise SearchRunError — map it to a clean 422
     #    naming the stored graph as the culprit, so an invalid blob is never surfaced as a 500.
@@ -92,6 +100,7 @@ async def search_collection(collection_id: uuid.UUID, request: SearchRequest) ->
             request.query,
             top_k=request.limit,
             filters=request.filters,
+            search_targets=SearchHelpers.to_search_targets(request.search_in),
             use_late_interaction=use_late_interaction,
             rescore_pool_size=rescore_pool_size,
         )
@@ -102,7 +111,7 @@ async def search_collection(collection_id: uuid.UUID, request: SearchRequest) ->
                    f"blob. ({exc})",
         )
 
-    # 7. Shape the flat, client-facing response from the graph's Hits.
+    # 8. Shape the flat, client-facing response from the graph's Hits.
     return SearchResponse(
         query=request.query,
         hits=[SearchHelpers.to_hit_model(hit) for hit in result.hits],

@@ -10,6 +10,29 @@ from typing import Any
 from pydantic import BaseModel, Field, field_validator
 
 
+class SearchTargetModel(BaseModel):
+    """
+    One field to search and the modalities to search it on (the client-facing SearchTarget mirror).
+
+    Attributes:
+        field (str): The field to search — ``"content"`` (the chunk body) or a metadata field name.
+        semantic (bool): Query the field's dense vector (semantic similarity).
+        lexical (bool): Query the field's sparse BM25 vector (lexical match).
+    """
+
+    field: str = Field(
+        default="content",
+        min_length=1,
+        description="Field to search — 'content' (chunk body) or a metadata field name.",
+    )
+    semantic: bool = Field(
+        default=False, description="Query the field's dense vector (semantic similarity)."
+    )
+    lexical: bool = Field(
+        default=False, description="Query the field's sparse BM25 vector (lexical match)."
+    )
+
+
 class SearchRequest(BaseModel):
     """
     A hybrid search over one collection.
@@ -19,6 +42,9 @@ class SearchRequest(BaseModel):
         limit (int): Number of fused results to return.
         filters (dict | None): Exact/any-of constraints on the collection's FILTERABLE fields —
             a scalar becomes an equality match, a list becomes a set-membership (any-of) match.
+        search_in (list[SearchTargetModel] | None): What to search — the fields (content and/or
+            metadata) and modalities (semantic/lexical). None searches content on both axes
+            (unchanged default). A target naming a vector the collection never indexed → 422.
         use_late_interaction (bool | None): Opt into the ColBERT re-score. None → off for this
             query; True/False sets it for this query.
         rescore_pool_size (int | None): Size of the fused candidate pool the ColBERT stage
@@ -30,6 +56,11 @@ class SearchRequest(BaseModel):
     filters: dict[str, Any] | None = Field(
         default=None,
         description="Constraints on the FILTERABLE metadata fields (field → value or [values]).",
+    )
+    search_in: list[SearchTargetModel] | None = Field(
+        default=None,
+        description="Fields × modalities to search (content and/or metadata). None → content on "
+        "both semantic and lexical (the unchanged default).",
     )
     use_late_interaction: bool | None = Field(
         default=None,
@@ -97,4 +128,4 @@ class SearchResponse(BaseModel):
     )
 
 
-__all__ = ["SearchRequest", "SearchHitModel", "SearchResponse"]
+__all__ = ["SearchTargetModel", "SearchRequest", "SearchHitModel", "SearchResponse"]

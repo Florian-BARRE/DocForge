@@ -27,6 +27,10 @@ class SearchContract(Artifact):
             Re-validated against the class's Config (extra="forbid") when the encode node runs.
         filterable_fields (list[str]): The contract field names a filter may target — the
             query-intake node drops (and notes) any filter outside this set.
+        semantic_fields (list[str]): The metadata field names indexed with a dense vector — a
+            semantic search target may name one of these (or ``"content"``); others are rejected.
+        lexical_fields (list[str]): The metadata field names indexed with a sparse BM25 vector — a
+            lexical search target may name one of these (or ``"content"``); others are rejected.
     """
 
     collection_id: str = Field(description="The collection being searched (provenance / port scope).")
@@ -38,6 +42,14 @@ class SearchContract(Artifact):
     filterable_fields: list[str] = Field(
         default_factory=list,
         description="Contract field names a filter may target (others are dropped and noted).",
+    )
+    semantic_fields: list[str] = Field(
+        default_factory=list,
+        description="Metadata field names with a dense vector (a semantic target may name one).",
+    )
+    lexical_fields: list[str] = Field(
+        default_factory=list,
+        description="Metadata field names with a sparse BM25 vector (a lexical target may name one).",
     )
 
 

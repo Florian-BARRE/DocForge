@@ -11,6 +11,9 @@ from pydantic import Field
 # ====== Internal Project Imports ======
 from ..base import Artifact
 
+# ====== Local Project Imports ======
+from .target import SearchTarget, default_content_targets
+
 
 class RawQuery(Artifact):
     """
@@ -19,12 +22,20 @@ class RawQuery(Artifact):
     Attributes:
         text (str): The raw query text as typed by the caller (un-normalised).
         top_k (int): How many hits the caller wants back (the delivered result-set size).
+        search_targets (list[SearchTarget]): The caller's field × modality selection carried into
+            the QuerySpec. Defaults to content on both axes; an empty list is normalised back to
+            that default (a spec never has zero targets).
         flags (dict): Free-form retrieval switches (e.g. ``use_late_interaction``) carried into
             the QuerySpec and read by the encode/retrieve/rerank stages.
     """
 
     text: str = Field(description="The raw query text as typed by the caller (un-normalised).")
     top_k: int = Field(default=10, gt=0, description="How many hits to return (delivered set size).")
+    search_targets: list[SearchTarget] = Field(
+        default_factory=default_content_targets,
+        description="Field × modality selection (content and/or metadata); default is content on "
+        "both semantic and lexical.",
+    )
     flags: dict = Field(
         default_factory=dict,
         description="Free-form retrieval switches (e.g. use_late_interaction) carried downstream.",

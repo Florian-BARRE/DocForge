@@ -17,9 +17,12 @@ from loggerplusplus import LoggerClass
 
 # ====== Internal Project Imports ======
 from shared_libs.pipelines.search import CollectionReadPort
-from shared_libs.public_models.search import Candidate, EncodedQuery, Hit
+from shared_libs.public_models.search import Candidate, EncodedQuery, Hit, SearchTarget
 from shared_libs.services.db import Database
-from shared_libs.services.db.qdrant import Condition, Match, MatchAny, SparseVec, VectorNames
+from shared_libs.services.db.qdrant import Condition, Match, MatchAny
+
+# ====== Local Project Imports ======
+from .target_resolver import TargetVectorResolver
 
 # The default fused-pool depth a late-interaction re-score works over when the caller sets none —
 # the same default the live search facade uses (search_facade.py:48).
@@ -69,6 +72,7 @@ class CollectionReadPortImpl(CollectionReadPort, LoggerClass):
         encoded: EncodedQuery,
         filters: dict,
         limit: int,
+        targets: list[SearchTarget],
         rescore_pool_size: int | None = None,
     ) -> list[Candidate]:
         """
@@ -83,21 +87,17 @@ class CollectionReadPortImpl(CollectionReadPort, LoggerClass):
             encoded (EncodedQuery): The query's vectors (dense always; sparse/colbert when present).
             filters (dict): The structured filter map constraining the retrieval.
             limit (int): The candidate depth to return (the QuerySpec's ``candidate_k``).
+            targets (list[SearchTarget]): The fields × modalities to search (content and/or metadata);
+                resolved here to the named query-vector dicts (the only place that knows those names).
             rescore_pool_size (int | None): Late-interaction re-score pool size; None uses the
                 store default.
 
         Returns:
             list[Candidate]: Chunk ids + fused scores in retrieval order (empty when nothing matched).
         """
-        # 1. Name the query vectors with the SAME constants the persistence side writes.
-        dense = {VectorNames.CONTENT_DENSE: encoded.dense}
-        sparse = (
-            {VectorNames.CONTENT_SPARSE: SparseVec(
-                indices=encoded.sparse.indices, values=encoded.sparse.values
-            )}
-            if encoded.sparse is not None
-            else None
-        )
+        # 1. Resolve the requested targets to the named query vectors (content and/or metadata) —
+        #    the resolver is the ONE place that knows Qdrant vector names; the node never does.
+        dense, sparse, colbert = TargetVectorResolver.resolve(encoded, targets)
 
         # 2. Delegate to the LEAN facade retrieval — exclusion invariant lives inside it (reused,
         #    not re-derived), and it returns (chunk_id, score) pairs with NO Postgres hydration.
@@ -107,7 +107,7 @@ class CollectionReadPortImpl(CollectionReadPort, LoggerClass):
             sparse=sparse,
             conditions=self.__conditions(filters),
             limit=limit,
-            colbert=encoded.colbert,
+            colbert=colbert,
             rescore_pool_size=rescore_pool_size or _DEFAULT_RESCORE_POOL_SIZE,
         )
 
