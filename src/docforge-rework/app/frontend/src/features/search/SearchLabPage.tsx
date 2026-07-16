@@ -1,15 +1,19 @@
 // ====== Code Summary ======
-// The Search Lab: run a query against this collection, tune result limit and the ColBERT late-
-// interaction re-rank, inspect ranked hits. Nested under a collection like Documents/Jobs/Pipeline
-// (collectionId is already known — no separate collection picker needed here).
+// The Search Lab: run a query against this collection, optionally narrow it with metadata filters,
+// tune the ColBERT late-interaction re-rank (tucked away as an expert control), inspect ranked
+// hits. Nested under a collection like Documents/Jobs/Pipeline (collectionId is already known — no
+// separate collection picker needed here).
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { getCollection, type Collection } from "../../api/collections";
 import { search, type SearchResponse } from "../../api/search";
 import { BackLink } from "../../components/BackLink";
 import { ErrorState } from "../../components/ErrorState";
 import type { Navigate } from "../../shell/view";
 import { theme } from "../../theme";
+import { AdvancedDisclosure } from "../search-pipeline/AdvancedDisclosure";
 import { LateInteractionControls } from "./LateInteractionControls";
+import { SearchFilterBuilder } from "./SearchFilterBuilder";
 import { SearchQueryBar } from "./SearchQueryBar";
 import { SearchResultsList } from "./SearchResultsList";
 
@@ -22,13 +26,33 @@ interface SearchLabPageProps {
 }
 
 export function SearchLabPage({ collectionId, onNavigate }: SearchLabPageProps) {
+  const [collection, setCollection] = useState<Collection | null>(null);
   const [query, setQuery] = useState("");
   const [limit, setLimit] = useState(DEFAULT_LIMIT);
+  const [filters, setFilters] = useState<Record<string, unknown>>({});
   const [lateInteraction, setLateInteraction] = useState(false);
   const [rescorePoolSize, setRescorePoolSize] = useState(DEFAULT_RESCORE_POOL_SIZE);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [response, setResponse] = useState<SearchResponse | null>(null);
+
+  // Best-effort: the filter builder is a supplementary affordance, so a failed fetch here
+  // just means no filter section is offered — it never blocks the query bar.
+  useEffect(() => {
+    getCollection(collectionId).then(setCollection).catch(() => setCollection(null));
+  }, [collectionId]);
+
+  const filterableFields = (collection?.fields ?? []).filter((f) => f.filterable);
+
+  const handleFilterChange = (fieldName: string, value: unknown | undefined) => {
+    setFilters((prev) => {
+      if (value === undefined) {
+        const { [fieldName]: _omit, ...rest } = prev;
+        return rest;
+      }
+      return { ...prev, [fieldName]: value };
+    });
+  };
 
   const runSearch = () => {
     if (!query.trim()) return;
@@ -37,6 +61,8 @@ export function SearchLabPage({ collectionId, onNavigate }: SearchLabPageProps) 
     search(collectionId, {
       query,
       limit,
+      // No filter set → omitted entirely, so the backend defers to its defaults.
+      filters: Object.keys(filters).length > 0 ? filters : null,
       // Untouched = null, so the backend defers to the collection's saved search config.
       use_late_interaction: lateInteraction ? true : null,
       rescore_pool_size: lateInteraction ? rescorePoolSize : null,
@@ -60,12 +86,15 @@ export function SearchLabPage({ collectionId, onNavigate }: SearchLabPageProps) 
           loading={loading}
           onSubmit={runSearch}
         />
-        <LateInteractionControls
-          enabled={lateInteraction}
-          onEnabledChange={setLateInteraction}
-          rescorePoolSize={rescorePoolSize}
-          onRescorePoolSizeChange={setRescorePoolSize}
-        />
+        <SearchFilterBuilder fields={filterableFields} values={filters} onFilterChange={handleFilterChange} />
+        <AdvancedDisclosure summary="Avancé — ColBERT (late interaction)">
+          <LateInteractionControls
+            enabled={lateInteraction}
+            onEnabledChange={setLateInteraction}
+            rescorePoolSize={rescorePoolSize}
+            onRescorePoolSizeChange={setRescorePoolSize}
+          />
+        </AdvancedDisclosure>
       </div>
 
       {error && <ErrorState message={error} onRetry={runSearch} />}

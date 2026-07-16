@@ -36,8 +36,11 @@ export function LateInteractionControls({
         </span>
       </div>
       {enabled && (
-        <div style={{ width: 140 }}>
-          <FormField label="Rescore pool size">
+        <div style={{ width: 160 }}>
+          <FormField
+            label="Candidats re-scorés par ColBERT"
+            hint="Combien de résultats ColBERT réexamine avant de retourner le top — plus élevé = plus précis, plus lent."
+          >
             <input
               type="number"
               min={MIN_POOL_SIZE}
