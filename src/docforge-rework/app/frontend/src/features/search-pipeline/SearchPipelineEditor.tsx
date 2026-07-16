@@ -1,12 +1,13 @@
 // ====== Code Summary ======
-// The search pipeline editor: a vertical rail of the search blob's nodes, in blob order, each
-// rendering its own config (or a read-only step when it has none). Unlike the ingestion stage
-// rail there is NO stage compiler for search (`stages_view_url`/`stages_apply_url` are null) —
-// every edit mutates the blob locally (the topology is fixed, only `config` values change) and
-// validity is refreshed via a debounced `/inspect` call, the same "type instantly, verify after a
-// pause" split the stage rail uses for its own config fields. Reusable standalone (fetches the
-// product default) OR embedded in a collection page (seeded with `initialBlob`, saved via
-// `onSave`).
+// The search pipeline editor: a simple top section (the always-on fusion summary + the Reranking
+// Switch — the only two things a non-technical user needs) over a collapsed-by-default "Avancé"
+// rail exposing every node's raw config, in blob order (or a read-only step when a node has none).
+// Unlike the ingestion stage rail there is NO stage compiler for search (`stages_view_url`/
+// `stages_apply_url` are null) — every edit mutates the blob locally (config edits are a plain
+// field replace; the rerank toggle is the one edit with real topology, see state/blobOps.ts) and
+// validity is refreshed via `/inspect` (debounced while typing a config field, immediate on the
+// rerank toggle since it's a single discrete action). Reusable standalone (fetches the product
+// default) OR embedded in a collection page (seeded with `initialBlob`, saved via `onSave`).
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ApiIssueList } from "../../components/ApiIssueList";
@@ -15,9 +16,11 @@ import { LoadingState } from "../../components/LoadingState";
 import { getDesign, inspect, listPipelineDesigns } from "../../api/pipelines";
 import type { GroupBlob, Palette, ValidationIssue } from "../../api/types";
 import { theme } from "../../theme";
+import { AdvancedDisclosure } from "./AdvancedDisclosure";
 import { SearchNodeCard } from "./SearchNodeCard";
 import { SearchPipelineHeader } from "./SearchPipelineHeader";
-import { isActionBlob, setNodeConfigField } from "./state/blobOps";
+import { SearchSimpleControls } from "./SearchSimpleControls";
+import { isActionBlob, isRerankEnabled, setNodeConfigField, setRerankEnabled } from "./state/blobOps";
 
 const DEBOUNCE_MS = 400;
 
@@ -135,7 +138,19 @@ export function SearchPipelineEditor({ initialBlob, onSave, onResetToDefault, ti
     }, DEBOUNCE_MS);
   }, [runInspect]);
 
-  // 4. Reset: PATCHes the `{}` sentinel server-side (the caller then remounts this editor with the
+  // 4. Toggling rerank is a discrete action (not a keystroke stream) — mutate + verify immediately,
+  //    no debounce needed.
+  const toggleRerank = useCallback((next: boolean) => {
+    const current = blobLatestRef.current;
+    if (!current) return;
+    window.clearTimeout(debounceRef.current);
+    const updated = setRerankEnabled(current, next);
+    blobLatestRef.current = updated;
+    setBlob(updated);
+    runInspect(updated);
+  }, [runInspect]);
+
+  // 5. Reset: PATCHes the `{}` sentinel server-side (the caller then remounts this editor with the
   //    refreshed, sentinel-backed collection — see CollectionSearchPage). Not a local blob swap:
   //    saving the expanded default blob instead would freeze it, losing the "tracks future default
   //    changes" behaviour the sentinel gives.
@@ -153,7 +168,7 @@ export function SearchPipelineEditor({ initialBlob, onSave, onResetToDefault, ti
     }
   }, [onResetToDefault]);
 
-  // 5. Save: PATCH the current blob back. Only offered when the caller wants persistence here.
+  // 6. Save: PATCH the current blob back. Only offered when the caller wants persistence here.
   const handleSave = useCallback(async () => {
     if (!blob || !onSave || !valid) return;
     setSaving(true);
@@ -197,18 +212,24 @@ export function SearchPipelineEditor({ initialBlob, onSave, onResetToDefault, ti
         <div
           style={{
             maxWidth: 860, margin: "0 auto", padding: theme.space.l,
-            display: "flex", flexDirection: "column", gap: theme.space.m,
+            display: "flex", flexDirection: "column", gap: theme.space.l,
           }}
         >
-          {blob.nodes.filter(isActionBlob).map((node, index) => (
-            <SearchNodeCard
-              key={node.id}
-              step={index + 1}
-              node={node}
-              palette={palette}
-              onChangeConfig={(field, value) => setNodeConfig(node.id, field, value)}
-            />
-          ))}
+          <SearchSimpleControls
+            rerankEnabled={isRerankEnabled(blob)}
+            onToggleRerank={toggleRerank}
+          />
+          <AdvancedDisclosure summary="Avancé">
+            {blob.nodes.filter(isActionBlob).map((node, index) => (
+              <SearchNodeCard
+                key={node.id}
+                step={index + 1}
+                node={node}
+                palette={palette}
+                onChangeConfig={(field, value) => setNodeConfig(node.id, field, value)}
+              />
+            ))}
+          </AdvancedDisclosure>
         </div>
       </div>
     </div>
