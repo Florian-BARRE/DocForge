@@ -103,6 +103,25 @@ router. Both live-proven. `SearchService` still has no pytest home (app-`backend
 resolution is unit-tested via mocks + covered live; the write-validation is covered via the HTTP
 `client` fixture.
 
+## Wave 5 — simple "fusion + rerank" (cross-encoder node live, 329f625 + UI c32d6c6)
+
+The `rerank/cross_encoder` node is REAL (was a placeholder): a `PortBackedNode` that takes the top_n
+fused candidates, hydrates their text via the read port, POSTs the in-stack BGE `/rerank` (TEI:
+`{query, texts, truncate}` → `[{index, score∈[0,1]}]`), maps each score back BY INDEX, overwrites
+`Candidate.score` (source "cross_encoder") and emits a `CandidateSet` the unchanged `hydrate` node
+sorts+cuts. Tail beyond top_n is DROPPED (not merged) so an RRF fusion score (>1) can't outrank a
+reranked [0,1]. Vanished rows drop from texts+candidates together (index stays aligned). Files:
+`nodes/rerank/cross_encoder/{client,config,io,core}.py`. `SearchPipeline.rerank_blob()` = the
+canonical `normalize→encode→retrieve→rerank→hydrate→deliver`; `default_blob()` stays fusion-only.
+colbert/llm rerank stay placeholders. Live-proven: rerank reorders vs fusion with [0,1] scores.
+
+UI: the search editor leads with **Fusion (on) + a Reranking toggle**; the raw knobs are in a
+collapsed "Avancé". The toggle is a pure frontend blob transform (`blobOps.setRerankEnabled`) that is
+STRUCTURALLY IDENTICAL to `rerank_blob()` (verified by diff) — so toggle-on + save runs the proven
+rerank topology. Round-trip/idempotence verified. NOTE: Playwright/Chromium is absent in this env —
+frontend is verified via TS gate + transform-equals-backend-blob + the live backend proof, not a
+browser screenshot.
+
 REMAINING toward "search fully like ingestion": a UI stage-rail for the search kind
 (`supports_stages=False` today — only the headless `/pipelines/search/edit` surface exists); the
 search-pipeline extension phases P2–P5 (rerank/colbert node, decompose retrieve+fuse, query
