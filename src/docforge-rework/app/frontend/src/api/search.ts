@@ -6,10 +6,17 @@ import { apiFetch, jsonInit } from "./http";
 
 const BASE = "/api/v1/collections";
 
+export interface SearchTargetModel {
+  field: string;
+  semantic: boolean;
+  lexical: boolean;
+}
+
 export interface SearchRequest {
   query: string;
   limit?: number | null;
   filters?: Record<string, unknown> | null;
+  search_in?: SearchTargetModel[] | null;
   use_late_interaction?: boolean | null;
   rescore_pool_size?: number | null;
 }
