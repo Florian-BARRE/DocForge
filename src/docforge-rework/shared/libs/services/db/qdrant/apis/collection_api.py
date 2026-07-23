@@ -88,6 +88,34 @@ class QdrantCollectionApi:
         )
 
     @staticmethod
+    async def declared_vectors(
+        client: AsyncQdrantClient, name: str
+    ) -> tuple[set[str], set[str]]:
+        """
+        Return the (dense, sparse) named vectors declared on an existing collection.
+
+        The read guard for post-hoc vector writes: a named vector cannot be added to a live Qdrant
+        collection without a reindex, so writing an undeclared vector errors. A caller checks its
+        target names against these sets before calling ``update_vectors``.
+
+        Args:
+            client (AsyncQdrantClient): The connection from QdrantClient.raw.
+            name (str): The Qdrant collection name.
+
+        Returns:
+            tuple[set[str], set[str]]: (declared dense vector names, declared sparse vector names).
+                Both empty when the collection does not exist.
+        """
+        # 1. A missing collection declares nothing — never raise, just report emptiness.
+        if not await client.collection_exists(name):
+            return set(), set()
+        # 2. DocForge always uses NAMED vectors, so params.vectors is a name → params mapping.
+        params = (await client.get_collection(name)).config.params
+        dense = set(params.vectors.keys()) if isinstance(params.vectors, dict) else set()
+        sparse = set(params.sparse_vectors.keys()) if params.sparse_vectors else set()
+        return dense, sparse
+
+    @staticmethod
     async def drop(client: AsyncQdrantClient, name: str) -> None:
         """Delete the whole Qdrant collection if it exists."""
         if await client.collection_exists(name):

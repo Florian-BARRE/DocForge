@@ -33,4 +33,31 @@ async def backfill_collection_filters(ctx: dict[str, Any], collection_id: str) -
     return {"documents": documents, "points": points}
 
 
-__all__ = ["backfill_collection_filters"]
+async def backfill_collection_meta_vectors(
+    ctx: dict[str, Any], collection_id: str
+) -> dict[str, int]:
+    """
+    Backfill document-scope metadata named vectors onto every chunk point of a collection.
+
+    The maintenance path for collections whose semantic/lexical metadata vectors were declared but
+    never populated: the short metadata VALUES are embedded (no content re-embed) and written per
+    document through the MetaVectorSyncFacade. Idempotent, safe to re-run.
+
+    Args:
+        ctx (dict): arq's context dict (unused — services live on CONTEXT).
+        collection_id (str): The collection to backfill (UUID as string, the queue carries strings).
+
+    Returns:
+        dict[str, int]: ``{"documents": n, "points": m}`` — documents patched and points touched.
+    """
+    documents, points = await CONTEXT.database.meta_vectors.backfill_collection_meta_vectors(
+        uuid.UUID(collection_id)
+    )
+    CONTEXT.logger.info(
+        f"Backfill meta vectors done for collection {collection_id}: "
+        f"{documents} document(s), {points} point(s)"
+    )
+    return {"documents": documents, "points": points}
+
+
+__all__ = ["backfill_collection_filters", "backfill_collection_meta_vectors"]

@@ -9,7 +9,7 @@ from collections.abc import Sequence
 from typing import Any
 
 # ====== Third-Party Library Imports ======
-from sqlalchemy import delete, select
+from sqlalchemy import delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # ====== Internal Project Imports ======
@@ -214,6 +214,42 @@ class DocumentApi:
             )
         )
         return {name: value for name, value in result.all()}
+
+    @staticmethod
+    async def get_searchable_metadata(
+        session: AsyncSession, document_id: uuid.UUID
+    ) -> list[tuple[str, Any, bool, bool]]:
+        """
+        Return a document's SEMANTIC-or-LEXICAL document-scope metadata with its per-field flags.
+
+        Joins each value to its schema field and keeps only the document-scoped fields flagged
+        ``semantic`` and/or ``lexical`` (any origin). This is exactly the set whose values must be
+        embedded into the ``meta_<slug>_dense`` / ``meta_<slug>_bm25`` named vectors on every chunk
+        point of the document, so document-level metadata becomes semantically/lexically searchable.
+        The flags travel with each row so the caller knows which vector(s) a value feeds.
+
+        Args:
+            session (AsyncSession): The unit of work.
+            document_id (uuid.UUID): The document whose searchable metadata is read.
+
+        Returns:
+            list[tuple[str, Any, bool, bool]]: (field name, decoded value, semantic, lexical) rows.
+        """
+        result = await session.execute(
+            select(
+                MetadataField.field_name,
+                DocumentMetadata.value,
+                MetadataField.semantic,
+                MetadataField.lexical,
+            )
+            .join(MetadataField, MetadataField.id == DocumentMetadata.field_id)
+            .where(
+                DocumentMetadata.document_id == document_id,
+                MetadataField.scope == FieldScope.DOCUMENT,
+                or_(MetadataField.semantic.is_(True), MetadataField.lexical.is_(True)),
+            )
+        )
+        return [(name, value, semantic, lexical) for name, value, semantic, lexical in result.all()]
 
     @staticmethod
     async def replace_metadata(

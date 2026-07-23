@@ -135,6 +135,18 @@ async def ingest_document(ctx: dict[str, Any], document_id: str, job_id: str) ->
                     f"Filter denormalisation failed for document {document_id} "
                     f"(ingestion kept; repair via backfill): {filter_exc}"
                 )
+            # 6. Populate the document-scope metadata named vectors (semantic dense / lexical sparse)
+            #    on the same fresh points, so a metadata-only search resolves to a non-empty vector.
+            #    Same best-effort contract as the filter sync: the document is already ingested and
+            #    searchable — a meta-vector hiccup must NOT fail the job (retry would re-embed the
+            #    content). The backfill_collection_meta_vectors job is the explicit repair path.
+            try:
+                await database.meta_vectors.sync_document_meta_vectors(doc_uuid)
+            except Exception as meta_exc:
+                CONTEXT.logger.warning(
+                    f"Meta-vector population failed for document {document_id} "
+                    f"(ingestion kept; repair via backfill): {meta_exc}"
+                )
         await database.jobs.mark_done(job_uuid, finished_at=datetime.now(UTC))
 
     except Exception as exc:
