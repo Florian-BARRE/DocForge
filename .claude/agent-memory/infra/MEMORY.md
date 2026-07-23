@@ -53,4 +53,9 @@ agent) are wired separately. Don't add them to `docker-compose.rework.yml` witho
 
 - docling is worker-only — never let it into the app image.
 - OneDrive dehydrated placeholders break BuildKit ("invalid file request") — materialize before building.
-- No topic files under this agent yet; add one only when a durable infra fact is worth extracting.
+
+## Topic files
+
+- [Compose file location](compose-file-location.md) — `docker-compose.rework*.yml` live at repo root, not under `src/docforge-rework/`
+- [DNS resolver baked at container creation](dns-resolver-baked-at-creation.md) — resolv.conf snapshot is per-creation, not live; pin `dns:` proactively on any service touching external hosts
+- [V1 audit open gaps](v1-audit-open-gaps.md) — 2026-07-24 audit checklist; items 1/2/4/CORS-nit fixed same day, rest deliberately deferred
