@@ -70,7 +70,12 @@ def _do_run_migrations(connection: Connection) -> None:
         connection (Connection): The sync-style connection handed over by
             ``AsyncConnection.run_sync`` — asyncpg driven under the hood.
     """
-    context.configure(connection=connection, target_metadata=target_metadata)
+    context.configure(
+        connection=connection,
+        target_metadata=target_metadata,
+        compare_type=True,
+        compare_server_default=True,
+    )
     with context.begin_transaction():
         context.run_migrations()
 
