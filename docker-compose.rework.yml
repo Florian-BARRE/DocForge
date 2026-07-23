@@ -65,6 +65,11 @@ services:
       QDRANT_URL: http://rework_qdrant:6333
       # botocore rejects '_' in hostnames — the hyphenated container_name resolves on the network
       S3_ENDPOINT_URL: http://docforge-rework-seaweedfs:8333
+    volumes:
+      # Persist the docling/rapidocr HF cache across recreations (the dev override binds
+      # the HOST's cache instead; prod has no host cache to bind, so it needs its own
+      # named volume — mirrors the rework_bge_models pattern on rework_bge_server).
+      - rework_worker_hf_cache:/root/.cache/huggingface
     depends_on:
       rework_postgres:
         condition: service_healthy
@@ -170,6 +175,12 @@ services:
         TORCH_VARIANT: cpu        # ~2 GB CPU image; GPU: build --build-arg TORCH_VARIANT=gpu + BGE_DEVICE=cuda
     image: docforge-bge-server:latest   # reuse the legacy-built image if present (no rebuild)
     container_name: docforge-rework-bge-server
+    # Same reason as rework_app/rework_worker: Docker's embedded resolver has no external
+    # upstream on this VM, so without a pin the first-boot HF weights download
+    # (huggingface.co) fails to resolve.
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
     env_file:
       - services/bge_server/.env
     ports:
@@ -201,6 +212,7 @@ volumes:
   rework_qdrant_data:
   rework_seaweedfs_data:
   rework_bge_models:
+  rework_worker_hf_cache:
 
 networks:
   rework_net:

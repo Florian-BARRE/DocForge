@@ -50,6 +50,13 @@ services:
     # "rework_frontend depends on undefined service rework_app". Everything comes up together under
     # `--profile full` (see the dev command below).
     profiles: ["full"]
+    # Same reason as rework_app/rework_worker in the base compose: Docker's embedded
+    # resolver has no external upstream on this VM, so without a pin `npm install`
+    # cannot resolve registry.npmjs.org (only masked when the node_modules volume is
+    # already populated from a previous run).
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
     working_dir: /frontend
     volumes:
       - ./src/docforge-rework/app/frontend:/frontend

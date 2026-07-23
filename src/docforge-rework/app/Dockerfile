@@ -33,13 +33,39 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev
 
 ###############################################################################
-# Stage 2: Runtime image (minimal Python runtime)
+# Stage 2: Frontend builder (Node + Vite)
+#
+# Goal:
+# - Build the production UI bundle IN the image, so a fresh `--build` never ships
+#   a missing or stale dist/ (previously relied on a host-built dist/ being present
+#   in the build context — silently absent/stale on a clean checkout or CI runner).
+# - node:22-bookworm-slim matches the version used by the rework_frontend dev
+#   service (docker-compose.rework.dev.yml) so dev/prod build with the same Node.
+###############################################################################
+FROM node:22-bookworm-slim AS ui-build
+
+WORKDIR /workspace/frontend
+
+# Copy package descriptors first so the npm layer only rebuilds when they change.
+COPY app/frontend/package.json app/frontend/package-lock.json ./
+
+# Reproducible install strictly from the lockfile (no lockfile drift, no network
+# resolution surprises).
+RUN npm ci
+
+# Copy the frontend source and compile the production bundle into dist/.
+COPY app/frontend/ ./
+RUN npm run build
+
+###############################################################################
+# Stage 3: Runtime image (minimal Python runtime)
 #
 # Goal:
 # - Contain only what the app needs to run:
-#     /opt/venv    -> the prebuilt light environment
-#     /app/shared  -> the shared socle (pipelines, public_models, services)
-#     /app/app     -> the FastAPI app (entrypoint, config, backend, frontend)
+#     /opt/venv               -> the prebuilt light environment
+#     /app/shared             -> the shared socle (pipelines, public_models, services)
+#     /app/app                -> the FastAPI app (entrypoint, config, backend)
+#     /app/app/frontend/dist  -> the compiled UI bundle, built above (not host state)
 # - Serve the API with uvicorn as the container's process
 ###############################################################################
 FROM python:3.12-slim-bookworm AS runtime
@@ -61,6 +87,10 @@ COPY --from=py-build /opt/venv /opt/venv
 # shared_libs alias from /app/shared/libs at startup).
 COPY shared /app/shared
 COPY app /app/app
+
+# Overlay the compiled UI bundle from the ui-build stage, replacing whatever
+# dist/ (if any) came along in the COPY above.
+COPY --from=ui-build /workspace/frontend/dist /app/app/frontend/dist
 
 # FastAPI port served by uvicorn below.
 EXPOSE 8000
