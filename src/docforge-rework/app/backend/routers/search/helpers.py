@@ -131,6 +131,9 @@ class SearchHelpers:
             if not is_content and target.field not in known:
                 errors.append(f"unknown field '{target.field}'")
                 continue
+            if not target.semantic and not target.lexical:
+                errors.append(f"target '{target.field}' selects no modality (semantic or lexical)")
+                continue
             if target.semantic:
                 any_modality = True
                 if not is_content and target.field not in semantic:

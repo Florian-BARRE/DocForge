@@ -96,8 +96,15 @@ class CollectionReadPortImpl(CollectionReadPort, LoggerClass):
             list[Candidate]: Chunk ids + fused scores in retrieval order (empty when nothing matched).
         """
         # 1. Resolve the requested targets to the named query vectors (content and/or metadata) —
-        #    the resolver is the ONE place that knows Qdrant vector names; the node never does.
-        dense, sparse, colbert = TargetVectorResolver.resolve(encoded, targets)
+        #    the resolver is the ONE place that knows Qdrant vector names; the node never does. A
+        #    targets set that resolves to no queryable vector (e.g. a lexical-only target whose
+        #    collection embedder was later swapped to dense-only, past the router's validation)
+        #    degrades to empty results rather than a 500.
+        try:
+            dense, sparse, colbert = TargetVectorResolver.resolve(encoded, targets)
+        except ValueError as exc:
+            self.logger.warning(f"Search targets resolved to no queryable vector: {exc}")
+            return []
 
         # 2. Delegate to the LEAN facade retrieval — exclusion invariant lives inside it (reused,
         #    not re-derived), and it returns (chunk_id, score) pairs with NO Postgres hydration.

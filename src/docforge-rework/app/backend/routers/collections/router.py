@@ -63,6 +63,9 @@ def _to_model(collection: Collection, fields: list[MetadataField]) -> Collection
 # overwrite it and corrupt search/deletion — reserved regardless of the current filterable flag,
 # which can be toggled on later.
 _RESERVED_PAYLOAD_KEYS = frozenset({"document_id", "chunk_index", "enabled"})
+# "content" is the search-target sentinel for the chunk body; a metadata field of that name would
+# be un-targetable (it always resolves to the body vectors), so it is reserved too.
+_RESERVED_FIELD_NAMES = _RESERVED_PAYLOAD_KEYS | {"content"}
 
 
 def _validate_fields(fields: list[FieldSpecModel]) -> None:
@@ -78,11 +81,11 @@ def _validate_fields(fields: list[FieldSpecModel]) -> None:
             )
         # A field name must never shadow a reserved chunk-payload key (it would overwrite it
         # when denormalised onto the point, breaking the enabled-filter or deletion-by-document).
-        if spec.field_name in _RESERVED_PAYLOAD_KEYS:
+        if spec.field_name in _RESERVED_FIELD_NAMES:
             raise HTTPException(
                 status_code=422,
                 detail=f"Field name '{spec.field_name}' is reserved — pick another name "
-                       f"(reserved: {sorted(_RESERVED_PAYLOAD_KEYS)}).",
+                       f"(reserved: {sorted(_RESERVED_FIELD_NAMES)}).",
             )
 
 

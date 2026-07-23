@@ -17,6 +17,7 @@ from typing import Any
 from loggerplusplus import LoggerClass
 
 # ====== Internal Project Imports ======
+from shared_libs.pipelines.nodes.embed.base import BaseEmbedderNode
 from shared_libs.services.db.postgresql import PostgresClient
 from shared_libs.services.db.postgresql.apis import ChunkApi, CollectionApi, DocumentApi
 from shared_libs.services.db.qdrant import (
@@ -48,7 +49,7 @@ class MetaVectorSyncFacade(LoggerClass):
 
     async def __build_meta_vectors(
         self,
-        embedder: Any,
+        embedder: BaseEmbedderNode,
         rows: list[tuple[str, Any, bool, bool]],
         declared_dense: set[str],
         declared_sparse: set[str],
@@ -72,7 +73,7 @@ class MetaVectorSyncFacade(LoggerClass):
 
     async def __add_dense(
         self,
-        embedder: Any,
+        embedder: BaseEmbedderNode,
         field_name: str,
         text: str,
         declared_dense: set[str],
@@ -89,7 +90,7 @@ class MetaVectorSyncFacade(LoggerClass):
 
     async def __add_sparse(
         self,
-        embedder: Any,
+        embedder: BaseEmbedderNode,
         field_name: str,
         text: str,
         declared_sparse: set[str],
