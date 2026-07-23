@@ -11,6 +11,7 @@ import { theme } from "../../theme";
 import type { StageRailActions } from "./actions";
 import { StackMethodCard } from "./StackMethodCard";
 import { findFamily, findNodeCard } from "../../components/schema-form/paletteLookup";
+import { useStableListKeys } from "./state/stableKeys";
 
 interface StackEditorProps {
   stage: StageView;
@@ -22,17 +23,25 @@ export function StackEditor({ stage, palette, actions }: StackEditorProps) {
   const [addKind, setAddKind] = useState("");
   const family = stage.family ?? "";
   const familyNodes = findFamily(palette, family)?.nodes ?? [];
+  // Stable per-slot identity, independent of `kind`/index, so reordering two same-kind methods
+  // can't leak one card's expanded/local state onto the other's config (see stableKeys.ts).
+  const { keys, move: moveKeys, remove: removeKey, add: addKey } = useStableListKeys(stage.stack.length);
 
   const move = (from: number, to: number) => {
     if (to < 0 || to >= stage.stack.length) return;
     const next = [...stage.stack];
     const [item] = next.splice(from, 1);
     next.splice(to, 0, item);
+    moveKeys(from, to);
     actions.setStackSteps(stage.key, next);
   };
-  const remove = (index: number) => actions.setStackSteps(stage.key, stage.stack.filter((_, i) => i !== index));
+  const remove = (index: number) => {
+    removeKey(index);
+    actions.setStackSteps(stage.key, stage.stack.filter((_, i) => i !== index));
+  };
   const add = () => {
     if (!addKind) return;
+    addKey();
     actions.setStackSteps(stage.key, [...stage.stack, { kind: addKind, config: {} }]);
     setAddKind("");
   };
@@ -46,7 +55,7 @@ export function StackEditor({ stage, palette, actions }: StackEditorProps) {
       )}
       {stage.stack.map((method, index) => (
         <StackMethodCard
-          key={`${method.kind}-${index}`}
+          key={keys[index]}
           stageKey={stage.key}
           method={method}
           index={index}

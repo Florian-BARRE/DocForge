@@ -13,6 +13,7 @@ import type { ChainStep, Palette } from "../../api/types";
 import { theme } from "../../theme";
 import { ChainStepCard } from "./ChainStepCard";
 import { findNodeCard } from "../../components/schema-form/paletteLookup";
+import { useStableListKeys } from "./state/stableKeys";
 
 interface ChainStepListProps {
   steps: ChainStep[];
@@ -30,17 +31,25 @@ export function ChainStepList({
   steps, family, available, palette, scored, onStepsChange, onStepConfigChange, onStepScoreBelowChange,
 }: ChainStepListProps) {
   const [addKind, setAddKind] = useState("");
+  // Stable per-slot identity, independent of `kind`/index, so reordering two same-kind fallback
+  // steps can't leak one card's expanded/local state onto the other's config (see stableKeys.ts).
+  const { keys, move: moveKeys, remove: removeKey, add: addKey } = useStableListKeys(steps.length);
 
   const move = (from: number, to: number) => {
     if (to < 0 || to >= steps.length) return;
     const next = [...steps];
     const [item] = next.splice(from, 1);
     next.splice(to, 0, item);
+    moveKeys(from, to);
     onStepsChange(next);
   };
-  const remove = (index: number) => onStepsChange(steps.filter((_, i) => i !== index));
+  const remove = (index: number) => {
+    removeKey(index);
+    onStepsChange(steps.filter((_, i) => i !== index));
+  };
   const add = () => {
     if (!addKind) return;
+    addKey();
     onStepsChange([...steps, { kind: addKind, config: {}, score_below: null }]);
     setAddKind("");
   };
@@ -54,7 +63,7 @@ export function ChainStepList({
       )}
       {steps.map((step, index) => (
         <ChainStepCard
-          key={`${step.kind}-${index}`}
+          key={keys[index]}
           step={step}
           index={index}
           isLast={index === steps.length - 1}
