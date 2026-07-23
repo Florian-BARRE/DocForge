@@ -14,16 +14,19 @@ The legacy `src/docforge/app/frontend/` is FROZEN — don't apply its convention
 - **Theme tokens only** (`src/theme.ts`): base `#0f1115`, blue accent `#4f8cff`. No hardcoded colors,
   no external UI library. One component per file, grouped by feature, small + single-purpose, English.
 - **Two "generic form" mechanisms coexist — don't conflate:**
-  - `features/pipeline-editor/inspector/SchemaForm.tsx` (+ `SchemaField.tsx`) — genuinely JSON-Schema
-    driven, renders any node's `config_schema` from the describe/palette API. Reused as-is by
-    `features/stage-rail/`.
+  - `components/schema-form/SchemaForm.tsx` (+ `SchemaField.tsx`, + `paletteLookup.ts`) — genuinely
+    JSON-Schema driven, renders any node's `config_schema` from the describe/palette API. Shared by
+    `features/stage-rail/` and `features/search-pipeline/`.
   - `features/collections/wizard/*` — a bespoke hand-built multi-step domain wizard (identity → schema
     → review). Intentionally NOT generic. See [[collection-edit-wizard]].
-- **Pipeline UI = two studios, one routed.** `features/stage-rail/` (vertical fixed-shape rail) is the
-  DEFAULT (since 2026-07-02), embedded by `CollectionPipelinePage`. `features/pipeline-editor/` (the
-  react-flow canvas) is UNROUTED but kept for a future advanced mode — don't delete or rewire it
-  unasked. Pipeline edits are server-owned (`POST /edit`), not client-side blob mutation. See
-  [[stage-rail]], [[pipeline-editor-server-owned-edit]].
+- **Pipeline UI = two pipeline KINDS, both routed, no canvas editor.** `features/stage-rail/`
+  (vertical fixed-shape rail, `collection.pipeline`) and `features/search-pipeline/` (flat
+  fixed-topology editor, `collection.search`) are the two studios. The old react-flow canvas
+  (`features/pipeline-editor/`) is GONE from the tree (confirmed absent as of 2026-07-23) — treat any
+  reference to it as stale, don't try to reuse or resurrect it. Pipeline edits are server-owned
+  (`POST /edit`) for the stage rail; search pipeline edits are local blob replace + `/inspect`
+  polling (no stage compiler exists for search). See [[stage-rail]], [[search-pipeline]],
+  [[pipeline-editor-server-owned-edit]].
 - **API types:** `api/<feature>.ts` files hand-mirror the backend Pydantic models behind a typed
   client. `npm run gen:types` codegen needs a LIVE backend at `OPENAPI_URL`; for new backend fields
   without one, use overlay intersections in `types.ts` — see [[gen-types-constraint]].
@@ -40,6 +43,7 @@ The legacy `src/docforge/app/frontend/` is FROZEN — don't apply its convention
 - [Backend enum gotchas](backend-enum-gotchas.md) — two backend enum surprises found building the collections/monitoring UI; verify before trusting a "queued"/enum assumption.
 - [Collection model created_at gap](collection-model-created-at-gap.md) — `CollectionModel` (API) omits `created_at` though the DB row has it — hand to backend before adding a "created" column.
 - [Empty-group blob validates](empty-group-blob-validates.md) — an empty pipeline group is NOT a valid 422 case; the validator skips the entry-node check when there are no children.
+- [Search target picker](search-target-picker.md) — SearchTargetPicker mirrors SearchFilterBuilder for search targets (content + metadata fields, semantic/lexical); null-elision default guard pattern.
 
 ## Boundary
 
