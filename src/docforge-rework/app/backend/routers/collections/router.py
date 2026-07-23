@@ -88,6 +88,16 @@ def _validate_fields(fields: list[FieldSpecModel]) -> None:
                 detail=f"Field name '{spec.field_name}' is reserved — pick another name "
                        f"(reserved: {sorted(_RESERVED_FIELD_NAMES)}).",
             )
+        # Chunk-scope lexical has no producer: the embed node writes chunk-scope SEMANTIC (dense)
+        # vectors and the meta-vector facade is document-scope only, so a chunk-scope lexical field
+        # would declare a meta_<slug>_bm25 vector nothing ever fills — a silent-empty search. Reject
+        # it up front rather than accept a config that can never return results.
+        if spec.scope == FieldScope.CHUNK and spec.lexical:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Field '{spec.field_name}': chunk-scope lexical search is not supported "
+                       f"(no BM25 producer for chunk metadata) — use semantic, or document scope.",
+            )
 
 
 @router.get("", response_model=list[CollectionModel])
