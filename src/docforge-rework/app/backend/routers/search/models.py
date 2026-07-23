@@ -1,7 +1,7 @@
 # ====== Code Summary ======
 # Pydantic request/response models for the search router — the query in, and the ranked, hydrated
-# chunk hits out. A hit is the flat, client-facing view of a SearchHit (the Postgres chunk row plus
-# its fused Qdrant score); the rich chunk relations stay out of the vector path (lean-vector principle).
+# chunk hits out. A hit is the flat, client-facing view of a hydrated chunk hit (the Postgres chunk
+# row plus its fused Qdrant score); the rich chunk relations stay out of the vector path (lean-vector).
 
 # ====== Standard Library Imports ======
 from typing import Any

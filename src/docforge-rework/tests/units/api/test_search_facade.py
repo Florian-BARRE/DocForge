@@ -1,5 +1,5 @@
-"""SearchFacade.hybrid: the un-ingested guard. A collection provisions its Qdrant space lazily at
-first indexing, so searching one that was created but never ingested must return [] (empty hits),
+"""SearchFacade.hybrid_ids: the un-ingested guard. A collection provisions its Qdrant space lazily at
+first indexing, so searching one that was created but never ingested must return [] (empty pairs),
 NOT raise and become an HTTP 500. Postgres is never touched when the space does not exist yet."""
 
 import uuid
@@ -22,7 +22,7 @@ async def test_hybrid_returns_empty_when_qdrant_collection_missing() -> None:
     facade = SearchFacade(postgres, qdrant)
 
     # 2. Searching an un-ingested collection returns no hits.
-    hits = await facade.hybrid(uuid.uuid4(), dense={VectorNames.CONTENT_DENSE: [0.1, 0.2]})
+    hits = await facade.hybrid_ids(uuid.uuid4(), dense={VectorNames.CONTENT_DENSE: [0.1, 0.2]})
 
     # 3. Empty, with the existence checked and the rich side never opened.
     assert hits == []

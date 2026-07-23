@@ -11,7 +11,7 @@ from collections.abc import Mapping, Sequence
 from qdrant_client import AsyncQdrantClient, models
 
 # ====== Local Project Imports ======
-from ..vectors import PayloadType, QdrantVectorSchema
+from ..vectors import DOCUMENT_ID_KEY, PayloadType, QdrantVectorSchema
 
 
 class QdrantCollectionApi:
@@ -83,7 +83,7 @@ class QdrantCollectionApi:
         # 4. document_id is always indexed (keyword) for delete-by-document and document filters.
         await client.create_payload_index(
             collection_name=name,
-            field_name="document_id",
+            field_name=DOCUMENT_ID_KEY,
             field_schema=models.PayloadSchemaType.KEYWORD,
         )
 

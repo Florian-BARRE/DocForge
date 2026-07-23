@@ -14,7 +14,7 @@ from typing import Any
 from qdrant_client import AsyncQdrantClient, models
 
 # ====== Local Project Imports ======
-from ..vectors import QdrantPoint
+from ..vectors import DOCUMENT_ID_KEY, QdrantPoint
 
 
 class QdrantIndexApi:
@@ -125,7 +125,7 @@ class QdrantIndexApi:
             points_selector=models.Filter(
                 must=[
                     models.FieldCondition(
-                        key="document_id", match=models.MatchValue(value=str(document_id))
+                        key=DOCUMENT_ID_KEY, match=models.MatchValue(value=str(document_id))
                     )
                 ]
             ),

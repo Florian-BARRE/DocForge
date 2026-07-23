@@ -94,7 +94,6 @@ def _fake_run_input() -> dict:
             collection_id="col-1",
             embed_kind="fake_embed",
             embed_config={"model": "fake", "embed_sparse": False},
-            filterable_fields=[],
         ),
     }
 

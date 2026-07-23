@@ -3,6 +3,10 @@ from .client import QdrantClient
 
 # ---------------------- Vector model ---------------------- #
 from .vectors import (
+    CHUNK_INDEX_KEY,
+    DOCUMENT_ID_KEY,
+    ENABLED_KEY,
+    RESERVED_PAYLOAD_KEYS,
     Condition,
     Match,
     MatchAny,
@@ -32,4 +36,8 @@ __all__ = [
     "QdrantCollectionApi",
     "QdrantIndexApi",
     "QdrantSearchApi",
+    "CHUNK_INDEX_KEY",
+    "DOCUMENT_ID_KEY",
+    "ENABLED_KEY",
+    "RESERVED_PAYLOAD_KEYS",
 ]

@@ -20,7 +20,7 @@ from shared_libs.public_models import ChunkRole, role_default_enabled
 from shared_libs.services.db.postgresql import PostgresClient
 from shared_libs.services.db.postgresql.apis import ChunkApi, DocumentApi
 from shared_libs.services.db.postgresql.tables import Chunk
-from shared_libs.services.db.qdrant import QdrantClient, QdrantIndexApi
+from shared_libs.services.db.qdrant import ENABLED_KEY, QdrantClient, QdrantIndexApi
 
 # ====== Local Project Imports ======
 from .helpers import DatabaseHelpers
@@ -140,7 +140,7 @@ class EnablementFacade(LoggerClass):
                 name = DatabaseHelpers.qdrant_collection_name(
                     collection_by_document[chunk.document_id]
                 )
-                payloads_by_collection[name][str(chunk.id)] = {"enabled": effective}
+                payloads_by_collection[name][str(chunk.id)] = {ENABLED_KEY: effective}
             elif effective:
                 reindex_required = True
             outcomes.append(

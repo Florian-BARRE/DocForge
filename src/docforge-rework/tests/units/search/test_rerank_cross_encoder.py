@@ -277,7 +277,6 @@ def test_rerank_blob_runs_end_to_end_and_changes_order(monkeypatch) -> None:
             collection_id="col-1",
             embed_kind="fake_rerank_embed",
             embed_config={"model": "fake", "embed_sparse": False},
-            filterable_fields=[],
         ),
     }
     output, record = asyncio.run(FlowEngine().execute(group, run_input))

@@ -1,6 +1,6 @@
 # ---------------------- Shared conventions & payloads ---------------------- #
 from .helpers import DatabaseHelpers
-from .payloads import ChunkToggle, IngestionPayload, IRBundle, SearchHit
+from .payloads import ChunkToggle, IngestionPayload, IRBundle
 
 # ---------------------- Domain façades ---------------------- #
 from .collections_facade import CollectionsFacade
@@ -20,7 +20,6 @@ __all__ = [
     "ChunkToggle",
     "IngestionPayload",
     "IRBundle",
-    "SearchHit",
     "CollectionsFacade",
     "DocumentsFacade",
     "EnablementFacade",

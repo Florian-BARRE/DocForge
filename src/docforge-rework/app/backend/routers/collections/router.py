@@ -14,6 +14,7 @@ from fastapi import APIRouter, HTTPException
 from shared_libs.pipelines.ingest import IngestPipeline
 from shared_libs.public_models import FieldOrigin, FieldScope
 from shared_libs.services.db.postgresql.tables import Collection, MetadataField
+from shared_libs.services.db.qdrant import RESERVED_PAYLOAD_KEYS
 
 # ====== Local Project Imports ======
 from ...context import CONTEXT
@@ -62,10 +63,10 @@ def _to_model(collection: Collection, fields: list[MetadataField]) -> Collection
 # filterable field is denormalised onto the point by NAME, so a field sharing one of these would
 # overwrite it and corrupt search/deletion — reserved regardless of the current filterable flag,
 # which can be toggled on later.
-_RESERVED_PAYLOAD_KEYS = frozenset({"document_id", "chunk_index", "enabled"})
 # "content" is the search-target sentinel for the chunk body; a metadata field of that name would
-# be un-targetable (it always resolves to the body vectors), so it is reserved too.
-_RESERVED_FIELD_NAMES = _RESERVED_PAYLOAD_KEYS | {"content"}
+# be un-targetable (it always resolves to the body vectors), so it is reserved alongside the
+# point's own payload keys (RESERVED_PAYLOAD_KEYS — the single source, shared with the writers).
+_RESERVED_FIELD_NAMES = RESERVED_PAYLOAD_KEYS | {"content"}
 
 
 def _validate_fields(fields: list[FieldSpecModel]) -> None:
@@ -209,6 +210,11 @@ async def update_collection(
             )
         SearchBlobValidator.validate(request.search)
 
+    # 3c. Validate the schema diff BEFORE any write — a bad field must 422 without having already
+    #     committed the identity/limits rename (the writes below are not one transaction).
+    if request.fields is not None:
+        _validate_fields(request.fields)
+
     # 4. Identity/limits (no-op when untouched).
     if any(v is not None for v in (request.name, request.supported_formats,
                                    request.max_file_size_bytes)):
@@ -222,7 +228,6 @@ async def update_collection(
     # 5. Schema evolution by DIFF — existing metadata values survive untouched fields;
     #    a searchable-surface change flips needs_reindex inside the facade.
     if request.fields is not None:
-        _validate_fields(request.fields)
         rows = [
             MetadataField(
                 field_name=f.field_name, field_type=f.field_type, required=f.required,

@@ -61,8 +61,15 @@ def lifespan() -> Any:
             yield
 
         finally:
-            # Shutdown in reverse order; nothing stateful to close yet.
+            # Shutdown in reverse order. Each teardown is hasattr-guarded because the app can boot
+            # with only a subset of services wired (design surface serves without stores/queue).
             CONTEXT.logger.info(f"Shutting down...")
+            # 1. Drain the enqueue-only Redis pool.
+            if hasattr(CONTEXT, "queue"):
+                await CONTEXT.queue.close()
+            # 2. Release the store connections (disposes the Postgres engine, closes Qdrant).
+            if hasattr(CONTEXT, "database"):
+                await CONTEXT.database.close()
 
     return _lifespan
 

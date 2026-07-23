@@ -17,39 +17,26 @@ from ..base import Artifact
 
 class SearchContract(Artifact):
     """
-    The search run-input contract — the collection's identity + its embedder + its filter surface.
+    The search run-input contract — the collection's identity + its embedder.
+
+    Only the embedder half is consumed downstream: the encode node rebuilds the exact embedder
+    from ``embed_kind``/``embed_config`` to encode the query into the collection's vector space.
+    Target/filter validation is done router-side against the live DB schema (not from this
+    contract), so no field-list surface is carried here.
 
     Attributes:
-        collection_id (str): The collection being searched (provenance; the port scopes to it).
+        collection_id (str): The collection being searched (provenance only).
         embed_kind (str): The registered embedder kind the collection indexed with (e.g.
             ``"bge_server"``) — the encode node rebuilds that exact class.
         embed_config (dict): The embedder's stored, validated config (endpoint, model, axes).
             Re-validated against the class's Config (extra="forbid") when the encode node runs.
-        filterable_fields (list[str]): The contract field names a filter may target — the
-            query-intake node drops (and notes) any filter outside this set.
-        semantic_fields (list[str]): The metadata field names indexed with a dense vector — a
-            semantic search target may name one of these (or ``"content"``); others are rejected.
-        lexical_fields (list[str]): The metadata field names indexed with a sparse BM25 vector — a
-            lexical search target may name one of these (or ``"content"``); others are rejected.
     """
 
-    collection_id: str = Field(description="The collection being searched (provenance / port scope).")
+    collection_id: str = Field(description="The collection being searched (provenance only).")
     embed_kind: str = Field(description="The registered embedder kind the collection indexed with.")
     embed_config: dict = Field(
         default_factory=dict,
         description="The embedder's stored, validated config (endpoint, model, axes).",
-    )
-    filterable_fields: list[str] = Field(
-        default_factory=list,
-        description="Contract field names a filter may target (others are dropped and noted).",
-    )
-    semantic_fields: list[str] = Field(
-        default_factory=list,
-        description="Metadata field names with a dense vector (a semantic target may name one).",
-    )
-    lexical_fields: list[str] = Field(
-        default_factory=list,
-        description="Metadata field names with a sparse BM25 vector (a lexical target may name one).",
     )
 
 

@@ -2,13 +2,12 @@
 # SearchContractBuilder — turns a stored Collection into the SearchContract run-input the search
 # graph's encode node consumes. It locates the collection's OWN embed node in its serialised
 # pipeline blob (the same node the chunks were indexed with) so the query encodes in the SAME vector
-# space as ingestion — the non-negotiable shared-vector-space invariant. It also carries the
-# collection's filterable field names (from its metadata schema) so a later query-intake node can
-# validate filters. Mirrors how the live QueryEmbedder derives its embedder from the pipeline blob,
-# expressed as a run-input contract.
+# space as ingestion — the non-negotiable shared-vector-space invariant. Only the embedder is
+# carried; target/filter validation is done router-side against the live schema. Mirrors how the
+# live QueryEmbedder derives its embedder from the pipeline blob, expressed as a run-input contract.
 
 # ====== Standard Library Imports ======
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterator
 from typing import Any
 
 # ====== Third-Party Library Imports ======
@@ -16,7 +15,7 @@ from loggerplusplus import loggerplusplus
 
 # ====== Internal Project Imports ======
 from shared_libs.public_models.search import SearchContract
-from shared_libs.services.db.postgresql.tables import Collection, MetadataField
+from shared_libs.services.db.postgresql.tables import Collection
 
 # The registry family every embedder self-registers under (never string-literalled elsewhere).
 _EMBED_FAMILY = "embed"
@@ -58,18 +57,16 @@ class SearchContractBuilder:
         return None
 
     @classmethod
-    def build(cls, collection: Collection, schema: Sequence[MetadataField]) -> SearchContract:
+    def build(cls, collection: Collection) -> SearchContract:
         """
         Build the search run-input contract from a stored collection.
 
         Args:
             collection (Collection): The collection being searched (its pipeline blob carries the
                 embed node; its id scopes the read port).
-            schema (Sequence[MetadataField]): The collection's metadata schema (its filterable
-                fields become the contract's filter surface).
 
         Returns:
-            SearchContract: identity + the collection's OWN embedder (kind + config) + filter surface.
+            SearchContract: identity + the collection's OWN embedder (kind + config).
 
         Raises:
             SearchContractError: When the collection's pipeline has no embed node — it was never
@@ -82,20 +79,13 @@ class SearchContractBuilder:
                 f"Collection {collection.id} has no embed node — search is unavailable."
             )
 
-        # 2. The three orthogonal searchability surfaces drive the query-side validation: filterable
-        #    (payload filters), semantic (dense meta vector), lexical (sparse BM25 meta vector).
-        filterable = [row.field_name for row in schema if row.filterable]
-        semantic = [row.field_name for row in schema if row.semantic]
-        lexical = [row.field_name for row in schema if row.lexical]
-
-        # 3. Assemble the run-input contract (embed config re-validated when the encode node runs).
+        # 2. Assemble the run-input contract (embed config re-validated when the encode node runs).
+        #    Only the embedder is carried — target/filter validation is done router-side against the
+        #    live schema, so no field-list surface travels on the contract.
         return SearchContract(
             collection_id=str(collection.id),
             embed_kind=embed_node["kind"],
             embed_config=dict(embed_node.get("config", {})),
-            filterable_fields=filterable,
-            semantic_fields=semantic,
-            lexical_fields=lexical,
         )
 
 

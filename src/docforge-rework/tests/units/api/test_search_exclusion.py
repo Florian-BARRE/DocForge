@@ -42,7 +42,7 @@ async def test_hybrid_injects_enabled_match_and_disabled_doc_exclusion(monkeypat
     facade = SearchFacade(_postgres_yielding(MagicMock()), qdrant)
 
     # 3. Search with a user filter — the system filters must be ADDED, not replace it.
-    await facade.hybrid(
+    await facade.hybrid_ids(
         uuid.uuid4(),
         dense={VectorNames.CONTENT_DENSE: [0.1, 0.2]},
         conditions=[Match(field="topic", value="ai")],
@@ -72,7 +72,7 @@ async def test_hybrid_has_no_exclusion_when_no_disabled_docs(monkeypatch) -> Non
     facade = SearchFacade(_postgres_yielding(MagicMock()), qdrant)
 
     # 2. Plain search — no user filters.
-    await facade.hybrid(uuid.uuid4(), dense={VectorNames.CONTENT_DENSE: [0.1]})
+    await facade.hybrid_ids(uuid.uuid4(), dense={VectorNames.CONTENT_DENSE: [0.1]})
 
     # 3. No positive enabled requirement in conditions; the enabled==false guard is the sole must_not.
     kwargs = hybrid.await_args.kwargs

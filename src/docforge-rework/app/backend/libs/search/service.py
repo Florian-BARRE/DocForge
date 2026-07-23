@@ -136,14 +136,13 @@ class SearchService(LoggerClass):
             SearchContractError: When the collection has no embedder wired (from the contract builder).
             SearchRunError: When the graph is invalid or the run did not deliver (from the runner).
         """
-        # 1. Load the collection + its schema — the contract source (embedder + filter surface).
+        # 1. Load the collection — the contract source (its pipeline blob carries the embedder).
         collection = await self._database.collections.get(collection_id)
         if collection is None:
             raise SearchServiceError(f"collection {collection_id} not found")
-        schema = await self._database.collections.get_schema(collection_id)
 
         # 2. Build the run-input contract — the collection's OWN embedder (shared vector space).
-        contract = SearchContractBuilder.build(collection, schema)
+        contract = SearchContractBuilder.build(collection)
 
         # 3. Construct the read port scoped to this collection (exclusion baked into the facade).
         read_port = CollectionReadPortImpl(self._database, collection_id)

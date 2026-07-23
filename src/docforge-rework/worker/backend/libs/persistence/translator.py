@@ -35,7 +35,13 @@ from shared_libs.services.db.postgresql.tables import (
     Page,
 )
 from shared_libs.services.db.qdrant import QdrantPoint
-from shared_libs.services.db.qdrant.vectors import SparseVec, VectorNames
+from shared_libs.services.db.qdrant.vectors import (
+    CHUNK_INDEX_KEY,
+    DOCUMENT_ID_KEY,
+    ENABLED_KEY,
+    SparseVec,
+    VectorNames,
+)
 from shared_libs.services.db.s3 import S3Object
 
 
@@ -206,12 +212,12 @@ class RunTranslator:
                 continue
             source = next(c for c in bundle.chunks if c.chunk_id == item.chunk_id)
             payload: dict[str, Any] = {
-                "document_id": str(document_id),
-                "chunk_index": source.ordinal,
+                DOCUMENT_ID_KEY: str(document_id),
+                CHUNK_INDEX_KEY: source.ordinal,
                 # Lean filterable scalar the P5 search filter matches on. Sourced from the single
                 # role policy (not hardcoded true) so it stays honest if the embed policy changes:
                 # today only effective-enabled chunks are embedded, so every ingested point is true.
-                "enabled": role_default_enabled(source.role),
+                ENABLED_KEY: role_default_enabled(source.role),
                 **{
                     name: value
                     for name, value in source.generated_meta.items()

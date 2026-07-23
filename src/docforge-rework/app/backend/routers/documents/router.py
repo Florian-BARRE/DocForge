@@ -67,6 +67,16 @@ async def upload_document(
 
     # 3. Content-address the upload — the SAME identity the pipeline computes (sha256).
     content = await file.read()
+
+    # 3b. Enforce the collection's size limit BEFORE storing — an oversized upload is a 422 here,
+    #     never a blob written to S3 then rejected downstream.
+    if len(content) > collection.max_file_size_bytes:
+        raise HTTPException(
+            status_code=422,
+            detail=f"File exceeds the collection's limit "
+                   f"({len(content)} > {collection.max_file_size_bytes} bytes).",
+        )
+
     source_hash = hashlib.sha256(content).hexdigest()
     version = _pipeline_version(collection.pipeline)
 

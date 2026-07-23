@@ -189,8 +189,8 @@ class SearchHelpers:
             document_id=hit.document_id,
             score=hit.score,
             text=hit.text or "",
-            chunk_index=metadata["chunk_index"],
-            token_count=metadata["token_count"],
+            chunk_index=metadata.get("chunk_index", 0),
+            token_count=metadata.get("token_count", 0),
         )
 
 

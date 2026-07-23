@@ -1,8 +1,8 @@
 # ====== Code Summary ======
 # The transfer objects crossing the façade boundary: IngestionPayload bundles everything the worker
 # persists at the end of a pure pipeline run (one transaction), IRBundle is the full raw+enriched
-# IR for inspection, SearchHit is one hydrated search result. Plain dataclasses over the ORM rows —
-# the façade methods stay readable instead of taking fifteen parameters.
+# IR for inspection, ChunkToggle is one chunk's enable/disable outcome. Plain dataclasses over the
+# ORM rows — the façade methods stay readable instead of taking fifteen parameters.
 
 # ====== Standard Library Imports ======
 import uuid
@@ -63,14 +63,6 @@ class IRBundle:
 
 
 @dataclass(slots=True)
-class SearchHit:
-    """One hydrated search result — the Postgres chunk row plus its fused Qdrant score."""
-
-    chunk: Chunk
-    score: float
-
-
-@dataclass(slots=True)
 class ChunkToggle:
     """
     The outcome of toggling one chunk's searchability.
@@ -87,4 +79,4 @@ class ChunkToggle:
     reindex_required: bool
 
 
-__all__ = ["IngestionPayload", "IRBundle", "SearchHit", "ChunkToggle"]
+__all__ = ["IngestionPayload", "IRBundle", "ChunkToggle"]
