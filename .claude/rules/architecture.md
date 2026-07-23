@@ -84,6 +84,18 @@ AVANT `execute` (le moteur n'appelle **jamais** `bind()` — c'est au runner de 
 compris les corps de `ForEach`**). Un node reste **pur** : il peut LIRE (provider ou store read-only via
 capacité injectée) mais n'ÉCRIT jamais. Un accès write reste une façade au bord worker.
 
+**Trois surfaces orthogonales de recherche des métadonnées** (flags par champ, pilotent tout) :
+`filterable` (→ payload Qdrant, filtre exact/any-of), `semantic` (→ vecteur nommé `meta_<slug>_dense`),
+`lexical` (→ vecteur sparse `meta_<slug>_bm25`). Un champ **document-scope** étant partagé par tous ses
+chunks, ses valeurs sont **dénormalisées sur chaque point** : `FilterSyncFacade` pousse le scalaire
+filtrable (payload) et `MetaVectorSyncFacade` pousse les vecteurs semantic/lexical (`update_vectors`,
+zéro réembedding du contenu) — les deux en **hook best-effort après `index()`** + un **job de backfill**
+(chemin de réparation ; ne JAMAIS faire échouer une ingestion déjà persistée). Côté lecture, un
+`SearchTarget` (`{field, semantic, lexical}`) choisit QUELS vecteurs nommés interroger (content et/ou
+metadata, jusqu'au metadata-only) ; le `TargetVectorResolver` (app-side, à côté du read port) est le
+**seul** endroit qui connaît les noms de vecteurs — aucun node search n'en apprend un. Fail-fast 422 au
+routeur si une cible nomme un vecteur non indexé.
+
 ## Les 3 racines et l'import model
 
 | Racine | Namespace | Rôle |
