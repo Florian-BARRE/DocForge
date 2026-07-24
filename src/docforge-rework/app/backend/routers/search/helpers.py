@@ -1,12 +1,12 @@
 # ====== Code Summary ======
 # SearchHelpers — the pure, store-free mapping the search route leans on: locate the embed node in a
-# collection's serialised pipeline blob (walking groups and foreach bodies), translate a simple
+# collection's serialised pipeline blob (via the shared EmbedBlobResolver), translate a simple
 # {field: value} filter map into typed Qdrant Conditions over the FILTERABLE fields (reporting the
 # fields that are not filterable so the route can 422), and flatten a graph Hit into its client
 # model. Kept out of router.py so the route stays pure orchestration.
 
 # ====== Standard Library Imports ======
-from collections.abc import Iterator, Sequence
+from collections.abc import Sequence
 from typing import Any
 
 # ====== Third-Party Library Imports ======
@@ -14,15 +14,13 @@ from loggerplusplus import loggerplusplus
 
 # ====== Internal Project Imports ======
 from shared_libs.pipelines.build import ActionNodeBlob
+from shared_libs.pipelines.nodes.embed.blob import EmbedBlobResolver
 from shared_libs.public_models.search import CONTENT_FIELD, Hit, SearchTarget
 from shared_libs.services.db.postgresql.tables import MetadataField
-from shared_libs.services.db.qdrant import Condition, Match, MatchAny
+from shared_libs.services.db.qdrant import Condition, build_match_conditions
 
 # ====== Local Project Imports ======
 from .models import SearchHitModel, SearchTargetModel
-
-# The registry family every embedder self-registers under (never string-literalled elsewhere).
-EMBED_FAMILY = "embed"
 
 
 class SearchHelpers:
@@ -33,22 +31,8 @@ class SearchHelpers:
     def __new__(cls, *args: object, **kwargs: object) -> None:
         raise TypeError("SearchHelpers is a static-only class and cannot be instantiated.")
 
-    @classmethod
-    def __iter_action_blobs(cls, blob: dict[str, Any]) -> Iterator[dict[str, Any]]:
-        """Yield every action-node dict in a (possibly nested) group/foreach blob."""
-        # 1. A foreach wraps a single group body — descend into it.
-        if "body" in blob:
-            yield from cls.__iter_action_blobs(blob["body"])
-        # 2. A group holds children — descend into each.
-        elif "nodes" in blob:
-            for child in blob["nodes"]:
-                yield from cls.__iter_action_blobs(child)
-        # 3. A leaf action carries a family — it is what we iterate over.
-        elif blob.get("family"):
-            yield blob
-
-    @classmethod
-    def embed_node_blob(cls, pipeline: dict[str, Any]) -> ActionNodeBlob | None:
+    @staticmethod
+    def embed_node_blob(pipeline: dict[str, Any]) -> ActionNodeBlob | None:
         """
         Find the collection's embed node in its serialised pipeline blob.
 
@@ -58,11 +42,10 @@ class SearchHelpers:
         Returns:
             ActionNodeBlob | None: The embed action node, or None when the pipeline has none.
         """
-        # 1. Scan every action node; the embed family is single-use, so the first is THE one.
-        for node in cls.__iter_action_blobs(pipeline):
-            if node.get("family") == EMBED_FAMILY:
-                return ActionNodeBlob(**node)
-        return None
+        # 1. Delegate the (possibly nested) walk to the shared resolver; the embed family is
+        #    single-use, so it returns THE one. None when the pipeline carries no embedder.
+        node = EmbedBlobResolver.find_embed_node(pipeline)
+        return ActionNodeBlob(**node) if node is not None else None
 
     @staticmethod
     def build_conditions(
@@ -79,20 +62,19 @@ class SearchHelpers:
             tuple[list[Condition], list[str]]: The ANDed conditions, and the names of any
             requested fields that are unknown or not filterable (the route rejects these 422).
         """
-        # 1. Only the fields flagged filterable are indexed for payload filtering in Qdrant.
+        # 1. Only the fields flagged filterable are indexed for payload filtering in Qdrant;
+        #    a non-filterable field is reported so the route can 422, never silently matched.
         filterable = {row.field_name for row in schema if row.filterable}
-        conditions: list[Condition] = []
+        accepted: dict[str, Any] = {}
         invalid: list[str] = []
-        # 2. A list value → set membership (any-of); a scalar → exact match.
         for name, value in (filters or {}).items():
-            if name not in filterable:
-                invalid.append(name)
-                continue
-            if isinstance(value, list):
-                conditions.append(MatchAny(field=name, values=value))
+            if name in filterable:
+                accepted[name] = value
             else:
-                conditions.append(Match(field=name, value=value))
-        return conditions, invalid
+                invalid.append(name)
+        # 2. Build the conditions over the accepted subset with the shared mapping (list → any-of,
+        #    scalar → exact) — order preserved, so the built filter is byte-identical.
+        return build_match_conditions(accepted), invalid
 
     @staticmethod
     def validate_search_targets(
@@ -194,4 +176,4 @@ class SearchHelpers:
         )
 
 
-__all__ = ["SearchHelpers", "EMBED_FAMILY"]
+__all__ = ["SearchHelpers"]

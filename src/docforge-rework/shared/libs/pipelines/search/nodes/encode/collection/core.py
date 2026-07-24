@@ -7,21 +7,15 @@
 # app-side QueryEmbedder, expressed as a graph node. The provider HTTP call happens in-node — the
 # same stateless read the ingest embed node makes; no store write, no hidden state.
 
-# ====== Standard Library Imports ======
-from typing import cast
-
 # ====== Third-Party Library Imports ======
 from pydantic import Field
 
 # ====== Internal Project Imports ======
-import shared_libs.pipelines.nodes.embed  # noqa: F401 — ensures every embedder self-registers
 from shared_libs.pipelines.base import ActionNode, NodeConfig, NodeInput, NodeOutput
-from shared_libs.pipelines.nodes.embed.base import BaseEmbedConfig, BaseEmbedderNode
+from shared_libs.pipelines.nodes.embed.blob import EmbedBlobResolver
 from shared_libs.pipelines.registry import NodeRegistry
 from shared_libs.public_models.search import EncodedQuery, QuerySpec, SearchContract
 
-# The registry family every embedder self-registers under (never string-literalled elsewhere).
-_EMBED_FAMILY = "embed"
 # The QuerySpec flag that turns the ColBERT late-interaction axis on for this run.
 _LATE_INTERACTION_FLAG = "use_late_interaction"
 
@@ -63,15 +57,6 @@ class EncodeCollectionNode(ActionNode):
     Produces = EncodeCollectionProduces
     UNIQUE_IN_GRAPH = True
 
-    def __rebuild_embedder(self, contract: SearchContract) -> tuple[BaseEmbedderNode, BaseEmbedConfig]:
-        """Rebuild the collection's embedder from its stored blob (class + validated config)."""
-        # 1. Resolve the registered embedder class (bge_server, openai_compatible, …).
-        node_class = cast(type[BaseEmbedderNode], NodeRegistry.get(_EMBED_FAMILY, contract.embed_kind))
-        # 2. Re-validate the stored config (extra="forbid" — a drifted blob fails loudly).
-        config = cast(BaseEmbedConfig, node_class.Config(**contract.embed_config))
-        # 3. A throwaway instance — only its embedding hooks are exercised (never wired in a graph).
-        return node_class(id=f"{self.id}_embedder", config=config), config
-
     async def run(self, data: EncodeCollectionConsumes) -> EncodeCollectionProduces:
         """
         Encode the query into the collection's vector space.
@@ -82,7 +67,11 @@ class EncodeCollectionNode(ActionNode):
         Returns:
             EncodeCollectionProduces: The query's dense (and, when present, sparse/colbert) vectors.
         """
-        embedder, config = self.__rebuild_embedder(data.contract)
+        embedder, config = EmbedBlobResolver.rebuild(
+            data.contract.embed_kind,
+            data.contract.embed_config,
+            node_id=f"{self.id}_embedder",
+        )
         text = data.spec.text
 
         # 1. Dense — always (a query without a dense vector cannot be searched).

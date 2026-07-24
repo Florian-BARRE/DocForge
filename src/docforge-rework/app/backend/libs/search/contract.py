@@ -6,19 +6,13 @@
 # carried; target/filter validation is done router-side against the live schema. Mirrors how the
 # live QueryEmbedder derives its embedder from the pipeline blob, expressed as a run-input contract.
 
-# ====== Standard Library Imports ======
-from collections.abc import Iterator
-from typing import Any
-
 # ====== Third-Party Library Imports ======
 from loggerplusplus import loggerplusplus
 
 # ====== Internal Project Imports ======
+from shared_libs.pipelines.nodes.embed.blob import EmbedBlobResolver
 from shared_libs.public_models.search import SearchContract
 from shared_libs.services.db.postgresql.tables import Collection
-
-# The registry family every embedder self-registers under (never string-literalled elsewhere).
-_EMBED_FAMILY = "embed"
 
 
 class SearchContractError(Exception):
@@ -32,29 +26,6 @@ class SearchContractBuilder:
 
     def __new__(cls, *args: object, **kwargs: object) -> None:
         raise TypeError("SearchContractBuilder is a static-only class and cannot be instantiated.")
-
-    @classmethod
-    def __iter_action_blobs(cls, blob: dict[str, Any]) -> Iterator[dict[str, Any]]:
-        """Yield every action-node dict in a (possibly nested) group/foreach pipeline blob."""
-        # 1. A foreach wraps a single group body — descend into it.
-        if "body" in blob:
-            yield from cls.__iter_action_blobs(blob["body"])
-        # 2. A group holds children — descend into each.
-        elif "nodes" in blob:
-            for child in blob["nodes"]:
-                yield from cls.__iter_action_blobs(child)
-        # 3. A leaf action carries a family — it is what we iterate over.
-        elif blob.get("family"):
-            yield blob
-
-    @classmethod
-    def __embed_node(cls, pipeline: dict[str, Any]) -> dict[str, Any] | None:
-        """Find the collection's embed node dict in its serialised pipeline blob (single-use)."""
-        # 1. The embed family is single-use, so the first embed node is THE one.
-        for node in cls.__iter_action_blobs(pipeline):
-            if node.get("family") == _EMBED_FAMILY:
-                return node
-        return None
 
     @classmethod
     def build(cls, collection: Collection) -> SearchContract:
@@ -73,7 +44,7 @@ class SearchContractBuilder:
                 indexed, so there is no vector space to encode the query into.
         """
         # 1. Locate the collection's embed node — the query must share the chunks' vector space.
-        embed_node = cls.__embed_node(collection.pipeline)
+        embed_node = EmbedBlobResolver.find_embed_node(collection.pipeline)
         if embed_node is None:
             raise SearchContractError(
                 f"Collection {collection.id} has no embed node — search is unavailable."

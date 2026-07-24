@@ -59,4 +59,28 @@ class Range:
 type Condition = Match | MatchAny | Range
 
 
-__all__ = ["PayloadType", "Match", "MatchAny", "Range", "Condition"]
+def build_match_conditions(filters: dict[str, Any]) -> list[Condition]:
+    """
+    Translate a ``{field: value}`` filter map into typed equality/membership conditions.
+
+    A scalar value becomes an exact ``Match``; a list value becomes a set-membership ``MatchAny``
+    (any-of). Filterability is the caller's concern — this pure mapping trusts the fields it is
+    handed and drops nothing.
+
+    Args:
+        filters (dict): The requested constraints (field name → scalar or list of values).
+
+    Returns:
+        list[Condition]: One condition per field, ANDed together (empty for an empty/None map).
+    """
+    # 1. One condition per requested field — list → any-of, scalar → exact match.
+    conditions: list[Condition] = []
+    for name, value in (filters or {}).items():
+        if isinstance(value, list):
+            conditions.append(MatchAny(field=name, values=value))
+        else:
+            conditions.append(Match(field=name, value=value))
+    return conditions
+
+
+__all__ = ["PayloadType", "Match", "MatchAny", "Range", "Condition", "build_match_conditions"]

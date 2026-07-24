@@ -16,6 +16,7 @@ from .vectors import (
     Range,
     SparseVec,
     VectorNames,
+    build_match_conditions,
 )
 
 # ---------------------- Operations ---------------------- #
@@ -33,6 +34,7 @@ __all__ = [
     "MatchAny",
     "Range",
     "Condition",
+    "build_match_conditions",
     "QdrantCollectionApi",
     "QdrantIndexApi",
     "QdrantSearchApi",

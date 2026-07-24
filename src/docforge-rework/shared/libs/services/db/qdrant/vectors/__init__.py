@@ -6,7 +6,7 @@ from .vector_schema import QdrantVectorSchema
 from .point import QdrantPoint, SparseVec
 
 # ---------------------- Filter model (filterable fields) ---------------------- #
-from .filters import Condition, Match, MatchAny, PayloadType, Range
+from .filters import Condition, Match, MatchAny, PayloadType, Range, build_match_conditions
 
 # ---------------------- Reserved payload keys ---------------------- #
 from .payload_keys import (
@@ -27,6 +27,7 @@ __all__ = [
     "MatchAny",
     "Range",
     "Condition",
+    "build_match_conditions",
     "CHUNK_INDEX_KEY",
     "DOCUMENT_ID_KEY",
     "ENABLED_KEY",

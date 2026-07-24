@@ -19,7 +19,7 @@ from loggerplusplus import LoggerClass
 from shared_libs.pipelines.search import CollectionReadPort
 from shared_libs.public_models.search import Candidate, EncodedQuery, Hit, SearchTarget
 from shared_libs.services.db import Database
-from shared_libs.services.db.qdrant import Condition, Match, MatchAny
+from shared_libs.services.db.qdrant import build_match_conditions
 
 # ====== Local Project Imports ======
 from .target_resolver import TargetVectorResolver
@@ -43,29 +43,6 @@ class CollectionReadPortImpl(CollectionReadPort, LoggerClass):
         LoggerClass.__init__(self)
         self._database = database
         self._collection_id = collection_id
-
-    def __conditions(self, filters: dict) -> list[Condition]:
-        """
-        Translate a ``{field: value}`` filter map into typed Qdrant conditions.
-
-        A scalar becomes an equality match; a list becomes a set-membership (any-of) match. Field
-        filterability is the query-intake node's concern (deferred), so the port trusts the filters
-        it is handed and does not drop unknown fields here.
-
-        Args:
-            filters (dict): The structured filter map carried on the QuerySpec.
-
-        Returns:
-            list[Condition]: The ANDed conditions.
-        """
-        # 1. One condition per requested field — list → any-of, scalar → exact.
-        conditions: list[Condition] = []
-        for name, value in (filters or {}).items():
-            if isinstance(value, list):
-                conditions.append(MatchAny(field=name, values=value))
-            else:
-                conditions.append(Match(field=name, value=value))
-        return conditions
 
     async def hybrid_search(
         self,
@@ -112,7 +89,7 @@ class CollectionReadPortImpl(CollectionReadPort, LoggerClass):
             self._collection_id,
             dense=dense,
             sparse=sparse,
-            conditions=self.__conditions(filters),
+            conditions=build_match_conditions(filters),
             limit=limit,
             colbert=colbert,
             rescore_pool_size=rescore_pool_size or _DEFAULT_RESCORE_POOL_SIZE,
