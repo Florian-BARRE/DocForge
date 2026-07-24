@@ -28,6 +28,11 @@ class AuthFacade(LoggerClass):
         async with self._postgres.session() as session:
             return await AuthApi.create_user(session, user)
 
+    async def get_user(self, user_id: uuid.UUID) -> AppUser | None:
+        """Fetch a user by id — the owning-account check on the authentication hot path."""
+        async with self._postgres.session() as session:
+            return await AuthApi.get_user(session, user_id)
+
     async def get_user_by_username(self, username: str) -> AppUser | None:
         """Fetch a user by username (the login path)."""
         async with self._postgres.session() as session:

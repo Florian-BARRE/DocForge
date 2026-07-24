@@ -1,3 +1,6 @@
+# -------------------- Auth (API-key management) ------------------- #
+from .auth.router import router as auth_router
+
 # -------------------- Collections (contract CRUD) ------------------- #
 from .collections.router import router as collections_router
 
@@ -24,6 +27,7 @@ from .scalar.router import router as scalar_router
 
 # ------------------- Public API ------------------- #
 __all__ = [
+    "auth_router",
     "collections_router",
     "documents_router",
     "explorer_router",

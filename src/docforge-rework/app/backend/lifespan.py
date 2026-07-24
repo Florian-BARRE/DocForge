@@ -15,9 +15,10 @@ from pyfiglet import Figlet
 
 # ====== Local Project Imports ======
 from .context import CONTEXT
+from .libs.auth import AuthBootstrap
 
 # Total number of startup steps — update when adding/removing steps.
-TOTAL_STEPS = 2
+TOTAL_STEPS = 3
 
 
 def lifespan() -> Any:
@@ -57,7 +58,11 @@ def lifespan() -> Any:
                 f"served from the node registry"
             )
 
-            # 4. Yield — the app is now serving.
+            # 4. Provision the root credential when auth is on (idempotent, best-effort).
+            log_step(3, "Authentication bootstrap")
+            await AuthBootstrap.ensure_root_credential()
+
+            # 5. Yield — the app is now serving.
             yield
 
         finally:

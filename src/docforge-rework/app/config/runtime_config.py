@@ -67,6 +67,14 @@ class RUNTIME_CONFIG(EnvConfigLoader):
     # Application version surfaced in OpenAPI docs and the /health/ping endpoint.
     FASTAPI_APP_VERSION: str = env("FASTAPI_APP_VERSION")
 
+    # ───── Authentication (API-key bearer, keys-only) ─────
+    # OFF by default so local dev and the units suite run without credentials. When ON, every
+    # /api/v1/* route requires a valid bearer key (the scalar docs + /openapi.json stay public).
+    AUTH_ENABLED: bool = env("AUTH_ENABLED", cast=bool, default=False)
+    # The bootstrap root key plaintext — provisioned idempotently at startup when auth is on.
+    # Its name contains TOKEN, so configplusplus masks it in the startup config dump.
+    AUTH_ROOT_TOKEN: str = env("AUTH_ROOT_TOKEN", required=False, default="")
+
     # ───── Queue (enqueue only — the worker executes) ─────
     REDIS_URL = env("REDIS_URL")
 
