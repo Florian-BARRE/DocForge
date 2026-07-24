@@ -13,10 +13,11 @@ import uuid
 from typing import Any
 
 # ====== Third-Party Library Imports ======
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
 # ====== Local Project Imports ======
 from ...context import CONTEXT
+from ...libs.auth import Capability, require
 from ...libs.search import SearchRunError
 from ...utils.error_handling import auto_handle_errors
 from .embedder import QueryEmbedder
@@ -26,7 +27,10 @@ from .models import SearchRequest, SearchResponse
 router = APIRouter(tags=["search"])
 
 
-@router.post("/collections/{collection_id}/search", response_model=SearchResponse)
+@router.post(
+    "/collections/{collection_id}/search", response_model=SearchResponse,
+    dependencies=[Depends(require(Capability.SEARCH))],
+)
 @auto_handle_errors
 async def search_collection(collection_id: uuid.UUID, request: SearchRequest) -> SearchResponse:
     """

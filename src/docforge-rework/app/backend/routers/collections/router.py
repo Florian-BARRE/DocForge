@@ -8,7 +8,7 @@
 import uuid
 
 # ====== Third-Party Library Imports ======
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
 # ====== Internal Project Imports ======
 from shared_libs.pipelines.ingest import IngestPipeline
@@ -18,6 +18,7 @@ from shared_libs.services.db.qdrant import RESERVED_PAYLOAD_KEYS
 
 # ====== Local Project Imports ======
 from ...context import CONTEXT
+from ...libs.auth import Capability, require
 from ...utils.error_handling import auto_handle_errors
 from ...utils.pipeline_validation import PipelineBlobValidator
 from ...utils.search_blob_validation import SearchBlobValidator
@@ -100,7 +101,10 @@ def _validate_fields(fields: list[FieldSpecModel]) -> None:
             )
 
 
-@router.get("", response_model=list[CollectionModel])
+@router.get(
+    "", response_model=list[CollectionModel],
+    dependencies=[Depends(require(Capability.READ))],
+)
 @auto_handle_errors
 async def list_collections() -> list[CollectionModel]:
     """
@@ -116,7 +120,10 @@ async def list_collections() -> list[CollectionModel]:
     ]
 
 
-@router.get("/{collection_id}", response_model=CollectionModel)
+@router.get(
+    "/{collection_id}", response_model=CollectionModel,
+    dependencies=[Depends(require(Capability.READ))],
+)
 @auto_handle_errors
 async def get_collection(collection_id: uuid.UUID) -> CollectionModel:
     """
@@ -131,7 +138,10 @@ async def get_collection(collection_id: uuid.UUID) -> CollectionModel:
     return _to_model(collection, await CONTEXT.database.collections.get_schema(collection_id))
 
 
-@router.post("", response_model=CollectionModel, status_code=201)
+@router.post(
+    "", response_model=CollectionModel, status_code=201,
+    dependencies=[Depends(require(Capability.WRITE))],
+)
 @auto_handle_errors
 async def create_collection(request: CreateCollectionRequest) -> CollectionModel:
     """
@@ -177,7 +187,10 @@ async def create_collection(request: CreateCollectionRequest) -> CollectionModel
     return _to_model(created, await CONTEXT.database.collections.get_schema(created.id))
 
 
-@router.patch("/{collection_id}", response_model=CollectionModel)
+@router.patch(
+    "/{collection_id}", response_model=CollectionModel,
+    dependencies=[Depends(require(Capability.WRITE))],
+)
 @auto_handle_errors
 async def update_collection(
     collection_id: uuid.UUID, request: UpdateCollectionRequest
@@ -268,7 +281,10 @@ async def update_collection(
     return _to_model(updated, await CONTEXT.database.collections.get_schema(collection_id))
 
 
-@router.delete("/{collection_id}", status_code=204)
+@router.delete(
+    "/{collection_id}", status_code=204,
+    dependencies=[Depends(require(Capability.WRITE))],
+)
 @auto_handle_errors
 async def delete_collection(collection_id: uuid.UUID) -> None:
     """

@@ -9,14 +9,14 @@ import uuid
 from datetime import UTC, datetime
 
 # ====== Third-Party Library Imports ======
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
 # ====== Internal Project Imports ======
 from shared_libs.services.db.postgresql.tables import ApiKey
 
 # ====== Local Project Imports ======
 from ...context import CONTEXT
-from ...libs.auth import AuthKeys
+from ...libs.auth import AuthKeys, Capability, require
 from ...utils.error_handling import auto_handle_errors
 from .models import CreatedKey, CreateKeyRequest, KeyInfo
 
@@ -46,7 +46,10 @@ async def _require_root_id() -> uuid.UUID:
     return root.id
 
 
-@router.post("", response_model=CreatedKey, status_code=201)
+@router.post(
+    "", response_model=CreatedKey, status_code=201,
+    dependencies=[Depends(require(Capability.ADMIN))],
+)
 @auto_handle_errors
 async def create_key(payload: CreateKeyRequest) -> CreatedKey:
     """
@@ -64,14 +67,18 @@ async def create_key(payload: CreateKeyRequest) -> CreatedKey:
     # 2. Generate a fresh credential — only the prefix + hash are persisted.
     plaintext, prefix, key_hash = AuthKeys.generate_key()
 
-    # 3. Persist the key row.
+    # 3. Persist the key row — the validated scope is stored as a plain JSONB dict (None = full
+    #    access, the root shape). model_dump(mode="json") keeps enum members as their string values.
+    permissions_blob = (
+        payload.permissions.model_dump(mode="json") if payload.permissions is not None else None
+    )
     created = await CONTEXT.database.auth.create_key(
         ApiKey(
             user_id=root_id,
             name=payload.name,
             key_hash=key_hash,
             prefix=prefix,
-            permissions=payload.permissions,
+            permissions=permissions_blob,
         )
     )
     CONTEXT.logger.info(f"API key '{payload.name}' created (prefix={prefix})")
@@ -87,7 +94,10 @@ async def create_key(payload: CreateKeyRequest) -> CreatedKey:
     )
 
 
-@router.get("", response_model=list[KeyInfo])
+@router.get(
+    "", response_model=list[KeyInfo],
+    dependencies=[Depends(require(Capability.ADMIN))],
+)
 @auto_handle_errors
 async def list_keys() -> list[KeyInfo]:
     """
@@ -114,7 +124,10 @@ async def list_keys() -> list[KeyInfo]:
     ]
 
 
-@router.delete("/{key_id}", status_code=204)
+@router.delete(
+    "/{key_id}", status_code=204,
+    dependencies=[Depends(require(Capability.ADMIN))],
+)
 @auto_handle_errors
 async def revoke_key(key_id: uuid.UUID) -> None:
     """

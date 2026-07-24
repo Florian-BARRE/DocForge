@@ -7,8 +7,21 @@ from .principal import AuthPrincipal
 # ---------------------- AuthN dependency (the gate) ---------------------- #
 from .dependency import authenticate
 
+# ---------------------- AuthZ vocabulary + gate ---------------------- #
+from .permissions import Capability, KeyPermissions
+from .authz import require, AuthzGuard
+
 # ---------------------- Startup root provisioning ---------------------- #
 from .bootstrap import AuthBootstrap
 
 # ------------------- Public API ------------------- #
-__all__ = ["AuthKeys", "AuthPrincipal", "authenticate", "AuthBootstrap"]
+__all__ = [
+    "AuthKeys",
+    "AuthPrincipal",
+    "authenticate",
+    "Capability",
+    "KeyPermissions",
+    "require",
+    "AuthzGuard",
+    "AuthBootstrap",
+]

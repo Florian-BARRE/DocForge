@@ -11,7 +11,7 @@ import json
 import uuid
 
 # ====== Third-Party Library Imports ======
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
 # ====== Internal Project Imports ======
 from shared_libs.public_models import FieldOrigin
@@ -28,6 +28,7 @@ from shared_libs.services.db.s3 import S3Object
 
 # ====== Local Project Imports ======
 from ...context import CONTEXT
+from ...libs.auth import Capability, require
 from ...utils.error_handling import auto_handle_errors
 from ...utils.pipeline_validation import PipelineBlobValidator
 from .models import DocumentEnabledResponse, EnabledPatch, UploadAccepted
@@ -42,7 +43,10 @@ def _pipeline_version(pipeline_blob: dict) -> str:
     ).hexdigest()[:16]
 
 
-@router.post("", response_model=UploadAccepted, status_code=202)
+@router.post(
+    "", response_model=UploadAccepted, status_code=202,
+    dependencies=[Depends(require(Capability.WRITE))],
+)
 @auto_handle_errors
 async def upload_document(
     file: UploadFile = File(..., description="The document to ingest."),
@@ -133,7 +137,10 @@ async def upload_document(
     return UploadAccepted(document_id=str(created.id), job_id=str(job.id))
 
 
-@router.patch("/{document_id}/enabled", response_model=DocumentEnabledResponse)
+@router.patch(
+    "/{document_id}/enabled", response_model=DocumentEnabledResponse,
+    dependencies=[Depends(require(Capability.WRITE))],
+)
 @auto_handle_errors
 async def set_document_enabled(
     document_id: uuid.UUID, patch: EnabledPatch

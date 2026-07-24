@@ -10,10 +10,11 @@ import uuid
 from collections import defaultdict
 
 # ====== Third-Party Library Imports ======
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
 # ====== Local Project Imports ======
 from ...context import CONTEXT
+from ...libs.auth import Capability, require
 from ...utils.error_handling import auto_handle_errors
 from .helpers import ExplorerHelpers
 from .models import (
@@ -39,7 +40,10 @@ async def _require_document(document_id: uuid.UUID):
     return document
 
 
-@router.get("/collections/{collection_id}/documents", response_model=list[DocumentListItem])
+@router.get(
+    "/collections/{collection_id}/documents", response_model=list[DocumentListItem],
+    dependencies=[Depends(require(Capability.READ))],
+)
 @auto_handle_errors
 async def list_documents(collection_id: uuid.UUID) -> list[DocumentListItem]:
     """
@@ -57,7 +61,10 @@ async def list_documents(collection_id: uuid.UUID) -> list[DocumentListItem]:
     return [ExplorerHelpers.list_item(document) for document in documents]
 
 
-@router.get("/documents/{document_id}", response_model=DocumentDetail)
+@router.get(
+    "/documents/{document_id}", response_model=DocumentDetail,
+    dependencies=[Depends(require(Capability.READ))],
+)
 @auto_handle_errors
 async def get_document(document_id: uuid.UUID) -> DocumentDetail:
     """
@@ -76,7 +83,10 @@ async def get_document(document_id: uuid.UUID) -> DocumentDetail:
     return ExplorerHelpers.detail(document, ExplorerHelpers.metadata_values(rows, names))
 
 
-@router.get("/documents/{document_id}/pages", response_model=list[PageInfo])
+@router.get(
+    "/documents/{document_id}/pages", response_model=list[PageInfo],
+    dependencies=[Depends(require(Capability.READ))],
+)
 @auto_handle_errors
 async def get_document_pages(document_id: uuid.UUID) -> list[PageInfo]:
     """
@@ -91,7 +101,10 @@ async def get_document_pages(document_id: uuid.UUID) -> list[PageInfo]:
     return [ExplorerHelpers.page(page) for page in pages]
 
 
-@router.get("/documents/{document_id}/ir", response_model=DocumentIRModel)
+@router.get(
+    "/documents/{document_id}/ir", response_model=DocumentIRModel,
+    dependencies=[Depends(require(Capability.READ))],
+)
 @auto_handle_errors
 async def get_document_ir(document_id: uuid.UUID) -> DocumentIRModel:
     """
@@ -106,7 +119,10 @@ async def get_document_ir(document_id: uuid.UUID) -> DocumentIRModel:
     return ExplorerHelpers.ir(bundle)
 
 
-@router.get("/documents/{document_id}/chunks", response_model=list[ChunkInfo])
+@router.get(
+    "/documents/{document_id}/chunks", response_model=list[ChunkInfo],
+    dependencies=[Depends(require(Capability.READ))],
+)
 @auto_handle_errors
 async def get_document_chunks(document_id: uuid.UUID) -> list[ChunkInfo]:
     """
@@ -145,7 +161,10 @@ async def get_document_chunks(document_id: uuid.UUID) -> list[ChunkInfo]:
     ]
 
 
-@router.patch("/chunks/{chunk_id}/enabled", response_model=ChunkEnabledResult)
+@router.patch(
+    "/chunks/{chunk_id}/enabled", response_model=ChunkEnabledResult,
+    dependencies=[Depends(require(Capability.WRITE))],
+)
 @auto_handle_errors
 async def set_chunk_enabled(
     chunk_id: uuid.UUID, patch: ChunkEnabledPatch
@@ -169,7 +188,10 @@ async def set_chunk_enabled(
     return ExplorerHelpers.chunk_toggle(outcomes[0])
 
 
-@router.patch("/chunks/enabled", response_model=BulkChunkEnabledResponse)
+@router.patch(
+    "/chunks/enabled", response_model=BulkChunkEnabledResponse,
+    dependencies=[Depends(require(Capability.WRITE))],
+)
 @auto_handle_errors
 async def set_chunks_enabled(patch: BulkChunkEnabledPatch) -> BulkChunkEnabledResponse:
     """
@@ -197,7 +219,10 @@ async def set_chunks_enabled(patch: BulkChunkEnabledPatch) -> BulkChunkEnabledRe
     )
 
 
-@router.delete("/documents/{document_id}", status_code=204)
+@router.delete(
+    "/documents/{document_id}", status_code=204,
+    dependencies=[Depends(require(Capability.WRITE))],
+)
 @auto_handle_errors
 async def delete_document(document_id: uuid.UUID) -> None:
     """

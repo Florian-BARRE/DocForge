@@ -7,10 +7,11 @@ import uuid
 from collections import defaultdict
 
 # ====== Third-Party Library Imports ======
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
 # ====== Local Project Imports ======
 from ...context import CONTEXT
+from ...libs.auth import Capability, require
 from ...utils.error_handling import auto_handle_errors
 from .models import JobEvent, JobStatus, JobTrace, WorkerActivity, WorkersLive
 
@@ -33,7 +34,7 @@ def _job_status(job) -> JobStatus:
     )
 
 
-@router.get("", response_model=list[JobStatus])
+@router.get("", response_model=list[JobStatus], dependencies=[Depends(require(Capability.READ))])
 @auto_handle_errors
 async def list_jobs(collection_id: uuid.UUID) -> list[JobStatus]:
     """
@@ -47,7 +48,7 @@ async def list_jobs(collection_id: uuid.UUID) -> list[JobStatus]:
     return [_job_status(job) for job in jobs]
 
 
-@router.get("/workers/live", response_model=WorkersLive)
+@router.get("/workers/live", response_model=WorkersLive, dependencies=[Depends(require(Capability.READ))])
 @auto_handle_errors
 async def live_workers() -> WorkersLive:
     """
@@ -66,7 +67,7 @@ async def live_workers() -> WorkersLive:
     )
 
 
-@router.get("/{job_id}/events", response_model=JobTrace)
+@router.get("/{job_id}/events", response_model=JobTrace, dependencies=[Depends(require(Capability.READ))])
 @auto_handle_errors
 async def get_job_trace(job_id: uuid.UUID) -> JobTrace:
     """
@@ -87,7 +88,7 @@ async def get_job_trace(job_id: uuid.UUID) -> JobTrace:
     )
 
 
-@router.get("/{job_id}", response_model=JobStatus)
+@router.get("/{job_id}", response_model=JobStatus, dependencies=[Depends(require(Capability.READ))])
 @auto_handle_errors
 async def get_job(job_id: uuid.UUID) -> JobStatus:
     """

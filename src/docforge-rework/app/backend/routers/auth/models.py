@@ -9,14 +9,17 @@ from typing import Any
 # ====== Third-Party Library Imports ======
 from pydantic import BaseModel, Field
 
+# ====== Local Project Imports ======
+from ...libs.auth import KeyPermissions
+
 
 class CreateKeyRequest(BaseModel):
     """Body of a create-key request."""
 
     name: str = Field(description="Human-readable label for the key.")
-    permissions: dict[str, Any] | None = Field(
+    permissions: KeyPermissions | None = Field(
         default=None,
-        description="Per-scope permissions blob; null = full access (Lot 2 enforces scoping).",
+        description="Per-key capability + collection scope; null = full access (root).",
     )
 
 

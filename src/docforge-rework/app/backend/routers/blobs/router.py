@@ -5,16 +5,17 @@
 # the blob registry (never guessed). No Pydantic response_model — the payload is raw bytes.
 
 # ====== Third-Party Library Imports ======
-from fastapi import APIRouter, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Response
 
 # ====== Local Project Imports ======
 from ...context import CONTEXT
+from ...libs.auth import Capability, require
 from ...utils.error_handling import auto_handle_errors
 
 router = APIRouter(prefix="/blobs", tags=["blobs"])
 
 
-@router.get("/{content_hash}", response_class=Response)
+@router.get("/{content_hash}", response_class=Response, dependencies=[Depends(require(Capability.READ))])
 @auto_handle_errors
 async def get_blob(content_hash: str) -> Response:
     """

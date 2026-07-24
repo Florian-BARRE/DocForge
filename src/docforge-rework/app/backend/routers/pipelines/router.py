@@ -9,7 +9,7 @@
 # key 404s, and the discovery index omits the stage URLs for those pipelines.
 
 # ====== Third-Party Library Imports ======
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
 # ====== Internal Project Imports ======
 from shared_libs.pipelines.build import BuildError
@@ -20,6 +20,7 @@ from shared_libs.pipelines.pipeline_registry import PipelineRegistry, PipelineSp
 
 # ====== Local Project Imports ======
 from ...context import CONTEXT
+from ...libs.auth import Capability, require
 from ...utils.error_handling import auto_handle_errors
 from .models import (
     EditRequest,
@@ -79,7 +80,7 @@ def _require_stage_surface(key: str) -> PipelineSpec:
     return spec
 
 
-@router.get("", response_model=PipelineIndexResponse)
+@router.get("", response_model=PipelineIndexResponse, dependencies=[Depends(require(Capability.READ))])
 @auto_handle_errors
 async def list_pipeline_surfaces() -> PipelineIndexResponse:
     """
@@ -111,7 +112,7 @@ async def list_pipeline_surfaces() -> PipelineIndexResponse:
     return PipelineIndexResponse(pipelines=surfaces)
 
 
-@router.get("/{key}", response_model=PipelineDesignResponse)
+@router.get("/{key}", response_model=PipelineDesignResponse, dependencies=[Depends(require(Capability.READ))])
 @auto_handle_errors
 async def get_pipeline_design(key: str, full: bool = False) -> PipelineDesignResponse:
     """
@@ -148,7 +149,7 @@ async def get_pipeline_design(key: str, full: bool = False) -> PipelineDesignRes
     )
 
 
-@router.post("/{key}/inspect", response_model=InspectResponse)
+@router.post("/{key}/inspect", response_model=InspectResponse, dependencies=[Depends(require(Capability.READ))])
 @auto_handle_errors
 async def inspect_pipeline(key: str, request: InspectRequest) -> InspectResponse:
     """
@@ -180,7 +181,7 @@ async def inspect_pipeline(key: str, request: InspectRequest) -> InspectResponse
     )
 
 
-@router.post("/{key}/edit", response_model=EditResponse)
+@router.post("/{key}/edit", response_model=EditResponse, dependencies=[Depends(require(Capability.READ))])
 @auto_handle_errors
 async def edit_pipeline(key: str, request: EditRequest) -> EditResponse:
     """
@@ -219,7 +220,7 @@ async def edit_pipeline(key: str, request: EditRequest) -> EditResponse:
     )
 
 
-@router.post("/{key}/stages/view", response_model=StageViewResponse)
+@router.post("/{key}/stages/view", response_model=StageViewResponse, dependencies=[Depends(require(Capability.READ))])
 @auto_handle_errors
 async def view_stages(key: str, request: StageViewRequest) -> StageViewResponse:
     """
@@ -248,7 +249,7 @@ async def view_stages(key: str, request: StageViewRequest) -> StageViewResponse:
     return StageViewResponse(stages=stages, valid=not issues, issues=issues)
 
 
-@router.post("/{key}/stages/apply", response_model=StageApplyResponse)
+@router.post("/{key}/stages/apply", response_model=StageApplyResponse, dependencies=[Depends(require(Capability.READ))])
 @auto_handle_errors
 async def apply_stage_action(key: str, request: StageApplyRequest) -> StageApplyResponse:
     """
