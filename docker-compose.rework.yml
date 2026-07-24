@@ -38,6 +38,11 @@ services:
         condition: service_healthy
       rework_redis:
         condition: service_started
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 2g
     restart: unless-stopped
     networks:
       - rework_net
@@ -77,6 +82,11 @@ services:
         condition: service_started
       rework_seaweedfs:
         condition: service_started
+    deploy:
+      resources:
+        limits:
+          cpus: "4"
+          memory: 8g
     restart: unless-stopped
     networks:
       - rework_net
@@ -96,6 +106,11 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 4g
     restart: unless-stopped
     networks:
       - rework_net
@@ -114,19 +129,24 @@ services:
 
   # ── Qdrant — vector store (named dense + sparse per collection) ─────────────
   rework_qdrant:
-    image: qdrant/qdrant:latest
+    image: qdrant/qdrant:v1.18.2
     container_name: docforge-rework-qdrant
     ports:
       - "10043:6333"              # REST API (local dev + operator inspection)
     volumes:
       - rework_qdrant_data:/qdrant/storage
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 4g
     restart: unless-stopped
     networks:
       - rework_net
 
   # ── SeaweedFS — S3-compatible blob store (content-addressed objects) ────────
   rework_seaweedfs:
-    image: chrislusf/seaweedfs:latest
+    image: chrislusf/seaweedfs:4.38
     container_name: docforge-rework-seaweedfs
     command: >
       server
