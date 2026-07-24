@@ -1,7 +1,7 @@
 # ====== Code Summary ======
 # Database — THE single point of contact with the data layer. It owns the three store clients
 # (Postgres = tabular truth, Qdrant = vectors, S3 = blobs) and exposes every operation through its
-# domain façades: `db.collections`, `db.ingestion`, `db.documents`, `db.metagen`, `db.search`,
+# domain façades: `db.collections`, `db.ingestion`, `db.documents`, `db.search`,
 # `db.jobs`, `db.auth`. Nothing outside this object touches a client or an api directly — the
 # cross-store coherence rules (write PG-first, delete Qdrant-first, reference-filtered blob purge)
 # are encoded once, inside the façades it composes.
@@ -23,7 +23,6 @@ from .facades import (
     FilterSyncFacade,
     IngestionFacade,
     JobsFacade,
-    MetagenFacade,
     MetaVectorSyncFacade,
     SearchFacade,
 )
@@ -40,7 +39,6 @@ class Database(LoggerClass):
         enablement (EnablementFacade): Reversible enable/disable of documents/chunks (flag + payload).
         filters (FilterSyncFacade): Denormalise document-scope filterable metadata onto chunk points.
         meta_vectors (MetaVectorSyncFacade): Populate document-scope metadata named vectors on points.
-        metagen (MetagenFacade): Post-hoc generated chunk metadata (PG + Qdrant, no re-ingest).
         search (SearchFacade): Hybrid filtered search + Postgres hydration.
         jobs (JobsFacade): Ingestion job lifecycle + stage timeline.
         auth (AuthFacade): User accounts + API keys.
@@ -65,7 +63,6 @@ class Database(LoggerClass):
         self.enablement = EnablementFacade(postgres, qdrant)
         self.filters = FilterSyncFacade(postgres, qdrant)
         self.meta_vectors = MetaVectorSyncFacade(postgres, qdrant)
-        self.metagen = MetagenFacade(postgres, qdrant)
         self.search = SearchFacade(postgres, qdrant)
         self.jobs = JobsFacade(postgres)
         self.auth = AuthFacade(postgres)

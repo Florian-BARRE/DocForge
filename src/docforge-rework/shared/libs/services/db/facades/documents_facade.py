@@ -1,9 +1,8 @@
 # ====== Code Summary ======
 # DocumentsFacade — reading, inspecting and deleting documents. Inspection exposes everything for
-# debugging: the raw IR vs the enriched IR (IRBundle + per-enrichment attempt traces), the stored
-# (enriched) chunks with their composition (to recompute the raw form) and their generated
-# metadata. Deletion runs the coherent cross-store order: Qdrant points first, PG cascade, then the
-# reference-filtered blob purge, S3 last.
+# debugging: the raw IR vs the enriched IR (IRBundle), the stored (enriched) chunks with their
+# composition (to recompute the raw form) and their generated metadata. Deletion runs the coherent
+# cross-store order: Qdrant points first, PG cascade, then the reference-filtered blob purge, S3 last.
 
 # ====== Standard Library Imports ======
 import uuid
@@ -19,7 +18,6 @@ from shared_libs.services.db.postgresql.tables import (
     ChunkMetadata,
     Document,
     DocumentMetadata,
-    EnrichmentAttempt,
     Page,
 )
 from shared_libs.services.db.qdrant import QdrantClient, QdrantIndexApi
@@ -71,13 +69,6 @@ class DocumentsFacade(LoggerClass):
                 enrichments=await IRApi.get_document_enrichments(session, document_id),
             )
 
-    async def get_enrichment_trace(
-        self, block_enrichment_id: uuid.UUID
-    ) -> list[EnrichmentAttempt]:
-        """The model chain behind one enrichment — every attempt, failures included, in order."""
-        async with self._postgres.session() as session:
-            return await IRApi.get_attempts(session, block_enrichment_id)
-
     async def get_chunks(self, document_id: uuid.UUID) -> list[Chunk]:
         """The document's chunks (stored = the enriched, embedded form), in order."""
         async with self._postgres.session() as session:
@@ -88,22 +79,12 @@ class DocumentsFacade(LoggerClass):
         async with self._postgres.session() as session:
             return await ChunkApi.get_by_ids(session, chunk_ids)
 
-    async def get_chunk_composition(self, chunk_id: uuid.UUID) -> list[ChunkBlock]:
-        """Which IR blocks compose a chunk, in assembly order — recompute the raw form from it."""
-        async with self._postgres.session() as session:
-            return await ChunkApi.get_composition(session, chunk_id)
-
     async def get_document_chunk_composition(
         self, document_id: uuid.UUID
     ) -> list[ChunkBlock]:
         """Every chunk's composition for a document, ordered by chunk then position (bulk)."""
         async with self._postgres.session() as session:
             return await ChunkApi.get_composition_for_document(session, document_id)
-
-    async def get_chunk_metadata(self, chunk_id: uuid.UUID) -> list[ChunkMetadata]:
-        """A chunk's generated metadata values."""
-        async with self._postgres.session() as session:
-            return await ChunkApi.get_metadata(session, chunk_id)
 
     async def get_document_chunk_metadata(
         self, document_id: uuid.UUID

@@ -2,7 +2,7 @@
 # ChunkApi — the data-access API for the chunk domain: the chunks (enriched text), their composition
 # (chunk_block, the IR blocks that form each), and the chunk-level derived rows (generated metadata,
 # doc2query questions, entity mentions). `get_by_ids` is the hydration path after a Qdrant search;
-# `get_composition` lets a caller recompute the raw chunk from its blocks.
+# `get_composition_for_document` lets a caller recompute the raw chunks from their blocks.
 
 # ====== Standard Library Imports ======
 import uuid
@@ -96,16 +96,6 @@ class ChunkApi:
         return list(result.scalars().all())
 
     @staticmethod
-    async def get_composition(session: AsyncSession, chunk_id: uuid.UUID) -> list[ChunkBlock]:
-        """Return a chunk's block memberships, in assembly order (to recompute the raw chunk)."""
-        result = await session.execute(
-            select(ChunkBlock)
-            .where(ChunkBlock.chunk_id == chunk_id)
-            .order_by(ChunkBlock.position)
-        )
-        return list(result.scalars().all())
-
-    @staticmethod
     async def get_composition_for_document(
         session: AsyncSession, document_id: uuid.UUID
     ) -> list[ChunkBlock]:
@@ -113,8 +103,7 @@ class ChunkApi:
         Return every chunk↔block membership of a document's chunks in ONE query.
 
         Ordered by (chunk_id, position) so a caller can group by chunk and keep the assembly
-        order — the bulk form of `get_composition`, avoiding a per-chunk N+1 when exploring a
-        whole document's chunks.
+        order, avoiding a per-chunk N+1 when exploring a whole document's chunks.
         """
         result = await session.execute(
             select(ChunkBlock)
@@ -125,22 +114,14 @@ class ChunkApi:
         return list(result.scalars().all())
 
     @staticmethod
-    async def get_metadata(session: AsyncSession, chunk_id: uuid.UUID) -> list[ChunkMetadata]:
-        """Return a chunk's generated metadata values (inspection + indexing)."""
-        result = await session.execute(
-            select(ChunkMetadata).where(ChunkMetadata.chunk_id == chunk_id)
-        )
-        return list(result.scalars().all())
-
-    @staticmethod
     async def get_metadata_for_document(
         session: AsyncSession, document_id: uuid.UUID
     ) -> list[ChunkMetadata]:
         """
         Return every generated metadata value of a document's chunks in ONE query.
 
-        The bulk form of `get_metadata`, avoiding a per-chunk N+1 when exploring a whole
-        document's chunks — the caller groups the rows by chunk_id.
+        Avoids a per-chunk N+1 when exploring a whole document's chunks — the caller groups
+        the rows by chunk_id.
         """
         result = await session.execute(
             select(ChunkMetadata)

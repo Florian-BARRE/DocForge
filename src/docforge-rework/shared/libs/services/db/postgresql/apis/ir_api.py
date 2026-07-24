@@ -92,14 +92,6 @@ class IRApi:
         return list(result.scalars().all())
 
     @staticmethod
-    async def get_enrichments(session: AsyncSession, block_id: str) -> list[BlockEnrichment]:
-        """Return a block's enrichments (ocr / vlm / …)."""
-        result = await session.execute(
-            select(BlockEnrichment).where(BlockEnrichment.block_id == block_id)
-        )
-        return list(result.scalars().all())
-
-    @staticmethod
     async def get_document_enrichments(
         session: AsyncSession, document_id: uuid.UUID
     ) -> list[BlockEnrichment]:
@@ -108,18 +100,6 @@ class IRApi:
             select(BlockEnrichment).join(Block, BlockEnrichment.block_id == Block.id).where(
                 Block.document_id == document_id
             )
-        )
-        return list(result.scalars().all())
-
-    @staticmethod
-    async def get_attempts(
-        session: AsyncSession, block_enrichment_id: uuid.UUID
-    ) -> list[EnrichmentAttempt]:
-        """Return an enrichment's model-chain attempts, in order."""
-        result = await session.execute(
-            select(EnrichmentAttempt)
-            .where(EnrichmentAttempt.block_enrichment_id == block_enrichment_id)
-            .order_by(EnrichmentAttempt.position)
         )
         return list(result.scalars().all())
 

@@ -29,19 +29,9 @@ class DocumentIR(Artifact):
     )
 
     @property
-    def heading_blocks(self) -> list[Block]:
-        """Return the HEADING blocks, in reading order."""
-        return [block for block in self.blocks if block.block_type == BlockType.HEADING]
-
-    @property
     def figure_blocks(self) -> list[Block]:
         """Return the FIGURE blocks, in reading order."""
         return [block for block in self.blocks if block.block_type == BlockType.FIGURE]
-
-    @property
-    def table_blocks(self) -> list[Block]:
-        """Return the TABLE blocks, in reading order."""
-        return [block for block in self.blocks if block.block_type == BlockType.TABLE]
 
 
 __all__ = ["DocumentIR"]

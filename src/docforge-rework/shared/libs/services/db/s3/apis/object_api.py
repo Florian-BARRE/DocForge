@@ -1,39 +1,22 @@
 # ====== Code Summary ======
-# S3ObjectApi — the object operations of the blob store: put one or many, get, delete, and exists,
-# all keyed by (bucket, key). Content-addressing lives one layer up (the key IS the blob's content
-# hash, computed by the façade); this api is purely key-based. It runs against the client the
-# S3Client hands out, the way the Postgres apis run against a session.
+# S3ObjectApi — the object operations of the blob store: put many, get, and delete, all keyed by
+# (bucket, key). Content-addressing lives one layer up (the key IS the blob's content hash, computed
+# by the façade); this api is purely key-based. It runs against the client the S3Client hands out,
+# the way the Postgres apis run against a session.
 
 # ====== Standard Library Imports ======
 from collections.abc import Sequence
 from typing import Any
 
-# ====== Third-Party Library Imports ======
-from botocore.exceptions import ClientError
-
 # ====== Local Project Imports ======
 from ..objects import S3Object
 
-# Error codes a missing object surfaces as (SeaweedFS / S3 vary on head vs get).
-_NOT_FOUND_CODES = frozenset({"404", "NoSuchKey", "NotFound"})
-
 
 class S3ObjectApi:
-    """Static object operations (put / get / delete / exists) for the blob store."""
+    """Static object operations (put / get / delete) for the blob store."""
 
     def __new__(cls, *args: object, **kwargs: object) -> None:
         raise TypeError("S3ObjectApi is a static-only class and cannot be instantiated.")
-
-    @staticmethod
-    async def put(
-        client: Any,
-        bucket: str,
-        key: str,
-        data: bytes,
-        content_type: str = "application/octet-stream",
-    ) -> None:
-        """Store one object under ``key`` — overwrites (content-addressed, so it is the same bytes)."""
-        await client.put_object(Bucket=bucket, Key=key, Body=data, ContentType=content_type)
 
     @staticmethod
     async def put_many(client: Any, bucket: str, objects: Sequence[S3Object]) -> None:
@@ -60,17 +43,6 @@ class S3ObjectApi:
         """Delete several objects — the blob purge path (call with reference-checked keys only)."""
         for key in keys:
             await client.delete_object(Bucket=bucket, Key=key)
-
-    @staticmethod
-    async def exists(client: Any, bucket: str, key: str) -> bool:
-        """Return whether an object exists under ``key``."""
-        try:
-            await client.head_object(Bucket=bucket, Key=key)
-            return True
-        except ClientError as exc:
-            if exc.response.get("Error", {}).get("Code") in _NOT_FOUND_CODES:
-                return False
-            raise
 
 
 __all__ = ["S3ObjectApi"]

@@ -40,11 +40,6 @@ class BlobApi:
         return await session.get(Blob, content_hash)
 
     @staticmethod
-    async def exists(session: AsyncSession, content_hash: str) -> bool:
-        """Return whether a blob with this content hash is registered."""
-        return await session.get(Blob, content_hash) is not None
-
-    @staticmethod
     async def collect_hashes_for_document(
         session: AsyncSession, document_id: uuid.UUID
     ) -> list[str]:

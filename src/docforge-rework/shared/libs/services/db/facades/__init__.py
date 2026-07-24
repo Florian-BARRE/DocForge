@@ -9,7 +9,6 @@ from .enablement_facade import EnablementFacade
 from .filter_sync_facade import FilterSyncFacade
 from .ingestion_facade import IngestionFacade
 from .meta_vector_sync_facade import MetaVectorSyncFacade
-from .metagen_facade import MetagenFacade
 from .search_facade import SearchFacade
 from .jobs_facade import JobsFacade
 from .auth_facade import AuthFacade
@@ -26,7 +25,6 @@ __all__ = [
     "FilterSyncFacade",
     "IngestionFacade",
     "MetaVectorSyncFacade",
-    "MetagenFacade",
     "SearchFacade",
     "JobsFacade",
     "AuthFacade",
