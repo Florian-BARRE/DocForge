@@ -2,6 +2,25 @@
 // Shared fetch plumbing: one error type every feature catches the same way, and a normalizer
 // for the several `detail` shapes the backend can return (plain string, FastAPI's own
 // loc/msg/type validation errors, or the collections router's own code/location/message list).
+// Also owns the API token store — `apiFetch` is the single chokepoint that attaches the Bearer
+// header, so every existing `api/*.ts` client gets auth for free.
+
+const TOKEN_STORAGE_KEY = "docforge_api_token";
+
+/** Reads the API token the user pasted in — `null` when unset (dev / auth-off backends). */
+export function getApiToken(): string | null {
+  return localStorage.getItem(TOKEN_STORAGE_KEY);
+}
+
+/** Persists the API token so it survives a reload. */
+export function setApiToken(token: string): void {
+  localStorage.setItem(TOKEN_STORAGE_KEY, token);
+}
+
+/** Drops the stored token — subsequent requests go out unauthenticated again. */
+export function clearApiToken(): void {
+  localStorage.removeItem(TOKEN_STORAGE_KEY);
+}
 
 export interface ApiIssue {
   code?: string;
@@ -51,7 +70,11 @@ function normalizeDetail(detail: unknown): ApiIssue[] {
 
 /** JSON request helper: throws HttpError with normalized issues on any non-2xx response. */
 export async function apiFetch<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, init);
+  const token = getApiToken();
+  const headers = token
+    ? { ...(init?.headers as Record<string, string> | undefined), Authorization: `Bearer ${token}` }
+    : init?.headers;
+  const response = await fetch(url, { ...init, headers });
   if (!response.ok) {
     let issues: ApiIssue[] = [{ message: `Request failed (${response.status})` }];
     try {

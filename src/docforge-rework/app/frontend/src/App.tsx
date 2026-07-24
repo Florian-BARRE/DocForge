@@ -3,6 +3,7 @@
 // rolled routing (no router dependency) — a plain useState<View> is enough for this app's depth.
 
 import { useState } from "react";
+import { AuthKeysPage } from "./features/auth/AuthKeysPage";
 import { CollectionDetailPage } from "./features/collections/CollectionDetailPage";
 import { CollectionEditPage } from "./features/collections/CollectionEditPage";
 import { CollectionPipelinePage } from "./features/collections/CollectionPipelinePage";
@@ -39,6 +40,7 @@ export function App() {
         )}
         {view.name === "job" && <JobDetailPage jobId={view.jobId} collectionId={view.collectionId} onNavigate={setView} />}
         {view.name === "workers" && <WorkersPanel onNavigate={setView} />}
+        {view.name === "api-keys" && <AuthKeysPage />}
       </div>
     </div>
   );

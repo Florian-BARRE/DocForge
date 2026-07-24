@@ -3,6 +3,7 @@
 // MEMORY for the discussed alternatives) + the two top-level destinations (Collections, Workers).
 
 import { theme } from "../theme";
+import { TokenControl } from "./TokenControl";
 import type { Navigate, View } from "./view";
 
 const COLLECTIONS_VIEWS: View["name"][] = [
@@ -41,7 +42,13 @@ export function TopBar({ view, onNavigate }: TopBarProps) {
         <button style={tabStyle(view.name === "workers")} onClick={() => onNavigate({ name: "workers" })}>
           Workers
         </button>
+        <button style={tabStyle(view.name === "api-keys")} onClick={() => onNavigate({ name: "api-keys" })}>
+          API Keys
+        </button>
       </nav>
+      <div style={{ marginLeft: "auto" }}>
+        <TokenControl />
+      </div>
     </header>
   );
 }
