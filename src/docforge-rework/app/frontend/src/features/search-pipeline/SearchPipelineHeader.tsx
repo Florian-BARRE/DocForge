@@ -12,6 +12,8 @@ interface SearchPipelineHeaderProps {
   subtitle?: string;
   valid: boolean;
   checking: boolean;
+  /** A debounced config edit is armed but hasn't reached `/inspect` yet — the `valid` badge is stale. */
+  debouncePending: boolean;
   issueCount: number;
   dirty: boolean;
   onReset?: () => void;
@@ -22,8 +24,9 @@ interface SearchPipelineHeaderProps {
 }
 
 export function SearchPipelineHeader({
-  title, subtitle, valid, checking, issueCount, dirty, onReset, resetting, onSave, saving, saveError,
+  title, subtitle, valid, checking, debouncePending, issueCount, dirty, onReset, resetting, onSave, saving, saveError,
 }: SearchPipelineHeaderProps) {
+  const savePending = saving || resetting || checking || debouncePending;
   return (
     <header
       style={{
@@ -52,8 +55,13 @@ export function SearchPipelineHeader({
           <Button
             variant="primary"
             onClick={onSave}
-            disabled={saving || resetting || !valid || !dirty}
-            title={!valid ? "Fix every issue before saving" : !dirty ? "No changes to save" : undefined}
+            disabled={savePending || !valid || !dirty}
+            title={
+              !valid ? "Fix every issue before saving"
+                : !dirty ? "No changes to save"
+                  : debouncePending ? "Waiting for pending edits to verify"
+                    : undefined
+            }
           >
             {saving ? "saving…" : "Save search pipeline"}
           </Button>

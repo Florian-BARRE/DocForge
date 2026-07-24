@@ -44,6 +44,7 @@ export function SearchPipelineEditor({ initialBlob, onSave, onResetToDefault, ti
   const [valid, setValid] = useState(true);
   const [issues, setIssues] = useState<ValidationIssue[]>([]);
   const [checking, setChecking] = useState(false);
+  const [debouncePending, setDebouncePending] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [resetting, setResetting] = useState(false);
@@ -125,6 +126,8 @@ export function SearchPipelineEditor({ initialBlob, onSave, onResetToDefault, ti
   }, []);
 
   // 3. Typing a node's config field: mutate the local blob immediately, debounce the /inspect.
+  //    `debouncePending` tracks that armed-but-not-yet-sent window so Save can be blocked — the
+  //    `valid` badge only reflects the LAST settled /inspect, which lags the local blob.
   const setNodeConfig = useCallback((nodeId: string, field: string, value: unknown) => {
     const current = blobLatestRef.current;
     if (!current) return;
@@ -132,7 +135,9 @@ export function SearchPipelineEditor({ initialBlob, onSave, onResetToDefault, ti
     blobLatestRef.current = next;
     setBlob(next);
     window.clearTimeout(debounceRef.current);
+    setDebouncePending(true);
     debounceRef.current = window.setTimeout(() => {
+      setDebouncePending(false);
       const settled = blobLatestRef.current;
       if (settled) runInspect(settled);
     }, DEBOUNCE_MS);
@@ -144,6 +149,7 @@ export function SearchPipelineEditor({ initialBlob, onSave, onResetToDefault, ti
     const current = blobLatestRef.current;
     if (!current) return;
     window.clearTimeout(debounceRef.current);
+    setDebouncePending(false);
     const updated = setRerankEnabled(current, next);
     blobLatestRef.current = updated;
     setBlob(updated);
@@ -170,7 +176,7 @@ export function SearchPipelineEditor({ initialBlob, onSave, onResetToDefault, ti
 
   // 6. Save: PATCH the current blob back. Only offered when the caller wants persistence here.
   const handleSave = useCallback(async () => {
-    if (!blob || !onSave || !valid) return;
+    if (!blob || !onSave || !valid || checking || debouncePending) return;
     setSaving(true);
     setSaveError(null);
     try {
@@ -181,7 +187,7 @@ export function SearchPipelineEditor({ initialBlob, onSave, onResetToDefault, ti
     } finally {
       setSaving(false);
     }
-  }, [blob, onSave, valid]);
+  }, [blob, onSave, valid, checking, debouncePending]);
 
   const dirty = useMemo(() => JSON.stringify(blob) !== JSON.stringify(savedBlob), [blob, savedBlob]);
 
@@ -195,6 +201,7 @@ export function SearchPipelineEditor({ initialBlob, onSave, onResetToDefault, ti
         subtitle={subtitle}
         valid={valid}
         checking={checking}
+        debouncePending={debouncePending}
         issueCount={issues.length}
         dirty={dirty}
         onReset={onResetToDefault ? handleReset : undefined}

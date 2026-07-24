@@ -24,7 +24,9 @@ const headStyle: React.CSSProperties = {
 };
 
 export function StepSchema({ mode, fields, onFieldsChange, onBack, onNext }: StepSchemaProps) {
-  const valid = fields.every((f) => f.field_name.trim().length > 0);
+  const valid = fields.every((f) =>
+    f.field_name.trim().length > 0 && (f.field_type !== "enum" || Boolean(f.enum_values?.length)),
+  );
 
   const updateAt = (index: number, field: DraftField) =>
     onFieldsChange(fields.map((f, i) => (i === index ? field : f)));

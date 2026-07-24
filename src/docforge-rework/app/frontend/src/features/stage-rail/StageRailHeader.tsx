@@ -11,6 +11,8 @@ interface StageRailHeaderProps {
   subtitle?: string;
   valid: boolean;
   busy: boolean;
+  /** A debounced config edit is armed but hasn't reached `/apply` yet — `blob` is stale. */
+  debouncePending: boolean;
   issueCount: number;
   onSave?: () => void;
   saving: boolean;
@@ -18,8 +20,9 @@ interface StageRailHeaderProps {
 }
 
 export function StageRailHeader({
-  title, subtitle, valid, busy, issueCount, onSave, saving, saveError,
+  title, subtitle, valid, busy, debouncePending, issueCount, onSave, saving, saveError,
 }: StageRailHeaderProps) {
+  const savePending = saving || busy || debouncePending;
   return (
     <header
       style={{
@@ -38,8 +41,12 @@ export function StageRailHeader({
         <Button
           variant="primary"
           onClick={onSave}
-          disabled={saving || !valid}
-          title={!valid ? "Fix every issue before saving" : undefined}
+          disabled={savePending || !valid}
+          title={
+            !valid ? "Fix every issue before saving"
+              : debouncePending ? "Waiting for pending edits to apply"
+                : undefined
+          }
           style={{ marginLeft: "auto" }}
         >
           {saving ? "saving…" : "Save pipeline"}

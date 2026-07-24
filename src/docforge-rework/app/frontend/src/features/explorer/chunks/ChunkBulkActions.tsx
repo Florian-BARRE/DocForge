@@ -15,12 +15,14 @@ interface ChunkBulkActionsProps {
 export function ChunkBulkActions({ selectedCount, onApply }: ChunkBulkActionsProps) {
   const [pending, setPending] = useState(false);
   const [note, setNote] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   if (selectedCount === 0) return null;
 
   const apply = async (enabled: boolean) => {
     setPending(true);
     setNote(null);
+    setError(null);
     try {
       const response = await onApply(enabled);
       const reindexCount = response.results.filter((result) => result.reindex_required).length;
@@ -28,6 +30,8 @@ export function ChunkBulkActions({ selectedCount, onApply }: ChunkBulkActionsPro
       if (reindexCount > 0) parts.push(`${reindexCount} won't be searchable until re-indexed`);
       if (response.not_found.length > 0) parts.push(`${response.not_found.length} not found`);
       setNote(parts.join(" · ") || null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
     } finally {
       setPending(false);
     }
@@ -45,6 +49,7 @@ export function ChunkBulkActions({ selectedCount, onApply }: ChunkBulkActionsPro
       <Button disabled={pending} onClick={() => apply(true)}>Enable</Button>
       <Button disabled={pending} onClick={() => apply(false)}>Disable</Button>
       {note && <span style={{ fontSize: theme.font.size.xs, color: theme.color.warn }}>{note}</span>}
+      {error && <span style={{ fontSize: theme.font.size.xs, color: theme.color.error }}>{error}</span>}
     </div>
   );
 }

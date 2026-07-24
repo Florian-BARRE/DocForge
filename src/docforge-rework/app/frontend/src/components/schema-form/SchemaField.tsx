@@ -7,6 +7,7 @@ import type { JsonSchema, JsonSchemaProperty } from "../../api/types";
 import { theme } from "../../theme";
 
 import { JsonField } from "./JsonField";
+import { NumberField } from "./NumberField";
 
 /** Pydantic hides enums behind $ref/$defs (sometimes wrapped in allOf) — inline them. */
 export function deref(prop: JsonSchemaProperty, schema: JsonSchema): JsonSchemaProperty {
@@ -68,14 +69,12 @@ export function SchemaField({ name, prop, schema, value, required = false, onCha
     );
   } else if (resolved.type === "number" || resolved.type === "integer") {
     control = (
-      <input
-        type="number"
-        step="any"
+      <NumberField
+        value={typeof current === "number" ? current : undefined}
         min={resolved.minimum}
         max={resolved.maximum}
         style={inputStyle}
-        value={current === undefined || current === null ? "" : String(current)}
-        onChange={(e) => onChange(Number(e.target.value))}
+        onChange={onChange}
       />
     );
   } else if (resolved.type === "array" || resolved.type === "object") {

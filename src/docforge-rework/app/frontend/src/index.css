@@ -1,11 +1,6 @@
-/* Global reset + base — all component styling uses theme.ts tokens inline. */
+/* Global reset only — base colours/typography are applied from theme.ts in main.tsx (single
+   source of truth; kept out of CSS so they can't silently drift from the tokens). */
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html, body, #root { height: 100%; }
-body {
-  background: #0f1115;
-  color: #d7dce5;
-  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-  font-size: 13px;
-  overflow: hidden;
-}
+body { overflow: hidden; }
 input, select, button, textarea { font: inherit; color: inherit; }

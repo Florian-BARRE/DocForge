@@ -50,6 +50,7 @@ export function StageRailPage({ initialBlob, onBlobChange, onSave, title, subtit
   const [loadError, setLoadError] = useState<string | null>(null);
   const [applyError, setApplyError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [debouncePending, setDebouncePending] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const onBlobChangeRef = useRef(onBlobChange);
@@ -132,7 +133,9 @@ export function StageRailPage({ initialBlob, onBlobChange, onSave, title, subtit
   }, []);
 
   // 4. The ONE exception: typing updates the local `stages` mirror immediately so the keystroke
-  //    feels native, then debounces the actual `/apply` round-trip.
+  //    feels native, then debounces the actual `/apply` round-trip. `debouncePending` tracks that
+  //    armed-but-not-yet-sent window so Save can be blocked — `blob` only mirrors the LAST settled
+  //    `/apply`, so saving while a debounce is armed would persist a stale blob.
   const debounceRef = useRef<number>();
   const applyLocalThenDebounced = useCallback(
     (mutateLocally: (s: StageView[]) => StageView[], buildAction: (s: StageView[]) => StageAction) => {
@@ -142,7 +145,9 @@ export function StageRailPage({ initialBlob, onBlobChange, onSave, title, subtit
       stagesLatestRef.current = next;
       setStages(next);
       window.clearTimeout(debounceRef.current);
+      setDebouncePending(true);
       debounceRef.current = window.setTimeout(() => {
+        setDebouncePending(false);
         const settled = stagesLatestRef.current;
         if (settled) applyAction(buildAction(settled));
       }, DEBOUNCE_MS);
@@ -187,7 +192,7 @@ export function StageRailPage({ initialBlob, onBlobChange, onSave, title, subtit
 
   // 6. Save: PATCH the current blob back. Only offered when the caller wants persistence here.
   const handleSave = useCallback(async () => {
-    if (!blob || !onSave || !valid) return;
+    if (!blob || !onSave || !valid || busy || debouncePending) return;
     setSaving(true);
     setSaveError(null);
     try {
@@ -197,7 +202,7 @@ export function StageRailPage({ initialBlob, onBlobChange, onSave, title, subtit
     } finally {
       setSaving(false);
     }
-  }, [blob, onSave, valid]);
+  }, [blob, onSave, valid, busy, debouncePending]);
 
   if (loadError) return <ErrorState message={loadError} />;
   if (!palette || !stages) return <LoadingState label="loading pipeline stages…" />;
@@ -209,6 +214,7 @@ export function StageRailPage({ initialBlob, onBlobChange, onSave, title, subtit
         subtitle={subtitle}
         valid={valid}
         busy={busy}
+        debouncePending={debouncePending}
         issueCount={issues.length}
         onSave={onSave ? handleSave : undefined}
         saving={saving}
