@@ -4,8 +4,12 @@ collection's own search graph when it carries one, else the stock default.
 These exercise the pure resolution logic (no DB, no runner): a collection whose ``search`` has a
 ``"nodes"`` list runs THAT topology; ``{}`` (or anything without ``"nodes"``) resolves to the stock
 default; and a per-query pool override lands on the resolved blob's retrieve node. ``from backend...``
-imports are deferred until after ``fastapi_app`` registered app/ on sys.path. End-to-end run wiring is
-covered live (see the phase's live proof) — this isolates the branch that picks the blob.
+imports are deferred until after ``fastapi_app`` registered app/ on sys.path.
+
+NOTE: end-to-end run wiring (this resolved blob actually executed through FlowEngine against a real
+store) has NO test today, live or unit — that gap is still open. This file isolates only the pure
+branch that PICKS the blob; see tests/units/search/test_search_pipeline.py for the graph-execution
+coverage (against a mocked read port, not this resolution seam).
 """
 
 from types import SimpleNamespace

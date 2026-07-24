@@ -31,6 +31,8 @@ from shared_libs.public_models.search import (
     RawQuery,
     SearchContract,
     SearchResult,
+    SearchTarget,
+    default_content_targets,
 )
 
 
@@ -243,6 +245,54 @@ def test_search_placeholders_are_registered_but_hidden() -> None:
             described = NodeRegistry.get(family, kind).describe()
             assert described.selectable is False
     assert NodeRegistry.get("rerank", "colbert").describe().scored is True
+
+
+class TargetCapturingReadPort(CollectionReadPort):
+    """A read port that records the exact `targets` it was driven with — no store."""
+
+    def __init__(self) -> None:
+        self.targets_seen: list = None
+
+    async def hybrid_search(self, encoded, filters, limit, targets=None, rescore_pool_size=None):
+        self.targets_seen = targets
+        return [Candidate(chunk_id="c1", score=0.9, source="hybrid")]
+
+    async def hydrate(self, chunk_ids):
+        return {
+            chunk_id: Hit(chunk_id=chunk_id, document_id="doc", text="t", metadata={})
+            for chunk_id in chunk_ids
+        }
+
+
+def test_search_targets_carry_through_to_the_read_port() -> None:
+    """A caller-selected metadata search target reaches the port's hybrid_search UNCHANGED."""
+    group = PipelineBuilder().build(SearchPipeline.default_blob())
+    port = TargetCapturingReadPort()
+    _bind_read_port(group, port)
+
+    targets = [SearchTarget(field="tags", semantic=True)]
+    run_input = _fake_run_input()
+    run_input["query"] = RawQuery(text="hello", top_k=3, search_targets=targets, flags={})
+
+    output, record = asyncio.run(FlowEngine().execute(group, run_input))
+
+    assert record.status.value == "success", record
+    assert port.targets_seen == targets
+
+
+def test_empty_search_targets_falls_back_to_default_content_targets() -> None:
+    """An EMPTY search_targets list normalises back to the content default (never zero targets)."""
+    group = PipelineBuilder().build(SearchPipeline.default_blob())
+    port = TargetCapturingReadPort()
+    _bind_read_port(group, port)
+
+    run_input = _fake_run_input()
+    run_input["query"] = RawQuery(text="hello", top_k=3, search_targets=[], flags={})
+
+    output, record = asyncio.run(FlowEngine().execute(group, run_input))
+
+    assert record.status.value == "success", record
+    assert port.targets_seen == default_content_targets()
 
 
 @pytest.mark.parametrize("kind", ["understand", "colbert", "rrf", "mmr"])

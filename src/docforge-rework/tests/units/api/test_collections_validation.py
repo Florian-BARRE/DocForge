@@ -6,6 +6,9 @@ tests/live/ against the real stack — see [[port-scratchpad-gap-plan]].
 
 import uuid
 
+import pytest
+from fastapi import HTTPException
+
 
 def test_create_collection_missing_required_name_is_422(client) -> None:
     response = client.post(
@@ -95,3 +98,68 @@ def test_patch_collection_unknown_field_type_in_fields_is_422(client) -> None:
         json={"fields": [{"field_name": "x", "field_type": "still_not_real"}]},
     )
     assert response.status_code == 422, response.text
+
+
+# ── _validate_fields guards (store-free: called directly, so no name-clash / DB dependency) ──
+# `fastapi_app` registers app/ on sys.path; the `backend` imports are deferred until then.
+
+
+def test_validate_fields_reserved_payload_key_name_is_422(fastapi_app) -> None:
+    """A field named after a reserved chunk-payload key would overwrite it when denormalised."""
+    from backend.routers.collections.models import FieldSpecModel
+    from backend.routers.collections.router import _validate_fields
+
+    with pytest.raises(HTTPException) as exc:
+        _validate_fields([FieldSpecModel(field_name="enabled", field_type="string")])
+    assert exc.value.status_code == 422
+    assert "reserved" in exc.value.detail
+
+
+def test_validate_fields_content_field_name_is_422(fastapi_app) -> None:
+    """'content' is the search-target sentinel for the chunk body — reserved alongside the keys."""
+    from backend.routers.collections.models import FieldSpecModel
+    from backend.routers.collections.router import _validate_fields
+
+    with pytest.raises(HTTPException) as exc:
+        _validate_fields([FieldSpecModel(field_name="content", field_type="string")])
+    assert exc.value.status_code == 422
+    assert "reserved" in exc.value.detail
+
+
+def test_validate_fields_chunk_scope_non_generated_is_422(fastapi_app) -> None:
+    """Chunk-scope values are produced by the pipeline — a user cannot declare them at upload."""
+    from backend.routers.collections.models import FieldSpecModel
+    from backend.routers.collections.router import _validate_fields
+
+    with pytest.raises(HTTPException) as exc:
+        _validate_fields(
+            [FieldSpecModel(field_name="summary", field_type="string", scope="chunk", origin="user")]
+        )
+    assert exc.value.status_code == 422
+    assert "chunk scope" in exc.value.detail
+
+
+def test_validate_fields_chunk_scope_lexical_is_422(fastapi_app) -> None:
+    """No BM25 producer exists for chunk-scope metadata — reject up front, not silent-empty search."""
+    from backend.routers.collections.models import FieldSpecModel
+    from backend.routers.collections.router import _validate_fields
+
+    with pytest.raises(HTTPException) as exc:
+        _validate_fields(
+            [
+                FieldSpecModel(
+                    field_name="tag", field_type="string", scope="chunk",
+                    origin="generated", lexical=True,
+                )
+            ]
+        )
+    assert exc.value.status_code == 422
+    assert "lexical" in exc.value.detail
+
+
+def test_validate_fields_clean_field_does_not_raise(fastapi_app) -> None:
+    """A well-formed document-scope field passes the guard without raising."""
+    from backend.routers.collections.models import FieldSpecModel
+    from backend.routers.collections.router import _validate_fields
+
+    _validate_fields([FieldSpecModel(field_name="author", field_type="string", filterable=True)])
