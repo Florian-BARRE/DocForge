@@ -1,8 +1,10 @@
 # ====== Code Summary ======
-# BatchingEngine: owns four BatchQueueWorkers (dense / sparse / colbert / rerank) and the single
-# shared asyncio.Lock that serializes all model calls. Public submit_* coroutines create a Future,
-# wrap it in the appropriate BatchItem, enqueue it, and await the result. Protected _process_*
-# methods flatten the batch, run the model call under the lock via asyncio.to_thread, and scatter
+# BatchingEngine: owns four BatchQueueWorkers (dense / sparse / colbert / rerank) and TWO
+# asyncio.Locks: embed_lock (dense/sparse/colbert, which share BgeModelsService.embed_model) and
+# rerank_lock (independent — BgeModelsService.reranker is a separate FlagReranker instance, so
+# rerank is not serialized behind embed calls). Public submit_* coroutines create a Future, wrap
+# it in the appropriate BatchItem, enqueue it, and await the result. Protected _process_* methods
+# flatten the batch, run the model call under the relevant lock via asyncio.to_thread, and scatter
 # results back to each item's future. Rerank scatter re-numbers indices 0..n-1 per request.
 # Per-item error isolation: batch failures set the exception on every future in the batch.
 
@@ -14,7 +16,7 @@ from typing import TYPE_CHECKING
 from loggerplusplus import LoggerClass
 
 # ====== Local Project Imports ======
-from .models import BatchItem, EmbedItem, QueueFullError, RerankItem
+from .models import BatchItem, EmbedItem, RerankItem
 
 if TYPE_CHECKING:
     from libs.bge_models.service import BgeModelsService
@@ -22,14 +24,22 @@ if TYPE_CHECKING:
 
 class BatchingEngine(LoggerClass):
     """
-    Composes four BatchQueueWorkers (dense / sparse / colbert / rerank) with a shared model lock.
+    Composes four BatchQueueWorkers (dense / sparse / colbert / rerank) with two model locks.
 
     Architecture:
     - One worker per op-type so batches form independently per op.
-    - One asyncio.Lock shared across all workers: dense, sparse, and colbert all call the
-      same embed_model instance; concurrent forward passes on shared torch/tokenizer/CUDA
-      state are unsafe. The lock serialises all model calls while still allowing batch
-      formation to overlap.
+    - TWO asyncio.Locks, not one:
+        - embed_lock: shared by dense, sparse, and colbert, which all call the same
+          embed_model (BGEM3FlagModel) instance; concurrent forward passes on shared
+          torch/tokenizer/CUDA state are unsafe, so these three are serialised together.
+        - rerank_lock: rerank calls a SEPARATE FlagReranker instance (BgeModelsService.reranker),
+          so it has no shared-state reason to serialise behind embed calls. Coupling it to
+          embed_lock would head-of-line-block interactive search reranking behind bulk
+          ingestion embedding, which can legitimately run for seconds. On CPU deployments
+          (the default), BgeModelsService derives torch's intra-op thread cap assuming up to
+          two concurrent forward passes (embed-family + rerank) — see
+          BgeModelsService._max_concurrency — to bound thread-pool oversubscription now that
+          both locks can be held at once.
     - submit_* coroutines are the only public interface: create Future -> enqueue item ->
       await Future. QueueFullError propagates to the caller unchanged.
 
@@ -61,9 +71,12 @@ class BatchingEngine(LoggerClass):
         self._models = models
         self._max_length = max_length
 
-        # One shared lock — dense and sparse share embed_model; serialising all model calls
-        # is the correct safety invariant (GPU also serialises hardware, so no throughput cost).
-        self._model_lock = asyncio.Lock()
+        # embed_lock — dense, sparse, and colbert all call the same embed_model instance, so
+        # they share this lock (safety invariant: no concurrent forward passes on one instance).
+        self._embed_lock = asyncio.Lock()
+        # rerank_lock — the reranker is a separate FlagReranker instance with no shared state
+        # with embed_model, so it gets its own lock instead of queuing behind embed calls.
+        self._rerank_lock = asyncio.Lock()
 
         # Import here to avoid circular imports at module level; BatchQueueWorker only needs
         # the models attribute at process time, not at construction.
@@ -119,9 +132,9 @@ class BatchingEngine(LoggerClass):
                 offsets.append((start, len(flat_texts)))
 
             # 2. Run the model call in a thread to avoid blocking the event loop;
-            #    acquire the shared lock first so dense and sparse calls never overlap.
+            #    acquire embed_lock first so dense/sparse/colbert calls never overlap.
             max_length = self._max_length
-            async with self._model_lock:
+            async with self._embed_lock:
                 vecs: list[list[float]] = await asyncio.to_thread(
                     self._models.encode_dense, flat_texts, max_length
                 )
@@ -139,7 +152,7 @@ class BatchingEngine(LoggerClass):
 
     async def _process_sparse(self, batch: list[BatchItem]) -> None:
         """
-        Flatten, run sparse encode under the model lock, scatter results back.
+        Flatten, run sparse encode under embed_lock, scatter results back.
 
         Args:
             batch (list[BatchItem]): Batch of EmbedItem instances from the sparse worker.
@@ -154,9 +167,9 @@ class BatchingEngine(LoggerClass):
                 flat_texts.extend(item.texts)
                 offsets.append((start, len(flat_texts)))
 
-            # 2. Lock + to_thread (same embed_model as dense — mandatory serialisation)
+            # 2. embed_lock + to_thread (same embed_model as dense — mandatory serialisation)
             max_length = self._max_length
-            async with self._model_lock:
+            async with self._embed_lock:
                 token_lists: list[list[dict]] = await asyncio.to_thread(
                     self._models.encode_sparse, flat_texts, max_length
                 )
@@ -173,7 +186,7 @@ class BatchingEngine(LoggerClass):
 
     async def _process_colbert(self, batch: list[BatchItem]) -> None:
         """
-        Flatten, run colbert encode under the model lock, scatter results back.
+        Flatten, run colbert encode under embed_lock, scatter results back.
 
         Args:
             batch (list[BatchItem]): Batch of EmbedItem instances from the colbert worker.
@@ -188,9 +201,9 @@ class BatchingEngine(LoggerClass):
                 flat_texts.extend(item.texts)
                 offsets.append((start, len(flat_texts)))
 
-            # 2. Lock + to_thread (same embed_model as dense/sparse — mandatory serialisation)
+            # 2. embed_lock + to_thread (same embed_model as dense/sparse — mandatory serialisation)
             max_length = self._max_length
-            async with self._model_lock:
+            async with self._embed_lock:
                 token_vec_lists: list[list[list[float]]] = await asyncio.to_thread(
                     self._models.encode_colbert, flat_texts, max_length
                 )
@@ -225,8 +238,10 @@ class BatchingEngine(LoggerClass):
                     flat_pairs.append([item.query, text])
                 sizes.append(len(item.texts))
 
-            # 2. One model call for the entire cross-batch under the shared lock
-            async with self._model_lock:
+            # 2. One model call for the entire cross-batch under rerank_lock (independent from
+            #    embed_lock — the reranker is a separate FlagReranker instance, so a large
+            #    embed batch never blocks an interactive rerank call, and vice versa)
+            async with self._rerank_lock:
                 flat_scores: list[float] = await asyncio.to_thread(
                     self._models.compute_rerank_scores_flat, flat_pairs
                 )

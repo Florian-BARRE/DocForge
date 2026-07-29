@@ -101,6 +101,28 @@ class BgeServerConfig(EnvConfigLoader):
     # Set explicitly to override the auto derivation (e.g. BGE_TORCH_NUM_THREADS=4).
     BGE_TORCH_NUM_THREADS: int = env("BGE_TORCH_NUM_THREADS", cast=int, default="0")
 
+    # ───── Request size ceilings (edge validation, before the batching engine) ─────
+    # A single oversized request is still admitted "whole" by BatchQueueWorker and holds the
+    # shared model lock for its entire duration (see libs/batching/worker.py). These ceilings
+    # reject such requests at the Pydantic layer (HTTP 422) instead of letting them stall every
+    # other collection's embed/rerank traffic. Defaults scale off the batching/model knobs above
+    # so they don't silently drift out of sync when those are tuned.
+    #
+    # Max number of items per request (inputs for /embed·/embed_sparse·/embed_colbert, texts for
+    # /rerank). Default is 16x BGE_MAX_BATCH_SIZE: generous headroom over the DocForge embed node's
+    # own client-side batch_size (default 32, see shared_libs embed/base/config.py) while still
+    # bounding a misconfigured/unbounded caller.
+    BGE_MAX_REQUEST_ITEMS: int = env(
+        "BGE_MAX_REQUEST_ITEMS", cast=int, default=str(BGE_MAX_BATCH_SIZE * 16)
+    )
+    # Max characters per individual text (each /embed·/embed_sparse·/embed_colbert item, each
+    # /rerank text or query). Default is 8x BGE_M3_MAX_LENGTH (tokens): truncate=True only
+    # truncates AFTER tokenization, so an unbounded string still pays full tokenizer cost — this
+    # caps that cost independently of the token truncation.
+    BGE_MAX_TEXT_CHARS: int = env(
+        "BGE_MAX_TEXT_CHARS", cast=int, default=str(BGE_M3_MAX_LENGTH * 8)
+    )
+
     @classmethod
     def validate(cls) -> None:
         """
@@ -127,6 +149,10 @@ class BgeServerConfig(EnvConfigLoader):
             raise ValueError(f"BGE_MAX_WAIT_MS must be >= 0, got {cls.BGE_MAX_WAIT_MS}")
         if cls.BGE_MAX_QUEUE_SIZE < 1:
             raise ValueError(f"BGE_MAX_QUEUE_SIZE must be >= 1, got {cls.BGE_MAX_QUEUE_SIZE}")
+        if cls.BGE_MAX_REQUEST_ITEMS < 1:
+            raise ValueError(f"BGE_MAX_REQUEST_ITEMS must be >= 1, got {cls.BGE_MAX_REQUEST_ITEMS}")
+        if cls.BGE_MAX_TEXT_CHARS < 1:
+            raise ValueError(f"BGE_MAX_TEXT_CHARS must be >= 1, got {cls.BGE_MAX_TEXT_CHARS}")
 
 
 # ─── Apply logging configuration AFTER class definition ───

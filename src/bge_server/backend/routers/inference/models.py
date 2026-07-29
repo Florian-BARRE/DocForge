@@ -5,10 +5,17 @@
 # without any provider-side changes. /embed_colbert is an internal DocForge convention (BGE-M3
 # native colbert head, no TEI equivalent) — its response shape has no wrapper model, mirroring
 # how /embed itself returns a bare `list[list[float]]` with no pydantic model.
+#
+# Request size ceilings (BGE_MAX_REQUEST_ITEMS / BGE_MAX_TEXT_CHARS) reject oversized requests
+# here, at the Pydantic layer (HTTP 422), before they ever reach the batching engine — see
+# config_loader.py for the rationale (an oversized request is admitted "whole" by
+# BatchQueueWorker and holds the shared model lock for its entire duration).
 
 # ====== Third-Party Library Imports ======
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
+# ====== Internal Project Imports ======
+from config_loader import BgeServerConfig
 
 # ── Request models ────────────────────────────────────────────────────────────
 
@@ -27,6 +34,36 @@ class EmbedRequest(BaseModel):
     normalize: bool = Field(default=True, description="L2-normalize dense vectors (TEI parity).")
     truncate: bool = Field(default=True, description="Truncate inputs to the model max length.")
 
+    @field_validator("inputs")
+    @classmethod
+    def _enforce_size_ceilings(cls, value: list[str] | str) -> list[str] | str:
+        """
+        Reject requests exceeding the configured item-count / per-item char ceilings.
+
+        Args:
+            value (list[str] | str): The raw ``inputs`` value (single text or a list).
+
+        Returns:
+            list[str] | str: The value unchanged, when within both ceilings.
+
+        Raises:
+            ValueError: When the item count or any individual text exceeds its ceiling
+                (surfaced by FastAPI as HTTP 422).
+        """
+        items = [value] if isinstance(value, str) else value
+        if len(items) > BgeServerConfig.BGE_MAX_REQUEST_ITEMS:
+            raise ValueError(
+                f"inputs has {len(items)} items, exceeds the "
+                f"{BgeServerConfig.BGE_MAX_REQUEST_ITEMS}-item request ceiling"
+            )
+        for text in items:
+            if len(text) > BgeServerConfig.BGE_MAX_TEXT_CHARS:
+                raise ValueError(
+                    f"an input text has {len(text)} chars, exceeds the "
+                    f"{BgeServerConfig.BGE_MAX_TEXT_CHARS}-char per-item ceiling"
+                )
+        return value
+
 
 class RerankRequest(BaseModel):
     """
@@ -38,9 +75,44 @@ class RerankRequest(BaseModel):
         truncate (bool): Truncate inputs to the model's max token length.
     """
 
-    query: str = Field(..., description="The search query.")
-    texts: list[str] = Field(..., description="Candidate texts to score against the query.")
+    query: str = Field(
+        ...,
+        description="The search query.",
+        max_length=BgeServerConfig.BGE_MAX_TEXT_CHARS,
+    )
+    texts: list[str] = Field(
+        ...,
+        description="Candidate texts to score against the query.",
+        max_length=BgeServerConfig.BGE_MAX_REQUEST_ITEMS,
+    )
     truncate: bool = Field(default=True, description="Truncate inputs to the model max length.")
+
+    @field_validator("texts")
+    @classmethod
+    def _enforce_text_char_ceiling(cls, value: list[str]) -> list[str]:
+        """
+        Reject any candidate text exceeding the per-item char ceiling.
+
+        The item-count ceiling itself is already enforced by the ``max_length`` Field
+        constraint above (unambiguous here since ``texts`` — unlike ``EmbedRequest.inputs``
+        — has no ``str`` union branch).
+
+        Args:
+            value (list[str]): Candidate texts to score.
+
+        Returns:
+            list[str]: The value unchanged, when every text is within the ceiling.
+
+        Raises:
+            ValueError: When a candidate text exceeds the char ceiling (HTTP 422).
+        """
+        for text in value:
+            if len(text) > BgeServerConfig.BGE_MAX_TEXT_CHARS:
+                raise ValueError(
+                    f"a candidate text has {len(text)} chars, exceeds the "
+                    f"{BgeServerConfig.BGE_MAX_TEXT_CHARS}-char per-item ceiling"
+                )
+        return value
 
 
 # ── Response models ───────────────────────────────────────────────────────────

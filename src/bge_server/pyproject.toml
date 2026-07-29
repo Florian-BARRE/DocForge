@@ -8,7 +8,10 @@ dependencies = [
     # Torch itself is declared as a DIRECT dependency below (split across the cpu/gpu extras)
     # so that uv sources can steer it to the correct wheel index. Without this direct declaration,
     # uv sources are ignored for transitive deps and torch resolves from PyPI (CUDA build, multi-GiB).
-    "FlagEmbedding>=1.2.10",
+    # Upper-bounded at <2: FlagEmbedding 1.3→1.4 silently swallowed the `device=` kwarg into
+    # **kwargs (model ran on the wrong device with no error). Cap the major line so an un-gated
+    # `uv lock --upgrade` can't reintroduce that class of regression.
+    "FlagEmbedding>=1.2.10,<2",
     # Pin transformers to the 4.x line: FlagEmbedding 1.4.0's FlagReranker calls the slow-tokenizer
     # `prepare_for_model` API, which transformers 5.x removed — on transformers 5.x /rerank fails with
     # "XLMRobertaTokenizer has no attribute prepare_for_model" (embedding is unaffected). Cap at <5
