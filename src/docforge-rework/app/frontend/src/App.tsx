@@ -6,6 +6,7 @@ import { useState } from "react";
 import { AuthKeysPage } from "./features/auth/AuthKeysPage";
 import { CollectionDetailPage } from "./features/collections/CollectionDetailPage";
 import { CollectionEditPage } from "./features/collections/CollectionEditPage";
+import { CollectionOverview } from "./features/collections/CollectionOverview";
 import { CollectionPipelinePage } from "./features/collections/CollectionPipelinePage";
 import { CollectionSearchPage } from "./features/collections/CollectionSearchPage";
 import { CollectionShell } from "./features/collections/CollectionShell";
@@ -30,7 +31,12 @@ export function App() {
         {view.name === "collections" && <CollectionsPage onNavigate={setView} />}
         {view.name === "new-collection" && <CollectionWizard onNavigate={setView} />}
         {view.name === "collection" && (
-          <CollectionShell collectionId={view.collectionId} active="schema" onNavigate={setView}>
+          <CollectionShell collectionId={view.collectionId} active="overview" onNavigate={setView}>
+            <CollectionOverview collectionId={view.collectionId} onNavigate={setView} />
+          </CollectionShell>
+        )}
+        {view.name === "collection-metadata" && (
+          <CollectionShell collectionId={view.collectionId} active="metadata" onNavigate={setView}>
             <CollectionDetailPage collectionId={view.collectionId} onNavigate={setView} />
           </CollectionShell>
         )}

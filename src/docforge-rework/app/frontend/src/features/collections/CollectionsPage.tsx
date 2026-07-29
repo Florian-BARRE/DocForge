@@ -57,7 +57,7 @@ export function CollectionsPage({ onNavigate }: CollectionsPageProps) {
       {collections && collections.length > 0 && (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: theme.space.l }}>
           {collections.map((c) => (
-            <CollectionCard key={c.id} collection={c} onClick={() => onNavigate({ name: "collection-documents", collectionId: c.id })} />
+            <CollectionCard key={c.id} collection={c} onClick={() => onNavigate({ name: "collection", collectionId: c.id })} />
           ))}
         </div>
       )}

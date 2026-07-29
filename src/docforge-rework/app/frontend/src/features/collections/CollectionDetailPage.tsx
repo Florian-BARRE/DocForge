@@ -1,8 +1,8 @@
 // ====== Code Summary ======
-// The collection's Overview tab content, rendered beneath CollectionShell's header/tabs: the
-// reindex banner (when the searchable surface has drifted), the schema table, and the destructive
-// delete flow — the one action deliberately kept off the persistent shell header. A page remount
-// (e.g. returning from an edit) always refetches it.
+// The collection's Metadata tab content (Corpus › Metadata), beneath CollectionShell's header/tabs:
+// the reindex banner (when the searchable surface has drifted), the editable metadata-field schema
+// table, and the destructive delete flow — the one action deliberately kept off the persistent shell
+// header. A page remount (e.g. returning from an edit) always refetches it.
 
 import { useEffect, useState } from "react";
 import { deleteCollection, getCollection, type Collection } from "../../api/collections";
@@ -52,9 +52,19 @@ export function CollectionDetailPage({ collectionId, onNavigate }: CollectionDet
     <div style={{ padding: theme.space.xl, maxWidth: 1200, margin: "0 auto", overflowY: "auto", height: "100%" }}>
       {collection.needs_reindex && <ReindexBanner />}
 
-      <h2 style={{ fontFamily: theme.font.display, fontSize: theme.font.size.xl, fontWeight: 700, marginBottom: theme.space.m }}>
-        Schema
-      </h2>
+      <div style={{ display: "flex", alignItems: "baseline", gap: theme.space.m, marginBottom: theme.space.m }}>
+        <h2 style={{ fontFamily: theme.font.display, fontSize: theme.font.size.xl, fontWeight: 700 }}>
+          Metadata
+        </h2>
+        <span style={{ color: theme.color.dim, fontSize: theme.font.size.s }}>
+          the fields upstream of ingestion — each drives filtering, semantic or lexical search
+        </span>
+        <div style={{ marginLeft: "auto" }}>
+          <Button variant="secondary" onClick={() => onNavigate({ name: "collection-edit", collectionId })}>
+            Edit fields
+          </Button>
+        </div>
+      </div>
       <SchemaTable fields={collection.fields} />
 
       <div

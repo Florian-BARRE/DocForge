@@ -21,6 +21,8 @@ const PATH = (arg('path', '') || '').split(',').map(s => s.trim()).filter(Boolea
 const browser = await chromium.launch({ args: ['--no-sandbox'] });
 const ctx = await browser.newContext({ viewport: { width: 1500, height: 1000 } });
 if (TOKEN) await ctx.addInitScript(t => window.localStorage.setItem('docforge_api_token', t), TOKEN);
+const THEME = process.env.DOCFORGE_THEME || arg('theme', '');   // "light" | "dark" — seed before first paint
+if (THEME) await ctx.addInitScript(v => window.localStorage.setItem('docforge_theme', v), THEME);
 const page = await ctx.newPage();
 const unauthorized = [];
 page.on('response', r => { if (r.status() === 401) unauthorized.push(r.url().split('/api/v1')[1] || r.url()); });

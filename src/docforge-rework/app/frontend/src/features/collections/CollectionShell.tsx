@@ -1,10 +1,10 @@
 // ====== Code Summary ======
 // The collection workspace chrome — a header (name + contract summary + upload/edit actions) and a
-// TWO-LEVEL nav shared by every view nested under a collection. Level 1 groups the workspace into
-// Corpus (the documents + how they're ingested) and Search (how the corpus is queried); level 2 is
-// the contextual sub-tabs. A document's detail view is nested under Corpus›Documents, so the nav
-// stays visible while inspecting a document. Fetches the collection only to render this chrome —
-// each nested page still owns its own data fetch.
+// TWO-LEVEL nav shared by every view nested under a collection. Level 1 is Overview | Corpus | Search
+// | Jobs; level 2 is the active section's sub-tabs (Corpus → Metadata · Ingestion pipeline · Documents;
+// Search → Search · Search pipeline; Overview and Jobs are leaves). A document's detail view is nested
+// under Corpus›Documents, so the nav stays visible while inspecting a document. Fetches the collection
+// only to render this chrome — each nested page still owns its own data fetch.
 
 import { useEffect, useState, type ReactNode } from "react";
 import { getCollection, type Collection } from "../../api/collections";
@@ -19,53 +19,58 @@ import type { Navigate, View } from "../../shell/view";
 import { theme as t } from "../../theme";
 import { UploadPanel } from "./UploadPanel";
 
-// A sub-tab key — the caller passes the active one; the section (level-1 group) is derived from it.
+// A tab key — the caller passes the active one; the section (level-1 group) is derived from it.
 export type CollectionTabKey =
-  | "documents" | "pipeline" | "jobs" | "schema"   // Corpus
-  | "search" | "search-pipeline";                  // Search
+  | "overview"                                      // Overview (leaf)
+  | "metadata" | "pipeline" | "documents"          // Corpus
+  | "search" | "search-pipeline"                   // Search
+  | "jobs";                                         // Jobs (leaf)
 
-type Section = "corpus" | "search" | "jobs" | "schema";
+type Section = "overview" | "corpus" | "search" | "jobs";
 
 const SECTION_ORDER: { key: Section; label: string }[] = [
+  { key: "overview", label: "Overview" },
   { key: "corpus", label: "Corpus" },
   { key: "search", label: "Search" },
   { key: "jobs", label: "Jobs" },
-  { key: "schema", label: "Schema" },
 ];
 
 const SECTION_OF: Record<CollectionTabKey, Section> = {
-  documents: "corpus", pipeline: "corpus",
+  overview: "overview",
+  metadata: "corpus", pipeline: "corpus", documents: "corpus",
   search: "search", "search-pipeline": "search",
-  jobs: "jobs", schema: "schema",
+  jobs: "jobs",
 };
 
-// Level-2 sub-tabs per section — Jobs and Schema are leaf tabs (no sub-tabs).
+// Level-2 sub-tabs per section — Overview and Jobs are leaf tabs (no sub-tabs).
 const SUBTABS: Record<Section, TabItem<CollectionTabKey>[]> = {
+  overview: [],
   corpus: [
-    { key: "documents", label: "Documents" },
+    { key: "metadata", label: "Metadata" },
     { key: "pipeline", label: "Ingestion pipeline" },
+    { key: "documents", label: "Documents" },
   ],
   search: [
     { key: "search", label: "Search" },
     { key: "search-pipeline", label: "Search pipeline" },
   ],
   jobs: [],
-  schema: [],
 };
 
 // The landing tab when a level-1 section is clicked.
 const SECTION_DEFAULT: Record<Section, CollectionTabKey> = {
-  corpus: "documents", search: "search", jobs: "jobs", schema: "schema",
+  overview: "overview", corpus: "documents", search: "search", jobs: "jobs",
 };
 
 function viewForTab(tab: CollectionTabKey, collectionId: string): View {
   switch (tab) {
-    case "documents": return { name: "collection-documents", collectionId };
+    case "overview": return { name: "collection", collectionId };
+    case "metadata": return { name: "collection-metadata", collectionId };
     case "pipeline": return { name: "collection-pipeline", collectionId };
-    case "jobs": return { name: "collection-jobs", collectionId };
-    case "schema": return { name: "collection", collectionId };
+    case "documents": return { name: "collection-documents", collectionId };
     case "search": return { name: "collection-search", collectionId };
     case "search-pipeline": return { name: "collection-search-pipeline", collectionId };
+    case "jobs": return { name: "collection-jobs", collectionId };
   }
 }
 
@@ -145,7 +150,7 @@ export function CollectionShell({ collectionId, active, onNavigate, children }: 
           </div>
         )}
 
-        {/* Level 1 — Corpus | Search | Jobs | Schema. */}
+        {/* Level 1 — Overview | Corpus | Search | Jobs. */}
         <div
           style={{
             display: "flex", gap: t.space.xs,
@@ -163,7 +168,7 @@ export function CollectionShell({ collectionId, active, onNavigate, children }: 
             />
           ))}
         </div>
-        {/* Level 2 — the active section's sub-tabs (Jobs/Schema have none). */}
+        {/* Level 2 — the active section's sub-tabs (Overview/Jobs have none). */}
         {SUBTABS[section].length > 1 && (
           <TabNav tabs={SUBTABS[section]} active={active} onSelect={(tab) => onNavigate(viewForTab(tab, collectionId))} />
         )}
