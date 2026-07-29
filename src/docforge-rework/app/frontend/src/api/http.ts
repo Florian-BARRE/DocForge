@@ -103,3 +103,17 @@ export async function apiFetch<T>(url: string, init?: RequestInit): Promise<T> {
 export function jsonInit(method: string, body: unknown): RequestInit {
   return { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) };
 }
+
+/** Bytes request helper: attaches the Bearer header (like apiFetch) and returns the raw Blob. A plain
+ *  browser `<img src>` / `<a href>` navigation cannot carry the Authorization header, so authenticated
+ *  blob resources must be fetched here and rendered via an object URL (see BlobImage). */
+export async function apiFetchBlob(url: string): Promise<Blob> {
+  const token = getApiToken();
+  const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
+  const response = await fetch(url, { headers });
+  if (!response.ok) {
+    if (response.status === 401) clearApiToken();
+    throw new HttpError(response.status, [{ message: `Request failed (${response.status})` }]);
+  }
+  return response.blob();
+}

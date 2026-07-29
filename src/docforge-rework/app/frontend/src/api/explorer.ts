@@ -210,7 +210,8 @@ export function setChunksEnabled(chunkIds: string[], enabled: boolean): Promise<
   return apiFetch(`${CHUNKS_BASE}/enabled`, jsonInit("PATCH", { chunk_ids: chunkIds, enabled }));
 }
 
-/** Direct blob URL — used verbatim as an `<img src>` or a canonical-PDF link. */
+/** The blob route for a content hash. Fetch it through `apiFetchBlob` (bearer) — NOT as a raw
+ *  `<img src>`/`<a href>`, which a browser navigation can't authenticate. See `components/BlobImage`. */
 export function blobUrl(hash: string): string {
   return `${BLOBS_BASE}/${hash}`;
 }

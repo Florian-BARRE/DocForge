@@ -2,7 +2,8 @@
 // A minimal full-size overlay for one page render — closes on backdrop click or Escape.
 
 import { useEffect } from "react";
-import { blobUrl, type PageInfo } from "../../../api/explorer";
+import { type PageInfo } from "../../../api/explorer";
+import { BlobImage } from "../../../components/BlobImage";
 import { theme } from "../../../theme";
 import { displayPage } from "../format";
 
@@ -29,8 +30,8 @@ export function PageLightbox({ page, onClose }: PageLightboxProps) {
       }}
     >
       <figure style={{ margin: 0, maxWidth: "90vw", maxHeight: "90vh", display: "flex", flexDirection: "column", gap: theme.space.s }}>
-        <img
-          src={blobUrl(page.render_blob_hash)}
+        <BlobImage
+          hash={page.render_blob_hash}
           alt={`Page ${displayPage(page.page_number)}`}
           style={{ maxWidth: "90vw", maxHeight: "80vh", objectFit: "contain", borderRadius: theme.radius.m }}
         />

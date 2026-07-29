@@ -1,7 +1,8 @@
 // ====== Code Summary ======
 // A FIGURE block's crop image plus every enrichment recorded for it (classification, OCR, VLM…).
 
-import { blobUrl, type IREnrichment, type IRFigure } from "../../../api/explorer";
+import { type IREnrichment, type IRFigure } from "../../../api/explorer";
+import { BlobImage } from "../../../components/BlobImage";
 import { theme } from "../../../theme";
 import { EnrichmentItem } from "./EnrichmentItem";
 
@@ -14,9 +15,8 @@ export function FigureBlock({ figure, enrichments }: FigureBlockProps) {
   return (
     <div style={{ display: "flex", gap: theme.space.m, flexWrap: "wrap" }}>
       {figure?.crop_blob_hash ? (
-        <img
-          src={blobUrl(figure.crop_blob_hash)}
-          loading="lazy"
+        <BlobImage
+          hash={figure.crop_blob_hash}
           alt="Figure crop"
           style={{ maxWidth: 220, maxHeight: 220, borderRadius: theme.radius.s, border: `1px solid ${theme.color.line}` }}
         />

@@ -2,7 +2,8 @@
 // One page's thumbnail in the grid — the rasterized render when available, a placeholder when
 // the render stage was off for this document. Click opens the lightbox at full size.
 
-import { blobUrl, type PageInfo } from "../../../api/explorer";
+import { BlobImage } from "../../../components/BlobImage";
+import { type PageInfo } from "../../../api/explorer";
 import { theme } from "../../../theme";
 import { displayPage } from "../format";
 
@@ -20,9 +21,8 @@ export function PageThumbnail({ page, onClick }: { page: PageInfo; onClick: () =
         }}
       >
         {page.render_blob_hash ? (
-          <img
-            src={blobUrl(page.render_blob_hash)}
-            loading="lazy"
+          <BlobImage
+            hash={page.render_blob_hash}
             alt={`Page ${displayPage(page.page_number)}`}
             style={{ width: "100%", height: "100%", objectFit: "contain" }}
           />
