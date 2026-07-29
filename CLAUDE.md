@@ -38,8 +38,11 @@ Le nom `docforge-rework` reste un artefact historique ; le renommer en `docforge
    aux bords via la façade `Database` ; le contrat de collection arrive en **run input**.
 3. **Provider interchangeable dans sa famille** — URL + secret **par collection** (en DB), jamais en `.env`.
 4. **Collection = contrat** — fail-fast **structurel** au **build du graphe** (topologie + forme de config)
-   avant toute dépense. ⚠️ La **connectivité** (URL/clé joignables) n'est **PAS** vérifiée au build : un
-   `base_url`/`api_key` faux construit proprement et échoue au **run** (un `preflight()` par node reste à faire).
+   avant toute dépense. La **connectivité** (URL/clé joignables) n'est pas vérifiée au build, mais un
+   `preflight()` par provider (opt-in `WORKER_PREFLIGHT_ENABLED`, off par défaut à cause des placeholders
+   llm/vlm du template) la vérifie **avant la 1re dépense** quand activé ; sinon un `base_url` faux échoue
+   au **run** (surfacé par `job.error` nommant le node). Les blobs stockés stale s'**auto-heal** au read
+   (`BlobNormalizer`, plus de PATCH manuel).
 5. **Config `extra="forbid"`** — un typo dans le blob fait **échouer le build**, jamais ignoré silencieusement.
 6. **Vecteur maigre** — seuls les champs filtrables dans Qdrant ; le riche est en Postgres.
 7. **Device = concern de déploiement, pas de runtime** — aucune logique device dans les nodes (invariant
