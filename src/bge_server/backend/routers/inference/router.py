@@ -106,8 +106,12 @@ async def embed_sparse(req: EmbedRequest) -> list[list[SparseToken]]:
             headers={"Retry-After": "1"},
         )
 
-    # 5. Wrap each dict into the typed SparseToken model for response validation
-    return [[SparseToken(**tok) for tok in row] for row in raw]
+    # 5. Wrap each dict into the typed SparseToken model for response validation. The batching
+    #    worker types weights as int | float, so pin each field to its declared type explicitly.
+    return [
+        [SparseToken(index=int(tok["index"]), value=float(tok["value"])) for tok in row]
+        for row in raw
+    ]
 
 
 @router.post("/embed_colbert", response_model=list[list[list[float]]])
@@ -184,5 +188,6 @@ async def rerank(req: RerankRequest) -> list[RerankResult]:
             headers={"Retry-After": "1"},
         )
 
-    # 4. Wrap each dict into the typed RerankResult model for response validation
-    return [RerankResult(**item) for item in raw]
+    # 4. Wrap each dict into the typed RerankResult model for response validation, pinning each
+    #    field to its declared type (the worker types the payload as int | float).
+    return [RerankResult(index=int(item["index"]), score=float(item["score"])) for item in raw]

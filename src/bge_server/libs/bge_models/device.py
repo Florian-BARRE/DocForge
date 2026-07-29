@@ -52,7 +52,10 @@ class DeviceResolver:
 
     logger = loggerplusplus.bind(identifier="DeviceResolver")
 
-    def __new__(cls, *args: object, **kwargs: object) -> None:
+    # `-> None` is the project's static-only guard idiom (python.md); mypy's [misc] "must return an
+    # instance" is a false positive, and `-> NoReturn` would make mypy treat the class as Never and
+    # lose its @classmethods — so suppress just this check.
+    def __new__(cls, *args: object, **kwargs: object) -> None:  # type: ignore[misc]
         raise TypeError(f"DeviceResolver is a static-only class and cannot be instantiated.")
 
     @classmethod

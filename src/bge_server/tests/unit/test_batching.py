@@ -7,7 +7,7 @@
 
 # ====== Standard Library Imports ======
 import asyncio
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 # ====== Third-Party Library Imports ======
 import pytest
@@ -16,7 +16,6 @@ import pytest
 from libs.batching.engine import BatchingEngine
 from libs.batching.models import QueueFullError
 from libs.batching.worker import BatchQueueWorker
-
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -295,9 +294,6 @@ async def test_queue_full_raises_queue_full_error() -> None:
     """
     When the queue is at capacity, submit() raises QueueFullError immediately (no await).
     """
-    # Very slow encode so items accumulate: use an event to pause it
-    pause = asyncio.Event()
-
     def slow_encode(texts, max_length):
         # Block until the test releases the event — but this runs in to_thread so
         # we just return immediately; the real test is that submit raises before processing

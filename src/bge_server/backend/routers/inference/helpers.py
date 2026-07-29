@@ -12,7 +12,10 @@ class InferenceHelpers:
     Per-request tracing is done in router.py where the full request context is available.
     """
 
-    def __new__(cls, *args: object, **kwargs: object) -> None:
+    # `-> None` is the project's static-only guard idiom (python.md); mypy's [misc] "must return an
+    # instance" is a false positive here, and `-> NoReturn` would make mypy treat the class as Never
+    # and lose its @staticmethods — so suppress just this check.
+    def __new__(cls, *args: object, **kwargs: object) -> None:  # type: ignore[misc]
         raise TypeError(f"InferenceHelpers is a static-only class and cannot be instantiated.")
 
     @staticmethod

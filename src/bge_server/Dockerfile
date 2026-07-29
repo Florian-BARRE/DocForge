@@ -13,7 +13,7 @@
 # Goal:
 # - Sync the locked production dependencies from uv.lock into a virtual environment
 #   at /opt/venv, selecting the correct torch wheel variant via TORCH_VARIANT.
-# - TORCH_VARIANT=cpu  (default) installs torch 2.12.1+cpu (~200 MB) — no nvidia-* libs.
+# - TORCH_VARIANT=cpu  (default) installs torch 2.13.0+cpu (~200 MB) — no nvidia-* libs.
 #   Target runtime image size: ~2 GB.
 # - TORCH_VARIANT=gpu installs torch 2.6.0+cu124 (~2 GB) + all nvidia-cu12-* runtime libs.
 #   Target runtime image size: ~8.5 GB. Requires NVIDIA Container Toolkit on the host.
