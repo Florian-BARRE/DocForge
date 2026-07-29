@@ -1,8 +1,7 @@
 # ------------------- BGE Models Service ------------------- #
-from .service import BgeModelsService
-
 # ------------------- Device Resolution ------------------- #
 from .device import DeviceResolver, ResolvedDevice
+from .service import BgeModelsService
 
 # ------------------- Public API ------------------- #
 __all__ = [

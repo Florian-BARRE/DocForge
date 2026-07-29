@@ -4,7 +4,6 @@
 # lifespan.py. Access via CONTEXT.attribute_name anywhere in the codebase.
 
 # ====== Standard Library Imports ======
-from typing import Type
 
 # ====== Internal Project Imports ======
 from config_loader import BgeServerConfig
@@ -22,7 +21,7 @@ class CONTEXT:
     """
 
     # ── Configuration ────────────────────────────────────────────────────────────
-    CONFIG: Type[BgeServerConfig]
+    CONFIG: type[BgeServerConfig]
 
     # ── Model service ─────────────────────────────────────────────────────────────
     # Holds the loaded BGE embed + rerank models after lifespan startup completes.

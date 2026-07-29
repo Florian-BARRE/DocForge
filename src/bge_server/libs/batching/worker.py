@@ -100,7 +100,7 @@ class BatchQueueWorker(LoggerClass):
                         item = await asyncio.wait_for(self._queue.get(), timeout=remaining)
                         batch.append(item)
                         total_cost += item.cost
-                    except asyncio.TimeoutError:
+                    except TimeoutError:
                         break
                     except asyncio.CancelledError:
                         # Propagate cancel but first ensure pending futures are resolved

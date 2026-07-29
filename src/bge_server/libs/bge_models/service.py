@@ -158,8 +158,8 @@ class BgeModelsService(LoggerClass):
         # 2. Defer the heavy FlagEmbedding import to this moment — the container is booting.
         # Torch is bundled with FlagEmbedding, so import it here too, right after, to apply
         # the thread cap before any model is instantiated.
-        from FlagEmbedding import BGEM3FlagModel, FlagReranker  # noqa: PLC0415
         import torch  # noqa: PLC0415
+        from FlagEmbedding import BGEM3FlagModel, FlagReranker  # noqa: PLC0415
 
         # 3. Cap torch intra-op threads to prevent CPU oversubscription.
         # The batching engine's model_lock serialises model calls (one at a time), so the single
