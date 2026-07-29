@@ -64,6 +64,21 @@ class BgeServerConfig(EnvConfigLoader):
     # HuggingFace model ID for the cross-encoder reranker (FlagReranker).
     BGE_RERANKER_MODEL: str = env("BGE_RERANKER_MODEL", default="BAAI/bge-reranker-v2-m3")
 
+    # ───── BGE model revision pins (supply-chain control) ─────
+    # Commit sha each model is pinned to. BGEM3FlagModel/FlagReranker silently drop a `revision=`
+    # kwarg (never forwarded to from_pretrained — see libs/bge_models/revision.py), so pinning
+    # works by resolving the sha to a LOCAL snapshot path via huggingface_hub.snapshot_download
+    # and loading from that path instead of the bare repo id.
+    # Defaults are the `main`-branch head commit as of 2026-07-29 (`curl -s
+    # https://huggingface.co/api/models/<repo> | jq .sha`) — a fresh deploy is pinned-by-default
+    # but overridable. Set to "" (empty string) to opt back into the floating `main` behavior.
+    BGE_M3_REVISION: str = env(
+        "BGE_M3_REVISION", default="5617a9f61b028005a4858fdac845db406aefb181"
+    )
+    BGE_RERANKER_REVISION: str = env(
+        "BGE_RERANKER_REVISION", default="953dc6f6f85a1b2dbfca4c34a2796e7dde08d41e"
+    )
+
     # ───── BGE device policy ─────
     # Controls which compute device the models are loaded on.
     # "auto"  → prefer GPU if torch.cuda.is_available(), else fall back to CPU silently.

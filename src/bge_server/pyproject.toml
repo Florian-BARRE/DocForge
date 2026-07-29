@@ -17,6 +17,10 @@ dependencies = [
     # "XLMRobertaTokenizer has no attribute prepare_for_model" (embedding is unaffected). Cap at <5
     # until FlagEmbedding ships a reranker compatible with transformers 5.
     "transformers>=4.45,<5",
+    # huggingface_hub is already a transitive dep (via FlagEmbedding/transformers), but is now
+    # imported DIRECTLY by libs/bge_models/revision.py (snapshot_download for revision pinning),
+    # so it must be declared explicitly — a direct import must be a direct dependency.
+    "huggingface_hub>=0.24.0",
     # FastAPI + ASGI server.
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.30.0",

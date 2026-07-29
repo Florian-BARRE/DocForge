@@ -44,6 +44,8 @@ def _build_app() -> FastAPI:
         device_policy=BgeServerConfig.BGE_DEVICE,
         fp16_requested=BgeServerConfig.BGE_FP16,
         torch_num_threads=BgeServerConfig.BGE_TORCH_NUM_THREADS,
+        embed_revision=BgeServerConfig.BGE_M3_REVISION,
+        rerank_revision=BgeServerConfig.BGE_RERANKER_REVISION,
     )
 
     # 3. Create the FastAPI app (lifespan registered inside create_app)

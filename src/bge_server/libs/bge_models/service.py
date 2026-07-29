@@ -7,6 +7,10 @@
 # Device handling: load() calls DeviceResolver.resolve() to translate the BGE_DEVICE policy
 # ("auto"|"cuda"|"cpu") into a concrete device string and gated fp16 flag. Both models receive
 # the resolved device via the `devices=` parameter that FlagEmbedding accepts.
+#
+# Revision pinning: load() calls ModelRevisionResolver.resolve() per model to turn an optional
+# commit sha into a local snapshot path, which is passed as `model_name_or_path` instead of the
+# bare repo id — see revision.py for why (BGEM3FlagModel/FlagReranker silently drop `revision=`).
 
 # ====== Standard Library Imports ======
 from __future__ import annotations
@@ -21,6 +25,7 @@ from loggerplusplus import LoggerClass
 # ====== Local Project Imports ======
 from .cpu_budget import CpuBudgetResolver
 from .device import DeviceResolver
+from .revision import ModelRevisionResolver
 
 # TYPE_CHECKING guard keeps the FlagEmbedding import out of the module's top-level scope;
 # the actual import happens inside load() at boot time.
@@ -47,6 +52,8 @@ class BgeModelsService(LoggerClass):
         device_policy: str,
         fp16_requested: bool,
         torch_num_threads: int = 0,
+        embed_revision: str | None = None,
+        rerank_revision: str | None = None,
     ) -> None:
         """
         Args:
@@ -61,6 +68,11 @@ class BgeModelsService(LoggerClass):
                 cpu_budget comes from CpuBudgetResolver — the cgroup v2 CFS quota when the
                 process runs under one, else the scheduler affinity/cpu_count fallback.
                 Stored here; applied at the start of load() before any torch model call.
+            embed_revision (str | None): BGE_M3_REVISION — commit sha to pin the embed model
+                to, or empty/None to keep the floating `main` behavior. Resolved to a local
+                snapshot path by ModelRevisionResolver at the start of load().
+            rerank_revision (str | None): BGE_RERANKER_REVISION — same as embed_revision, for
+                the reranker.
         """
         LoggerClass.__init__(self)
         self._embed_model_id = embed_model_id
@@ -68,6 +80,8 @@ class BgeModelsService(LoggerClass):
         self._device_policy = device_policy
         self._fp16_requested = fp16_requested
         self._torch_num_threads = torch_num_threads
+        self._embed_revision = embed_revision
+        self._rerank_revision = rerank_revision
         # The batching engine's model_lock ensures at most one model call runs at a time,
         # so the effective concurrency for thread-count auto-derivation is always 1.
         self._max_concurrency = 1
@@ -139,11 +153,18 @@ class BgeModelsService(LoggerClass):
           1. Call DeviceResolver.resolve() to translate the BGE_DEVICE policy into a concrete
              device string and gated fp16 flag (torch.cuda.is_available() is called here).
           2. Import FlagEmbedding (deferred — avoids ML stack at module import time).
-          3. Construct BGEM3FlagModel with the resolved device and fp16 flag.
-          4. Construct FlagReranker with the same device and fp16 flag.
+          3. Cap torch intra-op threads via CpuBudgetResolver (cgroup-aware).
+          4. Resolve each model id to a pinned local snapshot path via ModelRevisionResolver
+             (no-op, returns the bare id unchanged, when no revision is configured).
+          5. Construct BGEM3FlagModel with the resolved device, fp16 flag, and path.
+          6. Construct FlagReranker with the same device/fp16 flag and its resolved path.
 
         Raises:
             RuntimeError: When device_policy="cuda" but CUDA is not available.
+            Exception: Whatever huggingface_hub.snapshot_download raises (e.g. a network
+                error) when a revision is pinned but the snapshot cannot be fetched — a
+                pinned deploy that cannot get its pinned weights must fail loudly, not fall
+                back to the floating revision.
         """
         # 1. Resolve device policy -> concrete device + gated fp16
         # DeviceResolver defers the torch import inside resolve(), consistent with the
@@ -189,30 +210,41 @@ class BgeModelsService(LoggerClass):
             f"cpu_budget={cpu_budget}, source={budget_source})"
         )
 
-        # 4. Load the embedding model (dense + sparse heads both available from one instance).
+        # 4. Resolve each model id to a pinned local snapshot path when a revision is configured.
+        # No-op (returns the bare model id unchanged) when the revision env var is empty/unset —
+        # preserves the floating `main` behavior for anyone who clears it. Deliberately NOT
+        # wrapped in try/except: a pinned deploy that can't fetch its pinned weights must fail
+        # loudly at startup, not silently fall back to floating.
+        embed_source = ModelRevisionResolver.resolve(self._embed_model_id, self._embed_revision)
+        rerank_source = ModelRevisionResolver.resolve(self._rerank_model_id, self._rerank_revision)
+
+        # 5. Load the embedding model (dense + sparse heads both available from one instance).
         # The `devices` parameter accepts a device string ("cuda" / "cpu") or list thereof.
+        # `embed_source` is either the bare repo id (floating) or a local snapshot dir (pinned).
         self.logger.info(
             f"Loading embed model: {self._embed_model_id} "
-            f"(device={resolved.device}, fp16={resolved.use_fp16})"
+            f"(revision={self._embed_revision or 'main'}, source={embed_source}, "
+            f"device={resolved.device}, fp16={resolved.use_fp16})"
         )
         self._embed_model = BGEM3FlagModel(
-            self._embed_model_id,
+            embed_source,
             use_fp16=resolved.use_fp16,
             devices=resolved.device,
         )
-        self.logger.info(f"Embed model loaded -> {self._embed_model_id}")
+        self.logger.info(f"Embed model loaded -> {self._embed_model_id} (source={embed_source})")
 
-        # 5. Load the cross-encoder reranker with the same device settings.
+        # 6. Load the cross-encoder reranker with the same device settings.
         self.logger.info(
             f"Loading reranker: {self._rerank_model_id} "
-            f"(device={resolved.device}, fp16={resolved.use_fp16})"
+            f"(revision={self._rerank_revision or 'main'}, source={rerank_source}, "
+            f"device={resolved.device}, fp16={resolved.use_fp16})"
         )
         self._reranker = FlagReranker(
-            self._rerank_model_id,
+            rerank_source,
             use_fp16=resolved.use_fp16,
             devices=resolved.device,
         )
-        self.logger.info(f"Reranker loaded -> {self._rerank_model_id}")
+        self.logger.info(f"Reranker loaded -> {self._rerank_model_id} (source={rerank_source})")
 
     def unload(self) -> None:
         """
