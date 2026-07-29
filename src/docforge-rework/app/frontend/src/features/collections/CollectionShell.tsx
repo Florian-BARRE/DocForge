@@ -24,28 +24,39 @@ export type CollectionTabKey =
   | "documents" | "pipeline" | "jobs" | "schema"   // Corpus
   | "search" | "search-pipeline";                  // Search
 
-type Section = "corpus" | "search";
+type Section = "corpus" | "search" | "jobs" | "schema";
+
+const SECTION_ORDER: { key: Section; label: string }[] = [
+  { key: "corpus", label: "Corpus" },
+  { key: "search", label: "Search" },
+  { key: "jobs", label: "Jobs" },
+  { key: "schema", label: "Schema" },
+];
 
 const SECTION_OF: Record<CollectionTabKey, Section> = {
-  documents: "corpus", pipeline: "corpus", jobs: "corpus", schema: "corpus",
+  documents: "corpus", pipeline: "corpus",
   search: "search", "search-pipeline": "search",
+  jobs: "jobs", schema: "schema",
 };
 
+// Level-2 sub-tabs per section — Jobs and Schema are leaf tabs (no sub-tabs).
 const SUBTABS: Record<Section, TabItem<CollectionTabKey>[]> = {
   corpus: [
     { key: "documents", label: "Documents" },
     { key: "pipeline", label: "Ingestion pipeline" },
-    { key: "jobs", label: "Jobs" },
-    { key: "schema", label: "Schema" },
   ],
   search: [
     { key: "search", label: "Search" },
     { key: "search-pipeline", label: "Search pipeline" },
   ],
+  jobs: [],
+  schema: [],
 };
 
-// The landing sub-tab when a level-1 section is clicked.
-const SECTION_DEFAULT: Record<Section, CollectionTabKey> = { corpus: "documents", search: "search" };
+// The landing tab when a level-1 section is clicked.
+const SECTION_DEFAULT: Record<Section, CollectionTabKey> = {
+  corpus: "documents", search: "search", jobs: "jobs", schema: "schema",
+};
 
 function viewForTab(tab: CollectionTabKey, collectionId: string): View {
   switch (tab) {
@@ -134,15 +145,28 @@ export function CollectionShell({ collectionId, active, onNavigate, children }: 
           </div>
         )}
 
-        {/* Level 1 — Corpus | Search. */}
-        <div style={{ display: "flex", gap: t.space.xs, marginBottom: t.space.m }}>
-          <SectionTab active={section === "corpus"} label="Corpus"
-            onClick={() => onNavigate(viewForTab(SECTION_DEFAULT.corpus, collectionId))} />
-          <SectionTab active={section === "search"} label="Search"
-            onClick={() => onNavigate(viewForTab(SECTION_DEFAULT.search, collectionId))} />
+        {/* Level 1 — Corpus | Search | Jobs | Schema. */}
+        <div
+          style={{
+            display: "flex", gap: t.space.xs,
+            marginBottom: SUBTABS[section].length > 1 ? t.space.m : 0,
+            borderBottom: SUBTABS[section].length > 1 ? "none" : `1px solid ${t.color.line}`,
+            paddingBottom: SUBTABS[section].length > 1 ? 0 : t.space.s,
+          }}
+        >
+          {SECTION_ORDER.map((s) => (
+            <SectionTab
+              key={s.key}
+              active={section === s.key}
+              label={s.label}
+              onClick={() => onNavigate(viewForTab(SECTION_DEFAULT[s.key], collectionId))}
+            />
+          ))}
         </div>
-        {/* Level 2 — the active section's sub-tabs. */}
-        <TabNav tabs={SUBTABS[section]} active={active} onSelect={(tab) => onNavigate(viewForTab(tab, collectionId))} />
+        {/* Level 2 — the active section's sub-tabs (Jobs/Schema have none). */}
+        {SUBTABS[section].length > 1 && (
+          <TabNav tabs={SUBTABS[section]} active={active} onSelect={(tab) => onNavigate(viewForTab(tab, collectionId))} />
+        )}
       </div>
       <div style={{ flex: 1, minHeight: 0 }}>{children}</div>
     </div>
