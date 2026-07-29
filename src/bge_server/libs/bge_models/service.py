@@ -12,7 +12,6 @@
 from __future__ import annotations
 
 import math
-import os
 import time
 from typing import TYPE_CHECKING, Any
 
@@ -20,6 +19,7 @@ from typing import TYPE_CHECKING, Any
 from loggerplusplus import LoggerClass
 
 # ====== Local Project Imports ======
+from .cpu_budget import CpuBudgetResolver
 from .device import DeviceResolver
 
 # TYPE_CHECKING guard keeps the FlagEmbedding import out of the module's top-level scope;
@@ -55,9 +55,11 @@ class BgeModelsService(LoggerClass):
             device_policy (str): BGE_DEVICE policy — "auto", "cuda", or "cpu".
             fp16_requested (bool): BGE_FP16 from config. Gated: only applied on CUDA devices.
             torch_num_threads (int): Intra-op thread cap for torch (BGE_TORCH_NUM_THREADS).
-                0 means "auto" — derived inside load() as ceil(cpu_count / 1) since the
-                batching engine serialises model calls via a single asyncio.Lock. The engine
-                is the concurrency gate now; the service no longer needs a concurrency hint.
+                0 means "auto" — derived inside load() as ceil(cpu_budget / 1) since the
+                batching engine serialises model calls via a single asyncio.Lock (the engine
+                is the concurrency gate now; the service no longer needs a concurrency hint).
+                cpu_budget comes from CpuBudgetResolver — the cgroup v2 CFS quota when the
+                process runs under one, else the scheduler affinity/cpu_count fallback.
                 Stored here; applied at the start of load() before any torch model call.
         """
         LoggerClass.__init__(self)
@@ -166,19 +168,25 @@ class BgeModelsService(LoggerClass):
         # in-flight call may use all cores (_max_concurrency is 1 → no division). The explicit
         # BGE_TORCH_NUM_THREADS override exists for hosts that want a tighter cap (e.g. shared CPU).
         # Only relevant on CPU; on CUDA this has no meaningful effect but is harmless.
+        # Auto-derivation (BGE_TORCH_NUM_THREADS=0) uses the cgroup v2 CFS quota when the process
+        # is running under one — os.cpu_count() reports the HOST's cores, not the container's
+        # limit, and setting threads off the host count oversubscribes the real allotment.
         if self._torch_num_threads > 0:
-            # Explicit override from BGE_TORCH_NUM_THREADS.
+            # Explicit override from BGE_TORCH_NUM_THREADS — always wins over auto-derivation.
             n_threads = self._torch_num_threads
+            budget_source = "explicit override"
+            cpu_budget = self._torch_num_threads
         else:
-            # Auto: share cores evenly across concurrent slots, minimum 1.
-            cpu_count = os.cpu_count() or 1
-            n_threads = max(1, math.ceil(cpu_count / max(1, self._max_concurrency)))
+            resolved_budget = CpuBudgetResolver.resolve()
+            n_threads = max(1, math.ceil(resolved_budget.cpu_budget / max(1, self._max_concurrency)))
+            budget_source = resolved_budget.source
+            cpu_budget = resolved_budget.cpu_budget
         torch.set_num_threads(n_threads)
         self.logger.info(
             f"torch intra-op threads set to {n_threads} "
             f"(BGE_TORCH_NUM_THREADS={self._torch_num_threads}, "
             f"max_concurrency={self._max_concurrency}, "
-            f"cpu_count={os.cpu_count() or 1})"
+            f"cpu_budget={cpu_budget}, source={budget_source})"
         )
 
         # 4. Load the embedding model (dense + sparse heads both available from one instance).
