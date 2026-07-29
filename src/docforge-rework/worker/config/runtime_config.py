@@ -60,6 +60,11 @@ class RUNTIME_CONFIG(EnvConfigLoader):
     # ───── Run limits ─────
     WORKER_CONCURRENCY = env("WORKER_CONCURRENCY", cast=int, default=2)
     WORKER_JOB_TIMEOUT_SECONDS = env("WORKER_JOB_TIMEOUT_SECONDS", cast=float, default=1800.0)
+    # Size of the BOUNDED thread pool the heavy CPU stages (docling/ocr/render/chunk, dispatched via
+    # asyncio.to_thread) run on. Bounding it isolates native work from asyncio's default executor and
+    # caps concurrent native calls — so a ForEach fan-out can't spawn dozens of docling/OCR threads
+    # (CPU/memory), and a hung native call leaks at most this many threads. See PROD-HARDENING.md.
+    WORKER_HEAVY_THREADS = env("WORKER_HEAVY_THREADS", cast=int, default=4)
 
     # ───── Logging (mandatory set) ─────
     LOGGING_CONSOLE_LEVEL = env("LOGGING_CONSOLE_LEVEL")

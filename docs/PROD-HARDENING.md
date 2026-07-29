@@ -125,7 +125,40 @@ follow-up because it requires an image rebuild + volume-ownership validation.
 
 ---
 
-## 6. Final pre-flight
+## 6. Worker resilience — heavy-stage isolation + the hung-call residual
+
+The pipeline's blocking stages (docling parse, RapidOCR, figure render, chunk tokenizer) run on a
+**bounded** thread pool (`WORKER_HEAVY_THREADS`, default 4) instead of asyncio's unbounded default
+executor. This caps concurrent native work (a ForEach fan-out can't spawn dozens of docling/OCR
+threads and oversubscribe CPU/memory) and bounds how many threads a hung native call can leak.
+
+**Known residual (by design, not a silent failure):** a wall-clock run timeout cancels the awaiting
+coroutine but **cannot kill an in-flight native call** — Python threads are not cancellable. A truly
+hung docling/OCR call therefore holds one heavy-pool thread until the worker process restarts;
+enough simultaneous hangs (≥ `WORKER_HEAVY_THREADS`) stall new heavy work on that worker. The
+per-run timeout still marks such a job **failed** (never silently succeeded).
+
+**Garde-fou:** the worker writes an arq health record every 30s; its container healthcheck
+(`arq entrypoint.WorkerSettings --check`) turns the container **unhealthy** when the worker stops
+making progress. Docker does **not** auto-restart on unhealthy — to close the loop, add an autoheal
+sidecar (trade-off: it needs the Docker socket) or restart the worker manually when it goes
+unhealthy:
+
+```yaml
+# docker-compose.rework.yml (optional) — restarts any container that reports unhealthy
+  autoheal:
+    image: willfarrell/autoheal:1.2.0
+    environment: { AUTOHEAL_CONTAINER_LABEL: all }
+    volumes: [ "/var/run/docker.sock:/var/run/docker.sock" ]
+    restart: unless-stopped
+```
+
+The fully-correct alternative (run each job in a killable subprocess) was deliberately not taken:
+at `WORKER_CONCURRENCY=2` on a single VM the blast radius is small and a subprocess harness adds IPC
++ cold-model-load cost + orphan-process management. Revisit if concurrency rises or you go
+multi-worker.
+
+## 7. Final pre-flight
 
 ```bash
 # both configs still resolve

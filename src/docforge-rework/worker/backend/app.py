@@ -40,6 +40,9 @@ def create_worker_settings() -> type:
         max_jobs = RUNTIME_CONFIG.WORKER_CONCURRENCY
         # arq's own cap sits ABOVE the engine's per-run timeout (the engine cancels first).
         job_timeout = RUNTIME_CONFIG.WORKER_JOB_TIMEOUT_SECONDS + 60
+        # Write a health record to Redis every 30s; `arq entrypoint.WorkerSettings --check` reads it
+        # and exits non-zero when stale — the container healthcheck that surfaces a wedged worker.
+        health_check_interval = 30
 
     return WorkerSettings
 

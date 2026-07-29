@@ -4,8 +4,10 @@
 # wrapped by the Database facade, the pipeline runner). Shutdown closes what startup opened.
 
 # ====== Standard Library Imports ======
+import asyncio
 import socket
 import unicodedata
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 # ====== Third-Party Library Imports ======
@@ -49,6 +51,20 @@ async def startup(ctx: dict[str, Any]) -> None:
     # 2. Log the runtime configuration (secrets masked by configplusplus).
     log_step(1, "Runtime configuration")
     CONTEXT.logger.info(RUNTIME_CONFIG)
+
+    # 2b. Bound the thread pool the heavy CPU stages run on. The pipeline's blocking stages
+    #     (docling/ocr/render/chunk) dispatch via asyncio.to_thread, i.e. the loop's DEFAULT
+    #     executor — unbounded at min(32, cpu+4). Replacing it with a small bounded pool isolates
+    #     native work from asyncio's own blocking calls and caps concurrent docling/OCR instances,
+    #     so a ForEach fan-out can't oversubscribe CPU/memory and a hung native call leaks at most
+    #     WORKER_HEAVY_THREADS threads (never the whole box). A wall-clock timeout still cannot KILL
+    #     an in-flight native call (Python threads aren't cancellable) — the worker healthcheck
+    #     surfaces a wedged worker instead (see PROD-HARDENING.md).
+    asyncio.get_running_loop().set_default_executor(
+        ThreadPoolExecutor(
+            max_workers=RUNTIME_CONFIG.WORKER_HEAVY_THREADS, thread_name_prefix="heavy"
+        )
+    )
 
     # 3. The stores: three clients wrapped by the Database facade (single contact point).
     log_step(2, "Store clients (Postgres / Qdrant / S3)")

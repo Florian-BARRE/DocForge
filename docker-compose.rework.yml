@@ -82,6 +82,16 @@ services:
         condition: service_healthy
       rework_seaweedfs:
         condition: service_healthy
+    # `arq --check` reads the health record the worker writes to Redis every 30s and exits non-zero
+    # when it is stale — surfaces a wedged worker (e.g. a hung native call holding all heavy threads)
+    # as `unhealthy`. Docker does not auto-restart on unhealthy; see PROD-HARDENING.md for the
+    # optional autoheal sidecar. start_period covers the cold docling/rapidocr model load.
+    healthcheck:
+      test: ["CMD", "arq", "entrypoint.WorkerSettings", "--check"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
     deploy:
       resources:
         limits:
