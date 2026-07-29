@@ -25,6 +25,12 @@ def main() -> None:
     from entrypoint import app  # noqa: PLC0415
     from fastapi.testclient import TestClient
 
+    # This probe measures import hygiene, not auth — force auth OFF so it is deterministic even
+    # when a local services/.env enables it (the authN middleware reads the flag per request).
+    from config import RUNTIME_CONFIG  # noqa: PLC0415
+
+    RUNTIME_CONFIG.AUTH_ENABLED = False
+
     client = TestClient(app)
     response = client.get("/api/v1/pipelines/ingest?full=true")
     assert response.status_code == 200, response.text

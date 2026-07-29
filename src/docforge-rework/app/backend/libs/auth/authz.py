@@ -17,12 +17,11 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 
 # ====== Third-Party Library Imports ======
-from fastapi import Depends, HTTPException, Request
+from fastapi import HTTPException, Request
 from loggerplusplus import loggerplusplus
 from pydantic import ValidationError
 
 # ====== Local Project Imports ======
-from .dependency import authenticate
 from .permissions import Capability, KeyPermissions
 from .principal import AuthPrincipal
 
@@ -108,8 +107,8 @@ def require(capability: Capability) -> Callable[..., Awaitable[AuthPrincipal]]:
     """
     Build a route dependency that enforces a capability (and path-scoped collection) on the key.
 
-    The returned dependency reuses the request-cached authN result — pairing the router-level
-    ``authenticate`` gate (who are you) with this per-endpoint authZ gate (may you do this). A full
+    The returned dependency reads the principal injected by ``AuthMiddleware`` into ``request.state``
+    (the middleware is the authN gate; this per-endpoint gate answers "may you do this"). A full
     access principal bypasses all checks, so the AUTH_ENABLED=false path is untouched.
 
     Args:
@@ -119,12 +118,19 @@ def require(capability: Capability) -> Callable[..., Awaitable[AuthPrincipal]]:
         Callable[..., Awaitable[AuthPrincipal]]: An async FastAPI dependency yielding the principal.
     """
 
-    async def _authorize(
-        request: Request,
-        principal: AuthPrincipal = Depends(authenticate),
-    ) -> AuthPrincipal:
-        """Enforce ``capability`` (and collection scope) against the authenticated principal."""
-        # 1. Delegate the full/scoped decision to the guard (raises 403 on any denial).
+    async def _authorize(request: Request) -> AuthPrincipal:
+        """Enforce ``capability`` (and collection scope) against the middleware-injected principal."""
+        # 1. Read the principal the authN middleware injected; its absence is a wiring error, not a
+        #    client fault — defensively reject with 401 (should never happen under the middleware).
+        principal = getattr(request.state, "principal", None)
+        if principal is None:
+            raise HTTPException(
+                status_code=401,
+                detail="Not authenticated.",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+        # 2. Delegate the full/scoped decision to the guard (raises 403 on any denial).
         return AuthzGuard.enforce(capability, principal, request)
 
     return _authorize

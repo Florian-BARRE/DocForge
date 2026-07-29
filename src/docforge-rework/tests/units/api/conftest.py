@@ -35,3 +35,17 @@ def fastapi_app():
 def client(fastapi_app) -> TestClient:
     """A TestClient bound to the real app, one per test (cheap: no network I/O at construction)."""
     return TestClient(fastapi_app)
+
+
+@pytest.fixture(autouse=True)
+def _auth_off_by_default(fastapi_app, monkeypatch):
+    """Force auth OFF for the whole unit suite, independent of the ambient services/.env.
+
+    The app is auth-off by design in dev + tests; the authN middleware reads
+    ``RUNTIME_CONFIG.AUTH_ENABLED`` per request, so a local ``.env`` that enables auth (for a live
+    stack) would otherwise 401 every route test. Tests that DO exercise auth-on monkeypatch the flag
+    back to True themselves (this runs first; their override wins and reverts cleanly).
+    """
+    from config import RUNTIME_CONFIG  # noqa: PLC0415 — deferred until app/ is on sys.path
+
+    monkeypatch.setattr(RUNTIME_CONFIG, "AUTH_ENABLED", False)

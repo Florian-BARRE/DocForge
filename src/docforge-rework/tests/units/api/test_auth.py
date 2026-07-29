@@ -16,9 +16,19 @@ from fastapi import HTTPException
 # ── shared fakes ──────────────────────────────────────────────────────────────────────────────
 
 
-def _request(headers: dict | None = None, path_params: dict | None = None) -> SimpleNamespace:
-    """A minimal stand-in for a Starlette Request — only .headers/.path_params are touched."""
-    return SimpleNamespace(headers=headers or {}, path_params=path_params or {})
+def _request(
+    headers: dict | None = None, path_params: dict | None = None, principal=None
+) -> SimpleNamespace:
+    """A minimal stand-in for a Starlette Request — only .headers/.path_params/.state are touched.
+
+    ``principal`` seeds ``request.state.principal`` the way the authN middleware does, so the
+    ``require`` dependency (which reads it there) can be exercised in isolation.
+    """
+    return SimpleNamespace(
+        headers=headers or {},
+        path_params=path_params or {},
+        state=SimpleNamespace(principal=principal),
+    )
 
 
 def _key(*, permissions=None, revoked_at=None, user_id="user-1") -> SimpleNamespace:
@@ -360,7 +370,7 @@ async def test_require_builds_a_working_dependency(fastapi_app) -> None:
     principal = _principal(permissions={"capabilities": ["search"], "collections": ["*"]})
     dependency = require(Capability.SEARCH)
 
-    result = await dependency(_request(), principal)
+    result = await dependency(_request(principal=principal))
 
     assert result is principal
 
@@ -373,7 +383,7 @@ async def test_require_denies_when_capability_absent(fastapi_app) -> None:
     dependency = require(Capability.ADMIN)
 
     with pytest.raises(HTTPException) as exc:
-        await dependency(_request(), principal)
+        await dependency(_request(principal=principal))
 
     assert exc.value.status_code == 403
 
@@ -455,3 +465,95 @@ def test_key_permissions_grants_capability_and_collection(fastapi_app) -> None:
     assert permissions.grants_capability(Capability.WRITE) is False
     assert permissions.grants_collection(collection_id) is True
     assert permissions.grants_collection("22222222-2222-2222-2222-222222222222") is False
+
+
+# ── AuthMiddleware (pure ASGI authN gate) ───────────────────────────────────────────────────────
+
+
+def _asgi_http_scope(path: str) -> dict:
+    """A minimal ASGI HTTP scope carrying just the fields the middleware reads."""
+    return {"type": "http", "path": path, "headers": []}
+
+
+async def _drain(*_args, **_kwargs) -> dict:
+    """A no-op ASGI receive channel (the middleware never pulls the body itself)."""
+    return {"type": "http.request", "body": b"", "more_body": False}
+
+
+class _SendRecorder:
+    """Captures the ASGI messages a short-circuit response sends back to the client."""
+
+    def __init__(self) -> None:
+        self.messages: list[dict] = []
+
+    async def __call__(self, message: dict) -> None:
+        self.messages.append(message)
+
+    @property
+    def status(self) -> int | None:
+        for message in self.messages:
+            if message["type"] == "http.response.start":
+                return message["status"]
+        return None
+
+
+async def test_middleware_passes_non_http_scope_through(fastapi_app) -> None:
+    from backend.libs.auth.middleware import AuthMiddleware  # noqa: PLC0415
+
+    called = {"downstream": False}
+
+    async def downstream(scope, receive, send) -> None:
+        called["downstream"] = True
+
+    await AuthMiddleware(downstream)({"type": "websocket"}, _drain, _SendRecorder())
+
+    assert called["downstream"] is True
+
+
+async def test_middleware_passes_public_path_through_without_auth(fastapi_app) -> None:
+    from backend.libs.auth.middleware import AuthMiddleware  # noqa: PLC0415
+
+    seen = {"scope": None}
+
+    async def downstream(scope, receive, send) -> None:
+        seen["scope"] = scope
+
+    await AuthMiddleware(downstream)(_asgi_http_scope("/scalar"), _drain, _SendRecorder())
+
+    # Public paths never get a principal injected — they were not authenticated.
+    assert seen["scope"] is not None
+    assert "principal" not in seen["scope"].get("state", {})
+
+
+async def test_middleware_injects_synthetic_principal_when_auth_off(fastapi_app, monkeypatch) -> None:
+    from backend.libs.auth import dependency as dep  # noqa: PLC0415
+    from backend.libs.auth.middleware import AuthMiddleware  # noqa: PLC0415
+
+    monkeypatch.setattr(dep.RUNTIME_CONFIG, "AUTH_ENABLED", False)
+    seen = {"scope": None}
+
+    async def downstream(scope, receive, send) -> None:
+        seen["scope"] = scope
+
+    await AuthMiddleware(downstream)(_asgi_http_scope("/api/v1/collections"), _drain, _SendRecorder())
+
+    principal = seen["scope"]["state"]["principal"]
+    assert principal.is_full_access is True
+
+
+async def test_middleware_short_circuits_401_before_downstream(fastapi_app, monkeypatch) -> None:
+    from backend.libs.auth import dependency as dep  # noqa: PLC0415
+    from backend.libs.auth.middleware import AuthMiddleware  # noqa: PLC0415
+
+    monkeypatch.setattr(dep.RUNTIME_CONFIG, "AUTH_ENABLED", True)
+    called = {"downstream": False}
+
+    async def downstream(scope, receive, send) -> None:
+        called["downstream"] = True
+
+    recorder = _SendRecorder()
+    # No Authorization header on a gated path → 401, and the wrapped app is never reached.
+    await AuthMiddleware(downstream)(_asgi_http_scope("/api/v1/collections"), _drain, recorder)
+
+    assert recorder.status == 401
+    assert called["downstream"] is False
