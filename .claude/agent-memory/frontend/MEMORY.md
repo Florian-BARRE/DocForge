@@ -50,3 +50,4 @@ The legacy `src/docforge/app/frontend/` is FROZEN — don't apply its convention
 UI code only. REST contract changes → **backend** agent. Build/serve of `dist/` → **docforge** agent.
 Adding a backend Pydantic field IS a UI feature (no separate ticket) — verify against the live backend.
 - [Stage-rail chain contract](stage_rail_chain_contract.md) — set_chain slot=null rule, the contextualize llm nested chain, scored-vs-failure-only threshold gating
+- [Architecture conventions](architecture-conventions.md) — features/ are siloed (no cross-feature imports); grouped-primitives file is an accepted exception to one-component-per-file

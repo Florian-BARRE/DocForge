@@ -1,19 +1,24 @@
 // ====== Code Summary ======
-// The collection's Overview tab — a high-level, synthetic summary: headline stat tiles (documents,
-// fields, searchable surfaces, limits) and three summary cards (Metadata, Ingestion pipeline,
-// Search) each linking to its tab. Read-only; the real editing lives in Metadata / the pipeline
-// studios. Fetches the collection + a document count of its own.
+// The collection's Overview tab — a health & activity console: a headline verdict banner, headline
+// stat tiles, the ingestion-jobs and document-health synthesis cards, then the Metadata / Ingestion
+// pipeline / Search summary cards. Read-only; the real editing lives in Metadata / the pipeline
+// studios. Fetches the collection, its documents and its ingestion jobs.
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState } from "react";
 import { getCollection, type Collection, type FieldSpec } from "../../api/collections";
 import { listDocuments, type DocumentListItem } from "../../api/explorer";
+import { listJobs, type JobStatus } from "../../api/jobs";
 import { Button } from "../../components/Button";
 import { Chip } from "../../components/Chip";
 import { ErrorState } from "../../components/ErrorState";
 import { LoadingState } from "../../components/LoadingState";
-import { ReindexBanner } from "./ReindexBanner";
 import type { Navigate, View } from "../../shell/view";
 import { theme as t } from "../../theme";
+import { DocumentHealthCard } from "./DocumentHealthCard";
+import { HealthBanner } from "./HealthBanner";
+import { JobsSummaryCard } from "./JobsSummaryCard";
+import { Row, StatTile, SummaryCard } from "./OverviewCardPrimitives";
+import { ReindexBanner } from "./ReindexBanner";
 
 interface Props {
   collectionId: string;
@@ -32,46 +37,17 @@ function kindsByFamily(node: unknown, acc: Record<string, Set<string>>): Record<
   return acc;
 }
 
-function StatTile({ label, value, sub }: { label: string; value: ReactNode; sub?: ReactNode }) {
-  return (
-    <div style={{ background: t.color.surface, border: `1px solid ${t.color.line}`, borderRadius: t.radius.l, padding: t.space.l, boxShadow: t.shadow.sm }}>
-      <div style={{ color: t.color.dim, fontSize: t.font.size.xs, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>{label}</div>
-      <div style={{ fontFamily: t.font.display, fontWeight: 700, fontSize: 26, color: t.color.text, marginTop: 6, lineHeight: 1.1 }}>{value}</div>
-      {sub && <div style={{ color: t.color.dim, fontSize: t.font.size.m, marginTop: 4 }}>{sub}</div>}
-    </div>
-  );
-}
-
-function SummaryCard({ title, onOpen, children }: { title: string; onOpen: () => void; children: ReactNode }) {
-  return (
-    <div style={{ background: t.color.surface, border: `1px solid ${t.color.line}`, borderRadius: t.radius.l, padding: t.space.l, boxShadow: t.shadow.sm, display: "flex", flexDirection: "column", gap: t.space.m }}>
-      <div style={{ display: "flex", alignItems: "center" }}>
-        <span style={{ fontFamily: t.font.display, fontWeight: 600, fontSize: t.font.size.xl, color: t.color.text }}>{title}</span>
-        <div style={{ marginLeft: "auto" }}><Button size="sm" variant="ghost" onClick={onOpen}>Open →</Button></div>
-      </div>
-      {children}
-    </div>
-  );
-}
-
-function Row({ label, value }: { label: string; value: ReactNode }) {
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: t.space.m }}>
-      <span style={{ color: t.color.dim, fontSize: t.font.size.m, minWidth: 120 }}>{label}</span>
-      <span style={{ color: t.color.text, fontSize: t.font.size.l }}>{value}</span>
-    </div>
-  );
-}
-
 export function CollectionOverview({ collectionId, onNavigate }: Props) {
   const [collection, setCollection] = useState<Collection | null>(null);
   const [docs, setDocs] = useState<DocumentListItem[] | null>(null);
+  const [jobs, setJobs] = useState<JobStatus[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = () => {
     setError(null);
     getCollection(collectionId).then(setCollection).catch((e) => setError(e instanceof Error ? e.message : String(e)));
     listDocuments(collectionId).then(setDocs).catch(() => setDocs([]));
+    listJobs(collectionId).then(setJobs).catch(() => setJobs([]));
   };
   useEffect(load, [collectionId]);
 
@@ -96,6 +72,8 @@ export function CollectionOverview({ collectionId, onNavigate }: Props) {
     <div className="df-rise" style={{ padding: t.space.xl, overflowY: "auto", height: "100%", maxWidth: 1100, margin: "0 auto", width: "100%" }}>
       {collection.needs_reindex && <div style={{ marginBottom: t.space.l }}><ReindexBanner /></div>}
 
+      <HealthBanner collection={collection} jobs={jobs} docs={docs} />
+
       {/* Headline stats. */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: t.space.m, marginBottom: t.space.xl }}>
         <StatTile label="Documents" value={docs ? docs.length : "…"} sub={docs ? `${enabledDocs} enabled` : undefined} />
@@ -105,7 +83,13 @@ export function CollectionOverview({ collectionId, onNavigate }: Props) {
         <StatTile label="Max file" value={`${maxSizeMb} MB`} sub={collection.created_at ? `created ${new Date(collection.created_at).toLocaleDateString()}` : undefined} />
       </div>
 
-      {/* Summary cards. */}
+      {/* Activity + document health. */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: t.space.l, marginBottom: t.space.l }}>
+        <JobsSummaryCard jobs={jobs} docs={docs} collectionId={collectionId} onNavigate={onNavigate} />
+        <DocumentHealthCard docs={docs} collectionId={collectionId} onNavigate={onNavigate} />
+      </div>
+
+      {/* Config summary cards. */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: t.space.l }}>
         <SummaryCard title="Metadata" onOpen={() => go({ name: "collection-metadata", collectionId })}>
           <Row label="Fields" value={<>{fields.length} <span style={{ color: t.color.dim, fontSize: t.font.size.m }}>({required} required)</span></>} />
