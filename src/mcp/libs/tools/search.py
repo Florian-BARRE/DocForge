@@ -1,5 +1,6 @@
 # ====== Code Summary ======
-# MCP tools for the search domain — thin wrappers over sdk.search.
+# MCP tools for the search domain — thin wrapper over sdk.search (a single collection-scoped
+# retrieval route; there is no per-document search in the rework API).
 
 from __future__ import annotations
 
@@ -25,42 +26,33 @@ def register(mcp: FastMCP, sdk: DocForgeClient) -> None:
     async def search_collection(
         collection_id: str,
         query: str,
-        top_k: int = 10,
+        limit: int = 10,
         filters: dict[str, Any] | None = None,
-        weights: dict[str, float] | None = None,
-        debug: bool = False,
+        search_in: list[dict[str, Any]] | None = None,
+        use_late_interaction: bool | None = None,
+        rescore_pool_size: int | None = None,
     ) -> Any:
         """
-        Hybrid semantic + keyword search over a collection (BGE-M3 dense + sparse BM25, RRF fusion,
-        optional query transform and cross-encoder rerank per the collection config).
+        Hybrid semantic + keyword search over a collection (dense + sparse fusion, optional
+        ColBERT late-interaction re-score).
 
-        - filters: a Qdrant payload filter, e.g.
-          {"must": [{"key": "<field>", "match": {"value": "<v>"}}]}. Use get_config_schema to learn
-          filterable fields.
-        - weights: per-vector fusion overrides, e.g. {"dense-text": 0.7, "sparse-text": 0.3}.
-        - debug: include each result's per-vector rank breakdown (why it surfaced).
+        - filters: exact/any-of constraints on the collection's FILTERABLE fields
+          (field -> value, or field -> [values] for any-of). Use get_collection to learn which
+          fields are filterable.
+        - search_in: targets [{"field": "content" | <metadata field>, "semantic": bool,
+          "lexical": bool}]; omit to search the chunk body ("content") on both semantic and
+          lexical axes.
+        - use_late_interaction: opt into the ColBERT re-score for this query (degrades
+          gracefully to standard hybrid if the collection carries no ColBERT vectors).
 
-        Returns ranked chunks with chunk_id, document_id, score, and raw_text.
+        Returns ranked hits: chunk_id, document_id, score, text, chunk_index, token_count.
         """
-        return await sdk.search.collection(
-            collection_id, query, top_k=top_k, filters=filters, weights=weights, debug=debug
-        )
-
-    @mcp.tool()
-    async def search_within_document(
-        collection_id: str,
-        document_id: str,
-        query: str,
-        top_k: int = 10,
-        filters: dict[str, Any] | None = None,
-        weights: dict[str, float] | None = None,
-        debug: bool = False,
-    ) -> Any:
-        """
-        Same hybrid search as search_collection, but restricted to a single document's chunks.
-        Useful to locate a passage inside one known document.
-        """
-        return await sdk.search.within_document(
-            collection_id, document_id, query, top_k=top_k,
-            filters=filters, weights=weights, debug=debug,
+        return await sdk.search.search(
+            collection_id,
+            query,
+            limit=limit,
+            filters=filters,
+            search_in=search_in,
+            use_late_interaction=use_late_interaction,
+            rescore_pool_size=rescore_pool_size,
         )

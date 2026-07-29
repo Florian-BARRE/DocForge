@@ -1,5 +1,6 @@
 # ====== Code Summary ======
-# Health sub-API: liveness / version / GPU probe (GET /api/v1/health/ping).
+# Health sub-API: the public liveness probe (GET /health — outside /api/v1, credential-free
+# even when AUTH_ENABLED is true).
 
 from __future__ import annotations
 
@@ -14,10 +15,11 @@ from .transport import DocForgeTransport
 
 
 class HealthApi(LoggerClass):
-    """Health endpoints of the DocForge API."""
+    """The health endpoint of the DocForge API."""
 
     def __init__(self, transport: DocForgeTransport) -> None:
-        """Bind the shared transport.
+        """
+        Bind the shared transport.
 
         Args:
             transport (DocForgeTransport): The shared HTTP transport.
@@ -26,5 +28,5 @@ class HealthApi(LoggerClass):
         self._t = transport
 
     async def ping(self) -> Any:
-        """Return service status, API version, and GPU availability."""
-        return await self._t.get("/health/ping")
+        """Report process liveness — a static ``{"status": "ok"}`` when the app is serving."""
+        return await self._t.get_public("/health")

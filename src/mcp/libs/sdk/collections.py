@@ -1,5 +1,7 @@
 # ====== Code Summary ======
-# Collections sub-API: list / create / delete (/api/v1/collections).
+# Collections sub-API: the contract CRUD under /api/v1/collections — list / get / create
+# (full schema + optional pipeline blob) / update (identity, limits, schema diff, config
+# blobs) / delete.
 
 from __future__ import annotations
 
@@ -14,10 +16,11 @@ from .transport import DocForgeTransport
 
 
 class CollectionsApi(LoggerClass):
-    """Collection lifecycle endpoints."""
+    """Collection contract endpoints: identity, metadata schema, pipeline/search config blobs."""
 
     def __init__(self, transport: DocForgeTransport) -> None:
-        """Bind the shared transport.
+        """
+        Bind the shared transport.
 
         Args:
             transport (DocForgeTransport): The shared HTTP transport.
@@ -26,60 +29,103 @@ class CollectionsApi(LoggerClass):
         self._t = transport
 
     async def list(self) -> Any:
-        """List all collections (newest first)."""
-        return await self._t.get("/collections/list")
+        """List every collection with its full schema."""
+        return await self._t.get("/collections")
+
+    async def get(self, collection_id: str) -> Any:
+        """
+        Return one collection's full contract.
+
+        Args:
+            collection_id (str): The collection's UUID.
+
+        Returns:
+            Any: The CollectionModel.
+        """
+        return await self._t.get(f"/collections/{collection_id}")
 
     async def create(
         self,
         name: str,
-        supported_formats: list[str] | None = None,
-        max_file_size_bytes: int | None = None,
-        locality_policy: str | None = None,
-        embedding_model: str | None = None,
-        unknown_field_policy: str | None = None,
+        supported_formats: list[str],
+        max_file_size_bytes: int,
+        fields: list[dict[str, Any]] | None = None,
         pipeline: dict[str, Any] | None = None,
-        metadata_schema: list[dict[str, Any]] | None = None,
     ) -> Any:
         """
-        Create a collection. Only ``name`` is required; omitted knobs use server defaults.
+        Create a collection from A to Z — contract + full schema + pipeline blob.
 
         Args:
-            name (str): Human-readable collection name (unique).
-            supported_formats (list[str] | None): Accepted extensions (e.g. ["pdf", "docx"]).
-            max_file_size_bytes (int | None): Per-file size cap.
-            locality_policy (str | None): "on_premise_only" or "external_allowed".
-            embedding_model (str | None): Embedding model id (default "BAAI/bge-m3").
-            unknown_field_policy (str | None): "reject" | "ignore" | "store".
-            pipeline (dict | None): Partial/full pipeline config; defaults fill the rest.
-            metadata_schema (list[dict] | None): Custom metadata field specs.
+            name (str): Unique human name.
+            supported_formats (list[str]): Accepted upload extensions (e.g. ["pdf"]).
+            max_file_size_bytes (int): Upload size ceiling, bytes.
+            fields (list[dict] | None): The FULL metadata schema, declared up front (each item:
+                field_name, field_type, required, filterable, lexical, semantic, enum_values,
+                origin, scope). Omitted -> no custom fields.
+            pipeline (dict | None): The pipeline blob; omitted -> the product default.
 
         Returns:
-            Any: The resolved config state (with an ``applied`` transparency envelope).
+            Any: The created CollectionModel (201).
         """
         # 1. Send only the fields the caller actually provided so server defaults apply
-        body: dict[str, Any] = {"name": name}
-        optional = {
+        body: dict[str, Any] = {
+            "name": name,
             "supported_formats": supported_formats,
             "max_file_size_bytes": max_file_size_bytes,
-            "locality_policy": locality_policy,
-            "embedding_model": embedding_model,
-            "unknown_field_policy": unknown_field_policy,
+        }
+        if fields is not None:
+            body["fields"] = fields
+        if pipeline is not None:
+            body["pipeline"] = pipeline
+        return await self._t.post("/collections", body)
+
+    async def update(
+        self,
+        collection_id: str,
+        name: str | None = None,
+        supported_formats: list[str] | None = None,
+        max_file_size_bytes: int | None = None,
+        fields: list[dict[str, Any]] | None = None,
+        pipeline: dict[str, Any] | None = None,
+        search: dict[str, Any] | None = None,
+        note: str | None = None,
+    ) -> Any:
+        """
+        Patch identity/limits, the metadata schema (by diff), and/or the config blobs.
+
+        Args:
+            collection_id (str): The collection's UUID.
+            name (str | None): New unique name.
+            supported_formats (list[str] | None): New accepted upload extensions.
+            max_file_size_bytes (int | None): New size ceiling, bytes.
+            fields (list[dict] | None): The TARGET schema (diffed by field_name; an omitted
+                field is removed).
+            pipeline (dict | None): New pipeline blob (validated before storage).
+            search (dict | None): New search graph blob ({} = stock default).
+            note (str | None): Version note shown in the config history.
+
+        Returns:
+            Any: The updated CollectionModel.
+        """
+        # 1. Only send the knobs the caller actually wants to change
+        body: dict[str, Any] = {}
+        optional = {
+            "name": name,
+            "supported_formats": supported_formats,
+            "max_file_size_bytes": max_file_size_bytes,
+            "fields": fields,
             "pipeline": pipeline,
-            "metadata_schema": metadata_schema,
+            "search": search,
+            "note": note,
         }
         body.update({k: v for k, v in optional.items() if v is not None})
-
-        # 2. Create
-        return await self._t.post("/collections/create", body)
+        return await self._t.patch(f"/collections/{collection_id}", body)
 
     async def delete(self, collection_id: str) -> Any:
         """
-        Delete a collection and all associated data (Postgres + Qdrant + non-shared S3 blobs).
+        Delete a collection (404 when unknown).
 
         Args:
-            collection_id (str): UUID of the collection to delete.
-
-        Returns:
-            Any: Deletion acknowledgement.
+            collection_id (str): The collection's UUID.
         """
-        return await self._t.delete(f"/collections/{collection_id}/delete")
+        return await self._t.delete(f"/collections/{collection_id}")

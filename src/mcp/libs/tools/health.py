@@ -1,5 +1,5 @@
 # ====== Code Summary ======
-# MCP tools for the health domain — thin wrappers over sdk.health.
+# MCP tools for the health domain — thin wrapper over sdk.health.
 
 from __future__ import annotations
 
@@ -23,5 +23,5 @@ def register(mcp: FastMCP, sdk: DocForgeClient) -> None:
 
     @mcp.tool()
     async def ping() -> Any:
-        """Check DocForge connectivity. Returns service status, API version, and GPU availability."""
+        """Check DocForge connectivity — a static {"status": "ok"} when the app is serving."""
         return await sdk.health.ping()

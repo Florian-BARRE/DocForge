@@ -1,6 +1,6 @@
 # ====== Code Summary ======
-# Documents sub-API: ingest / list / get / update / reingest / delete under
-# /api/v1/collections/{collection_id}/documents.
+# Documents sub-API: the admission path (multipart upload -> enqueue) and the searchability
+# toggle, under /api/v1/documents.
 
 from __future__ import annotations
 
@@ -16,10 +16,11 @@ from .transport import DocForgeTransport
 
 
 class DocumentsApi(LoggerClass):
-    """Document lifecycle endpoints (a sub-resource of a collection)."""
+    """Document admission (upload) and the searchability toggle."""
 
     def __init__(self, transport: DocForgeTransport) -> None:
-        """Bind the shared transport.
+        """
+        Bind the shared transport.
 
         Args:
             transport (DocForgeTransport): The shared HTTP transport.
@@ -27,123 +28,33 @@ class DocumentsApi(LoggerClass):
         LoggerClass.__init__(self)
         self._t = transport
 
-    async def ingest(
-        self, collection_id: str, file_path: str, metadata: dict[str, Any] | None = None
+    async def upload(
+        self, file_path: str, collection_id: str, metadata: dict[str, Any] | None = None
     ) -> Any:
         """
-        Upload a local file and enqueue the pipeline (async processing).
+        Upload a local file into a collection and enqueue its ingestion (async processing).
 
         Args:
+            file_path (str): Absolute path to the local file to upload.
             collection_id (str): Target collection UUID.
-            file_path (str): Absolute path to the local file to ingest.
-            metadata (dict | None): Optional user metadata, validated against the schema.
+            metadata (dict | None): Declared metadata, validated against the collection schema.
 
         Returns:
-            Any: Ingest acknowledgement (doc_id, status, duplicate, job_id).
+            Any: UploadAccepted — document_id, job_id, duplicate.
         """
-        # 1. Serialise optional metadata as the JSON form field the endpoint expects
-        data = {"metadata": json.dumps(metadata)} if metadata else None
+        # 1. collection_id and metadata are both form fields alongside the file part
+        data = {"collection_id": collection_id, "metadata": json.dumps(metadata or {})}
+        return await self._t.upload("/documents", file_path, data=data)
 
-        # 2. Upload
-        return await self._t.upload(
-            f"/collections/{collection_id}/documents/ingest", file_path, data=data
-        )
-
-    async def list(
-        self,
-        collection_id: str,
-        status: str | None = None,
-        limit: int = 100,
-        offset: int = 0,
-        sort_by: str = "created_at",
-        sort_order: str = "desc",
-    ) -> Any:
+    async def set_enabled(self, document_id: str, enabled: bool) -> Any:
         """
-        List documents in a collection with optional filter, pagination, and sort.
+        Toggle a document's searchability (reversible, no re-ingest).
 
         Args:
-            collection_id (str): Target collection UUID.
-            status (str | None): Filter by status (pending/running/done/error).
-            limit (int): Page size (1–500).
-            offset (int): Page offset.
-            sort_by (str): created_at | filename | status | file_size.
-            sort_order (str): asc | desc.
-
-        Returns:
-            Any: Paginated documents with the total match count.
-        """
-        return await self._t.get(
-            f"/collections/{collection_id}/documents/list",
-            params={
-                "status": status,
-                "limit": limit,
-                "offset": offset,
-                "sort_by": sort_by,
-                "sort_order": sort_order,
-            },
-        )
-
-    async def get(self, collection_id: str, document_id: str) -> Any:
-        """
-        Full document record with aggregated pipeline state (counts, file availability, errors).
-
-        Args:
-            collection_id (str): Target collection UUID.
             document_id (str): Document UUID.
+            enabled (bool): True to make it searchable, False to hide it from search.
 
         Returns:
-            Any: The enriched document record.
+            Any: DocumentEnabledResponse — document_id, enabled.
         """
-        return await self._t.get(f"/collections/{collection_id}/documents/{document_id}")
-
-    async def update(
-        self, collection_id: str, document_id: str, metadata: dict[str, Any], reindex: bool = False
-    ) -> Any:
-        """
-        Merge a metadata patch into a document's user metadata (a null value removes a key).
-
-        Args:
-            collection_id (str): Target collection UUID.
-            document_id (str): Document UUID.
-            metadata (dict): Partial metadata patch.
-            reindex (bool): Also sync the changed fields into the live index.
-
-        Returns:
-            Any: The update result (changed fields, reindex outcome).
-        """
-        return await self._t.post(
-            f"/collections/{collection_id}/documents/{document_id}/update",
-            {"metadata": metadata, "reindex": reindex},
-        )
-
-    async def reingest(self, collection_id: str, document_id: str, force: bool = False) -> Any:
-        """
-        Re-enqueue the full pipeline for a document.
-
-        Args:
-            collection_id (str): Target collection UUID.
-            document_id (str): Document UUID.
-            force (bool): Bypass the Merkle node cache and rebuild every stage from scratch.
-
-        Returns:
-            Any: Reingest acknowledgement (job_id, status).
-        """
-        return await self._t.post(
-            f"/collections/{collection_id}/documents/{document_id}/reingest",
-            {"force": force},
-        )
-
-    async def delete(self, collection_id: str, document_id: str) -> Any:
-        """
-        Delete a document and all associated data (cascade across Postgres / Qdrant / S3).
-
-        Args:
-            collection_id (str): Target collection UUID.
-            document_id (str): Document UUID.
-
-        Returns:
-            Any: Deletion result (qdrant points + blob disposition).
-        """
-        return await self._t.delete(
-            f"/collections/{collection_id}/documents/{document_id}/delete"
-        )
+        return await self._t.patch(f"/documents/{document_id}/enabled", {"enabled": enabled})

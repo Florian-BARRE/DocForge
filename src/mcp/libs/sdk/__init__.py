@@ -5,17 +5,27 @@ from .client import DocForgeClient
 from .transport import DocForgeTransport
 
 # ------------------- Sub-APIs --------------------- #
-from .access import AccessApi
 from .auth import AuthApi
-from .limits import LimitsApi
-from .users import UsersApi
+from .blobs import BlobsApi
+from .collections import CollectionsApi
+from .documents import DocumentsApi
+from .explorer import ExplorerApi
+from .health import HealthApi
+from .jobs import JobsApi
+from .pipelines import PipelinesApi
+from .search import SearchApi
 
 # ------------------- Public API ------------------- #
 __all__ = [
     "DocForgeClient",
     "DocForgeTransport",
-    "AccessApi",
     "AuthApi",
-    "LimitsApi",
-    "UsersApi",
+    "BlobsApi",
+    "CollectionsApi",
+    "DocumentsApi",
+    "ExplorerApi",
+    "HealthApi",
+    "JobsApi",
+    "PipelinesApi",
+    "SearchApi",
 ]

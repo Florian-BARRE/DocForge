@@ -16,9 +16,9 @@ from .tools import register_all
 # Instructions surfaced to the connected LLM so it knows what DocForge is and how to start.
 _INSTRUCTIONS = (
     "DocForge is a document intelligence platform. Use these tools to manage collections of "
-    "documents, ingest files, inspect their parsed pages/chunks, and run hybrid semantic + "
-    "keyword search over indexed content. Start with list_collections and get_discovery to learn "
-    "what is available; only documents with status 'done' are searchable."
+    "documents, upload files, inspect their parsed pages/chunks/IR, and run hybrid semantic + "
+    "keyword search over indexed content. Start with list_collections to learn what is "
+    "available; only documents with status 'done' are searchable."
 )
 
 

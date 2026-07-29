@@ -1,6 +1,6 @@
 # ====== Code Summary ======
-# Search sub-API: collection-wide and per-document hybrid retrieval under
-# /api/v1/collections/{collection_id}/documents (.../search and .../{document_id}/search).
+# Search sub-API: hybrid retrieval over one collection, under
+# POST /api/v1/collections/{collection_id}/search.
 
 from __future__ import annotations
 
@@ -15,10 +15,11 @@ from .transport import DocForgeTransport
 
 
 class SearchApi(LoggerClass):
-    """Hybrid search endpoints (dense + sparse fusion, optional query transform + rerank)."""
+    """Hybrid search endpoint (dense + sparse fusion, optional ColBERT late-interaction rescore)."""
 
     def __init__(self, transport: DocForgeTransport) -> None:
-        """Bind the shared transport.
+        """
+        Bind the shared transport.
 
         Args:
             transport (DocForgeTransport): The shared HTTP transport.
@@ -26,76 +27,41 @@ class SearchApi(LoggerClass):
         LoggerClass.__init__(self)
         self._t = transport
 
-    async def collection(
+    async def search(
         self,
         collection_id: str,
         query: str,
-        top_k: int = 10,
+        limit: int = 10,
         filters: dict[str, Any] | None = None,
-        weights: dict[str, float] | None = None,
-        debug: bool = False,
+        search_in: list[dict[str, Any]] | None = None,
+        use_late_interaction: bool | None = None,
+        rescore_pool_size: int | None = None,
     ) -> Any:
         """
-        Hybrid search over a whole collection.
+        Run a hybrid search over a collection and return ranked, hydrated chunk hits.
 
         Args:
             collection_id (str): Target collection UUID.
-            query (str): Natural-language query.
-            top_k (int): Max results (1–100).
-            filters (dict | None): Qdrant payload filter (e.g. {"must": [{"key": ..., "match": ...}]}).
-            weights (dict | None): Per-vector fusion weight overrides (e.g. {"dense-text": 0.7}).
-            debug (bool): Include per-vector rank breakdown in each result.
+            query (str): The natural-language query.
+            limit (int): Number of fused results (1-100).
+            filters (dict | None): Exact/any-of constraints on FILTERABLE fields (a scalar is
+                an equality match, a list is a set-membership match).
+            search_in (list[dict] | None): Targets [{"field", "semantic", "lexical"}]; None
+                searches the chunk body ("content") on both axes.
+            use_late_interaction (bool | None): Opt into the ColBERT re-score for this query.
+            rescore_pool_size (int | None): Fused candidate pool size ColBERT re-scores.
 
         Returns:
-            Any: Ranked chunk results (+ groups/debug_info when applicable).
+            Any: SearchResponse — query, hits, debug_info.
         """
-        return await self._t.post(
-            f"/collections/{collection_id}/documents/search",
-            self._body(query, top_k, filters, weights, debug),
-        )
-
-    async def within_document(
-        self,
-        collection_id: str,
-        document_id: str,
-        query: str,
-        top_k: int = 10,
-        filters: dict[str, Any] | None = None,
-        weights: dict[str, float] | None = None,
-        debug: bool = False,
-    ) -> Any:
-        """
-        Hybrid search restricted to a single document's chunks.
-
-        Args:
-            collection_id (str): Target collection UUID.
-            document_id (str): Document UUID the search is pinned to.
-            query (str): Natural-language query.
-            top_k (int): Max results (1–100).
-            filters (dict | None): Additional Qdrant payload filter.
-            weights (dict | None): Per-vector fusion weight overrides.
-            debug (bool): Include per-vector rank breakdown.
-
-        Returns:
-            Any: Ranked chunk results within the document.
-        """
-        return await self._t.post(
-            f"/collections/{collection_id}/documents/{document_id}/search",
-            self._body(query, top_k, filters, weights, debug),
-        )
-
-    @staticmethod
-    def _body(
-        query: str,
-        top_k: int,
-        filters: dict[str, Any] | None,
-        weights: dict[str, float] | None,
-        debug: bool,
-    ) -> dict[str, Any]:
-        """Assemble the SearchRequest body (None filters/weights are omitted)."""
-        body: dict[str, Any] = {"query": query, "top_k": top_k, "debug": debug}
+        # 1. Only send the knobs the caller actually set; the request model defaults the rest
+        body: dict[str, Any] = {"query": query, "limit": limit}
         if filters is not None:
             body["filters"] = filters
-        if weights is not None:
-            body["weights"] = weights
-        return body
+        if search_in is not None:
+            body["search_in"] = search_in
+        if use_late_interaction is not None:
+            body["use_late_interaction"] = use_late_interaction
+        if rescore_pool_size is not None:
+            body["rescore_pool_size"] = rescore_pool_size
+        return await self._t.post(f"/collections/{collection_id}/search", body)

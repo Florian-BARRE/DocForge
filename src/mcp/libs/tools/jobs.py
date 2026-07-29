@@ -1,5 +1,6 @@
 # ====== Code Summary ======
-# MCP tools for the jobs domain — thin wrappers over sdk.jobs.
+# MCP tools for the jobs domain — thin wrappers over sdk.jobs (read-only; the rework API has
+# no cancel endpoint).
 
 from __future__ import annotations
 
@@ -22,23 +23,21 @@ def register(mcp: FastMCP, sdk: DocForgeClient) -> None:
     """
 
     @mcp.tool()
-    async def list_jobs(
-        status: str | None = None,
-        collection_id: str | None = None,
-        limit: int = 50,
-        offset: int = 0,
-    ) -> Any:
-        """List pipeline jobs across all collections (newest first). Filter by status or collection_id."""
-        return await sdk.jobs.list(
-            status=status, collection_id=collection_id, limit=limit, offset=offset
-        )
+    async def list_jobs(collection_id: str) -> Any:
+        """List a collection's ingestion jobs, newest first."""
+        return await sdk.jobs.list(collection_id)
 
     @mcp.tool()
     async def get_job(job_id: str) -> Any:
-        """Fetch a single job with its live queue status — use to track an ingestion to completion."""
+        """Fetch one ingestion job's live state — poll this after an upload."""
         return await sdk.jobs.get(job_id)
 
     @mcp.tool()
-    async def cancel_job(job_id: str) -> Any:
-        """Request cancellation of a queued or running job (stops at the next await point)."""
-        return await sdk.jobs.cancel(job_id)
+    async def get_job_events(job_id: str) -> Any:
+        """Return the job's per-node execution trace, in order (stage, status, timing, error)."""
+        return await sdk.jobs.get_events(job_id)
+
+    @mcp.tool()
+    async def get_live_workers() -> Any:
+        """Return what every worker is doing right now, grouped by worker (empty when idle)."""
+        return await sdk.jobs.live_workers()

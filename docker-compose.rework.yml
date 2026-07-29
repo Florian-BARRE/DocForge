@@ -279,6 +279,35 @@ services:
         aliases:
           - bge_server            # so a collection's default base_url http://bge_server:80 resolves
 
+  # Standalone MCP server — a PURE HTTP client of the DocForge API (no DB/S3). Exposes the API as MCP
+  # tools over streamable-http. Its own MCP_AUTH_TOKEN gates inbound; DOCFORGE_API_TOKEN (the API root
+  # token) authenticates outbound when the API has AUTH_ENABLED=true.
+  rework_mcp:
+    build:
+      context: src                # sibling context: the mcp source is src/mcp, not under docforge-rework
+      dockerfile: mcp/Dockerfile
+    image: docforge-rework-mcp:latest
+    container_name: docforge-rework-mcp
+    profiles: ["full"]
+    env_file:
+      - services/mcp/.env
+    environment:
+      MCP_TRANSPORT: streamable-http
+      DOCFORGE_API_URL: http://rework_app:8000
+    ports:
+      - "10048:9000"              # MCP streamable-http endpoint at /mcp (firewall: 10000-11000)
+    depends_on:
+      rework_app:
+        condition: service_started
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 512m
+    restart: unless-stopped
+    networks:
+      - rework_net
+
 volumes:
   rework_postgres_data:
   rework_redis_data:

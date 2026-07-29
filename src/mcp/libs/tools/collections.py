@@ -23,37 +23,61 @@ def register(mcp: FastMCP, sdk: DocForgeClient) -> None:
 
     @mcp.tool()
     async def list_collections() -> Any:
-        """List all document collections (id, name, formats, embedding model, created_at)."""
+        """List every collection with its full contract (schema, pipeline, search blobs)."""
         return await sdk.collections.list()
+
+    @mcp.tool()
+    async def get_collection(collection_id: str) -> Any:
+        """Return one collection's full contract."""
+        return await sdk.collections.get(collection_id)
 
     @mcp.tool()
     async def create_collection(
         name: str,
-        supported_formats: list[str] | None = None,
-        max_file_size_bytes: int | None = None,
-        locality_policy: str | None = None,
-        embedding_model: str | None = None,
-        unknown_field_policy: str | None = None,
+        supported_formats: list[str],
+        max_file_size_bytes: int,
+        fields: list[dict[str, Any]] | None = None,
         pipeline: dict[str, Any] | None = None,
-        metadata_schema: list[dict[str, Any]] | None = None,
     ) -> Any:
         """
-        Create a collection. Only `name` is required — every other knob falls back to a sensible
-        server default (formats, 100 MB cap, BAAI/bge-m3, external_allowed). Supply `pipeline` or
-        `metadata_schema` only for advanced setups; the resolved config is echoed back.
+        Create a collection from A to Z. `fields` is the FULL metadata schema declared up
+        front (each item: field_name, field_type, required, filterable, lexical, semantic,
+        enum_values, origin, scope) — the vector space is fixed at creation and cannot grow
+        later. `pipeline` is the ingestion graph blob; omit it to use the product default
+        (all stages wired).
         """
         return await sdk.collections.create(
+            name, supported_formats, max_file_size_bytes, fields=fields, pipeline=pipeline
+        )
+
+    @mcp.tool()
+    async def update_collection(
+        collection_id: str,
+        name: str | None = None,
+        supported_formats: list[str] | None = None,
+        max_file_size_bytes: int | None = None,
+        fields: list[dict[str, Any]] | None = None,
+        pipeline: dict[str, Any] | None = None,
+        search: dict[str, Any] | None = None,
+        note: str | None = None,
+    ) -> Any:
+        """
+        Patch identity/limits, the metadata schema (applied by diff against field_name — an
+        omitted field is removed), and/or the config blobs (pipeline / search graphs, each
+        validated before storage). A change to the searchable schema flips needs_reindex.
+        """
+        return await sdk.collections.update(
+            collection_id,
             name=name,
             supported_formats=supported_formats,
             max_file_size_bytes=max_file_size_bytes,
-            locality_policy=locality_policy,
-            embedding_model=embedding_model,
-            unknown_field_policy=unknown_field_policy,
+            fields=fields,
             pipeline=pipeline,
-            metadata_schema=metadata_schema,
+            search=search,
+            note=note,
         )
 
     @mcp.tool()
     async def delete_collection(collection_id: str) -> Any:
-        """Delete a collection and all its data (Postgres + Qdrant + non-shared S3 blobs). Irreversible."""
+        """Delete a collection (404 when unknown). Irreversible."""
         return await sdk.collections.delete(collection_id)

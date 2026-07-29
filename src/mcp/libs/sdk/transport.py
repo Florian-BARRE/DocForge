@@ -35,8 +35,10 @@ class DocForgeTransport(LoggerClass):
                 Leave empty when calling a DocForge instance with ``AUTH_ENABLED=false``.
         """
         LoggerClass.__init__(self)
-        # Store the versioned API root used by every endpoint helper.
-        self._api_v1: str = f"{base_url.rstrip('/')}/api/v1"
+        # Store the bare root (for public, non-versioned routes like /health) and the
+        # versioned API root used by every other endpoint helper.
+        self._base_url: str = base_url.rstrip("/")
+        self._api_v1: str = f"{self._base_url}/api/v1"
         # Build default headers — include the Authorization header only when a token is provided
         # so requests to an auth-disabled DocForge instance remain unaffected.
         _default_headers: dict[str, str] = {}
@@ -73,23 +75,43 @@ class DocForgeTransport(LoggerClass):
         self._raise_for_status(res)
         return res.json()
 
-    async def get_bytes(self, path: str, params: dict[str, Any] | None = None) -> bytes:
+    async def get_bytes(
+        self, path: str, params: dict[str, Any] | None = None
+    ) -> tuple[bytes, str]:
         """
         Perform a GET request returning the raw response body (for binary endpoints).
 
         Args:
-            path (str): Path relative to ``/api/v1`` (e.g. a page screenshot endpoint).
+            path (str): Path relative to ``/api/v1`` (e.g. the blob byte-stream endpoint).
             params (dict | None): Optional query parameters.
 
         Returns:
-            bytes: Raw response content.
+            tuple[bytes, str]: Raw response content and its registered content type.
         """
         # 1. Issue the request
         res = await self._http.get(f"{self._api_v1}{path}", params=self._clean(params))
 
-        # 2. Validate and return raw bytes
+        # 2. Validate and return raw bytes + the registered mime type
         self._raise_for_status(res)
-        return res.content
+        return res.content, res.headers.get("content-type", "application/octet-stream")
+
+    async def get_public(self, path: str) -> Any:
+        """
+        Perform a GET request against a path NOT prefixed with ``/api/v1`` (the public health
+        probe lives outside the authN-gated surface).
+
+        Args:
+            path (str): Path relative to the bare base URL (e.g. ``/health``).
+
+        Returns:
+            Any: Parsed JSON body.
+        """
+        # 1. Issue the request against the bare root, bypassing the /api/v1 prefix
+        res = await self._http.get(f"{self._base_url}{path}")
+
+        # 2. Validate and parse
+        self._raise_for_status(res)
+        return res.json()
 
     async def post(self, path: str, body: dict[str, Any] | None = None) -> Any:
         """
@@ -124,6 +146,26 @@ class DocForgeTransport(LoggerClass):
         """
         # 1. Issue the request
         res = await self._http.put(f"{self._api_v1}{path}", json=body or {})
+
+        # 2. Validate, then handle the empty-body case
+        self._raise_for_status(res)
+        if res.status_code == 204:
+            return {}
+        return res.json()
+
+    async def patch(self, path: str, body: dict[str, Any] | None = None) -> Any:
+        """
+        Perform a PATCH request with a JSON body.
+
+        Args:
+            path (str): Path relative to ``/api/v1``.
+            body (dict | None): JSON-serialisable request body (sent as ``{}`` when None).
+
+        Returns:
+            Any: Parsed JSON body, or ``{}`` for ``204 No Content``.
+        """
+        # 1. Issue the request
+        res = await self._http.patch(f"{self._api_v1}{path}", json=body or {})
 
         # 2. Validate, then handle the empty-body case
         self._raise_for_status(res)

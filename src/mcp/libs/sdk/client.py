@@ -10,22 +10,16 @@ from __future__ import annotations
 from loggerplusplus import LoggerClass
 
 # ====== Local Project Imports ======
-from .access import AccessApi
 from .auth import AuthApi
-from .chunks import ChunksApi
-from .collection_config import ConfigApi
+from .blobs import BlobsApi
 from .collections import CollectionsApi
-from .discovery import DiscoveryApi
 from .documents import DocumentsApi
-from .files import FilesApi
+from .explorer import ExplorerApi
 from .health import HealthApi
 from .jobs import JobsApi
-from .limits import LimitsApi
-from .monitoring import MonitoringApi
-from .pages import PagesApi
+from .pipelines import PipelinesApi
 from .search import SearchApi
 from .transport import DocForgeTransport
-from .users import UsersApi
 
 
 class DocForgeClient(LoggerClass):
@@ -53,20 +47,14 @@ class DocForgeClient(LoggerClass):
 
         # 2. Compose the domain sub-APIs as attributes
         self.health = HealthApi(self._transport)
-        self.discovery = DiscoveryApi(self._transport)
-        self.collections = CollectionsApi(self._transport)
-        self.config = ConfigApi(self._transport)
-        self.documents = DocumentsApi(self._transport)
-        self.search = SearchApi(self._transport)
-        self.files = FilesApi(self._transport)
-        self.chunks = ChunksApi(self._transport)
-        self.pages = PagesApi(self._transport)
-        self.jobs = JobsApi(self._transport)
-        self.limits = LimitsApi(self._transport)
-        self.monitoring = MonitoringApi(self._transport)
         self.auth = AuthApi(self._transport)
-        self.users = UsersApi(self._transport)
-        self.access = AccessApi(self._transport)
+        self.collections = CollectionsApi(self._transport)
+        self.documents = DocumentsApi(self._transport)
+        self.explorer = ExplorerApi(self._transport)
+        self.search = SearchApi(self._transport)
+        self.jobs = JobsApi(self._transport)
+        self.blobs = BlobsApi(self._transport)
+        self.pipelines = PipelinesApi(self._transport)
 
         self.logger.info(f"DocForgeClient ready ({base_url})")
 

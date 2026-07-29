@@ -1,5 +1,7 @@
 # ====== Code Summary ======
-# Jobs sub-API: global job listing / detail / cancel under /api/v1/jobs.
+# Jobs sub-API: read-only ingestion status under /api/v1/jobs. The worker writes every job
+# row (running, progress per node, done/failed with the error verbatim); this sub-API only
+# reads it. There is no cancel endpoint in the rework API.
 
 from __future__ import annotations
 
@@ -14,10 +16,11 @@ from .transport import DocForgeTransport
 
 
 class JobsApi(LoggerClass):
-    """Pipeline job endpoints (track and cancel async ingestion/reindex work)."""
+    """Read-only ingestion job status endpoints."""
 
     def __init__(self, transport: DocForgeTransport) -> None:
-        """Bind the shared transport.
+        """
+        Bind the shared transport.
 
         Args:
             transport (DocForgeTransport): The shared HTTP transport.
@@ -25,55 +28,23 @@ class JobsApi(LoggerClass):
         LoggerClass.__init__(self)
         self._t = transport
 
-    async def list(
-        self,
-        status: str | None = None,
-        collection_id: str | None = None,
-        limit: int = 50,
-        offset: int = 0,
-    ) -> Any:
+    async def list(self, collection_id: str) -> Any:
         """
-        List jobs across all collections (newest first), with optional filters.
+        List a collection's jobs, newest first (collection_id is required by the API).
 
         Args:
-            status (str | None): Filter by job status.
-            collection_id (str | None): Filter by collection UUID.
-            limit (int): Page size (1–200).
-            offset (int): Page offset.
-
-        Returns:
-            Any: Paginated jobs with the total match count.
+            collection_id (str): The collection's UUID.
         """
-        return await self._t.get(
-            "/jobs",
-            params={
-                "status": status,
-                "collection_id": collection_id,
-                "limit": limit,
-                "offset": offset,
-            },
-        )
+        return await self._t.get("/jobs", params={"collection_id": collection_id})
+
+    async def live_workers(self) -> Any:
+        """Return what every worker is doing right now (derived from RUNNING job rows)."""
+        return await self._t.get("/jobs/workers/live")
+
+    async def get_events(self, job_id: str) -> Any:
+        """Return the job's per-node execution trace, in order."""
+        return await self._t.get(f"/jobs/{job_id}/events")
 
     async def get(self, job_id: str) -> Any:
-        """
-        Fetch a single job, enriched with its live arq-side status.
-
-        Args:
-            job_id (str): Job UUID.
-
-        Returns:
-            Any: The job record with live queue status.
-        """
+        """Return one ingestion job's live state (poll this after an upload)."""
         return await self._t.get(f"/jobs/{job_id}")
-
-    async def cancel(self, job_id: str) -> Any:
-        """
-        Request cancellation of a queued or running job (arq abort).
-
-        Args:
-            job_id (str): Job UUID.
-
-        Returns:
-            Any: Whether the abort was accepted.
-        """
-        return await self._t.post(f"/jobs/{job_id}/cancel")
