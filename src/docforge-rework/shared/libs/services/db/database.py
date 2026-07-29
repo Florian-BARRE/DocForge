@@ -68,6 +68,10 @@ class Database(LoggerClass):
         self.auth = AuthFacade(postgres)
         self.logger.info(f"Database facade ready (postgres + qdrant + s3)")
 
+    async def ensure_object_store(self) -> None:
+        """Provision the blob bucket if missing (idempotent) — call once at startup."""
+        await self._s3.ensure_bucket()
+
     async def close(self) -> None:
         """Release every store connection — call on application shutdown."""
         await self._postgres.dispose()

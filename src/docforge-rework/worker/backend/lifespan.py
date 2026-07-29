@@ -64,6 +64,8 @@ async def startup(ctx: dict[str, Any]) -> None:
         qdrant=QdrantClient(RUNTIME_CONFIG.QDRANT_URL, api_key=RUNTIME_CONFIG.QDRANT_API_KEY),
         s3=CONTEXT.s3,
     )
+    # The worker writes blobs — make sure the bucket exists on a fresh volume (idempotent).
+    await CONTEXT.database.ensure_object_store()
 
     # 4. Execution services + identity/limits.
     log_step(3, "Pipeline runner")

@@ -60,5 +60,33 @@ class S3Client(LoggerClass):
         ) as s3:
             yield s3
 
+    async def ensure_bucket(self) -> None:
+        """
+        Create the configured bucket if it does not exist yet (idempotent, safe to call at boot).
+
+        A fresh object-store volume (a new prod deployment) has no bucket, so the first upload
+        would 404/AccessDenied. Calling this at startup makes a clean deploy self-provisioning.
+        Existing bucket → head succeeds → no-op; missing bucket → created.
+
+        Raises:
+            ClientError: For any S3 error other than a not-found on the head probe.
+        """
+        # 1. Probe the bucket — a 404/NoSuchBucket means it must be created, anything else re-raises.
+        async with self.client() as s3:
+            try:
+                await s3.head_bucket(Bucket=self.bucket)
+                return
+            except s3.exceptions.ClientError as exc:
+                code = exc.response.get("Error", {}).get("Code", "")
+                if code not in ("404", "NoSuchBucket", "NotFound"):
+                    raise
+
+            # 2. Absent — create it (tolerate a concurrent creator owning it already).
+            try:
+                await s3.create_bucket(Bucket=self.bucket)
+                self.logger.info(f"Created object-store bucket '{self.bucket}'")
+            except s3.exceptions.BucketAlreadyOwnedByYou:
+                pass
+
 
 __all__ = ["S3Client"]

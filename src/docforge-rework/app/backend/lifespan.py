@@ -18,7 +18,7 @@ from .context import CONTEXT
 from .libs.auth import AuthBootstrap
 
 # Total number of startup steps — update when adding/removing steps.
-TOTAL_STEPS = 3
+TOTAL_STEPS = 4
 
 
 def lifespan() -> Any:
@@ -58,11 +58,17 @@ def lifespan() -> Any:
                 f"served from the node registry"
             )
 
-            # 4. Provision the root credential when auth is on (idempotent, best-effort).
-            log_step(3, "Authentication bootstrap")
+            # 4. Provision the blob bucket on a fresh volume (idempotent). Guarded: the design
+            #    surface can boot without stores wired, so only run when a database is present.
+            log_step(3, "Object store")
+            if hasattr(CONTEXT, "database"):
+                await CONTEXT.database.ensure_object_store()
+
+            # 5. Provision the root credential when auth is on (idempotent, best-effort).
+            log_step(4, "Authentication bootstrap")
             await AuthBootstrap.ensure_root_credential()
 
-            # 5. Yield — the app is now serving.
+            # 6. Yield — the app is now serving.
             yield
 
         finally:
