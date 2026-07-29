@@ -11,11 +11,14 @@ import { theme } from "../../theme";
 import { ExpiryChip } from "./ExpiryChip";
 import { describeScope } from "./permissionsSummary";
 import { humanizeAgo } from "./relativeTime";
+import { StaleChip } from "./StaleChip";
 
 interface ApiKeyRowProps {
   apiKey: ApiKeyInfo;
   onRevoked: () => void;
   onRotate: () => void;
+  /** Open this key's detail page (a click on the name). */
+  onOpen: () => void;
   /** Best-effort collection id→name map, used to spell out scoped grants by name. */
   collectionNames: Map<string, string>;
 }
@@ -24,7 +27,7 @@ function formatTimestamp(value: string | null): string {
   return value ? new Date(value).toLocaleString() : "—";
 }
 
-export function ApiKeyRow({ apiKey, onRevoked, onRotate, collectionNames }: ApiKeyRowProps) {
+export function ApiKeyRow({ apiKey, onRevoked, onRotate, onOpen, collectionNames }: ApiKeyRowProps) {
   const [confirming, setConfirming] = useState(false);
   const [revoking, setRevoking] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -52,14 +55,23 @@ export function ApiKeyRow({ apiKey, onRevoked, onRotate, collectionNames }: ApiK
       }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: theme.space.s, flexWrap: "wrap" }}>
-        <strong style={{ fontFamily: theme.font.display, fontSize: theme.font.size.l, fontWeight: 600, color: theme.color.text }}>
+        <button
+          onClick={onOpen}
+          title="Open key details"
+          style={{
+            background: "none", border: "none", cursor: "pointer", padding: 0,
+            fontFamily: theme.font.display, fontSize: theme.font.size.l, fontWeight: 600,
+            color: theme.color.text, textAlign: "left",
+          }}
+        >
           {apiKey.name}
-        </strong>
+        </button>
         <span style={{ fontFamily: theme.font.mono, fontSize: theme.font.size.s, color: theme.color.dim }}>
           {apiKey.prefix}…
         </span>
         <Chip tone={revoked ? "dim" : "ok"}>{revoked ? "revoked" : "active"}</Chip>
         <ExpiryChip expiresAt={apiKey.expires_at} />
+        <StaleChip apiKey={apiKey} />
         <div style={{ marginLeft: "auto", display: "flex", gap: theme.space.s }}>
           {revoked ? null : confirming ? (
             <>

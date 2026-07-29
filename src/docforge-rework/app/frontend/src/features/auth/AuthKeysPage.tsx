@@ -5,40 +5,27 @@
 // refetches explicitly after each mutation since it stays mounted while they happen.
 
 import { useEffect, useState } from "react";
-import { ALL_COLLECTIONS_SCOPE, listKeys, rotateKey, type ApiKeyInfo, type CreatedApiKey } from "../../api/auth";
+import { listKeys, rotateKey, type ApiKeyInfo, type CreatedApiKey } from "../../api/auth";
 import { listCollections } from "../../api/collections";
 import { Button } from "../../components/Button";
 import { ErrorState } from "../../components/ErrorState";
 import { LoadingState } from "../../components/LoadingState";
 import { PageHeader } from "../../components/PageHeader";
 import { TabNav } from "../../components/TabNav";
+import type { Navigate } from "../../shell/view";
 import { theme } from "../../theme";
 import { ApiKeyRow } from "./ApiKeyRow";
 import { CreatedKeyModal } from "./CreatedKeyModal";
-import { CreateKeyForm, type CreateKeyFormInitial } from "./CreateKeyForm";
-import { isoToExpiryChoice } from "./expiry";
+import { CreateKeyForm } from "./CreateKeyForm";
+import { deriveRotateInitial } from "./rotateInitial";
 
 type StatusFilter = "active" | "revoked" | "all";
 
-/**
- * Pre-fill the rotate form from the key it is replacing — same name/permissions/expiry, editable
- * before submit (the backend clones omitted fields, but the UI always sends a full override).
- *
- * @param key - The key selected for rotation.
- * @returns The `CreateKeyForm` initial state for "rotate" mode.
- */
-function deriveRotateInitial(key: ApiKeyInfo): CreateKeyFormInitial {
-  const permissions = key.permissions;
-  return {
-    name: key.name,
-    fullAccess: permissions === null,
-    capabilities: permissions?.capabilities ?? ["read"],
-    collectionsScope: !permissions || permissions.collections.includes(ALL_COLLECTIONS_SCOPE) ? "all" : permissions.collections,
-    expiry: isoToExpiryChoice(key.expires_at),
-  };
+interface AuthKeysPageProps {
+  onNavigate: Navigate;
 }
 
-export function AuthKeysPage() {
+export function AuthKeysPage({ onNavigate }: AuthKeysPageProps) {
   const [keys, setKeys] = useState<ApiKeyInfo[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
@@ -147,6 +134,7 @@ export function AuthKeysPage() {
               apiKey={key}
               onRevoked={load}
               onRotate={() => setRotatingKey(key)}
+              onOpen={() => onNavigate({ name: "api-key", keyId: key.id })}
               collectionNames={collectionNames}
             />
           ))}

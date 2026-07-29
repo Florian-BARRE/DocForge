@@ -4,6 +4,7 @@
 
 import { useState } from "react";
 import { AuthKeysPage } from "./features/auth/AuthKeysPage";
+import { KeyDetailPage } from "./features/auth/KeyDetailPage";
 import { CollectionDetailPage } from "./features/collections/CollectionDetailPage";
 import { CollectionEditPage } from "./features/collections/CollectionEditPage";
 import { CollectionOverview } from "./features/collections/CollectionOverview";
@@ -73,7 +74,8 @@ export function App() {
         )}
         {view.name === "job" && <JobDetailPage jobId={view.jobId} collectionId={view.collectionId} onNavigate={setView} />}
         {view.name === "workers" && <WorkersPanel onNavigate={setView} />}
-        {view.name === "api-keys" && <AuthKeysPage />}
+        {view.name === "api-keys" && <AuthKeysPage onNavigate={setView} />}
+        {view.name === "api-key" && <KeyDetailPage keyId={view.keyId} onNavigate={setView} />}
       </div>
     </div>
   );

@@ -17,6 +17,7 @@ export type View =
   | { name: "document"; collectionId: string; documentId: string }
   | { name: "job"; collectionId: string; jobId: string }
   | { name: "workers" }
-  | { name: "api-keys" };
+  | { name: "api-keys" }
+  | { name: "api-key"; keyId: string };
 
 export type Navigate = (view: View) => void;
