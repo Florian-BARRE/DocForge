@@ -36,3 +36,4 @@ uv project — no multi-root `--project` dance.
 - [Scratchpad port complete](scratchpad-port-complete.md) — the scratchpad→pytest port DONE (2026-07-05): final counts + the one live-stack infra gap (S3 bucket not provisioned).
 - [Port scratchpad gap plan](port-scratchpad-gap-plan.md) — the (now-executed) 1:1 mapping of scratchpad spec scripts to source + the file list that was still to write; historical, read before re-deriving.
 - [Auth Lot 4 testing patterns](auth-lot4-testing-patterns.md) — fake-Request-as-SimpleNamespace for authenticate/AuthzGuard.enforce; the __parse-validates-whole-blob-first ordering trap.
+- [IngestionFacade + auth-router testing](ingestion-facade-and-auth-router-testing.md) — IngestionFacade tests live in tests/units/worker/ (no fake-backend trick needed); driving the real keys router with auth forced ON via TestClient; AuthBootstrap called directly (no lifespan under TestClient).
