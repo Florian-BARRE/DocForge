@@ -147,9 +147,11 @@ services:
     volumes:
       - rework_qdrant_data:/qdrant/storage
     healthcheck:
-      # The qdrant image ships neither curl nor wget — probe /healthz via bash's
-      # /dev/tcp and check for an HTTP 200 status line instead.
-      test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/6333 && printf 'GET /healthz HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && head -1 <&3 | grep -q 200"]
+      # The qdrant image ships neither curl nor wget, and its default shell (sh=dash) has no
+      # /dev/tcp. It DOES ship bash, so probe /healthz over bash's /dev/tcp using only builtins
+      # (read + [[ ]]) — no head/grep dependency. CMD form invokes bash directly (not sh).
+      # $$ escapes compose's own variable interpolation so bash receives a literal $line.
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/localhost/6333 && printf 'GET /healthz HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && read -r line <&3 && [[ $$line == *200* ]]"]
       interval: 10s
       timeout: 5s
       retries: 5
