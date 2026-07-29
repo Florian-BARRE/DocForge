@@ -30,7 +30,7 @@ export function App() {
         {view.name === "collections" && <CollectionsPage onNavigate={setView} />}
         {view.name === "new-collection" && <CollectionWizard onNavigate={setView} />}
         {view.name === "collection" && (
-          <CollectionShell collectionId={view.collectionId} active="overview" onNavigate={setView}>
+          <CollectionShell collectionId={view.collectionId} active="schema" onNavigate={setView}>
             <CollectionDetailPage collectionId={view.collectionId} onNavigate={setView} />
           </CollectionShell>
         )}
@@ -61,7 +61,9 @@ export function App() {
           </CollectionShell>
         )}
         {view.name === "document" && (
-          <DocumentPage collectionId={view.collectionId} documentId={view.documentId} onNavigate={setView} />
+          <CollectionShell collectionId={view.collectionId} active="documents" onNavigate={setView}>
+            <DocumentPage collectionId={view.collectionId} documentId={view.documentId} onNavigate={setView} />
+          </CollectionShell>
         )}
         {view.name === "job" && <JobDetailPage jobId={view.jobId} collectionId={view.collectionId} onNavigate={setView} />}
         {view.name === "workers" && <WorkersPanel onNavigate={setView} />}
