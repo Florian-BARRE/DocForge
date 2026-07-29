@@ -1,0 +1,65 @@
+# CI gate — runs on every push + PR so "the suite is green" never depends on a manual local run.
+# The unit suite is fully mocked and serviceless (lazy store connections), so no service
+# containers are needed. The one real-OCR integration test (test_providers.py) needs the heavy
+# `worker` dep-group (pillow + rapidocr + torch) and is intentionally left to a local run — see the
+# note below — to keep this gate fast and reliable. mypy is not wired as a project dep, so it is
+# not part of the gate (ruff is the enforced linter).
+
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python:
+    name: Python — ruff + unit suite
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/docforge-rework
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Sync dependencies (locked)
+        run: uv sync --frozen
+
+      - name: Ruff (lint)
+        run: uv run ruff check .
+
+      - name: Unit suite
+        # Serviceless: units mock every store. The real-OCR test auto-skips without the worker
+        # group (pillow/rapidocr absent) — run it locally with `uv sync --group worker` when needed.
+        run: uv run pytest tests/units -q
+
+  frontend:
+    name: Frontend — tsc + build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/docforge-rework/app/frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: src/docforge-rework/app/frontend/package-lock.json
+
+      - name: Install (locked)
+        run: npm ci
+
+      - name: Build (tsc --noEmit && vite build)
+        run: npm run build

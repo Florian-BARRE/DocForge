@@ -10,8 +10,9 @@ Pipeline (doc vivante, LA référence) : `src/docforge-rework/PIPELINE.md`
 ## Arbre de code unique
 
 **`src/docforge-rework/`** est LE produit — moteur graphe v2, stage-rail studio. L'ancien produit
-legacy (moteur statique S0→S6, `src/docforge/`) a été **supprimé**. Reste une seule étape de
-migration : renommer `src/docforge-rework/` → `src/docforge/` (et les composes `.rework.*`).
+legacy (moteur statique S0→S6, `src/docforge/`) a été **supprimé** : un seul arbre, plus d'ambiguïté.
+Le nom `docforge-rework` reste un artefact historique ; le renommer en `docforge` est un chantier
+**cosmétique différé** (~550 refs), pas une priorité — la substance (robustesse) passe avant.
 
 ---
 
