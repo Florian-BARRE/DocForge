@@ -8,7 +8,6 @@
 import { useEffect, useState } from "react";
 import { getCollection, type Collection } from "../../api/collections";
 import { search, type SearchResponse } from "../../api/search";
-import { BackLink } from "../../components/BackLink";
 import { ErrorState } from "../../components/ErrorState";
 import type { Navigate } from "../../shell/view";
 import { theme } from "../../theme";
@@ -27,7 +26,7 @@ interface SearchLabPageProps {
   onNavigate: Navigate;
 }
 
-export function SearchLabPage({ collectionId, onNavigate }: SearchLabPageProps) {
+export function SearchLabPage({ collectionId }: SearchLabPageProps) {
   const [collection, setCollection] = useState<Collection | null>(null);
   const [query, setQuery] = useState("");
   const [limit, setLimit] = useState(DEFAULT_LIMIT);
@@ -86,33 +85,36 @@ export function SearchLabPage({ collectionId, onNavigate }: SearchLabPageProps) 
   };
 
   return (
-    <div style={{ padding: theme.space.l, overflowY: "auto", height: "100%" }}>
-      <BackLink label="Collection" onClick={() => onNavigate({ name: "collection", collectionId })} />
-      <h1 style={{ fontSize: theme.font.size.xl, margin: `${theme.space.s}px 0 ${theme.space.l}px` }}>Search Lab</h1>
+    <div className="df-rise" style={{ padding: theme.space.xl, overflowY: "auto", height: "100%", background: theme.color.bg }}>
+      <div style={{ maxWidth: 860, margin: "0 auto" }}>
+        <div style={{ color: theme.color.dim, fontSize: theme.font.size.l, marginBottom: theme.space.l }}>
+          Run a query, narrow it with filters, and inspect the ranked hits.
+        </div>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: theme.space.m, marginBottom: theme.space.l }}>
-        <SearchQueryBar
-          query={query}
-          onQueryChange={setQuery}
-          limit={limit}
-          onLimitChange={setLimit}
-          loading={loading}
-          onSubmit={runSearch}
-        />
-        <SearchTargetPicker fields={collection?.fields ?? []} selection={targetSelection} onToggle={handleTargetToggle} />
-        <SearchFilterBuilder fields={filterableFields} values={filters} onFilterChange={handleFilterChange} />
-        <AdvancedDisclosure summary="Advanced — ColBERT (late interaction)">
-          <LateInteractionControls
-            enabled={lateInteraction}
-            onEnabledChange={setLateInteraction}
-            rescorePoolSize={rescorePoolSize}
-            onRescorePoolSizeChange={setRescorePoolSize}
+        <div style={{ display: "flex", flexDirection: "column", gap: theme.space.m, marginBottom: theme.space.l }}>
+          <SearchQueryBar
+            query={query}
+            onQueryChange={setQuery}
+            limit={limit}
+            onLimitChange={setLimit}
+            loading={loading}
+            onSubmit={runSearch}
           />
-        </AdvancedDisclosure>
-      </div>
+          <SearchTargetPicker fields={collection?.fields ?? []} selection={targetSelection} onToggle={handleTargetToggle} />
+          <SearchFilterBuilder fields={filterableFields} values={filters} onFilterChange={handleFilterChange} />
+          <AdvancedDisclosure summary="Advanced — ColBERT (late interaction)">
+            <LateInteractionControls
+              enabled={lateInteraction}
+              onEnabledChange={setLateInteraction}
+              rescorePoolSize={rescorePoolSize}
+              onRescorePoolSizeChange={setRescorePoolSize}
+            />
+          </AdvancedDisclosure>
+        </div>
 
-      {error && <ErrorState message={error} onRetry={runSearch} />}
-      {!error && response && <SearchResultsList response={response} />}
+        {error && <ErrorState message={error} onRetry={runSearch} />}
+        {!error && response && <SearchResultsList response={response} />}
+      </div>
     </div>
   );
 }

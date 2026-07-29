@@ -31,12 +31,15 @@ export function SearchPipelineHeader({
     <header
       style={{
         display: "flex", alignItems: "center", gap: theme.space.m,
-        padding: `${theme.space.s}px ${theme.space.l}px`,
+        padding: `${theme.space.m}px ${theme.space.l}px`,
         borderBottom: `1px solid ${theme.color.line}`,
+        background: theme.color.panel,
       }}
     >
-      <strong style={{ fontSize: theme.font.size.xl }}>{title}</strong>
-      {subtitle && <span style={{ color: theme.color.dim, fontSize: theme.font.size.s }}>{subtitle}</span>}
+      <strong style={{ fontFamily: theme.font.display, fontSize: theme.font.size.xxl, fontWeight: 700, letterSpacing: "-0.01em" }}>
+        {title}
+      </strong>
+      {subtitle && <span style={{ color: theme.color.dim, fontSize: theme.font.size.m }}>{subtitle}</span>}
       <Chip tone={checking ? "dim" : valid ? "ok" : "warn"}>
         {checking ? "checking…" : valid ? "valid" : `${issueCount} issue${issueCount === 1 ? "" : "s"}`}
       </Chip>

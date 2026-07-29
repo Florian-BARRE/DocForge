@@ -13,10 +13,10 @@ const COLOR_BY_STATUS: Record<string, string> = {
 export function ProgressBar({ progress, status }: { progress: number; status: JobStatusValue }) {
   const color = COLOR_BY_STATUS[status] ?? theme.color.accent;
   return (
-    <div style={{ background: theme.color.card, borderRadius: theme.radius.s, height: 6, overflow: "hidden" }}>
+    <div style={{ background: theme.color.surface2, borderRadius: theme.radius.pill, height: 6, overflow: "hidden" }}>
       <div
         style={{
-          width: `${Math.max(0, Math.min(100, progress))}%`, height: "100%",
+          width: `${Math.max(0, Math.min(100, progress))}%`, height: "100%", borderRadius: theme.radius.pill,
           background: color, transition: "width .3s ease",
         }}
       />

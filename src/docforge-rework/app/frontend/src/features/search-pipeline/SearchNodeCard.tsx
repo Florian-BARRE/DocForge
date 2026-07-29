@@ -23,17 +23,18 @@ export function SearchNodeCard({ step, node, palette, onChangeConfig }: SearchNo
   return (
     <div
       style={{
-        background: theme.color.card, border: `1px solid ${theme.color.line}`,
+        background: theme.color.surface, border: `1px solid ${theme.color.line}`,
         borderRadius: theme.radius.l, padding: theme.space.m,
         display: "flex", flexDirection: "column", gap: theme.space.s,
+        boxShadow: theme.shadow.sm,
       }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: theme.space.m }}>
         <span
           style={{
-            width: 22, height: 22, flexShrink: 0, borderRadius: "50%",
+            width: 24, height: 24, flexShrink: 0, borderRadius: "50%",
             background: theme.color.accentSoft, color: theme.color.accent,
-            fontSize: theme.font.size.s, display: "flex", alignItems: "center", justifyContent: "center",
+            fontSize: theme.font.size.s, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center",
           }}
         >
           {step}
@@ -41,7 +42,7 @@ export function SearchNodeCard({ step, node, palette, onChangeConfig }: SearchNo
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: theme.space.s, flexWrap: "wrap" }}>
             <strong style={{ fontSize: theme.font.size.l }}>{card?.name ?? node.kind}</strong>
-            <Chip tone="dim">{node.family}</Chip>
+            <Chip tone="dim"><span style={{ fontFamily: theme.font.mono }}>{node.family}</span></Chip>
             {!configurable && <Chip tone="dim">read-only</Chip>}
           </div>
           {card?.summary && <div style={{ color: theme.color.dim, fontSize: theme.font.size.s }}>{card.summary}</div>}

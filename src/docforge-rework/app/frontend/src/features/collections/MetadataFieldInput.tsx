@@ -5,6 +5,7 @@
 import type { FieldSpec } from "../../api/collections";
 import { FormField } from "../../components/FormField";
 import { NumberField } from "../../components/schema-form/NumberField";
+import { Switch } from "../../components/Switch";
 import { TagsInput } from "../../components/TagsInput";
 import { inputStyle } from "../../components/inputStyle";
 
@@ -20,7 +21,7 @@ export function MetadataFieldInput({ field, value, onChange }: MetadataFieldInpu
   if (field.field_type === "bool")
     return (
       <FormField label={label}>
-        <input type="checkbox" checked={Boolean(value)} onChange={(e) => onChange(e.target.checked)} style={{ width: 16, height: 16 }} />
+        <Switch checked={Boolean(value)} onChange={onChange} />
       </FormField>
     );
 

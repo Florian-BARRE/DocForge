@@ -9,7 +9,7 @@
 // (fetches the product default) OR embedded in a collection page (seeded with `initialBlob`,
 // saved via `onSave`).
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ErrorState } from "../../components/ErrorState";
 import { LoadingState } from "../../components/LoadingState";
 import type { GroupBlob, Palette, StageView, ValidationIssue } from "../../api/types";
@@ -18,6 +18,7 @@ import { theme } from "../../theme";
 import type { StageRailActions } from "./actions";
 import { NoticesBar } from "./NoticesBar";
 import { StageCard } from "./StageCard";
+import { StageConnector } from "./StageConnector";
 import { StageRailHeader } from "./StageRailHeader";
 import {
   buildSetChainAction, buildSetConfigAction, buildSetStackAction, buildSetStackMethodChainAction,
@@ -208,7 +209,7 @@ export function StageRailPage({ initialBlob, onBlobChange, onSave, title, subtit
   if (!palette || !stages) return <LoadingState label="loading pipeline stages…" />;
 
   return (
-    <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
+    <div style={{ height: "100%", display: "flex", flexDirection: "column", background: theme.color.bg }}>
       <StageRailHeader
         title={title ?? "Pipeline"}
         subtitle={subtitle}
@@ -228,13 +229,17 @@ export function StageRailPage({ initialBlob, onBlobChange, onSave, title, subtit
       )}
       <div style={{ flex: 1, overflowY: "auto" }}>
         <div
+          className="df-rise"
           style={{
             maxWidth: 860, margin: "0 auto", padding: theme.space.l,
-            display: "flex", flexDirection: "column", gap: theme.space.m,
+            display: "flex", flexDirection: "column",
           }}
         >
-          {stages.map((stage) => (
-            <StageCard key={stage.key} stage={stage} palette={palette} actions={actions} />
+          {stages.map((stage, index) => (
+            <Fragment key={stage.key}>
+              {index > 0 && <StageConnector />}
+              <StageCard stage={stage} palette={palette} actions={actions} />
+            </Fragment>
           ))}
         </div>
       </div>

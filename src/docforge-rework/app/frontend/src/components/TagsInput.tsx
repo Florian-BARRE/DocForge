@@ -24,9 +24,9 @@ export function TagsInput({ values, onChange, placeholder }: TagsInputProps) {
   return (
     <div
       style={{
-        display: "flex", flexWrap: "wrap", gap: 4, alignItems: "center",
-        background: theme.color.bg, border: `1px solid ${theme.color.line}`,
-        borderRadius: theme.radius.s, padding: "3px 6px", minHeight: 26,
+        display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center",
+        background: theme.color.surface2, border: `1px solid ${theme.color.line}`,
+        borderRadius: theme.radius.m, padding: "6px 8px", minHeight: 34,
       }}
     >
       {values.map((value) => (

@@ -24,9 +24,9 @@ export function ChunkBlockLinks({ blockIds, onJumpToBlock }: ChunkBlockLinksProp
           onClick={() => onJumpToBlock(id)}
           title={id}
           style={{
-            background: theme.color.bg, border: `1px solid ${theme.color.line}`, borderRadius: theme.radius.s,
+            background: theme.color.surface2, border: `1px solid ${theme.color.line}`, borderRadius: theme.radius.s,
             color: theme.color.accent, cursor: "pointer", fontSize: theme.font.size.xs,
-            padding: "2px 6px", fontFamily: theme.font.mono,
+            padding: "3px 8px", fontFamily: theme.font.mono,
           }}
         >
           {shortBlockLabel(id)}

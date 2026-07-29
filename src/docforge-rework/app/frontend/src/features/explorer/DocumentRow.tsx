@@ -18,7 +18,7 @@ interface DocumentRowProps {
   onEnabledChanged: (enabled: boolean) => void;
 }
 
-const cellStyle: React.CSSProperties = { padding: theme.space.s, fontSize: theme.font.size.s };
+const cellStyle: React.CSSProperties = { padding: `${theme.space.s}px ${theme.space.m}px`, fontSize: theme.font.size.s };
 
 export function DocumentRow({ document, onOpen, onDelete, onEnabledChanged }: DocumentRowProps) {
   const [confirming, setConfirming] = useState(false);
@@ -42,20 +42,23 @@ export function DocumentRow({ document, onOpen, onDelete, onEnabledChanged }: Do
   return (
     <tr
       onClick={onOpen}
-      style={{ cursor: "pointer", borderBottom: `1px solid ${theme.color.line}`, opacity: document.enabled ? 1 : 0.55 }}
-      onMouseEnter={(e) => (e.currentTarget.style.background = theme.color.cardHover)}
+      style={{
+        cursor: "pointer", borderBottom: `1px solid ${theme.color.line}`,
+        opacity: document.enabled ? 1 : 0.55, transition: "background .12s ease",
+      }}
+      onMouseEnter={(e) => (e.currentTarget.style.background = theme.color.surface2)}
       onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
     >
       <td style={cellStyle}>
         <span style={{ display: "inline-flex", alignItems: "center", gap: theme.space.xs }}>
-          {document.filename}
+          <span style={{ fontWeight: 500, color: theme.color.text }}>{document.filename}</span>
           {!document.enabled && <Chip tone="warn">disabled</Chip>}
         </span>
       </td>
       <td style={cellStyle}><DocumentStatusChip status={document.status} /></td>
-      <td style={{ ...cellStyle, textAlign: "right" }}>{document.page_count ?? "—"}</td>
-      <td style={{ ...cellStyle, textAlign: "right" }}>{formatBytes(document.file_size)}</td>
-      <td style={cellStyle}>{formatDateTime(document.created_at)}</td>
+      <td style={{ ...cellStyle, textAlign: "right", fontFamily: theme.font.mono, color: theme.color.dim }}>{document.page_count ?? "—"}</td>
+      <td style={{ ...cellStyle, textAlign: "right", fontFamily: theme.font.mono, color: theme.color.dim }}>{formatBytes(document.file_size)}</td>
+      <td style={{ ...cellStyle, color: theme.color.dim }}>{formatDateTime(document.created_at)}</td>
       <td style={cellStyle} onClick={(e) => e.stopPropagation()}>
         <DocumentEnabledToggle documentId={document.id} enabled={document.enabled} onChanged={onEnabledChanged} />
       </td>
@@ -64,11 +67,11 @@ export function DocumentRow({ document, onOpen, onDelete, onEnabledChanged }: Do
         {confirming ? (
           <span style={{ display: "inline-flex", gap: theme.space.xs, alignItems: "center" }}>
             <span style={{ color: theme.color.dim, fontSize: theme.font.size.xs }}>delete for good?</span>
-            <Button variant="danger" disabled={deleting} onClick={handleDelete}>{deleting ? "…" : "confirm"}</Button>
-            <Button onClick={() => setConfirming(false)}>cancel</Button>
+            <Button variant="danger" size="sm" disabled={deleting} onClick={handleDelete}>{deleting ? "…" : "confirm"}</Button>
+            <Button size="sm" onClick={() => setConfirming(false)}>cancel</Button>
           </span>
         ) : (
-          <Button variant="danger" onClick={() => setConfirming(true)}>delete</Button>
+          <Button variant="danger" size="sm" onClick={() => setConfirming(true)}>delete</Button>
         )}
       </td>
     </tr>

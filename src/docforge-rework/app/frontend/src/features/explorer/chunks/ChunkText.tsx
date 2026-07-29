@@ -17,7 +17,7 @@ export function ChunkText({ text }: { text: string }) {
     <div>
       <div
         style={{
-          fontSize: theme.font.size.s, whiteSpace: "pre-wrap",
+          fontSize: theme.font.size.s, color: theme.color.text, lineHeight: 1.6, whiteSpace: "pre-wrap",
           display: clamp ? "block" : "-webkit-box",
           WebkitLineClamp: clamp ? undefined : COLLAPSED_LINE_CLAMP,
           WebkitBoxOrient: "vertical",
@@ -31,7 +31,7 @@ export function ChunkText({ text }: { text: string }) {
           onClick={() => setExpanded((v) => !v)}
           style={{
             background: "none", border: "none", color: theme.color.accent, cursor: "pointer",
-            fontSize: theme.font.size.xs, padding: 0, marginTop: 4,
+            fontSize: theme.font.size.xs, fontWeight: 600, padding: 0, marginTop: 6,
           }}
         >
           {expanded ? "show less" : "show more"}

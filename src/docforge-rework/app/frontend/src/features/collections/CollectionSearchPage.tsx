@@ -2,16 +2,16 @@
 // Embeds the search pipeline editor for one collection: seeds it with the collection's stored
 // `search` blob (falling back to the product default when the stored value is the `{}` sentinel —
 // every collection carries that today, meaning "use the stock default"), PATCHes it back on save.
+// Nested under CollectionShell (which already provides the back navigation and tab strip), so this
+// page is just the editor's own full-bleed canvas — no extra chrome of its own.
 
 import { useEffect, useState } from "react";
 import { getCollection, updateCollection, type Collection } from "../../api/collections";
 import type { GroupBlob } from "../../api/types";
-import { BackLink } from "../../components/BackLink";
 import { ErrorState } from "../../components/ErrorState";
 import { LoadingState } from "../../components/LoadingState";
 import { SearchPipelineEditor } from "../search-pipeline/SearchPipelineEditor";
 import type { Navigate } from "../../shell/view";
-import { theme } from "../../theme";
 
 interface CollectionSearchPageProps {
   collectionId: string;
@@ -23,7 +23,7 @@ function seedBlob(search: Record<string, unknown>): GroupBlob | undefined {
   return "nodes" in search ? (search as unknown as GroupBlob) : undefined;
 }
 
-export function CollectionSearchPage({ collectionId, onNavigate }: CollectionSearchPageProps) {
+export function CollectionSearchPage({ collectionId }: CollectionSearchPageProps) {
   const [collection, setCollection] = useState<Collection | null>(null);
   const [error, setError] = useState<string | null>(null);
   // Bumped after a server-side reset so the editor remounts and re-seeds from the fresh (now
@@ -42,27 +42,22 @@ export function CollectionSearchPage({ collectionId, onNavigate }: CollectionSea
   if (!collection) return <LoadingState label="loading collection…" />;
 
   return (
-    <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
-      <div style={{ padding: `${theme.space.xs}px ${theme.space.l}px 0` }}>
-        <BackLink label={collection.name} onClick={() => onNavigate({ name: "collection", collectionId })} />
-      </div>
-      <div style={{ flex: 1, minHeight: 0 }}>
-        <SearchPipelineEditor
-          key={resetVersion}
-          initialBlob={seedBlob(collection.search)}
-          onSave={async (blob) => {
-            const updated = await updateCollection(collectionId, { search: blob as unknown as Record<string, unknown> });
-            setCollection(updated);
-          }}
-          onResetToDefault={async () => {
-            const updated = await updateCollection(collectionId, { search: {} });
-            setCollection(updated);
-            setResetVersion((v) => v + 1);
-          }}
-          title="Search pipeline"
-          subtitle={collection.name}
-        />
-      </div>
+    <div style={{ height: "100%" }}>
+      <SearchPipelineEditor
+        key={resetVersion}
+        initialBlob={seedBlob(collection.search)}
+        onSave={async (blob) => {
+          const updated = await updateCollection(collectionId, { search: blob as unknown as Record<string, unknown> });
+          setCollection(updated);
+        }}
+        onResetToDefault={async () => {
+          const updated = await updateCollection(collectionId, { search: {} });
+          setCollection(updated);
+          setResetVersion((v) => v + 1);
+        }}
+        title="Search pipeline"
+        subtitle={collection.name}
+      />
     </div>
   );
 }

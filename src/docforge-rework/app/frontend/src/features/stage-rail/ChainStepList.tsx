@@ -57,7 +57,7 @@ export function ChainStepList({
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: theme.space.xs }}>
       {steps.length === 0 && (
-        <div style={{ color: theme.color.dim, fontSize: theme.font.size.s }}>
+        <div style={{ color: theme.color.dim, fontSize: theme.font.size.s, fontStyle: "italic" }}>
           No fallback configured yet — add a first attempt below.
         </div>
       )}
@@ -77,14 +77,14 @@ export function ChainStepList({
         />
       ))}
       <div style={{ display: "flex", gap: theme.space.s, alignItems: "center" }}>
-        <select value={addKind} onChange={(e) => setAddKind(e.target.value)} style={{ ...inputStyle, width: "auto", minWidth: 200 }}>
+        <select value={addKind} onChange={(e) => setAddKind(e.target.value)} style={{ ...inputStyle, width: "auto", minWidth: 200, borderRadius: theme.radius.m }}>
           <option value="">add a fallback step…</option>
           {available.map((kind) => {
             const card = findNodeCard(palette, family, kind);
             return <option key={kind} value={kind}>{card?.name ?? kind}</option>;
           })}
         </select>
-        <Button variant="secondary" onClick={add} disabled={!addKind}>Add fallback</Button>
+        <Button variant="secondary" size="sm" onClick={add} disabled={!addKind}>+ Add fallback</Button>
       </div>
     </div>
   );

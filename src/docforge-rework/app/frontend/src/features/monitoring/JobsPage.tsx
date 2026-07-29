@@ -4,7 +4,6 @@
 
 import { useEffect, useState } from "react";
 import { listJobs, type JobStatus } from "../../api/jobs";
-import { BackLink } from "../../components/BackLink";
 import { ErrorState } from "../../components/ErrorState";
 import { LoadingState } from "../../components/LoadingState";
 import type { Navigate } from "../../shell/view";
@@ -45,14 +44,26 @@ export function JobsPage({ collectionId, onNavigate }: JobsPageProps) {
     return () => { cancelled = true; window.clearTimeout(timer); };
   }, [collectionId]);
 
+  const count = jobs?.length ?? 0;
+
   return (
-    <div style={{ padding: theme.space.l, overflowY: "auto", height: "100%" }}>
-      <BackLink label="Collection" onClick={() => onNavigate({ name: "collection", collectionId })} />
-      <h1 style={{ fontSize: theme.font.size.xl, margin: `${theme.space.s}px 0 ${theme.space.l}px` }}>Jobs</h1>
+    <div className="df-rise" style={{ padding: theme.space.xl, overflowY: "auto", height: "100%", maxWidth: 1200, margin: "0 auto", width: "100%" }}>
+      {jobs && jobs.length > 0 && (
+        <div style={{ color: theme.color.dim, fontSize: theme.font.size.l, marginBottom: theme.space.l }}>
+          {count} job{count === 1 ? "" : "s"}
+        </div>
+      )}
       {error && <ErrorState message={error} />}
       {!error && !jobs && <LoadingState label="loading jobs…" />}
       {jobs && jobs.length === 0 && (
-        <div style={{ color: theme.color.dim, fontSize: theme.font.size.s }}>No jobs yet — upload a document to see one here.</div>
+        <div
+          style={{
+            border: `1px dashed ${theme.color.lineStrong}`, borderRadius: theme.radius.l,
+            padding: theme.space.xxl, textAlign: "center", color: theme.color.dim, fontSize: theme.font.size.l,
+          }}
+        >
+          No jobs yet — upload a document to see one here.
+        </div>
       )}
       {jobs && jobs.length > 0 && (
         <div style={{ display: "flex", flexDirection: "column", gap: theme.space.s }}>

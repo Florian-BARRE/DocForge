@@ -12,10 +12,10 @@ interface BlockTypeFilterProps {
 
 export function BlockTypeFilter({ types, active, onSelect }: BlockTypeFilterProps) {
   return (
-    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
       {["all", ...types].map((type) => (
         <span key={type} onClick={() => onSelect(type)} style={{ cursor: "pointer" }}>
-          <Chip tone={type === active ? "accent" : "dim"}>{type}</Chip>
+          <Chip tone={type === active ? "accent" : "neutral"}>{type}</Chip>
         </span>
       ))}
     </div>

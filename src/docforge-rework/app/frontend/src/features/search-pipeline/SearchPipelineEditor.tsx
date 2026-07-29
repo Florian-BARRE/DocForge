@@ -195,7 +195,7 @@ export function SearchPipelineEditor({ initialBlob, onSave, onResetToDefault, ti
   if (!palette || !blob) return <LoadingState label="loading search pipeline…" />;
 
   return (
-    <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
+    <div style={{ height: "100%", display: "flex", flexDirection: "column", background: theme.color.bg }}>
       <SearchPipelineHeader
         title={title ?? "Search pipeline"}
         subtitle={subtitle}
@@ -217,6 +217,7 @@ export function SearchPipelineEditor({ initialBlob, onSave, onResetToDefault, ti
       )}
       <div style={{ flex: 1, overflowY: "auto" }}>
         <div
+          className="df-rise"
           style={{
             maxWidth: 860, margin: "0 auto", padding: theme.space.l,
             display: "flex", flexDirection: "column", gap: theme.space.l,

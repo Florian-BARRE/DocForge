@@ -15,7 +15,7 @@ export function PagesTab({ pages }: { pages: PageInfo[] }) {
 
   return (
     <>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(120px, 1fr))", gap: theme.space.m }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))", gap: theme.space.l }}>
         {pages.map((page) => (
           <PageThumbnail key={page.page_number} page={page} onClick={() => setOpenPage(page)} />
         ))}

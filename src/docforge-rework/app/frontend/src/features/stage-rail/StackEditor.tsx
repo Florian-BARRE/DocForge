@@ -71,13 +71,13 @@ export function StackEditor({ stage, palette, actions }: StackEditorProps) {
         />
       ))}
       <div style={{ display: "flex", gap: theme.space.s, alignItems: "center" }}>
-        <select value={addKind} onChange={(e) => setAddKind(e.target.value)} style={{ ...inputStyle, width: "auto", minWidth: 200 }}>
+        <select value={addKind} onChange={(e) => setAddKind(e.target.value)} style={{ ...inputStyle, width: "auto", minWidth: 200, borderRadius: theme.radius.m }}>
           <option value="">add a method…</option>
           {familyNodes.map((n) => (
             <option key={n.kind} value={n.kind}>{n.name}</option>
           ))}
         </select>
-        <Button variant="secondary" onClick={add} disabled={!addKind}>Add</Button>
+        <Button variant="secondary" size="sm" onClick={add} disabled={!addKind}>+ Add</Button>
       </div>
     </div>
   );

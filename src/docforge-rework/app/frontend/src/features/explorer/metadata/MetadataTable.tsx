@@ -9,7 +9,8 @@ import { ValueRenderer } from "./ValueRenderer";
 
 const headStyle: React.CSSProperties = {
   textAlign: "left", color: theme.color.dim, fontSize: theme.font.size.xs,
-  padding: `${theme.space.xs}px ${theme.space.s}px`, fontWeight: 400,
+  padding: `${theme.space.xs}px ${theme.space.s}px`, fontWeight: 600,
+  textTransform: "uppercase", letterSpacing: "0.04em",
 };
 const cellStyle: React.CSSProperties = {
   padding: `${theme.space.xs}px ${theme.space.s}px`, fontSize: theme.font.size.s, verticalAlign: "top",
@@ -31,7 +32,7 @@ export function MetadataTable({ metadata }: { metadata: MetadataValue[] }) {
       <tbody>
         {metadata.map((m) => (
           <tr key={m.field_name} style={{ borderBottom: `1px solid ${theme.color.line}` }}>
-            <td style={{ ...cellStyle, fontFamily: theme.font.mono }}>{m.field_name}</td>
+            <td style={{ ...cellStyle, fontFamily: theme.font.mono, color: theme.color.text }}>{m.field_name}</td>
             <td style={cellStyle}><ValueRenderer value={m.value} /></td>
             <td style={cellStyle}>
               <Chip tone={m.origin === "generated" ? "loop" : m.origin === "system" ? "warn" : "accent"}>{m.origin}</Chip>

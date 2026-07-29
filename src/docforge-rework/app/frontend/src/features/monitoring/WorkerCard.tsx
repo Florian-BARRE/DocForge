@@ -15,12 +15,20 @@ export function WorkerCard({ activity, onNavigate }: WorkerCardProps) {
   return (
     <div
       style={{
-        background: theme.color.panel, border: `1px solid ${theme.color.line}`,
-        borderRadius: theme.radius.m, padding: theme.space.m,
+        background: theme.color.surface, border: `1px solid ${theme.color.line}`,
+        borderRadius: theme.radius.l, boxShadow: theme.shadow.sm, padding: theme.space.l,
         display: "flex", flexDirection: "column", gap: theme.space.s,
       }}
     >
-      <strong style={{ fontFamily: theme.font.mono, fontSize: theme.font.size.m }}>{activity.worker_id}</strong>
+      <div style={{ display: "flex", alignItems: "center", gap: theme.space.s }}>
+        <span
+          style={{
+            width: 8, height: 8, borderRadius: theme.radius.pill,
+            background: activity.jobs.length > 0 ? theme.color.ok : theme.color.mute,
+          }}
+        />
+        <strong style={{ fontFamily: theme.font.mono, fontSize: theme.font.size.m, color: theme.color.text }}>{activity.worker_id}</strong>
+      </div>
       {activity.jobs.length === 0 && (
         <span style={{ color: theme.color.dim, fontSize: theme.font.size.s }}>no running job</span>
       )}

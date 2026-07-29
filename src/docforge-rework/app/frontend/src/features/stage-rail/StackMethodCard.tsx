@@ -13,8 +13,8 @@ import { StackMethodChainSection } from "./StackMethodChainSection";
 import { hasConfigFields } from "../../components/schema-form/paletteLookup";
 
 const iconButton: React.CSSProperties = {
-  background: "none", border: `1px solid ${theme.color.line}`, borderRadius: theme.radius.s,
-  color: theme.color.dim, cursor: "pointer", fontSize: theme.font.size.s, padding: "1px 6px",
+  background: theme.color.surface2, border: `1px solid ${theme.color.line}`, borderRadius: theme.radius.m,
+  color: theme.color.dim, cursor: "pointer", fontSize: theme.font.size.s, padding: "2px 7px",
 };
 
 interface StackMethodCardProps {
@@ -41,9 +41,17 @@ export function StackMethodCard({
   const configurable = hasConfigFields(card);
 
   return (
-    <div style={{ background: theme.color.bg, border: `1px solid ${theme.color.line}`, borderRadius: theme.radius.m, padding: theme.space.s }}>
+    <div style={{ background: theme.color.surface2, border: `1px solid ${theme.color.line}`, borderRadius: theme.radius.m, padding: theme.space.s }}>
       <div style={{ display: "flex", alignItems: "center", gap: theme.space.s }}>
-        <span style={{ color: theme.color.dim, fontSize: theme.font.size.s, width: 16, textAlign: "right" }}>{index + 1}.</span>
+        <span
+          style={{
+            width: 20, height: 20, flexShrink: 0, borderRadius: "50%", display: "grid", placeItems: "center",
+            background: theme.color.accentSoft, color: theme.color.accent,
+            fontSize: theme.font.size.xs, fontWeight: 700,
+          }}
+        >
+          {index + 1}
+        </span>
         <strong style={{ fontSize: theme.font.size.m }}>{card?.name ?? method.kind}</strong>
         <span style={{ flex: 1, color: theme.color.dim, fontSize: theme.font.size.xs }}>{card?.summary}</span>
         <button onClick={onMoveUp} disabled={isFirst} title="move up" style={iconButton}>↑</button>

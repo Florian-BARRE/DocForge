@@ -41,13 +41,13 @@ export function ChunkBulkActions({ selectedCount, onApply }: ChunkBulkActionsPro
     <div
       style={{
         display: "flex", alignItems: "center", gap: theme.space.s,
-        background: theme.color.panel, border: `1px solid ${theme.color.line}`,
-        borderRadius: theme.radius.s, padding: theme.space.s,
+        background: theme.color.accentSoft, border: `1px solid ${theme.color.accentLine}`,
+        borderRadius: theme.radius.m, padding: `${theme.space.s}px ${theme.space.m}px`,
       }}
     >
-      <span style={{ fontSize: theme.font.size.s, color: theme.color.dim }}>{selectedCount} selected</span>
-      <Button disabled={pending} onClick={() => apply(true)}>Enable</Button>
-      <Button disabled={pending} onClick={() => apply(false)}>Disable</Button>
+      <span style={{ fontSize: theme.font.size.s, color: theme.color.text, fontWeight: 600 }}>{selectedCount} selected</span>
+      <Button size="sm" disabled={pending} onClick={() => apply(true)}>Enable</Button>
+      <Button size="sm" disabled={pending} onClick={() => apply(false)}>Disable</Button>
       {note && <span style={{ fontSize: theme.font.size.xs, color: theme.color.warn }}>{note}</span>}
       {error && <span style={{ fontSize: theme.font.size.xs, color: theme.color.error }}>{error}</span>}
     </div>

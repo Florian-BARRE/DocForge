@@ -55,13 +55,17 @@ export function UploadPanel({ collectionId, fields, onUploaded }: UploadPanelPro
   return (
     <div
       style={{
-        display: "flex", flexDirection: "column", gap: theme.space.m, maxWidth: 420,
-        background: theme.color.panel, border: `1px solid ${theme.color.line}`,
-        borderRadius: theme.radius.m, padding: theme.space.m,
+        display: "flex", flexDirection: "column", gap: theme.space.m, width: "100%",
+        background: theme.color.surface, border: `1px solid ${theme.color.line}`,
+        borderRadius: theme.radius.l, boxShadow: theme.shadow.sm, padding: theme.space.l,
       }}
     >
       <FormField label="File">
-        <input type="file" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+        <input
+          type="file"
+          onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+          style={{ fontSize: theme.font.size.s, color: theme.color.text }}
+        />
       </FormField>
       {declarable.map((field) => (
         <MetadataFieldInput

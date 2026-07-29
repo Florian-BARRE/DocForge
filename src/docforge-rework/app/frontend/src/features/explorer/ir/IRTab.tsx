@@ -46,7 +46,7 @@ export function IRTab({ ir, focusBlockId }: IRTabProps) {
     <div style={{ display: "flex", flexDirection: "column", gap: theme.space.m }}>
       <BlockTypeFilter types={types} active={typeFilter} onSelect={setTypeFilter} />
       <div style={{ color: theme.color.dim, fontSize: theme.font.size.xs }}>{visibleCount} of {ir.blocks.length} block(s)</div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: theme.space.xs }}>
         {sortedBlocks.map((block) => (
           <BlockRow
             key={block.id}

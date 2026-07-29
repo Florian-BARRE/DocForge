@@ -39,13 +39,16 @@ export function ApiKeyRow({ apiKey, onRevoked }: ApiKeyRowProps) {
   return (
     <div
       style={{
-        background: theme.color.card, border: `1px solid ${theme.color.line}`,
-        borderRadius: theme.radius.m, padding: theme.space.m,
+        background: theme.color.surface, border: `1px solid ${theme.color.line}`,
+        borderRadius: theme.radius.l, boxShadow: theme.shadow.sm, padding: theme.space.m,
         display: "flex", flexDirection: "column", gap: theme.space.xs,
+        opacity: revoked ? 0.6 : 1,
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: theme.space.s }}>
-        <strong style={{ fontSize: theme.font.size.l }}>{apiKey.name}</strong>
+      <div style={{ display: "flex", alignItems: "center", gap: theme.space.s, flexWrap: "wrap" }}>
+        <strong style={{ fontFamily: theme.font.display, fontSize: theme.font.size.l, fontWeight: 600, color: theme.color.text }}>
+          {apiKey.name}
+        </strong>
         <span style={{ fontFamily: theme.font.mono, fontSize: theme.font.size.s, color: theme.color.dim }}>
           {apiKey.prefix}…
         </span>
@@ -65,7 +68,7 @@ export function ApiKeyRow({ apiKey, onRevoked }: ApiKeyRowProps) {
         </div>
       </div>
       <div style={{ color: theme.color.dim, fontSize: theme.font.size.s }}>{summarizePermissions(apiKey.permissions)}</div>
-      <div style={{ color: theme.color.dim, fontSize: theme.font.size.xs }}>
+      <div style={{ color: theme.color.mute, fontSize: theme.font.size.xs }}>
         created: {formatTimestamp(apiKey.created_at)}
         {revoked && <> · revoked: {formatTimestamp(apiKey.revoked_at)}</>}
       </div>

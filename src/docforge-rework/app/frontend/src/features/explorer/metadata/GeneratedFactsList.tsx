@@ -21,14 +21,14 @@ export function GeneratedFactsList({ fieldName, facts }: GeneratedFactsListProps
       <div
         style={{
           color: theme.color.loop, fontSize: theme.font.size.xs, fontWeight: 700,
-          marginBottom: theme.space.s, textTransform: "uppercase", letterSpacing: 0.4,
+          marginBottom: theme.space.s, textTransform: "uppercase", letterSpacing: "0.05em",
         }}
       >
         {fieldName}
       </div>
       <ul style={{ margin: 0, paddingLeft: theme.space.m, display: "flex", flexDirection: "column", gap: 6 }}>
         {facts.map((fact, i) => (
-          <li key={i} style={{ fontSize: theme.font.size.s }}>{fact}</li>
+          <li key={i} style={{ fontSize: theme.font.size.s, color: theme.color.text }}>{fact}</li>
         ))}
       </ul>
     </div>

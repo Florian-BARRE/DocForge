@@ -22,6 +22,7 @@ import { Button } from "../../components/Button";
 import { Chip } from "../../components/Chip";
 import { ErrorState } from "../../components/ErrorState";
 import { LoadingState } from "../../components/LoadingState";
+import { PageHeader } from "../../components/PageHeader";
 import { TabNav } from "../../components/TabNav";
 import type { Navigate } from "../../shell/view";
 import { theme } from "../../theme";
@@ -124,33 +125,38 @@ export function DocumentPage({ collectionId, documentId, onNavigate }: DocumentP
   if (!document) return <LoadingState label="loading document…" />;
 
   return (
-    <div style={{ padding: theme.space.l, overflowY: "auto", height: "100%", display: "flex", flexDirection: "column" }}>
-      <BackLink label="Documents" onClick={() => onNavigate({ name: "collection-documents", collectionId })} />
-      <div style={{ display: "flex", alignItems: "center", gap: theme.space.s, margin: `${theme.space.s}px 0` }}>
-        <h1 style={{ fontSize: theme.font.size.xl, wordBreak: "break-word" }}>{document.filename}</h1>
-        <DocumentStatusChip status={document.status} />
-        {!document.enabled && <Chip tone="warn">disabled</Chip>}
-        <DocumentEnabledToggle documentId={documentId} enabled={document.enabled} onChanged={handleDocumentEnabledChanged} />
-      </div>
-      <div style={{ color: theme.color.dim, fontSize: theme.font.size.s, marginBottom: theme.space.m }}>
-        {document.format.toUpperCase()} · {document.page_count ?? "—"} page(s) · {formatBytes(document.file_size)} · created {formatDateTime(document.created_at)}
-      </div>
-
-      <div style={{ marginBottom: theme.space.m }}>
-        {confirmingDelete ? (
-          <span style={{ display: "inline-flex", gap: theme.space.s, alignItems: "center" }}>
-            <span style={{ color: theme.color.dim, fontSize: theme.font.size.s }}>Delete for good?</span>
-            <Button variant="danger" disabled={deleting} onClick={handleDelete}>{deleting ? "deleting…" : "Confirm delete"}</Button>
-            <Button onClick={() => setConfirmingDelete(false)}>Cancel</Button>
+    <div className="df-rise" style={{ padding: theme.space.xl, overflowY: "auto", height: "100%", display: "flex", flexDirection: "column", maxWidth: 1200, margin: "0 auto", width: "100%" }}>
+      <PageHeader
+        eyebrow={<BackLink label="Documents" onClick={() => onNavigate({ name: "collection-documents", collectionId })} />}
+        title={<span style={{ wordBreak: "break-word" }}>{document.filename}</span>}
+        subtitle={
+          <span style={{ display: "inline-flex", alignItems: "center", gap: theme.space.s, flexWrap: "wrap" }}>
+            <span>
+              {document.format.toUpperCase()} · {document.page_count ?? "—"} page(s) · {formatBytes(document.file_size)} · created {formatDateTime(document.created_at)}
+            </span>
+            <DocumentStatusChip status={document.status} />
+            {!document.enabled && <Chip tone="warn">disabled</Chip>}
           </span>
-        ) : (
-          <Button variant="danger" onClick={() => setConfirmingDelete(true)}>Delete document</Button>
-        )}
-      </div>
+        }
+        actions={
+          <>
+            <DocumentEnabledToggle documentId={documentId} enabled={document.enabled} onChanged={handleDocumentEnabledChanged} />
+            {confirmingDelete ? (
+              <span style={{ display: "inline-flex", gap: theme.space.s, alignItems: "center" }}>
+                <span style={{ color: theme.color.dim, fontSize: theme.font.size.s }}>Delete for good?</span>
+                <Button variant="danger" disabled={deleting} onClick={handleDelete}>{deleting ? "deleting…" : "Confirm delete"}</Button>
+                <Button onClick={() => setConfirmingDelete(false)}>Cancel</Button>
+              </span>
+            ) : (
+              <Button variant="danger" onClick={() => setConfirmingDelete(true)}>Delete document</Button>
+            )}
+          </>
+        }
+      />
 
       <TabNav tabs={TABS} active={activeTab} onSelect={setActiveTab} />
 
-      <div style={{ marginTop: theme.space.m, flex: 1, minHeight: 0 }}>
+      <div style={{ marginTop: theme.space.l, flex: 1, minHeight: 0 }}>
         {activeTab === "overview" && <OverviewTab document={document} />}
         {activeTab === "pages" &&
           (pagesError ? (

@@ -30,9 +30,10 @@ export function StackMethodChainSection({
   return (
     <div
       style={{
-        marginTop: theme.space.xs, marginLeft: theme.space.l + theme.space.s,
-        borderLeft: `2px solid ${theme.color.chain}`, background: theme.color.chainSoft,
-        borderRadius: theme.radius.s, padding: theme.space.s,
+        marginTop: theme.space.s, marginLeft: theme.space.l + theme.space.s,
+        border: `1px solid ${theme.color.chain}`, borderLeft: `3px solid ${theme.color.chain}`,
+        background: theme.color.chainSoft,
+        borderRadius: theme.radius.m, padding: theme.space.s,
         display: "flex", flexDirection: "column", gap: theme.space.xs,
       }}
     >

@@ -15,8 +15,8 @@ export function EnrichmentItem({ enrichment }: { enrichment: IREnrichment }) {
   return (
     <div
       style={{
-        display: "flex", flexDirection: "column", gap: 2,
-        background: theme.color.bg, border: `1px solid ${theme.color.line}`,
+        display: "flex", flexDirection: "column", gap: 4,
+        background: theme.color.surface2, border: `1px solid ${theme.color.line}`,
         borderRadius: theme.radius.s, padding: `${theme.space.xs}px ${theme.space.s}px`,
       }}
     >
@@ -24,7 +24,7 @@ export function EnrichmentItem({ enrichment }: { enrichment: IREnrichment }) {
         <Chip tone="accent">{enrichment.kind}</Chip>
         <Chip tone={STATUS_TONE[enrichment.status]}>{enrichment.status}</Chip>
       </div>
-      {enrichment.text && <div style={{ fontSize: theme.font.size.s }}>{enrichment.text}</div>}
+      {enrichment.text && <div style={{ fontSize: theme.font.size.s, color: theme.color.text }}>{enrichment.text}</div>}
       {enrichment.data !== null && enrichment.data !== undefined && (
         <code style={{ fontFamily: theme.font.mono, fontSize: theme.font.size.xs, color: theme.color.dim }}>
           {JSON.stringify(enrichment.data)}

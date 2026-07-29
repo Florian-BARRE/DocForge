@@ -8,6 +8,7 @@ import { listKeys, type ApiKeyInfo, type CreatedApiKey } from "../../api/auth";
 import { Button } from "../../components/Button";
 import { ErrorState } from "../../components/ErrorState";
 import { LoadingState } from "../../components/LoadingState";
+import { PageHeader } from "../../components/PageHeader";
 import { theme } from "../../theme";
 import { ApiKeyRow } from "./ApiKeyRow";
 import { CreatedKeyModal } from "./CreatedKeyModal";
@@ -34,14 +35,15 @@ export function AuthKeysPage() {
     load();
   };
 
+  const count = keys?.length ?? 0;
+
   return (
-    <div style={{ padding: theme.space.l, overflowY: "auto", height: "100%" }}>
-      <div style={{ display: "flex", alignItems: "center", marginBottom: theme.space.l }}>
-        <h1 style={{ fontSize: theme.font.size.xl }}>API Keys</h1>
-        <div style={{ marginLeft: "auto" }}>
-          {!showCreate && <Button variant="primary" onClick={() => setShowCreate(true)}>+ New key</Button>}
-        </div>
-      </div>
+    <div className="df-rise" style={{ padding: theme.space.xl, overflowY: "auto", height: "100%", maxWidth: 1200, margin: "0 auto", width: "100%" }}>
+      <PageHeader
+        title="API Keys"
+        subtitle={keys ? `${count} key${count === 1 ? "" : "s"} — bearer authentication for the API` : " "}
+        actions={!showCreate && <Button variant="primary" onClick={() => setShowCreate(true)}>+ New key</Button>}
+      />
 
       {showCreate && (
         <div style={{ marginBottom: theme.space.l }}>
@@ -52,7 +54,14 @@ export function AuthKeysPage() {
       {error && <ErrorState message={error} onRetry={load} />}
       {!error && !keys && <LoadingState label="loading keys…" />}
       {keys && keys.length === 0 && (
-        <div style={{ color: theme.color.dim, fontSize: theme.font.size.s }}>No API keys yet — create the first one.</div>
+        <div
+          style={{
+            border: `1px dashed ${theme.color.lineStrong}`, borderRadius: theme.radius.l,
+            padding: theme.space.xxl, textAlign: "center", color: theme.color.dim, fontSize: theme.font.size.l,
+          }}
+        >
+          No API keys yet — create the first one.
+        </div>
       )}
       {keys && keys.length > 0 && (
         <div style={{ display: "flex", flexDirection: "column", gap: theme.space.s }}>

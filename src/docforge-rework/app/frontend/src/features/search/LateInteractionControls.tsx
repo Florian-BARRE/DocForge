@@ -29,10 +29,10 @@ export function LateInteractionControls({
     <div style={{ display: "flex", gap: theme.space.l, alignItems: "center" }}>
       <div style={{ display: "flex", gap: theme.space.s, alignItems: "center" }}>
         <Switch checked={enabled} onChange={onEnabledChange} title="Late interaction (ColBERT re-rank)" />
-        <span style={{ fontSize: theme.font.size.s, color: theme.color.text }}>
+        <span style={{ fontSize: theme.font.size.s, color: theme.color.text, fontWeight: 600 }}>
           Late interaction (ColBERT re-rank)
         </span>
-        <span style={{ fontSize: theme.font.size.xs, color: theme.color.dim }}>
+        <span style={{ fontSize: theme.font.size.xs, color: enabled ? theme.color.accent : theme.color.dim }}>
           {enabled ? "on" : "off — defers to collection config"}
         </span>
       </div>

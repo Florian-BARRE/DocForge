@@ -13,8 +13,8 @@ interface FormFieldProps {
 
 export function FormField({ label, hint, children }: FormFieldProps) {
   return (
-    <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: theme.font.size.s }}>
-      <span style={{ color: theme.color.text }}>{label}</span>
+    <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: theme.font.size.s }}>
+      <span style={{ color: theme.color.dim, fontWeight: theme.font.weight.semibold }}>{label}</span>
       {children}
       {hint && <span style={{ color: theme.color.dim, fontSize: theme.font.size.xs }}>{hint}</span>}
     </label>

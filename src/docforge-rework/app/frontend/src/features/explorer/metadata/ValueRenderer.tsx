@@ -10,31 +10,31 @@ const SHORT_TAG_MAX_LENGTH = 24;
 
 export function ValueRenderer({ value }: { value: unknown }) {
   if (value === null || value === undefined || value === "")
-    return <span style={{ color: theme.color.dim }}>—</span>;
+    return <span style={{ color: theme.color.mute }}>—</span>;
 
   if (typeof value === "boolean")
-    return <span style={{ color: value ? theme.color.ok : theme.color.dim }}>{value ? "✓" : "–"}</span>;
+    return <span style={{ color: value ? theme.color.ok : theme.color.mute }}>{value ? "✓" : "–"}</span>;
 
   if (Array.isArray(value)) {
-    if (value.length === 0) return <span style={{ color: theme.color.dim }}>—</span>;
+    if (value.length === 0) return <span style={{ color: theme.color.mute }}>—</span>;
     const isShortTags = value.every((v) => typeof v !== "object" && String(v).length <= SHORT_TAG_MAX_LENGTH);
     if (isShortTags)
       return (
         <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-          {value.map((v, i) => <Chip key={i} tone="dim">{String(v)}</Chip>)}
+          {value.map((v, i) => <Chip key={i} tone="neutral">{String(v)}</Chip>)}
         </div>
       );
     return (
       <ul style={{ margin: 0, paddingLeft: theme.space.m, display: "flex", flexDirection: "column", gap: 2 }}>
         {value.map((v, i) => (
-          <li key={i} style={{ fontSize: theme.font.size.s }}>{typeof v === "object" ? JSON.stringify(v) : String(v)}</li>
+          <li key={i} style={{ fontSize: theme.font.size.s, color: theme.color.text }}>{typeof v === "object" ? JSON.stringify(v) : String(v)}</li>
         ))}
       </ul>
     );
   }
 
   if (typeof value === "object")
-    return <code style={{ fontFamily: theme.font.mono, fontSize: theme.font.size.xs }}>{JSON.stringify(value)}</code>;
+    return <code style={{ fontFamily: theme.font.mono, fontSize: theme.font.size.xs, color: theme.color.dim }}>{JSON.stringify(value)}</code>;
 
-  return <span>{String(value)}</span>;
+  return <span style={{ color: theme.color.text }}>{String(value)}</span>;
 }

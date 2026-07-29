@@ -13,12 +13,13 @@ export function LateInteractionSkippedNotice({ reason }: LateInteractionSkippedN
   return (
     <div
       style={{
-        color: theme.color.dim, background: theme.color.warnSoft,
-        borderRadius: theme.radius.s, padding: `${theme.space.xs}px ${theme.space.s}px`,
+        color: theme.color.warn, background: theme.color.warnSoft,
+        border: `1px solid ${theme.color.warnSoft}`,
+        borderRadius: theme.radius.m, padding: `${theme.space.xs}px ${theme.space.s}px`,
         fontSize: theme.font.size.xs,
       }}
     >
-      Late interaction skipped: {reason}
+      ⚠ Late interaction skipped: {reason}
     </div>
   );
 }

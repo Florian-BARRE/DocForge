@@ -4,7 +4,6 @@
 
 import { useEffect, useState } from "react";
 import { deleteDocument, listDocuments, type DocumentListItem } from "../../api/explorer";
-import { BackLink } from "../../components/BackLink";
 import { ErrorState } from "../../components/ErrorState";
 import { LoadingState } from "../../components/LoadingState";
 import type { Navigate } from "../../shell/view";
@@ -18,7 +17,9 @@ interface DocumentsPageProps {
 
 const headStyle: React.CSSProperties = {
   textAlign: "left", color: theme.color.dim, fontSize: theme.font.size.xs,
-  padding: theme.space.s, fontWeight: 400, borderBottom: `1px solid ${theme.color.line}`,
+  padding: `${theme.space.s}px ${theme.space.m}px`, fontWeight: 600,
+  textTransform: "uppercase", letterSpacing: "0.04em",
+  borderBottom: `1px solid ${theme.color.line}`,
 };
 
 export function DocumentsPage({ collectionId, onNavigate }: DocumentsPageProps) {
@@ -43,42 +44,59 @@ export function DocumentsPage({ collectionId, onNavigate }: DocumentsPageProps) 
     setDocuments((prev) => (prev ? prev.map((doc) => (doc.id === documentId ? { ...doc, enabled } : doc)) : prev));
   };
 
+  const count = documents?.length ?? 0;
+
   return (
-    <div style={{ padding: theme.space.l, overflowY: "auto", height: "100%" }}>
-      <BackLink label="Collection" onClick={() => onNavigate({ name: "collection", collectionId })} />
-      <h1 style={{ fontSize: theme.font.size.xl, margin: `${theme.space.s}px 0 ${theme.space.l}px` }}>Documents</h1>
+    <div className="df-rise" style={{ padding: theme.space.xl, overflowY: "auto", height: "100%", maxWidth: 1200, margin: "0 auto", width: "100%" }}>
+      {documents && documents.length > 0 && (
+        <div style={{ color: theme.color.dim, fontSize: theme.font.size.l, marginBottom: theme.space.l }}>
+          {count} document{count === 1 ? "" : "s"}
+        </div>
+      )}
       {error && <ErrorState message={error} onRetry={load} />}
       {!error && !documents && <LoadingState label="loading documents…" />}
       {documents && documents.length === 0 && (
-        <div style={{ color: theme.color.dim, fontSize: theme.font.size.s }}>
+        <div
+          style={{
+            border: `1px dashed ${theme.color.lineStrong}`, borderRadius: theme.radius.l,
+            padding: theme.space.xxl, textAlign: "center", color: theme.color.dim, fontSize: theme.font.size.l,
+          }}
+        >
           No documents yet — upload one from the collection page.
         </div>
       )}
       {documents && documents.length > 0 && (
-        <table style={{ borderCollapse: "collapse", width: "100%" }}>
-          <thead>
-            <tr>
-              <th style={headStyle}>Filename</th>
-              <th style={headStyle}>Status</th>
-              <th style={{ ...headStyle, textAlign: "right" }}>Pages</th>
-              <th style={{ ...headStyle, textAlign: "right" }}>Size</th>
-              <th style={headStyle}>Created</th>
-              <th style={headStyle}>Enabled</th>
-              <th style={headStyle} />
-            </tr>
-          </thead>
-          <tbody>
-            {documents.map((doc) => (
-              <DocumentRow
-                key={doc.id}
-                document={doc}
-                onOpen={() => onNavigate({ name: "document", collectionId, documentId: doc.id })}
-                onDelete={() => handleDelete(doc.id)}
-                onEnabledChanged={(enabled) => handleEnabledChanged(doc.id, enabled)}
-              />
-            ))}
-          </tbody>
-        </table>
+        <div
+          style={{
+            background: theme.color.surface, border: `1px solid ${theme.color.line}`,
+            borderRadius: theme.radius.l, boxShadow: theme.shadow.sm, overflow: "hidden",
+          }}
+        >
+          <table style={{ borderCollapse: "collapse", width: "100%" }}>
+            <thead>
+              <tr>
+                <th style={headStyle}>Filename</th>
+                <th style={headStyle}>Status</th>
+                <th style={{ ...headStyle, textAlign: "right" }}>Pages</th>
+                <th style={{ ...headStyle, textAlign: "right" }}>Size</th>
+                <th style={headStyle}>Created</th>
+                <th style={headStyle}>Enabled</th>
+                <th style={headStyle} />
+              </tr>
+            </thead>
+            <tbody>
+              {documents.map((doc) => (
+                <DocumentRow
+                  key={doc.id}
+                  document={doc}
+                  onOpen={() => onNavigate({ name: "document", collectionId, documentId: doc.id })}
+                  onDelete={() => handleDelete(doc.id)}
+                  onEnabledChanged={(enabled) => handleEnabledChanged(doc.id, enabled)}
+                />
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );

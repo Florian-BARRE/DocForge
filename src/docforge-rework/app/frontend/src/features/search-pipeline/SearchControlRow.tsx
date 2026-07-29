@@ -18,7 +18,8 @@ export function SearchControlRow({ title, description, control }: SearchControlR
       style={{
         display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: theme.space.l,
         padding: theme.space.m,
-        background: theme.color.card, border: `1px solid ${theme.color.line}`, borderRadius: theme.radius.l,
+        background: theme.color.surface, border: `1px solid ${theme.color.line}`, borderRadius: theme.radius.l,
+        boxShadow: theme.shadow.sm,
       }}
     >
       <div>

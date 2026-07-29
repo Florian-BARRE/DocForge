@@ -18,13 +18,13 @@ export function FigureBlock({ figure, enrichments }: FigureBlockProps) {
         <BlobImage
           hash={figure.crop_blob_hash}
           alt="Figure crop"
-          style={{ maxWidth: 220, maxHeight: 220, borderRadius: theme.radius.s, border: `1px solid ${theme.color.line}` }}
+          style={{ maxWidth: 220, maxHeight: 220, borderRadius: theme.radius.m, border: `1px solid ${theme.color.line}` }}
         />
       ) : (
         <div
           style={{
             width: 120, height: 90, display: "flex", alignItems: "center", justifyContent: "center",
-            background: theme.color.card, border: `1px solid ${theme.color.line}`, borderRadius: theme.radius.s,
+            background: theme.color.surface2, border: `1px solid ${theme.color.line}`, borderRadius: theme.radius.m,
             color: theme.color.dim, fontSize: theme.font.size.xs,
           }}
         >
@@ -32,7 +32,7 @@ export function FigureBlock({ figure, enrichments }: FigureBlockProps) {
         </div>
       )}
       {enrichments.length > 0 && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 4, flex: 1, minWidth: 200 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, flex: 1, minWidth: 200 }}>
           {enrichments.map((e) => <EnrichmentItem key={e.id} enrichment={e} />)}
         </div>
       )}

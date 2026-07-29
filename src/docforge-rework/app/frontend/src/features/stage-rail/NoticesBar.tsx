@@ -18,14 +18,15 @@ export function NoticesBar({ notices, issues }: NoticesBarProps) {
     <div
       style={{
         padding: `${theme.space.s}px ${theme.space.l}px`, borderBottom: `1px solid ${theme.color.line}`,
-        display: "flex", flexDirection: "column", gap: theme.space.xs,
+        display: "flex", flexDirection: "column", gap: theme.space.xs, background: theme.color.panel,
       }}
     >
       {notices.map((notice, index) => (
         <div
           key={index}
           style={{
-            color: theme.color.accent, background: theme.color.accentSoft, borderRadius: theme.radius.s,
+            color: theme.color.accent, background: theme.color.accentSoft, borderRadius: theme.radius.m,
+            border: `1px solid ${theme.color.accentLine}`,
             padding: `${theme.space.xs}px ${theme.space.s}px`, fontSize: theme.font.size.s,
           }}
         >

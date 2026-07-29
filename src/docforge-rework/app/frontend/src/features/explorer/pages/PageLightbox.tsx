@@ -25,15 +25,21 @@ export function PageLightbox({ page, onClose }: PageLightboxProps) {
     <div
       onClick={onClose}
       style={{
-        position: "fixed", inset: 0, background: "rgba(0,0,0,.8)", zIndex: 100,
+        position: "fixed", inset: 0, background: "rgba(0,0,0,.8)", backdropFilter: "blur(2px)", zIndex: 100,
         display: "flex", alignItems: "center", justifyContent: "center", padding: theme.space.l,
       }}
     >
-      <figure style={{ margin: 0, maxWidth: "90vw", maxHeight: "90vh", display: "flex", flexDirection: "column", gap: theme.space.s }}>
+      <figure
+        style={{
+          margin: 0, maxWidth: "90vw", maxHeight: "90vh", display: "flex", flexDirection: "column", gap: theme.space.s,
+          background: theme.color.panel, border: `1px solid ${theme.color.line}`, borderRadius: theme.radius.l,
+          padding: theme.space.m, boxShadow: theme.shadow.pop,
+        }}
+      >
         <BlobImage
           hash={page.render_blob_hash}
           alt={`Page ${displayPage(page.page_number)}`}
-          style={{ maxWidth: "90vw", maxHeight: "80vh", objectFit: "contain", borderRadius: theme.radius.m }}
+          style={{ maxWidth: "86vw", maxHeight: "76vh", objectFit: "contain", borderRadius: theme.radius.m }}
         />
         <figcaption style={{ textAlign: "center", color: theme.color.dim, fontSize: theme.font.size.s }}>
           Page {displayPage(page.page_number)}

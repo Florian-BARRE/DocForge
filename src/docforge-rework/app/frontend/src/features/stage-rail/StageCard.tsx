@@ -34,12 +34,22 @@ export function StageCard({ stage, palette, actions }: StageCardProps) {
   return (
     <div
       style={{
-        background: theme.color.card, border: `1px solid ${theme.color.line}`,
-        borderRadius: theme.radius.l, padding: theme.space.m,
-        opacity: stage.enabled ? 1 : 0.65,
+        position: "relative", overflow: "hidden",
+        background: theme.color.surface, border: `1px solid ${stage.enabled ? theme.color.line : theme.color.line}`,
+        borderRadius: theme.radius.l, padding: theme.space.l,
+        opacity: stage.enabled ? 1 : 0.6,
         display: "flex", flexDirection: "column", gap: theme.space.s,
+        boxShadow: theme.shadow.sm,
+        transition: "opacity .15s ease, border-color .15s ease",
       }}
     >
+      {/* Left accent hairline — reads "active pipeline stage" at a glance. */}
+      <div
+        style={{
+          position: "absolute", left: 0, top: 0, bottom: 0, width: 3,
+          background: stage.enabled ? theme.color.accent : "transparent",
+        }}
+      />
       <div style={{ display: "flex", alignItems: "flex-start", gap: theme.space.m }}>
         <StageSwitch
           checked={stage.enabled}
@@ -49,25 +59,25 @@ export function StageCard({ stage, palette, actions }: StageCardProps) {
         />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: theme.space.s, flexWrap: "wrap" }}>
-            <strong style={{ fontSize: theme.font.size.l }}>{stage.title}</strong>
+            <strong style={{ fontFamily: theme.font.display, fontSize: theme.font.size.xl, fontWeight: 700 }}>{stage.title}</strong>
             {stage.requires.length > 0 && (
               <Chip tone="dim" title={`Enabling this also enables: ${stage.requires.join(", ")}`}>
                 needs {stage.requires.join(", ")}
               </Chip>
             )}
           </div>
-          <div style={{ color: theme.color.dim, fontSize: theme.font.size.s }}>{stage.description}</div>
+          <div style={{ color: theme.color.dim, fontSize: theme.font.size.s, marginTop: 2 }}>{stage.description}</div>
         </div>
       </div>
 
       {stage.notes && (
         <div
           style={{
-            color: theme.color.warn, background: theme.color.warnSoft, borderRadius: theme.radius.s,
+            color: theme.color.warn, background: theme.color.warnSoft, borderRadius: theme.radius.m,
             padding: `${theme.space.xs}px ${theme.space.s}px`, fontSize: theme.font.size.s,
           }}
         >
-          {stage.notes}
+          ⚠ {stage.notes}
         </div>
       )}
 

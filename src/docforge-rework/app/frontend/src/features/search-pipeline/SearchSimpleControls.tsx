@@ -20,7 +20,11 @@ export function SearchSimpleControls({ rerankEnabled, onToggleRerank, disabled }
       <SearchControlRow
         title="Recherche hybride (fusion)"
         description="Lexical + sémantique, fusionnés (RRF)."
-        control={<span style={{ color: theme.color.dim, fontSize: theme.font.size.s }}>toujours activé</span>}
+        control={
+          <span style={{ color: theme.color.ok, background: theme.color.okSoft, borderRadius: theme.radius.pill, padding: "3px 10px", fontSize: theme.font.size.xs, fontWeight: 600 }}>
+            toujours activé
+          </span>
+        }
       />
       <SearchControlRow
         title="Reranking"

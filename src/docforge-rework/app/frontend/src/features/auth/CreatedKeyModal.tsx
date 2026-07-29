@@ -28,22 +28,34 @@ export function CreatedKeyModal({ createdKey, onClose }: CreatedKeyModalProps) {
   return (
     <div
       style={{
-        position: "fixed", inset: 0, background: "rgba(0,0,0,.8)", zIndex: 100,
+        position: "fixed", inset: 0, background: "rgba(0,0,0,.8)", backdropFilter: "blur(2px)", zIndex: 100,
         display: "flex", alignItems: "center", justifyContent: "center", padding: theme.space.l,
       }}
     >
       <div
         style={{
-          background: theme.color.panel, border: `1px solid ${theme.color.line}`,
-          borderRadius: theme.radius.l, padding: theme.space.l, maxWidth: 480,
+          background: theme.color.panel, border: `1px solid ${theme.color.accentLine}`,
+          borderRadius: theme.radius.l, boxShadow: theme.shadow.pop, padding: theme.space.l, maxWidth: 480,
           display: "flex", flexDirection: "column", gap: theme.space.m,
         }}
       >
-        <h2 style={{ fontSize: theme.font.size.xl, margin: 0 }}>Key created — "{createdKey.name}"</h2>
+        <div style={{ display: "flex", alignItems: "center", gap: theme.space.s }}>
+          <span
+            style={{
+              width: 32, height: 32, borderRadius: theme.radius.pill, flexShrink: 0, display: "grid", placeItems: "center",
+              background: theme.color.accentSoft, color: theme.color.accent, fontSize: theme.font.size.l,
+            }}
+          >
+            🔑
+          </span>
+          <h2 style={{ fontFamily: theme.font.display, fontSize: theme.font.size.xl, fontWeight: 700, color: theme.color.text, margin: 0 }}>
+            Key created — "{createdKey.name}"
+          </h2>
+        </div>
         <div
           style={{
             background: theme.color.errorSoft, borderLeft: `3px solid ${theme.color.error}`,
-            borderRadius: theme.radius.s, padding: `${theme.space.xs}px ${theme.space.s}px`,
+            borderRadius: theme.radius.s, padding: `${theme.space.s}px ${theme.space.m}px`,
             fontSize: theme.font.size.s, color: theme.color.error,
           }}
         >

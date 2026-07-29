@@ -23,7 +23,7 @@ export function ProviderPicker({ stage, palette, actions }: ProviderPickerProps)
       <select
         value={stage.provider ?? ""}
         onChange={(e) => actions.setProvider(stage.key, e.target.value)}
-        style={{ ...inputStyle, width: "auto", minWidth: 220 }}
+        style={{ ...inputStyle, width: "auto", minWidth: 220, fontWeight: 600, borderRadius: theme.radius.m }}
       >
         {stage.available.map((kind) => {
           const card = findNodeCard(palette, stage.family!, kind);
@@ -35,7 +35,7 @@ export function ProviderPicker({ stage, palette, actions }: ProviderPickerProps)
         })}
       </select>
       {current?.summary && (
-        <div style={{ color: theme.color.dim, fontSize: theme.font.size.xs }}>{current.summary}</div>
+        <div style={{ color: theme.color.dim, fontSize: theme.font.size.s }}>{current.summary}</div>
       )}
     </div>
   );

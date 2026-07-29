@@ -22,6 +22,15 @@ interface PermissionsBuilderProps {
   collectionsError?: string | null;
 }
 
+const sectionLabelStyle: React.CSSProperties = {
+  fontSize: theme.font.size.xs, color: theme.color.dim, marginBottom: theme.space.xs,
+  textTransform: "uppercase", letterSpacing: "0.04em", fontWeight: 600,
+};
+
+const checkboxLabelStyle: React.CSSProperties = {
+  display: "flex", alignItems: "center", gap: 6, fontSize: theme.font.size.s, color: theme.color.text,
+};
+
 export function PermissionsBuilder({
   fullAccess, onFullAccessChange,
   capabilities, onCapabilitiesChange,
@@ -43,26 +52,31 @@ export function PermissionsBuilder({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: theme.space.s }}>
-      <label style={{ display: "flex", alignItems: "center", gap: theme.space.xs, fontSize: theme.font.size.s, color: theme.color.text }}>
+      <label
+        style={{
+          display: "flex", alignItems: "center", gap: theme.space.s, fontSize: theme.font.size.s, color: theme.color.text,
+          background: fullAccess ? theme.color.accentSoft : theme.color.surface2,
+          border: `1px solid ${fullAccess ? theme.color.accentLine : theme.color.line}`,
+          borderRadius: theme.radius.m, padding: `${theme.space.s}px ${theme.space.m}px`,
+        }}
+      >
         <input type="checkbox" checked={fullAccess} onChange={(e) => onFullAccessChange(e.target.checked)} />
-        Full access (every capability, every collection)
+        <span>Full access <span style={{ color: theme.color.dim }}>— every capability, every collection</span></span>
       </label>
 
       {!fullAccess && (
         <div
           style={{
             display: "flex", flexDirection: "column", gap: theme.space.m,
-            padding: theme.space.m, border: `1px solid ${theme.color.line}`, borderRadius: theme.radius.m,
+            padding: theme.space.m, background: theme.color.surface2,
+            border: `1px solid ${theme.color.line}`, borderRadius: theme.radius.m,
           }}
         >
           <div>
-            <div style={{ fontSize: theme.font.size.s, color: theme.color.dim, marginBottom: theme.space.xs }}>Capabilities</div>
+            <div style={sectionLabelStyle}>Capabilities</div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: theme.space.m }}>
               {API_CAPABILITIES.map((capability) => (
-                <label
-                  key={capability}
-                  style={{ display: "flex", alignItems: "center", gap: 4, fontSize: theme.font.size.s, color: theme.color.text }}
-                >
+                <label key={capability} style={checkboxLabelStyle}>
                   <input
                     type="checkbox"
                     checked={capabilities.includes(capability)}
@@ -75,8 +89,8 @@ export function PermissionsBuilder({
           </div>
 
           <div>
-            <div style={{ fontSize: theme.font.size.s, color: theme.color.dim, marginBottom: theme.space.xs }}>Collections</div>
-            <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: theme.font.size.s, color: theme.color.text, marginBottom: theme.space.xs }}>
+            <div style={sectionLabelStyle}>Collections</div>
+            <label style={{ ...checkboxLabelStyle, marginBottom: theme.space.xs }}>
               <input
                 type="checkbox"
                 checked={collectionsScope === "all"}
@@ -85,7 +99,7 @@ export function PermissionsBuilder({
               All collections (*)
             </label>
             {collectionsScope !== "all" && (
-              <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                 {collectionsError && (
                   <span style={{ color: theme.color.error, fontSize: theme.font.size.xs }}>
                     Failed to load collections: {collectionsError}
@@ -98,10 +112,7 @@ export function PermissionsBuilder({
                   <span style={{ color: theme.color.dim, fontSize: theme.font.size.xs }}>No collections yet.</span>
                 )}
                 {collections?.map((collection) => (
-                  <label
-                    key={collection.id}
-                    style={{ display: "flex", alignItems: "center", gap: 4, fontSize: theme.font.size.s, color: theme.color.text }}
-                  >
+                  <label key={collection.id} style={checkboxLabelStyle}>
                     <input
                       type="checkbox"
                       checked={specificIds.includes(collection.id)}

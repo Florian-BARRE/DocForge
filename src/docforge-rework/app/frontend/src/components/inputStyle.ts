@@ -5,11 +5,11 @@
 import { theme } from "../theme";
 
 export const inputStyle: React.CSSProperties = {
-  background: theme.color.bg,
+  background: theme.color.surface2,
   border: `1px solid ${theme.color.line}`,
-  borderRadius: theme.radius.s,
-  padding: "4px 7px",
-  fontSize: theme.font.size.m,
+  borderRadius: theme.radius.m,
+  padding: "8px 10px",
+  fontSize: theme.font.size.l,
   color: theme.color.text,
   width: "100%",
 };

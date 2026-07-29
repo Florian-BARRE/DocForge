@@ -64,10 +64,13 @@ export function CreateKeyForm({ onCreated, onCancel }: CreateKeyFormProps) {
     <div
       style={{
         display: "flex", flexDirection: "column", gap: theme.space.m,
-        background: theme.color.card, border: `1px solid ${theme.color.line}`,
-        borderRadius: theme.radius.m, padding: theme.space.m,
+        background: theme.color.surface, border: `1px solid ${theme.color.accentLine}`,
+        borderRadius: theme.radius.l, boxShadow: theme.shadow.sm, padding: theme.space.l,
       }}
     >
+      <h2 style={{ fontFamily: theme.font.display, fontSize: theme.font.size.l, fontWeight: 600, color: theme.color.text, margin: 0 }}>
+        New API key
+      </h2>
       <FormField label="Name">
         <input style={inputStyle} value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. ingestion-worker-prod" />
       </FormField>

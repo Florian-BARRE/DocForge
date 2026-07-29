@@ -24,7 +24,7 @@ interface BlockRowProps {
 function headingStyle(level: number | null): React.CSSProperties {
   if (level === null) return { fontSize: theme.font.size.m };
   const sizeByLevel: Record<number, number> = { 1: theme.font.size.xl, 2: theme.font.size.l, 3: theme.font.size.m };
-  return { fontSize: sizeByLevel[level] ?? theme.font.size.m, fontWeight: 700 };
+  return { fontFamily: theme.font.display, fontSize: sizeByLevel[level] ?? theme.font.size.m, fontWeight: 700 };
 }
 
 export const BlockRow = forwardRef<HTMLDivElement, BlockRowProps>(function BlockRow(
@@ -35,18 +35,22 @@ export const BlockRow = forwardRef<HTMLDivElement, BlockRowProps>(function Block
     <div
       ref={ref}
       style={{
-        display: visible ? "flex" : "none", flexDirection: "column", gap: 6, padding: theme.space.s,
-        borderRadius: theme.radius.s,
-        background: highlighted ? theme.color.accentSoft : "transparent",
-        borderLeft: highlighted ? `3px solid ${theme.color.accent}` : "3px solid transparent",
+        display: visible ? "flex" : "none", flexDirection: "column", gap: 8, padding: theme.space.m,
+        borderRadius: theme.radius.m,
+        background: highlighted ? theme.color.accentSoft : theme.color.surface,
+        border: `1px solid ${highlighted ? theme.color.accentLine : theme.color.line}`,
+        borderLeft: `3px solid ${highlighted ? theme.color.accent : "transparent"}`,
+        transition: "background .2s ease, border-color .2s ease",
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <Chip tone={block.block_type === "figure" ? "loop" : block.block_type === "table" ? "warn" : "dim"}>
           {block.block_type}
         </Chip>
-        <span style={{ color: theme.color.dim, fontSize: theme.font.size.xs }}>page {displayPage(block.page)}</span>
-        {block.is_boilerplate && <span style={{ color: theme.color.dim, fontSize: theme.font.size.xs }}>boilerplate</span>}
+        <span style={{ color: theme.color.dim, fontSize: theme.font.size.xs, fontFamily: theme.font.mono }}>
+          page {displayPage(block.page)}
+        </span>
+        {block.is_boilerplate && <span style={{ color: theme.color.mute, fontSize: theme.font.size.xs }}>boilerplate</span>}
       </div>
 
       {block.block_type === "figure" ? (
@@ -55,7 +59,7 @@ export const BlockRow = forwardRef<HTMLDivElement, BlockRowProps>(function Block
         <TableBlock table={table} />
       ) : (
         block.text && (
-          <div style={block.block_type === "heading" ? headingStyle(block.level) : { fontSize: theme.font.size.s }}>
+          <div style={block.block_type === "heading" ? headingStyle(block.level) : { fontSize: theme.font.size.s, color: theme.color.text }}>
             {block.text}
           </div>
         )

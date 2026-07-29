@@ -26,7 +26,7 @@ export function SearchFilterBuilder({ fields, values, onFilterChange }: SearchFi
       style={{
         display: "flex", flexDirection: "column", gap: theme.space.s,
         padding: theme.space.m, border: `1px solid ${theme.color.line}`,
-        borderRadius: theme.radius.l, background: theme.color.card,
+        borderRadius: theme.radius.l, background: theme.color.surface,
       }}
     >
       <span style={{ fontSize: theme.font.size.s, fontWeight: 600, color: theme.color.text }}>Filters</span>

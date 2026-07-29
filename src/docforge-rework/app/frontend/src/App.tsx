@@ -8,6 +8,7 @@ import { CollectionDetailPage } from "./features/collections/CollectionDetailPag
 import { CollectionEditPage } from "./features/collections/CollectionEditPage";
 import { CollectionPipelinePage } from "./features/collections/CollectionPipelinePage";
 import { CollectionSearchPage } from "./features/collections/CollectionSearchPage";
+import { CollectionShell } from "./features/collections/CollectionShell";
 import { CollectionsPage } from "./features/collections/CollectionsPage";
 import { CollectionWizard } from "./features/collections/wizard/CollectionWizard";
 import { DocumentPage } from "./features/explorer/DocumentPage";
@@ -28,13 +29,37 @@ export function App() {
       <div style={{ flex: 1, minHeight: 0 }}>
         {view.name === "collections" && <CollectionsPage onNavigate={setView} />}
         {view.name === "new-collection" && <CollectionWizard onNavigate={setView} />}
-        {view.name === "collection" && <CollectionDetailPage collectionId={view.collectionId} onNavigate={setView} />}
+        {view.name === "collection" && (
+          <CollectionShell collectionId={view.collectionId} active="overview" onNavigate={setView}>
+            <CollectionDetailPage collectionId={view.collectionId} onNavigate={setView} />
+          </CollectionShell>
+        )}
         {view.name === "collection-edit" && <CollectionEditPage collectionId={view.collectionId} onNavigate={setView} />}
-        {view.name === "collection-pipeline" && <CollectionPipelinePage collectionId={view.collectionId} onNavigate={setView} />}
-        {view.name === "collection-search-pipeline" && <CollectionSearchPage collectionId={view.collectionId} onNavigate={setView} />}
-        {view.name === "collection-jobs" && <JobsPage collectionId={view.collectionId} onNavigate={setView} />}
-        {view.name === "collection-documents" && <DocumentsPage collectionId={view.collectionId} onNavigate={setView} />}
-        {view.name === "collection-search" && <SearchLabPage collectionId={view.collectionId} onNavigate={setView} />}
+        {view.name === "collection-pipeline" && (
+          <CollectionShell collectionId={view.collectionId} active="pipeline" onNavigate={setView}>
+            <CollectionPipelinePage collectionId={view.collectionId} onNavigate={setView} />
+          </CollectionShell>
+        )}
+        {view.name === "collection-search-pipeline" && (
+          <CollectionShell collectionId={view.collectionId} active="search-pipeline" onNavigate={setView}>
+            <CollectionSearchPage collectionId={view.collectionId} onNavigate={setView} />
+          </CollectionShell>
+        )}
+        {view.name === "collection-jobs" && (
+          <CollectionShell collectionId={view.collectionId} active="jobs" onNavigate={setView}>
+            <JobsPage collectionId={view.collectionId} onNavigate={setView} />
+          </CollectionShell>
+        )}
+        {view.name === "collection-documents" && (
+          <CollectionShell collectionId={view.collectionId} active="documents" onNavigate={setView}>
+            <DocumentsPage collectionId={view.collectionId} onNavigate={setView} />
+          </CollectionShell>
+        )}
+        {view.name === "collection-search" && (
+          <CollectionShell collectionId={view.collectionId} active="search" onNavigate={setView}>
+            <SearchLabPage collectionId={view.collectionId} onNavigate={setView} />
+          </CollectionShell>
+        )}
         {view.name === "document" && (
           <DocumentPage collectionId={view.collectionId} documentId={view.documentId} onNavigate={setView} />
         )}

@@ -20,21 +20,27 @@ interface SearchQueryBarProps {
 
 export function SearchQueryBar({ query, onQueryChange, limit, onLimitChange, loading, onSubmit }: SearchQueryBarProps) {
   return (
-    <div style={{ display: "flex", gap: theme.space.s, alignItems: "flex-end" }}>
+    <div
+      style={{
+        display: "flex", gap: theme.space.s, alignItems: "center", padding: theme.space.s,
+        background: theme.color.surface, border: `1px solid ${theme.color.line}`, borderRadius: theme.radius.l,
+        boxShadow: theme.shadow.sm,
+      }}
+    >
       <div style={{ flex: 1 }}>
         <input
           value={query}
           onChange={(e) => onQueryChange(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && onSubmit()}
           placeholder="Search this collection…"
-          style={inputStyle}
+          style={{ ...inputStyle, border: "none", background: "transparent", fontSize: theme.font.size.l, padding: "6px 4px" }}
         />
       </div>
-      <div style={{ width: 80 }} title="Result limit">
+      <div style={{ width: 72 }} title="Result limit">
         <NumberField
           value={limit}
           min={MIN_LIMIT}
-          style={inputStyle}
+          style={{ ...inputStyle, borderRadius: theme.radius.m, textAlign: "center" }}
           onChange={(value) => onLimitChange(value === undefined ? MIN_LIMIT : Math.max(MIN_LIMIT, value))}
         />
       </div>

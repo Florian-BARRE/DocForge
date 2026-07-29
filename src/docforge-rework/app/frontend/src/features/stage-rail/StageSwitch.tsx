@@ -29,15 +29,16 @@ export function StageSwitch({ checked, disabled = false, title, onChange }: Stag
       />
       <span
         style={{
-          position: "relative", width: 34, height: 18, borderRadius: 9,
-          background: checked ? theme.color.ok : theme.color.line,
-          transition: "background .15s",
+          position: "relative", width: 34, height: 18, borderRadius: theme.radius.pill,
+          background: checked ? theme.color.accent : theme.color.line,
+          transition: "background .15s ease",
         }}
       >
         <span
           style={{
             position: "absolute", top: 2, left: checked ? 18 : 2, width: 14, height: 14,
-            borderRadius: "50%", background: theme.color.onAccent, transition: "left .15s",
+            borderRadius: "50%", background: theme.color.onAccent, transition: "left .15s ease",
+            boxShadow: theme.shadow.sm,
           }}
         />
       </span>

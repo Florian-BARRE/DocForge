@@ -3,6 +3,7 @@
 // list from the api layer's canonical enums, never an inline literal.
 
 import { FIELD_ORIGINS, FIELD_SCOPES, FIELD_TYPES } from "../../../api/collections";
+import { Switch } from "../../../components/Switch";
 import { TagsInput } from "../../../components/TagsInput";
 import { inputStyle } from "../../../components/inputStyle";
 import { theme } from "../../../theme";
@@ -14,8 +15,7 @@ interface FieldRowProps {
   onRemove: () => void;
 }
 
-const cellStyle: React.CSSProperties = { padding: `${theme.space.xs}px ${theme.space.s}px`, verticalAlign: "top" };
-const checkboxStyle: React.CSSProperties = { width: 15, height: 15, accentColor: theme.color.accent };
+const cellStyle: React.CSSProperties = { padding: `${theme.space.m}px ${theme.space.s}px`, verticalAlign: "top" };
 
 /** Enum-value restriction only makes sense for a single string or a keyword-tag list. */
 function supportsEnum(field: DraftField): boolean {
@@ -30,7 +30,7 @@ export function FieldRow({ field, onChange, onRemove }: FieldRowProps) {
     <tr style={{ borderBottom: `1px solid ${theme.color.line}` }}>
       <td style={cellStyle}>
         <input
-          style={inputStyle}
+          style={{ ...inputStyle, fontFamily: theme.font.mono }}
           value={field.field_name}
           onChange={(e) => set("field_name", e.target.value)}
           placeholder="field_name"
@@ -47,17 +47,12 @@ export function FieldRow({ field, onChange, onRemove }: FieldRowProps) {
       </td>
       {(["required", "filterable", "lexical", "semantic"] as const).map((flag) => (
         <td key={flag} style={{ ...cellStyle, textAlign: "center" }}>
-          <input
-            type="checkbox"
-            style={checkboxStyle}
-            checked={field[flag]}
-            onChange={(e) => set(flag, e.target.checked)}
-          />
+          <Switch checked={field[flag]} onChange={(checked) => set(flag, checked)} title={flag} />
         </td>
       ))}
-      <td style={{ ...cellStyle, minWidth: 160 }}>
+      <td style={{ ...cellStyle, minWidth: 180 }}>
         {supportsEnum(field) ? (
-          <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             <TagsInput
               values={field.enum_values ?? []}
               onChange={(values) => set("enum_values", values.length ? values : null)}
@@ -71,7 +66,7 @@ export function FieldRow({ field, onChange, onRemove }: FieldRowProps) {
             </span>
           </div>
         ) : (
-          <span style={{ color: theme.color.dim, fontSize: theme.font.size.xs }}>n/a</span>
+          <span style={{ color: theme.color.mute, fontSize: theme.font.size.xs }}>n/a</span>
         )}
       </td>
       <td style={cellStyle}>
@@ -95,11 +90,13 @@ export function FieldRow({ field, onChange, onRemove }: FieldRowProps) {
           ))}
         </select>
       </td>
-      <td style={cellStyle}>
+      <td style={{ ...cellStyle, textAlign: "center" }}>
         <span
           onClick={onRemove}
           title="Remove field"
-          style={{ cursor: "pointer", color: theme.color.error, fontSize: theme.font.size.m }}
+          style={{ cursor: "pointer", color: theme.color.dim, fontSize: theme.font.size.l }}
+          onMouseEnter={(e) => (e.currentTarget.style.color = theme.color.error)}
+          onMouseLeave={(e) => (e.currentTarget.style.color = theme.color.dim)}
         >
           ✕
         </span>

@@ -28,11 +28,13 @@ export function ChainSection({ stageKey, chain, palette, actions }: ChainSection
   return (
     <div
       style={{
+        position: "relative", overflow: "hidden",
         border: `1px solid ${theme.color.chain}`, background: theme.color.chainSoft,
-        borderRadius: theme.radius.m, padding: theme.space.s,
+        borderRadius: theme.radius.m, padding: theme.space.m, paddingLeft: theme.space.m + 3,
         display: "flex", flexDirection: "column", gap: theme.space.xs,
       }}
     >
+      <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 3, background: theme.color.chain }} />
       <div style={{ display: "flex", alignItems: "baseline", gap: theme.space.s, flexWrap: "wrap" }}>
         <strong style={{ color: theme.color.chain, fontSize: theme.font.size.m }}>⛓ {chain.title}</strong>
         <Chip tone={scored ? "warn" : "dim"} title={scored ? "Escalates on a quality threshold or on failure" : "This family reports no quality score — escalates on failure only"}>

@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { getWorkersLive, type WorkerActivity } from "../../api/jobs";
 import { ErrorState } from "../../components/ErrorState";
 import { LoadingState } from "../../components/LoadingState";
+import { PageHeader } from "../../components/PageHeader";
 import type { Navigate } from "../../shell/view";
 import { theme } from "../../theme";
 import { WorkerCard } from "./WorkerCard";
@@ -35,16 +36,28 @@ export function WorkersPanel({ onNavigate }: { onNavigate: Navigate }) {
     return () => { cancelled = true; window.clearTimeout(timer); };
   }, []);
 
+  const activeCount = workers?.filter((w) => w.jobs.length > 0).length ?? 0;
+
   return (
-    <div style={{ padding: theme.space.l, overflowY: "auto", height: "100%" }}>
-      <h1 style={{ fontSize: theme.font.size.xl, marginBottom: theme.space.l }}>Workers</h1>
+    <div className="df-rise" style={{ padding: theme.space.xl, overflowY: "auto", height: "100%", maxWidth: 1200, margin: "0 auto", width: "100%" }}>
+      <PageHeader
+        title="Workers"
+        subtitle={workers ? `${activeCount} of ${workers.length} worker${workers.length === 1 ? "" : "s"} busy` : " "}
+      />
       {error && <ErrorState message={error} />}
       {!error && !workers && <LoadingState label="loading fleet…" />}
       {workers && workers.length === 0 && (
-        <div style={{ color: theme.color.dim, fontSize: theme.font.size.s }}>Fleet idle — no worker has a running job.</div>
+        <div
+          style={{
+            border: `1px dashed ${theme.color.lineStrong}`, borderRadius: theme.radius.l,
+            padding: theme.space.xxl, textAlign: "center", color: theme.color.dim, fontSize: theme.font.size.l,
+          }}
+        >
+          Fleet idle — no worker has a running job.
+        </div>
       )}
       {workers && workers.length > 0 && (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: theme.space.m }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: theme.space.l }}>
           {workers.map((activity) => <WorkerCard key={activity.worker_id} activity={activity} onNavigate={onNavigate} />)}
         </div>
       )}

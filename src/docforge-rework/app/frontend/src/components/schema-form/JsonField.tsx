@@ -42,13 +42,13 @@ export function JsonField({ value, onChange }: JsonFieldProps) {
         rows={Math.min(14, Math.max(3, draft.split("\n").length))}
         spellCheck={false}
         style={{
-          background: theme.color.bg,
+          background: theme.color.surface2,
           color: theme.color.text,
           border: `1px solid ${error ? theme.color.error : theme.color.line}`,
-          borderRadius: theme.radius.s,
-          padding: "4px 6px",
+          borderRadius: theme.radius.m,
+          padding: "6px 8px",
           fontSize: theme.font.size.s,
-          fontFamily: "ui-monospace, monospace",
+          fontFamily: theme.font.mono,
           width: "100%",
           resize: "vertical",
         }}

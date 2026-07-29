@@ -20,7 +20,8 @@ interface StepSchemaProps {
 
 const headStyle: React.CSSProperties = {
   textAlign: "left", color: theme.color.dim, fontSize: theme.font.size.xs,
-  padding: `${theme.space.xs}px ${theme.space.s}px`, fontWeight: 400,
+  padding: `${theme.space.s}px ${theme.space.s}px`, fontWeight: 600,
+  textTransform: "uppercase", letterSpacing: "0.04em",
 };
 
 export function StepSchema({ mode, fields, onFieldsChange, onBack, onNext }: StepSchemaProps) {
@@ -34,30 +35,34 @@ export function StepSchema({ mode, fields, onFieldsChange, onBack, onNext }: Ste
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: theme.space.m }}>
-      <table style={{ borderCollapse: "collapse", fontSize: theme.font.size.s, width: "100%" }}>
-        <thead>
-          <tr style={{ borderBottom: `1px solid ${theme.color.line}` }}>
-            <th style={headStyle}>Name</th>
-            <th style={headStyle}>Type</th>
-            <th style={headStyle}>Req.</th>
-            <th style={headStyle}>Filter</th>
-            <th style={headStyle}>Lexical</th>
-            <th style={headStyle}>Semantic</th>
-            <th style={headStyle}>Enum values</th>
-            <th style={headStyle}>Origin</th>
-            <th style={headStyle}>Scope</th>
-            <th style={headStyle} />
-          </tr>
-        </thead>
-        <tbody>
-          {fields.map((field, index) => (
-            <FieldRow key={field._key} field={field} onChange={(f) => updateAt(index, f)} onRemove={() => removeAt(index)} />
-          ))}
-        </tbody>
-      </table>
-      {fields.length === 0 && (
-        <div style={{ color: theme.color.dim, fontSize: theme.font.size.s }}>No fields yet — add at least one.</div>
-      )}
+      <div style={{ background: theme.color.surface, border: `1px solid ${theme.color.line}`, borderRadius: theme.radius.l, boxShadow: theme.shadow.sm, overflow: "hidden" }}>
+        <table style={{ borderCollapse: "collapse", width: "100%" }}>
+          <thead>
+            <tr style={{ borderBottom: `1px solid ${theme.color.line}` }}>
+              <th style={headStyle}>Name</th>
+              <th style={headStyle}>Type</th>
+              <th style={headStyle}>Req.</th>
+              <th style={headStyle}>Filter</th>
+              <th style={headStyle}>Lexical</th>
+              <th style={headStyle}>Semantic</th>
+              <th style={headStyle}>Enum values</th>
+              <th style={headStyle}>Origin</th>
+              <th style={headStyle}>Scope</th>
+              <th style={headStyle} />
+            </tr>
+          </thead>
+          <tbody>
+            {fields.map((field, index) => (
+              <FieldRow key={field._key} field={field} onChange={(f) => updateAt(index, f)} onRemove={() => removeAt(index)} />
+            ))}
+          </tbody>
+        </table>
+        {fields.length === 0 && (
+          <div style={{ color: theme.color.dim, fontSize: theme.font.size.s, padding: theme.space.l, textAlign: "center" }}>
+            No fields yet — add at least one.
+          </div>
+        )}
+      </div>
       {mode === "edit" && (
         <div style={{ color: theme.color.warn, fontSize: theme.font.size.xs }}>
           Removing a field here deletes it — and every value already stored for it — once you submit.

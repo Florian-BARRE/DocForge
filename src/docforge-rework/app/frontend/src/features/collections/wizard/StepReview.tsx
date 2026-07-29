@@ -29,13 +29,18 @@ export function StepReview({
   mode, name, formats, maxSizeBytes, fields, removedFieldNames, onBack, onSubmit, submitting, issues,
 }: StepReviewProps) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: theme.space.m }}>
-      <div>
-        <div style={{ fontSize: theme.font.size.xl, fontWeight: 600 }}>{name}</div>
-        <div style={{ display: "flex", gap: 4, marginTop: theme.space.xs, flexWrap: "wrap" }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: theme.space.l }}>
+      <div
+        style={{
+          background: theme.color.surface, border: `1px solid ${theme.color.line}`,
+          borderRadius: theme.radius.l, boxShadow: theme.shadow.sm, padding: theme.space.l,
+        }}
+      >
+        <div style={{ fontFamily: theme.font.display, fontSize: theme.font.size.xxl, fontWeight: 700 }}>{name}</div>
+        <div style={{ display: "flex", gap: 6, marginTop: theme.space.s, flexWrap: "wrap" }}>
           {formats.map((f) => <Chip key={f} tone="accent">{f}</Chip>)}
         </div>
-        <div style={{ color: theme.color.dim, fontSize: theme.font.size.s, marginTop: theme.space.xs }}>
+        <div style={{ color: theme.color.dim, fontSize: theme.font.size.m, marginTop: theme.space.s }}>
           Max file size: {bytesToMb(maxSizeBytes).toFixed(1)} MB · {fields.length} field(s)
         </div>
       </div>

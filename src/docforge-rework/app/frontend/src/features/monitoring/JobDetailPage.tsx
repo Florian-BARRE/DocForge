@@ -7,6 +7,7 @@ import { getJob, getJobTrace, type JobStatus, type JobTrace } from "../../api/jo
 import { BackLink } from "../../components/BackLink";
 import { ErrorState } from "../../components/ErrorState";
 import { LoadingState } from "../../components/LoadingState";
+import { PageHeader } from "../../components/PageHeader";
 import type { Navigate } from "../../shell/view";
 import { theme } from "../../theme";
 import { JobEventItem } from "./JobEventItem";
@@ -50,31 +51,49 @@ export function JobDetailPage({ jobId, collectionId, onNavigate }: JobDetailPage
   if (!job || !trace) return <LoadingState label="loading job…" />;
 
   return (
-    <div style={{ padding: theme.space.l, overflowY: "auto", height: "100%" }}>
-      <BackLink label="Jobs" onClick={() => onNavigate({ name: "collection-jobs", collectionId })} />
-      <div style={{ display: "flex", alignItems: "center", gap: theme.space.s, margin: `${theme.space.s}px 0` }}>
-        <h1 style={{ fontSize: theme.font.size.xl, fontFamily: theme.font.mono }}>{job.job_id}</h1>
-        <JobStatusChip status={job.status} />
-      </div>
-      <div style={{ color: theme.color.dim, fontSize: theme.font.size.s, marginBottom: theme.space.s }}>
-        document {job.document_id} · attempt {job.attempt}
-      </div>
-      <div style={{ maxWidth: 400, marginBottom: theme.space.m }}>
-        <ProgressBar progress={job.progress} status={job.status} />
-      </div>
-      <div style={{ display: "flex", gap: theme.space.l, color: theme.color.dim, fontSize: theme.font.size.s, marginBottom: theme.space.l }}>
-        <span>started: {job.started_at ? new Date(job.started_at).toLocaleString() : "—"}</span>
-        <span>finished: {job.finished_at ? new Date(job.finished_at).toLocaleString() : "—"}</span>
-      </div>
-      {job.error && (
-        <div style={{ color: theme.color.error, fontSize: theme.font.size.s, marginBottom: theme.space.l }}>{job.error}</div>
-      )}
+    <div className="df-rise" style={{ padding: theme.space.xl, overflowY: "auto", height: "100%", maxWidth: 1200, margin: "0 auto", width: "100%" }}>
+      <PageHeader
+        eyebrow={<BackLink label="Jobs" onClick={() => onNavigate({ name: "collection-jobs", collectionId })} />}
+        title={<span style={{ fontFamily: theme.font.mono, fontSize: theme.font.size.xxl }}>{job.job_id}</span>}
+        subtitle={
+          <span style={{ display: "inline-flex", alignItems: "center", gap: theme.space.s, flexWrap: "wrap" }}>
+            <span>document {job.document_id} · attempt {job.attempt}</span>
+            <JobStatusChip status={job.status} />
+          </span>
+        }
+      />
 
-      <h2 style={{ fontSize: theme.font.size.l, marginBottom: theme.space.s }}>Trace</h2>
-      {trace.events.length === 0 && <div style={{ color: theme.color.dim, fontSize: theme.font.size.s }}>No stage events yet.</div>}
-      <div>
-        {trace.events.map((event, index) => <JobEventItem key={index} event={event} />)}
+      <div
+        style={{
+          background: theme.color.surface, border: `1px solid ${theme.color.line}`,
+          borderRadius: theme.radius.l, boxShadow: theme.shadow.sm, padding: theme.space.l,
+          marginBottom: theme.space.l,
+        }}
+      >
+        <ProgressBar progress={job.progress} status={job.status} />
+        <div style={{ display: "flex", gap: theme.space.l, color: theme.color.dim, fontSize: theme.font.size.s, marginTop: theme.space.s }}>
+          <span>started: {job.started_at ? new Date(job.started_at).toLocaleString() : "—"}</span>
+          <span>finished: {job.finished_at ? new Date(job.finished_at).toLocaleString() : "—"}</span>
+        </div>
+        {job.error && (
+          <div style={{ color: theme.color.error, fontSize: theme.font.size.s, marginTop: theme.space.s }}>{job.error}</div>
+        )}
       </div>
+
+      <h2 style={{ fontFamily: theme.font.display, fontSize: theme.font.size.l, fontWeight: 600, color: theme.color.text, marginBottom: theme.space.m }}>
+        Trace
+      </h2>
+      {trace.events.length === 0 && <div style={{ color: theme.color.dim, fontSize: theme.font.size.s }}>No stage events yet.</div>}
+      {trace.events.length > 0 && (
+        <div
+          style={{
+            background: theme.color.surface, border: `1px solid ${theme.color.line}`,
+            borderRadius: theme.radius.l, boxShadow: theme.shadow.sm, padding: `${theme.space.m}px ${theme.space.l}px`,
+          }}
+        >
+          {trace.events.map((event, index) => <JobEventItem key={index} event={event} />)}
+        </div>
+      )}
     </div>
   );
 }

@@ -7,15 +7,25 @@ import { theme } from "../../../theme";
 import { MetadataTable } from "../metadata/MetadataTable";
 import { FactsGrid } from "./FactsGrid";
 
+const sectionStyle: React.CSSProperties = {
+  background: theme.color.surface, border: `1px solid ${theme.color.line}`,
+  borderRadius: theme.radius.l, boxShadow: theme.shadow.sm, padding: theme.space.l,
+};
+
+const sectionTitleStyle: React.CSSProperties = {
+  fontFamily: theme.font.display, fontSize: theme.font.size.l, fontWeight: 600,
+  color: theme.color.text, marginBottom: theme.space.m,
+};
+
 export function OverviewTab({ document }: { document: DocumentDetail }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: theme.space.l }}>
-      <section>
-        <h2 style={{ fontSize: theme.font.size.l, marginBottom: theme.space.s }}>Facts</h2>
+      <section style={sectionStyle}>
+        <h2 style={sectionTitleStyle}>Facts</h2>
         <FactsGrid document={document} />
       </section>
-      <section>
-        <h2 style={{ fontSize: theme.font.size.l, marginBottom: theme.space.s }}>Metadata</h2>
+      <section style={sectionStyle}>
+        <h2 style={sectionTitleStyle}>Metadata</h2>
         <MetadataTable metadata={document.metadata} />
       </section>
     </div>

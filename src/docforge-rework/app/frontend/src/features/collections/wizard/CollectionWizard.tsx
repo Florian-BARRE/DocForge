@@ -9,11 +9,13 @@ import { createCollection, updateCollection, type Collection } from "../../../ap
 import type { ApiIssue } from "../../../api/http";
 import { HttpError } from "../../../api/http";
 import { BackLink } from "../../../components/BackLink";
+import { PageHeader } from "../../../components/PageHeader";
 import { theme } from "../../../theme";
 import type { Navigate } from "../../../shell/view";
 import { StepIdentity } from "./StepIdentity";
 import { StepReview } from "./StepReview";
 import { StepSchema } from "./StepSchema";
+import { WizardSteps } from "./WizardSteps";
 import {
   draftFromCollection,
   mbToBytes,
@@ -78,18 +80,13 @@ export function CollectionWizard({ onNavigate, mode = "create", initial, collect
   };
 
   return (
-    <div style={{ padding: theme.space.l, overflowY: "auto", height: "100%" }}>
-      <BackLink label={mode === "edit" ? "Collection" : "Collections"} onClick={() => onNavigate(backTarget)} />
-      <h1 style={{ fontSize: theme.font.size.xl, margin: `${theme.space.s}px 0` }}>
-        {mode === "edit" ? `Edit collection — ${initial?.name}` : "New collection"}
-      </h1>
-      <div style={{ display: "flex", gap: theme.space.m, marginBottom: theme.space.l, fontSize: theme.font.size.s }}>
-        {stepLabels.map((label, index) => (
-          <span key={label} style={{ color: index === step ? theme.color.accent : theme.color.dim, fontWeight: index === step ? 600 : 400 }}>
-            {index + 1}. {label}
-          </span>
-        ))}
-      </div>
+    <div className="df-rise" style={{ padding: theme.space.xl, maxWidth: 900, margin: "0 auto", overflowY: "auto", height: "100%" }}>
+      <PageHeader
+        eyebrow={<BackLink label={mode === "edit" ? "Collection" : "Collections"} onClick={() => onNavigate(backTarget)} />}
+        title={mode === "edit" ? `Edit collection — ${initial?.name}` : "New collection"}
+        subtitle={mode === "edit" ? "Update the contract — schema changes apply on submit." : "Define the contract this collection ingests against."}
+      />
+      <WizardSteps labels={stepLabels} current={step} />
       {step === 0 && (
         <StepIdentity
           mode={mode}

@@ -54,14 +54,14 @@ export function SearchTargetPicker({ fields, selection, onToggle }: SearchTarget
       style={{
         display: "flex", flexDirection: "column", gap: theme.space.s,
         padding: theme.space.m, border: `1px solid ${theme.color.line}`,
-        borderRadius: theme.radius.l, background: theme.color.card,
+        borderRadius: theme.radius.l, background: theme.color.surface,
       }}
     >
-      <span style={{ fontSize: theme.font.size.s, fontWeight: 600, color: theme.color.text }}>Chercher dans</span>
+      <span style={{ fontSize: theme.font.size.s, fontWeight: 600, color: theme.color.text }}>Search in</span>
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: theme.space.m }}>
         <TargetRow
-          label="Contenu"
+          label="Content"
           supportsSemantic
           supportsLexical
           value={selection[CONTENT_FIELD] ?? emptyModalities}
@@ -93,16 +93,22 @@ interface TargetRowProps {
 /** One target's name plus a checkbox per modality it actually supports — never the unsupported one. */
 function TargetRow({ label, supportsSemantic, supportsLexical, value, onToggle }: TargetRowProps) {
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: theme.space.xs, fontSize: theme.font.size.s, color: theme.color.text }}>
-      <span>{label}</span>
+    <div
+      style={{
+        display: "flex", alignItems: "center", gap: theme.space.s, fontSize: theme.font.size.s, color: theme.color.text,
+        padding: `${theme.space.xs}px ${theme.space.s}px`, background: theme.color.surface2,
+        border: `1px solid ${theme.color.line}`, borderRadius: theme.radius.pill,
+      }}
+    >
+      <span style={{ fontFamily: theme.font.mono, fontWeight: 600 }}>{label}</span>
       {supportsSemantic && (
-        <label style={{ display: "flex", alignItems: "center", gap: 2, fontSize: theme.font.size.xs, color: theme.color.dim }}>
+        <label style={{ display: "flex", alignItems: "center", gap: 3, fontSize: theme.font.size.xs, color: theme.color.dim, cursor: "pointer" }}>
           <input type="checkbox" checked={value.semantic} onChange={(e) => onToggle("semantic", e.target.checked)} />
-          sémantique
+          semantic
         </label>
       )}
       {supportsLexical && (
-        <label style={{ display: "flex", alignItems: "center", gap: 2, fontSize: theme.font.size.xs, color: theme.color.dim }}>
+        <label style={{ display: "flex", alignItems: "center", gap: 3, fontSize: theme.font.size.xs, color: theme.color.dim, cursor: "pointer" }}>
           <input type="checkbox" checked={value.lexical} onChange={(e) => onToggle("lexical", e.target.checked)} />
           lexical
         </label>

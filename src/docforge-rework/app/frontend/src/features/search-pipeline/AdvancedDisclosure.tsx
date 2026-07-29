@@ -16,13 +16,14 @@ export function AdvancedDisclosure({ summary, children }: AdvancedDisclosureProp
     <details
       style={{
         border: `1px solid ${theme.color.line}`, borderRadius: theme.radius.l,
-        background: theme.color.card,
+        background: theme.color.surface, boxShadow: theme.shadow.sm,
       }}
     >
       <summary
         style={{
           cursor: "pointer", userSelect: "none", padding: theme.space.m,
           fontSize: theme.font.size.l, fontWeight: 600, color: theme.color.text,
+          fontFamily: theme.font.display,
         }}
       >
         {summary}

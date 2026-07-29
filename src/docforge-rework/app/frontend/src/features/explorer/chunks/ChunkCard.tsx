@@ -28,14 +28,14 @@ export function ChunkCard({ chunk, selected, onToggleSelect, onJumpToBlock, onEn
     <div
       style={{
         display: "flex", flexDirection: "column", gap: theme.space.s,
-        background: theme.color.card, border: `1px solid ${theme.color.line}`,
-        borderRadius: theme.radius.m, padding: theme.space.m,
-        opacity: chunk.enabled ? 1 : 0.55,
+        background: theme.color.surface, border: `1px solid ${selected ? theme.color.accentLine : theme.color.line}`,
+        borderRadius: theme.radius.l, padding: theme.space.m, boxShadow: theme.shadow.sm,
+        opacity: chunk.enabled ? 1 : 0.55, transition: "border-color .15s ease",
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: theme.space.s }}>
+      <div style={{ display: "flex", alignItems: "center", gap: theme.space.s, flexWrap: "wrap" }}>
         <input type="checkbox" checked={selected} onChange={() => onToggleSelect(chunk.id)} />
-        <strong style={{ fontSize: theme.font.size.m }}>#{chunk.chunk_index}</strong>
+        <strong style={{ fontFamily: theme.font.mono, fontSize: theme.font.size.m, color: theme.color.text }}>#{chunk.chunk_index}</strong>
         <span style={{ color: theme.color.dim, fontSize: theme.font.size.xs }}>{chunk.token_count} tokens</span>
         <Chip tone={chunk.is_indexed ? "ok" : "dim"}>{chunk.is_indexed ? "indexed" : "not indexed"}</Chip>
         <span style={{ color: theme.color.dim, fontSize: theme.font.size.xs }}>{chunk.strategy}</span>

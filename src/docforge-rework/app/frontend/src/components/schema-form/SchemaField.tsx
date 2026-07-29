@@ -4,6 +4,7 @@
 // full contract made visible: type (+ bounds / enum values), required flag, default, description.
 
 import type { JsonSchema, JsonSchemaProperty } from "../../api/types";
+import { Switch } from "../Switch";
 import { theme } from "../../theme";
 
 import { JsonField } from "./JsonField";
@@ -28,10 +29,11 @@ export function typeLabel(prop: JsonSchemaProperty): string {
 
 
 const inputStyle: React.CSSProperties = {
-  background: theme.color.bg,
+  background: theme.color.surface2,
+  color: theme.color.text,
   border: `1px solid ${theme.color.line}`,
-  borderRadius: theme.radius.s,
-  padding: "3px 6px",
+  borderRadius: theme.radius.m,
+  padding: "6px 8px",
   fontSize: theme.font.size.m,
   width: "100%",
 };
@@ -59,14 +61,7 @@ export function SchemaField({ name, prop, schema, value, required = false, onCha
       </select>
     );
   } else if (resolved.type === "boolean") {
-    control = (
-      <input
-        type="checkbox"
-        checked={Boolean(current)}
-        onChange={(e) => onChange(e.target.checked)}
-        style={{ width: 16, height: 16, accentColor: theme.color.accent }}
-      />
-    );
+    control = <Switch checked={Boolean(current)} onChange={onChange} />;
   } else if (resolved.type === "number" || resolved.type === "integer") {
     control = (
       <NumberField
@@ -111,8 +106,8 @@ export function SchemaField({ name, prop, schema, value, required = false, onCha
         <span
           title={typeLabel(resolved)}
           style={{
-            color: theme.color.warn, background: theme.color.warnSoft,
-            borderRadius: theme.radius.s, padding: "0 4px", fontSize: theme.font.size.xs,
+            color: theme.color.dim, background: theme.color.surface3,
+            borderRadius: theme.radius.s, padding: "1px 5px", fontSize: theme.font.size.xs,
             fontFamily: theme.font.mono, whiteSpace: "nowrap", overflow: "hidden",
             textOverflow: "ellipsis", maxWidth: 130,
           }}
