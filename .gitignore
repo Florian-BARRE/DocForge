@@ -80,3 +80,4 @@ htmlcov/
 # The build/ unit-test package mirrors that source module - also SOURCE, not an artifact.
 !src/docforge-rework/tests/units/build/
 !src/docforge-rework/tests/units/build/**
+src/docforge-rework/app/frontend/scripts/node_modules/
