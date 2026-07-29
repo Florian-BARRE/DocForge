@@ -1,31 +1,71 @@
 // ====== Code Summary ======
-// The shared button — primary (accent fill), secondary (outline) and danger (error outline)
-// variants, matching the rounded look already used throughout the pipeline studio.
+// The shared button. Variants: primary (ember fill), secondary (tonal surface), ghost (quiet),
+// danger (error tonal). Hover/press are handled with local state so the whole app gets a
+// consistent, tactile feel from one place. Palette-variable colours → reskins per theme.
 
-import type { ButtonHTMLAttributes } from "react";
-import { theme } from "../theme";
+import { useState, type ButtonHTMLAttributes } from "react";
+import { theme as t } from "../theme";
 
-export type ButtonVariant = "primary" | "secondary" | "danger";
+export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
+export type ButtonSize = "sm" | "md";
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant;
+  size?: ButtonSize;
 }
 
-const VARIANT_STYLE: Record<ButtonVariant, React.CSSProperties> = {
-  primary: { background: theme.color.accent, color: theme.color.onAccent, border: "none" },
-  secondary: { background: "none", color: theme.color.accent, border: `1px solid ${theme.color.accent}` },
-  danger: { background: "none", color: theme.color.error, border: `1px solid ${theme.color.error}` },
-};
+function variantStyle(variant: ButtonVariant, hover: boolean): React.CSSProperties {
+  switch (variant) {
+    case "primary":
+      return {
+        background: hover ? t.color.accentStrong : t.color.accent,
+        color: t.color.onAccent, border: "1px solid transparent",
+        boxShadow: hover ? `0 6px 18px -6px ${t.color.accent}` : t.shadow.sm,
+      };
+    case "ghost":
+      return {
+        background: hover ? t.color.surface2 : "transparent",
+        color: t.color.text, border: "1px solid transparent",
+      };
+    case "danger":
+      return {
+        background: hover ? t.color.errorSoft : "transparent",
+        color: t.color.error, border: `1px solid ${hover ? t.color.error : t.color.line}`,
+      };
+    default: // secondary — tonal
+      return {
+        background: hover ? t.color.surface3 : t.color.surface2,
+        color: t.color.text, border: `1px solid ${t.color.line}`,
+      };
+  }
+}
 
-export function Button({ variant = "secondary", style, disabled, ...rest }: ButtonProps) {
+export function Button({ variant = "secondary", size = "md", style, disabled, ...rest }: ButtonProps) {
+  const [hover, setHover] = useState(false);
+  const [press, setPress] = useState(false);
   const base: React.CSSProperties = {
-    borderRadius: theme.radius.s,
-    padding: "5px 14px",
-    fontSize: theme.font.size.m,
+    display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7,
+    borderRadius: t.radius.m,
+    padding: size === "sm" ? "5px 11px" : "8px 15px",
+    fontSize: size === "sm" ? t.font.size.m : t.font.size.l,
+    fontWeight: t.font.weight.semibold, lineHeight: 1.1,
     cursor: disabled ? "not-allowed" : "pointer",
+    transition: "background .15s ease, box-shadow .15s ease, border-color .15s ease, transform .06s ease",
+    transform: press && !disabled ? "translateY(1px)" : "none",
+    whiteSpace: "nowrap",
   };
-  const variantStyle = disabled
-    ? { background: theme.color.card, color: theme.color.dim, border: "none" }
-    : VARIANT_STYLE[variant];
-  return <button disabled={disabled} style={{ ...base, ...variantStyle, ...style }} {...rest} />;
+  const skin = disabled
+    ? { background: t.color.surface2, color: t.color.mute, border: `1px solid ${t.color.line}`, boxShadow: "none" }
+    : variantStyle(variant, hover);
+  return (
+    <button
+      disabled={disabled}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => { setHover(false); setPress(false); }}
+      onMouseDown={() => setPress(true)}
+      onMouseUp={() => setPress(false)}
+      style={{ ...base, ...skin, ...style }}
+      {...rest}
+    />
+  );
 }

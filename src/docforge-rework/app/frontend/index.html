@@ -3,7 +3,27 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>DocForge — Pipeline Studio</title>
+    <meta name="color-scheme" content="dark light" />
+    <title>DocForge — Document Intelligence</title>
+    <!-- Distinctive type: Bricolage Grotesque (display/brand), Hanken Grotesk (UI), JetBrains Mono (code). -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <!-- Set the theme before first paint so there is no flash of the wrong palette. -->
+    <script>
+      (function () {
+        try {
+          var saved = localStorage.getItem("docforge_theme");
+          var theme = saved || (matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark");
+          document.documentElement.dataset.theme = theme;
+        } catch (e) {
+          document.documentElement.dataset.theme = "dark";
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

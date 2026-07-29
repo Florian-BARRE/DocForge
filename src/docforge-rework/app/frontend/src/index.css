@@ -1,6 +1,118 @@
-/* Global reset only — base colours/typography are applied from theme.ts in main.tsx (single
-   source of truth; kept out of CSS so they can't silently drift from the tokens). */
+/* ============================================================================
+   DocForge design system — the two palettes live here as CSS variables, so the
+   theme.ts tokens (which every component reads) resolve to var(--x) and BOTH
+   light + dark themes work with zero component changes. Flip via
+   document.documentElement.dataset.theme = "light" | "dark".
+   Identity: a refined technical instrument — ember/forge accent, warm-tinted
+   neutrals, distinctive grotesque type.
+   ============================================================================ */
+
+/* ---- Dark (default) — deep warm ink ---- */
+:root,
+:root[data-theme="dark"] {
+  --bg: #0f1014;
+  --bg-tint: 236 155 75; /* accent rgb, for the faint atmospheric glow */
+  --panel: #15171e;
+  --surface: #1a1d25;
+  --surface-2: #21252f;
+  --surface-3: #272c38;
+  --line: #2a2f3a;
+  --line-strong: #3a4150;
+  --text: #e8eaef;
+  --text-dim: #9aa0ac;
+  --text-mute: #6b7280;
+
+  --accent: #ec9b4b;
+  --accent-strong: #f4ad64;
+  --accent-contrast: #17120a;
+  --accent-soft: rgba(236, 155, 75, 0.15);
+  --accent-line: rgba(236, 155, 75, 0.35);
+
+  --ok: #4bd1a0;        --ok-soft: rgba(75, 209, 160, 0.14);
+  --error: #f76d7c;     --error-soft: rgba(247, 109, 124, 0.14);
+  --warn: #e6c14a;      --warn-soft: rgba(230, 193, 74, 0.14);
+  --info: #6ea8ff;      --info-soft: rgba(110, 168, 255, 0.14);
+  --iris: #8f7cff;      --iris-soft: rgba(143, 124, 255, 0.12);
+  --chain: #34d3ee;     --chain-soft: rgba(52, 211, 238, 0.12);
+
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.45);
+  --shadow-2: 0 10px 30px -10px rgba(0, 0, 0, 0.6);
+  --shadow-pop: 0 16px 44px -12px rgba(0, 0, 0, 0.7);
+  color-scheme: dark;
+}
+
+/* ---- Light — warm paper ---- */
+:root[data-theme="light"] {
+  --bg: #f6f4ee;
+  --bg-tint: 191 106 28;
+  --panel: #fffdf9;
+  --surface: #ffffff;
+  --surface-2: #f4f1e9;
+  --surface-3: #ece8dd;
+  --line: #e7e2d6;
+  --line-strong: #d6d0c1;
+  --text: #22242b;
+  --text-dim: #666b75;
+  --text-mute: #969ba6;
+
+  --accent: #bf6a1c;
+  --accent-strong: #a85c14;
+  --accent-contrast: #ffffff;
+  --accent-soft: rgba(191, 106, 28, 0.11);
+  --accent-line: rgba(191, 106, 28, 0.3);
+
+  --ok: #13936a;        --ok-soft: rgba(19, 147, 106, 0.12);
+  --error: #d6435a;     --error-soft: rgba(214, 67, 90, 0.12);
+  --warn: #b1810c;      --warn-soft: rgba(177, 129, 12, 0.12);
+  --info: #2f6fd6;      --info-soft: rgba(47, 111, 214, 0.12);
+  --iris: #6a5bd8;      --iris-soft: rgba(106, 91, 216, 0.12);
+  --chain: #0e97b0;     --chain-soft: rgba(14, 151, 176, 0.12);
+
+  --shadow-1: 0 1px 2px rgba(31, 26, 15, 0.06);
+  --shadow-2: 0 12px 30px -10px rgba(31, 26, 15, 0.16);
+  --shadow-pop: 0 18px 46px -12px rgba(31, 26, 15, 0.22);
+  color-scheme: light;
+}
+
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html, body, #root { height: 100%; }
-body { overflow: hidden; }
+
+body {
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Hanken Grotesk", system-ui, -apple-system, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  /* A faint ember glow anchored top-left + a soft vignette — atmosphere, not noise. */
+  background-image:
+    radial-gradient(1200px 620px at -8% -12%, rgba(var(--bg-tint), 0.09), transparent 60%),
+    radial-gradient(900px 520px at 108% 0%, rgba(var(--bg-tint), 0.05), transparent 55%);
+  background-attachment: fixed;
+  transition: background-color 0.25s ease, color 0.25s ease;
+}
+
 input, select, button, textarea { font: inherit; color: inherit; }
+button { letter-spacing: 0.01em; }
+
+/* Numeric/technical text (types, hashes, ids) uses the mono via this utility. */
+.mono { font-family: "JetBrains Mono", ui-monospace, monospace; }
+
+::selection { background: var(--accent-soft); color: var(--text); }
+
+/* Refined, theme-aware scrollbars. */
+* { scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 8px; border: 2px solid transparent; background-clip: padding-box; }
+*::-webkit-scrollbar-thumb:hover { background: var(--text-mute); background-clip: padding-box; }
+
+/* One consistent keyboard focus ring everywhere. */
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+:focus:not(:focus-visible) { outline: none; }
+
+/* Page-load entrance — used by the shell for a calm staggered reveal. */
+@keyframes df-rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.df-rise { animation: df-rise 0.5s cubic-bezier(0.22, 1, 0.36, 1) both; }
+@media (prefers-reduced-motion: reduce) { .df-rise { animation: none; } }

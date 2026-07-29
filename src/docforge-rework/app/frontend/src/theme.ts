@@ -1,39 +1,56 @@
 // ====== Code Summary ======
-// Central design tokens — every color, radius and spacing in the app comes from here.
-// No component hardcodes a color value.
+// Central design tokens. Colours resolve to CSS variables defined in index.css, so BOTH the light
+// and dark palettes work with no component changes — flip via
+// document.documentElement.dataset.theme. No component hardcodes a colour value.
 
 export const theme = {
   color: {
-    bg: "#0f1115",
-    panel: "#181b22",
-    card: "#1f2430",
-    cardHover: "#242a38",
-    line: "#2c3342",
-    text: "#d7dce5",
-    dim: "#8b93a5",
-    onAccent: "#fff",
-    accent: "#4f8cff",
-    accentSoft: "rgba(79,140,255,.14)",
-    ok: "#3ecf8e",
-    okSoft: "rgba(62,207,142,.14)",
-    error: "#ff5c6c",
-    errorSoft: "rgba(255,92,108,.14)",
-    warn: "#f0b429",
-    warnSoft: "rgba(240,180,41,.14)",
-    loop: "#9a6cff",
-    loopSoft: "rgba(154,108,255,.08)",
-    edge: "#55607a",
-    // Fallback chains (model-call escalation sites) get their OWN accent so they read as a
-    // distinct concept from the linear stage rail wherever they appear (enrich's OCR/VLM sites).
-    chain: "#22d3ee",
-    chainSoft: "rgba(34,211,238,.10)",
+    // Surfaces (low → high elevation).
+    bg: "var(--bg)",
+    panel: "var(--panel)",
+    surface: "var(--surface)",
+    surface2: "var(--surface-2)",
+    surface3: "var(--surface-3)",
+    card: "var(--surface)",        // legacy alias
+    cardHover: "var(--surface-2)", // legacy alias
+
+    // Lines.
+    line: "var(--line)",
+    lineStrong: "var(--line-strong)",
+    edge: "var(--line-strong)", // graph-edge alias
+
+    // Text.
+    text: "var(--text)",
+    dim: "var(--text-dim)",
+    mute: "var(--text-mute)",
+
+    // Accent (the ember/forge signature).
+    accent: "var(--accent)",
+    accentStrong: "var(--accent-strong)",
+    accentSoft: "var(--accent-soft)",
+    accentLine: "var(--accent-line)",
+    onAccent: "var(--accent-contrast)",
+
+    // Semantics.
+    ok: "var(--ok)", okSoft: "var(--ok-soft)",
+    error: "var(--error)", errorSoft: "var(--error-soft)",
+    warn: "var(--warn)", warnSoft: "var(--warn-soft)",
+    info: "var(--info)", infoSoft: "var(--info-soft)",
+    // Fallback chains + loop concepts get their own hues so they read as distinct.
+    loop: "var(--iris)", loopSoft: "var(--iris-soft)", // legacy alias
+    iris: "var(--iris)", irisSoft: "var(--iris-soft)",
+    chain: "var(--chain)", chainSoft: "var(--chain-soft)",
   },
-  radius: { s: 4, m: 8, l: 12 },
-  space: { xs: 4, s: 8, m: 12, l: 16 },
+  radius: { s: 6, m: 10, l: 14, xl: 20, pill: 999 },
+  space: { xs: 4, s: 8, m: 12, l: 16, xl: 24, xxl: 40 },
+  shadow: { sm: "var(--shadow-1)", md: "var(--shadow-2)", pop: "var(--shadow-pop)" },
   font: {
-    family: "system-ui, -apple-system, 'Segoe UI', sans-serif",
-    mono: "'Cascadia Code', Consolas, monospace",
-    size: { xs: 10, s: 11, m: 12, l: 13, xl: 15 },
+    family: "'Hanken Grotesk', system-ui, -apple-system, sans-serif",
+    display: "'Bricolage Grotesque', 'Hanken Grotesk', sans-serif",
+    mono: "'JetBrains Mono', ui-monospace, 'Cascadia Code', Consolas, monospace",
+    weight: { normal: 400, medium: 500, semibold: 600, bold: 700 },
+    // Bumped from the cramped 10–15px scale to a properly breathing one.
+    size: { xs: 11, s: 12, m: 13, l: 14, xl: 16, xxl: 20, display: 28 },
   },
 } as const;
 

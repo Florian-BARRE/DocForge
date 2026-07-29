@@ -1,20 +1,22 @@
 // ====== Code Summary ======
-// A small colored pill — the shared visual language for status/flag indicators across features
-// (job status, needs-reindex, format tags). Tone maps to the matching theme color pair, mirroring
-// the badge look already used by the pipeline studio's PaletteCard.
+// A small pill — the shared visual language for status/flags/tags (job status, needs-reindex,
+// format tags, field surfaces). Tone maps to a colour pair from the palette variables, so chips
+// reskin per theme. `neutral` is the quiet surface pill used for plain tags.
 
 import type { ReactNode } from "react";
-import { theme } from "../theme";
+import { theme as t } from "../theme";
 
-export type ChipTone = "accent" | "ok" | "warn" | "error" | "dim" | "loop";
+export type ChipTone = "accent" | "ok" | "warn" | "error" | "info" | "neutral" | "dim" | "loop";
 
-const TONE_COLOR: Record<ChipTone, { color: string; background: string }> = {
-  accent: { color: theme.color.accent, background: theme.color.accentSoft },
-  ok: { color: theme.color.ok, background: theme.color.okSoft },
-  warn: { color: theme.color.warn, background: theme.color.warnSoft },
-  error: { color: theme.color.error, background: theme.color.errorSoft },
-  dim: { color: theme.color.dim, background: theme.color.card },
-  loop: { color: theme.color.loop, background: theme.color.loopSoft },
+const TONE: Record<ChipTone, { color: string; background: string; border: string }> = {
+  accent: { color: t.color.accent, background: t.color.accentSoft, border: t.color.accentLine },
+  ok: { color: t.color.ok, background: t.color.okSoft, border: "transparent" },
+  warn: { color: t.color.warn, background: t.color.warnSoft, border: "transparent" },
+  error: { color: t.color.error, background: t.color.errorSoft, border: "transparent" },
+  info: { color: t.color.info, background: t.color.infoSoft, border: "transparent" },
+  loop: { color: t.color.loop, background: t.color.loopSoft, border: "transparent" },
+  neutral: { color: t.color.dim, background: t.color.surface2, border: t.color.line },
+  dim: { color: t.color.mute, background: t.color.surface2, border: "transparent" },
 };
 
 interface ChipProps {
@@ -23,14 +25,16 @@ interface ChipProps {
   title?: string;
 }
 
-export function Chip({ tone = "dim", children, title }: ChipProps) {
-  const { color, background } = TONE_COLOR[tone];
+export function Chip({ tone = "neutral", children, title }: ChipProps) {
+  const c = TONE[tone];
   return (
     <span
       title={title}
       style={{
-        color, background, borderRadius: 10, padding: "1px 7px",
-        fontSize: theme.font.size.xs, fontWeight: 700, whiteSpace: "nowrap",
+        display: "inline-flex", alignItems: "center",
+        color: c.color, background: c.background, border: `1px solid ${c.border}`,
+        borderRadius: t.radius.pill, padding: "2px 9px",
+        fontSize: t.font.size.xs, fontWeight: 600, letterSpacing: "0.01em", whiteSpace: "nowrap",
       }}
     >
       {children}
