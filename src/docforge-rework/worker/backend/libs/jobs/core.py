@@ -19,7 +19,11 @@ from persistence import RunTranslator
 from backend.context import CONTEXT
 
 # ====== Internal Project Imports ======
-from shared_libs.pipelines.ingest import IngestPipeline
+from shared_libs.pipelines.ingest import (
+    BlobNormalizationError,
+    BlobNormalizer,
+    IngestPipeline,
+)
 from shared_libs.public_models import CollectionContract, MetadataFieldSpec, SourceDocument
 from shared_libs.services.db.postgresql.tables import MetadataField
 from shared_libs.services.db.s3 import S3ObjectApi
@@ -87,7 +91,20 @@ async def ingest_document(ctx: dict[str, Any], document_id: str, job_id: str) ->
         }
         source = SourceDocument(filename=document.filename, content=raw, declared_meta=declared)
         contract = _contract_from_rows(collection, schema)
-        blob = collection.pipeline or IngestPipeline.default_blob().model_dump(mode="json")
+
+        # Normalize (auto-heal) the stored blob to the CURRENT engine topology before building the
+        # graph: the expanded blob embeds engine-structural wiring that shifts when the engine
+        # evolves, so a blob stored under an older engine is healed here rather than failing to
+        # build. A blob that cannot be read back at all is a clear, collection-named error (recorded
+        # on the job) — never a cryptic build crash after bytes are already stored.
+        stored_blob = collection.pipeline or IngestPipeline.default_blob().model_dump(mode="json")
+        try:
+            blob = BlobNormalizer.normalize(stored_blob)
+        except BlobNormalizationError as exc:
+            raise RuntimeError(
+                f"collection {collection.id} pipeline cannot be auto-migrated to the current "
+                f"engine: {exc}"
+            ) from exc
 
         # 2. Live progress: the recorder keeps the job row current (START = stage running
         #    now, END = percentage + one trace row) — root nodes only.

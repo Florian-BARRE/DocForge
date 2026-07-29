@@ -1,10 +1,12 @@
-"""Documents router: fail-fast on a STALE stored pipeline blob at upload time.
+"""Documents router: an UN-MIGRATABLE stored pipeline blob fails fast + clear at upload time.
 
-A collection whose stored ``pipeline`` blob no longer builds — here a metagen node with the
-removed ``kind="chunk"`` (the real DemoCollection incident) — must be rejected with a 422 BEFORE
-any spend: no dedup lookup, no bytes stored, no document/job admitted, no job enqueued. This
-guards DocForge invariant #4 (structural fail-fast before spend) on the upload path, which
-previously had no pipeline validation at all.
+A stored blob is auto-healed to the current engine (BlobNormalizer round-trip) — a merely
+stale-but-readable blob is normalized, never rejected. But a blob that references something the
+current engine no longer knows — here a metagen node with the removed ``kind="chunk"`` (the real
+DemoCollection incident) — cannot be migrated: it is rejected with a 422 BEFORE any spend (no
+dedup lookup, no bytes stored, no document/job admitted, no job enqueued), carrying a clear,
+actionable message (the cause + the one recovery: re-save from the default). This guards DocForge
+invariant #4 (structural fail-fast before spend) and eliminates the cryptic foreach_invalid_body.
 
 CONTEXT is patched with recording fakes so the endpoint runs without a store — the point is
 exactly that the downstream (store/admit/enqueue) is never reached. ``from backend...`` imports
@@ -63,11 +65,12 @@ def test_upload_with_stale_pipeline_blob_is_422_and_spends_nothing(
         files={"file": ("doc.txt", b"hello world", "text/plain")},
     )
 
-    # 1. A stale blob is DATA → 422 (never a 500, never the 202 accept path).
+    # 1. An un-migratable blob is DATA → 422 (never a 500, never the 202 accept path).
     assert response.status_code == 422, response.text
 
-    # 2. The message names the offending node/kind so the caller knows exactly what is stale.
-    assert "meta_chunk" in response.text
+    # 2. The message is clear + actionable: it names the recovery (re-save from default) and
+    #    surfaces the underlying cause, so the caller knows what is wrong and how to fix it.
+    assert "re-save" in response.text
     assert "chunk" in response.text
 
     # 3. NOTHING was spent: no dedup lookup, no store, no admit, no enqueue.

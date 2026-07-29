@@ -11,7 +11,11 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException
 
 # ====== Internal Project Imports ======
-from shared_libs.pipelines.ingest import IngestPipeline
+from shared_libs.pipelines.ingest import (
+    BlobNormalizationError,
+    BlobNormalizer,
+    IngestPipeline,
+)
 from shared_libs.public_models import FieldOrigin, FieldScope
 from shared_libs.services.db.postgresql.tables import Collection, MetadataField
 from shared_libs.services.db.qdrant import RESERVED_PAYLOAD_KEYS
@@ -32,6 +36,17 @@ from .models import (
 router = APIRouter(prefix="/collections", tags=["collections"])
 
 
+def _public_pipeline(pipeline: dict | None) -> dict | None:
+    """Strip the internal version stamp so the API exposes a clean, editable graph blob.
+
+    The stamp is a STORAGE-side optimization (fast-path detection); the ``GroupNodeBlob`` the UI
+    posts back to the stage endpoints forbids extra keys, so it must never see the reserved key.
+    """
+    if not isinstance(pipeline, dict):
+        return pipeline
+    return {key: value for key, value in pipeline.items() if key != BlobNormalizer.STAMP_KEY}
+
+
 def _to_model(collection: Collection, fields: list[MetadataField]) -> CollectionModel:
     """Map the rows to the UI contract (shared by every read path)."""
     return CollectionModel(
@@ -41,7 +56,7 @@ def _to_model(collection: Collection, fields: list[MetadataField]) -> Collection
         max_file_size_bytes=collection.max_file_size_bytes,
         needs_reindex=collection.needs_reindex,
         created_at=collection.created_at,
-        pipeline=collection.pipeline,
+        pipeline=_public_pipeline(collection.pipeline),
         search=collection.search,
         fields=[
             FieldSpecModel(
@@ -101,6 +116,35 @@ def _validate_fields(fields: list[FieldSpecModel]) -> None:
             )
 
 
+def _canonical_pipeline(blob: dict) -> dict:
+    """Heal a pipeline blob to the current engine, validate it, and return its stored form.
+
+    The stored form is normalized (auto-migrated to the current-engine topology) and version-stamped,
+    so a freshly written blob is already canonical and every subsequent run/upload fast-paths. A blob
+    that cannot be migrated is a 422 with the explicit recovery, mirroring the structural validator.
+
+    Args:
+        blob (dict): The caller's (or default) pipeline blob.
+
+    Returns:
+        dict: The normalized, version-stamped blob to persist.
+
+    Raises:
+        HTTPException: 422 when the blob cannot be migrated or fails structural validation.
+    """
+    # 1. Auto-heal to the current-engine topology (a stale/unrecognisable blob is a clear 422).
+    try:
+        canonical = BlobNormalizer.normalize(blob)
+    except BlobNormalizationError as exc:
+        raise HTTPException(status_code=422, detail=f"Pipeline blob cannot be migrated: {exc}")
+
+    # 2. Structural validation runs on the healed, stamp-free shape (the builder forbids extras).
+    PipelineBlobValidator.validate(canonical)
+
+    # 3. Persist the stamped canonical form so future reads fast-path.
+    return BlobNormalizer.stamp(canonical)
+
+
 @router.get(
     "", response_model=list[CollectionModel],
     dependencies=[Depends(require(Capability.READ))],
@@ -157,9 +201,9 @@ async def create_collection(request: CreateCollectionRequest) -> CollectionModel
 
     _validate_fields(request.fields)
 
-    # 2. The pipeline blob: the caller's, or the product default — validated either way.
-    blob = request.pipeline or IngestPipeline.default_blob().model_dump(mode="json")
-    PipelineBlobValidator.validate(blob)
+    # 2. The pipeline blob: the caller's, or the product default — healed to the current engine,
+    #    validated, and stamped for storage either way.
+    blob = _canonical_pipeline(request.pipeline or IngestPipeline.default_blob().model_dump(mode="json"))
 
     # 3. Create contract + schema in one transaction (slug collisions → explicit 422).
     rows = [
@@ -214,9 +258,9 @@ async def update_collection(
                 status_code=409, detail=f"Collection '{request.name}' already exists."
             )
 
-    # 3. A new pipeline never reaches storage broken.
-    if request.pipeline is not None:
-        PipelineBlobValidator.validate(request.pipeline)
+    # 3. A new pipeline never reaches storage broken: heal it to the current engine, validate it,
+    #    and keep its stamped canonical form for storage (step 6).
+    stored_pipeline = _canonical_pipeline(request.pipeline) if request.pipeline is not None else None
 
     # 3b. A new search blob is a search GRAPH blob. Only two shapes are valid: {} (the sentinel
     #     "use the stock default", always allowed) or a real topology carrying a "nodes" list. A
@@ -268,11 +312,12 @@ async def update_collection(
                 f"Collection {collection_id}: searchable schema changed — reindex required"
             )
 
-    # 6. Config blobs (append an immutable version snapshot).
+    # 6. Config blobs (append an immutable version snapshot). The pipeline is stored in its stamped
+    #    canonical form so subsequent runs/uploads fast-path.
     if request.pipeline is not None or request.search is not None:
         await CONTEXT.database.collections.update_config(
             collection_id,
-            pipeline=request.pipeline,
+            pipeline=stored_pipeline,
             search=request.search,
             note=request.note,
         )

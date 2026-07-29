@@ -51,6 +51,9 @@ def _wire(jobs_core, monkeypatch, database: SimpleNamespace, points):
     context = _fake_context(database)
     monkeypatch.setattr(jobs_core, "CONTEXT", context)
     monkeypatch.setattr(jobs_core.S3ObjectApi, "get", AsyncMock(return_value=b"raw-bytes"))
+    # Blob normalization is covered on its own (tests/units/stages/test_blob_normalization.py);
+    # these tests exercise the job lifecycle + sync hooks, so pass the stub blob through as-is.
+    monkeypatch.setattr(jobs_core.BlobNormalizer, "normalize", lambda blob: dict(blob))
 
     document_id = uuid.uuid4()
     collection_id = uuid.uuid4()

@@ -21,6 +21,7 @@ from .models import (
 from .state import ChainSpec, PipelineState, default_state
 from .assembler import IngestAssembler
 from .reader import StateReader
+from .normalizer import ENGINE_BLOB_VERSION, BlobNormalizationError, BlobNormalizer
 
 # ---------------------- View + compiler ---------------------- #
 from .view import StageViewer
@@ -53,6 +54,9 @@ __all__ = [
     "default_state",
     "IngestAssembler",
     "StateReader",
+    "BlobNormalizer",
+    "BlobNormalizationError",
+    "ENGINE_BLOB_VERSION",
     # view + compiler
     "StageViewer",
     "StageCompiler",

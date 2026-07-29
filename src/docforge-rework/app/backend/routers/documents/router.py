@@ -14,6 +14,7 @@ import uuid
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 
 # ====== Internal Project Imports ======
+from shared_libs.pipelines.ingest import BlobNormalizationError, BlobNormalizer
 from shared_libs.public_models import FieldOrigin
 from shared_libs.services.db.postgresql.tables import (
     Blob,
@@ -68,17 +69,25 @@ async def upload_document(
     #    here: a key scoped to another collection is a 403 before anything is read or stored.
     AuthzGuard.assert_collection_scope(principal, str(collection_id))
 
-    # 3. Fail-fast on a STALE contract, BEFORE any spend: a stored pipeline blob that no longer
-    #    builds (e.g. it names a node kind the registry no longer knows) is a 422 here — nothing
-    #    is read, stored, admitted or enqueued. Structural (no I/O), so cheap on every upload.
-    PipelineBlobValidator.validate(collection.pipeline)
+    # 3. Fail-fast on a STALE contract, BEFORE any spend. First auto-heal the stored blob to the
+    #    current engine (a blob stored under an older engine is normalized, not rejected — this is
+    #    what removes the cryptic foreach_invalid_body that used to surface here), then structurally
+    #    validate the healed shape. A blob that cannot be migrated at all is a clear 422 naming the
+    #    collection and the one recovery — nothing is read, stored, admitted or enqueued.
+    try:
+        pipeline_blob = BlobNormalizer.normalize(collection.pipeline)
+    except BlobNormalizationError as exc:
+        raise HTTPException(status_code=422, detail=f"Collection {collection_id}: {exc}")
+    PipelineBlobValidator.validate(pipeline_blob)
 
     # 4. OOM guard: refuse a grossly oversized body on its declared Content-Length before reading a
     #    single byte, THEN stream + content-address it in bounded windows (sha256 — the SAME
     #    identity the pipeline computes), aborting the instant it crosses the collection's ceiling.
     UploadReader.reject_oversized_body(request, collection.max_file_size_bytes)
     content, source_hash = await UploadReader.read_capped(file, collection.max_file_size_bytes)
-    version = _pipeline_version(collection.pipeline)
+    # The dedup key hashes the HEALED blob — the exact topology the worker will run — so the version
+    # is stable across engine evolutions of the same stage-level pipeline.
+    version = _pipeline_version(pipeline_blob)
 
     # 5. Dedup: same content + same pipeline config in this collection → nothing to re-run.
     existing = await CONTEXT.database.ingestion.find_duplicate(collection_id, source_hash, version)
