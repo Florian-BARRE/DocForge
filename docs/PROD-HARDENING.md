@@ -158,7 +158,22 @@ at `WORKER_CONCURRENCY=2` on a single VM the blast radius is small and a subproc
 + cold-model-load cost + orphan-process management. Revisit if concurrency rises or you go
 multi-worker.
 
-## 7. Final pre-flight
+## 7. Provider preflight (opt-in fail-fast before spend)
+
+Every provider node (llm/vlm/ocr-mistral/embed) has a `preflight()` that probes its `base_url`
+reachability + credentials AFTER build/validate and BEFORE the first spend — a wrong/unreachable
+endpoint or a rejected key then fails the job immediately, having stored nothing (closing the gap the
+structural validator can't cover). It is **opt-in** (`WORKER_PREFLIGHT_ENABLED`, default `false`):
+
+- The stock pipeline ships PLACEHOLDER endpoints (`http://llm:8000`, `http://vlm:8000`) that you
+  replace per collection, and the sweep probes EVERY provider node — including branches a given
+  document never reaches (the figure VLM on a text-only PDF). On-by-default would fail ingestions on
+  un-configured placeholders.
+- Enable it (`WORKER_PREFLIGHT_ENABLED=true` + recreate the worker) only once **every** provider your
+  collections reference is real and reachable. Then a typo'd `base_url` or a bad key fails the upload's
+  job fast with a clear per-node message instead of mid-run after spend.
+
+## 8. Final pre-flight
 
 ```bash
 # both configs still resolve

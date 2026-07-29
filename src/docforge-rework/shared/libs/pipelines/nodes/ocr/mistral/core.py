@@ -11,6 +11,7 @@ import base64
 import httpx
 
 # ====== Internal Project Imports ======
+from shared_libs.pipelines.nodes.openai_compat import EndpointReachability
 from shared_libs.pipelines.registry import NodeRegistry
 
 # ====== Local Project Imports ======
@@ -30,6 +31,16 @@ class OcrMistralNode(BaseOcrNode):
         "pages' markdown. Typically wired as the robust tail of an OCR escalation (ScoreBelow)."
     )
     Config = OcrMistralConfig
+
+    async def preflight(self) -> None:
+        """Verify the Mistral OCR endpoint is reachable and its key accepted, before any spend."""
+        config: OcrMistralConfig = self.config
+        await EndpointReachability.check(
+            node_kind=self.KIND,
+            base_url=config.base_url,
+            api_key=config.api_key,
+            timeout_seconds=config.timeout_seconds,
+        )
 
     async def _read(self, image: bytes) -> tuple[str, float]:
         """Call the OCR endpoint on one image."""

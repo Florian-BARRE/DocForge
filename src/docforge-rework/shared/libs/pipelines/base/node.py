@@ -158,6 +158,22 @@ class ActionNode(AbstractNode, ABC):
         """
         self._capabilities = capabilities
 
+    async def preflight(self) -> None:
+        """
+        Optional reachability/credential check run after build, before the first spend.
+
+        Providers that call an external endpoint override it to fail fast on an unreachable URL
+        or rejected credentials. Reads ``self.config`` (the per-collection URL + secret) — no
+        capabilities needed. Most nodes (local RapidOCR, docling, chunkers…) never override it and
+        keep this no-op, so the runner's preflight sweep costs them nothing.
+
+        Raises:
+            Exception: A provider override raises when its endpoint is unreachable or its
+                credentials are rejected. The runner collects the failure and aborts the run
+                before any bytes are read or stored.
+        """
+        return None
+
     @classmethod
     def describe(cls) -> NodeDescription:
         """

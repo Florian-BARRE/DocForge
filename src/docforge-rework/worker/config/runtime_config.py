@@ -65,6 +65,15 @@ class RUNTIME_CONFIG(EnvConfigLoader):
     # caps concurrent native calls — so a ForEach fan-out can't spawn dozens of docling/OCR threads
     # (CPU/memory), and a hung native call leaks at most this many threads. See PROD-HARDENING.md.
     WORKER_HEAVY_THREADS = env("WORKER_HEAVY_THREADS", cast=int, default=4)
+    # Preflight every provider node's endpoint reachability after build/validate, BEFORE the first
+    # spend — a wrong/unreachable base_url or a rejected key fails the job fast, having stored nothing.
+    # OPT-IN (default False): the stock pipeline ships with PLACEHOLDER provider endpoints
+    # (http://llm:8000, http://vlm:8000) that the operator replaces per collection — and the sweep
+    # probes EVERY provider node, including branches a given document never reaches (e.g. the figure
+    # VLM for a text-only PDF). So enable it only once every provider a collection references is real
+    # and reachable; otherwise it would fail ingestions on un-configured placeholders. See
+    # PROD-HARDENING.md.
+    WORKER_PREFLIGHT_ENABLED = env("WORKER_PREFLIGHT_ENABLED", cast=bool, default=False)
 
     # ───── Logging (mandatory set) ─────
     LOGGING_CONSOLE_LEVEL = env("LOGGING_CONSOLE_LEVEL")

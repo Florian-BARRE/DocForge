@@ -11,7 +11,7 @@ import base64
 from langchain_core.messages import HumanMessage, SystemMessage
 
 # ====== Internal Project Imports ======
-from shared_libs.pipelines.nodes.openai_compat import OpenAICompatHelpers
+from shared_libs.pipelines.nodes.openai_compat import EndpointReachability, OpenAICompatHelpers
 from shared_libs.pipelines.registry import NodeRegistry
 
 # ====== Local Project Imports ======
@@ -36,6 +36,16 @@ class VlmOpenAICompatibleNode(BaseVlmNode):
         "(base64 data URL) as a multimodal chat message and returns the model's answer."
     )
     Config = VlmOpenAICompatibleConfig
+
+    async def preflight(self) -> None:
+        """Verify the vision endpoint is reachable and its credentials accepted, before any spend."""
+        config: VlmOpenAICompatibleConfig = self.config
+        await EndpointReachability.check(
+            node_kind=self.KIND,
+            base_url=config.base_url,
+            api_key=config.api_key,
+            timeout_seconds=config.timeout_seconds,
+        )
 
     async def _describe(self, image: bytes, context: str, system_prompt: str) -> tuple[str, float]:
         """Run the multimodal chat call."""

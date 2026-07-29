@@ -5,15 +5,28 @@
 # ir object the run input carried), and enforces the OUTPUT CONTRACT: an ingestion pipeline must
 # deliver a RunBundle. Persistence lives elsewhere (the translator) — the runner only runs.
 
+# ====== Standard Library Imports ======
+import asyncio
+
 # ====== Third-Party Library Imports ======
 from loggerplusplus import LoggerClass
 
 # ====== Internal Project Imports ======
-from shared_libs.pipelines.base import NodeExecutionRecord, NodeStatus
+from shared_libs.pipelines.base import (
+    ActionNode,
+    ForEach,
+    Group,
+    NodeExecutionRecord,
+    NodeStatus,
+)
 from shared_libs.pipelines.build import GroupNodeBlob, PipelineBuilder
 from shared_libs.pipelines.engine import FlowEngine, ProgressCallback
 from shared_libs.pipelines.validation import GraphValidator
 from shared_libs.public_models import CollectionContract, RunBundle, SourceDocument
+
+# Overall wall-clock cap for the whole preflight sweep — a safety net above each probe's own
+# short timeout + retry (they run concurrently, so this bounds the sweep regardless of node count).
+_PREFLIGHT_TIMEOUT_SECONDS = 20.0
 
 
 class PipelineRunError(Exception):
@@ -60,6 +73,79 @@ class PipelineRunner(LoggerClass):
             return f"{record.node_id} ({record.kind}): {record.error.error_type}: {record.error.message}"
         return None
 
+    @staticmethod
+    def __collect_action_nodes(group: Group) -> list[ActionNode]:
+        """
+        Collect every ActionNode in the built graph, recursing into groups and ForEach bodies.
+
+        Walks the SAME node taxonomy the engine dispatches on, so a provider nested inside a
+        ForEach (e.g. a per-page VLM) is preflighted too — otherwise its unreachable endpoint
+        would only surface mid-run.
+
+        Args:
+            group (Group): The built pipeline (or a nested sub-graph).
+
+        Returns:
+            list[ActionNode]: Every action leaf reachable from this group.
+        """
+        nodes: list[ActionNode] = []
+        for child in group.children:
+            if isinstance(child, Group):
+                nodes.extend(PipelineRunner.__collect_action_nodes(child))
+            elif isinstance(child, ForEach):
+                nodes.extend(PipelineRunner.__collect_action_nodes(child.body))
+            elif isinstance(child, ActionNode):
+                nodes.append(child)
+        return nodes
+
+    async def __preflight(self, group: Group) -> None:
+        """
+        Run every node's preflight() concurrently, BEFORE the first spend — fail fast if any is unreachable.
+
+        A node whose preflight is the default no-op costs nothing. Provider overrides probe their
+        endpoint's reachability + credentials; any failure (or the overall timeout) aborts the run
+        before a single byte is read or stored.
+
+        Args:
+            group (Group): The built + validated pipeline graph.
+
+        Raises:
+            PipelineRunError: One or more nodes failed preflight (named with their reason), or the
+                sweep exceeded its overall timeout.
+        """
+        # 1. Every action leaf, including those nested in groups and ForEach bodies.
+        nodes = self.__collect_action_nodes(group)
+        if not nodes:
+            return
+
+        async def probe(node: ActionNode) -> str | None:
+            """Run one node's preflight, turning any failure into a named reason string."""
+            try:
+                await node.preflight()
+                return None
+            except Exception as exc:  # noqa: BLE001 — any failure aborts the run, named below.
+                return f"{node.id} ({node.KIND}): {exc}"
+
+        # 2. All probes concurrently, under one overall cap (a hung probe cannot stall the run).
+        try:
+            results = await asyncio.wait_for(
+                asyncio.gather(*(probe(node) for node in nodes)),
+                timeout=_PREFLIGHT_TIMEOUT_SECONDS,
+            )
+        except TimeoutError as exc:
+            raise PipelineRunError(
+                f"preflight sweep exceeded {_PREFLIGHT_TIMEOUT_SECONDS:.0f}s — endpoint(s) too slow "
+                f"to reach before spend"
+            ) from exc
+
+        # 3. Any failure aborts BEFORE spend, naming each culprit node + reason.
+        failures = [reason for reason in results if reason]
+        if failures:
+            raise PipelineRunError(
+                f"preflight failed for {len(failures)} node(s) before any spend: "
+                + "; ".join(failures)
+            )
+
     async def run(
         self,
         blob: GroupNodeBlob | dict,
@@ -67,6 +153,7 @@ class PipelineRunner(LoggerClass):
         contract: CollectionContract,
         timeout_seconds: float,
         progress_callback: ProgressCallback | None = None,
+        preflight_enabled: bool = True,
     ) -> tuple[RunBundle, NodeExecutionRecord]:
         """
         Execute one ingestion run end to end.
@@ -77,6 +164,9 @@ class PipelineRunner(LoggerClass):
             contract (CollectionContract): The collection's contract.
             timeout_seconds (float): Wall-clock cap for the whole run.
             progress_callback (ProgressCallback | None): Live per-node progress (job status).
+            preflight_enabled (bool): When True (default), sweep every node's preflight() after
+                build/validate and BEFORE the first spend — a provider pointed at an unreachable
+                endpoint fails fast, having stored nothing.
 
         Returns:
             tuple[RunBundle, NodeExecutionRecord]: The delivery and the full execution trace.
@@ -92,10 +182,15 @@ class PipelineRunner(LoggerClass):
             details = "; ".join(f"[{issue.code}] {issue.location}: {issue.message}" for issue in issues)
             raise PipelineRunError(f"invalid pipeline graph ({len(issues)} issue(s)): {details}")
 
-        # 2. A FRESH run input per job — the run MUTATES what it carries (the ir, by design).
+        # 2. Preflight reachability BEFORE any spend — a wrong/unreachable endpoint fails fast here,
+        #    having read/stored nothing (the last honest gap the structural validator cannot cover).
+        if preflight_enabled:
+            await self.__preflight(group)
+
+        # 3. A FRESH run input per job — the run MUTATES what it carries (the ir, by design).
         run_input = {"source": source, "contract": contract}
 
-        # 3. Execute under the wall-clock cap.
+        # 4. Execute under the wall-clock cap.
         self.logger.info(f"Running ingestion pipeline '{group.id}' for '{source.filename}'")
         output, record = await self._engine.execute(
             group, run_input, timeout_seconds=timeout_seconds, progress_callback=progress_callback

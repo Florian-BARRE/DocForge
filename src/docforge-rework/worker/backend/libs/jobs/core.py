@@ -120,6 +120,7 @@ async def ingest_document(ctx: dict[str, Any], document_id: str, job_id: str) ->
             blob, source, contract,
             timeout_seconds=CONTEXT.job_timeout_seconds,
             progress_callback=on_progress,
+            preflight_enabled=CONTEXT.RUNTIME_CONFIG.WORKER_PREFLIGHT_ENABLED,
         )
         strategy = next(
             (node.get("kind", "") for node in blob.get("nodes", [])

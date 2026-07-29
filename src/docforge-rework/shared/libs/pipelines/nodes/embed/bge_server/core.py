@@ -9,6 +9,7 @@ import httpx
 from pydantic import Field, field_validator
 
 # ====== Internal Project Imports ======
+from shared_libs.pipelines.nodes.openai_compat import EndpointReachability
 from shared_libs.pipelines.registry import NodeRegistry
 from shared_libs.public_models import SparseVector
 
@@ -55,6 +56,21 @@ class EmbedBgeServerNode(BaseEmbedderNode):
     )
     Config = EmbedBgeServerConfig
     UNIQUE_IN_GRAPH = True
+
+    async def preflight(self) -> None:
+        """Verify the bge_server is reachable and its token accepted, before any spend.
+
+        Probes the TEI-compatible ``/health`` route — any answer (even non-200) proves the host
+        is up; a 401/403 surfaces a rejected bearer token.
+        """
+        config: EmbedBgeServerConfig = self.config
+        await EndpointReachability.check(
+            node_kind=self.KIND,
+            base_url=config.base_url,
+            api_key=config.api_key,
+            timeout_seconds=config.timeout_seconds,
+            path="/health",
+        )
 
     async def __post(self, route: str, texts: list[str]) -> list:
         """One batched call to the server."""

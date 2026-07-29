@@ -12,7 +12,7 @@ from typing import Any
 from langchain_core.messages import HumanMessage, SystemMessage
 
 # ====== Internal Project Imports ======
-from shared_libs.pipelines.nodes.openai_compat import OpenAICompatHelpers
+from shared_libs.pipelines.nodes.openai_compat import EndpointReachability, OpenAICompatHelpers
 from shared_libs.pipelines.registry import NodeRegistry
 from shared_libs.public_models import GenerationRequest, OpenAICompatConfig
 
@@ -33,6 +33,25 @@ class StructGenOpenAICompatibleNode(BaseStructGenNode):
         "base to coerce. The endpoint is the step's override when set, else the request's own."
     )
     Config = StructGenConfig
+
+    async def preflight(self) -> None:
+        """Verify the configured endpoint is reachable, before any spend.
+
+        The endpoint is dual-sourced per field: an all-empty override (the chain head) inherits the
+        request's endpoint at run time, which preflight cannot see — so it only probes when this
+        step pins its own ``base_url``.
+        """
+        config: StructGenConfig = self.config
+        if not config.base_url:
+            return
+        # timeout_seconds defaults to 0 (inherit the request's) — let the probe use its own cap then.
+        kwargs = {"timeout_seconds": config.timeout_seconds} if config.timeout_seconds > 0 else {}
+        await EndpointReachability.check(
+            node_kind=self.KIND,
+            base_url=config.base_url,
+            api_key=config.api_key,
+            **kwargs,
+        )
 
     async def _generate(
         self, schema: dict[str, Any], request: GenerationRequest, endpoint: OpenAICompatConfig

@@ -4,7 +4,11 @@
 # gracefully (dense-only collections).
 
 # ====== Internal Project Imports ======
-from shared_libs.pipelines.nodes.openai_compat import OpenAICompatConfig, OpenAICompatHelpers
+from shared_libs.pipelines.nodes.openai_compat import (
+    EndpointReachability,
+    OpenAICompatConfig,
+    OpenAICompatHelpers,
+)
 from shared_libs.pipelines.registry import NodeRegistry
 
 # ====== Local Project Imports ======
@@ -28,6 +32,16 @@ class EmbedOpenAICompatibleNode(BaseEmbedderNode):
     )
     Config = EmbedOpenAICompatibleConfig
     UNIQUE_IN_GRAPH = True
+
+    async def preflight(self) -> None:
+        """Verify the embeddings endpoint is reachable and its credentials accepted, before any spend."""
+        config: EmbedOpenAICompatibleConfig = self.config
+        await EndpointReachability.check(
+            node_kind=self.KIND,
+            base_url=config.base_url,
+            api_key=config.api_key,
+            timeout_seconds=config.timeout_seconds,
+        )
 
     async def _embed_dense(self, texts: list[str]) -> list[list[float]]:
         """Dense vectors via the factory-built embeddings client."""

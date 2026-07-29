@@ -15,9 +15,11 @@ from langchain_core.language_models import BaseChatModel
 
 # ====== Internal Project Imports ======
 from shared_libs.pipelines.base import ActionNode
+from shared_libs.pipelines.nodes.openai_compat import EndpointReachability
 from shared_libs.public_models.llm import Completion
 
 # ====== Local Project Imports ======
+from .config import BaseLlmChatConfig
 from .io import LlmChatConsumes, LlmChatProduces
 
 
@@ -31,6 +33,16 @@ class BaseLlmChatNode(ActionNode):
 
     Consumes = LlmChatConsumes
     Produces = LlmChatProduces
+
+    async def preflight(self) -> None:
+        """Verify the chat endpoint is reachable and its credentials accepted, before any spend."""
+        config: BaseLlmChatConfig = self.config
+        await EndpointReachability.check(
+            node_kind=self.KIND,
+            base_url=config.base_url,
+            api_key=config.api_key,
+            timeout_seconds=config.timeout_seconds,
+        )
 
     @abstractmethod
     def _chat_model(self) -> BaseChatModel:

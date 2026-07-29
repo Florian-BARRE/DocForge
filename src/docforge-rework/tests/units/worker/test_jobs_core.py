@@ -42,6 +42,7 @@ def _fake_context(database: SimpleNamespace) -> SimpleNamespace:
         runner=SimpleNamespace(run=AsyncMock(return_value=(MagicMock(), MagicMock()))),
         worker_id="w1",
         job_timeout_seconds=30.0,
+        RUNTIME_CONFIG=SimpleNamespace(WORKER_PREFLIGHT_ENABLED=True),
         logger=MagicMock(),
     )
 
