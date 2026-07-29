@@ -1,67 +1,35 @@
 ---
 name: phase-status
-description: Show DocForge current phase implementation status (what is done vs pending)
+description: Show DocForge current implementation status (graph engine stages + suite state)
 user-invocable: true
 allowed-tools: "Read(*), Bash(*)"
 ---
 
-# Phase Status
+# Status
 
-Report what is implemented and what is pending across all 6 DocForge phases.
+Report the current state of the DocForge (rework) product. There are no legacy "phases" anymore —
+the engine is a graph of the 7 ingestion stages plus feature work tracked in the task list.
 
 ## Steps
 
-1. **Check current phase** from CLAUDE.md phase table.
+1. **Pipeline stages** — read `src/docforge-rework/PIPELINE.md` (the living reference) and summarize
+   the 7 stages and their wired nodes:
+   `INTAKE → PARSE → ENRICH → CHUNK → CONTEXTUALIZE → METAGEN → EMBED`.
 
-2. **P1 — Foundation** — check existence and non-emptiness of:
-   - [ ] `src/docforge/common/common_libs/ir/models.py`
-   - [ ] `src/docforge/common/common_libs/storage/postgres/`
-   - [ ] `src/docforge/common/common_libs/storage/s3/client.py`
-   - [ ] `src/docforge/common/common_libs/providers/converter/gotenberg.py`
-   - [ ] `src/docforge/common/common_libs/providers/parser/docling_backend.py`
-   - [ ] `src/docforge/common/common_libs/pipeline/stages/s0_ingest.py`
-   - [ ] `src/docforge/common/common_libs/pipeline/stages/s1_parse.py`
-   - [ ] `src/docforge/app/backend/routers/documents/router.py`
-   - [ ] `docker-compose.yml`
+2. **Engine invariants** — spot-check the three roots exist and are non-empty:
+   - [ ] `src/docforge-rework/shared/libs/pipelines/` (the pure engine: base/ engine/ edit/ validation/)
+   - [ ] `src/docforge-rework/shared/libs/services/db/` (the `Database` façade)
+   - [ ] `src/docforge-rework/app/backend/routers/` (pipelines · collections · documents · explorer · jobs · blobs · search · auth)
+   - [ ] `src/docforge-rework/worker/backend/libs/` (runner + persistence)
 
-3. **P2 — Stage Engine** — check:
-   - [ ] `src/docforge/common/common_libs/pipeline/fingerprint.py`
-   - [ ] `src/docforge/common/common_libs/pipeline/node_cache.py`
-   - [ ] `src/docforge/common/common_libs/pipeline/provider_cache.py`
-   - [ ] `src/docforge/common/common_libs/pipeline/engine.py`
-   - [ ] `src/docforge/common/common_libs/pipeline/tasks.py`
-   - [ ] `src/docforge/common/common_libs/pipeline/worker.py`
-   - [ ] `src/docforge/common/common_libs/storage/postgres/repositories/job_repo.py`
-   - [ ] `src/docforge/app/backend/routers/jobs/router.py`
-   - [ ] `src/docforge/app/backend/routers/playground/router.py`
-   - [ ] `migrations/versions/002_gin_indexes.py`
+3. **Test suite state**:
+   ```bash
+   cd src/docforge-rework && uv run pytest tests/units -q --tb=no | tail -3
+   ```
 
-4. **P3 — Enrichment** — check:
-   - [ ] `src/docforge/common/common_libs/providers/chain.py`
-   - [ ] `src/docforge/common/common_libs/providers/classifier/`
-   - [ ] `src/docforge/common/common_libs/providers/ocr/`
-   - [ ] `src/docforge/common/common_libs/providers/vlm/`
-   - [ ] `src/docforge/common/common_libs/pipeline/stages/s2_enrich.py`
+4. **Recent work** — `git log --oneline -15` on the active branch.
 
-5. **P4 — Retrieval** — check:
-   - [ ] `src/docforge/common/common_libs/ir/chunk.py`
-   - [ ] `src/docforge/common/common_libs/providers/embed/tei.py`
-   - [ ] `src/docforge/common/common_libs/storage/qdrant/client.py`
-   - [ ] `src/docforge/common/common_libs/storage/postgres/repositories/chunk_repo.py`
-   - [ ] `src/docforge/common/common_libs/pipeline/stages/s4_chunk.py`
-   - [ ] `src/docforge/common/common_libs/pipeline/stages/s5_contextualize.py`
-   - [ ] `src/docforge/common/common_libs/pipeline/stages/s6_embed_index.py`
-   - [ ] `migrations/versions/003_chunks.py`
+5. **Open debt / features** — list the pending items from the task list (TaskList) and any
+   `[V1.1]`/`[FEATURE]` markers.
 
-6. **P5 — Collections API** — check:
-   - [ ] `src/docforge/common/common_libs/retrieval/hybrid_search.py`
-   - [ ] `src/docforge/app/backend/routers/chunks/router.py`
-   - [ ] Collection endpoints: GET schema, PUT pipeline, POST reindex, POST search (check router.py)
-   - [ ] Document endpoints: GET markdown (check documents/router.py)
-   - [ ] `collection_id` passed in `arq_pool.enqueue_job()` call in documents/router.py
-
-7. **P6 — UI + MCP** — check:
-   - [ ] `src/docforge/app/frontend/` (React app)
-   - [ ] MCP server module
-
-8. **Output a clean table** with ✅/⏳/❌ per phase and key files.
+6. **Output a clean summary**: stages implemented, suite pass/fail count, and the open items.

@@ -7,15 +7,11 @@ Pipeline (doc vivante, LA référence) : `src/docforge-rework/PIPELINE.md`
 
 ---
 
-## ⚠️ Migration en cours — deux arbres de code
+## Arbre de code unique
 
-| Arbre | Rôle | Statut |
-|---|---|---|
-| **`src/docforge-rework/`** | **LE PRODUIT ACTIF** — moteur graphe v2, stage-rail studio | 🟢 tout le dev ici · **deviendra `docforge`** |
-| `src/docforge/` | Ancien produit (moteur statique S0→S6) | 🔴 legacy, gelé, en voie de suppression |
-
-> **Règle** : tout nouveau travail va dans **`src/docforge-rework/`**. Ne touche à `src/docforge/`
-> que si l'utilisateur le demande explicitement. Le legacy sera supprimé et le rework renommé.
+**`src/docforge-rework/`** est LE produit — moteur graphe v2, stage-rail studio. L'ancien produit
+legacy (moteur statique S0→S6, `src/docforge/`) a été **supprimé**. Reste une seule étape de
+migration : renommer `src/docforge-rework/` → `src/docforge/` (et les composes `.rework.*`).
 
 ---
 
@@ -30,9 +26,6 @@ Pipeline (doc vivante, LA référence) : `src/docforge-rework/PIPELINE.md`
 - **Frontend TS (gate)** : `docker compose -f docker-compose.rework.yml -f docker-compose.rework.dev.yml exec rework_frontend sh -c 'cd /frontend && npx tsc --noEmit && npm run build'` — node_modules est **container-side** (volume `rework_frontend_modules`) ; le stub host root-owned est un simple point de montage Docker, jamais `npm install` côté host.
 - **Migrations** : `docker compose -f docker-compose.rework.yml exec rework_app sh -c 'alembic -c /app/shared/alembic.ini upgrade head'` (env.py tourne en async sur asyncpg — pas de psycopg2 dans l'image runtime).
 - **Ports dev** : API `10040` · postgres `10041` · redis `10042` · qdrant `10043` · seaweedfs `10044` · gotenberg `10045` (firewall VM : `10000–11000`).
-
-> **Legacy stack** (`src/docforge/`, gelée) : `docker-compose.yml` + tests depuis `src/docforge/`
-> (`uv run --project common pytest tests/units`). Conservée pour référence, ne pas faire évoluer.
 
 ---
 

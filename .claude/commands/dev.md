@@ -7,55 +7,49 @@ allowed-tools: "Bash(*), Read(*)"
 
 # Start Dev Environment
 
-Start all DocForge services in development mode using `docker compose` (v2). Backend
-(uvicorn) and frontend (Vite) both run with hot reload.
+Start all DocForge services in development mode using `docker compose` (v2). Backend (uvicorn) and
+frontend (Vite) run with hot reload; `app/` and `shared/` are volume-mounted, `worker/` is baked
+(a worker change needs a rebuild).
 
 ## Steps
 
-1. **Check services/.env files exist** — warn if any are missing:
-   - `services/docforge/.env`
-   - `services/postgres/.env`
-   - `services/redis/.env`
-   - `services/gotenberg/.env`
+1. **Check env files exist** — warn if any are missing (copy from the `.example` templates):
+   - `services/docforge-rework/.env`
+   - `services/docforge-rework/postgres.env`
+   - `services/docforge-rework/s3_config.json`
+   - `services/bge_server/.env`
 
-2. **Start services** (run in background, GPU by default on this host):
+2. **Start the full stack** (`--profile full` is **mandatory** — app/worker/frontend are gated
+   behind it; without it only the stores start and the compose rejects the frontend dependency):
    ```bash
-   docker compose -f docker-compose.yml -f docker-compose.dev.yml -f docker-compose.gpu.yml up -d
+   docker compose -f docker-compose.rework.yml -f docker-compose.rework.dev.yml --profile full up --build -d
    ```
-   This host has an NVIDIA GPU + Container Toolkit, so dev runs `bge_server` (BGE-M3 embed/rerank)
-   and `worker` (Docling) on **GPU** via `docker-compose.gpu.yml` — embedding is ~25× faster than
-   CPU (≈2 s vs ≈45 s for a batch), which matters for the S6 embed timeout on real documents.
-   - No `--build`: dev mounts source as volumes, so code changes are picked up live; the `:gpu`
-     images already exist. Rebuild only when **dependencies** change:
-     `docker compose -f docker-compose.yml -f docker-compose.gpu.yml build bge_server worker`
-     (~15-20 min first time; ~9.5 GB images).
-   - **CPU fallback** (no GPU host / toolkit absent): drop the gpu layer →
-     `docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d`.
-   - Verify GPU is live: `docker compose exec -T bge_server python -c "import torch;print(torch.cuda.is_available())"` → `True`.
+   - GPU host (NVIDIA + Container Toolkit): add `-f docker-compose.rework.gpu.yml` to run
+     `bge_server` + `worker` on GPU.
+   - No `--build` needed after the first build for `app`/`shared` changes (mounted); rebuild the
+     `worker` image when its code or dependencies change.
 
-3. **Wait for health checks**:
+3. **Wait for health**:
    ```bash
-   docker compose ps
+   docker compose -f docker-compose.rework.yml ps
    ```
-   Poll until PostgreSQL is `healthy` and the other services are `running`.
+   Poll until postgres/redis/qdrant/seaweedfs are `healthy`.
 
-4. **Run Alembic migrations** (idempotent). Migrations live in `common/` now, so run them
-   from `/app/common`:
+4. **Run Alembic migrations** (idempotent; env.py is async on asyncpg):
    ```bash
-   docker compose exec -T docforge sh -c 'cd /app/common && alembic upgrade head'
+   docker compose -f docker-compose.rework.yml exec rework_app \
+     sh -c 'alembic -c /app/shared/alembic.ini upgrade head'
    ```
 
 5. **Print service URLs**:
-   - Frontend (Vite HMR): http://localhost:10023
-   - API:                http://localhost:10020
-   - API Docs:           http://localhost:10020/docs
-   - SeaweedFS S3:       http://localhost:10021
-   - SeaweedFS master:   http://localhost:10022
-   - Qdrant:             http://localhost:10025/dashboard
-   - PostgreSQL:         localhost:10024 (user/db: docforge)
-   - Redis:              internal docforge_net only
+   - Frontend (Vite HMR): http://localhost:10046
+   - API + Scalar docs:   http://localhost:10040/scalar
+   - Qdrant:              http://localhost:10043/dashboard
+   - SeaweedFS S3:        http://localhost:10044
+   - PostgreSQL:          localhost:10041 (user/db: docforge)
+   - bge_server health:   http://localhost:10047/health
 
-Report any services that failed to start with their last log lines:
+Report any service that failed to start with its last log lines:
 ```bash
-docker compose logs --tail=50 <service>
+docker compose -f docker-compose.rework.yml logs --tail=50 <service>
 ```

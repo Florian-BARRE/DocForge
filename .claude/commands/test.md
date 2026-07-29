@@ -7,25 +7,26 @@ allowed-tools: "Bash(*), Read(*)"
 
 # Run Tests
 
-Run the DocForge test suite. The tree is **multi-root** (`src/docforge/{common,app,worker}`):
-pytest runs from `src/docforge/` (config in `pytest.ini`); the deps-only project lives in `common/`,
-so use `--project common`. `tests/conftest.py` bootstraps `sys.path` for all roots.
+Run the DocForge test suite. `src/docforge-rework/` is a **single autonomous uv project** with 3
+roots (`shared/`, `app/`, `worker/`); `tests/conftest.py` installs the `shared_libs` alias once
+(the `NodeRegistry` is process-global — a double alias would break it).
 
 ## Steps
 
 1. **Unit suite** (default — fast, fully mocked, no services needed):
    ```bash
-   cd src/docforge && unset VIRTUAL_ENV && uv run --project common pytest tests/units -q --tb=short $args
+   cd src/docforge-rework && uv run pytest tests/units -q --tb=short $args
    ```
-   (`unset VIRTUAL_ENV` avoids a stale env var pointing at another project's venv.)
 
-2. **Live suite** (ONLY on explicit request — needs the full stack `up` AND the `bge_server` model
-   service ready at http://localhost:10026/health):
+2. **Live suite** (ONLY on explicit request — needs the full stack `up` AND `bge_server` ready at
+   http://localhost:10047/health):
    ```bash
-   cd src/docforge && unset VIRTUAL_ENV && uv run --project common pytest tests/live_test -q --tb=line
+   cd src/docforge-rework && uv run pytest -m live -q --tb=line
    ```
-   Auto-skips when the stack is unreachable; ingestion runs through `bge_server` (slow on CPU).
+   Ingestion runs through `bge_server` (slow on CPU).
 
-3. **Report results** — list failures with file:line and the error message.
+3. **Lint / typecheck** (on request): `cd src/docforge-rework && uv run ruff check . && uv run mypy .`
 
-Arguments: `$args` — optional pytest args (e.g., `-k test_ir`, `-x`, `tests/units/test_chunking.py`).
+4. **Report results** — list failures with file:line and the error message.
+
+Arguments: `$args` — optional pytest args (e.g., `-k test_ir`, `-x`, `tests/units/engine/test_x.py`).
