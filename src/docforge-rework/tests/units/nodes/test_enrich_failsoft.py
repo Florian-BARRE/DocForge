@@ -76,6 +76,10 @@ BLOB = {
                  {"node_type": "action", "id": "vlm_photo", "family": "vlm",
                   "kind": "test_enrich_failsoft_flaky_vlm",
                   "config": {"system_prompt": "Caption this photo."}},
+                 # On success a VLM produces a SCORED entry ({entry, score}); vlm_entry projects it
+                 # onto the uniform single-slot terminal (the success path's branch close).
+                 {"node_type": "action", "id": "vp_entry", "family": "enrich",
+                  "kind": "vlm_entry", "config": {}},
                  {"node_type": "action", "id": "fallback_vlm", "family": "enrich",
                   "kind": "figure_entry", "config": {}},
                  {"node_type": "action", "id": "fallback_clf", "family": "enrich",
@@ -84,6 +88,7 @@ BLOB = {
              "transitions": [
                  {"from_node_id": "clf", "to_node_id": "vlm_photo",
                   "condition": {"kind": "when_equals", "field": "kind", "equals": "photo"}},
+                 {"from_node_id": "vlm_photo", "to_node_id": "vp_entry"},
                  # FAIL-SOFT: a provider failure ROUTES to a degraded entry instead of failing the doc
                  {"from_node_id": "clf", "to_node_id": "fallback_clf",
                   "condition": {"kind": "on_failure"}},
@@ -93,6 +98,7 @@ BLOB = {
              "bindings": {
                  "clf": {"figure": {"source": "group", "field_name": "figure"}},
                  "vlm_photo": {"figure": {"source": "node", "node_id": "clf", "field_name": "figure"}},
+                 "vp_entry": {"entry": {"source": "node", "node_id": "vlm_photo", "field_name": "entry"}},
                  "fallback_vlm": {"figure": {"source": "node", "node_id": "clf", "field_name": "figure"}},
                  # clf itself failed -> its figure never existed: fall back to the RAW item
                  "fallback_clf": {"figure": {"source": "group", "field_name": "figure"}},

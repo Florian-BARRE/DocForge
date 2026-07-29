@@ -37,7 +37,11 @@ def test_vlm_describe_exposes_the_per_item_face_with_no_min_score() -> None:
         assert key in props, key
     assert "min_score" not in props  # escalation lives on the graph now, not the config
     assert [(s.name, s.artefact_type) for s in described.consumes] == [("figure", "FigureItem")]
-    assert [(s.name, s.artefact_type) for s in described.produces] == [("entry", "EnrichmentEntry")]
+    # VLM is now scored (confidence threaded for ScoreBelow escalation) — score slot first, then entry.
+    assert [(s.name, s.artefact_type) for s in described.produces] == [
+        ("score", "float"),
+        ("entry", "EnrichmentEntry"),
+    ]
 
 
 def test_rapidocr_describe_has_no_endpoint_knobs() -> None:

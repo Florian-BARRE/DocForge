@@ -1,9 +1,10 @@
 # ====== Code Summary ======
-# BaseVlmNode — the abstract base of every VLM provider, a PER-ITEM node closing an enrich branch:
-# it describes one figure (the crop, plus the OCR text already in the figure's ``read_text``) and
-# emits the branch's terminal EnrichmentEntry. The base composes the instruction (system prompt +
-# the chart-to-table request when enabled) and post-processes the answer (table block parsed into
-# rows and stripped). Children implement ONLY `_describe(image, context, system_prompt)`.
+# BaseVlmNode — the abstract base of every VLM provider, a PER-ITEM node describing one figure (the
+# crop, plus the OCR text already in the figure's ``read_text``) into an EnrichmentEntry scored by
+# the provider's confidence. The base composes the instruction (system prompt + the chart-to-table
+# request when enabled) and post-processes the answer (table block parsed into rows and stripped).
+# Escalation is pure graph: a ScoreBelow (or OnFailure) transition to the next provider, closed on a
+# model-free ``vlm_entry`` terminal fed best-first. Children implement ONLY `_describe(...)`.
 
 # ====== Standard Library Imports ======
 from abc import abstractmethod
@@ -52,14 +53,15 @@ class BaseVlmNode(ActionNode):
 
     async def run(self, data: VlmConsumes) -> VlmProduces:
         """
-        Describe the figure and close the branch with its EnrichmentEntry.
+        Describe the figure and emit its EnrichmentEntry, scored by the provider's confidence.
 
         Args:
             data (VlmConsumes): The figure to describe.
 
         Returns:
-            VlmProduces: The terminal entry (kind + OCR text carried over, description filled,
-            table rows when requested).
+            VlmProduces: The entry (kind + OCR text carried over, description filled, table rows
+            when requested), scored by the provider's self-assessed confidence — what a score_below
+            escalation edge compares to its threshold.
         """
         config: BaseVlmConfig = self.config
         # 1. The always-on guard rail frames the behaviour, the per-class prompt drives it, and
@@ -70,15 +72,15 @@ class BaseVlmNode(ActionNode):
             + (_TABLE_INSTRUCTION if config.extract_table else "")
         )
 
-        # 2. Run the provider.
-        answer, _confidence = await self._describe(data.figure.image, data.figure.read_text, prompt)
+        # 2. Run the provider — the confidence drives quality escalation, never discarded.
+        answer, confidence = await self._describe(data.figure.image, data.figure.read_text, prompt)
 
         # 3. Post-process: pull the table rows out of the answer when they were requested.
         description, data_table = (
             BaseVlmHelpers.extract_table(answer) if config.extract_table else (answer.strip(), None)
         )
 
-        # 4. Close the branch: everything the figure's run learned, in one entry.
+        # 4. Emit the scored entry: everything the figure's run learned, in one entry.
         return VlmProduces(
             entry=EnrichmentEntry(
                 block_id=data.figure.block_id,
@@ -86,7 +88,8 @@ class BaseVlmNode(ActionNode):
                 ocr_text=data.figure.read_text or None,
                 description=description or None,
                 data_table=data_table,
-            )
+            ),
+            score=confidence,
         )
 
 

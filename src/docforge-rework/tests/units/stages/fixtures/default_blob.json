@@ -276,6 +276,13 @@
               "source": "node"
             }
           },
+          "chart_vlm_entry": {
+            "entry": {
+              "field_name": "entry",
+              "node_id": "chart_vlm_0",
+              "source": "node"
+            }
+          },
           "classify": {
             "figure": {
               "field_name": "figure",
@@ -286,6 +293,13 @@
             "figure": {
               "field_name": "figure",
               "node_id": "classify",
+              "source": "node"
+            }
+          },
+          "diagram_vlm_entry": {
+            "entry": {
+              "field_name": "entry",
+              "node_id": "diagram_vlm_0",
               "source": "node"
             }
           },
@@ -300,6 +314,13 @@
             "figure": {
               "field_name": "figure",
               "node_id": "classify",
+              "source": "node"
+            }
+          },
+          "photo_vlm_entry": {
+            "entry": {
+              "field_name": "entry",
+              "node_id": "photo_vlm_0",
               "source": "node"
             }
           },
@@ -383,6 +404,13 @@
             "node_type": "action"
           },
           {
+            "config": {},
+            "family": "enrich",
+            "id": "photo_vlm_entry",
+            "kind": "vlm_entry",
+            "node_type": "action"
+          },
+          {
             "config": {
               "base_url": "http://vlm:8000/v1",
               "extract_table": true,
@@ -395,6 +423,13 @@
             "node_type": "action"
           },
           {
+            "config": {},
+            "family": "enrich",
+            "id": "chart_vlm_entry",
+            "kind": "vlm_entry",
+            "node_type": "action"
+          },
+          {
             "config": {
               "base_url": "http://vlm:8000/v1",
               "model": "qwen2.5-vl",
@@ -403,6 +438,13 @@
             "family": "vlm",
             "id": "diagram_vlm_0",
             "kind": "openai_compatible",
+            "node_type": "action"
+          },
+          {
+            "config": {},
+            "family": "enrich",
+            "id": "diagram_vlm_entry",
+            "kind": "vlm_entry",
             "node_type": "action"
           },
           {
@@ -463,6 +505,13 @@
           },
           {
             "condition": {
+              "kind": "on_success"
+            },
+            "from_node_id": "photo_vlm_0",
+            "to_node_id": "photo_vlm_entry"
+          },
+          {
+            "condition": {
               "equals": "chart",
               "field": "kind",
               "kind": "when_equals"
@@ -472,12 +521,26 @@
           },
           {
             "condition": {
+              "kind": "on_success"
+            },
+            "from_node_id": "chart_vlm_0",
+            "to_node_id": "chart_vlm_entry"
+          },
+          {
+            "condition": {
               "equals": "diagram",
               "field": "kind",
               "kind": "when_equals"
             },
             "from_node_id": "classify",
             "to_node_id": "diagram_vlm_0"
+          },
+          {
+            "condition": {
+              "kind": "on_success"
+            },
+            "from_node_id": "diagram_vlm_0",
+            "to_node_id": "diagram_vlm_entry"
           },
           {
             "condition": {

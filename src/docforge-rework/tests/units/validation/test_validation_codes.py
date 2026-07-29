@@ -185,6 +185,30 @@ def test_score_below_from_unscored_producer(validator) -> None:
     assert "score_below_not_scored" in _codes(validator, graph)
 
 
+def test_score_below_off_a_vlm_node_is_valid(builder, validator) -> None:
+    """A VLM provider is scored (VlmProduces subclasses ScoredOutput), so a ScoreBelow escalation
+    edge off it is accepted — the enabler for VLM quality-escalation chains."""
+    blob = {
+        "node_type": "group",
+        "id": "vlm_esc",
+        "nodes": [
+            {"node_type": "action", "id": "cheap", "family": "vlm", "kind": "openai_compatible",
+             "config": {"base_url": "u", "model": "m"}},
+            {"node_type": "action", "id": "robust", "family": "vlm", "kind": "openai_compatible",
+             "config": {"base_url": "u", "model": "m"}},
+        ],
+        "transitions": [
+            {"from_node_id": "cheap", "to_node_id": "robust",
+             "condition": {"kind": "score_below", "threshold": 0.5}},
+        ],
+        "bindings": {
+            "cheap": {"figure": {"source": "run", "field_name": "figure"}},
+            "robust": {"figure": {"source": "run", "field_name": "figure"}},
+        },
+    }
+    assert validator.validate(builder.build(blob)) == []
+
+
 def test_unknown_producer_field(validator) -> None:
     graph = Group(
         id="uf",

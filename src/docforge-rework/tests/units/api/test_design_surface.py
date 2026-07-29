@@ -46,7 +46,8 @@ def test_describe_forwards_every_io_slot_description() -> None:
 
 def test_scored_flag_is_auto_derived_from_the_output_face() -> None:
     assert NodeRegistry.get("ocr", "rapidocr").describe().scored is True  # ScoreBelow source
-    assert NodeRegistry.get("vlm", "openai_compatible").describe().scored is False
+    # VLM is now a ScoreBelow source too (VlmProduces is a ScoredOutput) — auto-derived, not declared.
+    assert NodeRegistry.get("vlm", "openai_compatible").describe().scored is True
 
 
 def test_classifier_exposes_its_five_switch_values() -> None:

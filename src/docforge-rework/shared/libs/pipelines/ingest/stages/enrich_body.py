@@ -2,10 +2,11 @@
 # Builds the per-figure ForEach BODY of the enrich stage from the classifier config and the chain
 # specs — the one place the model-call topology lives. The classifier drives a when_equals switch
 # per figure class; each class routes to its chain: an OCR chain reads scanned text and closes on a
-# model-free figure_entry fed best-first (from_first), while a VLM chain describes visual figures
-# (each provider produces the terminal entry itself). Between consecutive steps a score_below edge
-# escalates on low quality and an on_failure edge falls through — exactly the chain semantics the
-# stage view exposes. The decorative class routes to a zero-spend skip.
+# model-free figure_entry fed best-first (from_first), while a VLM chain describes visual figures and
+# closes on a model-free vlm_entry — each provider produces a SCORED entry, the terminal projects it
+# onto the uniform single-slot terminal. Between consecutive steps a score_below edge escalates on
+# low quality and an on_failure edge falls through — exactly the chain semantics the stage view
+# exposes. The decorative class routes to a zero-spend skip.
 
 # ====== Internal Project Imports ======
 from shared_libs.pipelines.base import (
@@ -121,8 +122,8 @@ class EnrichBodyBuilder:
     ) -> None:
         """Append one class branch: its chain fragment, the entry switch and its terminal."""
         # 1. Build the provider chain fragment (step nodes, escalation edges, per-step bindings).
-        #    OCR steps produce a raw `figure`, closed on a model-free entry; VLM steps produce the
-        #    `entry` terminal artefact themselves.
+        #    OCR steps produce a raw scored `figure`; VLM steps produce a scored `entry`. Both are
+        #    scored so a score_below edge can escalate between consecutive steps.
         frag = ChainFragmentBuilder.build(
             prefix=slot,
             family=chain.family,
@@ -141,10 +142,12 @@ class EnrichBodyBuilder:
         transitions.append(cls.__switch(figure_kind, frag.heads[0]))
         transitions.extend(frag.transitions)
 
-        # 3. Close the branch on its terminal artefact (EnrichmentEntry).
+        # 3. Close the branch on a model-free terminal projecting its scored output → single-slot
+        #    entry: figure_entry for an OCR chain (from the read figure), vlm_entry for a VLM chain.
         if chain.family == "ocr":
             cls.__close_ocr(slot, frag, nodes, transitions, bindings)
-        # VLM/LLM providers each produce the terminal entry themselves — nothing to add.
+        else:
+            cls.__close_vlm(slot, frag, nodes, transitions, bindings)
 
     @classmethod
     def __close_ocr(
@@ -161,6 +164,22 @@ class EnrichBodyBuilder:
             ))
         # The join reads whichever step produced — best-first, as computed by the fragment.
         bindings[terminal_id] = {"figure": frag.output}
+
+    @classmethod
+    def __close_vlm(
+        cls, slot: str, frag: ChainFragment,
+        nodes: list, transitions: list[Transition], bindings: dict[str, dict],
+    ) -> None:
+        """Close a VLM chain on a model-free vlm_entry fed best-first by whichever step described."""
+        terminal_id = f"{slot}_entry"
+        nodes.append(ActionNodeBlob(id=terminal_id, family="enrich", kind="vlm_entry"))
+        # Every step, on success, closes the branch on the shared terminal.
+        for step_id in frag.exits:
+            transitions.append(Transition(
+                from_node_id=step_id, to_node_id=terminal_id, condition=OnSuccess()
+            ))
+        # The join reads the scored entry of whichever step produced — best-first, score dropped.
+        bindings[terminal_id] = {"entry": frag.output}
 
 
 __all__ = ["EnrichBodyBuilder"]

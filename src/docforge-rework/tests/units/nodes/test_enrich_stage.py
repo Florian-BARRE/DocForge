@@ -137,6 +137,12 @@ BLOB = {
                  _vlm("vlm_photo", "Caption this photo."),
                  _vlm("vlm_chart", "Read this chart.", extract_table=True),
                  _vlm("vlm_diag", "Rewrite this diagram as searchable text."),
+                 # A VLM produces a SCORED entry ({entry, score}); the model-free vlm_entry projects
+                 # it onto the uniform single-slot {entry} terminal every branch converges on.
+                 {"node_type": "action", "id": "vs_entry", "family": "enrich", "kind": "vlm_entry", "config": {}},
+                 {"node_type": "action", "id": "vp_entry", "family": "enrich", "kind": "vlm_entry", "config": {}},
+                 {"node_type": "action", "id": "vc_entry", "family": "enrich", "kind": "vlm_entry", "config": {}},
+                 {"node_type": "action", "id": "vd_entry", "family": "enrich", "kind": "vlm_entry", "config": {}},
                  {"node_type": "action", "id": "skip", "family": "enrich", "kind": "figure_entry", "config": {}},
              ],
              "transitions": [
@@ -154,6 +160,10 @@ BLOB = {
                   "condition": {"kind": "score_below", "threshold": 0.5}},
                  {"from_node_id": "ocr_cheap", "to_node_id": "vlm_scan"},
                  {"from_node_id": "ocr_robust", "to_node_id": "vlm_scan"},
+                 {"from_node_id": "vlm_scan", "to_node_id": "vs_entry"},
+                 {"from_node_id": "vlm_photo", "to_node_id": "vp_entry"},
+                 {"from_node_id": "vlm_chart", "to_node_id": "vc_entry"},
+                 {"from_node_id": "vlm_diag", "to_node_id": "vd_entry"},
              ],
              "bindings": {
                  "clf": {"figure": {"source": "group", "field_name": "figure"}},
@@ -166,6 +176,10 @@ BLOB = {
                  "vlm_photo": {"figure": {"source": "node", "node_id": "clf", "field_name": "figure"}},
                  "vlm_chart": {"figure": {"source": "node", "node_id": "clf", "field_name": "figure"}},
                  "vlm_diag": {"figure": {"source": "node", "node_id": "clf", "field_name": "figure"}},
+                 "vs_entry": {"entry": {"source": "node", "node_id": "vlm_scan", "field_name": "entry"}},
+                 "vp_entry": {"entry": {"source": "node", "node_id": "vlm_photo", "field_name": "entry"}},
+                 "vc_entry": {"entry": {"source": "node", "node_id": "vlm_chart", "field_name": "entry"}},
+                 "vd_entry": {"entry": {"source": "node", "node_id": "vlm_diag", "field_name": "entry"}},
                  "skip": {"figure": {"source": "node", "node_id": "clf", "field_name": "figure"}},
              },
          }},
