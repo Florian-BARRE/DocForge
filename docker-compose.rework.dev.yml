@@ -8,6 +8,9 @@
 #   - the frontend runs as its OWN container on the Vite dev server (hot module reload),
 #     proxying /api to the app service; the app still serves the last built dist/ too
 #   - the worker reuses the HOST's HuggingFace cache so docling never re-downloads models
+#   - the data-plane stores (postgres/redis/qdrant/seaweedfs/bge_server) republish their host
+#     ports — the prod compose keeps them internal to rework_net only (operator access via
+#     `docker compose exec`); dev needs them for local psql/redis-cli/alembic/browser access
 # ─────────────────────────────────────────────────────────────────────────────
 
 services:
@@ -40,6 +43,28 @@ services:
     # whole process in `watchfiles` (a base dep via fastapi[standard]) does a real kill+restart that
     # re-imports everything. Watch the mounted source roots only.
     command: ["watchfiles", "arq entrypoint.WorkerSettings", "/app/shared", "/app/worker"]
+
+  # ── Data-plane stores — republish host ports for local dev (psql/redis-cli/alembic/
+  #    browser access to Qdrant's/SeaweedFS's REST APIs). Prod keeps these internal only. ──
+  rework_postgres:
+    ports:
+      - "10041:5432"              # Operator/local-dev access (alembic, psql)
+
+  rework_redis:
+    ports:
+      - "10042:6379"              # Local-dev access (app enqueue / worker listen)
+
+  rework_qdrant:
+    ports:
+      - "10043:6333"              # REST API (local dev + operator inspection)
+
+  rework_seaweedfs:
+    ports:
+      - "10044:8333"              # S3 API (local dev + operator inspection)
+
+  rework_bge_server:
+    ports:
+      - "10047:80"                # Operator access: http://localhost:10047/health
 
   # ── Vite dev server — hot-reloading frontend, dev-only service ───────────────
   rework_frontend:

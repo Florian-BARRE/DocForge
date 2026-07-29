@@ -37,7 +37,7 @@ services:
       rework_postgres:
         condition: service_healthy
       rework_redis:
-        condition: service_started
+        condition: service_healthy
     deploy:
       resources:
         limits:
@@ -79,9 +79,9 @@ services:
       rework_postgres:
         condition: service_healthy
       rework_redis:
-        condition: service_started
+        condition: service_healthy
       rework_seaweedfs:
-        condition: service_started
+        condition: service_healthy
     deploy:
       resources:
         limits:
@@ -95,8 +95,9 @@ services:
   rework_postgres:
     image: postgres:16-bookworm
     container_name: docforge-rework-postgres
-    ports:
-      - "10041:5432"              # Operator/local-dev access (alembic, psql)
+    # No host port in prod — data-plane services are reachable only on rework_net;
+    # operator access is `docker compose exec rework_postgres psql ...`. Dev re-publishes
+    # 10041 via docker-compose.rework.dev.yml.
     env_file:
       - services/docforge-rework/postgres.env
     volumes:
@@ -119,10 +120,20 @@ services:
   rework_redis:
     image: redis:7-bookworm
     container_name: docforge-rework-redis
-    ports:
-      - "10042:6379"              # Local-dev access (app enqueue / worker listen)
+    # No host port in prod — internal to rework_net only (app enqueue / worker listen).
+    # Dev re-publishes 10042 via docker-compose.rework.dev.yml.
     volumes:
       - rework_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512m
     restart: unless-stopped
     networks:
       - rework_net
@@ -131,10 +142,17 @@ services:
   rework_qdrant:
     image: qdrant/qdrant:v1.18.2
     container_name: docforge-rework-qdrant
-    ports:
-      - "10043:6333"              # REST API (local dev + operator inspection)
+    # No host port in prod — REST API internal to rework_net only. Dev re-publishes
+    # 10043 via docker-compose.rework.dev.yml.
     volumes:
       - rework_qdrant_data:/qdrant/storage
+    healthcheck:
+      # The qdrant image ships neither curl nor wget — probe /healthz via bash's
+      # /dev/tcp and check for an HTTP 200 status line instead.
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/6333 && printf 'GET /healthz HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && head -1 <&3 | grep -q 200"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     deploy:
       resources:
         limits:
@@ -156,13 +174,25 @@ services:
       -s3.config=/etc/seaweedfs/s3_config.json
       -master.volumeSizeLimitMB=256
       -volume.max=0
-    ports:
-      - "10044:8333"              # S3 API (local dev + operator inspection)
+    # No host port in prod — S3 API internal to rework_net only. Dev re-publishes
+    # 10044 via docker-compose.rework.dev.yml.
     volumes:
       - rework_seaweedfs_data:/data
       # S3 identity so authenticated clients (the app/worker sign with S3_ACCESS_KEY/SECRET)
       # are accepted — without it SeaweedFS rejects every signed request with AccessDenied.
       - ./services/docforge-rework/s3_config.json:/etc/seaweedfs/s3_config.json:ro
+    healthcheck:
+      # Master status endpoint (default port 9333, always up alongside -s3) — confirmed
+      # the image ships curl, unlike qdrant's.
+      test: ["CMD", "curl", "-f", "http://localhost:9333/cluster/status"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 1g
     restart: unless-stopped
     networks:
       - rework_net
@@ -176,6 +206,17 @@ services:
     command: ["gotenberg", "--api-timeout=180s"]
     ports:
       - "10045:3000"              # HTTP conversion API (collection configs point here)
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          # Gotenberg spawns LibreOffice/Chromium per conversion — give it a real ceiling.
+          cpus: "2"
+          memory: 2g
     restart: unless-stopped
     networks:
       rework_net:
@@ -186,7 +227,7 @@ services:
   # No profile: it is a backing service like the stores, so `up` (without --profile full)
   # starts it too for local `uv` dev. A collection's embed node points at it via base_url:
   #   in-network  → http://bge_server:80   (the rework_net alias below)
-  #   from host   → http://localhost:10047
+  #   from host   → http://localhost:10047 (dev only — see docker-compose.rework.dev.yml)
   rework_bge_server:
     build:
       context: src                # bge_server lives at src/bge_server (sibling of docforge-rework)
@@ -203,8 +244,8 @@ services:
       - 8.8.8.8
     env_file:
       - services/bge_server/.env
-    ports:
-      - "10047:80"                # Operator access: http://localhost:10047/health
+    # No host port in prod — internal to rework_net only (collections point at
+    # http://bge_server:80). Dev re-publishes 10047 via docker-compose.rework.dev.yml.
     volumes:
       - rework_bge_models:/models # HF cache (HF_HOME=/models) — weights persist across restarts
     healthcheck:

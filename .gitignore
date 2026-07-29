@@ -24,6 +24,9 @@ services/**/.env
 *.env
 !services/**/.env.example
 !.env.example
+# SeaweedFS S3 identity (real secret) — track only the placeholder template.
+services/**/s3_config.json
+!services/**/s3_config.json.example
 
 # ── Logs ──────────────────────────────────────────────────
 logs/
