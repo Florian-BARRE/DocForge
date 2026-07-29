@@ -33,6 +33,11 @@ class OcrRapidOcrNode(BaseOcrNode):
     # ONE engine per process — model load happens once, every node instance reuses it.
     _engine: Any = None
     _engine_lock = threading.Lock()
+    # The RapidOCR wrapper holds mutable pre/post state, so its inference is NOT re-entrant across
+    # threads. Concurrent jobs + the per-figure enrich ForEach both fan reads onto to_thread workers
+    # that share this one engine — serialise the sync call to avoid latent state corruption. The lock
+    # lives inside the worker thread only, so the async event loop is never blocked.
+    _inference_lock = threading.Lock()
 
     @classmethod
     def __resolve_engine(cls) -> Any:
@@ -47,8 +52,10 @@ class OcrRapidOcrNode(BaseOcrNode):
     def __read_sync(self, image: bytes) -> tuple[str, float]:
         """Synchronous OCR (runs in a worker thread)."""
         engine = self.__resolve_engine()
-        # RapidOCR returns (list of [box, text, confidence] | None, elapse_times).
-        readings, _elapsed = engine(image)
+        # RapidOCR returns (list of [box, text, confidence] | None, elapse_times). Serialise the
+        # call: the shared engine's mutable pre/post state is not thread-safe under concurrent reads.
+        with self._inference_lock:
+            readings, _elapsed = engine(image)
         if not readings:
             return "", 0.0
         lines = [entry[1] for entry in readings]

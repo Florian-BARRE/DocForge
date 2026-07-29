@@ -70,7 +70,15 @@ class BaseEmbedderNode(ActionNode):
             if sparse_vectors is not None:
                 batch_sparse = await self._embed_sparse(batch)
                 if batch_sparse is None:
-                    # The provider has no sparse support — drop the whole axis, once, loudly.
+                    if sparse_vectors:
+                        # Earlier batches DID return sparse vectors — a mid-stream None would
+                        # silently discard them and lose lexical vectors for part of the doc.
+                        # Sparse support is a provider constant, so this is a contract breach: fail loud.
+                        raise RuntimeError(
+                            f"Embedder '{self.KIND}' returned sparse vectors for earlier batches "
+                            f"but None for a later one — inconsistent sparse support"
+                        )
+                    # First batch: the provider has no sparse support — drop the whole axis, cleanly.
                     self.logger.info(f"Embedder '{self.KIND}' has no sparse support — dense only")
                     sparse_vectors = None
                 else:

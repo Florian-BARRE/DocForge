@@ -79,6 +79,13 @@ class RerankCrossEncoderNode(PortBackedNode):
 
         # 4. Map each score onto its candidate by index; overwrite the score + provenance.
         score_by_index = dict(scores)
+        if len(score_by_index) != len(texts):
+            # The reranker returned fewer scores than passages sent — the unscored candidates are
+            # silently dropped below. Surface the shortfall rather than let it pass unnoticed.
+            self.logger.warning(
+                f"Reranker '{config.model}' returned {len(score_by_index)} score(s) for "
+                f"{len(texts)} passage(s) — {len(texts) - len(score_by_index)} candidate(s) dropped"
+            )
         reranked = [
             candidate.model_copy(update={"score": score_by_index[position], "source": _RERANK_SOURCE})
             for position, candidate in enumerate(judged)
