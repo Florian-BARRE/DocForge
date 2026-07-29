@@ -4,6 +4,7 @@
 
 import type { FieldSpec } from "../../api/collections";
 import { FormField } from "../../components/FormField";
+import { NumberField } from "../../components/schema-form/NumberField";
 import { TagsInput } from "../../components/TagsInput";
 import { inputStyle } from "../../components/inputStyle";
 
@@ -43,12 +44,10 @@ export function MetadataFieldInput({ field, value, onChange }: MetadataFieldInpu
   if (field.field_type === "integer" || field.field_type === "float")
     return (
       <FormField label={label}>
-        <input
-          type="number"
-          step={field.field_type === "integer" ? 1 : "any"}
+        <NumberField
+          value={value as number | undefined}
           style={inputStyle}
-          value={value === undefined || value === null ? "" : String(value)}
-          onChange={(e) => onChange(e.target.value === "" ? "" : Number(e.target.value))}
+          onChange={onChange}
         />
       </FormField>
     );

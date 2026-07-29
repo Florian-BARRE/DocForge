@@ -37,7 +37,7 @@ export function StageSwitch({ checked, disabled = false, title, onChange }: Stag
         <span
           style={{
             position: "absolute", top: 2, left: checked ? 18 : 2, width: 14, height: 14,
-            borderRadius: "50%", background: "#fff", transition: "left .15s",
+            borderRadius: "50%", background: theme.color.onAccent, transition: "left .15s",
           }}
         />
       </span>

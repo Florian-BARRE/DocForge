@@ -18,6 +18,8 @@ interface PermissionsBuilderProps {
   collectionsScope: CollectionsScope;
   onCollectionsScopeChange: (scope: CollectionsScope) => void;
   collections: Collection[] | null;
+  /** Set when the collections fetch failed — shown instead of the (misleading) "No collections yet." */
+  collectionsError?: string | null;
 }
 
 export function PermissionsBuilder({
@@ -25,6 +27,7 @@ export function PermissionsBuilder({
   capabilities, onCapabilitiesChange,
   collectionsScope, onCollectionsScopeChange,
   collections,
+  collectionsError,
 }: PermissionsBuilderProps) {
   const toggleCapability = (capability: ApiCapability, checked: boolean) => {
     onCapabilitiesChange(
@@ -83,10 +86,15 @@ export function PermissionsBuilder({
             </label>
             {collectionsScope !== "all" && (
               <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                {collections === null && (
+                {collectionsError && (
+                  <span style={{ color: theme.color.error, fontSize: theme.font.size.xs }}>
+                    Failed to load collections: {collectionsError}
+                  </span>
+                )}
+                {!collectionsError && collections === null && (
                   <span style={{ color: theme.color.dim, fontSize: theme.font.size.xs }}>loading collections…</span>
                 )}
-                {collections?.length === 0 && (
+                {!collectionsError && collections?.length === 0 && (
                   <span style={{ color: theme.color.dim, fontSize: theme.font.size.xs }}>No collections yet.</span>
                 )}
                 {collections?.map((collection) => (

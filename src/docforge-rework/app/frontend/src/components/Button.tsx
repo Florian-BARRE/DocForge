@@ -12,7 +12,7 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const VARIANT_STYLE: Record<ButtonVariant, React.CSSProperties> = {
-  primary: { background: theme.color.accent, color: "#fff", border: "none" },
+  primary: { background: theme.color.accent, color: theme.color.onAccent, border: "none" },
   secondary: { background: "none", color: theme.color.accent, border: `1px solid ${theme.color.accent}` },
   danger: { background: "none", color: theme.color.error, border: `1px solid ${theme.color.error}` },
 };

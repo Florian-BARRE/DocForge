@@ -4,7 +4,10 @@
 
 import { inputStyle } from "../../components/inputStyle";
 import { Button } from "../../components/Button";
+import { NumberField } from "../../components/schema-form/NumberField";
 import { theme } from "../../theme";
+
+const MIN_LIMIT = 1;
 
 interface SearchQueryBarProps {
   query: string;
@@ -27,17 +30,15 @@ export function SearchQueryBar({ query, onQueryChange, limit, onLimitChange, loa
           style={inputStyle}
         />
       </div>
-      <div style={{ width: 80 }}>
-        <input
-          type="number"
-          min={1}
+      <div style={{ width: 80 }} title="Result limit">
+        <NumberField
           value={limit}
-          onChange={(e) => onLimitChange(Number(e.target.value))}
+          min={MIN_LIMIT}
           style={inputStyle}
-          title="Result limit"
+          onChange={(value) => onLimitChange(value === undefined ? MIN_LIMIT : Math.max(MIN_LIMIT, value))}
         />
       </div>
-      <Button variant="primary" disabled={loading || !query.trim()} onClick={onSubmit}>
+      <Button variant="primary" disabled={loading || !query.trim() || limit < MIN_LIMIT} onClick={onSubmit}>
         {loading ? "searching…" : "Search"}
       </Button>
     </div>

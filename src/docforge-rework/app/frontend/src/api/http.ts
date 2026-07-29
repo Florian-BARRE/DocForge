@@ -7,6 +7,11 @@
 
 const TOKEN_STORAGE_KEY = "docforge_api_token";
 
+/** Fired on `window` whenever the token is cleared, so `TokenControl` can drop its own copy of
+ *  `hasToken` even when the clear was triggered from here (a 401) rather than its own button —
+ *  `localStorage`'s native `storage` event only fires in OTHER tabs, never the one that wrote it. */
+export const API_TOKEN_CLEARED_EVENT = "docforge:api-token-cleared";
+
 /** Reads the API token the user pasted in — `null` when unset (dev / auth-off backends). */
 export function getApiToken(): string | null {
   return localStorage.getItem(TOKEN_STORAGE_KEY);
@@ -20,6 +25,7 @@ export function setApiToken(token: string): void {
 /** Drops the stored token — subsequent requests go out unauthenticated again. */
 export function clearApiToken(): void {
   localStorage.removeItem(TOKEN_STORAGE_KEY);
+  window.dispatchEvent(new Event(API_TOKEN_CLEARED_EVENT));
 }
 
 export interface ApiIssue {
@@ -76,6 +82,10 @@ export async function apiFetch<T>(url: string, init?: RequestInit): Promise<T> {
     : init?.headers;
   const response = await fetch(url, { ...init, headers });
   if (!response.ok) {
+    // An expired/revoked token means every subsequent request fails silently while the top-bar
+    // pill still claims "Token set" — clear it so the UI reflects reality (the error is still
+    // surfaced to the caller below, unchanged).
+    if (response.status === 401) clearApiToken();
     let issues: ApiIssue[] = [{ message: `Request failed (${response.status})` }];
     try {
       const body = await response.json();

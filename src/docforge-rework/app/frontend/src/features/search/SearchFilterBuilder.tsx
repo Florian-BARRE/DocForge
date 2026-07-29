@@ -29,7 +29,7 @@ export function SearchFilterBuilder({ fields, values, onFilterChange }: SearchFi
         borderRadius: theme.radius.l, background: theme.color.card,
       }}
     >
-      <span style={{ fontSize: theme.font.size.s, fontWeight: 600, color: theme.color.text }}>Filtres</span>
+      <span style={{ fontSize: theme.font.size.s, fontWeight: 600, color: theme.color.text }}>Filters</span>
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: theme.space.s }}>
         {fields.map((field) => (
@@ -51,7 +51,7 @@ export function SearchFilterBuilder({ fields, values, onFilterChange }: SearchFi
               <Chip
                 key={name}
                 tone="accent"
-                title="Cliquer pour retirer ce filtre"
+                title="Click to remove this filter"
               >
                 <span style={{ cursor: "pointer" }} onClick={() => onFilterChange(name, undefined)}>
                   {name} = {formatFilterValue(field?.field_type, value)} ×
@@ -67,7 +67,7 @@ export function SearchFilterBuilder({ fields, values, onFilterChange }: SearchFi
 
 /** Human-readable rendering of an active filter's value, for the chip row. */
 function formatFilterValue(fieldType: FieldType | undefined, value: unknown): string {
-  if (fieldType === "bool") return value ? "oui" : "non";
+  if (fieldType === "bool") return value ? "yes" : "no";
   return String(value);
 }
 
@@ -105,8 +105,8 @@ function FieldFilterControl({ field, value, onChange }: FieldFilterControlProps)
           onChange={(e) => onChange(e.target.value === "" ? undefined : e.target.value === "true")}
         >
           <option value="">—</option>
-          <option value="true">oui</option>
-          <option value="false">non</option>
+          <option value="true">yes</option>
+          <option value="false">no</option>
         </select>
       </FormField>
     );

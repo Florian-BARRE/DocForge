@@ -226,7 +226,7 @@ export function SearchPipelineEditor({ initialBlob, onSave, onResetToDefault, ti
             rerankEnabled={isRerankEnabled(blob)}
             onToggleRerank={toggleRerank}
           />
-          <AdvancedDisclosure summary="Avancé">
+          <AdvancedDisclosure summary="Advanced">
             {blob.nodes.filter(isActionBlob).map((node, index) => (
               <SearchNodeCard
                 key={node.id}

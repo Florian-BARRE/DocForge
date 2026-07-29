@@ -26,11 +26,17 @@ export function CreateKeyForm({ onCreated, onCancel }: CreateKeyFormProps) {
   const [capabilities, setCapabilities] = useState<ApiCapability[]>(["read"]);
   const [collectionsScope, setCollectionsScope] = useState<CollectionsScope>("all");
   const [collections, setCollections] = useState<Collection[] | null>(null);
+  const [collectionsError, setCollectionsError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [issues, setIssues] = useState<ApiIssue[]>([]);
 
   useEffect(() => {
-    listCollections().then(setCollections).catch(() => setCollections([]));
+    listCollections()
+      .then(setCollections)
+      .catch((error) => {
+        setCollections([]);
+        setCollectionsError(error instanceof Error ? error.message : String(error));
+      });
   }, []);
 
   const scopedValid = fullAccess || (capabilities.length > 0 && (collectionsScope === "all" || collectionsScope.length > 0));
@@ -73,6 +79,7 @@ export function CreateKeyForm({ onCreated, onCancel }: CreateKeyFormProps) {
         collectionsScope={collectionsScope}
         onCollectionsScopeChange={setCollectionsScope}
         collections={collections}
+        collectionsError={collectionsError}
       />
       <ApiIssueList issues={issues} />
       <div style={{ display: "flex", gap: theme.space.s }}>

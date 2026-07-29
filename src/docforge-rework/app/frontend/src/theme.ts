@@ -11,6 +11,7 @@ export const theme = {
     line: "#2c3342",
     text: "#d7dce5",
     dim: "#8b93a5",
+    onAccent: "#fff",
     accent: "#4f8cff",
     accentSoft: "rgba(79,140,255,.14)",
     ok: "#3ecf8e",

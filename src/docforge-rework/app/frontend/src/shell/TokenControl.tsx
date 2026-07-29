@@ -3,14 +3,22 @@
 // `apiFetch` in api/http.ts). Collapsed to a single button by default so it stays unobtrusive;
 // expands into an inline field on click. The token itself is never displayed once saved.
 
-import { useState } from "react";
-import { clearApiToken, getApiToken, setApiToken } from "../api/http";
+import { useEffect, useState } from "react";
+import { API_TOKEN_CLEARED_EVENT, clearApiToken, getApiToken, setApiToken } from "../api/http";
 import { theme } from "../theme";
 
 export function TokenControl() {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState("");
   const [hasToken, setHasToken] = useState(() => Boolean(getApiToken()));
+
+  // A request can clear the token from outside this component (a 401 response — see api/http.ts),
+  // so the pill must react to that too, not just its own `clear()` button.
+  useEffect(() => {
+    const onCleared = () => setHasToken(false);
+    window.addEventListener(API_TOKEN_CLEARED_EVENT, onCleared);
+    return () => window.removeEventListener(API_TOKEN_CLEARED_EVENT, onCleared);
+  }, []);
 
   const save = () => {
     const value = draft.trim();
@@ -65,7 +73,7 @@ export function TokenControl() {
       <button
         onClick={save}
         style={{
-          background: theme.color.accent, color: "#fff", border: "none",
+          background: theme.color.accent, color: theme.color.onAccent, border: "none",
           borderRadius: theme.radius.s, padding: "5px 10px", fontSize: theme.font.size.m, cursor: "pointer",
         }}
       >

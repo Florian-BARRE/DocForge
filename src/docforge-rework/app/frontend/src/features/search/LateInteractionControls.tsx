@@ -5,6 +5,7 @@
 
 import { FormField } from "../../components/FormField";
 import { inputStyle } from "../../components/inputStyle";
+import { NumberField } from "../../components/schema-form/NumberField";
 import { Switch } from "../../components/Switch";
 import { theme } from "../../theme";
 
@@ -38,16 +39,21 @@ export function LateInteractionControls({
       {enabled && (
         <div style={{ width: 160 }}>
           <FormField
-            label="Candidats re-scorés par ColBERT"
-            hint="Combien de résultats ColBERT réexamine avant de retourner le top — plus élevé = plus précis, plus lent."
+            label="Candidates re-scored by ColBERT"
+            hint="How many results ColBERT re-examines before returning the top ones — higher = more precise, slower."
           >
-            <input
-              type="number"
+            <NumberField
+              value={rescorePoolSize}
               min={MIN_POOL_SIZE}
               max={MAX_POOL_SIZE}
-              value={rescorePoolSize}
-              onChange={(e) => onRescorePoolSizeChange(Number(e.target.value))}
               style={inputStyle}
+              onChange={(value) =>
+                onRescorePoolSizeChange(
+                  value === undefined
+                    ? MIN_POOL_SIZE
+                    : Math.min(MAX_POOL_SIZE, Math.max(MIN_POOL_SIZE, value)),
+                )
+              }
             />
           </FormField>
         </div>

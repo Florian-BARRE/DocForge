@@ -101,7 +101,7 @@ export function SearchLabPage({ collectionId, onNavigate }: SearchLabPageProps) 
         />
         <SearchTargetPicker fields={collection?.fields ?? []} selection={targetSelection} onToggle={handleTargetToggle} />
         <SearchFilterBuilder fields={filterableFields} values={filters} onFilterChange={handleFilterChange} />
-        <AdvancedDisclosure summary="Avancé — ColBERT (late interaction)">
+        <AdvancedDisclosure summary="Advanced — ColBERT (late interaction)">
           <LateInteractionControls
             enabled={lateInteraction}
             onEnabledChange={setLateInteraction}

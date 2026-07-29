@@ -36,7 +36,7 @@ export function Switch({ checked, onChange, disabled, title }: SwitchProps) {
       <span
         style={{
           display: "block", width: KNOB, height: KNOB, borderRadius: "50%",
-          background: "#fff", transform: `translateX(${checked ? WIDTH - KNOB - 4 : 0}px)`,
+          background: theme.color.onAccent, transform: `translateX(${checked ? WIDTH - KNOB - 4 : 0}px)`,
           transition: "transform .15s",
         }}
       />
