@@ -83,14 +83,15 @@ async def authenticate(request: Request) -> AuthPrincipal:
     # 2. Read the bearer token (401 if absent/malformed).
     token = _extract_bearer(request)
 
-    # 3. Look the key up by its deterministic hash — reject if unknown or revoked.
-    key = await CONTEXT.database.auth.get_key_by_hash(AuthKeys.hash_key(token))
-    if key is None or key.revoked_at is not None:
+    # 3. Resolve the key AND its owner in ONE joined round-trip. A missing key OR a missing owner
+    #    row both come back as None here (the inner join collapses them) — one opaque 401.
+    resolved = await CONTEXT.database.auth.get_key_with_user(AuthKeys.hash_key(token))
+    if resolved is None:
         raise _unauthorized(_INVALID_CREDENTIAL)
+    key, user = resolved
 
-    # 4. The owning account must still exist and be active.
-    user = await CONTEXT.database.auth.get_user(key.user_id)
-    if user is None or not user.is_active:
+    # 4. A revoked key or an inactive owner denies with the SAME opaque failure (never reveal which).
+    if key.revoked_at is not None or not user.is_active:
         raise _unauthorized(_INVALID_CREDENTIAL)
 
     # 5. Authenticated — carry the key + user; full-access derives from NULL permissions.

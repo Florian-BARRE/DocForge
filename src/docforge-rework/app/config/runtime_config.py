@@ -64,7 +64,7 @@ class RUNTIME_CONFIG(EnvConfigLoader):
     FASTAPI_DEBUG_MODE: bool = env("FASTAPI_DEBUG_MODE", cast=bool)
     FASTAPI_CORS_ALLOWED_ORIGINS: str = env("FASTAPI_CORS_ALLOWED_ORIGINS")
 
-    # Application version surfaced in OpenAPI docs and the /health/ping endpoint.
+    # Application version surfaced in OpenAPI docs and the public /health endpoint.
     FASTAPI_APP_VERSION: str = env("FASTAPI_APP_VERSION")
 
     # ───── Authentication (API-key bearer, keys-only) ─────
@@ -94,6 +94,39 @@ class RUNTIME_CONFIG(EnvConfigLoader):
     LOGGING_ENABLE_CONSOLE = env("LOGGING_ENABLE_CONSOLE", cast=bool)
     LOGGING_ENABLE_FILE = env("LOGGING_ENABLE_FILE", cast=bool)
     LOGGING_LPP_FORMAT = env("LOGGING_LPP_FORMAT")
+
+    @classmethod
+    def validate(cls) -> None:
+        """
+        Fail a misconfigured boot LOUDLY instead of bricking the app silently.
+
+        Enforces two auth-related invariants at startup (call from the entrypoint before the app
+        is built):
+
+        Raises:
+            RuntimeError: When ``AUTH_ENABLED`` is on but no ``AUTH_ROOT_TOKEN`` is set — an
+                unrecoverable lockout, since no root key can ever be bootstrapped and every
+                ``/api/v1`` route would 401 with no way back in.
+        """
+        # 1. Standard configplusplus validation first.
+        super().validate()
+
+        # 2. Auth ON with no root token is an unrecoverable lockout — refuse to boot.
+        if cls.AUTH_ENABLED and not cls.AUTH_ROOT_TOKEN:
+            raise RuntimeError(
+                "AUTH_ENABLED is true but AUTH_ROOT_TOKEN is empty — no root key can be "
+                "provisioned and every /api/v1 route would 401 with no recovery. Set "
+                "AUTH_ROOT_TOKEN or disable AUTH_ENABLED."
+            )
+
+        # 3. Auth ON behind a wildcard CORS policy is a dangerous combination — warn loudly (the
+        #    app sets allow_credentials=false, so it is not an outright lockout, only a smell).
+        origins = {o.strip() for o in cls.FASTAPI_CORS_ALLOWED_ORIGINS.split(",") if o.strip()}
+        if cls.AUTH_ENABLED and "*" in origins:
+            loggerplusplus.bind(identifier="RUNTIME_CONFIG").warning(
+                f"AUTH_ENABLED is true while CORS allows all origins ('*') — bearer-protected "
+                f"routes are reachable cross-origin; pin FASTAPI_CORS_ALLOWED_ORIGINS in production"
+            )
 
 
 # ─── Apply logging configuration AFTER class definition ───

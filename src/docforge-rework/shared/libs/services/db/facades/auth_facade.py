@@ -49,6 +49,11 @@ class AuthFacade(LoggerClass):
         async with self._postgres.session() as session:
             return await AuthApi.get_key_by_hash(session, key_hash)
 
+    async def get_key_with_user(self, key_hash: str) -> tuple[ApiKey, AppUser] | None:
+        """Fetch a key and its owning user in ONE joined session — the authentication hot path."""
+        async with self._postgres.session() as session:
+            return await AuthApi.get_key_with_user(session, key_hash)
+
     async def list_keys(self, user_id: uuid.UUID) -> list[ApiKey]:
         """Return a user's API keys, newest first."""
         async with self._postgres.session() as session:

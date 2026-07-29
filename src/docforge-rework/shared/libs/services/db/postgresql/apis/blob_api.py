@@ -11,7 +11,7 @@ import uuid
 from collections.abc import Sequence
 
 # ====== Third-Party Library Imports ======
-from sqlalchemy import delete, select
+from sqlalchemy import delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # ====== Internal Project Imports ======
@@ -38,6 +38,53 @@ class BlobApi:
     async def get(session: AsyncSession, content_hash: str) -> Blob | None:
         """Fetch a blob by its content hash, or None."""
         return await session.get(Blob, content_hash)
+
+    @staticmethod
+    async def collections_for_hash(
+        session: AsyncSession, content_hash: str
+    ) -> list[uuid.UUID]:
+        """
+        Return every collection whose documents reference this content-addressed blob.
+
+        A blob is content-addressed and may be shared across documents (hence collections), so it
+        has no single owner. This resolves the full owning set from the four referencing columns
+        (document source + PDF, page render, figure crop) — the authorization gate uses it to let a
+        scoped API key reach a blob only through a collection it is scoped to.
+
+        Args:
+            session (AsyncSession): The unit of work.
+            content_hash (str): The blob's content hash.
+
+        Returns:
+            list[uuid.UUID]: The distinct collection ids referencing the blob (empty when orphan).
+        """
+        # 1. Documents referencing the blob directly (original bytes or canonical PDF).
+        collections: set[uuid.UUID] = set()
+        direct = await session.execute(
+            select(Document.collection_id).where(
+                or_(
+                    Document.source_hash == content_hash,
+                    Document.pdf_blob_hash == content_hash,
+                )
+            )
+        )
+        collections.update(direct.scalars())
+        # 2. Documents referencing it as a page render.
+        pages = await session.execute(
+            select(Document.collection_id)
+            .join(Page, Page.document_id == Document.id)
+            .where(Page.render_blob_hash == content_hash)
+        )
+        collections.update(pages.scalars())
+        # 3. Documents referencing it as a figure crop.
+        figures = await session.execute(
+            select(Document.collection_id)
+            .join(Block, Block.document_id == Document.id)
+            .join(BlockFigure, BlockFigure.block_id == Block.id)
+            .where(BlockFigure.crop_blob_hash == content_hash)
+        )
+        collections.update(figures.scalars())
+        return list(collections)
 
     @staticmethod
     async def collect_hashes_for_document(

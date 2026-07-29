@@ -19,6 +19,7 @@ from .routers import (
     collections_router,
     documents_router,
     explorer_router,
+    health_router,
     jobs_router,
     pipelines_router,
     scalar_router,
@@ -46,8 +47,10 @@ def create_app(
     # With AUTH_ENABLED=false it stays transparent (synthetic root). Scalar + /openapi.json stay public.
     app.add_middleware(AuthMiddleware)
 
-    # Public surfaces — no authentication dependency.
+    # Public surfaces — no authentication dependency (both live outside /api/v1, so the authN
+    # middleware leaves them untouched: scalar docs + the orchestration liveness probe).
     app.include_router(router=scalar_router, prefix=f"/scalar")
+    app.include_router(router=health_router)
 
     # API v1 — API-key management (create / list / revoke; gated like the rest).
     app.include_router(router=auth_router, prefix="/api/v1")

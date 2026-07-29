@@ -25,6 +25,9 @@ from .pipelines.router import router as pipelines_router
 # -------------------- Scalar (API reference) ------------------- #
 from .scalar.router import router as scalar_router
 
+# -------------------- Health (public liveness probe) ------------------- #
+from .health.router import router as health_router
+
 # ------------------- Public API ------------------- #
 __all__ = [
     "auth_router",
@@ -36,4 +39,5 @@ __all__ = [
     "jobs_router",
     "pipelines_router",
     "scalar_router",
+    "health_router",
 ]

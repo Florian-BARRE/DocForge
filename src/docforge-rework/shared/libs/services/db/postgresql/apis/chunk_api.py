@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 # ====== Internal Project Imports ======
 from shared_libs.public_models import FieldOrigin
 
-from ..tables import Chunk, ChunkBlock, ChunkMetadata, ChunkQuery, EntityMention
+from ..tables import Chunk, ChunkBlock, ChunkMetadata, ChunkQuery, Document, EntityMention
 
 
 class ChunkApi:
@@ -62,6 +62,35 @@ class ChunkApi:
             return []
         result = await session.execute(select(Chunk).where(Chunk.id.in_(chunk_ids)))
         return list(result.scalars().all())
+
+    @staticmethod
+    async def collections_for_chunks(
+        session: AsyncSession, chunk_ids: Sequence[uuid.UUID]
+    ) -> list[uuid.UUID]:
+        """
+        Return the distinct collections owning a set of chunks (via their documents).
+
+        The authorization gate uses this to scope a chunk-mutating request: a scoped key may only
+        touch chunks whose documents live in a collection it owns.
+
+        Args:
+            session (AsyncSession): The unit of work.
+            chunk_ids (Sequence[uuid.UUID]): The chunks the request targets.
+
+        Returns:
+            list[uuid.UUID]: The distinct owning collection ids (empty when no chunk matches).
+        """
+        # 1. Nothing to resolve — an empty target set owns no collection.
+        if not chunk_ids:
+            return []
+        # 2. One joined query maps every chunk to its document's collection, de-duplicated.
+        result = await session.execute(
+            select(Document.collection_id)
+            .join(Chunk, Chunk.document_id == Document.id)
+            .where(Chunk.id.in_(chunk_ids))
+            .distinct()
+        )
+        return list(result.scalars())
 
     @staticmethod
     async def get_for_document(session: AsyncSession, document_id: uuid.UUID) -> list[Chunk]:

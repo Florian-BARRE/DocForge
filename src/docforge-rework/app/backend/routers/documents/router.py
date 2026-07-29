@@ -11,7 +11,7 @@ import json
 import uuid
 
 # ====== Third-Party Library Imports ======
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 
 # ====== Internal Project Imports ======
 from shared_libs.public_models import FieldOrigin
@@ -28,9 +28,10 @@ from shared_libs.services.db.s3 import S3Object
 
 # ====== Local Project Imports ======
 from ...context import CONTEXT
-from ...libs.auth import Capability, require
+from ...libs.auth import AuthPrincipal, AuthzGuard, Capability, require
 from ...utils.error_handling import auto_handle_errors
 from ...utils.pipeline_validation import PipelineBlobValidator
+from ...utils.upload_reader import UploadReader
 from .models import DocumentEnabledResponse, EnabledPatch, UploadAccepted
 
 router = APIRouter(prefix="/documents", tags=["documents"])
@@ -43,15 +44,14 @@ def _pipeline_version(pipeline_blob: dict) -> str:
     ).hexdigest()[:16]
 
 
-@router.post(
-    "", response_model=UploadAccepted, status_code=202,
-    dependencies=[Depends(require(Capability.WRITE))],
-)
+@router.post("", response_model=UploadAccepted, status_code=202)
 @auto_handle_errors
 async def upload_document(
+    request: Request,
     file: UploadFile = File(..., description="The document to ingest."),
     collection_id: uuid.UUID = Form(..., description="Target collection."),
     metadata: str = Form("{}", description="Declared metadata, JSON object {field: value}."),
+    principal: AuthPrincipal = Depends(require(Capability.WRITE)),
 ) -> UploadAccepted:
     """
     Admit one document and enqueue its ingestion (asynchronous — poll the job for status).
@@ -64,32 +64,28 @@ async def upload_document(
     if collection is None:
         raise HTTPException(status_code=404, detail=f"Collection {collection_id} not found.")
 
-    # 2. Fail-fast on a STALE contract, BEFORE any spend: a stored pipeline blob that no longer
+    # 2. Collection scope lives in the FORM BODY, so the path-param gate cannot see it — enforce it
+    #    here: a key scoped to another collection is a 403 before anything is read or stored.
+    AuthzGuard.assert_collection_scope(principal, str(collection_id))
+
+    # 3. Fail-fast on a STALE contract, BEFORE any spend: a stored pipeline blob that no longer
     #    builds (e.g. it names a node kind the registry no longer knows) is a 422 here — nothing
     #    is read, stored, admitted or enqueued. Structural (no I/O), so cheap on every upload.
     PipelineBlobValidator.validate(collection.pipeline)
 
-    # 3. Content-address the upload — the SAME identity the pipeline computes (sha256).
-    content = await file.read()
-
-    # 3b. Enforce the collection's size limit BEFORE storing — an oversized upload is a 422 here,
-    #     never a blob written to S3 then rejected downstream.
-    if len(content) > collection.max_file_size_bytes:
-        raise HTTPException(
-            status_code=422,
-            detail=f"File exceeds the collection's limit "
-                   f"({len(content)} > {collection.max_file_size_bytes} bytes).",
-        )
-
-    source_hash = hashlib.sha256(content).hexdigest()
+    # 4. OOM guard: refuse a grossly oversized body on its declared Content-Length before reading a
+    #    single byte, THEN stream + content-address it in bounded windows (sha256 — the SAME
+    #    identity the pipeline computes), aborting the instant it crosses the collection's ceiling.
+    UploadReader.reject_oversized_body(request, collection.max_file_size_bytes)
+    content, source_hash = await UploadReader.read_capped(file, collection.max_file_size_bytes)
     version = _pipeline_version(collection.pipeline)
 
-    # 4. Dedup: same content + same pipeline config in this collection → nothing to re-run.
+    # 5. Dedup: same content + same pipeline config in this collection → nothing to re-run.
     existing = await CONTEXT.database.ingestion.find_duplicate(collection_id, source_hash, version)
     if existing is not None:
         return UploadAccepted(document_id=str(existing.id), job_id="", duplicate=True)
 
-    # 5. Declared metadata: parse + resolve field names against the schema (structural check
+    # 6. Declared metadata: parse + resolve field names against the schema (structural check
     #    only — types/required are the pipeline admission node's job).
     try:
         declared: dict = json.loads(metadata)
@@ -103,7 +99,7 @@ async def upload_document(
             status_code=422, detail=f"Unknown metadata field(s) for this collection: {unknown}"
         )
 
-    # 6. Store the ORIGINAL bytes BEFORE enqueueing (key = source_hash — the worker refetches).
+    # 7. Store the ORIGINAL bytes BEFORE enqueueing (key = source_hash — the worker refetches).
     filename = file.filename or "upload"
     mime = file.content_type or "application/octet-stream"
     await CONTEXT.database.ingestion.store_blobs(
@@ -112,7 +108,7 @@ async def upload_document(
               size_bytes=len(content), kind=BlobKind.ORIGINAL)],
     )
 
-    # 7. Admission — document + job + declared metadata, ONE transaction.
+    # 8. Admission — document + job + declared metadata, ONE transaction.
     #    source_kind starts DIGITAL_BORN; the pipeline learns the real one (update_facts).
     document = Document(
         collection_id=collection_id,
@@ -131,7 +127,7 @@ async def upload_document(
     ]
     created, job = await CONTEXT.database.ingestion.admit(document, Job(), rows)
 
-    # 8. Hand over to the worker — the queue message carries IDS ONLY.
+    # 9. Hand over to the worker — the queue message carries IDS ONLY.
     await CONTEXT.queue.enqueue_ingest(str(created.id), str(job.id))
     CONTEXT.logger.info(f"Admitted '{filename}' as {created.id} (job {job.id})")
     return UploadAccepted(document_id=str(created.id), job_id=str(job.id))

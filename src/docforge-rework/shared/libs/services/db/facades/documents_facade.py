@@ -79,6 +79,12 @@ class DocumentsFacade(LoggerClass):
         async with self._postgres.session() as session:
             return await ChunkApi.get_by_ids(session, chunk_ids)
 
+    async def collections_for_chunks(self, chunk_ids: list[uuid.UUID]) -> list[str]:
+        """Distinct collections owning a set of chunks — the scope gate for chunk mutations."""
+        async with self._postgres.session() as session:
+            ids = await ChunkApi.collections_for_chunks(session, chunk_ids)
+        return [str(collection_id) for collection_id in ids]
+
     async def get_document_chunk_composition(
         self, document_id: uuid.UUID
     ) -> list[ChunkBlock]:
@@ -94,6 +100,12 @@ class DocumentsFacade(LoggerClass):
             return await ChunkApi.get_metadata_for_document(session, document_id)
 
     # -------------------- blobs --------------------
+    async def collections_for_blob(self, content_hash: str) -> list[str]:
+        """Collections whose documents reference this blob — the scope gate for the byte route."""
+        async with self._postgres.session() as session:
+            ids = await BlobApi.collections_for_hash(session, content_hash)
+        return [str(collection_id) for collection_id in ids]
+
     async def read_blob(self, content_hash: str) -> tuple[bytes, str] | None:
         """Read a blob's bytes + mime type by content hash (original, PDF, render, crop)."""
         async with self._postgres.session() as session:

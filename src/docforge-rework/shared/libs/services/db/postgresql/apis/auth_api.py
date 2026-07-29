@@ -55,6 +55,34 @@ class AuthApi:
         return result.scalar_one_or_none()
 
     @staticmethod
+    async def get_key_with_user(
+        session: AsyncSession, key_hash: str
+    ) -> tuple[ApiKey, AppUser] | None:
+        """
+        Fetch an API key AND its owning user in one joined query — the authentication hot path.
+
+        Folds what used to be two sequential round-trips (key lookup, then owner lookup) into a
+        single session/statement. The inner join means a key whose owner row is missing yields no
+        result (indistinguishable from an unknown key — both deny with the same opaque 401).
+
+        Args:
+            session (AsyncSession): The unit of work.
+            key_hash (str): The deterministic hash of the presented bearer token.
+
+        Returns:
+            tuple[ApiKey, AppUser] | None: The key and its owner, or None when no key/owner matches.
+        """
+        # 1. One statement joins the key to its account on the FK.
+        result = await session.execute(
+            select(ApiKey, AppUser)
+            .join(AppUser, ApiKey.user_id == AppUser.id)
+            .where(ApiKey.key_hash == key_hash)
+        )
+        row = result.one_or_none()
+        # 2. Unpack the (key, user) pair, or signal "no match" to the caller.
+        return None if row is None else (row[0], row[1])
+
+    @staticmethod
     async def list_keys(session: AsyncSession, user_id: uuid.UUID) -> list[ApiKey]:
         """Return a user's API keys, newest first."""
         result = await session.execute(

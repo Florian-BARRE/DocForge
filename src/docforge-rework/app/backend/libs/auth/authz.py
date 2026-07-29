@@ -7,9 +7,10 @@
 # every check, so the AUTH_ENABLED=false path is entirely unaffected. A stored key whose permissions
 # blob is malformed is treated as granting NOTHING (deny), never a crash.
 #
-# NOTE ON SCOPE: collection scoping reads ONLY the `collection_id` PATH param. Endpoints keyed by
-# document_id / chunk_id, or ones carrying the collection id in the request BODY, are capability-gated
-# here but NOT collection-scoped (they cannot be, without a DB lookup this gate deliberately avoids).
+# NOTE ON SCOPE: `enforce` collection-scopes ONLY the `collection_id` PATH param — the check it can
+# make with zero I/O. Endpoints whose collection lives in the request BODY/QUERY, or is derived after
+# loading a resource (job/document/chunk/blob), close the gap by calling the `assert_collection_scope`
+# / `assert_any_collection_scope` helpers once they know the target collection(s).
 
 # ====== Standard Library Imports ======
 from __future__ import annotations
@@ -101,6 +102,64 @@ class AuthzGuard:
 
         # 5. Authorized.
         return principal
+
+    @classmethod
+    def assert_collection_scope(cls, principal: AuthPrincipal, collection_id: str) -> None:
+        """
+        Enforce that a key may act on ONE collection resolved OUTSIDE the path (body/query/lookup).
+
+        The path-param scope check in ``enforce`` cannot see a collection carried in the request
+        body, a query param, or one derived after loading a resource (a job, a document, a chunk).
+        Handlers call this once they know the target collection id, closing the cross-tenant gap.
+
+        Args:
+            principal (AuthPrincipal): The authenticated caller.
+            collection_id (str): The collection the request actually targets.
+
+        Raises:
+            HTTPException: 403 when a scoped key is not scoped to ``collection_id`` (or its
+                permissions blob is malformed).
+        """
+        # 1. Full access (root / auth-off synthetic) bypasses scoping entirely.
+        if principal.is_full_access:
+            return
+
+        # 2. A scoped key must enumerate (or wildcard) the target collection.
+        permissions = cls.__parse(principal)
+        if not permissions.grants_collection(collection_id):
+            raise HTTPException(
+                status_code=403,
+                detail=f"API key is not scoped to collection {collection_id}.",
+            )
+
+    @classmethod
+    def assert_any_collection_scope(
+        cls, principal: AuthPrincipal, collection_ids: list[str]
+    ) -> None:
+        """
+        Enforce that a key is scoped to AT LEAST ONE of a set of candidate collections.
+
+        Used for content-addressed resources with no single owner (a shared blob): a scoped key may
+        reach it only when it owns one of the collections that reference it. An empty candidate set
+        (an orphan or wholly foreign blob) therefore denies every scoped key — the safe default.
+
+        Args:
+            principal (AuthPrincipal): The authenticated caller.
+            collection_ids (list[str]): The collections through which the resource is reachable.
+
+        Raises:
+            HTTPException: 403 when a scoped key owns none of ``collection_ids`` (or is malformed).
+        """
+        # 1. Full access bypasses scoping entirely.
+        if principal.is_full_access:
+            return
+
+        # 2. A scoped key must own at least one referencing collection.
+        permissions = cls.__parse(principal)
+        if not any(permissions.grants_collection(cid) for cid in collection_ids):
+            raise HTTPException(
+                status_code=403, detail="API key is not scoped to this resource."
+            )
 
 
 def require(capability: Capability) -> Callable[..., Awaitable[AuthPrincipal]]:

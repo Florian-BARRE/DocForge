@@ -154,14 +154,13 @@ async def test_authenticate_unknown_key_is_401(fastapi_app, monkeypatch) -> None
     from config import RUNTIME_CONFIG  # noqa: PLC0415
 
     monkeypatch.setattr(RUNTIME_CONFIG, "AUTH_ENABLED", True)
-    auth = SimpleNamespace(get_key_by_hash=AsyncMock(return_value=None), get_user=AsyncMock())
+    auth = SimpleNamespace(get_key_with_user=AsyncMock(return_value=None))
     monkeypatch.setattr(CONTEXT, "database", SimpleNamespace(auth=auth))
 
     with pytest.raises(HTTPException) as exc:
         await authenticate(_request(headers={"Authorization": "Bearer df_whatever"}))
 
     assert exc.value.status_code == 401
-    auth.get_user.assert_not_called()
 
 
 async def test_authenticate_revoked_key_is_401(fastapi_app, monkeypatch) -> None:
@@ -172,7 +171,7 @@ async def test_authenticate_revoked_key_is_401(fastapi_app, monkeypatch) -> None
     monkeypatch.setattr(RUNTIME_CONFIG, "AUTH_ENABLED", True)
     revoked_key = _key(revoked_at="2026-01-01T00:00:00Z")
     auth = SimpleNamespace(
-        get_key_by_hash=AsyncMock(return_value=revoked_key), get_user=AsyncMock()
+        get_key_with_user=AsyncMock(return_value=(revoked_key, _user(is_active=True)))
     )
     monkeypatch.setattr(CONTEXT, "database", SimpleNamespace(auth=auth))
 
@@ -180,8 +179,6 @@ async def test_authenticate_revoked_key_is_401(fastapi_app, monkeypatch) -> None
         await authenticate(_request(headers={"Authorization": "Bearer df_whatever"}))
 
     assert exc.value.status_code == 401
-    # 1. A revoked key never reaches the owner lookup — one opaque failure, no extra spend.
-    auth.get_user.assert_not_called()
 
 
 async def test_authenticate_inactive_owner_is_401(fastapi_app, monkeypatch) -> None:
@@ -192,8 +189,7 @@ async def test_authenticate_inactive_owner_is_401(fastapi_app, monkeypatch) -> N
     monkeypatch.setattr(RUNTIME_CONFIG, "AUTH_ENABLED", True)
     active_key = _key()
     auth = SimpleNamespace(
-        get_key_by_hash=AsyncMock(return_value=active_key),
-        get_user=AsyncMock(return_value=_user(is_active=False)),
+        get_key_with_user=AsyncMock(return_value=(active_key, _user(is_active=False)))
     )
     monkeypatch.setattr(CONTEXT, "database", SimpleNamespace(auth=auth))
 
@@ -209,10 +205,8 @@ async def test_authenticate_missing_owner_is_401(fastapi_app, monkeypatch) -> No
     from config import RUNTIME_CONFIG  # noqa: PLC0415
 
     monkeypatch.setattr(RUNTIME_CONFIG, "AUTH_ENABLED", True)
-    active_key = _key()
-    auth = SimpleNamespace(
-        get_key_by_hash=AsyncMock(return_value=active_key), get_user=AsyncMock(return_value=None)
-    )
+    # The inner join collapses a missing owner row to None — the same opaque 401 as an unknown key.
+    auth = SimpleNamespace(get_key_with_user=AsyncMock(return_value=None))
     monkeypatch.setattr(CONTEXT, "database", SimpleNamespace(auth=auth))
 
     with pytest.raises(HTTPException) as exc:
@@ -232,8 +226,7 @@ async def test_authenticate_valid_full_access_key_returns_principal(fastapi_app,
     full_access_key = _key(permissions=None)
     owner = _user(is_active=True)
     auth = SimpleNamespace(
-        get_key_by_hash=AsyncMock(return_value=full_access_key),
-        get_user=AsyncMock(return_value=owner),
+        get_key_with_user=AsyncMock(return_value=(full_access_key, owner)),
     )
     monkeypatch.setattr(CONTEXT, "database", SimpleNamespace(auth=auth))
 
@@ -242,7 +235,7 @@ async def test_authenticate_valid_full_access_key_returns_principal(fastapi_app,
     assert principal.key is full_access_key
     assert principal.user is owner
     assert principal.is_full_access is True
-    auth.get_key_by_hash.assert_awaited_once_with(key_hash)
+    auth.get_key_with_user.assert_awaited_once_with(key_hash)
 
 
 async def test_authenticate_valid_scoped_key_is_not_full_access(fastapi_app, monkeypatch) -> None:
@@ -253,8 +246,7 @@ async def test_authenticate_valid_scoped_key_is_not_full_access(fastapi_app, mon
     monkeypatch.setattr(RUNTIME_CONFIG, "AUTH_ENABLED", True)
     scoped_key = _key(permissions={"capabilities": ["read"], "collections": ["*"]})
     auth = SimpleNamespace(
-        get_key_by_hash=AsyncMock(return_value=scoped_key),
-        get_user=AsyncMock(return_value=_user(is_active=True)),
+        get_key_with_user=AsyncMock(return_value=(scoped_key, _user(is_active=True))),
     )
     monkeypatch.setattr(CONTEXT, "database", SimpleNamespace(auth=auth))
 

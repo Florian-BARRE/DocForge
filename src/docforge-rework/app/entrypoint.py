@@ -24,6 +24,10 @@ from shared_libs.services.db.s3 import S3Client
 
 
 def _build_app() -> FastAPI:
+    # 0. Fail a misconfigured boot LOUDLY before wiring anything (e.g. AUTH_ENABLED with no root
+    #    token → unrecoverable lockout; wildcard CORS under auth → loud warning).
+    RUNTIME_CONFIG.validate()
+
     # 1. Inject logger and runtime config into the shared context.
     CONTEXT.logger = loggerplusplus.bind(identifier="BACKEND")
     CONTEXT.RUNTIME_CONFIG = RUNTIME_CONFIG

@@ -4,6 +4,9 @@
 # serves its design surface without Redis; the connection error surfaces exactly where Redis
 # is genuinely required (an upload), never at startup.
 
+# ====== Standard Library Imports ======
+import asyncio
+
 # ====== Third-Party Library Imports ======
 from arq import create_pool
 from arq.connections import ArqRedis, RedisSettings
@@ -21,12 +24,21 @@ class QueueClient(LoggerClass):
         LoggerClass.__init__(self)
         self._settings = RedisSettings.from_dsn(redis_url)
         self._pool: ArqRedis | None = None
+        # Serialises the first-use pool creation so two concurrent requests never race two pools.
+        self._pool_lock = asyncio.Lock()
 
     async def __get_pool(self) -> ArqRedis:
-        """Create the pool on first use (kept for the app's lifetime)."""
-        if self._pool is None:
-            self._pool = await create_pool(self._settings)
-            self.logger.info(f"Queue pool connected")
+        """Create the pool on first use (kept for the app's lifetime), race-free."""
+        # 1. Fast path — the pool already exists, no lock contention.
+        if self._pool is not None:
+            return self._pool
+
+        # 2. Serialise creation; re-check inside the lock (double-checked locking) so only the
+        #    first waiter creates the pool and the rest reuse it.
+        async with self._pool_lock:
+            if self._pool is None:
+                self._pool = await create_pool(self._settings)
+                self.logger.info(f"Queue pool connected")
         return self._pool
 
     async def enqueue_ingest(self, document_id: str, job_id: str) -> None:
