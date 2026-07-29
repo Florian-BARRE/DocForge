@@ -1,7 +1,8 @@
 # ====== Code Summary ======
 # The `api_key` table — a programmatic credential owned by a user. Stored hash-only (the plaintext is
 # shown once); `prefix` identifies it in the UI; `permissions` scopes it per-collection per-capability
-# (NULL = full access); `revoked_at` is a soft revocation marker.
+# (NULL = full access); `revoked_at` is a soft revocation marker; `expires_at` is an optional expiry
+# (NULL = never expires); `last_used_at` records the last successful authentication (NULL = never used).
 
 # ====== Standard Library Imports ======
 import uuid
@@ -30,6 +31,12 @@ class ApiKey(Base, UUIDPrimaryKey, TimestampedMixin):
     prefix: Mapped[str] = mapped_column(String(16), nullable=False)
     permissions: Mapped[Any | None] = mapped_column(JSONB, nullable=True)  # NULL = full access
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )  # NULL = never expires
+    last_used_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )  # last successful authentication (throttled best-effort write); NULL = never used
 
 
 __all__ = ["ApiKey"]

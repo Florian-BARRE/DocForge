@@ -7,6 +7,7 @@ via CONTEXT.database.auth; ``from backend...``/``from config...`` imports are de
 """
 
 import hashlib
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -31,9 +32,24 @@ def _request(
     )
 
 
-def _key(*, permissions=None, revoked_at=None, user_id="user-1") -> SimpleNamespace:
+def _key(
+    *,
+    permissions=None,
+    revoked_at=None,
+    user_id="user-1",
+    key_id="key-1",
+    expires_at=None,
+    last_used_at=None,
+) -> SimpleNamespace:
     """A mutable stand-in for an ApiKey row (only the fields the auth code touches)."""
-    return SimpleNamespace(permissions=permissions, revoked_at=revoked_at, user_id=user_id)
+    return SimpleNamespace(
+        id=key_id,
+        permissions=permissions,
+        revoked_at=revoked_at,
+        user_id=user_id,
+        expires_at=expires_at,
+        last_used_at=last_used_at,
+    )
 
 
 def _user(*, is_active: bool = True) -> SimpleNamespace:
@@ -254,6 +270,176 @@ async def test_authenticate_valid_scoped_key_is_not_full_access(fastapi_app, mon
 
     assert principal.is_full_access is False
     assert principal.key is scoped_key
+
+
+def _frozen_now(monkeypatch, instant) -> None:
+    """Pin ``dependency.datetime.now`` to a fixed instant for deterministic expiry/touch assertions.
+
+    Only ``datetime.now`` is redirected; ``UTC``/``timedelta`` stay real, and every comparison in
+    ``authenticate``/``_is_last_used_stale`` runs against the single ``now`` this returns.
+    """
+    from backend.libs.auth import dependency as dep  # noqa: PLC0415
+
+    class _FrozenDatetime(dep.datetime):
+        @classmethod
+        def now(cls, tz=None):  # noqa: ANN001 — mirrors datetime.now's signature
+            return instant
+
+    monkeypatch.setattr(dep, "datetime", _FrozenDatetime)
+
+
+async def test_authenticate_expired_key_is_401_with_opaque_message(fastapi_app, monkeypatch) -> None:
+    from backend.context import CONTEXT  # noqa: PLC0415
+    from backend.libs.auth.dependency import _INVALID_CREDENTIAL, authenticate  # noqa: PLC0415
+    from config import RUNTIME_CONFIG  # noqa: PLC0415
+
+    monkeypatch.setattr(RUNTIME_CONFIG, "AUTH_ENABLED", True)
+    fixed_now = datetime(2026, 7, 29, 12, 0, 0, tzinfo=UTC)
+    _frozen_now(monkeypatch, fixed_now)
+    expired_key = _key(expires_at=fixed_now - timedelta(seconds=1))
+    auth = SimpleNamespace(
+        get_key_with_user=AsyncMock(return_value=(expired_key, _user(is_active=True)))
+    )
+    monkeypatch.setattr(CONTEXT, "database", SimpleNamespace(auth=auth))
+
+    with pytest.raises(HTTPException) as exc:
+        await authenticate(_request(headers={"Authorization": "Bearer df_whatever"}))
+
+    # Same opaque message as the revoked-key case (test_authenticate_revoked_key_is_401) — an
+    # expired key must be indistinguishable from a revoked one to the caller.
+    assert exc.value.status_code == 401
+    assert exc.value.detail == _INVALID_CREDENTIAL
+
+
+async def test_authenticate_future_expiry_key_authenticates(fastapi_app, monkeypatch) -> None:
+    from backend.context import CONTEXT  # noqa: PLC0415
+    from backend.libs.auth.dependency import authenticate  # noqa: PLC0415
+    from config import RUNTIME_CONFIG  # noqa: PLC0415
+
+    monkeypatch.setattr(RUNTIME_CONFIG, "AUTH_ENABLED", True)
+    fixed_now = datetime(2026, 7, 29, 12, 0, 0, tzinfo=UTC)
+    _frozen_now(monkeypatch, fixed_now)
+    future_key = _key(expires_at=fixed_now + timedelta(days=1))
+    auth = SimpleNamespace(
+        get_key_with_user=AsyncMock(return_value=(future_key, _user(is_active=True)))
+    )
+    monkeypatch.setattr(CONTEXT, "database", SimpleNamespace(auth=auth))
+
+    principal = await authenticate(_request(headers={"Authorization": "Bearer df_whatever"}))
+
+    assert principal.key is future_key
+
+
+async def test_authenticate_null_expiry_key_never_expires(fastapi_app, monkeypatch) -> None:
+    from backend.context import CONTEXT  # noqa: PLC0415
+    from backend.libs.auth.dependency import authenticate  # noqa: PLC0415
+    from config import RUNTIME_CONFIG  # noqa: PLC0415
+
+    monkeypatch.setattr(RUNTIME_CONFIG, "AUTH_ENABLED", True)
+    never_expiring_key = _key(expires_at=None)
+    auth = SimpleNamespace(
+        get_key_with_user=AsyncMock(return_value=(never_expiring_key, _user(is_active=True)))
+    )
+    monkeypatch.setattr(CONTEXT, "database", SimpleNamespace(auth=auth))
+
+    principal = await authenticate(_request(headers={"Authorization": "Bearer df_whatever"}))
+
+    assert principal.key is never_expiring_key
+
+
+async def test_authenticate_touches_last_used_when_never_used(fastapi_app, monkeypatch) -> None:
+    from backend.context import CONTEXT  # noqa: PLC0415
+    from backend.libs.auth.dependency import authenticate  # noqa: PLC0415
+    from config import RUNTIME_CONFIG  # noqa: PLC0415
+
+    monkeypatch.setattr(RUNTIME_CONFIG, "AUTH_ENABLED", True)
+    fixed_now = datetime(2026, 7, 29, 12, 0, 0, tzinfo=UTC)
+    _frozen_now(monkeypatch, fixed_now)
+    key = _key(last_used_at=None, key_id="key-never-used")
+    auth = SimpleNamespace(
+        get_key_with_user=AsyncMock(return_value=(key, _user(is_active=True))),
+        touch_key_last_used=AsyncMock(),
+    )
+    monkeypatch.setattr(CONTEXT, "database", SimpleNamespace(auth=auth))
+
+    await authenticate(_request(headers={"Authorization": "Bearer df_whatever"}))
+
+    auth.touch_key_last_used.assert_awaited_once_with(key.id, fixed_now)
+
+
+async def test_authenticate_touches_last_used_when_stale(fastapi_app, monkeypatch) -> None:
+    from backend.context import CONTEXT  # noqa: PLC0415
+    from backend.libs.auth.dependency import authenticate  # noqa: PLC0415
+    from config import RUNTIME_CONFIG  # noqa: PLC0415
+
+    monkeypatch.setattr(RUNTIME_CONFIG, "AUTH_ENABLED", True)
+    fixed_now = datetime(2026, 7, 29, 12, 0, 0, tzinfo=UTC)
+    _frozen_now(monkeypatch, fixed_now)
+    key = _key(last_used_at=fixed_now - timedelta(seconds=61), key_id="key-stale")
+    auth = SimpleNamespace(
+        get_key_with_user=AsyncMock(return_value=(key, _user(is_active=True))),
+        touch_key_last_used=AsyncMock(),
+    )
+    monkeypatch.setattr(CONTEXT, "database", SimpleNamespace(auth=auth))
+
+    await authenticate(_request(headers={"Authorization": "Bearer df_whatever"}))
+
+    auth.touch_key_last_used.assert_awaited_once_with(key.id, fixed_now)
+
+
+async def test_authenticate_skips_last_used_touch_when_fresh(fastapi_app, monkeypatch) -> None:
+    from backend.context import CONTEXT  # noqa: PLC0415
+    from backend.libs.auth.dependency import authenticate  # noqa: PLC0415
+    from config import RUNTIME_CONFIG  # noqa: PLC0415
+
+    monkeypatch.setattr(RUNTIME_CONFIG, "AUTH_ENABLED", True)
+    fixed_now = datetime(2026, 7, 29, 12, 0, 0, tzinfo=UTC)
+    _frozen_now(monkeypatch, fixed_now)
+    key = _key(last_used_at=fixed_now - timedelta(seconds=30), key_id="key-fresh")
+    auth = SimpleNamespace(
+        get_key_with_user=AsyncMock(return_value=(key, _user(is_active=True))),
+        touch_key_last_used=AsyncMock(),
+    )
+    monkeypatch.setattr(CONTEXT, "database", SimpleNamespace(auth=auth))
+
+    await authenticate(_request(headers={"Authorization": "Bearer df_whatever"}))
+
+    auth.touch_key_last_used.assert_not_called()
+
+
+async def test_authenticate_swallows_last_used_touch_failure(fastapi_app, monkeypatch) -> None:
+    from backend.context import CONTEXT  # noqa: PLC0415
+    from backend.libs.auth.dependency import authenticate  # noqa: PLC0415
+    from config import RUNTIME_CONFIG  # noqa: PLC0415
+
+    monkeypatch.setattr(RUNTIME_CONFIG, "AUTH_ENABLED", True)
+    key = _key(last_used_at=None)
+    auth = SimpleNamespace(
+        get_key_with_user=AsyncMock(return_value=(key, _user(is_active=True))),
+        touch_key_last_used=AsyncMock(side_effect=RuntimeError("db unreachable")),
+    )
+    monkeypatch.setattr(CONTEXT, "database", SimpleNamespace(auth=auth))
+
+    # A metrics-write failure must never turn a valid request into a 500 — the principal still comes back.
+    principal = await authenticate(_request(headers={"Authorization": "Bearer df_whatever"}))
+
+    assert principal.key is key
+    auth.touch_key_last_used.assert_awaited_once()
+
+
+async def test_authenticate_auth_off_never_touches_last_used(fastapi_app, monkeypatch) -> None:
+    from backend.context import CONTEXT  # noqa: PLC0415
+    from backend.libs.auth.dependency import authenticate  # noqa: PLC0415
+    from config import RUNTIME_CONFIG  # noqa: PLC0415
+
+    monkeypatch.setattr(RUNTIME_CONFIG, "AUTH_ENABLED", False)
+    auth = SimpleNamespace(get_key_with_user=AsyncMock(), touch_key_last_used=AsyncMock())
+    monkeypatch.setattr(CONTEXT, "database", SimpleNamespace(auth=auth))
+
+    await authenticate(_request())
+
+    auth.get_key_with_user.assert_not_called()
+    auth.touch_key_last_used.assert_not_called()
 
 
 # ── AuthzGuard.enforce / require ─────────────────────────────────────────────────────────────

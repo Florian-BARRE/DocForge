@@ -44,6 +44,11 @@ class AuthFacade(LoggerClass):
         async with self._postgres.session() as session:
             return await AuthApi.create_key(session, key)
 
+    async def get_key(self, key_id: uuid.UUID) -> ApiKey | None:
+        """Fetch an API key by id — the rotate/ownership-check path."""
+        async with self._postgres.session() as session:
+            return await AuthApi.get_key(session, key_id)
+
     async def get_key_by_hash(self, key_hash: str) -> ApiKey | None:
         """Fetch an API key by its hash — the authentication hot path."""
         async with self._postgres.session() as session:
@@ -63,6 +68,11 @@ class AuthFacade(LoggerClass):
         """Soft-revoke an API key."""
         async with self._postgres.session() as session:
             await AuthApi.revoke_key(session, key_id, at)
+
+    async def touch_key_last_used(self, key_id: uuid.UUID, at: datetime) -> None:
+        """Record a key's last successful authentication (own session, targeted UPDATE)."""
+        async with self._postgres.session() as session:
+            await AuthApi.touch_key_last_used(session, key_id, at)
 
 
 __all__ = ["AuthFacade"]

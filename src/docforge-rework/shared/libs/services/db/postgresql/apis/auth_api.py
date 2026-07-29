@@ -8,7 +8,7 @@ import uuid
 from datetime import datetime
 
 # ====== Third-Party Library Imports ======
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # ====== Internal Project Imports ======
@@ -47,6 +47,11 @@ class AuthApi:
         session.add(key)
         await session.flush()
         return key
+
+    @staticmethod
+    async def get_key(session: AsyncSession, key_id: uuid.UUID) -> ApiKey | None:
+        """Fetch an API key by id, or None — the rotate/ownership-check path."""
+        return await session.get(ApiKey, key_id)
 
     @staticmethod
     async def get_key_by_hash(session: AsyncSession, key_hash: str) -> ApiKey | None:
@@ -96,6 +101,26 @@ class AuthApi:
         key = await session.get(ApiKey, key_id)
         if key is not None:
             key.revoked_at = at
+
+    @staticmethod
+    async def touch_key_last_used(
+        session: AsyncSession, key_id: uuid.UUID, at: datetime
+    ) -> None:
+        """
+        Stamp an API key's last_used_at with a targeted UPDATE (cheapest on the hot path).
+
+        Uses a scoped UPDATE statement rather than loading and merging the row: the caller already
+        holds the read row, and this metrics write must be as light as possible.
+
+        Args:
+            session (AsyncSession): The unit of work.
+            key_id (uuid.UUID): The key that just authenticated.
+            at (datetime): The authentication instant to record.
+        """
+        # 1. One scoped UPDATE — no row load, no ORM merge.
+        await session.execute(
+            update(ApiKey).where(ApiKey.id == key_id).values(last_used_at=at)
+        )
 
 
 __all__ = ["AuthApi"]
