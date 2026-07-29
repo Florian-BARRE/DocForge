@@ -40,3 +40,5 @@ Alembic + SQLAlchemy 2 async (asyncpg). The **app** runs migrations; the worker 
 
 - [Migration chain conventions](migration-chain-conventions.md) — how the DocForge Alembic chain is structured: numbering, revision-id style, docstring/data-safety conventions to match.
 - [Enable/disable columns](enable-disable-columns.md) — document.enabled, chunk.role, chunk.enabled_override semantics + effective-state formula (the in-container env.py path/psycopg2 bugs are now FIXED — migrations run in-container via async env.py, see Layout above).
+- [Migration chain layout](migration-chain-layout.md) — chain lives in shared/migrations, run cmd, current linear head, auth tables seeded in baseline
+- [api_key columns](api-key-columns.md) — NULL-means-X semantics of revoked_at/expires_at/last_used_at/permissions
