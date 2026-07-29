@@ -42,7 +42,11 @@ Le nom `docforge-rework` reste un artefact historique ; le renommer en `docforge
    `base_url`/`api_key` faux construit proprement et échoue au **run** (un `preflight()` par node reste à faire).
 5. **Config `extra="forbid"`** — un typo dans le blob fait **échouer le build**, jamais ignoré silencieusement.
 6. **Vecteur maigre** — seuls les champs filtrables dans Qdrant ; le riche est en Postgres.
-7. **`DeviceManager` centralise GPU/CPU** — aucune logique device dans les nodes.
+7. **Device = concern de déploiement, pas de runtime** — aucune logique device dans les nodes (invariant
+   tenu). Les modèles GPU vivent dans `bge_server` (self-managed, son image/config) ; docling côté worker
+   passe sur GPU via l'override `docker-compose.rework.gpu.yml`. Il n'y a **volontairement pas** de
+   `DeviceManager` runtime (aucun consommateur : les nodes worker n'ont pas de knob device). À réintroduire
+   seulement si un node worker à accélération GPU locale apparaît.
 </important>
 
 ---
