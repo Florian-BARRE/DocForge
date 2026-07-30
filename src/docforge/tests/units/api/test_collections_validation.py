@@ -10,6 +10,35 @@ import pytest
 from fastapi import HTTPException
 
 
+def test_create_collection_unknown_top_level_key_is_422(client) -> None:
+    """extra="forbid": a typo'd request key must fail, never be silently dropped."""
+    response = client.post(
+        "/api/v1/collections",
+        json={
+            "name": "c1",
+            "supported_formats": ["pdf"],
+            "max_file_size_bytes": 1_000_000,
+            "piepline": {},  # typo of "pipeline"
+        },
+    )
+    assert response.status_code == 422, response.text
+
+
+def test_create_collection_unknown_field_spec_key_is_422(client) -> None:
+    """A typo'd metadata-field flag (e.g. 'filterabl') must fail — a swallowed flag would build
+    the wrong vector space silently."""
+    response = client.post(
+        "/api/v1/collections",
+        json={
+            "name": "c1",
+            "supported_formats": ["pdf"],
+            "max_file_size_bytes": 1_000_000,
+            "fields": [{"field_name": "jurisdiction", "field_type": "string", "filterabl": True}],
+        },
+    )
+    assert response.status_code == 422, response.text
+
+
 def test_create_collection_missing_required_name_is_422(client) -> None:
     response = client.post(
         "/api/v1/collections",

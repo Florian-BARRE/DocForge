@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import Any
 
 # ====== Third-Party Library Imports ======
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 # ====== Local Project Imports ======
 from ...libs.auth import KeyPermissions
@@ -15,6 +15,8 @@ from ...libs.auth import KeyPermissions
 
 class CreateKeyRequest(BaseModel):
     """Body of a create-key request."""
+
+    model_config = ConfigDict(extra="forbid")
 
     name: str = Field(min_length=1, description="Human-readable label for the key.")
     permissions: KeyPermissions | None = Field(
@@ -42,6 +44,8 @@ class RotateKeyRequest(BaseModel):
         expires_at (datetime | None): New expiry; absent = keep the source expiry, null = never
             expires.
     """
+
+    model_config = ConfigDict(extra="forbid")
 
     name: str | None = Field(
         default=None, min_length=1, description="New label; absent = keep the source name."

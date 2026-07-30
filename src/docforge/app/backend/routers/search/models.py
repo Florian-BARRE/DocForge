@@ -7,7 +7,7 @@
 from typing import Any
 
 # ====== Third-Party Library Imports ======
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class SearchTargetModel(BaseModel):
@@ -19,6 +19,8 @@ class SearchTargetModel(BaseModel):
         semantic (bool): Query the field's dense vector (semantic similarity).
         lexical (bool): Query the field's sparse BM25 vector (lexical match).
     """
+
+    model_config = ConfigDict(extra="forbid")
 
     field: str = Field(
         default="content",
@@ -50,6 +52,8 @@ class SearchRequest(BaseModel):
         rescore_pool_size (int | None): Size of the fused candidate pool the ColBERT stage
             re-scores. None → the retrieve node's own config / the store default governs.
     """
+
+    model_config = ConfigDict(extra="forbid")
 
     query: str = Field(min_length=1, description="The natural-language query to search for.")
     limit: int = Field(default=10, ge=1, le=100, description="Number of fused results.")

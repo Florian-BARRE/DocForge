@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import Any
 
 # ====== Third-Party Library Imports ======
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 # ====== Internal Project Imports ======
 from shared_libs.public_models import FieldOrigin, FieldScope, FieldType
@@ -16,6 +16,10 @@ from shared_libs.public_models import FieldOrigin, FieldScope, FieldType
 
 class FieldSpecModel(BaseModel):
     """One metadata field of the collection's contract (declared OR generated)."""
+
+    # A typo in a field flag (filterable/lexical/semantic) must FAIL, never be silently dropped —
+    # a swallowed flag would build the wrong vector space. Mirrors the pipeline's extra="forbid".
+    model_config = ConfigDict(extra="forbid")
 
     field_name: str = Field(description="Unique field name within the collection.")
     field_type: FieldType = Field(description="Value type — drives validation and storage.")
@@ -53,6 +57,8 @@ class CollectionModel(BaseModel):
 class CreateCollectionRequest(BaseModel):
     """Create a collection from A to Z — contract, schema and (optionally) its pipeline."""
 
+    model_config = ConfigDict(extra="forbid")
+
     name: str = Field(description="Unique human name.")
     supported_formats: list[str] = Field(description="Accepted upload extensions (e.g. pdf).")
     max_file_size_bytes: int = Field(description="Upload size ceiling, bytes.")
@@ -73,6 +79,8 @@ class UpdateCollectionRequest(BaseModel):
     Schema updates are applied by DIFF (existing values survive untouched fields); a change
     to the SEARCHABLE surface flips needs_reindex. Config changes append immutable versions.
     """
+
+    model_config = ConfigDict(extra="forbid")
 
     name: str | None = Field(default=None, description="New unique name.")
     supported_formats: list[str] | None = Field(
