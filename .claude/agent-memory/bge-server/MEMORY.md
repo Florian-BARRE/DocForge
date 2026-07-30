@@ -8,4 +8,6 @@ device resolver), `backend/` (routers, context, lifespan). Device policy configu
 
 - [model-host-contract](model-host-contract.md) — endpoints, env vars, why it replaced off-the-shelf TEI, and how docforge consumes it
 
-- [FlagEmbedding M3 internals](flagembedding-m3-internals.md) — pooling=CLS (not mean), one shared forward pass derives dense/sparse/colbert, no public raw-hidden-state API.
+- [FlagEmbedding M3 internals](flagembedding-m3-internals.md) — pooling=CLS (not mean), one shared forward pass derives dense/sparse/colbert, no public raw-hidden-state API, `revision=` is a dead kwarg.
+
+- [Perf hardening Step 2](perf-hardening-step2.md) — cgroup-aware torch threads (CpuBudgetResolver), lifespan warmup, gzip responses; model-revision pin blocked (dead kwarg).

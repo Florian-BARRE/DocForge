@@ -35,12 +35,19 @@ ENV UV_PROJECT_ENVIRONMENT=/opt/venv \
 # Re-resolved only when pyproject.toml or uv.lock changes.
 COPY mcp/pyproject.toml mcp/uv.lock /workspace/mcp/
 
+# docforge-sdk is declared as a relative path source (../docforge_sdk from mcp/pyproject.toml),
+# so it must exist at /workspace/docforge_sdk — a sibling of /workspace/mcp — before `uv sync` runs.
+COPY docforge_sdk /workspace/docforge_sdk
+
 # Install locked production dependencies.
 # --frozen: fail if uv.lock is out of sync with pyproject.toml (reproducibility guard).
 # --no-dev: skip test/lint/type-check tools.
+# --no-editable: build docforge-sdk into a real wheel and install it into the venv instead of an
+# editable .pth link — the path source is only marked editable=true for local dev ergonomics, and
+# an editable install would point at /workspace/docforge_sdk, a path absent from the runtime stage.
 # cache mount: reuse the uv download cache across local rebuilds.
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev --project /workspace/mcp
+    uv sync --frozen --no-dev --no-editable --project /workspace/mcp
 
 ###############################################################################
 # Stage 2: Runtime image (minimal Python 3.12 slim)

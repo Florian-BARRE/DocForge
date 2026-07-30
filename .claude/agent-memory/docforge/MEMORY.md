@@ -49,3 +49,4 @@ entrypoints, config split, the app+worker Dockerfiles, structure.
 ## Assembly facts
 
 - [Worker torch cpu/gpu variants](worker_torch_variants.md) — worker image cpu/gpu torch wheel selection: how the deps contract steers transitive docling torch to the right wheel index; validate gpu via `uv export`, not `--dry-run`.
+- [docforge-sdk package](docforge-sdk-package.md) — standalone installable client lib (package=true, httpx+pydantic only, zero docforge-rework dep), MCP consumes it later

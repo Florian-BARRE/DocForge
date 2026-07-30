@@ -56,3 +56,19 @@ Full one-time research contract (late chunking + colbert endpoint design options
 orchestrator on 2026-07-13 for synthesis with the `pipeline`/`backend` agents — not re-derived here;
 see conversation history / PIPELINE.md once a decision lands. If Feature 1 (late chunking) or Feature 2
 (colbert endpoint) get implemented, update this memory with the actual chosen contract and endpoint shape.
+
+**`revision=` is a DEAD kwarg on `BGEM3FlagModel`/`FlagReranker` — do not pass it.** Verified
+2026-07-29 by reading the installed `.venv` source (FlagEmbedding 1.4.0, transformers 4.57.6). Both
+constructors accept `**kwargs`, but `abc/inference/AbsEmbedder.py` / `AbsReranker.py` only do
+`for k in kwargs: setattr(self, k, kwargs[k])` — they NEVER forward kwargs into the actual
+`AutoTokenizer.from_pretrained(...)` / `AutoModel.from_pretrained(...)` / `AutoModelForSequenceClassification
+.from_pretrained(...)` calls in `inference/embedder/encoder_only/{base,m3}.py` and
+`inference/reranker/encoder_only/base.py` — those calls only pass `model_name_or_path`,
+`trust_remote_code`, and `cache_dir` explicitly. So `BGEM3FlagModel(..., revision="<sha>")` would silently
+set an unused `self.revision` attribute and have **zero effect** on which HF revision gets downloaded.
+**Consequence**: model-revision pinning (supply-chain control against a `BAAI/bge-m3` / `BAAI/bge-reranker-
+v2-m3` main-branch mutation) is NOT achievable via a `revision=` config knob threaded through
+`libs/bge_models/service.py`. If pinning is still wanted, the only viable path is pre-populating the
+HF_HOME cache via `huggingface_hub.snapshot_download(repo_id, revision=<sha>)` BEFORE `BGEM3FlagModel(...)`
+construction (a separate download step, not a passthrough kwarg) — not implemented as of 2026-07-29;
+flagged to the orchestrator as a STOP-and-report per the Step 2 perf/supply-chain task brief.
