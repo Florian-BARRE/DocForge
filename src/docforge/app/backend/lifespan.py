@@ -16,9 +16,10 @@ from pyfiglet import Figlet
 # ====== Local Project Imports ======
 from .context import CONTEXT
 from .libs.auth import AuthBootstrap
+from .libs.schema import SchemaMigrator
 
 # Total number of startup steps — update when adding/removing steps.
-TOTAL_STEPS = 4
+TOTAL_STEPS = 5
 
 
 def lifespan() -> Any:
@@ -58,14 +59,22 @@ def lifespan() -> Any:
                 f"served from the node registry"
             )
 
-            # 4. Provision the blob bucket on a fresh volume (idempotent). Guarded: the design
+            # 4. Bring the schema to Alembic head BEFORE anything reads/writes tables — guarantees
+            #    the migrate → provision ordering inside the process, so a fresh volume can never
+            #    boot into a half-provisioned state. Guarded: only when a database is wired.
+            log_step(3, "Database schema")
+            if hasattr(CONTEXT, "database"):
+                await SchemaMigrator.upgrade_to_head()
+
+            # 5. Provision the blob bucket on a fresh volume (idempotent). Guarded: the design
             #    surface can boot without stores wired, so only run when a database is present.
-            log_step(3, "Object store")
+            log_step(4, "Object store")
             if hasattr(CONTEXT, "database"):
                 await CONTEXT.database.ensure_object_store()
 
-            # 5. Provision the root credential when auth is on (idempotent, best-effort).
-            log_step(4, "Authentication bootstrap")
+            # 6. Provision the root credential when auth is on (idempotent, best-effort). Runs after
+            #    the schema step, so the tables it needs are guaranteed present.
+            log_step(5, "Authentication bootstrap")
             await AuthBootstrap.ensure_root_credential()
 
             # 6. Yield — the app is now serving.
