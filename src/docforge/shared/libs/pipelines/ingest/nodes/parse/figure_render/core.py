@@ -80,12 +80,18 @@ class FigureRenderNode(ActionNode):
         config: FigureRenderConfig = self.config
         document = pdfium.PdfDocument(pdf_bytes)
         try:
-            # 2. Rasterize every page once; keep the PIL images for cropping.
+            # 2. Group figures by their page so each page's crops happen while that page's image is
+            #    alive, then the image is dropped before the next — peak PIL RAM is O(1 page), not
+            #    O(all pages) (a 100-page A4 doc at 144 dpi is ~600 MB if all held at once).
+            figs_by_page: dict[int, list] = {}
+            for block in ir.figure_blocks:
+                figs_by_page.setdefault(block.provenance.page, []).append(block)
+
+            # 3. Stream page by page: rasterize → (optionally) emit its render → crop its figures →
+            #    let the PIL image fall out of scope so the GC can reclaim it before the next page.
             renders: list[PageRender] = []
-            images: dict[int, object] = {}
             for index in range(len(document)):
                 image = document[index].render(scale=config.scale).to_pil()
-                images[index] = image
                 if config.render_pages:
                     buffer = io.BytesIO()
                     image.save(buffer, format="PNG")
@@ -97,27 +103,22 @@ class FigureRenderNode(ActionNode):
                             height=image.height,
                         )
                     )
-
-            # 3. Embed each figure's crop into its block (the IR leaves parse complete).
-            for block in ir.figure_blocks:
-                image = images.get(block.provenance.page)
-                if image is None:
-                    continue
-                x0, y0, x1, y1 = block.provenance.bbox
-                box = (
-                    int(x0 * image.width),
-                    int(y0 * image.height),
-                    int(x1 * image.width),
-                    int(y1 * image.height),
-                )
-                # A degenerate bbox (zero area) has nothing to crop.
-                if box[2] <= box[0] or box[3] <= box[1]:
-                    continue
-                buffer = io.BytesIO()
-                image.crop(box).save(buffer, format="PNG")
-                if block.figure is None:
-                    block.figure = FigureEnrichment()
-                block.figure.crop = buffer.getvalue()
+                for block in figs_by_page.get(index, ()):
+                    x0, y0, x1, y1 = block.provenance.bbox
+                    box = (
+                        int(x0 * image.width),
+                        int(y0 * image.height),
+                        int(x1 * image.width),
+                        int(y1 * image.height),
+                    )
+                    # A degenerate bbox (zero area) has nothing to crop.
+                    if box[2] <= box[0] or box[3] <= box[1]:
+                        continue
+                    buffer = io.BytesIO()
+                    image.crop(box).save(buffer, format="PNG")
+                    if block.figure is None:
+                        block.figure = FigureEnrichment()
+                    block.figure.crop = buffer.getvalue()
             return PageRenders(pages=renders)
         finally:
             document.close()

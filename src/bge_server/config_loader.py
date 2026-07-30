@@ -92,8 +92,12 @@ class BgeServerConfig(EnvConfigLoader):
     # If BGE_FP16=true but BGE_DEVICE resolves to "cpu", fp16 is forced off with a warning —
     # fp16 on CPU is not beneficial and may cause errors depending on the FlagEmbedding version.
     BGE_FP16: bool = env("BGE_FP16", cast=bool, default="false")
-    # Maximum token length passed to FlagEmbedding's encode call.
-    BGE_M3_MAX_LENGTH: int = env("BGE_M3_MAX_LENGTH", cast=int, default="8192")
+    # Maximum token length passed to FlagEmbedding's encode call. Default 2048 (was 8192): a single
+    # oversized input at 8192 forces a full 8192-token transformer forward pass — a large transient
+    # CPU + activation-RAM spike (a real OOM risk under the memory cap) and wasted work, since
+    # contextualized chunks are far shorter. 2048 stays well above real chunk lengths; raise it only
+    # if inputs are genuinely longer (embedding tokens beyond the chunk length yields nothing).
+    BGE_M3_MAX_LENGTH: int = env("BGE_M3_MAX_LENGTH", cast=int, default="2048")
 
     # ───── Dynamic batching ─────
     # Maximum number of UNITS (texts for embed/sparse, query+text pairs for rerank) to include
