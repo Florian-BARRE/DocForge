@@ -29,20 +29,39 @@ from shared_libs.public_models import (
 )
 
 CONTRACT = CollectionContract(
-    collection_id=uuid.uuid4(), name="c", supported_formats=["pdf"], max_file_size_bytes=1,
+    collection_id=uuid.uuid4(),
+    name="c",
+    supported_formats=["pdf"],
+    max_file_size_bytes=1,
     fields=[
-        MetadataFieldSpec(field_name="keywords", field_type=FieldType.KEYWORD_LIST,
-                          origin=FieldOrigin.GENERATED, scope=FieldScope.CHUNK, semantic=True),
-        MetadataFieldSpec(field_name="relevance", field_type=FieldType.FLOAT,
-                          origin=FieldOrigin.GENERATED, scope=FieldScope.CHUNK),  # not semantic
-        MetadataFieldSpec(field_name="summary", field_type=FieldType.STRING,
-                          origin=FieldOrigin.GENERATED, scope=FieldScope.DOCUMENT, semantic=True),
+        MetadataFieldSpec(
+            field_name="keywords",
+            field_type=FieldType.KEYWORD_LIST,
+            origin=FieldOrigin.GENERATED,
+            scope=FieldScope.CHUNK,
+            semantic=True,
+        ),
+        MetadataFieldSpec(
+            field_name="relevance",
+            field_type=FieldType.FLOAT,
+            origin=FieldOrigin.GENERATED,
+            scope=FieldScope.CHUNK,
+        ),  # not semantic
+        MetadataFieldSpec(
+            field_name="summary",
+            field_type=FieldType.STRING,
+            origin=FieldOrigin.GENERATED,
+            scope=FieldScope.DOCUMENT,
+            semantic=True,
+        ),
     ],
 )
 
 
 def _chunk(n: int, text: str, context: str = "", meta: dict | None = None) -> Chunk:
-    return Chunk(chunk_id=f"d#c{n}", ordinal=n, text=text, context=context, generated_meta=meta or {})
+    return Chunk(
+        chunk_id=f"d#c{n}", ordinal=n, text=text, context=context, generated_meta=meta or {}
+    )
 
 
 CHUNKS = [
@@ -111,7 +130,9 @@ class FakeDenseOnly(BaseEmbedderNode):
 
 
 async def test_batching_enriched_text_linkage_and_sparse_present() -> None:
-    node = FakeEmbed(id="e", config=BaseEmbedConfig(model="fake-m3", batch_size=2, embed_semantic_fields=True))
+    node = FakeEmbed(
+        id="e", config=BaseEmbedConfig(model="fake-m3", batch_size=2, embed_semantic_fields=True)
+    )
     out = await node.run(EmbedConsumes(chunks=CHUNKS, contract=CONTRACT))
     emb = out.embeddings
     assert emb.model == "fake-m3"
@@ -125,7 +146,9 @@ async def test_batching_enriched_text_linkage_and_sparse_present() -> None:
 
 
 async def test_semantic_chunk_fields_get_named_vectors_only_where_present() -> None:
-    node = FakeEmbed(id="e", config=BaseEmbedConfig(model="fake-m3", batch_size=2, embed_semantic_fields=True))
+    node = FakeEmbed(
+        id="e", config=BaseEmbedConfig(model="fake-m3", batch_size=2, embed_semantic_fields=True)
+    )
     out = await node.run(EmbedConsumes(chunks=CHUNKS, contract=CONTRACT))
     emb = out.embeddings
     assert set(emb.items[0].fields) == {"keywords"}
@@ -144,7 +167,9 @@ async def test_disabled_by_role_chunks_are_not_embedded_but_the_rest_are() -> No
     # them embed normally — the vectors are chunk_id-linked, so the disabled ones are simply absent.
     mixed = [
         _chunk(0, "Body one."),
-        Chunk(chunk_id="d#c1", ordinal=1, text="Confidential — page 1", role=ChunkRole.HEADER_FOOTER),
+        Chunk(
+            chunk_id="d#c1", ordinal=1, text="Confidential — page 1", role=ChunkRole.HEADER_FOOTER
+        ),
         _chunk(2, "Body two."),
         Chunk(chunk_id="d#c3", ordinal=3, text="1. Intro .... 1", role=ChunkRole.TOC),
     ]
@@ -217,22 +242,43 @@ def test_family_registration_and_describe_expose_the_ui_contract() -> None:
     assert {"bge_server", "openai_compatible"} <= set(NodeRegistry.kinds("embed"))
     assert EmbedBgeServerNode.describe().unique_in_graph is True
     described = EmbedBgeServerNode.describe()
-    for key in ("base_url", "model", "batch_size", "embed_sparse", "embed_semantic_fields", "embed_colbert"):
+    for key in (
+        "base_url",
+        "model",
+        "batch_size",
+        "embed_sparse",
+        "embed_semantic_fields",
+        "embed_colbert",
+    ):
         assert key in described.config_schema["properties"], key
 
 
 async def test_blob_run_keeps_live_vectors_real_but_the_trace_strips_them() -> None:
     blob = {
-        "node_type": "group", "id": "embed_stage",
-        "nodes": [{"node_type": "action", "id": "embed", "family": "embed", "kind": "test_embed_fake_embed",
-                   "config": {"model": "fake-m3", "batch_size": 2}}],
-        "bindings": {"embed": {"chunks": {"source": "run", "field_name": "chunks"},
-                               "contract": {"source": "run", "field_name": "contract"}}},
+        "node_type": "group",
+        "id": "embed_stage",
+        "nodes": [
+            {
+                "node_type": "action",
+                "id": "embed",
+                "family": "embed",
+                "kind": "test_embed_fake_embed",
+                "config": {"model": "fake-m3", "batch_size": 2},
+            }
+        ],
+        "bindings": {
+            "embed": {
+                "chunks": {"source": "run", "field_name": "chunks"},
+                "contract": {"source": "run", "field_name": "contract"},
+            }
+        },
     }
     group = PipelineBuilder().build(blob)
     assert GraphValidator().validate(group) == []
     output, record = await FlowEngine().execute(group, {"chunks": CHUNKS, "contract": CONTRACT})
-    assert output.embeddings.items[0].dense[0] == float(len(CHUNKS[0].enriched_text))  # LIVE data real
+    assert output.embeddings.items[0].dense[0] == float(
+        len(CHUNKS[0].enriched_text)
+    )  # LIVE data real
     dumped = record.children[0].output["embeddings"]["items"][0]
     assert dumped["dense"] == "<100 numbers>"  # the TRACE carries a placeholder
 

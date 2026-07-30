@@ -139,9 +139,8 @@ class SearchRunner(LoggerClass):
 
         # 4. A failed run surfaces the engine's error, verbatim.
         if output is None:
-            reason = (
-                self.__failed_node_reason(record)
-                or (record.error.message if record.error else "see the execution record")
+            reason = self.__failed_node_reason(record) or (
+                record.error.message if record.error else "see the execution record"
             )
             raise SearchRunError(f"search run failed: {reason}")
 

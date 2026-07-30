@@ -28,10 +28,7 @@ from .routers import (
 
 
 def create_app(
-        app_name: str,
-        debug: bool,
-        version: str = "0.1.0",
-        description: str = ""
+    app_name: str, debug: bool, version: str = "0.1.0", description: str = ""
 ) -> FastAPI:
     app = FastAPI(
         title=app_name,

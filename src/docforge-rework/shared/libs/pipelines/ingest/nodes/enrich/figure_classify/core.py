@@ -91,10 +91,14 @@ class FigureClassifyNode(ActionNode):
         answer = await model.ainvoke(
             [
                 SystemMessage(content=prompt),
-                HumanMessage(content=[{
-                    "type": "image_url",
-                    "image_url": {"url": f"data:image/png;base64,{encoded}"},
-                }]),
+                HumanMessage(
+                    content=[
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:image/png;base64,{encoded}"},
+                        }
+                    ]
+                ),
             ]
         )
         return str(answer.content)
@@ -121,7 +125,9 @@ class FigureClassifyNode(ActionNode):
             answer = await self._ask_model(data.figure.image, _CLASSIFY_PROMPT)
             parsed = FigureClassifyHelpers.parse_kind(answer)
             if parsed is None:
-                self.logger.warning(f"Unusable classification for '{data.figure.block_id}': {answer!r}")
+                self.logger.warning(
+                    f"Unusable classification for '{data.figure.block_id}': {answer!r}"
+                )
             kind = parsed or FigureKind.PHOTO.value
             score = 1.0 if parsed is not None else _FALLBACK_SCORE
 

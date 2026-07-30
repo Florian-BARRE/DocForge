@@ -22,7 +22,9 @@ class Collection(Base, UUIDPrimaryKey, TimestampedMixin):
     supported_formats: Mapped[list[str]] = mapped_column(ARRAY(String), nullable=False)
     max_file_size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
     needs_reindex: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    pipeline: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)  # ingestion graph blob
+    pipeline: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, default=dict
+    )  # ingestion graph blob
     # A SEARCH GRAPH BLOB (a serialized search-pipeline topology); {} = use the stock default.
     search: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     # created_at + updated_at come from TimestampedMixin

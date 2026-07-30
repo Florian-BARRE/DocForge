@@ -41,9 +41,7 @@ class SearchBlobValidator:
     logger = loggerplusplus.bind(identifier="SearchBlobValidator")
 
     def __new__(cls, *args: object, **kwargs: object) -> None:
-        raise TypeError(
-            "SearchBlobValidator is a static-only class and cannot be instantiated."
-        )
+        raise TypeError("SearchBlobValidator is a static-only class and cannot be instantiated.")
 
     @classmethod
     def __produces_search_result(cls, node: AbstractNode) -> bool:
@@ -90,9 +88,7 @@ class SearchBlobValidator:
         exit_ids = set(GraphTopology.exits(child_ids, group.transitions))
         # 2. At least one exit must deliver a SearchResult to match the runner's output contract.
         return any(
-            cls.__produces_search_result(child)
-            for child in group.children
-            if child.id in exit_ids
+            cls.__produces_search_result(child) for child in group.children if child.id in exit_ids
         )
 
     @classmethod

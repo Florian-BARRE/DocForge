@@ -50,9 +50,7 @@ class QdrantIndexApi:
         return floats * QdrantIndexApi.__BYTES_PER_FLOAT + 512
 
     @staticmethod
-    async def upsert(
-        client: AsyncQdrantClient, name: str, points: Sequence[QdrantPoint]
-    ) -> None:
+    async def upsert(client: AsyncQdrantClient, name: str, points: Sequence[QdrantPoint]) -> None:
         """Upsert points (id = chunk id) — the same id overwrites, so re-ingest is idempotent."""
         if not points:
             return

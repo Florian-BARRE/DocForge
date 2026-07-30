@@ -144,9 +144,7 @@ class EnablementFacade(LoggerClass):
             elif effective:
                 reindex_required = True
             outcomes.append(
-                ChunkToggle(
-                    chunk_id=chunk.id, enabled=effective, reindex_required=reindex_required
-                )
+                ChunkToggle(chunk_id=chunk.id, enabled=effective, reindex_required=reindex_required)
             )
         return outcomes, payloads_by_collection
 

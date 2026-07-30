@@ -62,15 +62,28 @@ BLOB = {
     "node_type": "group",
     "id": "mini_ingest",
     "nodes": [
-        {"node_type": "action", "id": "produce", "family": "deliver",
-         "kind": "test_worker_runner_produce_all", "config": {}},
-        {"node_type": "action", "id": "bundle", "family": "deliver", "kind": "bundle", "config": {}},
+        {
+            "node_type": "action",
+            "id": "produce",
+            "family": "deliver",
+            "kind": "test_worker_runner_produce_all",
+            "config": {},
+        },
+        {
+            "node_type": "action",
+            "id": "bundle",
+            "family": "deliver",
+            "kind": "bundle",
+            "config": {},
+        },
     ],
     "transitions": [{"from_node_id": "produce", "to_node_id": "bundle"}],
     "bindings": {
         "produce": {"source": {"source": "run", "field_name": "source"}},
-        "bundle": {slot: {"source": "node", "node_id": "produce", "field_name": slot}
-                   for slot in ("ingest", "ir", "pages", "chunks", "document_meta", "embeddings")},
+        "bundle": {
+            slot: {"source": "node", "node_id": "produce", "field_name": slot}
+            for slot in ("ingest", "ir", "pages", "chunks", "document_meta", "embeddings")
+        },
     },
 }
 
@@ -124,8 +137,15 @@ async def test_output_contract_rejects_a_pipeline_not_ending_on_bundle(runner, c
     no_bundle = {
         "node_type": "group",
         "id": "no_delivery",
-        "nodes": [{"node_type": "action", "id": "produce", "family": "deliver",
-                   "kind": "test_worker_runner_produce_all", "config": {}}],
+        "nodes": [
+            {
+                "node_type": "action",
+                "id": "produce",
+                "family": "deliver",
+                "kind": "test_worker_runner_produce_all",
+                "config": {},
+            }
+        ],
         "bindings": {"produce": {"source": {"source": "run", "field_name": "source"}}},
     }
     with pytest.raises(PipelineRunError, match="RunBundle"):

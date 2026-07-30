@@ -21,7 +21,9 @@ class QdrantVectorSchema:
         raise TypeError("QdrantVectorSchema is a static-only class and cannot be instantiated.")
 
     @staticmethod
-    def dense_config(dense_dim: int, semantic_fields: Sequence[str]) -> dict[str, models.VectorParams]:
+    def dense_config(
+        dense_dim: int, semantic_fields: Sequence[str]
+    ) -> dict[str, models.VectorParams]:
         """Named dense vectors: the chunk body plus one per semantic metadata field."""
         params = models.VectorParams(size=dense_dim, distance=models.Distance.COSINE)
         config = {VectorNames.CONTENT_DENSE: params}

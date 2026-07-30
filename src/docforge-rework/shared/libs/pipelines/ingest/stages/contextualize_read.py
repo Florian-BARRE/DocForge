@@ -70,9 +70,13 @@ class ContextualizeReader:
     def __loop(cls, ordered: list[NodeBlob], prep_id: str) -> ForEachNodeBlob | None:
         """The ForEach whose ``over`` reads the prep node's prompts (the position's per-prompt loop)."""
         return next(
-            (node for node in ordered
-             if isinstance(node, ForEachNodeBlob)
-             and isinstance(node.over, FromNode) and node.over.node_id == prep_id),
+            (
+                node
+                for node in ordered
+                if isinstance(node, ForEachNodeBlob)
+                and isinstance(node.over, FromNode)
+                and node.over.node_id == prep_id
+            ),
             None,
         )
 
@@ -86,7 +90,8 @@ class ContextualizeReader:
             return cls.__default()
         body: GroupNodeBlob = loop.body
         nodes = {
-            node.id: node for node in body.nodes
+            node.id: node
+            for node in body.nodes
             if isinstance(node, ActionNodeBlob) and node.family == _LLM
         }
         if not nodes:

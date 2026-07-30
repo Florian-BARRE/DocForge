@@ -91,9 +91,7 @@ def test_create_key_returns_201_with_plaintext_present_once(client, monkeypatch)
 
     monkeypatch.setattr(CONTEXT.database.auth, "create_key", _create_key)
 
-    response = client.post(
-        "/api/v1/auth/keys", json={"name": "ci-key"}, headers=_headers()
-    )
+    response = client.post("/api/v1/auth/keys", json={"name": "ci-key"}, headers=_headers())
 
     assert response.status_code == 201, response.text
     body = response.json()
@@ -109,13 +107,9 @@ def test_create_key_root_not_provisioned_is_409(client, monkeypatch) -> None:
 
     _auth_on(monkeypatch)
     _root_principal_resolves(monkeypatch)
-    monkeypatch.setattr(
-        CONTEXT.database.auth, "get_user_by_username", AsyncMock(return_value=None)
-    )
+    monkeypatch.setattr(CONTEXT.database.auth, "get_user_by_username", AsyncMock(return_value=None))
 
-    response = client.post(
-        "/api/v1/auth/keys", json={"name": "ci-key"}, headers=_headers()
-    )
+    response = client.post("/api/v1/auth/keys", json={"name": "ci-key"}, headers=_headers())
 
     assert response.status_code == 409, response.text
 
@@ -165,9 +159,7 @@ def test_create_key_non_admin_scoped_key_is_403(client, monkeypatch) -> None:
     create_key = AsyncMock()
     monkeypatch.setattr(CONTEXT.database.auth, "create_key", create_key)
 
-    response = client.post(
-        "/api/v1/auth/keys", json={"name": "ci-key"}, headers=_headers()
-    )
+    response = client.post("/api/v1/auth/keys", json={"name": "ci-key"}, headers=_headers())
 
     assert response.status_code == 403, response.text
     create_key.assert_not_called()
@@ -341,9 +333,7 @@ def test_rotate_key_happy_path_clones_and_revokes_old(client, monkeypatch) -> No
         "get_user_by_username",
         AsyncMock(return_value=SimpleNamespace(id=ROOT_ID)),
     )
-    old = _old_key(
-        name="ci-key", permissions={"capabilities": ["read"], "collections": ["*"]}
-    )
+    old = _old_key(name="ci-key", permissions={"capabilities": ["read"], "collections": ["*"]})
     monkeypatch.setattr(CONTEXT.database.auth, "get_key", AsyncMock(return_value=old))
     captured: dict = {}
     _mock_rotate_create(monkeypatch, captured)

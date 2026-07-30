@@ -23,7 +23,9 @@ class ContextualizeViewHelpers:
     logger = loggerplusplus.bind(identifier="ContextualizeViewHelpers")
 
     def __new__(cls, *args: object, **kwargs: object) -> None:
-        raise TypeError("ContextualizeViewHelpers is a static-only class and cannot be instantiated.")
+        raise TypeError(
+            "ContextualizeViewHelpers is a static-only class and cannot be instantiated."
+        )
 
     @staticmethod
     def truncate(text: str, max_document_words: int) -> str:
@@ -74,7 +76,7 @@ class ContextualizeViewHelpers:
             members = [chunk for chunk in chunks if chunk.heading_path == target.heading_path]
         else:
             start = max(0, index - window_chunks)
-            members = chunks[start: index + window_chunks + 1]
+            members = chunks[start : index + window_chunks + 1]
         return cls.truncate("\n\n".join(member.text for member in members), max_document_words)
 
     @staticmethod
@@ -93,10 +95,7 @@ class ContextualizeViewHelpers:
         return [
             SystemMessage(content=system_prompt),
             HumanMessage(
-                content=(
-                    f"<document>\n{document}\n</document>\n\n"
-                    f"<chunk>\n{chunk_text}\n</chunk>"
-                )
+                content=(f"<document>\n{document}\n</document>\n\n<chunk>\n{chunk_text}\n</chunk>")
             ),
         ]
 

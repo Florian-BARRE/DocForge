@@ -165,7 +165,9 @@ class StageCompiler(LoggerClass):
             if not state.classify_config:
                 state.classify_config = dict(stock.classify_config)
             if not state.chains:
-                state.chains = {slot: spec.model_copy(deep=True) for slot, spec in stock.chains.items()}
+                state.chains = {
+                    slot: spec.model_copy(deep=True) for slot, spec in stock.chains.items()
+                }
         elif stage == StageKey.METAGEN_CHUNK:
             if not state.metachunk_config:
                 state.metachunk_config = dict(stock.metachunk_config)
@@ -183,13 +185,19 @@ class StageCompiler(LoggerClass):
     def __cascade_disable(self, state: PipelineState, stage: str, notices: list[str]) -> None:
         """Disabling a stage disables the stages that require it — transitively (to a fixpoint)."""
         for meta in StageSpecs.ORDER:
-            if stage in meta.requires and meta.key in _TOGGLES and getattr(state, _TOGGLES[meta.key]):
+            if (
+                stage in meta.requires
+                and meta.key in _TOGGLES
+                and getattr(state, _TOGGLES[meta.key])
+            ):
                 setattr(state, _TOGGLES[meta.key], False)
                 notices.append(f"disabled '{meta.key}' because it depends on '{stage}'")
                 # Recurse so a dependent's OWN dependents are disabled too (no orphaned enabled node).
                 self.__cascade_disable(state, meta.key, notices)
 
-    def __set_provider(self, state: PipelineState, stage: str, kind: str, notices: list[str]) -> None:
+    def __set_provider(
+        self, state: PipelineState, stage: str, kind: str, notices: list[str]
+    ) -> None:
         """Swap an exclusive stage's kind and reset its config to build-safe schema defaults."""
         meta = StageSpecs.meta(stage) if stage in {*_PROVIDERS, *_CHAIN_STAGES} else None
         # 1. A chain-capable provider stage (parse): picking a provider is sugar for a 1-step chain.
@@ -227,10 +235,14 @@ class StageCompiler(LoggerClass):
                 notices.append(f"stage '{stage}' has no provider to configure")
                 return
             head, *rest = chain.steps
-            setattr(state, field, ChainSpec(
-                family=chain.family,
-                steps=[head.model_copy(update={"config": dict(config)}), *rest],
-            ))
+            setattr(
+                state,
+                field,
+                ChainSpec(
+                    family=chain.family,
+                    steps=[head.model_copy(update={"config": dict(config)}), *rest],
+                ),
+            )
             return
         # 3. Every other stage exposes a single config field.
         field = _CONFIGS.get(stage)
@@ -275,8 +287,10 @@ class StageCompiler(LoggerClass):
         self, state: PipelineState, stage: str, steps: list, notices: list[str]
     ) -> None:
         """Rebuild a slot-less stage chain — a chain-capable linear stage (parse) or a metagen ladder."""
-        mapping = _CHAIN_STAGES if stage in _CHAIN_STAGES else (
-            _METAGEN_CHAINS if stage in _METAGEN_CHAINS else None
+        mapping = (
+            _CHAIN_STAGES
+            if stage in _CHAIN_STAGES
+            else (_METAGEN_CHAINS if stage in _METAGEN_CHAINS else None)
         )
         if mapping is None:
             notices.append(f"stage '{stage}' has no chain to set")
@@ -285,7 +299,12 @@ class StageCompiler(LoggerClass):
         self.__rebuild_stage_chain(state, stage, field, family, steps, notices)
 
     def __rebuild_stage_chain(
-        self, state: PipelineState, stage: str, field: str, family: str, steps: list,
+        self,
+        state: PipelineState,
+        stage: str,
+        field: str,
+        family: str,
+        steps: list,
         notices: list[str],
     ) -> None:
         """Apply the family-level chain rules and set a slot-less stage chain (parse / metagen)."""
@@ -323,9 +342,11 @@ class StageCompiler(LoggerClass):
             return
         resolved: list = []
         for step in steps:
-            method = step.model_copy(update={
-                "config": {**ChainRules.reset_config("contextualize", step.kind), **step.config}
-            })
+            method = step.model_copy(
+                update={
+                    "config": {**ChainRules.reset_config("contextualize", step.kind), **step.config}
+                }
+            )
             if step.kind == "llm":
                 method = self.__resolve_llm_chain(method, notices)
             resolved.append(method)

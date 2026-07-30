@@ -32,13 +32,22 @@ class QuerySpec(Artifact):
             ``use_late_interaction``), read by the encode/retrieve/rerank stages.
     """
 
-    text: str = Field(description="The cleaned query text (trimmed, case-folded, filters stripped).")
-    filters: dict = Field(
-        default_factory=dict, description="Structured filter map applied to retrieval (field → value)."
+    text: str = Field(
+        description="The cleaned query text (trimmed, case-folded, filters stripped)."
     )
-    language: str | None = Field(default=None, description="Detected query language (ISO code) or None.")
-    top_k: int = Field(description="How many hits the caller asked for (delivered result-set size).")
-    candidate_k: int = Field(description="Over-sampled retrieval depth (candidate pool before cut).")
+    filters: dict = Field(
+        default_factory=dict,
+        description="Structured filter map applied to retrieval (field → value).",
+    )
+    language: str | None = Field(
+        default=None, description="Detected query language (ISO code) or None."
+    )
+    top_k: int = Field(
+        description="How many hits the caller asked for (delivered result-set size)."
+    )
+    candidate_k: int = Field(
+        description="Over-sampled retrieval depth (candidate pool before cut)."
+    )
     search_targets: list[SearchTarget] = Field(
         default_factory=default_content_targets,
         description="Fields × modalities to search (content and/or metadata); default is content "
@@ -68,14 +77,17 @@ class EncodedQuery(Artifact):
         default_factory=list, description="The dense query vector (always present)."
     )
     sparse: SparseVector | None = Field(
-        default=None, description="The lexical query vector; None when the embedder has no sparse axis."
+        default=None,
+        description="The lexical query vector; None when the embedder has no sparse axis.",
     )
     colbert: list[list[float]] | None = Field(
         default=None,
         description="The ColBERT multi-vector (one vector per query token); None unless late "
         "interaction is on and the collection indexed ColBERT.",
     )
-    model: str = Field(default="", description="The embedding model that produced the vectors (provenance).")
+    model: str = Field(
+        default="", description="The embedding model that produced the vectors (provenance)."
+    )
 
 
 __all__ = ["QuerySpec", "EncodedQuery"]

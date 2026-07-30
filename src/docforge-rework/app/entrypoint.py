@@ -75,7 +75,9 @@ def _build_app() -> FastAPI:
         )
 
     # 5. CORS — origins from config (comma-separated; '*' allowed for local dev).
-    origins = [o.strip() for o in RUNTIME_CONFIG.FASTAPI_CORS_ALLOWED_ORIGINS.split(",") if o.strip()]
+    origins = [
+        o.strip() for o in RUNTIME_CONFIG.FASTAPI_CORS_ALLOWED_ORIGINS.split(",") if o.strip()
+    ]
     fastapi_app.add_middleware(
         CORSMiddleware,
         allow_origins=origins,

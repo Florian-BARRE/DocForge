@@ -158,9 +158,7 @@ class AsyncExplorer(AsyncResource, _ExplorerSpecs):
         Returns:
             DocumentDetail: The document detail.
         """
-        return await self._transport.request(
-            self._get_document_spec(document_id), DocumentDetail
-        )
+        return await self._transport.request(self._get_document_spec(document_id), DocumentDetail)
 
     async def get_pages(self, document_id: str) -> list[PageInfo]:
         """
@@ -205,9 +203,7 @@ class AsyncExplorer(AsyncResource, _ExplorerSpecs):
         Args:
             document_id (str): The document to delete.
         """
-        return await self._transport.request(
-            self._delete_document_spec(document_id), type(None)
-        )
+        return await self._transport.request(self._delete_document_spec(document_id), type(None))
 
     async def set_chunk_enabled(self, chunk_id: str, enabled: bool) -> ChunkEnabledResult:
         """

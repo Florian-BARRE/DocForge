@@ -48,7 +48,9 @@ def _body(route: respx.Route) -> dict[str, Any]:
 
 @respx.mock
 async def test_create_key_returns_created_model() -> None:
-    route = respx.post(f"{API}/auth/keys").mock(return_value=httpx.Response(201, json=_CREATED_SAMPLE))
+    route = respx.post(f"{API}/auth/keys").mock(
+        return_value=httpx.Response(201, json=_CREATED_SAMPLE)
+    )
     async with AsyncClient(BASE, api_token="t") as client:
         result = await client.auth.create_key(name="k")
     assert route.calls.last.request.method == "POST"
@@ -57,7 +59,9 @@ async def test_create_key_returns_created_model() -> None:
 
 @respx.mock
 async def test_create_key_body_with_and_without_expiry() -> None:
-    route = respx.post(f"{API}/auth/keys").mock(return_value=httpx.Response(201, json=_CREATED_SAMPLE))
+    route = respx.post(f"{API}/auth/keys").mock(
+        return_value=httpx.Response(201, json=_CREATED_SAMPLE)
+    )
     async with AsyncClient(BASE) as client:
         await client.auth.create_key(name="k")
         first = _body(route)

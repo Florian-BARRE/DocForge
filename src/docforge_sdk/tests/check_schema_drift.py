@@ -52,14 +52,18 @@ def _diff_schema(name: str, snapshot: dict[str, Any], current: dict[str, Any]) -
     if snapshot_props != current_props:
         added = current_props - snapshot_props
         removed = snapshot_props - current_props
-        problems.append(f"{name}: properties differ (added={sorted(added)}, removed={sorted(removed)})")
+        problems.append(
+            f"{name}: properties differ (added={sorted(added)}, removed={sorted(removed)})"
+        )
 
     snapshot_required = set(snapshot.get("required", []))
     current_required = set(current.get("required", []))
     if snapshot_required != current_required:
         added = current_required - snapshot_required
         removed = snapshot_required - current_required
-        problems.append(f"{name}: required fields differ (added={sorted(added)}, removed={sorted(removed)})")
+        problems.append(
+            f"{name}: required fields differ (added={sorted(added)}, removed={sorted(removed)})"
+        )
 
     return problems
 
@@ -84,10 +88,14 @@ def main() -> int:
     problems: list[str] = []
     for name in MODELS:
         if name not in snapshot_schemas:
-            problems.append(f"{name}: missing from the committed snapshot (add it to openapi_snapshot.json)")
+            problems.append(
+                f"{name}: missing from the committed snapshot (add it to openapi_snapshot.json)"
+            )
             continue
         if name not in current_schemas:
-            problems.append(f"{name}: missing from the current backend OpenAPI (renamed or removed?)")
+            problems.append(
+                f"{name}: missing from the current backend OpenAPI (renamed or removed?)"
+            )
             continue
         problems.extend(_diff_schema(name, snapshot_schemas[name], current_schemas[name]))
 

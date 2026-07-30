@@ -179,7 +179,9 @@ class PipelineRunner(LoggerClass):
         group = self._builder.build(blob)
         issues = self._validator.validate(group)
         if issues:
-            details = "; ".join(f"[{issue.code}] {issue.location}: {issue.message}" for issue in issues)
+            details = "; ".join(
+                f"[{issue.code}] {issue.location}: {issue.message}" for issue in issues
+            )
             raise PipelineRunError(f"invalid pipeline graph ({len(issues)} issue(s)): {details}")
 
         # 2. Preflight reachability BEFORE any spend — a wrong/unreachable endpoint fails fast here,
@@ -198,9 +200,8 @@ class PipelineRunner(LoggerClass):
 
         # 4. A failed run surfaces the engine's error, verbatim.
         if output is None:
-            reason = (
-                self.__failed_node_reason(record)
-                or (record.error.message if record.error else "see the execution record")
+            reason = self.__failed_node_reason(record) or (
+                record.error.message if record.error else "see the execution record"
             )
             raise PipelineRunError(f"pipeline run failed: {reason}")
 

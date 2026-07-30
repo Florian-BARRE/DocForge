@@ -72,7 +72,9 @@ class GraphValidator(LoggerClass):
         producer = children.get(binding.node_id)
         if producer is None:
             self.__record(
-                issues, ValidationCode.UNKNOWN_NODE, location,
+                issues,
+                ValidationCode.UNKNOWN_NODE,
+                location,
                 f"slot '{slot_name}' binds to unknown node '{binding.node_id}'",
             )
             return
@@ -80,13 +82,17 @@ class GraphValidator(LoggerClass):
         # 2. The producer must be upstream (skip when cyclic — the order is undefined).
         if not has_cycle and binding.node_id not in ancestors.get(consumer_id, set()):
             self.__record(
-                issues, ValidationCode.BINDING_NOT_UPSTREAM, location,
+                issues,
+                ValidationCode.BINDING_NOT_UPSTREAM,
+                location,
                 f"slot '{slot_name}' binds to '{binding.node_id}', which is not upstream of it",
             )
 
         # 3. A foreach producer exposes exactly one field: 'items', typed by its body's terminals.
         if isinstance(producer, ForEach):
-            self.__check_foreach_field(location, slot_name, consumer_type, binding, producer, issues)
+            self.__check_foreach_field(
+                location, slot_name, consumer_type, binding, producer, issues
+            )
             return
 
         # 4. Field + type checks apply only to action producers (a group has no typed Produces).
@@ -95,7 +101,9 @@ class GraphValidator(LoggerClass):
         produces_fields = producer.Produces.model_fields
         if binding.field_name not in produces_fields:
             self.__record(
-                issues, ValidationCode.UNKNOWN_FIELD, location,
+                issues,
+                ValidationCode.UNKNOWN_FIELD,
+                location,
                 f"producer '{binding.node_id}' has no output field '{binding.field_name}'",
             )
             return
@@ -108,9 +116,13 @@ class GraphValidator(LoggerClass):
         consumer_element, consumer_is_list = SlotTypes.element(consumer_type)
         if producer_element is None or consumer_element is None:
             return  # an unreadable annotation cannot be judged here (enforced at definition)
-        if producer_is_list != consumer_is_list or not issubclass(producer_element, consumer_element):
+        if producer_is_list != consumer_is_list or not issubclass(
+            producer_element, consumer_element
+        ):
             self.__record(
-                issues, ValidationCode.TYPE_MISMATCH, location,
+                issues,
+                ValidationCode.TYPE_MISMATCH,
+                location,
                 f"slot '{slot_name}' expects '{SlotTypes.label(consumer_type)}' but "
                 f"'{binding.node_id}.{binding.field_name}' produces "
                 f"'{SlotTypes.label(producer_type)}'",
@@ -129,7 +141,9 @@ class GraphValidator(LoggerClass):
         # 1. The only output field a foreach exposes is the collected 'items'.
         if binding.field_name != "items":
             self.__record(
-                issues, ValidationCode.UNKNOWN_FIELD, location,
+                issues,
+                ValidationCode.UNKNOWN_FIELD,
+                location,
                 f"foreach '{binding.node_id}' only outputs 'items', not '{binding.field_name}'",
             )
             return
@@ -143,7 +157,9 @@ class GraphValidator(LoggerClass):
             return
         if not consumer_is_list or not issubclass(item_type, consumer_element):
             self.__record(
-                issues, ValidationCode.TYPE_MISMATCH, location,
+                issues,
+                ValidationCode.TYPE_MISMATCH,
+                location,
                 f"slot '{slot_name}' expects '{SlotTypes.label(consumer_type)}' but foreach "
                 f"'{binding.node_id}' produces 'list[{item_type.__name__}]'",
             )
@@ -174,7 +190,9 @@ class GraphValidator(LoggerClass):
         element, is_list = SlotTypes.element(field_info.annotation)
         if element is not None and not is_list:
             self.__record(
-                issues, ValidationCode.TYPE_MISMATCH, location,
+                issues,
+                ValidationCode.TYPE_MISMATCH,
+                location,
                 f"'over' must bind a list field, but '{child.over.node_id}."
                 f"{child.over.field_name}' produces '{SlotTypes.label(field_info.annotation)}'",
             )
@@ -207,20 +225,36 @@ class GraphValidator(LoggerClass):
                     # the resolver's rule, so validation and execution always agree.
                     if field_info.is_required():
                         self.__record(
-                            issues, ValidationCode.MISSING_BINDING, location,
+                            issues,
+                            ValidationCode.MISSING_BINDING,
+                            location,
                             f"required input slot '{slot_name}' has no binding",
                         )
                     continue
                 if isinstance(binding, FromNode):
                     self.__check_from_node(
-                        location, child.id, slot_name, field_info.annotation,
-                        binding, children, ancestors, has_cycle, issues,
+                        location,
+                        child.id,
+                        slot_name,
+                        field_info.annotation,
+                        binding,
+                        children,
+                        ancestors,
+                        has_cycle,
+                        issues,
                     )
                 elif isinstance(binding, FromFirst):
                     for candidate in binding.candidates:
                         self.__check_from_node(
-                            location, child.id, slot_name, field_info.annotation,
-                            candidate, children, ancestors, has_cycle, issues,
+                            location,
+                            child.id,
+                            slot_name,
+                            field_info.annotation,
+                            candidate,
+                            children,
+                            ancestors,
+                            has_cycle,
+                            issues,
                         )
             return
 
@@ -229,14 +263,28 @@ class GraphValidator(LoggerClass):
         for field_name, binding in node_bindings.items():
             if isinstance(binding, FromNode):
                 self.__check_from_node(
-                    location, child.id, field_name, None,
-                    binding, children, ancestors, has_cycle, issues,
+                    location,
+                    child.id,
+                    field_name,
+                    None,
+                    binding,
+                    children,
+                    ancestors,
+                    has_cycle,
+                    issues,
                 )
             elif isinstance(binding, FromFirst):
                 for candidate in binding.candidates:
                     self.__check_from_node(
-                        location, child.id, field_name, None,
-                        candidate, children, ancestors, has_cycle, issues,
+                        location,
+                        child.id,
+                        field_name,
+                        None,
+                        candidate,
+                        children,
+                        ancestors,
+                        has_cycle,
+                        issues,
                     )
 
     def __validate_group(self, group: Group, issues: list[ValidationIssue]) -> None:
@@ -252,7 +300,9 @@ class GraphValidator(LoggerClass):
                 valid_transitions.append(transition)
             else:
                 self.__record(
-                    issues, ValidationCode.UNKNOWN_NODE, location,
+                    issues,
+                    ValidationCode.UNKNOWN_NODE,
+                    location,
                     f"transition '{transition.from_node_id}' -> '{transition.to_node_id}' "
                     f"references an unknown node",
                 )
@@ -261,14 +311,18 @@ class GraphValidator(LoggerClass):
         #    with zero nodes would silently run nothing; caught by the UI agent's probing).
         if not group.children:
             self.__record(
-                issues, ValidationCode.NO_SINGLE_ENTRY, location,
+                issues,
+                ValidationCode.NO_SINGLE_ENTRY,
+                location,
                 f"group has no nodes — a pipeline must contain at least one",
             )
         else:
             entries = GraphTopology.entries(child_ids, valid_transitions)
             if len(entries) != 1:
                 self.__record(
-                    issues, ValidationCode.NO_SINGLE_ENTRY, location,
+                    issues,
+                    ValidationCode.NO_SINGLE_ENTRY,
+                    location,
                     f"must have exactly one entry node, found {len(entries)}",
                 )
 
@@ -282,7 +336,9 @@ class GraphValidator(LoggerClass):
         for node_id in group.bindings:
             if node_id not in child_ids:
                 self.__record(
-                    issues, ValidationCode.UNKNOWN_NODE, location,
+                    issues,
+                    ValidationCode.UNKNOWN_NODE,
+                    location,
                     f"bindings reference an unknown node '{node_id}'",
                 )
 
@@ -295,9 +351,13 @@ class GraphValidator(LoggerClass):
         for transition in valid_transitions:
             producer = children[transition.from_node_id]
             if isinstance(transition.condition, ScoreBelow):
-                if not (isinstance(producer, ActionNode) and issubclass(producer.Produces, ScoredOutput)):
+                if not (
+                    isinstance(producer, ActionNode) and issubclass(producer.Produces, ScoredOutput)
+                ):
                     self.__record(
-                        issues, ValidationCode.SCORE_BELOW_NOT_SCORED, location,
+                        issues,
+                        ValidationCode.SCORE_BELOW_NOT_SCORED,
+                        location,
                         f"ScoreBelow edge from '{transition.from_node_id}' whose output is not a ScoredOutput",
                     )
             elif isinstance(transition.condition, WhenEquals):
@@ -305,7 +365,9 @@ class GraphValidator(LoggerClass):
                     transition.condition.field not in producer.Produces.model_fields
                 ):
                     self.__record(
-                        issues, ValidationCode.WHEN_EQUALS_UNKNOWN_FIELD, location,
+                        issues,
+                        ValidationCode.WHEN_EQUALS_UNKNOWN_FIELD,
+                        location,
                         f"WhenEquals edge from '{transition.from_node_id}' routes on field "
                         f"'{transition.condition.field}', which its output does not have",
                     )
@@ -322,24 +384,32 @@ class GraphValidator(LoggerClass):
                 if kinds.count(kind) <= 1:
                     continue
                 if kind == ConditionKind.WHEN_EQUALS:
-                    switches = [t.condition for t in transitions if isinstance(t.condition, WhenEquals)]
+                    switches = [
+                        t.condition for t in transitions if isinstance(t.condition, WhenEquals)
+                    ]
                     fields = {condition.field for condition in switches}
                     values = [condition.equals for condition in switches]
                     if len(fields) > 1:
                         self.__record(
-                            issues, ValidationCode.AMBIGUOUS_ROUTING, location,
+                            issues,
+                            ValidationCode.AMBIGUOUS_ROUTING,
+                            location,
                             f"node '{node_id}' has WhenEquals transitions on different fields "
                             f"({sorted(fields)}) — a switch must route on a single field",
                         )
                     if len(values) != len(set(values)):
                         self.__record(
-                            issues, ValidationCode.AMBIGUOUS_ROUTING, location,
+                            issues,
+                            ValidationCode.AMBIGUOUS_ROUTING,
+                            location,
                             f"node '{node_id}' has duplicate WhenEquals values — branches must be "
                             f"mutually exclusive",
                         )
                 else:
                     self.__record(
-                        issues, ValidationCode.AMBIGUOUS_ROUTING, location,
+                        issues,
+                        ValidationCode.AMBIGUOUS_ROUTING,
+                        location,
                         f"node '{node_id}' has {kinds.count(kind)} outgoing '{kind}' transitions "
                         f"(routing is ambiguous; fan-out is not supported)",
                     )
@@ -353,7 +423,8 @@ class GraphValidator(LoggerClass):
                 self.__validate_group(child.body, issues)
                 if child.item_type() is None:
                     self.__record(
-                        issues, ValidationCode.FOREACH_INVALID_BODY,
+                        issues,
+                        ValidationCode.FOREACH_INVALID_BODY,
                         f"group '{group.id}' / foreach '{child.id}'",
                         "every terminal of the body must be an action node producing the same "
                         "single-slot Artifact (the collection contract; scalar slots are not "
@@ -380,7 +451,9 @@ class GraphValidator(LoggerClass):
         for kind, ids in occurrences.items():
             if len(ids) > 1:
                 self.__record(
-                    issues, ValidationCode.DUPLICATE_UNIQUE_NODE, f"group '{root.id}'",
+                    issues,
+                    ValidationCode.DUPLICATE_UNIQUE_NODE,
+                    f"group '{root.id}'",
                     f"node kind '{kind}' is single-use but appears {len(ids)} times "
                     f"({', '.join(ids)})",
                 )
@@ -412,7 +485,9 @@ class GraphValidator(LoggerClass):
         """
         issues = self.validate(group)
         if issues:
-            self.logger.error(f"Pipeline '{group.id}' failed validation with {len(issues)} issue(s)")
+            self.logger.error(
+                f"Pipeline '{group.id}' failed validation with {len(issues)} issue(s)"
+            )
             raise GraphInvalidError(issues)
         self.logger.info(f"Pipeline '{group.id}' validated: no issues")
 

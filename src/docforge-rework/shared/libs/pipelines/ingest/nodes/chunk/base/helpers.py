@@ -119,7 +119,7 @@ class ChunkerHelpers:
         if len(tokens) <= max_tokens:
             return [text]
         return [
-            encoder.decode(tokens[start: start + max_tokens])
+            encoder.decode(tokens[start : start + max_tokens])
             for start in range(0, len(tokens), max_tokens)
         ]
 

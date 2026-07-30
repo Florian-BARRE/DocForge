@@ -67,9 +67,7 @@ async def test_forbidden_403_is_fatal(monkeypatch) -> None:
 
 
 async def test_connection_failure_is_fatal_after_retry(monkeypatch) -> None:
-    monkeypatch.setattr(
-        httpx, "AsyncClient", _fake_client(raises=httpx.ConnectError("refused"))
-    )
+    monkeypatch.setattr(httpx, "AsyncClient", _fake_client(raises=httpx.ConnectError("refused")))
     with pytest.raises(PreflightError, match="unreachable"):
         await EndpointReachability.check(node_kind="ocr", base_url="http://nope:9999")
 

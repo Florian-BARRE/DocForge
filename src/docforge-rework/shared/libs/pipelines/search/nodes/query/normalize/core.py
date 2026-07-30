@@ -25,7 +25,9 @@ class QueryNormalizeConfig(NodeConfig):
         default=True, description="Lower-case the query text (case-insensitive lexical matching)."
     )
     candidate_multiplier: int = Field(
-        default=4, gt=0, description="candidate_k = top_k × this (the retrieval over-sample factor)."
+        default=4,
+        gt=0,
+        description="candidate_k = top_k × this (the retrieval over-sample factor).",
     )
     candidate_floor: int = Field(
         default=100, gt=0, description="Minimum candidate_k, so a small top_k still yields a pool."
@@ -99,4 +101,9 @@ class QueryNormalizeNode(ActionNode):
         return QueryNormalizeProduces(spec=spec)
 
 
-__all__ = ["QueryNormalizeNode", "QueryNormalizeConfig", "QueryNormalizeConsumes", "QueryNormalizeProduces"]
+__all__ = [
+    "QueryNormalizeNode",
+    "QueryNormalizeConfig",
+    "QueryNormalizeConsumes",
+    "QueryNormalizeProduces",
+]

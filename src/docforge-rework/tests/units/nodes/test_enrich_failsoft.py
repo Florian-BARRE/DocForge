@@ -49,62 +49,133 @@ class FlakyVlm(BaseVlmNode):
 
 
 def _fig(bid: str, crop: bytes) -> Block:
-    return Block(id=bid, block_type=BlockType.FIGURE, reading_order=0,
-                 provenance=Provenance(page=0, bbox=(0.2, 0.2, 0.6, 0.6)),
-                 figure=FigureEnrichment(crop=crop))
+    return Block(
+        id=bid,
+        block_type=BlockType.FIGURE,
+        reading_order=0,
+        provenance=Provenance(page=0, bbox=(0.2, 0.2, 0.6, 0.6)),
+        figure=FigureEnrichment(crop=crop),
+    )
 
 
-IR = DocumentIR(doc_id="d", source_hash="h", n_pages=1, blocks=[
-    _fig("f_ok", b"fine"),            # classify -> photo -> vlm describes
-    _fig("f_vlm_boom", b"VLM-BOOM"),  # vlm 503 -> OnFailure -> entry (kind kept, no description)
-    _fig("f_clf_boom", b"CLF-BOOM"),  # classify 503 -> OnFailure -> entry (unclassified)
-])
+IR = DocumentIR(
+    doc_id="d",
+    source_hash="h",
+    n_pages=1,
+    blocks=[
+        _fig("f_ok", b"fine"),  # classify -> photo -> vlm describes
+        _fig(
+            "f_vlm_boom", b"VLM-BOOM"
+        ),  # vlm 503 -> OnFailure -> entry (kind kept, no description)
+        _fig("f_clf_boom", b"CLF-BOOM"),  # classify 503 -> OnFailure -> entry (unclassified)
+    ],
+)
 
 BLOB = {
-    "node_type": "group", "id": "enrich_failsoft",
+    "node_type": "group",
+    "id": "enrich_failsoft",
     "nodes": [
-        {"node_type": "action", "id": "extract", "family": "enrich", "kind": "figure_extract", "config": {}},
-        {"node_type": "foreach", "id": "per_figure",
-         "over": {"source": "node", "node_id": "extract", "field_name": "figures"},
-         "item_field": "figure", "max_concurrency": 2,
-         "body": {
-             "node_type": "group", "id": "treat",
-             "nodes": [
-                 {"node_type": "action", "id": "clf", "family": "enrich",
-                  "kind": "test_enrich_failsoft_flaky_classify",
-                  "config": {"base_url": "http://fake", "model": "m", "use_heuristics": False}},
-                 {"node_type": "action", "id": "vlm_photo", "family": "vlm",
-                  "kind": "test_enrich_failsoft_flaky_vlm",
-                  "config": {"system_prompt": "Caption this photo."}},
-                 # On success a VLM produces a SCORED entry ({entry, score}); vlm_entry projects it
-                 # onto the uniform single-slot terminal (the success path's branch close).
-                 {"node_type": "action", "id": "vp_entry", "family": "enrich",
-                  "kind": "vlm_entry", "config": {}},
-                 {"node_type": "action", "id": "fallback_vlm", "family": "enrich",
-                  "kind": "figure_entry", "config": {}},
-                 {"node_type": "action", "id": "fallback_clf", "family": "enrich",
-                  "kind": "figure_entry", "config": {}},
-             ],
-             "transitions": [
-                 {"from_node_id": "clf", "to_node_id": "vlm_photo",
-                  "condition": {"kind": "when_equals", "field": "kind", "equals": "photo"}},
-                 {"from_node_id": "vlm_photo", "to_node_id": "vp_entry"},
-                 # FAIL-SOFT: a provider failure ROUTES to a degraded entry instead of failing the doc
-                 {"from_node_id": "clf", "to_node_id": "fallback_clf",
-                  "condition": {"kind": "on_failure"}},
-                 {"from_node_id": "vlm_photo", "to_node_id": "fallback_vlm",
-                  "condition": {"kind": "on_failure"}},
-             ],
-             "bindings": {
-                 "clf": {"figure": {"source": "group", "field_name": "figure"}},
-                 "vlm_photo": {"figure": {"source": "node", "node_id": "clf", "field_name": "figure"}},
-                 "vp_entry": {"entry": {"source": "node", "node_id": "vlm_photo", "field_name": "entry"}},
-                 "fallback_vlm": {"figure": {"source": "node", "node_id": "clf", "field_name": "figure"}},
-                 # clf itself failed -> its figure never existed: fall back to the RAW item
-                 "fallback_clf": {"figure": {"source": "group", "field_name": "figure"}},
-             },
-         }},
-        {"node_type": "action", "id": "apply", "family": "enrich", "kind": "enrich_apply", "config": {}},
+        {
+            "node_type": "action",
+            "id": "extract",
+            "family": "enrich",
+            "kind": "figure_extract",
+            "config": {},
+        },
+        {
+            "node_type": "foreach",
+            "id": "per_figure",
+            "over": {"source": "node", "node_id": "extract", "field_name": "figures"},
+            "item_field": "figure",
+            "max_concurrency": 2,
+            "body": {
+                "node_type": "group",
+                "id": "treat",
+                "nodes": [
+                    {
+                        "node_type": "action",
+                        "id": "clf",
+                        "family": "enrich",
+                        "kind": "test_enrich_failsoft_flaky_classify",
+                        "config": {
+                            "base_url": "http://fake",
+                            "model": "m",
+                            "use_heuristics": False,
+                        },
+                    },
+                    {
+                        "node_type": "action",
+                        "id": "vlm_photo",
+                        "family": "vlm",
+                        "kind": "test_enrich_failsoft_flaky_vlm",
+                        "config": {"system_prompt": "Caption this photo."},
+                    },
+                    # On success a VLM produces a SCORED entry ({entry, score}); vlm_entry projects it
+                    # onto the uniform single-slot terminal (the success path's branch close).
+                    {
+                        "node_type": "action",
+                        "id": "vp_entry",
+                        "family": "enrich",
+                        "kind": "vlm_entry",
+                        "config": {},
+                    },
+                    {
+                        "node_type": "action",
+                        "id": "fallback_vlm",
+                        "family": "enrich",
+                        "kind": "figure_entry",
+                        "config": {},
+                    },
+                    {
+                        "node_type": "action",
+                        "id": "fallback_clf",
+                        "family": "enrich",
+                        "kind": "figure_entry",
+                        "config": {},
+                    },
+                ],
+                "transitions": [
+                    {
+                        "from_node_id": "clf",
+                        "to_node_id": "vlm_photo",
+                        "condition": {"kind": "when_equals", "field": "kind", "equals": "photo"},
+                    },
+                    {"from_node_id": "vlm_photo", "to_node_id": "vp_entry"},
+                    # FAIL-SOFT: a provider failure ROUTES to a degraded entry instead of failing the doc
+                    {
+                        "from_node_id": "clf",
+                        "to_node_id": "fallback_clf",
+                        "condition": {"kind": "on_failure"},
+                    },
+                    {
+                        "from_node_id": "vlm_photo",
+                        "to_node_id": "fallback_vlm",
+                        "condition": {"kind": "on_failure"},
+                    },
+                ],
+                "bindings": {
+                    "clf": {"figure": {"source": "group", "field_name": "figure"}},
+                    "vlm_photo": {
+                        "figure": {"source": "node", "node_id": "clf", "field_name": "figure"}
+                    },
+                    "vp_entry": {
+                        "entry": {"source": "node", "node_id": "vlm_photo", "field_name": "entry"}
+                    },
+                    "fallback_vlm": {
+                        "figure": {"source": "node", "node_id": "clf", "field_name": "figure"}
+                    },
+                    # clf itself failed -> its figure never existed: fall back to the RAW item
+                    "fallback_clf": {"figure": {"source": "group", "field_name": "figure"}},
+                },
+            },
+        },
+        {
+            "node_type": "action",
+            "id": "apply",
+            "family": "enrich",
+            "kind": "enrich_apply",
+            "config": {},
+        },
     ],
     "transitions": [
         {"from_node_id": "extract", "to_node_id": "per_figure"},
@@ -112,8 +183,10 @@ BLOB = {
     ],
     "bindings": {
         "extract": {"ir": {"source": "run", "field_name": "ir"}},
-        "apply": {"ir": {"source": "run", "field_name": "ir"},
-                  "entries": {"source": "node", "node_id": "per_figure", "field_name": "items"}},
+        "apply": {
+            "ir": {"source": "run", "field_name": "ir"},
+            "entries": {"source": "node", "node_id": "per_figure", "field_name": "items"},
+        },
     },
 }
 

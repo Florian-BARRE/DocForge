@@ -40,53 +40,110 @@ CROP = b"png-crop-bytes"
 
 def _ir() -> DocumentIR:
     return DocumentIR(
-        doc_id="d", source_hash="h", n_pages=1, title="Report",
+        doc_id="d",
+        source_hash="h",
+        n_pages=1,
+        title="Report",
         blocks=[
-            Block(id="b0", block_type=BlockType.HEADING, reading_order=0, level=1, text="Intro",
-                  provenance=Provenance(page=0, bbox=(0, 0, 1, 1))),
-            Block(id="b1", block_type=BlockType.PARAGRAPH, reading_order=1, text="Cats.",
-                  parent_id="b0", provenance=Provenance(page=0, bbox=(0, 0, 1, 1))),
-            Block(id="b2", block_type=BlockType.FIGURE, reading_order=2,
-                  provenance=Provenance(page=0, bbox=(0, 0, 1, 1)),
-                  figure=FigureEnrichment(kind=FigureKind.CHART, crop=CROP, ocr_text="Q1 10",
-                                          description="A chart.", data_table=[["Q", "V"]])),
+            Block(
+                id="b0",
+                block_type=BlockType.HEADING,
+                reading_order=0,
+                level=1,
+                text="Intro",
+                provenance=Provenance(page=0, bbox=(0, 0, 1, 1)),
+            ),
+            Block(
+                id="b1",
+                block_type=BlockType.PARAGRAPH,
+                reading_order=1,
+                text="Cats.",
+                parent_id="b0",
+                provenance=Provenance(page=0, bbox=(0, 0, 1, 1)),
+            ),
+            Block(
+                id="b2",
+                block_type=BlockType.FIGURE,
+                reading_order=2,
+                provenance=Provenance(page=0, bbox=(0, 0, 1, 1)),
+                figure=FigureEnrichment(
+                    kind=FigureKind.CHART,
+                    crop=CROP,
+                    ocr_text="Q1 10",
+                    description="A chart.",
+                    data_table=[["Q", "V"]],
+                ),
+            ),
         ],
     )
 
 
 def _chunks() -> list[Chunk]:
-    return [Chunk(chunk_id="d#c0", ordinal=0, text="Cats.", context="Section: Intro",
-                  block_ids=["b0", "b1"], token_count=2, generated_meta={"keywords": ["cats"]})]
+    return [
+        Chunk(
+            chunk_id="d#c0",
+            ordinal=0,
+            text="Cats.",
+            context="Section: Intro",
+            block_ids=["b0", "b1"],
+            token_count=2,
+            generated_meta={"keywords": ["cats"]},
+        )
+    ]
 
 
 def _bundle() -> RunBundle:
     return RunBundle(
         ingest=IntakeResult(source_hash="h", pdf_content=b"pdf-bytes", page_count=1),
         ir=_ir(),
-        pages=PageRenders(pages=[PageRender(page_number=0, image=b"page-png", width=595, height=842)]),
+        pages=PageRenders(
+            pages=[PageRender(page_number=0, image=b"page-png", width=595, height=842)]
+        ),
         chunks=_chunks(),
         document_meta=GeneratedDocumentMeta(values={"summary": "About cats", "ghost": 1}),
-        embeddings=ChunkEmbeddings(model="m", dimension=3, items=[
-            ChunkVectors(chunk_id="d#c0", dense=[1.0, 2.0, 3.0],
-                         sparse=SparseVector(indices=[4], values=[0.5]),
-                         fields={"keywords": [9.0, 9.0, 9.0]})]),
+        embeddings=ChunkEmbeddings(
+            model="m",
+            dimension=3,
+            items=[
+                ChunkVectors(
+                    chunk_id="d#c0",
+                    dense=[1.0, 2.0, 3.0],
+                    sparse=SparseVector(indices=[4], values=[0.5]),
+                    fields={"keywords": [9.0, 9.0, 9.0]},
+                )
+            ],
+        ),
     )
 
 
 def _schema() -> list[MetadataField]:
     return [
-        MetadataField(id=7, collection_id=uuid.uuid4(), field_name="keywords",
-                      field_type=FieldType.KEYWORD_LIST, origin=FieldOrigin.GENERATED,
-                      scope=FieldScope.CHUNK, filterable=True, semantic=True),
-        MetadataField(id=8, collection_id=uuid.uuid4(), field_name="summary",
-                      field_type=FieldType.STRING, origin=FieldOrigin.GENERATED,
-                      scope=FieldScope.DOCUMENT),
+        MetadataField(
+            id=7,
+            collection_id=uuid.uuid4(),
+            field_name="keywords",
+            field_type=FieldType.KEYWORD_LIST,
+            origin=FieldOrigin.GENERATED,
+            scope=FieldScope.CHUNK,
+            filterable=True,
+            semantic=True,
+        ),
+        MetadataField(
+            id=8,
+            collection_id=uuid.uuid4(),
+            field_name="summary",
+            field_type=FieldType.STRING,
+            origin=FieldOrigin.GENERATED,
+            scope=FieldScope.DOCUMENT,
+        ),
     ]
 
 
 @pytest.fixture
 def translated():
-    return RunTranslator.translate(DOC, _bundle(), _schema(), strategy="structure_aware", config_hash="cfg1")
+    return RunTranslator.translate(
+        DOC, _bundle(), _schema(), strategy="structure_aware", config_hash="cfg1"
+    )
 
 
 def test_block_id_remap_applies_everywhere(translated) -> None:
@@ -120,7 +177,9 @@ def test_blobs_are_content_addressed_and_facts_learned(translated) -> None:
 def test_enrichment_rows_and_unknown_doc_field_dropped(translated) -> None:
     enrichment_kinds = {row.kind.value for row in translated.payload.enrichments}
     assert enrichment_kinds == {"classify", "ocr", "vlm", "chart_to_data"}
-    assert [meta.field_id for meta in translated.payload.document_metadata] == [8]  # 'ghost' dropped
+    assert [meta.field_id for meta in translated.payload.document_metadata] == [
+        8
+    ]  # 'ghost' dropped
 
 
 def test_qdrant_point_has_named_vectors_and_lean_payload(translated) -> None:
@@ -129,7 +188,10 @@ def test_qdrant_point_has_named_vectors_and_lean_payload(translated) -> None:
     assert point.dense["meta_keywords_dense"] == [9.0, 9.0, 9.0]
     assert point.sparse["content_bm25"].indices == [4]
     assert point.payload == {
-        "document_id": str(DOC), "chunk_index": 0, "enabled": True, "keywords": ["cats"]
+        "document_id": str(DOC),
+        "chunk_index": 0,
+        "enabled": True,
+        "keywords": ["cats"],
     }
     assert translated.dense_dim == 3
 
@@ -148,11 +210,16 @@ def test_disabled_by_role_chunk_persists_as_a_row_but_gets_no_qdrant_point() -> 
         pages=PageRenders(pages=[]),
         chunks=[
             Chunk(chunk_id="d#c0", ordinal=0, text="Cats purr.", role=ChunkRole.BODY),
-            Chunk(chunk_id="d#c1", ordinal=1, text="Confidential — page 1",
-                  role=ChunkRole.HEADER_FOOTER),
+            Chunk(
+                chunk_id="d#c1",
+                ordinal=1,
+                text="Confidential — page 1",
+                role=ChunkRole.HEADER_FOOTER,
+            ),
         ],
-        embeddings=ChunkEmbeddings(model="m", dimension=3, items=[
-            ChunkVectors(chunk_id="d#c0", dense=[1.0, 2.0, 3.0])]),  # body only, furniture skipped
+        embeddings=ChunkEmbeddings(
+            model="m", dimension=3, items=[ChunkVectors(chunk_id="d#c0", dense=[1.0, 2.0, 3.0])]
+        ),  # body only, furniture skipped
     )
     out = RunTranslator.translate(uuid.uuid4(), bundle, schema=[], strategy="s", config_hash="c")
 
@@ -204,10 +271,12 @@ def test_identical_artefact_bytes_are_deduplicated_into_one_blob_row() -> None:
     bundle = RunBundle(
         ingest=IntakeResult(source_hash="h", pdf_content=None, page_count=2),
         ir=DocumentIR(doc_id="d", source_hash="h", n_pages=2, blocks=[]),
-        pages=PageRenders(pages=[
-            PageRender(page_number=0, image=b"same-bytes", width=1, height=1),
-            PageRender(page_number=1, image=b"same-bytes", width=1, height=1),
-        ]),
+        pages=PageRenders(
+            pages=[
+                PageRender(page_number=0, image=b"same-bytes", width=1, height=1),
+                PageRender(page_number=1, image=b"same-bytes", width=1, height=1),
+            ]
+        ),
         chunks=[],
     )
     out = RunTranslator.translate(uuid.uuid4(), bundle, schema=[], strategy="none", config_hash="d")

@@ -52,8 +52,11 @@ async def test_breadcrumb_max_depth_truncates_the_trail() -> None:
     assert out.chunks[0].context == "Cats"
 
 
-SOURCE = SourceDocument(filename="r.pdf", content=b"x",
-                        declared_meta={"title": "Annual Report", "author": "ACME", "year": 2024})
+SOURCE = SourceDocument(
+    filename="r.pdf",
+    content=b"x",
+    declared_meta={"title": "Annual Report", "author": "ACME", "year": 2024},
+)
 NO_TITLE = SourceDocument(filename="r.pptx", content=b"x", declared_meta={})
 
 
@@ -84,8 +87,12 @@ async def _default_stack(chunks: list[Chunk], source: SourceDocument) -> list[Ch
 async def test_default_stack_builds_one_anchored_trail_nested() -> None:
     # (B) Nested headings → the full "<doc> › A › B" trail on ONE clean line, no duplicate title.
     chunks = [
-        Chunk(chunk_id="d#c0", ordinal=0, text="Marge en hausse.",
-              heading_path=["Analyse financière", "Marge brute"]),
+        Chunk(
+            chunk_id="d#c0",
+            ordinal=0,
+            text="Marge en hausse.",
+            heading_path=["Analyse financière", "Marge brute"],
+        ),
     ]
     out = await _default_stack(chunks, NO_TITLE)  # anchor = first level-1 heading here
     assert out[0].context == "Analyse financière › Marge brute"  # anchor IS heading_path[0]: no dup
@@ -109,7 +116,9 @@ async def test_default_stack_declared_title_anchors_a_flat_deck() -> None:
 
 
 async def test_sliding_context_uses_prev_tail_and_next_head() -> None:
-    node = ContextualizerSlidingNode(id="s", config=ContextualizerSlidingConfig(prev_words=3, next_words=2))
+    node = ContextualizerSlidingNode(
+        id="s", config=ContextualizerSlidingConfig(prev_words=3, next_words=2)
+    )
     out = await node.run(ContextualizerConsumes(chunks=CHUNKS))
     assert out.chunks[0].context == "They sleep …"  # head of next only (no prev)
     assert out.chunks[1].context == "… felines that purr.\nBond markets …"
@@ -117,7 +126,13 @@ async def test_sliding_context_uses_prev_tail_and_next_head() -> None:
 
 def test_describe_exposes_the_scope_rules_to_the_ui() -> None:
     described = ContextualizerLlmNode.describe()
-    for key in ("document_scope", "window_chunks", "max_document_words", "max_concurrency", "on_error"):
+    for key in (
+        "document_scope",
+        "window_chunks",
+        "max_document_words",
+        "max_concurrency",
+        "on_error",
+    ):
         assert key in described.config_schema["properties"], key
 
 
@@ -126,14 +141,29 @@ def test_unique_in_graph_doctrine_rejects_duplicated_singletons() -> None:
     assert ContextualizerLlmNode.describe().unique_in_graph is False  # two situating passes = legit
 
     dup = {
-        "node_type": "group", "id": "dup",
+        "node_type": "group",
+        "id": "dup",
         "nodes": [
-            {"node_type": "action", "id": "b1", "family": "contextualize", "kind": "breadcrumb", "config": {}},
-            {"node_type": "action", "id": "b2", "family": "contextualize", "kind": "breadcrumb", "config": {}},
+            {
+                "node_type": "action",
+                "id": "b1",
+                "family": "contextualize",
+                "kind": "breadcrumb",
+                "config": {},
+            },
+            {
+                "node_type": "action",
+                "id": "b2",
+                "family": "contextualize",
+                "kind": "breadcrumb",
+                "config": {},
+            },
         ],
         "transitions": [{"from_node_id": "b1", "to_node_id": "b2"}],
-        "bindings": {"b1": {"chunks": {"source": "run", "field_name": "chunks"}},
-                     "b2": {"chunks": {"source": "node", "node_id": "b1", "field_name": "chunks"}}},
+        "bindings": {
+            "b1": {"chunks": {"source": "run", "field_name": "chunks"}},
+            "b2": {"chunks": {"source": "node", "node_id": "b1", "field_name": "chunks"}},
+        },
     }
     codes = {issue.code.value for issue in GraphValidator().validate(PipelineBuilder().build(dup))}
     assert "duplicate_unique_node" in codes

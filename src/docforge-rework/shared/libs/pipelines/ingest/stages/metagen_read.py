@@ -39,9 +39,13 @@ class MetagenReader:
     def prep(cls, ordered: list[NodeBlob], prep_kind: str) -> ActionNodeBlob | None:
         """The metagen PREP action of a scope (kind ``chunk_prep`` / ``document_prep``), or None."""
         return next(
-            (node for node in ordered
-             if isinstance(node, ActionNodeBlob)
-             and node.family == "metagen" and node.kind == prep_kind),
+            (
+                node
+                for node in ordered
+                if isinstance(node, ActionNodeBlob)
+                and node.family == "metagen"
+                and node.kind == prep_kind
+            ),
             None,
         )
 
@@ -57,7 +61,8 @@ class MetagenReader:
             return cls.__default()
         body: GroupNodeBlob = loop.body
         nodes = {
-            node.id: node for node in body.nodes
+            node.id: node
+            for node in body.nodes
             if isinstance(node, ActionNodeBlob) and node.family == _STRUCTGEN
         }
         if not nodes:
@@ -70,9 +75,13 @@ class MetagenReader:
     def __loop(cls, ordered: list[NodeBlob], prep_id: str) -> ForEachNodeBlob | None:
         """The ForEach whose ``over`` reads the prep node's requests (the scope's per-request loop)."""
         return next(
-            (node for node in ordered
-             if isinstance(node, ForEachNodeBlob)
-             and isinstance(node.over, FromNode) and node.over.node_id == prep_id),
+            (
+                node
+                for node in ordered
+                if isinstance(node, ForEachNodeBlob)
+                and isinstance(node.over, FromNode)
+                and node.over.node_id == prep_id
+            ),
             None,
         )
 

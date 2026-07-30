@@ -126,7 +126,9 @@ def test_assert_any_collection_scope_empty_set_denies_scoped_key(fastapi_app) ->
 # ── explorer chokepoints (_require_document / _assert_chunk_scope) ───────────────────────────────
 
 
-async def test_require_document_full_access_reaches_foreign_document(fastapi_app, monkeypatch) -> None:
+async def test_require_document_full_access_reaches_foreign_document(
+    fastapi_app, monkeypatch
+) -> None:
     from backend.context import CONTEXT  # noqa: PLC0415
     from backend.routers.explorer.router import _require_document  # noqa: PLC0415
 

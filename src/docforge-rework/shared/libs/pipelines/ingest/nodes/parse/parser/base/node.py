@@ -1,4 +1,3 @@
-
 # ====== Code Summary ======
 # BaseParserNode — the abstract base of every parser alternative. It fixes the I/O (ParserConsumes →
 # ParserProduces) and owns the shared shell: take the PDF bytes from the input, delegate to the
@@ -68,7 +67,9 @@ class BaseParserNode(ActionNode):
         source = data.source
         # 1. No convertible PDF view → degrade to an empty IR (score 0 → escalation moves on).
         if source.pdf_content is None:
-            self.logger.warning(f"No PDF view for source '{source.source_hash}'; degrading to empty IR")
+            self.logger.warning(
+                f"No PDF view for source '{source.source_hash}'; degrading to empty IR"
+            )
             empty = DocumentIR(doc_id=source.source_hash, source_hash=source.source_hash)
             return ParserProduces(ir=empty, score=0.0)
 

@@ -113,8 +113,15 @@ async def upload_document(
     mime = file.content_type or "application/octet-stream"
     await CONTEXT.database.ingestion.store_blobs(
         [S3Object(key=source_hash, data=content, content_type=mime)],
-        [Blob(content_hash=source_hash, s3_key=source_hash, mime_type=mime,
-              size_bytes=len(content), kind=BlobKind.ORIGINAL)],
+        [
+            Blob(
+                content_hash=source_hash,
+                s3_key=source_hash,
+                mime_type=mime,
+                size_bytes=len(content),
+                kind=BlobKind.ORIGINAL,
+            )
+        ],
     )
 
     # 8. Admission — document + job + declared metadata, ONE transaction.
@@ -143,7 +150,8 @@ async def upload_document(
 
 
 @router.patch(
-    "/{document_id}/enabled", response_model=DocumentEnabledResponse,
+    "/{document_id}/enabled",
+    response_model=DocumentEnabledResponse,
     dependencies=[Depends(require(Capability.WRITE))],
 )
 @auto_handle_errors
@@ -160,9 +168,7 @@ async def set_document_enabled(
         DocumentEnabledResponse: The document id and its new state; 404 when the document is unknown.
     """
     # 1. The facade flips documents.enabled; False means the id never existed.
-    existed = await CONTEXT.database.enablement.set_document_enabled(
-        document_id, patch.enabled
-    )
+    existed = await CONTEXT.database.enablement.set_document_enabled(document_id, patch.enabled)
     if not existed:
         raise HTTPException(status_code=404, detail=f"Document {document_id} not found.")
 

@@ -32,4 +32,7 @@ def register(mcp: FastMCP, sdk: AsyncClient) -> None:
         blob = await sdk.blobs.get(content_hash)
         if blob.mime_type.startswith("image/"):
             return Image(data=blob.content, format=blob.mime_type.split("/", 1)[-1])
-        return {"mime_type": blob.mime_type, "content_base64": base64.b64encode(blob.content).decode()}
+        return {
+            "mime_type": blob.mime_type,
+            "content_base64": base64.b64encode(blob.content).decode(),
+        }

@@ -49,7 +49,9 @@ class BaseMetagenPrep(BaseMetagenNode):
         groups: dict[tuple[str, ...], list[ResolvedTarget]] = {}
         for index, target in enumerate(targets):
             key: tuple[str, ...] = (
-                target.endpoint.base_url, target.endpoint.api_key, target.endpoint.model,
+                target.endpoint.base_url,
+                target.endpoint.api_key,
+                target.endpoint.model,
             )
             if config.grouping == MetagenGrouping.PER_FIELD:
                 key = (*key, str(index))

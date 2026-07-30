@@ -119,9 +119,7 @@ class SearchResponse(BaseModel):
     """
 
     query: str = Field(description="The query that was searched.")
-    hits: list[SearchHitModel] = Field(
-        default_factory=list, description="Ranked hits, best first."
-    )
+    hits: list[SearchHitModel] = Field(default_factory=list, description="Ranked hits, best first.")
     debug_info: dict[str, Any] | None = Field(
         default=None,
         description="Non-fatal diagnostics (e.g. late_interaction_skipped). None when empty.",

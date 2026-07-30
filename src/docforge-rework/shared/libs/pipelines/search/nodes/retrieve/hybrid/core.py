@@ -80,7 +80,9 @@ class RetrieveHybridNode(PortBackedNode):
             targets=data.spec.search_targets,
             rescore_pool_size=config.rescore_pool_size,
         )
-        self.logger.debug(f"Retrieved {len(candidates)} candidate(s) (depth {data.spec.candidate_k})")
+        self.logger.debug(
+            f"Retrieved {len(candidates)} candidate(s) (depth {data.spec.candidate_k})"
+        )
         return RetrieveHybridProduces(candidates=CandidateSet(candidates=candidates))
 
 

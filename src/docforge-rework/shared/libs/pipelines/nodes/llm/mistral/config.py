@@ -32,7 +32,9 @@ class LlmMistralConfig(BaseLlmChatConfig):
 
     base_url: str = Field(default="https://api.mistral.ai/v1", description="Mistral API base URL.")
     model: MistralModel = Field(default=MistralModel.SMALL, description="Mistral model to use.")
-    temperature: float = Field(default=0.0, ge=0.0, le=1.0, description="Sampling temperature (0–1).")
+    temperature: float = Field(
+        default=0.0, ge=0.0, le=1.0, description="Sampling temperature (0–1)."
+    )
 
 
 __all__ = ["MistralModel", "LlmMistralConfig"]

@@ -29,7 +29,9 @@ class ChunkBlock(Base):
     block_id: Mapped[str] = mapped_column(
         String(256), ForeignKey("block.id", ondelete="CASCADE"), primary_key=True
     )
-    position: Mapped[int] = mapped_column(Integer, nullable=False)  # assembly order within the chunk
+    position: Mapped[int] = mapped_column(
+        Integer, nullable=False
+    )  # assembly order within the chunk
 
 
 __all__ = ["ChunkBlock"]

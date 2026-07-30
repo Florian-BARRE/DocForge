@@ -62,7 +62,7 @@ class ContextualizerBreadcrumbNode(BaseContextualizerNode):
         if not path:
             return None
         if config.max_depth > 0:
-            path = path[-config.max_depth:]
+            path = path[-config.max_depth :]
         # 2. Drop a leading level that repeats the doc anchor already ending the accumulated trail
         #    (this chunk lives in the anchored section) — the prefix must name it only once.
         existing = chunks[index].context

@@ -285,8 +285,10 @@ class PassageProjector:
                 continue
             text, atomic = contribution
             heading_path, section_key = cls.__ancestry(block, by_id)
-            unit_blocks = [block] if caption_block is None else sorted(
-                [caption_block, block], key=lambda member: member.reading_order
+            unit_blocks = (
+                [block]
+                if caption_block is None
+                else sorted([caption_block, block], key=lambda member: member.reading_order)
             )
             passages.append(
                 Passage(

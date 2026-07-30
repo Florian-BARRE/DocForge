@@ -26,9 +26,7 @@ class CrossEncoderRerankClient(LoggerClass):
         self._api_key = api_key
         self._timeout_seconds = timeout_seconds
 
-    async def rerank(
-        self, query: str, texts: list[str], truncate: bool
-    ) -> list[tuple[int, float]]:
+    async def rerank(self, query: str, texts: list[str], truncate: bool) -> list[tuple[int, float]]:
         """
         Score each candidate passage against the query with the cross-encoder reranker.
 

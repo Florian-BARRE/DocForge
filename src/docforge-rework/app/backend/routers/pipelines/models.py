@@ -126,7 +126,8 @@ class StageApplyRequest(BaseModel):
 
     blob: GroupNodeBlob = Field(..., description="The blob the action starts from.")
     action: StageAction = Field(
-        ..., description="The stage action (toggle / set_provider / set_config / set_chain / set_stack)."
+        ...,
+        description="The stage action (toggle / set_provider / set_config / set_chain / set_stack).",
     )
 
 

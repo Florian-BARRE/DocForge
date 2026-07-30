@@ -103,9 +103,7 @@ class CollectionsFacade(LoggerClass):
                 max_file_size_bytes=max_file_size_bytes,
             )
 
-    async def update_schema(
-        self, collection_id: uuid.UUID, desired: list[MetadataField]
-    ) -> bool:
+    async def update_schema(self, collection_id: uuid.UUID, desired: list[MetadataField]) -> bool:
         """
         Evolve the metadata schema by DIFF — never a wholesale replace.
 

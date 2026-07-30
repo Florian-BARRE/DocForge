@@ -174,9 +174,7 @@ class MetaVectorSyncFacade(LoggerClass):
         )
         return len(chunk_ids)
 
-    async def backfill_collection_meta_vectors(
-        self, collection_id: uuid.UUID
-    ) -> tuple[int, int]:
+    async def backfill_collection_meta_vectors(self, collection_id: uuid.UUID) -> tuple[int, int]:
         """
         Run the per-document meta-vector sync across every document of a collection (one-off backfill).
 

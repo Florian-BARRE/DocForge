@@ -32,9 +32,7 @@ class ModelRevisionResolver:
     logger = loggerplusplus.bind(identifier="ModelRevisionResolver")
 
     def __new__(cls, *args: object, **kwargs: object) -> None:  # type: ignore[misc]
-        raise TypeError(
-            f"ModelRevisionResolver is a static-only class and cannot be instantiated."
-        )
+        raise TypeError(f"ModelRevisionResolver is a static-only class and cannot be instantiated.")
 
     @classmethod
     def resolve(cls, model_id: str, revision: str | None) -> str:

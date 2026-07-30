@@ -67,8 +67,8 @@ class DoclingParseHelpers:
             if not prov_list:
                 return None
             prov_entry = prov_list[0]
-            page_no = prov_entry.page_no          # 1-indexed in Docling
-            page_idx = max(0, page_no - 1)        # 0-indexed for the IR
+            page_no = prov_entry.page_no  # 1-indexed in Docling
+            page_idx = max(0, page_no - 1)  # 0-indexed for the IR
             bbox = prov_entry.bbox
 
             page_obj = (docling_doc.pages or {}).get(page_no)

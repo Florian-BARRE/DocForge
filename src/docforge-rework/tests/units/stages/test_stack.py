@@ -36,9 +36,11 @@ from shared_libs.public_models import Chunk
 from shared_libs.public_models.llm import Completion
 
 _METHODS = ["doc_meta", "breadcrumb", "sliding"]
-_ALL_PERMUTATIONS = list(itertools.chain.from_iterable(
-    itertools.permutations(_METHODS, r) for r in range(0, len(_METHODS) + 1)
-))
+_ALL_PERMUTATIONS = list(
+    itertools.chain.from_iterable(
+        itertools.permutations(_METHODS, r) for r in range(0, len(_METHODS) + 1)
+    )
+)
 
 FAKE_ECHO_LLM = "test_stack_echo_llm"
 
@@ -49,7 +51,9 @@ FAKE_ECHO_LLM = "test_stack_echo_llm"
 
 
 @pytest.mark.parametrize("combo", _ALL_PERMUTATIONS, ids=lambda c: "-".join(c) or "empty")
-def test_every_stack_permutation_validates_and_orders_correctly(compiler, builder, validator, combo) -> None:
+def test_every_stack_permutation_validates_and_orders_correctly(
+    compiler, builder, validator, combo
+) -> None:
     default = IngestPipeline.default_blob()
     steps = [StackMethod(kind=kind, config={}) for kind in combo]
     restacked, notices = compiler.apply(default, SetStack(stage="contextualize", steps=steps))
@@ -65,9 +69,13 @@ def test_every_stack_permutation_validates_and_orders_correctly(compiler, builde
     # The chain order: chunk -> first method -> second -> ... in application order.
     ctx_ids = [n.id for n in restacked.nodes if getattr(n, "family", None) == "contextualize"]
     assert len(ctx_ids) == len(combo)
-    assert restacked.bindings[ctx_ids[0]]["chunks"] == FromNode(node_id="chunk", field_name="chunks")
+    assert restacked.bindings[ctx_ids[0]]["chunks"] == FromNode(
+        node_id="chunk", field_name="chunks"
+    )
     for previous, current in zip(ctx_ids, ctx_ids[1:], strict=False):
-        assert restacked.bindings[current]["chunks"] == FromNode(node_id=previous, field_name="chunks")
+        assert restacked.bindings[current]["chunks"] == FromNode(
+            node_id=previous, field_name="chunks"
+        )
 
 
 def test_empty_stack_disables_the_contextualize_stage(compiler) -> None:
@@ -98,12 +106,15 @@ def test_unknown_stack_method_is_a_notice_not_a_raise(compiler) -> None:
 
 def _llm(document_scope: str = "section", chain: list[ChainStep] | None = None) -> StackMethod:
     return StackMethod(
-        kind="llm", config={"document_scope": document_scope},
+        kind="llm",
+        config={"document_scope": document_scope},
         chain=ChainSpec(family="llm", steps=chain) if chain else None,
     )
 
 
-def test_single_llm_position_emits_prep_loop_apply_with_keep_raw(compiler, builder, validator) -> None:
+def test_single_llm_position_emits_prep_loop_apply_with_keep_raw(
+    compiler, builder, validator
+) -> None:
     default = IngestPipeline.default_blob()
     restacked, notices = compiler.apply(default, SetStack(stage="contextualize", steps=[_llm()]))
     assert validator.validate(builder.build(restacked)) == [], notices
@@ -111,13 +122,20 @@ def test_single_llm_position_emits_prep_loop_apply_with_keep_raw(compiler, build
     by_id = {n.id: n for n in restacked.nodes}
     assert isinstance(by_id["ctx_llm"], ActionNodeBlob) and by_id["ctx_llm"].kind == "llm"
     assert isinstance(by_id["ctx_llm_loop"], ForEachNodeBlob)
-    assert isinstance(by_id["ctx_llm_apply"], ActionNodeBlob) and by_id["ctx_llm_apply"].kind == "llm_apply"
+    assert (
+        isinstance(by_id["ctx_llm_apply"], ActionNodeBlob)
+        and by_id["ctx_llm_apply"].kind == "llm_apply"
+    )
     # The loop iterates the prep's prompts.
     assert isinstance(by_id["ctx_llm_loop"].over, FromNode)
     assert by_id["ctx_llm_loop"].over.node_id == "ctx_llm"
     # apply merges the loop's completions onto the SAME incoming chunks the prep read.
-    assert restacked.bindings["ctx_llm_apply"]["chunks"] == FromNode(node_id="chunk", field_name="chunks")
-    assert restacked.bindings["ctx_llm_apply"]["completions"] == FromNode(node_id="ctx_llm_loop", field_name="items")
+    assert restacked.bindings["ctx_llm_apply"]["chunks"] == FromNode(
+        node_id="chunk", field_name="chunks"
+    )
+    assert restacked.bindings["ctx_llm_apply"]["completions"] == FromNode(
+        node_id="ctx_llm_loop", field_name="items"
+    )
     # keep_raw is the fail-soft terminal inside the loop body (default on_error).
     assert any(getattr(n, "kind", None) == "keep_raw" for n in by_id["ctx_llm_loop"].body.nodes)
 
@@ -129,11 +147,19 @@ def test_two_llm_positions_get_distinct_prep_loop_apply_ids(compiler, builder, v
     )
     assert validator.validate(builder.build(restacked)) == [], notices
     ids = {n.id for n in restacked.nodes}
-    for expected in ("ctx_llm", "ctx_llm_loop", "ctx_llm_apply",
-                     "ctx_llm_2", "ctx_llm_2_loop", "ctx_llm_2_apply"):
+    for expected in (
+        "ctx_llm",
+        "ctx_llm_loop",
+        "ctx_llm_apply",
+        "ctx_llm_2",
+        "ctx_llm_2_loop",
+        "ctx_llm_2_apply",
+    ):
         assert expected in ids, expected
     # The second position reads the first position's output (its apply's chunks).
-    assert restacked.bindings["ctx_llm_2"]["chunks"] == FromNode(node_id="ctx_llm_apply", field_name="chunks")
+    assert restacked.bindings["ctx_llm_2"]["chunks"] == FromNode(
+        node_id="ctx_llm_apply", field_name="chunks"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -145,14 +171,22 @@ def _endpoint(url: str) -> dict:
     return {"base_url": url, "api_key": "k", "model": "m"}
 
 
-@pytest.mark.parametrize("chain_steps", [
-    [ChainStep(kind="openai_compatible", config=_endpoint("http://a"))],
-    [ChainStep(kind="openai_compatible", config=_endpoint("http://a")),
-     ChainStep(kind="mistral", config={"api_key": "k"})],
-], ids=["1-step", "2-step"])
+@pytest.mark.parametrize(
+    "chain_steps",
+    [
+        [ChainStep(kind="openai_compatible", config=_endpoint("http://a"))],
+        [
+            ChainStep(kind="openai_compatible", config=_endpoint("http://a")),
+            ChainStep(kind="mistral", config={"api_key": "k"}),
+        ],
+    ],
+    ids=["1-step", "2-step"],
+)
 def test_llm_chain_round_trips_and_is_idempotent(compiler, builder, validator, chain_steps) -> None:
     default = IngestPipeline.default_blob()
-    once, _ = compiler.apply(default, SetStack(stage="contextualize", steps=[_llm("section", chain_steps)]))
+    once, _ = compiler.apply(
+        default, SetStack(stage="contextualize", steps=[_llm("section", chain_steps)])
+    )
     assert validator.validate(builder.build(once)) == []
 
     read_once = StateReader.read(once)
@@ -209,24 +243,45 @@ _PARITY_CHUNKS = [
 def _standalone_llm_blob(prep_config: dict) -> dict:
     """A minimal prep(llm) -> ForEach(echo chain) -> apply blob reading the run chunks directly."""
     fragment = ChainFragmentBuilder.build(
-        prefix="ctx", family="llm", steps=[ChainStepSpec(kind=FAKE_ECHO_LLM, config={})],
+        prefix="ctx",
+        family="llm",
+        steps=[ChainStepSpec(kind=FAKE_ECHO_LLM, config={})],
         step_inputs={"prompt": FromGroupInput(field_name="prompt")},
-        output_field="completion", scored=False,
+        output_field="completion",
+        scored=False,
     )
     body = GroupNodeBlob(
-        id="ctx_path", nodes=list(fragment.nodes), transitions=list(fragment.transitions),
+        id="ctx_path",
+        nodes=list(fragment.nodes),
+        transitions=list(fragment.transitions),
         bindings=dict(fragment.bindings),
     )
     return {
-        "node_type": "group", "id": "contextualize_llm",
+        "node_type": "group",
+        "id": "contextualize_llm",
         "nodes": [
-            {"node_type": "action", "id": "prep", "family": "contextualize", "kind": "llm",
-             "config": prep_config},
-            {"node_type": "foreach", "id": "loop", "item_field": "prompt", "max_concurrency": 4,
-             "over": {"source": "node", "node_id": "prep", "field_name": "prompts"},
-             "body": body.model_dump()},
-            {"node_type": "action", "id": "apply", "family": "contextualize", "kind": "llm_apply",
-             "config": {}},
+            {
+                "node_type": "action",
+                "id": "prep",
+                "family": "contextualize",
+                "kind": "llm",
+                "config": prep_config,
+            },
+            {
+                "node_type": "foreach",
+                "id": "loop",
+                "item_field": "prompt",
+                "max_concurrency": 4,
+                "over": {"source": "node", "node_id": "prep", "field_name": "prompts"},
+                "body": body.model_dump(),
+            },
+            {
+                "node_type": "action",
+                "id": "apply",
+                "family": "contextualize",
+                "kind": "llm_apply",
+                "config": {},
+            },
         ],
         "transitions": [
             {"from_node_id": "prep", "to_node_id": "loop"},
@@ -234,16 +289,22 @@ def _standalone_llm_blob(prep_config: dict) -> dict:
         ],
         "bindings": {
             "prep": {"chunks": {"source": "run", "field_name": "chunks"}},
-            "apply": {"chunks": {"source": "run", "field_name": "chunks"},
-                      "completions": {"source": "node", "node_id": "loop", "field_name": "items"}},
+            "apply": {
+                "chunks": {"source": "run", "field_name": "chunks"},
+                "completions": {"source": "node", "node_id": "loop", "field_name": "items"},
+            },
         },
     }
 
 
-def _reference_view_contexts(chunks: list[Chunk], scope: str, window: int, max_words: int) -> list[str]:
+def _reference_view_contexts(
+    chunks: list[Chunk], scope: str, window: int, max_words: int
+) -> list[str]:
     """What the monolith would have grown: VIEW:: + the SAME scoped view the helpers build per chunk."""
     full_view = (
-        ContextualizeViewHelpers.full_view(chunks, max_words) if scope == DocumentScope.FULL else None
+        ContextualizeViewHelpers.full_view(chunks, max_words)
+        if scope == DocumentScope.FULL
+        else None
     )
     return [
         f"VIEW::{ContextualizeViewHelpers.scoped_view(index, chunks, DocumentScope(scope), window, max_words, full_view)}"

@@ -60,8 +60,12 @@ class IREnrichment(BaseModel):
     id: str = Field(description="The enrichment UUID (use it to fetch the model-chain trace).")
     block_id: str = Field(description="The enriched block.")
     kind: EnrichmentKind = Field(description="What the enrichment produced.")
-    text: str | None = Field(default=None, description="OCR text / VLM description (None if data-only).")
-    data: Any | None = Field(default=None, description="Structured result (chart cells, classification).")
+    text: str | None = Field(
+        default=None, description="OCR text / VLM description (None if data-only)."
+    )
+    data: Any | None = Field(
+        default=None, description="Structured result (chart cells, classification)."
+    )
     status: EnrichmentStatus = Field(description="ok / failed / skipped.")
 
 

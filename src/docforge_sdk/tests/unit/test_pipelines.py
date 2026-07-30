@@ -24,7 +24,9 @@ API = f"{BASE}/api/v1"
 KEY = "ingest"
 
 _BLOB: dict[str, Any] = {"kind": "group", "nodes": [{"id": "n1", "kind": "intake"}], "opaque": True}
-_OPERATIONS: list[dict[str, Any]] = [{"op": "add_node", "kind": "parser", "payload": {"deep": [1, 2]}}]
+_OPERATIONS: list[dict[str, Any]] = [
+    {"op": "add_node", "kind": "parser", "payload": {"deep": [1, 2]}}
+]
 
 
 @respx.mock
@@ -56,11 +58,16 @@ async def test_inspect_roundtrips_opaque_blob() -> None:
 @respx.mock
 def test_sync_edit_roundtrips_opaque_operations() -> None:
     route = respx.post(f"{API}/pipelines/{KEY}/edit").mock(
-        return_value=httpx.Response(200, json={"blob": _BLOB, "valid": False, "issues": [{"code": "x"}]})
+        return_value=httpx.Response(
+            200, json={"blob": _BLOB, "valid": False, "issues": [{"code": "x"}]}
+        )
     )
     with Client(BASE) as client:
         result = client.pipelines.edit(KEY, _BLOB, _OPERATIONS)
-    assert json.loads(route.calls.last.request.content) == {"blob": _BLOB, "operations": _OPERATIONS}
+    assert json.loads(route.calls.last.request.content) == {
+        "blob": _BLOB,
+        "operations": _OPERATIONS,
+    }
     assert isinstance(result, EditResponse)
     # The opaque envelope fields round-trip untouched.
     assert result.blob == _BLOB

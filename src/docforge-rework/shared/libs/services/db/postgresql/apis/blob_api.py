@@ -40,9 +40,7 @@ class BlobApi:
         return await session.get(Blob, content_hash)
 
     @staticmethod
-    async def collections_for_hash(
-        session: AsyncSession, content_hash: str
-    ) -> list[uuid.UUID]:
+    async def collections_for_hash(session: AsyncSession, content_hash: str) -> list[uuid.UUID]:
         """
         Return every collection whose documents reference this content-addressed blob.
 

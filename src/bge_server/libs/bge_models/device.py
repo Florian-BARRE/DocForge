@@ -105,8 +105,7 @@ class DeviceResolver:
             # policy == "auto": prefer GPU when available, fall back to CPU silently
             device = "cuda" if cuda_available else "cpu"
             cls.logger.info(
-                f"BGE_DEVICE=auto resolved -> {device} "
-                f"(cuda_available={cuda_available})"
+                f"BGE_DEVICE=auto resolved -> {device} (cuda_available={cuda_available})"
             )
 
         # 3. Gate fp16 to CUDA — fp16 on CPU is a footgun; warn and override
@@ -121,7 +120,5 @@ class DeviceResolver:
         else:
             use_fp16 = fp16_requested
 
-        cls.logger.info(
-            f"Device resolved: policy={policy} -> device={device}, use_fp16={use_fp16}"
-        )
+        cls.logger.info(f"Device resolved: policy={policy} -> device={device}, use_fp16={use_fp16}")
         return ResolvedDevice(device=device, use_fp16=use_fp16)

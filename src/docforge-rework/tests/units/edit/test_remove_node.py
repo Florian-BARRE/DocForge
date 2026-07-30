@@ -7,17 +7,23 @@ from shared_libs.pipelines.edit import RemoveNode
 from .conftest import issues_of
 
 
-def test_remove_optional_slot_bridges_and_purges_dangling_ref(editor, builder, validator, default_blob) -> None:
+def test_remove_optional_slot_bridges_and_purges_dangling_ref(
+    editor, builder, validator, default_blob
+) -> None:
     assert issues_of(builder, validator, default_blob) == [], "the stock blob must start healthy"
     pruned = editor.apply(default_blob, [RemoveNode(node_id="meta_doc_apply")])
 
     assert not any(n.id == "meta_doc_apply" for n in pruned.nodes)
-    assert any(t.from_node_id == "meta_doc_loop" and t.to_node_id == "embed" for t in pruned.transitions)
+    assert any(
+        t.from_node_id == "meta_doc_loop" and t.to_node_id == "embed" for t in pruned.transitions
+    )
     assert "document_meta" not in pruned.bindings["bundle"]
     assert issues_of(builder, validator, pruned) == []
 
 
-def test_remove_node_purging_a_required_slot_surfaces_missing_binding(editor, builder, validator) -> None:
+def test_remove_node_purging_a_required_slot_surfaces_missing_binding(
+    editor, builder, validator
+) -> None:
     blob = GroupNodeBlob(
         id="req",
         nodes=[

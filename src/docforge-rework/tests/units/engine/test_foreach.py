@@ -112,7 +112,13 @@ def _blob() -> dict:
         "node_type": "group",
         "id": "root",
         "nodes": [
-            {"node_type": "action", "id": "extract", "family": "test_foreach_family", "kind": "test_foreach_extract", "config": {}},
+            {
+                "node_type": "action",
+                "id": "extract",
+                "family": "test_foreach_family",
+                "kind": "test_foreach_extract",
+                "config": {},
+            },
             {
                 "node_type": "foreach",
                 "id": "per_thing",
@@ -123,15 +129,63 @@ def _blob() -> dict:
                     "node_type": "group",
                     "id": "treat",
                     "nodes": [
-                        {"node_type": "action", "id": "clf", "family": "test_foreach_family", "kind": "test_foreach_classify", "config": {}},
-                        {"node_type": "action", "id": "photo", "family": "test_foreach_family", "kind": "test_foreach_path", "config": {"label": "PHOTO"}},
-                        {"node_type": "action", "id": "scan", "family": "test_foreach_family", "kind": "test_foreach_path", "config": {"label": "SCAN"}},
-                        {"node_type": "action", "id": "skip", "family": "test_foreach_family", "kind": "test_foreach_path", "config": {"label": "SKIP"}},
+                        {
+                            "node_type": "action",
+                            "id": "clf",
+                            "family": "test_foreach_family",
+                            "kind": "test_foreach_classify",
+                            "config": {},
+                        },
+                        {
+                            "node_type": "action",
+                            "id": "photo",
+                            "family": "test_foreach_family",
+                            "kind": "test_foreach_path",
+                            "config": {"label": "PHOTO"},
+                        },
+                        {
+                            "node_type": "action",
+                            "id": "scan",
+                            "family": "test_foreach_family",
+                            "kind": "test_foreach_path",
+                            "config": {"label": "SCAN"},
+                        },
+                        {
+                            "node_type": "action",
+                            "id": "skip",
+                            "family": "test_foreach_family",
+                            "kind": "test_foreach_path",
+                            "config": {"label": "SKIP"},
+                        },
                     ],
                     "transitions": [
-                        {"from_node_id": "clf", "to_node_id": "photo", "condition": {"kind": "when_equals", "field": "kind", "equals": "photo"}},
-                        {"from_node_id": "clf", "to_node_id": "scan", "condition": {"kind": "when_equals", "field": "kind", "equals": "scanned_text"}},
-                        {"from_node_id": "clf", "to_node_id": "skip", "condition": {"kind": "when_equals", "field": "kind", "equals": "decorative"}},
+                        {
+                            "from_node_id": "clf",
+                            "to_node_id": "photo",
+                            "condition": {
+                                "kind": "when_equals",
+                                "field": "kind",
+                                "equals": "photo",
+                            },
+                        },
+                        {
+                            "from_node_id": "clf",
+                            "to_node_id": "scan",
+                            "condition": {
+                                "kind": "when_equals",
+                                "field": "kind",
+                                "equals": "scanned_text",
+                            },
+                        },
+                        {
+                            "from_node_id": "clf",
+                            "to_node_id": "skip",
+                            "condition": {
+                                "kind": "when_equals",
+                                "field": "kind",
+                                "equals": "decorative",
+                            },
+                        },
                     ],
                     "bindings": {
                         "clf": {"thing": {"source": "group", "field_name": "thing"}},
@@ -141,14 +195,22 @@ def _blob() -> dict:
                     },
                 },
             },
-            {"node_type": "action", "id": "collect", "family": "test_foreach_family", "kind": "test_foreach_collect", "config": {}},
+            {
+                "node_type": "action",
+                "id": "collect",
+                "family": "test_foreach_family",
+                "kind": "test_foreach_collect",
+                "config": {},
+            },
         ],
         "transitions": [
             {"from_node_id": "extract", "to_node_id": "per_thing"},
             {"from_node_id": "per_thing", "to_node_id": "collect"},
         ],
         "bindings": {
-            "collect": {"entries": {"source": "node", "node_id": "per_thing", "field_name": "items"}},
+            "collect": {
+                "entries": {"source": "node", "node_id": "per_thing", "field_name": "items"}
+            },
         },
     }
 
@@ -173,7 +235,12 @@ def test_per_item_switch_routing_preserves_order(group, engine) -> None:
     output, record = asyncio.run(engine.execute(group, {}))
     assert output.merged.labels == ["PHOTO:p1", "SCAN:s1", "SKIP:logo", "PHOTO:p2"]
     fe_record = next(r for r in record.children if r.node_id == "per_thing")
-    assert [c.node_id for c in fe_record.children] == ["treat[0]", "treat[1]", "treat[2]", "treat[3]"]
+    assert [c.node_id for c in fe_record.children] == [
+        "treat[0]",
+        "treat[1]",
+        "treat[2]",
+        "treat[3]",
+    ]
     assert all(c.status.value == "success" for c in fe_record.children)
 
 

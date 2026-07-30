@@ -28,7 +28,8 @@ router = APIRouter(tags=["search"])
 
 
 @router.post(
-    "/collections/{collection_id}/search", response_model=SearchResponse,
+    "/collections/{collection_id}/search",
+    response_model=SearchResponse,
     dependencies=[Depends(require(Capability.SEARCH))],
 )
 @auto_handle_errors
@@ -90,9 +91,7 @@ async def search_collection(collection_id: uuid.UUID, request: SearchRequest) ->
     #    indexed (or a selection with no modality) is a caller error rejected 422 before any spend.
     target_errors = SearchHelpers.validate_search_targets(request.search_in, schema)
     if target_errors:
-        raise HTTPException(
-            status_code=422, detail=f"Invalid search target(s): {target_errors}"
-        )
+        raise HTTPException(status_code=422, detail=f"Invalid search target(s): {target_errors}")
 
     # 7. Delegate the retrieval to the graph-based search pipeline. A stored search graph that is
     #    not a valid search pipeline (e.g. one that predates the write-time SearchBlobValidator, or
@@ -112,7 +111,7 @@ async def search_collection(collection_id: uuid.UUID, request: SearchRequest) ->
         raise HTTPException(
             status_code=422,
             detail=f"The collection's stored search graph is invalid — re-save its search "
-                   f"blob. ({exc})",
+            f"blob. ({exc})",
         )
 
     # 8. Shape the flat, client-facing response from the graph's Hits.

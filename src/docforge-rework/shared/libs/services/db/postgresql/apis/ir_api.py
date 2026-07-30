@@ -75,9 +75,9 @@ class IRApi:
     async def get_tables(session: AsyncSession, document_id: uuid.UUID) -> list[BlockTable]:
         """Return a document's table detail rows (joined through their blocks)."""
         result = await session.execute(
-            select(BlockTable).join(Block, BlockTable.block_id == Block.id).where(
-                Block.document_id == document_id
-            )
+            select(BlockTable)
+            .join(Block, BlockTable.block_id == Block.id)
+            .where(Block.document_id == document_id)
         )
         return list(result.scalars().all())
 
@@ -85,9 +85,9 @@ class IRApi:
     async def get_figures(session: AsyncSession, document_id: uuid.UUID) -> list[BlockFigure]:
         """Return a document's figure detail rows (joined through their blocks)."""
         result = await session.execute(
-            select(BlockFigure).join(Block, BlockFigure.block_id == Block.id).where(
-                Block.document_id == document_id
-            )
+            select(BlockFigure)
+            .join(Block, BlockFigure.block_id == Block.id)
+            .where(Block.document_id == document_id)
         )
         return list(result.scalars().all())
 
@@ -97,9 +97,9 @@ class IRApi:
     ) -> list[BlockEnrichment]:
         """Return every enrichment of a document (the ENRICHED IR, for inspection/assembly)."""
         result = await session.execute(
-            select(BlockEnrichment).join(Block, BlockEnrichment.block_id == Block.id).where(
-                Block.document_id == document_id
-            )
+            select(BlockEnrichment)
+            .join(Block, BlockEnrichment.block_id == Block.id)
+            .where(Block.document_id == document_id)
         )
         return list(result.scalars().all())
 

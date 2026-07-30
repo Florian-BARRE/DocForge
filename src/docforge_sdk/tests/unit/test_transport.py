@@ -41,7 +41,9 @@ _CREATED_SAMPLE: dict[str, Any] = {
 async def test_async_200_parses_into_model() -> None:
     respx.post(f"{API}/auth/keys").mock(return_value=httpx.Response(201, json=_CREATED_SAMPLE))
     transport = AsyncTransport(BASE, 5.0, api_token="tok")
-    result = await transport.request(RequestSpec("POST", "/auth/keys", json={"name": "k"}), CreatedKey)
+    result = await transport.request(
+        RequestSpec("POST", "/auth/keys", json={"name": "k"}), CreatedKey
+    )
     assert isinstance(result, CreatedKey)
     assert result.key == "df_secret_plaintext"
     await transport.aclose()
@@ -59,7 +61,13 @@ def test_sync_200_parses_into_model() -> None:
 @respx.mock
 @pytest.mark.parametrize(
     ("status", "expected"),
-    [(404, NotFoundError), (401, AuthError), (403, AuthError), (409, ConflictError), (422, UnprocessableError)],
+    [
+        (404, NotFoundError),
+        (401, AuthError),
+        (403, AuthError),
+        (409, ConflictError),
+        (422, UnprocessableError),
+    ],
 )
 async def test_async_status_maps_to_exception(status: int, expected: type[Exception]) -> None:
     respx.get(f"{API}/auth/keys").mock(return_value=httpx.Response(status, json={"detail": "x"}))
@@ -95,7 +103,9 @@ def test_status_error_carries_code_and_body() -> None:
 
 @respx.mock
 async def test_authorization_header_present_only_with_token() -> None:
-    route = respx.get(f"{API}/auth/keys").mock(return_value=httpx.Response(200, json=_CREATED_SAMPLE))
+    route = respx.get(f"{API}/auth/keys").mock(
+        return_value=httpx.Response(200, json=_CREATED_SAMPLE)
+    )
 
     with_token = AsyncTransport(BASE, 5.0, api_token="tok")
     await with_token.request(RequestSpec("GET", "/auth/keys"), CreatedKey)
@@ -110,7 +120,9 @@ async def test_authorization_header_present_only_with_token() -> None:
 
 @respx.mock
 def test_clean_drops_none_query_params() -> None:
-    route = respx.get(f"{API}/auth/keys").mock(return_value=httpx.Response(200, json=_CREATED_SAMPLE))
+    route = respx.get(f"{API}/auth/keys").mock(
+        return_value=httpx.Response(200, json=_CREATED_SAMPLE)
+    )
     transport = SyncTransport(BASE, 5.0)
     transport.request(RequestSpec("GET", "/auth/keys", params={"a": "1", "b": None}), CreatedKey)
     sent = route.calls.last.request.url

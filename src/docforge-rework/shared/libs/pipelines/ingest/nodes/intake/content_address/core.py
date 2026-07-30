@@ -22,7 +22,9 @@ class ContentAddressConfig(NodeConfig):
 class ContentAddressConsumes(NodeInput):
     """The admitted source, its PDF view, and the PDF routing facts."""
 
-    source: SourceDocument = Field(description="The admitted document (its ORIGINAL bytes are hashed).")
+    source: SourceDocument = Field(
+        description="The admitted document (its ORIGINAL bytes are hashed)."
+    )
     pdf: PdfView = Field(description="The working PDF carried into the stage output.")
     probe: PdfProbe = Field(description="The PDF facts carried into the stage output.")
 

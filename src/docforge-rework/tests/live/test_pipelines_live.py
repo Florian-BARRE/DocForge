@@ -32,7 +32,9 @@ def test_stages_view_then_apply_round_trip_on_the_real_api(api_client) -> None:
     design = api_client.get("/api/v1/pipelines/ingest").json()
     stock_blob = design["blob"]
 
-    view_response = api_client.post("/api/v1/pipelines/ingest/stages/view", json={"blob": stock_blob})
+    view_response = api_client.post(
+        "/api/v1/pipelines/ingest/stages/view", json={"blob": stock_blob}
+    )
     assert view_response.status_code == 200, view_response.text
     view_body = view_response.json()
     assert view_body["valid"] is True

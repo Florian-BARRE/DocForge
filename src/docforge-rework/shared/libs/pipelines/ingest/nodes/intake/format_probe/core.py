@@ -51,7 +51,9 @@ class FormatProbeNode(ActionNode):
     async def run(self, data: FormatProbeConsumes) -> FormatProbeProduces:
         """Sniff the content and report the detected format, MIME and size."""
         # 1. Detect from content (the filename only disambiguates markdown from plain text).
-        detected_format, mime_type = FormatProbeHelpers.detect(data.source.content, data.source.filename)
+        detected_format, mime_type = FormatProbeHelpers.detect(
+            data.source.content, data.source.filename
+        )
         self.logger.debug(f"Probed '{data.source.filename}' as {detected_format} ({mime_type})")
 
         # 2. Report.

@@ -88,9 +88,7 @@ class QdrantCollectionApi:
         )
 
     @staticmethod
-    async def declared_vectors(
-        client: AsyncQdrantClient, name: str
-    ) -> tuple[set[str], set[str]]:
+    async def declared_vectors(client: AsyncQdrantClient, name: str) -> tuple[set[str], set[str]]:
         """
         Return the (dense, sparse) named vectors declared on an existing collection.
 

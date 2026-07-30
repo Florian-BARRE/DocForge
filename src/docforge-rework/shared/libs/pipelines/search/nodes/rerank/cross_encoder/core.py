@@ -59,9 +59,9 @@ class RerankCrossEncoderNode(PortBackedNode):
         config: RerankCrossEncoderConfig = self.config
 
         # 1. Take the top_n candidates by incoming fusion score — the cheap cross-encoder pass.
-        pool = sorted(data.candidates.candidates, key=lambda candidate: candidate.score, reverse=True)[
-            : config.top_n
-        ]
+        pool = sorted(
+            data.candidates.candidates, key=lambda candidate: candidate.score, reverse=True
+        )[: config.top_n]
         if not pool:
             return RerankCrossEncoderProduces(candidates=CandidateSet(candidates=[]), score=0.0)
 
@@ -87,7 +87,9 @@ class RerankCrossEncoderNode(PortBackedNode):
                 f"{len(texts)} passage(s) — {len(texts) - len(score_by_index)} candidate(s) dropped"
             )
         reranked = [
-            candidate.model_copy(update={"score": score_by_index[position], "source": _RERANK_SOURCE})
+            candidate.model_copy(
+                update={"score": score_by_index[position], "source": _RERANK_SOURCE}
+            )
             for position, candidate in enumerate(judged)
             if position in score_by_index
         ]

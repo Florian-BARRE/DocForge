@@ -26,12 +26,18 @@ class TargetVectorResolver:
     @staticmethod
     def __dense_name(field: str) -> str:
         """Resolve a target field to its dense vector name (content body vs. metadata field)."""
-        return VectorNames.CONTENT_DENSE if field == CONTENT_FIELD else VectorNames.field_dense(field)
+        return (
+            VectorNames.CONTENT_DENSE if field == CONTENT_FIELD else VectorNames.field_dense(field)
+        )
 
     @staticmethod
     def __sparse_name(field: str) -> str:
         """Resolve a target field to its sparse (BM25) vector name (content body vs. metadata field)."""
-        return VectorNames.CONTENT_SPARSE if field == CONTENT_FIELD else VectorNames.field_sparse(field)
+        return (
+            VectorNames.CONTENT_SPARSE
+            if field == CONTENT_FIELD
+            else VectorNames.field_sparse(field)
+        )
 
     @classmethod
     def resolve(

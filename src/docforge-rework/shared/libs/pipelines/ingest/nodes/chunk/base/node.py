@@ -138,7 +138,9 @@ class BaseChunkerNode(ActionNode):
         """Accumulate consecutive orphan headings into one carried unit (exact duplicates dropped)."""
         if pending is None:
             return orphan
-        if ChunkerHelpers.normalize_text(orphan.text) == ChunkerHelpers.normalize_text(pending.text):
+        if ChunkerHelpers.normalize_text(orphan.text) == ChunkerHelpers.normalize_text(
+            pending.text
+        ):
             return pending
         return self.__join(pending, orphan, f"{pending.text}\n{orphan.text}", lead=pending)
 

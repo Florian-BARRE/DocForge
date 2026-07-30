@@ -62,9 +62,7 @@ def wired(fastapi_app, monkeypatch):
     from backend.context import CONTEXT
 
     collection = SimpleNamespace(pipeline=_pipeline_with_embed(), search={})
-    monkeypatch.setattr(
-        CONTEXT.database.collections, "get", AsyncMock(return_value=collection)
-    )
+    monkeypatch.setattr(CONTEXT.database.collections, "get", AsyncMock(return_value=collection))
     monkeypatch.setattr(
         CONTEXT.database.collections, "get_schema", AsyncMock(return_value=_schema())
     )
@@ -175,7 +173,13 @@ def test_search_no_embed_node_is_409(client, fastapi_app, monkeypatch) -> None:
     from backend.context import CONTEXT
 
     collection = SimpleNamespace(
-        pipeline={"node_type": "group", "id": "root", "nodes": [], "transitions": [], "bindings": {}}
+        pipeline={
+            "node_type": "group",
+            "id": "root",
+            "nodes": [],
+            "transitions": [],
+            "bindings": {},
+        }
     )
     monkeypatch.setattr(CONTEXT.database.collections, "get", AsyncMock(return_value=collection))
     response = client.post(

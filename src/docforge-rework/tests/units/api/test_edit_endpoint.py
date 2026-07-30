@@ -15,7 +15,10 @@ def test_edit_endpoint_removes_a_node_and_bridges_the_gap(client) -> None:
 
     response = client.post(
         surface["edit_url"],
-        json={"blob": stock_blob, "operations": [{"op": "remove_node", "node_id": "meta_doc_apply"}]},
+        json={
+            "blob": stock_blob,
+            "operations": [{"op": "remove_node", "node_id": "meta_doc_apply"}],
+        },
     )
     assert response.status_code == 200, response.text
     body = response.json()
@@ -40,4 +43,6 @@ def test_edit_endpoint_returns_data_not_a_500_for_an_impossible_op(client) -> No
     body = response.json()
     assert body["valid"] is False
     assert body["edit_error"]
-    assert any(node["id"] == "meta_doc_apply" for node in body["blob"]["nodes"]), "original blob echoed on edit_error"
+    assert any(node["id"] == "meta_doc_apply" for node in body["blob"]["nodes"]), (
+        "original blob echoed on edit_error"
+    )

@@ -21,6 +21,8 @@ class HealthResponse(BaseModel):
     """
 
     status: str = Field(..., description="'ok' when ready, 'loading' during startup.")
-    ready: bool = Field(..., description="True when both models are loaded and inference is available.")
+    ready: bool = Field(
+        ..., description="True when both models are loaded and inference is available."
+    )
     embed_model: str = Field(..., description="HuggingFace model ID of the embed model.")
     rerank_model: str = Field(..., description="HuggingFace model ID of the rerank model.")

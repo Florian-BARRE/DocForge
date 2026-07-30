@@ -204,4 +204,6 @@ class BatchQueueWorker(LoggerClass):
             except asyncio.QueueEmpty:
                 break
 
-        self.logger.info(f"[{self._name}] BatchQueueWorker stopped (drained {drained} pending items)")
+        self.logger.info(
+            f"[{self._name}] BatchQueueWorker stopped (drained {drained} pending items)"
+        )

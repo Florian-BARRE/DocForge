@@ -25,7 +25,9 @@ class _RerankVectorConsumes(NodeInput):
     """Consumes the candidate pool + the query vectors (a vector re-score)."""
 
     candidates: CandidateSet = Field(description="The candidate pool to re-score.")
-    encoded: EncodedQuery = Field(description="The query vectors driving the re-score (e.g. ColBERT).")
+    encoded: EncodedQuery = Field(
+        description="The query vectors driving the re-score (e.g. ColBERT)."
+    )
 
 
 class _RerankTextConsumes(NodeInput):

@@ -174,9 +174,7 @@ class ExplorerHelpers:
 
     # -------------------- chunks --------------------
     @classmethod
-    def chunk(
-        cls, chunk: Chunk, block_ids: list[str], metadata: list[MetadataValue]
-    ) -> ChunkInfo:
+    def chunk(cls, chunk: Chunk, block_ids: list[str], metadata: list[MetadataValue]) -> ChunkInfo:
         """Map a chunk row + its composition and metadata to the explorer model."""
         return ChunkInfo(
             id=str(chunk.id),

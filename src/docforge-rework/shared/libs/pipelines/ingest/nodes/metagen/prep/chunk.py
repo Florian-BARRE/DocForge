@@ -26,7 +26,8 @@ class MetagenChunkPrepConsumes(NodeInput):
     """Input: the chunks to annotate + the contract declaring the fields."""
 
     chunks: list[Chunk] = Field(
-        default_factory=list, description="The chunks (each request carries a chunk's enriched text)."
+        default_factory=list,
+        description="The chunks (each request carries a chunk's enriched text).",
     )
     contract: CollectionContract = Field(
         description="The contract declaring the GENERATED chunk-scope fields to fill."
@@ -49,7 +50,9 @@ class MetagenChunkPrepNode(BaseMetagenPrep):
     KIND = "chunk_prep"
     SELECTABLE = False  # internal wiring — the stage builder emits it, not a user-picked method
     NAME = "Chunk metadata prep"
-    SUMMARY = "Emit one structured-generation request per chunk from the contract's chunk-scope fields."
+    SUMMARY = (
+        "Emit one structured-generation request per chunk from the contract's chunk-scope fields."
+    )
     HOW_IT_WORKS = (
         "Resolves the GENERATED/CHUNK fields (contract declares, targets bind prompt + endpoint per "
         "field) and emits, per chunk, one GenerationRequest per call group over the chunk's ENRICHED "
@@ -80,7 +83,9 @@ class MetagenChunkPrepNode(BaseMetagenPrep):
             requests.extend(
                 self._build_requests(chunk.enriched_text, chunk.chunk_id, targets, chunk.chunk_id)
             )
-        self.logger.debug(f"Prepared {len(requests)} chunk-scope request(s) over {len(data.chunks)} chunk(s)")
+        self.logger.debug(
+            f"Prepared {len(requests)} chunk-scope request(s) over {len(data.chunks)} chunk(s)"
+        )
         return MetagenChunkPrepProduces(requests=requests)
 
 

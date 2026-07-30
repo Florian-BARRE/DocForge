@@ -51,13 +51,17 @@ class GraphEditor(LoggerClass):
         for segment in path:
             child = BlobTopology.find_node(group, segment)
             if child is None:
-                raise EditError(f"unknown container path {path}: no node '{segment}' in '{group.id}'")
+                raise EditError(
+                    f"unknown container path {path}: no node '{segment}' in '{group.id}'"
+                )
             if isinstance(child, ForEachNodeBlob):
                 group = child.body
             elif isinstance(child, GroupNodeBlob):
                 group = child
             else:
-                raise EditError(f"container path {path}: '{segment}' is an action node, not a container")
+                raise EditError(
+                    f"container path {path}: '{segment}' is an action node, not a container"
+                )
         return group
 
     def __node(self, container: GroupNodeBlob, node_id: str) -> NodeBlob:
@@ -140,7 +144,8 @@ class GraphEditor(LoggerClass):
         # 1. Remove the node and every transition that touched it.
         container.nodes = [n for n in container.nodes if n.id != op.node_id]
         container.transitions = [
-            t for t in container.transitions
+            t
+            for t in container.transitions
             if t.from_node_id != op.node_id and t.to_node_id != op.node_id
         ]
 
@@ -152,7 +157,9 @@ class GraphEditor(LoggerClass):
             )
             if not already:
                 container.transitions.append(
-                    Transition(from_node_id=source, to_node_id=target, condition=incoming[0].condition)
+                    Transition(
+                        from_node_id=source, to_node_id=target, condition=incoming[0].condition
+                    )
                 )
 
         # 3. Drop the node's own wiring and purge references to it in every other node's bindings.
@@ -202,8 +209,11 @@ class GraphEditor(LoggerClass):
         """Replace the condition on the existing edge between two nodes."""
         container = self.__container(blob, op.container)
         edge = next(
-            (t for t in container.transitions
-             if t.from_node_id == op.from_node_id and t.to_node_id == op.to_node_id),
+            (
+                t
+                for t in container.transitions
+                if t.from_node_id == op.from_node_id and t.to_node_id == op.to_node_id
+            ),
             None,
         )
         if edge is None:

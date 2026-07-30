@@ -92,7 +92,9 @@ def test_request_flag_on_forwards_late_interaction_and_pool(client, wired, monke
     _patch_embedder(monkeypatch, _ColbertEmbedder)
     search, _ = wired
 
-    response = client.post(URL, json={"query": "q", "use_late_interaction": True, "rescore_pool_size": 55})
+    response = client.post(
+        URL, json={"query": "q", "use_late_interaction": True, "rescore_pool_size": 55}
+    )
     assert response.status_code == 200, response.text
 
     kwargs = search.await_args.kwargs
@@ -118,7 +120,10 @@ def test_knobs_come_from_the_request_only(client, wired, monkeypatch) -> None:
     _patch_embedder(monkeypatch, _ColbertEmbedder)
     search, collection = wired
     # A stored search GRAPH blob (has "nodes") — must NOT be mined for tuning knobs.
-    collection.search = {"id": "custom", "nodes": [{"id": "n", "family": "query", "kind": "normalize"}]}
+    collection.search = {
+        "id": "custom",
+        "nodes": [{"id": "n", "family": "query", "kind": "normalize"}],
+    }
 
     response = client.post(URL, json={"query": "q"})  # no request flag
     assert response.status_code == 200, response.text

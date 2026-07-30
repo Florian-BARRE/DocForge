@@ -66,14 +66,41 @@ BLOB = {
     "node_type": "group",
     "id": "ingest_stage",
     "nodes": [
-        {"node_type": "action", "id": "admit", "family": "intake", "kind": "admission",
-         "config": {"unknown_field_policy": "reject"}},
-        {"node_type": "action", "id": "probe", "family": "intake", "kind": "format_probe", "config": {}},
-        {"node_type": "action", "id": "convert", "family": "converter", "kind": "gotenberg",
-         "config": {"base_url": "http://gotenberg:3000"}},
-        {"node_type": "action", "id": "pdf_probe", "family": "intake", "kind": "pdf_probe", "config": {}},
-        {"node_type": "action", "id": "content_address", "family": "intake",
-         "kind": "content_address", "config": {}},
+        {
+            "node_type": "action",
+            "id": "admit",
+            "family": "intake",
+            "kind": "admission",
+            "config": {"unknown_field_policy": "reject"},
+        },
+        {
+            "node_type": "action",
+            "id": "probe",
+            "family": "intake",
+            "kind": "format_probe",
+            "config": {},
+        },
+        {
+            "node_type": "action",
+            "id": "convert",
+            "family": "converter",
+            "kind": "gotenberg",
+            "config": {"base_url": "http://gotenberg:3000"},
+        },
+        {
+            "node_type": "action",
+            "id": "pdf_probe",
+            "family": "intake",
+            "kind": "pdf_probe",
+            "config": {},
+        },
+        {
+            "node_type": "action",
+            "id": "content_address",
+            "family": "intake",
+            "kind": "content_address",
+            "config": {},
+        },
     ],
     "transitions": [
         {"from_node_id": "probe", "to_node_id": "admit"},
@@ -83,11 +110,15 @@ BLOB = {
     ],
     "bindings": {
         "probe": {"source": {"source": "run", "field_name": "source"}},
-        "admit": {"source": {"source": "run", "field_name": "source"},
-                  "probe": {"source": "node", "node_id": "probe", "field_name": "probe"},
-                  "contract": {"source": "run", "field_name": "contract"}},
-        "convert": {"source": {"source": "node", "node_id": "admit", "field_name": "source"},
-                    "probe": {"source": "node", "node_id": "probe", "field_name": "probe"}},
+        "admit": {
+            "source": {"source": "run", "field_name": "source"},
+            "probe": {"source": "node", "node_id": "probe", "field_name": "probe"},
+            "contract": {"source": "run", "field_name": "contract"},
+        },
+        "convert": {
+            "source": {"source": "node", "node_id": "admit", "field_name": "source"},
+            "probe": {"source": "node", "node_id": "probe", "field_name": "probe"},
+        },
         "pdf_probe": {"pdf": {"source": "node", "node_id": "convert", "field_name": "pdf"}},
         "content_address": {
             "source": {"source": "node", "node_id": "admit", "field_name": "source"},
@@ -113,18 +144,29 @@ def contract() -> CollectionContract:
         supported_formats=["pdf", "docx"],
         max_file_size_bytes=1_000_000,
         fields=[
-            MetadataFieldSpec(field_name="departement", field_type=FieldType.STRING, required=True,
-                              enum_values=["finance", "rh"]),
+            MetadataFieldSpec(
+                field_name="departement",
+                field_type=FieldType.STRING,
+                required=True,
+                enum_values=["finance", "rh"],
+            ),
             MetadataFieldSpec(field_name="annee", field_type=FieldType.INTEGER),
-            MetadataFieldSpec(field_name="resume", field_type=FieldType.STRING,
-                              origin=FieldOrigin.GENERATED, semantic=True),
+            MetadataFieldSpec(
+                field_name="resume",
+                field_type=FieldType.STRING,
+                origin=FieldOrigin.GENERATED,
+                semantic=True,
+            ),
         ],
     )
 
 
 async def test_valid_pdf_run_hashes_passes_through_and_counts_pages(group, contract) -> None:
-    source = SourceDocument(filename="rapport.pdf", content=PDF_BYTES,
-                            declared_meta={"departement": "finance", "annee": 2024})
+    source = SourceDocument(
+        filename="rapport.pdf",
+        content=PDF_BYTES,
+        declared_meta={"departement": "finance", "annee": 2024},
+    )
     output, _record = await FlowEngine().execute(group, {"source": source, "contract": contract})
     result = output.ingest
     assert result.source_hash == hashlib.sha256(PDF_BYTES).hexdigest()
@@ -133,19 +175,59 @@ async def test_valid_pdf_run_hashes_passes_through_and_counts_pages(group, contr
 
 
 REJECTION_CASES = [
-    pytest.param(SourceDocument(filename="x.exe", content=b"MZ", declared_meta={"departement": "finance"}), id="format"),
-    pytest.param(SourceDocument(filename="x.pdf", content=b"%" * 2_000_000, declared_meta={"departement": "finance"}), id="size"),
-    pytest.param(SourceDocument(filename="x.pdf", content=PDF_BYTES, declared_meta={}), id="required_missing"),
-    pytest.param(SourceDocument(filename="x.pdf", content=PDF_BYTES,
-                                declared_meta={"departement": "finance", "inconnu": 1}), id="unknown_field"),
-    pytest.param(SourceDocument(filename="x.pdf", content=PDF_BYTES,
-                                declared_meta={"departement": "juridique"}), id="enum"),
-    pytest.param(SourceDocument(filename="x.pdf", content=PDF_BYTES,
-                                declared_meta={"departement": "finance", "annee": "2024"}), id="type"),
-    pytest.param(SourceDocument(filename="x.pdf", content=PDF_BYTES,
-                                declared_meta={"departement": "finance", "resume": "x"}), id="generated_supplied"),
-    pytest.param(SourceDocument(filename="x.pdf", content=b"MZ\x90\x00", declared_meta={"departement": "finance"}), id="spoofed_extension"),
-    pytest.param(SourceDocument(filename="x.pdf", content=b"", declared_meta={"departement": "finance"}), id="empty_file"),
+    pytest.param(
+        SourceDocument(filename="x.exe", content=b"MZ", declared_meta={"departement": "finance"}),
+        id="format",
+    ),
+    pytest.param(
+        SourceDocument(
+            filename="x.pdf", content=b"%" * 2_000_000, declared_meta={"departement": "finance"}
+        ),
+        id="size",
+    ),
+    pytest.param(
+        SourceDocument(filename="x.pdf", content=PDF_BYTES, declared_meta={}), id="required_missing"
+    ),
+    pytest.param(
+        SourceDocument(
+            filename="x.pdf",
+            content=PDF_BYTES,
+            declared_meta={"departement": "finance", "inconnu": 1},
+        ),
+        id="unknown_field",
+    ),
+    pytest.param(
+        SourceDocument(
+            filename="x.pdf", content=PDF_BYTES, declared_meta={"departement": "juridique"}
+        ),
+        id="enum",
+    ),
+    pytest.param(
+        SourceDocument(
+            filename="x.pdf",
+            content=PDF_BYTES,
+            declared_meta={"departement": "finance", "annee": "2024"},
+        ),
+        id="type",
+    ),
+    pytest.param(
+        SourceDocument(
+            filename="x.pdf",
+            content=PDF_BYTES,
+            declared_meta={"departement": "finance", "resume": "x"},
+        ),
+        id="generated_supplied",
+    ),
+    pytest.param(
+        SourceDocument(
+            filename="x.pdf", content=b"MZ\x90\x00", declared_meta={"departement": "finance"}
+        ),
+        id="spoofed_extension",
+    ),
+    pytest.param(
+        SourceDocument(filename="x.pdf", content=b"", declared_meta={"departement": "finance"}),
+        id="empty_file",
+    ),
 ]
 
 

@@ -17,6 +17,7 @@ _TOKEN = "secret-token"
 
 def _build_client() -> TestClient:
     """Build a tiny app behind the bearer middleware."""
+
     async def ok(request) -> JSONResponse:  # noqa: ANN001 - starlette handler signature
         return JSONResponse({"ok": True})
 

@@ -89,7 +89,9 @@ def test_score_below_on_embed_step_is_dropped_with_a_notice(compiler) -> None:
     assert not any(isinstance(t.condition, ScoreBelow) for t in chained.transitions)
 
 
-def test_duplicate_unique_embedder_is_a_notice_and_the_build_rejects_it(compiler, builder, validator) -> None:
+def test_duplicate_unique_embedder_is_a_notice_and_the_build_rejects_it(
+    compiler, builder, validator
+) -> None:
     chained, notices = _two_step_chain(compiler, steps=[ChainStep(kind=BGE), ChainStep(kind=BGE)])
     assert any("only once" in n for n in notices)
     # The blob is still assembled (data), but the validator rejects the duplicate unique node.
@@ -105,7 +107,9 @@ def test_set_provider_embed_is_one_step_chain_sugar(compiler) -> None:
     assert state.embed_chain.steps[0].kind == BGE
     # A single provider stays the stock lone 'embed' node with a plain FromNode anchor.
     assert any(n.id == "embed" for n in swapped.nodes)
-    assert swapped.bindings["bundle"]["embeddings"] == FromNode(node_id="embed", field_name="embeddings")
+    assert swapped.bindings["bundle"]["embeddings"] == FromNode(
+        node_id="embed", field_name="embeddings"
+    )
 
 
 def test_set_provider_embed_unknown_kind_is_a_notice_not_an_exception(compiler) -> None:
@@ -120,12 +124,17 @@ def test_two_step_embed_chain_from_assembler_matches_wiring(builder, validator) 
     # Configs carry the required fields explicitly (the compiler fills these build-safe; here we set
     # them so the raw assembled blob builds without the compiler's config completion).
     endpoint = {"base_url": "http://embed:8000/v1", "model": "m"}
-    state = default_state().model_copy(update={
-        "embed_chain": ChainSpec(
-            family="embed",
-            steps=[ChainStep(kind=BGE, config=dict(endpoint)), ChainStep(kind=OAI, config=dict(endpoint))],
-        ),
-    })
+    state = default_state().model_copy(
+        update={
+            "embed_chain": ChainSpec(
+                family="embed",
+                steps=[
+                    ChainStep(kind=BGE, config=dict(endpoint)),
+                    ChainStep(kind=OAI, config=dict(endpoint)),
+                ],
+            ),
+        }
+    )
     blob = IngestAssembler.assemble(state)
     assert validator.validate(builder.build(blob)) == []
     assert OnFailure in _edges(blob, "embed_0", "embed_1")

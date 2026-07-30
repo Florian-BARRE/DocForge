@@ -80,9 +80,7 @@ class GraphMechanics:
         return summary, rest
 
     @classmethod
-    def __card_from_model(
-            cls, model: type[BaseModel], discriminator: str
-    ) -> MechanicCard:
+    def __card_from_model(cls, model: type[BaseModel], discriminator: str) -> MechanicCard:
         """Build one variant's card from its Pydantic model: kind, docstring labels, params form."""
         # 1. The discriminator's default IS the variant's stable kind.
         kind = str(model.model_fields[discriminator].default)
@@ -96,7 +94,10 @@ class GraphMechanics:
         # 3. Labels come from the class itself.
         summary, rest = cls.__split_doc(model.__doc__)
         return MechanicCard(
-            kind=kind, name=model.__name__, summary=summary, how_it_works=rest,
+            kind=kind,
+            name=model.__name__,
+            summary=summary,
+            how_it_works=rest,
             params_schema=schema,
         )
 
@@ -122,9 +123,7 @@ class GraphMechanics:
         cards = []
         for policy in ErrorPolicy:
             # Grab "VALUE: explanation…" up to the next attribute or the end of the docstring.
-            match = re.search(
-                rf"{policy.name}: (.+?)(?=\n\s*[A-Z_]+:|\Z)", doc, re.DOTALL
-            )
+            match = re.search(rf"{policy.name}: (.+?)(?=\n\s*[A-Z_]+:|\Z)", doc, re.DOTALL)
             summary = re.sub(r"\s+", " ", match.group(1)).strip() if match else ""
             cards.append(MechanicCard(kind=str(policy), name=policy.name, summary=summary))
         return cards
@@ -141,17 +140,27 @@ class GraphMechanics:
             r for r in foreach_schema.get("required", []) if r not in ("id", "body")
         ]
         _, foreach_rest = cls.__split_doc(ForEach.__doc__)
-        cards = [MechanicCard(
-            kind=ForEach.KIND, name=ForEach.NAME, summary=ForEach.SUMMARY,
-            how_it_works=foreach_rest, params_schema=foreach_schema,
-        )]
+        cards = [
+            MechanicCard(
+                kind=ForEach.KIND,
+                name=ForEach.NAME,
+                summary=ForEach.SUMMARY,
+                how_it_works=foreach_rest,
+                params_schema=foreach_schema,
+            )
+        ]
 
         # 2. Group: a named sub-graph; no knobs beyond its id and content.
         _, group_rest = cls.__split_doc(Group.__doc__)
-        cards.append(MechanicCard(
-            kind=Group.KIND, name=Group.NAME, summary=Group.SUMMARY, how_it_works=group_rest,
-            params_schema=cls.__root_schema(GroupNodeBlob),
-        ))
+        cards.append(
+            MechanicCard(
+                kind=Group.KIND,
+                name=Group.NAME,
+                summary=Group.SUMMARY,
+                how_it_works=group_rest,
+                params_schema=cls.__root_schema(GroupNodeBlob),
+            )
+        )
         return cards
 
     @classmethod

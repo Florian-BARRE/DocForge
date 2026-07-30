@@ -85,16 +85,12 @@ class DocumentsFacade(LoggerClass):
             ids = await ChunkApi.collections_for_chunks(session, chunk_ids)
         return [str(collection_id) for collection_id in ids]
 
-    async def get_document_chunk_composition(
-        self, document_id: uuid.UUID
-    ) -> list[ChunkBlock]:
+    async def get_document_chunk_composition(self, document_id: uuid.UUID) -> list[ChunkBlock]:
         """Every chunk's composition for a document, ordered by chunk then position (bulk)."""
         async with self._postgres.session() as session:
             return await ChunkApi.get_composition_for_document(session, document_id)
 
-    async def get_document_chunk_metadata(
-        self, document_id: uuid.UUID
-    ) -> list[ChunkMetadata]:
+    async def get_document_chunk_metadata(self, document_id: uuid.UUID) -> list[ChunkMetadata]:
         """Every chunk's generated metadata for a document — one query, grouped by the caller."""
         async with self._postgres.session() as session:
             return await ChunkApi.get_metadata_for_document(session, document_id)

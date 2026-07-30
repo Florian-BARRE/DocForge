@@ -119,7 +119,9 @@ class BlobNormalizer:
             state = StateReader.read(group_blob)
             healed = IngestAssembler.assemble(state)
         except (ValidationError, ValueError, KeyError, TypeError, AttributeError) as exc:
-            cls.logger.error(f"Stored pipeline blob cannot be migrated to the current engine: {exc}")
+            cls.logger.error(
+                f"Stored pipeline blob cannot be migrated to the current engine: {exc}"
+            )
             raise BlobNormalizationError(
                 "stored ingestion pipeline could not be migrated to the current engine "
                 "(malformed, or it references something the current engine no longer knows) — "

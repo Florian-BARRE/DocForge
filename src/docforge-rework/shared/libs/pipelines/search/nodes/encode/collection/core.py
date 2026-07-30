@@ -36,7 +36,9 @@ class EncodeCollectionConsumes(NodeInput):
 class EncodeCollectionProduces(NodeOutput):
     """Output: the query's vectors in the collection's own vector space."""
 
-    encoded: EncodedQuery = Field(description="The query vectors (dense; sparse/colbert when indexed).")
+    encoded: EncodedQuery = Field(
+        description="The query vectors (dense; sparse/colbert when indexed)."
+    )
 
 
 @NodeRegistry.register("encode")

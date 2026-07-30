@@ -18,10 +18,10 @@ from ..base import Base, CreatedAtMixin, value_enum
 class BlobKind(StrEnum):
     """What a stored blob is."""
 
-    ORIGINAL = "original"            # the uploaded source file
+    ORIGINAL = "original"  # the uploaded source file
     CANONICAL_PDF = "canonical_pdf"  # the PDF view after conversion
-    PAGE_RENDER = "page_render"      # a rasterized page image
-    FIGURE_CROP = "figure_crop"      # a cropped figure image
+    PAGE_RENDER = "page_render"  # a rasterized page image
+    FIGURE_CROP = "figure_crop"  # a cropped figure image
 
 
 class Blob(Base, CreatedAtMixin):

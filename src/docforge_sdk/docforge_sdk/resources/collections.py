@@ -117,9 +117,7 @@ class AsyncCollections(AsyncResource, _CollectionsSpecs):
         """
         return await self._transport.request(self._create_spec(request), CollectionModel)
 
-    async def update(
-        self, collection_id: str, request: UpdateCollectionRequest
-    ) -> CollectionModel:
+    async def update(self, collection_id: str, request: UpdateCollectionRequest) -> CollectionModel:
         """
         Patch identity/limits, the metadata schema and/or the config blobs.
 
@@ -191,9 +189,7 @@ class SyncCollections(SyncResource, _CollectionsSpecs):
         Returns:
             CollectionModel: The updated contract.
         """
-        return self._transport.request(
-            self._update_spec(collection_id, request), CollectionModel
-        )
+        return self._transport.request(self._update_spec(collection_id, request), CollectionModel)
 
     def delete(self, collection_id: str) -> None:
         """

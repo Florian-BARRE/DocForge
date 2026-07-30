@@ -104,15 +104,35 @@ class Collect(ActionNode):
         return self.Produces(merged=[e.label for e in data.entries])
 
 
-def _blob(bad_terminal: bool = False, over_field: str = "things", collect_slot_type_ok: bool = True) -> dict:
+def _blob(
+    bad_terminal: bool = False, over_field: str = "things", collect_slot_type_ok: bool = True
+) -> dict:
     body_nodes = [
-        {"node_type": "action", "id": "clf", "family": "test_fev_family", "kind": "test_fev_classify", "config": {}},
-        {"node_type": "action", "id": "photo", "family": "test_fev_family", "kind": "test_fev_path", "config": {}},
+        {
+            "node_type": "action",
+            "id": "clf",
+            "family": "test_fev_family",
+            "kind": "test_fev_classify",
+            "config": {},
+        },
+        {
+            "node_type": "action",
+            "id": "photo",
+            "family": "test_fev_family",
+            "kind": "test_fev_path",
+            "config": {},
+        },
     ]
     extra_transitions = []
     if bad_terminal:
         body_nodes.append(
-            {"node_type": "action", "id": "rogue", "family": "test_fev_family", "kind": "test_fev_rogue", "config": {}}
+            {
+                "node_type": "action",
+                "id": "rogue",
+                "family": "test_fev_family",
+                "kind": "test_fev_rogue",
+                "config": {},
+            }
         )
         extra_transitions.append(
             {
@@ -125,7 +145,13 @@ def _blob(bad_terminal: bool = False, over_field: str = "things", collect_slot_t
         "node_type": "group",
         "id": "root",
         "nodes": [
-            {"node_type": "action", "id": "extract", "family": "test_fev_family", "kind": "test_fev_extract", "config": {}},
+            {
+                "node_type": "action",
+                "id": "extract",
+                "family": "test_fev_family",
+                "kind": "test_fev_extract",
+                "config": {},
+            },
             {
                 "node_type": "foreach",
                 "id": "per_thing",
@@ -140,7 +166,11 @@ def _blob(bad_terminal: bool = False, over_field: str = "things", collect_slot_t
                         {
                             "from_node_id": "clf",
                             "to_node_id": "photo",
-                            "condition": {"kind": "when_equals", "field": "kind", "equals": "photo"},
+                            "condition": {
+                                "kind": "when_equals",
+                                "field": "kind",
+                                "equals": "photo",
+                            },
                         },
                         *extra_transitions,
                     ],
@@ -150,7 +180,13 @@ def _blob(bad_terminal: bool = False, over_field: str = "things", collect_slot_t
                     },
                 },
             },
-            {"node_type": "action", "id": "collect", "family": "test_fev_family", "kind": "test_fev_collect", "config": {}},
+            {
+                "node_type": "action",
+                "id": "collect",
+                "family": "test_fev_family",
+                "kind": "test_fev_collect",
+                "config": {},
+            },
         ],
         "transitions": [
             {"from_node_id": "extract", "to_node_id": "per_thing"},

@@ -55,7 +55,9 @@ def _spec(name: str, field_type: FieldType, scope: FieldScope) -> MetadataFieldS
 
 CONTRACT = CollectionContract(
     collection_id=uuid.uuid4(),
-    name="c", supported_formats=["pdf"], max_file_size_bytes=1,
+    name="c",
+    supported_formats=["pdf"],
+    max_file_size_bytes=1,
     fields=[
         MetadataFieldSpec(field_name="title", field_type=FieldType.STRING),  # USER field: ignored
         _spec("summary", FieldType.STRING, FieldScope.DOCUMENT),
@@ -112,56 +114,96 @@ def _chain(steps: list[dict] | None = None) -> ChainSpec:
     return ChainSpec(family="structgen", steps=[ChainStep(**step) for step in steps])
 
 
-def _chunk_blob(prep_config: dict, on_error: MetagenOnError, chain: ChainSpec | None = None) -> dict:
+def _chunk_blob(
+    prep_config: dict, on_error: MetagenOnError, chain: ChainSpec | None = None
+) -> dict:
     """prep(chunk) -> ForEach(structgen chain) -> chunk_apply."""
     body = MetagenBodyBuilder.build(chain or _chain(), on_error)
     return {
         "node_type": "group",
         "id": "metagen_chunk",
         "nodes": [
-            {"node_type": "action", "id": "prep", "family": "metagen", "kind": "chunk_prep",
-             "config": prep_config},
-            {"node_type": "foreach", "id": "loop", "item_field": "request", "max_concurrency": 4,
-             "over": {"source": "node", "node_id": "prep", "field_name": "requests"},
-             "body": body.model_dump()},
-            {"node_type": "action", "id": "apply", "family": "metagen", "kind": "chunk_apply",
-             "config": {}},
+            {
+                "node_type": "action",
+                "id": "prep",
+                "family": "metagen",
+                "kind": "chunk_prep",
+                "config": prep_config,
+            },
+            {
+                "node_type": "foreach",
+                "id": "loop",
+                "item_field": "request",
+                "max_concurrency": 4,
+                "over": {"source": "node", "node_id": "prep", "field_name": "requests"},
+                "body": body.model_dump(),
+            },
+            {
+                "node_type": "action",
+                "id": "apply",
+                "family": "metagen",
+                "kind": "chunk_apply",
+                "config": {},
+            },
         ],
         "transitions": [
             {"from_node_id": "prep", "to_node_id": "loop"},
             {"from_node_id": "loop", "to_node_id": "apply"},
         ],
         "bindings": {
-            "prep": {"chunks": {"source": "run", "field_name": "chunks"},
-                     "contract": {"source": "run", "field_name": "contract"}},
-            "apply": {"chunks": {"source": "run", "field_name": "chunks"},
-                      "values": {"source": "node", "node_id": "loop", "field_name": "items"}},
+            "prep": {
+                "chunks": {"source": "run", "field_name": "chunks"},
+                "contract": {"source": "run", "field_name": "contract"},
+            },
+            "apply": {
+                "chunks": {"source": "run", "field_name": "chunks"},
+                "values": {"source": "node", "node_id": "loop", "field_name": "items"},
+            },
         },
     }
 
 
-def _document_blob(prep_config: dict, on_error: MetagenOnError, chain: ChainSpec | None = None) -> dict:
+def _document_blob(
+    prep_config: dict, on_error: MetagenOnError, chain: ChainSpec | None = None
+) -> dict:
     """prep(document) -> ForEach(structgen chain) -> document_apply."""
     body = MetagenBodyBuilder.build(chain or _chain(), on_error)
     return {
         "node_type": "group",
         "id": "metagen_document",
         "nodes": [
-            {"node_type": "action", "id": "prep", "family": "metagen", "kind": "document_prep",
-             "config": prep_config},
-            {"node_type": "foreach", "id": "loop", "item_field": "request", "max_concurrency": 4,
-             "over": {"source": "node", "node_id": "prep", "field_name": "requests"},
-             "body": body.model_dump()},
-            {"node_type": "action", "id": "apply", "family": "metagen", "kind": "document_apply",
-             "config": {}},
+            {
+                "node_type": "action",
+                "id": "prep",
+                "family": "metagen",
+                "kind": "document_prep",
+                "config": prep_config,
+            },
+            {
+                "node_type": "foreach",
+                "id": "loop",
+                "item_field": "request",
+                "max_concurrency": 4,
+                "over": {"source": "node", "node_id": "prep", "field_name": "requests"},
+                "body": body.model_dump(),
+            },
+            {
+                "node_type": "action",
+                "id": "apply",
+                "family": "metagen",
+                "kind": "document_apply",
+                "config": {},
+            },
         ],
         "transitions": [
             {"from_node_id": "prep", "to_node_id": "loop"},
             {"from_node_id": "loop", "to_node_id": "apply"},
         ],
         "bindings": {
-            "prep": {"chunks": {"source": "run", "field_name": "chunks"},
-                     "contract": {"source": "run", "field_name": "contract"}},
+            "prep": {
+                "chunks": {"source": "run", "field_name": "chunks"},
+                "contract": {"source": "run", "field_name": "contract"},
+            },
             "apply": {"values": {"source": "node", "node_id": "loop", "field_name": "items"}},
         },
     }
@@ -184,10 +226,12 @@ def test_document_topology_builds_and_validates() -> None:
 
 def test_fallback_chain_topology_builds_and_validates() -> None:
     """A 2-step structgen chain (escalate on failure) + skip terminal still validates."""
-    chain = _chain([
-        {"kind": FAKE_STRUCTGEN_KIND, "config": {}},
-        {"kind": "openai_compatible", "config": {"base_url": "http://robust", "model": "big"}},
-    ])
+    chain = _chain(
+        [
+            {"kind": FAKE_STRUCTGEN_KIND, "config": {}},
+            {"kind": "openai_compatible", "config": {"base_url": "http://robust", "model": "big"}},
+        ]
+    )
     group = PipelineBuilder().build(_chunk_blob(dict(_ENDPOINT), MetagenOnError.SKIP_FIELDS, chain))
     assert GraphValidator().validate(group) == []
 
@@ -228,18 +272,24 @@ async def test_chunk_merge_not_clobber() -> None:
 
 
 async def test_document_combined_grouping() -> None:
-    new = await _run_new(_document_blob({**_ENDPOINT, "grouping": "combined"}, MetagenOnError.FAIL), CHUNKS)
+    new = await _run_new(
+        _document_blob({**_ENDPOINT, "grouping": "combined"}, MetagenOnError.FAIL), CHUNKS
+    )
     assert new.meta.values == {
-        "summary": "A report about cats and bonds.", "year": 2024,
+        "summary": "A report about cats and bonds.",
+        "year": 2024,
         "published_at": "2024-03-01T10:00:00",
     }
 
 
 async def test_document_per_field_grouping_joins_multiple_values() -> None:
     """per_field -> one request (hence one GeneratedValues) per field; document_apply joins them all."""
-    new = await _run_new(_document_blob({**_ENDPOINT, "grouping": "per_field"}, MetagenOnError.FAIL), CHUNKS)
+    new = await _run_new(
+        _document_blob({**_ENDPOINT, "grouping": "per_field"}, MetagenOnError.FAIL), CHUNKS
+    )
     assert new.meta.values == {
-        "summary": "A report about cats and bonds.", "year": 2024,
+        "summary": "A report about cats and bonds.",
+        "year": 2024,
         "published_at": "2024-03-01T10:00:00",
     }
     assert set(new.meta.values) == {"summary", "year", "published_at"}  # three groups joined
@@ -280,7 +330,9 @@ async def test_bad_target_raises_in_chunk_prep() -> None:
 
 
 async def test_duplicate_target_raises_in_document_prep() -> None:
-    dup = MetagenDocumentPrepConfig(**_ENDPOINT, targets=[{"field": "summary"}, {"field": "summary"}])
+    dup = MetagenDocumentPrepConfig(
+        **_ENDPOINT, targets=[{"field": "summary"}, {"field": "summary"}]
+    )
     with pytest.raises(ValueError, match="more than once"):
         await MetagenDocumentPrepNode(id="p", config=dup).run(
             MetagenDocumentPrepConsumes(chunks=CHUNKS, contract=CONTRACT)

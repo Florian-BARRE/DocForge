@@ -53,7 +53,9 @@ class GenerationRequest(Artifact):
         max_tokens (int): Generation cap for the call.
     """
 
-    request_id: str = Field(description="Stable id matching the produced values back to their source.")
+    request_id: str = Field(
+        description="Stable id matching the produced values back to their source."
+    )
     chunk_id: str | None = Field(
         default=None, description="The chunk these values belong to; None for document scope."
     )

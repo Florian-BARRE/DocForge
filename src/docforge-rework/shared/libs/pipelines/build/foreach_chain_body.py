@@ -46,7 +46,9 @@ class ForEachChainBodyBuilder:
     """Static builder of a fail-soft ForEach body: a failure-only chain plus an optional terminal."""
 
     def __new__(cls, *args: object, **kwargs: object) -> None:
-        raise TypeError("ForEachChainBodyBuilder is a static-only class and cannot be instantiated.")
+        raise TypeError(
+            "ForEachChainBodyBuilder is a static-only class and cannot be instantiated."
+        )
 
     @classmethod
     def build(

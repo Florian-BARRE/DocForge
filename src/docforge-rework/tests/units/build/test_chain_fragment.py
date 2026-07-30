@@ -24,8 +24,12 @@ def _conditions(fragment) -> list[str]:
 def test_single_step_is_a_lone_provider() -> None:
     """N=1: one node, a plain FromNode output, no transitions — the single-provider shape."""
     fragment = ChainFragmentBuilder.build(
-        prefix="ocr", family="ocr", steps=[ChainStepSpec(kind="rapidocr", config={})],
-        step_inputs=_INPUTS, output_field="figure", scored=True,
+        prefix="ocr",
+        family="ocr",
+        steps=[ChainStepSpec(kind="rapidocr", config={})],
+        step_inputs=_INPUTS,
+        output_field="figure",
+        scored=True,
     )
     assert [n.id for n in fragment.nodes] == ["ocr_0"]
     assert fragment.transitions == []
@@ -38,12 +42,15 @@ def test_single_step_is_a_lone_provider() -> None:
 def test_two_step_scored_escalates_and_converges_best_first() -> None:
     """N=2 scored: ScoreBelow + OnFailure between steps, FromFirst([step1, step0]) output."""
     fragment = ChainFragmentBuilder.build(
-        prefix="ocr", family="ocr",
+        prefix="ocr",
+        family="ocr",
         steps=[
             ChainStepSpec(kind="rapidocr", config={}, score_below=0.4),
             ChainStepSpec(kind="mistral", config={"api_key": "x"}),
         ],
-        step_inputs=_INPUTS, output_field="figure", scored=True,
+        step_inputs=_INPUTS,
+        output_field="figure",
+        scored=True,
     )
     assert [n.id for n in fragment.nodes] == ["ocr_0", "ocr_1"]
     # The escalation pair: ScoreBelow first, then the OnFailure fall-through — both step_0 -> step_1.
@@ -61,20 +68,27 @@ def test_empty_steps_is_rejected() -> None:
     """A chain needs at least one provider — an empty step list is a build error, not a no-op."""
     with pytest.raises(ValueError):
         ChainFragmentBuilder.build(
-            prefix="ocr", family="ocr", steps=[],
-            step_inputs=_INPUTS, output_field="figure", scored=True,
+            prefix="ocr",
+            family="ocr",
+            steps=[],
+            step_inputs=_INPUTS,
+            output_field="figure",
+            scored=True,
         )
 
 
 def test_two_step_non_scored_drops_score_below_and_flags_it() -> None:
     """N=2 non-scored: ONLY OnFailure survives; the score_below is dropped and the flag is set."""
     fragment = ChainFragmentBuilder.build(
-        prefix="llm", family="llm",
+        prefix="llm",
+        family="llm",
         steps=[
             ChainStepSpec(kind="openai_compatible", config={}, score_below=0.5),
             ChainStepSpec(kind="mistral", config={}),
         ],
-        step_inputs=_INPUTS, output_field="completion", scored=False,
+        step_inputs=_INPUTS,
+        output_field="completion",
+        scored=False,
     )
     assert _conditions(fragment) == ["on_failure"]
     assert fragment.transitions[0].from_node_id == "llm_0"
@@ -85,9 +99,12 @@ def test_two_step_non_scored_drops_score_below_and_flags_it() -> None:
 def test_step_inputs_are_bound_identically_on_every_step() -> None:
     """The consumed face appears on each step's bindings, keyed by step id."""
     fragment = ChainFragmentBuilder.build(
-        prefix="ocr", family="ocr",
+        prefix="ocr",
+        family="ocr",
         steps=[ChainStepSpec(kind="rapidocr"), ChainStepSpec(kind="mistral")],
-        step_inputs=_INPUTS, output_field="figure", scored=True,
+        step_inputs=_INPUTS,
+        output_field="figure",
+        scored=True,
     )
     assert set(fragment.bindings) == {"ocr_0", "ocr_1"}
     for step_id in ("ocr_0", "ocr_1"):

@@ -34,7 +34,9 @@ class DoclingIRMapper:
         raise TypeError("DoclingIRMapper is a static-only class and cannot be instantiated.")
 
     @classmethod
-    def __map_item(cls, item: Any, reading_order: int, docling_doc: Any, doc_id: str) -> Block | None:
+    def __map_item(
+        cls, item: Any, reading_order: int, docling_doc: Any, doc_id: str
+    ) -> Block | None:
         """Map a single Docling item to an IR Block, or None to skip it."""
         # 1. Resolve the label (docling 2.x uses a DocItemLabel enum) → BlockType, or skip.
         raw_label = getattr(item, "label", None)
@@ -113,7 +115,9 @@ class DoclingIRMapper:
         # 4. Language: Docling's hint for now (an offline detector can refine it later).
         language = getattr(docling_doc, "language", "") or ""
 
-        cls.logger.debug(f"Docling→IR: {doc_id} → {n_pages} pages, {len(blocks)} blocks, lang={language!r}")
+        cls.logger.debug(
+            f"Docling→IR: {doc_id} → {n_pages} pages, {len(blocks)} blocks, lang={language!r}"
+        )
         return DocumentIR(
             doc_id=doc_id,
             source_hash=source_hash,

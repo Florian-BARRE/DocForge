@@ -80,7 +80,9 @@ def _require_stage_surface(key: str) -> PipelineSpec:
     return spec
 
 
-@router.get("", response_model=PipelineIndexResponse, dependencies=[Depends(require(Capability.READ))])
+@router.get(
+    "", response_model=PipelineIndexResponse, dependencies=[Depends(require(Capability.READ))]
+)
 @auto_handle_errors
 async def list_pipeline_surfaces() -> PipelineIndexResponse:
     """
@@ -112,7 +114,11 @@ async def list_pipeline_surfaces() -> PipelineIndexResponse:
     return PipelineIndexResponse(pipelines=surfaces)
 
 
-@router.get("/{key}", response_model=PipelineDesignResponse, dependencies=[Depends(require(Capability.READ))])
+@router.get(
+    "/{key}",
+    response_model=PipelineDesignResponse,
+    dependencies=[Depends(require(Capability.READ))],
+)
 @auto_handle_errors
 async def get_pipeline_design(key: str, full: bool = False) -> PipelineDesignResponse:
     """
@@ -149,7 +155,11 @@ async def get_pipeline_design(key: str, full: bool = False) -> PipelineDesignRes
     )
 
 
-@router.post("/{key}/inspect", response_model=InspectResponse, dependencies=[Depends(require(Capability.READ))])
+@router.post(
+    "/{key}/inspect",
+    response_model=InspectResponse,
+    dependencies=[Depends(require(Capability.READ))],
+)
 @auto_handle_errors
 async def inspect_pipeline(key: str, request: InspectRequest) -> InspectResponse:
     """
@@ -181,7 +191,9 @@ async def inspect_pipeline(key: str, request: InspectRequest) -> InspectResponse
     )
 
 
-@router.post("/{key}/edit", response_model=EditResponse, dependencies=[Depends(require(Capability.READ))])
+@router.post(
+    "/{key}/edit", response_model=EditResponse, dependencies=[Depends(require(Capability.READ))]
+)
 @auto_handle_errors
 async def edit_pipeline(key: str, request: EditRequest) -> EditResponse:
     """
@@ -220,7 +232,11 @@ async def edit_pipeline(key: str, request: EditRequest) -> EditResponse:
     )
 
 
-@router.post("/{key}/stages/view", response_model=StageViewResponse, dependencies=[Depends(require(Capability.READ))])
+@router.post(
+    "/{key}/stages/view",
+    response_model=StageViewResponse,
+    dependencies=[Depends(require(Capability.READ))],
+)
 @auto_handle_errors
 async def view_stages(key: str, request: StageViewRequest) -> StageViewResponse:
     """
@@ -249,7 +265,11 @@ async def view_stages(key: str, request: StageViewRequest) -> StageViewResponse:
     return StageViewResponse(stages=stages, valid=not issues, issues=issues)
 
 
-@router.post("/{key}/stages/apply", response_model=StageApplyResponse, dependencies=[Depends(require(Capability.READ))])
+@router.post(
+    "/{key}/stages/apply",
+    response_model=StageApplyResponse,
+    dependencies=[Depends(require(Capability.READ))],
+)
 @auto_handle_errors
 async def apply_stage_action(key: str, request: StageApplyRequest) -> StageApplyResponse:
     """
@@ -276,7 +296,11 @@ async def apply_stage_action(key: str, request: StageApplyRequest) -> StageApply
         group = CONTEXT.pipeline_builder.build(blob)
     except BuildError as exc:
         return StageApplyResponse(
-            blob=blob, stages=stages, valid=False, issues=[], notices=notices,
+            blob=blob,
+            stages=stages,
+            valid=False,
+            issues=[],
+            notices=notices,
             build_error=str(exc),
         )
     issues = CONTEXT.graph_validator.validate(group)

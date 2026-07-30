@@ -69,7 +69,9 @@ class MetagenDocumentApplyNode(ActionNode):
         merged: dict[str, Any] = {}
         for produced in data.values:
             merged.update(produced.values)
-        self.logger.debug(f"Merged {len(merged)} document-scope field(s) from {len(data.values)} group(s)")
+        self.logger.debug(
+            f"Merged {len(merged)} document-scope field(s) from {len(data.values)} group(s)"
+        )
         return MetagenDocumentApplyProduces(meta=GeneratedDocumentMeta(values=merged))
 
 

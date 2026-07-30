@@ -16,7 +16,9 @@ from ..base import BaseLlmChatConfig
 class LlmOpenAICompatibleConfig(BaseLlmChatConfig, OpenAICompatConfig):
     """Configuration of a generic OpenAI-compatible endpoint (no vendor default)."""
 
-    base_url: str = Field(description="Base URL of the OpenAI-compatible endpoint (per collection).")
+    base_url: str = Field(
+        description="Base URL of the OpenAI-compatible endpoint (per collection)."
+    )
     model: str = Field(description="Model name to request.")
 
 

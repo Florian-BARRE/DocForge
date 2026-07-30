@@ -30,9 +30,7 @@ class PipelineBlobValidator:
     logger = loggerplusplus.bind(identifier="PipelineBlobValidator")
 
     def __new__(cls, *args: object, **kwargs: object) -> None:
-        raise TypeError(
-            "PipelineBlobValidator is a static-only class and cannot be instantiated."
-        )
+        raise TypeError("PipelineBlobValidator is a static-only class and cannot be instantiated.")
 
     @classmethod
     def validate(cls, blob: dict) -> None:
@@ -51,9 +49,7 @@ class PipelineBlobValidator:
         try:
             group = CONTEXT.pipeline_builder.build(blob)
         except BuildError as exc:
-            raise HTTPException(
-                status_code=422, detail=f"Pipeline blob cannot be built: {exc}"
-            )
+            raise HTTPException(status_code=422, detail=f"Pipeline blob cannot be built: {exc}")
 
         # 2. Structural validation — collect every issue into one 422 payload.
         issues = CONTEXT.graph_validator.validate(group)

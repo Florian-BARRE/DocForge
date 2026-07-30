@@ -24,7 +24,9 @@ class EntityMention(Base, UUIDPrimaryKey, CreatedAtMixin):
     chunk_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("chunk.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    entity_type: Mapped[str] = mapped_column(String(64), nullable=False)  # date | amount | person | org | …
+    entity_type: Mapped[str] = mapped_column(
+        String(64), nullable=False
+    )  # date | amount | person | org | …
     surface_text: Mapped[str] = mapped_column(Text, nullable=False)
     normalized_value: Mapped[str | None] = mapped_column(String(512), nullable=True)
     span: Mapped[Any | None] = mapped_column(JSONB, nullable=True)  # char offsets / bbox

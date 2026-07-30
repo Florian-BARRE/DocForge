@@ -318,9 +318,7 @@ class BatchingEngine(LoggerClass):
         # 3. Await the future; result set by _process_dense scatter
         return await future
 
-    async def submit_embed_sparse(
-        self, texts: list[str]
-    ) -> list[list[dict[str, int | float]]]:
+    async def submit_embed_sparse(self, texts: list[str]) -> list[list[dict[str, int | float]]]:
         """
         Submit a sparse embedding request and await its result.
 
@@ -362,9 +360,7 @@ class BatchingEngine(LoggerClass):
         self._colbert_worker.submit(item)
         return await future
 
-    async def submit_rerank(
-        self, query: str, texts: list[str]
-    ) -> list[dict[str, int | float]]:
+    async def submit_rerank(self, query: str, texts: list[str]) -> list[dict[str, int | float]]:
         """
         Submit a rerank request and await its result.
 

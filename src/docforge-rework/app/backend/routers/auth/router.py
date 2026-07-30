@@ -76,9 +76,7 @@ def _resolve_rotated_fields(
     #    blob verbatim (already a plain JSONB dict or None).
     if "permissions" in fields_set:
         permissions_blob = (
-            payload.permissions.model_dump(mode="json")
-            if payload.permissions is not None
-            else None
+            payload.permissions.model_dump(mode="json") if payload.permissions is not None else None
         )
     else:
         permissions_blob = old.permissions
@@ -90,7 +88,9 @@ def _resolve_rotated_fields(
 
 
 @router.post(
-    "", response_model=CreatedKey, status_code=201,
+    "",
+    response_model=CreatedKey,
+    status_code=201,
     dependencies=[Depends(require(Capability.ADMIN))],
 )
 @auto_handle_errors
@@ -140,7 +140,8 @@ async def create_key(payload: CreateKeyRequest) -> CreatedKey:
 
 
 @router.get(
-    "", response_model=list[KeyInfo],
+    "",
+    response_model=list[KeyInfo],
     dependencies=[Depends(require(Capability.ADMIN))],
 )
 @auto_handle_errors
@@ -172,7 +173,8 @@ async def list_keys() -> list[KeyInfo]:
 
 
 @router.delete(
-    "/{key_id}", status_code=204,
+    "/{key_id}",
+    status_code=204,
     dependencies=[Depends(require(Capability.ADMIN))],
 )
 @auto_handle_errors
@@ -189,7 +191,9 @@ async def revoke_key(key_id: uuid.UUID) -> None:
 
 
 @router.post(
-    "/{key_id}/rotate", response_model=CreatedKey, status_code=201,
+    "/{key_id}/rotate",
+    response_model=CreatedKey,
+    status_code=201,
     dependencies=[Depends(require(Capability.ADMIN))],
 )
 @auto_handle_errors

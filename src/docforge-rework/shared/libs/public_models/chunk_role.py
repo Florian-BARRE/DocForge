@@ -17,10 +17,10 @@ class ChunkRole(StrEnum):
     are the initial members.
     """
 
-    BODY = "body"                    # substantive content — the retrievable payload
+    BODY = "body"  # substantive content — the retrievable payload
     HEADER_FOOTER = "header_footer"  # running header/footer furniture — off by default
-    TOC = "toc"                      # table of contents / index scaffolding — off by default
-    BOILERPLATE = "boilerplate"      # repeated legal/notice/navigation text — off by default
+    TOC = "toc"  # table of contents / index scaffolding — off by default
+    BOILERPLATE = "boilerplate"  # repeated legal/notice/navigation text — off by default
 
 
 def role_default_enabled(role: ChunkRole) -> bool:

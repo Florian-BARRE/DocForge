@@ -32,7 +32,9 @@ async def test_get_returns_bytes_and_mime() -> None:
 @respx.mock
 def test_sync_get_returns_blob_content() -> None:
     respx.get(f"{API}/blobs/{HASH}").mock(
-        return_value=httpx.Response(200, content=b"data", headers={"content-type": "application/pdf"})
+        return_value=httpx.Response(
+            200, content=b"data", headers={"content-type": "application/pdf"}
+        )
     )
     with Client(BASE) as client:
         result = client.blobs.get(HASH)

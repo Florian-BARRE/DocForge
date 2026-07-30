@@ -54,50 +54,101 @@ class FakeVlmRobust(BaseVlmNode):
 
 
 def _fig(bid: str, crop: bytes, order: int) -> Block:
-    return Block(id=bid, block_type=BlockType.FIGURE, reading_order=order,
-                 provenance=Provenance(page=0, bbox=(0.2, 0.2, 0.6, 0.6)),
-                 figure=FigureEnrichment(crop=crop))
+    return Block(
+        id=bid,
+        block_type=BlockType.FIGURE,
+        reading_order=order,
+        provenance=Provenance(page=0, bbox=(0.2, 0.2, 0.6, 0.6)),
+        figure=FigureEnrichment(crop=crop),
+    )
 
 
-IR = DocumentIR(doc_id="d", source_hash="h", n_pages=1, blocks=[
-    _fig("f_easy", b"EASY-fig-", 0),   # cheap accepted (0.9)
-    _fig("f_hard", b"HARD-fig-", 1),   # cheap rejected (0.2) -> escalate to robust
-])
+IR = DocumentIR(
+    doc_id="d",
+    source_hash="h",
+    n_pages=1,
+    blocks=[
+        _fig("f_easy", b"EASY-fig-", 0),  # cheap accepted (0.9)
+        _fig("f_hard", b"HARD-fig-", 1),  # cheap rejected (0.2) -> escalate to robust
+    ],
+)
 
 
 BLOB = {
-    "node_type": "group", "id": "vlm_esc_stage",
+    "node_type": "group",
+    "id": "vlm_esc_stage",
     "nodes": [
-        {"node_type": "action", "id": "extract", "family": "enrich", "kind": "figure_extract", "config": {}},
-        {"node_type": "foreach", "id": "per_figure",
-         "over": {"source": "node", "node_id": "extract", "field_name": "figures"},
-         "item_field": "figure", "max_concurrency": 2,
-         "body": {
-             "node_type": "group", "id": "treat",
-             "nodes": [
-                 {"node_type": "action", "id": "vlm_cheap", "family": "vlm",
-                  "kind": "test_vlm_esc_cheap", "config": {}},
-                 {"node_type": "action", "id": "vlm_robust", "family": "vlm",
-                  "kind": "test_vlm_esc_robust", "config": {}},
-                 {"node_type": "action", "id": "v_entry", "family": "enrich", "kind": "vlm_entry", "config": {}},
-             ],
-             "transitions": [
-                 # ScoreBelow > OnSuccess: a low-confidence cheap description escalates, else it closes.
-                 {"from_node_id": "vlm_cheap", "to_node_id": "vlm_robust",
-                  "condition": {"kind": "score_below", "threshold": 0.5}},
-                 {"from_node_id": "vlm_cheap", "to_node_id": "v_entry"},
-                 {"from_node_id": "vlm_robust", "to_node_id": "v_entry"},
-             ],
-             "bindings": {
-                 "vlm_cheap": {"figure": {"source": "group", "field_name": "figure"}},
-                 "vlm_robust": {"figure": {"source": "group", "field_name": "figure"}},
-                 "v_entry": {"entry": {"source": "first", "candidates": [
-                     {"source": "node", "node_id": "vlm_robust", "field_name": "entry"},
-                     {"source": "node", "node_id": "vlm_cheap", "field_name": "entry"},
-                 ]}},
-             },
-         }},
-        {"node_type": "action", "id": "apply", "family": "enrich", "kind": "enrich_apply", "config": {}},
+        {
+            "node_type": "action",
+            "id": "extract",
+            "family": "enrich",
+            "kind": "figure_extract",
+            "config": {},
+        },
+        {
+            "node_type": "foreach",
+            "id": "per_figure",
+            "over": {"source": "node", "node_id": "extract", "field_name": "figures"},
+            "item_field": "figure",
+            "max_concurrency": 2,
+            "body": {
+                "node_type": "group",
+                "id": "treat",
+                "nodes": [
+                    {
+                        "node_type": "action",
+                        "id": "vlm_cheap",
+                        "family": "vlm",
+                        "kind": "test_vlm_esc_cheap",
+                        "config": {},
+                    },
+                    {
+                        "node_type": "action",
+                        "id": "vlm_robust",
+                        "family": "vlm",
+                        "kind": "test_vlm_esc_robust",
+                        "config": {},
+                    },
+                    {
+                        "node_type": "action",
+                        "id": "v_entry",
+                        "family": "enrich",
+                        "kind": "vlm_entry",
+                        "config": {},
+                    },
+                ],
+                "transitions": [
+                    # ScoreBelow > OnSuccess: a low-confidence cheap description escalates, else it closes.
+                    {
+                        "from_node_id": "vlm_cheap",
+                        "to_node_id": "vlm_robust",
+                        "condition": {"kind": "score_below", "threshold": 0.5},
+                    },
+                    {"from_node_id": "vlm_cheap", "to_node_id": "v_entry"},
+                    {"from_node_id": "vlm_robust", "to_node_id": "v_entry"},
+                ],
+                "bindings": {
+                    "vlm_cheap": {"figure": {"source": "group", "field_name": "figure"}},
+                    "vlm_robust": {"figure": {"source": "group", "field_name": "figure"}},
+                    "v_entry": {
+                        "entry": {
+                            "source": "first",
+                            "candidates": [
+                                {"source": "node", "node_id": "vlm_robust", "field_name": "entry"},
+                                {"source": "node", "node_id": "vlm_cheap", "field_name": "entry"},
+                            ],
+                        }
+                    },
+                },
+            },
+        },
+        {
+            "node_type": "action",
+            "id": "apply",
+            "family": "enrich",
+            "kind": "enrich_apply",
+            "config": {},
+        },
     ],
     "transitions": [
         {"from_node_id": "extract", "to_node_id": "per_figure"},
@@ -105,8 +156,10 @@ BLOB = {
     ],
     "bindings": {
         "extract": {"ir": {"source": "run", "field_name": "ir"}},
-        "apply": {"ir": {"source": "run", "field_name": "ir"},
-                  "entries": {"source": "node", "node_id": "per_figure", "field_name": "items"}},
+        "apply": {
+            "ir": {"source": "run", "field_name": "ir"},
+            "entries": {"source": "node", "node_id": "per_figure", "field_name": "items"},
+        },
     },
 }
 

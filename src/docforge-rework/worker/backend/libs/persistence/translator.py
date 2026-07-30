@@ -71,9 +71,7 @@ class RunTranslator:
         return f"{document_id}:{pipeline_id}"
 
     @classmethod
-    def __register_blob(
-        cls, out: TranslatedRun, data: bytes, kind: BlobKind, mime: str
-    ) -> str:
+    def __register_blob(cls, out: TranslatedRun, data: bytes, kind: BlobKind, mime: str) -> str:
         """Content-address one blob (sha256): S3 object + registry row, deduplicated by hash."""
         content_hash = hashlib.sha256(data).hexdigest()
         if all(row.content_hash != content_hash for row in out.blob_rows):
@@ -103,7 +101,9 @@ class RunTranslator:
                     bbox=list(block.provenance.bbox),
                     reading_order=block.reading_order,
                     column_index=0,
-                    parent_id=cls.__block_id(document_id, block.parent_id) if block.parent_id else None,
+                    parent_id=cls.__block_id(document_id, block.parent_id)
+                    if block.parent_id
+                    else None,
                     level=block.level,
                     text=block.text,
                     is_boilerplate=block.block_type.value == "header_footer",
@@ -143,7 +143,10 @@ class RunTranslator:
                         continue
                     out.payload.enrichments.append(
                         BlockEnrichment(
-                            block_id=block_id, kind=kind, text=text, data=data,
+                            block_id=block_id,
+                            kind=kind,
+                            text=text,
+                            data=data,
                             status=EnrichmentStatus.OK,
                         )
                     )
@@ -193,12 +196,16 @@ class RunTranslator:
             )
             for name, value in chunk.generated_meta.items():
                 if name not in field_ids:
-                    cls.logger.warning(f"Generated chunk field '{name}' absent from schema — dropped")
+                    cls.logger.warning(
+                        f"Generated chunk field '{name}' absent from schema — dropped"
+                    )
                     continue
                 out.payload.chunk_metadata.append(
                     ChunkMetadata(
-                        chunk_id=chunk_uuid, field_id=field_ids[name],
-                        value=value, origin=FieldOrigin.GENERATED,
+                        chunk_id=chunk_uuid,
+                        field_id=field_ids[name],
+                        value=value,
+                        origin=FieldOrigin.GENERATED,
                     )
                 )
 
@@ -229,20 +236,24 @@ class RunTranslator:
                 {VectorNames.field_dense(name): vector for name, vector in item.fields.items()}
             )
             sparse = (
-                {VectorNames.CONTENT_SPARSE: SparseVec(
-                    indices=item.sparse.indices, values=item.sparse.values)}
+                {
+                    VectorNames.CONTENT_SPARSE: SparseVec(
+                        indices=item.sparse.indices, values=item.sparse.values
+                    )
+                }
                 if item.sparse
                 else {}
             )
             # The ColBERT multi-vector lands on the CONTENT point only — never mirrored onto the
             # meta_<slug>_dense metadata vectors built from item.fields above.
-            multivector = (
-                {VectorNames.CONTENT_COLBERT: item.colbert} if item.colbert else {}
-            )
+            multivector = {VectorNames.CONTENT_COLBERT: item.colbert} if item.colbert else {}
             out.points.append(
                 QdrantPoint(
-                    point_id=str(chunk_uuid), payload=payload,
-                    dense=dense, sparse=sparse, multivector=multivector,
+                    point_id=str(chunk_uuid),
+                    payload=payload,
+                    dense=dense,
+                    sparse=sparse,
+                    multivector=multivector,
                 )
             )
         out.dense_dim = bundle.embeddings.dimension if bundle.embeddings else 0
@@ -288,9 +299,13 @@ class RunTranslator:
             render_hash = cls.__register_blob(out, render.image, BlobKind.PAGE_RENDER, "image/png")
             out.payload.pages.append(
                 Page(
-                    document_id=document_id, page_number=render.page_number,
-                    width=float(render.width), height=float(render.height),
-                    is_scanned=False, language=None, render_blob_hash=render_hash,
+                    document_id=document_id,
+                    page_number=render.page_number,
+                    width=float(render.width),
+                    height=float(render.height),
+                    is_scanned=False,
+                    language=None,
+                    render_blob_hash=render_hash,
                 )
             )
 
@@ -299,12 +314,16 @@ class RunTranslator:
         doc_values = bundle.document_meta.values if bundle.document_meta else {}
         for name, value in doc_values.items():
             if name not in field_ids:
-                cls.logger.warning(f"Generated document field '{name}' absent from schema — dropped")
+                cls.logger.warning(
+                    f"Generated document field '{name}' absent from schema — dropped"
+                )
                 continue
             out.payload.document_metadata.append(
                 DocumentMetadata(
-                    document_id=document_id, field_id=field_ids[name],
-                    value=value, origin=FieldOrigin.GENERATED,
+                    document_id=document_id,
+                    field_id=field_ids[name],
+                    value=value,
+                    origin=FieldOrigin.GENERATED,
                 )
             )
 

@@ -27,7 +27,9 @@ class ContextualizeBodyBuilder:
     OUTPUT_FIELD = "completion"
 
     def __new__(cls, *args: object, **kwargs: object) -> None:
-        raise TypeError("ContextualizeBodyBuilder is a static-only class and cannot be instantiated.")
+        raise TypeError(
+            "ContextualizeBodyBuilder is a static-only class and cannot be instantiated."
+        )
 
     @classmethod
     def build(cls, chain: ChainSpec, on_error: OnChunkError) -> GroupNodeBlob:
@@ -57,7 +59,9 @@ class ContextualizeBodyBuilder:
             chain_prefix=cls.CHAIN_PREFIX,
             family=chain.family,
             steps=[
-                ChainStepSpec(kind=step.kind, config=dict(step.config), score_below=step.score_below)
+                ChainStepSpec(
+                    kind=step.kind, config=dict(step.config), score_below=step.score_below
+                )
                 for step in chain.steps
             ],
             group_field=cls.GROUP_FIELD,

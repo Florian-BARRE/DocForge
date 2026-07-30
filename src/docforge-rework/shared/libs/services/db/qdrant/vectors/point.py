@@ -24,8 +24,8 @@ class QdrantPoint:
 
     point_id: str
     payload: dict[str, Any]
-    dense: dict[str, list[float]] = field(default_factory=dict)   # vector name → dense vector
-    sparse: dict[str, SparseVec] = field(default_factory=dict)    # vector name → sparse vector
+    dense: dict[str, list[float]] = field(default_factory=dict)  # vector name → dense vector
+    sparse: dict[str, SparseVec] = field(default_factory=dict)  # vector name → sparse vector
     multivector: dict[str, list[list[float]]] = field(default_factory=dict)  # name → ColBERT tokens
 
 

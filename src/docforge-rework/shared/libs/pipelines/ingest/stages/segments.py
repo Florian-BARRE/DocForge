@@ -81,25 +81,43 @@ class SegmentBuilder:
         segments = [cls.__intake(state), cls.__parse(state)]
         if state.render_on:
             segments.append(
-                cls.__single("render", "figures", "render", "figure_render", state.render_config, "ir")
+                cls.__single(
+                    "render", "figures", "render", "figure_render", state.render_config, "ir"
+                )
             )
         if state.enrich_on:
             segments.append(cls.__enrich(state))
         segments.append(
-            cls.__single("chunk", "chunk", "chunker", state.chunker_kind, state.chunker_config, "chunks")
+            cls.__single(
+                "chunk", "chunk", "chunker", state.chunker_kind, state.chunker_config, "chunks"
+            )
         )
         if state.stack:
             segments.append(cls.__contextualize(state))
         if state.metachunk_on:
-            segments.append(cls.__metagen(
-                "metagen_chunk", "meta_chunk", "chunk_prep", "chunk_apply", "chunks",
-                state.metachunk_config, state.metachunk_chain,
-            ))
+            segments.append(
+                cls.__metagen(
+                    "metagen_chunk",
+                    "meta_chunk",
+                    "chunk_prep",
+                    "chunk_apply",
+                    "chunks",
+                    state.metachunk_config,
+                    state.metachunk_chain,
+                )
+            )
         if state.metadoc_on:
-            segments.append(cls.__metagen(
-                "metagen_document", "meta_doc", "document_prep", "document_apply", "meta",
-                state.metadoc_config, state.metadoc_chain,
-            ))
+            segments.append(
+                cls.__metagen(
+                    "metagen_document",
+                    "meta_doc",
+                    "document_prep",
+                    "document_apply",
+                    "meta",
+                    state.metadoc_config,
+                    state.metadoc_chain,
+                )
+            )
         if state.embed_on:
             segments.append(cls.__embed(state))
         segments.append(cls.__single("deliver", "bundle", "deliver", "bundle", {}, "bundle"))
@@ -107,13 +125,23 @@ class SegmentBuilder:
 
     @classmethod
     def __single(
-        cls, key: str, node_id: str, family: str, kind: str, config: dict, output_field: str,
+        cls,
+        key: str,
+        node_id: str,
+        family: str,
+        kind: str,
+        config: dict,
+        output_field: str,
         bindings: dict[str, dict] | None = None,
     ) -> Segment:
         """A one-node stage segment (parse, render, chunk, metagen, embed, deliver)."""
         node = ActionNodeBlob(id=node_id, family=family, kind=kind, config=dict(config))
         return Segment(
-            key=key, head=node_id, exits=[node_id], nodes=[node], transitions=[],
+            key=key,
+            head=node_id,
+            exits=[node_id],
+            nodes=[node],
+            transitions=[],
             output=FromNode(node_id=node_id, field_name=output_field),
             bindings=bindings or {},
         )
@@ -121,17 +149,29 @@ class SegmentBuilder:
     @classmethod
     def __intake(cls, state: PipelineState) -> Segment:
         """The fixed 5-node intake chain (probe → admit → convert → pdf_probe → address)."""
-        spec = [("probe", "intake", "format_probe"), ("admit", "intake", "admission"),
-                ("convert", "converter", "gotenberg"), ("pdf_probe", "intake", "pdf_probe"),
-                ("address", "intake", "content_address")]
+        spec = [
+            ("probe", "intake", "format_probe"),
+            ("admit", "intake", "admission"),
+            ("convert", "converter", "gotenberg"),
+            ("pdf_probe", "intake", "pdf_probe"),
+            ("address", "intake", "content_address"),
+        ]
         nodes = [
-            ActionNodeBlob(id=nid, family=fam, kind=kind, config=dict(state.intake_configs.get(nid, {})))
+            ActionNodeBlob(
+                id=nid, family=fam, kind=kind, config=dict(state.intake_configs.get(nid, {}))
+            )
             for nid, fam, kind in spec
         ]
         ids = [nid for nid, _, _ in spec]
-        chain = [Transition(from_node_id=a, to_node_id=b) for a, b in zip(ids, ids[1:], strict=False)]
+        chain = [
+            Transition(from_node_id=a, to_node_id=b) for a, b in zip(ids, ids[1:], strict=False)
+        ]
         return Segment(
-            key="intake", head="probe", exits=["address"], nodes=nodes, transitions=chain,
+            key="intake",
+            head="probe",
+            exits=["address"],
+            nodes=nodes,
+            transitions=chain,
             output=FromNode(node_id="address", field_name="ingest"),
         )
 
@@ -144,19 +184,34 @@ class SegmentBuilder:
         if len(chain.steps) == 1:
             step = chain.steps[0]
             return cls.__single(
-                "parse", "parse", "parser", step.kind, dict(step.config), "ir",
+                "parse",
+                "parse",
+                "parser",
+                step.kind,
+                dict(step.config),
+                "ir",
                 bindings={"parse": dict(source)},
             )
         # 2. A fallback chain — the shared builder emits the escalation edges + best-first output.
         fragment = ChainFragmentBuilder.build(
-            prefix="parse", family="parser",
-            steps=[ChainStepSpec(kind=s.kind, config=dict(s.config), score_below=s.score_below)
-                   for s in chain.steps],
-            step_inputs=source, output_field="ir", scored=True,
+            prefix="parse",
+            family="parser",
+            steps=[
+                ChainStepSpec(kind=s.kind, config=dict(s.config), score_below=s.score_below)
+                for s in chain.steps
+            ],
+            step_inputs=source,
+            output_field="ir",
+            scored=True,
         )
         return Segment(
-            key="parse", head=fragment.heads[0], exits=fragment.exits, nodes=fragment.nodes,
-            transitions=fragment.transitions, output=fragment.output, bindings=fragment.bindings,
+            key="parse",
+            head=fragment.heads[0],
+            exits=fragment.exits,
+            nodes=fragment.nodes,
+            transitions=fragment.transitions,
+            output=fragment.output,
+            bindings=fragment.bindings,
         )
 
     @classmethod
@@ -171,17 +226,28 @@ class SegmentBuilder:
         # 1. A single provider stays exactly the stock lone node (byte-identical default).
         if len(chain.steps) == 1:
             step = chain.steps[0]
-            return cls.__single("embed", "embed", "embed", step.kind, dict(step.config), "embeddings")
+            return cls.__single(
+                "embed", "embed", "embed", step.kind, dict(step.config), "embeddings"
+            )
         # 2. A failure-only fallback chain — scored=False, so no ScoreBelow edges are emitted.
         fragment = ChainFragmentBuilder.build(
-            prefix="embed", family="embed",
-            steps=[ChainStepSpec(kind=s.kind, config=dict(s.config), score_below=s.score_below)
-                   for s in chain.steps],
-            step_inputs={}, output_field="embeddings", scored=False,
+            prefix="embed",
+            family="embed",
+            steps=[
+                ChainStepSpec(kind=s.kind, config=dict(s.config), score_below=s.score_below)
+                for s in chain.steps
+            ],
+            step_inputs={},
+            output_field="embeddings",
+            scored=False,
         )
         return Segment(
-            key="embed", head=fragment.heads[0], exits=fragment.exits, nodes=fragment.nodes,
-            transitions=fragment.transitions, output=fragment.output,
+            key="embed",
+            head=fragment.heads[0],
+            exits=fragment.exits,
+            nodes=fragment.nodes,
+            transitions=fragment.transitions,
+            output=fragment.output,
         )
 
     @classmethod
@@ -192,7 +258,8 @@ class SegmentBuilder:
             ForEachNodeBlob(
                 id="per_figure",
                 over=FromNode(node_id="extract", field_name="figures"),
-                item_field="figure", max_concurrency=4,
+                item_field="figure",
+                max_concurrency=4,
                 body=EnrichBodyBuilder.build(state.classify_config, state.chains),
             ),
             ActionNodeBlob(id="apply", family="enrich", kind="enrich_apply"),
@@ -202,14 +269,24 @@ class SegmentBuilder:
             Transition(from_node_id="per_figure", to_node_id="apply"),
         ]
         return Segment(
-            key="enrich", head="extract", exits=["apply"], nodes=nodes, transitions=transitions,
+            key="enrich",
+            head="extract",
+            exits=["apply"],
+            nodes=nodes,
+            transitions=transitions,
             output=FromNode(node_id="apply", field_name="ir"),
         )
 
     @classmethod
     def __metagen(
-        cls, key: str, prefix: str, prep_kind: str, apply_kind: str, output_field: str,
-        prep_config: dict, chain: ChainSpec,
+        cls,
+        key: str,
+        prefix: str,
+        prep_kind: str,
+        apply_kind: str,
+        output_field: str,
+        prep_config: dict,
+        chain: ChainSpec,
     ) -> Segment:
         """A metagen stage: prep → ForEach(structgen chain [+ skip]) → apply (mirrors __enrich).
 
@@ -222,8 +299,10 @@ class SegmentBuilder:
         nodes = [
             ActionNodeBlob(id=prep_id, family="metagen", kind=prep_kind, config=dict(prep_config)),
             ForEachNodeBlob(
-                id=loop_id, over=FromNode(node_id=prep_id, field_name="requests"),
-                item_field="request", max_concurrency=int(prep_config.get("max_concurrency", 4)),
+                id=loop_id,
+                over=FromNode(node_id=prep_id, field_name="requests"),
+                item_field="request",
+                max_concurrency=int(prep_config.get("max_concurrency", 4)),
                 body=MetagenBodyBuilder.build(chain, cls.__on_error(prep_config)),
             ),
             ActionNodeBlob(id=apply_id, family="metagen", kind=apply_kind),
@@ -233,7 +312,11 @@ class SegmentBuilder:
             Transition(from_node_id=loop_id, to_node_id=apply_id),
         ]
         return Segment(
-            key=key, head=prep_id, exits=[apply_id], nodes=nodes, transitions=transitions,
+            key=key,
+            head=prep_id,
+            exits=[apply_id],
+            nodes=nodes,
+            transitions=transitions,
             output=FromNode(node_id=apply_id, field_name=output_field),
         )
 
@@ -258,31 +341,53 @@ class SegmentBuilder:
         # 1. Emit each slot's node(s) + its own internal transitions.
         for position in positions:
             if not position.is_llm:
-                nodes.append(ActionNodeBlob(
-                    id=position.head_id, family="contextualize", kind=position.method.kind,
-                    config=dict(position.method.config),
-                ))
+                nodes.append(
+                    ActionNodeBlob(
+                        id=position.head_id,
+                        family="contextualize",
+                        kind=position.method.kind,
+                        config=dict(position.method.config),
+                    )
+                )
                 continue
-            nodes.append(ActionNodeBlob(
-                id=position.head_id, family="contextualize", kind="llm",
-                config=dict(position.method.config),
-            ))
-            nodes.append(ForEachNodeBlob(
-                id=position.loop_id,
-                over=FromNode(node_id=position.head_id, field_name="prompts"),
-                item_field="prompt",
-                max_concurrency=int(position.method.config.get("max_concurrency", 4)),
-                body=ContextualizeBodyBuilder.build(position.chain, position.on_error),
-            ))
-            nodes.append(ActionNodeBlob(id=position.apply_id, family="contextualize", kind="llm_apply"))
-            transitions.append(Transition(from_node_id=position.head_id, to_node_id=position.loop_id))
-            transitions.append(Transition(from_node_id=position.loop_id, to_node_id=position.apply_id))
+            nodes.append(
+                ActionNodeBlob(
+                    id=position.head_id,
+                    family="contextualize",
+                    kind="llm",
+                    config=dict(position.method.config),
+                )
+            )
+            nodes.append(
+                ForEachNodeBlob(
+                    id=position.loop_id,
+                    over=FromNode(node_id=position.head_id, field_name="prompts"),
+                    item_field="prompt",
+                    max_concurrency=int(position.method.config.get("max_concurrency", 4)),
+                    body=ContextualizeBodyBuilder.build(position.chain, position.on_error),
+                )
+            )
+            nodes.append(
+                ActionNodeBlob(id=position.apply_id, family="contextualize", kind="llm_apply")
+            )
+            transitions.append(
+                Transition(from_node_id=position.head_id, to_node_id=position.loop_id)
+            )
+            transitions.append(
+                Transition(from_node_id=position.loop_id, to_node_id=position.apply_id)
+            )
         # 2. Chain each slot's tail onto the next slot's head.
         for previous, current in zip(positions, positions[1:], strict=False):
-            transitions.append(Transition(from_node_id=previous.tail_id, to_node_id=current.head_id))
+            transitions.append(
+                Transition(from_node_id=previous.tail_id, to_node_id=current.head_id)
+            )
         return Segment(
-            key="contextualize", head=positions[0].head_id, exits=[positions[-1].tail_id],
-            nodes=nodes, transitions=transitions, output=positions[-1].output,
+            key="contextualize",
+            head=positions[0].head_id,
+            exits=[positions[-1].tail_id],
+            nodes=nodes,
+            transitions=transitions,
+            output=positions[-1].output,
         )
 
 

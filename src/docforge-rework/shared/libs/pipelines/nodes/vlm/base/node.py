@@ -67,9 +67,8 @@ class BaseVlmNode(ActionNode):
         # 1. The always-on guard rail frames the behaviour, the per-class prompt drives it, and
         #    chart-to-table appends its output contract. The guard is a node invariant: it is never
         #    removable by config, so a user's custom prompt cannot reopen the deflection failure mode.
-        prompt = (
-            f"{_DESCRIPTION_GUARD}\n\n{config.system_prompt}"
-            + (_TABLE_INSTRUCTION if config.extract_table else "")
+        prompt = f"{_DESCRIPTION_GUARD}\n\n{config.system_prompt}" + (
+            _TABLE_INSTRUCTION if config.extract_table else ""
         )
 
         # 2. Run the provider — the confidence drives quality escalation, never discarded.

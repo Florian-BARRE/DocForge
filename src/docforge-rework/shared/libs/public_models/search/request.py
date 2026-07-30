@@ -30,7 +30,9 @@ class RawQuery(Artifact):
     """
 
     text: str = Field(description="The raw query text as typed by the caller (un-normalised).")
-    top_k: int = Field(default=10, gt=0, description="How many hits to return (delivered set size).")
+    top_k: int = Field(
+        default=10, gt=0, description="How many hits to return (delivered set size)."
+    )
     search_targets: list[SearchTarget] = Field(
         default_factory=default_content_targets,
         description="Field × modality selection (content and/or metadata); default is content on "

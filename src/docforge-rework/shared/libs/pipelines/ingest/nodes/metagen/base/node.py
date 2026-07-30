@@ -31,7 +31,9 @@ class ResolvedTarget(BaseModel):
 class BaseMetagenNode(ActionNode):
     """Abstract metagen node — children decide the text source and the value destination."""
 
-    def __endpoint(self, base_url: str = "", api_key: str = "", model: str = "") -> OpenAICompatConfig:
+    def __endpoint(
+        self, base_url: str = "", api_key: str = "", model: str = ""
+    ) -> OpenAICompatConfig:
         """The effective endpoint of a target — its overrides on top of the node's default."""
         config: BaseMetagenConfig = self.config
         return OpenAICompatConfig(
@@ -45,7 +47,8 @@ class BaseMetagenNode(ActionNode):
     def __is_other_scope(contract: CollectionContract, field: str, scope: FieldScope) -> bool:
         """True when the field IS generated but belongs to the other scope's node."""
         return any(
-            spec.field_name == field and spec.origin == FieldOrigin.GENERATED
+            spec.field_name == field
+            and spec.origin == FieldOrigin.GENERATED
             and spec.scope != scope
             for spec in contract.fields
         )

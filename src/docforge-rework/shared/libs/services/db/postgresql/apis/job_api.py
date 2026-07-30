@@ -116,14 +116,10 @@ class JobApi:
         return list(result.scalars().all())
 
     @staticmethod
-    async def list_for_collection(
-        session: AsyncSession, collection_id: uuid.UUID
-    ) -> list[Job]:
+    async def list_for_collection(session: AsyncSession, collection_id: uuid.UUID) -> list[Job]:
         """Return a collection's jobs, newest first."""
         result = await session.execute(
-            select(Job)
-            .where(Job.collection_id == collection_id)
-            .order_by(Job.created_at.desc())
+            select(Job).where(Job.collection_id == collection_id).order_by(Job.created_at.desc())
         )
         return list(result.scalars().all())
 

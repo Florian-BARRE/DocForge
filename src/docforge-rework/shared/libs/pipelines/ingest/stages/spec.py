@@ -138,70 +138,99 @@ class StageSpecs:
     # The ordered skeleton — the UI renders exactly this vertical rail, greying disabled stages.
     ORDER: tuple[StageMeta, ...] = (
         StageMeta(
-            key=StageKey.INTAKE, kind=StageKind.FIXED, removable=False,
+            key=StageKey.INTAKE,
+            kind=StageKind.FIXED,
+            removable=False,
             title="Intake",
             description="Validate the upload against the collection contract and prepare a PDF "
             "view (format probe, admission gate, conversion, PDF probe, content addressing).",
         ),
         StageMeta(
-            key=StageKey.PARSE, kind=StageKind.PROVIDER, removable=False,
-            family="parser", primary_node="parse",
+            key=StageKey.PARSE,
+            kind=StageKind.PROVIDER,
+            removable=False,
+            family="parser",
+            primary_node="parse",
             title="Parse",
             description="Turn the PDF into the canonical document IR (blocks, tables, figures, "
             "heading tree) with the chosen parser.",
         ),
         StageMeta(
-            key=StageKey.RENDER, kind=StageKind.TOGGLE, removable=True,
-            family="render", primary_node="figures",
+            key=StageKey.RENDER,
+            kind=StageKind.TOGGLE,
+            removable=True,
+            family="render",
+            primary_node="figures",
             title="Render figures",
             description="Rasterise the pages and embed each figure's crop into the IR so the "
             "enrichment can read and describe them.",
         ),
         StageMeta(
-            key=StageKey.ENRICH, kind=StageKind.TOGGLE, removable=True,
-            family="enrich", primary_node="classify", requires=("render",),
+            key=StageKey.ENRICH,
+            kind=StageKind.TOGGLE,
+            removable=True,
+            family="enrich",
+            primary_node="classify",
+            requires=("render",),
             title="Enrich figures",
             description="Per figure: classify it, then read scanned text (OCR chain) or describe "
             "charts/diagrams/photos (VLM chain), and fold the result back into the IR.",
         ),
         StageMeta(
-            key=StageKey.CHUNK, kind=StageKind.PROVIDER, removable=False,
-            family="chunker", primary_node="chunk",
+            key=StageKey.CHUNK,
+            kind=StageKind.PROVIDER,
+            removable=False,
+            family="chunker",
+            primary_node="chunk",
             title="Chunk",
             description="Split the enriched IR into retrieval chunks with the chosen chunking "
             "method (structure-aware, fixed-size, semantic).",
         ),
         StageMeta(
-            key=StageKey.CONTEXTUALIZE, kind=StageKind.STACK, removable=False,
+            key=StageKey.CONTEXTUALIZE,
+            kind=StageKind.STACK,
+            removable=False,
             family="contextualize",
             title="Contextualize",
             description="Grow each chunk's search context with an ordered stack of methods "
             "(document metadata, breadcrumb, sliding window, LLM) — the order is the prefix order.",
         ),
         StageMeta(
-            key=StageKey.METAGEN_CHUNK, kind=StageKind.TOGGLE, removable=True,
-            family="metagen", primary_node="meta_chunk_prep",
+            key=StageKey.METAGEN_CHUNK,
+            kind=StageKind.TOGGLE,
+            removable=True,
+            family="metagen",
+            primary_node="meta_chunk_prep",
             title="Chunk metadata",
             description="Fill the contract's generated chunk-scope fields with an LLM, one "
             "structured generation per chunk.",
         ),
         StageMeta(
-            key=StageKey.METAGEN_DOCUMENT, kind=StageKind.TOGGLE, removable=True,
-            family="metagen", primary_node="meta_doc_prep",
+            key=StageKey.METAGEN_DOCUMENT,
+            kind=StageKind.TOGGLE,
+            removable=True,
+            family="metagen",
+            primary_node="meta_doc_prep",
             title="Document metadata",
             description="Fill the contract's generated document-scope fields with an LLM from a "
             "view of the document.",
         ),
         StageMeta(
-            key=StageKey.EMBED, kind=StageKind.PROVIDER, removable=True,
-            family="embed", primary_node="embed",
+            key=StageKey.EMBED,
+            kind=StageKind.PROVIDER,
+            removable=True,
+            family="embed",
+            primary_node="embed",
             title="Embed",
             description="Vectorise every chunk (dense + sparse) with the chosen embedder — "
             "disable it to index no vectors.",
         ),
         StageMeta(
-            key=StageKey.DELIVER, kind=StageKind.FIXED, removable=False,
-            family="deliver", primary_node="bundle",
+            key=StageKey.DELIVER,
+            kind=StageKind.FIXED,
+            removable=False,
+            family="deliver",
+            primary_node="bundle",
             title="Deliver",
             description="Assemble everything the run produced into the output bundle the worker "
             "persists.",

@@ -32,7 +32,9 @@ class MetadataField(Base):
         # A field can only be required from the caller — system/generated fields are filled later.
         CheckConstraint("NOT required OR origin = 'user'", name="required_user_only"),
         # A per-chunk value can only come from post-chunk generation.
-        CheckConstraint("scope != 'chunk' OR origin = 'generated'", name="chunk_scope_generated_only"),
+        CheckConstraint(
+            "scope != 'chunk' OR origin = 'generated'", name="chunk_scope_generated_only"
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)

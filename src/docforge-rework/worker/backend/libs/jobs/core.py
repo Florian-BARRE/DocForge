@@ -117,14 +117,19 @@ async def ingest_document(ctx: dict[str, Any], document_id: str, job_id: str) ->
 
         # 3. Run (fresh input inside), then translate the delivery.
         bundle, _record = await runner.run(
-            blob, source, contract,
+            blob,
+            source,
+            contract,
             timeout_seconds=CONTEXT.job_timeout_seconds,
             progress_callback=on_progress,
             preflight_enabled=CONTEXT.RUNTIME_CONFIG.WORKER_PREFLIGHT_ENABLED,
         )
         strategy = next(
-            (node.get("kind", "") for node in blob.get("nodes", [])
-             if isinstance(node, dict) and node.get("family") == "chunker"),
+            (
+                node.get("kind", "")
+                for node in blob.get("nodes", [])
+                if isinstance(node, dict) and node.get("family") == "chunker"
+            ),
             "unknown",
         )
         config_hash = hashlib.sha256(
@@ -137,7 +142,9 @@ async def ingest_document(ctx: dict[str, Any], document_id: str, job_id: str) ->
         await database.ingestion.save(doc_uuid, translated.payload)
         if translated.points:
             await database.ingestion.index(
-                document.collection_id, translated.dense_dim, translated.points,
+                document.collection_id,
+                translated.dense_dim,
+                translated.points,
                 colbert_dim=translated.colbert_dim,
             )
             # 5. Denormalise the document's filterable doc-scope metadata onto the fresh points

@@ -54,7 +54,9 @@ async def list_jobs(
     return [_job_status(job) for job in jobs]
 
 
-@router.get("/workers/live", response_model=WorkersLive, dependencies=[Depends(require(Capability.READ))])
+@router.get(
+    "/workers/live", response_model=WorkersLive, dependencies=[Depends(require(Capability.READ))]
+)
 @auto_handle_errors
 async def live_workers() -> WorkersLive:
     """
@@ -98,8 +100,13 @@ async def get_job_trace(
     return JobTrace(
         job_id=str(job_id),
         events=[
-            JobEvent(stage=e.stage, status=e.status, started_at=e.started_at,
-                     finished_at=e.finished_at, detail=e.detail)
+            JobEvent(
+                stage=e.stage,
+                status=e.status,
+                started_at=e.started_at,
+                finished_at=e.finished_at,
+                detail=e.detail,
+            )
             for e in events
         ],
     )

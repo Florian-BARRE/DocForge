@@ -15,15 +15,40 @@ from shared_libs.pipelines.ingest import IngestPipeline
 from shared_libs.pipelines.ingest.stages import DisableStage, StageViewer, StateReader
 
 EXPECTED_TOP_LEVEL_IDS = [
-    "probe", "admit", "convert", "pdf_probe", "address", "parse", "figures",
-    "extract", "per_figure", "apply", "chunk", "ctx_meta", "ctx_breadcrumb",
-    "meta_chunk_prep", "meta_chunk_loop", "meta_chunk_apply",
-    "meta_doc_prep", "meta_doc_loop", "meta_doc_apply", "embed", "bundle",
+    "probe",
+    "admit",
+    "convert",
+    "pdf_probe",
+    "address",
+    "parse",
+    "figures",
+    "extract",
+    "per_figure",
+    "apply",
+    "chunk",
+    "ctx_meta",
+    "ctx_breadcrumb",
+    "meta_chunk_prep",
+    "meta_chunk_loop",
+    "meta_chunk_apply",
+    "meta_doc_prep",
+    "meta_doc_loop",
+    "meta_doc_apply",
+    "embed",
+    "bundle",
 ]
 
 EXPECTED_STAGE_ORDER = [
-    "intake", "parse", "render", "enrich", "chunk", "contextualize",
-    "metagen_chunk", "metagen_document", "embed", "deliver",
+    "intake",
+    "parse",
+    "render",
+    "enrich",
+    "chunk",
+    "contextualize",
+    "metagen_chunk",
+    "metagen_document",
+    "embed",
+    "deliver",
 ]
 
 
@@ -32,7 +57,9 @@ def _view(blob, builder, validator):
     return {stage.key: stage for stage in StageViewer.catalog(StateReader.read(blob)).stages}
 
 
-def test_default_blob_has_the_canonical_top_level_node_ids_and_zero_issues(builder, validator) -> None:
+def test_default_blob_has_the_canonical_top_level_node_ids_and_zero_issues(
+    builder, validator
+) -> None:
     default = IngestPipeline.default_blob()
     top_ids = [node.id for node in default.nodes]
     assert top_ids == EXPECTED_TOP_LEVEL_IDS
@@ -61,7 +88,9 @@ def test_stage_catalog_flags_removable_and_available_providers(builder, validato
     assert stages["parse"].removable is False
 
 
-def test_disable_enrich_alone_rebinds_chunk_ir_to_render_with_no_render_notice(builder, validator, compiler) -> None:
+def test_disable_enrich_alone_rebinds_chunk_ir_to_render_with_no_render_notice(
+    builder, validator, compiler
+) -> None:
     """Disabling enrich (render stays on) must rebind chunk.ir to render's output, cleanly,
     and must NEVER mention render in its notices — the two toggles are independent here."""
     default = IngestPipeline.default_blob()
@@ -75,7 +104,9 @@ def test_disable_enrich_alone_rebinds_chunk_ir_to_render_with_no_render_notice(b
     assert not any("render" in note for note in enrich_notices), enrich_notices
 
 
-def test_disable_render_cascades_enrich_off_with_a_notice_and_falls_back_to_parse(builder, validator, compiler) -> None:
+def test_disable_render_cascades_enrich_off_with_a_notice_and_falls_back_to_parse(
+    builder, validator, compiler
+) -> None:
     """Disabling render must cascade-disable enrich (enrich `requires` render) — WITH a notice —
     and chunk.ir must fall all the way back to parse.ir; bundle.pages becomes unbound."""
     default = IngestPipeline.default_blob()

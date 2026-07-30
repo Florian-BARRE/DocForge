@@ -62,7 +62,9 @@ async def test_create_posts_and_returns_collection() -> None:
     route = respx.post(f"{API}/collections").mock(
         return_value=httpx.Response(201, json=_COLLECTION_SAMPLE)
     )
-    request = CreateCollectionRequest(name="docs", supported_formats=["pdf"], max_file_size_bytes=1000)
+    request = CreateCollectionRequest(
+        name="docs", supported_formats=["pdf"], max_file_size_bytes=1000
+    )
     async with AsyncClient(BASE) as client:
         result = await client.collections.create(request)
     assert route.calls.last.request.method == "POST"

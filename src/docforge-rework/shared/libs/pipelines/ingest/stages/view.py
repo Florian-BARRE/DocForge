@@ -45,9 +45,15 @@ class StageViewer:
         enabled = cls.__enabled(meta.key, state)
         provider, available = cls.__provider(meta, state)
         return StageView(
-            key=meta.key, title=meta.title, description=meta.description, kind=meta.kind,
-            enabled=enabled, removable=meta.removable, family=meta.family,
-            provider=provider, available=available,
+            key=meta.key,
+            title=meta.title,
+            description=meta.description,
+            kind=meta.kind,
+            enabled=enabled,
+            removable=meta.removable,
+            family=meta.family,
+            provider=provider,
+            available=available,
             config=cls.__config(meta.key, state),
             chains=cls.__chains(meta.key, state),
             stack=list(state.stack) if meta.key == StageKey.CONTEXTUALIZE else [],
@@ -73,7 +79,8 @@ class StageViewer:
     # Metagen stages → the state field of their structgen ladder (a TOGGLE that ALSO carries a
     # chain, like enrich: its config is the prep endpoint, its chain is the model ladder).
     __METAGEN_CHAINS = {
-        StageKey.METAGEN_CHUNK: "metachunk_chain", StageKey.METAGEN_DOCUMENT: "metadoc_chain",
+        StageKey.METAGEN_CHUNK: "metachunk_chain",
+        StageKey.METAGEN_DOCUMENT: "metadoc_chain",
     }
 
     @classmethod
@@ -82,7 +89,11 @@ class StageViewer:
         if meta.kind != "provider":
             return None, []
         if meta.key in cls.__CHAIN_STAGES:
-            head = cls.__chain(state, meta.key).steps[0] if cls.__chain(state, meta.key).steps else None
+            head = (
+                cls.__chain(state, meta.key).steps[0]
+                if cls.__chain(state, meta.key).steps
+                else None
+            )
             selected: str | None = head.kind if head else None
         else:
             selected = {StageKey.CHUNK: state.chunker_kind}.get(meta.key)
@@ -122,11 +133,16 @@ class StageViewer:
         views: list[ChainView] = []
         for branch in StageSpecs.FIGURE_BRANCHES:
             spec = state.chains.get(branch.slot)
-            views.append(ChainView(
-                slot=branch.slot, title=branch.title, description=branch.description,
-                family=branch.family, available=NodeRegistry.kinds(branch.family),
-                steps=list(spec.steps) if spec else [],
-            ))
+            views.append(
+                ChainView(
+                    slot=branch.slot,
+                    title=branch.title,
+                    description=branch.description,
+                    family=branch.family,
+                    available=NodeRegistry.kinds(branch.family),
+                    steps=list(spec.steps) if spec else [],
+                )
+            )
         return views
 
     @classmethod
@@ -141,8 +157,11 @@ class StageViewer:
         chain = cls.__chain(state, key)
         family = meta.family or chain.family
         return ChainView(
-            slot=meta.key, title=meta.title, description=meta.description,
-            family=family, available=NodeRegistry.kinds(family),
+            slot=meta.key,
+            title=meta.title,
+            description=meta.description,
+            family=family,
+            available=NodeRegistry.kinds(family),
             steps=list(chain.steps),
         )
 
@@ -154,13 +173,16 @@ class StageViewer:
             if method.kind != "llm":
                 continue
             chain = method.chain
-            views.append(ChainView(
-                slot=f"contextualize.{index}",
-                title="LLM context chain",
-                description="The fallback chain the situating model call escalates through.",
-                family="llm", available=NodeRegistry.kinds("llm"),
-                steps=list(chain.steps) if chain else [],
-            ))
+            views.append(
+                ChainView(
+                    slot=f"contextualize.{index}",
+                    title="LLM context chain",
+                    description="The fallback chain the situating model call escalates through.",
+                    family="llm",
+                    available=NodeRegistry.kinds("llm"),
+                    steps=list(chain.steps) if chain else [],
+                )
+            )
         return views
 
     @classmethod
@@ -169,8 +191,11 @@ class StageViewer:
         meta = StageSpecs.meta(key)
         chain: ChainSpec = getattr(state, cls.__METAGEN_CHAINS[key])
         return ChainView(
-            slot=meta.key, title=meta.title, description=meta.description,
-            family="structgen", available=NodeRegistry.kinds("structgen"),
+            slot=meta.key,
+            title=meta.title,
+            description=meta.description,
+            family="structgen",
+            available=NodeRegistry.kinds("structgen"),
             steps=list(chain.steps),
         )
 

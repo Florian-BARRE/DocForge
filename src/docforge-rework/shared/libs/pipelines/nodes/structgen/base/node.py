@@ -94,7 +94,9 @@ class BaseStructGenNode(ActionNode):
             if coerced is not None:
                 values[field.spec.field_name] = coerced
 
-        self.logger.debug(f"structgen '{self.KIND}' filled {len(values)}/{len(request.fields)} field(s)")
+        self.logger.debug(
+            f"structgen '{self.KIND}' filled {len(values)}/{len(request.fields)} field(s)"
+        )
         return StructGenProduces(
             values=GeneratedValues(
                 request_id=request.request_id, chunk_id=request.chunk_id, values=values

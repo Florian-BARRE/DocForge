@@ -225,7 +225,12 @@ def test_rerank_blob_builds_and_validates_clean() -> None:
     """The fusion+rerank blob builds and passes the graph validator with ZERO issues."""
     blob = SearchPipeline.rerank_blob()
     assert [node.id for node in blob.nodes] == [
-        "normalize", "encode", "retrieve", "rerank", "hydrate", "deliver",
+        "normalize",
+        "encode",
+        "retrieve",
+        "rerank",
+        "hydrate",
+        "deliver",
     ]
     group = PipelineBuilder().build(blob)
     assert GraphValidator().validate(group) == []

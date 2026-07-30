@@ -41,9 +41,7 @@ def _unauthorized(detail: str) -> HTTPException:
     Returns:
         HTTPException: A 401 carrying the WWW-Authenticate challenge header.
     """
-    return HTTPException(
-        status_code=401, detail=detail, headers={"WWW-Authenticate": "Bearer"}
-    )
+    return HTTPException(status_code=401, detail=detail, headers={"WWW-Authenticate": "Bearer"})
 
 
 def _extract_bearer(request: Request) -> str:
@@ -117,9 +115,7 @@ def _is_expired(expires_at: datetime | None, now: datetime) -> bool:
     return expires_at <= now
 
 
-async def _touch_last_used(
-    key_id: uuid.UUID, last_used_at: datetime | None, now: datetime
-) -> None:
+async def _touch_last_used(key_id: uuid.UUID, last_used_at: datetime | None, now: datetime) -> None:
     """
     Best-effort record of a key's last successful authentication (never fails the request).
 

@@ -60,8 +60,13 @@ def test_score_below_escalation(engine, score: float, expected_text: str) -> Non
     """ScoreBelow escalates to the fallback only when the producer's score is under threshold."""
     group = Group(
         id="score",
-        children=[Scorer(id="sc", config=Cfg(), score=score), Producer(id="fb", config=Cfg(), text="fallback")],
-        transitions=[Transition(from_node_id="sc", to_node_id="fb", condition=ScoreBelow(threshold=0.5))],
+        children=[
+            Scorer(id="sc", config=Cfg(), score=score),
+            Producer(id="fb", config=Cfg(), text="fallback"),
+        ],
+        transitions=[
+            Transition(from_node_id="sc", to_node_id="fb", condition=ScoreBelow(threshold=0.5))
+        ],
     )
     output, _ = asyncio.run(engine.execute(group, {}))
     assert output.doc.text == expected_text
@@ -89,7 +94,9 @@ def test_progress_callback_fires_start_and_end_per_child(engine) -> None:
     events = []
 
     async def callback(event) -> None:
-        events.append((str(event.phase), event.node_id, str(event.record.status) if event.record else "-"))
+        events.append(
+            (str(event.phase), event.node_id, str(event.record.status) if event.record else "-")
+        )
 
     group = Group(
         id="prog",

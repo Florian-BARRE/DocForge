@@ -90,9 +90,7 @@ class DocumentApi:
             document.status = status
 
     @staticmethod
-    async def set_enabled(
-        session: AsyncSession, document_id: uuid.UUID, enabled: bool
-    ) -> bool:
+    async def set_enabled(session: AsyncSession, document_id: uuid.UUID, enabled: bool) -> bool:
         """
         Flip a document's searchability toggle (the reversible enable/disable flag).
 
@@ -114,9 +112,7 @@ class DocumentApi:
         return True
 
     @staticmethod
-    async def list_disabled_ids(
-        session: AsyncSession, collection_id: uuid.UUID
-    ) -> list[uuid.UUID]:
+    async def list_disabled_ids(session: AsyncSession, collection_id: uuid.UUID) -> list[uuid.UUID]:
         """
         Return the ids of a collection's DISABLED documents — the search exclusion set.
 
@@ -175,9 +171,7 @@ class DocumentApi:
 
     # -------------------- metadata values --------------------
     @staticmethod
-    async def get_metadata(
-        session: AsyncSession, document_id: uuid.UUID
-    ) -> list[DocumentMetadata]:
+    async def get_metadata(session: AsyncSession, document_id: uuid.UUID) -> list[DocumentMetadata]:
         """Return the document's metadata values."""
         result = await session.execute(
             select(DocumentMetadata).where(DocumentMetadata.document_id == document_id)

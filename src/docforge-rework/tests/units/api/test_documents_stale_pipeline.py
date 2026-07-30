@@ -48,7 +48,9 @@ def _install_recording_context(monkeypatch, fastapi_app) -> SimpleNamespace:
     queue = SimpleNamespace(enqueue_ingest=AsyncMock())
 
     # 4. Swap them onto CONTEXT (monkeypatch reverts after the test).
-    monkeypatch.setattr(CONTEXT, "database", SimpleNamespace(collections=collections, ingestion=ingestion))
+    monkeypatch.setattr(
+        CONTEXT, "database", SimpleNamespace(collections=collections, ingestion=ingestion)
+    )
     monkeypatch.setattr(CONTEXT, "queue", queue)
 
     return SimpleNamespace(collections=collections, ingestion=ingestion, queue=queue)

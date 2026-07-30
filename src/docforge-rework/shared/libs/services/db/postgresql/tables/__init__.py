@@ -38,20 +38,45 @@ from .authentication import ApiKey, AppUser, UserRole
 # ------------------- Public API ------------------- #
 __all__ = [
     # base
-    "Base", "TimestampedMixin", "CreatedAtMixin", "UUIDPrimaryKey", "NAMING_CONVENTION",
+    "Base",
+    "TimestampedMixin",
+    "CreatedAtMixin",
+    "UUIDPrimaryKey",
+    "NAMING_CONVENTION",
     # collections
-    "Collection", "MetadataField",
+    "Collection",
+    "MetadataField",
     # documents
-    "Document", "DocumentStatus", "SourceKind", "Page", "DocumentMetadata",
+    "Document",
+    "DocumentStatus",
+    "SourceKind",
+    "Page",
+    "DocumentMetadata",
     # blobs
-    "Blob", "BlobKind",
+    "Blob",
+    "BlobKind",
     # ir
-    "Block", "BlockTable", "BlockFigure", "BlockEnrichment", "EnrichmentKind",
-    "EnrichmentStatus", "EnrichmentAttempt", "AttemptStatus",
+    "Block",
+    "BlockTable",
+    "BlockFigure",
+    "BlockEnrichment",
+    "EnrichmentKind",
+    "EnrichmentStatus",
+    "EnrichmentAttempt",
+    "AttemptStatus",
     # chunks
-    "Chunk", "ChunkBlock", "ChunkMetadata", "ChunkQuery", "EntityMention",
+    "Chunk",
+    "ChunkBlock",
+    "ChunkMetadata",
+    "ChunkQuery",
+    "EntityMention",
     # observability
-    "Job", "JobStatus", "JobStageEvent", "ConfigVersion",
+    "Job",
+    "JobStatus",
+    "JobStageEvent",
+    "ConfigVersion",
     # authentication
-    "AppUser", "UserRole", "ApiKey",
+    "AppUser",
+    "UserRole",
+    "ApiKey",
 ]

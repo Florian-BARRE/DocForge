@@ -26,20 +26,20 @@ class FieldType(StrEnum):
     INTEGER = "integer"
     FLOAT = "float"
     BOOL = "bool"
-    KEYWORD_LIST = "keyword_list"    # a list of enumerable string tags
+    KEYWORD_LIST = "keyword_list"  # a list of enumerable string tags
     DATETIME = "datetime"
-    ENUM = "enum"                    # a string constrained to the field's enum_values
-    TEXT = "text"                    # long free text (full-text Qdrant index when filterable)
-    INTEGER_LIST = "integer_list"    # a list of integers (Qdrant matches any element)
-    FLOAT_LIST = "float_list"        # a list of numbers (Qdrant matches any element)
-    TEXT_LIST = "text_list"          # a list of free sentences (key findings, quotes…)
+    ENUM = "enum"  # a string constrained to the field's enum_values
+    TEXT = "text"  # long free text (full-text Qdrant index when filterable)
+    INTEGER_LIST = "integer_list"  # a list of integers (Qdrant matches any element)
+    FLOAT_LIST = "float_list"  # a list of numbers (Qdrant matches any element)
+    TEXT_LIST = "text_list"  # a list of free sentences (key findings, quotes…)
 
 
 class FieldOrigin(StrEnum):
     """Where a metadata field's value comes from — drives who is allowed to fill it."""
 
-    SYSTEM = "system"        # extracted by the pipeline (filename, language, page_count…)
-    USER = "user"            # supplied by the caller at upload
+    SYSTEM = "system"  # extracted by the pipeline (filename, language, page_count…)
+    USER = "user"  # supplied by the caller at upload
     GENERATED = "generated"  # produced by the metagen (LLM) stage
 
 
@@ -47,7 +47,7 @@ class FieldScope(StrEnum):
     """At which granularity a field's VALUE lives — one per document, or one per chunk."""
 
     DOCUMENT = "document"  # one value per document (user upload, doc-level generation)
-    CHUNK = "chunk"        # one value per chunk (post-chunk LLM generation) — origin must be generated
+    CHUNK = "chunk"  # one value per chunk (post-chunk LLM generation) — origin must be generated
 
 
 class UnknownFieldPolicy(StrEnum):

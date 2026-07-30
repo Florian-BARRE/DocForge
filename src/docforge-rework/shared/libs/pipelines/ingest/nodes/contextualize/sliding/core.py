@@ -49,7 +49,7 @@ class ContextualizerSlidingNode(BaseContextualizerNode):
         pieces: list[str] = []
         # 1. The tail of the previous chunk (raw text — context of neighbours would compound).
         if config.prev_words > 0 and index > 0:
-            tail = " ".join(chunks[index - 1].text.split()[-config.prev_words:])
+            tail = " ".join(chunks[index - 1].text.split()[-config.prev_words :])
             if tail:
                 pieces.append(config.prev_template.format(text=tail))
         # 2. The head of the next one.

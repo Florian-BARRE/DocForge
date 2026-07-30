@@ -68,7 +68,9 @@ class ChainRules:
         fillable field, never a 500.
         """
         return [
-            step.model_copy(update={"config": {**cls.reset_config(family, step.kind), **step.config}})
+            step.model_copy(
+                update={"config": {**cls.reset_config(family, step.kind), **step.config}}
+            )
             for step in steps
         ]
 
@@ -94,7 +96,9 @@ class ChainRules:
         seen: set[str] = set()
         for step in steps:
             if step.kind in seen and NodeRegistry.get(family, step.kind).UNIQUE_IN_GRAPH:
-                notices.append(f"'{step.kind}' can appear only once — repeating it will fail the build")
+                notices.append(
+                    f"'{step.kind}' can appear only once — repeating it will fail the build"
+                )
             seen.add(step.kind)
         return notices
 

@@ -81,7 +81,10 @@ class SyncTransport(_TransportBase):
         """
         # 1. Execute, 2. surface any error status, 3. parse — the single per-transport pipeline.
         response = self._send(
-            spec.method, self._url(spec.path), params=self._clean(spec.params), json=spec.json,
+            spec.method,
+            self._url(spec.path),
+            params=self._clean(spec.params),
+            json=spec.json,
             files=spec.files,
         )
         self._raise_for_status(response)
@@ -101,7 +104,10 @@ class SyncTransport(_TransportBase):
             T: The validated response model.
         """
         response = self._send(
-            spec.method, self._bare_url(spec.path), params=self._clean(spec.params), json=spec.json,
+            spec.method,
+            self._bare_url(spec.path),
+            params=self._clean(spec.params),
+            json=spec.json,
             files=spec.files,
         )
         self._raise_for_status(response)

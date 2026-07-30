@@ -11,7 +11,9 @@ from shared_libs.public_models import FieldOrigin, FieldScope, FieldType, Metada
 
 
 def _spec(name: str, field_type: FieldType, scope: FieldScope) -> MetadataFieldSpec:
-    return MetadataFieldSpec(field_name=name, field_type=field_type, origin=FieldOrigin.GENERATED, scope=scope)
+    return MetadataFieldSpec(
+        field_name=name, field_type=field_type, origin=FieldOrigin.GENERATED, scope=scope
+    )
 
 
 def test_auto_prompt_is_generative_and_scope_aware() -> None:

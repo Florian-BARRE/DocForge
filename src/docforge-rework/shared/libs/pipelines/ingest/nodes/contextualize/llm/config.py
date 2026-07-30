@@ -28,16 +28,19 @@ class ContextualizerLlmConfig(BaseContextualizerConfig):
         "window when the chunk has no section) / ± window_chunks neighbours.",
     )
     window_chunks: int = Field(
-        default=2, ge=1,
+        default=2,
+        ge=1,
         description="Neighbours on each side for the window scope (and the section fallback).",
     )
     max_document_words: int = Field(
-        default=4000, gt=0,
+        default=4000,
+        gt=0,
         description="Hard cap on the document text handed to the model (truncated from the "
         "start, where documents introduce themselves).",
     )
     max_concurrency: int = Field(
-        default=4, ge=1,
+        default=4,
+        ge=1,
         description="Stage knob (read by the assembler): how many prompts the ForEach runs at once.",
     )
     on_error: OnChunkError = Field(

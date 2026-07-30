@@ -75,4 +75,9 @@ class FigureExtractNode(ActionNode):
         return FigureExtractProduces(figures=figures)
 
 
-__all__ = ["FigureExtractNode", "FigureExtractConfig", "FigureExtractConsumes", "FigureExtractProduces"]
+__all__ = [
+    "FigureExtractNode",
+    "FigureExtractConfig",
+    "FigureExtractConsumes",
+    "FigureExtractProduces",
+]

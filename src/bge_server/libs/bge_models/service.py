@@ -199,7 +199,9 @@ class BgeModelsService(LoggerClass):
             cpu_budget = self._torch_num_threads
         else:
             resolved_budget = CpuBudgetResolver.resolve()
-            n_threads = max(1, math.ceil(resolved_budget.cpu_budget / max(1, self._max_concurrency)))
+            n_threads = max(
+                1, math.ceil(resolved_budget.cpu_budget / max(1, self._max_concurrency))
+            )
             budget_source = resolved_budget.source
             cpu_budget = resolved_budget.cpu_budget
         torch.set_num_threads(n_threads)
@@ -406,9 +408,7 @@ class BgeModelsService(LoggerClass):
         )
         return [float(s) for s in scores]
 
-    def compute_rerank_scores(
-        self, query: str, texts: list[str]
-    ) -> list[dict[str, int | float]]:
+    def compute_rerank_scores(self, query: str, texts: list[str]) -> list[dict[str, int | float]]:
         """
         Score each candidate text against the query and return TEI-shaped results.
 

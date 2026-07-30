@@ -36,6 +36,7 @@ def _assert_lossless(state) -> None:
 
 # --------------------------------------------------------------------------- losslessness
 
+
 def test_default_blob_round_trips_identically() -> None:
     _assert_lossless(default_state())
 
@@ -45,7 +46,9 @@ def test_swapped_provider_round_trips() -> None:
     state.chunker_kind = "fixed_size"
     state.embed_chain = ChainSpec(
         family="embed",
-        steps=[ChainStep(kind="openai_compatible", config={"base_url": "http://x/v1", "model": "m"})],
+        steps=[
+            ChainStep(kind="openai_compatible", config={"base_url": "http://x/v1", "model": "m"})
+        ],
     )
     _assert_lossless(state)
 
@@ -54,7 +57,10 @@ def test_multistep_chain_with_score_below_round_trips() -> None:
     state = default_state()
     state.parse_chain = ChainSpec(
         family="parser",
-        steps=[ChainStep(kind="docling", score_below=0.5), ChainStep(kind="docling", config={"foo": 1})],
+        steps=[
+            ChainStep(kind="docling", score_below=0.5),
+            ChainStep(kind="docling", config={"foo": 1}),
+        ],
     )
     _assert_lossless(state)
 
@@ -72,7 +78,11 @@ def test_disabled_optional_stages_round_trip() -> None:
 def test_edited_node_config_round_trips() -> None:
     state = default_state()
     state.chunker_config = {"max_tokens": 512}
-    state.classify_config = {"base_url": "http://vlm:8000/v1", "model": "qwen2.5-vl", "threshold": 0.7}
+    state.classify_config = {
+        "base_url": "http://vlm:8000/v1",
+        "model": "qwen2.5-vl",
+        "threshold": 0.7,
+    }
     _assert_lossless(state)
 
 
@@ -82,15 +92,20 @@ def test_each_figure_class_branch_round_trips() -> None:
     state.chains = dict(state.chains)
     state.chains["scanned_text_ocr"] = ChainSpec(
         family="ocr",
-        steps=[ChainStep(kind="mistral", config={"api_key": "K"}, score_below=0.6),
-               ChainStep(kind="rapidocr", config={})],
+        steps=[
+            ChainStep(kind="mistral", config={"api_key": "K"}, score_below=0.6),
+            ChainStep(kind="rapidocr", config={}),
+        ],
     )
     _assert_lossless(state)
 
 
 def test_reordered_stack_round_trips() -> None:
     state = default_state()
-    state.stack = [StackMethod(kind="breadcrumb", config={}), StackMethod(kind="doc_meta", config={})]
+    state.stack = [
+        StackMethod(kind="breadcrumb", config={}),
+        StackMethod(kind="doc_meta", config={}),
+    ]
     _assert_lossless(state)
 
 
@@ -100,9 +115,17 @@ def test_llm_contextualize_method_round_trips() -> None:
     state.stack = [
         StackMethod(kind="doc_meta", config={}),
         StackMethod(
-            kind="llm", config={"document_scope": "section"},
-            chain=ChainSpec(family="llm", steps=[
-                ChainStep(kind="openai_compatible", config={"base_url": "http://llm:8000/v1", "model": "m"})]),
+            kind="llm",
+            config={"document_scope": "section"},
+            chain=ChainSpec(
+                family="llm",
+                steps=[
+                    ChainStep(
+                        kind="openai_compatible",
+                        config={"base_url": "http://llm:8000/v1", "model": "m"},
+                    )
+                ],
+            ),
         ),
         StackMethod(kind="breadcrumb", config={}),
     ]
@@ -110,10 +133,19 @@ def test_llm_contextualize_method_round_trips() -> None:
 
     state.stack = [
         StackMethod(
-            kind="llm", config={"document_scope": "document"},
-            chain=ChainSpec(family="llm", steps=[
-                ChainStep(kind="openai_compatible", config={"base_url": "http://a/v1", "model": "a"}),
-                ChainStep(kind="openai_compatible", config={"base_url": "http://b/v1", "model": "b"})]),
+            kind="llm",
+            config={"document_scope": "document"},
+            chain=ChainSpec(
+                family="llm",
+                steps=[
+                    ChainStep(
+                        kind="openai_compatible", config={"base_url": "http://a/v1", "model": "a"}
+                    ),
+                    ChainStep(
+                        kind="openai_compatible", config={"base_url": "http://b/v1", "model": "b"}
+                    ),
+                ],
+            ),
         ),
     ]
     _assert_lossless(state)
@@ -123,13 +155,16 @@ def test_multistep_metagen_chain_round_trips() -> None:
     state = default_state()
     state.metachunk_chain = ChainSpec(
         family="structgen",
-        steps=[ChainStep(kind="openai_compatible", config={"base_url": "http://a/v1"}),
-               ChainStep(kind="openai_compatible", config={"base_url": "http://b/v1"})],
+        steps=[
+            ChainStep(kind="openai_compatible", config={"base_url": "http://a/v1"}),
+            ChainStep(kind="openai_compatible", config={"base_url": "http://b/v1"}),
+        ],
     )
     _assert_lossless(state)
 
 
 # --------------------------------------------------------------------------- version stamp
+
 
 def test_stamp_is_current_and_normalize_fast_paths() -> None:
     blob = IngestAssembler.assemble(default_state()).model_dump(mode="json")
@@ -143,6 +178,7 @@ def test_stamp_is_current_and_normalize_fast_paths() -> None:
 
 
 # --------------------------------------------------------------------------- stale auto-heal
+
 
 def test_stale_blob_missing_structural_wiring_is_healed_whole() -> None:
     """Simulate an engine change that ADDED a node: drop a leaf from a stored blob; normalization
@@ -158,6 +194,7 @@ def test_stale_blob_missing_structural_wiring_is_healed_whole() -> None:
 
 
 # --------------------------------------------------------------------------- clear error
+
 
 def test_unmigratable_blob_raises_clear_error() -> None:
     with pytest.raises(BlobNormalizationError, match="re-save it from the pipeline default"):

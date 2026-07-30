@@ -231,7 +231,9 @@ class SetChain(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     action: Literal["set_chain"] = "set_chain"
-    stage: str = Field(description="Key of the stage owning the chain (enrich, or a provider stage).")
+    stage: str = Field(
+        description="Key of the stage owning the chain (enrich, or a provider stage)."
+    )
     slot: str | None = Field(
         default=None,
         description="Slot key of an enrich model-call site (e.g. scanned_text_ocr); null = the "
@@ -256,12 +258,7 @@ class SetStack(BaseModel):
 
 # Discriminated union — the server selects the action from its ``action`` tag on load.
 type StageAction = Annotated[
-    EnableStage
-    | DisableStage
-    | SetProvider
-    | SetStageConfig
-    | SetChain
-    | SetStack,
+    EnableStage | DisableStage | SetProvider | SetStageConfig | SetChain | SetStack,
     Field(discriminator="action"),
 ]
 

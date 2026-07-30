@@ -54,9 +54,7 @@ class ChunkApi:
         session.add_all([*composition, *metadata, *queries, *entities])
 
     @staticmethod
-    async def get_by_ids(
-        session: AsyncSession, chunk_ids: Sequence[uuid.UUID]
-    ) -> list[Chunk]:
+    async def get_by_ids(session: AsyncSession, chunk_ids: Sequence[uuid.UUID]) -> list[Chunk]:
         """Fetch chunks by id — the hydration path after a Qdrant search."""
         if not chunk_ids:
             return []
@@ -118,9 +116,7 @@ class ChunkApi:
             list[uuid.UUID]: The indexed chunk ids (each equals its Qdrant point id).
         """
         result = await session.execute(
-            select(Chunk.id).where(
-                Chunk.document_id == document_id, Chunk.is_indexed.is_(True)
-            )
+            select(Chunk.id).where(Chunk.document_id == document_id, Chunk.is_indexed.is_(True))
         )
         return list(result.scalars().all())
 
@@ -192,9 +188,7 @@ class ChunkApi:
         """Flag chunks as indexed — called right after their Qdrant upsert succeeds."""
         if not chunk_ids:
             return
-        await session.execute(
-            update(Chunk).where(Chunk.id.in_(chunk_ids)).values(is_indexed=True)
-        )
+        await session.execute(update(Chunk).where(Chunk.id.in_(chunk_ids)).values(is_indexed=True))
 
     @staticmethod
     async def delete_for_document(session: AsyncSession, document_id: uuid.UUID) -> None:

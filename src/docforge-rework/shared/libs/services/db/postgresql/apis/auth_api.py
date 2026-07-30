@@ -103,9 +103,7 @@ class AuthApi:
             key.revoked_at = at
 
     @staticmethod
-    async def touch_key_last_used(
-        session: AsyncSession, key_id: uuid.UUID, at: datetime
-    ) -> None:
+    async def touch_key_last_used(session: AsyncSession, key_id: uuid.UUID, at: datetime) -> None:
         """
         Stamp an API key's last_used_at with a targeted UPDATE (cheapest on the hot path).
 
@@ -118,9 +116,7 @@ class AuthApi:
             at (datetime): The authentication instant to record.
         """
         # 1. One scoped UPDATE — no row load, no ORM merge.
-        await session.execute(
-            update(ApiKey).where(ApiKey.id == key_id).values(last_used_at=at)
-        )
+        await session.execute(update(ApiKey).where(ApiKey.id == key_id).values(last_used_at=at))
 
 
 __all__ = ["AuthApi"]

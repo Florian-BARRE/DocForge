@@ -21,7 +21,8 @@ def test_single_step_chain_on_every_slot(compiler, builder, validator, branch) -
     assert validator.validate(builder.build(chained)) == [], (branch.slot, notices)
     body = _body_of(chained)
     step_ids = [
-        n.id for n in body.nodes
+        n.id
+        for n in body.nodes
         if getattr(n, "family", None) == branch.family and n.id.startswith(f"{branch.slot}_")
     ]
     assert len(step_ids) == 1
@@ -32,17 +33,24 @@ def test_ocr_chain_lengths(compiler, builder, validator, length) -> None:
     """The OCR family has two real kinds; a 3-step chain repeats one with a distinct config."""
     kinds = ["rapidocr", "mistral", "rapidocr"][:length]
     steps = [
-        ChainStep(kind=k, config={"api_key": "SET_ME"} if k == "mistral" else {}, score_below=0.4 if i < length - 1 else None)
+        ChainStep(
+            kind=k,
+            config={"api_key": "SET_ME"} if k == "mistral" else {},
+            score_below=0.4 if i < length - 1 else None,
+        )
         for i, k in enumerate(kinds)
     ]
     default = IngestPipeline.default_blob()
-    chained, notices = compiler.apply(default, SetChain(stage="enrich", slot="scanned_text_ocr", steps=steps))
+    chained, notices = compiler.apply(
+        default, SetChain(stage="enrich", slot="scanned_text_ocr", steps=steps)
+    )
     assert validator.validate(builder.build(chained)) == [], notices
     body = _body_of(chained)
     # Numbered steps only ("scanned_text_ocr_0", "_1", ...) — excludes the branch's terminal
     # "scanned_text_ocr_entry" node, which is not part of the chain itself.
     step_kinds = [
-        n.kind for n in body.nodes
+        n.kind
+        for n in body.nodes
         if n.id.startswith("scanned_text_ocr_") and n.id.rsplit("_", 1)[-1].isdigit()
     ]
     assert step_kinds == kinds
@@ -61,7 +69,10 @@ def test_chain_step_config_is_completed_build_safe(compiler) -> None:
     """A required field (e.g. mistral's api_key) missing from the step config becomes ''."""
     default = IngestPipeline.default_blob()
     chained, _ = compiler.apply(
-        default, SetChain(stage="enrich", slot="scanned_text_ocr", steps=[ChainStep(kind="mistral", config={})])
+        default,
+        SetChain(
+            stage="enrich", slot="scanned_text_ocr", steps=[ChainStep(kind="mistral", config={})]
+        ),
     )
     body = _body_of(chained)
     mistral_step = next(n for n in body.nodes if n.kind == "mistral")
@@ -71,7 +82,10 @@ def test_chain_step_config_is_completed_build_safe(compiler) -> None:
 def test_invalid_slot_is_a_clean_notice_not_an_exception(compiler) -> None:
     default = IngestPipeline.default_blob()
     unchanged, notices = compiler.apply(
-        default, SetChain(stage="enrich", slot="does_not_exist", steps=[ChainStep(kind="rapidocr", config={})])
+        default,
+        SetChain(
+            stage="enrich", slot="does_not_exist", steps=[ChainStep(kind="rapidocr", config={})]
+        ),
     )
     assert unchanged == default
     assert any("unknown chain slot" in n for n in notices)
@@ -80,7 +94,10 @@ def test_invalid_slot_is_a_clean_notice_not_an_exception(compiler) -> None:
 def test_invalid_stage_for_set_chain_is_a_clean_notice(compiler) -> None:
     default = IngestPipeline.default_blob()
     unchanged, notices = compiler.apply(
-        default, SetChain(stage="chunk", slot="scanned_text_ocr", steps=[ChainStep(kind="rapidocr", config={})])
+        default,
+        SetChain(
+            stage="chunk", slot="scanned_text_ocr", steps=[ChainStep(kind="rapidocr", config={})]
+        ),
     )
     assert unchanged == default
     assert notices

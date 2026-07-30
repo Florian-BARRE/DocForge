@@ -25,10 +25,15 @@ from shared_libs.public_models import (
 )
 
 
-def _field(name: str, field_type: FieldType, enum_values: list[str] | None = None) -> GenerationField:
+def _field(
+    name: str, field_type: FieldType, enum_values: list[str] | None = None
+) -> GenerationField:
     spec = MetadataFieldSpec(
-        field_name=name, field_type=field_type, origin=FieldOrigin.GENERATED,
-        scope=FieldScope.DOCUMENT, enum_values=enum_values,
+        field_name=name,
+        field_type=field_type,
+        origin=FieldOrigin.GENERATED,
+        scope=FieldScope.DOCUMENT,
+        enum_values=enum_values,
     )
     return GenerationField(spec=spec, instruction=f"Fill {name}.")
 
@@ -47,21 +52,26 @@ FIELDS = [
 # Canned raw model answers per field (pre-coercion) — the per-type coercion cases.
 ANSWERS: dict[str, object] = {
     "summary": "  A report about cats and bonds. ",  # str -> stripped
-    "year": "2024",                                   # str -> int
-    "published_at": "2024-03-01T10:00:00",            # ISO datetime, normalised
-    "keywords": ["cats", " bonds ", ""],              # cleaned list
-    "relevance": "not-a-number",                      # uncoercible float -> dropped
-    "flag": "true",                                   # str -> bool
-    "category": "science",                            # enum passthrough
-    "missing": None,                                  # honest null -> absent
+    "year": "2024",  # str -> int
+    "published_at": "2024-03-01T10:00:00",  # ISO datetime, normalised
+    "keywords": ["cats", " bonds ", ""],  # cleaned list
+    "relevance": "not-a-number",  # uncoercible float -> dropped
+    "flag": "true",  # str -> bool
+    "category": "science",  # enum passthrough
+    "missing": None,  # honest null -> absent
 }
 
 
 def _request(endpoint: OpenAICompatConfig, chunk_id: str | None = "d#c0") -> GenerationRequest:
     return GenerationRequest(
-        request_id="r0", chunk_id=chunk_id, system_prompt="Extract metadata.",
-        text="Cats purr softly. Bonds fell sharply.", fields=FIELDS, endpoint=endpoint,
-        temperature=0.0, max_tokens=256,
+        request_id="r0",
+        chunk_id=chunk_id,
+        system_prompt="Extract metadata.",
+        text="Cats purr softly. Bonds fell sharply.",
+        fields=FIELDS,
+        endpoint=endpoint,
+        temperature=0.0,
+        max_tokens=256,
     )
 
 
@@ -90,7 +100,14 @@ async def test_structured_output_is_strictly_coerced_per_type() -> None:
 
     # Every requested field went through the schema (one property per field, in order).
     assert node.calls[0][0] == (
-        "summary", "year", "published_at", "keywords", "relevance", "flag", "category", "missing",
+        "summary",
+        "year",
+        "published_at",
+        "keywords",
+        "relevance",
+        "flag",
+        "category",
+        "missing",
     )
     # Strict per-type coercion; uncoercible float and honest null are absent (never wrong-typed).
     assert out.values.values == {
@@ -123,7 +140,9 @@ async def test_coercion_matches_the_helper_for_the_same_answers() -> None:
 
 
 async def test_empty_config_uses_the_request_endpoint() -> None:
-    request = _request(OpenAICompatConfig(base_url="http://req", model="m-req", timeout_seconds=17.0))
+    request = _request(
+        OpenAICompatConfig(base_url="http://req", model="m-req", timeout_seconds=17.0)
+    )
     node = FakeStructGenNode(id="s", config=StructGenConfig())
 
     await node.run(StructGenConsumes(request=request))
@@ -135,7 +154,9 @@ async def test_empty_config_uses_the_request_endpoint() -> None:
 
 
 async def test_step_override_wins_over_the_request_endpoint() -> None:
-    request = _request(OpenAICompatConfig(base_url="http://req", model="m-req", timeout_seconds=17.0))
+    request = _request(
+        OpenAICompatConfig(base_url="http://req", model="m-req", timeout_seconds=17.0)
+    )
     override = StructGenConfig(base_url="http://fallback", api_key="k", model="m-robust")
     node = FakeStructGenNode(id="s", config=override)
 
@@ -152,7 +173,9 @@ async def test_step_override_wins_over_the_request_endpoint() -> None:
 async def test_partial_override_is_resolved_per_field() -> None:
     """A step overriding ONLY base_url keeps the request's model/key/timeout — not dropped."""
     request = _request(
-        OpenAICompatConfig(base_url="http://req", api_key="req-key", model="m-req", timeout_seconds=17.0)
+        OpenAICompatConfig(
+            base_url="http://req", api_key="req-key", model="m-req", timeout_seconds=17.0
+        )
     )
     node = FakeStructGenNode(id="s", config=StructGenConfig(base_url="http://fallback"))
 

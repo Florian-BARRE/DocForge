@@ -61,8 +61,9 @@ class IngestAssembler:
 
         # 3. Thread the data spines across whichever stages are on.
         bindings = cls.__bindings(state, segments)
-        return GroupNodeBlob(id="ingest_pipeline", nodes=nodes, transitions=transitions,
-                             bindings=bindings)
+        return GroupNodeBlob(
+            id="ingest_pipeline", nodes=nodes, transitions=transitions, bindings=bindings
+        )
 
     @classmethod
     def __bindings(cls, state: PipelineState, segments: list[Segment]) -> dict[str, dict]:
@@ -75,7 +76,9 @@ class IngestAssembler:
         ir_final = by_key["enrich"].output if "enrich" in by_key else ir_pre_enrich
         positions = ContextualizeStack.positions(state)
         chunks_pre_meta = (by_key.get("contextualize") or by_key["chunk"]).output
-        chunks_final = by_key["metagen_chunk"].output if "metagen_chunk" in by_key else chunks_pre_meta
+        chunks_final = (
+            by_key["metagen_chunk"].output if "metagen_chunk" in by_key else chunks_pre_meta
+        )
 
         bindings: dict[str, dict] = {}
         # Each stage segment carries its own internal node bindings (a chain's per-step face); the
@@ -84,19 +87,25 @@ class IngestAssembler:
             bindings.update(segment.bindings)
         cls.__bind_intake(bindings, state)
         if state.render_on:
-            bindings["figures"] = {"ingest": FromNode(node_id="address", field_name="ingest"),
-                                   "ir": by_key["parse"].output}
+            bindings["figures"] = {
+                "ingest": FromNode(node_id="address", field_name="ingest"),
+                "ir": by_key["parse"].output,
+            }
         if state.enrich_on:
             bindings["extract"] = {"ir": ir_pre_enrich}
-            bindings["apply"] = {"ir": ir_pre_enrich,
-                                 "entries": FromNode(node_id="per_figure", field_name="items")}
+            bindings["apply"] = {
+                "ir": ir_pre_enrich,
+                "entries": FromNode(node_id="per_figure", field_name="items"),
+            }
         bindings["chunk"] = {"ir": ir_final}
         cls.__bind_stack(bindings, positions, by_key["chunk"].output)
         if state.metachunk_on:
             # prep reads the pre-meta chunks + contract; apply merges the loop's values back onto
             # those same pre-meta chunks. chunks_final then reads apply's output.
-            bindings["meta_chunk_prep"] = {"chunks": chunks_pre_meta,
-                                           "contract": FromRunInput(field_name=_CONTRACT)}
+            bindings["meta_chunk_prep"] = {
+                "chunks": chunks_pre_meta,
+                "contract": FromRunInput(field_name=_CONTRACT),
+            }
             bindings["meta_chunk_apply"] = {
                 "chunks": chunks_pre_meta,
                 "values": FromNode(node_id="meta_chunk_loop", field_name="items"),
@@ -104,8 +113,10 @@ class IngestAssembler:
         if state.metadoc_on:
             # prep builds the document view from the fully-annotated chunks; apply joins the loop's
             # values into one document meta (it needs only the values, not the chunks).
-            bindings["meta_doc_prep"] = {"chunks": chunks_final,
-                                         "contract": FromRunInput(field_name=_CONTRACT)}
+            bindings["meta_doc_prep"] = {
+                "chunks": chunks_final,
+                "contract": FromRunInput(field_name=_CONTRACT),
+            }
             bindings["meta_doc_apply"] = {
                 "values": FromNode(node_id="meta_doc_loop", field_name="items"),
             }
@@ -123,19 +134,28 @@ class IngestAssembler:
     def __bind_intake(cls, bindings: dict[str, dict], state: PipelineState) -> None:
         """The fixed intake bindings (source/contract from run, probe/pdf from siblings)."""
         bindings["probe"] = {"source": FromRunInput(field_name=_SOURCE)}
-        bindings["admit"] = {"source": FromRunInput(field_name=_SOURCE),
-                             "probe": FromNode(node_id="probe", field_name="probe"),
-                             "contract": FromRunInput(field_name=_CONTRACT)}
-        bindings["convert"] = {"source": FromNode(node_id="admit", field_name="source"),
-                               "probe": FromNode(node_id="probe", field_name="probe")}
+        bindings["admit"] = {
+            "source": FromRunInput(field_name=_SOURCE),
+            "probe": FromNode(node_id="probe", field_name="probe"),
+            "contract": FromRunInput(field_name=_CONTRACT),
+        }
+        bindings["convert"] = {
+            "source": FromNode(node_id="admit", field_name="source"),
+            "probe": FromNode(node_id="probe", field_name="probe"),
+        }
         bindings["pdf_probe"] = {"pdf": FromNode(node_id="convert", field_name="pdf")}
-        bindings["address"] = {"source": FromNode(node_id="admit", field_name="source"),
-                               "pdf": FromNode(node_id="convert", field_name="pdf"),
-                               "probe": FromNode(node_id="pdf_probe", field_name="probe")}
+        bindings["address"] = {
+            "source": FromNode(node_id="admit", field_name="source"),
+            "pdf": FromNode(node_id="convert", field_name="pdf"),
+            "probe": FromNode(node_id="pdf_probe", field_name="probe"),
+        }
 
     @classmethod
     def __bind_stack(
-        cls, bindings: dict[str, dict], positions: list[StackPosition], chunk_output: Binding,
+        cls,
+        bindings: dict[str, dict],
+        positions: list[StackPosition],
+        chunk_output: Binding,
     ) -> None:
         """Chain the contextualize stack onto the chunker, thread doc_meta's source and the llm apply.
 
@@ -160,13 +180,18 @@ class IngestAssembler:
 
     @classmethod
     def __bundle_bindings(
-        cls, state: PipelineState, ir_final: Binding, chunks_final: Binding,
+        cls,
+        state: PipelineState,
+        ir_final: Binding,
+        chunks_final: Binding,
         embed_output: Binding | None,
     ) -> dict:
         """The delivery bindings — optional slots left unbound when their stage is off."""
-        slots: dict = {"ingest": FromNode(node_id="address", field_name="ingest"),
-                       "ir": ir_final,
-                       "chunks": chunks_final}
+        slots: dict = {
+            "ingest": FromNode(node_id="address", field_name="ingest"),
+            "ir": ir_final,
+            "chunks": chunks_final,
+        }
         if state.render_on:
             slots["pages"] = FromNode(node_id="figures", field_name="pages")
         if state.metadoc_on:

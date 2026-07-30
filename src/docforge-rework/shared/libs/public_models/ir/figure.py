@@ -31,7 +31,8 @@ class FigureEnrichment(BaseModel):
         default=None, description="Text extracted from inside the figure by an OCR provider."
     )
     description: str | None = Field(
-        default=None, description="VLM caption grounded on the image + ocr_text, written for retrieval."
+        default=None,
+        description="VLM caption grounded on the image + ocr_text, written for retrieval.",
     )
     data_table: list[list[str]] | None = Field(
         default=None, description="Chart-to-data extraction: series as a row-major grid."

@@ -42,7 +42,8 @@ async def startup(ctx: dict[str, Any]) -> None:
     CONTEXT.RUNTIME_CONFIG = RUNTIME_CONFIG
     banner = "\n" + Figlet(font="slant").renderText(
         "".join(
-            c for c in unicodedata.normalize("NFD", "DocForge Worker")
+            c
+            for c in unicodedata.normalize("NFD", "DocForge Worker")
             if unicodedata.category(c) != "Mn"
         )
     )

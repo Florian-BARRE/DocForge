@@ -24,7 +24,13 @@ class SearchPipeline:
     # The families a search pipeline is assembled from, in stage order; deliver is the reused
     # capability family shared with ingestion (its ``hits`` kind).
     FAMILIES = (
-        "query", "encode", "retrieve", "fuse", "rerank", "postprocess", "deliver",
+        "query",
+        "encode",
+        "retrieve",
+        "fuse",
+        "rerank",
+        "postprocess",
+        "deliver",
     )
 
     # Per-family kind allowlist for SHARED families: ``deliver`` is reused by ingestion, so its

@@ -21,7 +21,9 @@ class FigureEntryConfig(NodeConfig):
 class FigureEntryConsumes(NodeInput):
     """Input: the figure to close (whatever its branch accumulated so far)."""
 
-    figure: FigureItem = Field(description="The figure closing its branch (whatever it accumulated).")
+    figure: FigureItem = Field(
+        description="The figure closing its branch (whatever it accumulated)."
+    )
 
 
 class FigureEntryProduces(NodeOutput):

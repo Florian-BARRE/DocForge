@@ -24,10 +24,10 @@ class FigureKind(StrEnum):
     """Visual category of a figure — routes enrichment (OCR / VLM / chart-to-data)."""
 
     SCANNED_TEXT = "scanned_text"  # text rendered as an image (a scan region)
-    CHART = "chart"                # data visualization (bar, line, pie…)
-    DIAGRAM = "diagram"            # schema, flow, architecture drawing
-    PHOTO = "photo"                # photographic / illustrative content
-    DECORATIVE = "decorative"      # logo, banner, separator → skipped by enrichment
+    CHART = "chart"  # data visualization (bar, line, pie…)
+    DIAGRAM = "diagram"  # schema, flow, architecture drawing
+    PHOTO = "photo"  # photographic / illustrative content
+    DECORATIVE = "decorative"  # logo, banner, separator → skipped by enrichment
 
 
 __all__ = ["BlockType", "FigureKind"]

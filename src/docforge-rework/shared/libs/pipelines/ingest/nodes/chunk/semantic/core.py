@@ -30,7 +30,9 @@ class ChunkerSemanticConfig(BaseChunkerConfig, OpenAICompatConfig):
         le=100.0,
         description="Distance percentile above which a boundary is placed (higher = fewer cuts).",
     )
-    min_tokens: int = Field(default=64, ge=0, description="Groups below this merge with a neighbour.")
+    min_tokens: int = Field(
+        default=64, ge=0, description="Groups below this merge with a neighbour."
+    )
     max_tokens: int = Field(default=1024, gt=0, description="Hard cap; larger groups are re-cut.")
 
 
@@ -105,7 +107,9 @@ class ChunkerSemanticNode(BaseChunkerNode):
         windows = [
             " ".join(
                 unit.text
-                for unit in units[max(0, index - config.buffer_size): index + config.buffer_size + 1]
+                for unit in units[
+                    max(0, index - config.buffer_size) : index + config.buffer_size + 1
+                ]
             )
             for index in range(len(units))
         ]

@@ -100,8 +100,11 @@ class StateReader:
         structgen/skip nodes and NO classifier, so the classifier presence disambiguates cleanly.
         """
         return next(
-            (n for n in ordered
-             if isinstance(n, ForEachNodeBlob) and cls.__body_classify(n.body) is not None),
+            (
+                n
+                for n in ordered
+                if isinstance(n, ForEachNodeBlob) and cls.__body_classify(n.body) is not None
+            ),
             None,
         )
 
@@ -134,8 +137,11 @@ class StateReader:
     def __body_classify(cls, body: GroupNodeBlob) -> ActionNodeBlob | None:
         """The classifier node of the enrich body (the switch driver)."""
         return next(
-            (n for n in body.nodes
-             if isinstance(n, ActionNodeBlob) and n.kind == "figure_classify"),
+            (
+                n
+                for n in body.nodes
+                if isinstance(n, ActionNodeBlob) and n.kind == "figure_classify"
+            ),
             None,
         )
 
@@ -175,21 +181,23 @@ class StateReader:
         Returns:
             ChainSpec: The stage's chain (family + ordered steps with their score thresholds).
         """
-        nodes = {
-            n.id: n for n in ordered if isinstance(n, ActionNodeBlob) and n.family == family
-        }
+        nodes = {n.id: n for n in ordered if isinstance(n, ActionNodeBlob) and n.family == family}
         if not nodes:
             return ChainSpec(family=family, steps=[ChainStep(kind=default_kind)])
         head = ChainWalker.head(blob.transitions, nodes, {family})
-        return ChainSpec(family=family, steps=ChainWalker.walk(blob.transitions, nodes, head, {family}))
+        return ChainSpec(
+            family=family, steps=ChainWalker.walk(blob.transitions, nodes, head, {family})
+        )
 
     @classmethod
     def __switch_target(cls, body: GroupNodeBlob, classify_id: str, figure_kind: str) -> str | None:
         """The head node a classifier when_equals edge routes a figure class to."""
         for transition in body.transitions:
-            if (transition.from_node_id == classify_id
-                    and isinstance(transition.condition, WhenEquals)
-                    and transition.condition.equals == figure_kind):
+            if (
+                transition.from_node_id == classify_id
+                and isinstance(transition.condition, WhenEquals)
+                and transition.condition.equals == figure_kind
+            ):
                 return transition.to_node_id
         return None
 

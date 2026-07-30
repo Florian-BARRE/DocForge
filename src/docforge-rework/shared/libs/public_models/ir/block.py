@@ -26,13 +26,18 @@ class Block(BaseModel):
     level: int | None = Field(
         default=None, description="Heading depth (1 = H1, 2 = H2, …); only set for HEADING blocks."
     )
-    text: str | None = Field(default=None, description="Native text content for text-bearing blocks.")
-    table: TableData | None = Field(default=None, description="Structured table; only for TABLE blocks.")
+    text: str | None = Field(
+        default=None, description="Native text content for text-bearing blocks."
+    )
+    table: TableData | None = Field(
+        default=None, description="Structured table; only for TABLE blocks."
+    )
     figure: FigureEnrichment | None = Field(
         default=None, description="Figure enrichment; only for FIGURE blocks."
     )
     language: str | None = Field(
-        default=None, description="ISO 639-1 code when the block differs from the document language."
+        default=None,
+        description="ISO 639-1 code when the block differs from the document language.",
     )
 
 

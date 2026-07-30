@@ -46,7 +46,9 @@ def test_create_collection_unknown_field_type_is_422(client) -> None:
     response = client.post(
         "/api/v1/collections",
         json={
-            "name": "c1", "supported_formats": ["pdf"], "max_file_size_bytes": 1_000_000,
+            "name": "c1",
+            "supported_formats": ["pdf"],
+            "max_file_size_bytes": 1_000_000,
             "fields": [{"field_name": "bogus", "field_type": "not_a_real_type"}],
         },
     )
@@ -57,8 +59,12 @@ def test_create_collection_unknown_origin_enum_member_is_422(client) -> None:
     response = client.post(
         "/api/v1/collections",
         json={
-            "name": "c1", "supported_formats": ["pdf"], "max_file_size_bytes": 1_000_000,
-            "fields": [{"field_name": "title", "field_type": "string", "origin": "not_a_real_origin"}],
+            "name": "c1",
+            "supported_formats": ["pdf"],
+            "max_file_size_bytes": 1_000_000,
+            "fields": [
+                {"field_name": "title", "field_type": "string", "origin": "not_a_real_origin"}
+            ],
         },
     )
     assert response.status_code == 422, response.text
@@ -68,8 +74,12 @@ def test_create_collection_unknown_scope_enum_member_is_422(client) -> None:
     response = client.post(
         "/api/v1/collections",
         json={
-            "name": "c1", "supported_formats": ["pdf"], "max_file_size_bytes": 1_000_000,
-            "fields": [{"field_name": "title", "field_type": "string", "scope": "not_a_real_scope"}],
+            "name": "c1",
+            "supported_formats": ["pdf"],
+            "max_file_size_bytes": 1_000_000,
+            "fields": [
+                {"field_name": "title", "field_type": "string", "scope": "not_a_real_scope"}
+            ],
         },
     )
     assert response.status_code == 422, response.text
@@ -133,7 +143,11 @@ def test_validate_fields_chunk_scope_non_generated_is_422(fastapi_app) -> None:
 
     with pytest.raises(HTTPException) as exc:
         _validate_fields(
-            [FieldSpecModel(field_name="summary", field_type="string", scope="chunk", origin="user")]
+            [
+                FieldSpecModel(
+                    field_name="summary", field_type="string", scope="chunk", origin="user"
+                )
+            ]
         )
     assert exc.value.status_code == 422
     assert "chunk scope" in exc.value.detail
@@ -148,8 +162,11 @@ def test_validate_fields_chunk_scope_lexical_is_422(fastapi_app) -> None:
         _validate_fields(
             [
                 FieldSpecModel(
-                    field_name="tag", field_type="string", scope="chunk",
-                    origin="generated", lexical=True,
+                    field_name="tag",
+                    field_type="string",
+                    scope="chunk",
+                    origin="generated",
+                    lexical=True,
                 )
             ]
         )

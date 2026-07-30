@@ -62,9 +62,7 @@ class ForEach(AbstractNode):
         # 1. A non-positive concurrency would deadlock the semaphore — fail at construction,
         #    mirroring the blob's ge=1 (this guards the programmatic construction path).
         if max_concurrency < 1:
-            raise ValueError(
-                f"ForEach '{id}' max_concurrency must be >= 1, got {max_concurrency}"
-            )
+            raise ValueError(f"ForEach '{id}' max_concurrency must be >= 1, got {max_concurrency}")
         # 2. Store the declarative loop structure.
         self.body = body
         self.over = over

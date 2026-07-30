@@ -43,8 +43,21 @@ class ConverterGotenbergNode(BaseConverterNode):
     # a photographed document then follows the scanned/OCR path downstream).
     OFFICE_FORMATS = frozenset(
         {
-            "docx", "doc", "xlsx", "xls", "pptx", "ppt", "odt", "ods", "odp",
-            "rtf", "csv", "txt", "md", "png", "jpeg",
+            "docx",
+            "doc",
+            "xlsx",
+            "xls",
+            "pptx",
+            "ppt",
+            "odt",
+            "ods",
+            "odp",
+            "rtf",
+            "csv",
+            "txt",
+            "md",
+            "png",
+            "jpeg",
         }
     )
 

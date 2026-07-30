@@ -91,9 +91,7 @@ async def test_save_purges_chunks_and_ir_before_reinserting(monkeypatch) -> None
     )
     monkeypatch.setattr(facade_module.IRApi, "delete_for_document", _tracking(calls, "ir_delete"))
     monkeypatch.setattr(facade_module.IRApi, "persist_ir", _tracking(calls, "ir_persist"))
-    monkeypatch.setattr(
-        facade_module.ChunkApi, "persist_chunks", _tracking(calls, "chunk_persist")
-    )
+    monkeypatch.setattr(facade_module.ChunkApi, "persist_chunks", _tracking(calls, "chunk_persist"))
     monkeypatch.setattr(facade_module.DocumentApi, "set_status", _tracking(calls, "set_status"))
 
     facade = IngestionFacade(_postgres_yielding(MagicMock()), MagicMock(), MagicMock())
@@ -182,9 +180,7 @@ async def test_index_derives_vector_space_from_schema_and_marks_chunks_indexed(m
         _field("year", FieldType.INTEGER, filterable=True),
         _field("body", FieldType.TEXT, lexical=True),
     ]
-    monkeypatch.setattr(
-        facade_module.CollectionApi, "get_schema", AsyncMock(return_value=schema)
-    )
+    monkeypatch.setattr(facade_module.CollectionApi, "get_schema", AsyncMock(return_value=schema))
     ensure = AsyncMock()
     upsert = AsyncMock()
     mark_indexed = AsyncMock()

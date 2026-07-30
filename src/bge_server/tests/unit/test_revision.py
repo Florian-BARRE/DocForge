@@ -33,7 +33,9 @@ def test_resolve_bypassed_when_revision_empty_string() -> None:
 def test_resolve_returns_local_snapshot_path_when_revision_set() -> None:
     """When a revision is set, snapshot_download is called with it and its return path is used."""
     fake_path = "/models/hub/models--BAAI--bge-m3/snapshots/deadbeef"
-    with patch("libs.bge_models.revision.snapshot_download", return_value=fake_path) as mock_download:
+    with patch(
+        "libs.bge_models.revision.snapshot_download", return_value=fake_path
+    ) as mock_download:
         result = ModelRevisionResolver.resolve("BAAI/bge-m3", "deadbeef")
 
     mock_download.assert_called_once_with(repo_id="BAAI/bge-m3", revision="deadbeef")

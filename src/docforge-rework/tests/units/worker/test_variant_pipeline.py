@@ -44,14 +44,26 @@ class FakeMinimalProducer(ActionNode):
         chunks: list[Chunk]
 
     async def run(self, data: "FakeMinimalProducer.Consumes") -> "FakeMinimalProducer.Produces":
-        ir = DocumentIR(doc_id="d", source_hash="h", n_pages=1, blocks=[
-            Block(id="b0", block_type=BlockType.PARAGRAPH, reading_order=0, text="Cats.",
-                  provenance=Provenance(page=0, bbox=(0, 0, 1, 1))),
-        ])
+        ir = DocumentIR(
+            doc_id="d",
+            source_hash="h",
+            n_pages=1,
+            blocks=[
+                Block(
+                    id="b0",
+                    block_type=BlockType.PARAGRAPH,
+                    reading_order=0,
+                    text="Cats.",
+                    provenance=Provenance(page=0, bbox=(0, 0, 1, 1)),
+                ),
+            ],
+        )
         return self.Produces(
             ingest=IntakeResult(source_hash="h", pdf_content=None, page_count=1),
             ir=ir,
-            chunks=[Chunk(chunk_id="d#c0", ordinal=0, text="Cats.", block_ids=["b0"], token_count=2)],
+            chunks=[
+                Chunk(chunk_id="d#c0", ordinal=0, text="Cats.", block_ids=["b0"], token_count=2)
+            ],
         )
 
 
@@ -61,15 +73,28 @@ BLOB = {
     "node_type": "group",
     "id": "minimal_ingest",
     "nodes": [
-        {"node_type": "action", "id": "produce", "family": "deliver",
-         "kind": "test_variant_pipeline_minimal", "config": {}},
-        {"node_type": "action", "id": "bundle", "family": "deliver", "kind": "bundle", "config": {}},
+        {
+            "node_type": "action",
+            "id": "produce",
+            "family": "deliver",
+            "kind": "test_variant_pipeline_minimal",
+            "config": {},
+        },
+        {
+            "node_type": "action",
+            "id": "bundle",
+            "family": "deliver",
+            "kind": "bundle",
+            "config": {},
+        },
     ],
     "transitions": [{"from_node_id": "produce", "to_node_id": "bundle"}],
     "bindings": {
         "produce": {"source": {"source": "run", "field_name": "source"}},
-        "bundle": {slot: {"source": "node", "node_id": "produce", "field_name": slot}
-                   for slot in ("ingest", "ir", "chunks")},
+        "bundle": {
+            slot: {"source": "node", "node_id": "produce", "field_name": slot}
+            for slot in ("ingest", "ir", "chunks")
+        },
     },
 }
 
@@ -89,7 +114,9 @@ def test_variant_with_a_required_slot_unbound_is_still_refused() -> None:
         },  # 'ir' missing — a REQUIRED slot
     }
     issues = GraphValidator().validate(PipelineBuilder().build(bad))
-    assert any(issue.code.value == "missing_binding" and "'ir'" in issue.message for issue in issues)
+    assert any(
+        issue.code.value == "missing_binding" and "'ir'" in issue.message for issue in issues
+    )
 
 
 @pytest.fixture

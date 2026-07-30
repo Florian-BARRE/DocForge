@@ -104,9 +104,7 @@ class QdrantSearchApi:
         #    over-sampling so the fusion picks from a deep enough candidate pool.
         depth = prefetch_limit if prefetch_limit is not None else max(limit * 4, 100)
         query_filter = (
-            QdrantSearchApi._to_filter(conditions, exclusions)
-            if conditions or exclusions
-            else None
+            QdrantSearchApi._to_filter(conditions, exclusions) if conditions or exclusions else None
         )
         prefetch: list[models.Prefetch] = []
         for vec_name, vector in (dense or {}).items():

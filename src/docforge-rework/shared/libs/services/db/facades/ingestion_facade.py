@@ -203,9 +203,7 @@ class IngestionFacade(LoggerClass):
         # 2. Upsert, then flag the chunks as indexed.
         await QdrantIndexApi.upsert(self._qdrant.raw, name, points)
         async with self._postgres.session() as session:
-            await ChunkApi.mark_indexed(
-                session, [uuid.UUID(point.point_id) for point in points]
-            )
+            await ChunkApi.mark_indexed(session, [uuid.UUID(point.point_id) for point in points])
         self.logger.info(f"Indexed {len(points)} points into '{name}'")
 
 

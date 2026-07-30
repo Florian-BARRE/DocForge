@@ -79,8 +79,7 @@ class AdmissionHelpers:
             for item in items:
                 if item not in spec.enum_values:
                     return (
-                        f"field '{spec.field_name}' value {item!r} is not one of "
-                        f"{spec.enum_values}"
+                        f"field '{spec.field_name}' value {item!r} is not one of {spec.enum_values}"
                     )
         return None
 
@@ -107,7 +106,11 @@ class AdmissionHelpers:
 
         # 1. Required USER fields must be present (system/generated are filled later — never here).
         for spec in fields:
-            if spec.origin == FieldOrigin.USER and spec.required and spec.field_name not in declared:
+            if (
+                spec.origin == FieldOrigin.USER
+                and spec.required
+                and spec.field_name not in declared
+            ):
                 errors.append(f"required field '{spec.field_name}' is missing")
 
         # 2. Walk the declared values: unknown keys per policy, known keys type+enum checked.

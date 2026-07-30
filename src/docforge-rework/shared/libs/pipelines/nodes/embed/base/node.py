@@ -59,13 +59,15 @@ class BaseEmbedderNode(ActionNode):
         """
         raise NotImplementedError(f"Embedder '{self.KIND}' has no ColBERT support")
 
-    async def __embed_all(self, texts: list[str], sparse: bool) -> tuple[list[list[float]], list[SparseVector] | None]:
+    async def __embed_all(
+        self, texts: list[str], sparse: bool
+    ) -> tuple[list[list[float]], list[SparseVector] | None]:
         """Run the batched dense (and optional sparse) embedding over every text."""
         config: BaseEmbedConfig = self.config
         dense: list[list[float]] = []
         sparse_vectors: list[SparseVector] | None = [] if sparse else None
         for start in range(0, len(texts), config.batch_size):
-            batch = texts[start: start + config.batch_size]
+            batch = texts[start : start + config.batch_size]
             dense.extend(await self._embed_dense(batch))
             if sparse_vectors is not None:
                 batch_sparse = await self._embed_sparse(batch)
@@ -90,7 +92,7 @@ class BaseEmbedderNode(ActionNode):
         config: BaseEmbedConfig = self.config
         colbert: list[list[list[float]]] = []
         for start in range(0, len(texts), config.batch_size):
-            batch = texts[start: start + config.batch_size]
+            batch = texts[start : start + config.batch_size]
             colbert.extend(await self._embed_colbert(batch))
         return colbert
 
@@ -118,7 +120,9 @@ class BaseEmbedderNode(ActionNode):
                 continue
             # 2. One batched pass per field, mapped back to the chunk indexes.
             dense, _ = await self.__embed_all([text for _, text in indexed], sparse=False)
-            vectors[field_name] = {index: vector for (index, _), vector in zip(indexed, dense, strict=True)}
+            vectors[field_name] = {
+                index: vector for (index, _), vector in zip(indexed, dense, strict=True)
+            }
         return vectors
 
     async def run(self, data: EmbedConsumes) -> EmbedProduces:

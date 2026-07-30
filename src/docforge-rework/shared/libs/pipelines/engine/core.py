@@ -111,7 +111,7 @@ class FlowEngine(LoggerClass):
         return cls.__strip_payloads(model.model_dump())
 
     def __condition_matches(
-            self, condition: Condition, status: NodeStatus, output: NodeOutput | None
+        self, condition: Condition, status: NodeStatus, output: NodeOutput | None
     ) -> bool:
         """Decide whether a transition's condition holds given the source node's outcome."""
         if isinstance(condition, Always):
@@ -151,7 +151,7 @@ class FlowEngine(LoggerClass):
         return 1  # Always
 
     def __next(
-            self, group: Group, node: AbstractNode, status: NodeStatus, output: NodeOutput | None
+        self, group: Group, node: AbstractNode, status: NodeStatus, output: NodeOutput | None
     ) -> AbstractNode | None:
         """Return the next node to run — the MOST SPECIFIC matching outgoing transition (None = terminal)."""
         outgoing = [t for t in group.transitions if t.from_node_id == node.id]
@@ -162,12 +162,12 @@ class FlowEngine(LoggerClass):
         return None
 
     async def __run_action(
-            self,
-            node: ActionNode,
-            group: Group,
-            context: RunContext,
-            group_input: dict[str, Any],
-            node_outputs: dict[str, NodeOutput],
+        self,
+        node: ActionNode,
+        group: Group,
+        context: RunContext,
+        group_input: dict[str, Any],
+        node_outputs: dict[str, NodeOutput],
     ) -> tuple[NodeOutput | None, NodeExecutionRecord]:
         """Resolve, run and record a single action node."""
         started = perf_counter()
@@ -199,7 +199,9 @@ class FlowEngine(LoggerClass):
         except Exception as exc:
             node_output = None
             status = NodeStatus.FAILED
-            error = ErrorInfo(error_type=type(exc).__name__, message=str(exc), traceback=format_exc())
+            error = ErrorInfo(
+                error_type=type(exc).__name__, message=str(exc), traceback=format_exc()
+            )
             self.logger.warning(f"Node '{node.id}' failed: {type(exc).__name__}: {exc}")
 
         # 3. Build the execution record (byte payloads stripped — a trace, not a store).
@@ -217,12 +219,12 @@ class FlowEngine(LoggerClass):
         return node_output, record
 
     async def __run_foreach(
-            self,
-            node: ForEach,
-            group: Group,
-            context: RunContext,
-            group_input: dict[str, Any],
-            node_outputs: dict[str, NodeOutput],
+        self,
+        node: ForEach,
+        group: Group,
+        context: RunContext,
+        group_input: dict[str, Any],
+        node_outputs: dict[str, NodeOutput],
     ) -> tuple[NodeOutput | None, NodeExecutionRecord]:
         """Run a foreach: resolve its list, run the body once per item (bounded), collect in order."""
         started = perf_counter()
@@ -317,11 +319,11 @@ class FlowEngine(LoggerClass):
         )
 
     async def __emit(
-            self,
-            context: RunContext,
-            phase: ProgressPhase,
-            node: AbstractNode,
-            record: NodeExecutionRecord | None = None,
+        self,
+        context: RunContext,
+        phase: ProgressPhase,
+        node: AbstractNode,
+        record: NodeExecutionRecord | None = None,
     ) -> None:
         """Fire the run's progress callback for a node event, if one is registered."""
         if context.progress_callback is None:
@@ -331,12 +333,12 @@ class FlowEngine(LoggerClass):
         )
 
     async def __dispatch(
-            self,
-            node: AbstractNode,
-            group: Group,
-            context: RunContext,
-            group_input: dict[str, Any],
-            node_outputs: dict[str, NodeOutput],
+        self,
+        node: AbstractNode,
+        group: Group,
+        context: RunContext,
+        group_input: dict[str, Any],
+        node_outputs: dict[str, NodeOutput],
     ) -> tuple[NodeOutput | None, NodeExecutionRecord]:
         """Run a child: an action directly, a foreach per item, a sub-group recursively."""
         if isinstance(node, ActionNode):
@@ -363,12 +365,12 @@ class FlowEngine(LoggerClass):
         raise TypeError(f"Unsupported node type in group '{group.id}': {type(node).__name__}")
 
     async def __run_child(
-            self,
-            node: AbstractNode,
-            group: Group,
-            context: RunContext,
-            group_input: dict[str, Any],
-            node_outputs: dict[str, NodeOutput],
+        self,
+        node: AbstractNode,
+        group: Group,
+        context: RunContext,
+        group_input: dict[str, Any],
+        node_outputs: dict[str, NodeOutput],
     ) -> tuple[NodeOutput | None, NodeExecutionRecord]:
         """Run one child, wrapped in START/END progress events."""
         await self.__emit(context, ProgressPhase.START, node)
@@ -377,7 +379,7 @@ class FlowEngine(LoggerClass):
         return node_output, record
 
     async def _run_group(
-            self, group: Group, context: RunContext, group_input: dict[str, Any]
+        self, group: Group, context: RunContext, group_input: dict[str, Any]
     ) -> tuple[NodeOutput | None, NodeExecutionRecord]:
         """Walk a group from its entry node, following transitions, and record every step."""
         started = perf_counter()
@@ -433,11 +435,11 @@ class FlowEngine(LoggerClass):
         return group_output, record
 
     async def execute(
-            self,
-            group: Group,
-            run_input: dict[str, Any],
-            timeout_seconds: float | None = None,
-            progress_callback: ProgressCallback | None = None,
+        self,
+        group: Group,
+        run_input: dict[str, Any],
+        timeout_seconds: float | None = None,
+        progress_callback: ProgressCallback | None = None,
     ) -> tuple[NodeOutput | None, NodeExecutionRecord]:
         """
         Execute a pipeline graph and return its output plus the full execution trace.

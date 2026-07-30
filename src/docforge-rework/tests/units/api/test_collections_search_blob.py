@@ -35,9 +35,7 @@ def _non_search_topology() -> dict:
     pipeline. Mirrors the live-proof case that predated the terminal-contract check."""
     blob = _valid_search_blob()
     blob["nodes"] = [n for n in blob["nodes"] if n["id"] != "deliver"]
-    blob["transitions"] = [
-        t for t in blob["transitions"] if t["to_node_id"] != "deliver"
-    ]
+    blob["transitions"] = [t for t in blob["transitions"] if t["to_node_id"] != "deliver"]
     blob["bindings"] = {k: v for k, v in blob["bindings"].items() if k != "deliver"}
     return blob
 
@@ -64,9 +62,7 @@ def _install_recording_context(monkeypatch, fastapi_app, stored_search: dict) ->
         get_schema=AsyncMock(return_value=[]),
         update_config=AsyncMock(),
     )
-    monkeypatch.setattr(
-        CONTEXT, "database", SimpleNamespace(collections=collections)
-    )
+    monkeypatch.setattr(CONTEXT, "database", SimpleNamespace(collections=collections))
     return SimpleNamespace(collections=collections, collection=collection)
 
 
@@ -105,9 +101,7 @@ def test_patch_valid_search_blob_is_stored(client, fastapi_app, monkeypatch) -> 
 
 def test_patch_empty_search_sentinel_is_allowed(client, fastapi_app, monkeypatch) -> None:
     """The {} sentinel ('use the stock default') is stored unvalidated."""
-    spies = _install_recording_context(
-        monkeypatch, fastapi_app, stored_search=_valid_search_blob()
-    )
+    spies = _install_recording_context(monkeypatch, fastapi_app, stored_search=_valid_search_blob())
 
     response = client.patch(
         f"/api/v1/collections/{uuid.uuid4()}",
@@ -119,9 +113,7 @@ def test_patch_empty_search_sentinel_is_allowed(client, fastapi_app, monkeypatch
     assert spies.collections.update_config.await_args.kwargs["search"] == {}
 
 
-def test_patch_non_search_topology_is_422_and_not_stored(
-    client, fastapi_app, monkeypatch
-) -> None:
+def test_patch_non_search_topology_is_422_and_not_stored(client, fastapi_app, monkeypatch) -> None:
     """A structurally-valid graph that is NOT a search pipeline (no SearchResult terminal) is
     rejected 422 at write — it can never reach storage to 500 on every subsequent query."""
     spies = _install_recording_context(monkeypatch, fastapi_app, stored_search={})
@@ -139,9 +131,7 @@ def test_patch_non_search_topology_is_422_and_not_stored(
     spies.collections.update_config.assert_not_called()
 
 
-def test_patch_non_empty_search_without_nodes_is_422(
-    client, fastapi_app, monkeypatch
-) -> None:
+def test_patch_non_empty_search_without_nodes_is_422(client, fastapi_app, monkeypatch) -> None:
     """A non-empty search dict lacking a 'nodes' key (e.g. a legacy tuning dict) is rejected 422 —
     it would otherwise be stored then silently discarded at read."""
     spies = _install_recording_context(monkeypatch, fastapi_app, stored_search={})

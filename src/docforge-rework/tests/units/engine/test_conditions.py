@@ -76,13 +76,21 @@ def _build(kind: str, score: float = 1.0, with_escalation: bool = False) -> Grou
     if with_escalation:
         children.append(Path("rescue", NodeConfig(), "RESCUE"))
     transitions = [
-        Transition(from_node_id="clf", to_node_id="photo_path", condition=WhenEquals(field="kind", equals="photo")),
         Transition(
-            from_node_id="clf", to_node_id="scan_path", condition=WhenEquals(field="kind", equals="scanned_text")
+            from_node_id="clf",
+            to_node_id="photo_path",
+            condition=WhenEquals(field="kind", equals="photo"),
+        ),
+        Transition(
+            from_node_id="clf",
+            to_node_id="scan_path",
+            condition=WhenEquals(field="kind", equals="scanned_text"),
         ),
     ]
     if with_escalation:
-        transitions.append(Transition(from_node_id="clf", to_node_id="rescue", condition=ScoreBelow(threshold=0.5)))
+        transitions.append(
+            Transition(from_node_id="clf", to_node_id="rescue", condition=ScoreBelow(threshold=0.5))
+        )
     return Group(id="g", children=children, transitions=transitions, bindings={})
 
 
@@ -114,7 +122,11 @@ def test_valid_switch_with_escalation_has_zero_issues(validator) -> None:
 def test_duplicate_when_equals_value_is_ambiguous(validator) -> None:
     graph = _build("photo")
     graph.transitions.append(
-        Transition(from_node_id="clf", to_node_id="photo_path", condition=WhenEquals(field="kind", equals="photo"))
+        Transition(
+            from_node_id="clf",
+            to_node_id="photo_path",
+            condition=WhenEquals(field="kind", equals="photo"),
+        )
     )
     codes = {issue.code.value for issue in validator.validate(graph)}
     assert "ambiguous_routing" in codes
@@ -123,7 +135,11 @@ def test_duplicate_when_equals_value_is_ambiguous(validator) -> None:
 def test_when_equals_on_two_fields_is_ambiguous_and_flags_unknown_field(validator) -> None:
     graph = _build("photo")
     graph.transitions.append(
-        Transition(from_node_id="clf", to_node_id="scan_path", condition=WhenEquals(field="other", equals="x"))
+        Transition(
+            from_node_id="clf",
+            to_node_id="scan_path",
+            condition=WhenEquals(field="other", equals="x"),
+        )
     )
     codes = {issue.code.value for issue in validator.validate(graph)}
     assert "ambiguous_routing" in codes
@@ -131,7 +147,9 @@ def test_when_equals_on_two_fields_is_ambiguous_and_flags_unknown_field(validato
 
 
 def test_when_equals_condition_round_trips_through_json() -> None:
-    transition = Transition(from_node_id="a", to_node_id="b", condition=WhenEquals(field="kind", equals="chart"))
+    transition = Transition(
+        from_node_id="a", to_node_id="b", condition=WhenEquals(field="kind", equals="chart")
+    )
     again = Transition.model_validate(transition.model_dump(mode="json"))
     assert isinstance(again.condition, WhenEquals)
     assert again.condition.equals == "chart"

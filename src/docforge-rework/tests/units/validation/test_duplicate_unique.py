@@ -21,8 +21,20 @@ def test_duplicated_singleton_is_rejected(builder, validator) -> None:
         "node_type": "group",
         "id": "dup",
         "nodes": [
-            {"node_type": "action", "id": "b1", "family": "contextualize", "kind": "breadcrumb", "config": {}},
-            {"node_type": "action", "id": "b2", "family": "contextualize", "kind": "breadcrumb", "config": {}},
+            {
+                "node_type": "action",
+                "id": "b1",
+                "family": "contextualize",
+                "kind": "breadcrumb",
+                "config": {},
+            },
+            {
+                "node_type": "action",
+                "id": "b2",
+                "family": "contextualize",
+                "kind": "breadcrumb",
+                "config": {},
+            },
         ],
         "transitions": [{"from_node_id": "b1", "to_node_id": "b2"}],
         "bindings": {

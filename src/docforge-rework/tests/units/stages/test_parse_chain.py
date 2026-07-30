@@ -81,13 +81,16 @@ def test_two_step_parse_chain_builds_and_validates(compiler, builder, validator)
 def test_two_step_parse_chain_wires_escalation_and_best_first_join(builder, validator) -> None:
     # A minimal pipeline (render + enrich off) so the parse chain feeds the chunk head DIRECTLY —
     # the clearest view of the escalation topology and the convergence anchor.
-    state = default_state().model_copy(update={
-        "render_on": False, "enrich_on": False,
-        "parse_chain": ChainSpec(
-            family="parser",
-            steps=[ChainStep(kind="docling", score_below=0.5), ChainStep(kind=FAKE_KIND)],
-        ),
-    })
+    state = default_state().model_copy(
+        update={
+            "render_on": False,
+            "enrich_on": False,
+            "parse_chain": ChainSpec(
+                family="parser",
+                steps=[ChainStep(kind="docling", score_below=0.5), ChainStep(kind=FAKE_KIND)],
+            ),
+        }
+    )
     blob = IngestAssembler.assemble(state)
     assert validator.validate(builder.build(blob)) == []
 

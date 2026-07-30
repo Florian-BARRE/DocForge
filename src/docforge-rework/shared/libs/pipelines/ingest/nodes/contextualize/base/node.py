@@ -76,7 +76,9 @@ class BaseContextualizerNode(ActionNode):
         enriched = sum(
             1 for before, after in zip(data.chunks, chunks, strict=True) if after is not before
         )
-        self.logger.debug(f"Contextualizer '{self.KIND}' enriched {enriched}/{len(chunks)} chunk(s)")
+        self.logger.debug(
+            f"Contextualizer '{self.KIND}' enriched {enriched}/{len(chunks)} chunk(s)"
+        )
         return ContextualizerProduces(chunks=chunks)
 
 

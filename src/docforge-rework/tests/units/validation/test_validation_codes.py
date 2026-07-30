@@ -179,7 +179,9 @@ def test_score_below_from_unscored_producer(validator) -> None:
     graph = Group(
         id="sc",
         children=[_p("a"), _p("b")],
-        transitions=[Transition(from_node_id="a", to_node_id="b", condition=ScoreBelow(threshold=0.5))],
+        transitions=[
+            Transition(from_node_id="a", to_node_id="b", condition=ScoreBelow(threshold=0.5))
+        ],
         bindings={"a": {}, "b": {}},
     )
     assert "score_below_not_scored" in _codes(validator, graph)
@@ -192,14 +194,27 @@ def test_score_below_off_a_vlm_node_is_valid(builder, validator) -> None:
         "node_type": "group",
         "id": "vlm_esc",
         "nodes": [
-            {"node_type": "action", "id": "cheap", "family": "vlm", "kind": "openai_compatible",
-             "config": {"base_url": "u", "model": "m"}},
-            {"node_type": "action", "id": "robust", "family": "vlm", "kind": "openai_compatible",
-             "config": {"base_url": "u", "model": "m"}},
+            {
+                "node_type": "action",
+                "id": "cheap",
+                "family": "vlm",
+                "kind": "openai_compatible",
+                "config": {"base_url": "u", "model": "m"},
+            },
+            {
+                "node_type": "action",
+                "id": "robust",
+                "family": "vlm",
+                "kind": "openai_compatible",
+                "config": {"base_url": "u", "model": "m"},
+            },
         ],
         "transitions": [
-            {"from_node_id": "cheap", "to_node_id": "robust",
-             "condition": {"kind": "score_below", "threshold": 0.5}},
+            {
+                "from_node_id": "cheap",
+                "to_node_id": "robust",
+                "condition": {"kind": "score_below", "threshold": 0.5},
+            },
         ],
         "bindings": {
             "cheap": {"figure": {"source": "run", "field_name": "figure"}},
@@ -224,7 +239,13 @@ def test_escalation_pilot_blob_is_valid(builder, validator) -> None:
         "node_type": "group",
         "id": "esc",
         "nodes": [
-            {"node_type": "action", "id": "mistral", "family": "llm", "kind": "mistral", "config": {"api_key": "k"}},
+            {
+                "node_type": "action",
+                "id": "mistral",
+                "family": "llm",
+                "kind": "mistral",
+                "config": {"api_key": "k"},
+            },
             {
                 "node_type": "action",
                 "id": "openai",
@@ -233,7 +254,9 @@ def test_escalation_pilot_blob_is_valid(builder, validator) -> None:
                 "config": {"base_url": "u", "api_key": "k", "model": "m"},
             },
         ],
-        "transitions": [{"from_node_id": "mistral", "to_node_id": "openai", "condition": {"kind": "on_failure"}}],
+        "transitions": [
+            {"from_node_id": "mistral", "to_node_id": "openai", "condition": {"kind": "on_failure"}}
+        ],
         "bindings": {
             "mistral": {"prompt": {"source": "run", "field_name": "prompt"}},
             "openai": {"prompt": {"source": "run", "field_name": "prompt"}},

@@ -65,6 +65,4 @@ class RuntimePathHelpers:
 
         sys.modules[package_name] = package
 
-        cls.logger.info(
-            f"Package alias registered: {package_name} -> {package_path}"
-        )
+        cls.logger.info(f"Package alias registered: {package_name} -> {package_path}")

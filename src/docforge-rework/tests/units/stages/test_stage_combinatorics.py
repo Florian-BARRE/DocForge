@@ -38,7 +38,10 @@ ALL_32_COMBOS = list(itertools.product([False, True], repeat=len(TOGGLE_FIELDS))
 
 
 def _combo_id(combo: tuple[bool, ...]) -> str:
-    flags = "".join(f"{name.replace('_on', '')}={int(value)}," for name, value in zip(TOGGLE_FIELDS, combo, strict=True))
+    flags = "".join(
+        f"{name.replace('_on', '')}={int(value)},"
+        for name, value in zip(TOGGLE_FIELDS, combo, strict=True)
+    )
     return flags.rstrip(",")
 
 
@@ -137,22 +140,42 @@ def test_two_step_metagen_chain_round_trips_and_is_idempotent() -> None:
     each other (by the prep the loop's ``over`` reads), then walk each structgen ladder back — so
     a non-default chain is not silently collapsed to the stock 1-step default.
     """
-    ladder = ChainSpec(family="structgen", steps=[
-        ChainStep(kind="openai_compatible", config={"base_url": "http://cheap", "model": "small"}),
-        ChainStep(kind="openai_compatible", config={"base_url": "http://robust", "model": "big"}),
-    ])
-    state = default_state().model_copy(update={
-        "metachunk_chain": ladder.model_copy(deep=True),
-        "metadoc_chain": ladder.model_copy(deep=True),
-    })
+    ladder = ChainSpec(
+        family="structgen",
+        steps=[
+            ChainStep(
+                kind="openai_compatible", config={"base_url": "http://cheap", "model": "small"}
+            ),
+            ChainStep(
+                kind="openai_compatible", config={"base_url": "http://robust", "model": "big"}
+            ),
+        ],
+    )
+    state = default_state().model_copy(
+        update={
+            "metachunk_chain": ladder.model_copy(deep=True),
+            "metadoc_chain": ladder.model_copy(deep=True),
+        }
+    )
 
     blob = IngestAssembler.assemble(state)
     assert GraphValidator().validate(PipelineBuilder().build(blob)) == []
 
     read_back = StateReader.read(blob)
-    assert [s.kind for s in read_back.metachunk_chain.steps] == ["openai_compatible", "openai_compatible"]
-    assert read_back.metachunk_chain.steps[1].config == {"base_url": "http://robust", "model": "big"}
-    assert [s.kind for s in read_back.metadoc_chain.steps] == ["openai_compatible", "openai_compatible"]
+    assert [s.kind for s in read_back.metachunk_chain.steps] == [
+        "openai_compatible",
+        "openai_compatible",
+    ]
+    assert read_back.metachunk_chain.steps[1].config == {
+        "base_url": "http://robust",
+        "model": "big",
+    }
+    assert [s.kind for s in read_back.metadoc_chain.steps] == [
+        "openai_compatible",
+        "openai_compatible",
+    ]
 
     # compile → read → compile is a fixed point: re-assembling the read-back state is byte-identical.
-    assert IngestAssembler.assemble(read_back).model_dump(mode="json") == blob.model_dump(mode="json")
+    assert IngestAssembler.assemble(read_back).model_dump(mode="json") == blob.model_dump(
+        mode="json"
+    )

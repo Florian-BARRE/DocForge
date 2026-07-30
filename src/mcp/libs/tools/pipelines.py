@@ -66,9 +66,7 @@ def register(mcp: FastMCP, sdk: AsyncClient) -> None:
         return result.model_dump(mode="json")
 
     @mcp.tool()
-    async def apply_pipeline_stage(
-        key: str, blob: dict[str, Any], action: dict[str, Any]
-    ) -> Any:
+    async def apply_pipeline_stage(key: str, blob: dict[str, Any], action: dict[str, Any]) -> Any:
         """
         Compile a stage-level action into a pipeline blob. Returns the recompiled blob
         (always buildable), its stage view, validity, issues and any compiler notices.

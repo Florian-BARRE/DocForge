@@ -24,7 +24,7 @@ DEFAULT_METAGEN_PROMPT = (
 class MetagenGrouping(StrEnum):
     """Call shape — the cost/isolation knob (user-set, per node)."""
 
-    COMBINED = "combined"    # fields sharing an endpoint are asked in ONE structured object
+    COMBINED = "combined"  # fields sharing an endpoint are asked in ONE structured object
     PER_FIELD = "per_field"  # one call per field (max isolation, N× the spend)
 
 
@@ -32,7 +32,7 @@ class MetagenOnError(StrEnum):
     """What a failed or unusable generation does."""
 
     SKIP_FIELDS = "skip_fields"  # the affected fields stay absent (logged); the run continues
-    FAIL = "fail"                # the node fails (strict runs)
+    FAIL = "fail"  # the node fails (strict runs)
 
 
 class MetagenTarget(BaseModel):
@@ -75,7 +75,8 @@ class BaseMetagenConfig(OpenAICompatConfig):
     temperature: float = Field(default=0.0, ge=0.0, le=2.0, description="Sampling temperature.")
     max_tokens: int = Field(default=512, gt=0, description="Generation cap per structured call.")
     max_document_words: int = Field(
-        default=4000, gt=0,
+        default=4000,
+        gt=0,
         description="Hard cap on the text handed to the model (truncated from the start).",
     )
     max_concurrency: int = Field(

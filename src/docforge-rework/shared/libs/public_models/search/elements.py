@@ -24,7 +24,9 @@ class Candidate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     chunk_id: str = Field(description="The candidate chunk's id (the hydration lookup key).")
-    score: float = Field(description="Raw retrieval score on the provider's scale (higher is better).")
+    score: float = Field(
+        description="Raw retrieval score on the provider's scale (higher is better)."
+    )
     source: str = Field(description="The retrieval branch that produced it (hybrid/dense/sparse…).")
     payload: dict | None = Field(
         default=None,
@@ -49,9 +51,13 @@ class Hit(BaseModel):
 
     chunk_id: str = Field(description="The hit chunk's id.")
     document_id: str = Field(description="Id of the document the chunk belongs to.")
-    score: float = Field(default=0.0, description="Final ranking score (carried from the candidate).")
+    score: float = Field(
+        default=0.0, description="Final ranking score (carried from the candidate)."
+    )
     rank: int = Field(default=0, description="1-based rank in the delivered ordering (1 = best).")
-    text: str | None = Field(default=None, description="The chunk's hydrated text (None if omitted).")
+    text: str | None = Field(
+        default=None, description="The chunk's hydrated text (None if omitted)."
+    )
     metadata: dict | None = Field(
         default=None, description="The chunk's hydrated rich metadata (None if not requested)."
     )

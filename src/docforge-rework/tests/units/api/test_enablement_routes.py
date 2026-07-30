@@ -48,7 +48,9 @@ def test_chunk_toggle_echoes_effective_and_reindex(client, monkeypatch) -> None:
     from backend.context import CONTEXT
 
     chunk_id = uuid.uuid4()
-    toggle = AsyncMock(return_value=[ChunkToggle(chunk_id=chunk_id, enabled=True, reindex_required=False)])
+    toggle = AsyncMock(
+        return_value=[ChunkToggle(chunk_id=chunk_id, enabled=True, reindex_required=False)]
+    )
     monkeypatch.setattr(CONTEXT.database.enablement, "set_chunks_enabled", toggle)
 
     response = client.patch(f"/api/v1/chunks/{chunk_id}/enabled", json={"enabled": True})
@@ -68,7 +70,9 @@ def test_chunk_toggle_never_embedded_reports_reindex(client, monkeypatch) -> Non
     from backend.context import CONTEXT
 
     chunk_id = uuid.uuid4()
-    toggle = AsyncMock(return_value=[ChunkToggle(chunk_id=chunk_id, enabled=True, reindex_required=True)])
+    toggle = AsyncMock(
+        return_value=[ChunkToggle(chunk_id=chunk_id, enabled=True, reindex_required=True)]
+    )
     monkeypatch.setattr(CONTEXT.database.enablement, "set_chunks_enabled", toggle)
 
     response = client.patch(f"/api/v1/chunks/{chunk_id}/enabled", json={"enabled": True})
@@ -94,7 +98,9 @@ def test_bulk_chunk_toggle_reports_results_and_not_found(client, monkeypatch) ->
 
     known = uuid.uuid4()
     missing = uuid.uuid4()
-    toggle = AsyncMock(return_value=[ChunkToggle(chunk_id=known, enabled=False, reindex_required=False)])
+    toggle = AsyncMock(
+        return_value=[ChunkToggle(chunk_id=known, enabled=False, reindex_required=False)]
+    )
     monkeypatch.setattr(CONTEXT.database.enablement, "set_chunks_enabled", toggle)
 
     response = client.patch(

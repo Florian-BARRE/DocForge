@@ -32,16 +32,19 @@ class MetagenPrepConfig(OpenAICompatConfig):
         "per_field: one call per field.",
     )
     system_prompt: str = Field(
-        default=DEFAULT_METAGEN_PROMPT, description="The generation instruction carried on each request."
+        default=DEFAULT_METAGEN_PROMPT,
+        description="The generation instruction carried on each request.",
     )
     temperature: float = Field(default=0.0, ge=0.0, le=2.0, description="Sampling temperature.")
     max_tokens: int = Field(default=512, gt=0, description="Generation cap per structured call.")
     max_document_words: int = Field(
-        default=4000, gt=0,
+        default=4000,
+        gt=0,
         description="Hard cap on the document text handed to the model (document scope; truncated).",
     )
     max_concurrency: int = Field(
-        default=4, ge=1,
+        default=4,
+        ge=1,
         description="Stage knob (read by the assembler): how many requests the ForEach runs at once.",
     )
     on_error: MetagenOnError = Field(

@@ -28,8 +28,20 @@ class IngestPipeline:
     # The families an ingestion pipeline is assembled from: its DEDICATED nodes first, then the
     # GENERIC capability families its enrichment relies on.
     FAMILIES = (
-        "intake", "converter", "parser", "render", "enrich", "chunker",
-        "contextualize", "metagen", "embed", "deliver", "ocr", "vlm", "llm", "structgen",
+        "intake",
+        "converter",
+        "parser",
+        "render",
+        "enrich",
+        "chunker",
+        "contextualize",
+        "metagen",
+        "embed",
+        "deliver",
+        "ocr",
+        "vlm",
+        "llm",
+        "structgen",
     )
 
     # Per-family kind allowlist for SHARED families: ``deliver`` is reused by search, so its palette

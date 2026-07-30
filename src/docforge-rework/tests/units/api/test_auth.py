@@ -231,7 +231,9 @@ async def test_authenticate_missing_owner_is_401(fastapi_app, monkeypatch) -> No
     assert exc.value.status_code == 401
 
 
-async def test_authenticate_valid_full_access_key_returns_principal(fastapi_app, monkeypatch) -> None:
+async def test_authenticate_valid_full_access_key_returns_principal(
+    fastapi_app, monkeypatch
+) -> None:
     from backend.context import CONTEXT  # noqa: PLC0415
     from backend.libs.auth.dependency import authenticate  # noqa: PLC0415
     from backend.libs.auth.keys import AuthKeys  # noqa: PLC0415
@@ -288,7 +290,9 @@ def _frozen_now(monkeypatch, instant) -> None:
     monkeypatch.setattr(dep, "datetime", _FrozenDatetime)
 
 
-async def test_authenticate_expired_key_is_401_with_opaque_message(fastapi_app, monkeypatch) -> None:
+async def test_authenticate_expired_key_is_401_with_opaque_message(
+    fastapi_app, monkeypatch
+) -> None:
     from backend.context import CONTEXT  # noqa: PLC0415
     from backend.libs.auth.dependency import _INVALID_CREDENTIAL, authenticate  # noqa: PLC0415
     from config import RUNTIME_CONFIG  # noqa: PLC0415
@@ -617,7 +621,9 @@ def test_key_permissions_explicit_uuid_list_is_valid(fastapi_app) -> None:
     from backend.libs.auth.permissions import KeyPermissions  # noqa: PLC0415
 
     collection_id = "11111111-1111-1111-1111-111111111111"
-    permissions = KeyPermissions.model_validate({"capabilities": [], "collections": [collection_id]})
+    permissions = KeyPermissions.model_validate(
+        {"capabilities": [], "collections": [collection_id]}
+    )
 
     assert permissions.collections == [collection_id]
 
@@ -703,7 +709,9 @@ async def test_middleware_passes_public_path_through_without_auth(fastapi_app) -
     assert "principal" not in seen["scope"].get("state", {})
 
 
-async def test_middleware_injects_synthetic_principal_when_auth_off(fastapi_app, monkeypatch) -> None:
+async def test_middleware_injects_synthetic_principal_when_auth_off(
+    fastapi_app, monkeypatch
+) -> None:
     from backend.libs.auth import dependency as dep  # noqa: PLC0415
     from backend.libs.auth.middleware import AuthMiddleware  # noqa: PLC0415
 
@@ -713,7 +721,9 @@ async def test_middleware_injects_synthetic_principal_when_auth_off(fastapi_app,
     async def downstream(scope, receive, send) -> None:
         seen["scope"] = scope
 
-    await AuthMiddleware(downstream)(_asgi_http_scope("/api/v1/collections"), _drain, _SendRecorder())
+    await AuthMiddleware(downstream)(
+        _asgi_http_scope("/api/v1/collections"), _drain, _SendRecorder()
+    )
 
     principal = seen["scope"]["state"]["principal"]
     assert principal.is_full_access is True

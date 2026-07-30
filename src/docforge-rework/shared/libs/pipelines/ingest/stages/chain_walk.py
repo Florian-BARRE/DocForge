@@ -32,8 +32,10 @@ class ChainWalker:
     ) -> ActionNodeBlob:
         """The chain's head — the only family node no in-family escalation edge points at."""
         targeted = {
-            transition.to_node_id for transition in transitions
-            if transition.from_node_id in by_id and transition.to_node_id in by_id
+            transition.to_node_id
+            for transition in transitions
+            if transition.from_node_id in by_id
+            and transition.to_node_id in by_id
             and by_id[transition.to_node_id].family in families
         }
         return next(
@@ -43,7 +45,10 @@ class ChainWalker:
 
     @classmethod
     def walk(
-        cls, transitions: list, by_id: dict[str, ActionNodeBlob], head: ActionNodeBlob,
+        cls,
+        transitions: list,
+        by_id: dict[str, ActionNodeBlob],
+        head: ActionNodeBlob,
         families: set[str],
     ) -> list[ChainStep]:
         """Follow a chain's providers from its head, reading the score_below escalation off the edges."""
@@ -52,10 +57,13 @@ class ChainWalker:
         seen: set[str] = set()
         while current is not None and current.family in families and current.id not in seen:
             seen.add(current.id)
-            steps.append(ChainStep(
-                kind=current.kind, config=dict(current.config),
-                score_below=cls.__score_below(transitions, current.id, by_id, families),
-            ))
+            steps.append(
+                ChainStep(
+                    kind=current.kind,
+                    config=dict(current.config),
+                    score_below=cls.__score_below(transitions, current.id, by_id, families),
+                )
+            )
             current = cls.__next_step(transitions, current.id, by_id, families)
         return steps
 
@@ -65,10 +73,12 @@ class ChainWalker:
     ) -> float | None:
         """The threshold of the ScoreBelow edge escalating this step to the next chain node."""
         for transition in transitions:
-            if (transition.from_node_id == node_id
-                    and isinstance(transition.condition, ScoreBelow)
-                    and transition.to_node_id in by_id
-                    and by_id[transition.to_node_id].family in families):
+            if (
+                transition.from_node_id == node_id
+                and isinstance(transition.condition, ScoreBelow)
+                and transition.to_node_id in by_id
+                and by_id[transition.to_node_id].family in families
+            ):
                 return transition.condition.threshold
         return None
 
@@ -79,8 +89,11 @@ class ChainWalker:
         """The next chain provider a step escalates to (score_below / on_failure target)."""
         for transition in transitions:
             target = by_id.get(transition.to_node_id)
-            if (transition.from_node_id == node_id and target is not None
-                    and target.family in families):
+            if (
+                transition.from_node_id == node_id
+                and target is not None
+                and target.family in families
+            ):
                 return target
         return None
 

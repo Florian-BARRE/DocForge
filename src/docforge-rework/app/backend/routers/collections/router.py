@@ -94,7 +94,7 @@ def _validate_fields(fields: list[FieldSpecModel]) -> None:
             raise HTTPException(
                 status_code=422,
                 detail=f"Field '{spec.field_name}': chunk scope is reserved for generated "
-                       f"fields — user-declared metadata is document-level.",
+                f"fields — user-declared metadata is document-level.",
             )
         # A field name must never shadow a reserved chunk-payload key (it would overwrite it
         # when denormalised onto the point, breaking the enabled-filter or deletion-by-document).
@@ -102,7 +102,7 @@ def _validate_fields(fields: list[FieldSpecModel]) -> None:
             raise HTTPException(
                 status_code=422,
                 detail=f"Field name '{spec.field_name}' is reserved — pick another name "
-                       f"(reserved: {sorted(_RESERVED_FIELD_NAMES)}).",
+                f"(reserved: {sorted(_RESERVED_FIELD_NAMES)}).",
             )
         # Chunk-scope lexical has no producer: the embed node writes chunk-scope SEMANTIC (dense)
         # vectors and the meta-vector facade is document-scope only, so a chunk-scope lexical field
@@ -112,7 +112,7 @@ def _validate_fields(fields: list[FieldSpecModel]) -> None:
             raise HTTPException(
                 status_code=422,
                 detail=f"Field '{spec.field_name}': chunk-scope lexical search is not supported "
-                       f"(no BM25 producer for chunk metadata) — use semantic, or document scope.",
+                f"(no BM25 producer for chunk metadata) — use semantic, or document scope.",
             )
 
 
@@ -146,7 +146,8 @@ def _canonical_pipeline(blob: dict) -> dict:
 
 
 @router.get(
-    "", response_model=list[CollectionModel],
+    "",
+    response_model=list[CollectionModel],
     dependencies=[Depends(require(Capability.READ))],
 )
 @auto_handle_errors
@@ -159,13 +160,12 @@ async def list_collections() -> list[CollectionModel]:
     """
     # 1. Rows + their schemas (collection counts stay small — the N+1 is fine here).
     collections = await CONTEXT.database.collections.list_all()
-    return [
-        _to_model(c, await CONTEXT.database.collections.get_schema(c.id)) for c in collections
-    ]
+    return [_to_model(c, await CONTEXT.database.collections.get_schema(c.id)) for c in collections]
 
 
 @router.get(
-    "/{collection_id}", response_model=CollectionModel,
+    "/{collection_id}",
+    response_model=CollectionModel,
     dependencies=[Depends(require(Capability.READ))],
 )
 @auto_handle_errors
@@ -183,7 +183,9 @@ async def get_collection(collection_id: uuid.UUID) -> CollectionModel:
 
 
 @router.post(
-    "", response_model=CollectionModel, status_code=201,
+    "",
+    response_model=CollectionModel,
+    status_code=201,
     dependencies=[Depends(require(Capability.WRITE))],
 )
 @auto_handle_errors
@@ -203,14 +205,22 @@ async def create_collection(request: CreateCollectionRequest) -> CollectionModel
 
     # 2. The pipeline blob: the caller's, or the product default — healed to the current engine,
     #    validated, and stamped for storage either way.
-    blob = _canonical_pipeline(request.pipeline or IngestPipeline.default_blob().model_dump(mode="json"))
+    blob = _canonical_pipeline(
+        request.pipeline or IngestPipeline.default_blob().model_dump(mode="json")
+    )
 
     # 3. Create contract + schema in one transaction (slug collisions → explicit 422).
     rows = [
         MetadataField(
-            field_name=f.field_name, field_type=f.field_type, required=f.required,
-            filterable=f.filterable, lexical=f.lexical, semantic=f.semantic,
-            enum_values=f.enum_values, origin=f.origin, scope=f.scope,
+            field_name=f.field_name,
+            field_type=f.field_type,
+            required=f.required,
+            filterable=f.filterable,
+            lexical=f.lexical,
+            semantic=f.semantic,
+            enum_values=f.enum_values,
+            origin=f.origin,
+            scope=f.scope,
         )
         for f in request.fields
     ]
@@ -232,7 +242,8 @@ async def create_collection(request: CreateCollectionRequest) -> CollectionModel
 
 
 @router.patch(
-    "/{collection_id}", response_model=CollectionModel,
+    "/{collection_id}",
+    response_model=CollectionModel,
     dependencies=[Depends(require(Capability.WRITE))],
 )
 @auto_handle_errors
@@ -260,7 +271,9 @@ async def update_collection(
 
     # 3. A new pipeline never reaches storage broken: heal it to the current engine, validate it,
     #    and keep its stamped canonical form for storage (step 6).
-    stored_pipeline = _canonical_pipeline(request.pipeline) if request.pipeline is not None else None
+    stored_pipeline = (
+        _canonical_pipeline(request.pipeline) if request.pipeline is not None else None
+    )
 
     # 3b. A new search blob is a search GRAPH blob. Only two shapes are valid: {} (the sentinel
     #     "use the stock default", always allowed) or a real topology carrying a "nodes" list. A
@@ -273,7 +286,7 @@ async def update_collection(
             raise HTTPException(
                 status_code=422,
                 detail="collection.search must be empty ({} = stock default) or a search graph "
-                       "blob with a 'nodes' list.",
+                "blob with a 'nodes' list.",
             )
         SearchBlobValidator.validate(request.search)
 
@@ -283,8 +296,10 @@ async def update_collection(
         _validate_fields(request.fields)
 
     # 4. Identity/limits (no-op when untouched).
-    if any(v is not None for v in (request.name, request.supported_formats,
-                                   request.max_file_size_bytes)):
+    if any(
+        v is not None
+        for v in (request.name, request.supported_formats, request.max_file_size_bytes)
+    ):
         await CONTEXT.database.collections.update_contract(
             collection_id,
             name=request.name,
@@ -297,9 +312,15 @@ async def update_collection(
     if request.fields is not None:
         rows = [
             MetadataField(
-                field_name=f.field_name, field_type=f.field_type, required=f.required,
-                filterable=f.filterable, lexical=f.lexical, semantic=f.semantic,
-                enum_values=f.enum_values, origin=f.origin, scope=f.scope,
+                field_name=f.field_name,
+                field_type=f.field_type,
+                required=f.required,
+                filterable=f.filterable,
+                lexical=f.lexical,
+                semantic=f.semantic,
+                enum_values=f.enum_values,
+                origin=f.origin,
+                scope=f.scope,
             )
             for f in request.fields
         ]
@@ -327,7 +348,8 @@ async def update_collection(
 
 
 @router.delete(
-    "/{collection_id}", status_code=204,
+    "/{collection_id}",
+    status_code=204,
     dependencies=[Depends(require(Capability.WRITE))],
 )
 @auto_handle_errors

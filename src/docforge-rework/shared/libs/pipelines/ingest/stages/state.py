@@ -107,20 +107,40 @@ def default_state() -> PipelineState:
             ),
             "photo_vlm": ChainSpec(
                 family="vlm",
-                steps=[ChainStep(kind="openai_compatible", config={
-                    **_VLM_ENDPOINT, "system_prompt": "Caption this photo for retrieval."})],
+                steps=[
+                    ChainStep(
+                        kind="openai_compatible",
+                        config={
+                            **_VLM_ENDPOINT,
+                            "system_prompt": "Caption this photo for retrieval.",
+                        },
+                    )
+                ],
             ),
             "chart_vlm": ChainSpec(
                 family="vlm",
-                steps=[ChainStep(kind="openai_compatible", config={
-                    **_VLM_ENDPOINT,
-                    "system_prompt": "Read this chart and transcribe its data for retrieval.",
-                    "extract_table": True})],
+                steps=[
+                    ChainStep(
+                        kind="openai_compatible",
+                        config={
+                            **_VLM_ENDPOINT,
+                            "system_prompt": "Read this chart and transcribe its data for retrieval.",
+                            "extract_table": True,
+                        },
+                    )
+                ],
             ),
             "diagram_vlm": ChainSpec(
                 family="vlm",
-                steps=[ChainStep(kind="openai_compatible", config={
-                    **_VLM_ENDPOINT, "system_prompt": "Rewrite this diagram as searchable text."})],
+                steps=[
+                    ChainStep(
+                        kind="openai_compatible",
+                        config={
+                            **_VLM_ENDPOINT,
+                            "system_prompt": "Rewrite this diagram as searchable text.",
+                        },
+                    )
+                ],
             ),
         },
         stack=[

@@ -50,7 +50,9 @@ class EnrichBodyBuilder:
         # 1. The classifier — the switch driver every figure enters through.
         nodes: list = [
             ActionNodeBlob(
-                id=cls.CLASSIFY_ID, family="enrich", kind="figure_classify",
+                id=cls.CLASSIFY_ID,
+                family="enrich",
+                kind="figure_classify",
                 config=dict(classify_config),
             )
         ]
@@ -65,7 +67,9 @@ class EnrichBodyBuilder:
             if chain is None or not chain.steps:
                 transitions.append(cls.__switch(branch.figure_kind, cls.SKIP_ID))
                 continue
-            cls.__append_branch(branch.slot, branch.figure_kind, chain, nodes, transitions, bindings)
+            cls.__append_branch(
+                branch.slot, branch.figure_kind, chain, nodes, transitions, bindings
+            )
 
         # 3. The decorative / fallback terminal — a visible, zero-spend skip every decorative class
         #    routes to (no chain, no model call).
@@ -111,14 +115,20 @@ class EnrichBodyBuilder:
     def __switch(cls, figure_kind: str, to_node_id: str) -> Transition:
         """A when_equals edge from the classifier routing one figure class to a branch head."""
         return Transition(
-            from_node_id=cls.CLASSIFY_ID, to_node_id=to_node_id,
+            from_node_id=cls.CLASSIFY_ID,
+            to_node_id=to_node_id,
             condition=WhenEquals(field="kind", equals=figure_kind),
         )
 
     @classmethod
     def __append_branch(
-        cls, slot: str, figure_kind: str, chain: ChainSpec,
-        nodes: list, transitions: list[Transition], bindings: dict[str, dict],
+        cls,
+        slot: str,
+        figure_kind: str,
+        chain: ChainSpec,
+        nodes: list,
+        transitions: list[Transition],
+        bindings: dict[str, dict],
     ) -> None:
         """Append one class branch: its chain fragment, the entry switch and its terminal."""
         # 1. Build the provider chain fragment (step nodes, escalation edges, per-step bindings).
@@ -128,7 +138,9 @@ class EnrichBodyBuilder:
             prefix=slot,
             family=chain.family,
             steps=[
-                ChainStepSpec(kind=step.kind, config=dict(step.config), score_below=step.score_below)
+                ChainStepSpec(
+                    kind=step.kind, config=dict(step.config), score_below=step.score_below
+                )
                 for step in chain.steps
             ],
             step_inputs={"figure": FromNode(node_id=cls.CLASSIFY_ID, field_name="figure")},
@@ -151,33 +163,41 @@ class EnrichBodyBuilder:
 
     @classmethod
     def __close_ocr(
-        cls, slot: str, frag: ChainFragment,
-        nodes: list, transitions: list[Transition], bindings: dict[str, dict],
+        cls,
+        slot: str,
+        frag: ChainFragment,
+        nodes: list,
+        transitions: list[Transition],
+        bindings: dict[str, dict],
     ) -> None:
         """Close an OCR chain on a model-free figure_entry fed best-first by whichever step ran."""
         terminal_id = f"{slot}_entry"
         nodes.append(ActionNodeBlob(id=terminal_id, family="enrich", kind="figure_entry"))
         # Every step, on success, closes the branch on the shared terminal.
         for step_id in frag.exits:
-            transitions.append(Transition(
-                from_node_id=step_id, to_node_id=terminal_id, condition=OnSuccess()
-            ))
+            transitions.append(
+                Transition(from_node_id=step_id, to_node_id=terminal_id, condition=OnSuccess())
+            )
         # The join reads whichever step produced — best-first, as computed by the fragment.
         bindings[terminal_id] = {"figure": frag.output}
 
     @classmethod
     def __close_vlm(
-        cls, slot: str, frag: ChainFragment,
-        nodes: list, transitions: list[Transition], bindings: dict[str, dict],
+        cls,
+        slot: str,
+        frag: ChainFragment,
+        nodes: list,
+        transitions: list[Transition],
+        bindings: dict[str, dict],
     ) -> None:
         """Close a VLM chain on a model-free vlm_entry fed best-first by whichever step described."""
         terminal_id = f"{slot}_entry"
         nodes.append(ActionNodeBlob(id=terminal_id, family="enrich", kind="vlm_entry"))
         # Every step, on success, closes the branch on the shared terminal.
         for step_id in frag.exits:
-            transitions.append(Transition(
-                from_node_id=step_id, to_node_id=terminal_id, condition=OnSuccess()
-            ))
+            transitions.append(
+                Transition(from_node_id=step_id, to_node_id=terminal_id, condition=OnSuccess())
+            )
         # The join reads the scored entry of whichever step produced — best-first, score dropped.
         bindings[terminal_id] = {"entry": frag.output}
 

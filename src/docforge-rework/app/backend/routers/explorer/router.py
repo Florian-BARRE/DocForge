@@ -67,7 +67,8 @@ async def _assert_chunk_scope(chunk_ids: list[uuid.UUID], principal: AuthPrincip
 
 
 @router.get(
-    "/collections/{collection_id}/documents", response_model=list[DocumentListItem],
+    "/collections/{collection_id}/documents",
+    response_model=list[DocumentListItem],
     dependencies=[Depends(require(Capability.READ))],
 )
 @auto_handle_errors
@@ -235,9 +236,7 @@ async def set_chunks_enabled(
     await _assert_chunk_scope(patch.chunk_ids, principal)
 
     # 2. Toggle all requested chunks in one facade call.
-    outcomes = await CONTEXT.database.enablement.set_chunks_enabled(
-        patch.chunk_ids, patch.enabled
-    )
+    outcomes = await CONTEXT.database.enablement.set_chunks_enabled(patch.chunk_ids, patch.enabled)
 
     # 3. The ids that resolved to no chunk (requested minus returned).
     found = {outcome.chunk_id for outcome in outcomes}

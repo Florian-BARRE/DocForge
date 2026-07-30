@@ -67,7 +67,9 @@ class ArtefactCatalog:
         for name, model in sorted(models.items()):
             doc = inspect.cleandoc(model.__doc__ or "")
             summary = doc.split("\n\n", 1)[0].replace("\n", " ").strip()
-            cards[name] = ArtefactCard(name=name, summary=summary, json_schema=model.model_json_schema())
+            cards[name] = ArtefactCard(
+                name=name, summary=summary, json_schema=model.model_json_schema()
+            )
         return cards
 
 

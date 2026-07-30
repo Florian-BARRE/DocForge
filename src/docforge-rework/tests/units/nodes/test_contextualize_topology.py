@@ -101,7 +101,9 @@ def _body(chain_steps: list[dict], keep_raw: bool) -> GroupNodeBlob:
     fragment = ChainFragmentBuilder.build(
         prefix="ctx",
         family="llm",
-        steps=[ChainStepSpec(kind=step["kind"], config=step.get("config", {})) for step in chain_steps],
+        steps=[
+            ChainStepSpec(kind=step["kind"], config=step.get("config", {})) for step in chain_steps
+        ],
         step_inputs={"prompt": FromGroupInput(field_name="prompt")},
         output_field="completion",
         scored=False,  # llm is NON-scored -> escalate on failure only
@@ -128,13 +130,28 @@ def _blob(prep_config: dict, keep_raw: bool, chain_steps: list[dict] | None = No
         "node_type": "group",
         "id": "contextualize_llm",
         "nodes": [
-            {"node_type": "action", "id": "prep", "family": "contextualize", "kind": "llm",
-             "config": prep_config},
-            {"node_type": "foreach", "id": "loop", "item_field": "prompt", "max_concurrency": 4,
-             "over": {"source": "node", "node_id": "prep", "field_name": "prompts"},
-             "body": body.model_dump()},
-            {"node_type": "action", "id": "apply", "family": "contextualize", "kind": "llm_apply",
-             "config": {}},
+            {
+                "node_type": "action",
+                "id": "prep",
+                "family": "contextualize",
+                "kind": "llm",
+                "config": prep_config,
+            },
+            {
+                "node_type": "foreach",
+                "id": "loop",
+                "item_field": "prompt",
+                "max_concurrency": 4,
+                "over": {"source": "node", "node_id": "prep", "field_name": "prompts"},
+                "body": body.model_dump(),
+            },
+            {
+                "node_type": "action",
+                "id": "apply",
+                "family": "contextualize",
+                "kind": "llm_apply",
+                "config": {},
+            },
         ],
         "transitions": [
             {"from_node_id": "prep", "to_node_id": "loop"},
@@ -142,8 +159,10 @@ def _blob(prep_config: dict, keep_raw: bool, chain_steps: list[dict] | None = No
         ],
         "bindings": {
             "prep": {"chunks": {"source": "run", "field_name": "chunks"}},
-            "apply": {"chunks": {"source": "run", "field_name": "chunks"},
-                      "completions": {"source": "node", "node_id": "loop", "field_name": "items"}},
+            "apply": {
+                "chunks": {"source": "run", "field_name": "chunks"},
+                "completions": {"source": "node", "node_id": "loop", "field_name": "items"},
+            },
         },
     }
 
@@ -172,8 +191,13 @@ def test_fail_body_builds_and_validates() -> None:
 
 def test_fallback_chain_topology_builds_and_validates() -> None:
     """A 2-step llm chain (escalate on failure) + keep_raw terminal still validates."""
-    chain = [{"kind": FAKE_LLM_KIND}, {"kind": "openai_compatible",
-              "config": {"base_url": "http://robust", "api_key": "k", "model": "big"}}]
+    chain = [
+        {"kind": FAKE_LLM_KIND},
+        {
+            "kind": "openai_compatible",
+            "config": {"base_url": "http://robust", "api_key": "k", "model": "big"},
+        },
+    ]
     group = PipelineBuilder().build(_blob({"document_scope": "section"}, True, chain))
     assert GraphValidator().validate(group) == []
 
@@ -198,7 +222,9 @@ async def test_prep_emits_one_prompt_per_chunk_in_order() -> None:
 
 async def test_topology_matches_reference_section_scope() -> None:
     """1-step chain + order-correct application + keep_raw in one comparison: new == reference."""
-    new = await _run_new(_blob({"document_scope": "section", "window_chunks": 1}, keep_raw=True), CHUNKS)
+    new = await _run_new(
+        _blob({"document_scope": "section", "window_chunks": 1}, keep_raw=True), CHUNKS
+    )
     assert new is not None
     assert [chunk.context for chunk in new.chunks] == _reference_contexts(CHUNKS)
     # order-correct: each chunk grew with ITS OWN snippet (a mis-order would swap these).

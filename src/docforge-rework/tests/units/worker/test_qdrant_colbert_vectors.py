@@ -47,9 +47,7 @@ def test_to_struct_merges_multivector_into_the_named_vector_dict() -> None:
 
 
 def test_to_struct_omits_colbert_when_multivector_empty() -> None:
-    point = QdrantPoint(
-        point_id="p0", payload={}, dense={VectorNames.CONTENT_DENSE: [1.0]}
-    )
+    point = QdrantPoint(point_id="p0", payload={}, dense={VectorNames.CONTENT_DENSE: [1.0]})
     struct = QdrantIndexApi._to_struct(point)
     assert VectorNames.CONTENT_COLBERT not in struct.vector
 
@@ -83,7 +81,8 @@ async def test_upsert_splits_oversized_colbert_into_multiple_requests() -> None:
     big = [[0.0] * 1024 for _ in range(400)]
     points = [
         QdrantPoint(
-            point_id=f"p{i}", payload={},
+            point_id=f"p{i}",
+            payload={},
             dense={VectorNames.CONTENT_DENSE: [0.0] * 1024},
             multivector={VectorNames.CONTENT_COLBERT: big},
         )

@@ -19,6 +19,7 @@ from config_loader import BgeServerConfig
 
 # ── Request models ────────────────────────────────────────────────────────────
 
+
 class EmbedRequest(BaseModel):
     """
     TEI-compatible request body for POST /embed and POST /embed_sparse.
@@ -116,6 +117,7 @@ class RerankRequest(BaseModel):
 
 
 # ── Response models ───────────────────────────────────────────────────────────
+
 
 class SparseToken(BaseModel):
     """

@@ -65,7 +65,9 @@ class MetagenSkipNode(ActionNode):
         request = data.request
         self.logger.debug(f"Skipping request '{request.request_id}' — fields left absent")
         return MetagenSkipProduces(
-            values=GeneratedValues(request_id=request.request_id, chunk_id=request.chunk_id, values={})
+            values=GeneratedValues(
+                request_id=request.request_id, chunk_id=request.chunk_id, values={}
+            )
         )
 
 

@@ -81,15 +81,21 @@ class ContextualizerLlmNode(ActionNode):
         prompts: list[Prompt] = []
         for index in range(len(chunks)):
             view = ContextualizeViewHelpers.scoped_view(
-                index, chunks, config.document_scope, config.window_chunks,
-                config.max_document_words, full_view,
+                index,
+                chunks,
+                config.document_scope,
+                config.window_chunks,
+                config.max_document_words,
+                full_view,
             )
             messages = ContextualizeViewHelpers.situate_messages(
                 config.system_prompt, view, chunks[index].text
             )
             prompts.append(Prompt(messages=messages))
 
-        self.logger.debug(f"Prepared {len(prompts)} situating prompt(s) over {len(chunks)} chunk(s)")
+        self.logger.debug(
+            f"Prepared {len(prompts)} situating prompt(s) over {len(chunks)} chunk(s)"
+        )
         return ContextualizerLlmProduces(prompts=prompts)
 
 

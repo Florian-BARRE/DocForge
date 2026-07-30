@@ -40,7 +40,9 @@ class FigureRenderConfig(NodeConfig):
 class FigureRenderConsumes(NodeInput):
     """The PDF view (via the ingest result) and the parsed IR locating the figures."""
 
-    ingest: IntakeResult = Field(description="The intake output (the PDF the pages are rendered from).")
+    ingest: IntakeResult = Field(
+        description="The intake output (the PDF the pages are rendered from)."
+    )
     ir: DocumentIR = Field(description="The parsed IR whose figure crops are to be embedded.")
 
 

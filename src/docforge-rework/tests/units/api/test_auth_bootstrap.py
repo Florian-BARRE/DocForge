@@ -14,7 +14,9 @@ async def test_noop_when_auth_disabled(fastapi_app, monkeypatch) -> None:
     monkeypatch.setattr(RUNTIME_CONFIG, "AUTH_ENABLED", False)
     monkeypatch.setattr(RUNTIME_CONFIG, "AUTH_ROOT_TOKEN", "some-token")
     auth = SimpleNamespace(
-        get_user_by_username=AsyncMock(), create_user=AsyncMock(), create_key=AsyncMock(),
+        get_user_by_username=AsyncMock(),
+        create_user=AsyncMock(),
+        create_key=AsyncMock(),
         get_key_by_hash=AsyncMock(),
     )
     monkeypatch.setattr(CONTEXT, "database", SimpleNamespace(auth=auth))
@@ -34,7 +36,9 @@ async def test_noop_when_root_token_empty(fastapi_app, monkeypatch) -> None:
     monkeypatch.setattr(RUNTIME_CONFIG, "AUTH_ENABLED", True)
     monkeypatch.setattr(RUNTIME_CONFIG, "AUTH_ROOT_TOKEN", "")
     auth = SimpleNamespace(
-        get_user_by_username=AsyncMock(), create_user=AsyncMock(), create_key=AsyncMock(),
+        get_user_by_username=AsyncMock(),
+        create_user=AsyncMock(),
+        create_key=AsyncMock(),
         get_key_by_hash=AsyncMock(),
     )
     monkeypatch.setattr(CONTEXT, "database", SimpleNamespace(auth=auth))

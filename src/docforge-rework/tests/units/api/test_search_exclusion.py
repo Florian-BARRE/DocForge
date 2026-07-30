@@ -66,9 +66,7 @@ async def test_hybrid_has_no_exclusion_when_no_disabled_docs(monkeypatch) -> Non
     qdrant.raw.collection_exists = AsyncMock(return_value=True)
     hybrid = AsyncMock(return_value=[])
     monkeypatch.setattr(sf_module.QdrantSearchApi, "hybrid", hybrid)
-    monkeypatch.setattr(
-        sf_module.DocumentApi, "list_disabled_ids", AsyncMock(return_value=[])
-    )
+    monkeypatch.setattr(sf_module.DocumentApi, "list_disabled_ids", AsyncMock(return_value=[]))
     facade = SearchFacade(_postgres_yielding(MagicMock()), qdrant)
 
     # 2. Plain search — no user filters.

@@ -33,7 +33,9 @@ class DocumentListItem(BaseModel):
     id: str = Field(description="The document's UUID.")
     filename: str = Field(description="The uploaded file name.")
     format: str = Field(description="The file extension (pdf, docx, …).")
-    status: DocumentStatus = Field(description="Ingestion lifecycle: pending/processing/done/failed.")
+    status: DocumentStatus = Field(
+        description="Ingestion lifecycle: pending/processing/done/failed."
+    )
     page_count: int | None = Field(default=None, description="Pages once parsed (None before).")
     file_size: int = Field(description="Original size in bytes.")
     created_at: datetime | None = Field(default=None, description="Admission timestamp.")
@@ -59,7 +61,9 @@ class DocumentDetail(BaseModel):
     source_kind: SourceKind = Field(description="Acquisition routing: digital_born/scanned/mixed.")
     status: DocumentStatus = Field(description="Ingestion lifecycle state.")
     source_hash: str = Field(description="Content address of the original bytes (blob key).")
-    pdf_blob_hash: str | None = Field(default=None, description="Canonical PDF view blob (or None).")
+    pdf_blob_hash: str | None = Field(
+        default=None, description="Canonical PDF view blob (or None)."
+    )
     simhash: str | None = Field(default=None, description="Near-duplicate signature (or None).")
     pipeline_version: str = Field(description="Pipeline config identity the run used.")
     created_at: datetime | None = Field(default=None, description="Admission timestamp.")
@@ -76,7 +80,9 @@ class PageInfo(BaseModel):
 
     page_number: int = Field(description="0-based page index (first page = 0).")
     width: float | None = Field(default=None, description="Page width in points (None if unknown).")
-    height: float | None = Field(default=None, description="Page height in points (None if unknown).")
+    height: float | None = Field(
+        default=None, description="Page height in points (None if unknown)."
+    )
     is_scanned: bool = Field(description="Whether this page was routed as image-only (OCR/VLM).")
     language: str | None = Field(default=None, description="Per-page detected language.")
     render_blob_hash: str | None = Field(

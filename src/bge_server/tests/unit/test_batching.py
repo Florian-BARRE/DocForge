@@ -294,6 +294,7 @@ async def test_queue_full_raises_queue_full_error() -> None:
     """
     When the queue is at capacity, submit() raises QueueFullError immediately (no await).
     """
+
     def slow_encode(texts, max_length):
         # Block until the test releases the event — but this runs in to_thread so
         # we just return immediately; the real test is that submit raises before processing

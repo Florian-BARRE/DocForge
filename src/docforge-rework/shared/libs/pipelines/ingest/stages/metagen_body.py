@@ -56,7 +56,9 @@ class MetagenBodyBuilder:
             chain_prefix=cls.CHAIN_PREFIX,
             family=chain.family,
             steps=[
-                ChainStepSpec(kind=step.kind, config=dict(step.config), score_below=step.score_below)
+                ChainStepSpec(
+                    kind=step.kind, config=dict(step.config), score_below=step.score_below
+                )
                 for step in chain.steps
             ],
             group_field=cls.GROUP_FIELD,

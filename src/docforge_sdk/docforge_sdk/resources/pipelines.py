@@ -168,9 +168,7 @@ class AsyncPipelines(AsyncResource, _PipelinesSpecs):
         Returns:
             EditResponse: The edited blob plus validity + issues + described tree.
         """
-        return await self._transport.request(
-            self._edit_spec(key, blob, operations), EditResponse
-        )
+        return await self._transport.request(self._edit_spec(key, blob, operations), EditResponse)
 
     async def view_stages(self, key: str, blob: dict[str, Any]) -> StageViewResponse:
         """

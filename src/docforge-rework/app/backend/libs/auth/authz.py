@@ -157,9 +157,7 @@ class AuthzGuard:
         # 2. A scoped key must own at least one referencing collection.
         permissions = cls.__parse(principal)
         if not any(permissions.grants_collection(cid) for cid in collection_ids):
-            raise HTTPException(
-                status_code=403, detail="API key is not scoped to this resource."
-            )
+            raise HTTPException(status_code=403, detail="API key is not scoped to this resource.")
 
 
 def require(capability: Capability) -> Callable[..., Awaitable[AuthPrincipal]]:

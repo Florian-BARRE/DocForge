@@ -53,7 +53,13 @@ def test_scored_flag_is_auto_derived_from_the_output_face() -> None:
 def test_classifier_exposes_its_five_switch_values() -> None:
     described = NodeRegistry.get("enrich", "figure_classify").describe()
     assert described.scored is True
-    assert set(described.switch_fields["kind"]) == {"photo", "scanned_text", "chart", "diagram", "decorative"}
+    assert set(described.switch_fields["kind"]) == {
+        "photo",
+        "scanned_text",
+        "chart",
+        "diagram",
+        "decorative",
+    }
 
 
 def test_palette_family_modes_match_the_ui_interaction_style() -> None:
@@ -78,7 +84,11 @@ def test_full_palette_carries_run_inputs_mechanics_and_artefacts() -> None:
     full = IngestPipeline.palette(full=True)
     assert [slot.name for slot in full.run_inputs] == ["source", "contract"]
     assert {condition.kind for condition in full.mechanics.conditions} == {
-        "always", "on_success", "on_failure", "score_below", "when_equals",
+        "always",
+        "on_success",
+        "on_failure",
+        "score_below",
+        "when_equals",
     }
     assert "DocumentIR" in full.artefacts
     assert full.artefacts["Chunk"].json_schema["properties"]
@@ -88,7 +98,10 @@ def test_palette_hides_internal_kinds_but_keeps_them_registered() -> None:
     """Internal wiring nodes (prep/apply/skip terminals a stage builder emits) are SELECTABLE=False:
     the discovery palette never offers them as a stage method, yet they stay registered and
     describable for the graph engine."""
-    palette = {family.family: {node.kind for node in family.nodes} for family in IngestPipeline.palette().families}
+    palette = {
+        family.family: {node.kind for node in family.nodes}
+        for family in IngestPipeline.palette().families
+    }
     internal = {
         "metagen": {"chunk_prep", "document_prep", "chunk_apply", "document_apply", "metagen_skip"},
         "contextualize": {"llm_apply", "keep_raw"},
@@ -111,7 +124,17 @@ def test_selectable_defaults_true_for_a_user_facing_method() -> None:
 def test_default_blob_covers_all_stages_and_validates_clean() -> None:
     blob = IngestPipeline.default_blob()
     ids = [node.id for node in blob.nodes]
-    for expected in ("probe", "parse", "per_figure", "chunk", "ctx_breadcrumb", "meta_chunk_prep", "meta_doc_apply", "embed", "bundle"):
+    for expected in (
+        "probe",
+        "parse",
+        "per_figure",
+        "chunk",
+        "ctx_breadcrumb",
+        "meta_chunk_prep",
+        "meta_doc_apply",
+        "embed",
+        "bundle",
+    ):
         assert expected in ids, expected
     issues = GraphValidator().validate(PipelineBuilder().build(blob))
     assert issues == [], issues

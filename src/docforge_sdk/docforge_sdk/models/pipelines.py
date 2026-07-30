@@ -66,7 +66,8 @@ class PipelineDesignResponse(BaseModel):
     palette: dict[str, Any] = Field(description="Available blocks per family (opaque engine JSON).")
     blob: dict[str, Any] = Field(description="The editable pipeline graph (opaque engine JSON).")
     issues: list[dict[str, Any]] = Field(
-        default_factory=list, description="Validation problems of the blob (opaque; empty = healthy)."
+        default_factory=list,
+        description="Validation problems of the blob (opaque; empty = healthy).",
     )
 
 

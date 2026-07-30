@@ -77,7 +77,9 @@ class FakeVlm(BaseVlmNode):
 
 
 async def test_vlm_base_flow_composes_prompt_and_closes_the_entry() -> None:
-    node = FakeVlm(id="v", config=BaseVlmConfig(system_prompt="Read this chart.", extract_table=True))
+    node = FakeVlm(
+        id="v", config=BaseVlmConfig(system_prompt="Read this chart.", extract_table=True)
+    )
     figure = FigureItem(block_id="fig1", image=b"png", kind="chart", read_text="ocr said: hello")
     out = await node.run(VlmConsumes(figure=figure))
     assert out.entry.block_id == "fig1"

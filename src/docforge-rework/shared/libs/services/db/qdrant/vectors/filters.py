@@ -15,12 +15,12 @@ from typing import Any
 class PayloadType(StrEnum):
     """How a filterable field is indexed in Qdrant (drives which filters it supports)."""
 
-    KEYWORD = "keyword"    # string / keyword_list → exact match, set membership
-    INTEGER = "integer"    # integer → exact match, range
-    FLOAT = "float"        # float → range
-    BOOL = "bool"          # boolean → exact match
+    KEYWORD = "keyword"  # string / keyword_list → exact match, set membership
+    INTEGER = "integer"  # integer → exact match, range
+    FLOAT = "float"  # float → range
+    BOOL = "bool"  # boolean → exact match
     DATETIME = "datetime"  # datetime → range
-    TEXT = "text"          # long text → full-text match (tokenised index)
+    TEXT = "text"  # long text → full-text match (tokenised index)
 
 
 @dataclass(slots=True)

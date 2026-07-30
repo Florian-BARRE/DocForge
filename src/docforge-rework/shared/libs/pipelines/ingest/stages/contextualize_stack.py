@@ -22,7 +22,10 @@ from .state import PipelineState
 
 # Human ids for the stock stack nodes, so the default stack keeps its historical ids byte-for-byte.
 _CTX_IDS = {
-    "doc_meta": "ctx_meta", "breadcrumb": "ctx_breadcrumb", "sliding": "ctx_sliding", "llm": "ctx_llm",
+    "doc_meta": "ctx_meta",
+    "breadcrumb": "ctx_breadcrumb",
+    "sliding": "ctx_sliding",
+    "llm": "ctx_llm",
 }
 _LLM_KIND = "llm"
 
@@ -99,16 +102,21 @@ class ContextualizeStack:
         # 1. A simple method is one node: head == tail, its chunks output anchors the next slot.
         if method.kind != _LLM_KIND:
             return StackPosition(
-                method=method, head_id=base, tail_id=base,
+                method=method,
+                head_id=base,
+                tail_id=base,
                 output=FromNode(node_id=base, field_name="chunks"),
             )
         # 2. The llm method externalises into prep(base) → loop → apply; the loop/apply ids derive
         #    from the (unique) base, so repeating the method keeps them distinct too.
         loop_id, apply_id = f"{base}_loop", f"{base}_apply"
         return StackPosition(
-            method=method, head_id=base, tail_id=apply_id,
+            method=method,
+            head_id=base,
+            tail_id=apply_id,
             output=FromNode(node_id=apply_id, field_name="chunks"),
-            loop_id=loop_id, apply_id=apply_id,
+            loop_id=loop_id,
+            apply_id=apply_id,
             chain=method.chain or cls.__default_chain(),
             on_error=cls.__on_error(method.config),
         )

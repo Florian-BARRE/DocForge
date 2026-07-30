@@ -23,7 +23,9 @@ class StructGenConfig(NodeConfig):
     api_key: str = Field(default="", description="API key override; empty = the request's key.")
     model: str = Field(default="", description="Model override; empty = the request's model.")
     timeout_seconds: float = Field(
-        default=0.0, ge=0.0, description="Per-request timeout override (s); 0 = the request's timeout."
+        default=0.0,
+        ge=0.0,
+        description="Per-request timeout override (s); 0 = the request's timeout.",
     )
 
 

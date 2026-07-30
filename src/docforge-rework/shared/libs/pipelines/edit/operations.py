@@ -103,7 +103,9 @@ class SetCondition(BaseModel):
     op: Literal["set_condition"] = "set_condition"
     from_node_id: str = Field(description="Source node of the transition to re-gate.")
     to_node_id: str = Field(description="Target node of the transition to re-gate.")
-    condition: Condition = Field(description="The new condition (always/on_*/score_below/when_equals).")
+    condition: Condition = Field(
+        description="The new condition (always/on_*/score_below/when_equals)."
+    )
     container: list[str] = _CONTAINER
 
 

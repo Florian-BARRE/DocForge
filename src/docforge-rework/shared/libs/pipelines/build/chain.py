@@ -159,7 +159,8 @@ class ChainFragmentBuilder:
                 if scored:
                     transitions.append(
                         Transition(
-                            from_node_id=current_id, to_node_id=next_id,
+                            from_node_id=current_id,
+                            to_node_id=next_id,
                             condition=ScoreBelow(threshold=step.score_below),
                         )
                     )
@@ -186,8 +187,7 @@ class ChainFragmentBuilder:
             return FromNode(node_id=step_ids[0], field_name=output_field)
         return FromFirst(
             candidates=[
-                FromNode(node_id=step_id, field_name=output_field)
-                for step_id in reversed(step_ids)
+                FromNode(node_id=step_id, field_name=output_field) for step_id in reversed(step_ids)
             ]
         )
 

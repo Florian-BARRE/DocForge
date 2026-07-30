@@ -20,8 +20,8 @@ class SourceKind(StrEnum):
     """How the document's content is carried — the S0 routing decision."""
 
     DIGITAL_BORN = "digital_born"  # extractable text (native PDF/office)
-    SCANNED = "scanned"            # image-only pages → OCR/VLM
-    MIXED = "mixed"                # some pages each
+    SCANNED = "scanned"  # image-only pages → OCR/VLM
+    MIXED = "mixed"  # some pages each
 
 
 class DocumentStatus(StrEnum):

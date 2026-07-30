@@ -31,7 +31,9 @@ def temp_collection(api_client):
 
     def _create(**overrides) -> dict:
         payload = {
-            "name": _unique_name("live"), "supported_formats": ["pdf"], "max_file_size_bytes": 5_000_000,
+            "name": _unique_name("live"),
+            "supported_formats": ["pdf"],
+            "max_file_size_bytes": 5_000_000,
         }
         payload.update(overrides)
         response = api_client.post("/api/v1/collections", json=payload)
@@ -46,11 +48,15 @@ def temp_collection(api_client):
         api_client.delete(f"/api/v1/collections/{collection_id}")
 
 
-def test_stages_apply_result_can_be_patched_onto_a_real_collection(api_client, temp_collection) -> None:
+def test_stages_apply_result_can_be_patched_onto_a_real_collection(
+    api_client, temp_collection
+) -> None:
     collection = temp_collection()  # pipeline omitted -> product default blob
     stock_blob = collection["pipeline"]
 
-    view_response = api_client.post("/api/v1/pipelines/ingest/stages/view", json={"blob": stock_blob})
+    view_response = api_client.post(
+        "/api/v1/pipelines/ingest/stages/view", json={"blob": stock_blob}
+    )
     assert view_response.status_code == 200, view_response.text
     assert view_response.json()["valid"] is True
 
@@ -64,7 +70,9 @@ def test_stages_apply_result_can_be_patched_onto_a_real_collection(api_client, t
     new_blob = apply_body["blob"]
     assert not any(n["id"] == "embed" for n in new_blob["nodes"])
 
-    patch_response = api_client.patch(f"/api/v1/collections/{collection['id']}", json={"pipeline": new_blob})
+    patch_response = api_client.patch(
+        f"/api/v1/collections/{collection['id']}", json={"pipeline": new_blob}
+    )
     assert patch_response.status_code == 200, patch_response.text
     assert not any(n["id"] == "embed" for n in patch_response.json()["pipeline"]["nodes"])
 
@@ -86,7 +94,9 @@ def uploaded_document(api_client, temp_collection):
         # provisioned (GET / lists zero buckets), so PutObject is rejected before the admission
         # transaction ever runs. Xfail rather than fail the suite — an infra/bucket-provisioning
         # task for the `infra` agent, out of scope for a test-only pass. See [[port-scratchpad-gap-plan]].
-        pytest.xfail("S3 bucket not provisioned on this live stack — PutObject returns AccessDenied")
+        pytest.xfail(
+            "S3 bucket not provisioned on this live stack — PutObject returns AccessDenied"
+        )
     assert response.status_code == 202, response.text
     return collection, response.json(), pdf_bytes
 
@@ -98,7 +108,9 @@ def test_upload_returns_202_with_document_and_job_ids(uploaded_document) -> None
     assert body["job_id"]
 
 
-def test_duplicate_upload_is_flagged_and_returns_the_existing_document(api_client, uploaded_document) -> None:
+def test_duplicate_upload_is_flagged_and_returns_the_existing_document(
+    api_client, uploaded_document
+) -> None:
     collection, first_body, pdf_bytes = uploaded_document
     second = api_client.post(
         "/api/v1/documents",
