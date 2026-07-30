@@ -116,29 +116,47 @@ button { letter-spacing: 0.005em; }
 .df-rise { animation: df-rise 0.5s cubic-bezier(0.22, 1, 0.36, 1) both; }
 @media (prefers-reduced-motion: reduce) { .df-rise { animation: none; } }
 
-/* DocForge mark — the molten-drip signature. One cycle: lava beads off the spout, falls onto
-   the layers, and each orange vector strikes alight in a top→down cascade. See docs/brand.md. */
-.forge-el { transform-box: fill-box; transform-origin: center; }
-/* The bead of lava falling from the pour-lip onto the first layer. */
-@keyframes forge-drip {
-  0%, 10%  { transform: translateY(-1px) scale(0.6); opacity: 0; }
-  22%      { transform: translateY(0) scale(1);      opacity: 1; }
-  62%      { transform: translateY(4.5px) scale(1);  opacity: 1; }
-  80%,100% { transform: translateY(6px) scale(0.7);  opacity: 0; }
+/* DocForge mark — the molten-casting signature. One cycle: metal pours off the document in a
+   molten strand, a bead pinches off and falls onto the layers, then the strand reconstructs and
+   reboucle; meanwhile a single spark of heat travels dot-to-dot along the vectors — the LIT one
+   moves, it never just blinks in place. See docs/brand.md. */
+.forge-el   { transform-box: fill-box; transform-origin: center; }
+.forge-pour { transform-box: fill-box; transform-origin: center top; }
+.forge-dot  { transform-box: fill-box; transform-origin: center; }
+
+/* The molten strand: pours down from the lip, then retracts and rebuilds. */
+@keyframes forge-pour {
+  0%   { transform: scaleY(0);    opacity: 0.85; }
+  26%  { transform: scaleY(1);    opacity: 1; }
+  56%  { transform: scaleY(1);    opacity: 1; }
+  70%  { transform: scaleY(0.12); opacity: 0.7; }
+  100% { transform: scaleY(0);    opacity: 0.85; }
+}
+/* The bead that pinches off the strand and falls onto the first layer. */
+@keyframes forge-bead {
+  0%, 24%   { transform: translateY(0) scale(0.5);   opacity: 0; }
+  34%       { transform: translateY(0) scale(1);     opacity: 1; }
+  62%       { transform: translateY(6px) scale(0.95); opacity: 1; }
+  74%, 100% { transform: translateY(7.5px) scale(0.5); opacity: 0; }
 }
 /* The pour-lip + drip cups glow molten as the metal runs. */
-@keyframes forge-spout { 0%,100% { opacity: 0.72; } 50% { opacity: 1; } }
-/* A vector catching the heat — flares, then settles. */
-@keyframes forge-strike {
-  0%, 55%, 100% { transform: scale(1);   opacity: 0.92; }
-  70%           { transform: scale(1.75); opacity: 1; }
-  82%           { transform: scale(1);   opacity: 0.92; }
+@keyframes forge-spout { 0%, 100% { opacity: 0.72; } 50% { opacity: 1; } }
+/* A single travelling spark: each dot flares to accent at the head of its cycle, then cools back
+   to steel — staggered by negative delay so the hot point sweeps the grid. */
+@keyframes forge-glow {
+  0%   { fill: var(--accent);    transform: scale(1.4); }
+  9%   { fill: var(--accent);    transform: scale(1.22); }
+  26%  { fill: var(--text-mute); transform: scale(1); }
+  100% { fill: var(--text-mute); transform: scale(1); }
 }
-.forge-anim .forge-drip   { animation: forge-drip   2.6s cubic-bezier(0.5, 0, 0.7, 1) infinite; }
-.forge-anim .forge-spout  { animation: forge-spout  2.6s ease-in-out infinite; }
-.forge-anim .forge-strike { animation: forge-strike 2.6s ease-out infinite; }
-.forge-anim .forge-strike.s2 { animation-delay: 0.16s; }
-.forge-anim .forge-strike.s3 { animation-delay: 0.32s; }
+.forge-anim .forge-pour { animation: forge-pour 2.8s ease-in-out infinite; }
+.forge-anim .forge-bead { animation: forge-bead 2.8s cubic-bezier(0.5, 0, 0.7, 1) infinite; }
+.forge-anim .forge-spout { animation: forge-spout 2.8s ease-in-out infinite; }
+.forge-anim .forge-dot  { animation: forge-glow 2.8s linear infinite; }
 @media (prefers-reduced-motion: reduce) {
-  .forge-anim .forge-drip, .forge-anim .forge-spout, .forge-anim .forge-strike { animation: none; }
+  .forge-anim .forge-pour, .forge-anim .forge-bead,
+  .forge-anim .forge-spout, .forge-anim .forge-dot { animation: none; }
+  .forge-anim .forge-pour, .forge-anim .forge-bead { opacity: 0; }
+  .forge-anim .forge-dot { fill: var(--text-mute); }
+  .forge-anim .forge-dot.c { fill: var(--accent); }
 }

@@ -10,10 +10,19 @@ import { theme as t } from "../theme";
 interface ForgeMarkProps {
   /** Rendered edge length in px (the art is a 96×96 square). */
   size?: number;
-  /** Run the molten-drip loop. Off renders the mark at rest (used for icons/favicons). */
+  /** Run the molten-casting loop. Off renders the mark at rest (used for icons/favicons). */
   animated?: boolean;
   title?: string;
 }
+
+/** Vectors in a snake path (→ ← →) so the travelling spark sweeps continuously; `c` marks the
+ *  three canonical embers kept lit when motion is off. */
+const DOTS: { x: number; y: number; c?: boolean }[] = [
+  { x: 28, y: 60 }, { x: 42, y: 60 }, { x: 56, y: 60, c: true }, { x: 70, y: 60 },
+  { x: 70, y: 76 }, { x: 56, y: 76 }, { x: 42, y: 76, c: true }, { x: 28, y: 76 },
+  { x: 28, y: 91, c: true }, { x: 42, y: 91 }, { x: 56, y: 91 }, { x: 70, y: 91 },
+];
+const CYCLE = 2.8;
 
 export function ForgeMark({ size = 30, animated = true, title = "DocForge" }: ForgeMarkProps) {
   const paper = t.color.panel;
@@ -45,25 +54,27 @@ export function ForgeMark({ size = 30, animated = true, title = "DocForge" }: Fo
         <path d="M34 38 v6 a3.5 3.5 0 0 0 7 0 v-6 Z M52 38 v8 a3.5 3.5 0 0 0 7 0 v-8 Z" fill={accent} />
       </g>
 
-      {/* The falling bead of lava. */}
-      <circle cx="47" cy="49" r="2.6" fill={ember} className="forge-el forge-drip" />
+      {/* The molten strand pouring from the lip, and the bead that pinches off it. */}
+      <rect x="45.4" y="44" width="3.2" height="9" rx="1.6" fill={accent} className={animated ? "forge-pour" : undefined} />
+      {animated && <circle cx="47" cy="52" r="2.5" fill={ember} className="forge-el forge-bead" />}
 
       {/* Three layer shelves — where the melt casts into vectors. */}
       <rect x="16" y="54" width="64" height="12" rx="3" fill={paper} stroke={ink} strokeWidth={3.5} />
       <rect x="16" y="70" width="64" height="12" rx="3" fill={paper} stroke={ink} strokeWidth={3.5} />
       <rect x="16" y="86" width="64" height="10" rx="3" fill={paper} stroke={ink} strokeWidth={3.5} />
 
-      {/* Vectors at rest. */}
-      <g fill={steel}>
-        <circle cx="28" cy="60" r="2.8" /><circle cx="42" cy="60" r="2.8" /><circle cx="70" cy="60" r="2.8" />
-        <circle cx="28" cy="76" r="2.8" /><circle cx="56" cy="76" r="2.8" /><circle cx="70" cy="76" r="2.8" />
-        <circle cx="42" cy="91" r="2.6" /><circle cx="56" cy="91" r="2.6" /><circle cx="70" cy="91" r="2.6" />
-      </g>
-
-      {/* The struck vectors — one per shelf, flaring in a top→down cascade. */}
-      <circle cx="56" cy="60" r="2.8" fill={accent} className="forge-el forge-strike" />
-      <circle cx="42" cy="76" r="2.8" fill={accent} className="forge-el forge-strike s2" />
-      <circle cx="28" cy="91" r="2.6" fill={accent} className="forge-el forge-strike s3" />
+      {/* Vectors — a single spark of heat travels along them (see index.css). */}
+      {DOTS.map((d, i) => (
+        <circle
+          key={i}
+          cx={d.x}
+          cy={d.y}
+          r={d.y === 91 ? 2.6 : 2.8}
+          fill={!animated && d.c ? accent : steel}
+          className={animated ? `forge-dot${d.c ? " c" : ""}` : undefined}
+          style={animated ? { animationDelay: `${(-(i / DOTS.length) * CYCLE).toFixed(3)}s` } : undefined}
+        />
+      ))}
     </svg>
   );
 }
