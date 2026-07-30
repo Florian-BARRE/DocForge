@@ -143,9 +143,15 @@ sent as `Authorization: Bearer <token>` on every request.
 client = AsyncClient("https://docforge.example.com", api_token="df_...")
 ```
 
-Keys are **scoped**: a key carries a set of capabilities (`read`, `write`, `search`, `admin`) and an
-optional allow-list of collection ids. The root token created at server bootstrap has full access;
-mint narrower keys with [`client.auth`](#auth) (see [Manage API keys](#manage-api-keys)).
+Keys are **scoped**: a key carries a set of capabilities (`read`, `write`, `search`, `create`,
+`admin`) and an optional allow-list of collection ids. The root token created at server bootstrap
+has full access; mint narrower keys with [`client.auth`](#auth) (see [Manage API keys](#manage-api-keys)).
+
+A key holding **`create`** may create new collections, and is **auto-granted ownership** of what it
+creates: the new collection's id is appended to that key's own scope, so a single key can be given
+"may create collections + full power over the ones it creates" without knowing ids in advance — the
+natural setup for driving DocForge from an agent (e.g. over MCP). Pair it with a narrow,
+`search`-only key scoped to one collection for your app's runtime.
 
 ## Resources & methods
 

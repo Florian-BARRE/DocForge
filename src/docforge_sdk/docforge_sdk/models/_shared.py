@@ -17,6 +17,7 @@ class Capability(StrEnum):
     READ = "read"
     WRITE = "write"
     SEARCH = "search"
+    CREATE = "create"
     ADMIN = "admin"
 
 

@@ -22,7 +22,7 @@ from shared_libs.services.db.qdrant import RESERVED_PAYLOAD_KEYS
 
 # ====== Local Project Imports ======
 from ...context import CONTEXT
-from ...libs.auth import Capability, require
+from ...libs.auth import AuthPrincipal, Capability, KeyPermissions, require
 from ...utils.error_handling import auto_handle_errors
 from ...utils.pipeline_validation import PipelineBlobValidator
 from ...utils.search_blob_validation import SearchBlobValidator
@@ -186,12 +186,18 @@ async def get_collection(collection_id: uuid.UUID) -> CollectionModel:
     "",
     response_model=CollectionModel,
     status_code=201,
-    dependencies=[Depends(require(Capability.WRITE))],
 )
 @auto_handle_errors
-async def create_collection(request: CreateCollectionRequest) -> CollectionModel:
+async def create_collection(
+    request: CreateCollectionRequest,
+    principal: AuthPrincipal = Depends(require(Capability.CREATE)),
+) -> CollectionModel:
     """
     Create a collection from A to Z — contract + full schema + pipeline blob.
+
+    Requires the CREATE capability. A scoped key that creates a collection is auto-granted ownership
+    of it: the new id is appended to the key's own ``collections`` scope, so the same key can then
+    fully manage what it just created (per its other capabilities) without knowing ids in advance.
 
     Returns:
         CollectionModel: The created contract (201); 409 on name clash, 422 on bad
@@ -237,8 +243,34 @@ async def create_collection(request: CreateCollectionRequest) -> CollectionModel
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
+
+    # 4. Ownership: a scoped, list-scoped key that just created this collection is granted access to
+    #    it by appending the id to its own scope (root / wildcard keys already cover everything).
+    await _grant_creator_scope(principal, str(created.id))
+
     CONTEXT.logger.info(f"Collection '{request.name}' created ({len(rows)} fields)")
     return _to_model(created, await CONTEXT.database.collections.get_schema(created.id))
+
+
+async def _grant_creator_scope(principal: AuthPrincipal, collection_id: str) -> None:
+    """
+    Append a freshly created collection's id to the creating key's own scope.
+
+    No-op for the full-access principal (auth off / root key) and for wildcard-scoped keys, which
+    already cover every collection. Only a list-scoped key needs (and gets) the new id.
+
+    Args:
+        principal (AuthPrincipal): The authenticated creator.
+        collection_id (str): The new collection's id to bring into the key's scope.
+    """
+    key = principal.key
+    if principal.is_full_access or key is None or key.permissions is None:
+        return
+    scope = KeyPermissions.model_validate(key.permissions)
+    if "*" in scope.collections or collection_id in scope.collections:
+        return
+    scope.collections.append(collection_id)
+    await CONTEXT.database.auth.update_key_permissions(key.id, scope.model_dump(mode="json"))
 
 
 @router.patch(

@@ -6,6 +6,7 @@
 # ====== Standard Library Imports ======
 import uuid
 from datetime import datetime
+from typing import Any
 
 # ====== Third-Party Library Imports ======
 from sqlalchemy import select, update
@@ -101,6 +102,15 @@ class AuthApi:
         key = await session.get(ApiKey, key_id)
         if key is not None:
             key.revoked_at = at
+
+    @staticmethod
+    async def update_key_permissions(
+        session: AsyncSession, key_id: uuid.UUID, permissions: dict[str, Any]
+    ) -> None:
+        """Replace a key's permissions JSONB (targeted update; no-op when the key is gone)."""
+        key = await session.get(ApiKey, key_id)
+        if key is not None:
+            key.permissions = permissions
 
     @staticmethod
     async def touch_key_last_used(session: AsyncSession, key_id: uuid.UUID, at: datetime) -> None:

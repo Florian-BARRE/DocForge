@@ -24,6 +24,10 @@ class Capability(StrEnum):
     READ = "read"
     WRITE = "write"
     SEARCH = "search"
+    # CREATE gates collection creation specifically. A scoped key that holds it gains ownership of
+    # what it creates: the new collection's id is appended to its own `collections` scope, so a key
+    # need not know ids up front to be given "may create + full power over what it creates".
+    CREATE = "create"
     ADMIN = "admin"
 
 

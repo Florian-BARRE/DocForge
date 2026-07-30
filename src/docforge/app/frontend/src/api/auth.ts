@@ -6,10 +6,10 @@ import { apiFetch, jsonInit } from "./http";
 
 const BASE = "/api/v1/auth/keys";
 
-export type ApiCapability = "read" | "write" | "search" | "admin";
+export type ApiCapability = "read" | "write" | "search" | "create" | "admin";
 
 /** Canonical value list — the capability checkboxes render from this, never an inline literal. */
-export const API_CAPABILITIES: ApiCapability[] = ["read", "write", "search", "admin"];
+export const API_CAPABILITIES: ApiCapability[] = ["read", "write", "search", "create", "admin"];
 
 /** `collections: ["*"]` means every collection; otherwise an explicit list of collection UUIDs. */
 export interface KeyPermissions {

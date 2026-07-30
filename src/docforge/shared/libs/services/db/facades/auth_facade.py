@@ -6,6 +6,7 @@
 # ====== Standard Library Imports ======
 import uuid
 from datetime import datetime
+from typing import Any
 
 # ====== Internal Project Imports ======
 from loggerplusplus import LoggerClass
@@ -68,6 +69,11 @@ class AuthFacade(LoggerClass):
         """Soft-revoke an API key."""
         async with self._postgres.session() as session:
             await AuthApi.revoke_key(session, key_id, at)
+
+    async def update_key_permissions(self, key_id: uuid.UUID, permissions: dict[str, Any]) -> None:
+        """Replace a key's stored permission scope (used to grant ownership of a created collection)."""
+        async with self._postgres.session() as session:
+            await AuthApi.update_key_permissions(session, key_id, permissions)
 
     async def touch_key_last_used(self, key_id: uuid.UUID, at: datetime) -> None:
         """Record a key's last successful authentication (own session, targeted UPDATE)."""
