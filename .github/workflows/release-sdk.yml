@@ -1,25 +1,26 @@
 # ============================================================================
 # Release workflow for the `docforge-sdk` package (src/docforge_sdk).
 #
-# Publishes to PyPI via Trusted Publishing (OIDC) — NO API token is stored in
-# the repository. Authentication is brokered by GitHub's OIDC identity and a
-# trusted-publisher configuration on PyPI.
+# NOTHING PUBLISHES UNLESS THE FULL QUALITY GATE IS GREEN. The `publish` job `needs` the reusable
+# `gate` (format + lint + type-check + every package's unit suite + frontend build + SDK↔backend
+# OpenAPI coherence) — the SAME gate that guards every merge. So a tag on a broken or
+# backend-incompatible tree runs the gate, fails, and never reaches the publish step.
+#
+# Publishing goes to PyPI via Trusted Publishing (OIDC) — NO API token is stored in the repo.
 #
 # ---------------------------------------------------------------------------
 # ONE-TIME MANUAL SETUP (maintainer, before the first release):
-#   1. Reserve the project name `docforge-sdk` on PyPI.
-#   2. In the PyPI project's "Publishing" settings, add a GitHub trusted
-#      publisher with EXACTLY these values:
+#   1. Reserve the project name `docforge-sdk` on PyPI (or let the first successful publish claim it).
+#   2. In the PyPI project's "Publishing" settings, add a GitHub trusted publisher with EXACTLY:
 #        - Owner:            Florian-BARRE
 #        - Repository:       docforge
 #        - Workflow name:    release-sdk.yml
 #        - Environment:      pypi
-#   3. (Recommended) Create a GitHub Environment named `pypi` on this repo.
+#   3. Create a GitHub Environment named `pypi` on this repo.
 #
 # HOW TO RELEASE:
-#   Tag a commit with the `sdk-v<version>` prefix (dedicated so it never fires
-#   for other packages in this monorepo) and push it. The version MUST match
-#   `docforge_sdk/_version.py`; a guard step fails the run on mismatch.
+#   Tag a commit with `sdk-v<version>` (dedicated prefix so it never fires for other packages) and
+#   push it. The version MUST match docforge_sdk/_version.py; a guard step fails the run on mismatch.
 #     git tag sdk-v0.1.0 && git push origin sdk-v0.1.0
 # ============================================================================
 
@@ -31,7 +32,13 @@ on:
       - "sdk-v*"
 
 jobs:
+  # 1. Run the exact same gate that guards every merge — the publish job depends on it.
+  gate:
+    uses: ./.github/workflows/gate.yml
+
+  # 2. Build + publish, ONLY after the gate is fully green.
   publish:
+    needs: gate
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
@@ -45,8 +52,8 @@ jobs:
         uses: astral-sh/setup-uv@v5
 
       - name: Verify tag matches the package version
-        # Fail fast if the pushed tag disagrees with _version.py, so a mistagged
-        # release can never publish a mismatched artifact.
+        # Fail fast if the pushed tag disagrees with _version.py, so a mistagged release can never
+        # publish a mismatched artifact.
         run: |
           set -euo pipefail
           pkg_version="$(grep -oP '__version__\s*=\s*"\K[^"]+' src/docforge_sdk/docforge_sdk/_version.py)"

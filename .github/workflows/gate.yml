@@ -1,0 +1,156 @@
+# ============================================================================
+# Reusable QUALITY GATE — the single source of truth for "is this tree shippable".
+#
+# Called by:
+#   - ci.yml         (every push + PR)         → gate must be green to merge.
+#   - release-sdk.yml (a pushed sdk-v* tag)     → publish `needs` this gate, so a
+#                                                 broken/incompatible tree can NEVER publish.
+#
+# It gates EVERY package in this monorepo — format + lint + type-check + full unit
+# suite — plus the frontend build and the SDK↔backend OpenAPI coherence check. Fully
+# serviceless: all unit suites mock their stores, so no service containers, no docker
+# builds, and no `-m live` test (which needs a running API) ever run here.
+# ============================================================================
+
+name: gate
+
+on:
+  workflow_call:
+
+jobs:
+  docforge-rework:
+    # The v2 graph engine + app/worker. No mypy dev dep here by design (ruff is the enforced
+    # linter for this package — see its pyproject.toml). Format + lint + mocked unit suite.
+    name: docforge-rework — format + lint + tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/docforge-rework
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Sync dependencies (locked)
+        run: uv sync --frozen
+      - name: Format check (ruff format --check)
+        run: uv run ruff format --check .
+      - name: Lint (ruff check)
+        run: uv run ruff check .
+      - name: Unit suite (serviceless)
+        # Units mock every store; the real-OCR test auto-skips without the worker group.
+        run: uv run pytest tests/units -q
+
+  python-packages:
+    # Uniform gate for the two lean Python packages: format + lint + mypy + tests.
+    # Matrixed because the commands are identical modulo working directory / mypy target / pytest args.
+    name: ${{ matrix.name }} — format + lint + mypy + tests
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: docforge_sdk
+            working-directory: src/docforge_sdk
+            mypy-target: "--strict docforge_sdk"
+            pytest-args: -q -m "not live"
+          - name: mcp
+            # mcp depends on docforge_sdk via a [tool.uv.sources] path source (../docforge_sdk);
+            # both live in the same checkout, so `uv sync --frozen` resolves it with no extra steps.
+            working-directory: src/mcp
+            mypy-target: "."
+            pytest-args: -q
+    defaults:
+      run:
+        working-directory: ${{ matrix.working-directory }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Sync dependencies (locked)
+        run: uv sync --frozen
+      - name: Format check (ruff format --check)
+        run: uv run ruff format --check .
+      - name: Lint (ruff check)
+        run: uv run ruff check .
+      - name: Type check (mypy)
+        run: uv run mypy ${{ matrix.mypy-target }}
+      - name: Unit suite
+        run: uv run pytest ${{ matrix.pytest-args }}
+
+  bge-server:
+    # Its own job (not folded into the matrix) because of its ML dependency cost: FlagEmbedding
+    # is a hard dep and unconditionally pulls torch. The `cpu` extra steers uv to the CPU wheel
+    # index (~200 MB) instead of the default CUDA build (~5 GB). `--no-sync` on later steps pins
+    # the env so `uv run` can't silently re-resolve torch back to CUDA. Units are fully mocked, so
+    # torch is a sync-time cost only, never an import-time one.
+    name: bge_server — format + lint + mypy + tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/bge_server
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Sync dependencies (locked, CPU torch)
+        run: uv sync --frozen --extra cpu
+      - name: Format check (ruff format --check)
+        run: uv run --no-sync ruff format --check .
+      - name: Lint (ruff check)
+        run: uv run --no-sync ruff check .
+      - name: Type check (mypy)
+        run: uv run --no-sync mypy .
+      - name: Unit suite
+        run: uv run --no-sync pytest -q
+
+  frontend:
+    name: frontend — tsc + build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/docforge-rework/app/frontend
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: src/docforge-rework/app/frontend/package-lock.json
+      - name: Install (locked)
+        run: npm ci
+      - name: Build (tsc --noEmit && vite build)
+        run: npm run build
+
+  sdk-parity:
+    # Coherence gate: the docforge-sdk models + committed OpenAPI snapshot MUST match the backend's
+    # CURRENT schema, or this job goes RED — SDK/backend drift can never merge (nor publish). The
+    # backend openapi is produced serviceless (FastAPI .openapi() only introspects routes; store
+    # clients connect lazily), placeholder config from the committed .env.example.
+    name: sdk-parity — SDK↔backend OpenAPI drift
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Dump the backend's current OpenAPI (serviceless)
+        working-directory: src/docforge-rework
+        run: |
+          set -a; grep -vE '^\s*#|^\s*$' ../../services/docforge-rework/.env.example > /tmp/ci.env; . /tmp/ci.env; set +a
+          export LOGGING_ENABLE_CONSOLE=false LOGGING_ENABLE_FILE=false
+          uv sync --frozen
+          uv run python app/scripts/dump_openapi.py > /tmp/current_openapi.json
+          python -c "import json; print('schemas:', len(json.load(open('/tmp/current_openapi.json'))['components']['schemas']))"
+      - name: Fail on SDK↔backend schema drift
+        working-directory: src/docforge_sdk
+        run: |
+          uv sync --frozen
+          uv run python tests/check_schema_drift.py /tmp/current_openapi.json
