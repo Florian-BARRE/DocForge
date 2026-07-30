@@ -89,6 +89,20 @@ class _TransportBase:
         """
         return f"{self._api_root}{path}"
 
+    def _bare_url(self, path: str) -> str:
+        """
+        Build the absolute URL for a path mounted at the bare origin (outside ``/api/v1``).
+
+        Used only by the public, un-versioned routes such as ``/health``.
+
+        Args:
+            path (str): The path relative to the origin (leading slash included).
+
+        Returns:
+            str: The fully-qualified request URL, without the API version prefix.
+        """
+        return f"{self._root}{path}"
+
     def _raise_for_status(self, response: httpx.Response) -> None:
         """
         Map any 4xx/5xx response to the matching SDK exception.

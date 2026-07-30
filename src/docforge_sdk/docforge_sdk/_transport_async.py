@@ -87,6 +87,26 @@ class AsyncTransport(_TransportBase):
         self._raise_for_status(response)
         return self._parse(response, model)
 
+    async def request_bare(self, spec: RequestSpec, model: type[T]) -> T:
+        """
+        Execute a request spec against the BARE origin (outside ``/api/v1``) and parse it.
+
+        Mirrors ``request`` but targets an un-versioned route (e.g. the public ``/health`` probe).
+
+        Args:
+            spec (RequestSpec): The request description (its path is origin-relative).
+            model (type[T]): The target type to validate the response into.
+
+        Returns:
+            T: The validated response model.
+        """
+        response = await self._send(
+            spec.method, self._bare_url(spec.path), params=self._clean(spec.params), json=spec.json,
+            files=spec.files,
+        )
+        self._raise_for_status(response)
+        return self._parse(response, model)
+
     async def upload(self, path: str, files: Any, data: Any, model: type[T]) -> T:
         """
         Send a multipart upload and validate the response into the target model.
@@ -117,6 +137,22 @@ class AsyncTransport(_TransportBase):
         response = await self._send("GET", self._url(path))
         self._raise_for_status(response)
         return response.content
+
+    async def get_bytes_typed(self, path: str) -> tuple[bytes, str]:
+        """
+        Fetch a raw binary body together with its server-declared media type.
+
+        Args:
+            path (str): The API-relative path.
+
+        Returns:
+            tuple[bytes, str]: The raw content and its ``Content-Type`` (a generic octet-stream
+            fallback when the header is absent).
+        """
+        response = await self._send("GET", self._url(path))
+        self._raise_for_status(response)
+        mime_type = response.headers.get("content-type", "application/octet-stream")
+        return response.content, mime_type
 
     async def aclose(self) -> None:
         """Close the underlying httpx client and release its connections."""

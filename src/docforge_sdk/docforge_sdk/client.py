@@ -1,7 +1,7 @@
 # ====== Code Summary ======
-# The public entry points: AsyncClient and Client. Each owns a transport and wires the resource groups
-# onto itself (only ``auth`` in this slice — later slices add more attributes the same way). Both
-# support context-manager use so the underlying httpx client is always closed.
+# The public entry points: AsyncClient and Client. Each owns a transport and wires every resource
+# group onto itself (auth, health, collections, documents, explorer, search, jobs, blobs, pipelines).
+# Both support context-manager use so the underlying httpx client is always closed.
 
 # ====== Standard Library Imports ======
 from types import TracebackType
@@ -10,6 +10,14 @@ from types import TracebackType
 from ._transport_async import AsyncTransport
 from ._transport_sync import SyncTransport
 from .resources.auth import AsyncAuth, SyncAuth
+from .resources.blobs import AsyncBlobs, SyncBlobs
+from .resources.collections import AsyncCollections, SyncCollections
+from .resources.documents import AsyncDocuments, SyncDocuments
+from .resources.explorer import AsyncExplorer, SyncExplorer
+from .resources.health import AsyncHealth, SyncHealth
+from .resources.jobs import AsyncJobs, SyncJobs
+from .resources.pipelines import AsyncPipelines, SyncPipelines
+from .resources.search import AsyncSearch, SyncSearch
 
 
 class AsyncClient:
@@ -18,6 +26,14 @@ class AsyncClient:
 
     Attributes:
         auth (AsyncAuth): API-key management resource.
+        health (AsyncHealth): Liveness probe.
+        collections (AsyncCollections): Collection CRUD.
+        documents (AsyncDocuments): Document admission + searchability control.
+        explorer (AsyncExplorer): Document/chunk read surface + IR + toggles.
+        search (AsyncSearch): Hybrid search.
+        jobs (AsyncJobs): Ingestion-job monitoring.
+        blobs (AsyncBlobs): Content-addressed blob fetch.
+        pipelines (AsyncPipelines): Pipeline discovery + design.
     """
 
     def __init__(self, base_url: str, timeout: float = 30.0, api_token: str = "") -> None:
@@ -31,6 +47,14 @@ class AsyncClient:
         """
         self._transport = AsyncTransport(base_url, timeout, api_token)
         self.auth = AsyncAuth(self._transport)
+        self.health = AsyncHealth(self._transport)
+        self.collections = AsyncCollections(self._transport)
+        self.documents = AsyncDocuments(self._transport)
+        self.explorer = AsyncExplorer(self._transport)
+        self.search = AsyncSearch(self._transport)
+        self.jobs = AsyncJobs(self._transport)
+        self.blobs = AsyncBlobs(self._transport)
+        self.pipelines = AsyncPipelines(self._transport)
 
     async def __aenter__(self) -> "AsyncClient":
         """Enter the async context, returning the client itself."""
@@ -56,6 +80,14 @@ class Client:
 
     Attributes:
         auth (SyncAuth): API-key management resource.
+        health (SyncHealth): Liveness probe.
+        collections (SyncCollections): Collection CRUD.
+        documents (SyncDocuments): Document admission + searchability control.
+        explorer (SyncExplorer): Document/chunk read surface + IR + toggles.
+        search (SyncSearch): Hybrid search.
+        jobs (SyncJobs): Ingestion-job monitoring.
+        blobs (SyncBlobs): Content-addressed blob fetch.
+        pipelines (SyncPipelines): Pipeline discovery + design.
     """
 
     def __init__(self, base_url: str, timeout: float = 30.0, api_token: str = "") -> None:
@@ -69,6 +101,14 @@ class Client:
         """
         self._transport = SyncTransport(base_url, timeout, api_token)
         self.auth = SyncAuth(self._transport)
+        self.health = SyncHealth(self._transport)
+        self.collections = SyncCollections(self._transport)
+        self.documents = SyncDocuments(self._transport)
+        self.explorer = SyncExplorer(self._transport)
+        self.search = SyncSearch(self._transport)
+        self.jobs = SyncJobs(self._transport)
+        self.blobs = SyncBlobs(self._transport)
+        self.pipelines = SyncPipelines(self._transport)
 
     def __enter__(self) -> "Client":
         """Enter the context, returning the client itself."""
