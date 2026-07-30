@@ -1,9 +1,9 @@
 # CI gate — runs on every push + PR so "the suite is green" never depends on a manual local run.
-# The unit suite is fully mocked and serviceless (lazy store connections), so no service
-# containers are needed. The one real-OCR integration test (test_providers.py) needs the heavy
-# `worker` dep-group (pillow + rapidocr + torch) and is intentionally left to a local run — see the
-# note below — to keep this gate fast and reliable. mypy is not wired as a project dep, so it is
-# not part of the gate (ruff is the enforced linter).
+# This is a monorepo of FOUR standalone uv projects (docforge-rework, docforge_sdk, mcp, bge_server),
+# each with its own pyproject/uv.lock/ruff-mypy config. Every package is gated here — no exceptions —
+# because this is a public, production repo. All unit suites are fully mocked/serviceless (lazy store
+# connections), so no service containers or docker builds are needed anywhere in this workflow, and
+# no `-m live` test (which needs a running API) is ever run in CI.
 
 name: CI
 
@@ -17,8 +17,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  python:
-    name: Python — ruff + unit suite
+  docforge-rework:
+    # The v2 graph engine + app/worker. Deps-only project (no mypy dev dep here by design — ruff is
+    # the enforced linter for this package) — see its pyproject.toml comment.
+    name: docforge-rework — ruff + unit suite
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -41,6 +43,87 @@ jobs:
         # Serviceless: units mock every store. The real-OCR test auto-skips without the worker
         # group (pillow/rapidocr absent) — run it locally with `uv sync --group worker` when needed.
         run: uv run pytest tests/units -q
+
+  python-packages:
+    # Uniform gate for the two "normal" standalone Python packages: ruff + mypy + pytest, no heavy
+    # ML deps. Matrixed because the three commands are identical modulo working directory / mypy
+    # target / pytest args — a single job definition avoids duplicating five near-identical steps.
+    name: ${{ matrix.name }} — ruff + mypy + unit suite
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: docforge_sdk
+            working-directory: src/docforge_sdk
+            mypy-target: "--strict docforge_sdk"
+            pytest-args: -q -m "not live"
+          - name: mcp
+            # mcp depends on docforge_sdk via a `[tool.uv.sources]` path source (../docforge_sdk);
+            # both live in the same checkout, so `uv sync --frozen` resolves it without extra steps.
+            working-directory: src/mcp
+            mypy-target: "."
+            pytest-args: -q
+    defaults:
+      run:
+        working-directory: ${{ matrix.working-directory }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Sync dependencies (locked)
+        run: uv sync --frozen
+
+      - name: Ruff (lint)
+        run: uv run ruff check .
+
+      - name: Mypy (type check)
+        run: uv run mypy ${{ matrix.mypy-target }}
+
+      - name: Unit suite
+        run: uv run pytest ${{ matrix.pytest-args }}
+
+  bge-server:
+    # Kept as its own job (not folded into the matrix above) because of its ML dependency cost.
+    # FlagEmbedding is a HARD dependency of this package, and it unconditionally pulls torch — a
+    # plain `uv sync` with no extra selected resolves torch straight from PyPI, which bundles the
+    # full CUDA runtime (nvidia-cublas/cudnn/nccl/... ~5 GB total). The `cpu` extra steers uv's
+    # torch source to the dedicated pytorch-cpu wheel index instead (~200 MB, no CUDA payload) —
+    # always pass it here. The unit suite itself is fully mocked (no torch/FlagEmbedding import at
+    # test time, see tests/unit/test_batching.py's header comment), so torch is a sync-time cost
+    # only, never an import-time one.
+    name: bge_server — ruff + mypy + unit suite
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/bge_server
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Sync dependencies (locked, CPU torch)
+        run: uv sync --frozen --extra cpu
+
+      # `uv run` re-syncs the project environment before each invocation, and without an explicit
+      # extra it re-resolves to the DEFAULT (non-extra) branch — silently swapping the CPU torch
+      # back out for the full CUDA build. `--no-sync` pins every subsequent step to the environment
+      # exactly as synced above.
+      - name: Ruff (lint)
+        run: uv run --no-sync ruff check .
+
+      - name: Mypy (type check)
+        run: uv run --no-sync mypy .
+
+      - name: Unit suite
+        run: uv run --no-sync pytest -q
 
   frontend:
     name: Frontend — tsc + build
@@ -69,8 +152,10 @@ jobs:
     # CURRENT schema. If a backend router model changes without the SDK being updated, this job goes
     # RED — SDK/backend drift can never merge silently. The backend openapi is produced serviceless
     # (FastAPI .openapi() only introspects routes; the app's store clients connect lazily), so no
-    # service containers are needed. Placeholder config comes from the committed .env.example.
-    name: SDK — OpenAPI parity + unit suite
+    # service containers are needed. Placeholder config comes from the committed .env.example. The
+    # SDK's own ruff/mypy/pytest gate lives in the python-packages matrix job above — this job only
+    # covers the drift check itself, to avoid duplicating that work.
+    name: SDK — OpenAPI parity
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -99,9 +184,3 @@ jobs:
         run: |
           uv sync --frozen
           uv run python tests/check_schema_drift.py /tmp/current_openapi.json
-
-      - name: SDK ruff + unit suite (offline)
-        working-directory: src/docforge_sdk
-        run: |
-          uv run ruff check .
-          uv run pytest -q -m "not live"

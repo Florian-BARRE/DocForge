@@ -28,7 +28,11 @@ services:
       - services/docforge-rework/.env
     environment:
       # In-container endpoints override the localhost dev values from the .env.
-      POSTGRES_DSN: postgresql+asyncpg://docforge:docforge@rework_postgres:5432/docforge
+      # POSTGRES_DSN falls back to the local-dev default (matches services/docforge-rework/postgres.env's
+      # docforge/docforge bootstrap) so nothing changes for local dev; a real deployment overrides it via
+      # a shell-exported POSTGRES_DSN or a root .env — ONE place to change instead of editing this
+      # literal in both rework_app and rework_worker.
+      POSTGRES_DSN: ${POSTGRES_DSN:-postgresql+asyncpg://docforge:docforge@rework_postgres:5432/docforge}
       REDIS_URL: redis://rework_redis:6379/0
       QDRANT_URL: http://rework_qdrant:6333
       # botocore rejects '_' in hostnames — the hyphenated container_name resolves on the network
@@ -65,7 +69,8 @@ services:
     env_file:
       - services/docforge-rework/.env
     environment:
-      POSTGRES_DSN: postgresql+asyncpg://docforge:docforge@rework_postgres:5432/docforge
+      # Same override mechanism as rework_app — see comment there.
+      POSTGRES_DSN: ${POSTGRES_DSN:-postgresql+asyncpg://docforge:docforge@rework_postgres:5432/docforge}
       REDIS_URL: redis://rework_redis:6379/0
       QDRANT_URL: http://rework_qdrant:6333
       # botocore rejects '_' in hostnames — the hyphenated container_name resolves on the network
