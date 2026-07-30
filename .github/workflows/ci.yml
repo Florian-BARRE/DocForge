@@ -63,3 +63,45 @@ jobs:
 
       - name: Build (tsc --noEmit && vite build)
         run: npm run build
+
+  sdk-parity:
+    # Coherence gate: the docforge-sdk models + committed OpenAPI snapshot MUST match the backend's
+    # CURRENT schema. If a backend router model changes without the SDK being updated, this job goes
+    # RED — SDK/backend drift can never merge silently. The backend openapi is produced serviceless
+    # (FastAPI .openapi() only introspects routes; the app's store clients connect lazily), so no
+    # service containers are needed. Placeholder config comes from the committed .env.example.
+    name: SDK — OpenAPI parity + unit suite
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Dump the backend's current OpenAPI (serviceless)
+        working-directory: src/docforge-rework
+        env:
+          # Console/file sinks off so stdout stays pure JSON; the rest are placeholders — nothing
+          # connects during .openapi() introspection.
+          LOGGING_ENABLE_CONSOLE: "false"
+          LOGGING_ENABLE_FILE: "false"
+        run: |
+          set -a; grep -vE '^\s*#|^\s*$' ../../services/docforge-rework/.env.example > /tmp/ci.env; . /tmp/ci.env; set +a
+          export LOGGING_ENABLE_CONSOLE=false LOGGING_ENABLE_FILE=false
+          uv sync --frozen
+          uv run python app/scripts/dump_openapi.py > /tmp/current_openapi.json
+          python -c "import json; print('schemas:', len(json.load(open('/tmp/current_openapi.json'))['components']['schemas']))"
+
+      - name: Fail on SDK↔backend schema drift
+        working-directory: src/docforge_sdk
+        run: |
+          uv sync --frozen
+          uv run python tests/check_schema_drift.py /tmp/current_openapi.json
+
+      - name: SDK ruff + unit suite (offline)
+        working-directory: src/docforge_sdk
+        run: |
+          uv run ruff check .
+          uv run pytest -q -m "not live"
