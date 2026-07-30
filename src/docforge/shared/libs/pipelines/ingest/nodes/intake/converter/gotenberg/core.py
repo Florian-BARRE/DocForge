@@ -11,6 +11,7 @@ from pathlib import PurePosixPath
 import httpx
 
 # ====== Internal Project Imports ======
+from shared_libs.pipelines.nodes.openai_compat import EndpointReachability
 from shared_libs.pipelines.registry import NodeRegistry
 from shared_libs.public_models import SourceDocument, SourceProbe
 
@@ -60,6 +61,20 @@ class ConverterGotenbergNode(BaseConverterNode):
             "jpeg",
         }
     )
+
+    async def preflight(self) -> None:
+        """Verify the Gotenberg service is reachable before any conversion spend.
+
+        Gotenberg is the one provider-hosted node on the intake path; without this it was the only
+        external endpoint preflight could not check. Probes its ``/health`` route — any answer
+        proves the host is up.
+        """
+        config: ConverterGotenbergConfig = self.config
+        await EndpointReachability.check(
+            node_kind=self.KIND,
+            base_url=config.base_url,
+            path="/health",
+        )
 
     async def _convert(self, source: SourceDocument, probe: SourceProbe) -> bytes | None:
         """Route by probed format and run the conversion (None when Gotenberg can't handle it)."""
