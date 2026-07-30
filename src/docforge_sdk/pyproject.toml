@@ -47,6 +47,9 @@ known-first-party = ["docforge_sdk"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+markers = [
+    "live: hits a running DocForge API (needs a live stack; opt-in via `-m live`).",
+]
 
 [tool.mypy]
 python_version = "3.12"
