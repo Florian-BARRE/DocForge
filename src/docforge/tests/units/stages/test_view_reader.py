@@ -159,6 +159,14 @@ def _action_configs(blob):
             yield node.id, config
 
 
+def test_enabling_a_provider_stage_warns_about_placeholder_endpoints(compiler) -> None:
+    """Enabling enrich (its default chains still hold the template's vlm:8000 / SET_ME placeholders)
+    must surface a notice at edit time, so the user wires a real endpoint before ingesting rather
+    than discovering it from a failed job."""
+    _, notices = compiler.apply(IngestPipeline.default_blob(), EnableStage(stage="enrich"))
+    assert any("placeholder" in note for note in notices), notices
+
+
 def test_provider_hosted_stages_off_by_default_carry_an_opt_in_note(builder, validator) -> None:
     """The greyed provider-hosted stages must read as an intentional opt-in, not as broken — their
     note names the reason (provider-hosted, no reachable default) and that ingestion works without

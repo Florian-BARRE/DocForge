@@ -107,8 +107,41 @@ class StageCompiler(LoggerClass):
 
         # 2. Re-assemble — the spines rewire every consumer to the nearest enabled producer.
         rebuilt = IngestAssembler.assemble(state)
+        # 3. Warn while it is still cheap: an ENABLED provider node still pointed at a template
+        #    placeholder (unreachable host / SET_ME key) builds fine but fails at the first spend
+        #    (or at preflight). Surface it now, at edit time, so the user wires a real endpoint
+        #    before ingesting rather than discovering it from a failed job.
+        self.__warn_placeholders(rebuilt, notices)
         self.logger.info(f"compiled stage action '{action.action}' ({len(notices)} notice(s))")
         return rebuilt, notices
+
+    # The template's pre-filled but non-executable endpoints — a stage shipping OFF carries these
+    # until the user opts in and sets a real one; enabled while still holding one is worth flagging.
+    _PLACEHOLDER_MARKERS = ("vlm:8000", "llm:8000", "SET_ME")
+
+    @classmethod
+    def __warn_placeholders(cls, blob: GroupNodeBlob, notices: list[str]) -> None:
+        """Append one notice per enabled action node whose config still holds a template placeholder."""
+        flagged: set[str] = set()
+        for node_id, config in cls.__action_configs(blob):
+            blob_text = repr(config)
+            if node_id not in flagged and any(m in blob_text for m in cls._PLACEHOLDER_MARKERS):
+                flagged.add(node_id)
+                notices.append(
+                    f"node '{node_id}' still points at a template placeholder endpoint/key — set a "
+                    f"reachable URL and credentials before ingesting, or the run fails at preflight."
+                )
+
+    @classmethod
+    def __action_configs(cls, blob: GroupNodeBlob):
+        """Every action node's (id, config) in the graph, recursing ForEach bodies + sub-groups."""
+        for node in blob.nodes:
+            body = getattr(node, "body", None)
+            if body is not None:
+                yield from cls.__action_configs(body)
+            config = getattr(node, "config", None)
+            if config is not None:
+                yield node.id, config
 
     def __dispatch(self, state: PipelineState, action: StageAction, notices: list[str]) -> None:
         """Route an action to its handler (mutating ``state`` in place)."""
