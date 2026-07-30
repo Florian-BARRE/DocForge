@@ -9,20 +9,23 @@
 // rerank toggle since it's a single discrete action). Reusable standalone (fetches the product
 // default) OR embedded in a collection page (seeded with `initialBlob`, saved via `onSave`).
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ApiIssueList } from "../../components/ApiIssueList";
 import { ErrorState } from "../../components/ErrorState";
 import { LoadingState } from "../../components/LoadingState";
 import { getDesign, inspect, listPipelineDesigns } from "../../api/pipelines";
 import type { GroupBlob, Palette, ValidationIssue } from "../../api/types";
 import { theme } from "../../theme";
-import { AdvancedDisclosure } from "./AdvancedDisclosure";
+import { StageConnector } from "../stage-rail/StageConnector";
 import { SearchNodeCard } from "./SearchNodeCard";
 import { SearchPipelineHeader } from "./SearchPipelineHeader";
-import { SearchSimpleControls } from "./SearchSimpleControls";
+import { SearchRerankCard } from "./SearchRerankCard";
 import { isActionBlob, isRerankEnabled, setNodeConfigField, setRerankEnabled } from "./state/blobOps";
 
 const DEBOUNCE_MS = 400;
+// The read-only step the toggleable reranking card is rendered right after (matches the backend's
+// retrieve → rerank → hydrate splice in blobOps).
+const RERANK_ANCHOR_ID = "retrieve";
 
 export interface SearchPipelineEditorProps {
   /** Seed blob (e.g. a collection's stored search graph). Omitted → the product default. */
@@ -189,6 +192,14 @@ export function SearchPipelineEditor({ initialBlob, onSave, onResetToDefault }: 
 
   const dirty = useMemo(() => JSON.stringify(blob) !== JSON.stringify(savedBlob), [blob, savedBlob]);
 
+  // The rail's read-only/config steps — rerank is drawn as its own toggleable card (SearchRerankCard),
+  // so it's filtered out here to avoid rendering it twice.
+  const railNodes = useMemo(
+    () => (blob ? blob.nodes.filter(isActionBlob).filter((node) => node.family !== "rerank") : []),
+    [blob],
+  );
+  const hasAnchor = useMemo(() => railNodes.some((node) => node.id === RERANK_ANCHOR_ID), [railNodes]);
+
   if (loadError) return <ErrorState message={loadError} />;
   if (!palette || !blob) return <LoadingState label="loading search pipeline…" />;
 
@@ -214,21 +225,34 @@ export function SearchPipelineEditor({ initialBlob, onSave, onResetToDefault }: 
           saveError={saveError}
         />
         {issues.length > 0 && <ApiIssueList issues={issues} />}
-        <SearchSimpleControls
-          rerankEnabled={isRerankEnabled(blob)}
-          onToggleRerank={toggleRerank}
-        />
-        <AdvancedDisclosure summary="Advanced">
-          {blob.nodes.filter(isActionBlob).map((node, index) => (
-            <SearchNodeCard
-              key={node.id}
-              step={index + 1}
-              node={node}
-              palette={palette}
-              onChangeConfig={(field, value) => setNodeConfig(node.id, field, value)}
-            />
+        {/* One connected rail — the same pattern as the ingestion stage rail. Reranking is the one
+            toggleable step; it's rendered right after `retrieve`, staying visible (greyed) when off
+            so the whole canonical chain is always on screen. */}
+        <div className="df-stagger" style={{ display: "flex", flexDirection: "column" }}>
+          {railNodes.map((node, index) => (
+            <Fragment key={node.id}>
+              {index > 0 && <StageConnector />}
+              <SearchNodeCard
+                step={index + 1}
+                node={node}
+                palette={palette}
+                onChangeConfig={(field, value) => setNodeConfig(node.id, field, value)}
+              />
+              {node.id === RERANK_ANCHOR_ID && (
+                <>
+                  <StageConnector />
+                  <SearchRerankCard enabled={isRerankEnabled(blob)} onToggle={toggleRerank} />
+                </>
+              )}
+            </Fragment>
           ))}
-        </AdvancedDisclosure>
+          {!hasAnchor && (
+            <>
+              {railNodes.length > 0 && <StageConnector />}
+              <SearchRerankCard enabled={isRerankEnabled(blob)} onToggle={toggleRerank} />
+            </>
+          )}
+        </div>
       </div>
     </div>
   );
