@@ -79,8 +79,15 @@ class ContextualizerDocMetaNode(BaseContextualizerNode):
 
     @staticmethod
     def __anchor_for(chunk: Chunk, anchor: str | None) -> str | None:
-        """The anchor to prefix onto this chunk — None when its body already leads with it."""
-        if anchor and chunk.text.lstrip().startswith(anchor):
+        """The anchor to prefix onto this chunk — None when the chunker already inlined it.
+
+        The chunker inlines a coalesced section heading as its OWN line (``"Title\\n\\n<body>"``),
+        so the title duplicates the anchor only when the chunk's FIRST LINE is exactly the anchor.
+        Matching a bare ``startswith`` instead would wrongly suppress the anchor on any chunk whose
+        prose merely opens with the title word (title "Overview", body "Overview of the topology…"),
+        dropping the anchor that every sibling carries — so compare the first line, not a prefix.
+        """
+        if anchor and chunk.text.lstrip().split("\n", 1)[0].strip() == anchor:
             return None
         return anchor
 

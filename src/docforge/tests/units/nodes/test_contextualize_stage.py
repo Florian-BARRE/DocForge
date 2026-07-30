@@ -148,6 +148,21 @@ async def test_doc_meta_does_not_duplicate_an_anchor_the_chunk_already_opens_wit
     assert out.chunks[1].context == "Acme Glossary"  # a normal chunk still gets the anchor
 
 
+async def test_doc_meta_anchor_not_dropped_when_body_merely_starts_with_the_title_word() -> None:
+    """The dedup compares the FIRST LINE, not a bare prefix: a chunk whose prose merely opens with
+    the title word (title 'Overview', body 'Overview of the topology…') must STILL get the anchor —
+    only a chunk whose first line IS the title (the chunker-inlined case) is skipped."""
+    node = ContextualizerDocMetaNode(id="m", config=ContextualizerDocMetaConfig())
+    src = SourceDocument(filename="d.html", content=b"x", declared_meta={"title": "Overview"})
+    chunks = [
+        _chunk(0, "Overview of the deployment topology follows here.", []),  # prose, not the heading
+        _chunk(1, "Overview\n\nThe deployment topology follows here.", []),  # inlined heading line
+    ]
+    out = await node.run(DocMetaConsumes(chunks=chunks, source=src))
+    assert out.chunks[0].context == "Overview"  # prose start → anchor NOT dropped (the regression)
+    assert not out.chunks[1].context  # first line is exactly the title → correctly skipped
+
+
 async def test_doc_meta_ir_fallback_skips_a_toc_heading_and_a_subheading() -> None:
     """The IR-fallback title must be the first TOP-LEVEL (level-1), non-ToC heading — not a ToC
     heading that opens the document, nor a deeper subheading."""

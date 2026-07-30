@@ -16,7 +16,13 @@ from typing import Any
 from loggerplusplus import loggerplusplus
 
 # ====== Internal Project Imports ======
-from shared_libs.public_models import FieldOrigin, RunBundle, role_default_enabled
+from shared_libs.public_models import (
+    BlockType,
+    DocumentIR,
+    FieldOrigin,
+    RunBundle,
+    role_default_enabled,
+)
 from shared_libs.services.db.facades import IngestionPayload
 from shared_libs.services.db.postgresql.tables import (
     Blob,
@@ -71,6 +77,24 @@ class RunTranslator:
     def __block_id(document_id: uuid.UUID, pipeline_id: str) -> str:
         """THE block-id remap: parser-scoped ids collide across documents — prefix with the doc."""
         return f"{document_id}:{pipeline_id}"
+
+    @staticmethod
+    def __first_heading(ir: DocumentIR) -> str | None:
+        """The document's first top-level heading text — the title fallback when the parser found none.
+
+        Prefers a level-1 heading (the true title); falls back to the first heading of any level when
+        none is marked level-1 (some parsers omit levels). Returns None when the document has no
+        heading at all.
+        """
+        headings = [
+            block
+            for block in sorted(ir.blocks, key=lambda b: b.reading_order)
+            if block.block_type == BlockType.HEADING and block.text and block.text.strip()
+        ]
+        top = next((block for block in headings if block.level == 1), None) or (
+            headings[0] if headings else None
+        )
+        return top.text.strip() if top else None
 
     @classmethod
     def __register_blob(cls, out: TranslatedRun, data: bytes, kind: BlobKind, mime: str) -> str:
@@ -290,8 +314,10 @@ class RunTranslator:
         """
         out = TranslatedRun(payload=IngestionPayload())
 
-        # 1. Document facts + the canonical PDF blob.
-        out.payload.title = bundle.ir.title or None
+        # 1. Document facts + the canonical PDF blob. The title falls back to the document's first
+        #    top-level heading when the parser extracted none (the HTML->PDF path loses <title>), so
+        #    a search hit and the explorer surface a human label, not an empty string.
+        out.payload.title = bundle.ir.title or cls.__first_heading(bundle.ir) or None
         out.payload.language = bundle.ir.language
         out.payload.page_count = bundle.ingest.page_count
         if bundle.ingest.pdf_content:

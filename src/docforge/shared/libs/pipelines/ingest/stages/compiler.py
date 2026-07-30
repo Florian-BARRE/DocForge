@@ -136,9 +136,12 @@ class StageCompiler(LoggerClass):
     def __action_configs(cls, blob: GroupNodeBlob):
         """Every action node's (id, config) in the graph, recursing ForEach bodies + sub-groups."""
         for node in blob.nodes:
-            body = getattr(node, "body", None)
+            body = getattr(node, "body", None)  # ForEach body
             if body is not None:
                 yield from cls.__action_configs(body)
+            nested = getattr(node, "nodes", None)  # a nested Group exposes children under .nodes
+            if nested is not None:
+                yield from cls.__action_configs(node)
             config = getattr(node, "config", None)
             if config is not None:
                 yield node.id, config
@@ -161,9 +164,13 @@ class StageCompiler(LoggerClass):
 
     def __toggle(self, state: PipelineState, stage: str, on: bool, notices: list[str]) -> None:
         """Enable/disable a removable stage, cascading its dependencies."""
-        # 1. Only removable, boolean-toggled stages can flip; the rest is a clean no-op notice.
+        # 1. Only removable, boolean-toggled stages can flip; the rest is a clean no-op notice that
+        #    names the real toggleable keys (so e.g. "metagen" points at metagen_chunk/_document).
         if stage not in _TOGGLES:
-            notices.append(f"stage '{stage}' cannot be toggled (it is fixed or edited differently)")
+            notices.append(
+                f"stage '{stage}' cannot be toggled — toggleable stages are: "
+                f"{', '.join(sorted(_TOGGLES))}."
+            )
             return
         attr = _TOGGLES[stage]
         if getattr(state, attr) == on:

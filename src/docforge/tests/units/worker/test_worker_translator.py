@@ -174,6 +174,16 @@ def test_blobs_are_content_addressed_and_facts_learned(translated) -> None:
     assert translated.payload.page_count == 1
 
 
+def test_title_falls_back_to_the_first_heading_when_the_parser_found_none() -> None:
+    """An empty parser title (the HTML->PDF case, which loses <title>) falls back to the document's
+    first top-level heading, so the hit/explorer surface a human label rather than an empty string."""
+    bundle = _bundle().model_copy(update={"ir": _ir().model_copy(update={"title": ""})})
+    translated = RunTranslator.translate(
+        DOC, bundle, _schema(), strategy="structure_aware", config_hash="cfg1"
+    )
+    assert translated.payload.title == "Intro"  # b0, the first level-1 heading
+
+
 def test_enrichment_rows_and_unknown_doc_field_dropped(translated) -> None:
     enrichment_kinds = {row.kind.value for row in translated.payload.enrichments}
     assert enrichment_kinds == {"classify", "ocr", "vlm", "chart_to_data"}

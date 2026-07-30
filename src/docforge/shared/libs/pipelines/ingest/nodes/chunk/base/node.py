@@ -215,12 +215,12 @@ class BaseChunkerNode(ActionNode):
         parts: list[str] = []
         last_key: list[str] | None = None
         for passage in group:
-            if (
-                passage.section_key != last_key
-                and len(passage.section_key) > depth
-                and passage.heading_path[depth:]
-            ):
-                parts.append(" › ".join(passage.heading_path[depth:]))
+            if passage.section_key != last_key and len(passage.section_key) > depth:
+                # A section whose headings are all blank (a heading block with empty text) yields an
+                # empty label — skip it rather than inline a stray "" / dangling separator.
+                label = " › ".join(level for level in passage.heading_path[depth:] if level.strip())
+                if label:
+                    parts.append(label)
             parts.append(passage.text)
             last_key = passage.section_key
         return "\n\n".join(parts)
