@@ -146,7 +146,6 @@ class IngestionFacade(LoggerClass):
                 payload.chunks,
                 payload.composition,
                 metadata=payload.chunk_metadata,
-                queries=payload.chunk_queries,
                 entities=payload.entities,
             )
             # 4. The persisted truth is complete.

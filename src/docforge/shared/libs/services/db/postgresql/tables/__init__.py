@@ -27,7 +27,7 @@ from .ir import (
 )
 
 # ---------------------- Chunks ---------------------- #
-from .chunks import Chunk, ChunkBlock, ChunkMetadata, ChunkQuery, EntityMention
+from .chunks import Chunk, ChunkBlock, ChunkMetadata, EntityMention
 
 # ---------------------- Observability ---------------------- #
 from .observability import ConfigVersion, Job, JobStageEvent, JobStatus
@@ -68,7 +68,6 @@ __all__ = [
     "Chunk",
     "ChunkBlock",
     "ChunkMetadata",
-    "ChunkQuery",
     "EntityMention",
     # observability
     "Job",

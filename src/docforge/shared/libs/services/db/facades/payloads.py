@@ -17,7 +17,6 @@ from shared_libs.services.db.postgresql.tables import (
     Chunk,
     ChunkBlock,
     ChunkMetadata,
-    ChunkQuery,
     DocumentMetadata,
     EnrichmentAttempt,
     EntityMention,
@@ -48,7 +47,6 @@ class IngestionPayload:
     chunks: list[Chunk] = field(default_factory=list)
     composition: list[ChunkBlock] = field(default_factory=list)
     chunk_metadata: list[ChunkMetadata] = field(default_factory=list)
-    chunk_queries: list[ChunkQuery] = field(default_factory=list)
     entities: list[EntityMention] = field(default_factory=list)
 
 

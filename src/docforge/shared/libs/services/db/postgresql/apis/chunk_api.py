@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 # ====== Internal Project Imports ======
 from shared_libs.public_models import FieldOrigin
 
-from ..tables import Chunk, ChunkBlock, ChunkMetadata, ChunkQuery, Document, EntityMention
+from ..tables import Chunk, ChunkBlock, ChunkMetadata, Document, EntityMention
 
 
 class ChunkApi:
@@ -32,7 +32,6 @@ class ChunkApi:
         composition: Sequence[ChunkBlock],
         *,
         metadata: Sequence[ChunkMetadata] = (),
-        queries: Sequence[ChunkQuery] = (),
         entities: Sequence[EntityMention] = (),
     ) -> None:
         """
@@ -43,7 +42,6 @@ class ChunkApi:
             chunks (Sequence[Chunk]): The chunks (their ids double as Qdrant point ids).
             composition (Sequence[ChunkBlock]): The chunk ↔ block memberships.
             metadata (Sequence[ChunkMetadata]): Per-chunk generated metadata values.
-            queries (Sequence[ChunkQuery]): doc2query synthetic questions.
             entities (Sequence[EntityMention]): Extracted entity mentions.
         """
         # 1. Chunks first — the composition and derived rows reference them (and chunk.parent_id
@@ -51,7 +49,7 @@ class ChunkApi:
         session.add_all(list(chunks))
         await session.flush()
         # 2. Composition + derived rows.
-        session.add_all([*composition, *metadata, *queries, *entities])
+        session.add_all([*composition, *metadata, *entities])
 
     @staticmethod
     async def get_by_ids(session: AsyncSession, chunk_ids: Sequence[uuid.UUID]) -> list[Chunk]:

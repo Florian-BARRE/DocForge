@@ -82,11 +82,9 @@ class QdrantVectorSchema:
 
     @staticmethod
     def sparse_config(lexical_fields: Sequence[str]) -> dict[str, models.SparseVectorParams]:
-        """Named sparse (BM25) vectors: the chunk body, the doc2query questions, and one per
-        lexical metadata field."""
+        """Named sparse (BM25) vectors: the chunk body and one per lexical metadata field."""
         config = {
             VectorNames.CONTENT_SPARSE: models.SparseVectorParams(),
-            VectorNames.CONTENT_QUERIES_SPARSE: models.SparseVectorParams(),
         }
         for field_name in lexical_fields:
             config[VectorNames.field_sparse(field_name)] = models.SparseVectorParams()

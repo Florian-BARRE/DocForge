@@ -14,10 +14,6 @@ class VectorNames:
 
     CONTENT_DENSE = "content_dense"
     CONTENT_SPARSE = "content_bm25"
-    # doc2query synthetic questions get their own sparse space. Declared from day one because a
-    # named vector cannot be added to an existing Qdrant collection without a reindex; an unused
-    # sparse vector costs nothing.
-    CONTENT_QUERIES_SPARSE = "content_queries_bm25"
     # The chunk body's ColBERT multi-vector (one token vector per token, MAX_SIM late interaction).
     # Content point only — never mirrored onto the meta_<slug>_dense metadata vectors.
     CONTENT_COLBERT = "content_colbert"
