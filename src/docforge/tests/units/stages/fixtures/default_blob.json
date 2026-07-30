@@ -91,6 +91,11 @@
         "node_id": "chunk",
         "source": "node"
       },
+      "ir": {
+        "field_name": "ir",
+        "node_id": "figures",
+        "source": "node"
+      },
       "source": {
         "field_name": "source",
         "source": "run"

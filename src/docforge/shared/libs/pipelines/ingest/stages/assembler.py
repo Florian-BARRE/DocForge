@@ -98,7 +98,7 @@ class IngestAssembler:
                 "entries": FromNode(node_id="per_figure", field_name="items"),
             }
         bindings["chunk"] = {"ir": ir_final}
-        cls.__bind_stack(bindings, positions, by_key["chunk"].output)
+        cls.__bind_stack(bindings, positions, by_key["chunk"].output, ir_final)
         if state.metachunk_on:
             # prep reads the pre-meta chunks + contract; apply merges the loop's values back onto
             # those same pre-meta chunks. chunks_final then reads apply's output.
@@ -156,8 +156,9 @@ class IngestAssembler:
         bindings: dict[str, dict],
         positions: list[StackPosition],
         chunk_output: Binding,
+        ir: Binding,
     ) -> None:
-        """Chain the contextualize stack onto the chunker, thread doc_meta's source and the llm apply.
+        """Chain the contextualize stack onto the chunker, thread doc_meta's source/ir and the llm apply.
 
         Each slot's ``head`` reads the previous slot's chunks; the next slot then reads THIS slot's
         ``output``. For an llm slot the apply additionally merges the loop's completions back onto the
@@ -167,9 +168,11 @@ class IngestAssembler:
         previous: Binding = chunk_output
         for position in positions:
             slots: dict = {"chunks": previous}
-            # doc_meta additionally renders the run's declared document metadata.
+            # doc_meta additionally renders the run's declared document metadata, and reads the IR
+            # for the true first-heading fallback (a coalesced chunk's heading_path may have lost it).
             if position.method.kind == "doc_meta":
                 slots["source"] = FromRunInput(field_name=_SOURCE)
+                slots["ir"] = ir
             bindings[position.head_id] = slots
             if position.is_llm:
                 bindings[position.apply_id] = {

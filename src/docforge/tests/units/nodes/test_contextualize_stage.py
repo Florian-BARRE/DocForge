@@ -73,6 +73,61 @@ async def test_doc_meta_falls_back_to_the_first_level_one_heading() -> None:
     assert all(chunk.context == "Animals" for chunk in out.chunks)  # CHUNKS[0].heading_path[0]
 
 
+# A FLAT document (all headings level-1, no real hierarchy — the HTML->PDF case): the first chunk
+# coalesces the title-section with the next sibling sections, so its COMMON heading_path is []. The
+# regression: the old fallback picked "the first chunk WITH a heading_path", wrongly anchoring every
+# chunk on a LATER section (e.g. "Section 3") and corrupting search. The anchor must be the TRUE
+# first heading (the title), read off the IR, or nothing — never a later section.
+_FLAT_CHUNKS = [
+    _chunk(0, "Intro paragraph and first two sections merged.", []),  # coalesced siblings -> []
+    _chunk(1, "Ingress traffic terminates at the edge.", ["Section 3. Ingress"]),
+    _chunk(2, "Services register with the mesh registry.", ["Section 4. Discovery"]),
+]
+
+
+def _flat_ir():
+    from shared_libs.public_models import Block, BlockType, DocumentIR, Provenance
+
+    def _b(bid, btype, order, text, parent=None):
+        return Block(
+            id=bid,
+            block_type=btype,
+            reading_order=order,
+            parent_id=parent,
+            level=1 if btype == BlockType.HEADING else None,
+            provenance=Provenance(page=0, bbox=(0.1, 0.1, 0.9, 0.9)),
+            text=text,
+        )
+
+    return DocumentIR(
+        doc_id="net",
+        source_hash="h",
+        n_pages=1,
+        blocks=[
+            _b("h0", BlockType.HEADING, 0, "Acme Platform Networking Guide"),
+            _b("t1", BlockType.PARAGRAPH, 1, "Intro.", parent="h0"),
+            _b("h6", BlockType.HEADING, 6, "Section 3. Ingress"),
+            _b("t7", BlockType.PARAGRAPH, 7, "Ingress.", parent="h6"),
+        ],
+    )
+
+
+async def test_doc_meta_anchor_on_flat_doc_is_the_true_title_not_a_later_section() -> None:
+    node = ContextualizerDocMetaNode(id="m", config=ContextualizerDocMetaConfig())
+    # With the IR, the anchor is the document's real first heading — NOT "Section 3".
+    out = await node.run(DocMetaConsumes(chunks=_FLAT_CHUNKS, source=NO_TITLE, ir=_flat_ir()))
+    assert all(c.context == "Acme Platform Networking Guide" for c in out.chunks), [
+        c.context for c in out.chunks
+    ]
+
+
+async def test_doc_meta_flat_doc_without_ir_never_anchors_on_a_later_section() -> None:
+    node = ContextualizerDocMetaNode(id="m", config=ContextualizerDocMetaConfig())
+    # No IR + first chunk has [] heading_path → emit no anchor rather than a wrong later section.
+    out = await node.run(DocMetaConsumes(chunks=_FLAT_CHUNKS, source=NO_TITLE))
+    assert not any(c.context for c in out.chunks), [c.context for c in out.chunks]
+
+
 async def _default_stack(chunks: list[Chunk], source: SourceDocument) -> list[Chunk]:
     """Run the stock zero-cost stack (doc_meta → breadcrumb) exactly as the default blob wires it."""
     meta = await ContextualizerDocMetaNode(id="m", config=ContextualizerDocMetaConfig()).run(
