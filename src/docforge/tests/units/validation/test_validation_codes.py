@@ -4,6 +4,8 @@ WhenEquals-specific codes live in tests/units/engine/test_conditions.py, foreach
 tests/units/validation/test_foreach_validation.py, duplicate-unique in test_duplicate_unique.py).
 """
 
+from enum import StrEnum
+
 from shared_libs.pipelines.base import (
     ActionNode,
     FromNode,
@@ -13,6 +15,7 @@ from shared_libs.pipelines.base import (
     NodeOutput,
     ScoreBelow,
     Transition,
+    WhenEquals,
 )
 from shared_libs.pipelines.ingest import IngestPipeline  # noqa: F401 — registers the llm family
 from shared_libs.pipelines.validation import GraphInvalidError
@@ -81,6 +84,29 @@ class ConsumerOther(ActionNode):
 
     async def run(self, data):
         return DocOut(doc=Doc())
+
+
+class Flavor(StrEnum):
+    A = "a"
+    B = "b"
+    C = "c"
+
+
+class KindedOut(NodeOutput):
+    kind: Flavor = Flavor.A
+
+
+class Switch(ActionNode):
+    KIND = "test_validation_switch"
+    NAME = "SW"
+    SUMMARY = "s"
+    Config = Cfg
+    Consumes = Empty
+    Produces = KindedOut
+    SWITCH_FIELDS = {"kind": [flavor.value for flavor in Flavor]}
+
+    async def run(self, data):
+        return KindedOut()
 
 
 def _p(node_id: str) -> Producer:
@@ -272,3 +298,64 @@ def test_validate_or_raise_raises_with_every_issue(validator) -> None:
         raise AssertionError("expected GraphInvalidError")
     except GraphInvalidError as exc:
         assert len(exc.issues) >= 1
+
+
+# ── switch exhaustiveness (SWITCH_NOT_EXHAUSTIVE) ────────────────────────────────────────────────
+
+
+def test_switch_not_exhaustive_without_default_fires(validator) -> None:
+    """A closed switch missing a value and lacking an OnSuccess/Always default is rejected."""
+    graph = Group(
+        id="sw",
+        children=[Switch(id="s", config=Cfg()), _p("a"), _p("b")],
+        bindings={"s": {}, "a": {}, "b": {}},
+        transitions=[
+            Transition(
+                from_node_id="s", to_node_id="a", condition=WhenEquals(field="kind", equals="a")
+            ),
+            Transition(
+                from_node_id="s", to_node_id="b", condition=WhenEquals(field="kind", equals="b")
+            ),
+        ],
+    )
+    assert "switch_not_exhaustive" in _codes(validator, graph)
+
+
+def test_switch_with_default_edge_is_valid(validator) -> None:
+    """A partial switch WITH a default (bare OnSuccess) edge routes unmatched values → no issue."""
+    graph = Group(
+        id="sw",
+        children=[Switch(id="s", config=Cfg()), _p("a"), _p("b"), _p("d")],
+        bindings={"s": {}, "a": {}, "b": {}, "d": {}},
+        transitions=[
+            Transition(
+                from_node_id="s", to_node_id="a", condition=WhenEquals(field="kind", equals="a")
+            ),
+            Transition(
+                from_node_id="s", to_node_id="b", condition=WhenEquals(field="kind", equals="b")
+            ),
+            Transition(from_node_id="s", to_node_id="d"),  # bare = OnSuccess default
+        ],
+    )
+    assert "switch_not_exhaustive" not in _codes(validator, graph)
+
+
+def test_switch_full_coverage_is_valid(validator) -> None:
+    """A switch covering every declared value needs no default → no issue."""
+    graph = Group(
+        id="sw",
+        children=[Switch(id="s", config=Cfg()), _p("a"), _p("b"), _p("c")],
+        bindings={"s": {}, "a": {}, "b": {}, "c": {}},
+        transitions=[
+            Transition(
+                from_node_id="s", to_node_id="a", condition=WhenEquals(field="kind", equals="a")
+            ),
+            Transition(
+                from_node_id="s", to_node_id="b", condition=WhenEquals(field="kind", equals="b")
+            ),
+            Transition(
+                from_node_id="s", to_node_id="c", condition=WhenEquals(field="kind", equals="c")
+            ),
+        ],
+    )
+    assert "switch_not_exhaustive" not in _codes(validator, graph)

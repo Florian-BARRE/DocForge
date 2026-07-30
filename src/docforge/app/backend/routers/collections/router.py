@@ -273,6 +273,38 @@ async def _grant_creator_scope(principal: AuthPrincipal, collection_id: str) -> 
     await CONTEXT.database.auth.update_key_permissions(key.id, scope.model_dump(mode="json"))
 
 
+# The embed-node config keys that define the vector space (a change to any means already-stored
+# vectors were produced by a different/incompatible embedder → the collection must be reindexed).
+_EMBED_VECTOR_KEYS = ("base_url", "model", "embed_sparse", "embed_colbert", "embed_semantic_fields")
+
+
+def _embed_vector_space(blob: dict) -> list:
+    """A stable fingerprint of every embed node's vector-space-affecting config in a pipeline blob.
+
+    Two blobs with the same fingerprint produce vectors in the same space; a difference means a
+    reindex is required (e.g. a swapped embed model/provider, toggled sparse/colbert).
+    """
+    fingerprint: list = []
+
+    def walk(nodes: list) -> None:
+        for node in nodes:
+            if node.get("family") == "embed":
+                config = node.get("config") or {}
+                fingerprint.append(
+                    (
+                        node.get("id"),
+                        node.get("kind"),
+                        tuple((key, config.get(key)) for key in _EMBED_VECTOR_KEYS),
+                    )
+                )
+            body = node.get("body")
+            if isinstance(body, dict):
+                walk(body.get("nodes") or [])
+
+    walk(blob.get("nodes") or [])
+    return sorted(fingerprint)
+
+
 @router.patch(
     "/{collection_id}",
     response_model=CollectionModel,
@@ -366,12 +398,24 @@ async def update_collection(
             )
 
     # 6. Config blobs (append an immutable version snapshot). The pipeline is stored in its stamped
-    #    canonical form so subsequent runs/uploads fast-path.
+    #    canonical form so subsequent runs/uploads fast-path. A pipeline edit that changes the EMBED
+    #    vector space (different embedder model/provider, toggled sparse/colbert) flips needs_reindex
+    #    — otherwise new documents would be embedded into a space incompatible with the stored ones,
+    #    silently degrading search. None leaves the flag as-is (a schema change may already have set it).
+    reindex_from_embed: bool | None = None
+    if stored_pipeline is not None and _embed_vector_space(current.pipeline) != _embed_vector_space(
+        stored_pipeline
+    ):
+        reindex_from_embed = True
+        CONTEXT.logger.warning(
+            f"Collection {collection_id}: embed vector space changed — reindex required"
+        )
     if request.pipeline is not None or request.search is not None:
         await CONTEXT.database.collections.update_config(
             collection_id,
             pipeline=stored_pipeline,
             search=request.search,
+            needs_reindex=reindex_from_embed,
             note=request.note,
         )
 

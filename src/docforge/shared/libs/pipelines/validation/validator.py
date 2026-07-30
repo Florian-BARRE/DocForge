@@ -405,6 +405,31 @@ class GraphValidator(LoggerClass):
                             f"node '{node_id}' has duplicate WhenEquals values — branches must be "
                             f"mutually exclusive",
                         )
+                    # Exhaustiveness: a switch on a field with a CLOSED declared value set
+                    # (SWITCH_FIELDS) must cover every value OR carry a success-path default
+                    # (OnSuccess/Always). Otherwise an unmatched value silently falls through and
+                    # ends the graph as SUCCESS — a truncated result with no error.
+                    producer = children.get(node_id)
+                    if len(fields) == 1 and isinstance(producer, ActionNode):
+                        field = next(iter(fields))
+                        declared = producer.SWITCH_FIELDS.get(field)
+                        if declared is not None:
+                            covered = {str(value) for value in values}
+                            missing = [value for value in declared if str(value) not in covered]
+                            has_default = any(
+                                transition.condition.kind
+                                in (ConditionKind.ON_SUCCESS, ConditionKind.ALWAYS)
+                                for transition in transitions
+                            )
+                            if missing and not has_default:
+                                self.__record(
+                                    issues,
+                                    ValidationCode.SWITCH_NOT_EXHAUSTIVE,
+                                    location,
+                                    f"node '{node_id}' switches on '{field}' but does not cover "
+                                    f"{missing} and has no default (OnSuccess/Always) edge — an "
+                                    f"unmatched value would silently end the graph as success",
+                                )
                 else:
                     self.__record(
                         issues,

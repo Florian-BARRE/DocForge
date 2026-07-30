@@ -46,6 +46,7 @@ class ValidationCode(StrEnum):
     TYPE_MISMATCH = "type_mismatch"
     SCORE_BELOW_NOT_SCORED = "score_below_not_scored"
     DUPLICATE_UNIQUE_NODE = "duplicate_unique_node"
+    SWITCH_NOT_EXHAUSTIVE = "switch_not_exhaustive"
 
 
 class ValidationIssue(BaseModel):
