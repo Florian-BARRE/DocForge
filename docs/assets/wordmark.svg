@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 250 60">
+  <g transform="translate(2 6) scale(0.5)">
+  <path d="M24 2 H60 L74 16 V38 H24 Z" fill="#f7f5f2" stroke="#14161a" stroke-width="4" stroke-linejoin="round"></path>
+  <path d="M60 2 V16 H74" fill="none" stroke="#14161a" stroke-width="4" stroke-linejoin="round"></path>
+  <rect x="31" y="11" width="24" height="3.6" rx="1.8" fill="#3d454f"></rect>
+  <rect x="31" y="19" width="30" height="3.6" rx="1.8" fill="#3d454f"></rect>
+  <rect x="24" y="33" width="50" height="5" fill="#ef5b1e"></rect>
+  <path d="M34 38 v6 a3.5 3.5 0 0 0 7 0 v-6 Z M52 38 v8 a3.5 3.5 0 0 0 7 0 v-8 Z" fill="#ef5b1e"></path>
+  <circle cx="47" cy="49" r="2.6" fill="#f4a63b"></circle>
+  <rect x="16" y="54" width="64" height="12" rx="3" fill="#f7f5f2" stroke="#14161a" stroke-width="3.5"></rect>
+  <rect x="16" y="70" width="64" height="12" rx="3" fill="#f7f5f2" stroke="#14161a" stroke-width="3.5"></rect>
+  <rect x="16" y="86" width="64" height="10" rx="3" fill="#f7f5f2" stroke="#14161a" stroke-width="3.5"></rect>
+  <g fill="#3d454f"><circle cx="28" cy="60" r="2.8"></circle><circle cx="42" cy="60" r="2.8"></circle><circle cx="70" cy="60" r="2.8"></circle><circle cx="28" cy="76" r="2.8"></circle><circle cx="56" cy="76" r="2.8"></circle><circle cx="70" cy="76" r="2.8"></circle><circle cx="42" cy="91" r="2.6"></circle><circle cx="56" cy="91" r="2.6"></circle><circle cx="70" cy="91" r="2.6"></circle></g>
+  <circle cx="56" cy="60" r="2.8" fill="#ef5b1e"></circle><circle cx="42" cy="76" r="2.8" fill="#ef5b1e"></circle><circle cx="28" cy="91" r="2.6" fill="#ef5b1e"></circle>
+  </g>
+  <text x="60" y="40" font-family="Archivo, system-ui, sans-serif" font-weight="800" font-size="30" letter-spacing="-1.2" fill="#14161a">Doc<tspan fill="#ef5b1e">Forge</tspan></text>
+</svg>

@@ -1,6 +1,20 @@
-# docforge-sdk
+<div align="center">
 
-A typed Python client for the [DocForge](https://github.com/Florian-BARRE/docforge) REST API. It
+<img src="https://raw.githubusercontent.com/Florian-BARRE/DocForge/main/docs/assets/wordmark.svg" alt="DocForge" width="320" />
+
+### INGESTION, FORGED
+
+**The typed Python client for DocForge** — async + sync, fully type-hinted, zero server-tree dependency.
+
+[![PyPI](https://img.shields.io/pypi/v/docforge-sdk?label=docforge-sdk&color=ef5b1e)](https://pypi.org/project/docforge-sdk/)
+[![Python](https://img.shields.io/pypi/pyversions/docforge-sdk?color=ef5b1e)](https://pypi.org/project/docforge-sdk/)
+[![License](https://img.shields.io/badge/license-MIT-blue)](https://github.com/Florian-BARRE/DocForge/blob/main/src/docforge_sdk/LICENSE)
+
+</div>
+
+---
+
+A typed Python client for the [DocForge](https://github.com/Florian-BARRE/DocForge) REST API. It
 ships **both** an asynchronous and a synchronous client with an identical surface, is fully
 type-hinted (`py.typed`), and has **zero dependency on the DocForge server tree** — it is a
 clean-room client that talks to the API over HTTP only (`httpx` + `pydantic` + hand-written models

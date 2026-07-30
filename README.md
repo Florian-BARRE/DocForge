@@ -1,12 +1,17 @@
 <div align="center">
 
-# DocForge
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/wordmark-reversed.svg" />
+  <img src="docs/assets/wordmark.svg" alt="DocForge" width="360" />
+</picture>
 
-**Document intelligence platform** — turn any document (PDF, Office, images…) into a canonical
+### INGESTION, FORGED
+
+**Document intelligence platform** — melt any document (PDF, Office, images…) into a canonical
 intermediate representation, enrich it, chunk it, and serve **hybrid retrieval** over it.
 
-[![PyPI](https://img.shields.io/pypi/v/docforge-sdk?label=docforge-sdk)](https://pypi.org/project/docforge-sdk/)
-[![Python](https://img.shields.io/pypi/pyversions/docforge-sdk)](https://pypi.org/project/docforge-sdk/)
+[![PyPI](https://img.shields.io/pypi/v/docforge-sdk?label=docforge-sdk&color=ef5b1e)](https://pypi.org/project/docforge-sdk/)
+[![Python](https://img.shields.io/pypi/pyversions/docforge-sdk?color=ef5b1e)](https://pypi.org/project/docforge-sdk/)
 [![CI](https://github.com/Florian-BARRE/DocForge/actions/workflows/ci.yml/badge.svg)](https://github.com/Florian-BARRE/DocForge/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-GPLv3-blue)](LICENSE)
 
@@ -136,6 +141,7 @@ of minutes (`curl http://localhost:10047/health`). Then open:
 | **[Architecture](docs/architecture.md)** | The graph engine, packages, retrieval, gates. |
 | **[Configuration](docs/configuration.md)** | Every environment variable, per service. |
 | **[Deployment](docs/deployment.md)** | Production hardening, ports, secrets, GPU. |
+| **[Brand & design](docs/brand.md)** | The visual identity — palette, type, iconography, do/don't. |
 | [Pipeline reference](src/docforge/PIPELINE.md) | The living deep-dive on the ingestion pipeline. |
 
 ## Repository layout

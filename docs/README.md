@@ -1,3 +1,10 @@
+<div align="center">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/wordmark-reversed.svg" />
+  <img src="assets/wordmark.svg" alt="DocForge" width="300" />
+</picture>
+</div>
+
 # DocForge documentation
 
 Start here. New to DocForge? Read **[Getting started](getting-started.md)** first.
