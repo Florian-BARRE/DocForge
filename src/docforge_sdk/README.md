@@ -1,16 +1,11 @@
-<div align="center">
+# DocForge SDK — INGESTION, FORGED
 
-<img src="https://raw.githubusercontent.com/Florian-BARRE/DocForge/main/docs/assets/wordmark.svg" alt="DocForge" width="320" />
-
-### INGESTION, FORGED
-
-**The typed Python client for DocForge** — async **and** sync, fully type-hinted, zero server-tree dependency.
+**The typed Python client for [DocForge](https://github.com/Florian-BARRE/DocForge)** — async **and**
+sync, fully type-hinted, zero server-tree dependency.
 
 [![PyPI](https://img.shields.io/pypi/v/docforge-sdk?label=docforge-sdk&color=ef5b1e)](https://pypi.org/project/docforge-sdk/)
 [![Python](https://img.shields.io/pypi/pyversions/docforge-sdk?color=ef5b1e)](https://pypi.org/project/docforge-sdk/)
 [![License](https://img.shields.io/badge/license-MIT-blue)](https://github.com/Florian-BARRE/DocForge/blob/main/src/docforge_sdk/LICENSE)
-
-</div>
 
 ---
 
