@@ -8,7 +8,7 @@ from __future__ import annotations
 from typing import Any
 
 # ====== Third-Party Library Imports ======
-from docforge_sdk import AsyncClient, SearchRequest
+from docforge_sdk import AsyncClient, SearchRequest, SearchTarget
 from mcp.server.fastmcp import FastMCP
 
 
@@ -49,7 +49,8 @@ def register(mcp: FastMCP, sdk: AsyncClient) -> None:
             query=query,
             limit=limit,
             filters=filters,
-            search_in=search_in,
+            # The LLM passes plain target dicts; validate each into the SDK's typed SearchTarget.
+            search_in=[SearchTarget(**target) for target in search_in] if search_in else None,
             use_late_interaction=use_late_interaction,
             rescore_pool_size=rescore_pool_size,
         )

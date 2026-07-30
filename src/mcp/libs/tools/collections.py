@@ -7,7 +7,7 @@ from __future__ import annotations
 from typing import Any
 
 # ====== Third-Party Library Imports ======
-from docforge_sdk import AsyncClient, CreateCollectionRequest, UpdateCollectionRequest
+from docforge_sdk import AsyncClient, CreateCollectionRequest, FieldSpec, UpdateCollectionRequest
 from mcp.server.fastmcp import FastMCP
 
 
@@ -50,7 +50,9 @@ def register(mcp: FastMCP, sdk: AsyncClient) -> None:
             name=name,
             supported_formats=supported_formats,
             max_file_size_bytes=max_file_size_bytes,
-            fields=fields or [],
+            # The LLM passes plain dicts at the tool boundary; validate each into the SDK's typed
+            # FieldSpec so the request is correctly typed (and malformed fields fail fast here).
+            fields=[FieldSpec(**field) for field in fields] if fields else [],
             pipeline=pipeline,
         )
         collection = await sdk.collections.create(request)
