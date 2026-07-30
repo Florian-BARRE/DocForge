@@ -32,11 +32,9 @@ export interface SearchPipelineEditorProps {
   /** When provided, a Reset button PATCHes the `{}` sentinel back — reverting to the stock default
    *  AND making the collection track future default changes, unlike re-saving the expanded blob. */
   onResetToDefault?: () => Promise<void>;
-  title?: string;
-  subtitle?: string;
 }
 
-export function SearchPipelineEditor({ initialBlob, onSave, onResetToDefault, title, subtitle }: SearchPipelineEditorProps) {
+export function SearchPipelineEditor({ initialBlob, onSave, onResetToDefault }: SearchPipelineEditorProps) {
   const [palette, setPalette] = useState<Palette | null>(null);
   const [inspectUrl, setInspectUrl] = useState<string | null>(null);
   const [blob, setBlob] = useState<GroupBlob | null>(null);
@@ -195,50 +193,42 @@ export function SearchPipelineEditor({ initialBlob, onSave, onResetToDefault, ti
   if (!palette || !blob) return <LoadingState label="loading search pipeline…" />;
 
   return (
-    <div style={{ height: "100%", display: "flex", flexDirection: "column", background: theme.color.bg }}>
-      <SearchPipelineHeader
-        title={title ?? "Search pipeline"}
-        subtitle={subtitle}
-        valid={valid}
-        checking={checking}
-        debouncePending={debouncePending}
-        issueCount={issues.length}
-        dirty={dirty}
-        onReset={onResetToDefault ? handleReset : undefined}
-        resetting={resetting}
-        onSave={onSave ? handleSave : undefined}
-        saving={saving}
-        saveError={saveError}
-      />
-      {issues.length > 0 && (
-        <div style={{ padding: `${theme.space.s}px ${theme.space.l}px`, borderBottom: `1px solid ${theme.color.line}` }}>
-          <ApiIssueList issues={issues} />
-        </div>
-      )}
-      <div style={{ flex: 1, overflowY: "auto" }}>
-        <div
-          className="df-rise"
-          style={{
-            maxWidth: 860, margin: "0 auto", padding: theme.space.l,
-            display: "flex", flexDirection: "column", gap: theme.space.l,
-          }}
-        >
-          <SearchSimpleControls
-            rerankEnabled={isRerankEnabled(blob)}
-            onToggleRerank={toggleRerank}
-          />
-          <AdvancedDisclosure summary="Advanced">
-            {blob.nodes.filter(isActionBlob).map((node, index) => (
-              <SearchNodeCard
-                key={node.id}
-                step={index + 1}
-                node={node}
-                palette={palette}
-                onChangeConfig={(field, value) => setNodeConfig(node.id, field, value)}
-              />
-            ))}
-          </AdvancedDisclosure>
-        </div>
+    <div style={{ height: "100%", overflowY: "auto", background: theme.color.bg }}>
+      <div
+        className="df-rise"
+        style={{
+          maxWidth: 860, margin: "0 auto", padding: `0 ${theme.space.l}px ${theme.space.l}px`,
+          display: "flex", flexDirection: "column", gap: theme.space.l,
+        }}
+      >
+        <SearchPipelineHeader
+          valid={valid}
+          checking={checking}
+          debouncePending={debouncePending}
+          issueCount={issues.length}
+          dirty={dirty}
+          onReset={onResetToDefault ? handleReset : undefined}
+          resetting={resetting}
+          onSave={onSave ? handleSave : undefined}
+          saving={saving}
+          saveError={saveError}
+        />
+        {issues.length > 0 && <ApiIssueList issues={issues} />}
+        <SearchSimpleControls
+          rerankEnabled={isRerankEnabled(blob)}
+          onToggleRerank={toggleRerank}
+        />
+        <AdvancedDisclosure summary="Advanced">
+          {blob.nodes.filter(isActionBlob).map((node, index) => (
+            <SearchNodeCard
+              key={node.id}
+              step={index + 1}
+              node={node}
+              palette={palette}
+              onChangeConfig={(field, value) => setNodeConfig(node.id, field, value)}
+            />
+          ))}
+        </AdvancedDisclosure>
       </div>
     </div>
   );

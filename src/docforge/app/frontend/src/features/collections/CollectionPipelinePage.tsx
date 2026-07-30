@@ -42,8 +42,6 @@ export function CollectionPipelinePage({ collectionId }: CollectionPipelinePageP
           const updated = await updateCollection(collectionId, { pipeline: blob as unknown as Record<string, unknown> });
           setCollection(updated);
         }}
-        title="Pipeline"
-        subtitle={collection.name}
       />
     </div>
   );

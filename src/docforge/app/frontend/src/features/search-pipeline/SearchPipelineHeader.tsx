@@ -1,15 +1,14 @@
 // ====== Code Summary ======
-// The search rail's header bar: identity, live validity badge (fed by a debounced /inspect, not
-// a free-riding /stages/view like ingestion has), and the optional Reset/Save actions — mirrors
-// StageRailHeader's shape and tone rules.
+// The search editor's slim action toolbar: live validity + Reset/Save, nothing else. Deliberately
+// NOT a titled banner — the collection name and the "Search pipeline" label already live in the
+// shell's page header and sub-tab, so repeating them here made a redundant third bar. Sticks to the
+// top of the editor's scroll area, aligned to the content column.
 
 import { Button } from "../../components/Button";
 import { Chip } from "../../components/Chip";
 import { theme } from "../../theme";
 
 interface SearchPipelineHeaderProps {
-  title: string;
-  subtitle?: string;
   valid: boolean;
   checking: boolean;
   /** A debounced config edit is armed but hasn't reached `/inspect` yet — the `valid` badge is stale. */
@@ -24,52 +23,50 @@ interface SearchPipelineHeaderProps {
 }
 
 export function SearchPipelineHeader({
-  title, subtitle, valid, checking, debouncePending, issueCount, dirty, onReset, resetting, onSave, saving, saveError,
+  valid, checking, debouncePending, issueCount, dirty, onReset, resetting, onSave, saving, saveError,
 }: SearchPipelineHeaderProps) {
   const savePending = saving || resetting || checking || debouncePending;
   return (
-    <header
+    <div
       style={{
-        display: "flex", alignItems: "center", gap: theme.space.m,
-        padding: `${theme.space.m}px ${theme.space.l}px`,
-        borderBottom: `1px solid ${theme.color.line}`,
-        background: theme.color.panel,
+        position: "sticky", top: 0, zIndex: 2,
+        display: "flex", alignItems: "center", gap: theme.space.s, flexWrap: "wrap",
+        padding: `${theme.space.s}px 0`,
+        background: theme.color.bg, borderBottom: `1px solid ${theme.color.line}`,
       }}
     >
-      <strong style={{ fontFamily: theme.font.display, fontSize: theme.font.size.xxl, fontWeight: 700, letterSpacing: "-0.01em" }}>
-        {title}
-      </strong>
-      {subtitle && <span style={{ color: theme.color.dim, fontSize: theme.font.size.m }}>{subtitle}</span>}
       <Chip tone={checking ? "dim" : valid ? "ok" : "warn"}>
         {checking ? "checking…" : valid ? "valid" : `${issueCount} issue${issueCount === 1 ? "" : "s"}`}
       </Chip>
       {saveError && <span style={{ color: theme.color.error, fontSize: theme.font.size.s }}>{saveError}</span>}
-      <div style={{ marginLeft: "auto", display: "flex", gap: theme.space.s }}>
-        {onReset && (
-          <Button
-            onClick={onReset}
-            disabled={saving || resetting}
-            title="Revert the stored search pipeline to the stock default (tracks future default changes)"
-          >
-            {resetting ? "resetting…" : "Reset to default"}
-          </Button>
-        )}
-        {onSave && (
-          <Button
-            variant="primary"
-            onClick={onSave}
-            disabled={savePending || !valid || !dirty}
-            title={
-              !valid ? "Fix every issue before saving"
-                : !dirty ? "No changes to save"
-                  : debouncePending ? "Waiting for pending edits to verify"
-                    : undefined
-            }
-          >
-            {saving ? "saving…" : "Save search pipeline"}
-          </Button>
-        )}
-      </div>
-    </header>
+      {(onReset || onSave) && (
+        <div style={{ marginLeft: "auto", display: "flex", gap: theme.space.s }}>
+          {onReset && (
+            <Button
+              onClick={onReset}
+              disabled={saving || resetting}
+              title="Revert the stored search pipeline to the stock default (tracks future default changes)"
+            >
+              {resetting ? "resetting…" : "Reset to default"}
+            </Button>
+          )}
+          {onSave && (
+            <Button
+              variant="primary"
+              onClick={onSave}
+              disabled={savePending || !valid || !dirty}
+              title={
+                !valid ? "Fix every issue before saving"
+                  : !dirty ? "No changes to save"
+                    : debouncePending ? "Waiting for pending edits to verify"
+                      : undefined
+              }
+            >
+              {saving ? "saving…" : "Save"}
+            </Button>
+          )}
+        </div>
+      )}
+    </div>
   );
 }

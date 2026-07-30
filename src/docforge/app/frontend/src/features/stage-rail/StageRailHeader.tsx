@@ -1,14 +1,14 @@
 // ====== Code Summary ======
-// The rail's header bar: identity, live validity badge, and the optional Save action (only
-// rendered when the host page wants persistence right here).
+// The ingestion rail's slim action toolbar: live validity + the optional Save action. Deliberately
+// NOT a titled banner — the collection name and the "Ingestion pipeline" label already live in the
+// shell's page header and sub-tab, so repeating them here made a redundant third bar. Sticks to the
+// top of the rail's scroll area, aligned to the content column.
 
 import { Button } from "../../components/Button";
 import { Chip } from "../../components/Chip";
 import { theme } from "../../theme";
 
 interface StageRailHeaderProps {
-  title: string;
-  subtitle?: string;
   valid: boolean;
   busy: boolean;
   /** A debounced config edit is armed but hasn't reached `/apply` yet — `blob` is stale. */
@@ -20,22 +20,18 @@ interface StageRailHeaderProps {
 }
 
 export function StageRailHeader({
-  title, subtitle, valid, busy, debouncePending, issueCount, onSave, saving, saveError,
+  valid, busy, debouncePending, issueCount, onSave, saving, saveError,
 }: StageRailHeaderProps) {
   const savePending = saving || busy || debouncePending;
   return (
-    <header
+    <div
       style={{
-        display: "flex", alignItems: "center", gap: theme.space.m,
-        padding: `${theme.space.m}px ${theme.space.l}px`,
-        borderBottom: `1px solid ${theme.color.line}`,
-        background: theme.color.panel,
+        position: "sticky", top: 0, zIndex: 2,
+        display: "flex", alignItems: "center", gap: theme.space.s, flexWrap: "wrap",
+        padding: `${theme.space.s}px 0`,
+        background: theme.color.bg, borderBottom: `1px solid ${theme.color.line}`,
       }}
     >
-      <strong style={{ fontFamily: theme.font.display, fontSize: theme.font.size.xxl, fontWeight: 700, letterSpacing: "-0.01em" }}>
-        {title}
-      </strong>
-      {subtitle && <span style={{ color: theme.color.dim, fontSize: theme.font.size.m }}>{subtitle}</span>}
       <Chip tone={busy ? "dim" : valid ? "ok" : "warn"}>
         {busy ? "applying…" : valid ? "valid" : `${issueCount} issue${issueCount === 1 ? "" : "s"}`}
       </Chip>
@@ -55,6 +51,6 @@ export function StageRailHeader({
           {saving ? "saving…" : "Save pipeline"}
         </Button>
       )}
-    </header>
+    </div>
   );
 }

@@ -36,11 +36,9 @@ export interface StageRailPageProps {
   onBlobChange?: (blob: GroupBlob, valid: boolean, issues: ValidationIssue[]) => void;
   /** When provided, a Save button PATCHes the blob back (disabled while invalid). */
   onSave?: (blob: GroupBlob) => Promise<void>;
-  title?: string;
-  subtitle?: string;
 }
 
-export function StageRailPage({ initialBlob, onBlobChange, onSave, title, subtitle }: StageRailPageProps) {
+export function StageRailPage({ initialBlob, onBlobChange, onSave }: StageRailPageProps) {
   const [palette, setPalette] = useState<Palette | null>(null);
   const [applyUrl, setApplyUrl] = useState<string | null>(null);
   const [blob, setBlob] = useState<GroupBlob | null>(null);
@@ -209,32 +207,32 @@ export function StageRailPage({ initialBlob, onBlobChange, onSave, title, subtit
   if (!palette || !stages) return <LoadingState label="loading pipeline stages…" />;
 
   return (
-    <div style={{ height: "100%", display: "flex", flexDirection: "column", background: theme.color.bg }}>
-      <StageRailHeader
-        title={title ?? "Pipeline"}
-        subtitle={subtitle}
-        valid={valid}
-        busy={busy}
-        debouncePending={debouncePending}
-        issueCount={issues.length}
-        onSave={onSave ? handleSave : undefined}
-        saving={saving}
-        saveError={saveError}
-      />
-      <NoticesBar notices={notices} issues={issues} />
-      {applyError && (
-        <div style={{ color: theme.color.error, fontSize: theme.font.size.s, padding: `${theme.space.xs}px ${theme.space.l}px` }}>
-          ⚠ {applyError}
-        </div>
-      )}
-      <div style={{ flex: 1, overflowY: "auto" }}>
-        <div
-          className="df-rise"
-          style={{
-            maxWidth: 860, margin: "0 auto", padding: theme.space.l,
-            display: "flex", flexDirection: "column",
-          }}
-        >
+    <div style={{ height: "100%", overflowY: "auto", background: theme.color.bg }}>
+      <div
+        className="df-rise"
+        style={{
+          maxWidth: 860, margin: "0 auto", padding: `0 ${theme.space.l}px ${theme.space.l}px`,
+          display: "flex", flexDirection: "column",
+        }}
+      >
+        <StageRailHeader
+          valid={valid}
+          busy={busy}
+          debouncePending={debouncePending}
+          issueCount={issues.length}
+          onSave={onSave ? handleSave : undefined}
+          saving={saving}
+          saveError={saveError}
+        />
+        {(notices.length > 0 || issues.length > 0 || applyError) && (
+          <div style={{ display: "flex", flexDirection: "column", gap: theme.space.xs, margin: `${theme.space.m}px 0` }}>
+            <NoticesBar notices={notices} issues={issues} />
+            {applyError && (
+              <div style={{ color: theme.color.error, fontSize: theme.font.size.s }}>⚠ {applyError}</div>
+            )}
+          </div>
+        )}
+        <div style={{ marginTop: theme.space.m, display: "flex", flexDirection: "column" }}>
           {stages.map((stage, index) => (
             <Fragment key={stage.key}>
               {index > 0 && <StageConnector />}

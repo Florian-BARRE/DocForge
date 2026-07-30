@@ -15,12 +15,7 @@ interface NoticesBarProps {
 export function NoticesBar({ notices, issues }: NoticesBarProps) {
   if (!notices.length && !issues.length) return null;
   return (
-    <div
-      style={{
-        padding: `${theme.space.s}px ${theme.space.l}px`, borderBottom: `1px solid ${theme.color.line}`,
-        display: "flex", flexDirection: "column", gap: theme.space.xs, background: theme.color.panel,
-      }}
-    >
+    <div style={{ display: "flex", flexDirection: "column", gap: theme.space.xs }}>
       {notices.map((notice, index) => (
         <div
           key={index}

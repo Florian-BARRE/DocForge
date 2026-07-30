@@ -55,8 +55,6 @@ export function CollectionSearchPage({ collectionId }: CollectionSearchPageProps
           setCollection(updated);
           setResetVersion((v) => v + 1);
         }}
-        title="Search pipeline"
-        subtitle={collection.name}
       />
     </div>
   );
