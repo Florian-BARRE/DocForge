@@ -191,6 +191,40 @@ class BaseChunkerNode(ActionNode):
             buckets.setdefault((passage.role, passage.page_start), []).append(passage)
         return list(buckets.values())
 
+    @staticmethod
+    def __assemble_text(group: list[Passage], common: list[str]) -> str:
+        """
+        Join the group's passages, labelling each COALESCED section not covered by the breadcrumb.
+
+        A single-section chunk's section is already named by its heading_path (the breadcrumb renders
+        it), so nothing is inlined. But a coalesced multi-section chunk reports only the COMMON
+        heading_path prefix (``[]`` for sibling sections), so its merged sections would otherwise be
+        anonymous in the text — a glossary's four terms or a policy's four articles collapsing into
+        one unlabelled blob, unretrievable by term/article. Each section whose path extends BEYOND
+        the common prefix gets its own heading trail inlined once, at its first passage, so every
+        merged section stays identifiable and searchable.
+
+        Args:
+            group (list[Passage]): The passages of one chunk-to-be, in reading order.
+            common (list[str]): The chunk's common heading-path prefix (what the breadcrumb renders).
+
+        Returns:
+            str: The assembled chunk text, coalesced-section headings inlined.
+        """
+        depth = len(common)
+        parts: list[str] = []
+        last_key: list[str] | None = None
+        for passage in group:
+            if (
+                passage.section_key != last_key
+                and len(passage.section_key) > depth
+                and passage.heading_path[depth:]
+            ):
+                parts.append(" › ".join(passage.heading_path[depth:]))
+            parts.append(passage.text)
+            last_key = passage.section_key
+        return "\n\n".join(parts)
+
     def __finalize(self, ir: DocumentIR, groups: list[list[Passage]]) -> list[Chunk]:
         """Turn each passage group into a Chunk (role taken from the homogeneous group)."""
         config: BaseChunkerConfig = self.config
@@ -198,8 +232,10 @@ class BaseChunkerNode(ActionNode):
         for group in groups:
             if not group:
                 continue
-            # 1. Join the group's text; recount on the FINAL text (joins add tokens).
-            text = "\n\n".join(passage.text for passage in group)
+            # 1. Join the group's text — labelling each coalesced section the common breadcrumb does
+            #    not cover; recount on the FINAL text (labels + joins add tokens).
+            common_path = self.__common_heading_path(group)
+            text = self.__assemble_text(group, common_path)
             # 2. Union of blocks in reading order, deduplicated (overlap may repeat passages).
             block_ids = list(dict.fromkeys(bid for passage in group for bid in passage.block_ids))
             chunks.append(
@@ -209,7 +245,7 @@ class BaseChunkerNode(ActionNode):
                     text=text,
                     block_ids=block_ids,
                     token_count=ChunkerHelpers.count_tokens(text, config.tokenizer_encoding),
-                    heading_path=self.__common_heading_path(group),
+                    heading_path=common_path,
                     role=group[0].role,
                     page_start=min(passage.page_start for passage in group),
                     page_end=max(passage.page_end for passage in group),

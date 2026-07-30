@@ -542,6 +542,63 @@ def test_figure_text_is_wrapped_in_an_explicit_image_marker() -> None:
     assert "[Data]" not in text
 
 
+async def test_coalesced_sibling_sections_keep_their_headings_inline() -> None:
+    """A glossary-style doc of tiny sibling sections coalesces into ONE chunk (no swarm), but each
+    merged section's heading must survive INLINE — else term/article-precise retrieval is lost. The
+    common breadcrumb is [] (siblings), so the headings can only live in the text."""
+    ir = DocumentIR(
+        doc_id="gloss",
+        source_hash="h",
+        n_pages=1,
+        blocks=[
+            _blk("hz", BlockType.HEADING, 0, text="Zero Trust", level=1),
+            _blk(
+                "dz", BlockType.PARAGRAPH, 1, text="A model where nothing is trusted.", parent="hz"
+            ),
+            _blk("hm", BlockType.HEADING, 2, text="Mesh Registry", level=1),
+            _blk(
+                "dm", BlockType.PARAGRAPH, 3, text="A directory of service endpoints.", parent="hm"
+            ),
+            _blk("hi", BlockType.HEADING, 4, text="Idempotency Key", level=1),
+            _blk("di", BlockType.PARAGRAPH, 5, text="A token making retries safe.", parent="hi"),
+        ],
+    )
+    node = ChunkerStructureAwareNode(id="c", config=ChunkerStructureAwareConfig())
+    chunks = (await node.run(ChunkerConsumes(ir=ir))).chunks
+    assert len(chunks) == 1, "tiny sibling sections coalesce into one chunk (no swarm)"
+    text = chunks[0].text
+    for term in ("Zero Trust", "Mesh Registry", "Idempotency Key"):
+        assert term in text, (
+            f"'{term}' heading must survive inline in the coalesced chunk: {text!r}"
+        )
+
+
+async def test_single_section_chunk_does_not_duplicate_its_heading_inline() -> None:
+    """A single-section chunk's heading is already in its heading_path (the breadcrumb renders it),
+    so it must NOT be duplicated into the body."""
+    ir = DocumentIR(
+        doc_id="one",
+        source_hash="h",
+        n_pages=1,
+        blocks=[
+            _blk("h", BlockType.HEADING, 0, text="Overview", level=1),
+            _blk(
+                "p",
+                BlockType.PARAGRAPH,
+                1,
+                text=" ".join(
+                    f"sentence {i} with enough words to be a real section" for i in range(12)
+                ),
+                parent="h",
+            ),
+        ],
+    )
+    node = ChunkerStructureAwareNode(id="c", config=ChunkerStructureAwareConfig())
+    chunks = (await node.run(ChunkerConsumes(ir=ir))).chunks
+    assert chunks[0].heading_path == ["Overview"]  # section named by the breadcrumb
+    assert not chunks[0].text.startswith("Overview"), "heading must not be duplicated into the body"
+
+
 def test_figure_with_a_crop_but_no_caption_still_anchors_a_passage() -> None:
     """A detected figure carrying a CROP but no caption/enrichment (the out-of-box, enrich-off case)
     must still produce a passage — else its picture block links to no chunk and the image crop is

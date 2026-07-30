@@ -128,6 +128,26 @@ async def test_doc_meta_flat_doc_without_ir_never_anchors_on_a_later_section() -
     assert not any(c.context for c in out.chunks), [c.context for c in out.chunks]
 
 
+async def test_doc_meta_does_not_duplicate_an_anchor_the_chunk_already_opens_with() -> None:
+    """When the chunker has inlined the title section into a coalesced first chunk, the doc anchor
+    must NOT be prefixed again (no 'Title \\n Title' duplication); other chunks still get it."""
+    node = ContextualizerDocMetaNode(id="m", config=ContextualizerDocMetaConfig())
+    chunks = [
+        _chunk(0, "Acme Glossary\n\nZero Trust\n\nA model where nothing is trusted.", []),
+        _chunk(1, "Some later body text.", ["Acme Glossary"]),
+    ]
+    out = await node.run(
+        DocMetaConsumes(
+            chunks=chunks,
+            source=SourceDocument(
+                filename="g.html", content=b"x", declared_meta={"title": "Acme Glossary"}
+            ),
+        )
+    )
+    assert not out.chunks[0].context  # already opens with the title → no duplicate
+    assert out.chunks[1].context == "Acme Glossary"  # a normal chunk still gets the anchor
+
+
 async def test_doc_meta_ir_fallback_skips_a_toc_heading_and_a_subheading() -> None:
     """The IR-fallback title must be the first TOP-LEVEL (level-1), non-ToC heading — not a ToC
     heading that opens the document, nor a deeper subheading."""

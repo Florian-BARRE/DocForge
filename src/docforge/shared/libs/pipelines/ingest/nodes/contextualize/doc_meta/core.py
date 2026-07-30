@@ -69,9 +69,20 @@ class ContextualizerDocMetaNode(BaseContextualizerNode):
     async def _contextualize(
         self, chunks: list[Chunk], data: ContextualizerConsumes
     ) -> list[Chunk]:
-        """Prefix every chunk with the one document anchor (computed once for the whole document)."""
+        """Prefix every chunk with the one document anchor (computed once for the whole document).
+
+        A chunk that already OPENS with the anchor text (the coalesced first chunk, whose title
+        section the chunker inlined) is left alone — prefixing it would duplicate the title.
+        """
         anchor = self.__anchor(chunks, data)
-        return [self._with_context(chunk, anchor) for chunk in chunks]
+        return [self._with_context(chunk, self.__anchor_for(chunk, anchor)) for chunk in chunks]
+
+    @staticmethod
+    def __anchor_for(chunk: Chunk, anchor: str | None) -> str | None:
+        """The anchor to prefix onto this chunk — None when its body already leads with it."""
+        if anchor and chunk.text.lstrip().startswith(anchor):
+            return None
+        return anchor
 
     async def _context_for(
         self, index: int, chunks: list[Chunk], data: ContextualizerConsumes
