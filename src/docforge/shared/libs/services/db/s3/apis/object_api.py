@@ -40,9 +40,18 @@ class S3ObjectApi:
 
     @staticmethod
     async def delete_many(client: Any, bucket: str, keys: Sequence[str]) -> None:
-        """Delete several objects — the blob purge path (call with reference-checked keys only)."""
-        for key in keys:
-            await client.delete_object(Bucket=bucket, Key=key)
+        """Delete several objects — the blob purge path (call with reference-checked keys only).
+
+        One batched ``delete_objects`` per 1000 keys (the S3 limit) instead of a request per key —
+        a document/collection purge of N orphan blobs is ⌈N/1000⌉ round-trips, not N.
+        """
+        keys = list(keys)
+        for start in range(0, len(keys), 1000):
+            batch = keys[start : start + 1000]
+            await client.delete_objects(
+                Bucket=bucket,
+                Delete={"Objects": [{"Key": key} for key in batch], "Quiet": True},
+            )
 
 
 __all__ = ["S3ObjectApi"]

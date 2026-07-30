@@ -130,23 +130,23 @@ async def test_save_sets_status_done(monkeypatch) -> None:
 async def test_store_blobs_writes_s3_before_the_registry(monkeypatch) -> None:
     calls: list[str] = []
     monkeypatch.setattr(facade_module.S3ObjectApi, "put_many", _tracking(calls, "s3_put"))
-    monkeypatch.setattr(facade_module.BlobApi, "register", _tracking(calls, "pg_register"))
+    monkeypatch.setattr(facade_module.BlobApi, "register_many", _tracking(calls, "pg_register"))
 
     facade = IngestionFacade(
         _postgres_yielding(MagicMock()), MagicMock(), _s3_yielding(MagicMock())
     )
     await facade.store_blobs([MagicMock()], [MagicMock(), MagicMock()])
 
-    # S3 bytes land before ANY registry row, so a mid-write crash never orphans a Postgres row.
-    assert calls[0] == "s3_put"
-    assert calls[1:] == ["pg_register", "pg_register"]
+    # S3 bytes land before the registry rows (one bulk insert), so a mid-write crash never orphans
+    # a Postgres row.
+    assert calls == ["s3_put", "pg_register"]
 
 
 async def test_store_blobs_skips_s3_when_no_objects(monkeypatch) -> None:
     put_many = AsyncMock()
-    register = AsyncMock()
+    register_many = AsyncMock()
     monkeypatch.setattr(facade_module.S3ObjectApi, "put_many", put_many)
-    monkeypatch.setattr(facade_module.BlobApi, "register", register)
+    monkeypatch.setattr(facade_module.BlobApi, "register_many", register_many)
 
     facade = IngestionFacade(
         _postgres_yielding(MagicMock()), MagicMock(), _s3_yielding(MagicMock())
@@ -154,7 +154,7 @@ async def test_store_blobs_skips_s3_when_no_objects(monkeypatch) -> None:
     await facade.store_blobs([], [MagicMock()])
 
     put_many.assert_not_called()
-    register.assert_awaited_once()
+    register_many.assert_awaited_once()
 
 
 # --------------------------------------------------------------------------- #

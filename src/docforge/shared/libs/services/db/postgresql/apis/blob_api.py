@@ -12,6 +12,7 @@ from collections.abc import Sequence
 
 # ====== Third-Party Library Imports ======
 from sqlalchemy import delete, or_, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # ====== Internal Project Imports ======
@@ -33,6 +34,27 @@ class BlobApi:
         session.add(blob)
         await session.flush()
         return blob
+
+    @staticmethod
+    async def register_many(session: AsyncSession, blobs: Sequence[Blob]) -> None:
+        """Register many blobs in ONE insert (idempotent per content hash) — the ingest path
+        registers original/PDF/renders/crops per document; a per-row round-trip is wasteful."""
+        if not blobs:
+            return
+        rows = [
+            {
+                "content_hash": blob.content_hash,
+                "s3_key": blob.s3_key,
+                "mime_type": blob.mime_type,
+                "size_bytes": blob.size_bytes,
+                "kind": blob.kind,
+            }
+            for blob in blobs
+        ]
+        statement = (
+            pg_insert(Blob).values(rows).on_conflict_do_nothing(index_elements=["content_hash"])
+        )
+        await session.execute(statement)
 
     @staticmethod
     async def get(session: AsyncSession, content_hash: str) -> Blob | None:

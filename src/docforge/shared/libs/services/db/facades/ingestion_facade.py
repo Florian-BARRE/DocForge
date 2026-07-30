@@ -100,10 +100,9 @@ class IngestionFacade(LoggerClass):
         if objects:
             async with self._s3.client() as s3:
                 await S3ObjectApi.put_many(s3, self._s3.bucket, objects)
-        # 2. The registry rows (idempotent per content hash).
+        # 2. The registry rows — one bulk insert (idempotent per content hash).
         async with self._postgres.session() as session:
-            for row in rows:
-                await BlobApi.register(session, row)
+            await BlobApi.register_many(session, rows)
 
     async def save(self, document_id: uuid.UUID, payload: IngestionPayload) -> None:
         """
