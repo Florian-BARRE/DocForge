@@ -1,0 +1,75 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-2 -1 100 100" width="120" height="120" role="img" aria-label="DocForge">
+  <title>DocForge — the molten-casting mark</title>
+  <style>
+    svg { --paper:#f7f5f2; --ink:#14161a; --steel:#3d454f; --accent:#ef5b1e; --ember:#f4a63b; }
+    @media (prefers-color-scheme: dark) {
+      svg { --paper:#1b1d22; --ink:#f7f5f2; --steel:#8b939d; --accent:#ef7a45; }
+    }
+    .paper { fill: var(--paper); }
+    .ink   { stroke: var(--ink); fill: none; }
+    .steel { fill: var(--steel); }
+    .accent{ fill: var(--accent); }
+    .ember { fill: var(--ember); }
+    .teat  { transform-box: fill-box; transform-origin: center top; animation: teat 2.8s cubic-bezier(.5,0,.6,1) infinite; }
+    .fall  { transform-box: fill-box; transform-origin: center; animation: fall 2.8s cubic-bezier(.5,0,.7,1) infinite; }
+    .spout { animation: spout 2.8s ease-in-out infinite; }
+    .dot   { transform-box: fill-box; transform-origin: center; fill: var(--steel); animation: diffuse 2.8s ease-out infinite; }
+    @keyframes teat {
+      0% { transform: scaleY(1); } 30% { transform: scaleY(1.75); } 36% { transform: scaleY(1.55); }
+      48% { transform: scaleY(.78); } 72% { transform: scaleY(1); } 100% { transform: scaleY(1); }
+    }
+    @keyframes fall {
+      0%,30% { transform: translateY(0) scale(.55); opacity: 0; }
+      38% { transform: translateY(0) scale(1); opacity: 1; }
+      64% { transform: translateY(8px) scale(.95); opacity: 1; }
+      76%,100% { transform: translateY(9px) scale(.5); opacity: 0; }
+    }
+    @keyframes spout { 0%,100% { opacity: .72; } 50% { opacity: 1; } }
+    @keyframes diffuse {
+      0% { fill: var(--steel); transform: scale(1); }
+      8% { fill: var(--accent); transform: scale(1.55); }
+      32% { fill: var(--steel); transform: scale(1); }
+      100% { fill: var(--steel); transform: scale(1); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .teat, .fall, .spout, .dot { animation: none; }
+      .fall { opacity: 0; }
+      .dot.c { fill: var(--accent); }
+    }
+  </style>
+
+  <!-- Document body + folded corner + ruled lines. -->
+  <path class="paper" d="M24 2 H60 L74 16 V38 H24 Z" stroke="var(--ink)" stroke-width="4" stroke-linejoin="round"/>
+  <path class="ink" d="M60 2 V16 H74" stroke-width="4" stroke-linejoin="round"/>
+  <rect class="steel" x="31" y="11" width="24" height="3.6" rx="1.8"/>
+  <rect class="steel" x="31" y="19" width="30" height="3.6" rx="1.8"/>
+
+  <!-- Pour-lip + left drip cup (glowing at rest). -->
+  <g class="spout">
+    <rect class="accent" x="24" y="33" width="50" height="5"/>
+    <path class="accent" d="M34 38 v6 a3.5 3.5 0 0 0 7 0 v-6 Z"/>
+  </g>
+
+  <!-- Right cup: elongates, sheds a bead, reforms. -->
+  <path class="accent teat" d="M52 38 v8 a3.5 3.5 0 0 0 7 0 v-8 Z"/>
+  <circle class="ember fall" cx="55.5" cy="51" r="2.5"/>
+
+  <!-- Layer shelves. -->
+  <rect class="paper" x="16" y="54" width="64" height="12" rx="3" stroke="var(--ink)" stroke-width="3.5"/>
+  <rect class="paper" x="16" y="70" width="64" height="12" rx="3" stroke="var(--ink)" stroke-width="3.5"/>
+  <rect class="paper" x="16" y="86" width="64" height="10" rx="3" stroke="var(--ink)" stroke-width="3.5"/>
+
+  <!-- Vectors — heat diffuses outward from the impact point (56,60); delays set by distance. -->
+  <circle class="dot"   cx="28" cy="60" r="2.8" style="animation-delay:-0.856s"/>
+  <circle class="dot"   cx="42" cy="60" r="2.8" style="animation-delay:-1.100s"/>
+  <circle class="dot c" cx="56" cy="60" r="2.8" style="animation-delay:-1.344s"/>
+  <circle class="dot"   cx="70" cy="60" r="2.8" style="animation-delay:-1.100s"/>
+  <circle class="dot"   cx="28" cy="76" r="2.8" style="animation-delay:-0.782s"/>
+  <circle class="dot c" cx="42" cy="76" r="2.8" style="animation-delay:-0.973s"/>
+  <circle class="dot"   cx="56" cy="76" r="2.8" style="animation-delay:-1.065s"/>
+  <circle class="dot"   cx="70" cy="76" r="2.8" style="animation-delay:-0.973s"/>
+  <circle class="dot c" cx="28" cy="91" r="2.6" style="animation-delay:-0.616s"/>
+  <circle class="dot"   cx="42" cy="91" r="2.6" style="animation-delay:-0.751s"/>
+  <circle class="dot"   cx="56" cy="91" r="2.6" style="animation-delay:-0.804s"/>
+  <circle class="dot"   cx="70" cy="91" r="2.6" style="animation-delay:-0.751s"/>
+</svg>

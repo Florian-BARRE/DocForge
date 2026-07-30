@@ -1,7 +1,9 @@
 <div align="center">
+<img src="assets/logo-animated.svg" alt="DocForge" width="104" height="104" />
+<br />
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="assets/wordmark-reversed.svg" />
-  <img src="assets/wordmark.svg" alt="DocForge" width="300" />
+  <img src="assets/wordmark.svg" alt="DocForge" width="280" />
 </picture>
 </div>
 

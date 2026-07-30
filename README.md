@@ -1,8 +1,10 @@
 <div align="center">
 
+<img src="docs/assets/logo-animated.svg" alt="DocForge" width="118" height="118" />
+
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/wordmark-reversed.svg" />
-  <img src="docs/assets/wordmark.svg" alt="DocForge" width="360" />
+  <img src="docs/assets/wordmark.svg" alt="DocForge" width="320" />
 </picture>
 
 ### INGESTION, FORGED
