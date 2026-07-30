@@ -93,7 +93,10 @@ services:
       # File-change events do NOT propagate through the Windows bind mount — poll instead,
       # otherwise Vite serves its startup snapshot forever (no HMR, stale modules).
       CHOKIDAR_USEPOLLING: "true"
-    command: sh -c "npm install && npm run dev"
+    # `npm ci` only when the node_modules volume is cold (first run) — otherwise re-resolving the
+    # whole tree on every `up` burns network + CPU for nothing. `ci` (not `install`) = reproducible
+    # from the lockfile.
+    command: sh -c "[ -x node_modules/.bin/vite ] || npm ci; npm run dev"
     ports:
       - "10046:5173"              # Vite dev UI (hot reload)
     depends_on:

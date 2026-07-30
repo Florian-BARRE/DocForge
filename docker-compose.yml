@@ -75,6 +75,14 @@ services:
       QDRANT_URL: http://docforge_qdrant:6333
       # botocore rejects '_' in hostnames — the hyphenated container_name resolves on the network
       S3_ENDPOINT_URL: http://docforge-seaweedfs:8333
+      # Pin native BLAS/OpenMP to ONE thread per task. The worker already bounds *concurrent* heavy
+      # tasks to WORKER_HEAVY_THREADS; without this, each docling/torch/onnx call inside a task spawns
+      # an OpenMP pool sized to the HOST's cores (8), ignoring the cpus:"4" cgroup quota → 4 tasks ×
+      # 8 threads thrash a 4-CPU budget. 1 BLAS thread/task × 4 tasks = the 4-CPU quota, no oversubscribe.
+      # (Must be set before torch/numpy import — compose env is set at container start, so it takes.)
+      OMP_NUM_THREADS: "1"
+      OPENBLAS_NUM_THREADS: "1"
+      MKL_NUM_THREADS: "1"
     volumes:
       # Persist the docling/rapidocr HF cache across recreations (the dev override binds
       # the HOST's cache instead; prod has no host cache to bind, so it needs its own
@@ -93,15 +101,22 @@ services:
     # optional autoheal sidecar. start_period covers the cold docling/rapidocr model load.
     healthcheck:
       test: ["CMD", "arq", "entrypoint.WorkerSettings", "--check"]
-      interval: 30s
+      # The health record is written every 30s; a 60s probe still catches a wedge within one cycle
+      # while halving the cost of spawning a full arq/python process per check.
+      interval: 60s
       timeout: 10s
       retries: 3
       start_period: 90s
     deploy:
       resources:
+        # Live idle ~0.9 GiB; a large PDF + OCR peaks ~2-4 GiB. 5g ceiling keeps headroom without the
+        # old 8g that (with bge 6g) oversubscribed a 23 GB shared host. Soft floor so the OOM-killer
+        # can't evict a mid-ingest worker under host pressure.
         limits:
           cpus: "4"
-          memory: 8g
+          memory: 5g
+        reservations:
+          memory: 1g
     restart: unless-stopped
     networks:
       - docforge_net
@@ -113,6 +128,20 @@ services:
     # No host port in prod — data-plane services are reachable only on docforge_net;
     # operator access is `docker compose exec docforge_postgres psql ...`. Dev re-publishes
     # 10041 via docker-compose.dev.yml.
+    # Tune off the stock 128MB profile for the 4g container: cache hot IR/chunk pages, tell the
+    # planner the real OS-cache size, and cap connections (only app+worker connect, small pools).
+    command:
+      - postgres
+      - "-c"
+      - "shared_buffers=1GB"
+      - "-c"
+      - "effective_cache_size=3GB"
+      - "-c"
+      - "work_mem=16MB"
+      - "-c"
+      - "maintenance_work_mem=256MB"
+      - "-c"
+      - "max_connections=50"
     env_file:
       - services/docforge/postgres.env
     volumes:
@@ -127,6 +156,8 @@ services:
         limits:
           cpus: "2"
           memory: 4g
+        reservations:
+          memory: 1g
     restart: unless-stopped
     networks:
       - docforge_net
@@ -137,6 +168,10 @@ services:
     container_name: docforge-redis
     # No host port in prod — internal to docforge_net only (app enqueue / worker listen).
     # Dev re-publishes 10042 via docker-compose.dev.yml.
+    # Bound RAM below the container cap and refuse writes rather than silently EVICT queued jobs
+    # (noeviction). Disable RDB snapshots (--save "") — the queue is transport-only; job truth lives
+    # in Postgres, so the periodic fork+copy-on-write is wasted CPU/RAM.
+    command: ["redis-server", "--maxmemory", "400mb", "--maxmemory-policy", "noeviction", "--save", ""]
     volumes:
       - docforge_redis_data:/data
     healthcheck:
@@ -149,6 +184,8 @@ services:
         limits:
           cpus: "0.5"
           memory: 512m
+        reservations:
+          memory: 128m
     restart: unless-stopped
     networks:
       - docforge_net
@@ -175,6 +212,8 @@ services:
         limits:
           cpus: "2"
           memory: 4g
+        reservations:
+          memory: 1g
     restart: unless-stopped
     networks:
       - docforge_net
@@ -191,6 +230,7 @@ services:
       -s3.config=/etc/seaweedfs/s3_config.json
       -master.volumeSizeLimitMB=256
       -volume.max=0
+      -volume.index=leveldb
     # No host port in prod — S3 API internal to docforge_net only. Dev re-publishes
     # 10044 via docker-compose.dev.yml.
     volumes:
@@ -241,8 +281,11 @@ services:
           - gotenberg             # so a collection's default base_url http://gotenberg:3000 resolves
 
   # ── BGE model host — the SAME image as the legacy stack (embed BGE-M3 + rerank) ──
-  # No profile: it is a backing service like the stores, so `up` (without --profile full)
-  # starts it too for local `uv` dev. A collection's embed node points at it via base_url:
+  # Profiled `full` + `bge`: the two models pin ~3.5 GiB resident, so a plain `up` (stores only, for
+  # local `uv` dev that doesn't exercise embeddings) no longer pays that idle tax on the shared VM.
+  #   Full containerised stack:  --profile full   (includes bge)
+  #   Stores + embeddings only:  --profile bge    (bge alongside the stores, no app/worker)
+  # A collection's embed node points at it via base_url:
   #   in-network  → http://bge_server:80   (the docforge_net alias below)
   #   from host   → http://localhost:10047 (dev only — see docker-compose.dev.yml)
   docforge_bge_server:
@@ -253,6 +296,7 @@ services:
         TORCH_VARIANT: cpu        # ~2 GB CPU image; GPU: build --build-arg TORCH_VARIANT=gpu + BGE_DEVICE=cuda
     image: docforge-bge-server:latest   # reuse the legacy-built image if present (no rebuild)
     container_name: docforge-bge-server
+    profiles: ["full", "bge"]
     # Same reason as docforge_app/docforge_worker: Docker's embedded resolver has no external
     # upstream on this VM, so without a pin the first-boot HF weights download
     # (huggingface.co) fails to resolve.
@@ -275,9 +319,13 @@ services:
       start_period: 300s
     deploy:
       resources:
+        # Live resident ~3.5 GiB (both models). 5g ceiling = models + batch headroom (was 6g); soft
+        # floor at the resident set so the host OOM-killer keeps the loaded models alive.
         limits:
           cpus: "4"
-          memory: 6g
+          memory: 5g
+        reservations:
+          memory: 3500m
     restart: unless-stopped
     networks:
       docforge_net:
