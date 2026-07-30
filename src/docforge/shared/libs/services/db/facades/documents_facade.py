@@ -6,6 +6,7 @@
 
 # ====== Standard Library Imports ======
 import uuid
+from collections.abc import Sequence
 
 # ====== Internal Project Imports ======
 from loggerplusplus import LoggerClass
@@ -42,6 +43,18 @@ class DocumentsFacade(LoggerClass):
         """Fetch a document by id."""
         async with self._postgres.session() as session:
             return await DocumentApi.get(session, document_id)
+
+    async def get_by_ids(self, document_ids: Sequence[uuid.UUID]) -> list[Document]:
+        """Bulk-fetch documents by id (the search-hydration source-identity read)."""
+        async with self._postgres.session() as session:
+            return await DocumentApi.get_by_ids(session, document_ids)
+
+    async def get_filterable_metadata_for_documents(
+        self, document_ids: Sequence[uuid.UUID]
+    ) -> dict[uuid.UUID, dict]:
+        """Bulk filterable document-scope metadata for a set of documents (search hydration)."""
+        async with self._postgres.session() as session:
+            return await DocumentApi.get_filterable_metadata_for_documents(session, document_ids)
 
     async def list_for_collection(self, collection_id: uuid.UUID) -> list[Document]:
         """Return a collection's documents, newest first."""

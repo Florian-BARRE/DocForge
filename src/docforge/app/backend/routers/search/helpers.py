@@ -164,11 +164,15 @@ class SearchHelpers:
         Returns:
             SearchHitModel: The flat, client-facing view of the hit.
         """
-        # 1. chunk_index/token_count live in the hydrated metadata bag (never on the Hit's spine).
+        # 1. chunk_index/token_count + source identity/metadata live in the hydrated metadata bag
+        #    (never on the Hit's spine) — the read port fills them so the hit self-cites.
         metadata = hit.metadata or {}
         return SearchHitModel(
             chunk_id=hit.chunk_id,
             document_id=hit.document_id,
+            filename=metadata.get("filename"),
+            document_title=metadata.get("document_title"),
+            metadata=metadata.get("document_metadata") or {},
             score=hit.score,
             text=hit.text or "",
             chunk_index=metadata.get("chunk_index", 0),

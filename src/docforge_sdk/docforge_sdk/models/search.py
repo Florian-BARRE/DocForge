@@ -83,6 +83,17 @@ class SearchHit(BaseModel):
 
     chunk_id: str = Field(description="The chunk's UUID.")
     document_id: str = Field(description="The owning document's UUID.")
+    filename: str | None = Field(
+        default=None, description="The source document's filename — the hit's human identity."
+    )
+    document_title: str | None = Field(
+        default=None, description="The source document's title (empty parsed titles → null)."
+    )
+    metadata: dict[str, Any] = Field(
+        default_factory=dict,
+        description="The document's filterable metadata (field → value) — so a hit self-cites "
+        "without a second GET /documents/{id}.",
+    )
     score: float = Field(description="Fused RRF score (higher is better).")
     text: str = Field(description="The chunk's enriched text.")
     chunk_index: int = Field(description="Ordinal within the document.")

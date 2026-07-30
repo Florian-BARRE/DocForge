@@ -50,7 +50,13 @@ def _result(query: str) -> SearchResult:
                 score=0.42,
                 rank=1,
                 text="chunk text 1",
-                metadata={"chunk_index": 3, "token_count": 42},
+                metadata={
+                    "chunk_index": 3,
+                    "token_count": 42,
+                    "filename": "gdpr.pdf",
+                    "document_title": "EU Regulation",
+                    "document_metadata": {"jurisdiction": "EU", "article_ref": "Article 5"},
+                },
             )
         ],
     )
@@ -104,6 +110,11 @@ def test_search_delegates_to_service_and_shapes_hits(client, wired) -> None:
     assert hit["text"] == "chunk text 1"
     assert hit["chunk_index"] == 3
     assert hit["token_count"] == 42
+    # 4. The hit self-cites: source identity + declared metadata are lifted out of the bag so the
+    #    client never needs a second GET /documents/{id}.
+    assert hit["filename"] == "gdpr.pdf"
+    assert hit["document_title"] == "EU Regulation"
+    assert hit["metadata"] == {"jurisdiction": "EU", "article_ref": "Article 5"}
 
 
 def test_search_passes_list_filter_verbatim(client, wired) -> None:

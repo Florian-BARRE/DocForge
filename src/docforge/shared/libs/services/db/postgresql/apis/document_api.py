@@ -210,6 +210,41 @@ class DocumentApi:
         return {name: value for name, value in result.all()}
 
     @staticmethod
+    async def get_filterable_metadata_for_documents(
+        session: AsyncSession, document_ids: Sequence[uuid.UUID]
+    ) -> dict[uuid.UUID, dict[str, Any]]:
+        """
+        Bulk variant of ``get_filterable_metadata`` — one query for a set of documents.
+
+        The search hydration path resolves a hit page (a handful of distinct documents) to their
+        filterable document-scope metadata in a SINGLE round-trip, so a self-citing hit needs no
+        per-document N+1.
+
+        Args:
+            session (AsyncSession): The unit of work.
+            document_ids (Sequence[uuid.UUID]): The documents whose filterable metadata is read.
+
+        Returns:
+            dict[uuid.UUID, dict[str, Any]]: document id → {field name → decoded value} (a document
+                with no filterable metadata is simply absent from the map).
+        """
+        if not document_ids:
+            return {}
+        result = await session.execute(
+            select(DocumentMetadata.document_id, MetadataField.field_name, DocumentMetadata.value)
+            .join(MetadataField, MetadataField.id == DocumentMetadata.field_id)
+            .where(
+                DocumentMetadata.document_id.in_(document_ids),
+                MetadataField.filterable.is_(True),
+                MetadataField.scope == FieldScope.DOCUMENT,
+            )
+        )
+        out: dict[uuid.UUID, dict[str, Any]] = {}
+        for document_id, name, value in result.all():
+            out.setdefault(document_id, {})[name] = value
+        return out
+
+    @staticmethod
     async def get_searchable_metadata(
         session: AsyncSession, document_id: uuid.UUID
     ) -> list[tuple[str, Any, bool, bool]]:

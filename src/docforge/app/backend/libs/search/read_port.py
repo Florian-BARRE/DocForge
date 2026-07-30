@@ -127,17 +127,32 @@ class CollectionReadPortImpl(CollectionReadPort, LoggerClass):
             [uuid.UUID(chunk_id) for chunk_id in chunk_ids]
         )
 
-        # 3. Shape each row into a Hit; chunk_index/token_count ride along in metadata (nothing
-        #    the live SearchResponse exposes is lost).
-        hydrated = {
-            str(row.id): Hit(
+        # 3. Resolve source identity + declared metadata for the hit page's documents in TWO bulk
+        #    reads (not per-hit) so every hit self-cites — the client never needs an N+1 GET
+        #    /documents/{id} to render "which document, which fields".
+        document_ids = list({row.document_id for row in rows})
+        documents = {doc.id: doc for doc in await self._database.documents.get_by_ids(document_ids)}
+        doc_metadata = await self._database.documents.get_filterable_metadata_for_documents(
+            document_ids
+        )
+
+        # 4. Shape each row into a Hit; chunk_index/token_count + the source identity/metadata ride
+        #    along in the metadata bag (lifted into the flat hit model by the router).
+        hydrated = {}
+        for row in rows:
+            document = documents.get(row.document_id)
+            hydrated[str(row.id)] = Hit(
                 chunk_id=str(row.id),
                 document_id=str(row.document_id),
                 text=row.text,
-                metadata={"chunk_index": row.chunk_index, "token_count": row.token_count},
+                metadata={
+                    "chunk_index": row.chunk_index,
+                    "token_count": row.token_count,
+                    "filename": document.filename if document else None,
+                    "document_title": (document.title or None) if document else None,
+                    "document_metadata": doc_metadata.get(row.document_id, {}),
+                },
             )
-            for row in rows
-        }
         self.logger.debug(f"Hydrated {len(hydrated)}/{len(chunk_ids)} chunk(s)")
         return hydrated
 
