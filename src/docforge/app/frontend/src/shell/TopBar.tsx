@@ -3,8 +3,11 @@
 // destinations, and the right cluster — theme switch + API-token control. Uses the palette
 // variables, so it reskins itself in light/dark.
 
+import wordmarkReversed from "../assets/brand/wordmark-reversed.svg";
+import wordmark from "../assets/brand/wordmark.svg";
 import { theme as t } from "../theme";
 import { ThemeToggle } from "./ThemeToggle";
+import { useTheme } from "./useTheme";
 import { TokenControl } from "./TokenControl";
 import type { Navigate, View } from "./view";
 
@@ -38,6 +41,8 @@ function NavTab({ active, label, onClick }: { active: boolean; label: string; on
 }
 
 export function TopBar({ view, onNavigate }: TopBarProps) {
+  // The lockup (mark + "DocForge") has theme-baked colours, so swap the asset with the palette.
+  const { theme } = useTheme();
   return (
     <header
       style={{
@@ -48,25 +53,18 @@ export function TopBar({ view, onNavigate }: TopBarProps) {
         backdropFilter: "blur(8px)",
       }}
     >
-      {/* Brand — an ember mark + the wordmark in the display face. */}
+      {/* Brand — the forged-document mark + "DocForge" lockup (Forge in the accent). */}
       <button
         onClick={() => onNavigate({ name: "collections" })}
-        style={{ display: "flex", alignItems: "center", gap: 10, background: "none", border: "none", cursor: "pointer", padding: 0 }}
+        style={{ display: "flex", alignItems: "center", background: "none", border: "none", cursor: "pointer", padding: 0 }}
         title="DocForge"
       >
-        <span
-          style={{
-            width: 26, height: 26, borderRadius: 8, display: "grid", placeItems: "center",
-            background: `linear-gradient(150deg, ${t.color.accentStrong}, ${t.color.accent})`,
-            boxShadow: `0 0 0 1px ${t.color.accentLine}, 0 6px 16px -6px ${t.color.accent}`,
-            color: t.color.onAccent, fontFamily: t.font.display, fontWeight: 800, fontSize: 15,
-          }}
-        >
-          D
-        </span>
-        <span style={{ fontFamily: t.font.display, fontWeight: 700, fontSize: t.font.size.xxl, color: t.color.text, letterSpacing: "-0.01em" }}>
-          Doc<span style={{ color: t.color.accent }}>Forge</span>
-        </span>
+        <img
+          src={theme === "dark" ? wordmarkReversed : wordmark}
+          alt="DocForge"
+          height={26}
+          style={{ display: "block", height: 26, width: "auto" }}
+        />
       </button>
 
       <nav style={{ display: "flex", gap: 4, marginLeft: t.space.s }}>

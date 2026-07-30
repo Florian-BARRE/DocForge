@@ -45,8 +45,10 @@ export const theme = {
   space: { xs: 4, s: 8, m: 12, l: 16, xl: 24, xxl: 40 },
   shadow: { sm: "var(--shadow-1)", md: "var(--shadow-2)", pop: "var(--shadow-pop)" },
   font: {
-    family: "'Hanken Grotesk', system-ui, -apple-system, sans-serif",
-    display: "'Bricolage Grotesque', 'Hanken Grotesk', sans-serif",
+    // Archivo is the whole UI voice (labels, nav, headings, body). JetBrains Mono is reserved for
+    // machine values only (ids, hashes, scores, timings, dims, versions) — never prose. See docs/brand.md.
+    family: "'Archivo', system-ui, -apple-system, sans-serif",
+    display: "'Archivo', system-ui, -apple-system, sans-serif",
     mono: "'JetBrains Mono', ui-monospace, 'Cascadia Code', Consolas, monospace",
     weight: { normal: 400, medium: 500, semibold: 600, bold: 700 },
     // Bumped from the cramped 10–15px scale to a properly breathing one.

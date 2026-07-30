@@ -3,24 +3,26 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="color-scheme" content="dark light" />
+    <meta name="color-scheme" content="light dark" />
     <title>DocForge — Document Intelligence</title>
-    <!-- Distinctive type: Bricolage Grotesque (display/brand), Hanken Grotesk (UI), JetBrains Mono (code). -->
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <!-- DocForge type: Archivo (all UI voice), JetBrains Mono (machine values only). See docs/brand.md. -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
-    <!-- Set the theme before first paint so there is no flash of the wrong palette. -->
+    <!-- Set the theme before first paint so there is no flash of the wrong palette. Default is
+         "paper" (light); an OS that prefers dark gets "ink". -->
     <script>
       (function () {
         try {
           var saved = localStorage.getItem("docforge_theme");
-          var theme = saved || (matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark");
+          var theme = saved || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
           document.documentElement.dataset.theme = theme;
         } catch (e) {
-          document.documentElement.dataset.theme = "dark";
+          document.documentElement.dataset.theme = "light";
         }
       })();
     </script>
