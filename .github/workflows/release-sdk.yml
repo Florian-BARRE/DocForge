@@ -42,8 +42,9 @@ jobs:
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
-      # Required for PyPI Trusted Publishing (OIDC token minting).
-      id-token: write
+      # Declaring `permissions:` sets every UNLISTED scope to `none`, so both are required here:
+      contents: read # actions/checkout must read the (private) repo
+      id-token: write # PyPI Trusted Publishing (OIDC token minting)
     steps:
       - name: Checkout
         uses: actions/checkout@v4
