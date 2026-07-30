@@ -76,6 +76,7 @@ class Database(LoggerClass):
         """Release every store connection — call on application shutdown."""
         await self._postgres.dispose()
         await self._qdrant.close()
+        await self._s3.close()
         self.logger.info(f"Database facade closed")
 
 

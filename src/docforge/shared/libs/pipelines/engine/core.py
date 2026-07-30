@@ -57,8 +57,17 @@ class FlowEngine(LoggerClass):
     is kept whole rather than fragmented across modules.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, trace_payloads: bool = True) -> None:
+        """
+        Args:
+            trace_payloads (bool): When True (default), each node's resolved input + output is
+                serialised (payload-stripped) into its execution record — a debugging aid. The
+                ingestion/search runners DISCARD the record, so they pass False to skip ~2 full-IR
+                ``model_dump`` + strip traversals at *every* node hop (the IR flows through ~10
+                IR-carrying hops per document). Set True only when a caller actually reads the trace.
+        """
         LoggerClass.__init__(self)
+        self._trace_payloads = trace_payloads
 
     def __entry(self, group: Group) -> AbstractNode | None:
         """Return the group's entry node — the single child with no incoming transition."""
@@ -210,8 +219,12 @@ class FlowEngine(LoggerClass):
             kind=node.KIND,
             status=status,
             duration_ms=(perf_counter() - started) * 1000,
-            resolved_input=self.__dump(node_input),
-            output=self.__dump(node_output) if node_output is not None else None,
+            resolved_input=self.__dump(node_input) if self._trace_payloads else None,
+            output=(
+                self.__dump(node_output)
+                if (self._trace_payloads and node_output is not None)
+                else None
+            ),
             error=error,
         )
         if status == NodeStatus.SUCCESS:
@@ -429,7 +442,11 @@ class FlowEngine(LoggerClass):
             kind=group.KIND,
             status=group_status,
             duration_ms=(perf_counter() - started) * 1000,
-            output=self.__dump(group_output) if group_output is not None else None,
+            output=(
+                self.__dump(group_output)
+                if (self._trace_payloads and group_output is not None)
+                else None
+            ),
             children=child_records,
         )
         return group_output, record

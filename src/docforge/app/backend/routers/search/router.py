@@ -106,6 +106,7 @@ async def search_collection(collection_id: uuid.UUID, request: SearchRequest) ->
             search_targets=SearchHelpers.to_search_targets(request.search_in),
             use_late_interaction=use_late_interaction,
             rescore_pool_size=rescore_pool_size,
+            collection=collection,
         )
     except SearchRunError as exc:
         raise HTTPException(

@@ -9,6 +9,7 @@
 
 # ====== Standard Library Imports ======
 import uuid
+from typing import Any
 
 # ====== Third-Party Library Imports ======
 from loggerplusplus import LoggerClass
@@ -111,6 +112,7 @@ class SearchService(LoggerClass):
         search_targets: list[SearchTarget] | None = None,
         use_late_interaction: bool = False,
         rescore_pool_size: int | None = None,
+        collection: Any | None = None,
     ) -> SearchResult:
         """
         Run the search graph against a collection and return the ranked SearchResult.
@@ -136,8 +138,11 @@ class SearchService(LoggerClass):
             SearchContractError: When the collection has no embedder wired (from the contract builder).
             SearchRunError: When the graph is invalid or the run did not deliver (from the runner).
         """
-        # 1. Load the collection — the contract source (its pipeline blob carries the embedder).
-        collection = await self._database.collections.get(collection_id)
+        # 1. The collection is the contract source (its pipeline blob carries the embedder). Reuse the
+        #    one the caller already loaded (the router loads it for its 404/409 gates) to avoid a
+        #    second round-trip + re-decode of the large {pipeline, search} JSONB on the hot path.
+        if collection is None:
+            collection = await self._database.collections.get(collection_id)
         if collection is None:
             raise SearchServiceError(f"collection {collection_id} not found")
 

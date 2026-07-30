@@ -6,8 +6,9 @@
 # hardcoded. The Database façade opens ONE client around a document's blobs, not one per blob.
 
 # ====== Standard Library Imports ======
+import asyncio
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
 from typing import Any
 
 # ====== Third-Party Library Imports ======
@@ -41,24 +42,50 @@ class S3Client(LoggerClass):
         self._secret_key = secret_key
         self._region = region
         self.bucket = bucket
+        # One long-lived aioboto3 client for the whole process, created lazily on first use and
+        # reused across coroutines (aiobotocore clients are safe for concurrent use). Building a
+        # fresh client per blob op re-parses the S3 service model + rebuilds the signer stack
+        # (tens of ms of CPU each) — the explorer alone does one GET /blobs per figure/page.
+        self._stack: AsyncExitStack | None = None
+        self._client: Any | None = None
+        self._lock = asyncio.Lock()
         self.logger.info(f"S3Client configured for {endpoint_url} (bucket '{bucket}')")
+
+    async def _get_client(self) -> Any:
+        """Return the shared S3 client, creating it once (double-checked under a lock)."""
+        if self._client is not None:
+            return self._client
+        async with self._lock:
+            if self._client is None:
+                self._stack = AsyncExitStack()
+                self._client = await self._stack.enter_async_context(
+                    self._session.client(
+                        "s3",
+                        endpoint_url=self._endpoint_url,
+                        aws_access_key_id=self._access_key,
+                        aws_secret_access_key=self._secret_key,
+                        region_name=self._region,
+                    )
+                )
+        return self._client
 
     @asynccontextmanager
     async def client(self) -> AsyncIterator[Any]:
         """
-        Yield an S3 client the apis run against — the object-store analogue of a Postgres session.
+        Yield the shared, process-lifetime S3 client the apis run against (object-store analogue of a
+        Postgres session). Exiting the context does NOT close the client — it lives until ``close()``.
 
         Yields:
             Any: The aioboto3 S3 client (untyped by aioboto3).
         """
-        async with self._session.client(
-            "s3",
-            endpoint_url=self._endpoint_url,
-            aws_access_key_id=self._access_key,
-            aws_secret_access_key=self._secret_key,
-            region_name=self._region,
-        ) as s3:
-            yield s3
+        yield await self._get_client()
+
+    async def close(self) -> None:
+        """Release the shared S3 client — call on application shutdown."""
+        if self._stack is not None:
+            await self._stack.aclose()
+            self._stack = None
+            self._client = None
 
     async def ensure_bucket(self) -> None:
         """

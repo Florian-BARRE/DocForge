@@ -191,9 +191,9 @@ class CollectionsFacade(LoggerClass):
             collection = await CollectionApi.get(session, collection_id)
             if collection is None:
                 return
-            # 2. Snapshot the NEW state (append-only history).
-            versions = await CollectionApi.list_config_versions(session, collection_id)
-            next_version = versions[0].version + 1 if versions else 1
+            # 2. Snapshot the NEW state (append-only history). Only the max version number is needed —
+            #    fetch it as a scalar, not the whole {pipeline, search} snapshot history.
+            next_version = await CollectionApi.max_config_version(session, collection_id) + 1
             await CollectionApi.add_config_version(
                 session,
                 ConfigVersion(

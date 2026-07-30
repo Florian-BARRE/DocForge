@@ -8,7 +8,7 @@
 import uuid
 
 # ====== Third-Party Library Imports ======
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # ====== Internal Project Imports ======
@@ -122,6 +122,17 @@ class CollectionApi:
             .order_by(ConfigVersion.version.desc())
         )
         return list(result.scalars().all())
+
+    @staticmethod
+    async def max_config_version(session: AsyncSession, collection_id: uuid.UUID) -> int:
+        """The highest config version number for a collection (0 when none) — a single scalar,
+        so the next-version bump never materializes the whole {pipeline, search} snapshot history."""
+        result = await session.execute(
+            select(func.max(ConfigVersion.version)).where(
+                ConfigVersion.collection_id == collection_id
+            )
+        )
+        return result.scalar_one_or_none() or 0
 
 
 __all__ = ["CollectionApi"]

@@ -43,7 +43,7 @@ class SearchRunner(LoggerClass):
         LoggerClass.__init__(self)
         self._builder = PipelineBuilder()
         self._validator = GraphValidator()
-        self._engine = FlowEngine()
+        self._engine = FlowEngine(trace_payloads=False)
 
     @staticmethod
     def __failed_node_reason(record: NodeExecutionRecord) -> str | None:

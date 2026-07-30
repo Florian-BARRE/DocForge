@@ -55,6 +55,8 @@ class TranslatedRun:
     points: list[QdrantPoint] = field(default_factory=list)
     dense_dim: int = 0
     colbert_dim: int | None = None
+    # O(1) content-hash dedup (was a linear scan of blob_rows per blob → O(blobs²)).
+    seen_hashes: set[str] = field(default_factory=set)
 
 
 class RunTranslator:
@@ -74,7 +76,8 @@ class RunTranslator:
     def __register_blob(cls, out: TranslatedRun, data: bytes, kind: BlobKind, mime: str) -> str:
         """Content-address one blob (sha256): S3 object + registry row, deduplicated by hash."""
         content_hash = hashlib.sha256(data).hexdigest()
-        if all(row.content_hash != content_hash for row in out.blob_rows):
+        if content_hash not in out.seen_hashes:
+            out.seen_hashes.add(content_hash)
             out.objects.append(S3Object(key=content_hash, data=data, content_type=mime))
             out.blob_rows.append(
                 Blob(
@@ -167,6 +170,8 @@ class RunTranslator:
         chunk_uuids: dict[str, uuid.UUID] = {
             chunk.chunk_id: uuid.uuid4() for chunk in bundle.chunks
         }
+        # Index chunks by id once (was a linear `next(... )` scan per embedding item → O(chunks²)).
+        chunk_by_id = {chunk.chunk_id: chunk for chunk in bundle.chunks}
 
         for chunk in bundle.chunks:
             chunk_uuid = chunk_uuids[chunk.chunk_id]
@@ -217,7 +222,7 @@ class RunTranslator:
             if chunk_uuid is None:
                 cls.logger.warning(f"Vectors for unknown chunk '{item.chunk_id}' — dropped")
                 continue
-            source = next(c for c in bundle.chunks if c.chunk_id == item.chunk_id)
+            source = chunk_by_id[item.chunk_id]
             payload: dict[str, Any] = {
                 DOCUMENT_ID_KEY: str(document_id),
                 CHUNK_INDEX_KEY: source.ordinal,
