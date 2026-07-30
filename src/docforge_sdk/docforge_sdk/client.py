@@ -7,7 +7,8 @@
 from types import TracebackType
 
 # ====== Local Project Imports ======
-from ._transport import AsyncTransport, SyncTransport
+from ._transport_async import AsyncTransport
+from ._transport_sync import SyncTransport
 from .resources.auth import AsyncAuth, SyncAuth
 
 

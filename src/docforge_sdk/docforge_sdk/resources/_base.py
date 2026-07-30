@@ -4,7 +4,8 @@
 # spec-building logic contributed by per-resource mixins (e.g. _AuthSpecs).
 
 # ====== Local Project Imports ======
-from .._transport import AsyncTransport, SyncTransport
+from .._transport_async import AsyncTransport
+from .._transport_sync import SyncTransport
 
 
 class _ResourceMixin:

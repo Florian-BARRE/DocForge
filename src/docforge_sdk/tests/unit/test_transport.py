@@ -19,7 +19,8 @@ from docforge_sdk._exceptions import (
     UnprocessableError,
 )
 from docforge_sdk._requestspec import RequestSpec
-from docforge_sdk._transport import AsyncTransport, SyncTransport
+from docforge_sdk._transport_async import AsyncTransport
+from docforge_sdk._transport_sync import SyncTransport
 from docforge_sdk.models.auth import CreatedKey
 
 BASE = "http://test"
