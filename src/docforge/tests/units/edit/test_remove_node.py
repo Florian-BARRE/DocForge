@@ -8,10 +8,10 @@ from .conftest import issues_of
 
 
 def test_remove_optional_slot_bridges_and_purges_dangling_ref(
-    editor, builder, validator, default_blob
+    editor, builder, validator, full_blob
 ) -> None:
-    assert issues_of(builder, validator, default_blob) == [], "the stock blob must start healthy"
-    pruned = editor.apply(default_blob, [RemoveNode(node_id="meta_doc_apply")])
+    assert issues_of(builder, validator, full_blob) == [], "the stock blob must start healthy"
+    pruned = editor.apply(full_blob, [RemoveNode(node_id="meta_doc_apply")])
 
     assert not any(n.id == "meta_doc_apply" for n in pruned.nodes)
     assert any(

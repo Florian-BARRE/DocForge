@@ -10,7 +10,7 @@ import pytest
 
 from shared_libs.pipelines.base import WhenEquals
 from shared_libs.pipelines.ingest import IngestPipeline
-from shared_libs.pipelines.ingest.stages import FigureBranch, StageSpecs
+from shared_libs.pipelines.ingest.stages import EnableStage, FigureBranch, StageSpecs
 from shared_libs.pipelines.ingest.stages.enrich_body import EnrichBodyBuilder
 from shared_libs.public_models import FIGURE_ROUTING, FigureKind, figure_prompt_lines
 
@@ -53,9 +53,13 @@ def test_classifier_prompt_lists_every_kind() -> None:
         assert f"- {kind.value}:" in lines
 
 
-def test_default_enrich_body_routes_every_classifier_kind() -> None:
-    """In the assembled default blob, every class the classifier can stamp has a when_equals edge."""
-    body = _enrich_body(IngestPipeline.default_blob())
+def test_default_enrich_body_routes_every_classifier_kind(compiler) -> None:
+    """In the assembled default blob, every class the classifier can stamp has a when_equals edge.
+
+    Enrich ships OFF by default (provider-hosted, opt-in), so enable it first to materialise the
+    per-figure body this test inspects."""
+    default, _ = compiler.apply(IngestPipeline.default_blob(), EnableStage(stage="enrich"))
+    body = _enrich_body(default)
     classify = next(node for node in body.nodes if node.kind == "figure_classify")
     routed = {
         transition.condition.equals

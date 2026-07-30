@@ -14,9 +14,9 @@ from shared_libs.pipelines.edit import (
 )
 
 
-def test_set_binding_none_unbinds_a_slot(editor, default_blob) -> None:
+def test_set_binding_none_unbinds_a_slot(editor, full_blob) -> None:
     unbound = editor.apply(
-        default_blob, [SetBinding(node_id="meta_doc_prep", slot="contract", binding=None)]
+        full_blob, [SetBinding(node_id="meta_doc_prep", slot="contract", binding=None)]
     )
     assert "contract" not in unbound.bindings["meta_doc_prep"]
 
@@ -43,12 +43,10 @@ def test_set_binding_on_unknown_node_raises_edit_error(editor, default_blob) -> 
         assert "ghost" in str(exc)
 
 
-def test_set_binding_unbinding_an_already_unbound_slot_is_a_clean_no_op(
-    editor, default_blob
-) -> None:
+def test_set_binding_unbinding_an_already_unbound_slot_is_a_clean_no_op(editor, full_blob) -> None:
     """Unbinding a slot that was never set must not raise — SetBinding(None) is idempotent."""
     edited = editor.apply(
-        default_blob, [SetBinding(node_id="meta_doc_prep", slot="ghost_slot", binding=None)]
+        full_blob, [SetBinding(node_id="meta_doc_prep", slot="ghost_slot", binding=None)]
     )
     assert "ghost_slot" not in edited.bindings.get("meta_doc_prep", {})
 
@@ -79,9 +77,9 @@ def test_set_after_unknown_predecessor_raises_edit_error(editor, default_blob) -
         assert "ghost" in str(exc)
 
 
-def test_set_condition_replaces_an_existing_edges_condition(editor, default_blob) -> None:
+def test_set_condition_replaces_an_existing_edges_condition(editor, full_blob) -> None:
     edited = editor.apply(
-        default_blob,
+        full_blob,
         [
             SetCondition(
                 from_node_id="meta_chunk_apply", to_node_id="meta_doc_prep", condition=OnFailure()
@@ -132,15 +130,15 @@ def test_set_config_on_a_non_action_node_raises_edit_error(editor) -> None:
         assert "loop" in str(exc)
 
 
-def test_set_loop_prop_updates_only_the_provided_fields(editor, default_blob) -> None:
+def test_set_loop_prop_updates_only_the_provided_fields(editor, full_blob) -> None:
     edited = editor.apply(
-        default_blob, [SetLoopProp(node_id="per_figure", item_field="pic", max_concurrency=9)]
+        full_blob, [SetLoopProp(node_id="per_figure", item_field="pic", max_concurrency=9)]
     )
     loop = next(n for n in edited.nodes if n.id == "per_figure")
     assert loop.item_field == "pic"
     assert loop.max_concurrency == 9
     # 'over' was not provided -> unchanged.
-    original = next(n for n in default_blob.nodes if n.id == "per_figure")
+    original = next(n for n in full_blob.nodes if n.id == "per_figure")
     assert loop.over == original.over
 
 

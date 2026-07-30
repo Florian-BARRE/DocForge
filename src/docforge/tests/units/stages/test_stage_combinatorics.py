@@ -153,6 +153,8 @@ def test_two_step_metagen_chain_round_trips_and_is_idempotent() -> None:
     )
     state = default_state().model_copy(
         update={
+            "metachunk_on": True,
+            "metadoc_on": True,
             "metachunk_chain": ladder.model_copy(deep=True),
             "metadoc_chain": ladder.model_copy(deep=True),
         }

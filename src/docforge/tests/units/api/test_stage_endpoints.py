@@ -45,11 +45,17 @@ def test_stages_apply_set_chain_auto_fills_missing_required_config(client) -> No
     """A mistral OCR step with an empty config still builds: the compiler auto-fills the
     missing required ``api_key`` with '' so the recompiled blob is ALWAYS buildable, even
     before the user supplies a secret."""
+    # enrich ships OFF by default, so enable it first — set_chain targets its scanned_text_ocr slot.
     stock_blob = client.get("/api/v1/pipelines/ingest").json()["blob"]
+    enabled = client.post(
+        "/api/v1/pipelines/ingest/stages/apply",
+        json={"blob": stock_blob, "action": {"action": "enable_stage", "stage": "enrich"}},
+    )
+    assert enabled.status_code == 200, enabled.text
     response = client.post(
         "/api/v1/pipelines/ingest/stages/apply",
         json={
-            "blob": stock_blob,
+            "blob": enabled.json()["blob"],
             "action": {
                 "action": "set_chain",
                 "stage": "enrich",

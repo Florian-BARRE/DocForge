@@ -87,14 +87,22 @@ def default_state() -> PipelineState:
     """
     Build the stock pipeline state — the topology a new collection's editor opens on.
 
-    Every built stage on, the recommended providers selected, the zero-cost contextualize stack
-    (doc_meta → breadcrumb), and the enrich chains reviewed in the studio (a cheap-then-robust OCR
-    chain for scanned text, a single VLM per visual class).
+    ONLY the stages reachable with the shipped in-stack services are ON by default: intake/parse
+    (docling), contextualize (local), and embed (bge_server). The provider-hosted stages — figure
+    ENRICH (VLM) and chunk/document METAGEN (LLM) — ship **OFF**, with their recommended providers
+    pre-filled but not executed, so a fresh collection ingests any document with ZERO external
+    configuration. Enabling one is an explicit opt-in in the studio (flip the stage on + set its
+    endpoint). This keeps the default preflight-clean: no placeholder endpoint is ever called until
+    the user wires a real one.
 
     Returns:
         PipelineState: The default canonical state (assembled into default_blob()).
     """
     return PipelineState(
+        # Provider-hosted stages ship OFF (no reachable default endpoint) — opt-in in the studio.
+        enrich_on=False,
+        metachunk_on=False,
+        metadoc_on=False,
         intake_configs={"convert": {"base_url": "http://gotenberg:3000"}},
         classify_config=dict(_VLM_ENDPOINT),
         chains={

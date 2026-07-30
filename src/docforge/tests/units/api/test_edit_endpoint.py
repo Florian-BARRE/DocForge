@@ -7,11 +7,22 @@ path bridges the graph; an impossible op is DATA — 200 + edit_error + the ORIG
 never a 500).
 """
 
+from shared_libs.pipelines.ingest import IngestPipeline
+from shared_libs.pipelines.ingest.stages import EnableStage, StageCompiler
+
+
+def _blob_with_metagen() -> dict:
+    """The stock blob with the document-metagen stage enabled (it ships OFF) — this test edits the
+    ``meta_doc_apply`` node, which only exists once that provider-hosted stage is on."""
+    compiler = StageCompiler()
+    blob, _ = compiler.apply(IngestPipeline.default_blob(), EnableStage(stage="metagen_document"))
+    return blob.model_dump(mode="json")
+
 
 def test_edit_endpoint_removes_a_node_and_bridges_the_gap(client) -> None:
     surface = client.get("/api/v1/pipelines").json()["pipelines"][0]
     assert surface["edit_url"] == "/api/v1/pipelines/ingest/edit"
-    stock_blob = client.get("/api/v1/pipelines/ingest").json()["blob"]
+    stock_blob = _blob_with_metagen()
 
     response = client.post(
         surface["edit_url"],
@@ -33,7 +44,7 @@ def test_edit_endpoint_removes_a_node_and_bridges_the_gap(client) -> None:
 
 
 def test_edit_endpoint_returns_data_not_a_500_for_an_impossible_op(client) -> None:
-    stock_blob = client.get("/api/v1/pipelines/ingest").json()["blob"]
+    stock_blob = _blob_with_metagen()
 
     response = client.post(
         "/api/v1/pipelines/ingest/edit",

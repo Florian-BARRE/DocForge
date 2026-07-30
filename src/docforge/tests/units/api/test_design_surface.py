@@ -9,6 +9,7 @@ real router (see [[port-scratchpad-gap-plan]]).
 from shared_libs.pipelines.base import ActionNode
 from shared_libs.pipelines.build import PipelineBuilder
 from shared_libs.pipelines.ingest import IngestPipeline
+from shared_libs.pipelines.ingest.stages import EnableStage, StageCompiler
 from shared_libs.pipelines.registry import FamilyMode, NodeRegistry
 from shared_libs.pipelines.validation import GraphValidator
 
@@ -122,7 +123,12 @@ def test_selectable_defaults_true_for_a_user_facing_method() -> None:
 
 
 def test_default_blob_covers_all_stages_and_validates_clean() -> None:
+    # The provider-hosted stages (enrich, both metagen scopes) ship OFF; enable them to exercise the
+    # fully-populated topology this test covers.
+    compiler = StageCompiler()
     blob = IngestPipeline.default_blob()
+    for stage in ("enrich", "metagen_chunk", "metagen_document"):
+        blob, _ = compiler.apply(blob, EnableStage(stage=stage))
     ids = [node.id for node in blob.nodes]
     for expected in (
         "probe",

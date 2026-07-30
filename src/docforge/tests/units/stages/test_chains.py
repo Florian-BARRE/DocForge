@@ -4,7 +4,13 @@ import pytest
 
 from shared_libs.pipelines.base import FromFirst
 from shared_libs.pipelines.ingest import IngestPipeline
-from shared_libs.pipelines.ingest.stages import ChainStep, SetChain, StageSpecs, StateReader
+from shared_libs.pipelines.ingest.stages import (
+    ChainStep,
+    EnableStage,
+    SetChain,
+    StageSpecs,
+    StateReader,
+)
 
 
 def _body_of(blob):
@@ -14,7 +20,7 @@ def _body_of(blob):
 @pytest.mark.parametrize("branch", StageSpecs.FIGURE_BRANCHES, ids=lambda b: b.slot)
 def test_single_step_chain_on_every_slot(compiler, builder, validator, branch) -> None:
     kind = "openai_compatible" if branch.family == "vlm" else "rapidocr"
-    default = IngestPipeline.default_blob()
+    default, _ = compiler.apply(IngestPipeline.default_blob(), EnableStage(stage="enrich"))
     chained, notices = compiler.apply(
         default, SetChain(stage="enrich", slot=branch.slot, steps=[ChainStep(kind=kind, config={})])
     )
@@ -40,7 +46,7 @@ def test_ocr_chain_lengths(compiler, builder, validator, length) -> None:
         )
         for i, k in enumerate(kinds)
     ]
-    default = IngestPipeline.default_blob()
+    default, _ = compiler.apply(IngestPipeline.default_blob(), EnableStage(stage="enrich"))
     chained, notices = compiler.apply(
         default, SetChain(stage="enrich", slot="scanned_text_ocr", steps=steps)
     )
@@ -57,7 +63,7 @@ def test_ocr_chain_lengths(compiler, builder, validator, length) -> None:
 
 
 def test_empty_chain_emits_a_notice_and_skips_the_class(compiler, builder, validator) -> None:
-    default = IngestPipeline.default_blob()
+    default, _ = compiler.apply(IngestPipeline.default_blob(), EnableStage(stage="enrich"))
     emptied, notices = compiler.apply(default, SetChain(stage="enrich", slot="photo_vlm", steps=[]))
     assert validator.validate(builder.build(emptied)) == []
     assert any("emptied" in n for n in notices)
@@ -67,7 +73,7 @@ def test_empty_chain_emits_a_notice_and_skips_the_class(compiler, builder, valid
 
 def test_chain_step_config_is_completed_build_safe(compiler) -> None:
     """A required field (e.g. mistral's api_key) missing from the step config becomes ''."""
-    default = IngestPipeline.default_blob()
+    default, _ = compiler.apply(IngestPipeline.default_blob(), EnableStage(stage="enrich"))
     chained, _ = compiler.apply(
         default,
         SetChain(
@@ -80,7 +86,7 @@ def test_chain_step_config_is_completed_build_safe(compiler) -> None:
 
 
 def test_invalid_slot_is_a_clean_notice_not_an_exception(compiler) -> None:
-    default = IngestPipeline.default_blob()
+    default, _ = compiler.apply(IngestPipeline.default_blob(), EnableStage(stage="enrich"))
     unchanged, notices = compiler.apply(
         default,
         SetChain(
@@ -92,7 +98,7 @@ def test_invalid_slot_is_a_clean_notice_not_an_exception(compiler) -> None:
 
 
 def test_invalid_stage_for_set_chain_is_a_clean_notice(compiler) -> None:
-    default = IngestPipeline.default_blob()
+    default, _ = compiler.apply(IngestPipeline.default_blob(), EnableStage(stage="enrich"))
     unchanged, notices = compiler.apply(
         default,
         SetChain(
@@ -104,7 +110,7 @@ def test_invalid_stage_for_set_chain_is_a_clean_notice(compiler) -> None:
 
 
 def test_set_chain_recompiles_from_first_best_first(compiler, builder, validator) -> None:
-    default = IngestPipeline.default_blob()
+    default, _ = compiler.apply(IngestPipeline.default_blob(), EnableStage(stage="enrich"))
     chained, _ = compiler.apply(
         default,
         SetChain(

@@ -12,8 +12,16 @@ Reuses the session-level ``builder``/``validator``/``compiler`` fixtures from
 
 from shared_libs.pipelines.base import FromNode
 from shared_libs.pipelines.ingest import IngestPipeline
-from shared_libs.pipelines.ingest.stages import DisableStage, StageViewer, StateReader
+from shared_libs.pipelines.ingest.stages import (
+    DisableStage,
+    EnableStage,
+    StageViewer,
+    StateReader,
+)
 
+# The provider-hosted stages (enrich, metagen_chunk, metagen_document) ship OFF by default, so their
+# nodes (extract/per_figure/apply, meta_chunk_*, meta_doc_*) are absent from the stock blob until a
+# user opts in. render (figures) stays on — it is local.
 EXPECTED_TOP_LEVEL_IDS = [
     "probe",
     "admit",
@@ -22,21 +30,25 @@ EXPECTED_TOP_LEVEL_IDS = [
     "address",
     "parse",
     "figures",
-    "extract",
-    "per_figure",
-    "apply",
     "chunk",
     "ctx_meta",
     "ctx_breadcrumb",
-    "meta_chunk_prep",
-    "meta_chunk_loop",
-    "meta_chunk_apply",
-    "meta_doc_prep",
-    "meta_doc_loop",
-    "meta_doc_apply",
     "embed",
     "bundle",
 ]
+
+# The stages ON in the stock blob (the reachable, zero-config core). enrich + both metagen stages
+# ship disabled (provider-hosted, opt-in).
+DEFAULT_ENABLED_STAGES = {
+    "intake",
+    "parse",
+    "render",
+    "chunk",
+    "contextualize",
+    "embed",
+    "deliver",
+}
+DEFAULT_DISABLED_STAGES = {"enrich", "metagen_chunk", "metagen_document"}
 
 EXPECTED_STAGE_ORDER = [
     "intake",
@@ -67,12 +79,18 @@ def test_default_blob_has_the_canonical_top_level_node_ids_and_zero_issues(
     assert issues == [], issues
 
 
-def test_stage_catalog_lists_all_ten_stages_in_run_order_all_enabled(builder, validator) -> None:
+def test_stage_catalog_lists_all_ten_stages_in_run_order_with_provider_stages_off(
+    builder, validator
+) -> None:
+    """The catalog always lists all ten stages in run order (disabled ones stay visible/greyed);
+    only the reachable core ships enabled — the provider-hosted stages default off (opt-in)."""
     default = IngestPipeline.default_blob()
     keys = [stage.key for stage in StageViewer.catalog(StateReader.read(default)).stages]
     assert keys == EXPECTED_STAGE_ORDER
     stages = _view(default, builder, validator)
-    assert all(stage.enabled for stage in stages.values()), "every stock stage enabled"
+    enabled = {key for key, stage in stages.items() if stage.enabled}
+    assert enabled == DEFAULT_ENABLED_STAGES
+    assert {key for key, stage in stages.items() if not stage.enabled} == DEFAULT_DISABLED_STAGES
 
 
 def test_stage_catalog_flags_removable_and_available_providers(builder, validator) -> None:
@@ -108,8 +126,10 @@ def test_disable_render_cascades_enrich_off_with_a_notice_and_falls_back_to_pars
     builder, validator, compiler
 ) -> None:
     """Disabling render must cascade-disable enrich (enrich `requires` render) — WITH a notice —
-    and chunk.ir must fall all the way back to parse.ir; bundle.pages becomes unbound."""
-    default = IngestPipeline.default_blob()
+    and chunk.ir must fall all the way back to parse.ir; bundle.pages becomes unbound.
+
+    enrich ships OFF by default, so enable it first to exercise the render→enrich cascade."""
+    default, _ = compiler.apply(IngestPipeline.default_blob(), EnableStage(stage="enrich"))
     off_render, render_notices = compiler.apply(default, DisableStage(stage="render"))
 
     issues = validator.validate(builder.build(off_render))
