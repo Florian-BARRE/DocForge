@@ -13,6 +13,9 @@ from .block import Block
 # ---------------------- Document (the pivot) ---------------------- #
 from .document import DocumentIR
 
+# ---------------------- Document-structure helpers ---------------------- #
+from .structure import TOC_TITLES, first_heading, is_toc_title
+
 # ------------------- Public API ------------------- #
 __all__ = [
     "BlockType",
@@ -25,4 +28,7 @@ __all__ = [
     "FigureEnrichment",
     "Block",
     "DocumentIR",
+    "TOC_TITLES",
+    "is_toc_title",
+    "first_heading",
 ]

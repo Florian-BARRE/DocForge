@@ -10,17 +10,10 @@ from pydantic import Field
 
 # ====== Internal Project Imports ======
 from shared_libs.pipelines.registry import NodeRegistry
-from shared_libs.public_models import BlockType, Chunk, DocumentIR, SourceDocument
+from shared_libs.public_models import Chunk, DocumentIR, SourceDocument, first_heading
 
 # ====== Local Project Imports ======
 from ..base import BaseContextualizerConfig, BaseContextualizerNode, ContextualizerConsumes
-
-# Table-of-contents heading titles (normalized, lowercased) — mirrors the chunker's own ToC
-# allow-list (PassageProjector._TOC_TITLES): a ToC heading is furniture, never a document title, so
-# the IR-fallback anchor must skip it. Kept small and multilingual; extend both lists together.
-_TOC_TITLES = frozenset(
-    {"contents", "table of contents", "toc", "sommaire", "table des matières", "índice"}
-)
 
 
 class ContextualizerDocMetaConfig(BaseContextualizerConfig):
@@ -113,23 +106,8 @@ class ContextualizerDocMetaNode(BaseContextualizerNode):
             return chunks[0].heading_path[0]
         # 3. That path yields nothing only when the first chunk COALESCED sibling level-1 sections
         #    (its common heading_path is []) — the flat HTML->PDF case. Recover the real title from
-        #    the IR's first TOP-LEVEL (level-1) heading in reading order, skipping a table-of-contents
-        #    heading (which is furniture, never the title).
-        if data.ir is not None:
-            headings = [
-                block
-                for block in sorted(data.ir.blocks, key=lambda b: b.reading_order)
-                if block.block_type == BlockType.HEADING
-                and block.text
-                and block.text.strip()
-                and block.text.strip().lower() not in _TOC_TITLES
-            ]
-            top = next((block for block in headings if block.level == 1), None) or (
-                headings[0] if headings else None
-            )
-            if top:
-                return top.text.strip()
-        return None
+        #    the IR's first TOP-LEVEL, non-ToC heading (the shared document-structure helper).
+        return first_heading(data.ir) if data.ir is not None else None
 
 
 __all__ = ["ContextualizerDocMetaNode", "ContextualizerDocMetaConfig", "DocMetaConsumes"]

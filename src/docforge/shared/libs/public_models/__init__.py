@@ -4,6 +4,7 @@ from .base import Artifact
 # ---------------------- IR (canonical parsed document) ---------------------- #
 from .ir import (
     FIGURE_ROUTING,
+    TOC_TITLES,
     Block,
     BlockType,
     DocumentIR,
@@ -13,6 +14,8 @@ from .ir import (
     Provenance,
     TableData,
     figure_prompt_lines,
+    first_heading,
+    is_toc_title,
 )
 
 # ---------------------- Collection contract vocabulary ---------------------- #
@@ -72,6 +75,9 @@ __all__ = [
     "FigureEnrichment",
     "Block",
     "DocumentIR",
+    "TOC_TITLES",
+    "is_toc_title",
+    "first_heading",
     "FieldType",
     "FieldOrigin",
     "FieldScope",

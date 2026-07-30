@@ -14,27 +14,17 @@
 from pydantic import BaseModel, Field
 
 # ====== Internal Project Imports ======
-from shared_libs.public_models import Block, BlockType, ChunkRole, DocumentIR
+from shared_libs.public_models import TOC_TITLES, Block, BlockType, ChunkRole, DocumentIR
 
 # ====== Local Project Imports ======
 from .config import BaseChunkerConfig
 from .helpers import ChunkerHelpers
 
-# Conservative, extensible allow-list of section titles that mark a table-of-contents section.
-# Matched on the FULL normalized heading text (exact, never substring) so a real section like
-# "Table of contributions" cannot be misread as scaffolding. Multilingual by design (the corpus
-# is): add a title here when a language's ToC heading is confirmed. BOILERPLATE is NOT allow-list
-# driven: it is inferred structurally from cross-page repetition (see ``__repeated_texts``).
-_TOC_TITLES = frozenset(
-    {
-        "contents",
-        "table of contents",
-        "toc",
-        "sommaire",
-        "table des matières",
-        "índice",
-    }
-)
+# The table-of-contents heading allow-list is the shared document-structure constant (public_models)
+# — one source for the chunker role classifier, the doc_meta anchor and the persistence title
+# fallback. BOILERPLATE is NOT allow-list driven: it is inferred structurally from cross-page
+# repetition (see ``__repeated_texts``).
+_TOC_TITLES = TOC_TITLES
 
 
 class Passage(BaseModel):
