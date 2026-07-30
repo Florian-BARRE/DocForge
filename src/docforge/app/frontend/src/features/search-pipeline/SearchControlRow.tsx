@@ -15,6 +15,7 @@ interface SearchControlRowProps {
 export function SearchControlRow({ title, description, control }: SearchControlRowProps) {
   return (
     <div
+      className="df-hover"
       style={{
         display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: theme.space.l,
         padding: theme.space.m,

@@ -22,6 +22,7 @@ export function SearchNodeCard({ step, node, palette, onChangeConfig }: SearchNo
 
   return (
     <div
+      className="df-hover"
       style={{
         background: theme.color.surface, border: `1px solid ${theme.color.line}`,
         borderRadius: theme.radius.l, padding: theme.space.m,

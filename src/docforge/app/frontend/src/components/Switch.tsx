@@ -11,9 +11,10 @@ interface SwitchProps {
   title?: string;
 }
 
-const WIDTH = 30;
-const HEIGHT = 16;
-const KNOB = 12;
+const WIDTH = 34;
+const HEIGHT = 18;
+const KNOB = 14;
+const EASE = "cubic-bezier(0.34, 1.56, 0.64, 1)"; // slight overshoot — the toggle feels tactile
 
 export function Switch({ checked, onChange, disabled, title }: SwitchProps) {
   return (
@@ -27,17 +28,18 @@ export function Switch({ checked, onChange, disabled, title }: SwitchProps) {
       style={{
         width: WIDTH, height: HEIGHT, borderRadius: HEIGHT / 2,
         border: "none", padding: 2, position: "relative", flexShrink: 0,
-        background: checked ? theme.color.accent : theme.color.line,
+        background: checked ? theme.color.accent : theme.color.lineStrong,
         cursor: disabled ? "not-allowed" : "pointer",
         opacity: disabled ? 0.6 : 1,
-        transition: "background .15s",
+        transition: `background .2s ease`,
       }}
     >
       <span
         style={{
           display: "block", width: KNOB, height: KNOB, borderRadius: "50%",
-          background: theme.color.onAccent, transform: `translateX(${checked ? WIDTH - KNOB - 4 : 0}px)`,
-          transition: "transform .15s",
+          background: theme.color.onAccent, boxShadow: "0 1px 2px rgba(0,0,0,0.22)",
+          transform: `translateX(${checked ? WIDTH - KNOB - 4 : 0}px)`,
+          transition: `transform .22s ${EASE}`,
         }}
       />
     </button>

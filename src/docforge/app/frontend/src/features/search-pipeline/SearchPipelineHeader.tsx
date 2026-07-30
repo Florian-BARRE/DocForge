@@ -32,7 +32,9 @@ export function SearchPipelineHeader({
         position: "sticky", top: 0, zIndex: 2,
         display: "flex", alignItems: "center", gap: theme.space.s, flexWrap: "wrap",
         padding: `${theme.space.s}px 0`,
-        background: theme.color.bg, borderBottom: `1px solid ${theme.color.line}`,
+        background: "color-mix(in srgb, var(--bg) 82%, transparent)",
+        backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)",
+        borderBottom: `1px solid ${theme.color.line}`,
       }}
     >
       <Chip tone={checking ? "dim" : valid ? "ok" : "warn"}>

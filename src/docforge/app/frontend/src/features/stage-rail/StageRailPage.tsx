@@ -232,7 +232,7 @@ export function StageRailPage({ initialBlob, onBlobChange, onSave }: StageRailPa
             )}
           </div>
         )}
-        <div style={{ marginTop: theme.space.m, display: "flex", flexDirection: "column" }}>
+        <div className="df-stagger" style={{ marginTop: theme.space.m, display: "flex", flexDirection: "column" }}>
           {stages.map((stage, index) => (
             <Fragment key={stage.key}>
               {index > 0 && <StageConnector />}

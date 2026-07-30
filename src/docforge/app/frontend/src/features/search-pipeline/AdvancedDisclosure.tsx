@@ -23,9 +23,11 @@ export function AdvancedDisclosure({ summary, children }: AdvancedDisclosureProp
         style={{
           cursor: "pointer", userSelect: "none", padding: theme.space.m,
           fontSize: theme.font.size.l, fontWeight: 600, color: theme.color.text,
-          fontFamily: theme.font.display,
+          fontFamily: theme.font.display, borderRadius: theme.radius.l,
+          display: "flex", alignItems: "center", gap: theme.space.s,
         }}
       >
+        <span className="df-chev" style={{ color: theme.color.mute, fontSize: theme.font.size.s }}>▶</span>
         {summary}
       </summary>
       <div

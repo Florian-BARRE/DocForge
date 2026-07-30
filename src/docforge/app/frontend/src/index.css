@@ -116,6 +116,33 @@ button { letter-spacing: 0.005em; }
 .df-rise { animation: df-rise 0.5s cubic-bezier(0.22, 1, 0.36, 1) both; }
 @media (prefers-reduced-motion: reduce) { .df-rise { animation: none; } }
 
+/* Staggered list entrance — children rise in sequence (grids, pipeline stage lists). */
+@media (prefers-reduced-motion: no-preference) {
+  .df-stagger > * { animation: df-rise 0.5s cubic-bezier(0.22, 1, 0.36, 1) both; }
+  .df-stagger > *:nth-child(1)  { animation-delay: 0.00s; }
+  .df-stagger > *:nth-child(2)  { animation-delay: 0.045s; }
+  .df-stagger > *:nth-child(3)  { animation-delay: 0.09s; }
+  .df-stagger > *:nth-child(4)  { animation-delay: 0.135s; }
+  .df-stagger > *:nth-child(5)  { animation-delay: 0.18s; }
+  .df-stagger > *:nth-child(6)  { animation-delay: 0.225s; }
+  .df-stagger > *:nth-child(7)  { animation-delay: 0.27s; }
+  .df-stagger > *:nth-child(8)  { animation-delay: 0.315s; }
+  .df-stagger > *:nth-child(9)  { animation-delay: 0.36s; }
+  .df-stagger > *:nth-child(10) { animation-delay: 0.405s; }
+  .df-stagger > *:nth-child(n+11) { animation-delay: 0.45s; }
+}
+
+/* Soft card hover — brighten the edge + deepen the shadow, no lift (for config panels that hold
+   their own controls). Interactive cards that are themselves a link keep their own lift. */
+.df-hover { transition: box-shadow 0.16s ease, border-color 0.16s ease; }
+.df-hover:hover { border-color: var(--line-strong) !important; box-shadow: var(--shadow-2) !important; }
+
+/* Native disclosure: drop the default triangle, rotate our own chevron when open. */
+summary { list-style: none; }
+summary::-webkit-details-marker { display: none; }
+.df-chev { display: inline-block; transition: transform 0.18s cubic-bezier(0.22, 1, 0.36, 1); }
+details[open] > summary .df-chev { transform: rotate(90deg); }
+
 /* DocForge mark — the molten-casting signature. One cycle: metal pours off the document in a
    molten strand, a bead pinches off and falls onto the layers, then the strand reconstructs and
    reboucle; meanwhile a single spark of heat travels dot-to-dot along the vectors — the LIT one
