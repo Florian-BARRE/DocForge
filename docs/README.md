@@ -1,29 +1,32 @@
-# DocForge — Documentation Index
+# DocForge documentation
 
-> Project overview, commands, and architecture live in the root **`CLAUDE.md`**.
-> The full design spec is **`SPEC-docforge-document-intelligence-platform.md`**.
+Start here. New to DocForge? Read **[Getting started](getting-started.md)** first.
 
-## Current (v2 rework — the active product)
+## Guides
 
-- **`../src/docforge-rework/PIPELINE.md`** — THE pipeline reference (living doc): the 7 stages
-  (INTAKE→PARSE→ENRICH→CHUNK→CONTEXTUALIZE→METAGEN→EMBED), every node, artefact, and decision.
-- **`../.claude/rules/architecture.md`** — the graph-engine cheat-sheet (primitives, families, the 3 roots).
+| Guide | For |
+|---|---|
+| **[Getting started](getting-started.md)** | Install, run the stack, first collection → upload → search. |
+| **[REST API](rest-api.md)** | Every endpoint, authentication, curl examples. |
+| **[Python SDK](python-sdk.md)** | `docforge-sdk` (async + sync) — per-resource reference. |
+| **[MCP server](mcp.md)** | Drive DocForge from an AI model; the tool catalogue. |
+| **[Architecture](architecture.md)** | The graph engine, packages, retrieval, quality gates. |
+| **[Configuration](configuration.md)** | Every environment variable, per service. |
+| **[Deployment](deployment.md)** | Production hardening, ports, secrets, GPU. |
 
-## Reference docs
+## Reference
 
 | Doc | Scope |
 |---|---|
-| `metadata-architecture.md` | Metadata schema, field origins, filterable/lexical/semantic |
-| `deployment-resources.md` | Per-service CPU/RAM ceilings & resource strategy |
-| `api/` | REST surface notes — `collections`, `collections-config`, `discovery`, `capabilities` |
+| [../src/docforge-rework/PIPELINE.md](../src/docforge-rework/PIPELINE.md) | The living pipeline reference — the 7 stages, every node, artefact and decision. |
+| [../SPEC-docforge-document-intelligence-platform.md](../SPEC-docforge-document-intelligence-platform.md) | The full design specification. |
+| [metadata-architecture.md](metadata-architecture.md) | Metadata schema, field origins, filterable / lexical / semantic surfaces. |
+| [deployment-resources.md](deployment-resources.md) | Per-service CPU/RAM ceilings & resource strategy. |
+| [PROD-HARDENING.md](PROD-HARDENING.md) | The exhaustive pre-go-live runbook. |
+| [api/](api/) | Endpoint notes: collections, collections-config, discovery, capabilities. |
 
-## Feature RPIs (research / plan / implement)
+## Design records
 
-Design records for still-live components: `rpi/auth-keys-only/`, `rpi/bge-server-dynamic-batching/`,
-`rpi/chunk-llm-metadata/`, `rpi/discovery-recursive/`.
-
-## Archive
-
-**`archive/`** — everything about the **retired old product** (`src/docforge/`, static S0→S6 engine):
-`phases-legacy.md` (the old phase changelog), `rpi-legacy/` (superseded engine RPIs),
-`agent-memory-legacy/` (retired agent memories). Kept for reference; never loaded in the daily path.
+`rpi/` holds the research → plan → implement records for still-live components (auth, dynamic batching,
+chunk metadata, recursive discovery). `archive/` keeps history from the retired static-engine product.
+These are design history, not user documentation.

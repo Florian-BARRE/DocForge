@@ -83,3 +83,6 @@ htmlcov/
 !src/docforge-rework/tests/units/build/
 !src/docforge-rework/tests/units/build/**
 src/docforge-rework/app/frontend/scripts/node_modules/
+
+# Retired AI agent-memory snapshots — internal, not part of the public docs.
+docs/archive/agent-memory-legacy/
