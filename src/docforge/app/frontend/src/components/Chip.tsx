@@ -16,7 +16,9 @@ const TONE: Record<ChipTone, { color: string; background: string; border: string
   info: { color: t.color.info, background: t.color.infoSoft, border: "transparent" },
   loop: { color: t.color.loop, background: t.color.loopSoft, border: "transparent" },
   neutral: { color: t.color.dim, background: t.color.surface2, border: t.color.line },
-  dim: { color: t.color.mute, background: t.color.surface2, border: "transparent" },
+  // Quiet meta tag (family/kind/flags) — a hairline outline on no fill, so it reads as metadata
+  // beside a title rather than a heavy grey slab.
+  dim: { color: t.color.mute, background: "transparent", border: t.color.line },
 };
 
 interface ChipProps {

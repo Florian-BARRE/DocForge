@@ -106,8 +106,9 @@ export function SchemaField({ name, prop, schema, value, required = false, onCha
         <span
           title={typeLabel(resolved)}
           style={{
-            color: theme.color.dim, background: theme.color.surface3,
-            borderRadius: theme.radius.s, padding: "1px 5px", fontSize: theme.font.size.xs,
+            color: theme.color.mute, background: "transparent",
+            border: `1px solid ${theme.color.line}`,
+            borderRadius: theme.radius.s, padding: "0 5px", fontSize: theme.font.size.xs,
             fontFamily: theme.font.mono, whiteSpace: "nowrap", overflow: "hidden",
             textOverflow: "ellipsis", maxWidth: 130,
           }}

@@ -40,10 +40,20 @@ export function SearchNodeCard({ step, node, palette, onChangeConfig }: SearchNo
           {step}
         </span>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: theme.space.s, flexWrap: "wrap" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: theme.space.s }}>
             <strong style={{ fontSize: theme.font.size.l }}>{card?.name ?? node.kind}</strong>
             <Chip tone="dim"><span style={{ fontFamily: theme.font.mono }}>{node.family}</span></Chip>
-            {!configurable && <Chip tone="dim">read-only</Chip>}
+            {!configurable && (
+              <span
+                title="This step has no knobs — it runs as configured by the pipeline."
+                style={{
+                  marginLeft: "auto", color: theme.color.mute, fontSize: theme.font.size.xs,
+                  fontWeight: 500, letterSpacing: "0.02em", whiteSpace: "nowrap",
+                }}
+              >
+                read-only
+              </span>
+            )}
           </div>
           {card?.summary && <div style={{ color: theme.color.dim, fontSize: theme.font.size.s }}>{card.summary}</div>}
         </div>
