@@ -1,8 +1,0 @@
-{
-  "disablePreToolUse": false,
-  "disablePostToolUse": false,
-  "disableStop": false,
-  "disableSubagentStop": false,
-  "disablePostToolUseFailure": false,
-  "disableLogging": false
-}
