@@ -10,15 +10,15 @@ DocForge ships three compose files:
 
 | File | Role |
 |---|---|
-| `docker-compose.rework.yml` | The base stack — **this is production**. Baked images, data-plane ports **not** published (postgres/redis/qdrant/seaweedfs stay internal to `rework_net`). |
-| `docker-compose.rework.dev.yml` | Dev overlay — hot reload + publishes the store ports to `localhost` for inspection. |
-| `docker-compose.rework.gpu.yml` | GPU overlay for docling (worker) acceleration. |
+| `docker-compose.yml` | The base stack — **this is production**. Baked images, data-plane ports **not** published (postgres/redis/qdrant/seaweedfs stay internal to `docforge_net`). |
+| `docker-compose.dev.yml` | Dev overlay — hot reload + publishes the store ports to `localhost` for inspection. |
+| `docker-compose.gpu.yml` | GPU overlay for docling (worker) acceleration. |
 
 **Production start** (no dev overlay):
 
 ```bash
-docker compose -f docker-compose.rework.yml --profile full up -d
-docker compose -f docker-compose.rework.yml exec rework_app \
+docker compose -f docker-compose.yml --profile full up -d
+docker compose -f docker-compose.yml exec docforge_app \
   sh -c 'alembic -c /app/shared/alembic.ini upgrade head'
 ```
 
@@ -39,7 +39,7 @@ MCP — should be published to the outside; keep the data-plane services interna
    stay public by design.
 3. **`FASTAPI_DEBUG_MODE=false`** — `true` leaks tracebacks to clients.
 4. **CORS** — set `FASTAPI_CORS_ALLOWED_ORIGINS` to your real front-end origins.
-5. **Data-plane ports closed** — verify with `docker compose -f docker-compose.rework.yml config` that
+5. **Data-plane ports closed** — verify with `docker compose -f docker-compose.yml config` that
    postgres/redis/qdrant/seaweedfs have no `ports:` mapping.
 6. **Persistence** — the named volumes (postgres data, Qdrant, SeaweedFS, the `bge_server` HF model
    cache) are where your data lives; back them up.
@@ -52,11 +52,11 @@ The `bge_server` and the worker's docling stage can use a GPU:
 
 - **`bge_server`**: build the GPU image and set the device policy.
   ```bash
-  docker compose -f docker-compose.rework.yml build --build-arg TORCH_VARIANT=gpu bge_server
+  docker compose -f docker-compose.yml build --build-arg TORCH_VARIANT=gpu bge_server
   # then in services/bge_server/.env:  BGE_DEVICE=cuda   (BGE_FP16=true is gated to CUDA)
   ```
 - **Worker docling**: add the GPU overlay:
-  `docker compose -f docker-compose.rework.yml -f docker-compose.rework.gpu.yml --profile full up -d`.
+  `docker compose -f docker-compose.yml -f docker-compose.gpu.yml --profile full up -d`.
 
 A GPU host needs the NVIDIA Container Toolkit. See the commented `reservations:` block under
 `bge_server` in the compose file.
@@ -69,5 +69,5 @@ If you want AI clients to drive DocForge, run the MCP service and expose its por
 ## Upgrades & migrations
 
 Schema changes ship as Alembic migrations. On deploy, run
-`alembic -c /app/shared/alembic.ini upgrade head` inside `rework_app` (env.py runs async on asyncpg —
+`alembic -c /app/shared/alembic.ini upgrade head` inside `docforge_app` (env.py runs async on asyncpg —
 no psycopg2 in the runtime image). Migrations are additive and reviewed for zero-downtime where possible.

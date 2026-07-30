@@ -7,7 +7,7 @@ IR/chunks, run hybrid search, watch ingestion jobs, and even edit ingestion pipe
 in natural language.
 
 > **Related docs:** [Architecture](architecture.md) · [Getting started](getting-started.md) ·
-> [REST API](rest-api.md) · [Python SDK](python-sdk.md) · [Pipeline reference](../src/docforge-rework/PIPELINE.md)
+> [REST API](rest-api.md) · [Python SDK](python-sdk.md) · [Pipeline reference](../src/docforge/PIPELINE.md)
 
 ---
 
@@ -113,7 +113,7 @@ vector space is fixed at creation), plus optional ingestion/search pipeline blob
 ### Pipelines (design surface)
 
 The graph JSON stays **opaque** at the tool boundary — blobs/operations/actions pass through as
-plain dicts. See [`PIPELINE.md`](../src/docforge-rework/PIPELINE.md) for what the graph means.
+plain dicts. See [`PIPELINE.md`](../src/docforge/PIPELINE.md) for what the graph means.
 
 | Tool | Purpose |
 |---|---|
@@ -166,12 +166,12 @@ the target instance has auth disabled.)
 
 ### (b) streamable-HTTP — the compose service
 
-The `rework_mcp` service in `docker-compose.rework.yml` runs the server as a long-lived HTTP
-endpoint (under the `full` profile), pointing at the in-network API (`http://rework_app:8000`) and
+The `docforge_mcp` service in `docker-compose.yml` runs the server as a long-lived HTTP
+endpoint (under the `full` profile), pointing at the in-network API (`http://docforge_app:8000`) and
 published on host port **`10048`**:
 
 ```bash
-docker compose -f docker-compose.rework.yml --profile full up -d rework_mcp
+docker compose -f docker-compose.yml --profile full up -d docforge_mcp
 ```
 
 Set `MCP_AUTH_TOKEN` (and `DOCFORGE_API_TOKEN` if the API has auth on) in `services/mcp/.env`. The

@@ -5,9 +5,9 @@ under `services/<service>/`. Each has a committed `.env.example` template — co
 git-ignored) and adjust:
 
 ```bash
-cp services/docforge-rework/.env.example         services/docforge-rework/.env
-cp services/docforge-rework/postgres.env.example  services/docforge-rework/postgres.env
-cp services/docforge-rework/s3_config.json.example services/docforge-rework/s3_config.json
+cp services/docforge/.env.example         services/docforge/.env
+cp services/docforge/postgres.env.example  services/docforge/postgres.env
+cp services/docforge/s3_config.json.example services/docforge/s3_config.json
 cp services/bge_server/.env.example              services/bge_server/.env
 cp services/mcp/.env.example                     services/mcp/.env   # only if you run the MCP server
 ```
@@ -21,7 +21,7 @@ cp services/mcp/.env.example                     services/mcp/.env   # only if y
 
 ---
 
-## `services/docforge-rework/.env` — API + worker
+## `services/docforge/.env` — API + worker
 
 The app and worker share this file. In the containerised stack (`--profile full`), compose overrides
 `POSTGRES_DSN` / `REDIS_URL` / `QDRANT_URL` / `S3_ENDPOINT_URL` with in-network hostnames, so leave those
@@ -112,7 +112,7 @@ A pure HTTP client of the DocForge API — no DB/S3 secrets.
 
 | Variable | Default | Notes |
 |---|---|---|
-| `DOCFORGE_API_URL` | `http://rework_app:8000` | The DocForge API the MCP talks to (in-network service name). |
+| `DOCFORGE_API_URL` | `http://docforge_app:8000` | The DocForge API the MCP talks to (in-network service name). |
 | `MCP_API_TIMEOUT_S` | `60` | Outbound request timeout. |
 | `MCP_TRANSPORT` | `streamable-http` | `streamable-http` \| `stdio`. |
 | `MCP_HOST` / `MCP_PORT` / `MCP_HTTP_PATH` | `0.0.0.0` / `9000` / `/mcp` | HTTP transport binding. |
@@ -127,7 +127,7 @@ See the [MCP guide](mcp.md) for running and connecting a client.
 
 | Service | Host port |
 |---|---|
-| API (`rework_app`) | `10040` |
+| API (`docforge_app`) | `10040` |
 | PostgreSQL | `10041` |
 | Redis | `10042` |
 | Qdrant | `10043` |

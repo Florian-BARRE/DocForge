@@ -5,7 +5,7 @@ projects, each with its own `pyproject.toml` / `uv.lock` and its own quality gat
 
 | Package | What it is | Gate |
 |---|---|---|
-| `src/docforge-rework` | The platform — FastAPI API + React frontend + arq worker + the graph engine | ruff format · ruff · pytest |
+| `src/docforge` | The platform — FastAPI API + React frontend + arq worker + the graph engine | ruff format · ruff · pytest |
 | `src/docforge_sdk` | The published typed client (`docforge-sdk` on PyPI) | ruff format · ruff · mypy --strict · pytest |
 | `src/mcp` | The MCP server (thin `docforge-sdk` client) | ruff format · ruff · mypy · pytest |
 | `src/bge_server` | Local BGE-M3 embed/rerank host | ruff format · ruff · mypy · pytest |
@@ -20,15 +20,15 @@ projects, each with its own `pyproject.toml` / `uv.lock` and its own quality gat
 Each package is self-contained — `cd` into it and use uv:
 
 ```bash
-cd src/docforge_sdk          # (or docforge-rework / mcp / bge_server)
+cd src/docforge_sdk          # (or docforge / mcp / bge_server)
 uv sync --frozen             # install locked deps
 uv run ruff format .         # auto-format
 uv run ruff check .          # lint
 uv run mypy .                # type-check (sdk uses: mypy --strict docforge_sdk)
-uv run pytest -q             # unit tests (docforge-rework: pytest tests/units)
+uv run pytest -q             # unit tests (docforge: pytest tests/units)
 ```
 
-Unit suites are **fully mocked / serviceless** — no database, Qdrant or S3 needed. (The `docforge-rework`
+Unit suites are **fully mocked / serviceless** — no database, Qdrant or S3 needed. (The `docforge`
 suite reads app config, so CI materializes a placeholder `.env` from the template; locally you already
 have one.) The SDK's live tests are opt-in: `uv run pytest -m live` needs a running API.
 
@@ -49,12 +49,12 @@ uv run ruff format --check . && uv run ruff check . && uv run pytest -q
 ## Keeping the SDK in sync with the API (important)
 
 The `docforge-sdk` models are hand-written and mirror the backend's OpenAPI schema. If you change a
-backend router model in `src/docforge-rework/app/backend/routers/**/models.py`, you **must** keep the SDK
+backend router model in `src/docforge/app/backend/routers/**/models.py`, you **must** keep the SDK
 coherent or CI's `sdk-parity` job goes red:
 
 1. Regenerate the snapshot:
    ```bash
-   cd src/docforge-rework
+   cd src/docforge
    uv run python app/scripts/dump_openapi.py > ../docforge_sdk/tests/openapi_snapshot.json
    ```
 2. Update the matching model(s) in `src/docforge_sdk/docforge_sdk/models/` and, if the change adds an

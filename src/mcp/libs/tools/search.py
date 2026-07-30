@@ -1,6 +1,6 @@
 # ====== Code Summary ======
 # MCP tools for the search domain — thin wrapper over sdk.search (a single collection-scoped
-# retrieval route; there is no per-document search in the rework API).
+# retrieval route; there is no per-document search in the DocForge API).
 
 from __future__ import annotations
 

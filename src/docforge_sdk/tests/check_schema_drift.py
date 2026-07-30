@@ -1,7 +1,7 @@
 # ====== Code Summary ======
 # CI helper (not a pytest module — no test_*/​*_test naming, so pytest never collects it, matching
 # parity_map.py's convention) — diffs the CURRENT backend OpenAPI schema (dumped serviceless by
-# src/docforge-rework/app/scripts/dump_openapi.py) against the committed tests/openapi_snapshot.json
+# src/docforge/app/scripts/dump_openapi.py) against the committed tests/openapi_snapshot.json
 # on exactly the schemas the SDK mirrors (tests/parity_map.MODELS — the single source of truth also
 # used by the offline and live parity tests, so this can never drift from them). A raw full-file diff
 # is too brittle (FastAPI may reorder keys across runs); this compares only property names + required
@@ -23,7 +23,7 @@ _SNAPSHOT = Path(__file__).resolve().parent / "openapi_snapshot.json"
 
 _FIX_MESSAGE = (
     "backend API changed — regenerate src/docforge_sdk/tests/openapi_snapshot.json (via "
-    "`uv run python app/scripts/dump_openapi.py` from src/docforge-rework/) and reconcile the SDK "
+    "`uv run python app/scripts/dump_openapi.py` from src/docforge/) and reconcile the SDK "
     "models in src/docforge_sdk/docforge_sdk/models/."
 )
 

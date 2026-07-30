@@ -16,7 +16,7 @@ web UI and via `curl`. Every command here is verified against the repository.
   model and the reranker from Hugging Face (~4–5 GB), so give it a few minutes.
 - Open ports in the `10040–10048` range (the stack publishes its dev ports there).
 - **GPU is optional and deferred** — the default images build with CPU-only PyTorch. GPU is an
-  opt-in override (`docker-compose.rework.gpu.yml`) and is not needed to complete this guide.
+  opt-in override (`docker-compose.gpu.yml`) and is not needed to complete this guide.
 
 No local Python, Node, or Postgres install is required — everything runs in containers.
 
@@ -33,9 +33,9 @@ DocForge reads a handful of `.env` / config files that are **git-ignored**. Prov
 committed `.example` templates:
 
 ```bash
-cp services/docforge-rework/.env.example         services/docforge-rework/.env
-cp services/docforge-rework/postgres.env.example services/docforge-rework/postgres.env
-cp services/docforge-rework/s3_config.json.example services/docforge-rework/s3_config.json
+cp services/docforge/.env.example         services/docforge/.env
+cp services/docforge/postgres.env.example services/docforge/postgres.env
+cp services/docforge/s3_config.json.example services/docforge/s3_config.json
 cp services/bge_server/.env.example              services/bge_server/.env
 ```
 
@@ -46,11 +46,11 @@ The few values worth knowing about:
 
 | File | Key | What it is |
 |---|---|---|
-| `services/docforge-rework/postgres.env` | `POSTGRES_PASSWORD` | Postgres password. Must match the password in `POSTGRES_DSN` below. |
-| `services/docforge-rework/.env` | `POSTGRES_DSN` | App/worker DB DSN. Keep the host as `localhost:10041` here — Compose overrides it with the in-network hostname when the full stack runs. |
-| `services/docforge-rework/.env` | `AUTH_ENABLED` | API-key auth. `false` by default (no credentials needed). See [§6](#6-enabling-api-key-auth). |
-| `services/docforge-rework/.env` | `S3_ACCESS_KEY` / `S3_SECRET_KEY` | Blob-store credentials. Any non-empty value works with the local SeaweedFS. |
-| `services/docforge-rework/s3_config.json` | `accessKey` / `secretKey` | SeaweedFS S3 identity. For local dev the defaults are fine. |
+| `services/docforge/postgres.env` | `POSTGRES_PASSWORD` | Postgres password. Must match the password in `POSTGRES_DSN` below. |
+| `services/docforge/.env` | `POSTGRES_DSN` | App/worker DB DSN. Keep the host as `localhost:10041` here — Compose overrides it with the in-network hostname when the full stack runs. |
+| `services/docforge/.env` | `AUTH_ENABLED` | API-key auth. `false` by default (no credentials needed). See [§6](#6-enabling-api-key-auth). |
+| `services/docforge/.env` | `S3_ACCESS_KEY` / `S3_SECRET_KEY` | Blob-store credentials. Any non-empty value works with the local SeaweedFS. |
+| `services/docforge/s3_config.json` | `accessKey` / `secretKey` | SeaweedFS S3 identity. For local dev the defaults are fine. |
 
 > **Note:** ML providers (embedding, OCR, VLM, LLM) are **not** configured in `.env`. Their
 > `base_url`, API key, and model live **per collection** in the database (in the collection's
@@ -64,14 +64,14 @@ The few values worth knowing about:
 Start the **full stack** (API + worker + frontend + all stores) with hot reload:
 
 ```bash
-docker compose -f docker-compose.rework.yml -f docker-compose.rework.dev.yml \
+docker compose -f docker-compose.yml -f docker-compose.dev.yml \
   --profile full up --build -d
 ```
 
 - **`--profile full` is mandatory.** The app, worker, and frontend live under that profile; without
   it only the backing stores start, and Compose rejects the project with
-  `rework_frontend depends on undefined service rework_app`.
-- The second `-f docker-compose.rework.dev.yml` adds hot reload and **publishes the store ports to
+  `docforge_frontend depends on undefined service docforge_app`.
+- The second `-f docker-compose.dev.yml` adds hot reload and **publishes the store ports to
   localhost** (Postgres, Redis, Qdrant, SeaweedFS, bge_server). Production keeps those internal.
 
 ### Ports (dev)
@@ -104,7 +104,7 @@ curl http://localhost:10047/health
 Watch the logs while the models load:
 
 ```bash
-docker compose -f docker-compose.rework.yml -f docker-compose.rework.dev.yml logs -f rework_bge_server
+docker compose -f docker-compose.yml -f docker-compose.dev.yml logs -f docforge_bge_server
 ```
 
 Once both `/health` checks pass, open the web UI at **http://localhost:10046** and the interactive
@@ -117,7 +117,7 @@ API reference at **http://localhost:10040/scalar**.
 On first boot, apply the Alembic migrations against the running app container:
 
 ```bash
-docker compose -f docker-compose.rework.yml exec rework_app \
+docker compose -f docker-compose.yml exec docforge_app \
   sh -c 'alembic -c /app/shared/alembic.ini upgrade head'
 ```
 
@@ -270,7 +270,7 @@ curl -s -X POST http://localhost:10040/api/v1/collections/${COLLECTION_ID}/searc
 Auth is **off by default**. When enabled, every `/api/v1/*` route requires a bearer token; the
 `/health` probe, the Scalar docs, and `/openapi.json` stay public.
 
-1. In `services/docforge-rework/.env`, set:
+1. In `services/docforge/.env`, set:
 
    ```dotenv
    AUTH_ENABLED=true
@@ -282,8 +282,8 @@ Auth is **off by default**. When enabled, every `/api/v1/*` route requires a bea
 2. Recreate the app (and worker) so they pick up the new env:
 
    ```bash
-   docker compose -f docker-compose.rework.yml -f docker-compose.rework.dev.yml \
-     --profile full up -d --force-recreate rework_app rework_worker
+   docker compose -f docker-compose.yml -f docker-compose.dev.yml \
+     --profile full up -d --force-recreate docforge_app docforge_worker
    ```
 
 3. Every call now needs the header `Authorization: Bearer <token>`:
@@ -317,14 +317,14 @@ Auth is **off by default**. When enabled, every `/api/v1/*` route requires a bea
 - **[Python SDK guide](python-sdk.md)** — `pip install docforge-sdk`, the typed async + sync client.
 - **[MCP server guide](mcp.md)** — drive DocForge from an AI model; the full tool catalogue.
 - **[Architecture](architecture.md)** — the graph engine, the 7 stages, packages, retrieval (deep
-  reference: [`../src/docforge-rework/PIPELINE.md`](../src/docforge-rework/PIPELINE.md)).
+  reference: [`../src/docforge/PIPELINE.md`](../src/docforge/PIPELINE.md)).
 - **[Configuration](configuration.md)** — every environment variable, per service.
 - **[Deployment](deployment.md)** — production hardening, ports, secrets, GPU.
 
 Production start (baked images, no dev override, store ports kept internal):
 
 ```bash
-docker compose -f docker-compose.rework.yml --profile full up -d
+docker compose -f docker-compose.yml --profile full up -d
 ```
 
 ---
@@ -333,20 +333,20 @@ docker compose -f docker-compose.rework.yml --profile full up -d
 
 | Symptom | Cause & fix |
 |---|---|
-| `rework_frontend depends on undefined service rework_app` | You dropped `--profile full`. It is **mandatory** — app/worker/frontend live under that profile. |
+| `docforge_frontend depends on undefined service docforge_app` | You dropped `--profile full`. It is **mandatory** — app/worker/frontend live under that profile. |
 | Only the stores came up, no app/worker/UI | Same cause — add `--profile full`. |
 | Search returns `409 Collection has no embed node` | The collection's pipeline has no embedder wired. Use the default pipeline (omit `pipeline` on create) or add an embed node. |
 | Search/upload hangs or 500s on first run | `bge_server` is still downloading models. Wait for `curl http://localhost:10047/health` to return 200. |
-| Port already in use on `up` | Another process holds a `10040–10048` port. Free it, or stop a previously running stack: `docker compose -f docker-compose.rework.yml -f docker-compose.rework.dev.yml --profile full down`. |
+| Port already in use on `up` | Another process holds a `10040–10048` port. Free it, or stop a previously running stack: `docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile full down`. |
 | `503` from Gotenberg on large office files | Cold LibreOffice spin-up; the API timeout is already raised to 180s — retry, or give the file a moment. |
 | DB errors right after first boot | Migrations not applied — run the [§4](#4-run-database-migrations) command. |
 | `401` on every `/api/v1/*` call | Auth is on. Send `Authorization: Bearer <token>`, or set `AUTH_ENABLED=false` and recreate the app. |
-| Worker marked `unhealthy` | A wedged/hung native call; Docker does not auto-restart on unhealthy. Inspect `docker compose ... logs rework_worker`. |
+| Worker marked `unhealthy` | A wedged/hung native call; Docker does not auto-restart on unhealthy. Inspect `docker compose ... logs docforge_worker`. |
 
 To stop and remove the stack (keeping data volumes):
 
 ```bash
-docker compose -f docker-compose.rework.yml -f docker-compose.rework.dev.yml --profile full down
+docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile full down
 ```
 
 Add `-v` to also delete the volumes (Postgres/Qdrant/SeaweedFS/Redis data and the model cache) —

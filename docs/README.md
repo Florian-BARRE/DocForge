@@ -18,7 +18,7 @@ Start here. New to DocForge? Read **[Getting started](getting-started.md)** firs
 
 | Doc | Scope |
 |---|---|
-| [../src/docforge-rework/PIPELINE.md](../src/docforge-rework/PIPELINE.md) | The living pipeline reference — the 7 stages, every node, artefact and decision. |
+| [../src/docforge/PIPELINE.md](../src/docforge/PIPELINE.md) | The living pipeline reference — the 7 stages, every node, artefact and decision. |
 | [metadata-architecture.md](metadata-architecture.md) | Metadata schema, field origins, filterable / lexical / semantic surfaces. |
 | [deployment-resources.md](deployment-resources.md) | Per-service CPU/RAM ceilings & resource strategy. |
 | [PROD-HARDENING.md](PROD-HARDENING.md) | The exhaustive pre-go-live runbook. |

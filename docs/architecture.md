@@ -6,7 +6,7 @@ serves **hybrid retrieval** over it.
 
 > **Related docs:** [Getting started](getting-started.md) · [REST API](rest-api.md) ·
 > [Python SDK](python-sdk.md) · [MCP server](mcp.md) ·
-> [Pipeline reference (living doc)](../src/docforge-rework/PIPELINE.md)
+> [Pipeline reference (living doc)](../src/docforge/PIPELINE.md)
 
 ---
 
@@ -42,7 +42,7 @@ flowchart LR
 ```
 
 The engine hard-codes **no** pipeline: both ingestion and search are graphs of pure nodes run on the
-same `FlowEngine`. See [`PIPELINE.md`](../src/docforge-rework/PIPELINE.md) for the authoritative,
+same `FlowEngine`. See [`PIPELINE.md`](../src/docforge/PIPELINE.md) for the authoritative,
 stage-by-stage reference.
 
 ---
@@ -53,7 +53,7 @@ DocForge is a monorepo of four packages plus per-service config.
 
 ```
 src/
-  docforge-rework/     # THE product — FastAPI API + React frontend + arq worker + pure graph engine
+  docforge/     # THE product — FastAPI API + React frontend + arq worker + pure graph engine
     shared/libs/       #   pure graph engine (pipelines/), public IR models, Database façade (services/db)
     app/               #   FastAPI backend (backend.*) + React/Vite frontend (stage-rail studio)
     worker/            #   arq worker: runner (executes the pure pipeline) + IR→DB persistence
@@ -63,14 +63,14 @@ src/
   mcp/                 # standalone MCP server — a pure HTTP client of the API (AI bridge)
   bge_server/          # local BGE-M3 embed/rerank host (TEI-compatible)
 services/              # per-service .env (gitignored) + .env.example templates
-docker-compose.rework.yml · docker-compose.rework.dev.yml · docker-compose.rework.gpu.yml
+docker-compose.yml · docker-compose.dev.yml · docker-compose.gpu.yml
 ```
 
-**`docforge-rework`** — the product itself, a single `uv` project with three roots. `shared/libs/`
+**`docforge`** — the product itself, a single `uv` project with three roots. `shared/libs/`
 holds the pure graph engine, the public IR models, and the `Database` façade over the data stores.
 `app/` is the FastAPI backend (routers for pipelines, collections, documents, explorer, jobs, blobs)
 plus the React frontend. `worker/` is the arq worker that executes the ingestion pipeline and
-translates its IR output into database writes. (The `docforge-rework` folder name is a historical
+translates its IR output into database writes. (The `docforge` folder name is a historical
 artefact — renaming it to `docforge` is a deferred cosmetic task.)
 
 **`docforge_sdk`** — the published, typed client (`docforge-sdk`). It mirrors the REST surface as
@@ -209,7 +209,7 @@ suite mocks its stores, so no service containers and no `-m live` tests run in C
 
 The gate covers **every package**:
 
-- **`docforge-rework`** — ruff format + lint + the mocked unit suite.
+- **`docforge`** — ruff format + lint + the mocked unit suite.
 - **`docforge_sdk`** and **`mcp`** — ruff format + lint + **mypy** + unit tests.
 - **`bge_server`** — ruff format + lint + mypy + tests (CPU-only torch wheel).
 - **frontend** — `tsc --noEmit` + Vite build.

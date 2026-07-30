@@ -18,14 +18,14 @@ on:
   workflow_call:
 
 jobs:
-  docforge-rework:
+  docforge:
     # The v2 graph engine + app/worker. No mypy dev dep here by design (ruff is the enforced
     # linter for this package — see its pyproject.toml). Format + lint + mocked unit suite.
-    name: docforge-rework — format + lint + tests
+    name: docforge — format + lint + tests
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: src/docforge-rework
+        working-directory: src/docforge
     steps:
       - uses: actions/checkout@v4
       - name: Install uv
@@ -39,10 +39,10 @@ jobs:
       - name: Lint (ruff check)
         run: uv run ruff check .
       - name: Provide placeholder app config (serviceless suite)
-        # The config loader (safe_load_envs) reads services/docforge-rework/.env at import time; the
+        # The config loader (safe_load_envs) reads services/docforge/.env at import time; the
         # real file is gitignored and absent on CI, so materialize it from the committed template.
         # Nothing ever connects — the suite is fully mocked (placeholder DSN/URLs are never dialed).
-        run: cp ../../services/docforge-rework/.env.example ../../services/docforge-rework/.env
+        run: cp ../../services/docforge/.env.example ../../services/docforge/.env
       - name: Unit suite (serviceless)
         # Units mock every store; the real-OCR test auto-skips without the worker group.
         run: uv run pytest tests/units -q
@@ -119,7 +119,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: src/docforge-rework/app/frontend
+        working-directory: src/docforge/app/frontend
     steps:
       - uses: actions/checkout@v4
       - name: Setup Node
@@ -127,7 +127,7 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: src/docforge-rework/app/frontend/package-lock.json
+          cache-dependency-path: src/docforge/app/frontend/package-lock.json
       - name: Install (locked)
         run: npm ci
       - name: Build (tsc --noEmit && vite build)
@@ -147,9 +147,9 @@ jobs:
         with:
           enable-cache: true
       - name: Dump the backend's current OpenAPI (serviceless)
-        working-directory: src/docforge-rework
+        working-directory: src/docforge
         run: |
-          set -a; grep -vE '^\s*#|^\s*$' ../../services/docforge-rework/.env.example > /tmp/ci.env; . /tmp/ci.env; set +a
+          set -a; grep -vE '^\s*#|^\s*$' ../../services/docforge/.env.example > /tmp/ci.env; . /tmp/ci.env; set +a
           export LOGGING_ENABLE_CONSOLE=false LOGGING_ENABLE_FILE=false
           uv sync --frozen
           uv run python app/scripts/dump_openapi.py > /tmp/current_openapi.json

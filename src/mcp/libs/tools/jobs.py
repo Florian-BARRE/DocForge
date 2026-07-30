@@ -1,5 +1,5 @@
 # ====== Code Summary ======
-# MCP tools for the jobs domain — thin wrappers over sdk.jobs (read-only; the rework API has
+# MCP tools for the jobs domain — thin wrappers over sdk.jobs (read-only; the DocForge API has
 # no cancel endpoint).
 
 from __future__ import annotations

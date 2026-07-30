@@ -1,0 +1,16 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# DocForge — GPU overrides. Use ON TOP of the base (+ dev) files:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml #                  -f docker-compose.gpu.yml --profile full up -d
+#
+# NOTE: no special image is needed — the LOCKED Linux torch wheel is already a CUDA
+# build (2.10.0+cu128); granting the device is the only missing piece. Requires the
+# NVIDIA Container Toolkit (Docker Desktop/WSL2 ships it).
+# bge_server (embeddings) self-manages its device via its own image/config; this override grants the
+# NVIDIA device to the worker (docling) + bge_server. There is no runtime DeviceManager by design —
+# device placement is a deployment concern (this file), not a per-node runtime knob. See CLAUDE.md #7.
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+  docforge_worker:
+    # Service-level GPU grant — equivalent to `docker run --gpus all`.
+    gpus: all

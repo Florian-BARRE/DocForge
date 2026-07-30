@@ -1,0 +1,168 @@
+# ====== Code Summary ======
+# App (FastAPI) runtime config — extends the shared BaseRuntimeConfig with web-only
+# settings the worker never needs (FastAPI, CORS, SSE fan-out, resource admission).
+# Imported as `from config import RUNTIME_CONFIG` (resolves to this app's config tree).
+
+# ====== Standard Library Imports =====
+
+import pathlib
+import sys
+
+# ====== Third-Party Library Imports ======
+from configplusplus import EnvConfigLoader, env, safe_load_envs
+from loggerplusplus import formats as lpp_formats
+from loggerplusplus import loggerplusplus
+
+from .helpers import RuntimePathHelpers
+
+# ─── Console must speak UTF-8 (Windows defaults to cp1252 and chokes on the config dump) ───
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
+# ─── Reset logger before anything else ───
+loggerplusplus.remove()
+
+# ─── Local development: load services/docforge/.env ───
+# In containers the variables are injected by compose and this loads nothing.
+safe_load_envs(
+    path=pathlib.Path(__file__).resolve().parent.parent.parent.parent.parent
+    / "services"
+    / "docforge",
+    verbose=False,
+)
+
+
+class RUNTIME_CONFIG(EnvConfigLoader):
+    # ───── Paths & dirs ─────
+    # PATH_ROOT_DIR resolves to src/docforge/:
+    # current file is expected to be located under config/runtime/,
+    # so we go 3 levels up from this file.
+    PATH_ROOT_DIR = pathlib.Path(__file__).resolve().parent.parent.parent
+
+    # Main project directories
+    PATH_ROOT_DIR_SHARED = PATH_ROOT_DIR / "shared"
+    PATH_ROOT_DIR_APP = PATH_ROOT_DIR / "app"
+    PATH_ROOT_DIR_APP_BACKEND = PATH_ROOT_DIR_APP / "backend"
+    PATH_ROOT_DIR_APP_FRONTEND = PATH_ROOT_DIR_APP / "frontend" / "dist"
+
+    # Internal libraries directories
+    #
+    # backend/libs:
+    #   Added directly to sys.path.
+    #   Allows imports like:
+    #       import my_backend_lib
+    #
+    # shared/libs:
+    #   Exposed as the package alias `shared_libs`.
+    #   Allows imports like:
+    #       import shared_libs.xxx
+    #       from shared_libs import xxx
+    PATH_LIBS = PATH_ROOT_DIR_APP_BACKEND / "libs"
+    PATH_SHARED_LIBS = PATH_ROOT_DIR_SHARED / "libs"
+
+    # ───── FastAPI ─────
+    FASTAPI_APP_NAME: str = env("FASTAPI_APP_NAME")
+    FASTAPI_DEBUG_MODE: bool = env("FASTAPI_DEBUG_MODE", cast=bool)
+    FASTAPI_CORS_ALLOWED_ORIGINS: str = env("FASTAPI_CORS_ALLOWED_ORIGINS")
+
+    # Application version surfaced in OpenAPI docs and the public /health endpoint.
+    FASTAPI_APP_VERSION: str = env("FASTAPI_APP_VERSION")
+
+    # ───── Authentication (API-key bearer, keys-only) ─────
+    # OFF by default so local dev and the units suite run without credentials. When ON, every
+    # /api/v1/* route requires a valid bearer key (the scalar docs + /openapi.json stay public).
+    AUTH_ENABLED: bool = env("AUTH_ENABLED", cast=bool, default=False)
+    # The bootstrap root key plaintext — provisioned idempotently at startup when auth is on.
+    # Its name contains TOKEN, so configplusplus masks it in the startup config dump.
+    AUTH_ROOT_TOKEN: str = env("AUTH_ROOT_TOKEN", required=False, default="")
+
+    # ───── Queue (enqueue only — the worker executes) ─────
+    REDIS_URL = env("REDIS_URL")
+
+    # ───── Stores (admission writes + status/collection reads; never pipeline execution) ─────
+    POSTGRES_DSN = env("POSTGRES_DSN")
+    QDRANT_URL = env("QDRANT_URL")
+    QDRANT_API_KEY = env("QDRANT_API_KEY", required=False, default=None)
+    S3_ENDPOINT_URL = env("S3_ENDPOINT_URL")
+    S3_ACCESS_KEY = env("S3_ACCESS_KEY")
+    S3_SECRET_KEY = env("S3_SECRET_KEY")
+    S3_BUCKET = env("S3_BUCKET")
+    S3_REGION = env("S3_REGION", default="us-east-1")
+
+    # ───── Logging ─────
+    LOGGING_CONSOLE_LEVEL = env("LOGGING_CONSOLE_LEVEL")
+    LOGGING_FILE_LEVEL = env("LOGGING_FILE_LEVEL")
+    LOGGING_ENABLE_CONSOLE = env("LOGGING_ENABLE_CONSOLE", cast=bool)
+    LOGGING_ENABLE_FILE = env("LOGGING_ENABLE_FILE", cast=bool)
+    LOGGING_LPP_FORMAT = env("LOGGING_LPP_FORMAT")
+
+    @classmethod
+    def validate(cls) -> None:
+        """
+        Fail a misconfigured boot LOUDLY instead of bricking the app silently.
+
+        Enforces two auth-related invariants at startup (call from the entrypoint before the app
+        is built):
+
+        Raises:
+            RuntimeError: When ``AUTH_ENABLED`` is on but no ``AUTH_ROOT_TOKEN`` is set — an
+                unrecoverable lockout, since no root key can ever be bootstrapped and every
+                ``/api/v1`` route would 401 with no way back in.
+        """
+        # 1. Standard configplusplus validation first.
+        super().validate()
+
+        # 2. Auth ON with no root token is an unrecoverable lockout — refuse to boot.
+        if cls.AUTH_ENABLED and not cls.AUTH_ROOT_TOKEN:
+            raise RuntimeError(
+                "AUTH_ENABLED is true but AUTH_ROOT_TOKEN is empty — no root key can be "
+                "provisioned and every /api/v1 route would 401 with no recovery. Set "
+                "AUTH_ROOT_TOKEN or disable AUTH_ENABLED."
+            )
+
+        # 3. Auth ON behind a wildcard CORS policy is a dangerous combination — warn loudly (the
+        #    app sets allow_credentials=false, so it is not an outright lockout, only a smell).
+        origins = {o.strip() for o in cls.FASTAPI_CORS_ALLOWED_ORIGINS.split(",") if o.strip()}
+        if cls.AUTH_ENABLED and "*" in origins:
+            loggerplusplus.bind(identifier="RUNTIME_CONFIG").warning(
+                f"AUTH_ENABLED is true while CORS allows all origins ('*') — bearer-protected "
+                f"routes are reachable cross-origin; pin FASTAPI_CORS_ALLOWED_ORIGINS in production"
+            )
+
+
+# ─── Apply logging configuration AFTER class definition ───
+lpp_format = getattr(
+    lpp_formats,
+    RUNTIME_CONFIG.LOGGING_LPP_FORMAT,
+    lpp_formats.DebugFormat,
+)()
+
+if RUNTIME_CONFIG.LOGGING_ENABLE_CONSOLE:
+    loggerplusplus.add(
+        sink=sys.stdout,
+        level=RUNTIME_CONFIG.LOGGING_CONSOLE_LEVEL,
+        format=lpp_format,
+    )
+
+if RUNTIME_CONFIG.LOGGING_ENABLE_FILE:
+    loggerplusplus.add(
+        pathlib.Path("logs"),
+        level=RUNTIME_CONFIG.LOGGING_FILE_LEVEL,
+        format=lpp_format,
+        rotation="1 week",
+        retention="30 days",
+        compression="zip",
+        encoding="utf-8",
+        enqueue=True,
+        backtrace=True,
+        diagnose=False,
+    )
+
+# ─── Register runtime import paths AFTER logger setup ───
+RuntimePathHelpers.add_to_python_path(RUNTIME_CONFIG.PATH_LIBS)
+RuntimePathHelpers.register_package_alias(
+    "shared_libs",
+    RUNTIME_CONFIG.PATH_SHARED_LIBS,
+)
+
+__all__ = ["RUNTIME_CONFIG"]

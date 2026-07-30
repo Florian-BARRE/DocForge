@@ -123,4 +123,4 @@ memory ceiling is too low for the workload; raise it rather than removing the ca
 - [Deployment guide](deployment.md) — production hardening, ports, secrets, GPU.
 - [Configuration reference](configuration.md) — every environment variable per service.
 - [PROD-HARDENING.md](PROD-HARDENING.md) — the exhaustive go-live runbook.
-- Compose files — `docker-compose.rework.yml`, `docker-compose.rework.dev.yml`, `docker-compose.rework.gpu.yml`.
+- Compose files — `docker-compose.yml`, `docker-compose.dev.yml`, `docker-compose.gpu.yml`.

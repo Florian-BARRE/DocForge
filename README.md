@@ -75,7 +75,7 @@ flowchart LR
 ```
 
 Full detail: **[docs/architecture.md](docs/architecture.md)** · living pipeline reference:
-**[src/docforge-rework/PIPELINE.md](src/docforge-rework/PIPELINE.md)**.
+**[src/docforge/PIPELINE.md](src/docforge/PIPELINE.md)**.
 
 ## Stack
 
@@ -100,16 +100,16 @@ Full detail: **[docs/architecture.md](docs/architecture.md)** · living pipeline
 
 ```bash
 # 1. Provision env from the templates (edit secrets before any real deployment)
-cp services/docforge-rework/.env.example         services/docforge-rework/.env
-cp services/docforge-rework/postgres.env.example  services/docforge-rework/postgres.env
-cp services/docforge-rework/s3_config.json.example services/docforge-rework/s3_config.json
+cp services/docforge/.env.example         services/docforge/.env
+cp services/docforge/postgres.env.example  services/docforge/postgres.env
+cp services/docforge/s3_config.json.example services/docforge/s3_config.json
 cp services/bge_server/.env.example              services/bge_server/.env
 
 # 2. Start the full stack with hot reload (--profile full is MANDATORY)
-docker compose -f docker-compose.rework.yml -f docker-compose.rework.dev.yml --profile full up --build -d
+docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile full up --build -d
 
 # 3. Apply database migrations
-docker compose -f docker-compose.rework.yml exec rework_app \
+docker compose -f docker-compose.yml exec docforge_app \
   sh -c 'alembic -c /app/shared/alembic.ini upgrade head'
 ```
 
@@ -120,7 +120,7 @@ of minutes (`curl http://localhost:10047/health`). Then open:
 - **Web UI** → http://localhost:10046
 
 **Production** (baked images, data-plane ports closed):
-`docker compose -f docker-compose.rework.yml --profile full up -d` — read
+`docker compose -f docker-compose.yml --profile full up -d` — read
 **[docs/deployment.md](docs/deployment.md)** and **[docs/PROD-HARDENING.md](docs/PROD-HARDENING.md)** first.
 
 ---
@@ -136,13 +136,13 @@ of minutes (`curl http://localhost:10047/health`). Then open:
 | **[Architecture](docs/architecture.md)** | The graph engine, packages, retrieval, gates. |
 | **[Configuration](docs/configuration.md)** | Every environment variable, per service. |
 | **[Deployment](docs/deployment.md)** | Production hardening, ports, secrets, GPU. |
-| [Pipeline reference](src/docforge-rework/PIPELINE.md) | The living deep-dive on the ingestion pipeline. |
+| [Pipeline reference](src/docforge/PIPELINE.md) | The living deep-dive on the ingestion pipeline. |
 
 ## Repository layout
 
 ```
 src/
-  docforge-rework/     # THE product (one uv project, 3 roots)
+  docforge/     # THE product (one uv project, 3 roots)
     shared/libs/       #   pure graph engine (pipelines/) · public IR models · Database façade
     app/               #   FastAPI backend (backend.*) + React frontend
     worker/            #   arq worker (runner + IR→DB persistence)
@@ -164,7 +164,7 @@ Contributions welcome — see **[CONTRIBUTING.md](CONTRIBUTING.md)**. Every push
 and an **SDK↔backend OpenAPI coherence check** — nothing merges (or publishes) unless it's all green.
 
 ```bash
-cd src/docforge-rework
+cd src/docforge
 uv run ruff format --check . && uv run ruff check .   # format + lint
 uv run pytest tests/units -q                          # fast, fully mocked, no services needed
 ```
