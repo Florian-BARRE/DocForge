@@ -148,6 +148,13 @@ The server dispatches on `MCP_TRANSPORT` (`src/mcp/entrypoint.py`).
 > Two distinct tokens: **`DOCFORGE_API_TOKEN`** authenticates the MCP server *to DocForge*;
 > **`MCP_AUTH_TOKEN`** authenticates *clients to the MCP server* (HTTP transport only).
 
+> **Scoping the LLM's power.** The MCP can do exactly what its `DOCFORGE_API_TOKEN` allows — the
+> LLM never sees that token, only `MCP_AUTH_TOKEN`. Rather than the root key, prefer a dedicated
+> **owner key** with capabilities `["read","write","search","create"]` and an empty collection
+> scope: it may create collections and is auto-granted ownership of each one it creates (the new id
+> is appended to its scope), so the agent can set up collections but can't touch anything it didn't
+> make. For an app's runtime, mint a separate `search`-only key scoped to the one collection it uses.
+
 ### (a) stdio — local clients
 
 No network, no auth: the protocol runs over stdin/stdout, so logs are routed to stderr to keep the

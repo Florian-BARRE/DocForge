@@ -294,8 +294,10 @@ Auth is **off by default**. When enabled, every `/api/v1/*` route requires a bea
    ```
 
 4. Mint scoped, per-application keys instead of handing out the root token. Keys carry coarse
-   capabilities (`read · write · search · admin`) and an optional collection scope. Creating a key
-   requires the `admin` capability, and the plaintext is returned **exactly once**:
+   capabilities (`read · write · search · create · admin`) and an optional collection scope. A key
+   with `create` may create collections and is auto-granted ownership of what it creates (the new id
+   is appended to its own scope). Creating a *key* requires the `admin` capability, and the plaintext
+   is returned **exactly once**:
 
    ```bash
    curl -s -X POST http://localhost:10040/api/v1/auth/keys \

@@ -97,6 +97,12 @@ unauthenticated requests). A wrong or missing token against an auth-enabled inst
 [`AuthError`](#5-error-handling) (HTTP 401/403). API keys themselves are minted and managed through
 the [`auth` resource](#auth--api-key-management).
 
+Keys carry coarse **capabilities** — `Capability.READ`, `WRITE`, `SEARCH`, `CREATE`, `ADMIN` — plus a
+collection scope (`["*"]` or explicit ids). A key holding `CREATE` may create collections and is
+**auto-granted ownership** of what it creates (the new id is appended to its own scope), so one key
+can be given "may create + full power over what it creates" without knowing ids up front — then mint
+a narrow `SEARCH`-only key scoped to the resulting collection for your app.
+
 ---
 
 ## 4. Resource reference

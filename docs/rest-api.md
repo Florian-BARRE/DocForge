@@ -84,9 +84,9 @@ hand those out.
 A key carries two orthogonal scopes, stored as a `permissions` blob:
 
 - **Capabilities** — the coarse action classes the key grants:
-  `read`, `write`, `search`, `admin`.
+  `read`, `write`, `search`, `create`, `admin`.
   Endpoints demand one of these (e.g. search requires `search`, upload requires `write`,
-  key management requires `admin`).
+  creating a collection requires `create`, key management requires `admin`).
 - **Collection scope** — either `["*"]` (every collection) or an explicit list of
   collection UUID strings. A scoped key is rejected `403` on any collection it does not list —
   including collections referenced in a form body, a query param, or via a document/chunk/blob.
@@ -100,8 +100,9 @@ be mixed with explicit ids, and every explicit id must be a valid UUID.
 | Capability | Grants |
 |---|---|
 | `read` | List/get collections, browse documents, read pages/IR/chunks, read blobs, read jobs |
-| `write` | Create/patch/delete collections, upload documents, toggle enabled, delete documents/chunks |
+| `write` | Patch/delete collections, upload documents, toggle enabled, delete documents/chunks |
 | `search` | Run collection search |
+| `create` | Create collections. A **scoped** key that creates one is auto-granted ownership — the new collection id is appended to the key's own `collections` scope, so it can then manage what it created (per its other capabilities) without knowing ids in advance |
 | `admin` | Manage API keys (create/list/revoke/rotate) |
 
 ### 401 vs 403 semantics
@@ -158,6 +159,24 @@ Response (`201`):
 
 A full-access key: omit `permissions` (or send `null`).
 
+**Create a "project owner" key** (may create collections + full power over what it creates). Start
+its scope empty; each collection it creates is appended to that scope automatically. This is the key
+you hand to an agent (e.g. over MCP) to set up collections, then you mint a narrow `search`-only key
+scoped to the resulting collection for your app's runtime:
+
+```bash
+curl -sX POST http://localhost:10040/api/v1/auth/keys \
+  -H "Authorization: Bearer $ROOT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+        "name": "myproject-owner",
+        "permissions": {
+          "capabilities": ["read", "write", "search", "create"],
+          "collections": []
+        }
+      }'
+```
+
 **Use the key** on any request:
 
 ```bash
@@ -190,7 +209,7 @@ later), so declare the **full** schema up front.
 |---|---|---|---|
 | `GET` | `/api/v1/collections` | `read` | List all collections with their schema |
 | `GET` | `/api/v1/collections/{id}` | `read` | One collection's full contract |
-| `POST` | `/api/v1/collections` | `write` | Create a collection (`201`) |
+| `POST` | `/api/v1/collections` | `create` | Create a collection (`201`); a scoped creator is auto-granted ownership of it |
 | `PATCH` | `/api/v1/collections/{id}` | `write` | Patch identity/limits/schema/config |
 | `DELETE` | `/api/v1/collections/{id}` | `write` | Delete a collection (`204`) |
 
