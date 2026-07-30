@@ -16,6 +16,7 @@ import { LoadingState } from "../../components/LoadingState";
 import { getDesign, inspect, listPipelineDesigns } from "../../api/pipelines";
 import type { GroupBlob, Palette, ValidationIssue } from "../../api/types";
 import { theme } from "../../theme";
+import { useToast } from "../../shell/toast";
 import { StageConnector } from "../stage-rail/StageConnector";
 import { SearchNodeCard } from "./SearchNodeCard";
 import { SearchPipelineHeader } from "./SearchPipelineHeader";
@@ -38,6 +39,7 @@ export interface SearchPipelineEditorProps {
 }
 
 export function SearchPipelineEditor({ initialBlob, onSave, onResetToDefault }: SearchPipelineEditorProps) {
+  const toast = useToast();
   const [palette, setPalette] = useState<Palette | null>(null);
   const [inspectUrl, setInspectUrl] = useState<string | null>(null);
   const [blob, setBlob] = useState<GroupBlob | null>(null);
@@ -168,12 +170,15 @@ export function SearchPipelineEditor({ initialBlob, onSave, onResetToDefault }: 
     setSaveError(null);
     try {
       await onResetToDefault();
+      toast.success("Search pipeline reset to default");
     } catch (error) {
-      setSaveError(error instanceof Error ? error.message : String(error));
+      const message = error instanceof Error ? error.message : String(error);
+      setSaveError(message);
+      toast.error(`Reset failed — ${message}`);
     } finally {
       setResetting(false);
     }
-  }, [onResetToDefault]);
+  }, [onResetToDefault, toast]);
 
   // 6. Save: PATCH the current blob back. Only offered when the caller wants persistence here.
   const handleSave = useCallback(async () => {
@@ -183,12 +188,15 @@ export function SearchPipelineEditor({ initialBlob, onSave, onResetToDefault }: 
     try {
       await onSave(blob);
       setSavedBlob(blob);
+      toast.success("Search pipeline saved");
     } catch (error) {
-      setSaveError(error instanceof Error ? error.message : String(error));
+      const message = error instanceof Error ? error.message : String(error);
+      setSaveError(message);
+      toast.error(`Save failed — ${message}`);
     } finally {
       setSaving(false);
     }
-  }, [blob, onSave, valid, checking, debouncePending]);
+  }, [blob, onSave, valid, checking, debouncePending, toast]);
 
   const dirty = useMemo(() => JSON.stringify(blob) !== JSON.stringify(savedBlob), [blob, savedBlob]);
 

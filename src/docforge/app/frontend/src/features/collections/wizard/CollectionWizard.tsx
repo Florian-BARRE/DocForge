@@ -8,6 +8,7 @@ import { useState } from "react";
 import { createCollection, updateCollection, type Collection } from "../../../api/collections";
 import type { ApiIssue } from "../../../api/http";
 import { HttpError } from "../../../api/http";
+import { useToast } from "../../../shell/toast";
 import { BackLink } from "../../../components/BackLink";
 import { PageHeader } from "../../../components/PageHeader";
 import { theme } from "../../../theme";
@@ -48,6 +49,7 @@ export function CollectionWizard({ onNavigate, mode = "create", initial, collect
   const [formats, setFormats] = useState<string[]>(prefill?.formats ?? []);
   const [maxSizeMb, setMaxSizeMb] = useState(prefill?.maxSizeMb ?? 50);
   const [fields, setFields] = useState<DraftField[]>(prefill?.fields ?? []);
+  const toast = useToast();
   const [submitting, setSubmitting] = useState(false);
   const [issues, setIssues] = useState<ApiIssue[]>([]);
 
@@ -71,9 +73,12 @@ export function CollectionWizard({ onNavigate, mode = "create", initial, collect
       const result = mode === "edit" && collectionId
         ? await updateCollection(collectionId, payload)
         : await createCollection(payload);
+      toast.success(mode === "edit" ? `Collection “${result.name}” updated` : `Collection “${result.name}” created`);
       onNavigate({ name: "collection", collectionId: result.id });
     } catch (error) {
-      setIssues(error instanceof HttpError ? error.issues : [{ message: String(error) }]);
+      const issueList = error instanceof HttpError ? error.issues : [{ message: String(error) }];
+      setIssues(issueList);
+      toast.error(`${mode === "edit" ? "Update" : "Create"} failed — ${issueList[0]?.message ?? "unknown error"}`);
     } finally {
       setSubmitting(false);
     }

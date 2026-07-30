@@ -20,12 +20,14 @@ import { JobsPage } from "./features/monitoring/JobsPage";
 import { WorkersPanel } from "./features/monitoring/WorkersPanel";
 import { SearchLabPage } from "./features/search/SearchLabPage";
 import { TopBar } from "./shell/TopBar";
+import { ToastProvider } from "./shell/toast";
 import type { View } from "./shell/view";
 
 export function App() {
   const [view, setView] = useState<View>({ name: "collections" });
 
   return (
+    <ToastProvider>
     <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
       <TopBar view={view} onNavigate={setView} />
       <div style={{ flex: 1, minHeight: 0 }}>
@@ -78,5 +80,6 @@ export function App() {
         {view.name === "api-key" && <KeyDetailPage keyId={view.keyId} onNavigate={setView} />}
       </div>
     </div>
+    </ToastProvider>
   );
 }

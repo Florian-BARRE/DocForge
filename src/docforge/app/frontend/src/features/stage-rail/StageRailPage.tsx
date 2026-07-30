@@ -14,6 +14,7 @@ import { ErrorState } from "../../components/ErrorState";
 import { LoadingState } from "../../components/LoadingState";
 import type { GroupBlob, Palette, StageView, ValidationIssue } from "../../api/types";
 import { applyStageAction, getDesign, listPipelineDesigns, viewStages } from "../../api/pipelines";
+import { useToast } from "../../shell/toast";
 import { theme } from "../../theme";
 import type { StageRailActions } from "./actions";
 import { NoticesBar } from "./NoticesBar";
@@ -39,6 +40,7 @@ export interface StageRailPageProps {
 }
 
 export function StageRailPage({ initialBlob, onBlobChange, onSave }: StageRailPageProps) {
+  const toast = useToast();
   const [palette, setPalette] = useState<Palette | null>(null);
   const [applyUrl, setApplyUrl] = useState<string | null>(null);
   const [blob, setBlob] = useState<GroupBlob | null>(null);
@@ -196,12 +198,15 @@ export function StageRailPage({ initialBlob, onBlobChange, onSave }: StageRailPa
     setSaveError(null);
     try {
       await onSave(blob);
+      toast.success("Ingestion pipeline saved");
     } catch (error) {
-      setSaveError(error instanceof Error ? error.message : String(error));
+      const message = error instanceof Error ? error.message : String(error);
+      setSaveError(message);
+      toast.error(`Save failed — ${message}`);
     } finally {
       setSaving(false);
     }
-  }, [blob, onSave, valid, busy, debouncePending]);
+  }, [blob, onSave, valid, busy, debouncePending, toast]);
 
   if (loadError) return <ErrorState message={loadError} />;
   if (!palette || !stages) return <LoadingState label="loading pipeline stages…" />;

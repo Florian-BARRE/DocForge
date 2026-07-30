@@ -7,6 +7,7 @@ import { useState } from "react";
 import { revokeKey, type ApiKeyInfo } from "../../api/auth";
 import { Button } from "../../components/Button";
 import { Chip } from "../../components/Chip";
+import { useToast } from "../../shell/toast";
 import { theme } from "../../theme";
 import { ExpiryChip } from "./ExpiryChip";
 import { describeScope } from "./permissionsSummary";
@@ -28,6 +29,7 @@ function formatTimestamp(value: string | null): string {
 }
 
 export function ApiKeyRow({ apiKey, onRevoked, onRotate, onOpen, collectionNames }: ApiKeyRowProps) {
+  const toast = useToast();
   const [confirming, setConfirming] = useState(false);
   const [revoking, setRevoking] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -38,9 +40,12 @@ export function ApiKeyRow({ apiKey, onRevoked, onRotate, onOpen, collectionNames
     setError(null);
     try {
       await revokeKey(apiKey.id);
+      toast.success(`Key “${apiKey.name}” revoked`);
       onRevoked();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      const message = e instanceof Error ? e.message : String(e);
+      setError(message);
+      toast.error(`Revoke failed — ${message}`);
       setRevoking(false);
     }
   };

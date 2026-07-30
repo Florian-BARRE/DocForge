@@ -14,6 +14,7 @@ import { ApiIssueList } from "../../components/ApiIssueList";
 import { Button } from "../../components/Button";
 import { FormField } from "../../components/FormField";
 import { inputStyle } from "../../components/inputStyle";
+import { useToast } from "../../shell/toast";
 import { theme } from "../../theme";
 import { expiryToIso, type ExpiryChoice } from "./expiry";
 import { ExpirySelector } from "./ExpirySelector";
@@ -52,6 +53,7 @@ export function CreateKeyForm({ mode = "create", initial, onSubmitOverride, onCr
   const [expiry, setExpiry] = useState<ExpiryChoice>(initial?.expiry ?? { kind: "never" });
   const [collections, setCollections] = useState<Collection[] | null>(null);
   const [collectionsError, setCollectionsError] = useState<string | null>(null);
+  const toast = useToast();
   const [submitting, setSubmitting] = useState(false);
   const [issues, setIssues] = useState<ApiIssue[]>([]);
 
@@ -81,9 +83,12 @@ export function CreateKeyForm({ mode = "create", initial, onSubmitOverride, onCr
         expires_at: expiryToIso(expiry),
       };
       const created = onSubmitOverride ? await onSubmitOverride(payload) : await createKey(payload);
+      toast.success(onSubmitOverride ? `Key “${payload.name}” rotated` : `Key “${payload.name}” created`);
       onCreated(created);
     } catch (error) {
-      setIssues(error instanceof HttpError ? error.issues : [{ message: String(error) }]);
+      const issueList = error instanceof HttpError ? error.issues : [{ message: String(error) }];
+      setIssues(issueList);
+      toast.error(`${onSubmitOverride ? "Rotate" : "Create"} failed — ${issueList[0]?.message ?? "unknown error"}`);
     } finally {
       setSubmitting(false);
     }

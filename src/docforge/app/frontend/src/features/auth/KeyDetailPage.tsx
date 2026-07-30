@@ -15,6 +15,7 @@ import { ErrorState } from "../../components/ErrorState";
 import { LoadingState } from "../../components/LoadingState";
 import { PageHeader } from "../../components/PageHeader";
 import type { Navigate } from "../../shell/view";
+import { useToast } from "../../shell/toast";
 import { theme as t } from "../../theme";
 import { ALL_COLLECTIONS_SCOPE } from "../../api/auth";
 import { CreatedKeyModal } from "./CreatedKeyModal";
@@ -53,6 +54,7 @@ function fullScope(collections: string[], collectionNames: Map<string, string>):
 }
 
 export function KeyDetailPage({ keyId, onNavigate }: KeyDetailPageProps) {
+  const toast = useToast();
   const [keys, setKeys] = useState<ApiKeyInfo[] | null>(null);
   const [collectionNames, setCollectionNames] = useState<Map<string, string>>(new Map());
   const [error, setError] = useState<string | null>(null);
@@ -85,9 +87,12 @@ export function KeyDetailPage({ keyId, onNavigate }: KeyDetailPageProps) {
     setRevoking(true);
     try {
       await revokeKey(apiKey.id);
+      toast.success(`Key “${apiKey.name}” revoked`);
       onNavigate({ name: "api-keys" });
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      const message = e instanceof Error ? e.message : String(e);
+      setError(message);
+      toast.error(`Revoke failed — ${message}`);
       setRevoking(false);
     }
   };

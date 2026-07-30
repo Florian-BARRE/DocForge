@@ -11,6 +11,7 @@ import { uploadDocument } from "../../api/documents";
 import { ApiIssueList } from "../../components/ApiIssueList";
 import { Button } from "../../components/Button";
 import { FormField } from "../../components/FormField";
+import { useToast } from "../../shell/toast";
 import { theme } from "../../theme";
 import { MetadataFieldInput } from "./MetadataFieldInput";
 
@@ -21,6 +22,7 @@ interface UploadPanelProps {
 }
 
 export function UploadPanel({ collectionId, fields, onUploaded }: UploadPanelProps) {
+  const toast = useToast();
   const [file, setFile] = useState<File | null>(null);
   const [values, setValues] = useState<Record<string, unknown>>({});
   const [uploading, setUploading] = useState(false);
@@ -43,10 +45,17 @@ export function UploadPanel({ collectionId, fields, onUploaded }: UploadPanelPro
         metadata[field.field_name] = value;
       }
       const result = await uploadDocument({ file, collectionId, metadata });
-      if (result.duplicate) setDuplicateNotice(`Identical content already ingested as document ${result.document_id}.`);
-      else onUploaded(result.job_id);
+      if (result.duplicate) {
+        setDuplicateNotice(`Identical content already ingested as document ${result.document_id}.`);
+        toast.info("Already ingested — identical content skipped");
+      } else {
+        toast.success(`Ingestion launched — ${file.name}`);
+        onUploaded(result.job_id);
+      }
     } catch (error) {
-      setIssues(error instanceof HttpError ? error.issues : [{ message: String(error) }]);
+      const issueList = error instanceof HttpError ? error.issues : [{ message: String(error) }];
+      setIssues(issueList);
+      toast.error(`Upload failed — ${issueList[0]?.message ?? "unknown error"}`);
     } finally {
       setUploading(false);
     }

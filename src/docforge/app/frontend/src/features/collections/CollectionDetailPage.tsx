@@ -9,6 +9,7 @@ import { deleteCollection, getCollection, type Collection } from "../../api/coll
 import { Button } from "../../components/Button";
 import { ErrorState } from "../../components/ErrorState";
 import { LoadingState } from "../../components/LoadingState";
+import { useToast } from "../../shell/toast";
 import type { Navigate } from "../../shell/view";
 import { theme } from "../../theme";
 import { ReindexBanner } from "./ReindexBanner";
@@ -20,6 +21,7 @@ interface CollectionDetailPageProps {
 }
 
 export function CollectionDetailPage({ collectionId, onNavigate }: CollectionDetailPageProps) {
+  const toast = useToast();
   const [collection, setCollection] = useState<Collection | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -38,9 +40,12 @@ export function CollectionDetailPage({ collectionId, onNavigate }: CollectionDet
     setDeleting(true);
     try {
       await deleteCollection(collectionId);
+      toast.success(`Collection “${collection?.name ?? collectionId}” deleted`);
       onNavigate({ name: "collections" });
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      const message = e instanceof Error ? e.message : String(e);
+      setError(message);
+      toast.error(`Delete failed — ${message}`);
       setDeleting(false);
     }
   };

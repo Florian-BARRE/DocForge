@@ -137,6 +137,11 @@ button { letter-spacing: 0.005em; }
 .df-hover { transition: box-shadow 0.16s ease, border-color 0.16s ease; }
 .df-hover:hover { border-color: var(--line-strong) !important; box-shadow: var(--shadow-2) !important; }
 
+/* Toast entrance — slide up + fade from the bottom-right corner. */
+@keyframes df-toast-in { from { opacity: 0; transform: translateY(10px) scale(0.98); } to { opacity: 1; transform: none; } }
+.df-toast { animation: df-toast-in 0.24s cubic-bezier(0.22, 1, 0.36, 1) both; }
+@media (prefers-reduced-motion: reduce) { .df-toast { animation: none; } }
+
 /* Native disclosure: drop the default triangle, rotate our own chevron when open. */
 summary { list-style: none; }
 summary::-webkit-details-marker { display: none; }
