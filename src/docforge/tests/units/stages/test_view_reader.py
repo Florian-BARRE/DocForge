@@ -159,6 +159,17 @@ def _action_configs(blob):
             yield node.id, config
 
 
+def test_provider_hosted_stages_off_by_default_carry_an_opt_in_note(builder, validator) -> None:
+    """The greyed provider-hosted stages must read as an intentional opt-in, not as broken — their
+    note names the reason (provider-hosted, no reachable default) and that ingestion works without
+    them. Local disabled stages keep the plain 're-enable restores defaults' note."""
+    stages = _view(IngestPipeline.default_blob(), builder, validator)
+    for key in ("enrich", "metagen_chunk", "metagen_document"):
+        note = stages[key].notes or ""
+        assert "Provider-hosted" in note and "endpoint" in note, (key, note)
+        assert "ingests without it" in note, (key, note)
+
+
 def test_default_blob_is_preflight_clean_no_placeholder_endpoint_in_the_executed_graph() -> None:
     """The stock blob must carry NO placeholder/unset provider endpoint in any executed node — the
     provider-hosted stages ship OFF, so their pre-filled (unreachable) endpoints never enter the

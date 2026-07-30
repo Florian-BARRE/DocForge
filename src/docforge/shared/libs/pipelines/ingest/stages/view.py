@@ -17,6 +17,12 @@ from .models import ChainView, StageCatalog, StageView
 from .spec import StageKey, StageSpecs
 from .state import ChainSpec, PipelineState
 
+# The stages that call an external hosted model (VLM/LLM) with no reachable in-stack default — they
+# ship OFF, so a fresh collection ingests without them. Used to word their "opt-in" caveat.
+_PROVIDER_HOSTED_STAGES = frozenset(
+    {StageKey.ENRICH, StageKey.METAGEN_CHUNK, StageKey.METAGEN_DOCUMENT}
+)
+
 
 class StageViewer:
     """Static viewer building the product-level StageCatalog from a PipelineState."""
@@ -206,6 +212,13 @@ class StageViewer:
             return "Enrichment needs the render stage to embed figure crops — enable it."
         # A disabled removable stage is off the pipeline; re-enabling starts from defaults.
         if meta.removable and not enabled:
+            # Provider-hosted stages ship OFF by design: they call an external LLM/VLM that has no
+            # reachable default. Say so, so the greyed card reads as an intentional opt-in.
+            if meta.key in _PROVIDER_HOSTED_STAGES:
+                return (
+                    "Provider-hosted — ships off. Enable it and point it at a reachable "
+                    "endpoint; a fresh collection ingests without it."
+                )
             note = "Disabled — re-enabling restores this stage's default configuration."
             if meta.key == StageKey.EMBED:
                 return f"{note} No vectors are indexed while off."
