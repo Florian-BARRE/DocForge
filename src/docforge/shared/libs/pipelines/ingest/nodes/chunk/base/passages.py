@@ -282,7 +282,13 @@ class PassageProjector:
             caption = caption_block.text.strip() if caption_block and caption_block.text else None
             contribution = cls.__block_text(block, config, caption)
             if contribution is None:
-                continue
+                # The owning figure/table contributed nothing (empty table, figures disabled, no
+                # crop) — but its caption was already CONSUMED. Keep the caption as this unit's body
+                # (both the caption block and the figure/table it labels stay in provenance) so its
+                # text is never silently lost.
+                if caption is None:
+                    continue
+                contribution = (caption, False)
             text, atomic = contribution
             heading_path, section_key = cls.__ancestry(block, by_id)
             unit_blocks = (

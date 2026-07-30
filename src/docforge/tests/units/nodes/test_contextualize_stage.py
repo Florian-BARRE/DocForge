@@ -128,6 +128,38 @@ async def test_doc_meta_flat_doc_without_ir_never_anchors_on_a_later_section() -
     assert not any(c.context for c in out.chunks), [c.context for c in out.chunks]
 
 
+async def test_doc_meta_ir_fallback_skips_a_toc_heading_and_a_subheading() -> None:
+    """The IR-fallback title must be the first TOP-LEVEL (level-1), non-ToC heading — not a ToC
+    heading that opens the document, nor a deeper subheading."""
+    from shared_libs.public_models import Block, BlockType, DocumentIR, Provenance
+
+    def _b(bid, order, text, level):
+        return Block(
+            id=bid,
+            block_type=BlockType.HEADING,
+            reading_order=order,
+            level=level,
+            provenance=Provenance(page=0, bbox=(0.1, 0.1, 0.9, 0.9)),
+            text=text,
+        )
+
+    ir = DocumentIR(
+        doc_id="d",
+        source_hash="h",
+        n_pages=1,
+        blocks=[
+            _b("toc", 0, "Table of Contents", 1),  # furniture — must be skipped
+            _b("sub", 1, "1.1 Scope", 2),  # a subheading — not top-level
+            _b("title", 2, "Data Protection Regulation", 1),  # the real title
+        ],
+    )
+    node = ContextualizerDocMetaNode(id="m", config=ContextualizerDocMetaConfig())
+    out = await node.run(DocMetaConsumes(chunks=_FLAT_CHUNKS, source=NO_TITLE, ir=ir))
+    assert all(c.context == "Data Protection Regulation" for c in out.chunks), [
+        c.context for c in out.chunks
+    ]
+
+
 async def _default_stack(chunks: list[Chunk], source: SourceDocument) -> list[Chunk]:
     """Run the stock zero-cost stack (doc_meta → breadcrumb) exactly as the default blob wires it."""
     meta = await ContextualizerDocMetaNode(id="m", config=ContextualizerDocMetaConfig()).run(

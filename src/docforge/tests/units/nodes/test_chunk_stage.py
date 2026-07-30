@@ -542,6 +542,55 @@ def test_figure_text_is_wrapped_in_an_explicit_image_marker() -> None:
     assert "[Data]" not in text
 
 
+def test_figure_with_a_crop_but_no_caption_still_anchors_a_passage() -> None:
+    """A detected figure carrying a CROP but no caption/enrichment (the out-of-box, enrich-off case)
+    must still produce a passage — else its picture block links to no chunk and the image crop is
+    unreachable from search (hit -> chunk -> picture block -> crop)."""
+    ir = DocumentIR(
+        doc_id="dcrop",
+        source_hash="h",
+        n_pages=1,
+        blocks=[
+            _blk("h1", BlockType.HEADING, 0, text="System Architecture", level=1),
+            _blk(
+                "figcrop",
+                BlockType.FIGURE,
+                1,
+                parent="h1",
+                figure=FigureEnrichment(kind=FigureKind.DIAGRAM, crop=b"\x89PNG-bytes"),
+            ),
+        ],
+    )
+    passages = PassageProjector.project(ir, BaseChunkerConfig())
+    figure_passages = [p for p in passages if "figcrop" in p.block_ids]
+    assert figure_passages, "a crop-bearing figure must anchor a passage (its block id present)"
+    assert figure_passages[0].text.startswith("[Image: diagram]")
+
+
+def test_caption_survives_when_its_table_is_empty() -> None:
+    """A caption whose owning table produces nothing (no cells) must not vanish — its text is kept
+    as its own passage, with both the caption and the table block in provenance."""
+    ir = DocumentIR(
+        doc_id="dcap",
+        source_hash="h",
+        n_pages=1,
+        blocks=[
+            _blk(
+                "temp",
+                BlockType.TABLE,
+                0,
+                table=TableData(cells=[], n_rows=0, n_cols=0, has_header=False),
+            ),
+            _blk("cap", BlockType.CAPTION, 1, text="Table 1: Q3 revenue by region"),
+        ],
+    )
+    passages = PassageProjector.project(ir, BaseChunkerConfig())
+    texts = [p.text for p in passages]
+    assert "Table 1: Q3 revenue by region" in texts, texts
+    caption_passage = next(p for p in passages if p.text == "Table 1: Q3 revenue by region")
+    assert "cap" in caption_passage.block_ids and "temp" in caption_passage.block_ids
+
+
 def test_figure_chart_to_data_renders_a_marked_markdown_table() -> None:
     charted = DocumentIR(
         doc_id="d8",

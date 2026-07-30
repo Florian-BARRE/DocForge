@@ -205,8 +205,12 @@ class ChunkerHelpers:
         if data_grid:
             lines.append("[Data]")
             lines.append(data_grid)
-        # 4. A lone marker line means no real content — a decorative figure contributes nothing.
-        return "\n".join(lines) if header_bits or len(lines) > 1 else None
+        # 4. Emit when there is real content (caption/native/description/OCR/data) OR the figure
+        #    carries a CROP: a cropped figure must anchor into the chunk stream by its marker even
+        #    with no caption or enrichment, so the image stays reachable from a hit
+        #    (hit -> chunk -> picture block -> crop). Only a figure with neither content nor a crop
+        #    is truly decorative and contributes nothing.
+        return "\n".join(lines) if header_bits or len(lines) > 1 or figure.crop else None
 
 
 __all__ = ["ChunkerHelpers"]

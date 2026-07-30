@@ -15,6 +15,13 @@ from shared_libs.public_models import BlockType, Chunk, DocumentIR, SourceDocume
 # ====== Local Project Imports ======
 from ..base import BaseContextualizerConfig, BaseContextualizerNode, ContextualizerConsumes
 
+# Table-of-contents heading titles (normalized, lowercased) — mirrors the chunker's own ToC
+# allow-list (PassageProjector._TOC_TITLES): a ToC heading is furniture, never a document title, so
+# the IR-fallback anchor must skip it. Kept small and multilingual; extend both lists together.
+_TOC_TITLES = frozenset(
+    {"contents", "table of contents", "toc", "sommaire", "table des matières", "índice"}
+)
+
 
 class ContextualizerDocMetaConfig(BaseContextualizerConfig):
     """Which declared field anchors the document, and the free fallback when it is absent."""
@@ -81,25 +88,30 @@ class ContextualizerDocMetaNode(BaseContextualizerNode):
             return str(declared)
         if not config.fallback_to_heading:
             return None
-        # 2. The document's TRUE first heading, read off the IR in reading order — the actual title.
-        #    A chunk's heading_path is the COMMON section ancestry of its passages, so a first chunk
-        #    that coalesced sibling level-1 sections reports []; picking "the first chunk WITH a
-        #    heading_path" would then wrongly anchor every chunk on a later section. The IR keeps the
-        #    real first heading regardless of how chunks packed.
+        # 2. The BODY chunks are already role-filtered (furniture/ToC excluded), so the first body
+        #    chunk's own top-level heading is the title AND cannot be a table-of-contents heading —
+        #    this is the safe, common path.
+        if chunks and chunks[0].heading_path:
+            return chunks[0].heading_path[0]
+        # 3. That path yields nothing only when the first chunk COALESCED sibling level-1 sections
+        #    (its common heading_path is []) — the flat HTML->PDF case. Recover the real title from
+        #    the IR's first TOP-LEVEL (level-1) heading in reading order, skipping a table-of-contents
+        #    heading (which is furniture, never the title).
         if data.ir is not None:
-            first_heading = next(
-                (
-                    block.text.strip()
-                    for block in sorted(data.ir.blocks, key=lambda b: b.reading_order)
-                    if block.block_type == BlockType.HEADING and block.text and block.text.strip()
-                ),
-                None,
+            headings = [
+                block
+                for block in sorted(data.ir.blocks, key=lambda b: b.reading_order)
+                if block.block_type == BlockType.HEADING
+                and block.text
+                and block.text.strip()
+                and block.text.strip().lower() not in _TOC_TITLES
+            ]
+            top = next((block for block in headings if block.level == 1), None) or (
+                headings[0] if headings else None
             )
-            if first_heading:
-                return first_heading
-        # 3. No IR available (e.g. a direct unit construction): the first chunk's own top-level
-        #    heading, or nothing — never a later chunk's section, which would misanchor the document.
-        return chunks[0].heading_path[0] if chunks and chunks[0].heading_path else None
+            if top:
+                return top.text.strip()
+        return None
 
 
 __all__ = ["ContextualizerDocMetaNode", "ContextualizerDocMetaConfig", "DocMetaConsumes"]
