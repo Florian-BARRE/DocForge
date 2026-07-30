@@ -6,8 +6,7 @@ serves **hybrid retrieval** over it.
 
 > **Related docs:** [Getting started](getting-started.md) · [REST API](rest-api.md) ·
 > [Python SDK](python-sdk.md) · [MCP server](mcp.md) ·
-> [Pipeline reference (living doc)](../src/docforge-rework/PIPELINE.md) ·
-> [Full spec](../SPEC-docforge-document-intelligence-platform.md)
+> [Pipeline reference (living doc)](../src/docforge-rework/PIPELINE.md)
 
 ---
 

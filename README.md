@@ -136,7 +136,7 @@ of minutes (`curl http://localhost:10047/health`). Then open:
 | **[Architecture](docs/architecture.md)** | The graph engine, packages, retrieval, gates. |
 | **[Configuration](docs/configuration.md)** | Every environment variable, per service. |
 | **[Deployment](docs/deployment.md)** | Production hardening, ports, secrets, GPU. |
-| [Pipeline reference](src/docforge-rework/PIPELINE.md) · [Design spec](SPEC-docforge-document-intelligence-platform.md) | Deep dives. |
+| [Pipeline reference](src/docforge-rework/PIPELINE.md) | The living deep-dive on the ingestion pipeline. |
 
 ## Repository layout
 

@@ -86,3 +86,6 @@ src/docforge-rework/app/frontend/scripts/node_modules/
 
 # Retired AI agent-memory snapshots — internal, not part of the public docs.
 docs/archive/agent-memory-legacy/
+
+# Root AI project instructions — local dev tooling, kept private (like .claude/).
+/CLAUDE.md
