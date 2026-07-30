@@ -7,6 +7,28 @@ name = "docforge-sdk"
 description = "Typed async + sync Python client for the DocForge REST API (standalone, zero server deps)."
 readme = "README.md"
 requires-python = ">=3.12"
+# SPDX expression form (PEP 639). Hatchling ships the LICENSE file automatically in the sdist/wheel.
+license = "MIT"
+authors = [{ name = "Florian Barré" }]
+keywords = [
+    "docforge",
+    "sdk",
+    "client",
+    "rag",
+    "document-intelligence",
+    "retrieval",
+    "api-client",
+    "async",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Typing :: Typed",
+    "Topic :: Software Development :: Libraries",
+    "Operating System :: OS Independent",
+]
 dynamic = ["version"]
 dependencies = [
     # HTTP transport for both the async and sync clients.
@@ -14,6 +36,11 @@ dependencies = [
     # Request/response models and validation.
     "pydantic>=2.7",
 ]
+
+[project.urls]
+Homepage = "https://github.com/Florian-BARRE/docforge"
+Repository = "https://github.com/Florian-BARRE/docforge"
+Issues = "https://github.com/Florian-BARRE/docforge/issues"
 
 [dependency-groups]
 dev = [

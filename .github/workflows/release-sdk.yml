@@ -1,0 +1,68 @@
+# ============================================================================
+# Release workflow for the `docforge-sdk` package (src/docforge_sdk).
+#
+# Publishes to PyPI via Trusted Publishing (OIDC) — NO API token is stored in
+# the repository. Authentication is brokered by GitHub's OIDC identity and a
+# trusted-publisher configuration on PyPI.
+#
+# ---------------------------------------------------------------------------
+# ONE-TIME MANUAL SETUP (maintainer, before the first release):
+#   1. Reserve the project name `docforge-sdk` on PyPI.
+#   2. In the PyPI project's "Publishing" settings, add a GitHub trusted
+#      publisher with EXACTLY these values:
+#        - Owner:            Florian-BARRE
+#        - Repository:       docforge
+#        - Workflow name:    release-sdk.yml
+#        - Environment:      pypi
+#   3. (Recommended) Create a GitHub Environment named `pypi` on this repo.
+#
+# HOW TO RELEASE:
+#   Tag a commit with the `sdk-v<version>` prefix (dedicated so it never fires
+#   for other packages in this monorepo) and push it. The version MUST match
+#   `docforge_sdk/_version.py`; a guard step fails the run on mismatch.
+#     git tag sdk-v0.1.0 && git push origin sdk-v0.1.0
+# ============================================================================
+
+name: release-sdk
+
+on:
+  push:
+    tags:
+      - "sdk-v*"
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      # Required for PyPI Trusted Publishing (OIDC token minting).
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Verify tag matches the package version
+        # Fail fast if the pushed tag disagrees with _version.py, so a mistagged
+        # release can never publish a mismatched artifact.
+        run: |
+          set -euo pipefail
+          pkg_version="$(grep -oP '__version__\s*=\s*"\K[^"]+' src/docforge_sdk/docforge_sdk/_version.py)"
+          tag_version="${GITHUB_REF_NAME#sdk-v}"
+          echo "Package version: ${pkg_version}"
+          echo "Tag version:     ${tag_version}"
+          if [ "${pkg_version}" != "${tag_version}" ]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} does not match package version ${pkg_version}"
+            exit 1
+          fi
+
+      - name: Build sdist + wheel
+        run: uv build
+        working-directory: src/docforge_sdk
+
+      - name: Publish to PyPI (Trusted Publishing)
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: src/docforge_sdk/dist
