@@ -12,6 +12,7 @@
 from shared_libs.pipelines.base import (
     FromGroupInput,
     FromNode,
+    OnFailure,
     OnSuccess,
     Transition,
     WhenEquals,
@@ -76,7 +77,19 @@ class EnrichBodyBuilder:
         nodes.append(ActionNodeBlob(id=cls.SKIP_ID, family="enrich", kind="figure_entry"))
         for decorative_kind in StageSpecs.DECORATIVE_KINDS:
             transitions.append(cls.__switch(decorative_kind, cls.SKIP_ID))
-        bindings[cls.SKIP_ID] = {"figure": FromNode(node_id=cls.CLASSIFY_ID, field_name="figure")}
+        # The skip terminal reads the figure from the ForEach ITEM (always present), NOT from the
+        # classifier's output — else the fail-soft edge below would route a FAILED classify here only
+        # for this terminal to fail too on an unresolvable binding (classify produced nothing).
+        bindings[cls.SKIP_ID] = {"figure": FromGroupInput(field_name="figure")}
+
+        # 3b. Fail-soft at the classifier itself — figure_classify is a VLM call, so it too can fail
+        #     (unreachable endpoint, transient error). Its failure must not sink the document: route
+        #     it to the skip terminal so the figure passes through un-classified/un-enriched. Priority
+        #     puts the when_equals class routes above this on_failure, so a successful classify still
+        #     switches by class; only a failed one falls through.
+        transitions.append(
+            Transition(from_node_id=cls.CLASSIFY_ID, to_node_id=cls.SKIP_ID, condition=OnFailure())
+        )
 
         # 4. Build guard: every class the classifier can stamp MUST have an outgoing route, or the
         #    item would stall on 'classify' at run and fail the whole document. Reject at BUILD.
@@ -160,6 +173,16 @@ class EnrichBodyBuilder:
             cls.__close_ocr(slot, frag, nodes, transitions, bindings)
         else:
             cls.__close_vlm(slot, frag, nodes, transitions, bindings)
+
+        # 4. Fail-soft: if the WHOLE chain fails (its most-robust step included, so no intra-chain
+        #    fall-through is left), the figure must NOT sink the document. Route the tail's failure
+        #    to the model-free skip terminal — the figure passes through un-enriched. The chain's own
+        #    terminal cannot serve here: its binding reads the step output, which does not exist when
+        #    every step failed.
+        tail_id = frag.exits[-1]
+        transitions.append(
+            Transition(from_node_id=tail_id, to_node_id=cls.SKIP_ID, condition=OnFailure())
+        )
 
     @classmethod
     def __close_ocr(

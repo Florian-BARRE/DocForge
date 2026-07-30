@@ -8,7 +8,7 @@ never in production as a document that stalls on the classifier.
 
 import pytest
 
-from shared_libs.pipelines.base import WhenEquals
+from shared_libs.pipelines.base import OnFailure, WhenEquals
 from shared_libs.pipelines.ingest import IngestPipeline
 from shared_libs.pipelines.ingest.stages import EnableStage, FigureBranch, StageSpecs
 from shared_libs.pipelines.ingest.stages.enrich_body import EnrichBodyBuilder
@@ -67,6 +67,36 @@ def test_default_enrich_body_routes_every_classifier_kind(compiler) -> None:
         if transition.from_node_id == classify.id and isinstance(transition.condition, WhenEquals)
     }
     assert routed == {kind.value for kind in FigureKind}
+
+
+def test_every_chain_tail_fails_soft_to_the_skip_terminal(compiler, builder, validator) -> None:
+    """A figure whose WHOLE enrichment chain fails must pass through un-enriched, not sink the
+    document: every chain's most-robust step (its tail — the one with no intra-chain on_failure
+    fall-through left) carries an on_failure edge to the model-free skip terminal ('entry')."""
+    default, _ = compiler.apply(IngestPipeline.default_blob(), EnableStage(stage="enrich"))
+    body = _enrich_body(default)
+
+    on_failure = [t for t in body.transitions if isinstance(t.condition, OnFailure)]
+    step_ids = {n.id for n in body.nodes if "_" in n.id and n.id.rsplit("_", 1)[1].isdigit()}
+    # A tail is a chain step that never falls through to another chain step on failure.
+    fails_to_step = {t.from_node_id for t in on_failure if t.to_node_id in step_ids}
+    tails = step_ids - fails_to_step
+    assert tails, "the default enrich chains must have provider steps"
+
+    for tail in tails:
+        assert any(
+            t.from_node_id == tail and t.to_node_id == EnrichBodyBuilder.SKIP_ID for t in on_failure
+        ), f"chain tail '{tail}' has no fail-soft edge to the skip terminal"
+
+    # The classifier is itself a VLM call — its failure must also fall through to the skip terminal.
+    assert any(
+        t.from_node_id == EnrichBodyBuilder.CLASSIFY_ID
+        and t.to_node_id == EnrichBodyBuilder.SKIP_ID
+        for t in on_failure
+    ), "the classifier has no fail-soft edge to the skip terminal"
+
+    # The fail-soft edges must not break the assembled graph.
+    assert validator.validate(builder.build(default)) == []
 
 
 def test_build_rejects_an_unrouted_classifier_kind(monkeypatch: pytest.MonkeyPatch) -> None:
