@@ -141,3 +141,29 @@ def test_disable_render_cascades_enrich_off_with_a_notice_and_falls_back_to_pars
     assert stages["render"].enabled is False
     assert off_render.bindings["chunk"]["ir"] == FromNode(node_id="parse", field_name="ir")
     assert "pages" not in off_render.bindings["bundle"], "no render -> bundle.pages unbound"
+
+
+# Placeholder hosts / sentinels the stock template pre-fills on OFF stages — none may appear in the
+# out-of-box EXECUTED graph, which is what makes preflight-on-by-default safe.
+_UNREACHABLE_MARKERS = ("vlm:8000", "llm:8000", "SET_ME")
+
+
+def _action_configs(blob):
+    """Every action node's config in the graph, recursing into ForEach bodies."""
+    for node in blob.nodes:
+        body = getattr(node, "body", None)
+        if body is not None:
+            yield from _action_configs(body)
+        config = getattr(node, "config", None)
+        if config is not None:
+            yield node.id, config
+
+
+def test_default_blob_is_preflight_clean_no_placeholder_endpoint_in_the_executed_graph() -> None:
+    """The stock blob must carry NO placeholder/unset provider endpoint in any executed node — the
+    provider-hosted stages ship OFF, so their pre-filled (unreachable) endpoints never enter the
+    assembled graph. This is the invariant that makes WORKER_PREFLIGHT_ENABLED safe on by default."""
+    for node_id, config in _action_configs(IngestPipeline.default_blob()):
+        blob_text = repr(config)
+        for marker in _UNREACHABLE_MARKERS:
+            assert marker not in blob_text, f"'{marker}' leaked into executed node '{node_id}'"

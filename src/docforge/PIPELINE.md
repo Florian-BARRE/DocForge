@@ -481,6 +481,14 @@ vive, `'<100 numbers>'` dans la trace**.
 
 ## 6. La surface de design (défaut = produit maigre · avancé = API headless — zéro texte en dur)
 
+**Le défaut est preflight-clean** — `default_blob()` livre **ON** uniquement les stages joignables avec
+les services in-stack (`intake`/`parse` docling · `contextualize` local · `embed` bge_server). Les stages
+**provider-hosted** — figure `ENRICH` (VLM) et `METAGEN` chunk/document (LLM) — livrent **OFF**, leurs
+providers recommandés pré-remplis mais **jamais exécutés** : une collection fraîche ingère n'importe quel
+document avec **zéro config externe**. Les activer est un opt-in explicite dans le studio (flip du stage +
+endpoint réel). C'est ce qui rend `WORKER_PREFLIGHT_ENABLED` **on par défaut** sans danger (aucun
+placeholder n'est jamais dans un graphe exécuté out-of-box — cf. invariant #4).
+
 **La découverte d'abord** — `GET /api/v1/pipelines` : la liste des surfaces de design disponibles
 (`{key, title, description, design_url, inspect_url, edit_url, stages_view_url, stages_apply_url}`) — le SEUL
 appel que l'UI connaît d'avance ; tout le reste se découvre.

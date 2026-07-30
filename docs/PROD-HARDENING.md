@@ -158,20 +158,24 @@ at `WORKER_CONCURRENCY=2` on a single VM the blast radius is small and a subproc
 + cold-model-load cost + orphan-process management. Revisit if concurrency rises or you go
 multi-worker.
 
-## 7. Provider preflight (opt-in fail-fast before spend)
+## 7. Provider preflight (fail-fast before spend, on by default)
 
 Every provider node (llm/vlm/ocr-mistral/embed) has a `preflight()` that probes its `base_url`
 reachability + credentials AFTER build/validate and BEFORE the first spend — a wrong/unreachable
 endpoint or a rejected key then fails the job immediately, having stored nothing (closing the gap the
-structural validator can't cover). It is **opt-in** (`WORKER_PREFLIGHT_ENABLED`, default `false`):
+structural validator can't cover). It is **on by default** (`WORKER_PREFLIGHT_ENABLED=true`):
 
-- The stock pipeline ships PLACEHOLDER endpoints (`http://llm:8000`, `http://vlm:8000`) that you
-  replace per collection, and the sweep probes EVERY provider node — including branches a given
-  document never reaches (the figure VLM on a text-only PDF). On-by-default would fail ingestions on
-  un-configured placeholders.
-- Enable it (`WORKER_PREFLIGHT_ENABLED=true` + recreate the worker) only once **every** provider your
-  collections reference is real and reachable. Then a typo'd `base_url` or a bad key fails the upload's
-  job fast with a clear per-node message instead of mid-run after spend.
+- The stock pipeline ships its provider-hosted stages (figure ENRICH via VLM, chunk/document METAGEN
+  via LLM) **OFF** — their recommended endpoints are pre-filled but not in any executed graph until
+  you opt in. So out-of-box the sweep only probes real, reachable in-stack nodes (gotenberg `/health`,
+  bge_server); no placeholder is ever hit.
+- When you opt a provider stage in, set its endpoint and the preflight probes it before the first
+  spend — a typo'd `base_url` or a bad key then fails the upload's job fast with a clear per-node
+  message instead of mid-run after spend. Note the sweep probes EVERY provider node in the graph,
+  including branches a given document never reaches (the figure VLM on a text-only PDF), so every
+  enabled provider must be real and reachable.
+- Set `WORKER_PREFLIGHT_ENABLED=false` (+ recreate the worker) only to skip reachability checks
+  entirely — e.g. to defer a not-yet-configured provider to run-time failure instead of preflight.
 
 ## 8. Final pre-flight
 

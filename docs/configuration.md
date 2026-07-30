@@ -73,7 +73,7 @@ at their `localhost` values here (they're used when running the app straight fro
 | `WORKER_CONCURRENCY` | `2` | Concurrent ingestion jobs. |
 | `WORKER_JOB_TIMEOUT_SECONDS` | `1800` | Per-job timeout. |
 | `WORKER_HEAVY_THREADS` | `4` | Thread pool for heavy CPU stages (docling/ocr/render/chunk). |
-| `WORKER_PREFLIGHT_ENABLED` | `false` | Opt-in provider-reachability preflight (fail-fast before spend). Keep `false` with the stock placeholder providers; enable only once every provider a collection uses is real + reachable. |
+| `WORKER_PREFLIGHT_ENABLED` | `true` | Provider-reachability preflight (fail-fast before spend). Safe on by default: the stock pipeline ships its provider-hosted stages (enrich/metagen) OFF, so only real in-stack nodes are probed; a stage you opt in is preflighted before its first spend. Set `false` to skip reachability checks. |
 
 ### `postgres.env` and `s3_config.json`
 

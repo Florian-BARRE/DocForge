@@ -67,13 +67,13 @@ class RUNTIME_CONFIG(EnvConfigLoader):
     WORKER_HEAVY_THREADS = env("WORKER_HEAVY_THREADS", cast=int, default=4)
     # Preflight every provider node's endpoint reachability after build/validate, BEFORE the first
     # spend — a wrong/unreachable base_url or a rejected key fails the job fast, having stored nothing.
-    # OPT-IN (default False): the stock pipeline ships with PLACEHOLDER provider endpoints
-    # (http://llm:8000, http://vlm:8000) that the operator replaces per collection — and the sweep
-    # probes EVERY provider node, including branches a given document never reaches (e.g. the figure
-    # VLM for a text-only PDF). So enable it only once every provider a collection references is real
-    # and reachable; otherwise it would fail ingestions on un-configured placeholders. See
-    # PROD-HARDENING.md.
-    WORKER_PREFLIGHT_ENABLED = env("WORKER_PREFLIGHT_ENABLED", cast=bool, default=False)
+    # ON by default: the stock pipeline ships only the stages reachable with the in-stack services
+    # (intake/parse, contextualize, embed) — the provider-hosted stages (enrich VLM, metagen LLM)
+    # ship OFF, so NO placeholder endpoint is ever in an executed graph out-of-box. The sweep then
+    # only probes real, reachable nodes (gotenberg /health, bge_server), and a stage the operator
+    # opts in is preflighted BEFORE its first spend — a wrong/placeholder endpoint fails fast having
+    # stored nothing. Set to False only to skip reachability checks entirely. See PROD-HARDENING.md.
+    WORKER_PREFLIGHT_ENABLED = env("WORKER_PREFLIGHT_ENABLED", cast=bool, default=True)
 
     # ───── Logging (mandatory set) ─────
     LOGGING_CONSOLE_LEVEL = env("LOGGING_CONSOLE_LEVEL")

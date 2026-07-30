@@ -43,8 +43,10 @@ MCP — should be published to the outside; keep the data-plane services interna
    postgres/redis/qdrant/seaweedfs have no `ports:` mapping.
 6. **Persistence** — the named volumes (postgres data, Qdrant, SeaweedFS, the `bge_server` HF model
    cache) are where your data lives; back them up.
-7. **Provider preflight** — once every provider a collection uses is real and reachable, you may set
-   `WORKER_PREFLIGHT_ENABLED=true` to fail fast before spending on an unreachable endpoint.
+7. **Provider preflight** — on by default (`WORKER_PREFLIGHT_ENABLED=true`): every provider node is
+   probed for reachability before the first spend, so a wrong/unreachable endpoint fails the job fast
+   with a clear per-node message. The stock pipeline ships its provider-hosted stages OFF, so only
+   real in-stack nodes are probed out-of-box; set `false` to skip the checks entirely.
 
 ## GPU
 

@@ -141,8 +141,9 @@ build rather than being silently ignored. A broken blob comes back as **data** (
 
 Validation is honestly scoped: it checks topology and config shape, **not connectivity**. A wrong or
 unreachable `base_url`/`api_key` builds cleanly and fails at **run** (surfaced by `job.error` naming
-the offending node). An opt-in per-provider `preflight()` (`WORKER_PREFLIGHT_ENABLED`, off by
-default) checks reachability before the first spend.
+the offending node). A per-provider `preflight()` (`WORKER_PREFLIGHT_ENABLED`, **on by default** —
+safe because the stock pipeline ships its provider-hosted stages OFF) checks reachability before the
+first spend.
 
 ### Two pipeline kinds, one engine
 
