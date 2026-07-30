@@ -314,7 +314,7 @@ with Client("http://localhost:10040", api_token="df_...") as client:
     docs = client.explorer.list_documents(collection_id)
     doc = client.explorer.get_document(docs[0].document_id)
 
-    ir = client.explorer.get_ir(doc.document_id)       # canonical IR
+    ir = client.explorer.get_ir(doc.document_id)  # canonical IR
     chunks = client.explorer.get_chunks(doc.document_id)
 
     # Reversibly drop a noisy chunk out of search:
@@ -334,11 +334,11 @@ with Client("http://localhost:10040", api_token="df_root_...") as client:
         name="reporting-bot",
         permissions=KeyPermissions(
             capabilities=[Capability.READ, Capability.SEARCH],
-            collections=[collection_id],           # empty list = all collections
+            collections=[collection_id],  # empty list = all collections
         ),
         expires_at=datetime.now(timezone.utc) + timedelta(days=90),
     )
-    print("SAVE THIS NOW:", created.key)            # plaintext, only returned once
+    print("SAVE THIS NOW:", created.key)  # plaintext, only returned once
 
     for key in client.auth.list_keys():
         print(key.id, key.name, key.last_used_at)
@@ -365,17 +365,17 @@ with Client("http://localhost:10040", api_token="df_...") as client:
     try:
         client.collections.get("does-not-exist")
     except NotFoundError:
-        ...                       # 404
+        ...  # 404
     except AuthError:
-        ...                       # 401 / 403 — bad or unscoped token
+        ...  # 401 / 403 — bad or unscoped token
     except UnprocessableError as e:
-        ...                       # 422 — validation errors (see e.status / e.detail)
+        ...  # 422 — validation errors (see e.status / e.detail)
     except APITimeoutError:
-        ...                       # request exceeded `timeout`
+        ...  # request exceeded `timeout`
     except APIConnectionError:
-        ...                       # server unreachable
+        ...  # server unreachable
     except DocForgeError:
-        ...                       # catch-all
+        ...  # catch-all
 ```
 
 Hierarchy:
@@ -399,19 +399,43 @@ public models are re-exported from the top level:
 ```python
 from docforge_sdk import (
     # clients
-    AsyncClient, Client,
+    AsyncClient,
+    Client,
     # collections
-    CollectionModel, CreateCollectionRequest, UpdateCollectionRequest, FieldSpec, FieldType,
+    CollectionModel,
+    CreateCollectionRequest,
+    UpdateCollectionRequest,
+    FieldSpec,
+    FieldType,
     # documents / explorer
-    UploadAccepted, DocumentDetail, DocumentListItem, ChunkInfo, PageInfo, DocumentIRModel,
+    UploadAccepted,
+    DocumentDetail,
+    DocumentListItem,
+    ChunkInfo,
+    PageInfo,
+    DocumentIRModel,
     # search
-    SearchRequest, SearchResponse, SearchHit, SearchTarget,
+    SearchRequest,
+    SearchResponse,
+    SearchHit,
+    SearchTarget,
     # jobs
-    JobStatus, JobTrace, JobEvent, WorkersLive,
+    JobStatus,
+    JobTrace,
+    JobEvent,
+    WorkersLive,
     # auth
-    Capability, KeyPermissions, CreateKeyRequest, CreatedKey, KeyInfo,
+    Capability,
+    KeyPermissions,
+    CreateKeyRequest,
+    CreatedKey,
+    KeyInfo,
     # errors
-    DocForgeError, AuthError, NotFoundError, ConflictError, UnprocessableError,
+    DocForgeError,
+    AuthError,
+    NotFoundError,
+    ConflictError,
+    UnprocessableError,
 )
 ```
 

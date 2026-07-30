@@ -17,14 +17,18 @@ def _principal(*, permissions):
     from backend.libs.auth.principal import AuthPrincipal  # noqa: PLC0415
 
     key = SimpleNamespace(id=uuid.uuid4(), permissions=permissions)
-    return AuthPrincipal(user=SimpleNamespace(is_active=True), key=key, is_full_access=permissions is None)
+    return AuthPrincipal(
+        user=SimpleNamespace(is_active=True), key=key, is_full_access=permissions is None
+    )
 
 
 def _mock_auth(monkeypatch):
     from backend.context import CONTEXT  # noqa: PLC0415
 
     update = AsyncMock()
-    monkeypatch.setattr(CONTEXT, "database", SimpleNamespace(auth=SimpleNamespace(update_key_permissions=update)))
+    monkeypatch.setattr(
+        CONTEXT, "database", SimpleNamespace(auth=SimpleNamespace(update_key_permissions=update))
+    )
     return update
 
 
@@ -32,7 +36,9 @@ async def test_scoped_create_appends_new_collection_to_scope(fastapi_app, monkey
     from backend.routers.collections.router import _grant_creator_scope  # noqa: PLC0415
 
     update = _mock_auth(monkeypatch)
-    principal = _principal(permissions={"capabilities": ["read", "write", "create"], "collections": []})
+    principal = _principal(
+        permissions={"capabilities": ["read", "write", "create"], "collections": []}
+    )
 
     await _grant_creator_scope(principal, NEW_ID)
 
