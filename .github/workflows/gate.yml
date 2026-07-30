@@ -38,6 +38,11 @@ jobs:
         run: uv run ruff format --check .
       - name: Lint (ruff check)
         run: uv run ruff check .
+      - name: Provide placeholder app config (serviceless suite)
+        # The config loader (safe_load_envs) reads services/docforge-rework/.env at import time; the
+        # real file is gitignored and absent on CI, so materialize it from the committed template.
+        # Nothing ever connects — the suite is fully mocked (placeholder DSN/URLs are never dialed).
+        run: cp ../../services/docforge-rework/.env.example ../../services/docforge-rework/.env
       - name: Unit suite (serviceless)
         # Units mock every store; the real-OCR test auto-skips without the worker group.
         run: uv run pytest tests/units -q
