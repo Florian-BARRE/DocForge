@@ -32,7 +32,7 @@ class McpConfig(EnvConfigLoader):
     # Root of the mcp application (this file's directory).
     PATH_ROOT_DIR: pathlib.Path = pathlib.Path(__file__).resolve().parent
 
-    # Register the app root on sys.path so `from libs.sdk... import ...` resolves regardless of
+    # Register the app root on sys.path so `from libs.tools... import ...` resolves regardless of
     # how the entry point is invoked (python entrypoint.py, pytest, or uvicorn-as-module).
     sys.path.append(str(PATH_ROOT_DIR))
 

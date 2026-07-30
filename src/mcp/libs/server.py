@@ -4,14 +4,21 @@
 
 from __future__ import annotations
 
+# ====== Standard Library Imports ======
+from typing import TYPE_CHECKING
+
 # ====== Third-Party Library Imports ======
+from docforge_sdk import AsyncClient
 from mcp.server.fastmcp import FastMCP
 from starlette.applications import Starlette
 
 # ====== Local Project Imports ======
 from .auth import StaticBearerAuthMiddleware
-from .sdk import DocForgeClient
 from .tools import register_all
+
+if TYPE_CHECKING:
+    # Only needed for the type annotation (its dynamically-populated env attributes are typed there).
+    from config_loader import McpConfig
 
 # Instructions surfaced to the connected LLM so it knows what DocForge is and how to start.
 _INSTRUCTIONS = (
@@ -22,12 +29,12 @@ _INSTRUCTIONS = (
 )
 
 
-def build_mcp(sdk: DocForgeClient) -> FastMCP:
+def build_mcp(sdk: AsyncClient) -> FastMCP:
     """
     Build the FastMCP server with every DocForge tool registered.
 
     Args:
-        sdk (DocForgeClient): The DocForge API client injected into every tool.
+        sdk (AsyncClient): The DocForge API client injected into every tool.
 
     Returns:
         FastMCP: The configured MCP server (transport-agnostic).
@@ -38,7 +45,7 @@ def build_mcp(sdk: DocForgeClient) -> FastMCP:
     return mcp
 
 
-def build_http_app(mcp: FastMCP, config: type) -> Starlette:
+def build_http_app(mcp: FastMCP, config: type[McpConfig]) -> Starlette:
     """
     Produce the streamable-HTTP ASGI app, gated by the static bearer-auth middleware.
 

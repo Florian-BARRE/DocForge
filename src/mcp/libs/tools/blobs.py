@@ -10,18 +10,16 @@ import base64
 from typing import Any
 
 # ====== Third-Party Library Imports ======
+from docforge_sdk import AsyncClient
 from mcp.server.fastmcp import FastMCP, Image
 
-# ====== Local Project Imports ======
-from ..sdk import DocForgeClient
 
-
-def register(mcp: FastMCP, sdk: DocForgeClient) -> None:
+def register(mcp: FastMCP, sdk: AsyncClient) -> None:
     """Register blob tools on the MCP server.
 
     Args:
         mcp (FastMCP): The MCP server instance.
-        sdk (DocForgeClient): The DocForge API client.
+        sdk (AsyncClient): The DocForge API client.
     """
 
     @mcp.tool()
@@ -31,7 +29,7 @@ def register(mcp: FastMCP, sdk: DocForgeClient) -> None:
         original upload). Image blobs are returned as an inline image; every other mime type
         is returned base64-encoded alongside its mime_type.
         """
-        data, mime_type = await sdk.blobs.get(content_hash)
-        if mime_type.startswith("image/"):
-            return Image(data=data, format=mime_type.split("/", 1)[-1])
-        return {"mime_type": mime_type, "content_base64": base64.b64encode(data).decode()}
+        blob = await sdk.blobs.get(content_hash)
+        if blob.mime_type.startswith("image/"):
+            return Image(data=blob.content, format=blob.mime_type.split("/", 1)[-1])
+        return {"mime_type": blob.mime_type, "content_base64": base64.b64encode(blob.content).decode()}

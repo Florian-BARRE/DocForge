@@ -4,13 +4,15 @@
 
 from __future__ import annotations
 
+# ====== Third-Party Library Imports ======
+from docforge_sdk import AsyncClient
+
 # ====== Internal Project Imports ======
-from libs.sdk import DocForgeClient
 from libs.server import build_mcp
 
-# 27 = health(1) + auth(3) + collections(5) + documents(2) + explorer(8) + search(1)
-#    + jobs(4) + blobs(1) + pipelines(2)
-EXPECTED_TOOL_COUNT = 27
+# 32 = health(1) + auth(4) + collections(5) + documents(2) + explorer(8) + search(1)
+#    + jobs(4) + blobs(1) + pipelines(6)
+EXPECTED_TOOL_COUNT = 32
 
 EXPECTED_TOOL_NAMES = {
     # health
@@ -19,6 +21,7 @@ EXPECTED_TOOL_NAMES = {
     "create_api_key",
     "list_api_keys",
     "revoke_api_key",
+    "rotate_api_key",
     # collections
     "list_collections",
     "get_collection",
@@ -49,13 +52,17 @@ EXPECTED_TOOL_NAMES = {
     # pipelines
     "list_pipeline_surfaces",
     "get_pipeline_design",
+    "inspect_pipeline",
+    "edit_pipeline",
+    "view_pipeline_stages",
+    "apply_pipeline_stage",
 }
 
 
 async def test_all_tools_registered_and_unique() -> None:
     """The MCP server exposes exactly the expected number of uniquely-named tools."""
-    # 1. Build the server (no network call — DocForgeClient just holds a transport)
-    sdk = DocForgeClient("http://localhost:8000")
+    # 1. Build the server (no network call — AsyncClient just holds a transport)
+    sdk = AsyncClient("http://localhost:8000")
     mcp = build_mcp(sdk)
 
     # 2. Enumerate registered tools

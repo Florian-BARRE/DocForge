@@ -8,18 +8,16 @@ from __future__ import annotations
 from typing import Any
 
 # ====== Third-Party Library Imports ======
+from docforge_sdk import AsyncClient, SearchRequest
 from mcp.server.fastmcp import FastMCP
 
-# ====== Local Project Imports ======
-from ..sdk import DocForgeClient
 
-
-def register(mcp: FastMCP, sdk: DocForgeClient) -> None:
+def register(mcp: FastMCP, sdk: AsyncClient) -> None:
     """Register search tools on the MCP server.
 
     Args:
         mcp (FastMCP): The MCP server instance.
-        sdk (DocForgeClient): The DocForge API client.
+        sdk (AsyncClient): The DocForge API client.
     """
 
     @mcp.tool()
@@ -47,12 +45,13 @@ def register(mcp: FastMCP, sdk: DocForgeClient) -> None:
 
         Returns ranked hits: chunk_id, document_id, score, text, chunk_index, token_count.
         """
-        return await sdk.search.search(
-            collection_id,
-            query,
+        request = SearchRequest(
+            query=query,
             limit=limit,
             filters=filters,
             search_in=search_in,
             use_late_interaction=use_late_interaction,
             rescore_pool_size=rescore_pool_size,
         )
+        result = await sdk.search.search(collection_id, request)
+        return result.model_dump(mode="json")

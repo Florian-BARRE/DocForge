@@ -7,29 +7,29 @@ from __future__ import annotations
 from typing import Any
 
 # ====== Third-Party Library Imports ======
+from docforge_sdk import AsyncClient, CreateCollectionRequest, UpdateCollectionRequest
 from mcp.server.fastmcp import FastMCP
 
-# ====== Local Project Imports ======
-from ..sdk import DocForgeClient
 
-
-def register(mcp: FastMCP, sdk: DocForgeClient) -> None:
+def register(mcp: FastMCP, sdk: AsyncClient) -> None:
     """Register collection tools on the MCP server.
 
     Args:
         mcp (FastMCP): The MCP server instance.
-        sdk (DocForgeClient): The DocForge API client.
+        sdk (AsyncClient): The DocForge API client.
     """
 
     @mcp.tool()
     async def list_collections() -> Any:
         """List every collection with its full contract (schema, pipeline, search blobs)."""
-        return await sdk.collections.list()
+        collections = await sdk.collections.list()
+        return [collection.model_dump(mode="json") for collection in collections]
 
     @mcp.tool()
     async def get_collection(collection_id: str) -> Any:
         """Return one collection's full contract."""
-        return await sdk.collections.get(collection_id)
+        collection = await sdk.collections.get(collection_id)
+        return collection.model_dump(mode="json")
 
     @mcp.tool()
     async def create_collection(
@@ -46,9 +46,15 @@ def register(mcp: FastMCP, sdk: DocForgeClient) -> None:
         later. `pipeline` is the ingestion graph blob; omit it to use the product default
         (all stages wired).
         """
-        return await sdk.collections.create(
-            name, supported_formats, max_file_size_bytes, fields=fields, pipeline=pipeline
+        request = CreateCollectionRequest(
+            name=name,
+            supported_formats=supported_formats,
+            max_file_size_bytes=max_file_size_bytes,
+            fields=fields or [],
+            pipeline=pipeline,
         )
+        collection = await sdk.collections.create(request)
+        return collection.model_dump(mode="json")
 
     @mcp.tool()
     async def update_collection(
@@ -66,18 +72,27 @@ def register(mcp: FastMCP, sdk: DocForgeClient) -> None:
         omitted field is removed), and/or the config blobs (pipeline / search graphs, each
         validated before storage). A change to the searchable schema flips needs_reindex.
         """
-        return await sdk.collections.update(
-            collection_id,
-            name=name,
-            supported_formats=supported_formats,
-            max_file_size_bytes=max_file_size_bytes,
-            fields=fields,
-            pipeline=pipeline,
-            search=search,
-            note=note,
-        )
+        # 1. Only carry the knobs the caller actually set — an omitted param means "no change",
+        #    so it must stay unset on the request rather than serialise as an explicit null.
+        provided = {
+            key: value
+            for key, value in {
+                "name": name,
+                "supported_formats": supported_formats,
+                "max_file_size_bytes": max_file_size_bytes,
+                "fields": fields,
+                "pipeline": pipeline,
+                "search": search,
+                "note": note,
+            }.items()
+            if value is not None
+        }
+        request = UpdateCollectionRequest.model_validate(provided)
+        collection = await sdk.collections.update(collection_id, request)
+        return collection.model_dump(mode="json")
 
     @mcp.tool()
     async def delete_collection(collection_id: str) -> Any:
         """Delete a collection (404 when unknown). Irreversible."""
-        return await sdk.collections.delete(collection_id)
+        await sdk.collections.delete(collection_id)
+        return {}

@@ -8,18 +8,16 @@ from __future__ import annotations
 from typing import Any
 
 # ====== Third-Party Library Imports ======
+from docforge_sdk import AsyncClient
 from mcp.server.fastmcp import FastMCP
 
-# ====== Local Project Imports ======
-from ..sdk import DocForgeClient
 
-
-def register(mcp: FastMCP, sdk: DocForgeClient) -> None:
+def register(mcp: FastMCP, sdk: AsyncClient) -> None:
     """Register document tools on the MCP server.
 
     Args:
         mcp (FastMCP): The MCP server instance.
-        sdk (DocForgeClient): The DocForge API client.
+        sdk (AsyncClient): The DocForge API client.
     """
 
     @mcp.tool()
@@ -32,9 +30,11 @@ def register(mcp: FastMCP, sdk: DocForgeClient) -> None:
         absolute path readable by the MCP server. `metadata` is validated against the
         collection's declared schema (unknown field names are rejected).
         """
-        return await sdk.documents.upload(file_path, collection_id, metadata)
+        accepted = await sdk.documents.upload(collection_id, file_path, metadata=metadata)
+        return accepted.model_dump(mode="json")
 
     @mcp.tool()
     async def set_document_enabled(document_id: str, enabled: bool) -> Any:
         """Toggle a document's searchability (reversible, no re-ingest)."""
-        return await sdk.documents.set_enabled(document_id, enabled)
+        result = await sdk.documents.set_enabled(document_id, enabled)
+        return result.model_dump(mode="json")
