@@ -283,6 +283,120 @@ async def test_blob_run_keeps_live_vectors_real_but_the_trace_strips_them() -> N
     assert dumped["dense"] == "<100 numbers>"  # the TRACE carries a placeholder
 
 
+@NodeRegistry.register("embed")
+class FlakyThenOk(BaseEmbedderNode):
+    """Dense hook that raises a transient timeout the first ``fail_times`` calls, then succeeds."""
+
+    KIND = "test_embed_flaky_then_ok"
+    NAME = "F"
+    SUMMARY = "t"
+    Config = BaseEmbedConfig
+
+    def __init__(self, *args, fail_times: int = 0, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self._fail_times = fail_times
+        self.calls = 0
+
+    async def _embed_dense(self, texts: list[str]) -> list[list[float]]:
+        self.calls += 1
+        if self.calls <= self._fail_times:
+            raise httpx.ReadTimeout("simulated transient timeout")
+        return [[float(len(t))] for t in texts]
+
+
+@NodeRegistry.register("embed")
+class FlakyBySize(BaseEmbedderNode):
+    """Dense hook that fails (transient) on any batch larger than ``max_ok`` — forces adaptive split."""
+
+    KIND = "test_embed_flaky_by_size"
+    NAME = "F"
+    SUMMARY = "t"
+    Config = BaseEmbedConfig
+
+    def __init__(self, *args, max_ok: int = 2, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self._max_ok = max_ok
+        self.largest_success = 0
+
+    async def _embed_dense(self, texts: list[str]) -> list[list[float]]:
+        if len(texts) > self._max_ok:
+            raise httpx.ConnectError("simulated overload on a large batch")
+        self.largest_success = max(self.largest_success, len(texts))
+        return [[float(len(t))] for t in texts]
+
+
+@NodeRegistry.register("embed")
+class HardFail(BaseEmbedderNode):
+    """Dense hook that raises a NON-transient error — must not be retried or split."""
+
+    KIND = "test_embed_hard_fail"
+    NAME = "F"
+    SUMMARY = "t"
+    Config = BaseEmbedConfig
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.calls = 0
+
+    async def _embed_dense(self, texts: list[str]) -> list[list[float]]:
+        self.calls += 1
+        raise ValueError("permanent, not transient")
+
+
+async def test_transient_error_is_retried_then_succeeds_without_losing_the_document() -> None:
+    # Two timeouts then success: the whole document still embeds — the old behaviour lost every
+    # vector on the first timeout. batch_size=8 keeps all five chunks in one batch (one retry chain).
+    node = FlakyThenOk(
+        id="e",
+        config=BaseEmbedConfig(
+            model="m", batch_size=8, embed_sparse=False, retry_backoff_seconds=0.0
+        ),
+        fail_times=2,
+    )
+    out = await node.run(EmbedConsumes(chunks=CHUNKS, contract=CONTRACT))
+    assert len(out.embeddings.items) == 5  # nothing dropped
+    assert node.calls == 3  # 2 transient failures + 1 success
+
+
+async def test_persistent_large_batch_failure_splits_adaptively_until_it_succeeds() -> None:
+    # A batch too large to embed keeps failing; halving it (5 -> 2+3 -> 1+2) eventually succeeds and
+    # every chunk gets a vector. The largest batch that ever succeeded is <= the tolerated size.
+    node = FlakyBySize(
+        id="e",
+        config=BaseEmbedConfig(
+            model="m", batch_size=8, embed_sparse=False, max_retries=1, retry_backoff_seconds=0.0
+        ),
+        max_ok=2,
+    )
+    out = await node.run(EmbedConsumes(chunks=CHUNKS, contract=CONTRACT))
+    assert len(out.embeddings.items) == 5  # all recovered via splitting
+    assert node.largest_success <= 2
+
+
+async def test_non_transient_error_is_raised_immediately_without_retry_or_split() -> None:
+    node = HardFail(
+        id="e",
+        config=BaseEmbedConfig(
+            model="m", batch_size=8, embed_sparse=False, retry_backoff_seconds=0.0
+        ),
+    )
+    with pytest.raises(ValueError, match="permanent"):
+        await node.run(EmbedConsumes(chunks=CHUNKS, contract=CONTRACT))
+    assert node.calls == 1  # no retry, no split for a non-transient error
+
+
+async def test_max_retries_zero_preserves_one_shot_behaviour() -> None:
+    # Opt-out: max_retries=0 must not retry and must not split — a single timeout propagates at once.
+    node = FlakyThenOk(
+        id="e",
+        config=BaseEmbedConfig(model="m", batch_size=8, embed_sparse=False, max_retries=0),
+        fail_times=1,
+    )
+    with pytest.raises(httpx.ReadTimeout):
+        await node.run(EmbedConsumes(chunks=CHUNKS, contract=CONTRACT))
+    assert node.calls == 1
+
+
 def _mock_bge_transport(calls: list[str]) -> httpx.MockTransport:
     """A MockTransport answering the three bge_server routes, recording every path it served."""
 

@@ -9,7 +9,12 @@
 # fails the node — no degradation here.
 
 # ====== Standard Library Imports ======
+import asyncio
 from abc import abstractmethod
+from collections.abc import Awaitable, Callable
+
+# ====== Third-Party Library Imports ======
+import httpx
 
 # ====== Internal Project Imports ======
 from shared_libs.pipelines.base import ActionNode
@@ -59,6 +64,65 @@ class BaseEmbedderNode(ActionNode):
         """
         raise NotImplementedError(f"Embedder '{self.KIND}' has no ColBERT support")
 
+    @staticmethod
+    def __is_transient(error: Exception) -> bool:
+        """A provider error worth retrying: a timeout, a transport blip, or a 429/5xx status."""
+        if isinstance(error, httpx.TimeoutException | httpx.TransportError):
+            return True
+        return isinstance(error, httpx.HTTPStatusError) and error.response.status_code in (
+            429,
+            500,
+            502,
+            503,
+            504,
+        )
+
+    async def __resilient_batch(
+        self,
+        embed_fn: Callable[[list[str]], Awaitable[list]],
+        texts: list[str],
+    ) -> list | None:
+        """
+        Call one provider embed hook with backoff-retry, then adaptive batch splitting.
+
+        A single slow or transiently-failing batch must not lose the whole document (the previous
+        behaviour: one timeout failed the embed node and discarded every vector already computed).
+        So a transient error is retried with exponential backoff; if it still fails, the batch is
+        halved and each half embedded independently — a smaller batch is lighter on a CPU-hosted
+        model and usually succeeds. A single-text batch that still fails is a genuine error and is
+        raised. max_retries=0 preserves the old one-shot behaviour (no retry, no split). Provider
+        hooks return outputs aligned 1:1 with their input, so concatenating the halves preserves
+        order; a None sub-result (provider has no sparse) propagates as None.
+        """
+        config: BaseEmbedConfig = self.config
+        if config.max_retries == 0:
+            return await embed_fn(texts)
+        for attempt in range(1, config.max_retries + 1):
+            try:
+                return await embed_fn(texts)
+            except Exception as error:  # noqa: BLE001 — re-raised below unless transient
+                if not self.__is_transient(error):
+                    raise
+                self.logger.warning(
+                    f"Embedder '{self.KIND}' transient error on a {len(texts)}-text batch "
+                    f"(attempt {attempt}/{config.max_retries}): {error!r}"
+                )
+                if attempt < config.max_retries:
+                    await asyncio.sleep(config.retry_backoff_seconds * attempt)
+        # Retries exhausted — split and embed the halves independently, or give up on a single text.
+        if len(texts) <= 1:
+            return await embed_fn(texts)
+        mid = len(texts) // 2
+        self.logger.warning(
+            f"Embedder '{self.KIND}' still failing a {len(texts)}-text batch — splitting to "
+            f"{mid} + {len(texts) - mid} and retrying each half"
+        )
+        left = await self.__resilient_batch(embed_fn, texts[:mid])
+        right = await self.__resilient_batch(embed_fn, texts[mid:])
+        if left is None or right is None:
+            return None
+        return [*left, *right]
+
     async def __embed_all(
         self, texts: list[str], sparse: bool
     ) -> tuple[list[list[float]], list[SparseVector] | None]:
@@ -68,9 +132,10 @@ class BaseEmbedderNode(ActionNode):
         sparse_vectors: list[SparseVector] | None = [] if sparse else None
         for start in range(0, len(texts), config.batch_size):
             batch = texts[start : start + config.batch_size]
-            dense.extend(await self._embed_dense(batch))
+            dense_batch = await self.__resilient_batch(self._embed_dense, batch)
+            dense.extend(dense_batch if dense_batch is not None else [])  # dense hook never None
             if sparse_vectors is not None:
-                batch_sparse = await self._embed_sparse(batch)
+                batch_sparse = await self.__resilient_batch(self._embed_sparse, batch)
                 if batch_sparse is None:
                     if sparse_vectors:
                         # Earlier batches DID return sparse vectors — a mid-stream None would
@@ -93,7 +158,8 @@ class BaseEmbedderNode(ActionNode):
         colbert: list[list[list[float]]] = []
         for start in range(0, len(texts), config.batch_size):
             batch = texts[start : start + config.batch_size]
-            colbert.extend(await self._embed_colbert(batch))
+            colbert_batch = await self.__resilient_batch(self._embed_colbert, batch)
+            colbert.extend(colbert_batch if colbert_batch is not None else [])  # colbert never None
         return colbert
 
     async def __embed_semantic_fields(
