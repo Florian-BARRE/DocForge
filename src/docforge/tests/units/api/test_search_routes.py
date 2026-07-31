@@ -305,6 +305,112 @@ def test_read_port_hydrate_threads_block_location_onto_the_hit(fastapi_app) -> N
     assert SearchHelpers.to_hit_model(bare).block_locations == []
 
 
+def test_search_surfaces_degraded_note_in_debug_info(client, fastapi_app, monkeypatch) -> None:
+    """A DEGRADED search (an encode axis was dropped — the pipeline threads the note into
+    SearchResult.debug['degraded']) reaches the client via SearchResponse.debug_info, so a
+    lexical-only answer is never silently returned as if it were full hybrid."""
+    from backend.context import CONTEXT
+
+    collection = SimpleNamespace(pipeline=_pipeline_with_embed(), search={})
+    monkeypatch.setattr(CONTEXT.database.collections, "get", AsyncMock(return_value=collection))
+    monkeypatch.setattr(
+        CONTEXT.database.collections, "get_schema", AsyncMock(return_value=_schema())
+    )
+    degraded = SearchResult(
+        query="q",
+        hits=[Hit(chunk_id="c1", document_id="d1", score=0.8, rank=1, text="t", metadata={})],
+        debug={
+            "hit_count": 1,
+            "degraded": "semantic unavailable — embedder busy, lexical-only results",
+        },
+    )
+    monkeypatch.setattr(CONTEXT.search_service, "search", AsyncMock(return_value=degraded))
+
+    response = client.post(
+        "/api/v1/collections/33333333-3333-3333-3333-333333333333/search",
+        json={"query": "q"},
+    )
+    assert response.status_code == 200, response.text
+    debug_info = response.json()["debug_info"]
+    assert debug_info is not None
+    assert debug_info["degraded"] == "semantic unavailable — embedder busy, lexical-only results"
+
+
+def test_healthy_search_leaves_debug_info_without_a_degraded_note(client, wired) -> None:
+    """A healthy full-hybrid search carries no 'degraded' note — the mocked service returns a result
+    with no debug bag, so debug_info stays null (nothing alarming surfaced on the happy path)."""
+    response = client.post(
+        "/api/v1/collections/33333333-3333-3333-3333-333333333333/search",
+        json={"query": "how does it work"},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["debug_info"] is None
+
+
+def test_pageless_block_location_surfaces_null_page(fastapi_app) -> None:
+    """A page-less document's block location carries page=None all the way into the flat hit model —
+    None means 'no page', distinct from a genuine 0-based page index 0 (which is preserved)."""
+    from backend.routers.search.helpers import SearchHelpers
+
+    pageless = Hit(
+        chunk_id="c1",
+        document_id="d1",
+        score=0.5,
+        rank=1,
+        text="t",
+        metadata={
+            "page": None,
+            "bbox": [0.1, 0.2, 0.5, 0.3],
+            "block_locations": [{"page": None, "bbox": [0.1, 0.2, 0.5, 0.3]}],
+        },
+    )
+    model = SearchHelpers.to_hit_model(pageless)
+    assert model.page is None
+    assert model.block_locations[0].page is None
+
+    # A genuine page 0 (0-based first page of a paged doc) is NOT nulled — it is a real location.
+    paged = Hit(
+        chunk_id="c2",
+        document_id="d1",
+        score=0.4,
+        rank=2,
+        text="t",
+        metadata={"page": 0, "bbox": [0, 0, 1, 1], "block_locations": [{"page": 0, "bbox": [0, 0, 1, 1]}]},
+    )
+    paged_model = SearchHelpers.to_hit_model(paged)
+    assert paged_model.page == 0
+    assert paged_model.block_locations[0].page == 0
+
+
+def test_transient_error_messages_stay_honest_and_pin_the_contract(
+    client, wired, monkeypatch
+) -> None:
+    """Guard the USER-FACING transient-error contract so a refactor can't silently regress it:
+    a run TimeoutError → 504 'timed out / busy', an embedder-unavailable → 503 'busy', and only a
+    GENUINE invalid blob → 422 'invalid search graph'. The two transient cases must NEVER say
+    'invalid'."""
+    from backend.context import CONTEXT
+    from backend.libs.search import SearchRunError, SearchRunTimeout, SearchUnavailableError
+
+    cases = [
+        (SearchRunTimeout("pipeline exceeded 30.0s"), 504, ("timed out", "busy"), "invalid"),
+        (SearchUnavailableError("QueryEncodeError: embedder saturated"), 503, ("unavailable", "busy"), "invalid"),
+        (SearchRunError("final node produced RankedHits"), 422, ("invalid", "search graph"), None),
+    ]
+    for exc, status, must_contain, must_not_contain in cases:
+        monkeypatch.setattr(CONTEXT.search_service, "search", AsyncMock(side_effect=exc))
+        response = client.post(
+            "/api/v1/collections/33333333-3333-3333-3333-333333333333/search",
+            json={"query": "q"},
+        )
+        assert response.status_code == status, (exc, response.text)
+        detail = response.json()["detail"].lower()
+        for token in must_contain:
+            assert token in detail, (exc, detail)
+        if must_not_contain:
+            assert must_not_contain not in detail, (exc, detail)
+
+
 def test_search_run_timeout_is_504_not_422(client, wired, monkeypatch) -> None:
     """A run that blew its wall-clock cap (SearchRunTimeout) is a RETRYABLE 504 naming the busy
     embedder — never the alarming 422 'invalid search graph' (the graph is fine, the provider stuck)."""

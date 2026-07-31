@@ -107,10 +107,14 @@ async def search_collection(collection_id: uuid.UUID, request: SearchRequest) ->
             f"blob. ({exc})",
         )
 
-    # 6. Shape the flat, client-facing response from the graph's Hits.
+    # 6. Shape the flat, client-facing response from the graph's Hits. The run's debug bag is
+    #    surfaced as debug_info so a DEGRADED search (an encode axis was dropped — the note the
+    #    pipeline threads through SearchResult.debug["degraded"]) is visible to the client instead of
+    #    silently returning partial results. A healthy run carries only a minimal bag (hit count).
     return SearchResponse(
         query=request.query,
         hits=[SearchHelpers.to_hit_model(hit) for hit in result.hits],
+        debug_info=result.debug,
     )
 
 

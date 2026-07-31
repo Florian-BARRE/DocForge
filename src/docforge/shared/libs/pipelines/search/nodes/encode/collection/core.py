@@ -6,6 +6,9 @@
 # This mirrors the app-side QueryEmbedder, expressed as a graph node. The provider HTTP call happens
 # in-node — the same stateless read the ingest embed node makes; no store write, no hidden state.
 
+# ====== Standard Library Imports ======
+import asyncio
+
 # ====== Third-Party Library Imports ======
 from pydantic import Field
 
@@ -31,7 +34,18 @@ class QueryEncodeError(Exception):
 
 
 class EncodeCollectionConfig(NodeConfig):
-    """No knob — the embedder is fully derived from the run-input contract (locked vector space)."""
+    """One knob — the per-axis encode timeout. The embedder itself is fully derived from the
+    run-input contract (locked vector space); only WHEN we give up on a slow axis is configurable."""
+
+    axis_timeout_seconds: float = Field(
+        default=8.0,
+        gt=0,
+        description="Per-axis wall-clock cap (seconds) on the query embed call. A saturated embedder "
+        "makes a single-query encode hang; without this the whole run would sit until the 30 s run "
+        "cap (a 504) before ANY axis could be dropped. Bounding each axis well below the run cap "
+        "makes a slow encode CATCHABLE — the axis is dropped and the surviving one answers "
+        "lexical/semantic-only. Added with a safe default: a stored blob that omits it keeps 8 s.",
+    )
 
 
 class EncodeCollectionConsumes(NodeInput):
@@ -94,25 +108,30 @@ class EncodeCollectionNode(ActionNode):
             node_id=f"{self.id}_embedder",
         )
         text = data.spec.text
+        timeout = self.config.axis_timeout_seconds
         notes: list[str] = []
 
-        # 1. Dense — always attempted (a query without a dense vector loses its semantic axis). A
-        #    failure here (embedder busy: timeout/5xx) is caught so a surviving sparse axis can still
-        #    answer, rather than sinking the whole run. CancelledError (the run's wall-clock cap) is
-        #    NOT an Exception, so it still propagates and becomes the runner's timeout path.
+        # 1. Dense — always attempted (a query without a dense vector loses its semantic axis). The
+        #    embed call is bounded by a PER-AXIS timeout (asyncio.wait_for) well below the run's
+        #    wall-clock cap: a saturated embedder makes it raise here (a catchable TimeoutError) long
+        #    before the run cancels, so a surviving sparse axis can still answer rather than the whole
+        #    run sinking to a 504. CancelledError (the run's wall-clock cap) is NOT an Exception, so
+        #    it still propagates through wait_for and becomes the runner's timeout path.
         dense: list[float] = []
         try:
-            dense = (await embedder._embed_dense([text]))[0]
+            dense = (await asyncio.wait_for(embedder._embed_dense([text]), timeout=timeout))[0]
         except Exception as exc:
             self.logger.warning(f"Dense query encode failed ({type(exc).__name__}: {exc})")
             notes.append(_DENSE_UNAVAILABLE)
 
-        # 2. Sparse — only when the collection's embedder carries the lexical axis; fault-isolated
-        #    the same way so a dense-only survivor can still answer.
+        # 2. Sparse — only when the collection's embedder carries the lexical axis; fault-isolated and
+        #    per-axis-bounded the same way so a dense-only survivor can still answer.
         sparse = None
         if config.embed_sparse:
             try:
-                sparse_vectors = await embedder._embed_sparse([text])
+                sparse_vectors = await asyncio.wait_for(
+                    embedder._embed_sparse([text]), timeout=timeout
+                )
                 sparse = sparse_vectors[0] if sparse_vectors else None
             except Exception as exc:
                 self.logger.warning(f"Sparse query encode failed ({type(exc).__name__}: {exc})")

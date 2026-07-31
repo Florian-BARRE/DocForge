@@ -121,7 +121,7 @@ class ChunkApi:
     @staticmethod
     async def get_block_locations_for_chunks(
         session: AsyncSession, chunk_ids: Sequence[uuid.UUID]
-    ) -> list[tuple[uuid.UUID, str, int, list[float]]]:
+    ) -> list[tuple[uuid.UUID, str, int | None, list[float]]]:
         """
         Return (chunk_id, block_id, page, bbox) for a set of chunks — the search-hit location read.
 
@@ -130,23 +130,40 @@ class ChunkApi:
         ``position`` so the FIRST row per chunk is its primary (leading) block. The bbox is the
         block's stored, normalised [x0, y0, x1, y1] in [0, 1].
 
+        ``page`` is ``None`` for a document that has no real pages (a page-less format — e.g. an HTML
+        doc with no page render — whose blocks all carry the placeholder page index ``0``). The join
+        to the owning document's ``page_count`` is what distinguishes "this document has no pages"
+        (page → None) from "0-based index of the first page" (a genuine page 0, preserved).
+
         Args:
             session (AsyncSession): The unit of work.
             chunk_ids (Sequence[uuid.UUID]): The chunks to locate.
 
         Returns:
-            list[tuple[uuid.UUID, str, int, list[float]]]: One row per (chunk, block), ordered by
-            (chunk_id, position). Empty when nothing matches.
+            list[tuple[uuid.UUID, str, int | None, list[float]]]: One row per (chunk, block), ordered
+            by (chunk_id, position). ``page`` is None when the owning document has no pages. Empty
+            when nothing matches.
         """
         if not chunk_ids:
             return []
         result = await session.execute(
-            select(ChunkBlock.chunk_id, ChunkBlock.block_id, Block.page, Block.bbox)
+            select(
+                ChunkBlock.chunk_id,
+                ChunkBlock.block_id,
+                Block.page,
+                Block.bbox,
+                Document.page_count,
+            )
             .join(Block, Block.id == ChunkBlock.block_id)
+            .join(Document, Document.id == Block.document_id)
             .where(ChunkBlock.chunk_id.in_(chunk_ids))
             .order_by(ChunkBlock.chunk_id, ChunkBlock.position)
         )
-        return [(row[0], row[1], row[2], list(row[3])) for row in result.all()]
+        # A falsy page_count (0 or NULL) means the document has no real pages — the block's stored
+        # page index is a placeholder, so report None rather than a misleading "page 1".
+        return [
+            (row[0], row[1], row[2] if row[4] else None, list(row[3])) for row in result.all()
+        ]
 
     @staticmethod
     async def get_composition_for_document(

@@ -61,12 +61,15 @@ class BlockLocation(BaseModel):
     One source block's location on the page — enough for a UI to draw a box over the hit.
 
     Attributes:
-        page (int): The page the block sits on.
+        page (int | None): The page the block sits on. None for a page-less document (no page
+            render) — distinct from a genuine 0-based page index 0.
         bbox (list[float]): The block's bounding box ``[x0, y0, x1, y1]``, NORMALISED to [0, 1] —
             multiply each component by the page image's width/height to draw it in pixels.
     """
 
-    page: int = Field(description="The page the block sits on.")
+    page: int | None = Field(
+        description="The page the block sits on; None for a page-less document (no page render)."
+    )
     bbox: list[float] = Field(
         description="Bounding box [x0, y0, x1, y1] NORMALISED to [0, 1] — multiply by the page "
         "image width/height to draw it in pixels.",

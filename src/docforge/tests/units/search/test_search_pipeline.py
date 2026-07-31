@@ -424,6 +424,61 @@ def test_dense_encode_timeout_degrades_to_lexical_not_an_exception() -> None:
 
 
 @NodeRegistry.register("embed")
+class SlowDenseEmbedNode(BaseEmbedderNode):
+    """A test embedder whose dense encode SLEEPS past the per-axis timeout (embedder saturated)
+    while sparse answers instantly — proves the per-axis wall-clock cap makes a hung axis catchable
+    long before the run's own 30 s cap, so the encode degrades to lexical instead of a 504."""
+
+    KIND = "fake_slow_dense"
+    NAME = "Fake slow-dense embedder"
+    SUMMARY = "Dense axis sleeps beyond the per-axis timeout; sparse returns a vector (no HTTP)."
+    Config = _BusyDenseEmbedConfig
+
+    async def _embed_dense(self, texts: list[str]) -> list[list[float]]:
+        """Hang well past the (shrunk) per-axis timeout — a saturated single-query encode."""
+        await asyncio.sleep(5.0)
+        return [[0.1, 0.2, 0.3, 0.4] for _ in texts]
+
+    async def _embed_sparse(self, texts: list[str]):
+        """The sparse axis still answers instantly — a deterministic 1-term vector per text."""
+        from shared_libs.public_models.embed import SparseVector
+
+        return [SparseVector(indices=[7], values=[1.0]) for _ in texts]
+
+
+def test_slow_dense_encode_hits_per_axis_timeout_and_degrades_to_lexical() -> None:
+    """A dense encode that HANGS is dropped by the per-axis timeout (not the run wall-clock): the
+    search still returns lexical hits, flagged degraded, and never raises. The encode node's
+    axis_timeout_seconds knob is shrunk so the test is fast — proving the wait_for is what fires."""
+    blob = SearchPipeline.default_blob().model_dump(mode="json")
+    encode = next(node for node in blob["nodes"] if node["id"] == "encode")
+    encode.setdefault("config", {})["axis_timeout_seconds"] = 0.05  # « the per-axis cap under test
+
+    group = PipelineBuilder().build(blob)
+    port = _LexicalCapturingReadPort()
+    _bind_read_port(group, port)
+
+    run_input = _degrading_run_input()
+    run_input["contract"] = SearchContract(
+        collection_id="col-1",
+        embed_kind="fake_slow_dense",
+        embed_config={"model": "fake", "embed_sparse": True},
+    )
+
+    # No run-level timeout: if the wall-clock were doing the work this would sleep 5 s. The PER-AXIS
+    # cap (0.05 s) is what must fire, so the run completes near-instantly on the lexical survivor.
+    output, record = asyncio.run(FlowEngine().execute(group, run_input))
+
+    assert record.status.value == "success", record
+    result: SearchResult = output.result
+    assert [hit.chunk_id for hit in result.hits] == ["c1"]
+    assert "semantic unavailable" in result.debug["degraded"]
+    # Lexical-only: the dense axis was dropped, only the sparse survivor reached the store.
+    assert port.encoded_seen.dense == []
+    assert port.encoded_seen.sparse is not None
+
+
+@NodeRegistry.register("embed")
 class DeadEmbedNode(BaseEmbedderNode):
     """A test embedder whose BOTH axes fail — nothing can be searched (embedder fully down)."""
 
@@ -461,6 +516,19 @@ def test_both_axes_down_raises_query_encode_error() -> None:
     )
     with pytest.raises(QueryEncodeError):
         asyncio.run(node.run(consumes))
+
+
+def test_encode_axis_timeout_has_safe_default_and_is_backward_compatible() -> None:
+    """The per-axis timeout knob carries a safe default (8 s, below the 30 s run cap) and a stored
+    encode blob that OMITS it still parses under extra='forbid' — no stored-blob migration needed."""
+    from shared_libs.pipelines.search.nodes.encode.collection.core import EncodeCollectionConfig
+
+    assert EncodeCollectionConfig().axis_timeout_seconds == 8.0
+    # A pre-existing blob whose encode config is empty keeps the default (adding a defaulted field
+    # never breaks extra='forbid'); the default blob's encode node likewise validates clean.
+    assert EncodeCollectionConfig.model_validate({}).axis_timeout_seconds == 8.0
+    blob = SearchPipeline.default_blob()
+    assert GraphValidator().validate(PipelineBuilder().build(blob)) == []
 
 
 @pytest.mark.parametrize("kind", ["understand", "llm", "rrf", "mmr"])
