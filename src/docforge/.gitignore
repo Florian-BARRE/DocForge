@@ -9,3 +9,6 @@
 __pycache__/
 *.pyc
 /.ruff_cache/
+
+# ── RAG eval benchmark: downloaded datasets + generated docs (never committed) ──
+/tests/rag_eval/data/
