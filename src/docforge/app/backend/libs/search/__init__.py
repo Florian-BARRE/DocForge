@@ -5,7 +5,12 @@ from .contract import SearchContractBuilder, SearchContractError
 from .read_port import CollectionReadPortImpl
 
 # ---------------------- Inline runner ---------------------- #
-from .runner import SearchRunError, SearchRunner
+from .runner import (
+    SearchRunError,
+    SearchRunner,
+    SearchRunTimeout,
+    SearchUnavailableError,
+)
 
 # ---------------------- Invocation seam ---------------------- #
 from .service import SearchService, SearchServiceError
@@ -17,6 +22,8 @@ __all__ = [
     "CollectionReadPortImpl",
     "SearchRunner",
     "SearchRunError",
+    "SearchRunTimeout",
+    "SearchUnavailableError",
     "SearchService",
     "SearchServiceError",
 ]

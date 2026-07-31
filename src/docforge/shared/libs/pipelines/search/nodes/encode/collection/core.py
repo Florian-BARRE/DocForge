@@ -15,6 +15,20 @@ from shared_libs.pipelines.nodes.embed.blob import EmbedBlobResolver
 from shared_libs.pipelines.registry import NodeRegistry
 from shared_libs.public_models.search import EncodedQuery, QuerySpec, SearchContract
 
+# The notes stamped on a degraded EncodedQuery — one per unavailable axis. They ride into
+# SearchResult.debug so a caller sees WHY the result is partial (the embedder was saturated).
+_DENSE_UNAVAILABLE = "semantic unavailable — embedder busy, lexical-only results"
+_SPARSE_UNAVAILABLE = "lexical unavailable — embedder busy, semantic-only results"
+
+
+class QueryEncodeError(Exception):
+    """Raised when NO query vector axis could be produced (the embedder is unavailable).
+
+    Distinct from a wiring/config error (those surface earlier, when the embedder is rebuilt): this
+    means the encode calls themselves all failed — typically the shared embedder is saturated — so
+    there is nothing to search on either axis. The runner maps it to a retryable 503, never a 422.
+    """
+
 
 class EncodeCollectionConfig(NodeConfig):
     """No knob — the embedder is fully derived from the run-input contract (locked vector space)."""
@@ -55,13 +69,24 @@ class EncodeCollectionNode(ActionNode):
 
     async def run(self, data: EncodeCollectionConsumes) -> EncodeCollectionProduces:
         """
-        Encode the query into the collection's vector space.
+        Encode the query into the collection's vector space, degrading per-axis under load.
+
+        Each axis is encoded independently and fault-isolated: when the shared embedder is
+        saturated (the query encode times out or errors) the axis is dropped and the surviving one
+        drives a degraded retrieval, rather than hard-failing the whole search. A note is stamped on
+        the result so the caller sees the result is partial. Only when NEITHER axis survives is a
+        QueryEncodeError raised (there is nothing to search) — the runner maps that to a retryable
+        503. A wiring/config error (rebuild) still raises loudly BEFORE any axis is attempted.
 
         Args:
             data (EncodeCollectionConsumes): The normalised query + the collection contract.
 
         Returns:
-            EncodeCollectionProduces: The query's dense (and, when present, sparse) vectors.
+            EncodeCollectionProduces: The query's dense (and, when present, sparse) vectors, flagged
+                ``degraded`` when an axis was dropped.
+
+        Raises:
+            QueryEncodeError: When no axis could be encoded (the embedder is unavailable).
         """
         embedder, config = EmbedBlobResolver.rebuild(
             data.contract.embed_kind,
@@ -69,19 +94,44 @@ class EncodeCollectionNode(ActionNode):
             node_id=f"{self.id}_embedder",
         )
         text = data.spec.text
+        notes: list[str] = []
 
-        # 1. Dense — always (a query without a dense vector cannot be searched).
-        dense = (await embedder._embed_dense([text]))[0]
+        # 1. Dense — always attempted (a query without a dense vector loses its semantic axis). A
+        #    failure here (embedder busy: timeout/5xx) is caught so a surviving sparse axis can still
+        #    answer, rather than sinking the whole run. CancelledError (the run's wall-clock cap) is
+        #    NOT an Exception, so it still propagates and becomes the runner's timeout path.
+        dense: list[float] = []
+        try:
+            dense = (await embedder._embed_dense([text]))[0]
+        except Exception as exc:
+            self.logger.warning(f"Dense query encode failed ({type(exc).__name__}: {exc})")
+            notes.append(_DENSE_UNAVAILABLE)
 
-        # 2. Sparse — only when the collection's embedder carries the lexical axis.
+        # 2. Sparse — only when the collection's embedder carries the lexical axis; fault-isolated
+        #    the same way so a dense-only survivor can still answer.
         sparse = None
         if config.embed_sparse:
-            sparse_vectors = await embedder._embed_sparse([text])
-            sparse = sparse_vectors[0] if sparse_vectors else None
+            try:
+                sparse_vectors = await embedder._embed_sparse([text])
+                sparse = sparse_vectors[0] if sparse_vectors else None
+            except Exception as exc:
+                self.logger.warning(f"Sparse query encode failed ({type(exc).__name__}: {exc})")
+                notes.append(_SPARSE_UNAVAILABLE)
 
-        self.logger.debug(f"Encoded query (model '{config.model}', sparse={sparse is not None})")
+        # 3. Neither axis survived — there is nothing to search. Fail loud so the runner can map it
+        #    to a retryable 503 (the embedder is unavailable), not a misleading invalid-graph 422.
+        if not dense and sparse is None:
+            raise QueryEncodeError(
+                "query encode produced no vector on any axis — the embedder is unavailable"
+            )
+
+        degraded = "; ".join(notes) or None
+        self.logger.debug(
+            f"Encoded query (model '{config.model}', sparse={sparse is not None}, "
+            f"degraded={degraded is not None})"
+        )
         return EncodeCollectionProduces(
-            encoded=EncodedQuery(dense=dense, sparse=sparse, model=config.model)
+            encoded=EncodedQuery(dense=dense, sparse=sparse, model=config.model, degraded=degraded)
         )
 
 

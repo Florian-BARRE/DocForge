@@ -25,9 +25,36 @@ from shared_libs.pipelines.search import COLLECTION_READ_CAPABILITY, CollectionR
 from shared_libs.pipelines.validation import GraphValidator
 from shared_libs.public_models.search import SearchResult
 
+# The error_type the encode node stamps when NO query vector axis could be produced (the shared
+# embedder is saturated) — the runner keys the retryable "unavailable" mapping off it, never a
+# string match on the message.
+_ENCODE_UNAVAILABLE_ERROR = "QueryEncodeError"
+
+# The error_type the engine stamps on the record when the whole run exceeds its wall-clock cap.
+_TIMEOUT_ERROR = "TimeoutError"
+
 
 class SearchRunError(Exception):
-    """Raised when a search run cannot start (invalid graph) or did not deliver a SearchResult."""
+    """Raised when a search run cannot start (invalid graph) or did not deliver a SearchResult.
+
+    This is the "the stored graph is wrong" failure — the router maps it to a 422. Its two
+    subclasses below are the TRANSIENT, retryable failures a healthy graph can still hit under load;
+    the router maps those to 503/504 instead, so a busy embedder never reads as an invalid blob.
+    """
+
+
+class SearchRunTimeout(SearchRunError):
+    """Raised when the run exceeded its wall-clock cap (the embedder/provider is stuck).
+
+    A retryable timeout, NOT an invalid graph — the router maps it to a 504.
+    """
+
+
+class SearchUnavailableError(SearchRunError):
+    """Raised when the run failed because the query could not be encoded (the embedder is busy).
+
+    A retryable outage of a healthy graph, NOT an invalid blob — the router maps it to a 503.
+    """
 
 
 class SearchRunner(LoggerClass):
@@ -68,6 +95,29 @@ class SearchRunner(LoggerClass):
         # 2. This node is the culprit only if it FAILED with a captured error.
         if record.status == NodeStatus.FAILED and record.error is not None:
             return f"{record.node_id} ({record.kind}): {record.error.error_type}: {record.error.message}"
+        return None
+
+    @staticmethod
+    def __failed_error_type(record: NodeExecutionRecord) -> str | None:
+        """
+        Find the error_type of the deepest node that actually raised.
+
+        Mirrors __failed_node_reason but returns the bare error_type so the runner can key its
+        failure MAPPING off it (e.g. a QueryEncodeError → retryable "unavailable") without parsing
+        a formatted message.
+
+        Args:
+            record (NodeExecutionRecord): The run's root execution record.
+
+        Returns:
+            str | None: The failing leaf's error_type, or None when nothing captured an error.
+        """
+        for child in record.children:
+            error_type = SearchRunner.__failed_error_type(child)
+            if error_type:
+                return error_type
+        if record.status == NodeStatus.FAILED and record.error is not None:
+            return record.error.error_type
         return None
 
     def __bind_read_port(self, group: Group, read_port: CollectionReadPort) -> None:
@@ -137,11 +187,23 @@ class SearchRunner(LoggerClass):
             group, run_input, timeout_seconds=timeout_seconds
         )
 
-        # 4. A failed run surfaces the engine's error, verbatim.
+        # 4. A failed run — DISTINGUISH the transient, retryable failures of a healthy graph from a
+        #    genuine "the graph is wrong" failure, so the router never mislabels a busy embedder as
+        #    an invalid blob.
         if output is None:
             reason = self.__failed_node_reason(record) or (
                 record.error.message if record.error else "see the execution record"
             )
+            error_type = self.__failed_error_type(record) or (
+                record.error.error_type if record.error else None
+            )
+            # 4a. The whole run blew the wall-clock cap — the provider is stuck. Retryable 504.
+            if error_type == _TIMEOUT_ERROR:
+                raise SearchRunTimeout(f"search run timed out: {reason}")
+            # 4b. The query could not be encoded on any axis — the embedder is busy. Retryable 503.
+            if error_type == _ENCODE_UNAVAILABLE_ERROR:
+                raise SearchUnavailableError(f"search temporarily unavailable: {reason}")
+            # 4c. Anything else is a genuine run failure of the graph itself.
             raise SearchRunError(f"search run failed: {reason}")
 
         # 5. The OUTPUT CONTRACT: the final node must deliver a SearchResult.
@@ -155,4 +217,4 @@ class SearchRunner(LoggerClass):
         return result
 
 
-__all__ = ["SearchRunner", "SearchRunError"]
+__all__ = ["SearchRunner", "SearchRunError", "SearchRunTimeout", "SearchUnavailableError"]

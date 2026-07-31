@@ -27,7 +27,9 @@ def _fresh_client() -> AsyncMock:
 async def test_ensure_swallows_the_409_already_exists_race() -> None:
     client = _fresh_client()
     client.create_collection = AsyncMock(
-        side_effect=UnexpectedResponse(409, "Conflict", b'{"status":{"error":"already exists"}}', {})
+        side_effect=UnexpectedResponse(
+            409, "Conflict", b'{"status":{"error":"already exists"}}', {}
+        )
     )
     # A concurrent creator won the race — ensure must return cleanly, not raise.
     await QdrantCollectionApi.ensure(client, f"col_{uuid.uuid4().hex}", dense_dim=8)

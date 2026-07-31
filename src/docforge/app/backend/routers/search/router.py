@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException
 # ====== Local Project Imports ======
 from ...context import CONTEXT
 from ...libs.auth import Capability, require
-from ...libs.search import SearchRunError
+from ...libs.search import SearchRunError, SearchRunTimeout, SearchUnavailableError
 from ...utils.error_handling import auto_handle_errors
 from .helpers import SearchHelpers
 from .models import SearchRequest, SearchResponse
@@ -74,10 +74,13 @@ async def search_collection(collection_id: uuid.UUID, request: SearchRequest) ->
     if target_errors:
         raise HTTPException(status_code=422, detail=f"Invalid search target(s): {target_errors}")
 
-    # 5. Delegate the retrieval to the graph-based search pipeline. A stored search graph that is
-    #    not a valid search pipeline (e.g. one that predates the write-time SearchBlobValidator, or
-    #    was injected out-of-band) makes the runner raise SearchRunError — map it to a clean 422
-    #    naming the stored graph as the culprit, so an invalid blob is never surfaced as a 500.
+    # 5. Delegate the retrieval to the graph-based search pipeline. Three failure classes are mapped
+    #    distinctly so a TRANSIENT outage of a healthy graph is never mislabelled as an invalid blob:
+    #      - SearchRunTimeout      → 504 (the run blew its wall-clock cap; the provider is stuck)
+    #      - SearchUnavailableError→ 503 (the query could not be encoded; the embedder is busy)
+    #      - SearchRunError        → 422 (a genuinely invalid stored graph — re-save its blob)
+    #    The subclasses are caught FIRST (Python matches except clauses in order), so only a real
+    #    build/validate/output-contract failure keeps the alarming "invalid search graph" message.
     try:
         result = await CONTEXT.search_service.search(
             collection_id,
@@ -86,6 +89,16 @@ async def search_collection(collection_id: uuid.UUID, request: SearchRequest) ->
             filters=request.filters,
             search_targets=SearchHelpers.to_search_targets(request.search_in),
             collection=collection,
+        )
+    except SearchRunTimeout as exc:
+        raise HTTPException(
+            status_code=504,
+            detail=f"Search timed out — the embedder is busy, retry shortly. ({exc})",
+        )
+    except SearchUnavailableError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Search temporarily unavailable — the embedder is busy, retry shortly. ({exc})",
         )
     except SearchRunError as exc:
         raise HTTPException(

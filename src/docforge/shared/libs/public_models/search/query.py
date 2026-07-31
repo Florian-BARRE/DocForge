@@ -81,6 +81,12 @@ class EncodedQuery(Artifact):
     model: str = Field(
         default="", description="The embedding model that produced the vectors (provenance)."
     )
+    degraded: str | None = Field(
+        default=None,
+        description="A human-readable note when an axis could not be encoded (e.g. the embedder was "
+        "busy and the dense encode timed out), so the query fell back to whatever axis is present. "
+        "None on the healthy full-hybrid path; carried downstream into SearchResult.debug.",
+    )
 
 
 __all__ = ["QuerySpec", "EncodedQuery"]

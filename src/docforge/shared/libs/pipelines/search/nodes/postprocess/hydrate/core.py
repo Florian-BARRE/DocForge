@@ -91,7 +91,10 @@ class PostprocessHydrateNode(PortBackedNode):
                 )
             )
         self.logger.debug(f"Hydrated {len(hits)}/{top_k} hit(s)")
-        return PostprocessHydrateProduces(ranked=RankedHits(hits=hits))
+        # Carry the encode-degradation note through to delivery (None on the healthy path).
+        return PostprocessHydrateProduces(
+            ranked=RankedHits(hits=hits, degraded=data.candidates.degraded)
+        )
 
 
 __all__ = [

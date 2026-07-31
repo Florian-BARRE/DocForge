@@ -89,7 +89,11 @@ class RetrieveHybridNode(PortBackedNode):
         self.logger.debug(
             f"Retrieved {len(candidates)} candidate(s) (depth {data.spec.candidate_k})"
         )
-        return RetrieveHybridProduces(candidates=CandidateSet(candidates=candidates))
+        # 2. Carry any encode-degradation note forward so the delivery stage can surface it — the
+        #    pool may be lexical-only (or semantic-only) when an axis could not be encoded.
+        return RetrieveHybridProduces(
+            candidates=CandidateSet(candidates=candidates, degraded=data.encoded.degraded)
+        )
 
 
 __all__ = [

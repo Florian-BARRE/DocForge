@@ -30,6 +30,12 @@ class CandidateSet(Artifact):
     candidates: list[Candidate] = Field(
         default_factory=list, description="Retrieval candidates, best-first (fusion order)."
     )
+    degraded: str | None = Field(
+        default=None,
+        description="A note carried from the query encode when a vector axis was unavailable "
+        "(embedder busy) and retrieval ran on the surviving axis only. None on the healthy path; "
+        "propagated downstream into SearchResult.debug.",
+    )
 
 
 class ScoredCandidates(Artifact):
@@ -67,6 +73,11 @@ class RankedHits(Artifact):
 
     hits: list[Hit] = Field(
         default_factory=list, description="Hydrated hits in delivered order (rank 1 first)."
+    )
+    degraded: str | None = Field(
+        default=None,
+        description="A note carried from retrieval when the query ran on a degraded (single-axis) "
+        "encode; the delivery stage surfaces it in SearchResult.debug. None on the healthy path.",
     )
 
 

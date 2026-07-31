@@ -344,6 +344,125 @@ def test_empty_search_targets_falls_back_to_default_content_targets() -> None:
     assert port.targets_seen == default_content_targets()
 
 
+# ---------------------- Graceful degradation to lexical ---------------------- #
+class _BusyDenseEmbedConfig(BaseEmbedConfig):
+    """Config of an embedder whose DENSE axis is saturated but whose sparse axis still answers."""
+
+
+@NodeRegistry.register("embed")
+class BusyDenseEmbedNode(BaseEmbedderNode):
+    """A test embedder whose dense encode TIMES OUT (embedder busy) while sparse still succeeds."""
+
+    KIND = "fake_busy_dense"
+    NAME = "Fake busy-dense embedder"
+    SUMMARY = "Dense axis raises TimeoutError; sparse axis returns a vector (no HTTP)."
+    Config = _BusyDenseEmbedConfig
+
+    async def _embed_dense(self, texts: list[str]) -> list[list[float]]:
+        """Simulate the saturated bge_server: the dense query encode never completes."""
+        raise TimeoutError("bge_server dense encode timed out — embedder saturated")
+
+    async def _embed_sparse(self, texts: list[str]):
+        """The sparse (BM25-style) axis still answers — a deterministic 1-term vector per text."""
+        from shared_libs.public_models.embed import SparseVector
+
+        return [SparseVector(indices=[7], values=[1.0]) for _ in texts]
+
+
+class _LexicalCapturingReadPort(CollectionReadPort):
+    """Records the encoded query it was driven with, then returns one hydratable candidate."""
+
+    def __init__(self) -> None:
+        self.encoded_seen = None
+
+    async def hybrid_search(self, encoded, filters, limit, targets=None, fusion="rrf"):
+        self.encoded_seen = encoded
+        return [Candidate(chunk_id="c1", score=0.8, source="hybrid")]
+
+    async def hydrate(self, chunk_ids):
+        return {
+            chunk_id: Hit(chunk_id=chunk_id, document_id="doc", text="t", metadata={})
+            for chunk_id in chunk_ids
+        }
+
+
+def _degrading_run_input() -> dict:
+    """A run-input whose contract points at the busy-dense embedder (sparse axis ON)."""
+    return {
+        "query": RawQuery(text="hello world", top_k=3, flags={}),
+        "filters": QueryFilters(filters={}),
+        "contract": SearchContract(
+            collection_id="col-1",
+            embed_kind="fake_busy_dense",
+            embed_config={"model": "fake", "embed_sparse": True},
+        ),
+    }
+
+
+def test_dense_encode_timeout_degrades_to_lexical_not_an_exception() -> None:
+    """When the DENSE query encode times out (embedder busy), the search still returns lexical hits,
+    flagged degraded in SearchResult.debug — it never raises, so the chatbot keeps answering."""
+    group = PipelineBuilder().build(SearchPipeline.default_blob())
+    port = _LexicalCapturingReadPort()
+    _bind_read_port(group, port)
+
+    output, record = asyncio.run(FlowEngine().execute(group, _degrading_run_input()))
+
+    # 1. The run SUCCEEDED (no hard fail) and delivered hits on the surviving lexical axis.
+    assert record.status.value == "success", record
+    result: SearchResult = output.result
+    assert [hit.chunk_id for hit in result.hits] == ["c1"]
+
+    # 2. The result is FLAGGED degraded so the caller knows it is semantic-blind.
+    assert "degraded" in result.debug
+    assert "semantic unavailable" in result.debug["degraded"]
+
+    # 3. The retrieval ran lexical-only: the encoded query carries NO dense vector, only sparse
+    #    (the app-side TargetVectorResolver drops the empty dense axis — asserted in the api tests).
+    assert port.encoded_seen.dense == []
+    assert port.encoded_seen.sparse is not None
+
+
+@NodeRegistry.register("embed")
+class DeadEmbedNode(BaseEmbedderNode):
+    """A test embedder whose BOTH axes fail — nothing can be searched (embedder fully down)."""
+
+    KIND = "fake_dead"
+    NAME = "Fake dead embedder"
+    SUMMARY = "Dense and sparse both raise (no HTTP)."
+    Config = _BusyDenseEmbedConfig
+
+    async def _embed_dense(self, texts: list[str]) -> list[list[float]]:
+        raise TimeoutError("dense down")
+
+    async def _embed_sparse(self, texts: list[str]):
+        raise TimeoutError("sparse down")
+
+
+def test_both_axes_down_raises_query_encode_error() -> None:
+    """When NEITHER axis can be encoded, the encode node raises QueryEncodeError (nothing to
+    search) — the failing run is what the runner maps to a retryable 503, not a silent empty result."""
+    from shared_libs.pipelines.search.nodes.encode.collection.core import (
+        EncodeCollectionConfig,
+        EncodeCollectionConsumes,
+        EncodeCollectionNode,
+        QueryEncodeError,
+    )
+    from shared_libs.public_models.search import QuerySpec
+
+    node = EncodeCollectionNode(id="encode", config=EncodeCollectionConfig())
+    consumes = EncodeCollectionConsumes(
+        spec=QuerySpec(text="q", top_k=3, candidate_k=100),
+        contract=SearchContract(
+            collection_id="col-1",
+            embed_kind="fake_dead",
+            embed_config={"model": "fake", "embed_sparse": True},
+        ),
+    )
+    with pytest.raises(QueryEncodeError):
+        asyncio.run(node.run(consumes))
+
+
 @pytest.mark.parametrize("kind", ["understand", "llm", "rrf", "mmr"])
 def test_placeholder_bodies_raise(kind: str) -> None:
     """A placeholder never runs — its body raises NotImplementedError if ever invoked."""

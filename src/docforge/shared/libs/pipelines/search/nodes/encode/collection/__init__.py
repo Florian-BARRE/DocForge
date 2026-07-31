@@ -1,5 +1,5 @@
 # ---------------------- Collection-embedder encode node ---------------------- #
-from .core import EncodeCollectionConfig, EncodeCollectionNode
+from .core import EncodeCollectionConfig, EncodeCollectionNode, QueryEncodeError
 
 # ------------------- Public API ------------------- #
-__all__ = ["EncodeCollectionNode", "EncodeCollectionConfig"]
+__all__ = ["EncodeCollectionNode", "EncodeCollectionConfig", "QueryEncodeError"]

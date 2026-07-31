@@ -57,13 +57,17 @@ class RerankCrossEncoderNode(PortBackedNode):
             RerankCrossEncoderProduces: The re-scored pool (a CandidateSet) + its top-1 score.
         """
         config: RerankCrossEncoderConfig = self.config
+        # Preserve any encode-degradation note across the rerank so delivery still surfaces it.
+        degraded = data.candidates.degraded
 
         # 1. Take the top_n candidates by incoming fusion score — the cheap cross-encoder pass.
         pool = sorted(
             data.candidates.candidates, key=lambda candidate: candidate.score, reverse=True
         )[: config.top_n]
         if not pool:
-            return RerankCrossEncoderProduces(candidates=CandidateSet(candidates=[]), score=0.0)
+            return RerankCrossEncoderProduces(
+                candidates=CandidateSet(candidates=[], degraded=degraded), score=0.0
+            )
 
         # 2. Hydrate ONLY the cut set's passage text through the injected read port (a vanished row
         #    is dropped here, so texts stays aligned with the candidates it is built from).
@@ -71,7 +75,9 @@ class RerankCrossEncoderNode(PortBackedNode):
         judged = [candidate for candidate in pool if hydrated.get(candidate.chunk_id) is not None]
         texts = [hydrated[candidate.chunk_id].text or "" for candidate in judged]
         if not texts:
-            return RerankCrossEncoderProduces(candidates=CandidateSet(candidates=[]), score=0.0)
+            return RerankCrossEncoderProduces(
+                candidates=CandidateSet(candidates=[], degraded=degraded), score=0.0
+            )
 
         # 3. One stateless provider call — cross-encoder scores in [0, 1], returned by input index.
         client = CrossEncoderRerankClient(config.base_url, config.api_key, config.timeout_seconds)
@@ -102,7 +108,7 @@ class RerankCrossEncoderNode(PortBackedNode):
             f"(model '{config.model}', top score {top_score:.4f})"
         )
         return RerankCrossEncoderProduces(
-            candidates=CandidateSet(candidates=reranked), score=top_score
+            candidates=CandidateSet(candidates=reranked, degraded=degraded), score=top_score
         )
 
 

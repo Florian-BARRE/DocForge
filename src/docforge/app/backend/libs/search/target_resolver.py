@@ -63,7 +63,10 @@ class TargetVectorResolver:
         dense: dict = {}
         sparse: dict = {}
         for target in targets:
-            if target.semantic:
+            # A semantic target only queries the dense axis when it actually exists — a degraded
+            # encode (embedder busy) leaves ``encoded.dense`` empty, and this naturally drops to a
+            # lexical-only retrieval instead of sending an empty dense vector to the store.
+            if target.semantic and encoded.dense:
                 dense[cls.__dense_name(target.field)] = encoded.dense
             if target.lexical and encoded.sparse is not None:
                 sparse[cls.__sparse_name(target.field)] = SparseVec(

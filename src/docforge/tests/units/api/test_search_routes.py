@@ -305,6 +305,70 @@ def test_read_port_hydrate_threads_block_location_onto_the_hit(fastapi_app) -> N
     assert SearchHelpers.to_hit_model(bare).block_locations == []
 
 
+def test_search_run_timeout_is_504_not_422(client, wired, monkeypatch) -> None:
+    """A run that blew its wall-clock cap (SearchRunTimeout) is a RETRYABLE 504 naming the busy
+    embedder — never the alarming 422 'invalid search graph' (the graph is fine, the provider stuck)."""
+    from backend.context import CONTEXT
+    from backend.libs.search import SearchRunTimeout
+
+    monkeypatch.setattr(
+        CONTEXT.search_service,
+        "search",
+        AsyncMock(side_effect=SearchRunTimeout("search run timed out: pipeline exceeded 30.0s")),
+    )
+    response = client.post(
+        "/api/v1/collections/33333333-3333-3333-3333-333333333333/search",
+        json={"query": "q"},
+    )
+    assert response.status_code == 504, response.text
+    body = response.text.lower()
+    assert "timed out" in body and "busy" in body
+    assert "invalid" not in body  # never mislabelled as an invalid graph
+
+
+def test_search_embedder_unavailable_is_503_not_422(client, wired, monkeypatch) -> None:
+    """A run that failed because the query could not be encoded (SearchUnavailableError, the shared
+    embedder is saturated) is a RETRYABLE 503 — never the invalid-graph 422."""
+    from backend.context import CONTEXT
+    from backend.libs.search import SearchUnavailableError
+
+    monkeypatch.setattr(
+        CONTEXT.search_service,
+        "search",
+        AsyncMock(
+            side_effect=SearchUnavailableError(
+                "search temporarily unavailable: encode (collection): QueryEncodeError: ..."
+            )
+        ),
+    )
+    response = client.post(
+        "/api/v1/collections/33333333-3333-3333-3333-333333333333/search",
+        json={"query": "q"},
+    )
+    assert response.status_code == 503, response.text
+    body = response.text.lower()
+    assert "unavailable" in body and "busy" in body
+    assert "invalid" not in body
+
+
+def test_target_resolver_drops_empty_dense_axis_for_lexical_only(fastapi_app) -> None:
+    """A degraded encode leaves EncodedQuery.dense empty; the resolver must NOT send an empty dense
+    vector to the store — it drops the semantic axis and queries the surviving sparse (lexical) one."""
+    from backend.libs.search.target_resolver import TargetVectorResolver
+    from shared_libs.public_models.embed import SparseVector
+    from shared_libs.public_models.search import EncodedQuery, default_content_targets
+
+    encoded = EncodedQuery(
+        dense=[],  # dense axis unavailable (embedder busy)
+        sparse=SparseVector(indices=[7], values=[1.0]),
+        model="fake",
+        degraded="semantic unavailable — embedder busy, lexical-only results",
+    )
+    dense, sparse = TargetVectorResolver.resolve(encoded, default_content_targets())
+    assert dense == {}  # no empty dense vector sent to the store
+    assert sparse is not None  # lexical axis still queried
+
+
 def test_search_no_embed_node_is_409(client, fastapi_app, monkeypatch) -> None:
     """A collection whose pipeline has no embed node cannot be searched (409)."""
     from backend.context import CONTEXT

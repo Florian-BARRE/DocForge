@@ -60,12 +60,13 @@ class DeliverHitsNode(ActionNode):
         """
         # 1. Pure assembly — the hits pass through untouched; the query labels the result.
         hits = data.ranked.hits
+        debug: dict = {"hit_count": len(hits)}
+        # 2. Surface an encode-degradation note (an axis was unavailable, results are partial) so
+        #    the caller can tell a degraded answer from a full-hybrid one. Absent on the healthy path.
+        if data.ranked.degraded:
+            debug["degraded"] = data.ranked.degraded
         return DeliverHitsProduces(
-            result=SearchResult(
-                query=data.query.text,
-                hits=hits,
-                debug={"hit_count": len(hits)},
-            )
+            result=SearchResult(query=data.query.text, hits=hits, debug=debug)
         )
 
 
