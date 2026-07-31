@@ -4,12 +4,21 @@ A lightweight, **zero-API-cost** benchmark to check whether DocForge's retrieval
 parameterised — and specifically whether the **structure-aware chunker** surfaces the right section
 of a long document.
 
-## Why QASPER
-QASPER is QA over **full scientific papers**: each document is long and explicitly **sectioned**, and
-every question ships the gold **evidence paragraph(s)** that answer it. So it exercises the whole
-chain — parse → structure-aware chunk → hybrid retrieve — and lets us measure whether a retrieved
-chunk *covers* the evidence. (BEIR-style passage benchmarks are 1 chunk/doc and do **not** test
-chunking.)
+## Two corpora, two questions
+- **`qasper`** (default) — QA over **full scientific papers**: long, explicitly **sectioned**
+  documents, each question shipping the gold **evidence paragraph(s)**. Sections are large, so it
+  measures **retrieval quality** end-to-end (parse → structure-aware chunk → hybrid retrieve → does a
+  retrieved chunk *cover* the evidence). Its sections are almost all >64 tokens, so it does **not**
+  discriminate chunk granularity (default `min_tokens=64` never coalesces anything → default ≈ strict).
+- **`regulatory`** — a **synthetic** stack of short single-clause articles (~20 tokens each), generated
+  deterministically (no network, no API). This is the shape that makes the chunker's granularity knob
+  **matter**: under the default a handful of neighbouring clauses coalesce into one chunk, under strict
+  (`min_tokens=0`) every clause stays its own chunk. Same clause topics recur across several regulations
+  with different values, so a query must resolve to the **right document's** clause — the cross-file
+  disambiguation a real regulatory RAG faces. Use it to answer *"default vs strict chunking — which
+  retrieves better on short-section docs?"*
+
+(BEIR-style passage benchmarks are 1 chunk/doc and test neither.)
 
 ## Cost & footprint
 - Runs on the **default pipeline**: docling + structure-aware chunk + doc_meta/breadcrumb context +
@@ -19,10 +28,11 @@ chunking.)
 
 ## Layout
 - `metrics.py` — pure retrieval metrics (coverage, hit@k, recall@k, MRR). **Unit-tested, no stack.**
-- `qasper.py` — dataset loader + HTML rendering (headings per section) + evidence extraction.
+- `qasper.py` — QASPER loader + HTML rendering (headings per section) + evidence extraction.
+- `synthetic.py` — the deterministic short-clause **regulatory** corpus (pure, unit-tested).
 - `harness.py` — thin REST client + the eval loop (`run_eval`, `compare_configs`, `client_from_env`).
 - `runner.py` — CLI: run/compare chunk configs against the live stack and print hit@k + MRR.
-- `test_metrics.py` — unit tests (`uv run pytest tests/rag_eval/test_metrics.py`).
+- `test_metrics.py`, `test_synthetic.py` — unit tests (`python -m pytest tests/rag_eval/test_*.py`).
 - `test_rag_eval_live.py` — a `live`-marked smoke test (tiny end-to-end against the running stack).
 - `data/` — **git-ignored** cache of downloaded rows.
 
@@ -40,12 +50,20 @@ export DOCFORGE_TOKEN=$(docker compose -f docker-compose.yml -f docker-compose.d
 cd src/docforge && uv run pytest tests/rag_eval/test_rag_eval_live.py -m live -s
 ```
 
-Full benchmark + chunk sweep (default vs strict one-chunk-per-section):
+Chunk sweep — retrieval quality on real papers (default vs strict, big sections → same result):
 ```bash
 export DOCFORGE_TOKEN=$(docker compose -f docker-compose.yml -f docker-compose.dev.yml \
   exec -T docforge_app printenv AUTH_ROOT_TOKEN | tr -d '\r')
-cd src/docforge && uv run python -m tests.rag_eval.runner --papers 150 --sweep
+cd src/docforge && uv run python -m tests.rag_eval.runner --corpus qasper --papers 8 --sweep
 ```
+
+Chunk sweep — the one that actually diverges (short-clause synthetic regulations):
+```bash
+cd src/docforge && uv run python -m tests.rag_eval.runner --corpus regulatory --papers 6 --sweep
+```
+
+Each run **purges** prior benchmark collections (name prefix `🔬 BENCH · `) and creates fresh, clearly
+named ones: `🔬 BENCH · <corpus> · <config> · <n> docs`.
 
 Env: `DOCFORGE_API_BASE` (default `http://localhost:10040/api/v1`), `DOCFORGE_TOKEN` (required).
 

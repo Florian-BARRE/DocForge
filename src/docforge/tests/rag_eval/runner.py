@@ -15,8 +15,9 @@ import argparse
 import sys
 
 # ====== Local Project Imports ======
-from tests.rag_eval.harness import EvalReport, client_from_env, run_eval
+from tests.rag_eval.harness import BENCH_PREFIX, EvalReport, client_from_env, run_eval
 from tests.rag_eval.qasper import load_papers
+from tests.rag_eval.synthetic import load_regulatory_papers
 
 
 def _print_report(report: EvalReport) -> None:
@@ -32,7 +33,14 @@ def _print_report(report: EvalReport) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="DocForge RAG retrieval benchmark (QASPER).")
-    parser.add_argument("--papers", type=int, default=150, help="QASPER papers to ingest (slice).")
+    parser.add_argument("--papers", type=int, default=8, help="Documents to ingest (slice).")
+    parser.add_argument(
+        "--corpus",
+        choices=("qasper", "regulatory"),
+        default="qasper",
+        help="qasper = long prose papers (retrieval quality); "
+        "regulatory = short-clause synthetic docs (chunk-granularity sensitivity).",
+    )
     parser.add_argument("--limit", type=int, default=10, help="Chunks retrieved per query.")
     parser.add_argument(
         "--min-tokens", type=int, default=None, help="Override chunk min_tokens (single run)."
@@ -56,24 +64,37 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 2
 
-    papers = load_papers(args.papers)
+    purged = client.purge_by_prefix(BENCH_PREFIX)
+    if purged:
+        print(f"Purged {purged} prior benchmark collection(s).")
+
+    papers = (
+        load_regulatory_papers(args.papers)
+        if args.corpus == "regulatory"
+        else load_papers(args.papers)
+    )
     print(
-        f"Loaded {len(papers)} QASPER papers "
+        f"Loaded {len(papers)} {args.corpus} documents "
         f"({sum(len(p.questions) for p in papers)} answerable questions)."
     )
 
     ks = (1, 3, 5, 10)
     if args.sweep:
-        configs = [("default", None, None), ("min_tokens=0", 0, args.target_tokens)]
+        configs = [
+            ("chunk défaut (min=64)", None, None),
+            ("chunk strict (1 section=1 chunk)", 0, args.target_tokens),
+        ]
     else:
-        label = f"min_tokens={args.min_tokens},target={args.target_tokens}"
+        label = f"min={args.min_tokens},target={args.target_tokens}"
         configs = [(label, args.min_tokens, args.target_tokens)]
 
+    corpus_tag = "réglementaire" if args.corpus == "regulatory" else "qasper"
     for label, min_tokens, target_tokens in configs:
         report = run_eval(
             client,
             papers,
             label=label,
+            corpus=corpus_tag,
             min_tokens=min_tokens,
             target_tokens=target_tokens,
             ks=ks,

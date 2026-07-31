@@ -77,6 +77,20 @@ class DocForgeClient:
             blob = self._apply(blob, "chunk", chunk_config)
         return self._apply(blob, "embed", {"batch_size": 8, "timeout_seconds": 180.0})
 
+    def list_collections(self) -> list[tuple[str, str]]:
+        """(id, name) for every collection — used to purge prior benchmark runs before a new one."""
+        response = self._client.get("/collections").raise_for_status().json()
+        return [(c["id"], c["name"]) for c in response]
+
+    def purge_by_prefix(self, prefix: str) -> int:
+        """Delete every collection whose name starts with ``prefix``; return how many were removed."""
+        removed = 0
+        for collection_id, name in self.list_collections():
+            if name.startswith(prefix):
+                self.delete_collection(collection_id)
+                removed += 1
+        return removed
+
     def create_collection(self, name: str, pipeline: dict) -> str:
         response = self._client.post(
             "/collections",
@@ -111,6 +125,32 @@ class DocForgeClient:
             elapsed += poll
         return "timeout"
 
+    def wait_all(
+        self, job_ids: list[str], poll: float = 3.0, per_job_deadline: float = 300.0
+    ) -> int:
+        """
+        Poll a whole batch of jobs to completion, returning how many reached ``done``.
+
+        The docs are all enqueued up front so the worker keeps its WORKER_CONCURRENCY slots busy
+        (parse of one doc overlaps embed of another) instead of processing one-at-a-time behind the
+        harness. Each cycle only re-checks the still-pending jobs; the overall deadline scales with
+        the batch size so a large slice is not cut short.
+        """
+        pending = set(job_ids)
+        done = 0
+        elapsed = 0.0
+        deadline = per_job_deadline * max(1, len(job_ids))
+        while pending and elapsed < deadline:
+            for job_id in list(pending):
+                status = self._client.get(f"/jobs/{job_id}").json().get("status")
+                if status in ("done", "failed", "error"):
+                    pending.discard(job_id)
+                    done += status == "done"
+            if pending:
+                time.sleep(poll)
+                elapsed += poll
+        return done
+
     def search(self, collection_id: str, query: str, limit: int, retries: int = 2) -> list[str]:
         """
         Top-`limit` chunk texts for a query, best-first (the ranked list the metric scores).
@@ -133,6 +173,9 @@ class DocForgeClient:
 
 
 _DEFAULT_BASE = "http://localhost:10040/api/v1"
+
+# Every benchmark collection carries this prefix so the UI groups them and a re-run can purge them.
+BENCH_PREFIX = "🔬 BENCH · "
 
 
 def client_from_env() -> DocForgeClient | None:
@@ -170,6 +213,7 @@ def run_eval(
     papers: list[Paper],
     *,
     label: str,
+    corpus: str = "",
     min_tokens: int | None = None,
     target_tokens: int | None = None,
     ks: tuple[int, ...] = (1, 3, 5, 10),
@@ -183,6 +227,7 @@ def run_eval(
         client (DocForgeClient): The API client.
         papers (list[Paper]): The QASPER slice to evaluate.
         label (str): Human label for this run (e.g. "min_tokens=0").
+        corpus (str): Optional corpus tag inserted into the collection name for grouping in the UI.
         min_tokens (int | None): Chunk min_tokens override (None = product default).
         target_tokens (int | None): Chunk target_tokens override (None = product default).
         ks (tuple[int, ...]): hit@k cut-offs to report.
@@ -193,13 +238,17 @@ def run_eval(
         EvalReport: The aggregate metrics + run counts + the collection id.
     """
     pipeline = client.chunk_blob(min_tokens, target_tokens)
-    collection_id = client.create_collection(f"ragbench-{label}-{int(time.time())}", pipeline)
+    tag = f"{corpus} · " if corpus else ""
+    collection_id = client.create_collection(
+        f"{BENCH_PREFIX}{tag}{label} · {len(papers)} docs", pipeline
+    )
 
-    ingested = 0
-    for paper in papers:
-        job = client.upload(collection_id, f"{paper.paper_id}.html", paper.to_html())
-        if client.wait(job) == "done":
-            ingested += 1
+    # Enqueue the WHOLE batch first so the worker's concurrency slots stay saturated (embed of one
+    # paper overlaps the parse of the next), then poll the batch as a group — not one doc at a time.
+    job_ids = [
+        client.upload(collection_id, f"{paper.paper_id}.html", paper.to_html()) for paper in papers
+    ]
+    ingested = client.wait_all(job_ids)
 
     results = []
     for paper in papers:
@@ -234,6 +283,7 @@ def compare_configs(
 
 
 __all__ = [
+    "BENCH_PREFIX",
     "DocForgeClient",
     "client_from_env",
     "EvalReport",
