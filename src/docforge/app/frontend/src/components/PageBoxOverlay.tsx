@@ -1,9 +1,14 @@
 // ====== Code Summary ======
 // Renders a page render image with forge-orange rectangles drawn around one or more chunk/hit block
 // locations. Boxes are positioned in PERCENT of the image box (bbox is normalised [0,1]), so they
-// track the image as it scales — no pixel maths, no resize listeners. The wrapper shrink-wraps the
-// image so a box's % is always a % of the rendered image. Degrades gracefully when the page has no
-// render (HTML pre-fix docs): shows a muted note instead of a broken image.
+// track the image as it scales — no pixel maths, no resize listeners.
+//
+// The size constraints live on the IMAGE (not the wrapper): the image renders at the page aspect
+// ratio and fits within the caller's max box with NO letterboxing, and the wrapper shrink-wraps it.
+// A box's % is therefore always a % of the actual displayed image rect. (Putting the constraints on
+// the wrapper + object-fit:contain letterboxed the image inside a wrong-ratio box, so boxes drifted
+// off their blocks on pages whose ratio differed from the clamped box.) Degrades gracefully when the
+// page has no render (HTML pre-fix docs): shows a muted note instead of a broken image.
 
 import { BlobImage } from "./BlobImage";
 import { theme } from "../theme";
@@ -53,11 +58,15 @@ export function PageBoxOverlay({ renderBlobHash, width, height, boxes, alt, styl
   const aspectRatio = width && height ? `${width} / ${height}` : undefined;
 
   return (
-    <div style={{ position: "relative", display: "inline-block", lineHeight: 0, ...style }}>
+    <div style={{ position: "relative", display: "inline-block", lineHeight: 0 }}>
       <BlobImage
         hash={renderBlobHash}
         alt={alt}
-        style={{ width: "100%", height: "100%", objectFit: "contain", display: "block", aspectRatio, borderRadius: theme.radius.m }}
+        // Size constraints (max-width/height, usually vw/vh) come from the caller via `style` and are
+        // applied HERE so the image fits the max box at the page aspect ratio with no letterboxing;
+        // object-fit:fill maps the raster onto the page-ratio box exactly (a no-op when the render's
+        // raster ratio already equals the page ratio). The wrapper then shrink-wraps this exact rect.
+        style={{ display: "block", width: "auto", height: "auto", aspectRatio, objectFit: "fill", borderRadius: theme.radius.m, ...style }}
       />
       {boxes.map((box, index) => {
         const [x0, y0, x1, y1] = box.bbox;
