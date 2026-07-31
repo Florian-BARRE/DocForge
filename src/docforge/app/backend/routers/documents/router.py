@@ -101,12 +101,26 @@ async def upload_document(
     except json.JSONDecodeError as exc:
         raise HTTPException(status_code=422, detail=f"metadata is not valid JSON: {exc}")
     schema = await CONTEXT.database.collections.get_schema(collection_id)
-    field_ids = {row.field_name: row.id for row in schema}
-    unknown = sorted(set(declared) - set(field_ids))
+    by_name = {row.field_name: row for row in schema}
+    unknown = sorted(set(declared) - set(by_name))
     if unknown:
         raise HTTPException(
             status_code=422, detail=f"Unknown metadata field(s) for this collection: {unknown}"
         )
+    # Enum membership is STRUCTURAL — a declared value must be one of the field's declared set — so
+    # it fails fast at the boundary alongside the unknown-field check (deeper value semantics, e.g.
+    # datetime/list types, stay the admission node's job, per the pure-pipeline contract). Mirrors
+    # AdmissionHelpers.value_error so the two never disagree on membership.
+    enum_errors = [
+        f"field '{name}' value {item!r} is not one of {by_name[name].enum_values}"
+        for name, value in declared.items()
+        if by_name[name].enum_values is not None
+        for item in (value if isinstance(value, list) else [value])
+        if item not in by_name[name].enum_values
+    ]
+    if enum_errors:
+        raise HTTPException(status_code=422, detail="; ".join(enum_errors))
+    field_ids = {row.field_name: row.id for row in schema}
 
     # 7. Store the ORIGINAL bytes BEFORE enqueueing (key = source_hash — the worker refetches).
     filename = file.filename or "upload"

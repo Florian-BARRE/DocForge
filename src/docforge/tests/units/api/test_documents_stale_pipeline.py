@@ -80,3 +80,44 @@ def test_upload_with_stale_pipeline_blob_is_422_and_spends_nothing(
     spies.ingestion.store_blobs.assert_not_called()
     spies.ingestion.admit.assert_not_called()
     spies.queue.enqueue_ingest.assert_not_called()
+
+
+def test_upload_with_out_of_enum_metadata_value_is_422_at_the_boundary(
+    client, fastapi_app, monkeypatch
+) -> None:
+    """An out-of-enum declared value fails fast (422) at upload — enum membership is structural, so
+    the caller does not have to poll a job to discover it. Nothing is stored/admitted/enqueued."""
+    from backend.context import CONTEXT  # noqa: PLC0415
+    from shared_libs.pipelines.ingest import IngestPipeline  # noqa: PLC0415
+
+    collection = SimpleNamespace(
+        pipeline=IngestPipeline.default_blob().model_dump(mode="json"),
+        max_file_size_bytes=5_000_000,
+    )
+    jurisdiction = SimpleNamespace(id=1, field_name="jurisdiction", enum_values=["EU", "US"])
+    collections = SimpleNamespace(
+        get=AsyncMock(return_value=collection),
+        get_schema=AsyncMock(return_value=[jurisdiction]),
+    )
+    ingestion = SimpleNamespace(
+        find_duplicate=AsyncMock(return_value=None),
+        store_blobs=AsyncMock(),
+        admit=AsyncMock(return_value=(None, None)),
+    )
+    queue = SimpleNamespace(enqueue_ingest=AsyncMock())
+    monkeypatch.setattr(
+        CONTEXT, "database", SimpleNamespace(collections=collections, ingestion=ingestion)
+    )
+    monkeypatch.setattr(CONTEXT, "queue", queue)
+
+    response = client.post(
+        "/api/v1/documents",
+        data={"collection_id": str(uuid.uuid4()), "metadata": '{"jurisdiction": "MARS"}'},
+        files={"file": ("doc.pdf", b"%PDF-1.4 hello", "application/pdf")},
+    )
+
+    assert response.status_code == 422, response.text
+    assert "not one of" in response.text and "MARS" in response.text
+    ingestion.store_blobs.assert_not_called()
+    ingestion.admit.assert_not_called()
+    queue.enqueue_ingest.assert_not_called()
