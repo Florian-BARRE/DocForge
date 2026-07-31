@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Uplo
 
 # ====== Internal Project Imports ======
 from shared_libs.pipelines.ingest import BlobNormalizationError, BlobNormalizer
+from shared_libs.pipelines.ingest.nodes.intake.format_probe.helpers import FormatProbeHelpers
 from shared_libs.public_models import FieldOrigin
 from shared_libs.services.db.postgresql.tables import (
     Blob,
@@ -85,6 +86,21 @@ async def upload_document(
     #    identity the pipeline computes), aborting the instant it crosses the collection's ceiling.
     UploadReader.reject_oversized_body(request, collection.max_file_size_bytes)
     content, source_hash = await UploadReader.read_capped(file, collection.max_file_size_bytes)
+
+    # 4b. Format gate — reject an unaccepted format HERE, before storing or enqueueing, so it fails
+    #     in milliseconds at the boundary instead of ~minutes later inside the queued run's admit
+    #     node. The detection is the SAME content sniff the admit node keys on (never the extension),
+    #     so the two gates can never disagree. The admit-node check stays as defence in depth.
+    detected_format, _detected_mime = FormatProbeHelpers.detect(content, file.filename or "upload")
+    if detected_format not in collection.supported_formats:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"detected format '{detected_format}' is not accepted for this collection "
+                f"(allowed: {collection.supported_formats})"
+            ),
+        )
+
     # The dedup key hashes the HEALED blob — the exact topology the worker will run — so the version
     # is stable across engine evolutions of the same stage-level pipeline.
     version = _pipeline_version(pipeline_blob)

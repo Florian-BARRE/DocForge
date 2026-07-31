@@ -169,7 +169,13 @@ async def get_document_chunks(
     composition = await CONTEXT.database.documents.get_document_chunk_composition(document_id)
     metadata = await CONTEXT.database.documents.get_document_chunk_metadata(document_id)
 
-    # 3. Group the child rows by chunk id (composition already ordered by position).
+    # 3. Resolve each chunk's page from its primary (leading) block in ONE bulk query — the same
+    #    location read search-hit hydration uses, so the two surfaces agree on the page.
+    locations = await CONTEXT.database.documents.get_block_locations_for_chunks(
+        [chunk.id for chunk in chunks]
+    )
+
+    # 4. Group the child rows by chunk id (composition already ordered by position).
     blocks_by_chunk: dict[uuid.UUID, list[str]] = defaultdict(list)
     for link in composition:
         blocks_by_chunk[link.chunk_id].append(link.block_id)
@@ -177,12 +183,14 @@ async def get_document_chunks(
     for value in metadata:
         meta_by_chunk[value.chunk_id].append(value)
 
-    # 4. Map each chunk with its grouped composition and resolved metadata.
+    # 5. Map each chunk with its grouped composition, resolved metadata and primary-block page (the
+    #    first entry per chunk is its leading block, so its page is the chunk's page).
     return [
         ExplorerHelpers.chunk(
             chunk,
             blocks_by_chunk[chunk.id],
             ExplorerHelpers.metadata_values(meta_by_chunk[chunk.id], names),
+            page=(located[0]["page"] if (located := locations.get(str(chunk.id))) else None),
         )
         for chunk in chunks
     ]

@@ -104,6 +104,14 @@ class ChunkInfo(BaseModel):
     enabled: bool = Field(
         description="Effective searchability: enabled_override when set, else the role's default."
     )
+    heading_path: list[str] = Field(
+        default_factory=list,
+        description="The chunk's section breadcrumb (outer→inner headings); [] when none.",
+    )
+    page: int | None = Field(
+        default=None,
+        description="Page of the chunk's primary (leading) block; None when it has no located block.",
+    )
     strategy: str = Field(description="The chunking strategy that produced it.")
     parent_id: str | None = Field(default=None, description="Parent chunk (hierarchical chunking).")
     block_ids: list[str] = Field(

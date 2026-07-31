@@ -93,6 +93,7 @@ def test_upload_with_out_of_enum_metadata_value_is_422_at_the_boundary(
     collection = SimpleNamespace(
         pipeline=IngestPipeline.default_blob().model_dump(mode="json"),
         max_file_size_bytes=5_000_000,
+        supported_formats=["pdf"],
     )
     jurisdiction = SimpleNamespace(id=1, field_name="jurisdiction", enum_values=["EU", "US"])
     collections = SimpleNamespace(
@@ -121,3 +122,87 @@ def test_upload_with_out_of_enum_metadata_value_is_422_at_the_boundary(
     ingestion.store_blobs.assert_not_called()
     ingestion.admit.assert_not_called()
     queue.enqueue_ingest.assert_not_called()
+
+
+def _install_format_context(monkeypatch, fastapi_app, supported_formats: list[str]):
+    """Patch CONTEXT with a healthy collection accepting ``supported_formats`` + spend spies."""
+    from backend.context import CONTEXT  # noqa: PLC0415
+    from shared_libs.pipelines.ingest import IngestPipeline  # noqa: PLC0415
+
+    collection = SimpleNamespace(
+        pipeline=IngestPipeline.default_blob().model_dump(mode="json"),
+        max_file_size_bytes=5_000_000,
+        supported_formats=supported_formats,
+    )
+    collections = SimpleNamespace(
+        get=AsyncMock(return_value=collection),
+        get_schema=AsyncMock(return_value=[]),
+    )
+    ingestion = SimpleNamespace(
+        find_duplicate=AsyncMock(return_value=None),
+        store_blobs=AsyncMock(),
+        admit=AsyncMock(
+            return_value=(SimpleNamespace(id=uuid.uuid4()), SimpleNamespace(id=uuid.uuid4()))
+        ),
+    )
+    queue = SimpleNamespace(enqueue_ingest=AsyncMock())
+    monkeypatch.setattr(
+        CONTEXT, "database", SimpleNamespace(collections=collections, ingestion=ingestion)
+    )
+    monkeypatch.setattr(CONTEXT, "queue", queue)
+    return SimpleNamespace(ingestion=ingestion, queue=queue)
+
+
+def test_upload_with_unsupported_format_is_422_and_spends_nothing(
+    client, fastapi_app, monkeypatch
+) -> None:
+    """A format outside the collection's supported_formats is rejected FAST (422) at the upload
+    endpoint — on the DETECTED format (a zip-container xlsx here), before any blob is stored or job
+    enqueued — instead of failing minutes later inside the queued run's admit node."""
+    import io  # noqa: PLC0415
+    import zipfile  # noqa: PLC0415
+
+    spies = _install_format_context(monkeypatch, fastapi_app, supported_formats=["pdf", "txt"])
+
+    # Build a minimal real xlsx (OOXML zip with an xl/ member) so the content probe detects 'xlsx'.
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr("xl/workbook.xml", "<workbook/>")
+    xlsx_bytes = buffer.getvalue()
+
+    response = client.post(
+        "/api/v1/documents",
+        data={"collection_id": str(uuid.uuid4()), "metadata": "{}"},
+        files={
+            "file": (
+                "sheet.xlsx",
+                xlsx_bytes,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+        },
+    )
+
+    # 1. Rejected at the boundary, on the detected format, with an actionable allow-list message.
+    assert response.status_code == 422, response.text
+    assert "xlsx" in response.text and "not accepted" in response.text
+    assert "pdf" in response.text  # the allowed set is surfaced
+
+    # 2. Nothing was spent: no blob stored, no admit, no enqueue.
+    spies.ingestion.store_blobs.assert_not_called()
+    spies.ingestion.admit.assert_not_called()
+    spies.queue.enqueue_ingest.assert_not_called()
+
+
+def test_upload_with_supported_format_still_accepts_202(client, fastapi_app, monkeypatch) -> None:
+    """A supported (detected) format sails through the new gate — still a 202 accept + enqueue."""
+    spies = _install_format_context(monkeypatch, fastapi_app, supported_formats=["pdf"])
+
+    response = client.post(
+        "/api/v1/documents",
+        data={"collection_id": str(uuid.uuid4()), "metadata": "{}"},
+        files={"file": ("doc.pdf", b"%PDF-1.4 hello world", "application/pdf")},
+    )
+
+    assert response.status_code == 202, response.text
+    spies.ingestion.store_blobs.assert_called_once()
+    spies.queue.enqueue_ingest.assert_called_once()

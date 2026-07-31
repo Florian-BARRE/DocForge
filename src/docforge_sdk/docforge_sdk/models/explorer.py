@@ -148,6 +148,8 @@ class ChunkInfo(BaseModel):
         parent_id (str | None): Parent chunk (hierarchical chunking).
         block_ids (list[str]): Composing IR block ids, in assembly order.
         metadata (list[MetadataValue]): Per-chunk generated metadata values.
+        heading_path (list[str]): The chunk's section breadcrumb (outer→inner headings).
+        page (int | None): Page of the chunk's primary block; None when it has no located block.
     """
 
     id: str = Field(description="The chunk UUID (doubles as the Qdrant point id).")
@@ -164,6 +166,14 @@ class ChunkInfo(BaseModel):
     )
     metadata: list[MetadataValue] = Field(
         default_factory=list, description="Per-chunk generated metadata values."
+    )
+    heading_path: list[str] = Field(
+        default_factory=list,
+        description="The chunk's section breadcrumb (outer→inner headings); [] when none.",
+    )
+    page: int | None = Field(
+        default=None,
+        description="Page of the chunk's primary block; None when it has no located block.",
     )
 
 

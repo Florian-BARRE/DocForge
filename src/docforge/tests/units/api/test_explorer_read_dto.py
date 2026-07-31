@@ -18,7 +18,12 @@ def helpers(fastapi_app):
     return ExplorerHelpers
 
 
-def _chunk(*, role: str = "body", enabled_override: bool | None = None) -> SimpleNamespace:
+def _chunk(
+    *,
+    role: str = "body",
+    enabled_override: bool | None = None,
+    heading_path: list[str] | None = None,
+) -> SimpleNamespace:
     """A minimal chunk row carrying only what the explorer mapping reads."""
     return SimpleNamespace(
         id=uuid.uuid4(),
@@ -30,6 +35,7 @@ def _chunk(*, role: str = "body", enabled_override: bool | None = None) -> Simpl
         parent_id=None,
         role=role,
         enabled_override=enabled_override,
+        heading_path=heading_path,
     )
 
 
@@ -58,23 +64,37 @@ def _document(*, enabled: bool = True) -> SimpleNamespace:
 
 def test_body_chunk_reads_role_body_enabled_true(helpers) -> None:
     """A body chunk with no override defaults to searchable."""
-    info = helpers.chunk(_chunk(role="body"), [], [])
+    info = helpers.chunk(_chunk(role="body"), [], [], page=None)
     assert info.role == "body"
     assert info.enabled is True
 
 
 def test_header_footer_chunk_without_override_reads_disabled(helpers) -> None:
     """A non-body role with no override defers to the role default (off)."""
-    info = helpers.chunk(_chunk(role="header_footer"), [], [])
+    info = helpers.chunk(_chunk(role="header_footer"), [], [], page=None)
     assert info.role == "header_footer"
     assert info.enabled is False
 
 
 def test_override_wins_over_role_default(helpers) -> None:
     """An explicit enabled_override=True beats a non-body role's disabled default."""
-    info = helpers.chunk(_chunk(role="boilerplate", enabled_override=True), [], [])
+    info = helpers.chunk(_chunk(role="boilerplate", enabled_override=True), [], [], page=None)
     assert info.role == "boilerplate"
     assert info.enabled is True
+
+
+def test_chunk_surfaces_heading_path_and_resolved_page(helpers) -> None:
+    """The chunk DTO carries the section breadcrumb + the primary block's page (search-hit parity)."""
+    info = helpers.chunk(_chunk(heading_path=["Intro", "Scope"]), ["b1", "b2"], [], page=4)
+    assert info.heading_path == ["Intro", "Scope"]
+    assert info.page == 4
+
+
+def test_chunk_missing_heading_path_and_page_default_to_empty_and_none(helpers) -> None:
+    """A chunk with no heading_path column value / no located block → [] and None."""
+    info = helpers.chunk(_chunk(heading_path=None), [], [], page=None)
+    assert info.heading_path == []
+    assert info.page is None
 
 
 def test_disabled_document_surfaces_enabled_false_in_list_and_detail(helpers) -> None:

@@ -174,8 +174,14 @@ class ExplorerHelpers:
 
     # -------------------- chunks --------------------
     @classmethod
-    def chunk(cls, chunk: Chunk, block_ids: list[str], metadata: list[MetadataValue]) -> ChunkInfo:
-        """Map a chunk row + its composition and metadata to the explorer model."""
+    def chunk(
+        cls,
+        chunk: Chunk,
+        block_ids: list[str],
+        metadata: list[MetadataValue],
+        page: int | None,
+    ) -> ChunkInfo:
+        """Map a chunk row + its composition, metadata and resolved page to the explorer model."""
         return ChunkInfo(
             id=str(chunk.id),
             chunk_index=chunk.chunk_index,
@@ -188,6 +194,8 @@ class ExplorerHelpers:
             metadata=metadata,
             role=chunk.role,
             enabled=cls._effective_enabled(chunk),
+            heading_path=chunk.heading_path or [],
+            page=page,
         )
 
     @staticmethod
