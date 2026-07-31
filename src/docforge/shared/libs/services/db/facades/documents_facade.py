@@ -107,8 +107,8 @@ class DocumentsFacade(LoggerClass):
 
         Returns:
             dict[str, list[dict]]: chunk_id (str) → its blocks' ``{block_id, page, bbox}`` in
-            assembly order (the first entry is the chunk's primary block). A chunk with no blocks is
-            absent from the map.
+            assembly order (the first entry is the chunk's primary block). ``page`` is None for a
+            page-less document (no page render). A chunk with no blocks is absent from the map.
         """
         if not chunk_ids:
             return {}
