@@ -122,6 +122,7 @@ BLOB = {
         "pdf_probe": {"pdf": {"source": "node", "node_id": "convert", "field_name": "pdf"}},
         "content_address": {
             "source": {"source": "node", "node_id": "admit", "field_name": "source"},
+            "source_probe": {"source": "node", "node_id": "probe", "field_name": "probe"},
             "pdf": {"source": "node", "node_id": "convert", "field_name": "pdf"},
             "probe": {"source": "node", "node_id": "pdf_probe", "field_name": "probe"},
         },

@@ -22,9 +22,18 @@ class BaseParserNode(ActionNode):
     Consumes = ParserConsumes
     Produces = ParserProduces
 
+    # Non-PDF formats this engine parses natively from the ORIGINAL bytes (no PDF view needed).
+    # Empty by default — a generic parser only reads the PDF view; a child that can read structured
+    # text (html/md) directly declares those tokens here so the base does not degrade them away.
+    NATIVE_FORMATS: frozenset[str] = frozenset()
+
     @abstractmethod
-    async def _parse(self, pdf_bytes: bytes, source: IntakeResult) -> DocumentIR:
-        """Turn the PDF bytes into the canonical IR using the parser's own engine."""
+    async def _parse(self, source: IntakeResult) -> DocumentIR:
+        """Turn the intake result into the canonical IR using the parser's own engine.
+
+        The engine reads ``pdf_content`` when a PDF view exists, or the ORIGINAL ``source_content``
+        when the format is one it parses natively (``NATIVE_FORMATS``).
+        """
         ...
 
     def _quality_score(self, ir: DocumentIR) -> float:
@@ -65,16 +74,18 @@ class BaseParserNode(ActionNode):
             ParserProduces: The IR + its quality score.
         """
         source = data.source
-        # 1. No convertible PDF view → degrade to an empty IR (score 0 → escalation moves on).
-        if source.pdf_content is None:
+        # 1. Nothing this engine can read (no PDF view AND not a natively-parsed format) → degrade
+        #    to an empty IR (score 0 → escalation moves on).
+        native = source.source_format in self.NATIVE_FORMATS and source.source_content is not None
+        if source.pdf_content is None and not native:
             self.logger.warning(
-                f"No PDF view for source '{source.source_hash}'; degrading to empty IR"
+                f"No parseable view for source '{source.source_hash}'; degrading to empty IR"
             )
             empty = DocumentIR(doc_id=source.source_hash, source_hash=source.source_hash)
             return ParserProduces(ir=empty, score=0.0)
 
-        # 2. Delegate the bytes to the parser engine, then score the IR (the ScoreBelow gate reads it).
-        ir = await self._parse(source.pdf_content, source)
+        # 2. Delegate to the parser engine, then score the IR (the ScoreBelow gate reads it).
+        ir = await self._parse(source)
         return ParserProduces(ir=ir, score=self._quality_score(ir))
 
 

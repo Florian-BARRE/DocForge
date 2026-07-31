@@ -97,10 +97,16 @@ class DoclingParseHelpers:
 
     @staticmethod
     def get_text(item: Any) -> str | None:
-        """Extract text from a Docling item, preferring get_text() (2.x) then the text attribute."""
+        """Extract text from a Docling item, preferring get_text() (2.x) then the text attribute.
+
+        get_text() can return empty for natively-parsed html/md items even when ``text`` is set, so
+        an empty result falls through to the ``text`` attribute rather than losing the content.
+        """
         if hasattr(item, "get_text"):
             try:
-                return item.get_text() or None
+                text = item.get_text()
+                if text:
+                    return text
             except Exception:
                 pass
         return getattr(item, "text", None) or None

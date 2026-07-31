@@ -12,7 +12,13 @@ from pydantic import Field
 # ====== Internal Project Imports ======
 from shared_libs.pipelines.base import ActionNode, NodeConfig, NodeInput, NodeOutput
 from shared_libs.pipelines.registry import NodeRegistry
-from shared_libs.public_models import IntakeResult, PdfProbe, PdfView, SourceDocument
+from shared_libs.public_models import (
+    IntakeResult,
+    PdfProbe,
+    PdfView,
+    SourceDocument,
+    SourceProbe,
+)
 
 
 class ContentAddressConfig(NodeConfig):
@@ -20,10 +26,13 @@ class ContentAddressConfig(NodeConfig):
 
 
 class ContentAddressConsumes(NodeInput):
-    """The admitted source, its PDF view, and the PDF routing facts."""
+    """The admitted source, its detected format, its PDF view, and the PDF routing facts."""
 
     source: SourceDocument = Field(
-        description="The admitted document (its ORIGINAL bytes are hashed)."
+        description="The admitted document (its ORIGINAL bytes are hashed and carried out)."
+    )
+    source_probe: SourceProbe = Field(
+        description="The detected source format, carried into the stage output for the parser."
     )
     pdf: PdfView = Field(description="The working PDF carried into the stage output.")
     probe: PdfProbe = Field(description="The PDF facts carried into the stage output.")
@@ -61,10 +70,13 @@ class ContentAddressNode(ActionNode):
         source_hash = hashlib.sha256(data.source.content).hexdigest()
         self.logger.debug(f"Content-addressed '{data.source.filename}' as {source_hash[:12]}…")
 
-        # 2. Assemble the stage output.
+        # 2. Assemble the stage output. The original bytes + detected format travel alongside the
+        #    PDF view so a structure-aware parser can parse html/md natively (no PDF round-trip).
         return ContentAddressProduces(
             ingest=IntakeResult(
                 source_hash=source_hash,
+                source_format=data.source_probe.format,
+                source_content=data.source.content,
                 pdf_content=data.pdf.content,
                 page_count=data.probe.page_count,
             )

@@ -146,6 +146,7 @@ class IngestAssembler:
         bindings["pdf_probe"] = {"pdf": FromNode(node_id="convert", field_name="pdf")}
         bindings["address"] = {
             "source": FromNode(node_id="admit", field_name="source"),
+            "source_probe": FromNode(node_id="probe", field_name="probe"),
             "pdf": FromNode(node_id="convert", field_name="pdf"),
             "probe": FromNode(node_id="pdf_probe", field_name="probe"),
         }

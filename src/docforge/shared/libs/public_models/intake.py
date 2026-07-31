@@ -38,9 +38,20 @@ class IntakeResult(Artifact):
     """An ingested source, ready to parse — its identity, PDF bytes and system facts."""
 
     source_hash: str = Field(description="Content-addressing hash of the original file bytes.")
+    source_format: str = Field(
+        default="",
+        description="Detected source format token (pdf, html, md, docx…); lets a parser handle a "
+        "structured text format (html/md) from its ORIGINAL bytes instead of a PDF round-trip.",
+    )
+    source_content: bytes | None = Field(
+        default=None,
+        description="The ORIGINAL uploaded bytes — parsed natively by structure-aware formats "
+        "(html/md) whose PDF round-trip would flatten their heading tree.",
+    )
     pdf_content: bytes | None = Field(
         default=None,
-        description="The PDF-view bytes to parse; None when the source is not convertible.",
+        description="The PDF-view bytes to parse; None when the source is not convertible or is "
+        "parsed natively from its original bytes.",
     )
     page_count: int = Field(default=0, description="Total page count of the PDF view.")
 

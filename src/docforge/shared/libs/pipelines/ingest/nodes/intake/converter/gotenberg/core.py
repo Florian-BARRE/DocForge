@@ -1,8 +1,10 @@
 # ====== Code Summary ======
 # The Gotenberg converter node — the first concrete child of BaseConverterNode. Routes by the
-# PROBED format: office documents go to Gotenberg's LibreOffice route, HTML to its Chromium route,
-# anything else has no PDF view (None → the base degrades). Pure HTTP client — Gotenberg runs as a
-# service; its endpoint comes from the config.
+# PROBED format: office documents go to Gotenberg's LibreOffice route; anything else has no PDF
+# view (None → the base degrades). Structured TEXT formats (html/md) are deliberately NOT converted
+# here — a PDF round-trip flattens their heading tree, so they pass through with no PDF view and the
+# parser reads their original bytes natively. Pure HTTP client — Gotenberg runs as a service; its
+# endpoint comes from the config.
 
 # ====== Standard Library Imports ======
 from pathlib import PurePosixPath
@@ -23,25 +25,29 @@ from .config import ConverterGotenbergConfig
 @NodeRegistry.register("converter")
 class ConverterGotenbergNode(BaseConverterNode):
     """
-    Convert office/HTML sources to PDF through a Gotenberg service.
+    Convert office sources to PDF through a Gotenberg service.
 
-    Office formats (docx, xlsx, pptx, odt, txt, md…) go through the LibreOffice route; HTML goes
-    through the Chromium route. The probed format decides — never the file extension.
+    Office formats (docx, xlsx, pptx, odt, txt…) go through the LibreOffice route. HTML and
+    markdown are NOT converted — they pass through (no PDF view) so the parser reads their
+    original bytes natively, preserving the heading tree a PDF round-trip would flatten. The
+    probed format decides — never the file extension.
     """
 
     KIND = "gotenberg"
     UNIQUE_IN_GRAPH = True
     NAME = "Gotenberg"
-    SUMMARY = "Convert office and HTML sources to PDF via a Gotenberg service."
+    SUMMARY = "Convert office sources to PDF via a Gotenberg service (html/md pass through)."
     HOW_IT_WORKS = (
-        "POSTs the file to the Gotenberg HTTP API — the LibreOffice route for office formats, the "
-        "Chromium route for HTML — and returns the produced PDF bytes."
+        "POSTs office files to the Gotenberg HTTP API's LibreOffice route and returns the produced "
+        "PDF bytes; html/md are left untouched for native parsing."
     )
     Config = ConverterGotenbergConfig
 
     # Probed formats handled by Gotenberg's LibreOffice route: modern, legacy and ODF office
     # formats, the plain-text family, and images (LibreOffice wraps an image into a one-page PDF —
-    # a photographed document then follows the scanned/OCR path downstream).
+    # a photographed document then follows the scanned/OCR path downstream). Structured text
+    # formats (html/md) are excluded on purpose: they are parsed natively from their original
+    # bytes, so a PDF conversion here would only destroy their structure.
     OFFICE_FORMATS = frozenset(
         {
             "docx",
@@ -56,7 +62,6 @@ class ConverterGotenbergNode(BaseConverterNode):
             "rtf",
             "csv",
             "txt",
-            "md",
             "png",
             "jpeg",
         }
@@ -87,10 +92,8 @@ class ConverterGotenbergNode(BaseConverterNode):
         if probe.format in self.OFFICE_FORMATS:
             route = "/forms/libreoffice/convert"
             upload_name = f"{stem}.{probe.format}"
-        elif probe.format == "html":
-            route = "/forms/chromium/convert/html"
-            upload_name = "index.html"  # the Chromium route requires this exact name
         else:
+            # Not office (incl. html/md, parsed natively downstream) — no PDF view from here.
             return None
 
         # 2. POST the file; Gotenberg answers with the PDF bytes.

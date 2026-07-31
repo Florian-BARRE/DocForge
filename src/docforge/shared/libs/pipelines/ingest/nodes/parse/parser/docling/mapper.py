@@ -17,6 +17,7 @@ from shared_libs.public_models import (
     BlockType,
     DocumentIR,
     FigureEnrichment,
+    Provenance,
     TableData,
 )
 
@@ -30,12 +31,17 @@ class DoclingIRMapper:
 
     logger = loggerplusplus.bind(identifier="DoclingIRMapper")
 
+    # Full-page provenance for page-less formats (html/md): they carry no bbox/page, but a block is
+    # placed by its reading order, so a whole-page box on page 0 keeps them in the IR (nothing to
+    # crop or overlay for these formats anyway).
+    _PAGELESS_PROVENANCE = Provenance(page=0, bbox=(0.0, 0.0, 1.0, 1.0))
+
     def __new__(cls, *args: object, **kwargs: object) -> None:
         raise TypeError("DoclingIRMapper is a static-only class and cannot be instantiated.")
 
     @classmethod
     def __map_item(
-        cls, item: Any, reading_order: int, docling_doc: Any, doc_id: str
+        cls, item: Any, reading_order: int, docling_doc: Any, doc_id: str, page_less: bool
     ) -> Block | None:
         """Map a single Docling item to an IR Block, or None to skip it."""
         # 1. Resolve the label (docling 2.x uses a DocItemLabel enum) → BlockType, or skip.
@@ -47,10 +53,13 @@ class DoclingIRMapper:
         if block_type is None:
             return None
 
-        # 2. Provenance is mandatory — an item we cannot place is dropped.
+        # 2. Provenance places the block. A page-based item with none is unplaceable → dropped; a
+        #    page-less format (html/md) has no bbox at all, so it gets the synthetic full-page one.
         provenance = DoclingParseHelpers.extract_provenance(item, docling_doc)
         if provenance is None:
-            return None
+            if not page_less:
+                return None
+            provenance = cls._PAGELESS_PROVENANCE
 
         # 3. Namespace the block id by doc_id: Docling's self_ref (e.g. "#/texts/0") is only unique
         #    within a document, so doc_id + self_ref stays globally unique and stable.
@@ -98,14 +107,17 @@ class DoclingIRMapper:
         Returns:
             DocumentIR: The mapped IR (its quality score is computed by the parser base).
         """
-        # 1. Page count — num_pages is a method in docling >= 2.x, an int in older versions.
+        # 1. Page count — num_pages is a method in docling >= 2.x, an int in older versions. A
+        #    page-less format (html/md) reports 0 pages; its items carry no bbox → synthetic prov.
         raw_n_pages = getattr(docling_doc, "num_pages", 1)
-        n_pages = (raw_n_pages() if callable(raw_n_pages) else raw_n_pages) or 1
+        n_pages_actual = (raw_n_pages() if callable(raw_n_pages) else raw_n_pages) or 0
+        page_less = n_pages_actual == 0
+        n_pages = n_pages_actual or 1
 
         # 2. Walk Docling items in reading order, mapping each to a Block.
         blocks: list[Block] = []
         for item, _depth in docling_doc.iterate_items():
-            block = cls.__map_item(item, len(blocks), docling_doc, doc_id)
+            block = cls.__map_item(item, len(blocks), docling_doc, doc_id, page_less)
             if block is not None:
                 blocks.append(block)
 

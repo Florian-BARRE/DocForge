@@ -15,6 +15,11 @@
         "field_name": "source",
         "node_id": "admit",
         "source": "node"
+      },
+      "source_probe": {
+        "field_name": "probe",
+        "node_id": "probe",
+        "source": "node"
       }
     },
     "admit": {

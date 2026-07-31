@@ -34,13 +34,21 @@ class ParserDoclingNode(BaseParserNode):
 
     KIND = "docling"
     NAME = "Docling"
-    SUMMARY = "Parse a PDF into the canonical IR with the Docling document converter."
+    SUMMARY = "Parse a PDF (or html/md natively) into the canonical IR with Docling."
     HOW_IT_WORKS = (
-        "Runs Docling's DocumentConverter on the PDF (in a worker thread, since it is CPU-bound) "
-        "and maps its blocks, tables, figures and provenance into the DocumentIR."
+        "Runs Docling's DocumentConverter on the PDF view — or on the ORIGINAL html/md bytes, "
+        "whose heading tree a PDF round-trip would flatten — in a worker thread (CPU-bound), and "
+        "maps its blocks, tables, figures and provenance into the DocumentIR."
     )
     Config = ParserDoclingConfig
     UNIQUE_IN_GRAPH = True
+
+    # Structured text formats Docling parses natively from the original bytes → temp-file suffix
+    # (Docling picks its backend from the extension). Their heading tree survives intact, unlike a
+    # PDF round-trip. The default converter already allows every InputFormat, so no OCR/table native
+    # libs are needed for these — only the right suffix on the temp file.
+    NATIVE_FORMATS = frozenset({"html", "md"})
+    _NATIVE_SUFFIX: dict[str, str] = {"html": ".html", "md": ".md"}
 
     # Process-wide converter CACHE, keyed by the option set: constructing a DocumentConverter
     # loads Docling's layout/table models (tens of seconds), so each option set is built once and
@@ -73,14 +81,15 @@ class ParserDoclingNode(BaseParserNode):
                 self.logger.info(f"Docling converter built for options {key}")
         return self._converters[key]
 
-    def __parse_sync(self, pdf_bytes: bytes, source_hash: str) -> DocumentIR:
-        """Synchronous Docling parse (runs in a worker thread): convert the PDF, map it to the IR."""
+    def __parse_sync(self, content: bytes, suffix: str, source_hash: str) -> DocumentIR:
+        """Synchronous Docling parse (runs in a worker thread): convert the bytes, map to the IR."""
         # 1. Resolve the shared converter (built once per option set).
         converter = self.__converter()
 
-        # 2. Docling needs a file path — write the bytes to a temp file, convert, always clean up.
-        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
-            tmp.write(pdf_bytes)
+        # 2. Docling needs a file path and picks its backend from the extension — write the bytes to
+        #    a temp file with the format's suffix, convert, always clean up.
+        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+            tmp.write(content)
             tmp_path = Path(tmp.name)
         try:
             # 3. Serialize conversions — the shared converter is not documented thread-safe.
@@ -96,9 +105,18 @@ class ParserDoclingNode(BaseParserNode):
             except OSError:
                 self.logger.warning(f"Could not remove temp file {tmp_path}; leaving it behind")
 
-    async def _parse(self, pdf_bytes: bytes, source: IntakeResult) -> DocumentIR:
-        """Run the CPU-bound Docling conversion off the event loop and map it to the IR."""
-        return await asyncio.to_thread(self.__parse_sync, pdf_bytes, source.source_hash)
+    async def _parse(self, source: IntakeResult) -> DocumentIR:
+        """Run the CPU-bound Docling conversion off the event loop and map it to the IR.
+
+        Parses the PDF view when one exists; otherwise the ORIGINAL html/md bytes natively (their
+        heading tree survives, where a PDF round-trip would flatten it).
+        """
+        if source.pdf_content is not None:
+            content, suffix = source.pdf_content, ".pdf"
+        else:
+            content = source.source_content or b""
+            suffix = self._NATIVE_SUFFIX[source.source_format]
+        return await asyncio.to_thread(self.__parse_sync, content, suffix, source.source_hash)
 
 
 __all__ = ["ParserDoclingNode"]
