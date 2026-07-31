@@ -40,3 +40,9 @@ export function uploadDocument({ file, collectionId, metadata }: UploadDocumentA
 export function setDocumentEnabled(id: string, enabled: boolean): Promise<DocumentEnabledResponse> {
   return apiFetch(`${BASE}/${id}/enabled`, jsonInit("PATCH", { enabled }));
 }
+
+/** Re-run ingestion on the document's stored original — no re-upload — with the collection's current
+ *  pipeline. Idempotent (previous chunks/IR/pages purged, vectors overwritten). Returns the new job. */
+export function reingestDocument(id: string): Promise<UploadAccepted> {
+  return apiFetch(`${BASE}/${id}/reingest`, { method: "POST" });
+}

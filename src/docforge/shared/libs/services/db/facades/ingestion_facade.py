@@ -89,6 +89,32 @@ class IngestionFacade(LoggerClass):
                 await DocumentApi.replace_metadata(session, created.id, list(declared_metadata))
         return created, created_job
 
+    async def reingest(self, document_id: uuid.UUID) -> tuple[Document, Job] | None:
+        """
+        Re-enqueue ingestion for an EXISTING document — no re-upload needed.
+
+        The original bytes are content-addressed (``source_hash``) and the worker refetches them,
+        the collection's CURRENT pipeline is read at run time, and a run is idempotent (the previous
+        chunks/IR/pages are purged and the Qdrant points overwritten). So re-processing a document —
+        e.g. after a pipeline or engine change — is just a fresh job on the same document, reset to
+        PENDING. The USER-declared metadata rows survive (they are never touched here).
+
+        Args:
+            document_id (uuid.UUID): The document to re-ingest.
+
+        Returns:
+            tuple[Document, Job] | None: The document + the freshly-created job, or None when the
+                document does not exist.
+        """
+        async with self._postgres.session() as session:
+            document = await DocumentApi.get(session, document_id)
+            if document is None:
+                return None
+            job = Job(document_id=document.id, collection_id=document.collection_id)
+            created_job = await JobApi.create(session, job)
+            await DocumentApi.set_status(session, document_id, DocumentStatus.PENDING)
+        return document, created_job
+
     async def store_blobs(self, objects: Sequence[S3Object], rows: Sequence[Blob]) -> None:
         """
         Store blob bytes in S3, then register them in Postgres.

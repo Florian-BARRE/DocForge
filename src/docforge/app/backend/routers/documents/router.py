@@ -190,4 +190,36 @@ async def set_document_enabled(
     return DocumentEnabledResponse(document_id=str(document_id), enabled=patch.enabled)
 
 
+@router.post(
+    "/{document_id}/reingest",
+    response_model=UploadAccepted,
+    status_code=202,
+    dependencies=[Depends(require(Capability.WRITE))],
+)
+@auto_handle_errors
+async def reingest_document(document_id: uuid.UUID) -> UploadAccepted:
+    """
+    Re-run ingestion on an existing document — no delete-and-re-upload.
+
+    The original bytes are already stored (content-addressed) and the worker refetches them, so
+    re-uploading the same file is refused as a duplicate; this re-processes the stored original with
+    the collection's CURRENT pipeline (and the current engine) instead. The run is idempotent — the
+    previous chunks/IR/pages are purged and the vectors overwritten — and the user-declared metadata
+    survives. Poll the returned job for progress.
+
+    Returns:
+        UploadAccepted: The document id and the new ingestion job id (202); 404 when unknown.
+    """
+    # 1. Create a fresh job on the existing document (reset to PENDING). None = unknown document.
+    result = await CONTEXT.database.ingestion.reingest(document_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail=f"Document {document_id} not found.")
+
+    # 2. Hand over to the worker — it refetches the original by source_hash and re-runs the pipeline.
+    document, job = result
+    await CONTEXT.queue.enqueue_ingest(str(document.id), str(job.id))
+    CONTEXT.logger.info(f"Re-ingest enqueued for {document.id} (job {job.id})")
+    return UploadAccepted(document_id=str(document.id), job_id=str(job.id))
+
+
 __all__ = ["router"]

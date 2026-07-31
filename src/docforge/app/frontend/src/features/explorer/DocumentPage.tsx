@@ -17,6 +17,7 @@ import {
   type DocumentIR,
   type PageInfo,
 } from "../../api/explorer";
+import { reingestDocument } from "../../api/documents";
 import { BackLink } from "../../components/BackLink";
 import { Button } from "../../components/Button";
 import { Chip } from "../../components/Chip";
@@ -77,6 +78,7 @@ export function DocumentPage({ collectionId, documentId, onNavigate }: DocumentP
 
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [reingesting, setReingesting] = useState(false);
 
   const load = () => {
     setError(null);
@@ -165,6 +167,20 @@ export function DocumentPage({ collectionId, documentId, onNavigate }: DocumentP
     }
   };
 
+  const handleReingest = async () => {
+    setReingesting(true);
+    try {
+      // Re-runs the stored original through the collection's current pipeline — no re-upload. Jump
+      // to the new job so its progress (and the live stage feed) is watched straight away.
+      const { job_id } = await reingestDocument(documentId);
+      toast.success("Re-ingest started");
+      onNavigate({ name: "job", collectionId, jobId: job_id });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      setReingesting(false);
+    }
+  };
+
   if (error) return <ErrorState message={error} onRetry={load} />;
   if (!document) return <LoadingState label="loading document…" />;
 
@@ -185,6 +201,7 @@ export function DocumentPage({ collectionId, documentId, onNavigate }: DocumentP
         actions={
           <>
             <DocumentEnabledToggle documentId={documentId} enabled={document.enabled} onChanged={handleDocumentEnabledChanged} />
+            <Button onClick={handleReingest} disabled={reingesting}>{reingesting ? "re-ingesting…" : "Re-ingest"}</Button>
             {confirmingDelete ? (
               <span style={{ display: "inline-flex", gap: theme.space.s, alignItems: "center" }}>
                 <span style={{ color: theme.color.dim, fontSize: theme.font.size.s }}>Delete for good?</span>
