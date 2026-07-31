@@ -9,6 +9,7 @@ from collections.abc import Mapping, Sequence
 
 # ====== Third-Party Library Imports ======
 from qdrant_client import AsyncQdrantClient, models
+from qdrant_client.http.exceptions import UnexpectedResponse
 
 # ====== Local Project Imports ======
 from ..vectors import DOCUMENT_ID_KEY, PayloadType, QdrantVectorSchema
@@ -57,11 +58,20 @@ class QdrantCollectionApi:
             return
         # 2. The vector space mirrors the contract (content + per-field dense).
         vectors_config = QdrantVectorSchema.dense_config(dense_dim, semantic_fields)
-        await client.create_collection(
-            collection_name=name,
-            vectors_config=vectors_config,
-            sparse_vectors_config=QdrantVectorSchema.sparse_config(lexical_fields),
-        )
+        try:
+            await client.create_collection(
+                collection_name=name,
+                vectors_config=vectors_config,
+                sparse_vectors_config=QdrantVectorSchema.sparse_config(lexical_fields),
+            )
+        except UnexpectedResponse as error:
+            # collection_exists()→create is NOT atomic: when several documents ingest concurrently
+            # into a BRAND-NEW collection, two workers can both see "missing" and both create, and
+            # the loser gets 409 "already exists". That is success, not failure — the winner builds
+            # the same space + indexes; a 409 here must never fail an ingest. Any other status re-raises.
+            if error.status_code == 409:
+                return
+            raise
         # 3. A typed payload index per filterable field, so exact/range filters work.
         for field_name, payload_type in (filterable_fields or {}).items():
             await client.create_payload_index(
