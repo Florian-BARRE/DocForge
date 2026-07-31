@@ -67,9 +67,10 @@ class QdrantSearchApi:
         prefetch_limit: int | None = None,
         colbert: list[list[float]] | None = None,
         rescore_pool_size: int = 100,
+        fusion: str = "rrf",
     ) -> list[tuple[str, float]]:
         """
-        Filtered hybrid search across the named vectors, fused with Reciprocal Rank Fusion.
+        Filtered hybrid search across the named vectors, fused with the chosen strategy.
 
         Two shapes, decided by ``colbert``:
 
@@ -96,6 +97,11 @@ class QdrantSearchApi:
                 turns the search into a late-interaction re-score over the fused pool.
             rescore_pool_size (int): Size of the fused candidate pool the ColBERT stage re-scores
                 (ignored when ``colbert`` is None).
+            fusion (str): How the dense/sparse branches are fused — ``"rrf"`` (Reciprocal Rank
+                Fusion, rank-based, robust and score-scale-agnostic; the default) or ``"dbsf"``
+                (Distribution-Based Score Fusion, which normalises each branch's score distribution
+                before summing, letting a confident branch dominate — useful when one axis, e.g.
+                exact lexical, should lead). Any other value falls back to RRF.
 
         Returns:
             list[tuple[str, float]]: (chunk_id, score), best first — hydrate from Postgres.
@@ -106,6 +112,7 @@ class QdrantSearchApi:
         query_filter = (
             QdrantSearchApi._to_filter(conditions, exclusions) if conditions or exclusions else None
         )
+        fusion_strategy = models.Fusion.DBSF if fusion == "dbsf" else models.Fusion.RRF
         prefetch: list[models.Prefetch] = []
         for vec_name, vector in (dense or {}).items():
             prefetch.append(
@@ -125,7 +132,7 @@ class QdrantSearchApi:
         if colbert is not None:
             pool = models.Prefetch(
                 prefetch=prefetch,
-                query=models.FusionQuery(fusion=models.Fusion.RRF),
+                query=models.FusionQuery(fusion=fusion_strategy),
                 limit=rescore_pool_size,
             )
             response = await client.query_points(
@@ -141,7 +148,7 @@ class QdrantSearchApi:
         response = await client.query_points(
             collection_name=name,
             prefetch=prefetch,
-            query=models.FusionQuery(fusion=models.Fusion.RRF),
+            query=models.FusionQuery(fusion=fusion_strategy),
             limit=limit,
             with_payload=False,
         )

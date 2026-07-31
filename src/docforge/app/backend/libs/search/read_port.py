@@ -51,6 +51,7 @@ class CollectionReadPortImpl(CollectionReadPort, LoggerClass):
         limit: int,
         targets: list[SearchTarget],
         rescore_pool_size: int | None = None,
+        fusion: str = "rrf",
     ) -> list[Candidate]:
         """
         Run the collection's filtered hybrid search and return candidates, best-first.
@@ -68,6 +69,7 @@ class CollectionReadPortImpl(CollectionReadPort, LoggerClass):
                 resolved here to the named query-vector dicts (the only place that knows those names).
             rescore_pool_size (int | None): Late-interaction re-score pool size; None uses the
                 store default.
+            fusion (str): Branch-fusion strategy — "rrf" (default) or "dbsf".
 
         Returns:
             list[Candidate]: Chunk ids + fused scores in retrieval order (empty when nothing matched).
@@ -93,6 +95,7 @@ class CollectionReadPortImpl(CollectionReadPort, LoggerClass):
             limit=limit,
             colbert=colbert,
             rescore_pool_size=rescore_pool_size or _DEFAULT_RESCORE_POOL_SIZE,
+            fusion=fusion,
         )
 
         # 3. Build lean candidates straight from the pairs — the pool is hydrated exactly once, by

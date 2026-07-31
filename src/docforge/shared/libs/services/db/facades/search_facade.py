@@ -47,6 +47,7 @@ class SearchFacade(LoggerClass):
         prefetch_limit: int | None = None,
         colbert: list[list[float]] | None = None,
         rescore_pool_size: int = 100,
+        fusion: str = "rrf",
     ) -> list[tuple[str, float]]:
         """
         Run a collection's filtered hybrid search and return lean (chunk_id, score) pairs only.
@@ -66,6 +67,8 @@ class SearchFacade(LoggerClass):
             colbert (list[list[float]] | None): The query's ColBERT multi-vector; when given, the
                 search becomes a late-interaction re-score over the fused pool (MAX_SIM).
             rescore_pool_size (int): Size of the fused pool the ColBERT stage re-scores.
+            fusion (str): Branch-fusion strategy — "rrf" (default) or "dbsf" (score-distribution
+                fusion, lets a confident axis dominate).
 
         Returns:
             list[tuple[str, float]]: (chunk_id, fused score) pairs, best first (empty when the
@@ -102,6 +105,7 @@ class SearchFacade(LoggerClass):
             prefetch_limit=prefetch_limit,
             colbert=colbert,
             rescore_pool_size=rescore_pool_size,
+            fusion=fusion,
         )
 
 

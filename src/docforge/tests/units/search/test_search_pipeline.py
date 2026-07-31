@@ -62,11 +62,15 @@ class MockCollectionReadPort(CollectionReadPort):
     def __init__(self) -> None:
         self.hybrid_calls: list[tuple[dict, int]] = []
         self.hydrated_ids: list[str] = []
+        self.fusions: list[str] = []
 
-    async def hybrid_search(self, encoded, filters, limit, targets=None, rescore_pool_size=None):
-        """Return 3 fake candidates, best-first (records the call for assertions)."""
+    async def hybrid_search(
+        self, encoded, filters, limit, targets=None, rescore_pool_size=None, fusion="rrf"
+    ):
+        """Return 3 fake candidates, best-first (records the call + fusion for assertions)."""
         assert isinstance(encoded, EncodedQuery)
         self.hybrid_calls.append((filters, limit))
+        self.fusions.append(fusion)
         return [
             Candidate(chunk_id="c1", score=0.9, source="hybrid"),
             Candidate(chunk_id="c2", score=0.7, source="hybrid"),
@@ -145,13 +149,37 @@ def test_search_graph_executes_end_to_end_to_a_ranked_result() -> None:
     assert port.hydrated_ids == ["c1", "c2", "c3"]
 
 
+def test_default_fusion_is_rrf_and_flows_to_the_port() -> None:
+    """The stock retrieve node fuses with RRF, and that choice reaches the read port."""
+    group = PipelineBuilder().build(SearchPipeline.default_blob())
+    port = MockCollectionReadPort()
+    _bind_read_port(group, port)
+    asyncio.run(FlowEngine().execute(group, _fake_run_input()))
+    assert port.fusions == ["rrf"]
+
+
+def test_configured_dbsf_fusion_flows_to_the_port() -> None:
+    """Setting the retrieve node's fusion=dbsf drives the port's fusion strategy end-to-end."""
+    blob = SearchPipeline.default_blob().model_dump(mode="json")
+    retrieve = next(node for node in blob["nodes"] if node["id"] == "retrieve")
+    retrieve.setdefault("config", {})["fusion"] = "dbsf"
+
+    group = PipelineBuilder().build(blob)
+    port = MockCollectionReadPort()
+    _bind_read_port(group, port)
+    asyncio.run(FlowEngine().execute(group, _fake_run_input()))
+    assert port.fusions == ["dbsf"]
+
+
 class CuttingReadPort(CollectionReadPort):
     """A port whose retrieval pool is larger than top_k and out of score order — proves the cut."""
 
     def __init__(self) -> None:
         self.hydrated_ids: list[str] = []
 
-    async def hybrid_search(self, encoded, filters, limit, targets=None, rescore_pool_size=None):
+    async def hybrid_search(
+        self, encoded, filters, limit, targets=None, rescore_pool_size=None, fusion="rrf"
+    ):
         """Return 5 candidates in NON-descending order so ranking-before-cut is observable."""
         return [
             Candidate(chunk_id="lo", score=0.1, source="hybrid"),
@@ -278,7 +306,9 @@ class TargetCapturingReadPort(CollectionReadPort):
     def __init__(self) -> None:
         self.targets_seen: list = None
 
-    async def hybrid_search(self, encoded, filters, limit, targets=None, rescore_pool_size=None):
+    async def hybrid_search(
+        self, encoded, filters, limit, targets=None, rescore_pool_size=None, fusion="rrf"
+    ):
         self.targets_seen = targets
         return [Candidate(chunk_id="c1", score=0.9, source="hybrid")]
 

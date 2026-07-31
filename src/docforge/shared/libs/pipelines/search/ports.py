@@ -37,6 +37,7 @@ class CollectionReadPort(ABC):
         limit: int,
         targets: list[SearchTarget],
         rescore_pool_size: int | None = None,
+        fusion: str = "rrf",
     ) -> list[Candidate]:
         """
         Run the collection's filtered hybrid search and return candidates, best-first.
@@ -54,6 +55,7 @@ class CollectionReadPort(ABC):
             targets (list[SearchTarget]): The fields × modalities to search (content and/or metadata).
             rescore_pool_size (int | None): The fused-pool size a late-interaction re-score works
                 over; None to leave the store's default.
+            fusion (str): Branch-fusion strategy — "rrf" (default) or "dbsf".
 
         Returns:
             list[Candidate]: Chunk ids + scores in fusion order (empty when nothing matched).

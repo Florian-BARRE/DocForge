@@ -6,6 +6,9 @@
 # the disabled-point exclusion can never be bypassed. Depth is the QuerySpec's over-sampled
 # candidate_k; the node is a pure function of (input, injected port).
 
+# ====== Standard Library Imports ======
+from typing import Literal
+
 # ====== Third-Party Library Imports ======
 from pydantic import Field
 
@@ -19,8 +22,16 @@ from ...base import PortBackedNode
 
 
 class RetrieveHybridConfig(NodeConfig):
-    """The late-interaction re-score pool depth (None leaves the store's default)."""
+    """The fusion strategy + the late-interaction re-score pool depth."""
 
+    fusion: Literal["rrf", "dbsf"] = Field(
+        default="rrf",
+        description="How the dense and sparse branches are fused. 'rrf' (default) — Reciprocal "
+        "Rank Fusion: rank-based, score-scale-agnostic, robust when the two axes disagree. 'dbsf' "
+        "— Distribution-Based Score Fusion: normalises each branch's score distribution before "
+        "summing, so a confident axis (e.g. exact lexical on IDs/codes) can dominate. Tune per "
+        "collection to shift the semantic↔lexical balance.",
+    )
     rescore_pool_size: int | None = Field(
         default=None,
         gt=0,
@@ -48,12 +59,13 @@ class RetrieveHybridNode(PortBackedNode):
 
     KIND = "hybrid"
     NAME = "Hybrid search"
-    SUMMARY = "One server-side hybrid search (dense+sparse RRF), disabled points excluded."
+    SUMMARY = "One server-side hybrid search (dense+sparse, RRF or DBSF), disabled points excluded."
     HOW_IT_WORKS = (
         "Passes the query's dense/sparse (and colbert) vectors + filters to the bound "
-        "CollectionReadPort.hybrid_search, which fuses the modalities with RRF in the store and "
-        "excludes disabled chunks/documents. Returns candidate_k candidates in fusion order. No "
-        "direct store import — the port is injected via bind()."
+        "CollectionReadPort.hybrid_search, which fuses the modalities in the store with the "
+        "configured strategy (RRF or DBSF) and excludes disabled chunks/documents. Returns "
+        "candidate_k candidates in fusion order. No direct store import — the port is injected "
+        "via bind()."
     )
     Config = RetrieveHybridConfig
     Consumes = RetrieveHybridConsumes
@@ -79,6 +91,7 @@ class RetrieveHybridNode(PortBackedNode):
             limit=data.spec.candidate_k,
             targets=data.spec.search_targets,
             rescore_pool_size=config.rescore_pool_size,
+            fusion=config.fusion,
         )
         self.logger.debug(
             f"Retrieved {len(candidates)} candidate(s) (depth {data.spec.candidate_k})"
