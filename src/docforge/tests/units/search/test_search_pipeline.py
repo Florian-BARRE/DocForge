@@ -194,6 +194,31 @@ def test_hydrate_node_cuts_to_top_k_and_hydrates_only_the_cut_set() -> None:
     assert [hit.score for hit in result.hits] == [0.9, 0.7]
 
 
+def test_query_normalize_preserves_case_by_default_and_folds_only_when_asked() -> None:
+    """Default keeps the query's case (aligned with original-case documents); fold_case=True lowers it.
+
+    Documents are embedded from their original-case text, so BGE-M3 tokenizes them mixed-case on both
+    the dense and sparse axes. Lower-casing only the query would misalign query and document vectors
+    and cost recall — so the default must preserve case. The knob still folds when explicitly set.
+    """
+    from shared_libs.pipelines.search.nodes.query.normalize.core import (
+        QueryNormalizeConfig,
+        QueryNormalizeConsumes,
+        QueryNormalizeNode,
+    )
+
+    raw = RawQuery(text="  AES-256 Encryption Policy  ", top_k=5, flags={})
+    filters = QueryFilters(filters={})
+
+    default_node = QueryNormalizeNode(id="n", config=QueryNormalizeConfig())
+    default_out = asyncio.run(default_node.run(QueryNormalizeConsumes(query=raw, filters=filters)))
+    assert default_out.spec.text == "AES-256 Encryption Policy"  # trimmed, case preserved
+
+    folding_node = QueryNormalizeNode(id="n", config=QueryNormalizeConfig(fold_case=True))
+    folding_out = asyncio.run(folding_node.run(QueryNormalizeConsumes(query=raw, filters=filters)))
+    assert folding_out.spec.text == "aes-256 encryption policy"  # opt-in still works
+
+
 def test_search_palette_lists_the_registered_families() -> None:
     """The palette exposes every search family with described nodes (must-have kinds present)."""
     palette = SearchPipeline.palette()

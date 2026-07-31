@@ -22,7 +22,11 @@ class QueryNormalizeConfig(NodeConfig):
     """The over-sampling knobs of the retrieval depth (no model, no store)."""
 
     fold_case: bool = Field(
-        default=True, description="Lower-case the query text (case-insensitive lexical matching)."
+        default=False,
+        description="Lower-case the query text. OFF by default: documents are embedded from their "
+        "original-case text, so BGE-M3's tokenizer (dense AND sparse) sees mixed case on the doc "
+        "side; folding only the query would put query and document vectors in slightly different "
+        "spaces and cost recall. Turn on only for a pure-lexical setup that also lower-cases docs.",
     )
     candidate_multiplier: int = Field(
         default=4,
@@ -53,11 +57,12 @@ class QueryNormalizeNode(ActionNode):
 
     KIND = "normalize"
     NAME = "Normalize query"
-    SUMMARY = "Trim and case-fold the query, structure filters, and size the retrieval depth."
+    SUMMARY = "Trim the query (case preserved), structure filters, and size the retrieval depth."
     HOW_IT_WORKS = (
-        "Strips and (by default) case-folds the query text, carries the filter map and flags "
-        "through, keeps the caller's top_k and derives candidate_k as an over-sampled pool "
-        "(max(top_k × multiplier, floor)). Zero model, zero store — the free query-intake method."
+        "Strips the query text (case preserved by default, to match the original-case documents), "
+        "carries the filter map and flags through, keeps the caller's top_k and derives candidate_k "
+        "as an over-sampled pool (max(top_k × multiplier, floor)). Zero model, zero store — the free "
+        "query-intake method."
     )
     Config = QueryNormalizeConfig
     Consumes = QueryNormalizeConsumes
