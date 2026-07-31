@@ -77,6 +77,43 @@ class SearchHelpers:
         return build_match_conditions(accepted), invalid
 
     @staticmethod
+    def enum_violations(
+        filters: dict[str, Any] | None, schema: Sequence[MetadataField]
+    ) -> list[str]:
+        """
+        Report filter values that fall OUTSIDE a filterable field's declared enum.
+
+        A field declared with ``enum_values`` accepts only those members (the same rule upload-time
+        admission enforces). Filtering it with a value outside the set otherwise returns 200 with 0
+        hits — a typo'd filter reads as "nothing matches" and can mask a real result set — so it is
+        rejected 422 here, naming the field and its allowed values. Non-enum and non-filterable
+        fields are not this check's concern (filterability is gated separately).
+
+        Args:
+            filters (dict | None): The requested constraints (field → scalar or list).
+            schema (Sequence[MetadataField]): The collection's metadata schema.
+
+        Returns:
+            list[str]: One human-readable message per out-of-enum value (empty when all valid).
+        """
+        # 1. Index the filterable enum fields → their allowed value set (skip fields without one).
+        enums = {
+            row.field_name: getattr(row, "enum_values", None)
+            for row in schema
+            if row.filterable and getattr(row, "enum_values", None)
+        }
+        # 2. Every requested value (a list filter is any-of) must be a declared member.
+        errors: list[str] = []
+        for name, value in (filters or {}).items():
+            allowed = enums.get(name)
+            if allowed is None:
+                continue
+            for item in value if isinstance(value, list) else [value]:
+                if item not in allowed:
+                    errors.append(f"field '{name}' value {item!r} is not one of {allowed}")
+        return errors
+
+    @staticmethod
     def validate_search_targets(
         search_in: list[SearchTargetModel] | None, schema: Sequence[MetadataField]
     ) -> list[str]:
@@ -172,6 +209,7 @@ class SearchHelpers:
             document_id=hit.document_id,
             filename=metadata.get("filename"),
             document_title=metadata.get("document_title"),
+            heading_path=metadata.get("heading_path") or [],
             metadata=metadata.get("document_metadata") or {},
             score=hit.score,
             text=hit.text or "",

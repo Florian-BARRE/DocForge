@@ -143,6 +143,7 @@ class CollectionReadPortImpl(CollectionReadPort, LoggerClass):
                 metadata={
                     "chunk_index": row.chunk_index,
                     "token_count": row.token_count,
+                    "heading_path": row.heading_path or [],
                     "filename": document.filename if document else None,
                     "document_title": (document.title or None) if document else None,
                     "document_metadata": doc_metadata.get(row.document_id, {}),

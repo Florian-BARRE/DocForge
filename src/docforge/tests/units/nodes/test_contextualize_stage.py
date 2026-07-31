@@ -239,6 +239,39 @@ async def test_default_stack_declared_title_anchors_a_flat_deck() -> None:
     assert out[0].context == "Annual Report › Marge brute"
 
 
+async def test_default_stack_does_not_duplicate_a_title_the_body_already_inlines() -> None:
+    """A coalesced chunk whose BODY opens with the inlined H1 title, and whose heading_path top level
+    is that same title, must NOT get the title added back as a breadcrumb prefix. doc_meta suppresses
+    its anchor because the body opens with the title; the breadcrumb must not re-introduce it — else
+    the title reads twice ('<title> ... <title> ... body'). Only the body carries it (once)."""
+    title = "Acme Data Protection Charter"
+    charter = SourceDocument(filename="charter.pdf", content=b"x", declared_meta={"title": title})
+    chunks = [
+        # The coalesced title-section chunk: body opens with the inlined H1, path top level = title.
+        Chunk(
+            chunk_id="d#c0",
+            ordinal=0,
+            text=f"{title}\n\nThis Charter governs data handling.",
+            heading_path=[title],
+        ),
+        # A normal sub-section chunk (body does NOT open with the title) — must still get the anchor.
+        Chunk(
+            chunk_id="d#c1",
+            ordinal=1,
+            text="Article 5 governs breach notification.",
+            heading_path=[title, "Article 5 — Breach"],
+        ),
+    ]
+    out = await _default_stack(chunks, charter)
+
+    # 1. The title-section chunk gains NO prefix — the title stays exactly once (in the body).
+    assert out[0].context == ""
+    assert out[0].enriched_text.count(title) == 1
+    # 2. The sub-section chunk is still anchored + trailed, with the title named exactly once.
+    assert out[1].context == f"{title} › Article 5 — Breach"
+    assert out[1].context.count(title) == 1
+
+
 async def test_sliding_context_uses_prev_tail_and_next_head() -> None:
     node = ContextualizerSlidingNode(
         id="s", config=ContextualizerSlidingConfig(prev_words=3, next_words=2)

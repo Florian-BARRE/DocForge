@@ -186,8 +186,10 @@ class ChunkerHelpers:
             native_text (str | None): The figure block's own native text, if any.
 
         Returns:
-            str | None: The marked figure block, or None when the figure carries no content
-            (a decorative figure with no caption, description or OCR contributes nothing).
+            str | None: The marked figure block, or None when the figure carries no searchable
+            content (no caption, native text, description, OCR or data). A crop alone is NOT content:
+            a bare "[Image: <kind>]" marker with nothing behind it would become a placeholder chunk
+            that pollutes retrieval and self-cites a real filename with no answer in it.
         """
         # 1. Caption + native text are real document prose describing the figure; the marker
         #    frames the whole block as image-derived so the caption cannot pass for a paragraph.
@@ -205,12 +207,12 @@ class ChunkerHelpers:
         if data_grid:
             lines.append("[Data]")
             lines.append(data_grid)
-        # 4. Emit when there is real content (caption/native/description/OCR/data) OR the figure
-        #    carries a CROP: a cropped figure must anchor into the chunk stream by its marker even
-        #    with no caption or enrichment, so the image stays reachable from a hit
-        #    (hit -> chunk -> picture block -> crop). Only a figure with neither content nor a crop
-        #    is truly decorative and contributes nothing.
-        return "\n".join(lines) if header_bits or len(lines) > 1 or figure.crop else None
+        # 4. Emit ONLY when there is real content (caption/native/description/OCR/data). A figure
+        #    with a crop but no enrichment (the out-of-box, enrich-off case) is NOT emitted: a bare
+        #    "[Image: <kind>]" marker carries no searchable text, so it would become a content-free
+        #    chunk that ranks as a top hit and mis-cites a real filename. Such a figure contributes
+        #    nothing here (the crop still lives on its IR block, reachable via the document view).
+        return "\n".join(lines) if header_bits or len(lines) > 1 else None
 
 
 __all__ = ["ChunkerHelpers"]

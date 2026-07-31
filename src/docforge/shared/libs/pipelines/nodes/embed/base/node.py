@@ -10,6 +10,7 @@
 
 # ====== Standard Library Imports ======
 import asyncio
+import re
 from abc import abstractmethod
 from collections.abc import Awaitable, Callable
 
@@ -32,12 +33,33 @@ from shared_libs.public_models import (
 from .config import BaseEmbedConfig
 from .io import EmbedConsumes, EmbedProduces
 
+# A bare figure marker line — an "[Image: <kind>]" with NOTHING after the closing bracket (no
+# caption/OCR/description folded onto it). Such a line carries no searchable content of its own.
+_BARE_IMAGE_MARKER = re.compile(r"^\[Image:[^\]]*\]$")
+
 
 class BaseEmbedderNode(ActionNode):
     """Abstract embedder: chunks in, chunk-linked vectors out; children implement the hooks."""
 
     Consumes = EmbedConsumes
     Produces = EmbedProduces
+
+    @staticmethod
+    def _has_searchable_content(text: str) -> bool:
+        """Whether a chunk's enriched text carries anything worth embedding.
+
+        A chunk whose text is ONLY whitespace and/or bare ``[Image: <kind>]`` figure markers (a
+        cropped-but-unenriched figure with no caption/OCR/description) has no real content: embedding
+        it spends a vector on a placeholder that then surfaces as a top hit with a misleading
+        self-citation (the empty chunk still names a real filename). Conservative on purpose — a line
+        that is a marker WITH text folded in ("[Image: chart] Figure 2 …"), or any other non-blank
+        line, counts as content and keeps the chunk embedded.
+        """
+        for line in text.splitlines():
+            stripped = line.strip()
+            if stripped and not _BARE_IMAGE_MARKER.match(stripped):
+                return True
+        return False
 
     @abstractmethod
     async def _embed_dense(self, texts: list[str]) -> list[list[float]]:
@@ -182,7 +204,15 @@ class BaseEmbedderNode(ActionNode):
         """
         config: BaseEmbedConfig = self.config
         # 1. THE single policy: embed only role-default-enabled chunks (body); skip the furniture.
-        enabled = [chunk for chunk in data.chunks if role_default_enabled(chunk.role)]
+        #    Then drop content-free chunks (bare figure placeholders): like the role-disabled ones
+        #    they still flow to persistence via the chunk artefact, but they get NO vector — so a
+        #    placeholder can never surface as a search hit with a misleading self-citation.
+        enabled = [
+            chunk
+            for chunk in data.chunks
+            if role_default_enabled(chunk.role)
+            and self._has_searchable_content(chunk.enriched_text)
+        ]
         if not enabled:
             return EmbedProduces(embeddings=ChunkEmbeddings(model=config.model))
 
@@ -213,7 +243,7 @@ class BaseEmbedderNode(ActionNode):
         ]
         self.logger.info(
             f"Embedded {len(items)}/{len(data.chunks)} chunk(s) "
-            f"({len(data.chunks) - len(enabled)} skipped by role) "
+            f"({len(data.chunks) - len(enabled)} skipped by role or empty content) "
             f"(dense dim {len(dense[0])}, sparse: {sparse_vectors is not None}, "
             f"semantic fields: {sorted(field_vectors)})"
         )

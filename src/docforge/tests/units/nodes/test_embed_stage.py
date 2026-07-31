@@ -160,6 +160,29 @@ async def test_disabled_by_role_chunks_are_not_embedded_but_the_rest_are() -> No
     assert not any("Confidential" in t or "Intro" in t for t in embedded_texts)
 
 
+async def test_content_free_placeholder_chunks_are_not_embedded_but_the_rest_are() -> None:
+    # A chunk whose enriched text is ONLY a bare "[Image: photo]" marker (a cropped-but-unenriched
+    # figure) carries no searchable content: it must get NO vector so it can never surface as a hit
+    # with a misleading self-citation. It still flows to persistence (like role-disabled chunks) —
+    # it is simply absent from the chunk_id-linked vectors here. The real chunks around it embed.
+    mixed = [
+        _chunk(0, "Body one."),
+        _chunk(1, "[Image: photo]"),  # bare placeholder → no content
+        _chunk(2, "   \n [Image: photo]  \n "),  # whitespace + bare marker → still no content
+        _chunk(3, "Body two."),
+        _chunk(4, "[Image: chart] Figure 2: quarterly revenue"),  # marker WITH caption → real text
+    ]
+    node = FakeEmbed(id="e", config=BaseEmbedConfig(model="m", batch_size=8))
+    out = await node.run(EmbedConsumes(chunks=mixed, contract=CONTRACT))
+
+    # 1. Only the chunks with real content got vectors; the bare placeholders are absent.
+    embedded_ids = {item.chunk_id for item in out.embeddings.items}
+    assert embedded_ids == {"d#c0", "d#c3", "d#c4"}
+    # 2. No provider call ever saw a bare placeholder — the cost was truly skipped, not discarded.
+    embedded_texts = [t for call in node.dense_calls for t in call]
+    assert not any(t.strip() == "[Image: photo]" for t in embedded_texts)
+
+
 async def test_all_disabled_chunks_yield_empty_embeddings_without_spend() -> None:
     only_furniture = [
         Chunk(chunk_id="d#c0", ordinal=0, text="Header", role=ChunkRole.HEADER_FOOTER),

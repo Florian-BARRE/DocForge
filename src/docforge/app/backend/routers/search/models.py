@@ -95,6 +95,12 @@ class SearchHitModel(BaseModel):
     document_title: str | None = Field(
         default=None, description="The source document's title (empty parsed titles → null)."
     )
+    heading_path: list[str] = Field(
+        default_factory=list,
+        description="The chunk's section ancestry, top-down (e.g. ['Article 7 — Audit rights']) — "
+        "so a hit self-cites the section/clause it came from. Empty when the chunk sits under no "
+        "section.",
+    )
     metadata: dict[str, Any] = Field(
         default_factory=dict,
         description="The document's filterable metadata (field → value) — so a hit self-cites "

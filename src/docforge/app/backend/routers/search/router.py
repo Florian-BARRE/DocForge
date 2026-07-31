@@ -62,6 +62,12 @@ async def search_collection(collection_id: uuid.UUID, request: SearchRequest) ->
             detail=f"Not a filterable field for this collection: {sorted(invalid)}",
         )
 
+    # 3b. A filterable ENUM field only accepts its declared members — a value outside the enum is a
+    #     caller error rejected 422 (else it silently returns 0 hits and reads as "nothing matches").
+    enum_errors = SearchHelpers.enum_violations(request.filters, schema)
+    if enum_errors:
+        raise HTTPException(status_code=422, detail=f"Invalid filter value(s): {enum_errors}")
+
     # 4. Gate the search targets the same way — a target naming a field/vector the collection never
     #    indexed (or a selection with no modality) is a caller error rejected 422 before any spend.
     target_errors = SearchHelpers.validate_search_targets(request.search_in, schema)

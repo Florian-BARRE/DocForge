@@ -190,6 +190,7 @@ class RunTranslator:
                     parent_id=None,
                     text=chunk.enriched_text,
                     token_count=chunk.token_count,
+                    heading_path=chunk.heading_path or None,
                     role=chunk.role.value,
                     simhash=None,
                     is_indexed=False,

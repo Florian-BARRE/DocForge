@@ -650,10 +650,11 @@ async def test_single_section_chunk_does_not_duplicate_its_heading_inline() -> N
     assert not chunks[0].text.startswith("Overview"), "heading must not be duplicated into the body"
 
 
-def test_figure_with_a_crop_but_no_caption_still_anchors_a_passage() -> None:
+def test_figure_with_a_crop_but_no_caption_contributes_no_passage() -> None:
     """A detected figure carrying a CROP but no caption/enrichment (the out-of-box, enrich-off case)
-    must still produce a passage — else its picture block links to no chunk and the image crop is
-    unreachable from search (hit -> chunk -> picture block -> crop)."""
+    contributes NO searchable text: a bare "[Image: <kind>]" marker with nothing behind it would
+    become a content-free chunk that ranks as a top hit and mis-cites a real filename. The crop still
+    lives on the IR block (reachable via the document view); it must not seed a placeholder passage."""
     ir = DocumentIR(
         doc_id="dcrop",
         source_hash="h",
@@ -670,9 +671,26 @@ def test_figure_with_a_crop_but_no_caption_still_anchors_a_passage() -> None:
         ],
     )
     passages = PassageProjector.project(ir, BaseChunkerConfig())
-    figure_passages = [p for p in passages if "figcrop" in p.block_ids]
-    assert figure_passages, "a crop-bearing figure must anchor a passage (its block id present)"
-    assert figure_passages[0].text.startswith("[Image: diagram]")
+    assert not [p for p in passages if "figcrop" in p.block_ids], (
+        "a crop-only figure (no caption/OCR/description) must not seed a placeholder passage"
+    )
+
+
+def test_render_figure_emits_nothing_for_a_bare_crop_but_keeps_enriched_figures() -> None:
+    """render_figure returns None for a content-free figure (crop only / nothing), but ANY of a
+    caption, native text, description or OCR keeps it emitting the marked block."""
+    from shared_libs.pipelines.ingest.nodes.chunk.base.helpers import ChunkerHelpers
+
+    crop_only = FigureEnrichment(kind=FigureKind.PHOTO, crop=b"\x89PNG")
+    assert ChunkerHelpers.render_figure(crop_only, caption=None, native_text=None) is None
+    assert ChunkerHelpers.render_figure(FigureEnrichment(kind=FigureKind.PHOTO), None, None) is None
+    # A caption keeps the figure — it carries real, searchable prose about the image.
+    with_caption = ChunkerHelpers.render_figure(crop_only, caption="A ginger cat", native_text=None)
+    assert with_caption is not None and with_caption.startswith("[Image: photo] A ginger cat")
+    # OCR text alone is enough content to keep the figure.
+    ocr = FigureEnrichment(kind=FigureKind.PHOTO, crop=b"\x89PNG", ocr_text="TOTAL 35.72")
+    rendered = ChunkerHelpers.render_figure(ocr, caption=None, native_text=None)
+    assert rendered is not None and "[OCR] TOTAL 35.72" in rendered
 
 
 def test_caption_survives_when_its_table_is_empty() -> None:

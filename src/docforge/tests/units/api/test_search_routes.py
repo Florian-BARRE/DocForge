@@ -32,10 +32,11 @@ def _pipeline_with_embed() -> dict:
 
 
 def _schema() -> list:
-    """One filterable field ('topic') + one non-filterable ('note')."""
+    """A filterable field ('topic'), a non-filterable one ('note'), and a filterable ENUM."""
     return [
         SimpleNamespace(field_name="topic", filterable=True),
         SimpleNamespace(field_name="note", filterable=False),
+        SimpleNamespace(field_name="doc_type", filterable=True, enum_values=["policy", "contract"]),
     ]
 
 
@@ -53,6 +54,7 @@ def _result(query: str) -> SearchResult:
                 metadata={
                     "chunk_index": 3,
                     "token_count": 42,
+                    "heading_path": ["Chapter II", "Article 5 — Principles"],
                     "filename": "gdpr.pdf",
                     "document_title": "EU Regulation",
                     "document_metadata": {"jurisdiction": "EU", "article_ref": "Article 5"},
@@ -111,6 +113,8 @@ def test_search_delegates_to_service_and_shapes_hits(client, wired) -> None:
     assert hit["filename"] == "gdpr.pdf"
     assert hit["document_title"] == "EU Regulation"
     assert hit["metadata"] == {"jurisdiction": "EU", "article_ref": "Article 5"}
+    # 5. The section ancestry rides on the hit so a compliance result self-cites the clause.
+    assert hit["heading_path"] == ["Chapter II", "Article 5 — Principles"]
 
 
 def test_search_passes_list_filter_verbatim(client, wired) -> None:
@@ -131,6 +135,29 @@ def test_search_non_filterable_field_is_422(client, wired) -> None:
     )
     assert response.status_code == 422, response.text
     wired.assert_not_awaited()
+
+
+def test_search_enum_filter_outside_the_declared_values_is_422(client, wired) -> None:
+    """A filter value outside a field's declared enum is rejected 422 (not a silent 0-hit 200) —
+    parity with upload-time enum validation, so a typo'd filter never reads as 'nothing matches'."""
+    response = client.post(
+        "/api/v1/collections/33333333-3333-3333-3333-333333333333/search",
+        json={"query": "q", "filters": {"doc_type": "newspaper"}},
+    )
+    assert response.status_code == 422, response.text
+    # The message names the field and its allowed values.
+    assert "doc_type" in response.text and "policy" in response.text
+    wired.assert_not_awaited()
+
+
+def test_search_enum_filter_within_the_declared_values_passes(client, wired) -> None:
+    """A valid enum filter value flows through to the service unchanged (200)."""
+    response = client.post(
+        "/api/v1/collections/33333333-3333-3333-3333-333333333333/search",
+        json={"query": "q", "filters": {"doc_type": "policy"}},
+    )
+    assert response.status_code == 200, response.text
+    assert wired.await_args.kwargs["filters"] == {"doc_type": "policy"}
 
 
 def test_search_blank_query_is_422(client, wired) -> None:
@@ -173,6 +200,44 @@ def test_search_invalid_stored_graph_is_422_not_500(client, wired, monkeypatch) 
     # 1. The invalid stored graph surfaces as a 422 naming the stored search graph, not a 500.
     assert response.status_code == 422, response.text
     assert "stored search graph is invalid" in response.text
+
+
+def test_read_port_hydrate_threads_heading_path_onto_the_hit(fastapi_app) -> None:
+    """CollectionReadPortImpl.hydrate lifts the chunk row's section ancestry into the Hit metadata
+    bag (coalescing a NULL to an empty list), so the router can surface it for clause-level self-cite."""
+    import asyncio
+    import uuid as _uuid
+
+    from backend.libs.search import CollectionReadPortImpl
+
+    chunk_uuid = _uuid.uuid4()
+    doc_uuid = _uuid.uuid4()
+    chunk_row = SimpleNamespace(
+        id=chunk_uuid,
+        document_id=doc_uuid,
+        text="Audit rights.",
+        chunk_index=7,
+        token_count=12,
+        heading_path=["Article 7 — Audit rights"],
+    )
+    document = SimpleNamespace(id=doc_uuid, filename="charter.pdf", title="Charter")
+    database = SimpleNamespace(
+        documents=SimpleNamespace(
+            get_chunks_by_ids=AsyncMock(return_value=[chunk_row]),
+            get_by_ids=AsyncMock(return_value=[document]),
+            get_filterable_metadata_for_documents=AsyncMock(return_value={doc_uuid: {}}),
+        )
+    )
+    port = CollectionReadPortImpl(database, _uuid.uuid4())
+    hydrated = asyncio.run(port.hydrate([str(chunk_uuid)]))
+
+    hit = hydrated[str(chunk_uuid)]
+    assert hit.metadata["heading_path"] == ["Article 7 — Audit rights"]
+
+    # A NULL heading_path (rows predating the column) coalesces to an empty list, never None.
+    chunk_row.heading_path = None
+    hydrated = asyncio.run(port.hydrate([str(chunk_uuid)]))
+    assert hydrated[str(chunk_uuid)].metadata["heading_path"] == []
 
 
 def test_search_no_embed_node_is_409(client, fastapi_app, monkeypatch) -> None:

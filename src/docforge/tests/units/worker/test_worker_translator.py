@@ -87,6 +87,7 @@ def _chunks() -> list[Chunk]:
             context="Section: Intro",
             block_ids=["b0", "b1"],
             token_count=2,
+            heading_path=["Report", "Intro"],
             generated_meta={"keywords": ["cats"]},
         )
     ]
@@ -158,6 +159,10 @@ def test_chunk_uuid_minted_and_wired_through_composition_and_point(translated) -
     chunk_row = translated.payload.chunks[0]
     assert isinstance(chunk_row.id, uuid.UUID)
     assert chunk_row.text == "Section: Intro\n\nCats."  # stored ENRICHED (decided design)
+    assert chunk_row.heading_path == [
+        "Report",
+        "Intro",
+    ]  # section ancestry persisted for hit self-cite
     assert {cb.chunk_id for cb in translated.payload.composition} == {chunk_row.id}
     assert translated.points[0].point_id == str(chunk_row.id)
     assert translated.payload.chunk_metadata[0].field_id == 7  # name -> field_id resolved

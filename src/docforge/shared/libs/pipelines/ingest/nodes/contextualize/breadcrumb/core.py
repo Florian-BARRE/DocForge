@@ -66,8 +66,17 @@ class ContextualizerBreadcrumbNode(BaseContextualizerNode):
         # 2. Drop a leading level that repeats the doc anchor already ending the accumulated trail
         #    (this chunk lives in the anchored section) — the prefix must name it only once.
         existing = chunks[index].context
-        if existing and existing.split(config.separator)[-1].strip() == path[0].strip():
+        if path and existing and existing.split(config.separator)[-1].strip() == path[0].strip():
             path = path[1:]
+        # 2b. Drop a leading level the chunk's BODY already opens with. The chunker inlines a
+        #     coalesced/single section heading as the body's first line ("Title\n\n<body>"); when
+        #     that heading is also the trail's top level, the title would show once here and again
+        #     in the body. doc_meta suppresses its OWN anchor for exactly this reason (its body-first-
+        #     line check), so the trail must not re-introduce the title it dropped.
+        if path:
+            body_first_line = chunks[index].text.lstrip().split("\n", 1)[0].strip()
+            if path[0].strip() == body_first_line:
+                path = path[1:]
         if not path:
             return None
         # 3. Render the (deduped) trail; the joiner attaches it onto the anchor as one line.

@@ -10,6 +10,7 @@ import uuid
 
 # ====== Third-Party Library Imports ======
 from sqlalchemy import Boolean, ForeignKey, Index, Integer, String, Text, Uuid
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column
 
 # ====== Local Project Imports ======
@@ -41,6 +42,10 @@ class Chunk(Base, TimestampedMixin):
     )
     text: Mapped[str] = mapped_column(Text, nullable=False)  # the enriched, embedded text
     token_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    # Section ancestry TEXTS, top-down (e.g. ["Chapter 2", "Results"]) — computed at chunking time
+    # and carried here so a search hit can self-cite the clause/section it came from. NULL on rows
+    # that predate this column; the read path coalesces NULL to an empty list.
+    heading_path: Mapped[list[str] | None] = mapped_column(ARRAY(String), nullable=True)
     simhash: Mapped[str | None] = mapped_column(String(64), nullable=True)  # near-dup signature
     is_indexed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     # The pipeline's structural classification — a ChunkRole value ("body" / "header_footer" /
