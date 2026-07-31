@@ -1,8 +1,10 @@
 // ====== Code Summary ======
-// The upload panel embedded in the collection detail page: a file picker + a metadata form
+// The upload panel embedded in the collection detail page: a (multi-)file picker + a metadata form
 // generated from the collection's user-origin, document-scope fields (the only ones a caller
 // declares at upload time — system fields are pipeline-extracted, generated ones are metagen's,
-// chunk-scope fields don't exist yet at document admission).
+// chunk-scope fields don't exist yet at document admission). Files are uploaded one at a time by
+// looping the single-file endpoint (the backend dedups by content, so a client loop is safe); one
+// file failing never blocks the rest, and each file's progress is shown inline.
 
 import { useState } from "react";
 import type { FieldSpec } from "../../api/collections";
@@ -15,6 +17,39 @@ import { useToast } from "../../shell/toast";
 import { theme } from "../../theme";
 import { MetadataFieldInput } from "./MetadataFieldInput";
 
+type FileStatus = "queued" | "uploading" | "done" | "duplicate" | "failed";
+
+interface FileEntry {
+  file: File;
+  status: FileStatus;
+  detail: string | null;
+}
+
+const STATUS_TONE: Record<FileStatus, keyof typeof toneColor> = {
+  queued: "dim",
+  uploading: "accent",
+  done: "ok",
+  duplicate: "warn",
+  failed: "error",
+};
+
+// Kept as a lookup so every status colour still resolves to a theme token (never a hardcoded value).
+const toneColor = {
+  dim: theme.color.dim,
+  accent: theme.color.accent,
+  ok: theme.color.ok,
+  warn: theme.color.warn,
+  error: theme.color.error,
+} as const;
+
+const STATUS_LABEL: Record<FileStatus, string> = {
+  queued: "queued",
+  uploading: "uploading…",
+  done: "done",
+  duplicate: "already ingested",
+  failed: "failed",
+};
+
 interface UploadPanelProps {
   collectionId: string;
   fields: FieldSpec[];
@@ -23,43 +58,69 @@ interface UploadPanelProps {
 
 export function UploadPanel({ collectionId, fields, onUploaded }: UploadPanelProps) {
   const toast = useToast();
-  const [file, setFile] = useState<File | null>(null);
+  const [entries, setEntries] = useState<FileEntry[]>([]);
   const [values, setValues] = useState<Record<string, unknown>>({});
   const [uploading, setUploading] = useState(false);
   const [issues, setIssues] = useState<ApiIssue[]>([]);
-  const [duplicateNotice, setDuplicateNotice] = useState<string | null>(null);
 
   const declarable = fields.filter((f) => f.origin === "user" && f.scope === "document");
 
+  const setEntryAt = (index: number, patch: Partial<FileEntry>) =>
+    setEntries((prev) => prev.map((entry, i) => (i === index ? { ...entry, ...patch } : entry)));
+
+  const onPick = (files: FileList | null) => {
+    setIssues([]);
+    setEntries(files ? Array.from(files).map((file) => ({ file, status: "queued", detail: null })) : []);
+  };
+
   const handleUpload = async () => {
-    if (!file) return;
+    if (!entries.length) return;
     setUploading(true);
     setIssues([]);
-    setDuplicateNotice(null);
-    try {
-      // Only send fields the caller actually filled in — the pipeline enforces `required`.
-      const metadata: Record<string, unknown> = {};
-      for (const field of declarable) {
-        const value = values[field.field_name];
-        if (value === undefined || value === "") continue;
-        metadata[field.field_name] = value;
-      }
-      const result = await uploadDocument({ file, collectionId, metadata });
-      if (result.duplicate) {
-        setDuplicateNotice(`Identical content already ingested as document ${result.document_id}.`);
-        toast.info("Already ingested — identical content skipped");
-      } else {
-        toast.success(`Ingestion launched — ${file.name}`);
-        onUploaded(result.job_id);
-      }
-    } catch (error) {
-      const issueList = error instanceof HttpError ? error.issues : [{ message: String(error) }];
-      setIssues(issueList);
-      toast.error(`Upload failed — ${issueList[0]?.message ?? "unknown error"}`);
-    } finally {
-      setUploading(false);
+
+    // Only send fields the caller actually filled in — the pipeline enforces `required`. Built once;
+    // every file in the batch is admitted with the same declared metadata.
+    const metadata: Record<string, unknown> = {};
+    for (const field of declarable) {
+      const value = values[field.field_name];
+      if (value === undefined || value === "") continue;
+      metadata[field.field_name] = value;
     }
+
+    let lastJobId: string | null = null;
+    let succeeded = 0;
+    let failed = 0;
+
+    // Sequential loop: one file's failure must not abort the rest, so each is caught in isolation.
+    for (let index = 0; index < entries.length; index += 1) {
+      const { file } = entries[index];
+      setEntryAt(index, { status: "uploading", detail: null });
+      try {
+        const result = await uploadDocument({ file, collectionId, metadata });
+        if (result.duplicate) {
+          setEntryAt(index, { status: "duplicate", detail: `already ingested as ${result.document_id.slice(0, 8)}` });
+        } else {
+          setEntryAt(index, { status: "done", detail: null });
+          lastJobId = result.job_id;
+          succeeded += 1;
+        }
+      } catch (error) {
+        failed += 1;
+        const message = error instanceof HttpError ? error.message : String(error);
+        setEntryAt(index, { status: "failed", detail: message });
+      }
+    }
+
+    setUploading(false);
+    if (failed > 0) toast.error(`${failed} of ${entries.length} file(s) failed to upload`);
+    else if (succeeded > 0) toast.success(`Ingestion launched — ${succeeded} file(s)`);
+    else toast.info("Nothing ingested — every file was a duplicate");
+    // Focus the monitoring view on the last freshly-launched job (mirrors the single-file behaviour).
+    if (lastJobId) onUploaded(lastJobId);
   };
+
+  const doneCount = entries.filter((e) => e.status === "done" || e.status === "duplicate").length;
+  const failedCount = entries.filter((e) => e.status === "failed").length;
 
   return (
     <div
@@ -69,10 +130,11 @@ export function UploadPanel({ collectionId, fields, onUploaded }: UploadPanelPro
         borderRadius: theme.radius.l, boxShadow: theme.shadow.sm, padding: theme.space.l,
       }}
     >
-      <FormField label="File">
+      <FormField label="Files">
         <input
           type="file"
-          onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+          multiple
+          onChange={(e) => onPick(e.target.files)}
           style={{ fontSize: theme.font.size.s, color: theme.color.text }}
         />
       </FormField>
@@ -84,11 +146,43 @@ export function UploadPanel({ collectionId, fields, onUploaded }: UploadPanelPro
           onChange={(value) => setValues((v) => ({ ...v, [field.field_name]: value }))}
         />
       ))}
-      {duplicateNotice && <div style={{ color: theme.color.warn, fontSize: theme.font.size.s }}>{duplicateNotice}</div>}
+
+      {entries.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: theme.space.xs }}>
+          {entries.map((entry, index) => (
+            <div
+              key={index}
+              style={{
+                display: "flex", alignItems: "center", gap: theme.space.s,
+                fontSize: theme.font.size.s, color: theme.color.text,
+                borderTop: index === 0 ? undefined : `1px solid ${theme.color.line}`,
+                paddingTop: index === 0 ? 0 : theme.space.xs,
+              }}
+            >
+              <span style={{ flex: 1, wordBreak: "break-all" }}>{entry.file.name}</span>
+              <span style={{ color: toneColor[STATUS_TONE[entry.status]], fontSize: theme.font.size.xs, whiteSpace: "nowrap" }}>
+                {STATUS_LABEL[entry.status]}
+              </span>
+              {entry.detail && (
+                <span
+                  style={{ color: theme.color.dim, fontSize: theme.font.size.xs, fontFamily: theme.font.mono, maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                  title={entry.detail}
+                >
+                  {entry.detail}
+                </span>
+              )}
+            </div>
+          ))}
+          <div style={{ color: theme.color.dim, fontSize: theme.font.size.xs, marginTop: theme.space.xs }}>
+            {doneCount}/{entries.length} processed{failedCount > 0 ? ` · ${failedCount} failed` : ""}
+          </div>
+        </div>
+      )}
+
       <ApiIssueList issues={issues} />
       <div>
-        <Button variant="primary" disabled={!file || uploading} onClick={handleUpload}>
-          {uploading ? "uploading…" : "Upload"}
+        <Button variant="primary" disabled={!entries.length || uploading} onClick={handleUpload}>
+          {uploading ? "uploading…" : entries.length > 1 ? `Upload ${entries.length} files` : "Upload"}
         </Button>
       </div>
     </div>

@@ -19,9 +19,11 @@ interface ChunkCardProps {
   onToggleSelect: (chunkId: string) => void;
   onJumpToBlock: (blockId: string) => void;
   onEnabledChanged: (chunkId: string, enabled: boolean) => void;
+  /** Open the chunk's source page with a box around its blocks — absent until IR + pages resolve. */
+  onShowOnPage?: (chunk: ChunkInfo) => void;
 }
 
-export function ChunkCard({ chunk, selected, onToggleSelect, onJumpToBlock, onEnabledChanged }: ChunkCardProps) {
+export function ChunkCard({ chunk, selected, onToggleSelect, onJumpToBlock, onEnabledChanged, onShowOnPage }: ChunkCardProps) {
   const [reindexNote, setReindexNote] = useState(false);
 
   return (
@@ -41,7 +43,19 @@ export function ChunkCard({ chunk, selected, onToggleSelect, onJumpToBlock, onEn
         <span style={{ color: theme.color.dim, fontSize: theme.font.size.xs }}>{chunk.strategy}</span>
         <ChunkRoleBadge role={chunk.role} />
         {!chunk.enabled && <Chip tone="warn">disabled</Chip>}
-        <span style={{ marginLeft: "auto" }}>
+        <span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: theme.space.s }}>
+          {onShowOnPage && chunk.block_ids.length > 0 && (
+            <button
+              onClick={() => onShowOnPage(chunk)}
+              title="Show this chunk on its source page"
+              style={{
+                background: theme.color.surface2, border: `1px solid ${theme.color.line}`, borderRadius: theme.radius.s,
+                color: theme.color.accent, cursor: "pointer", fontSize: theme.font.size.xs, padding: "3px 8px",
+              }}
+            >
+              view on page
+            </button>
+          )}
           <ChunkEnabledToggle
             chunkId={chunk.id}
             enabled={chunk.enabled}

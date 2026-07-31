@@ -12,9 +12,11 @@ interface ChunksTabProps {
   chunks: ChunkInfo[];
   onJumpToBlock: (blockId: string) => void;
   onChunkEnabledChanged: (chunkId: string, enabled: boolean) => void;
+  /** Open a chunk on its source page with a box — absent until IR + pages are loaded. */
+  onShowChunkOnPage?: (chunk: ChunkInfo) => void;
 }
 
-export function ChunksTab({ chunks, onJumpToBlock, onChunkEnabledChanged }: ChunksTabProps) {
+export function ChunksTab({ chunks, onJumpToBlock, onChunkEnabledChanged, onShowChunkOnPage }: ChunksTabProps) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
   const toggleSelect = (chunkId: string) => {
@@ -47,6 +49,7 @@ export function ChunksTab({ chunks, onJumpToBlock, onChunkEnabledChanged }: Chun
           onToggleSelect={toggleSelect}
           onJumpToBlock={onJumpToBlock}
           onEnabledChanged={onChunkEnabledChanged}
+          onShowOnPage={onShowChunkOnPage}
         />
       ))}
     </div>

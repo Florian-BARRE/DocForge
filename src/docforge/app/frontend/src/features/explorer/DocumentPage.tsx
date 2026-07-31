@@ -22,14 +22,17 @@ import { Button } from "../../components/Button";
 import { Chip } from "../../components/Chip";
 import { ErrorState } from "../../components/ErrorState";
 import { LoadingState } from "../../components/LoadingState";
+import { PageBoxLightbox } from "../../components/PageBoxLightbox";
+import type { OverlayBox } from "../../components/PageBoxOverlay";
 import { PageHeader } from "../../components/PageHeader";
 import { TabNav } from "../../components/TabNav";
 import type { Navigate } from "../../shell/view";
+import { useToast } from "../../shell/toast";
 import { theme } from "../../theme";
 import { ChunksTab } from "./chunks/ChunksTab";
 import { DocumentEnabledToggle } from "./DocumentEnabledToggle";
 import { DocumentStatusChip } from "./DocumentStatusChip";
-import { formatBytes, formatDateTime } from "./format";
+import { displayPage, formatBytes, formatDateTime } from "./format";
 import { IRTab } from "./ir/IRTab";
 import { OverviewTab } from "./overview/OverviewTab";
 import { PagesTab } from "./pages/PagesTab";
@@ -49,11 +52,21 @@ interface DocumentPageProps {
   onNavigate: Navigate;
 }
 
+interface BoxLightboxState {
+  renderBlobHash: string | null;
+  width: number | null;
+  height: number | null;
+  boxes: OverlayBox[];
+  caption: string;
+}
+
 export function DocumentPage({ collectionId, documentId, onNavigate }: DocumentPageProps) {
+  const toast = useToast();
   const [document, setDocument] = useState<DocumentDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<TabKey>("overview");
   const [focusBlockId, setFocusBlockId] = useState<string | null>(null);
+  const [boxLightbox, setBoxLightbox] = useState<BoxLightboxState | null>(null);
 
   const [pages, setPages] = useState<PageInfo[] | null>(null);
   const [pagesError, setPagesError] = useState<string | null>(null);
@@ -87,15 +100,46 @@ export function DocumentPage({ collectionId, documentId, onNavigate }: DocumentP
     getDocumentChunks(documentId).then(setChunks).catch((e) => setChunksError(e instanceof Error ? e.message : String(e)));
   };
 
-  // Fetch each tab's payload once, the first time it is activated — never all four upfront.
+  // Fetch each tab's payload once, the first time it is activated — never all four upfront. The
+  // chunks tab additionally warms pages + IR so a chunk can be located on its source page (the
+  // "view on page" box overlay joins chunk.block_ids → IR block bbox → the page render).
   useEffect(() => {
     if (activeTab === "pages" && pages === null && !pagesError) loadPages();
     if (activeTab === "ir" && ir === null && !irError) loadIr();
-    if (activeTab === "chunks" && chunks === null && !chunksError) loadChunks();
+    if (activeTab === "chunks") {
+      if (chunks === null && !chunksError) loadChunks();
+      if (pages === null && !pagesError) loadPages();
+      if (ir === null && !irError) loadIr();
+    }
     // Deliberately reacting only to the tab/document — the load* functions themselves are stable
     // enough for this effect's purpose (avoid a re-run loop on every render).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, documentId]);
+
+  // Resolve a chunk to its source page + block boxes and open the overlay. Requires IR + pages
+  // (only offered to the chunk card once both are loaded). The chunk may span pages — we show its
+  // leading block's page with a box around every block that sits on that same page.
+  const showChunkOnPage = (chunk: ChunkInfo) => {
+    if (!ir || !pages) return;
+    const blocks = chunk.block_ids
+      .map((id) => ir.blocks.find((block) => block.id === id))
+      .filter((block): block is NonNullable<typeof block> => Boolean(block));
+    if (!blocks.length) {
+      toast.info("This chunk has no located source blocks.");
+      return;
+    }
+    const targetPage = blocks[0].page;
+    const boxes: OverlayBox[] = blocks.filter((block) => block.page === targetPage).map((block) => ({ bbox: block.bbox }));
+    const page = pages.find((p) => p.page_number === targetPage) ?? null;
+    setBoxLightbox({
+      renderBlobHash: page?.render_blob_hash ?? null,
+      width: page?.width ?? null,
+      height: page?.height ?? null,
+      boxes,
+      caption: `Page ${displayPage(targetPage)} · chunk #${chunk.chunk_index}`,
+    });
+  };
+  const chunkLocator = ir && pages ? showChunkOnPage : undefined;
 
   const jumpToBlock = (blockId: string) => {
     setFocusBlockId(blockId);
@@ -178,11 +222,22 @@ export function DocumentPage({ collectionId, documentId, onNavigate }: DocumentP
           (chunksError ? (
             <ErrorState message={chunksError} onRetry={loadChunks} />
           ) : chunks ? (
-            <ChunksTab chunks={chunks} onJumpToBlock={jumpToBlock} onChunkEnabledChanged={handleChunkEnabledChanged} />
+            <ChunksTab chunks={chunks} onJumpToBlock={jumpToBlock} onChunkEnabledChanged={handleChunkEnabledChanged} onShowChunkOnPage={chunkLocator} />
           ) : (
             <LoadingState label="loading chunks…" />
           ))}
       </div>
+
+      {boxLightbox && (
+        <PageBoxLightbox
+          renderBlobHash={boxLightbox.renderBlobHash}
+          width={boxLightbox.width}
+          height={boxLightbox.height}
+          boxes={boxLightbox.boxes}
+          caption={boxLightbox.caption}
+          onClose={() => setBoxLightbox(null)}
+        />
+      )}
     </div>
   );
 }

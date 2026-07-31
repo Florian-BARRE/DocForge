@@ -1,9 +1,13 @@
 // ====== Code Summary ======
-// One job's full detail: header (status, progress, attempt, timestamps) + its per-node trace
-// as a vertical timeline. Polls both the job and its trace while the job is still in flight.
+// One job's full detail: header (status, progress, attempt, timestamps) + its per-node trace as a
+// vertical timeline. Consumes the live SSE feed (GET /jobs/{id}/stream) — status snapshots update
+// the header/progress in real time and stage events append to the timeline as they land, closing at
+// terminal. The API is header-only auth (EventSource can't set the Bearer), so the stream is read
+// via fetch + ReadableStream (see api/jobs.streamJobEvents). If the stream errors or is unsupported,
+// it falls back to the original ~2.5s poll of getJob + getJobTrace.
 
 import { useEffect, useState } from "react";
-import { getJob, getJobTrace, type JobStatus, type JobTrace } from "../../api/jobs";
+import { getJob, getJobTrace, streamJobEvents, type JobEvent, type JobStatus } from "../../api/jobs";
 import { BackLink } from "../../components/BackLink";
 import { ErrorState } from "../../components/ErrorState";
 import { LoadingState } from "../../components/LoadingState";
@@ -15,6 +19,7 @@ import { JobStatusChip } from "./JobStatusChip";
 import { ProgressBar } from "./ProgressBar";
 
 const POLL_MS = 2500;
+const TERMINAL = new Set(["done", "failed"]);
 
 interface JobDetailPageProps {
   jobId: string;
@@ -24,31 +29,63 @@ interface JobDetailPageProps {
 
 export function JobDetailPage({ jobId, collectionId, onNavigate }: JobDetailPageProps) {
   const [job, setJob] = useState<JobStatus | null>(null);
-  const [trace, setTrace] = useState<JobTrace | null>(null);
+  const [events, setEvents] = useState<JobEvent[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [live, setLive] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
-    let timer: number | undefined;
+    let pollTimer: number | undefined;
+    const controller = new AbortController();
 
-    const load = () => {
-      Promise.all([getJob(jobId), getJobTrace(jobId)])
-        .then(([jobData, traceData]) => {
-          if (cancelled) return;
-          setJob(jobData);
-          setTrace(traceData);
-          setError(null);
-          if (jobData.status === "pending" || jobData.status === "running") timer = window.setTimeout(load, POLL_MS);
-        })
-        .catch((e) => { if (!cancelled) setError(e instanceof Error ? e.message : String(e)); });
+    // Fallback: the original poll loop — used only if the stream can't be opened/read.
+    const startPolling = () => {
+      const load = () => {
+        Promise.all([getJob(jobId), getJobTrace(jobId)])
+          .then(([jobData, traceData]) => {
+            if (cancelled) return;
+            setJob(jobData);
+            setEvents(traceData.events);
+            setError(null);
+            if (jobData.status === "pending" || jobData.status === "running") pollTimer = window.setTimeout(load, POLL_MS);
+          })
+          .catch((e) => { if (!cancelled) setError(e instanceof Error ? e.message : String(e)); });
+      };
+      load();
     };
-    load();
 
-    return () => { cancelled = true; window.clearTimeout(timer); };
+    // Preferred: the live SSE stream. It replays the full event list on connect, then only the
+    // delta — so appending each event is correct (no dedupe needed on a single connection).
+    streamJobEvents(jobId, {
+      signal: controller.signal,
+      onStatus: (status) => {
+        if (cancelled || status.status === "gone") return;
+        setJob(status);
+        setError(null);
+        setLive(true);
+      },
+      onEvent: (event) => {
+        if (cancelled) return;
+        setEvents((prev) => [...prev, event]);
+        setLive(true);
+      },
+    })
+      .then(() => { if (!cancelled) setLive(false); })
+      .catch(() => {
+        // Stream unsupported / errored — reset any partial state and fall back to polling.
+        if (cancelled || controller.signal.aborted) return;
+        setLive(false);
+        setEvents([]);
+        startPolling();
+      });
+
+    return () => { cancelled = true; controller.abort(); window.clearTimeout(pollTimer); };
   }, [jobId]);
 
   if (error) return <ErrorState message={error} />;
-  if (!job || !trace) return <LoadingState label="loading job…" />;
+  if (!job) return <LoadingState label="loading job…" />;
+
+  const running = !TERMINAL.has(job.status);
 
   return (
     <div className="df-rise" style={{ padding: theme.space.xl, overflowY: "auto", height: "100%", maxWidth: 1200, margin: "0 auto", width: "100%" }}>
@@ -59,6 +96,12 @@ export function JobDetailPage({ jobId, collectionId, onNavigate }: JobDetailPage
           <span style={{ display: "inline-flex", alignItems: "center", gap: theme.space.s, flexWrap: "wrap" }}>
             <span>document {job.document_id} · attempt {job.attempt}</span>
             <JobStatusChip status={job.status} />
+            {live && running && (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: theme.space.xs, color: theme.color.accent, fontSize: theme.font.size.xs, fontWeight: theme.font.weight.semibold }}>
+                <span style={{ width: 7, height: 7, borderRadius: theme.radius.pill, background: theme.color.accent }} />
+                live
+              </span>
+            )}
           </span>
         }
       />
@@ -72,6 +115,7 @@ export function JobDetailPage({ jobId, collectionId, onNavigate }: JobDetailPage
       >
         <ProgressBar progress={job.progress} status={job.status} />
         <div style={{ display: "flex", gap: theme.space.l, color: theme.color.dim, fontSize: theme.font.size.s, marginTop: theme.space.s }}>
+          <span>stage: {job.current_stage ?? "—"}</span>
           <span>started: {job.started_at ? new Date(job.started_at).toLocaleString() : "—"}</span>
           <span>finished: {job.finished_at ? new Date(job.finished_at).toLocaleString() : "—"}</span>
         </div>
@@ -83,15 +127,15 @@ export function JobDetailPage({ jobId, collectionId, onNavigate }: JobDetailPage
       <h2 style={{ fontFamily: theme.font.display, fontSize: theme.font.size.l, fontWeight: 600, color: theme.color.text, marginBottom: theme.space.m }}>
         Trace
       </h2>
-      {trace.events.length === 0 && <div style={{ color: theme.color.dim, fontSize: theme.font.size.s }}>No stage events yet.</div>}
-      {trace.events.length > 0 && (
+      {events.length === 0 && <div style={{ color: theme.color.dim, fontSize: theme.font.size.s }}>No stage events yet.</div>}
+      {events.length > 0 && (
         <div
           style={{
             background: theme.color.surface, border: `1px solid ${theme.color.line}`,
             borderRadius: theme.radius.l, boxShadow: theme.shadow.sm, padding: `${theme.space.m}px ${theme.space.l}px`,
           }}
         >
-          {trace.events.map((event, index) => <JobEventItem key={index} event={event} />)}
+          {events.map((event, index) => <JobEventItem key={index} event={event} />)}
         </div>
       )}
     </div>
