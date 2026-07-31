@@ -32,6 +32,7 @@ from .models import (
     FieldSpecModel,
     UpdateCollectionRequest,
 )
+from .redaction import redact_blob_secrets, restore_blob_secrets
 
 router = APIRouter(prefix="/collections", tags=["collections"])
 
@@ -48,7 +49,12 @@ def _public_pipeline(pipeline: dict | None) -> dict | None:
 
 
 def _to_model(collection: Collection, fields: list[MetadataField]) -> CollectionModel:
-    """Map the rows to the UI contract (shared by every read path)."""
+    """Map the rows to the UI contract (shared by every read path).
+
+    Provider secrets (api_key on every provider node of the pipeline AND search blobs) are masked
+    here — the ONE serialisation boundary every read path funnels through — so a live key is never
+    echoed to a client. The stored blobs keep the real keys; only this outbound copy is masked.
+    """
     return CollectionModel(
         id=str(collection.id),
         name=collection.name,
@@ -56,8 +62,8 @@ def _to_model(collection: Collection, fields: list[MetadataField]) -> Collection
         max_file_size_bytes=collection.max_file_size_bytes,
         needs_reindex=collection.needs_reindex,
         created_at=collection.created_at,
-        pipeline=_public_pipeline(collection.pipeline),
-        search=collection.search,
+        pipeline=redact_blob_secrets(_public_pipeline(collection.pipeline)),
+        search=redact_blob_secrets(collection.search),
         fields=[
             FieldSpecModel(
                 field_name=row.field_name,
@@ -333,11 +339,21 @@ async def update_collection(
                 status_code=409, detail=f"Collection '{request.name}' already exists."
             )
 
-    # 3. A new pipeline never reaches storage broken: heal it to the current engine, validate it,
-    #    and keep its stamped canonical form for storage (step 6).
-    stored_pipeline = (
-        _canonical_pipeline(request.pipeline) if request.pipeline is not None else None
+    # 3. Restore any masked provider secret BEFORE validating/storing: a caller that read a collection
+    #    (secrets masked) and PATCHed a blob back sends the mask verbatim — that means "keep the stored
+    #    key", never "set the key to the literal mask". Healed against the real stored blobs by node id.
+    healed_pipeline = (
+        restore_blob_secrets(request.pipeline, current.pipeline)
+        if request.pipeline is not None
+        else None
     )
+    healed_search = (
+        restore_blob_secrets(request.search, current.search) if request.search is not None else None
+    )
+
+    # 3a. A new pipeline never reaches storage broken: heal it to the current engine, validate it,
+    #    and keep its stamped canonical form for storage (step 6).
+    stored_pipeline = _canonical_pipeline(healed_pipeline) if healed_pipeline is not None else None
 
     # 3b. A new search blob is a search GRAPH blob. Only two shapes are valid: {} (the sentinel
     #     "use the stock default", always allowed) or a real topology carrying a "nodes" list. A
@@ -345,14 +361,14 @@ async def update_collection(
     #     falls back to the default) — reject it up front. A real topology is validated not just
     #     structurally but as a genuine SEARCH pipeline (it must terminate on a SearchResult), so a
     #     non-search graph cannot be stored to 500 on every subsequent query.
-    if request.search is not None and request.search != {}:
-        if "nodes" not in request.search:
+    if healed_search is not None and healed_search != {}:
+        if "nodes" not in healed_search:
             raise HTTPException(
                 status_code=422,
                 detail="collection.search must be empty ({} = stock default) or a search graph "
                 "blob with a 'nodes' list.",
             )
-        SearchBlobValidator.validate(request.search)
+        SearchBlobValidator.validate(healed_search)
 
     # 3c. Validate the schema diff BEFORE any write — a bad field must 422 without having already
     #     committed the identity/limits rename (the writes below are not one transaction).
@@ -414,7 +430,7 @@ async def update_collection(
         await CONTEXT.database.collections.update_config(
             collection_id,
             pipeline=stored_pipeline,
-            search=request.search,
+            search=healed_search,
             needs_reindex=reindex_from_embed,
             note=request.note,
         )
