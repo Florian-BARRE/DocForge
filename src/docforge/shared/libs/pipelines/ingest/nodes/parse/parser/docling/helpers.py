@@ -48,6 +48,28 @@ class DoclingParseHelpers:
         return cls.LABEL_MAP.get(label.lower())
 
     @staticmethod
+    def heading_level(item: Any) -> int:
+        """
+        Resolve a heading item's absolute nesting level from the Docling item.
+
+        Docling models a document title and its sub-headings on TWO different scales: a ``title``
+        item (HTML ``<h1>``) carries NO ``level`` and is the top of the tree, while a
+        ``section_header`` item numbers from 1 for the first sub-heading (HTML ``<h2>`` → docling
+        level 1, ``<h3>`` → 2, …). Read naively both the title and the first section header land on
+        level 1 and flatten into siblings, wrongly nesting every ``<h2>`` under the first one. The
+        title occupies level 1, so a section header at docling level N is absolute level N + 1 —
+        keeping ``<h1>`` at 1, ``<h2>`` at 2, ``<h3>`` at 3.
+
+        Args:
+            item (Any): A Docling heading item (``title`` or ``section_header``).
+
+        Returns:
+            int: The absolute heading level (1 for a title, docling level + 1 for a section header).
+        """
+        raw_level = getattr(item, "level", None)
+        return 1 if raw_level is None else int(raw_level) + 1
+
+    @staticmethod
     def extract_provenance(item: Any, docling_doc: Any) -> Provenance | None:
         """
         Extract the page index and a normalized top-left bbox from a Docling item.

@@ -72,6 +72,30 @@ def test_mapper_keeps_the_heading_tree_of_a_pageless_html_document() -> None:
     assert clause_2.parent_id == article_2.id
 
 
+def test_mapper_preserves_html_heading_levels_so_articles_nest_under_the_title() -> None:
+    """Docling gives the title (h1) no level and numbers section headers (h2, h3, …) from 1, which
+    naively flattens the h1 title and the h2 articles to the same level. The mapper must recover the
+    real HTML levels — h1 → 1, h2 → 2 — so every article nests UNDER the charter title, not under
+    the first article."""
+    items = [
+        _item("title", "Data Protection Charter", "#/texts/0"),  # <h1>, no docling level
+        _item("section_header", "Article 1", "#/texts/1", level=1),  # <h2>, docling level 1
+        _item("text", "Clause one.", "#/texts/2"),
+        _item("section_header", "Article 2", "#/texts/3", level=1),  # <h2>, docling level 1
+        _item("text", "Clause two.", "#/texts/4"),
+    ]
+    ir = DoclingIRMapper.map_document(_pageless_doc(items), doc_id="d", source_hash="h")
+
+    headings = [b for b in ir.blocks if b.block_type == BlockType.HEADING]
+    # 1. The title stays level 1; both h2 articles become level 2 (not flattened to 1).
+    assert [b.level for b in headings] == [1, 2, 2]
+    # 2. Each article nests under the title — the breadcrumb reads Title › Article, never
+    #    Article 1 › Article 2.
+    title, article_1, article_2 = headings
+    assert article_1.parent_id == title.id
+    assert article_2.parent_id == title.id
+
+
 class _FakeParser(BaseParserNode):
     """A concrete parser that parses one native format and records which bytes it received."""
 

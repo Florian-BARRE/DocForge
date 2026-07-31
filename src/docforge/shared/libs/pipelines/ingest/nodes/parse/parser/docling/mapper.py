@@ -73,8 +73,7 @@ class DoclingIRMapper:
         level: int | None = None
         if block_type == BlockType.HEADING:
             text = DoclingParseHelpers.get_text(item)
-            raw_level = getattr(item, "level", None)
-            level = int(raw_level) if raw_level is not None else 1
+            level = DoclingParseHelpers.heading_level(item)
         elif block_type == BlockType.TABLE:
             table = DoclingParseHelpers.extract_table(item)
         elif block_type == BlockType.FIGURE:

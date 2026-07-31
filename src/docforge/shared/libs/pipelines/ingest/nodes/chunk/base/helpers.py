@@ -172,13 +172,14 @@ class ChunkerHelpers:
         figure: FigureEnrichment, caption: str | None, native_text: str | None
     ) -> str | None:
         """
-        Render a figure's meaning as an EXPLICITLY MARKED block for the chunkable text.
+        Render a figure's searchable content for the chunkable text.
 
-        A figure's meaning is machine-derived (a VLM description, OCR text): folded into a chunk
-        without a marker it reads as if it were a real paragraph of the document. Every part is
-        wrapped so a reader — and the retrieval text, which keeps the content verbatim — can tell
-        image-derived content from prose. The ``[Image: <kind>]`` and ``[OCR]`` labels are
-        structural: kept short and language-neutral (the corpus is multilingual).
+        A figure contributes its real prose (caption, native text) plus its machine-derived meaning
+        (VLM description, OCR text, extracted data). The machine-derived parts stay labelled
+        distinctly (``[OCR]``, ``[Data]``) so they never read as document prose. A content-free
+        ``[Image: <kind>]`` marker is DELIBERATELY not emitted: it carries no searchable text, yet a
+        chunk assembled with it would match a bare "photo"/"chart" query and self-cite a filename
+        with no answer behind it — so the marker is dropped and only real content is rendered.
 
         Args:
             figure (FigureEnrichment): The figure slot carrying kind, description and OCR text.
@@ -186,17 +187,16 @@ class ChunkerHelpers:
             native_text (str | None): The figure block's own native text, if any.
 
         Returns:
-            str | None: The marked figure block, or None when the figure carries no searchable
-            content (no caption, native text, description, OCR or data). A crop alone is NOT content:
-            a bare "[Image: <kind>]" marker with nothing behind it would become a placeholder chunk
-            that pollutes retrieval and self-cites a real filename with no answer in it.
+            str | None: The figure's searchable content, or None when the figure carries none (no
+            caption, native text, description, OCR or data). A crop alone is NOT content: it would
+            otherwise seed a content-free placeholder chunk that pollutes retrieval.
         """
-        # 1. Caption + native text are real document prose describing the figure; the marker
-        #    frames the whole block as image-derived so the caption cannot pass for a paragraph.
+        # 1. Caption + native text are real document prose describing the figure — kept verbatim.
         header_bits = [bit.strip() for bit in (caption, native_text) if bit and bit.strip()]
-        header = " ".join([f"[Image: {figure.kind.value}]", *header_bits])
+        lines: list[str] = []
+        if header_bits:
+            lines.append(" ".join(header_bits))
         # 2. The machine-derived meaning, each part labelled distinctly (OCR ≠ description ≠ data).
-        lines = [header]
         if figure.description and figure.description.strip():
             lines.append(figure.description.strip())
         if figure.ocr_text and figure.ocr_text.strip():
@@ -208,11 +208,9 @@ class ChunkerHelpers:
             lines.append("[Data]")
             lines.append(data_grid)
         # 4. Emit ONLY when there is real content (caption/native/description/OCR/data). A figure
-        #    with a crop but no enrichment (the out-of-box, enrich-off case) is NOT emitted: a bare
-        #    "[Image: <kind>]" marker carries no searchable text, so it would become a content-free
-        #    chunk that ranks as a top hit and mis-cites a real filename. Such a figure contributes
-        #    nothing here (the crop still lives on its IR block, reachable via the document view).
-        return "\n".join(lines) if header_bits or len(lines) > 1 else None
+        #    with a crop but no enrichment (the out-of-box, enrich-off case) contributes nothing
+        #    here — the crop still lives on its IR block, reachable via the document view.
+        return "\n".join(lines) if lines else None
 
 
 __all__ = ["ChunkerHelpers"]

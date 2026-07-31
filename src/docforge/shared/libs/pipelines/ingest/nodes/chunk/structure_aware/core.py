@@ -1,9 +1,9 @@
 # ====== Code Summary ======
 # The structure-aware chunker — packs passages ALONG the heading tree: a section boundary is a
 # preferred (or hard) cut, chunks aim at target_tokens, an oversized paragraph is cut by
-# sentences, consecutive sub-min_tokens sections are coalesced across boundaries toward the
-# target (so a swarm of tiny sections never yields a swarm of tiny chunks), and an optional
-# overlap repeats the tail of the previous chunk. The go-to method for well-structured documents.
+# sentences, consecutive sub-min_tokens HEADING-LESS fragments are coalesced across boundaries
+# toward the target (a titled section stands alone whatever its size, so it stays citable), and an
+# optional overlap repeats the tail of the previous chunk. The go-to for well-structured documents.
 
 # ====== Third-Party Library Imports ======
 from pydantic import Field
@@ -25,8 +25,9 @@ class ChunkerStructureAwareConfig(BaseChunkerConfig):
     min_tokens: int = Field(
         default=64,
         ge=0,
-        description="A section below this is a fragment: consecutive fragments coalesce across "
-        "boundaries up to min(target,max). A section at or above it stands alone.",
+        description="A HEADING-LESS group below this is a fragment: consecutive fragments coalesce "
+        "across boundaries up to min(target,max). A titled section (or a group at or above this) "
+        "stands alone whatever its size, so a short titled clause stays its own citable chunk.",
     )
     overlap_tokens: int = Field(
         default=64,
@@ -40,9 +41,10 @@ class ChunkerStructureAwareConfig(BaseChunkerConfig):
     hard_section_boundaries: bool = Field(
         default=True,
         description="True: a chunk never crosses a section boundary DURING packing — but "
-        "consecutive sub-min_tokens sections are still coalesced afterwards (a swarm of tiny "
-        "fragments is never desirable). False: boundaries are only preferred cuts. Either way, a "
-        "coalesced chunk reports the COMMON heading_path prefix of its passages.",
+        "consecutive sub-min_tokens HEADING-LESS fragments are still coalesced afterwards (a swarm "
+        "of tiny fragments is never desirable; a titled section always stands alone). False: "
+        "boundaries are only preferred cuts. Either way, a coalesced chunk reports the COMMON "
+        "heading_path prefix of its passages.",
     )
 
 
@@ -56,8 +58,8 @@ class ChunkerStructureAwareNode(BaseChunkerNode):
     HOW_IT_WORKS = (
         "Walks the passages in reading order and packs them into chunks of ~target_tokens, "
         "cutting at section boundaries (hard or preferred), splitting oversized paragraphs by "
-        "sentences, coalescing consecutive sub-min_tokens sections across boundaries toward the "
-        "target (a real section stands alone), and optionally repeating an overlap tail."
+        "sentences, coalescing consecutive sub-min_tokens HEADING-LESS fragments across boundaries "
+        "toward the target (a titled section stands alone), and optionally repeating an overlap tail."
     )
     Config = ChunkerStructureAwareConfig
     UNIQUE_IN_GRAPH = True
@@ -106,36 +108,47 @@ class ChunkerStructureAwareNode(BaseChunkerNode):
         close(seed_overlap=False)
         return groups
 
+    @staticmethod
+    def __is_titled_section(group: list[Passage]) -> bool:
+        """True when the group is a titled section — any passage carries a real (non-blank) heading.
+
+        A titled leaf section is a citable semantic unit: a reader must be able to point at it. It
+        therefore stands on its own even when short, and never merges with a neighbour. Only
+        genuinely heading-less material (no heading text in the ancestry) is fragment-coalescible.
+        """
+        return any(heading.strip() for passage in group for heading in passage.heading_path)
+
     def __coalesce_small(self, groups: list[list[Passage]]) -> list[list[Passage]]:
         """
-        Coalesce consecutive below-min_tokens groups toward target_tokens.
+        Coalesce consecutive below-min_tokens HEADING-LESS groups toward target_tokens.
 
-        Under hard boundaries the packing walk emits one group per section, so a document made of
-        many tiny adjacent sections yields a swarm of sub-min_tokens chunks. This pass greedily
-        folds each such fragment into an open run THAT ITSELF STARTED FROM A FRAGMENT — ACROSS
-        section boundaries — while room toward target_tokens remains, never breaching max_tokens.
-        A run that started from a real section (>= min_tokens) never absorbs anything, and a real
-        section is never absorbed, so well-separated real sections keep their clean cuts.
+        The packing walk emits one group per section. A titled section — however short — is a
+        semantic unit a user must be able to cite, so it stands ALONE: it is never absorbed into a
+        coalescing run and never opens one. Only genuinely heading-less micro-fragments coalesce:
+        each such fragment folds into an open run THAT ITSELF STARTED FROM A HEADING-LESS FRAGMENT
+        — across boundaries — while room toward target_tokens remains, never breaching max_tokens.
 
         Args:
             groups (list[list[Passage]]): The packed groups, in reading order.
 
         Returns:
-            list[list[Passage]]: Fewer groups — tiny fragments coalesced, real sections intact.
+            list[list[Passage]]: Fewer groups — heading-less fragments coalesced, titled sections
+            (and real-sized sections) left intact as their own chunks.
         """
         config: ChunkerStructureAwareConfig = self.config
         # 1. Never let coalescing breach the hard cap; target is the soft goal fragments trend to.
         merge_cap = min(config.target_tokens, config.max_tokens)
         coalesced: list[list[Passage]] = []
         running = 0
-        # The open run may absorb fragments ONLY when it was itself opened by a fragment — a real
-        # section (>= min_tokens) opens a non-absorbing run, so `[A=100, B=30]` keeps B separate.
+        # The open run may absorb fragments ONLY when it was itself opened by a heading-less
+        # fragment — a titled or real-sized section opens a non-absorbing run.
         tail_is_fragment_run = False
         for group in groups:
             tokens = sum(passage.token_count for passage in group)
-            is_fragment = tokens < config.min_tokens
-            # 2. A fragment folds into a fragment-born run while room toward the target remains —
-            #    the only way a chunk crosses a section boundary here.
+            # A titled section is never a fragment: it stands alone whatever its size.
+            is_fragment = tokens < config.min_tokens and not self.__is_titled_section(group)
+            # 2. A heading-less fragment folds into a fragment-born run while room toward the target
+            #    remains — the only way a chunk crosses a section boundary here.
             if coalesced and tail_is_fragment_run and is_fragment and running + tokens <= merge_cap:
                 coalesced[-1].extend(group)
                 running += tokens
@@ -154,7 +167,7 @@ class ChunkerStructureAwareNode(BaseChunkerNode):
             for passage in passages
             for sub in passage.explode(config.max_tokens, config.tokenizer_encoding)
         ]
-        # 2. Pack along the tree, then coalesce the too-small sections toward the target.
+        # 2. Pack along the tree, then coalesce the too-small heading-less fragments toward target.
         return self.__coalesce_small(self.__pack(exploded))
 
 

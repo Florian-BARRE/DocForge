@@ -2,8 +2,8 @@
 # The COMMON projection every chunking method starts from: the enriched IR flattened into an
 # ordered list of Passages. The composition RULES live here — once, for all methods: a figure and
 # its meaning (the ADJACENT CAPTION block, folded in + VLM description + OCR text) become ONE
-# ATOMIC unit that no method may split, rendered as an explicitly MARKED block so machine-derived
-# text never reads as document prose; a table renders to markdown (atomic, caption folded in
+# ATOMIC unit that no method may split, its machine-derived parts (OCR, extracted data) kept
+# distinctly labelled so they never read as document prose; a table renders to markdown (atomic, caption folded in
 # too); headings carry the section identity; decorative or empty figures contribute nothing.
 # Header/footer furniture and table-of-contents scaffolding are NOT dropped: each passage carries
 # a structural `role` (body by default) so downstream can keep them as disabled chunks. Every text
@@ -229,9 +229,9 @@ class PassageProjector:
             rendered = ChunkerHelpers.render_table(block.table)
             text = f"{caption}\n{rendered}" if caption else rendered
             return text, config.tables_atomic
-        # 2. THE figure rule: the image and its meaning travel as ONE unit, rendered as an
-        #    explicitly MARKED block (leading `[Image]`, OCR labelled) so machine-derived text
-        #    never reads as prose; an empty figure (e.g. decorative) contributes nothing.
+        # 2. THE figure rule: the image and its meaning travel as ONE unit; the machine-derived
+        #    parts stay labelled (OCR, data) so they never read as prose, while a content-free
+        #    figure (e.g. decorative, or an un-enriched crop) contributes nothing.
         if block.block_type == BlockType.FIGURE:
             if not config.include_figures or block.figure is None:
                 return None

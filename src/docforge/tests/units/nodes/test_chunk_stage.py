@@ -102,8 +102,8 @@ def test_shared_projection_composition_rules() -> None:
 
     fig = by_first_block["fig1"]
     assert fig.atomic
-    assert fig.text.startswith("[Image:")  # explicit marker, not bare prose
-    assert "Figure 1: a cat" in fig.text
+    assert "[Image:" not in fig.text  # content-free image marker never leaks into searchable text
+    assert fig.text.startswith("Figure 1: a cat")  # the native caption leads, verbatim
     assert "ginger cat" in fig.text
     assert "[OCR] CAT-01" in fig.text  # OCR labelled distinctly from the description
     assert "deco" not in by_first_block  # empty/decorative figure still drops out
@@ -241,27 +241,29 @@ def _many_tiny_sections_ir() -> DocumentIR:
     return DocumentIR(doc_id="tiny", source_hash="h", n_pages=1, blocks=blocks)
 
 
-async def test_structure_aware_coalesces_consecutive_tiny_sections_toward_target() -> None:
+async def test_structure_aware_keeps_short_titled_sections_as_their_own_chunks() -> None:
     ir = _many_tiny_sections_ir()
     config = ChunkerStructureAwareConfig(target_tokens=256, max_tokens=512, min_tokens=64)
     node = ChunkerStructureAwareNode(id="c", config=config)
     chunks = (await node.run(ChunkerConsumes(ir=ir))).chunks
 
-    # 1. The 12 tiny sections no longer become 12 chunks — they coalesce far below one-per-section.
-    assert 2 <= len(chunks) <= 5, [(c.heading_path, c.token_count) for c in chunks]
+    # 1. Each short titled section is a citable unit → it stays its OWN chunk (coalescing never
+    #    crosses a section TITLE), so the 12 tiny sections yield 12 body chunks plus the bulk one.
+    body = [c for c in chunks if c.role is ChunkRole.BODY]
+    assert len(body) == 13, [(c.heading_path, c.token_count) for c in body]
 
-    # 2. Coalescing crosses section boundaries: some chunk unions blocks from >= 2 tiny sections,
-    #    and it has grown past min_tokens (trending toward the target, not a lone fragment).
-    tiny_ids = {f"h{i}" for i in range(12)} | {f"p{i}" for i in range(12)}
-    coalesced = [c for c in chunks if len({b for b in c.block_ids if b in tiny_ids}) >= 2]
-    assert coalesced
-    assert any(c.token_count > config.min_tokens for c in coalesced)
+    # 2. Every tiny section keeps its OWN heading_path — short, yet standalone and citable — and
+    #    holds only its own blocks (no neighbour section glued onto it).
+    for index in range(12):
+        section = [c for c in body if c.heading_path == [f"Section {index}"]]
+        assert len(section) == 1, [c.heading_path for c in body]
+        chunk = section[0]
+        assert f"h{index}" in chunk.block_ids and f"p{index}" in chunk.block_ids
+        assert chunk.token_count < config.min_tokens  # below the fragment threshold, yet standalone
+        others = {f"p{j}" for j in range(12) if j != index}
+        assert not (others & set(chunk.block_ids))
 
-    # 3. heading_path stays HONEST — the twelve sections are unrelated level-1 siblings, so their
-    #    common ancestry is empty; a coalesced chunk must not claim to live under any one of them.
-    assert chunks[0].heading_path == []
-
-    # 4. The large section still stands ALONE in its own chunk — no neighbour glued onto it. Its
+    # 3. The large section still stands ALONE in its own chunk — no neighbour glued onto it. Its
     #    OWN heading ("Bulk") is carried as provenance (block id only, no repeated title in body),
     #    so the chunk spans the heading + its paragraph but no other section's blocks.
     bulk = [c for c in chunks if "pbulk" in c.block_ids]
@@ -270,8 +272,40 @@ async def test_structure_aware_coalesces_consecutive_tiny_sections_toward_target
     assert bulk[0].heading_path == ["Bulk"]
     assert bulk[0].token_count > config.target_tokens
 
-    # 5. Merging never breaches the hard cap.
+    # 4. Nothing breaches the hard cap.
     assert all(c.token_count <= config.max_tokens for c in chunks)
+
+
+async def test_structure_aware_still_coalesces_heading_less_fragments() -> None:
+    """Genuinely heading-less micro-fragments (structural dividers with no title text) still
+    coalesce across boundaries toward the target — only TITLED sections are kept apart. A blank
+    heading yields no citable breadcrumb, so its fragment is not a unit worth standing alone."""
+    tiny = "A short heading-less fragment of only a handful of plain words here."
+    ir = DocumentIR(
+        doc_id="hless",
+        source_hash="h",
+        n_pages=1,
+        blocks=[
+            _blk("hb1", BlockType.HEADING, 0, text="", level=1),  # blank divider, no title text
+            _blk("pb1", BlockType.PARAGRAPH, 1, text=tiny, parent="hb1"),
+            _blk("hb2", BlockType.HEADING, 2, text="", level=1),
+            _blk("pb2", BlockType.PARAGRAPH, 3, text=tiny, parent="hb2"),
+            _blk("hb3", BlockType.HEADING, 4, text="", level=1),
+            _blk("pb3", BlockType.PARAGRAPH, 5, text=tiny, parent="hb3"),
+        ],
+    )
+    config = ChunkerStructureAwareConfig(target_tokens=256, max_tokens=512, min_tokens=64)
+    chunks = (
+        await ChunkerStructureAwareNode(id="c", config=config).run(ChunkerConsumes(ir=ir))
+    ).chunks
+
+    body = [c for c in chunks if c.role is ChunkRole.BODY]
+    # The three heading-less fragments (each below min_tokens) fold into a single chunk — they carry
+    # no citable title, so keeping them apart would only make a swarm of tiny fragments.
+    assert len(body) == 1, [(c.heading_path, c.block_ids) for c in body]
+    assert {"pb1", "pb2", "pb3"} <= set(body[0].block_ids)
+    assert body[0].heading_path == []  # unrelated blank sections → honest empty ancestry
+    assert body[0].token_count <= config.max_tokens
 
 
 async def test_structure_aware_real_section_does_not_absorb_a_following_fragment() -> None:
@@ -305,9 +339,9 @@ async def test_structure_aware_real_section_does_not_absorb_a_following_fragment
     assert real[0].heading_path == ["Real"]  # single-section chunk keeps its exact path
 
 
-async def test_structure_aware_coalesced_nested_sections_report_the_shared_ancestor() -> None:
-    # Two tiny SUBSECTIONS under a common chapter coalesce; their common heading_path prefix is
-    # the shared chapter, not empty and not a single subsection.
+async def test_structure_aware_keeps_short_titled_subsections_separate() -> None:
+    # Two tiny SUBSECTIONS under a common chapter: each is a titled, citable unit, so they do NOT
+    # coalesce — each stays its own chunk reporting its full Chapter › Subsection breadcrumb.
     ir = DocumentIR(
         doc_id="nest",
         source_hash="h",
@@ -325,9 +359,13 @@ async def test_structure_aware_coalesced_nested_sections_report_the_shared_ances
         await ChunkerStructureAwareNode(id="c", config=config).run(ChunkerConsumes(ir=ir))
     ).chunks
 
-    assert len(chunks) == 1  # everything is tiny → one coalesced chunk
-    assert {"pa", "pb"} <= set(chunks[0].block_ids)  # both subsections merged across the boundary
-    assert chunks[0].heading_path == ["Chapter"]  # the shared ancestor, not [] nor a subsection
+    body = [c for c in chunks if c.role is ChunkRole.BODY]
+    assert len(body) == 2  # each titled subsection stays its own chunk, tiny though it is
+    alpha = next(c for c in body if "pa" in c.block_ids)
+    beta = next(c for c in body if "pb" in c.block_ids)
+    assert alpha.heading_path == ["Chapter", "Alpha"]  # full breadcrumb, not just the shared ancestor
+    assert beta.heading_path == ["Chapter", "Beta"]
+    assert "pb" not in alpha.block_ids and "pa" not in beta.block_ids  # never glued together
 
 
 async def test_fixed_size_windows_with_repeated_overlap() -> None:
@@ -485,10 +523,10 @@ async def test_chunk_stage_blob_builds_validates_and_runs() -> None:
     assert GraphValidator().validate(group) == []
     output, _record = await FlowEngine().execute(group, {"ir": IR})
     assert output.chunks
-    # The tiny Introduction and the tiny Results heading/table are both sub-min_tokens and coalesce
-    # across the boundary; their common ancestry is empty, so the first chunk honestly reports [].
+    # Introduction and Results are each their OWN titled section — short though Introduction is — so
+    # they no longer coalesce across the boundary; the first chunk cites Introduction precisely.
     assert "h1" in output.chunks[0].block_ids
-    assert output.chunks[0].heading_path == []
+    assert output.chunks[0].heading_path == ["Introduction"]
 
 
 def test_f1_cyclic_parent_chain_does_not_hang_the_projection() -> None:
@@ -556,7 +594,7 @@ async def test_f4_boundaryless_run_on_is_hard_cut() -> None:
     assert all(c.token_count <= 85 for c in out.chunks)
 
 
-def test_figure_text_is_wrapped_in_an_explicit_image_marker() -> None:
+def test_figure_text_keeps_content_but_drops_the_bare_image_marker() -> None:
     marked = DocumentIR(
         doc_id="d7",
         source_hash="h",
@@ -581,22 +619,25 @@ def test_figure_text_is_wrapped_in_an_explicit_image_marker() -> None:
 
     text = passages[0].text
     lines = text.splitlines()
-    # 1. Leading marker carries the figure kind and the native caption text.
-    assert lines[0] == "[Image: chart] Figure 2: quarterly revenue"
-    # 2. VLM description follows, framed as image-derived by the marker above.
+    # 1. The content-free "[Image: <kind>]" marker is gone — it carried no searchable text and
+    #    would otherwise let a bare "chart" query match a figure with no answer in it.
+    assert "[Image:" not in text
+    # 2. The native caption leads, verbatim.
+    assert lines[0] == "Figure 2: quarterly revenue"
+    # 3. VLM description follows.
     assert "Revenue climbs each quarter." in lines
-    # 3. OCR text is present but labelled distinctly, never mistaken for the description.
+    # 4. OCR text is present but labelled distinctly, never mistaken for the description.
     assert "[OCR] Q1 100 Q2 140" in lines
-    # 4. Description and OCR stay verbatim in the text → still retrieval-friendly.
+    # 5. Description and OCR stay verbatim in the text → still retrieval-friendly.
     assert "Revenue climbs each quarter." in text and "Q1 100 Q2 140" in text
-    # 5. No chart-to-data extraction on this figure → no [Data] block.
+    # 6. No chart-to-data extraction on this figure → no [Data] block.
     assert "[Data]" not in text
 
 
-async def test_coalesced_sibling_sections_keep_their_headings_inline() -> None:
-    """A glossary-style doc of tiny sibling sections coalesces into ONE chunk (no swarm), but each
-    merged section's heading must survive INLINE — else term/article-precise retrieval is lost. The
-    common breadcrumb is [] (siblings), so the headings can only live in the text."""
+async def test_short_titled_sibling_sections_each_stay_their_own_chunk() -> None:
+    """A glossary-style doc of tiny sibling sections: each term is a citable unit, so it stays its
+    OWN chunk with its own heading_path — no coalescing across titles, so term-precise retrieval is
+    preserved (a query for one term resolves to exactly its chunk, not a merged blob of all terms)."""
     ir = DocumentIR(
         doc_id="gloss",
         source_hash="h",
@@ -616,12 +657,11 @@ async def test_coalesced_sibling_sections_keep_their_headings_inline() -> None:
     )
     node = ChunkerStructureAwareNode(id="c", config=ChunkerStructureAwareConfig())
     chunks = (await node.run(ChunkerConsumes(ir=ir))).chunks
-    assert len(chunks) == 1, "tiny sibling sections coalesce into one chunk (no swarm)"
-    text = chunks[0].text
-    for term in ("Zero Trust", "Mesh Registry", "Idempotency Key"):
-        assert term in text, (
-            f"'{term}' heading must survive inline in the coalesced chunk: {text!r}"
-        )
+    body = [c for c in chunks if c.role is ChunkRole.BODY]
+    assert len(body) == 3, "each tiny sibling term stays its own citable chunk (no swarm-into-blob)"
+    for term, para in (("Zero Trust", "dz"), ("Mesh Registry", "dm"), ("Idempotency Key", "di")):
+        chunk = next(c for c in body if para in c.block_ids)
+        assert chunk.heading_path == [term]  # each term citable by its own breadcrumb
 
 
 async def test_single_section_chunk_does_not_duplicate_its_heading_inline() -> None:
@@ -677,20 +717,23 @@ def test_figure_with_a_crop_but_no_caption_contributes_no_passage() -> None:
 
 
 def test_render_figure_emits_nothing_for_a_bare_crop_but_keeps_enriched_figures() -> None:
-    """render_figure returns None for a content-free figure (crop only / nothing), but ANY of a
-    caption, native text, description or OCR keeps it emitting the marked block."""
+    """render_figure returns None for a content-free figure (crop only / nothing) — never a bare
+    "[Image: <kind>]" marker — but ANY of a caption, native text, description or OCR keeps its real
+    content, unmarked by the content-free image label."""
     from shared_libs.pipelines.ingest.nodes.chunk.base.helpers import ChunkerHelpers
 
     crop_only = FigureEnrichment(kind=FigureKind.PHOTO, crop=b"\x89PNG")
     assert ChunkerHelpers.render_figure(crop_only, caption=None, native_text=None) is None
     assert ChunkerHelpers.render_figure(FigureEnrichment(kind=FigureKind.PHOTO), None, None) is None
-    # A caption keeps the figure — it carries real, searchable prose about the image.
+    # A caption keeps the figure — it carries real, searchable prose about the image — but the
+    # content-free "[Image: photo]" marker is NOT prepended to it.
     with_caption = ChunkerHelpers.render_figure(crop_only, caption="A ginger cat", native_text=None)
-    assert with_caption is not None and with_caption.startswith("[Image: photo] A ginger cat")
-    # OCR text alone is enough content to keep the figure.
+    assert with_caption == "A ginger cat"
+    assert "[Image:" not in with_caption
+    # OCR text alone is enough content to keep the figure, still with no bare image marker.
     ocr = FigureEnrichment(kind=FigureKind.PHOTO, crop=b"\x89PNG", ocr_text="TOTAL 35.72")
     rendered = ChunkerHelpers.render_figure(ocr, caption=None, native_text=None)
-    assert rendered is not None and "[OCR] TOTAL 35.72" in rendered
+    assert rendered is not None and rendered == "[OCR] TOTAL 35.72" and "[Image:" not in rendered
 
 
 def test_caption_survives_when_its_table_is_empty() -> None:
@@ -766,8 +809,8 @@ def test_figure_with_only_a_data_table_still_produces_a_marked_chunk() -> None:
     passages = PassageProjector.project(data_only, BaseChunkerConfig())
     assert len(passages) == 1  # a data-only figure is NOT dropped
     text = passages[0].text
-    assert text.startswith("[Image: chart]")  # marker still present
-    assert "[Data]" in text
+    assert "[Image:" not in text  # no content-free marker, even with nothing else to lead with
+    assert text.startswith("[Data]")  # the extracted grid is the figure's only content
     assert "| A | B |" in text.splitlines()
 
 
