@@ -76,6 +76,12 @@ class RUNTIME_CONFIG(EnvConfigLoader):
     # Its name contains TOKEN, so configplusplus masks it in the startup config dump.
     AUTH_ROOT_TOKEN: str = env("AUTH_ROOT_TOKEN", required=False, default="")
 
+    # ───── Search ─────
+    # Wall-clock cap for one inline search run. Search is sub-second; this only guards a stuck or
+    # cold provider (a cold CPU-hosted embedder's first encode can breach a tight cap → a 422). Raise
+    # it on a slow/contended deployment; the default stays snappy.
+    SEARCH_RUN_TIMEOUT_SECONDS: float = env("SEARCH_RUN_TIMEOUT_SECONDS", cast=float, default=30.0)
+
     # ───── Queue (enqueue only — the worker executes) ─────
     REDIS_URL = env("REDIS_URL")
 

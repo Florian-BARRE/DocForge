@@ -35,8 +35,9 @@ _LATE_INTERACTION_FLAG = "use_late_interaction"
 # The retrieve node's id in the stock search blob, and its config key for the re-score pool depth.
 _RETRIEVE_NODE_ID = "retrieve"
 _RESCORE_POOL_SIZE_KEY = "rescore_pool_size"
-# Wall-clock cap for an inline search run — search is sub-second; this only guards a stuck provider.
-_RUN_TIMEOUT_SECONDS = 30.0
+# Default wall-clock cap for an inline search run when the caller does not configure one — search is
+# sub-second; this only guards a stuck provider. Deployments override it via SEARCH_RUN_TIMEOUT_SECONDS.
+_DEFAULT_RUN_TIMEOUT_SECONDS = 30.0
 
 
 class SearchServiceError(Exception):
@@ -46,14 +47,19 @@ class SearchServiceError(Exception):
 class SearchService(LoggerClass):
     """Coordinates a graph-based search run against a stored collection — the invocation seam."""
 
-    def __init__(self, database: Database) -> None:
+    def __init__(
+        self, database: Database, timeout_seconds: float = _DEFAULT_RUN_TIMEOUT_SECONDS
+    ) -> None:
         """
         Args:
             database (Database): The shared data facade (collections + the read port's facades).
+            timeout_seconds (float): Wall-clock cap for one inline search run (guards a stuck/cold
+                provider). Deployments pass SEARCH_RUN_TIMEOUT_SECONDS; defaults to 30 s.
         """
         LoggerClass.__init__(self)
         self._database = database
         self._runner = SearchRunner()
+        self._timeout_seconds = timeout_seconds
 
     def __resolve_blob(self, stored: dict) -> dict:
         """
@@ -174,7 +180,7 @@ class SearchService(LoggerClass):
         if rescore_pool_size is not None:
             self.__inject_rescore_pool_size(blob, rescore_pool_size)
         return await self._runner.run(
-            blob, run_input, read_port, timeout_seconds=_RUN_TIMEOUT_SECONDS
+            blob, run_input, read_port, timeout_seconds=self._timeout_seconds
         )
 
 

@@ -47,6 +47,19 @@ def test_stored_graph_is_run_verbatim(fastapi_app) -> None:
     assert service._SearchService__resolve_blob(stored) is stored
 
 
+def test_default_run_timeout_is_thirty_seconds(fastapi_app) -> None:
+    """With no override, the inline-run wall-clock cap defaults to 30 s."""
+    assert _service(fastapi_app)._timeout_seconds == 30.0
+
+
+def test_configured_run_timeout_is_stored_and_used(fastapi_app) -> None:
+    """A configured timeout (SEARCH_RUN_TIMEOUT_SECONDS at boot) is stored and drives the run cap."""
+    from backend.libs.search.service import SearchService  # noqa: PLC0415
+
+    service = SearchService(database=SimpleNamespace(), timeout_seconds=120.0)
+    assert service._timeout_seconds == 120.0
+
+
 def test_pool_override_lands_on_retrieve_node(fastapi_app) -> None:
     """The per-query pool override is written onto the resolved blob's retrieve node config."""
     from shared_libs.pipelines.search import SearchPipeline  # noqa: PLC0415

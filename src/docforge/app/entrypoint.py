@@ -55,7 +55,9 @@ def _build_app() -> FastAPI:
 
     # 3b. Search execution — the graph-based search pipeline runs inline (not the arq worker). The
     # runner is stateless; the read port is constructed per-request from the database facade.
-    CONTEXT.search_service = SearchService(CONTEXT.database)
+    CONTEXT.search_service = SearchService(
+        CONTEXT.database, timeout_seconds=RUNTIME_CONFIG.SEARCH_RUN_TIMEOUT_SECONDS
+    )
 
     # 3. Create the FastAPI application with all routers registered.
     fastapi_app = create_app(
