@@ -89,16 +89,20 @@ def lifespan() -> Any:
             )
             CONTEXT.batching_engine.start()
 
-            # 5. Warmup — one tiny dummy forward pass per inference path (dense/sparse/rerank) so
-            # the first REAL request doesn't pay lazy CUDA-kernel-compile / allocator costs. Calls
+            # 5. Warmup — one tiny dummy forward pass per inference path (dense/sparse/colbert/rerank)
+            # so the first REAL request doesn't pay lazy CUDA-kernel-compile / allocator costs. Calls
             # the model service DIRECTLY (not through the batching engine/HTTP) — the engine isn't
             # needed to prime the model, and going through it would just add queue/lock overhead.
-            # Best-effort: a warmup failure must never abort startup, only slow the first request.
+            # colbert is primed too: it has its OWN route (/embed_colbert) and its own forward pass
+            # (the colbert head), so an unwarmed colbert path would leave the first late-interaction
+            # request cold. Best-effort: a warmup failure must never abort startup, only slow the
+            # first request.
             _log_step(4, "Warmup pass")
             try:
                 max_length = CONTEXT.CONFIG.BGE_M3_MAX_LENGTH
                 CONTEXT.bge_models.encode_dense(["warmup"], max_length=max_length)
                 CONTEXT.bge_models.encode_sparse(["warmup"], max_length=max_length)
+                CONTEXT.bge_models.encode_colbert(["warmup"], max_length=max_length)
                 CONTEXT.bge_models.compute_rerank_scores_flat([["warmup", "warmup"]])
                 logger.info(f"Warmup pass completed")
             except Exception as exc:  # noqa: BLE001 — a warmup miss must never crash the lifespan
