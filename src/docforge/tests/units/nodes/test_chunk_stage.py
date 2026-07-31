@@ -339,9 +339,10 @@ async def test_structure_aware_real_section_does_not_absorb_a_following_fragment
     assert real[0].heading_path == ["Real"]  # single-section chunk keeps its exact path
 
 
-async def test_structure_aware_keeps_short_titled_subsections_separate() -> None:
-    # Two tiny SUBSECTIONS under a common chapter: each is a titled, citable unit, so they do NOT
-    # coalesce — each stays its own chunk reporting its full Chapter › Subsection breadcrumb.
+async def test_structure_aware_coalesces_tiny_titled_siblings_under_one_parent() -> None:
+    # FIX 3: two tiny SUBSECTIONS under a common chapter are a list/enumeration under one heading —
+    # they coalesce toward the target into ONE chunk (no swarm of ~5-token fragments), yet each
+    # sub-section's own title is INLINED so it stays citable. The shared breadcrumb is the parent.
     ir = DocumentIR(
         doc_id="nest",
         source_hash="h",
@@ -360,15 +361,13 @@ async def test_structure_aware_keeps_short_titled_subsections_separate() -> None
     ).chunks
 
     body = [c for c in chunks if c.role is ChunkRole.BODY]
-    assert len(body) == 2  # each titled subsection stays its own chunk, tiny though it is
-    alpha = next(c for c in body if "pa" in c.block_ids)
-    beta = next(c for c in body if "pb" in c.block_ids)
-    assert alpha.heading_path == [
-        "Chapter",
-        "Alpha",
-    ]  # full breadcrumb, not just the shared ancestor
-    assert beta.heading_path == ["Chapter", "Beta"]
-    assert "pb" not in alpha.block_ids and "pa" not in beta.block_ids  # never glued together
+    assert len(body) == 1  # the two tiny same-parent siblings coalesced into one chunk
+    merged = body[0]
+    assert {"pa", "pb"} <= set(merged.block_ids)  # both siblings live in the one chunk
+    assert merged.heading_path == ["Chapter"]  # the common parent is the breadcrumb
+    # Each sub-section stays citable: its own title is inlined at its first passage.
+    assert "Alpha" in merged.text and "Beta" in merged.text
+    assert "A tiny note under alpha." in merged.text and "A tiny note under beta." in merged.text
 
 
 async def test_fixed_size_windows_with_repeated_overlap() -> None:
@@ -1162,6 +1161,86 @@ def test_web_chrome_detection_can_be_switched_off() -> None:
     assert by_block["nav"].role is ChunkRole.BODY  # knob honored — no demotion when off
 
 
+def _intranet_page_ir() -> DocumentIR:
+    """A realistic intranet HTML page: the parser emits each nav link as its OWN tiny block (a menu
+    run, NOT one separator-collapsed block), a notification widget and a stray person name, followed
+    by the real article. Mirrors the reported page where chunks #0-#4 were pure chrome."""
+    return DocumentIR(
+        doc_id="intranet",
+        source_hash="h",
+        n_pages=1,
+        blocks=[
+            _blk("c0", BlockType.PARAGRAPH, 0, text="Contenus"),  # nav labels, one per block
+            _blk("c1", BlockType.PARAGRAPH, 1, text="Espaces"),
+            _blk("c2", BlockType.PARAGRAPH, 2, text="Il n'y a pas de résultat."),
+            _blk("c3", BlockType.PARAGRAPH, 3, text="Applications"),
+            _blk("c4", BlockType.PARAGRAPH, 4, text="Rechercher une application"),
+            _blk("c5", BlockType.PARAGRAPH, 5, text="Faire une recherche complète"),
+            _blk("h", BlockType.HEADING, 6, text="Procédure de migration", level=1),
+            _blk(
+                "body",
+                BlockType.PARAGRAPH,
+                7,
+                text=(
+                    "Cette section décrit la procédure de migration en phrases complètes, en "
+                    "expliquant chaque étape et la raison qui la motive pour que le lecteur suive "
+                    "le raisonnement sans aucun contexte préalable."
+                ),
+                parent="h",
+            ),
+        ],
+    )
+
+
+def test_intranet_menu_run_of_individual_blocks_is_demoted_and_prose_stays_body() -> None:
+    # The reported failure: a WebChromeClassifier that flagged 0 of 197 blocks because each nav link
+    # is its OWN tiny block, so the per-block separator signal never fired. The RUN signal now sweeps
+    # the whole consecutive stretch of tiny label blocks into BOILERPLATE, while the real article
+    # (a full multi-sentence paragraph) stays BODY.
+    by_block = {
+        p.block_ids[0]: p
+        for p in PassageProjector.project(_intranet_page_ir(), BaseChunkerConfig())
+    }
+
+    # 1. Every chrome block #0-#5 is demoted (never embedded, never a hit).
+    for bid in ("c0", "c1", "c2", "c3", "c4", "c5"):
+        assert by_block[bid].role is ChunkRole.BOILERPLATE, bid
+        assert not role_default_enabled(by_block[bid].role)
+    # 2. The specific reported strings are demoted by name.
+    demoted_texts = {p.text for p in by_block.values() if p.role is ChunkRole.BOILERPLATE}
+    assert "Il n'y a pas de résultat." in demoted_texts
+    assert "Faire une recherche complète" in demoted_texts
+    assert "Rechercher une application" in demoted_texts  # the "menu of app links" placeholder
+    # 3. The genuine prose keeps its BODY role.
+    assert by_block["body"].role is ChunkRole.BODY
+    assert role_default_enabled(by_block["body"].role)
+
+
+def test_lone_short_label_block_is_not_demoted() -> None:
+    # Conservative guard: a LONE short label (not part of a run, not a known placeholder) may be a
+    # real short heading/value — it must stay BODY. Only a RUN of consecutive labels is chrome.
+    ir = DocumentIR(
+        doc_id="lone",
+        source_hash="h",
+        n_pages=1,
+        blocks=[
+            _blk("h", BlockType.HEADING, 0, text="Overview", level=1),
+            _blk("short", BlockType.PARAGRAPH, 1, text="Applications", parent="h"),  # lone label
+            _blk("p", BlockType.PARAGRAPH, 2, text=_REAL_PROSE, parent="h"),
+        ],
+    )
+    by_block = {p.block_ids[0]: p for p in PassageProjector.project(ir, BaseChunkerConfig())}
+    assert by_block["short"].role is ChunkRole.BODY  # a lone short label is left alone
+    assert by_block["p"].role is ChunkRole.BODY
+
+
+def test_intranet_menu_run_is_switched_off_by_the_knob() -> None:
+    off = PassageProjector.project(_intranet_page_ir(), BaseChunkerConfig(detect_web_chrome=False))
+    by_block = {p.block_ids[0]: p for p in off}
+    # With the knob off, even the placeholder-phrase blocks stay BODY (the whole pass is skipped).
+    assert all(by_block[bid].role is ChunkRole.BODY for bid in ("c0", "c2", "c4", "c5"))
+
+
 async def test_fix3_populated_section_heading_is_not_treated_as_orphan() -> None:
     # A heading that owns real content keeps packing with its body — no regression.
     ir = DocumentIR(
@@ -1186,3 +1265,105 @@ async def test_fix3_populated_section_heading_is_not_treated_as_orphan() -> None
     assert len(chunks) == 1
     assert chunks[0].block_ids == ["h1", "p1"]  # heading + its body, together
     assert chunks[0].heading_path == ["Populated"]
+
+
+# ==================== FIX 3 — coalesce tiny same-parent titled siblings ====================
+
+_FIELD = "A short line describing this single field of expertise in a handful of words only."
+
+
+def _fields_of_expertise_ir(n: int = 11) -> DocumentIR:
+    """One parent heading "Fields of expertise" with n tiny titled sub-sections (a list)."""
+    blocks: list[Block] = [_blk("fh", BlockType.HEADING, 0, text="Fields of expertise", level=1)]
+    order = 1
+    for index in range(n):
+        blocks.append(
+            _blk(
+                f"fs{index}", BlockType.HEADING, order, text=f"Field {index}", level=2, parent="fh"
+            )
+        )
+        order += 1
+        blocks.append(
+            _blk(f"fp{index}", BlockType.PARAGRAPH, order, text=_FIELD, parent=f"fs{index}")
+        )
+        order += 1
+    return DocumentIR(doc_id="fields", source_hash="h", n_pages=1, blocks=blocks)
+
+
+async def test_fix3_tiny_titled_siblings_under_one_parent_coalesce_toward_target() -> None:
+    # The reported over-fragmentation: an "11 fields of expertise" list became 11 tiny chunks. The
+    # siblings share the SAME PARENT heading, so they now coalesce toward the target into FEW chunks,
+    # not 11 — while every field's own title stays inlined (citable) and nothing breaches the cap.
+    config = ChunkerStructureAwareConfig(target_tokens=256, max_tokens=512, min_tokens=64)
+    node = ChunkerStructureAwareNode(id="c", config=config)
+    chunks = (await node.run(ChunkerConsumes(ir=_fields_of_expertise_ir(11)))).chunks
+
+    body = [c for c in chunks if c.role is ChunkRole.BODY]
+    assert 1 <= len(body) <= 3, [c.token_count for c in body]  # coalesced, far fewer than 11
+    # Every field's paragraph AND its own title survive, spread across the coalesced chunk(s).
+    all_blocks = {bid for c in body for bid in c.block_ids}
+    assert all(f"fp{i}" in all_blocks for i in range(11))
+    joined = "\n".join(c.text for c in body)
+    assert all(f"Field {i}" in joined for i in range(11))  # each title inlined → still citable
+    assert all(c.token_count <= config.max_tokens for c in body)
+    # The shared parent is the breadcrumb of every coalesced chunk (identity by the parent heading).
+    assert all(c.heading_path == ["Fields of expertise"] for c in body)
+
+
+async def test_fix3_five_step_process_under_one_heading_coalesces() -> None:
+    # A 5-step process scattered into isolated step fragments: same parent heading → coalesced.
+    blocks: list[Block] = [_blk("ph", BlockType.HEADING, 0, text="Process", level=1)]
+    order = 1
+    for step in range(1, 6):
+        blocks.append(
+            _blk(f"sh{step}", BlockType.HEADING, order, text=f"Step {step}", level=2, parent="ph")
+        )
+        order += 1
+        blocks.append(
+            _blk(
+                f"sp{step}",
+                BlockType.PARAGRAPH,
+                order,
+                text=f"Do the {step}th action briefly.",
+                parent=f"sh{step}",
+            )
+        )
+        order += 1
+    ir = DocumentIR(doc_id="proc", source_hash="h", n_pages=1, blocks=blocks)
+    config = ChunkerStructureAwareConfig(target_tokens=256, max_tokens=512, min_tokens=64)
+    chunks = (
+        await ChunkerStructureAwareNode(id="c", config=config).run(ChunkerConsumes(ir=ir))
+    ).chunks
+    body = [c for c in chunks if c.role is ChunkRole.BODY]
+    assert len(body) == 1, [c.text for c in body]  # the five tiny steps became one citable chunk
+    assert all(f"Step {s}" in body[0].text for s in range(1, 6))
+
+
+async def test_fix3_distinct_top_level_articles_still_stand_alone() -> None:
+    # The regulatory/clause guarantee: distinct TOP-LEVEL titled sections (Articles — empty parent
+    # key) each stand alone even when short, so a clause stays individually citable. Only tiny
+    # SIBLING sub-sections under a shared parent coalesce; top-level siblings never do.
+    ir = DocumentIR(
+        doc_id="charter",
+        source_hash="h",
+        n_pages=1,
+        blocks=[
+            _blk("a1", BlockType.HEADING, 0, text="Article 1", level=1),
+            _blk("c1", BlockType.PARAGRAPH, 1, text="Data is retained twelve months.", parent="a1"),
+            _blk("a2", BlockType.HEADING, 2, text="Article 2", level=1),
+            _blk("c2", BlockType.PARAGRAPH, 3, text="A breach is reported in a day.", parent="a2"),
+            _blk("a3", BlockType.HEADING, 4, text="Article 3", level=1),
+            _blk(
+                "c3", BlockType.PARAGRAPH, 5, text="Consent may be withdrawn anytime.", parent="a3"
+            ),
+        ],
+    )
+    config = ChunkerStructureAwareConfig(target_tokens=256, max_tokens=512, min_tokens=64)
+    chunks = (
+        await ChunkerStructureAwareNode(id="c", config=config).run(ChunkerConsumes(ir=ir))
+    ).chunks
+    body = [c for c in chunks if c.role is ChunkRole.BODY]
+    assert len(body) == 3  # each Article stands alone (distinct top-level, empty parent)
+    for article, clause in (("Article 1", "c1"), ("Article 2", "c2"), ("Article 3", "c3")):
+        chunk = next(c for c in body if clause in c.block_ids)
+        assert chunk.heading_path == [article]

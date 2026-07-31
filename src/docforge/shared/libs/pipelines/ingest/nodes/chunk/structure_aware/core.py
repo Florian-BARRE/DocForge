@@ -112,50 +112,84 @@ class ChunkerStructureAwareNode(BaseChunkerNode):
     def __is_titled_section(group: list[Passage]) -> bool:
         """True when the group is a titled section — any passage carries a real (non-blank) heading.
 
-        A titled leaf section is a citable semantic unit: a reader must be able to point at it. It
-        therefore stands on its own even when short, and never merges with a neighbour. Only
-        genuinely heading-less material (no heading text in the ancestry) is fragment-coalescible.
+        A titled leaf section is a citable semantic unit: a reader must be able to point at it. A
+        DISTINCT top-level titled section therefore stands on its own even when short. Tiny titled
+        SIBLING sub-sections under one shared parent are the exception — they coalesce toward the
+        target (see ``__coalesce_small``). Genuinely heading-less material is always fragment-coalescible.
         """
         return any(heading.strip() for passage in group for heading in passage.heading_path)
 
+    @staticmethod
+    def __parent_key(group: list[Passage]) -> tuple[str, ...]:
+        """The group section's PARENT identity — its section_key minus the leaf (``()`` at top level).
+
+        Two tiny titled sub-sections are siblings under one heading exactly when they share this
+        non-empty parent key (identity by heading id, so two sections sharing a title never merge by
+        accident). A top-level section has an empty parent key and so never joins a sibling run.
+        """
+        key = group[0].section_key
+        return tuple(key[:-1])
+
     def __coalesce_small(self, groups: list[list[Passage]]) -> list[list[Passage]]:
         """
-        Coalesce consecutive below-min_tokens HEADING-LESS groups toward target_tokens.
+        Coalesce consecutive below-min_tokens groups toward target_tokens — two coalescing runs.
 
-        The packing walk emits one group per section. A titled section — however short — is a
-        semantic unit a user must be able to cite, so it stands ALONE: it is never absorbed into a
-        coalescing run and never opens one. Only genuinely heading-less micro-fragments coalesce:
-        each such fragment folds into an open run THAT ITSELF STARTED FROM A HEADING-LESS FRAGMENT
-        — across boundaries — while room toward target_tokens remains, never breaching max_tokens.
+        The packing walk emits one group per section, which over-fragments a list/enumeration whose
+        every item is a titled sub-section (an "11 fields of expertise" list → 11 ~30-token chunks).
+        Two kinds of run are folded here, each toward ``min(target, max)`` tokens and never breaching
+        ``max_tokens``:
+
+        1. HEADING-LESS fragments — genuinely title-less micro-blocks fold into a fragment-born run
+           across boundaries (a swarm of tiny title-less fragments is never desirable).
+        2. Tiny titled SIBLING sub-sections — consecutive below-min titled sections that share the
+           SAME NON-EMPTY parent heading fold into a sibling-born run (a list under one heading),
+           each merged section's own title later inlined by the base so it stays citable.
+
+        A DISTINCT top-level titled section (an Article, a glossary term — empty parent key) and a
+        real-sized section still stand ALONE: they neither open an absorbing run nor join one.
 
         Args:
             groups (list[list[Passage]]): The packed groups, in reading order.
 
         Returns:
-            list[list[Passage]]: Fewer groups — heading-less fragments coalesced, titled sections
-            (and real-sized sections) left intact as their own chunks.
+            list[list[Passage]]: Fewer groups — heading-less fragments and tiny same-parent titled
+            siblings coalesced; distinct top-level and real-sized sections left intact.
         """
         config: ChunkerStructureAwareConfig = self.config
-        # 1. Never let coalescing breach the hard cap; target is the soft goal fragments trend to.
+        # Never let coalescing breach the hard cap; target is the soft goal fragments trend to.
         merge_cap = min(config.target_tokens, config.max_tokens)
         coalesced: list[list[Passage]] = []
         running = 0
-        # The open run may absorb fragments ONLY when it was itself opened by a heading-less
-        # fragment — a titled or real-sized section opens a non-absorbing run.
-        tail_is_fragment_run = False
+        # The kind of run currently open (None = a non-absorbing section) and, for a sibling run,
+        # the shared parent it absorbs under. A run only absorbs groups of its OWN kind.
+        open_kind: str | None = None
+        open_parent: tuple[str, ...] = ()
         for group in groups:
             tokens = sum(passage.token_count for passage in group)
-            # A titled section is never a fragment: it stands alone whatever its size.
-            is_fragment = tokens < config.min_tokens and not self.__is_titled_section(group)
-            # 2. A heading-less fragment folds into a fragment-born run while room toward the target
-            #    remains — the only way a chunk crosses a section boundary here.
-            if coalesced and tail_is_fragment_run and is_fragment and running + tokens <= merge_cap:
+            tiny = tokens < config.min_tokens
+            titled = self.__is_titled_section(group)
+            parent = self.__parent_key(group)
+            fits = coalesced and running + tokens <= merge_cap
+            # 1. A heading-less fragment folds into a fragment-born run.
+            if fits and open_kind == "fragment" and tiny and not titled:
                 coalesced[-1].extend(group)
                 running += tokens
                 continue
+            # 2. A tiny titled sub-section folds into a sibling-born run under the SAME parent.
+            if fits and open_kind == "sibling" and tiny and titled and parent == open_parent:
+                coalesced[-1].extend(group)
+                running += tokens
+                continue
+            # 3. A new run: it can ABSORB only if it opens as a heading-less fragment or as a tiny
+            #    titled sub-section with a real (non-top-level) parent; anything else is non-absorbing.
             coalesced.append(group)
             running = tokens
-            tail_is_fragment_run = is_fragment
+            if tiny and not titled:
+                open_kind, open_parent = "fragment", ()
+            elif tiny and titled and parent:
+                open_kind, open_parent = "sibling", parent
+            else:
+                open_kind, open_parent = None, ()
         return coalesced
 
     async def _split(self, passages: list[Passage]) -> list[list[Passage]]:

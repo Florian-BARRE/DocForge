@@ -186,11 +186,61 @@ class PassageProjector:
         )
 
     @staticmethod
+    def __web_chrome_ids(blocks: list[Block], config: BaseChunkerConfig) -> frozenset[str]:
+        """
+        Infer the block ids that are web-page CHROME (nav/menu/search furniture) — two signals.
+
+        A REAL intranet HTML page emits its navigation as a stream of tiny label blocks (one link
+        per block), which the per-block classifier alone (a lone label may be a real short heading)
+        deliberately leaves as body. So chrome is inferred here, with block CONTEXT:
+
+        1. PER-BLOCK — any block that is obvious chrome on its own (a known placeholder / search
+           widget phrase, or a nav bar collapsed into one separator-run block).
+        2. RUN — a stretch of ``WebChromeClassifier.MENU_RUN_MIN`` or more CONSECUTIVE tiny
+           label-like blocks (a menu / link list). Only text-bearing NON-heading blocks are run
+           candidates; a heading, table, figure, header/footer or any non-label block breaks the run
+           (a real short heading is never swept in). A lone label is never demoted — only a real run.
+
+        Args:
+            blocks (list[Block]): The document's blocks in reading order.
+            config (BaseChunkerConfig): The chunker config (web-chrome on/off switch).
+
+        Returns:
+            frozenset[str]: The ids of blocks classified as web chrome.
+        """
+        if not config.detect_web_chrome:
+            return frozenset()
+        # Block types that can be a menu/link item; a heading (or structural block) breaks a run so a
+        # real section title is never demoted, and header/footer already has its own role.
+        run_candidate_types = {BlockType.PARAGRAPH, BlockType.LIST_ITEM, BlockType.CODE}
+        chrome: set[str] = set()
+        run: list[str] = []
+
+        def flush_run() -> None:
+            if len(run) >= WebChromeClassifier.MENU_RUN_MIN:
+                chrome.update(run)
+            run.clear()
+
+        for block in blocks:
+            # 1. Per-block chrome is demoted regardless of its neighbours.
+            if WebChromeClassifier.is_chrome(block.text):
+                chrome.add(block.id)
+            # 2. Grow / break the consecutive-label run.
+            if block.block_type in run_candidate_types and WebChromeClassifier.is_menu_label(
+                block.text
+            ):
+                run.append(block.id)
+            else:
+                flush_run()
+        flush_run()
+        return frozenset(chrome)
+
+    @staticmethod
     def __role_for(
         block: Block,
         heading_path: list[str],
         boilerplate_texts: frozenset[str],
-        config: BaseChunkerConfig,
+        web_chrome_ids: frozenset[str],
     ) -> ChunkRole:
         """
         Classify a block's structural role from IR signals (conservative, best-effort).
@@ -200,15 +250,15 @@ class PassageProjector:
         known ToC title (exact match, never substring) marks the whole section — heading and its
         list-like body alike — as scaffolding. Boilerplate is inferred last, from two independent
         signals: a block whose normalized text recurs across many pages (precomputed set) is
-        repeated furniture, and a block that is obvious web CHROME (a nav/menu run or a search-widget
-        placeholder dumped from an HTML page) is page furniture too. The more specific structural
-        signals (header/footer, ToC) take precedence; everything else is body.
+        repeated furniture, and a block flagged as web CHROME (a nav/menu run, a search-widget
+        placeholder, or one item of a menu/link run — precomputed set) is page furniture too. The
+        more specific structural signals (header/footer, ToC) take precedence; everything else is body.
 
         Args:
             block (Block): The IR block behind the passage.
             heading_path (list[str]): The block's heading ancestry TEXTS, top-down.
             boilerplate_texts (frozenset[str]): Normalized texts flagged as cross-page boilerplate.
-            config (BaseChunkerConfig): The chunker config (web-chrome on/off switch).
+            web_chrome_ids (frozenset[str]): Ids of blocks flagged as web chrome (precomputed).
 
         Returns:
             ChunkRole: The structural role of the passage this block produces.
@@ -222,9 +272,9 @@ class PassageProjector:
         # 3. Repeated cross-page text is boilerplate — kept, but disabled-by-role (never embedded).
         if block.text and ChunkerHelpers.normalize_text(block.text) in boilerplate_texts:
             return ChunkRole.BOILERPLATE
-        # 4. Obvious web chrome (nav/menu run, search-widget placeholder) is page furniture too —
-        #    kept, disabled-by-role. Conservative: only clear chrome is demoted (see WebChrome).
-        if config.detect_web_chrome and WebChromeClassifier.is_chrome(block.text):
+        # 4. Web chrome (nav/menu run, search-widget placeholder, menu/link-run item) is page
+        #    furniture too — kept, disabled-by-role. Conservative (see WebChromeClassifier).
+        if block.id in web_chrome_ids:
             return ChunkRole.BOILERPLATE
         return ChunkRole.BODY
 
@@ -272,6 +322,7 @@ class PassageProjector:
         captions = cls.__attach_captions(blocks)
         consumed_captions = {caption.id for caption in captions.values()}
         boilerplate_texts = cls.__repeated_texts(blocks, config)
+        web_chrome_ids = cls.__web_chrome_ids(blocks, config)
 
         # 2. One passage per contributing block, rules applied; a fused caption contributes its
         #    block id and page span to the unit that absorbed it.
@@ -305,7 +356,7 @@ class PassageProjector:
                     section_key=section_key,
                     atomic=atomic,
                     token_count=ChunkerHelpers.count_tokens(text, config.tokenizer_encoding),
-                    role=cls.__role_for(block, heading_path, boilerplate_texts, config),
+                    role=cls.__role_for(block, heading_path, boilerplate_texts, web_chrome_ids),
                     heading_only=block.block_type == BlockType.HEADING,
                     page_start=min(member.provenance.page for member in unit_blocks),
                     page_end=max(member.provenance.page for member in unit_blocks),

@@ -6,6 +6,7 @@ from .node import BaseParserNode
 
 # ---------------------- Shared post-passes ---------------------- #
 from .helpers import BaseParserHelpers
+from .language import LanguageDetector
 
 # ------------------- Public API ------------------- #
 __all__ = [
@@ -13,4 +14,5 @@ __all__ = [
     "ParserProduces",
     "BaseParserNode",
     "BaseParserHelpers",
+    "LanguageDetector",
 ]
