@@ -19,11 +19,12 @@ from shared_libs.public_models import TOC_TITLES, Block, BlockType, ChunkRole, D
 # ====== Local Project Imports ======
 from .config import BaseChunkerConfig
 from .helpers import ChunkerHelpers
+from .web_chrome import WebChromeClassifier
 
 # The table-of-contents heading allow-list is the shared document-structure constant (public_models)
 # — one source for the chunker role classifier, the doc_meta anchor and the persistence title
-# fallback. BOILERPLATE is NOT allow-list driven: it is inferred structurally from cross-page
-# repetition (see ``__repeated_texts``).
+# fallback. BOILERPLATE is inferred structurally: cross-page repetition (see ``__repeated_texts``)
+# and obvious web chrome (nav/menu runs, search placeholders — see ``WebChromeClassifier``).
 _TOC_TITLES = TOC_TITLES
 
 
@@ -186,7 +187,10 @@ class PassageProjector:
 
     @staticmethod
     def __role_for(
-        block: Block, heading_path: list[str], boilerplate_texts: frozenset[str]
+        block: Block,
+        heading_path: list[str],
+        boilerplate_texts: frozenset[str],
+        config: BaseChunkerConfig,
     ) -> ChunkRole:
         """
         Classify a block's structural role from IR signals (conservative, best-effort).
@@ -194,14 +198,17 @@ class PassageProjector:
         Header/footer is an explicit IR block type. A table-of-contents is inferred from the
         section a block lives under: any heading in its ancestry whose FULL normalized text is a
         known ToC title (exact match, never substring) marks the whole section — heading and its
-        list-like body alike — as scaffolding. Boilerplate is inferred last: a block whose
-        normalized text recurs across many pages (precomputed set) is repeated furniture. The more
-        specific structural signals (header/footer, ToC) take precedence; everything else is body.
+        list-like body alike — as scaffolding. Boilerplate is inferred last, from two independent
+        signals: a block whose normalized text recurs across many pages (precomputed set) is
+        repeated furniture, and a block that is obvious web CHROME (a nav/menu run or a search-widget
+        placeholder dumped from an HTML page) is page furniture too. The more specific structural
+        signals (header/footer, ToC) take precedence; everything else is body.
 
         Args:
             block (Block): The IR block behind the passage.
             heading_path (list[str]): The block's heading ancestry TEXTS, top-down.
             boilerplate_texts (frozenset[str]): Normalized texts flagged as cross-page boilerplate.
+            config (BaseChunkerConfig): The chunker config (web-chrome on/off switch).
 
         Returns:
             ChunkRole: The structural role of the passage this block produces.
@@ -214,6 +221,10 @@ class PassageProjector:
             return ChunkRole.TOC
         # 3. Repeated cross-page text is boilerplate — kept, but disabled-by-role (never embedded).
         if block.text and ChunkerHelpers.normalize_text(block.text) in boilerplate_texts:
+            return ChunkRole.BOILERPLATE
+        # 4. Obvious web chrome (nav/menu run, search-widget placeholder) is page furniture too —
+        #    kept, disabled-by-role. Conservative: only clear chrome is demoted (see WebChrome).
+        if config.detect_web_chrome and WebChromeClassifier.is_chrome(block.text):
             return ChunkRole.BOILERPLATE
         return ChunkRole.BODY
 
@@ -294,7 +305,7 @@ class PassageProjector:
                     section_key=section_key,
                     atomic=atomic,
                     token_count=ChunkerHelpers.count_tokens(text, config.tokenizer_encoding),
-                    role=cls.__role_for(block, heading_path, boilerplate_texts),
+                    role=cls.__role_for(block, heading_path, boilerplate_texts, config),
                     heading_only=block.block_type == BlockType.HEADING,
                     page_start=min(member.provenance.page for member in unit_blocks),
                     page_end=max(member.provenance.page for member in unit_blocks),

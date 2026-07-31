@@ -363,7 +363,10 @@ async def test_structure_aware_keeps_short_titled_subsections_separate() -> None
     assert len(body) == 2  # each titled subsection stays its own chunk, tiny though it is
     alpha = next(c for c in body if "pa" in c.block_ids)
     beta = next(c for c in body if "pb" in c.block_ids)
-    assert alpha.heading_path == ["Chapter", "Alpha"]  # full breadcrumb, not just the shared ancestor
+    assert alpha.heading_path == [
+        "Chapter",
+        "Alpha",
+    ]  # full breadcrumb, not just the shared ancestor
     assert beta.heading_path == ["Chapter", "Beta"]
     assert "pb" not in alpha.block_ids and "pa" not in beta.block_ids  # never glued together
 
@@ -1049,6 +1052,114 @@ async def test_fix3_trailing_orphan_heading_merges_backward() -> None:
     assert not any(c.text.strip() == "Appendix" for c in chunks)  # not a standalone chunk
     merged = next(c for c in chunks if "Appendix" in c.text)
     assert "p1" in merged.block_ids and "tail" in merged.block_ids  # folded backward
+
+
+# ============================ web-page chrome (nav/menu/search) demotion ============================
+
+# A real web page dumped as HTML drags in its navigation bar and search widget as ordinary text
+# blocks. Those must be demoted to a non-body role (kept, but never embedded, never a search hit),
+# while the real article stays BODY.
+
+_NAV_CHROME = (
+    "Contenus · Espaces · Il n'y a pas de résultat · Il n'y a pas de résultat "
+    "· Faire une recherche complète · Applications"
+)
+_REAL_PROSE = (
+    "This section explains the migration procedure in full sentences, describing each step and the "
+    "rationale behind it so a reader can follow the reasoning without any prior context."
+)
+
+
+def _web_page_ir() -> DocumentIR:
+    return DocumentIR(
+        doc_id="web",
+        source_hash="h",
+        n_pages=1,
+        blocks=[
+            _blk("nav", BlockType.PARAGRAPH, 0, text=_NAV_CHROME),  # nav bar + search widget
+            _blk("h", BlockType.HEADING, 1, text="Migration Guide", level=1),
+            _blk("body", BlockType.PARAGRAPH, 2, text=_REAL_PROSE, parent="h"),
+        ],
+    )
+
+
+def test_web_nav_menu_run_is_demoted_and_real_content_stays_body() -> None:
+    passages = PassageProjector.project(_web_page_ir(), BaseChunkerConfig())
+    by_block = {p.block_ids[0]: p for p in passages}
+    # The nav/menu + search-widget run is demoted to BOILERPLATE (disabled-by-role, never embedded).
+    assert by_block["nav"].role is ChunkRole.BOILERPLATE
+    assert not role_default_enabled(by_block["nav"].role)
+    # The genuine prose keeps its BODY role.
+    assert by_block["body"].role is ChunkRole.BODY
+    assert role_default_enabled(by_block["body"].role)
+
+
+async def test_web_chrome_never_leaks_into_a_body_chunk() -> None:
+    # Behavioral acceptance: the nav chrome must not pollute any body chunk's text, surviving only
+    # as its own disabled-by-role chunk.
+    node = ChunkerStructureAwareNode(
+        id="c", config=ChunkerStructureAwareConfig(target_tokens=256, max_tokens=512, min_tokens=0)
+    )
+    chunks = (await node.run(ChunkerConsumes(ir=_web_page_ir()))).chunks
+    body = [c for c in chunks if c.role is ChunkRole.BODY]
+    chrome = [c for c in chunks if c.role is ChunkRole.BOILERPLATE]
+    assert body and chrome
+    assert not any("Espaces" in c.text for c in body)  # chrome gone from the body
+    assert any("Espaces" in c.text for c in chrome)  # kept verbatim, out of the body
+    assert all(not role_default_enabled(c.role) for c in chrome)
+
+
+def test_lone_search_and_no_results_placeholders_are_demoted() -> None:
+    ir = DocumentIR(
+        doc_id="widgets",
+        source_hash="h",
+        n_pages=1,
+        blocks=[
+            _blk("search", BlockType.PARAGRAPH, 0, text="Search"),
+            _blk("empty", BlockType.PARAGRAPH, 1, text="No results"),
+            _blk("h", BlockType.HEADING, 2, text="Findings", level=1),
+            _blk("body", BlockType.PARAGRAPH, 3, text=_REAL_PROSE, parent="h"),
+        ],
+    )
+    by_block = {p.block_ids[0]: p for p in PassageProjector.project(ir, BaseChunkerConfig())}
+    assert by_block["search"].role is ChunkRole.BOILERPLATE
+    assert by_block["empty"].role is ChunkRole.BOILERPLATE
+    assert by_block["body"].role is ChunkRole.BODY
+
+
+def test_web_chrome_detection_is_conservative_about_real_prose() -> None:
+    # None of these must be demoted: a plain paragraph, a sentence carrying a slash (not a menu
+    # separator), and a run of several LONG bullet-separated clauses (real prose, not tiny labels).
+    long_bulleted = (
+        "Le protocole de transport garantit la livraison ordonnée · chaque paquet est numéroté avec "
+        "soin · les accusés de réception confirment la bonne réception des données · la fenêtre de "
+        "congestion limite le débit lorsque le réseau sature"
+    )
+    ir = DocumentIR(
+        doc_id="prose",
+        source_hash="h",
+        n_pages=1,
+        blocks=[
+            _blk("p1", BlockType.PARAGRAPH, 0, text=_REAL_PROSE),
+            _blk(
+                "p2",
+                BlockType.PARAGRAPH,
+                1,
+                text="The TCP/IP stack and the OSI model are both layered networking references.",
+            ),
+            _blk("p3", BlockType.PARAGRAPH, 2, text=long_bulleted),
+        ],
+    )
+    passages = PassageProjector.project(ir, BaseChunkerConfig())
+    assert all(p.role is ChunkRole.BODY for p in passages), [
+        (p.block_ids[0], p.role) for p in passages
+    ]
+
+
+def test_web_chrome_detection_can_be_switched_off() -> None:
+    off = PassageProjector.project(_web_page_ir(), BaseChunkerConfig(detect_web_chrome=False))
+    by_block = {p.block_ids[0]: p for p in off}
+    assert by_block["nav"].role is ChunkRole.BODY  # knob honored — no demotion when off
 
 
 async def test_fix3_populated_section_heading_is_not_treated_as_orphan() -> None:

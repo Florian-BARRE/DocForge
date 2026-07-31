@@ -26,6 +26,12 @@ class PdfView(Artifact):
     content: bytes | None = Field(
         default=None, description="PDF bytes (the original bytes when the source already is a PDF)."
     )
+    preview_content: bytes | None = Field(
+        default=None,
+        description="A view-ONLY PDF that must NOT feed the parser — set for structured text "
+        "formats (html/md) parsed natively, so they still get page renders and a viewable PDF. "
+        "Distinct from content, which the parser consumes.",
+    )
 
 
 class PdfProbe(Artifact):
@@ -52,6 +58,12 @@ class IntakeResult(Artifact):
         default=None,
         description="The PDF-view bytes to parse; None when the source is not convertible or is "
         "parsed natively from its original bytes.",
+    )
+    preview_pdf: bytes | None = Field(
+        default=None,
+        description="A PDF produced ONLY for viewing (never fed to the parser); set for structured "
+        "text formats (html/md) that are parsed natively yet still deserve a page render + a "
+        "viewable PDF. Distinct from pdf_content, which the parser consumes.",
     )
     page_count: int = Field(default=0, description="Total page count of the PDF view.")
 

@@ -253,6 +253,33 @@ def test_disabled_by_role_chunk_persists_as_a_row_but_gets_no_qdrant_point() -> 
     assert out.points[0].payload["enabled"] is True
 
 
+def test_html_preview_pdf_is_exposed_as_the_viewable_pdf_and_page_count_from_renders() -> None:
+    """A natively-parsed html/md carries no parser PDF (page_count 0) but a VIEW-ONLY preview PDF and
+    its page renders. The translator must expose that preview as the viewable PDF (pdf_blob_hash) and
+    derive page_count from the renders, so GET /documents/{id} shows a PDF and page_count > 0."""
+    bundle = RunBundle(
+        ingest=IntakeResult(
+            source_hash="h", pdf_content=None, preview_pdf=b"%PDF-preview", page_count=0
+        ),
+        ir=DocumentIR(doc_id="d", source_hash="h", n_pages=1, blocks=[]),
+        pages=PageRenders(
+            pages=[
+                PageRender(page_number=0, image=b"pg0", width=1, height=1),
+                PageRender(page_number=1, image=b"pg1", width=1, height=1),
+            ]
+        ),
+        chunks=[],
+    )
+    out = RunTranslator.translate(uuid.uuid4(), bundle, schema=[], strategy="none", config_hash="c")
+
+    # 1. The preview PDF is registered as the viewable PDF (same blob kind as a canonical one).
+    assert out.payload.pdf_blob_hash
+    assert any(row.kind == BlobKind.CANONICAL_PDF for row in out.blob_rows)
+    # 2. page_count falls back to the rendered-page count when the intake count is 0.
+    assert out.payload.page_count == 2
+    assert len(out.payload.pages) == 2
+
+
 def test_identical_artefact_bytes_are_deduplicated_into_one_blob_row() -> None:
     """Two PageRenders with IDENTICAL bytes must register exactly one blob row/object."""
     bundle = RunBundle(

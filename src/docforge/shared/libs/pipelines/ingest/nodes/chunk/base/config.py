@@ -45,6 +45,14 @@ class BaseChunkerConfig(NodeConfig):
         description="A text is boilerplate only when its normalized form appears on at least this "
         "many DISTINCT pages (exact-match, conservative). Raise it to demand more repetition.",
     )
+    detect_web_chrome: bool = Field(
+        default=True,
+        description="Classify obvious web-page CHROME (navigation/menu runs, search-widget and "
+        "'no results' placeholders dumped from an HTML page) as BOILERPLATE — kept but "
+        "disabled-by-role, so it is never embedded nor a search hit. Conservative: only clear "
+        "chrome (short runs of many tiny nav labels, or a lone known placeholder) is demoted, "
+        "never real prose.",
+    )
 
 
 __all__ = ["BaseChunkerConfig"]

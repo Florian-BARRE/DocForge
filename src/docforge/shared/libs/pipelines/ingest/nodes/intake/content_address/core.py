@@ -78,6 +78,7 @@ class ContentAddressNode(ActionNode):
                 source_format=data.source_probe.format,
                 source_content=data.source.content,
                 pdf_content=data.pdf.content,
+                preview_pdf=data.pdf.preview_content,
                 page_count=data.probe.page_count,
             )
         )

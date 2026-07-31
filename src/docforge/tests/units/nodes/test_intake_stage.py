@@ -13,8 +13,13 @@ import zipfile
 import pytest
 
 import shared_libs.pipelines.ingest.nodes  # noqa: F401 — auto-discovery
+import shared_libs.pipelines.ingest.nodes.intake.converter.gotenberg.core as gotenberg_core
 from shared_libs.pipelines.build import PipelineBuilder
 from shared_libs.pipelines.engine import FlowEngine
+from shared_libs.pipelines.ingest.nodes.intake.converter.base.io import ConverterConsumes
+from shared_libs.pipelines.ingest.nodes.intake.converter.gotenberg.config import (
+    ConverterGotenbergConfig,
+)
 from shared_libs.pipelines.ingest.nodes.intake.format_probe.helpers import FormatProbeHelpers
 from shared_libs.pipelines.validation import GraphValidator
 from shared_libs.public_models import (
@@ -23,6 +28,7 @@ from shared_libs.public_models import (
     FieldType,
     MetadataFieldSpec,
     SourceDocument,
+    SourceProbe,
 )
 
 
@@ -238,3 +244,93 @@ async def test_admission_rejects_every_invalid_case(group, contract, source) -> 
     admit_record = record.children[1]
     assert admit_record.status.value == "failed"
     assert record.status.value == "failed"
+
+
+# ===================== preview-PDF channel (html/md view-only render) =====================
+# The Gotenberg converter now ALSO emits a view-only preview PDF for html/md — a channel decoupled
+# from parsing (the parser still reads the original bytes natively) that only feeds the page-render +
+# viewable-PDF. Gotenberg is a service, so its Chromium routes are mocked here.
+
+PREVIEW_BYTES = b"%PDF-1.7 preview-render"
+
+
+class _FakeResponse:
+    def __init__(self, content: bytes) -> None:
+        self.content = content
+
+    def raise_for_status(self) -> None:
+        return None
+
+
+class _FakeClient:
+    """Records every Gotenberg POST (route + files) and returns fixed PDF bytes."""
+
+    calls: list = []
+
+    def __init__(self, **_kwargs: object) -> None:
+        pass
+
+    async def __aenter__(self) -> "_FakeClient":
+        return self
+
+    async def __aexit__(self, *_exc: object) -> bool:
+        return False
+
+    async def post(self, route: str, files=None) -> _FakeResponse:
+        _FakeClient.calls.append((route, files))
+        return _FakeResponse(PREVIEW_BYTES)
+
+
+def _gotenberg_node() -> "gotenberg_core.ConverterGotenbergNode":
+    return gotenberg_core.ConverterGotenbergNode(
+        id="convert", config=ConverterGotenbergConfig(base_url="http://gotenberg:3000")
+    )
+
+
+async def test_html_gets_a_view_only_preview_pdf_and_no_parser_pdf(monkeypatch) -> None:
+    _FakeClient.calls = []
+    monkeypatch.setattr(gotenberg_core.httpx, "AsyncClient", _FakeClient)
+    source = SourceDocument(filename="page.html", content=b"<html><body><h1>Hi</h1></body></html>")
+    probe = SourceProbe(format="html", mime_type="text/html", file_size=len(source.content))
+
+    out = await _gotenberg_node().run(ConverterConsumes(source=source, probe=probe))
+
+    # The parser PDF stays None (html is parsed natively), but the view-only preview is produced.
+    assert out.pdf.content is None
+    assert out.pdf.preview_content == PREVIEW_BYTES
+    assert [route for route, _files in _FakeClient.calls] == ["/forms/chromium/convert/html"]
+
+
+async def test_markdown_preview_uses_the_markdown_route_with_an_index_wrapper(monkeypatch) -> None:
+    _FakeClient.calls = []
+    monkeypatch.setattr(gotenberg_core.httpx, "AsyncClient", _FakeClient)
+    source = SourceDocument(filename="notes.md", content=b"# Title\n\nBody text.")
+    probe = SourceProbe(format="md", mime_type="text/markdown", file_size=len(source.content))
+
+    out = await _gotenberg_node().run(ConverterConsumes(source=source, probe=probe))
+
+    assert out.pdf.content is None
+    assert out.pdf.preview_content == PREVIEW_BYTES
+    route, files = _FakeClient.calls[0]
+    assert route == "/forms/chromium/convert/markdown"
+    uploaded = [payload[0] for _field, payload in files]  # ("files", (name, bytes, mime))
+    assert "index.html" in uploaded and "notes.md" in uploaded  # wrapper + the markdown file
+
+
+async def test_office_source_keeps_its_parser_pdf_and_has_no_preview(monkeypatch) -> None:
+    _FakeClient.calls = []
+    monkeypatch.setattr(gotenberg_core.httpx, "AsyncClient", _FakeClient)
+    source = SourceDocument(filename="report.docx", content=DOCX_BYTES)
+    probe = SourceProbe(
+        format="docx",
+        mime_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        file_size=len(DOCX_BYTES),
+    )
+
+    out = await _gotenberg_node().run(ConverterConsumes(source=source, probe=probe))
+
+    # Office keeps the classic single-channel behaviour: the LibreOffice route feeds pdf_content;
+    # no preview channel is opened (its PDF already feeds both parse and render).
+    assert out.pdf.content == PREVIEW_BYTES
+    assert out.pdf.preview_content is None
+    assert [route for route, _files in _FakeClient.calls] == ["/forms/libreoffice/convert"]

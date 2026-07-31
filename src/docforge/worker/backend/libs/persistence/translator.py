@@ -293,14 +293,20 @@ class RunTranslator:
         #    a search hit and the explorer surface a human label, not an empty string.
         out.payload.title = bundle.ir.title or first_heading(bundle.ir) or None
         out.payload.language = bundle.ir.language
-        out.payload.page_count = bundle.ingest.page_count
-        if bundle.ingest.pdf_content:
+        # A natively-parsed html/md carries no parser PDF (page_count 0), yet its view-only preview
+        # yields page renders — fall back to their count so page_count > 0 and the viewer is honest.
+        page_renders = bundle.pages.pages if bundle.pages else []
+        out.payload.page_count = bundle.ingest.page_count or len(page_renders)
+        # The viewable PDF is whichever exists: the canonical parser PDF, else the view-only preview
+        # (html/md) — so GET /documents/{id} always exposes a PDF when one could be rendered.
+        pdf_bytes = bundle.ingest.pdf_content or bundle.ingest.preview_pdf
+        if pdf_bytes:
             out.payload.pdf_blob_hash = cls.__register_blob(
-                out, bundle.ingest.pdf_content, BlobKind.CANONICAL_PDF, "application/pdf"
+                out, pdf_bytes, BlobKind.CANONICAL_PDF, "application/pdf"
             )
 
         # 2. Pages + their renders (absent render stage → no page rows, nothing else changes).
-        for render in bundle.pages.pages if bundle.pages else []:
+        for render in page_renders:
             render_hash = cls.__register_blob(out, render.image, BlobKind.PAGE_RENDER, "image/png")
             out.payload.pages.append(
                 Page(

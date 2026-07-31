@@ -1,10 +1,11 @@
 # ====== Code Summary ======
 # The Gotenberg converter node — the first concrete child of BaseConverterNode. Routes by the
-# PROBED format: office documents go to Gotenberg's LibreOffice route; anything else has no PDF
-# view (None → the base degrades). Structured TEXT formats (html/md) are deliberately NOT converted
-# here — a PDF round-trip flattens their heading tree, so they pass through with no PDF view and the
-# parser reads their original bytes natively. Pure HTTP client — Gotenberg runs as a service; its
-# endpoint comes from the config.
+# PROBED format: office documents go to Gotenberg's LibreOffice route; anything else has no PARSER
+# PDF (None → the base degrades). Structured TEXT formats (html/md) are deliberately NOT converted
+# for the parser — a PDF round-trip flattens their heading tree, so the parser reads their original
+# bytes natively — but they DO get a view-only preview PDF via _preview (Chromium routes), a channel
+# decoupled from parsing that feeds only the page-render + PDF-view. Pure HTTP client — Gotenberg
+# runs as a service; its endpoint comes from the config.
 
 # ====== Standard Library Imports ======
 from pathlib import PurePosixPath
@@ -67,6 +68,10 @@ class ConverterGotenbergNode(BaseConverterNode):
         }
     )
 
+    # Structured text formats parsed NATIVELY (no parser PDF) that still deserve a view-only preview
+    # PDF: Gotenberg's Chromium routes render them for the page-render + PDF-view channel only.
+    PREVIEW_FORMATS = frozenset({"html", "md"})
+
     async def preflight(self) -> None:
         """Verify the Gotenberg service is reachable before any conversion spend.
 
@@ -106,6 +111,46 @@ class ConverterGotenbergNode(BaseConverterNode):
             response.raise_for_status()
         self.logger.debug(
             f"Gotenberg converted '{source.filename}' ({probe.format}) → {len(response.content)} bytes"
+        )
+        return response.content
+
+    async def _preview(self, source: SourceDocument, probe: SourceProbe) -> bytes | None:
+        """Render a VIEW-ONLY PDF for html/md via Gotenberg's Chromium routes (never parsed).
+
+        HTML goes through the Chromium ``html`` route (the source IS the ``index.html``); markdown
+        goes through the ``markdown`` route with a minimal ``index.html`` wrapper that pulls the
+        markdown file in via Gotenberg's ``toHTML`` template. Any other format has no preview.
+        """
+        if probe.format not in self.PREVIEW_FORMATS:
+            return None
+        config: ConverterGotenbergConfig = self.config
+
+        # Build the multipart form per route. Gotenberg keys every uploaded file under the repeated
+        # "files" field and reads it by its filename — hence the list-of-tuples form.
+        if probe.format == "md":
+            stem = PurePosixPath(source.filename.replace("\\", "/")).stem or "document"
+            md_name = f"{stem}.md"
+            wrapper = (
+                '<!DOCTYPE html><html><head><meta charset="utf-8"></head><body>'
+                '{{ toHTML "' + md_name + '" }}</body></html>'
+            )
+            route = "/forms/chromium/convert/markdown"
+            files = [
+                ("files", ("index.html", wrapper.encode("utf-8"), "text/html")),
+                ("files", (md_name, source.content, "text/markdown")),
+            ]
+        else:
+            route = "/forms/chromium/convert/html"
+            files = [("files", ("index.html", source.content, "text/html"))]
+
+        async with httpx.AsyncClient(
+            base_url=config.base_url, timeout=config.timeout_seconds
+        ) as client:
+            response = await client.post(route, files=files)
+            response.raise_for_status()
+        self.logger.debug(
+            f"Gotenberg preview-rendered '{source.filename}' ({probe.format}) → "
+            f"{len(response.content)} bytes (view-only, not parsed)"
         )
         return response.content
 

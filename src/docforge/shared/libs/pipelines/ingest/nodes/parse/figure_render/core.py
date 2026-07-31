@@ -72,8 +72,13 @@ class FigureRenderNode(ActionNode):
     Consumes = FigureRenderConsumes
     Produces = FigureRenderProduces
 
-    def __render_sync(self, pdf_bytes: bytes, ir: DocumentIR) -> PageRenders:
-        """Synchronous rendering (worker thread): rasterize pages, embed crops into the IR."""
+    def __render_sync(self, pdf_bytes: bytes, ir: DocumentIR, embed_crops: bool) -> PageRenders:
+        """Synchronous rendering (worker thread): rasterize pages, embed crops into the IR.
+
+        ``embed_crops`` is False when rendering a VIEW-ONLY preview PDF (html/md, parsed natively):
+        the IR's figure bboxes describe the native parse, not the preview raster, so cropping them
+        out of the preview would yield misaligned garbage — only the page renders are kept.
+        """
         # 1. Lazy import — pypdfium2 is a native lib shipped in the worker image only.
         import pypdfium2 as pdfium
 
@@ -103,6 +108,8 @@ class FigureRenderNode(ActionNode):
                             height=image.height,
                         )
                     )
+                if not embed_crops:
+                    continue
                 for block in figs_by_page.get(index, ()):
                     x0, y0, x1, y1 = block.provenance.bbox
                     box = (
@@ -124,14 +131,19 @@ class FigureRenderNode(ActionNode):
             document.close()
 
     async def run(self, data: FigureRenderConsumes) -> FigureRenderProduces:
-        """Render off the event loop; pass the IR through untouched without a PDF view."""
-        # 1. No PDF → nothing to rasterize (a non-convertible source); the IR passes through.
-        if data.ingest.pdf_content is None:
-            self.logger.warning(f"No PDF view to render; IR passes through without crops")
+        """Render off the event loop; pass the IR through untouched without any PDF."""
+        # 1. Prefer the canonical PDF the parser read (its bboxes align, so crops are embedded);
+        #    fall back to a view-only preview (html/md parsed natively) for page renders ONLY.
+        canonical = data.ingest.pdf_content
+        pdf_bytes = canonical if canonical is not None else data.ingest.preview_pdf
+        if pdf_bytes is None:
+            self.logger.warning(f"No PDF to render; IR passes through without crops")
             return FigureRenderProduces(ir=data.ir, pages=PageRenders())
 
-        # 2. CPU-bound rendering runs in a worker thread; crops are embedded into the IR.
-        pages = await asyncio.to_thread(self.__render_sync, data.ingest.pdf_content, data.ir)
+        # 2. CPU-bound rendering runs in a worker thread. Crops are embedded ONLY from the canonical
+        #    PDF — a preview's raster does not match the native-parse bboxes.
+        embed_crops = canonical is not None
+        pages = await asyncio.to_thread(self.__render_sync, pdf_bytes, data.ir, embed_crops)
         embedded = sum(1 for block in data.ir.figure_blocks if block.figure and block.figure.crop)
         self.logger.debug(f"Rendered {len(pages.pages)} pages, embedded {embedded} figure crops")
         return FigureRenderProduces(ir=data.ir, pages=pages)
