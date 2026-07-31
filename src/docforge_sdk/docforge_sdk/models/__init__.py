@@ -62,7 +62,7 @@ from .pipelines import (
 )
 
 # ------------------- Search models ------------------- #
-from .search import SearchHit, SearchRequest, SearchResponse, SearchTarget
+from .search import BlockLocation, SearchHit, SearchRequest, SearchResponse, SearchTarget
 
 # ------------------- Public API ------------------- #
 __all__ = [
@@ -111,6 +111,7 @@ __all__ = [
     # Search
     "SearchTarget",
     "SearchRequest",
+    "BlockLocation",
     "SearchHit",
     "SearchResponse",
     # Jobs

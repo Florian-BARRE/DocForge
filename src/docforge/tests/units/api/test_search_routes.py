@@ -226,6 +226,7 @@ def test_read_port_hydrate_threads_heading_path_onto_the_hit(fastapi_app) -> Non
             get_chunks_by_ids=AsyncMock(return_value=[chunk_row]),
             get_by_ids=AsyncMock(return_value=[document]),
             get_filterable_metadata_for_documents=AsyncMock(return_value={doc_uuid: {}}),
+            get_block_locations_for_chunks=AsyncMock(return_value={}),
         )
     )
     port = CollectionReadPortImpl(database, _uuid.uuid4())
@@ -238,6 +239,70 @@ def test_read_port_hydrate_threads_heading_path_onto_the_hit(fastapi_app) -> Non
     chunk_row.heading_path = None
     hydrated = asyncio.run(port.hydrate([str(chunk_uuid)]))
     assert hydrated[str(chunk_uuid)].metadata["heading_path"] == []
+
+
+def test_read_port_hydrate_threads_block_location_onto_the_hit(fastapi_app) -> None:
+    """CollectionReadPortImpl.hydrate lifts each chunk's source-block location (block_ids + the
+    per-block page/bbox, and the primary block's page/bbox) into the Hit metadata bag, so a UI can
+    draw a box on the page. The bbox is the block's normalised [0, 1] box, carried verbatim."""
+    import asyncio
+    import uuid as _uuid
+
+    from backend.libs.search import CollectionReadPortImpl
+    from backend.routers.search.helpers import SearchHelpers
+
+    chunk_uuid = _uuid.uuid4()
+    doc_uuid = _uuid.uuid4()
+    chunk_row = SimpleNamespace(
+        id=chunk_uuid,
+        document_id=doc_uuid,
+        text="Audit rights.",
+        chunk_index=7,
+        token_count=12,
+        heading_path=[],
+    )
+    document = SimpleNamespace(id=doc_uuid, filename="charter.pdf", title="Charter")
+    # Two source blocks — the first (assembly order) is the chunk's primary block.
+    locations = {
+        str(chunk_uuid): [
+            {"block_id": "doc:#/texts/3", "page": 2, "bbox": [0.1, 0.2, 0.5, 0.3]},
+            {"block_id": "doc:#/texts/4", "page": 2, "bbox": [0.1, 0.35, 0.5, 0.4]},
+        ]
+    }
+    database = SimpleNamespace(
+        documents=SimpleNamespace(
+            get_chunks_by_ids=AsyncMock(return_value=[chunk_row]),
+            get_by_ids=AsyncMock(return_value=[document]),
+            get_filterable_metadata_for_documents=AsyncMock(return_value={doc_uuid: {}}),
+            get_block_locations_for_chunks=AsyncMock(return_value=locations),
+        )
+    )
+    port = CollectionReadPortImpl(database, _uuid.uuid4())
+    hit = asyncio.run(port.hydrate([str(chunk_uuid)]))[str(chunk_uuid)]
+
+    # 1. The location rides in the metadata bag: block ids, primary page/bbox, and per-block list.
+    assert hit.metadata["block_ids"] == ["doc:#/texts/3", "doc:#/texts/4"]
+    assert hit.metadata["page"] == 2
+    assert hit.metadata["bbox"] == [0.1, 0.2, 0.5, 0.3]
+    assert hit.metadata["block_locations"] == [
+        {"page": 2, "bbox": [0.1, 0.2, 0.5, 0.3]},
+        {"page": 2, "bbox": [0.1, 0.35, 0.5, 0.4]},
+    ]
+
+    # 2. The flat client model surfaces it (the router flattens Hit → SearchHitModel).
+    model = SearchHelpers.to_hit_model(hit)
+    assert model.block_ids == ["doc:#/texts/3", "doc:#/texts/4"]
+    assert model.page == 2 and model.bbox == [0.1, 0.2, 0.5, 0.3]
+    assert [(loc.page, loc.bbox) for loc in model.block_locations] == [
+        (2, [0.1, 0.2, 0.5, 0.3]),
+        (2, [0.1, 0.35, 0.5, 0.4]),
+    ]
+
+    # 3. A chunk with no located blocks degrades cleanly (empty list, null primary).
+    database.documents.get_block_locations_for_chunks = AsyncMock(return_value={})
+    bare = asyncio.run(port.hydrate([str(chunk_uuid)]))[str(chunk_uuid)]
+    assert bare.metadata["block_ids"] == [] and bare.metadata["page"] is None
+    assert SearchHelpers.to_hit_model(bare).block_locations == []
 
 
 def test_search_no_embed_node_is_409(client, fastapi_app, monkeypatch) -> None:

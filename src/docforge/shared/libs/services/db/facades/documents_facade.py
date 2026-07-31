@@ -92,6 +92,35 @@ class DocumentsFacade(LoggerClass):
         async with self._postgres.session() as session:
             return await ChunkApi.get_by_ids(session, chunk_ids)
 
+    async def get_block_locations_for_chunks(
+        self, chunk_ids: list[uuid.UUID]
+    ) -> dict[str, list[dict]]:
+        """
+        Bulk block locations (page + bbox) per chunk — the search-hit location read.
+
+        Lets a search hit self-cite WHERE on the page it came from (so a UI can draw a box), in ONE
+        query for the whole hit page. The bbox is the block's stored, normalised [x0, y0, x1, y1] in
+        [0, 1] — the frontend multiplies by the page image dimensions.
+
+        Args:
+            chunk_ids (list[uuid.UUID]): The hydrated hit chunks to locate.
+
+        Returns:
+            dict[str, list[dict]]: chunk_id (str) → its blocks' ``{block_id, page, bbox}`` in
+            assembly order (the first entry is the chunk's primary block). A chunk with no blocks is
+            absent from the map.
+        """
+        if not chunk_ids:
+            return {}
+        async with self._postgres.session() as session:
+            rows = await ChunkApi.get_block_locations_for_chunks(session, chunk_ids)
+        grouped: dict[str, list[dict]] = {}
+        for chunk_id, block_id, page, bbox in rows:
+            grouped.setdefault(str(chunk_id), []).append(
+                {"block_id": block_id, "page": page, "bbox": bbox}
+            )
+        return grouped
+
     async def collections_for_chunks(self, chunk_ids: list[uuid.UUID]) -> list[str]:
         """Distinct collections owning a set of chunks — the scope gate for chunk mutations."""
         async with self._postgres.session() as session:

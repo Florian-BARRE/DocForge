@@ -3,6 +3,7 @@
 
 # ====== Standard Library Imports ======
 from datetime import datetime
+from typing import Any
 
 # ====== Third-Party Library Imports ======
 from pydantic import BaseModel, Field
@@ -36,6 +37,22 @@ class JobStatus(BaseModel):
     started_at: datetime | None = Field(default=None, description="Picked up by the worker at.")
     finished_at: datetime | None = Field(default=None, description="Ended (done or failed) at.")
 
+    @classmethod
+    def from_row(cls, job: Any) -> "JobStatus":
+        """Map one job row to its polling model (shared by the poll routes and the SSE stream)."""
+        return cls(
+            job_id=str(job.id),
+            document_id=str(job.document_id),
+            collection_id=str(job.collection_id),
+            status=job.status.value,
+            progress=job.progress,
+            current_stage=job.current_stage,
+            error=job.error,
+            attempt=job.attempt,
+            started_at=job.started_at,
+            finished_at=job.finished_at,
+        )
+
 
 class JobEvent(BaseModel):
     """One node of the job's execution trace — written by the worker at each stage end."""
@@ -45,6 +62,17 @@ class JobEvent(BaseModel):
     started_at: datetime | None = Field(default=None, description="Node start.")
     finished_at: datetime | None = Field(default=None, description="Node end.")
     detail: str | None = Field(default=None, description="Duration, or the error when failed.")
+
+    @classmethod
+    def from_row(cls, event: Any) -> "JobEvent":
+        """Map one stage-event row to its trace model (shared by the trace route and the stream)."""
+        return cls(
+            stage=event.stage,
+            status=event.status,
+            started_at=event.started_at,
+            finished_at=event.finished_at,
+            detail=event.detail,
+        )
 
 
 class JobTrace(BaseModel):

@@ -56,6 +56,23 @@ class SearchRequest(BaseModel):
     )
 
 
+class BlockLocation(BaseModel):
+    """
+    One source block's location on the page — enough for a UI to draw a box over the hit.
+
+    Attributes:
+        page (int): The page the block sits on.
+        bbox (list[float]): The block's bounding box ``[x0, y0, x1, y1]``, NORMALISED to [0, 1] —
+            multiply each component by the page image's width/height to draw it in pixels.
+    """
+
+    page: int = Field(description="The page the block sits on.")
+    bbox: list[float] = Field(
+        description="Bounding box [x0, y0, x1, y1] NORMALISED to [0, 1] — multiply by the page "
+        "image width/height to draw it in pixels.",
+    )
+
+
 class SearchHit(BaseModel):
     """
     One ranked search result — the flat view of a hydrated chunk hit.
@@ -67,6 +84,10 @@ class SearchHit(BaseModel):
         text (str): The chunk's enriched text.
         chunk_index (int): The chunk's ordinal within its document.
         token_count (int): The chunk's token count.
+        block_ids (list[str]): The IR block ids the chunk was assembled from (assembly order).
+        page (int | None): The page of the chunk's primary (leading) block — draw the box here.
+        bbox (list[float] | None): The primary block's NORMALISED [0, 1] bounding box.
+        block_locations (list[BlockLocation]): Every source block's page + bbox (draw them all).
     """
 
     chunk_id: str = Field(description="The chunk's UUID.")
@@ -92,6 +113,24 @@ class SearchHit(BaseModel):
     text: str = Field(description="The chunk's enriched text.")
     chunk_index: int = Field(description="Ordinal within the document.")
     token_count: int = Field(description="Token count of the chunk.")
+    block_ids: list[str] = Field(
+        default_factory=list,
+        description="The IR block ids the chunk was assembled from, in assembly order.",
+    )
+    page: int | None = Field(
+        default=None,
+        description="The page of the chunk's primary (leading) block — where to draw the box. "
+        "None when the chunk carries no block location.",
+    )
+    bbox: list[float] | None = Field(
+        default=None,
+        description="The primary block's bounding box [x0, y0, x1, y1], NORMALISED to [0, 1] — "
+        "multiply by the page image width/height to draw it. None when unlocated.",
+    )
+    block_locations: list[BlockLocation] = Field(
+        default_factory=list,
+        description="Every source block's page + NORMALISED bbox — draw one box per block.",
+    )
 
 
 class SearchResponse(BaseModel):
@@ -112,4 +151,4 @@ class SearchResponse(BaseModel):
     )
 
 
-__all__ = ["SearchTarget", "SearchRequest", "SearchHit", "SearchResponse"]
+__all__ = ["SearchTarget", "SearchRequest", "BlockLocation", "SearchHit", "SearchResponse"]

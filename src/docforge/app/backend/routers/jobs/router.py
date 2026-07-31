@@ -8,30 +8,21 @@ from collections import defaultdict
 
 # ====== Third-Party Library Imports ======
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 
 # ====== Local Project Imports ======
 from ...context import CONTEXT
 from ...libs.auth import AuthPrincipal, AuthzGuard, Capability, require
 from ...utils.error_handling import auto_handle_errors
 from .models import JobEvent, JobStatus, JobTrace, WorkerActivity, WorkersLive
+from .stream import stream_job_events
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 
 
 def _job_status(job) -> JobStatus:
     """Map one job row to its polling model (shared by every route here)."""
-    return JobStatus(
-        job_id=str(job.id),
-        document_id=str(job.document_id),
-        collection_id=str(job.collection_id),
-        status=job.status.value,
-        progress=job.progress,
-        current_stage=job.current_stage,
-        error=job.error,
-        attempt=job.attempt,
-        started_at=job.started_at,
-        finished_at=job.finished_at,
-    )
+    return JobStatus.from_row(job)
 
 
 @router.get("", response_model=list[JobStatus])
@@ -97,18 +88,39 @@ async def get_job_trace(
 
     # 3. The trace rows the worker landed at each stage end.
     events = await CONTEXT.database.jobs.list_events(job_id)
-    return JobTrace(
-        job_id=str(job_id),
-        events=[
-            JobEvent(
-                stage=e.stage,
-                status=e.status,
-                started_at=e.started_at,
-                finished_at=e.finished_at,
-                detail=e.detail,
-            )
-            for e in events
-        ],
+    return JobTrace(job_id=str(job_id), events=[JobEvent.from_row(e) for e in events])
+
+
+@router.get("/{job_id}/stream")
+@auto_handle_errors
+async def stream_job(
+    job_id: uuid.UUID,
+    principal: AuthPrincipal = Depends(require(Capability.READ)),
+) -> StreamingResponse:
+    """
+    Live Server-Sent Events feed of an ingestion job — pushed as progress lands, closes at terminal.
+
+    Same READ capability + collection-scope gate as the poll routes (the poll endpoints stay). The
+    stream is DB-poll-backed (no message bus): it re-reads the job row + stage-event table on a short
+    interval and emits only the delta — each new stage event and every status change — until the job
+    is done/failed, then closes. Prefer this over polling GET /jobs/{id} for a live UI.
+
+    Returns:
+        StreamingResponse: A ``text/event-stream`` of ``data: {...}\\n\\n`` frames. 404 when the job
+        is unknown (resolved before the stream opens, so the collection scope can be enforced).
+    """
+    # 1. Resolve + scope the job BEFORE opening the stream — a 404/403 must be a normal HTTP status,
+    #    not an error buried mid-stream once the event-stream response has already started.
+    job = await CONTEXT.database.jobs.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail=f"Job {job_id} not found.")
+    AuthzGuard.assert_collection_scope(principal, str(job.collection_id))
+
+    # 2. Hand the poll-backed generator the jobs facade; it yields frames until the job terminates.
+    return StreamingResponse(
+        stream_job_events(CONTEXT.database.jobs, job_id),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
 
 

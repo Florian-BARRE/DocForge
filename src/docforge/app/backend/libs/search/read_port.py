@@ -131,11 +131,20 @@ class CollectionReadPortImpl(CollectionReadPort, LoggerClass):
             document_ids
         )
 
-        # 4. Shape each row into a Hit; chunk_index/token_count + the source identity/metadata ride
-        #    along in the metadata bag (lifted into the flat hit model by the router).
+        # 4. Bulk-read each chunk's source blocks (page + bbox) so a hit self-cites WHERE on the page
+        #    it came from — one query for the whole hit page (no per-hit N+1), the primary block is
+        #    the first in assembly order.
+        block_locations = await self._database.documents.get_block_locations_for_chunks(
+            [row.id for row in rows]
+        )
+
+        # 5. Shape each row into a Hit; chunk_index/token_count + the source identity/metadata + the
+        #    block location ride along in the metadata bag (lifted into the flat hit model by the router).
         hydrated = {}
         for row in rows:
             document = documents.get(row.document_id)
+            locations = block_locations.get(str(row.id), [])
+            primary = locations[0] if locations else None
             hydrated[str(row.id)] = Hit(
                 chunk_id=str(row.id),
                 document_id=str(row.document_id),
@@ -147,6 +156,12 @@ class CollectionReadPortImpl(CollectionReadPort, LoggerClass):
                     "filename": document.filename if document else None,
                     "document_title": (document.title or None) if document else None,
                     "document_metadata": doc_metadata.get(row.document_id, {}),
+                    "block_ids": [loc["block_id"] for loc in locations],
+                    "page": primary["page"] if primary else None,
+                    "bbox": primary["bbox"] if primary else None,
+                    "block_locations": [
+                        {"page": loc["page"], "bbox": loc["bbox"]} for loc in locations
+                    ],
                 },
             )
         self.logger.debug(f"Hydrated {len(hydrated)}/{len(chunk_ids)} chunk(s)")

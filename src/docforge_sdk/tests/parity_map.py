@@ -39,7 +39,13 @@ from docforge_sdk.models.pipelines import (
     StageApplyResponse,
     StageViewResponse,
 )
-from docforge_sdk.models.search import SearchHit, SearchRequest, SearchResponse, SearchTarget
+from docforge_sdk.models.search import (
+    BlockLocation,
+    SearchHit,
+    SearchRequest,
+    SearchResponse,
+    SearchTarget,
+)
 
 # Maps the OpenAPI component-schema NAME to the SDK model that mirrors it. A handful of SDK classes
 # drop the backend's "Model" suffix (FieldSpec, SearchTarget, SearchHit), so the key is authoritative.
@@ -77,6 +83,7 @@ MODELS: dict[str, type[BaseModel]] = {
     # Search
     "SearchTargetModel": SearchTarget,
     "SearchRequest": SearchRequest,
+    "BlockLocationModel": BlockLocation,
     "SearchHitModel": SearchHit,
     "SearchResponse": SearchResponse,
     # Jobs

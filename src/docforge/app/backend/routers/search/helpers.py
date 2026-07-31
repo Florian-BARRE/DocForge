@@ -20,7 +20,7 @@ from shared_libs.services.db.postgresql.tables import MetadataField
 from shared_libs.services.db.qdrant import Condition, build_match_conditions
 
 # ====== Local Project Imports ======
-from .models import SearchHitModel, SearchTargetModel
+from .models import BlockLocationModel, SearchHitModel, SearchTargetModel
 
 
 class SearchHelpers:
@@ -201,8 +201,9 @@ class SearchHelpers:
         Returns:
             SearchHitModel: The flat, client-facing view of the hit.
         """
-        # 1. chunk_index/token_count + source identity/metadata live in the hydrated metadata bag
-        #    (never on the Hit's spine) — the read port fills them so the hit self-cites.
+        # 1. chunk_index/token_count + source identity/metadata + block location live in the
+        #    hydrated metadata bag (never on the Hit's spine) — the read port fills them so the hit
+        #    self-cites (which section, which document, and WHERE on the page).
         metadata = hit.metadata or {}
         return SearchHitModel(
             chunk_id=hit.chunk_id,
@@ -215,6 +216,13 @@ class SearchHelpers:
             text=hit.text or "",
             chunk_index=metadata.get("chunk_index", 0),
             token_count=metadata.get("token_count", 0),
+            block_ids=metadata.get("block_ids") or [],
+            page=metadata.get("page"),
+            bbox=metadata.get("bbox"),
+            block_locations=[
+                BlockLocationModel(page=loc["page"], bbox=loc["bbox"])
+                for loc in (metadata.get("block_locations") or [])
+            ],
         )
 
 

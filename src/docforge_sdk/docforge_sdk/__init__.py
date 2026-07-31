@@ -78,7 +78,7 @@ from .models.pipelines import (
 )
 
 # ------------------- Search models ------------------- #
-from .models.search import SearchHit, SearchRequest, SearchResponse, SearchTarget
+from .models.search import BlockLocation, SearchHit, SearchRequest, SearchResponse, SearchTarget
 
 # ------------------- Public API ------------------- #
 __all__ = [
@@ -131,6 +131,7 @@ __all__ = [
     # Search
     "SearchTarget",
     "SearchRequest",
+    "BlockLocation",
     "SearchHit",
     "SearchResponse",
     # Jobs
