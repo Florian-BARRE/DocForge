@@ -344,6 +344,57 @@ async def test_fixed_size_windows_with_repeated_overlap() -> None:
     assert overlapped  # some tail passage repeated at the next window's start
 
 
+def _one_big_section_ir() -> DocumentIR:
+    """One section whose paragraphs overflow target_tokens, forcing SIZE cuts within the section."""
+    blocks: list[Block] = [_blk("h", BlockType.HEADING, 0, text="Big Section", level=1)]
+    for index in range(10):
+        blocks.append(
+            _blk(
+                f"p{index}",
+                BlockType.PARAGRAPH,
+                index + 1,
+                text=(
+                    f"Paragraph {index} discusses subtopic number {index} at moderate length, "
+                    "adding several extra words here to reach roughly thirty tokens of distinct "
+                    f"content that belongs only to passage {index} of this one section."
+                ),
+                parent="h",
+            )
+        )
+    return DocumentIR(doc_id="big", source_hash="h", n_pages=1, blocks=blocks)
+
+
+async def test_structure_aware_size_split_overlaps_by_default_and_can_be_disabled() -> None:
+    # A single section split by SIZE now overlaps by default (overlap_tokens=64), so a fact on the
+    # cut survives in a chunk; overlap_tokens=0 restores the hard, no-repeat cut. A section-boundary
+    # cut never overlaps, so documents whose sections fit the target are unaffected (tested elsewhere).
+    ir = _one_big_section_ir()
+
+    default_cfg = ChunkerStructureAwareConfig(target_tokens=120, max_tokens=400, min_tokens=0)
+    default_chunks = (
+        await ChunkerStructureAwareNode(id="c", config=default_cfg).run(ChunkerConsumes(ir=ir))
+    ).chunks
+    assert len(default_chunks) >= 2  # the section was size-split into several chunks
+
+    def _tail_repeats(chunks: list) -> bool:
+        return any(
+            chunks[i].text.split("\n\n")[-1] in chunks[i + 1].text for i in range(len(chunks) - 1)
+        )
+
+    assert _tail_repeats(
+        default_chunks
+    )  # default overlap repeats a tail passage into the next chunk
+
+    off_cfg = ChunkerStructureAwareConfig(
+        target_tokens=120, max_tokens=400, min_tokens=0, overlap_tokens=0
+    )
+    off_chunks = (
+        await ChunkerStructureAwareNode(id="c", config=off_cfg).run(ChunkerConsumes(ir=ir))
+    ).chunks
+    assert len(off_chunks) >= 2
+    assert not _tail_repeats(off_chunks)  # overlap_tokens=0 repeats nothing
+
+
 def test_fixed_size_rejects_overlap_greater_or_equal_to_window() -> None:
     try:
         ChunkerFixedSizeConfig(chunk_tokens=100, overlap_tokens=100)

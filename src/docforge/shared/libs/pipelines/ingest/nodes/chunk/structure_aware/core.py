@@ -29,10 +29,13 @@ class ChunkerStructureAwareConfig(BaseChunkerConfig):
         "boundaries up to min(target,max). A section at or above it stands alone.",
     )
     overlap_tokens: int = Field(
-        default=0,
+        default=64,
         ge=0,
-        description="When > 0, a new chunk starts with the previous chunk's trailing passages "
-        "up to this many tokens (same section only).",
+        description="When > 0, a chunk produced by a SIZE cut starts with the previous chunk's "
+        "trailing passages up to this many tokens (same section only) — so a fact split across "
+        "the cut survives in at least one chunk. Applies ONLY when a section overflows target_tokens "
+        "and is split by size; a section-boundary cut is a semantic restart and never overlaps, so "
+        "well-structured documents whose sections fit under the target are unaffected (0 chunks change).",
     )
     hard_section_boundaries: bool = Field(
         default=True,
