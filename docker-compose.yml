@@ -45,7 +45,6 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "2"
           memory: 2g
     restart: unless-stopped
     networks:
@@ -75,14 +74,10 @@ services:
       QDRANT_URL: http://docforge_qdrant:6333
       # botocore rejects '_' in hostnames — the hyphenated container_name resolves on the network
       S3_ENDPOINT_URL: http://docforge-seaweedfs:8333
-      # Pin native BLAS/OpenMP to ONE thread per task. The worker already bounds *concurrent* heavy
-      # tasks to WORKER_HEAVY_THREADS; without this, each docling/torch/onnx call inside a task spawns
-      # an OpenMP pool sized to the HOST's cores (8), ignoring the cpus:"4" cgroup quota → 4 tasks ×
-      # 8 threads thrash a 4-CPU budget. 1 BLAS thread/task × 4 tasks = the 4-CPU quota, no oversubscribe.
-      # (Must be set before torch/numpy import — compose env is set at container start, so it takes.)
-      OMP_NUM_THREADS: "1"
-      OPENBLAS_NUM_THREADS: "1"
-      MKL_NUM_THREADS: "1"
+      # Native BLAS/OpenMP threads are LEFT UNPINNED so docling/torch/onnx use all available cores —
+      # the host has 8 CPUs and no CPU cap is set (see the deploy block), so heavy stages run at full
+      # power. If many ingestions run at once and oversubscribe, lower WORKER_CONCURRENCY or re-pin
+      # OMP_NUM_THREADS to cores/concurrency.
     volumes:
       # Persist the docling/rapidocr HF cache across recreations (the dev override binds
       # the HOST's cache instead; prod has no host cache to bind, so it needs its own
@@ -113,7 +108,6 @@ services:
         # old 8g that (with bge 6g) oversubscribed a 23 GB shared host. Soft floor so the OOM-killer
         # can't evict a mid-ingest worker under host pressure.
         limits:
-          cpus: "4"
           memory: 5g
         reservations:
           memory: 1g
@@ -154,7 +148,6 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "2"
           memory: 4g
         reservations:
           memory: 1g
@@ -182,7 +175,6 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.5"
           memory: 512m
         reservations:
           memory: 128m
@@ -210,7 +202,6 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "2"
           memory: 4g
         reservations:
           memory: 1g
@@ -248,7 +239,6 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "1"
           memory: 1g
     restart: unless-stopped
     networks:
@@ -272,7 +262,6 @@ services:
       resources:
         limits:
           # Gotenberg spawns LibreOffice/Chromium per conversion — give it a real ceiling.
-          cpus: "2"
           memory: 2g
     restart: unless-stopped
     networks:
@@ -322,7 +311,6 @@ services:
         # Live resident ~3.5 GiB (both models). 5g ceiling = models + batch headroom (was 6g); soft
         # floor at the resident set so the host OOM-killer keeps the loaded models alive.
         limits:
-          cpus: "4"
           memory: 5g
         reservations:
           memory: 3500m
@@ -355,7 +343,6 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "1"
           memory: 512m
     restart: unless-stopped
     networks:
