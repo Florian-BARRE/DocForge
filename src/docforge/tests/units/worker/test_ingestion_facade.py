@@ -206,23 +206,8 @@ async def test_index_derives_vector_space_from_schema_and_marks_chunks_indexed(m
         "topic": PayloadType.KEYWORD,
         "year": PayloadType.INTEGER,
     }
-    assert ensure_kwargs["colbert_dim"] is None
     # 2. The points are upserted, then their chunks flagged indexed by parsed point ids.
     upsert.assert_awaited_once_with(qdrant.raw, ANY, points)
     mark_indexed.assert_awaited_once()
     marked_ids = mark_indexed.await_args.args[1]
     assert set(marked_ids) == set(chunk_ids)
-
-
-async def test_index_threads_colbert_dim_when_given(monkeypatch) -> None:
-    collection_id = uuid.uuid4()
-    monkeypatch.setattr(facade_module.CollectionApi, "get_schema", AsyncMock(return_value=[]))
-    ensure = AsyncMock()
-    monkeypatch.setattr(facade_module.QdrantCollectionApi, "ensure", ensure)
-    monkeypatch.setattr(facade_module.QdrantIndexApi, "upsert", AsyncMock())
-    monkeypatch.setattr(facade_module.ChunkApi, "mark_indexed", AsyncMock())
-
-    facade = IngestionFacade(_postgres_yielding(MagicMock()), MagicMock(), MagicMock())
-    await facade.index(collection_id, dense_dim=1024, points=[], colbert_dim=128)
-
-    assert ensure.await_args.kwargs["colbert_dim"] == 128

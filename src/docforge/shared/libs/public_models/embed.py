@@ -26,8 +26,6 @@ class ChunkVectors(BaseModel):
         chunk_id (str): The chunk these vectors belong to.
         dense (list[float] | None): The main semantic vector (enriched text).
         sparse (SparseVector | None): The lexical vector, when the provider supports it.
-        colbert (list[list[float]] | None): The ColBERT multi-vector — one token vector
-            per token of the enriched text; None when the provider does not produce it.
         fields (dict): Named dense vectors of the chunk's SEMANTIC metadata fields
             (field name → vector; absent when the chunk has no value for the field).
     """
@@ -35,11 +33,6 @@ class ChunkVectors(BaseModel):
     chunk_id: str
     dense: list[float] | None = None
     sparse: SparseVector | None = None
-    colbert: list[list[float]] | None = Field(
-        default=None,
-        description="ColBERT multi-vector of the enriched text (one token vector per token); "
-        "None unless the provider produced it.",
-    )
     fields: dict[str, list[float]] = Field(default_factory=dict)
 
 
@@ -50,18 +43,11 @@ class ChunkEmbeddings(Artifact):
     Attributes:
         model (str): The embedding model (provenance — stored with the collection's vectors).
         dimension (int): Dense vector dimension (0 when nothing was embedded).
-        colbert_dim (int | None): ColBERT token-vector dimension (1024 when colbert vectors
-            are present, None when the provider did not produce them).
         items (list[ChunkVectors]): One entry per chunk, chunk_id-linked.
     """
 
     model: str = ""
     dimension: int = 0
-    colbert_dim: int | None = Field(
-        default=None,
-        description="ColBERT token-vector dimension — 1024 when colbert vectors are present, "
-        "None when the provider did not produce them.",
-    )
     items: list[ChunkVectors] = Field(default_factory=list)
 
 

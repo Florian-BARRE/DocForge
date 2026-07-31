@@ -49,21 +49,6 @@ class BaseEmbedderNode(ActionNode):
         _ = texts
         return None
 
-    def _wants_colbert(self) -> bool:
-        """Whether this provider should also produce ColBERT multi-vectors (default: no).
-
-        The colbert axis is opt-in and provider-specific: a provider overrides this to expose the
-        collection's single source of truth. When False, __embed_colbert is never invoked — zero cost.
-        """
-        return False
-
-    async def _embed_colbert(self, texts: list[str]) -> list[list[list[float]]]:
-        """Embed one batch into ColBERT multi-vectors — one token-vector matrix per input, in order.
-
-        Only called when _wants_colbert() is True; the base has no colbert provider.
-        """
-        raise NotImplementedError(f"Embedder '{self.KIND}' has no ColBERT support")
-
     @staticmethod
     def __is_transient(error: Exception) -> bool:
         """A provider error worth retrying: a timeout, a transport blip, or a 429/5xx status."""
@@ -152,16 +137,6 @@ class BaseEmbedderNode(ActionNode):
                     sparse_vectors.extend(batch_sparse)
         return dense, sparse_vectors
 
-    async def __embed_colbert_all(self, texts: list[str]) -> list[list[list[float]]]:
-        """Run the batched ColBERT embedding over every text, preserving order."""
-        config: BaseEmbedConfig = self.config
-        colbert: list[list[list[float]]] = []
-        for start in range(0, len(texts), config.batch_size):
-            batch = texts[start : start + config.batch_size]
-            colbert_batch = await self.__resilient_batch(self._embed_colbert, batch)
-            colbert.extend(colbert_batch if colbert_batch is not None else [])  # colbert never None
-        return colbert
-
     async def __embed_semantic_fields(
         self, chunks: list[Chunk], contract: CollectionContract
     ) -> dict[str, dict[int, list[float]]]:
@@ -215,24 +190,19 @@ class BaseEmbedderNode(ActionNode):
         texts = [chunk.enriched_text for chunk in enabled]
         dense, sparse_vectors = await self.__embed_all(texts, sparse=config.embed_sparse)
 
-        # 3. The optional ColBERT multi-vectors — SAME texts, same order, so they align 1:1 with
-        #    dense by index/chunk_id. Opt-in and provider-specific: nothing runs when not wanted.
-        colbert_vectors = await self.__embed_colbert_all(texts) if self._wants_colbert() else None
-
-        # 4. The named per-field vectors of the semantic chunk fields (enabled chunks only).
+        # 3. The named per-field vectors of the semantic chunk fields (enabled chunks only).
         field_vectors = (
             await self.__embed_semantic_fields(enabled, data.contract)
             if config.embed_semantic_fields
             else {}
         )
 
-        # 5. Assemble, chunk_id-linked, in enabled-chunk order.
+        # 4. Assemble, chunk_id-linked, in enabled-chunk order.
         items = [
             ChunkVectors(
                 chunk_id=chunk.chunk_id,
                 dense=dense[index],
                 sparse=sparse_vectors[index] if sparse_vectors is not None else None,
-                colbert=colbert_vectors[index] if colbert_vectors is not None else None,
                 fields={
                     field_name: per_chunk[index]
                     for field_name, per_chunk in field_vectors.items()
@@ -241,23 +211,14 @@ class BaseEmbedderNode(ActionNode):
             )
             for index, chunk in enumerate(enabled)
         ]
-        # Derive from the first NON-EMPTY token matrix: colbert token counts are variable, so a
-        # degenerate leading chunk (empty matrix) must not null the dim while later points carry vectors.
-        colbert_dim = (
-            next((len(matrix[0]) for matrix in colbert_vectors if matrix), None)
-            if colbert_vectors
-            else None
-        )
         self.logger.info(
             f"Embedded {len(items)}/{len(data.chunks)} chunk(s) "
             f"({len(data.chunks) - len(enabled)} skipped by role) "
             f"(dense dim {len(dense[0])}, sparse: {sparse_vectors is not None}, "
-            f"colbert dim: {colbert_dim}, semantic fields: {sorted(field_vectors)})"
+            f"semantic fields: {sorted(field_vectors)})"
         )
         return EmbedProduces(
-            embeddings=ChunkEmbeddings(
-                model=config.model, dimension=len(dense[0]), colbert_dim=colbert_dim, items=items
-            )
+            embeddings=ChunkEmbeddings(model=config.model, dimension=len(dense[0]), items=items)
         )
 
 

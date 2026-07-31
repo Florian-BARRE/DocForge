@@ -145,7 +145,6 @@ async def ingest_document(ctx: dict[str, Any], document_id: str, job_id: str) ->
                 document.collection_id,
                 translated.dense_dim,
                 translated.points,
-                colbert_dim=translated.colbert_dim,
             )
             # 5. Denormalise the document's filterable doc-scope metadata onto the fresh points
             #    (runs AFTER save() wrote generated doc metadata and index() minted the points),

@@ -11,7 +11,7 @@ from collections.abc import Sequence
 from qdrant_client import AsyncQdrantClient, models
 
 # ====== Local Project Imports ======
-from ..vectors import Condition, Match, MatchAny, SparseVec, VectorNames
+from ..vectors import Condition, Match, MatchAny, SparseVec
 
 
 class QdrantSearchApi:
@@ -65,22 +65,14 @@ class QdrantSearchApi:
         exclusions: Sequence[Condition] = (),
         limit: int = 10,
         prefetch_limit: int | None = None,
-        colbert: list[list[float]] | None = None,
-        rescore_pool_size: int = 100,
         fusion: str = "rrf",
     ) -> list[tuple[str, float]]:
         """
         Filtered hybrid search across the named vectors, fused with the chosen strategy.
 
-        Two shapes, decided by ``colbert``:
-
-        * ``colbert is None`` (default) — the single-stage path: the dense/sparse branches are
-          fused server-side with RRF and the top ``limit`` returned.
-        * ``colbert`` given — a two-stage late-interaction re-score: the SAME RRF fusion runs as
-          a NESTED prefetch that yields a pool of ``rescore_pool_size`` candidates, then the outer
-          query re-scores that pool with the ColBERT multi-vector (MAX_SIM) and returns the top
-          ``limit``. The payload filter stays on the INNER branches, so a disabled chunk never
-          enters the pool and re-scoring can never resurrect one.
+        Single-stage: the dense/sparse branches over-sample per branch, then are fused server-side
+        with the chosen strategy and the top ``limit`` returned. The payload filter lives on each
+        branch, so a disabled chunk never enters the pool.
 
         Args:
             client (AsyncQdrantClient): The connection from QdrantClient.raw.
@@ -90,13 +82,9 @@ class QdrantSearchApi:
             conditions (Sequence[Condition]): Filters on the filterable payload fields (ANDed).
             exclusions (Sequence[Condition]): Filters whose matches are DROPPED (``must_not``) —
                 the searchability exclusion set (the ``enabled==false`` chunk flag + disabled docs).
-            limit (int): Number of fused (or re-scored) results.
+            limit (int): Number of fused results.
             prefetch_limit (int | None): Candidates fetched PER BRANCH before fusion; defaults to
                 an over-sampling of the final limit (a branch pool of exactly `limit` starves RRF).
-            colbert (list[list[float]] | None): The query's ColBERT multi-vector; when given,
-                turns the search into a late-interaction re-score over the fused pool.
-            rescore_pool_size (int): Size of the fused candidate pool the ColBERT stage re-scores
-                (ignored when ``colbert`` is None).
             fusion (str): How the dense/sparse branches are fused — ``"rrf"`` (Reciprocal Rank
                 Fusion, rank-based, robust and score-scale-agnostic; the default) or ``"dbsf"``
                 (Distribution-Based Score Fusion, which normalises each branch's score distribution
@@ -127,24 +115,7 @@ class QdrantSearchApi:
                     filter=query_filter,
                 )
             )
-        # 2. Late interaction — nest the RRF fusion as a prefetch pool, then re-score it with the
-        #    ColBERT multi-vector (MAX_SIM). The filter already lives on the inner branches.
-        if colbert is not None:
-            pool = models.Prefetch(
-                prefetch=prefetch,
-                query=models.FusionQuery(fusion=fusion_strategy),
-                limit=rescore_pool_size,
-            )
-            response = await client.query_points(
-                collection_name=name,
-                prefetch=[pool],
-                query=colbert,
-                using=VectorNames.CONTENT_COLBERT,
-                limit=limit,
-                with_payload=False,
-            )
-            return [(str(point.id), point.score) for point in response.points]
-        # 3. Single stage — fuse the branches server-side with RRF.
+        # 2. Fuse the branches server-side with the chosen strategy.
         response = await client.query_points(
             collection_name=name,
             prefetch=prefetch,

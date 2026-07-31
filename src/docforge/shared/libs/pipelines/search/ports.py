@@ -36,7 +36,6 @@ class CollectionReadPort(ABC):
         filters: dict,
         limit: int,
         targets: list[SearchTarget],
-        rescore_pool_size: int | None = None,
         fusion: str = "rrf",
     ) -> list[Candidate]:
         """
@@ -49,12 +48,10 @@ class CollectionReadPort(ABC):
         a target to its Qdrant vector name is the implementation's concern, kept out of the nodes.
 
         Args:
-            encoded (EncodedQuery): The query's vectors (dense always; sparse/colbert when present).
+            encoded (EncodedQuery): The query's vectors (dense always; sparse when present).
             filters (dict): The structured filter map (field → value) to constrain the search.
             limit (int): The candidate depth to return (the QuerySpec's ``candidate_k``).
             targets (list[SearchTarget]): The fields × modalities to search (content and/or metadata).
-            rescore_pool_size (int | None): The fused-pool size a late-interaction re-score works
-                over; None to leave the store's default.
             fusion (str): Branch-fusion strategy — "rrf" (default) or "dbsf".
 
         Returns:

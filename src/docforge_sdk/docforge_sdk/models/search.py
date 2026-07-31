@@ -41,8 +41,6 @@ class SearchRequest(BaseModel):
         limit (int): Number of fused results to return.
         filters (dict[str, Any] | None): Exact/any-of constraints on the FILTERABLE fields.
         search_in (list[SearchTarget] | None): Fields × modalities to search. None → content on both.
-        use_late_interaction (bool | None): Opt into the ColBERT re-score. None → off for this query.
-        rescore_pool_size (int | None): Size of the fused candidate pool the ColBERT stage re-scores.
     """
 
     query: str = Field(min_length=1, description="The natural-language query to search for.")
@@ -55,16 +53,6 @@ class SearchRequest(BaseModel):
         default=None,
         description="Fields × modalities to search (content and/or metadata). None → content on "
         "both semantic and lexical (the unchanged default).",
-    )
-    use_late_interaction: bool | None = Field(
-        default=None,
-        description="Opt into the ColBERT late-interaction re-score for this query. None → off.",
-    )
-    rescore_pool_size: int | None = Field(
-        default=None,
-        ge=1,
-        le=1000,
-        description="Fused candidate pool size the ColBERT stage re-scores. None → node/store default.",
     )
 
 
@@ -114,7 +102,7 @@ class SearchResponse(BaseModel):
     hits: list[SearchHit] = Field(default_factory=list, description="Ranked hits, best first.")
     debug_info: dict[str, Any] | None = Field(
         default=None,
-        description="Non-fatal diagnostics (e.g. late_interaction_skipped). None when empty.",
+        description="Non-fatal diagnostics about how the search ran. None when empty.",
     )
 
 

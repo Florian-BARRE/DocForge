@@ -275,14 +275,14 @@ async def _grant_creator_scope(principal: AuthPrincipal, collection_id: str) -> 
 
 # The embed-node config keys that define the vector space (a change to any means already-stored
 # vectors were produced by a different/incompatible embedder → the collection must be reindexed).
-_EMBED_VECTOR_KEYS = ("base_url", "model", "embed_sparse", "embed_colbert", "embed_semantic_fields")
+_EMBED_VECTOR_KEYS = ("base_url", "model", "embed_sparse", "embed_semantic_fields")
 
 
 def _embed_vector_space(blob: dict) -> list:
     """A stable fingerprint of every embed node's vector-space-affecting config in a pipeline blob.
 
     Two blobs with the same fingerprint produce vectors in the same space; a difference means a
-    reindex is required (e.g. a swapped embed model/provider, toggled sparse/colbert).
+    reindex is required (e.g. a swapped embed model/provider, toggled sparse).
     """
     fingerprint: list = []
 
@@ -399,7 +399,7 @@ async def update_collection(
 
     # 6. Config blobs (append an immutable version snapshot). The pipeline is stored in its stamped
     #    canonical form so subsequent runs/uploads fast-path. A pipeline edit that changes the EMBED
-    #    vector space (different embedder model/provider, toggled sparse/colbert) flips needs_reindex
+    #    vector space (different embedder model/provider, toggled sparse) flips needs_reindex
     #    — otherwise new documents would be embedded into a space incompatible with the stored ones,
     #    silently degrading search. None leaves the flag as-is (a schema change may already have set it).
     reindex_from_embed: bool | None = None

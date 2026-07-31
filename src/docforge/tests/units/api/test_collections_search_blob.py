@@ -138,7 +138,7 @@ def test_patch_non_empty_search_without_nodes_is_422(client, fastapi_app, monkey
 
     response = client.patch(
         f"/api/v1/collections/{uuid.uuid4()}",
-        json={"search": {"rescore_pool_size": 50}},
+        json={"search": {"some_tuning_key": 50}},
     )
 
     # 1. Only {} or a real topology (has "nodes") is a valid search value.

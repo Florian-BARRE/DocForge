@@ -18,8 +18,8 @@ class QdrantClient(LoggerClass):
             url (str): Qdrant endpoint (e.g. ``http://qdrant:6333``).
             api_key (str | None): Optional API key.
             timeout (float): Per-request timeout in seconds. The qdrant-client default (5s) is too
-                low for ColBERT multi-vector upserts (dozens–hundreds of vectors/point, indexed with
-                ``wait=true``), which intermittently exceed it; 60s covers a heavy batch.
+                low for heavy vector upserts indexed with ``wait=true``, which intermittently exceed
+                it; 60s covers a heavy batch.
         """
         LoggerClass.__init__(self)
         self._client = AsyncQdrantClient(url=url, api_key=api_key, timeout=timeout)

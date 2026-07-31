@@ -24,9 +24,6 @@ from shared_libs.services.db.qdrant import build_match_conditions
 # ====== Local Project Imports ======
 from .target_resolver import TargetVectorResolver
 
-# The default fused-pool depth a late-interaction re-score works over when the caller sets none —
-# the same default the live search facade uses (search_facade.py:48).
-_DEFAULT_RESCORE_POOL_SIZE = 100
 # The retrieval branch that produced a candidate (provenance recorded on every Candidate).
 _RETRIEVAL_SOURCE = "hybrid"
 
@@ -50,7 +47,6 @@ class CollectionReadPortImpl(CollectionReadPort, LoggerClass):
         filters: dict,
         limit: int,
         targets: list[SearchTarget],
-        rescore_pool_size: int | None = None,
         fusion: str = "rrf",
     ) -> list[Candidate]:
         """
@@ -62,13 +58,11 @@ class CollectionReadPortImpl(CollectionReadPort, LoggerClass):
         the rich fields for the cut top_k only, so the candidate pool is never hydrated twice.
 
         Args:
-            encoded (EncodedQuery): The query's vectors (dense always; sparse/colbert when present).
+            encoded (EncodedQuery): The query's vectors (dense always; sparse when present).
             filters (dict): The structured filter map constraining the retrieval.
             limit (int): The candidate depth to return (the QuerySpec's ``candidate_k``).
             targets (list[SearchTarget]): The fields × modalities to search (content and/or metadata);
                 resolved here to the named query-vector dicts (the only place that knows those names).
-            rescore_pool_size (int | None): Late-interaction re-score pool size; None uses the
-                store default.
             fusion (str): Branch-fusion strategy — "rrf" (default) or "dbsf".
 
         Returns:
@@ -80,7 +74,7 @@ class CollectionReadPortImpl(CollectionReadPort, LoggerClass):
         #    collection embedder was later swapped to dense-only, past the router's validation)
         #    degrades to empty results rather than a 500.
         try:
-            dense, sparse, colbert = TargetVectorResolver.resolve(encoded, targets)
+            dense, sparse = TargetVectorResolver.resolve(encoded, targets)
         except ValueError as exc:
             self.logger.warning(f"Search targets resolved to no queryable vector: {exc}")
             return []
@@ -93,8 +87,6 @@ class CollectionReadPortImpl(CollectionReadPort, LoggerClass):
             sparse=sparse,
             conditions=build_match_conditions(filters),
             limit=limit,
-            colbert=colbert,
-            rescore_pool_size=rescore_pool_size or _DEFAULT_RESCORE_POOL_SIZE,
             fusion=fusion,
         )
 

@@ -95,30 +95,6 @@ class FakeEmbed(BaseEmbedderNode):
 
 
 @NodeRegistry.register("embed")
-class FakeColbert(BaseEmbedderNode):
-    KIND = "test_embed_fake_colbert"
-    NAME = "F"
-    SUMMARY = "t"
-    Config = BaseEmbedConfig
-
-    def __init__(self, *args, wants_colbert: bool = False, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
-        self._wants = wants_colbert
-        self.colbert_calls: list[list[str]] = []
-
-    async def _embed_dense(self, texts: list[str]) -> list[list[float]]:
-        return [[1.0] * 100 for _ in texts]
-
-    def _wants_colbert(self) -> bool:
-        return self._wants
-
-    async def _embed_colbert(self, texts: list[str]) -> list[list[list[float]]]:
-        self.colbert_calls.append(list(texts))
-        # One token-vector matrix per input; 1024-dim tokens like BGE-M3 -> asserts colbert_dim.
-        return [[[0.1] * 1024 for _ in range(len(t.split()))] for t in texts]
-
-
-@NodeRegistry.register("embed")
 class FakeDenseOnly(BaseEmbedderNode):
     KIND = "test_embed_fake_dense_only"
     NAME = "F"
@@ -208,36 +184,6 @@ async def test_dense_only_provider_skips_the_sparse_axis_gracefully() -> None:
     assert all(item.dense is not None for item in out.embeddings.items)
 
 
-async def test_colbert_on_populates_multivectors_aligned_1to1_with_dense() -> None:
-    # embed_colbert=True: every ENABLED chunk gets a colbert matrix, index-aligned with dense, and
-    # the artefact reports colbert_dim=1024 (the token-vector width the provider returned).
-    node = FakeColbert(id="e", config=BaseEmbedConfig(model="m", batch_size=2), wants_colbert=True)
-    out = await node.run(EmbedConsumes(chunks=CHUNKS, contract=CONTRACT))
-    emb = out.embeddings
-
-    # 1. One colbert matrix per chunk, chunk_id-linked in the SAME order as dense.
-    assert [item.chunk_id for item in emb.items] == [c.chunk_id for c in CHUNKS]
-    assert all(item.colbert is not None and item.dense is not None for item in emb.items)
-    # 2. Token count matches the enriched text; each token vector is 1024-dim.
-    assert len(emb.items[0].colbert) == len(CHUNKS[0].enriched_text.split())
-    assert all(len(token) == 1024 for token in emb.items[0].colbert)
-    assert emb.colbert_dim == 1024
-    # 3. The colbert endpoint saw the SAME enriched texts the dense path embeds.
-    embedded = [t for call in node.colbert_calls for t in call]
-    assert embedded[0].startswith("Section: Animals\n\n")
-
-
-async def test_colbert_off_leaves_none_and_makes_no_colbert_call() -> None:
-    # embed_colbert=False (the default): no colbert vectors, no colbert_dim, and the endpoint is
-    # NEVER called — the axis costs nothing when unwanted.
-    node = FakeColbert(id="e", config=BaseEmbedConfig(model="m"), wants_colbert=False)
-    out = await node.run(EmbedConsumes(chunks=CHUNKS, contract=CONTRACT))
-    emb = out.embeddings
-    assert all(item.colbert is None for item in emb.items)
-    assert emb.colbert_dim is None
-    assert node.colbert_calls == []  # zero cost: the endpoint was never hit
-
-
 def test_family_registration_and_describe_expose_the_ui_contract() -> None:
     assert {"bge_server", "openai_compatible"} <= set(NodeRegistry.kinds("embed"))
     assert EmbedBgeServerNode.describe().unique_in_graph is True
@@ -248,7 +194,6 @@ def test_family_registration_and_describe_expose_the_ui_contract() -> None:
         "batch_size",
         "embed_sparse",
         "embed_semantic_fields",
-        "embed_colbert",
     ):
         assert key in described.config_schema["properties"], key
 
@@ -398,7 +343,7 @@ async def test_max_retries_zero_preserves_one_shot_behaviour() -> None:
 
 
 def _mock_bge_transport(calls: list[str]) -> httpx.MockTransport:
-    """A MockTransport answering the three bge_server routes, recording every path it served."""
+    """A MockTransport answering the bge_server routes, recording every path it served."""
 
     def handler(request: httpx.Request) -> httpx.Response:
         inputs = json.loads(request.content)["inputs"]
@@ -407,19 +352,14 @@ def _mock_bge_transport(calls: list[str]) -> httpx.MockTransport:
             return httpx.Response(200, json=[[0.2] * 8 for _ in inputs])
         if request.url.path == "/embed_sparse":
             return httpx.Response(200, json=[[{"index": 1, "value": 0.5}] for _ in inputs])
-        if request.url.path == "/embed_colbert":
-            return httpx.Response(200, json=[[[0.1] * 1024, [0.2] * 1024] for _ in inputs])
         return httpx.Response(404)
 
     return httpx.MockTransport(handler)
 
 
-@pytest.mark.parametrize("embed_colbert", [True, False])
-async def test_bge_server_hits_embed_colbert_route_only_when_enabled(
-    monkeypatch: pytest.MonkeyPatch, embed_colbert: bool
-) -> None:
-    # The real bge_server node, HTTP mocked: embed_colbert=True POSTs /embed_colbert and fills every
-    # chunk's colbert (+ colbert_dim=1024); False never touches the route and leaves colbert None.
+async def test_bge_server_hits_the_dense_and_sparse_routes(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The real bge_server node, HTTP mocked: it POSTs /embed for dense and /embed_sparse for the
+    # lexical axis, filling both per chunk.
     calls: list[str] = []
     transport = _mock_bge_transport(calls)
     original_client = httpx.AsyncClient
@@ -427,21 +367,11 @@ async def test_bge_server_hits_embed_colbert_route_only_when_enabled(
         httpx, "AsyncClient", lambda *a, **k: original_client(*a, **{**k, "transport": transport})
     )
 
-    node = EmbedBgeServerNode(
-        id="e",
-        config=EmbedBgeServerConfig(base_url="http://bge", model="m", embed_colbert=embed_colbert),
-    )
+    node = EmbedBgeServerNode(id="e", config=EmbedBgeServerConfig(base_url="http://bge", model="m"))
     out = await node.run(EmbedConsumes(chunks=CHUNKS, contract=CONTRACT))
     emb = out.embeddings
 
-    if embed_colbert:
-        assert "/embed_colbert" in calls
-        assert all(item.colbert is not None for item in emb.items)
-        assert emb.colbert_dim == 1024
-        # 1:1 with dense by chunk: same count, same order, both present per chunk.
-        assert [i.chunk_id for i in emb.items] == [c.chunk_id for c in CHUNKS]
-        assert all(item.dense is not None and item.colbert is not None for item in emb.items)
-    else:
-        assert "/embed_colbert" not in calls  # zero cost when off
-        assert all(item.colbert is None for item in emb.items)
-        assert emb.colbert_dim is None
+    assert "/embed" in calls
+    assert "/embed_sparse" in calls
+    assert [i.chunk_id for i in emb.items] == [c.chunk_id for c in CHUNKS]
+    assert all(item.dense is not None and item.sparse is not None for item in emb.items)

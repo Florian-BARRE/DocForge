@@ -22,7 +22,7 @@ from ...base import PortBackedNode
 
 
 class RetrieveHybridConfig(NodeConfig):
-    """The fusion strategy + the late-interaction re-score pool depth."""
+    """The branch-fusion strategy."""
 
     fusion: Literal["rrf", "dbsf"] = Field(
         default="rrf",
@@ -31,12 +31,6 @@ class RetrieveHybridConfig(NodeConfig):
         "— Distribution-Based Score Fusion: normalises each branch's score distribution before "
         "summing, so a confident axis (e.g. exact lexical on IDs/codes) can dominate. Tune per "
         "collection to shift the semantic↔lexical balance.",
-    )
-    rescore_pool_size: int | None = Field(
-        default=None,
-        gt=0,
-        description="Fused-pool size a ColBERT late-interaction re-score works over; None uses the "
-        "store default. Only meaningful when the query carries a colbert vector.",
     )
 
 
@@ -61,7 +55,7 @@ class RetrieveHybridNode(PortBackedNode):
     NAME = "Hybrid search"
     SUMMARY = "One server-side hybrid search (dense+sparse, RRF or DBSF), disabled points excluded."
     HOW_IT_WORKS = (
-        "Passes the query's dense/sparse (and colbert) vectors + filters to the bound "
+        "Passes the query's dense/sparse vectors + filters to the bound "
         "CollectionReadPort.hybrid_search, which fuses the modalities in the store with the "
         "configured strategy (RRF or DBSF) and excludes disabled chunks/documents. Returns "
         "candidate_k candidates in fusion order. No direct store import — the port is injected "
@@ -90,7 +84,6 @@ class RetrieveHybridNode(PortBackedNode):
             filters=data.spec.filters,
             limit=data.spec.candidate_k,
             targets=data.spec.search_targets,
-            rescore_pool_size=config.rescore_pool_size,
             fusion=config.fusion,
         )
         self.logger.debug(

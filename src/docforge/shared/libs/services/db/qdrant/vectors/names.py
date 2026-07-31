@@ -14,9 +14,6 @@ class VectorNames:
 
     CONTENT_DENSE = "content_dense"
     CONTENT_SPARSE = "content_bm25"
-    # The chunk body's ColBERT multi-vector (one token vector per token, MAX_SIM late interaction).
-    # Content point only — never mirrored onto the meta_<slug>_dense metadata vectors.
-    CONTENT_COLBERT = "content_colbert"
 
     def __new__(cls, *args: object, **kwargs: object) -> None:
         raise TypeError("VectorNames is a static-only class and cannot be instantiated.")

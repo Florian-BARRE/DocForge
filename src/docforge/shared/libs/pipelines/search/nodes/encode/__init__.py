@@ -9,7 +9,7 @@ NodeRegistry.register_family(
     title="Encode",
     description=(
         "Encodes the query into the collection's vector space using the collection's OWN embedder "
-        "(rebuilt from its stored blob). Dense always; sparse/colbert per the collection's config. "
+        "(rebuilt from its stored blob). Dense always; sparse per the collection's config. "
         "Locked to one method — the query MUST share the chunks' vector space."
     ),
     mode=FamilyMode.EXCLUSIVE,

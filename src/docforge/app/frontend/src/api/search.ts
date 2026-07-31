@@ -17,8 +17,6 @@ export interface SearchRequest {
   limit?: number | null;
   filters?: Record<string, unknown> | null;
   search_in?: SearchTargetModel[] | null;
-  use_late_interaction?: boolean | null;
-  rescore_pool_size?: number | null;
 }
 
 export interface SearchHitModel {

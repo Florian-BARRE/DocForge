@@ -25,8 +25,8 @@ class RawQuery(Artifact):
         search_targets (list[SearchTarget]): The caller's field × modality selection carried into
             the QuerySpec. Defaults to content on both axes; an empty list is normalised back to
             that default (a spec never has zero targets).
-        flags (dict): Free-form retrieval switches (e.g. ``use_late_interaction``) carried into
-            the QuerySpec and read by the encode/retrieve/rerank stages.
+        flags (dict): Free-form retrieval switches carried into the QuerySpec and read by the
+            encode/retrieve/rerank stages.
     """
 
     text: str = Field(description="The raw query text as typed by the caller (un-normalised).")
@@ -40,7 +40,7 @@ class RawQuery(Artifact):
     )
     flags: dict = Field(
         default_factory=dict,
-        description="Free-form retrieval switches (e.g. use_late_interaction) carried downstream.",
+        description="Free-form retrieval switches carried downstream.",
     )
 
 

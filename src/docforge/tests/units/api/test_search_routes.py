@@ -97,10 +97,6 @@ def test_search_delegates_to_service_and_shapes_hits(client, wired) -> None:
     assert wired.await_args.args[1] == "how does it work"
     assert kwargs["top_k"] == 5
     assert kwargs["filters"] == {"topic": "ai"}
-    assert kwargs["use_late_interaction"] is False
-    # collection.search is a topology blob now, not a tuning dict — with no request override the
-    # router forwards None and the retrieve node's own config / the store default governs.
-    assert kwargs["rescore_pool_size"] is None
 
     # 3. The hit is the flat view of the graph Hit (index/tokens lifted out of metadata).
     hit = response.json()["hits"][0]

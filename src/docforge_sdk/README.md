@@ -299,8 +299,7 @@ with Client("http://localhost:10040", api_token="df_...") as client:
 ```
 
 Key `SearchRequest` fields: `query` (required), `limit` (1–100, default 10), `filters`
-(`dict[str, Any]`), `search_in` (`list[SearchTarget]` to pick which vectors to query),
-`use_late_interaction`, `rescore_pool_size`.
+(`dict[str, Any]`), `search_in` (`list[SearchTarget]` to pick which vectors to query).
 
 ### Explore a document (pages, IR, chunks)
 

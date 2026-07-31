@@ -58,16 +58,3 @@ def test_configured_run_timeout_is_stored_and_used(fastapi_app) -> None:
 
     service = SearchService(database=SimpleNamespace(), timeout_seconds=120.0)
     assert service._timeout_seconds == 120.0
-
-
-def test_pool_override_lands_on_retrieve_node(fastapi_app) -> None:
-    """The per-query pool override is written onto the resolved blob's retrieve node config."""
-    from shared_libs.pipelines.search import SearchPipeline  # noqa: PLC0415
-
-    service = _service(fastapi_app)
-    blob = SearchPipeline.default_blob().model_dump(mode="json")
-
-    service._SearchService__inject_rescore_pool_size(blob, 7)
-
-    retrieve = next(n for n in blob["nodes"] if n["id"] == "retrieve")
-    assert retrieve["config"]["rescore_pool_size"] == 7

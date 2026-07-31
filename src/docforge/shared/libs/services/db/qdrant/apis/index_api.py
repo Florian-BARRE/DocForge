@@ -29,16 +29,12 @@ class QdrantIndexApi:
         vector: dict[str, Any] = dict(point.dense)
         for name, sparse in point.sparse.items():
             vector[name] = models.SparseVector(indices=sparse.indices, values=sparse.values)
-        # ColBERT multi-vectors ride in the SAME named-vector dict; qdrant-client accepts the
-        # list-of-token-vectors shape as-is (content point only — set by the translator).
-        vector.update(point.multivector)
         return models.PointStruct(id=point.point_id, vector=vector, payload=point.payload)
 
     # Qdrant rejects any request whose body exceeds its `max_request_size` (32 MB default) with an
-    # immediate 400 + connection reset. A ColBERT multi-vector is dozens–hundreds of 1024-dim vectors
-    # per point, and full-precision floats serialize at ~22 bytes each, so a whole-document upsert
-    # easily crosses 32 MB. We flush by ESTIMATED payload bytes (not point count, which is blind to
-    # the wildly varying colbert token counts), keeping every request well under the limit.
+    # immediate 400 + connection reset, so a whole-document upsert can cross the limit. We flush by
+    # ESTIMATED payload bytes (full-precision floats serialize at ~22 bytes each), keeping every
+    # request well under the limit.
     __MAX_UPSERT_BYTES = 16_000_000
     __BYTES_PER_FLOAT = 22
 
@@ -46,7 +42,6 @@ class QdrantIndexApi:
     def __point_bytes(point: QdrantPoint) -> int:
         """Rough serialized size of a point, dominated by its float vectors."""
         floats = sum(len(vec) for vec in point.dense.values())
-        floats += sum(len(token) for matrix in point.multivector.values() for token in matrix)
         return floats * QdrantIndexApi.__BYTES_PER_FLOAT + 512
 
     @staticmethod

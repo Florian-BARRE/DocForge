@@ -47,10 +47,6 @@ class SearchRequest(BaseModel):
         search_in (list[SearchTargetModel] | None): What to search — the fields (content and/or
             metadata) and modalities (semantic/lexical). None searches content on both axes
             (unchanged default). A target naming a vector the collection never indexed → 422.
-        use_late_interaction (bool | None): Opt into the ColBERT re-score. None → off for this
-            query; True/False sets it for this query.
-        rescore_pool_size (int | None): Size of the fused candidate pool the ColBERT stage
-            re-scores. None → the retrieve node's own config / the store default governs.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -65,17 +61,6 @@ class SearchRequest(BaseModel):
         default=None,
         description="Fields × modalities to search (content and/or metadata). None → content on "
         "both semantic and lexical (the unchanged default).",
-    )
-    use_late_interaction: bool | None = Field(
-        default=None,
-        description="Opt into the ColBERT late-interaction re-score for this query. None → off.",
-    )
-    rescore_pool_size: int | None = Field(
-        default=None,
-        ge=1,
-        le=1000,
-        description="Fused candidate pool size the ColBERT stage re-scores. None → the retrieve "
-        "node's own config / the store default governs.",
     )
 
     @field_validator("query")
@@ -128,16 +113,15 @@ class SearchResponse(BaseModel):
     Attributes:
         query (str): The query that was searched (echoed for the client).
         hits (list[SearchHitModel]): The hydrated hits, best first.
-        debug_info (dict | None): Non-fatal diagnostics about how the search ran — e.g. a note
-            that late interaction was requested but skipped because the collection carries no
-            ColBERT vectors. None when there is nothing to report.
+        debug_info (dict | None): Non-fatal diagnostics about how the search ran. None when there
+            is nothing to report.
     """
 
     query: str = Field(description="The query that was searched.")
     hits: list[SearchHitModel] = Field(default_factory=list, description="Ranked hits, best first.")
     debug_info: dict[str, Any] | None = Field(
         default=None,
-        description="Non-fatal diagnostics (e.g. late_interaction_skipped). None when empty.",
+        description="Non-fatal diagnostics about how the search ran. None when empty.",
     )
 
 

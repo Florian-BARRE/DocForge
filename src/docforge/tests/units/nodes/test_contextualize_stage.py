@@ -155,7 +155,9 @@ async def test_doc_meta_anchor_not_dropped_when_body_merely_starts_with_the_titl
     node = ContextualizerDocMetaNode(id="m", config=ContextualizerDocMetaConfig())
     src = SourceDocument(filename="d.html", content=b"x", declared_meta={"title": "Overview"})
     chunks = [
-        _chunk(0, "Overview of the deployment topology follows here.", []),  # prose, not the heading
+        _chunk(
+            0, "Overview of the deployment topology follows here.", []
+        ),  # prose, not the heading
         _chunk(1, "Overview\n\nThe deployment topology follows here.", []),  # inlined heading line
     ]
     out = await node.run(DocMetaConsumes(chunks=chunks, source=src))

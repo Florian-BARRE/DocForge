@@ -165,7 +165,6 @@ class IngestionFacade(LoggerClass):
         collection_id: uuid.UUID,
         dense_dim: int,
         points: Sequence[QdrantPoint],
-        colbert_dim: int | None = None,
     ) -> None:
         """
         Push the chunk vectors into Qdrant and flag the chunks indexed.
@@ -177,8 +176,6 @@ class IngestionFacade(LoggerClass):
             collection_id (uuid.UUID): The target collection.
             dense_dim (int): Dense vector dimension (from the pipeline's embed config).
             points (Sequence[QdrantPoint]): The points (ids = chunk ids) with vectors + payload.
-            colbert_dim (int | None): Per-token ColBERT dimension; when given (and only on a fresh
-                collection), the ``content_colbert`` multi-vector is declared. None declares none.
         """
         # 1. Derive the vector space from the schema (and re-check the slug guard defensively).
         async with self._postgres.session() as session:
@@ -196,7 +193,6 @@ class IngestionFacade(LoggerClass):
                 for f in schema
                 if f.filterable
             },
-            colbert_dim=colbert_dim,
         )
         # 2. Upsert, then flag the chunks as indexed.
         await QdrantIndexApi.upsert(self._qdrant.raw, name, points)

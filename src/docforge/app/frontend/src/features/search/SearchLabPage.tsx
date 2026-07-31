@@ -1,9 +1,8 @@
 // ====== Code Summary ======
 // The Search Lab: run a query against this collection, optionally narrow it with metadata filters,
 // choose which targets (content and/or metadata fields) and modalities (semantic/lexical) the query
-// searches, tune the ColBERT late-interaction re-rank (tucked away as an expert control), inspect
-// ranked hits. Nested under a collection like Documents/Jobs/Pipeline (collectionId is already known
-// — no separate collection picker needed here).
+// searches, inspect ranked hits. Nested under a collection like Documents/Jobs/Pipeline (collectionId
+// is already known — no separate collection picker needed here).
 
 import { useEffect, useState } from "react";
 import { getCollection, type Collection } from "../../api/collections";
@@ -11,15 +10,12 @@ import { search, type SearchResponse } from "../../api/search";
 import { ErrorState } from "../../components/ErrorState";
 import type { Navigate } from "../../shell/view";
 import { theme } from "../../theme";
-import { AdvancedDisclosure } from "../search-pipeline/AdvancedDisclosure";
-import { LateInteractionControls } from "./LateInteractionControls";
 import { SearchFilterBuilder } from "./SearchFilterBuilder";
 import { SearchQueryBar } from "./SearchQueryBar";
 import { SearchResultsList } from "./SearchResultsList";
 import { buildSearchIn, DEFAULT_TARGET_SELECTION, SearchTargetPicker, type TargetSelection } from "./SearchTargetPicker";
 
 const DEFAULT_LIMIT = 10;
-const DEFAULT_RESCORE_POOL_SIZE = 100;
 
 interface SearchLabPageProps {
   collectionId: string;
@@ -32,8 +28,6 @@ export function SearchLabPage({ collectionId }: SearchLabPageProps) {
   const [limit, setLimit] = useState(DEFAULT_LIMIT);
   const [filters, setFilters] = useState<Record<string, unknown>>({});
   const [targetSelection, setTargetSelection] = useState<TargetSelection>(DEFAULT_TARGET_SELECTION);
-  const [lateInteraction, setLateInteraction] = useState(false);
-  const [rescorePoolSize, setRescorePoolSize] = useState(DEFAULT_RESCORE_POOL_SIZE);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [response, setResponse] = useState<SearchResponse | null>(null);
@@ -75,9 +69,6 @@ export function SearchLabPage({ collectionId }: SearchLabPageProps) {
       // Default selection (content, both modalities) or nothing ticked → null, so the backend
       // defers to its own default path unchanged.
       search_in: buildSearchIn(targetSelection),
-      // Untouched = null, so the backend defers to the collection's saved search config.
-      use_late_interaction: lateInteraction ? true : null,
-      rescore_pool_size: lateInteraction ? rescorePoolSize : null,
     })
       .then(setResponse)
       .catch((e) => setError(e instanceof Error ? e.message : String(e)))
@@ -102,14 +93,6 @@ export function SearchLabPage({ collectionId }: SearchLabPageProps) {
           />
           <SearchTargetPicker fields={collection?.fields ?? []} selection={targetSelection} onToggle={handleTargetToggle} />
           <SearchFilterBuilder fields={filterableFields} values={filters} onFilterChange={handleFilterChange} />
-          <AdvancedDisclosure summary="Advanced — ColBERT (late interaction)">
-            <LateInteractionControls
-              enabled={lateInteraction}
-              onEnabledChange={setLateInteraction}
-              rescorePoolSize={rescorePoolSize}
-              onRescorePoolSizeChange={setRescorePoolSize}
-            />
-          </AdvancedDisclosure>
         </div>
 
         {error && <ErrorState message={error} onRetry={runSearch} />}

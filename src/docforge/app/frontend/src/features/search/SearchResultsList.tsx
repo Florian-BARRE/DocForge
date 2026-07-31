@@ -1,10 +1,8 @@
 // ====== Code Summary ======
-// The results section: echoed effective query + hit count, the late-interaction-skipped notice
-// when present, and the ranked hit list itself.
+// The results section: echoed effective query + hit count and the ranked hit list itself.
 
 import type { SearchResponse } from "../../api/search";
 import { theme } from "../../theme";
-import { LateInteractionSkippedNotice } from "./LateInteractionSkippedNotice";
 import { SearchHitCard } from "./SearchHitCard";
 
 interface SearchResultsListProps {
@@ -12,16 +10,12 @@ interface SearchResultsListProps {
 }
 
 export function SearchResultsList({ response }: SearchResultsListProps) {
-  const skipped = response.debug_info?.late_interaction_skipped;
-
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: theme.space.s }}>
       <div style={{ color: theme.color.dim, fontSize: theme.font.size.s }}>
         <strong style={{ color: theme.color.text }}>{response.hits.length}</strong> result{response.hits.length === 1 ? "" : "s"} for{" "}
         <em style={{ color: theme.color.text, fontStyle: "normal", fontWeight: 600 }}>“{response.query}”</em>
       </div>
-
-      {typeof skipped === "string" && <LateInteractionSkippedNotice reason={skipped} />}
 
       {response.hits.length === 0 && (
         <div style={{ color: theme.color.dim, fontSize: theme.font.size.s, padding: theme.space.l, textAlign: "center" }}>

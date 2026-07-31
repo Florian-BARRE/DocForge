@@ -40,15 +40,9 @@ class QdrantCollectionApi:
         semantic_fields: Sequence[str] = (),
         lexical_fields: Sequence[str] = (),
         filterable_fields: Mapping[str, PayloadType] | None = None,
-        colbert_dim: int | None = None,
     ) -> None:
         """
         Create the Qdrant collection (named vectors + typed payload indexes) if it does not exist.
-
-        The ColBERT multi-vector is declared ONLY on a fresh collection and ONLY when a
-        ``colbert_dim`` is given: a named vector cannot be added to an existing Qdrant collection
-        in place, so a collection that predates ColBERT must be dropped and re-embedded — this
-        method never migrates one.
 
         Args:
             client (AsyncQdrantClient): The connection from QdrantClient.raw.
@@ -57,17 +51,12 @@ class QdrantCollectionApi:
             semantic_fields (Sequence[str]): Fields that get a named dense vector.
             lexical_fields (Sequence[str]): Fields that get a named sparse (BM25) vector.
             filterable_fields (Mapping[str, PayloadType]): Filterable field → its index type.
-            colbert_dim (int | None): Per-token ColBERT dimension; when given, declares the
-                ``content_colbert`` multi-vector. None declares no ColBERT vector.
         """
         # 1. Idempotent — created once, reused across every ingest into the collection.
         if await client.collection_exists(name):
             return
-        # 2. The vector space mirrors the contract (content + per-field dense) plus, only on this
-        #    fresh collection and only when asked, the content ColBERT multi-vector.
+        # 2. The vector space mirrors the contract (content + per-field dense).
         vectors_config = QdrantVectorSchema.dense_config(dense_dim, semantic_fields)
-        if colbert_dim is not None:
-            vectors_config.update(QdrantVectorSchema.colbert_config(colbert_dim))
         await client.create_collection(
             collection_name=name,
             vectors_config=vectors_config,

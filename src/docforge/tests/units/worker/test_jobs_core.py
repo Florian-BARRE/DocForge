@@ -75,7 +75,7 @@ def _wire(jobs_core, monkeypatch, database: SimpleNamespace, points):
     database.collections.get = AsyncMock(return_value=collection)
 
     translated = SimpleNamespace(
-        objects=[], blob_rows=[], payload=MagicMock(), points=points, dense_dim=4, colbert_dim=None
+        objects=[], blob_rows=[], payload=MagicMock(), points=points, dense_dim=4
     )
     monkeypatch.setattr(jobs_core.RunTranslator, "translate", MagicMock(return_value=translated))
     return document_id, context

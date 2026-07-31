@@ -27,12 +27,6 @@ class EmbedBgeServerConfig(BaseEmbedConfig):
         description="Model hosted by the server (provenance, stored with the vectors).",
     )
     timeout_seconds: float = Field(default=60.0, gt=0, description="Per-request timeout (s).")
-    embed_colbert: bool = Field(
-        default=False,
-        description="Also produce ColBERT multi-vectors (one token vector per token) for each "
-        "enabled chunk's enriched text, via the server's /embed_colbert route. OFF by default: "
-        "colbert is opt-in per collection — when off, nothing calls the endpoint (zero cost).",
-    )
 
     @field_validator("base_url", mode="before")
     @classmethod
@@ -51,8 +45,7 @@ class EmbedBgeServerNode(BaseEmbedderNode):
     HOW_IT_WORKS = (
         "POSTs the text batches to the server's TEI-compatible routes: /embed for the dense "
         "vectors and /embed_sparse for the lexical ones. Both axes from one local server — "
-        "the product default. When embed_colbert is on, also POSTs to /embed_colbert for the "
-        "ColBERT multi-vectors."
+        "the product default."
     )
     Config = EmbedBgeServerConfig
     UNIQUE_IN_GRAPH = True
@@ -97,15 +90,6 @@ class EmbedBgeServerNode(BaseEmbedderNode):
             )
             for entries in payload
         ]
-
-    def _wants_colbert(self) -> bool:
-        """The collection's single source of truth for the colbert axis (config flag)."""
-        config: EmbedBgeServerConfig = self.config
-        return config.embed_colbert
-
-    async def _embed_colbert(self, texts: list[str]) -> list[list[list[float]]]:
-        """ColBERT multi-vectors via /embed_colbert (one token-vector matrix per input, in order)."""
-        return await self.__post("/embed_colbert", texts)
 
 
 __all__ = ["EmbedBgeServerNode", "EmbedBgeServerConfig"]

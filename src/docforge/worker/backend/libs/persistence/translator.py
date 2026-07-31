@@ -59,7 +59,6 @@ class TranslatedRun:
     blob_rows: list[Blob] = field(default_factory=list)
     points: list[QdrantPoint] = field(default_factory=list)
     dense_dim: int = 0
-    colbert_dim: int | None = None
     # O(1) content-hash dedup (was a linear scan of blob_rows per blob → O(blobs²)).
     seen_hashes: set[str] = field(default_factory=set)
 
@@ -76,7 +75,6 @@ class RunTranslator:
     def __block_id(document_id: uuid.UUID, pipeline_id: str) -> str:
         """THE block-id remap: parser-scoped ids collide across documents — prefix with the doc."""
         return f"{document_id}:{pipeline_id}"
-
 
     @classmethod
     def __register_blob(cls, out: TranslatedRun, data: bytes, kind: BlobKind, mime: str) -> str:
@@ -255,22 +253,15 @@ class RunTranslator:
                 if item.sparse
                 else {}
             )
-            # The ColBERT multi-vector lands on the CONTENT point only — never mirrored onto the
-            # meta_<slug>_dense metadata vectors built from item.fields above.
-            multivector = {VectorNames.CONTENT_COLBERT: item.colbert} if item.colbert else {}
             out.points.append(
                 QdrantPoint(
                     point_id=str(chunk_uuid),
                     payload=payload,
                     dense=dense,
                     sparse=sparse,
-                    multivector=multivector,
                 )
             )
         out.dense_dim = bundle.embeddings.dimension if bundle.embeddings else 0
-        # colbert_dim drives whether `ensure` declares the content_colbert multi-vector; None means
-        # this embed produced no ColBERT axis, so no ColBERT vector is declared on the collection.
-        out.colbert_dim = bundle.embeddings.colbert_dim if bundle.embeddings else None
 
     @classmethod
     def translate(

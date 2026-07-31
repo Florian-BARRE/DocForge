@@ -34,7 +34,7 @@ class QdrantVectorSchema:
             copy in RAM for the HNSW traversal, and Qdrant rescores the top candidates from the
             on-disk float32 — so recall is largely recovered despite the lossy quantization.
         Net ~4× less dense-vector RAM. Applies to newly created collections; an existing collection
-        picks it up via an online ``update_collection`` reindex (no drop). Mirrors the colbert path.
+        picks it up via an online ``update_collection`` reindex (no drop).
         """
         params = models.VectorParams(
             size=dense_dim,
@@ -48,37 +48,6 @@ class QdrantVectorSchema:
         for field_name in semantic_fields:
             config[VectorNames.field_dense(field_name)] = params
         return config
-
-    @staticmethod
-    def colbert_config(dim: int) -> dict[str, models.VectorParams]:
-        """
-        The chunk body's ColBERT multi-vector (MAX_SIM late interaction), content point only.
-
-        Storage mitigation — a ColBERT vector is ~30x the size of one dense vector (one token
-        vector per token), so it is pushed on_disk and scalar-quantized to int8; both keep the
-        heavy multi-vector out of RAM while the MAX_SIM comparator does the late-interaction score.
-
-        Args:
-            dim (int): Dimension of each per-token ColBERT vector.
-
-        Returns:
-            dict[str, models.VectorParams]: The single ``content_colbert`` named-vector config.
-        """
-        return {
-            VectorNames.CONTENT_COLBERT: models.VectorParams(
-                size=dim,
-                distance=models.Distance.COSINE,
-                multivector_config=models.MultiVectorConfig(
-                    comparator=models.MultiVectorComparator.MAX_SIM
-                ),
-                on_disk=True,
-                quantization_config=models.ScalarQuantization(
-                    scalar=models.ScalarQuantizationConfig(
-                        type=models.ScalarType.INT8, always_ram=False
-                    )
-                ),
-            )
-        }
 
     @staticmethod
     def sparse_config(lexical_fields: Sequence[str]) -> dict[str, models.SparseVectorParams]:

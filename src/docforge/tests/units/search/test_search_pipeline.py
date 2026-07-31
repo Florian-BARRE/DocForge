@@ -64,9 +64,7 @@ class MockCollectionReadPort(CollectionReadPort):
         self.hydrated_ids: list[str] = []
         self.fusions: list[str] = []
 
-    async def hybrid_search(
-        self, encoded, filters, limit, targets=None, rescore_pool_size=None, fusion="rrf"
-    ):
+    async def hybrid_search(self, encoded, filters, limit, targets=None, fusion="rrf"):
         """Return 3 fake candidates, best-first (records the call + fusion for assertions)."""
         assert isinstance(encoded, EncodedQuery)
         self.hybrid_calls.append((filters, limit))
@@ -177,9 +175,7 @@ class CuttingReadPort(CollectionReadPort):
     def __init__(self) -> None:
         self.hydrated_ids: list[str] = []
 
-    async def hybrid_search(
-        self, encoded, filters, limit, targets=None, rescore_pool_size=None, fusion="rrf"
-    ):
+    async def hybrid_search(self, encoded, filters, limit, targets=None, fusion="rrf"):
         """Return 5 candidates in NON-descending order so ranking-before-cut is observable."""
         return [
             Candidate(chunk_id="lo", score=0.1, source="hybrid"),
@@ -286,7 +282,7 @@ def test_search_placeholders_are_registered_but_hidden() -> None:
         "query": {"understand", "rewrite", "multi", "hyde"},
         "retrieve": {"dense", "sparse"},
         "fuse": {"rrf", "weighted"},
-        "rerank": {"colbert", "llm"},
+        "rerank": {"llm"},
         "postprocess": {"dedup_document", "mmr", "parent_expand", "assemble"},
     }
     palette = {f.family: {n.kind for n in f.nodes} for f in SearchPipeline.palette().families}
@@ -297,7 +293,7 @@ def test_search_placeholders_are_registered_but_hidden() -> None:
         for kind in kinds:
             described = NodeRegistry.get(family, kind).describe()
             assert described.selectable is False
-    assert NodeRegistry.get("rerank", "colbert").describe().scored is True
+    assert NodeRegistry.get("rerank", "llm").describe().scored is True
 
 
 class TargetCapturingReadPort(CollectionReadPort):
@@ -306,9 +302,7 @@ class TargetCapturingReadPort(CollectionReadPort):
     def __init__(self) -> None:
         self.targets_seen: list = None
 
-    async def hybrid_search(
-        self, encoded, filters, limit, targets=None, rescore_pool_size=None, fusion="rrf"
-    ):
+    async def hybrid_search(self, encoded, filters, limit, targets=None, fusion="rrf"):
         self.targets_seen = targets
         return [Candidate(chunk_id="c1", score=0.9, source="hybrid")]
 
@@ -350,10 +344,10 @@ def test_empty_search_targets_falls_back_to_default_content_targets() -> None:
     assert port.targets_seen == default_content_targets()
 
 
-@pytest.mark.parametrize("kind", ["understand", "colbert", "rrf", "mmr"])
+@pytest.mark.parametrize("kind", ["understand", "llm", "rrf", "mmr"])
 def test_placeholder_bodies_raise(kind: str) -> None:
     """A placeholder never runs — its body raises NotImplementedError if ever invoked."""
-    family = {"understand": "query", "colbert": "rerank", "rrf": "fuse", "mmr": "postprocess"}[kind]
+    family = {"understand": "query", "llm": "rerank", "rrf": "fuse", "mmr": "postprocess"}[kind]
     node_class = NodeRegistry.get(family, kind)
     node = node_class(id="x", config=node_class.Config())
     with pytest.raises(NotImplementedError):

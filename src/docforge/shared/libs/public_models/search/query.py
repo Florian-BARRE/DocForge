@@ -28,8 +28,8 @@ class QuerySpec(Artifact):
         search_targets (list[SearchTarget]): What to search — which fields (content and/or metadata)
             on which modalities (semantic/lexical). Defaults to content on both axes (today's plain
             query), so an untouched spec behaves exactly as before targets existed.
-        flags (dict): Free-form retrieval switches carried downstream (e.g.
-            ``use_late_interaction``), read by the encode/retrieve/rerank stages.
+        flags (dict): Free-form retrieval switches carried downstream, read by the
+            encode/retrieve/rerank stages.
     """
 
     text: str = Field(
@@ -55,7 +55,7 @@ class QuerySpec(Artifact):
     )
     flags: dict = Field(
         default_factory=dict,
-        description="Free-form retrieval switches carried downstream (e.g. use_late_interaction).",
+        description="Free-form retrieval switches carried downstream.",
     )
 
 
@@ -67,8 +67,6 @@ class EncodedQuery(Artifact):
         dense (list[float]): The dense query vector (always present — a query must be searchable).
         sparse (SparseVector | None): The lexical query vector; None when the collection's
             embedder has no sparse axis.
-        colbert (list[list[float]] | None): The ColBERT multi-vector (one vector per query token);
-            None unless late interaction is on AND the collection indexed ColBERT.
         model (str): The embedding model that produced the vectors (provenance; must match the
             model the chunks were indexed with).
     """
@@ -79,11 +77,6 @@ class EncodedQuery(Artifact):
     sparse: SparseVector | None = Field(
         default=None,
         description="The lexical query vector; None when the embedder has no sparse axis.",
-    )
-    colbert: list[list[float]] | None = Field(
-        default=None,
-        description="The ColBERT multi-vector (one vector per query token); None unless late "
-        "interaction is on and the collection indexed ColBERT.",
     )
     model: str = Field(
         default="", description="The embedding model that produced the vectors (provenance)."

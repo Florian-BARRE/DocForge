@@ -37,41 +37,14 @@ def _fake_client() -> MagicMock:
     return client
 
 
-async def test_colbert_query_nests_the_rrf_pool_and_rescores_with_max_sim() -> None:
-    """With a ColBERT query, query_points re-scores a NESTED RRF pool via content_colbert."""
-    client = _fake_client()
-    await QdrantSearchApi.hybrid(
-        client,
-        "c",
-        dense={VectorNames.CONTENT_DENSE: [0.1, 0.2]},
-        sparse=None,
-        limit=5,
-        colbert=[[0.1, 0.2], [0.3, 0.4]],
-        rescore_pool_size=42,
-    )
-    kwargs = client.query_points.await_args.kwargs
-    # 1. The OUTER query is the ColBERT multi-vector, re-scoring over the content_colbert space.
-    assert kwargs["using"] == VectorNames.CONTENT_COLBERT
-    assert kwargs["query"] == [[0.1, 0.2], [0.3, 0.4]]
-    assert kwargs["limit"] == 5
-    # 2. The prefetch is a SINGLE nested pool: an RRF fusion capped at rescore_pool_size, whose
-    #    own children are the dense/sparse branches.
-    prefetch = kwargs["prefetch"]
-    assert len(prefetch) == 1
-    pool = prefetch[0]
-    assert pool.limit == 42
-    assert isinstance(pool.query, models.FusionQuery)
-    assert pool.prefetch[0].using == VectorNames.CONTENT_DENSE
-
-
-async def test_no_colbert_query_is_the_single_stage_rrf_call() -> None:
-    """Without a ColBERT query, the call is the exact single-stage RRF fusion (no nesting)."""
+async def test_hybrid_query_is_the_single_stage_rrf_call() -> None:
+    """The call is the single-stage RRF fusion (a flat list of branches, no nesting)."""
     client = _fake_client()
     await QdrantSearchApi.hybrid(
         client, "c", dense={VectorNames.CONTENT_DENSE: [0.1, 0.2]}, limit=7
     )
     kwargs = client.query_points.await_args.kwargs
-    # 1. The top-level query is the RRF fusion itself — no ColBERT re-score, no nested pool.
+    # 1. The top-level query is the RRF fusion itself — no nested pool.
     assert isinstance(kwargs["query"], models.FusionQuery)
     assert "using" not in kwargs
     assert kwargs["limit"] == 7
