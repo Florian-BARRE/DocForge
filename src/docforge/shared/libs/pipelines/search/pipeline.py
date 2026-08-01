@@ -218,5 +218,105 @@ class SearchPipeline:
             id="search_pipeline", nodes=nodes, transitions=transitions, bindings=bindings
         )
 
+    @classmethod
+    def _query_transform_blob(cls, family: str, kind: str) -> GroupNodeBlob:
+        """
+        The stock chain with ONE query-transform node spliced between normalize and encode.
+
+        Shared spine of ``rewrite_blob`` and ``hyde_blob`` (they differ only in the node kind): a
+        QuerySpec→QuerySpec transform sits at ``qnode`` (normalize → QNODE → encode → …). The splice
+        is the one extra step vs rerank — the normalised spec has THREE downstream consumers
+        (encode, retrieve, hydrate), so all three are repointed onto the transform's output; the
+        transform itself reads the spec from normalize. The node is provider-hosted and OFF by
+        default (never in ``default_blob``); its empty config carries the endpoint defaults until the
+        user sets real per-collection values. It degrades to the original query on any failure.
+
+        Args:
+            family (str): The transform node's family (``query``).
+            kind (str): The transform node's kind (``rewrite`` or ``hyde``).
+
+        Returns:
+            GroupNodeBlob: The serialised topology with the query transform spliced in.
+        """
+        qnode = kind
+        # 1. The default nodes plus the query-transform node (empty config = endpoint defaults).
+        nodes = [
+            ActionNodeBlob(id="normalize", family="query", kind="normalize"),
+            ActionNodeBlob(id=qnode, family=family, kind=kind),
+            ActionNodeBlob(id="encode", family="encode", kind="collection"),
+            ActionNodeBlob(id="retrieve", family="retrieve", kind="hybrid"),
+            ActionNodeBlob(id="hydrate", family="postprocess", kind="hydrate"),
+            ActionNodeBlob(id="deliver", family="deliver", kind="hits"),
+        ]
+
+        # 2. The linear control flow — the transform slots in between normalize and encode.
+        transitions = [
+            Transition(from_node_id="normalize", to_node_id=qnode),
+            Transition(from_node_id=qnode, to_node_id="encode"),
+            Transition(from_node_id="encode", to_node_id="retrieve"),
+            Transition(from_node_id="retrieve", to_node_id="hydrate"),
+            Transition(from_node_id="hydrate", to_node_id="deliver"),
+        ]
+
+        # 3. The data wiring — the transform reads normalize.spec; EVERY former normalize.spec
+        #    consumer (encode, retrieve, hydrate) is repointed onto the transform's output spec.
+        bindings = {
+            "normalize": {
+                "query": FromRunInput(field_name="query"),
+                "filters": FromRunInput(field_name="filters"),
+            },
+            qnode: {"spec": FromNode(node_id="normalize", field_name="spec")},
+            "encode": {
+                "spec": FromNode(node_id=qnode, field_name="spec"),
+                "contract": FromRunInput(field_name="contract"),
+            },
+            "retrieve": {
+                "spec": FromNode(node_id=qnode, field_name="spec"),
+                "encoded": FromNode(node_id="encode", field_name="encoded"),
+            },
+            "hydrate": {
+                "candidates": FromNode(node_id="retrieve", field_name="candidates"),
+                "spec": FromNode(node_id=qnode, field_name="spec"),
+            },
+            "deliver": {
+                "ranked": FromNode(node_id="hydrate", field_name="ranked"),
+                "query": FromRunInput(field_name="query"),
+            },
+        }
+        return GroupNodeBlob(
+            id="search_pipeline", nodes=nodes, transitions=transitions, bindings=bindings
+        )
+
+    @classmethod
+    def rewrite_blob(cls) -> GroupNodeBlob:
+        """
+        The stock chain with the LLM query-rewrite node spliced in — the canonical "rewrite on" blob.
+
+        normalize → REWRITE → encode → retrieve → hydrate → deliver. The rewrite node replaces the
+        spec's text with an LLM-strengthened query; encode/retrieve/hydrate all read the rewritten
+        spec. This is the blob the UI's rewrite toggle stores; the provider config lives in the
+        blob (set per collection). It degrades to the original query on any provider failure.
+
+        Returns:
+            GroupNodeBlob: The serialised rewrite topology (nodes, transitions, bindings).
+        """
+        return cls._query_transform_blob("query", "rewrite")
+
+    @classmethod
+    def hyde_blob(cls) -> GroupNodeBlob:
+        """
+        The stock chain with the HyDE node spliced in — the canonical "HyDE on" blob.
+
+        normalize → HYDE → encode → retrieve → hydrate → deliver. The HyDE node appends a
+        hypothetical answer passage to the spec's text so encode embeds the richer text;
+        retrieve/hydrate read the enriched spec. This is the blob the UI's HyDE toggle stores; the
+        provider config lives in the blob (set per collection). It degrades to the original query on
+        any provider failure.
+
+        Returns:
+            GroupNodeBlob: The serialised HyDE topology (nodes, transitions, bindings).
+        """
+        return cls._query_transform_blob("query", "hyde")
+
 
 __all__ = ["SearchPipeline"]

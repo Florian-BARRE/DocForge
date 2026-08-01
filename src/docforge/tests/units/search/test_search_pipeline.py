@@ -279,7 +279,9 @@ def _deliver_kinds(palette) -> set[str]:
 def test_search_placeholders_are_registered_but_hidden() -> None:
     """The future methods are registered (discoverable) yet SELECTABLE=False (out of the palette)."""
     hidden = {
-        "query": {"understand", "rewrite", "multi", "hyde"},
+        # rewrite + hyde are now REAL selectable nodes; only understand + multi stay placeholders
+        # (multi needs graph fan-out, understand needs structured filter extraction).
+        "query": {"understand", "multi"},
         "retrieve": {"dense", "sparse"},
         "fuse": {"rrf", "weighted"},
         "rerank": {"llm"},
@@ -294,6 +296,10 @@ def test_search_placeholders_are_registered_but_hidden() -> None:
             described = NodeRegistry.get(family, kind).describe()
             assert described.selectable is False
     assert NodeRegistry.get("rerank", "llm").describe().scored is True
+    # The two query-understanding methods are REAL: selectable and present in the palette.
+    for kind in ("rewrite", "hyde"):
+        assert NodeRegistry.get("query", kind).describe().selectable is True
+        assert kind in palette["query"]
 
 
 class TargetCapturingReadPort(CollectionReadPort):

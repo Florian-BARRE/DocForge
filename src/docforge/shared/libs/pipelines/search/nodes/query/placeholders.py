@@ -59,18 +59,6 @@ class QueryUnderstandNode(PlaceholderNode):
 
 
 @NodeRegistry.register("query")
-class QueryRewriteNode(PlaceholderNode):
-    """LLM rewrite of the query into a cleaner retrieval form (future)."""
-
-    KIND = "rewrite"
-    NAME = "Rewrite query"
-    SUMMARY = "LLM rewrite of the query text into a stronger retrieval formulation."
-    Config = _QueryPlaceholderConfig
-    Consumes = _FromQuerySpec
-    Produces = _OneQuerySpec
-
-
-@NodeRegistry.register("query")
 class QueryMultiNode(PlaceholderNode):
     """Expand one query into N sub-query variants for a ForEach fan-out (future)."""
 
@@ -82,16 +70,4 @@ class QueryMultiNode(PlaceholderNode):
     Produces = _ManyQuerySpecs
 
 
-@NodeRegistry.register("query")
-class QueryHydeNode(PlaceholderNode):
-    """Generate a hypothetical answer document and fold it into the query (future)."""
-
-    KIND = "hyde"
-    NAME = "HyDE"
-    SUMMARY = "Generate a hypothetical answer and fold it into the query text (HyDE)."
-    Config = _QueryPlaceholderConfig
-    Consumes = _FromQuerySpec
-    Produces = _OneQuerySpec
-
-
-__all__ = ["QueryUnderstandNode", "QueryRewriteNode", "QueryMultiNode", "QueryHydeNode"]
+__all__ = ["QueryUnderstandNode", "QueryMultiNode"]
