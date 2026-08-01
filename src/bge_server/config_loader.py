@@ -119,6 +119,13 @@ class BgeServerConfig(EnvConfigLoader):
     # (rounded up, minimum 1) so the combined thread budget stays near the total core count.
     # Set explicitly to override the auto derivation (e.g. BGE_TORCH_NUM_THREADS=4).
     BGE_TORCH_NUM_THREADS: int = env("BGE_TORCH_NUM_THREADS", cast=int, default="0")
+    # Keep-warm interval in seconds. A background task runs a tiny forward pass on every model
+    # (dense/sparse/rerank) every this-many seconds so their weights stay RESIDENT: on a
+    # memory-constrained host the OS pages out an idle process's ~GB working set, and the next real
+    # request then pays a 30-50 s page-in ("cold load"). That cold load occupies the single rerank
+    # worker long enough that concurrent callers time out and re-enqueue, cascading. A cheap
+    # periodic touch (~0.3 s of compute) prevents the eviction entirely. 0 = disabled.
+    BGE_KEEPWARM_SECONDS: int = env("BGE_KEEPWARM_SECONDS", cast=int, default="45")
 
     # ───── Request size ceilings (edge validation, before the batching engine) ─────
     # A single oversized request is still admitted "whole" by BatchQueueWorker and holds the
@@ -172,6 +179,8 @@ class BgeServerConfig(EnvConfigLoader):
             raise ValueError(f"BGE_MAX_REQUEST_ITEMS must be >= 1, got {cls.BGE_MAX_REQUEST_ITEMS}")
         if cls.BGE_MAX_TEXT_CHARS < 1:
             raise ValueError(f"BGE_MAX_TEXT_CHARS must be >= 1, got {cls.BGE_MAX_TEXT_CHARS}")
+        if cls.BGE_KEEPWARM_SECONDS < 0:
+            raise ValueError(f"BGE_KEEPWARM_SECONDS must be >= 0, got {cls.BGE_KEEPWARM_SECONDS}")
 
 
 # ─── Apply logging configuration AFTER class definition ───

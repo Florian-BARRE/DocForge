@@ -7,6 +7,7 @@
 # unloaded model.
 
 # ====== Standard Library Imports ======
+import asyncio
 import unicodedata
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -26,6 +27,36 @@ from .context import CONTEXT
 TOTAL_STEPS = 4
 
 logger = loggerplusplus.bind(identifier="BGEServer")
+
+
+async def _keep_warm(interval_seconds: int, max_length: int) -> None:
+    """
+    Periodically touch every model so its weights stay resident (never paged out).
+
+    Runs a tiny forward pass per inference path every ``interval_seconds``. The calls go DIRECTLY
+    to the model service (not the batching engine) so a keep-warm tick never competes for the
+    op-queue with real traffic; each tick is best-effort so a transient failure only skips one
+    round. Cancelled at shutdown.
+
+    Args:
+        interval_seconds (int): Seconds between keep-warm rounds (caller guarantees > 0).
+        max_length (int): The tokenizer max length used for the dummy embed passes.
+    """
+    while True:
+        await asyncio.sleep(interval_seconds)
+        try:
+            # to_thread: the forward passes are synchronous/CPU-bound — keep the event loop free.
+            await asyncio.to_thread(CONTEXT.bge_models.encode_dense, ["warm"], max_length=max_length)
+            await asyncio.to_thread(
+                CONTEXT.bge_models.encode_sparse, ["warm"], max_length=max_length
+            )
+            await asyncio.to_thread(
+                CONTEXT.bge_models.compute_rerank_scores_flat, [["warm", "warm"]]
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001 — a keep-warm miss must never crash the task
+            logger.warning(f"Keep-warm round failed (non-fatal): {exc}")
 
 
 def lifespan() -> Any:
@@ -49,6 +80,7 @@ def lifespan() -> Any:
             None: Yields control to FastAPI while the service is running.
         """
         _ = app
+        keep_warm_task: asyncio.Task[None] | None = None
         try:
             # 1. Print startup banner (strip accents for ASCII console safety)
             app_name = "BGE Server"
@@ -108,6 +140,16 @@ def lifespan() -> Any:
             except Exception as exc:  # noqa: BLE001 — a warmup miss must never crash the lifespan
                 logger.warning(f"Warmup pass failed (non-fatal, continuing startup): {exc}")
 
+            # 5b. Keep-warm — on a memory-constrained host an idle process's ~GB working set is
+            # paged out, so the next real request pays a 30-50 s page-in ("cold load") that stalls
+            # the rerank worker and cascades into timeouts. A cheap periodic touch keeps the weights
+            # resident. Disabled with BGE_KEEPWARM_SECONDS=0 (e.g. on a GPU box that never pages out).
+            if CONTEXT.CONFIG.BGE_KEEPWARM_SECONDS > 0:
+                keep_warm_task = asyncio.create_task(
+                    _keep_warm(CONTEXT.CONFIG.BGE_KEEPWARM_SECONDS, CONTEXT.CONFIG.BGE_M3_MAX_LENGTH)
+                )
+                logger.info(f"Keep-warm every {CONTEXT.CONFIG.BGE_KEEPWARM_SECONDS}s enabled")
+
             # 6. Service is ready — log a structured boot summary and yield to FastAPI.
             # resolved_device is set by load(); it reflects the actual device in use.
             # BGE_FP16 from config is the *requested* value; bge_models.use_fp16 is the
@@ -133,6 +175,13 @@ def lifespan() -> Any:
             # new model calls) THEN unload the models (releases GPU/CPU memory). Reversing this
             # order would let scatter operations call into an unloaded model.
             logger.info(f"Shutting down BGE Server...")
+            # Stop the keep-warm task before the engine/models so no touch races the unload.
+            if keep_warm_task is not None:
+                keep_warm_task.cancel()
+                try:
+                    await keep_warm_task
+                except (asyncio.CancelledError, Exception):  # noqa: BLE001
+                    pass
             if hasattr(CONTEXT, "batching_engine"):
                 await CONTEXT.batching_engine.stop()
             if hasattr(CONTEXT, "bge_models"):
