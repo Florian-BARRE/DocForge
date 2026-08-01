@@ -26,6 +26,18 @@ class BaseVlmConfig(NodeConfig):
         description="Ask the model to ALSO output the underlying data as a fenced ```table``` "
         "block (chart-to-table); the block is parsed into rows and stripped from the description.",
     )
+    max_retries: int = Field(
+        default=1,
+        ge=0,
+        description="Retries on a TRANSIENT provider error (timeout/connection/429/5xx) before "
+        "giving up and letting the graph escalate. VLM calls are PAID — kept sober (1): one retry "
+        "recovers a transient blip without storming. 0 disables retry.",
+    )
+    retry_backoff_seconds: float = Field(
+        default=1.0,
+        gt=0,
+        description="Base delay for the exponential backoff between retries (delay = base * attempt).",
+    )
 
 
 __all__ = ["BaseVlmConfig"]

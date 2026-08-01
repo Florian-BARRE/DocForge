@@ -4,6 +4,7 @@
 # parallelism and timeouts). No business logic here; only wiring.
 
 # ====== Third-Party Library Imports ======
+from arq import cron
 from arq.connections import RedisSettings
 
 # ====== Internal Project Imports ======
@@ -14,6 +15,7 @@ from .libs.jobs import (
     backfill_collection_filters,
     backfill_collection_meta_vectors,
     ingest_document,
+    reap_stuck_jobs,
 )
 from .lifespan import shutdown, startup
 
@@ -25,6 +27,13 @@ def create_worker_settings() -> type:
     Returns:
         type: The WorkerSettings class (task functions, lifecycle, queue and limits).
     """
+    # The stuck-job reaper runs every 5 minutes AND once at startup, so a wedge left by the previous
+    # (crashed/hot-reloaded) run is cleared immediately. Disabled -> no cron registered at all.
+    reaper_crons = (
+        [cron(reap_stuck_jobs, minute=set(range(0, 60, 5)), run_at_startup=True)]
+        if RUNTIME_CONFIG.WORKER_REAP_ENABLED
+        else []
+    )
 
     class WorkerSettings:
         """The queue server: listens on Redis, runs up to max_jobs tasks in parallel."""
@@ -34,6 +43,7 @@ def create_worker_settings() -> type:
             backfill_collection_filters,
             backfill_collection_meta_vectors,
         ]
+        cron_jobs = reaper_crons
         on_startup = startup
         on_shutdown = shutdown
         redis_settings = RedisSettings.from_dsn(RUNTIME_CONFIG.REDIS_URL)

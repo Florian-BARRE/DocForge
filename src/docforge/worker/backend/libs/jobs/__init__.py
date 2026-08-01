@@ -3,6 +3,7 @@ from .core import ingest_document
 
 # ---------------------- Maintenance jobs ---------------------- #
 from .backfill import backfill_collection_filters, backfill_collection_meta_vectors
+from .reaper import reap_stuck_jobs
 
 # ---------------------- Live progress ---------------------- #
 from .progress import JobProgressRecorder
@@ -12,5 +13,6 @@ __all__ = [
     "ingest_document",
     "backfill_collection_filters",
     "backfill_collection_meta_vectors",
+    "reap_stuck_jobs",
     "JobProgressRecorder",
 ]

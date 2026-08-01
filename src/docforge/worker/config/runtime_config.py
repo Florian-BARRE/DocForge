@@ -75,6 +75,16 @@ class RUNTIME_CONFIG(EnvConfigLoader):
     # stored nothing. Set to False only to skip reachability checks entirely. See PROD-HARDENING.md.
     WORKER_PREFLIGHT_ENABLED = env("WORKER_PREFLIGHT_ENABLED", cast=bool, default=True)
 
+    # ───── Stuck-job reaper ─────
+    # A dev worker hot-reload (or a crash) drops the in-flight arq task, but the DB job row stays
+    # RUNNING forever and its document PROCESSING. Job.updated_at freezes when progress stops, so a
+    # cron fails every RUNNING job idle past this threshold and releases its document to FAILED.
+    # 1200s (20m) sits comfortably above the slowest observed single-doc run (~9m), so a
+    # legitimately-slow-but-alive job is never falsely reaped. Set WORKER_REAP_ENABLED=false to skip
+    # the reaper entirely (the cron is then not even registered).
+    WORKER_REAP_ENABLED = env("WORKER_REAP_ENABLED", cast=bool, default=True)
+    WORKER_REAP_STALE_SECONDS = env("WORKER_REAP_STALE_SECONDS", cast=int, default=1200)
+
     # ───── Logging (mandatory set) ─────
     LOGGING_CONSOLE_LEVEL = env("LOGGING_CONSOLE_LEVEL")
     LOGGING_FILE_LEVEL = env("LOGGING_FILE_LEVEL")
@@ -82,6 +92,13 @@ class RUNTIME_CONFIG(EnvConfigLoader):
     LOGGING_ENABLE_FILE = env("LOGGING_ENABLE_FILE", cast=bool)
     LOGGING_LPP_FORMAT = env("LOGGING_LPP_FORMAT")
 
+
+# ─── Validate the reaper threshold: below a minute it would race legitimate short runs ───
+if RUNTIME_CONFIG.WORKER_REAP_STALE_SECONDS < 60:
+    raise ValueError(
+        "WORKER_REAP_STALE_SECONDS must be >= 60 seconds "
+        f"(got {RUNTIME_CONFIG.WORKER_REAP_STALE_SECONDS})."
+    )
 
 # ─── Apply logging configuration AFTER class definition ───
 lpp_format = getattr(

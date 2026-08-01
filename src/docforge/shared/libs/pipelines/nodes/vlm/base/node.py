@@ -7,7 +7,12 @@
 # model-free ``vlm_entry`` terminal fed best-first. Children implement ONLY `_describe(...)`.
 
 # ====== Standard Library Imports ======
+import asyncio
 from abc import abstractmethod
+
+# ====== Third-Party Library Imports ======
+import httpx
+import openai
 
 # ====== Internal Project Imports ======
 from shared_libs.pipelines.base import ActionNode
@@ -51,6 +56,53 @@ class BaseVlmNode(ActionNode):
         """Run the provider's VLM on one image (+ text context) → (answer, confidence in [0, 1])."""
         ...
 
+    @staticmethod
+    def _is_transient(error: Exception) -> bool:
+        """Whether a VLM provider error is worth retrying: a timeout, a connection blip, or a 429/5xx.
+
+        VLM calls are paid, so the retryable set is deliberately narrow. A concrete child runs its
+        call through LangChain's ChatOpenAI, whose failures surface as ``openai`` SDK errors — a
+        timeout / connection error, a rate limit (429) or a 5xx server error are transient and safe
+        to repeat; a 4xx (auth, bad request) is a permanent misconfiguration whose retry would only
+        waste a paid call, so it is NOT transient (raw ``httpx`` transport/timeout errors are also
+        covered for any provider that surfaces them directly). A successful "cannot describe" answer
+        is not an exception and never reaches here.
+        """
+        if isinstance(error, httpx.TimeoutException | httpx.TransportError):
+            return True
+        return isinstance(
+            error,
+            openai.APITimeoutError
+            | openai.APIConnectionError
+            | openai.RateLimitError
+            | openai.InternalServerError,
+        )
+
+    async def _describe_with_retry(
+        self, image: bytes, context: str, system_prompt: str
+    ) -> tuple[str, float]:
+        """Call ``_describe`` with a bounded, transient-only retry below the graph's escalation.
+
+        This sits BENEATH the pipeline's own recovery: after the retries are exhausted the error is
+        re-raised, so the existing ScoreBelow/OnFailure chaining to the next provider (and the
+        figure-skip terminal) still takes over. Only transient failures are retried; a non-transient
+        error re-raises immediately. Each attempt is bounded by the provider's ``timeout_seconds``.
+        """
+        config: BaseVlmConfig = self.config
+        for attempt in range(config.max_retries + 1):  # 1 initial call + max_retries retries
+            try:
+                return await self._describe(image, context, system_prompt)
+            except Exception as error:  # noqa: BLE001 — re-raised below unless a bounded transient
+                if not self._is_transient(error) or attempt == config.max_retries:
+                    raise
+                self.logger.warning(
+                    f"VLM '{self.KIND}' transient error "
+                    f"(attempt {attempt + 1}/{config.max_retries + 1}): {error!r}"
+                )
+                await asyncio.sleep(config.retry_backoff_seconds * (attempt + 1))
+        # Unreachable: the loop either returns a result or raises on the final attempt.
+        raise AssertionError("unreachable")
+
     async def run(self, data: VlmConsumes) -> VlmProduces:
         """
         Describe the figure and emit its EnrichmentEntry, scored by the provider's confidence.
@@ -71,8 +123,11 @@ class BaseVlmNode(ActionNode):
             _TABLE_INSTRUCTION if config.extract_table else ""
         )
 
-        # 2. Run the provider — the confidence drives quality escalation, never discarded.
-        answer, confidence = await self._describe(data.figure.image, data.figure.read_text, prompt)
+        # 2. Run the provider (bounded transient retry below the graph's escalation) — the confidence
+        #    drives quality escalation, never discarded.
+        answer, confidence = await self._describe_with_retry(
+            data.figure.image, data.figure.read_text, prompt
+        )
 
         # 3. Post-process: pull the table rows out of the answer when they were requested.
         description, data_table = (

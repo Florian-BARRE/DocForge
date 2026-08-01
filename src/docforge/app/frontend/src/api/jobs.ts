@@ -20,6 +20,10 @@ export interface JobStatus {
   attempt: number;
   started_at: string | null;
   finished_at: string | null;
+  /** Last progress/lifecycle write — freezes when a job wedges. */
+  updated_at: string;
+  /** A RUNNING job idle past the stall threshold — an early wedge warning before the reaper fails it. */
+  stalled: boolean;
 }
 
 export interface JobEvent {

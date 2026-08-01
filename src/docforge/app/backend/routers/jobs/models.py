@@ -2,11 +2,19 @@
 # Pydantic models for the jobs router — the live ingestion status the UI polls.
 
 # ====== Standard Library Imports ======
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 # ====== Third-Party Library Imports ======
 from pydantic import BaseModel, Field
+
+# ====== Internal Project Imports ======
+from shared_libs.services.db.postgresql.tables import JobStatus as JobStatusEnum
+
+# A RUNNING job idle longer than this shows as ``stalled`` — an EARLY warning the UI can surface
+# before the worker reaper hard-fails it (WORKER_REAP_STALE_SECONDS, 20m). Deliberately half the
+# reap window: the operator sees the wedge coming, then the reaper resolves it.
+STALLED_AFTER_SECONDS = 600
 
 
 class JobStatus(BaseModel):
@@ -24,6 +32,8 @@ class JobStatus(BaseModel):
         attempt (int): arq retry attempt (1 = first run).
         started_at (datetime | None): When the worker picked it up.
         finished_at (datetime | None): When it ended (done or failed).
+        updated_at (datetime): Last progress/lifecycle write — freezes when a job wedges.
+        stalled (bool): A RUNNING job idle past STALLED_AFTER_SECONDS (an early wedge warning).
     """
 
     job_id: str = Field(description="The job row's UUID.")
@@ -36,10 +46,22 @@ class JobStatus(BaseModel):
     attempt: int = Field(description="arq retry attempt (1 = first run).")
     started_at: datetime | None = Field(default=None, description="Picked up by the worker at.")
     finished_at: datetime | None = Field(default=None, description="Ended (done or failed) at.")
+    updated_at: datetime = Field(description="Last progress/lifecycle write (freezes on a wedge).")
+    stalled: bool = Field(
+        description="A RUNNING job idle past the stall threshold — an early wedge warning surfaced "
+        "before the worker reaper hard-fails it."
+    )
 
     @classmethod
     def from_row(cls, job: Any) -> "JobStatus":
         """Map one job row to its polling model (shared by the poll routes and the SSE stream)."""
+        # Only a RUNNING job can stall: its updated_at bumps on every progress write, so a value
+        # older than the threshold means progress has frozen. done/failed/pending are never stalled.
+        stalled = (
+            job.status == JobStatusEnum.RUNNING
+            and job.updated_at is not None
+            and (datetime.now(UTC) - job.updated_at).total_seconds() > STALLED_AFTER_SECONDS
+        )
         return cls(
             job_id=str(job.id),
             document_id=str(job.document_id),
@@ -51,6 +73,8 @@ class JobStatus(BaseModel):
             attempt=job.attempt,
             started_at=job.started_at,
             finished_at=job.finished_at,
+            updated_at=job.updated_at,
+            stalled=stalled,
         )
 
 

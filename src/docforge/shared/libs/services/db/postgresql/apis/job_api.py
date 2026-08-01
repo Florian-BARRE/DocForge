@@ -7,10 +7,10 @@
 
 # ====== Standard Library Imports ======
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # ====== Third-Party Library Imports ======
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # ====== Internal Project Imports ======
@@ -112,6 +112,33 @@ class JobApi:
         """Return every RUNNING job — the live view of what the workers are doing."""
         result = await session.execute(
             select(Job).where(Job.status == JobStatus.RUNNING).order_by(Job.started_at.asc())
+        )
+        return list(result.scalars().all())
+
+    @staticmethod
+    async def list_stale(session: AsyncSession, older_than_seconds: float) -> list[Job]:
+        """
+        Return RUNNING jobs whose ``updated_at`` froze past the threshold — the reap candidates.
+
+        The cutoff uses the DATABASE clock (``func.now()``) rather than Python's, so a clock skew
+        between a worker and Postgres can never mis-classify a live job as stale. ``updated_at``
+        bumps on every progress/stage write (TimestampedMixin ``onupdate``), so a frozen value is
+        exactly the orphaned/wedged signal. PENDING (queued, not yet started) rows are excluded.
+
+        Args:
+            session (AsyncSession): The active DB session.
+            older_than_seconds (float): A RUNNING job idle longer than this is stale.
+
+        Returns:
+            list[Job]: The stale RUNNING jobs, oldest ``updated_at`` first.
+        """
+        result = await session.execute(
+            select(Job)
+            .where(
+                Job.status == JobStatus.RUNNING,
+                Job.updated_at < func.now() - timedelta(seconds=older_than_seconds),
+            )
+            .order_by(Job.updated_at.asc())
         )
         return list(result.scalars().all())
 

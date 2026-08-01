@@ -17,6 +17,13 @@ function formatTimestamp(value: string | null): string {
   return value ? new Date(value).toLocaleString() : "—";
 }
 
+function idleFor(updatedAt: string): string {
+  const minutes = Math.floor((Date.now() - new Date(updatedAt).getTime()) / 60000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes}m ago`;
+  return `${Math.floor(minutes / 60)}h ${minutes % 60}m ago`;
+}
+
 export function JobRow({ job, onClick }: JobRowProps) {
   const [hover, setHover] = useState(false);
   return (
@@ -36,6 +43,18 @@ export function JobRow({ job, onClick }: JobRowProps) {
       <div style={{ display: "flex", alignItems: "center", gap: theme.space.s }}>
         <span style={{ fontFamily: theme.font.mono, fontSize: theme.font.size.s, color: theme.color.dim }}>{job.job_id.slice(0, 8)}</span>
         <JobStatusChip status={job.status} />
+        {job.stalled && (
+          <span
+            title={`No progress since ${formatTimestamp(job.updated_at)} — the worker reaper will fail it if it stays wedged.`}
+            style={{
+              color: theme.color.warn, background: theme.color.warnSoft,
+              fontSize: theme.font.size.xs, fontWeight: theme.font.weight.semibold,
+              padding: "1px 7px", borderRadius: theme.radius.pill, border: `1px solid ${theme.color.warn}`,
+            }}
+          >
+            stalled · idle {idleFor(job.updated_at)}
+          </span>
+        )}
         {job.current_stage && (
           <span style={{ color: theme.color.dim, fontSize: theme.font.size.xs }}>stage: {job.current_stage}</span>
         )}

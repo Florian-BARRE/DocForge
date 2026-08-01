@@ -5,14 +5,18 @@
 
 # ====== Standard Library Imports ======
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 
 # ====== Internal Project Imports ======
 from loggerplusplus import LoggerClass
 
 from shared_libs.services.db.postgresql import PostgresClient
-from shared_libs.services.db.postgresql.apis import JobApi
-from shared_libs.services.db.postgresql.tables import Job, JobStageEvent
+from shared_libs.services.db.postgresql.apis import DocumentApi, JobApi
+from shared_libs.services.db.postgresql.tables import (
+    DocumentStatus,
+    Job,
+    JobStageEvent,
+)
 
 
 class JobsFacade(LoggerClass):
@@ -68,6 +72,39 @@ class JobsFacade(LoggerClass):
         """Append a stage event to the job's timeline."""
         async with self._postgres.session() as session:
             return await JobApi.record_event(session, event)
+
+    async def reap_stale(self, older_than_seconds: float) -> list[uuid.UUID]:
+        """
+        Fail every RUNNING job whose progress froze past the threshold — orphaned-job recovery.
+
+        A dev worker hot-reload (or a crash) drops the in-flight arq task, but the DB job row stays
+        RUNNING forever and its document PROCESSING. This lists such wedged jobs and, for each, marks
+        the job FAILED with an operator-clear reason AND flags its owning document FAILED (so the
+        document is visibly re-ingestable). Idempotent under concurrency: a row already reaped no
+        longer matches ``status == RUNNING``, so a second pass — or a second worker — is a harmless
+        no-op that simply finds nothing to reap.
+
+        Args:
+            older_than_seconds (float): A RUNNING job idle longer than this is reaped.
+
+        Returns:
+            list[uuid.UUID]: The reaped job ids (empty when nothing was stale).
+        """
+        minutes = int(older_than_seconds // 60)
+        error = (
+            f"reaped: job made no progress for >{minutes}m — presumed orphaned by a worker restart"
+        )
+        reaped: list[uuid.UUID] = []
+        async with self._postgres.session() as session:
+            for job in await JobApi.list_stale(session, older_than_seconds):
+                now = datetime.now(UTC)
+                await JobApi.mark_failed(session, job.id, error=error, finished_at=now)
+                if job.document_id is not None:
+                    await DocumentApi.set_status(session, job.document_id, DocumentStatus.FAILED)
+                reaped.append(job.id)
+        if reaped:
+            self.logger.warning(f"Reaped {len(reaped)} stale job(s): {error}")
+        return reaped
 
 
 __all__ = ["JobsFacade"]
