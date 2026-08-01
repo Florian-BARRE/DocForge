@@ -12,6 +12,9 @@
 # dropped candidate could never have reached the final page. This is the simplest correct rule and
 # avoids mixing incomparable score scales (cross-encoder [0, 1] vs raw fusion scores).
 
+# ====== Standard Library Imports ======
+import asyncio
+
 # ====== Internal Project Imports ======
 from shared_libs.pipelines.registry import NodeRegistry
 from shared_libs.public_models.search import CandidateSet
@@ -24,6 +27,10 @@ from .io import RerankCrossEncoderConsumes, RerankCrossEncoderProduces
 
 # The provenance stamped on every re-scored candidate (the retrieval branch that last touched it).
 _RERANK_SOURCE = "cross_encoder"
+
+# The degrade note stamped when the rerank call is given up on (slow/cold reranker) — the search
+# still answers with the fusion-order candidates rather than sinking to the run cap (a 504).
+_RERANK_DEGRADED = "rerank skipped — reranker busy, fusion-order results"
 
 
 @NodeRegistry.register("rerank")
@@ -80,8 +87,27 @@ class RerankCrossEncoderNode(PortBackedNode):
             )
 
         # 3. One stateless provider call — cross-encoder scores in [0, 1], returned by input index.
+        #    The call is bounded by a wall-clock cap (asyncio.wait_for) well below the run's 30 s cap:
+        #    a cold reranker cold-loads for ~30 s on its first call, so without this the whole search
+        #    would sit until the run cap (a 504). Instead the rerank is given up on (a catchable
+        #    Exception — TimeoutError or a provider error) and the fusion-order candidates answer
+        #    un-reranked. CancelledError (the run's own wall-clock cap) is NOT an Exception, so it
+        #    still propagates through wait_for and becomes the runner's timeout path.
         client = CrossEncoderRerankClient(config.base_url, config.api_key, config.timeout_seconds)
-        scores = await client.rerank(data.spec.text, texts, config.truncate)
+        try:
+            scores = await asyncio.wait_for(
+                client.rerank(data.spec.text, texts, config.truncate),
+                timeout=config.degrade_after_seconds,
+            )
+        except Exception as exc:
+            self.logger.warning(
+                f"Rerank degraded ({type(exc).__name__}: {exc}) — returning fusion-order candidates"
+            )
+            notes = [note for note in (degraded, _RERANK_DEGRADED) if note]
+            return RerankCrossEncoderProduces(
+                candidates=CandidateSet(candidates=judged, degraded="; ".join(notes)),
+                score=judged[0].score,
+            )
 
         # 4. Map each score onto its candidate by index; overwrite the score + provenance.
         score_by_index = dict(scores)

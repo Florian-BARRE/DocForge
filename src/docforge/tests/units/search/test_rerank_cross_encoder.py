@@ -218,6 +218,95 @@ def test_rerank_empty_pool_short_circuits(monkeypatch) -> None:
     assert out.score == 0.0
 
 
+# ---------------------- Degradation tests ---------------------- #
+def _install_rerank_raiser(monkeypatch, exc: Exception) -> None:
+    """Patch the node's HTTP client so /rerank always raises — a slow/cold or broken reranker."""
+
+    async def _boom(self, query, texts, truncate):
+        raise exc
+
+    monkeypatch.setattr(
+        "shared_libs.pipelines.search.nodes.rerank.cross_encoder.core."
+        "CrossEncoderRerankClient.rerank",
+        _boom,
+    )
+
+
+def test_rerank_degrades_to_fusion_order_on_timeout(monkeypatch) -> None:
+    """A timed-out /rerank returns the fusion-order candidates un-reranked, with a degrade note."""
+    port = _TextPort({"a": "text a", "b": "text b", "c": "text c"})
+    node = RerankCrossEncoderNode(id="rerank", config=RerankCrossEncoderNode.Config())
+    node.bind({COLLECTION_READ_CAPABILITY: port})
+    _install_rerank_raiser(monkeypatch, TimeoutError())
+
+    data = RerankCrossEncoderNode.Consumes(
+        candidates=CandidateSet(
+            candidates=[
+                Candidate(chunk_id="a", score=0.9, source="hybrid"),
+                Candidate(chunk_id="b", score=0.7, source="hybrid"),
+                Candidate(chunk_id="c", score=0.5, source="hybrid"),
+            ]
+        ),
+        spec=QuerySpec(text="q", top_k=3, candidate_k=3),
+    )
+    out = _run_node(node, data)
+
+    # 1. Same candidates, in the incoming fusion order — nothing re-scored or re-ordered.
+    assert [c.chunk_id for c in out.candidates.candidates] == ["a", "b", "c"]
+    assert [c.score for c in out.candidates.candidates] == [0.9, 0.7, 0.5]
+    # 2. The degrade note is surfaced; the aggregate is the top fusion score (a sane ScoreBelow gate).
+    assert out.candidates.degraded == "rerank skipped — reranker busy, fusion-order results"
+    assert out.score == 0.9
+
+
+def test_rerank_degrades_to_fusion_order_on_provider_error(monkeypatch) -> None:
+    """A generic provider error degrades the same way — fusion-order fallback, never a raise."""
+    port = _TextPort({"a": "text a", "b": "text b"})
+    node = RerankCrossEncoderNode(id="rerank", config=RerankCrossEncoderNode.Config())
+    node.bind({COLLECTION_READ_CAPABILITY: port})
+    _install_rerank_raiser(monkeypatch, RuntimeError("connection refused"))
+
+    data = RerankCrossEncoderNode.Consumes(
+        candidates=CandidateSet(
+            candidates=[
+                Candidate(chunk_id="a", score=0.8, source="hybrid"),
+                Candidate(chunk_id="b", score=0.4, source="hybrid"),
+            ]
+        ),
+        spec=QuerySpec(text="q", top_k=2, candidate_k=2),
+    )
+    out = _run_node(node, data)
+
+    assert [c.chunk_id for c in out.candidates.candidates] == ["a", "b"]
+    assert out.candidates.degraded == "rerank skipped — reranker busy, fusion-order results"
+    assert out.score == 0.8
+
+
+def test_rerank_degrade_preserves_incoming_note(monkeypatch) -> None:
+    """When the pool already carries an encode-degrade note, the rerank note is joined onto it."""
+    port = _TextPort({"a": "text a"})
+    node = RerankCrossEncoderNode(id="rerank", config=RerankCrossEncoderNode.Config())
+    node.bind({COLLECTION_READ_CAPABILITY: port})
+    _install_rerank_raiser(monkeypatch, TimeoutError())
+
+    incoming = "semantic unavailable — embedder busy, lexical-only results"
+    data = RerankCrossEncoderNode.Consumes(
+        candidates=CandidateSet(
+            candidates=[Candidate(chunk_id="a", score=0.6, source="hybrid")],
+            degraded=incoming,
+        ),
+        spec=QuerySpec(text="q", top_k=1, candidate_k=1),
+    )
+    out = _run_node(node, data)
+
+    # Both the incoming encode note and the rerank note are present, joined with "; ".
+    assert (
+        out.candidates.degraded
+        == f"{incoming}; rerank skipped — reranker busy, fusion-order results"
+    )
+    assert [c.chunk_id for c in out.candidates.candidates] == ["a"]
+
+
 # ---------------------- Blob wiring tests ---------------------- #
 def test_rerank_blob_builds_and_validates_clean() -> None:
     """The fusion+rerank blob builds and passes the graph validator with ZERO issues."""

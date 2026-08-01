@@ -37,6 +37,17 @@ class RerankCrossEncoderConfig(NodeConfig):
         "candidates past top_n are dropped (they ranked below the re-scored set).",
     )
     timeout_seconds: float = Field(default=60.0, gt=0, description="Per-request timeout (s).")
+    degrade_after_seconds: float = Field(
+        default=12.0,
+        gt=0,
+        description="Wall-clock cap (seconds) on the rerank provider call. A reranker model cold-"
+        "loads for ~30 s on its first call after idle; without this the whole search would sit "
+        "until the 30 s run cap (a 504) before the slow rerank could be given up on. Bounding the "
+        "call WELL BELOW the run cap makes a slow/cold reranker CATCHABLE — the node falls back to "
+        "fusion-order candidates rather than sinking the search to a 504. Kept under "
+        "timeout_seconds so this degrade fires first. Added with a safe default: a stored blob that "
+        "omits it keeps 12 s.",
+    )
     truncate: bool = Field(
         default=True,
         description="Truncate each (query, passage) pair to the reranker's max token length.",
