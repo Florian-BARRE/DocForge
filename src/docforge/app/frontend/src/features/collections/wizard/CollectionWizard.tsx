@@ -5,7 +5,7 @@
 // an `initial` collection prefills every field and the last step becomes "Review changes".
 
 import { useState } from "react";
-import { createCollection, updateCollection, type Collection } from "../../../api/collections";
+import { createCollection, updateCollection, type Collection, type CollectionPreset } from "../../../api/collections";
 import type { ApiIssue } from "../../../api/http";
 import { HttpError } from "../../../api/http";
 import { useToast } from "../../../shell/toast";
@@ -48,6 +48,7 @@ export function CollectionWizard({ onNavigate, mode = "create", initial, collect
   const [name, setName] = useState(prefill?.name ?? "");
   const [formats, setFormats] = useState<string[]>(prefill?.formats ?? []);
   const [maxSizeMb, setMaxSizeMb] = useState(prefill?.maxSizeMb ?? 50);
+  const [preset, setPreset] = useState<CollectionPreset>("standard");
   const [fields, setFields] = useState<DraftField[]>(prefill?.fields ?? []);
   const toast = useToast();
   const [submitting, setSubmitting] = useState(false);
@@ -72,7 +73,8 @@ export function CollectionWizard({ onNavigate, mode = "create", initial, collect
       };
       const result = mode === "edit" && collectionId
         ? await updateCollection(collectionId, payload)
-        : await createCollection(payload);
+        // `preset` selects the stock ingestion blob (light = fast, enrichment-free); create-only.
+        : await createCollection({ ...payload, preset });
       toast.success(mode === "edit" ? `Collection “${result.name}” updated` : `Collection “${result.name}” created`);
       onNavigate({ name: "collection", collectionId: result.id });
     } catch (error) {
@@ -98,6 +100,7 @@ export function CollectionWizard({ onNavigate, mode = "create", initial, collect
           name={name} onNameChange={setName}
           formats={formats} onFormatsChange={setFormats}
           maxSizeMb={maxSizeMb} onMaxSizeMbChange={setMaxSizeMb}
+          preset={preset} onPresetChange={setPreset}
           onNext={() => setStep(1)}
         />
       )}

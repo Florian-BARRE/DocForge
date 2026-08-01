@@ -18,7 +18,7 @@ from .models import (
 )
 
 # ---------------------- State + assembly ---------------------- #
-from .state import ChainSpec, PipelineState, default_state
+from .state import ChainSpec, PipelineState, default_state, light_state
 from .assembler import IngestAssembler
 from .reader import StateReader
 from .normalizer import ENGINE_BLOB_VERSION, BlobNormalizationError, BlobNormalizer
@@ -52,6 +52,7 @@ __all__ = [
     "ChainSpec",
     "PipelineState",
     "default_state",
+    "light_state",
     "IngestAssembler",
     "StateReader",
     "BlobNormalizer",

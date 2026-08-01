@@ -259,7 +259,9 @@ class SegmentBuilder:
                 id="per_figure",
                 over=FromNode(node_id="extract", field_name="figures"),
                 item_field="figure",
-                max_concurrency=4,
+                # Read off the enrich stage config: raising it parallelises the paid VLM/OCR calls
+                # for image-heavy docs (the bounded transient retry absorbs the extra 429 pressure).
+                max_concurrency=state.figure_concurrency,
                 body=EnrichBodyBuilder.build(state.classify_config, state.chains),
             ),
             ActionNodeBlob(id="apply", family="enrich", kind="enrich_apply"),

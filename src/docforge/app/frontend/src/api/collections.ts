@@ -39,12 +39,17 @@ export interface Collection {
   fields: FieldSpec[];
 }
 
+/** Stock ingestion pipeline a new collection starts on when no explicit `pipeline` is posted. */
+export type CollectionPreset = "standard" | "light";
+
 export interface CreateCollectionRequest {
   name: string;
   supported_formats: string[];
   max_file_size_bytes: number;
   fields: FieldSpec[];
   pipeline?: Record<string, unknown> | null;
+  /** Stock-blob selector (ignored when `pipeline` is set): "light" = fast, enrichment-free core. */
+  preset?: CollectionPreset | null;
 }
 
 /**

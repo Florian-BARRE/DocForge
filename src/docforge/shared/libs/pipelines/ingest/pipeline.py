@@ -19,7 +19,7 @@ from shared_libs.pipelines.introspection import (
 from shared_libs.pipelines.registry import NodeRegistry
 
 # ====== Local Project Imports ======
-from .stages import IngestAssembler, default_state
+from .stages import IngestAssembler, default_state, light_state
 
 
 class IngestPipeline:
@@ -120,6 +120,22 @@ class IngestPipeline:
             GroupNodeBlob: The serialised default topology (nodes, transitions, bindings).
         """
         return IngestAssembler.assemble(default_state())
+
+    @classmethod
+    def light_blob(cls) -> GroupNodeBlob:
+        """
+        The LIGHT ingestion pipeline — a fast, local, free retrieval core.
+
+        Same stock skeleton as ``default_blob`` with every ENRICHMENT stage off (figure enrich,
+        the contextualize stack, chunk + document metagen), leaving intake → parse → chunk → embed
+        → deliver. Assembled through the very same assembler, so it enjoys the identical
+        "always builds" guarantee and passes the graph validator. Offered as a creation preset for
+        collections that want cheap searchable vectors without any provider-hosted enrichment.
+
+        Returns:
+            GroupNodeBlob: The serialised light topology (nodes, transitions, bindings).
+        """
+        return IngestAssembler.assemble(light_state())
 
 
 __all__ = ["IngestPipeline"]

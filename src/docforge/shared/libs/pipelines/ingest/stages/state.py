@@ -27,6 +27,9 @@ class PipelineState(BaseModel):
         enrich_on (bool): Whether the per-figure enrichment stage is enabled.
         classify_config (dict): The figure-classifier node's config.
         chains (dict[str, ChainSpec]): The enrich chains, keyed by slot.
+        figure_concurrency (int): How many figures the per-figure enrich loop treats in parallel.
+            Raising it parallelises the paid VLM/OCR calls for image-heavy docs; the bounded
+            transient-retry inside each provider absorbs the extra 429 pressure. Defaults to 4.
         chunker_kind (str): The selected chunking method kind.
         chunker_config (dict): The chunker node's config.
         stack (list[StackMethod]): The ordered contextualize methods (empty = stage off).
@@ -55,6 +58,7 @@ class PipelineState(BaseModel):
     enrich_on: bool = True
     classify_config: dict = Field(default_factory=dict)
     chains: dict[str, ChainSpec] = Field(default_factory=dict)
+    figure_concurrency: int = Field(default=4, ge=1)
     chunker_kind: str = "structure_aware"
     chunker_config: dict = Field(default_factory=dict)
     stack: list[StackMethod] = Field(default_factory=list)
@@ -164,4 +168,25 @@ def default_state() -> PipelineState:
     )
 
 
-__all__ = ["ChainSpec", "PipelineState", "default_state"]
+def light_state() -> PipelineState:
+    """
+    Build the LIGHT pipeline state — a fast, local, free retrieval core.
+
+    Takes the stock state and switches every ENRICHMENT stage off: the per-figure figure enrich,
+    the whole contextualize stack, and both metadata-generation scopes (chunk + document). What
+    remains is intake → parse → chunk → embed → deliver (render stays on — it is local), so a
+    collection on this preset ingests any document with no figure VLM, no contextualisation and no
+    metagen — the cheapest path to searchable vectors.
+
+    Returns:
+        PipelineState: The light canonical state (assembled into light_blob()).
+    """
+    state = default_state()
+    state.enrich_on = False
+    state.stack = []
+    state.metachunk_on = False
+    state.metadoc_on = False
+    return state
+
+
+__all__ = ["ChainSpec", "PipelineState", "default_state", "light_state"]

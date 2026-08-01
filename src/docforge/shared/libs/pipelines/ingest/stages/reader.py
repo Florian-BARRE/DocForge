@@ -77,12 +77,14 @@ class StateReader:
             embed_on=cls.__by_family(ordered, "embed") is not None,
             embed_chain=cls.__linear_chain(blob, ordered, "embed", "bge_server"),
         )
-        # Enrich internals — the classifier config and the per-class chains (read off the loop body).
+        # Enrich internals — the classifier config, the per-class chains and the loop concurrency
+        # (read straight off the ForEach, so a blob omitting it round-trips to the stock 4).
         if enrich_loop is not None:
             classify = cls.__body_classify(enrich_loop.body)
             if classify is not None:
                 state.classify_config = dict(classify.config)
             state.chains = cls.__derive_chains(enrich_loop.body)
+            state.figure_concurrency = enrich_loop.max_concurrency
         return state
 
     @classmethod

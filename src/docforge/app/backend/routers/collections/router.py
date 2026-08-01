@@ -48,6 +48,19 @@ def _public_pipeline(pipeline: dict | None) -> dict | None:
     return {key: value for key, value in pipeline.items() if key != BlobNormalizer.STAMP_KEY}
 
 
+def _preset_blob(preset: str | None) -> dict:
+    """The stock ingestion blob a creation preset selects (used when no explicit pipeline is posted).
+
+    Args:
+        preset (str | None): ``"light"`` for the enrichment-free core, anything else the full default.
+
+    Returns:
+        dict: The selected stock blob as a JSON-ready dict.
+    """
+    blob = IngestPipeline.light_blob() if preset == "light" else IngestPipeline.default_blob()
+    return blob.model_dump(mode="json")
+
+
 def _to_model(collection: Collection, fields: list[MetadataField]) -> CollectionModel:
     """Map the rows to the UI contract (shared by every read path).
 
@@ -215,11 +228,9 @@ async def create_collection(
 
     _validate_fields(request.fields)
 
-    # 2. The pipeline blob: the caller's, or the product default — healed to the current engine,
-    #    validated, and stamped for storage either way.
-    blob = _canonical_pipeline(
-        request.pipeline or IngestPipeline.default_blob().model_dump(mode="json")
-    )
+    # 2. The pipeline blob: the caller's explicit graph wins; otherwise the stock blob the ``preset``
+    #    selects (light = enrichment-free core). Healed to the current engine, validated and stamped.
+    blob = _canonical_pipeline(request.pipeline or _preset_blob(request.preset))
 
     # 3. Create contract + schema in one transaction (slug collisions → explicit 422).
     rows = [

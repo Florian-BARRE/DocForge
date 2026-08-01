@@ -750,8 +750,24 @@
                 "type": "null"
               }
             ],
-            "description": "The pipeline blob; omitted \u2192 the product default (all stages wired).",
+            "description": "The pipeline blob; omitted \u2192 the stock blob selected by ``preset``.",
             "title": "Pipeline"
+          },
+          "preset": {
+            "anyOf": [
+              {
+                "enum": [
+                  "standard",
+                  "light"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Stock-blob selector used ONLY when ``pipeline`` is omitted: 'standard' (the default full pipeline) or 'light' (a fast, local, free core \u2014 no figure enrich, contextualise or metagen). An explicit ``pipeline`` always wins over this.",
+            "title": "Preset"
           },
           "supported_formats": {
             "description": "Accepted upload extensions (e.g. pdf).",
