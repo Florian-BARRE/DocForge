@@ -20,13 +20,18 @@ import { useToast } from "../../shell/toast";
 import { StageConnector } from "../stage-rail/StageConnector";
 import { SearchNodeCard } from "./SearchNodeCard";
 import { SearchPipelineHeader } from "./SearchPipelineHeader";
+import { SearchQueryCard } from "./SearchQueryCard";
 import { SearchRerankCard } from "./SearchRerankCard";
-import { isActionBlob, isRerankEnabled, setNodeConfigField, setRerankEnabled } from "./state/blobOps";
+import type { QueryTransformKind } from "./state/blobOps";
+import { isActionBlob, isRerankEnabled, queryTransformKind, setNodeConfigField, setQueryTransform, setRerankEnabled } from "./state/blobOps";
 
 const DEBOUNCE_MS = 400;
 // The read-only step the toggleable reranking card is rendered right after (matches the backend's
 // retrieve → rerank → hydrate splice in blobOps).
 const RERANK_ANCHOR_ID = "retrieve";
+// The query-transform card is rendered right after `normalize` — the point its rewrite/HyDE node is
+// spliced in (normalize → transform → encode, see blobOps.setQueryTransform).
+const QUERY_ANCHOR_ID = "normalize";
 
 export interface SearchPipelineEditorProps {
   /** Seed blob (e.g. a collection's stored search graph). Omitted → the product default. */
@@ -159,6 +164,20 @@ export function SearchPipelineEditor({ initialBlob, onSave, onResetToDefault }: 
     runInspect(updated);
   }, [runInspect]);
 
+  // Selecting the query transform (Off/Rewrite/HyDE) is a discrete topology edit like the rerank
+  // toggle — mutate + verify immediately, no debounce. Its provider config fields reuse the
+  // debounced `setNodeConfig` path (the node id equals the transform kind).
+  const selectQueryTransform = useCallback((next: QueryTransformKind | null) => {
+    const current = blobLatestRef.current;
+    if (!current) return;
+    window.clearTimeout(debounceRef.current);
+    setDebouncePending(false);
+    const updated = setQueryTransform(current, next);
+    blobLatestRef.current = updated;
+    setBlob(updated);
+    runInspect(updated);
+  }, [runInspect]);
+
   // 5. Reset: PATCHes the `{}` sentinel server-side (the caller then remounts this editor with the
   //    refreshed, sentinel-backed collection — see CollectionSearchPage). Not a local blob swap:
   //    saving the expanded default blob instead would freeze it, losing the "tracks future default
@@ -200,16 +219,40 @@ export function SearchPipelineEditor({ initialBlob, onSave, onResetToDefault }: 
 
   const dirty = useMemo(() => JSON.stringify(blob) !== JSON.stringify(savedBlob), [blob, savedBlob]);
 
-  // The rail's read-only/config steps — rerank is drawn as its own toggleable card (SearchRerankCard),
-  // so it's filtered out here to avoid rendering it twice.
+  // The rail's read-only/config steps — rerank AND the query transform are drawn as their own
+  // toggleable cards, so both are filtered out here to avoid rendering them twice. `normalize` stays
+  // (it shares the `query` family but is the fixed first step, not a transform).
   const railNodes = useMemo(
-    () => (blob ? blob.nodes.filter(isActionBlob).filter((node) => node.family !== "rerank") : []),
+    () =>
+      blob
+        ? blob.nodes
+            .filter(isActionBlob)
+            .filter((node) => node.family !== "rerank")
+            .filter((node) => !(node.family === "query" && node.kind !== "normalize"))
+        : [],
     [blob],
   );
   const hasAnchor = useMemo(() => railNodes.some((node) => node.id === RERANK_ANCHOR_ID), [railNodes]);
+  const hasQueryAnchor = useMemo(() => railNodes.some((node) => node.id === QUERY_ANCHOR_ID), [railNodes]);
+  const queryKind = useMemo(() => (blob ? queryTransformKind(blob) : null), [blob]);
+  const queryConfig = useMemo(
+    () => blob?.nodes.find((node) => isActionBlob(node) && node.id === queryKind) as { config: Record<string, unknown> } | undefined,
+    [blob, queryKind],
+  );
 
   if (loadError) return <ErrorState message={loadError} />;
   if (!palette || !blob) return <LoadingState label="loading search pipeline…" />;
+
+  const queryCard = (
+    <SearchQueryCard
+      active={queryKind}
+      config={queryConfig?.config ?? null}
+      onSelect={selectQueryTransform}
+      onChangeConfig={(field, value) => {
+        if (queryKind) setNodeConfig(queryKind, field, value);
+      }}
+    />
+  );
 
   return (
     <div style={{ height: "100%", overflowY: "auto", background: theme.color.bg }}>
@@ -246,6 +289,12 @@ export function SearchPipelineEditor({ initialBlob, onSave, onResetToDefault }: 
                 palette={palette}
                 onChangeConfig={(field, value) => setNodeConfig(node.id, field, value)}
               />
+              {node.id === QUERY_ANCHOR_ID && (
+                <>
+                  <StageConnector />
+                  {queryCard}
+                </>
+              )}
               {node.id === RERANK_ANCHOR_ID && (
                 <>
                   <StageConnector />
@@ -254,9 +303,15 @@ export function SearchPipelineEditor({ initialBlob, onSave, onResetToDefault }: 
               )}
             </Fragment>
           ))}
-          {!hasAnchor && (
+          {!hasQueryAnchor && (
             <>
               {railNodes.length > 0 && <StageConnector />}
+              {queryCard}
+            </>
+          )}
+          {!hasAnchor && (
+            <>
+              {(railNodes.length > 0 || !hasQueryAnchor) && <StageConnector />}
               <SearchRerankCard enabled={isRerankEnabled(blob)} onToggle={toggleRerank} />
             </>
           )}
