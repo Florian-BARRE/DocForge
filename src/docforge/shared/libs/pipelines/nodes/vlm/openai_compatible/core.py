@@ -11,6 +11,7 @@ import base64
 from langchain_core.messages import HumanMessage, SystemMessage
 
 # ====== Internal Project Imports ======
+from shared_libs.pipelines.base import NodeUsage
 from shared_libs.pipelines.nodes.openai_compat import EndpointReachability, OpenAICompatHelpers
 from shared_libs.pipelines.registry import NodeRegistry
 
@@ -69,7 +70,13 @@ class VlmOpenAICompatibleNode(BaseVlmNode):
             [SystemMessage(content=system_prompt), HumanMessage(content=content)]
         )
 
-        # 3. No usable confidence from a chat VLM — non-empty answer = accepted.
+        # 3. Stash this call's token usage for the base ``run`` to stamp on the output. Read with no
+        #    await before ``run`` lifts it, so a concurrent per-figure ForEach item cannot clobber it.
+        self._last_usage = NodeUsage.from_usage_metadata(
+            getattr(answer, "usage_metadata", None), config.model
+        )
+
+        # 4. No usable confidence from a chat VLM — non-empty answer = accepted.
         text = str(answer.content)
         return text, 1.0 if text.strip() else 0.0
 

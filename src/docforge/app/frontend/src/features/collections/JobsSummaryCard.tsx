@@ -95,6 +95,10 @@ export function JobsSummaryCard({ jobs, docs, collectionId, onNavigate }: JobsSu
   // 3. Last activity across the whole batch — finished_at if the job settled, else started_at.
   const lastTimestamp = jobs.map((j) => j.finished_at ?? j.started_at).filter((v): v is string => !!v).sort().pop() ?? null;
 
+  // 4. Ingestion spend rolled up across every job (re-ingests included — it's a true spend meter).
+  const spendUsd = jobs.reduce((sum, j) => sum + (j.cost_usd ?? 0), 0);
+  const spendTokens = jobs.reduce((sum, j) => sum + j.total_prompt_tokens + j.total_completion_tokens, 0);
+
   return (
     <SummaryCard title="Ingestion jobs" onOpen={open}>
       <StatusCounts jobs={jobs} />
@@ -120,6 +124,17 @@ export function JobsSummaryCard({ jobs, docs, collectionId, onNavigate }: JobsSu
       )}
 
       <Row label="Last activity" value={humanizeRelativeTime(lastTimestamp)} />
+      {spendTokens > 0 && (
+        <Row
+          label="Ingestion spend"
+          value={
+            <span style={{ fontFamily: t.font.mono }}>
+              <span style={{ color: t.color.accent, fontWeight: t.font.weight.semibold }}>${spendUsd.toFixed(4)}</span>
+              <span style={{ color: t.color.mute }}> · {spendTokens.toLocaleString()} tok</span>
+            </span>
+          }
+        />
+      )}
       <div><Button size="sm" variant="secondary" onClick={open}>Open Jobs →</Button></div>
     </SummaryCard>
   );

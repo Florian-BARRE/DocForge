@@ -22,6 +22,13 @@ function durationLabel(event: JobEvent): string {
   return `${(ms / 1000).toFixed(2)}s`;
 }
 
+function usageLabel(event: JobEvent): string | null {
+  if (event.prompt_tokens === null && event.completion_tokens === null) return null;
+  const tokens = (event.prompt_tokens ?? 0) + (event.completion_tokens ?? 0);
+  const cost = event.cost_usd !== null ? ` · $${event.cost_usd.toFixed(4)}` : "";
+  return `${tokens.toLocaleString()} tok${cost}`;
+}
+
 export function JobEventItem({ event }: { event: JobEvent }) {
   const nodeColor = NODE_COLOR_BY_STATUS[event.status] ?? theme.color.dim;
   return (
@@ -42,6 +49,14 @@ export function JobEventItem({ event }: { event: JobEvent }) {
       <strong style={{ fontSize: theme.font.size.m, color: theme.color.text, minWidth: 140 }}>{event.stage}</strong>
       <JobStatusChip status={event.status} />
       <span style={{ color: theme.color.dim, fontSize: theme.font.size.xs, fontFamily: theme.font.mono }}>{durationLabel(event)}</span>
+      {usageLabel(event) && (
+        <span
+          title="Tokens billed by this stage's paid model calls (and their cost)."
+          style={{ color: theme.color.accent, fontSize: theme.font.size.xs, fontFamily: theme.font.mono }}
+        >
+          {usageLabel(event)}
+        </span>
+      )}
       {event.detail && (
         <span
           style={{ color: event.status === "failed" ? theme.color.error : theme.color.dim, fontSize: theme.font.size.xs }}

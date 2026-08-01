@@ -14,7 +14,15 @@ from fastapi.responses import StreamingResponse
 from ...context import CONTEXT
 from ...libs.auth import AuthPrincipal, AuthzGuard, Capability, require
 from ...utils.error_handling import auto_handle_errors
-from .models import JobEvent, JobStatus, JobTrace, WorkerActivity, WorkersLive
+from .models import (
+    CollectionCost,
+    JobEvent,
+    JobStatus,
+    JobTrace,
+    StageDurations,
+    WorkerActivity,
+    WorkersLive,
+)
 from .stream import stream_job_events
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
@@ -43,6 +51,55 @@ async def list_jobs(
     # 2. Straight read — the worker maintains every row.
     jobs = await CONTEXT.database.jobs.list_for_collection(collection_id)
     return [_job_status(job) for job in jobs]
+
+
+@router.get("/stage-durations", response_model=StageDurations)
+@auto_handle_errors
+async def stage_durations(
+    collection_id: uuid.UUID,
+    principal: AuthPrincipal = Depends(require(Capability.READ)),
+) -> StageDurations:
+    """
+    Return a collection's average per-stage duration — the basis for a running job's ETA.
+
+    Averaged over the collection's DONE jobs' stage events (only events with both timestamps). The
+    UI sums the not-yet-completed stages of a running job to estimate its remaining time.
+
+    Returns:
+        StageDurations: Stage id → average wall-clock seconds.
+    """
+    # 1. Collection is a QUERY param, invisible to the path-scope gate — enforce it here.
+    AuthzGuard.assert_collection_scope(principal, str(collection_id))
+
+    # 2. The averages the worker's stage timeline yields for this collection.
+    stage_seconds = await CONTEXT.database.jobs.avg_stage_durations(collection_id)
+    return StageDurations(collection_id=str(collection_id), stage_seconds=stage_seconds)
+
+
+@router.get("/cost", response_model=CollectionCost)
+@auto_handle_errors
+async def collection_cost(
+    collection_id: uuid.UUID,
+    principal: AuthPrincipal = Depends(require(Capability.READ)),
+) -> CollectionCost:
+    """
+    Return a collection's paid text-gen roll-up — tokens and USD summed over its documents' jobs.
+
+    Returns:
+        CollectionCost: Total prompt/completion tokens, total USD cost, and the document count.
+    """
+    # 1. Collection is a QUERY param, invisible to the path-scope gate — enforce it here.
+    AuthzGuard.assert_collection_scope(principal, str(collection_id))
+
+    # 2. Roll up the per-document meters the worker maintained.
+    prompt, completion, cost, count = await CONTEXT.database.jobs.collection_cost(collection_id)
+    return CollectionCost(
+        collection_id=str(collection_id),
+        total_prompt_tokens=prompt,
+        total_completion_tokens=completion,
+        cost_usd=cost,
+        document_count=count,
+    )
 
 
 @router.get(

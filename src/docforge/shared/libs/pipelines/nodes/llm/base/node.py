@@ -14,7 +14,7 @@ from abc import abstractmethod
 from langchain_core.language_models import BaseChatModel
 
 # ====== Internal Project Imports ======
-from shared_libs.pipelines.base import ActionNode
+from shared_libs.pipelines.base import ActionNode, NodeUsage
 from shared_libs.pipelines.nodes.openai_compat import EndpointReachability
 from shared_libs.public_models.llm import Completion
 
@@ -69,7 +69,14 @@ class BaseLlmChatNode(ActionNode):
         answer = await model.ainvoke(data.prompt.messages)
 
         # 2. Wrap the answer text in the output artefact (content is the plain text for chat models).
-        return LlmChatProduces(completion=Completion(text=answer.content))
+        output = LlmChatProduces(completion=Completion(text=answer.content))
+
+        # 3. Stamp the paid-call token usage onto the output (None-safe; the engine lifts it).
+        config: BaseLlmChatConfig = self.config
+        output._usage = NodeUsage.from_usage_metadata(
+            getattr(answer, "usage_metadata", None), config.model
+        )
+        return output
 
 
 __all__ = ["BaseLlmChatNode"]

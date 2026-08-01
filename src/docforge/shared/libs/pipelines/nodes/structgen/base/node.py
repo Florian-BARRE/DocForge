@@ -15,7 +15,7 @@ from abc import abstractmethod
 from typing import Any
 
 # ====== Internal Project Imports ======
-from shared_libs.pipelines.base import ActionNode
+from shared_libs.pipelines.base import ActionNode, NodeUsage
 from shared_libs.public_models import GeneratedValues, GenerationRequest, OpenAICompatConfig
 
 # ====== Local Project Imports ======
@@ -29,6 +29,9 @@ class BaseStructGenNode(ActionNode):
 
     Consumes = StructGenConsumes
     Produces = StructGenProduces
+
+    # Last paid-call token usage, stashed by ``_generate`` and lifted onto the output by ``run``.
+    _last_usage: NodeUsage | None = None
 
     @abstractmethod
     async def _generate(
@@ -97,11 +100,14 @@ class BaseStructGenNode(ActionNode):
         self.logger.debug(
             f"structgen '{self.KIND}' filled {len(values)}/{len(request.fields)} field(s)"
         )
-        return StructGenProduces(
+        output = StructGenProduces(
             values=GeneratedValues(
                 request_id=request.request_id, chunk_id=request.chunk_id, values=values
             )
         )
+        # The paid-call token usage the provider stashed rides on the output for the engine to lift.
+        output._usage = self._last_usage
+        return output
 
 
 __all__ = ["BaseStructGenNode"]

@@ -573,6 +573,45 @@
         "title": "ChunkInfo",
         "type": "object"
       },
+      "CollectionCost": {
+        "description": "The collection's paid text-gen roll-up \u2014 tokens and USD summed over its documents' jobs.",
+        "properties": {
+          "collection_id": {
+            "description": "The collection totalled.",
+            "title": "Collection Id",
+            "type": "string"
+          },
+          "cost_usd": {
+            "description": "Sum of USD cost over the jobs.",
+            "title": "Cost Usd",
+            "type": "number"
+          },
+          "document_count": {
+            "description": "Number of jobs (documents) in the roll-up.",
+            "title": "Document Count",
+            "type": "integer"
+          },
+          "total_completion_tokens": {
+            "description": "Sum of output tokens over the jobs.",
+            "title": "Total Completion Tokens",
+            "type": "integer"
+          },
+          "total_prompt_tokens": {
+            "description": "Sum of input tokens over the collection's jobs.",
+            "title": "Total Prompt Tokens",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "collection_id",
+          "total_prompt_tokens",
+          "total_completion_tokens",
+          "cost_usd",
+          "document_count"
+        ],
+        "title": "CollectionCost",
+        "type": "object"
+      },
       "CollectionModel": {
         "description": "One collection \u2014 the full contract the UI displays and edits.",
         "properties": {
@@ -2207,6 +2246,30 @@
       "JobEvent": {
         "description": "One node of the job's execution trace \u2014 written by the worker at each stage end.",
         "properties": {
+          "completion_tokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Paid output tokens for this stage (None when no paid call).",
+            "title": "Completion Tokens"
+          },
+          "cost_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "USD cost of this stage (None when it made no paid call OR its model is unpriced \u2014 the tokens are still reported).",
+            "title": "Cost Usd"
+          },
           "detail": {
             "anyOf": [
               {
@@ -2231,6 +2294,18 @@
             ],
             "description": "Node end.",
             "title": "Finished At"
+          },
+          "prompt_tokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Paid input tokens for this stage (None when it made no paid call).",
+            "title": "Prompt Tokens"
           },
           "stage": {
             "description": "The pipeline node id.",
@@ -2264,7 +2339,7 @@
         "type": "object"
       },
       "JobStatus": {
-        "description": "One ingestion job's live state \u2014 written by the worker, only read here.\n\nAttributes:\n    job_id (str): The job row's UUID.\n    document_id (str): The document being ingested.\n    collection_id (str): Its collection.\n    status (str): queued / running / done / failed.\n    progress (int): 0\u2013100 (completed pipeline nodes over total).\n    current_stage (str | None): The node currently (or last) executed.\n    error (str | None): The failure, verbatim \u2014 only set when status is failed.\n    attempt (int): arq retry attempt (1 = first run).\n    started_at (datetime | None): When the worker picked it up.\n    finished_at (datetime | None): When it ended (done or failed).\n    updated_at (datetime): Last progress/lifecycle write \u2014 freezes when a job wedges.\n    stalled (bool): A RUNNING job idle past STALLED_AFTER_SECONDS (an early wedge warning).",
+        "description": "One ingestion job's live state \u2014 written by the worker, only read here.\n\nAttributes:\n    job_id (str): The job row's UUID.\n    document_id (str): The document being ingested.\n    collection_id (str): Its collection.\n    status (str): queued / running / done / failed.\n    progress (int): 0\u2013100 (completed pipeline nodes over total).\n    current_stage (str | None): The node currently (or last) executed.\n    error (str | None): The failure, verbatim \u2014 only set when status is failed.\n    attempt (int): arq retry attempt (1 = first run).\n    started_at (datetime | None): When the worker picked it up.\n    finished_at (datetime | None): When it ended (done or failed).\n    updated_at (datetime): Last progress/lifecycle write \u2014 freezes when a job wedges.\n    stalled (bool): A RUNNING job idle past STALLED_AFTER_SECONDS (an early wedge warning).\n    total_prompt_tokens (int): The document's lifetime input tokens across paid text-gen calls.\n    total_completion_tokens (int): The document's lifetime output tokens.\n    cost_usd (float): The document's lifetime USD cost (0 while no priceable call has run).",
         "properties": {
           "attempt": {
             "description": "arq retry attempt (1 = first run).",
@@ -2275,6 +2350,11 @@
             "description": "Its collection.",
             "title": "Collection Id",
             "type": "string"
+          },
+          "cost_usd": {
+            "description": "Document's lifetime USD cost of paid calls (0 until a priceable call runs).",
+            "title": "Cost Usd",
+            "type": "number"
           },
           "current_stage": {
             "anyOf": [
@@ -2351,6 +2431,16 @@
             "title": "Status",
             "type": "string"
           },
+          "total_completion_tokens": {
+            "description": "Document's lifetime output tokens across paid text-gen calls.",
+            "title": "Total Completion Tokens",
+            "type": "integer"
+          },
+          "total_prompt_tokens": {
+            "description": "Document's lifetime input tokens across paid text-gen (LLM/VLM/structgen) calls.",
+            "title": "Total Prompt Tokens",
+            "type": "integer"
+          },
           "updated_at": {
             "description": "Last progress/lifecycle write (freezes on a wedge).",
             "format": "date-time",
@@ -2366,7 +2456,10 @@
           "progress",
           "attempt",
           "updated_at",
-          "stalled"
+          "stalled",
+          "total_prompt_tokens",
+          "total_completion_tokens",
+          "cost_usd"
         ],
         "title": "JobStatus",
         "type": "object"
@@ -3857,6 +3950,29 @@
         "title": "StageApplyResponse",
         "type": "object"
       },
+      "StageDurations": {
+        "description": "Average per-stage duration for a collection \u2014 the basis for a running job's ETA.",
+        "properties": {
+          "collection_id": {
+            "description": "The collection the averages were computed over.",
+            "title": "Collection Id",
+            "type": "string"
+          },
+          "stage_seconds": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "description": "Stage id \u2192 average wall-clock seconds over the collection's DONE jobs. The UI sums the not-yet-completed stages of a running job to estimate its remaining time.",
+            "title": "Stage Seconds",
+            "type": "object"
+          }
+        },
+        "required": [
+          "collection_id"
+        ],
+        "title": "StageDurations",
+        "type": "object"
+      },
       "StageKind": {
         "description": "How the user interacts with a stage \u2014 what editor face the UI renders for it.\n\nAttributes:\n    FIXED: Always on, no choice (intake, parse, deliver) \u2014 structural plumbing.\n    TOGGLE: An optional stage with a single implementation, switched on/off (render, enrich,\n        the two metagen scopes, embed).\n    PROVIDER: An exclusive family \u2014 pick THE provider among the family's kinds (chunk).\n    STACK: An ordered stack of stackable methods the user composes (contextualize).",
         "enum": [
@@ -5340,6 +5456,94 @@
           }
         },
         "summary": "List Jobs",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/v1/jobs/cost": {
+      "get": {
+        "description": "Return a collection's paid text-gen roll-up \u2014 tokens and USD summed over its documents' jobs.\n\nReturns:\n    CollectionCost: Total prompt/completion tokens, total USD cost, and the document count.",
+        "operationId": "collection_cost_api_v1_jobs_cost_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Collection Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollectionCost"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Collection Cost",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/v1/jobs/stage-durations": {
+      "get": {
+        "description": "Return a collection's average per-stage duration \u2014 the basis for a running job's ETA.\n\nAveraged over the collection's DONE jobs' stage events (only events with both timestamps). The\nUI sums the not-yet-completed stages of a running job to estimate its remaining time.\n\nReturns:\n    StageDurations: Stage id \u2192 average wall-clock seconds.",
+        "operationId": "stage_durations_api_v1_jobs_stage_durations_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Collection Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StageDurations"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Stage Durations",
         "tags": [
           "jobs"
         ]

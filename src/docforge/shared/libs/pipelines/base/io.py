@@ -19,12 +19,15 @@ from enum import StrEnum
 from typing import Annotated, Literal
 
 # ====== Third-Party Library Imports ======
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 
 # ====== Internal Project Imports ======
 # NodeConfig lives in public_models (the bottom vocabulary layer) and is re-exported here so every
 # node config keeps importing it from ``pipelines.base`` unchanged — see [[public_models_pipelines_import_cycle]].
 from shared_libs.public_models.base import NodeConfig
+
+# ====== Local Project Imports ======
+from .execution import NodeUsage
 
 
 class NodeInput(BaseModel):
@@ -45,9 +48,18 @@ class NodeOutput(BaseModel):
 
     Subclasses declare one field per emitted artefact, typed with a shared artefact model. A
     downstream node binds to one of these fields by name via ``FromNode``.
+
+    ``_usage`` is a NON-field private attribute (never serialised, never a slot): a paid text-gen
+    node stamps its per-call token usage onto the output it returns, and the engine lifts it onto
+    the execution record. Being a PrivateAttr keeps it out of ``model_fields`` — so the ForEach
+    single-slot terminal contract (``len(model_fields) == 1``) is untouched — and out of the record
+    payload dump. Carrying it on the RETURNED output (a fresh instance per run) rather than on the
+    node makes it race-free under a ForEach that runs one node instance concurrently over items.
     """
 
     model_config = ConfigDict(extra="forbid")
+
+    _usage: NodeUsage | None = PrivateAttr(default=None)
 
 
 class ScoredOutput(NodeOutput):

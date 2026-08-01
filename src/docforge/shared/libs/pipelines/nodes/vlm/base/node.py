@@ -15,7 +15,7 @@ import httpx
 import openai
 
 # ====== Internal Project Imports ======
-from shared_libs.pipelines.base import ActionNode
+from shared_libs.pipelines.base import ActionNode, NodeUsage
 from shared_libs.public_models import EnrichmentEntry
 
 # ====== Local Project Imports ======
@@ -50,6 +50,10 @@ class BaseVlmNode(ActionNode):
 
     Consumes = VlmConsumes
     Produces = VlmProduces
+
+    # Last paid-call token usage, stashed by ``_describe`` and lifted onto the output by ``run`` with
+    # no await between (race-free under a per-figure ForEach). None when the provider reported none.
+    _last_usage: NodeUsage | None = None
 
     @abstractmethod
     async def _describe(self, image: bytes, context: str, system_prompt: str) -> tuple[str, float]:
@@ -134,8 +138,9 @@ class BaseVlmNode(ActionNode):
             BaseVlmHelpers.extract_table(answer) if config.extract_table else (answer.strip(), None)
         )
 
-        # 4. Emit the scored entry: everything the figure's run learned, in one entry.
-        return VlmProduces(
+        # 4. Emit the scored entry: everything the figure's run learned, in one entry. The paid-call
+        #    token usage the provider stashed rides along on the output for the engine to lift.
+        output = VlmProduces(
             entry=EnrichmentEntry(
                 block_id=data.figure.block_id,
                 kind=data.figure.kind,
@@ -145,6 +150,8 @@ class BaseVlmNode(ActionNode):
             ),
             score=confidence,
         )
+        output._usage = self._last_usage
+        return output
 
 
 __all__ = ["BaseVlmNode"]

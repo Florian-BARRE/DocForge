@@ -34,6 +34,9 @@ class JobStatus(BaseModel):
         finished_at (datetime | None): When it ended (done or failed).
         updated_at (datetime): Last progress/lifecycle write — freezes when a job wedges.
         stalled (bool): A RUNNING job idle past STALLED_AFTER_SECONDS (an early wedge warning).
+        total_prompt_tokens (int): The document's lifetime input tokens across paid text-gen calls.
+        total_completion_tokens (int): The document's lifetime output tokens.
+        cost_usd (float): The document's lifetime USD cost (0 while no priceable call has run).
     """
 
     job_id: str = Field(description="The job row's UUID.")
@@ -50,6 +53,15 @@ class JobStatus(BaseModel):
     stalled: bool = Field(
         description="A RUNNING job idle past the stall threshold — an early wedge warning surfaced "
         "before the worker reaper hard-fails it."
+    )
+    total_prompt_tokens: int = Field(
+        description="Document's lifetime input tokens across paid text-gen (LLM/VLM/structgen) calls."
+    )
+    total_completion_tokens: int = Field(
+        description="Document's lifetime output tokens across paid text-gen calls."
+    )
+    cost_usd: float = Field(
+        description="Document's lifetime USD cost of paid calls (0 until a priceable call runs)."
     )
 
     @classmethod
@@ -75,6 +87,9 @@ class JobStatus(BaseModel):
             finished_at=job.finished_at,
             updated_at=job.updated_at,
             stalled=stalled,
+            total_prompt_tokens=job.total_prompt_tokens,
+            total_completion_tokens=job.total_completion_tokens,
+            cost_usd=float(job.cost_usd),
         )
 
 
@@ -86,6 +101,18 @@ class JobEvent(BaseModel):
     started_at: datetime | None = Field(default=None, description="Node start.")
     finished_at: datetime | None = Field(default=None, description="Node end.")
     detail: str | None = Field(default=None, description="Duration, or the error when failed.")
+    prompt_tokens: int | None = Field(
+        default=None,
+        description="Paid input tokens for this stage (None when it made no paid call).",
+    )
+    completion_tokens: int | None = Field(
+        default=None, description="Paid output tokens for this stage (None when no paid call)."
+    )
+    cost_usd: float | None = Field(
+        default=None,
+        description="USD cost of this stage (None when it made no paid call OR its model is "
+        "unpriced — the tokens are still reported).",
+    )
 
     @classmethod
     def from_row(cls, event: Any) -> "JobEvent":
@@ -96,6 +123,9 @@ class JobEvent(BaseModel):
             started_at=event.started_at,
             finished_at=event.finished_at,
             detail=event.detail,
+            prompt_tokens=event.prompt_tokens,
+            completion_tokens=event.completion_tokens,
+            cost_usd=None if event.cost_usd is None else float(event.cost_usd),
         )
 
 
@@ -119,4 +149,33 @@ class WorkersLive(BaseModel):
     workers: list[WorkerActivity] = Field(default_factory=list)
 
 
-__all__ = ["JobStatus", "JobEvent", "JobTrace", "WorkerActivity", "WorkersLive"]
+class StageDurations(BaseModel):
+    """Average per-stage duration for a collection — the basis for a running job's ETA."""
+
+    collection_id: str = Field(description="The collection the averages were computed over.")
+    stage_seconds: dict[str, float] = Field(
+        default_factory=dict,
+        description="Stage id → average wall-clock seconds over the collection's DONE jobs. The UI "
+        "sums the not-yet-completed stages of a running job to estimate its remaining time.",
+    )
+
+
+class CollectionCost(BaseModel):
+    """The collection's paid text-gen roll-up — tokens and USD summed over its documents' jobs."""
+
+    collection_id: str = Field(description="The collection totalled.")
+    total_prompt_tokens: int = Field(description="Sum of input tokens over the collection's jobs.")
+    total_completion_tokens: int = Field(description="Sum of output tokens over the jobs.")
+    cost_usd: float = Field(description="Sum of USD cost over the jobs.")
+    document_count: int = Field(description="Number of jobs (documents) in the roll-up.")
+
+
+__all__ = [
+    "JobStatus",
+    "JobEvent",
+    "JobTrace",
+    "WorkerActivity",
+    "WorkersLive",
+    "StageDurations",
+    "CollectionCost",
+]

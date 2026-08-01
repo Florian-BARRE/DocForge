@@ -8,7 +8,9 @@ import uuid
 from datetime import datetime
 
 # ====== Third-Party Library Imports ======
-from sqlalchemy import DateTime, ForeignKey, String, Text, Uuid
+from decimal import Decimal
+
+from sqlalchemy import DateTime, ForeignKey, Integer, Numeric, String, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
 # ====== Local Project Imports ======
@@ -28,6 +30,11 @@ class JobStageEvent(Base, UUIDPrimaryKey, CreatedAtMixin):
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     detail: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Paid text-gen token/cost meter for this stage (NULL when the stage made no paid call, or the
+    # cost when its model is unknown to the pricing table — tokens still recorded).
+    prompt_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    completion_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    cost_usd: Mapped[Decimal | None] = mapped_column(Numeric(12, 6), nullable=True)
 
 
 __all__ = ["JobStageEvent"]

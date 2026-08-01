@@ -24,6 +24,12 @@ export interface JobStatus {
   updated_at: string;
   /** A RUNNING job idle past the stall threshold — an early wedge warning before the reaper fails it. */
   stalled: boolean;
+  /** Running total of prompt tokens billed across this job's paid text-gen calls. */
+  total_prompt_tokens: number;
+  /** Running total of completion tokens billed across this job's paid text-gen calls. */
+  total_completion_tokens: number;
+  /** Running USD cost of this job's paid calls (0 when nothing priceable ran). */
+  cost_usd: number;
 }
 
 export interface JobEvent {
@@ -32,6 +38,27 @@ export interface JobEvent {
   started_at: string | null;
   finished_at: string | null;
   detail: string | null;
+  /** Prompt tokens billed by this stage's paid calls; null when the stage made none. */
+  prompt_tokens: number | null;
+  /** Completion tokens billed by this stage; null when none. */
+  completion_tokens: number | null;
+  /** USD cost of this stage; null when no usage or the model has no known price. */
+  cost_usd: number | null;
+}
+
+/** Per-stage average wall-clock (seconds) across the collection's completed jobs — the ETA basis. */
+export interface StageDurations {
+  collection_id: string;
+  stage_seconds: Record<string, number>;
+}
+
+/** A collection's rolled-up ingestion spend across all its jobs. */
+export interface CollectionCost {
+  collection_id: string;
+  total_prompt_tokens: number;
+  total_completion_tokens: number;
+  cost_usd: number;
+  document_count: number;
 }
 
 export interface JobTrace {
@@ -58,6 +85,14 @@ export function getJob(jobId: string): Promise<JobStatus> {
 
 export function getJobTrace(jobId: string): Promise<JobTrace> {
   return apiFetch(`${BASE}/${jobId}/events`);
+}
+
+export function getStageDurations(collectionId: string): Promise<StageDurations> {
+  return apiFetch(`${BASE}/stage-durations?collection_id=${encodeURIComponent(collectionId)}`);
+}
+
+export function getCollectionCost(collectionId: string): Promise<CollectionCost> {
+  return apiFetch(`${BASE}/cost?collection_id=${encodeURIComponent(collectionId)}`);
 }
 
 export function getWorkersLive(): Promise<WorkersLive> {

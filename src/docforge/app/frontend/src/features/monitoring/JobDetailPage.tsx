@@ -7,7 +7,7 @@
 // it falls back to the original ~2.5s poll of getJob + getJobTrace.
 
 import { useEffect, useState } from "react";
-import { getJob, getJobTrace, streamJobEvents, type JobEvent, type JobStatus } from "../../api/jobs";
+import { getJob, getJobTrace, getStageDurations, streamJobEvents, type JobEvent, type JobStatus } from "../../api/jobs";
 import { BackLink } from "../../components/BackLink";
 import { ErrorState } from "../../components/ErrorState";
 import { LoadingState } from "../../components/LoadingState";
@@ -32,6 +32,15 @@ export function JobDetailPage({ jobId, collectionId, onNavigate }: JobDetailPage
   const [events, setEvents] = useState<JobEvent[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [live, setLive] = useState(false);
+  const [stageSeconds, setStageSeconds] = useState<Record<string, number>>({});
+
+  // Per-stage averages across the collection's completed jobs — the ETA basis. Best-effort: a
+  // failed fetch (or a collection with no history yet) just means no ETA is shown.
+  useEffect(() => {
+    getStageDurations(collectionId)
+      .then((d) => setStageSeconds(d.stage_seconds))
+      .catch(() => setStageSeconds({}));
+  }, [collectionId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -87,6 +96,17 @@ export function JobDetailPage({ jobId, collectionId, onNavigate }: JobDetailPage
 
   const running = !TERMINAL.has(job.status);
 
+  // ETA: sum the collection-average durations of the stages this running job hasn't finished yet.
+  const finishedStages = new Set(
+    events.filter((e) => TERMINAL.has(e.status) || e.status === "skipped").map((e) => e.stage),
+  );
+  const etaSeconds = running
+    ? Object.entries(stageSeconds)
+        .filter(([stage]) => !finishedStages.has(stage))
+        .reduce((sum, [, seconds]) => sum + seconds, 0)
+    : 0;
+  const totalTokens = job.total_prompt_tokens + job.total_completion_tokens;
+
   return (
     <div className="df-rise" style={{ padding: theme.space.xl, overflowY: "auto", height: "100%", maxWidth: 1200, margin: "0 auto", width: "100%" }}>
       <PageHeader
@@ -114,11 +134,29 @@ export function JobDetailPage({ jobId, collectionId, onNavigate }: JobDetailPage
         }}
       >
         <ProgressBar progress={job.progress} status={job.status} />
-        <div style={{ display: "flex", gap: theme.space.l, color: theme.color.dim, fontSize: theme.font.size.s, marginTop: theme.space.s }}>
+        <div style={{ display: "flex", gap: theme.space.l, color: theme.color.dim, fontSize: theme.font.size.s, marginTop: theme.space.s, flexWrap: "wrap" }}>
           <span>stage: {job.current_stage ?? "—"}</span>
           <span>started: {job.started_at ? new Date(job.started_at).toLocaleString() : "—"}</span>
           <span>finished: {job.finished_at ? new Date(job.finished_at).toLocaleString() : "—"}</span>
+          {running && etaSeconds > 0 && (
+            <span style={{ color: theme.color.accent, fontWeight: theme.font.weight.semibold }}>
+              ~{etaSeconds < 90 ? `${Math.round(etaSeconds)}s` : `${Math.round(etaSeconds / 60)}m`} remaining
+            </span>
+          )}
         </div>
+        {totalTokens > 0 && (
+          <div style={{ display: "flex", gap: theme.space.l, marginTop: theme.space.s, fontFamily: theme.font.mono, fontSize: theme.font.size.s }}>
+            <span title="Prompt + completion tokens billed across this document's paid model calls." style={{ color: theme.color.text }}>
+              {totalTokens.toLocaleString()} tokens
+            </span>
+            <span title="Total USD cost of this document's paid calls." style={{ color: theme.color.accent, fontWeight: theme.font.weight.semibold }}>
+              ${job.cost_usd.toFixed(4)}
+            </span>
+            <span style={{ color: theme.color.mute }}>
+              ({job.total_prompt_tokens.toLocaleString()} in · {job.total_completion_tokens.toLocaleString()} out)
+            </span>
+          </div>
+        )}
         {job.error && (
           <div style={{ color: theme.color.error, fontSize: theme.font.size.s, marginTop: theme.space.s }}>{job.error}</div>
         )}

@@ -2,6 +2,7 @@
 from .client import OpenAICompatHelpers
 from .config import OpenAICompatConfig
 from .preflight import EndpointReachability, PreflightError
+from .pricing import MODEL_PRICING, price_usd
 
 # ------------------- Public API ------------------- #
 __all__ = [
@@ -9,4 +10,6 @@ __all__ = [
     "OpenAICompatHelpers",
     "EndpointReachability",
     "PreflightError",
+    "MODEL_PRICING",
+    "price_usd",
 ]

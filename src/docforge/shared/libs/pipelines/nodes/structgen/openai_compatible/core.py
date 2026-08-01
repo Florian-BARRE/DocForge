@@ -12,6 +12,7 @@ from typing import Any
 from langchain_core.messages import HumanMessage, SystemMessage
 
 # ====== Internal Project Imports ======
+from shared_libs.pipelines.base import NodeUsage
 from shared_libs.pipelines.nodes.openai_compat import EndpointReachability, OpenAICompatHelpers
 from shared_libs.pipelines.registry import NodeRegistry
 from shared_libs.public_models import GenerationRequest, OpenAICompatConfig
@@ -57,17 +58,26 @@ class StructGenOpenAICompatibleNode(BaseStructGenNode):
         self, schema: dict[str, Any], request: GenerationRequest, endpoint: OpenAICompatConfig
     ) -> dict[str, Any]:
         """Run the structured-output chat call for one request."""
-        # 1. Build the client on the effective endpoint and constrain it to the schema.
+        # 1. Build the client on the effective endpoint and constrain it to the schema. ``include_raw``
+        #    keeps the underlying AIMessage alongside the parsed value so its token usage survives —
+        #    plain ``with_structured_output`` would swallow it.
         model = OpenAICompatHelpers.chat(
             endpoint, temperature=request.temperature, max_tokens=request.max_tokens
         )
-        structured = model.with_structured_output(schema)
+        structured = model.with_structured_output(schema, include_raw=True)
 
-        # 2. Invoke on the system prompt + the text to extract from.
+        # 2. Invoke on the system prompt + the text to extract from — result is {"raw", "parsed", …}.
         result = await structured.ainvoke(
             [SystemMessage(content=request.system_prompt), HumanMessage(content=request.text)]
         )
-        return dict(result)
+
+        # 3. Stash the paid-call token usage (from the raw message) for the base ``run`` to stamp on
+        #    the output; the parsed value is returned unchanged for the base to coerce.
+        raw_message = result.get("raw") if isinstance(result, dict) else None
+        self._last_usage = NodeUsage.from_usage_metadata(
+            getattr(raw_message, "usage_metadata", None), endpoint.model
+        )
+        return dict(result["parsed"])
 
 
 __all__ = ["StructGenOpenAICompatibleNode"]

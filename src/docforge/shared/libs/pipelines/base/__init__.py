@@ -47,7 +47,7 @@ from .enums import NodeType
 from .errors import ErrorPolicy
 
 # ---------------------- Execution trace ---------------------- #
-from .execution import ErrorInfo, NodeExecutionRecord, NodeStatus
+from .execution import ErrorInfo, NodeExecutionRecord, NodeStatus, NodeUsage
 
 # ------------------- Public API ------------------- #
 __all__ = [
@@ -92,5 +92,6 @@ __all__ = [
     # execution trace
     "NodeStatus",
     "ErrorInfo",
+    "NodeUsage",
     "NodeExecutionRecord",
 ]

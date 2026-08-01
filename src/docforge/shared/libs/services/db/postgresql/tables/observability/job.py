@@ -6,10 +6,11 @@
 # ====== Standard Library Imports ======
 import uuid
 from datetime import datetime
+from decimal import Decimal
 from enum import StrEnum
 
 # ====== Third-Party Library Imports ======
-from sqlalchemy import DateTime, ForeignKey, SmallInteger, String, Text
+from sqlalchemy import BigInteger, DateTime, ForeignKey, Numeric, SmallInteger, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 # ====== Local Project Imports ======
@@ -46,6 +47,11 @@ class Job(Base, UUIDPrimaryKey, TimestampedMixin):
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Per-document paid text-gen meter: running totals summed from the job's stages as they finish
+    # (a document has one active job, so this row IS its lifetime token/cost total).
+    total_prompt_tokens: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    total_completion_tokens: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    cost_usd: Mapped[Decimal] = mapped_column(Numeric(12, 6), nullable=False, default=0)
 
 
 __all__ = ["Job", "JobStatus"]

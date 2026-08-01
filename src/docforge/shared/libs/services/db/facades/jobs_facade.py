@@ -73,6 +73,27 @@ class JobsFacade(LoggerClass):
         async with self._postgres.session() as session:
             return await JobApi.record_event(session, event)
 
+    async def add_usage(
+        self,
+        job_id: uuid.UUID,
+        prompt_tokens: int,
+        completion_tokens: int,
+        cost_usd: float | None,
+    ) -> None:
+        """Fold a stage's token/cost usage into the job's per-document running totals (null-safe)."""
+        async with self._postgres.session() as session:
+            await JobApi.add_usage(session, job_id, prompt_tokens, completion_tokens, cost_usd)
+
+    async def avg_stage_durations(self, collection_id: uuid.UUID) -> dict[str, float]:
+        """Average per-stage duration (seconds) over the collection's DONE jobs — the ETA basis."""
+        async with self._postgres.session() as session:
+            return await JobApi.avg_stage_durations(session, collection_id)
+
+    async def collection_cost(self, collection_id: uuid.UUID) -> tuple[int, int, float, int]:
+        """Roll up the collection's per-document meters: (prompt, completion, usd, doc count)."""
+        async with self._postgres.session() as session:
+            return await JobApi.collection_cost(session, collection_id)
+
     async def reap_stale(self, older_than_seconds: float) -> list[uuid.UUID]:
         """
         Fail every RUNNING job whose progress froze past the threshold — orphaned-job recovery.

@@ -213,7 +213,11 @@ class FlowEngine(LoggerClass):
             )
             self.logger.warning(f"Node '{node.id}' failed: {type(exc).__name__}: {exc}")
 
-        # 3. Build the execution record (byte payloads stripped — a trace, not a store).
+        # 3. Build the execution record (byte payloads stripped — a trace, not a store). Token usage
+        #    rides on the RETURNED output (a paid text-gen node stamps ``_usage`` on it): lifting it
+        #    from the output — not from the node — is race-free under a ForEach that runs one node
+        #    instance concurrently over items, and needs no reset between runs. ``getattr`` keeps the
+        #    read defensive (a usage-capture miss must never fail a node).
         record = NodeExecutionRecord(
             node_id=node.id,
             kind=node.KIND,
@@ -226,6 +230,7 @@ class FlowEngine(LoggerClass):
                 else None
             ),
             error=error,
+            usage=getattr(node_output, "_usage", None) if node_output is not None else None,
         )
         if status == NodeStatus.SUCCESS:
             self.logger.debug(f"Node '{node.id}' succeeded in {record.duration_ms:.1f}ms")

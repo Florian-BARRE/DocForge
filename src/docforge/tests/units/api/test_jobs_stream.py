@@ -8,6 +8,7 @@ so the test runs with zero real delay."""
 
 import asyncio
 import json
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -25,13 +26,24 @@ def _job(status: str, progress: int, stage: str | None) -> SimpleNamespace:
         attempt=1,
         started_at=None,
         finished_at=None,
+        updated_at=datetime(2026, 1, 1, tzinfo=UTC),
+        total_prompt_tokens=0,
+        total_completion_tokens=0,
+        cost_usd=0,
     )
 
 
 def _event(stage: str, status: str) -> SimpleNamespace:
     """A stage-event row stand-in."""
     return SimpleNamespace(
-        stage=stage, status=status, started_at=None, finished_at=None, detail="0.1s"
+        stage=stage,
+        status=status,
+        started_at=None,
+        finished_at=None,
+        detail="0.1s",
+        prompt_tokens=None,
+        completion_tokens=None,
+        cost_usd=None,
     )
 
 
