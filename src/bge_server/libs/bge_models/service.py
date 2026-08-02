@@ -333,6 +333,60 @@ class BgeModelsService(LoggerClass):
         )
         return result
 
+    def encode_dense_sparse(
+        self, texts: list[str], max_length: int
+    ) -> tuple[list[list[float]], list[list[dict[str, int | float]]]]:
+        """
+        Encode a batch of texts into BOTH dense and sparse vectors in ONE forward pass.
+
+        ``encode_dense`` and ``encode_sparse`` each run a full BGE-M3 forward pass; a caller
+        that needs both therefore pays two passes of the ~568M model. Requesting both heads from
+        a single ``encode(return_dense=True, return_sparse=True)`` call halves that cost. The
+        dense and sparse outputs are post-processed with the EXACT same conversions applied by
+        ``encode_dense`` and ``encode_sparse``, so the returned shapes are byte-for-byte identical
+        to calling those two methods separately.
+
+        Args:
+            texts (list[str]): Texts to embed. Must be non-empty.
+            max_length (int): Maximum token length for truncation.
+
+        Returns:
+            tuple[list[list[float]], list[list[dict]]]: A ``(dense, sparse)`` pair where
+                ``dense`` is one 1024-dim float vector per input text (identical to
+                ``encode_dense``) and ``sparse`` is, per text, a list of
+                ``{"index": token_id, "value": weight}`` dicts (identical to ``encode_sparse``).
+        """
+        device = self._resolved_device or "unknown"
+        n = len(texts)
+        self.logger.debug(
+            f"encode_dense_sparse: {n} texts, max_length={max_length}, device={device}"
+        )
+
+        # 1. One forward pass yielding both the dense and sparse heads; time the model call itself
+        t0 = time.perf_counter()
+        out = self.embed_model.encode(
+            texts,
+            return_dense=True,
+            return_sparse=True,
+            return_colbert_vecs=False,
+            max_length=max_length,
+        )
+        elapsed = time.perf_counter() - t0
+
+        # 2. Dense conversion — mirrors encode_dense (numpy arrays -> plain Python lists)
+        dense: list[list[float]] = [vec.tolist() for vec in out["dense_vecs"]]
+
+        # 3. Sparse conversion — mirrors encode_sparse (BGE-M3 dict -> TEI index/value token list)
+        sparse: list[list[dict[str, int | float]]] = []
+        for weights in out["lexical_weights"]:
+            sparse.append([{"index": int(tok), "value": float(w)} for tok, w in weights.items()])
+
+        self.logger.debug(
+            f"encode_dense_sparse: {n} texts -> {len(dense)} vecs + {len(sparse)} token-lists "
+            f"in {elapsed:.3f}s (device={device})"
+        )
+        return dense, sparse
+
     def encode_colbert(self, texts: list[str], max_length: int) -> list[list[list[float]]]:
         """
         Encode a batch of texts into BGE-M3's native ColBERT multi-vector representation.

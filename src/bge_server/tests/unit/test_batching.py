@@ -377,6 +377,37 @@ async def test_graceful_stop_resolves_pending_futures() -> None:
         assert fut.done(), "Future must be resolved after stop()"
 
 
+# ── Test: combined dense+sparse path ──────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_embed_all_combined_path() -> None:
+    """
+    embed_all runs the combined dense+sparse forward pass in ONE model call and returns the
+    (dense, sparse) pair unchanged. It calls encode_dense_sparse (not encode_dense/encode_sparse).
+    """
+    dense = [[1.0, 2.0], [3.0, 4.0]]
+    sparse = [[{"index": 5, "value": 0.5}], [{"index": 7, "value": 0.8}]]
+
+    models = MagicMock()
+    models.encode_dense_sparse.return_value = (dense, sparse)
+
+    engine = _make_engine(models)
+    engine.start()
+
+    try:
+        result_dense, result_sparse = await engine.embed_all(["t1", "t2"], max_length=128)
+    finally:
+        await engine.stop()
+
+    models.encode_dense_sparse.assert_called_once_with(["t1", "t2"], 128)
+    # The two separate embed paths were NOT used for the combined call
+    models.encode_dense.assert_not_called()
+    models.encode_sparse.assert_not_called()
+    assert result_dense == dense
+    assert result_sparse == sparse
+
+
 # ── Test: batch error isolation ───────────────────────────────────────────────
 
 

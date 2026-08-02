@@ -18,7 +18,14 @@ from libs.batching import QueueFullError
 
 # ====== Local Project Imports ======
 from .helpers import InferenceHelpers
-from .models import ColbertTokenVectors, EmbedRequest, RerankRequest, RerankResult, SparseToken
+from .models import (
+    ColbertTokenVectors,
+    EmbedAllResponse,
+    EmbedRequest,
+    RerankRequest,
+    RerankResult,
+    SparseToken,
+)
 
 router = APIRouter()
 
@@ -112,6 +119,57 @@ async def embed_sparse(req: EmbedRequest) -> list[list[SparseToken]]:
         [SparseToken(index=int(tok["index"]), value=float(tok["value"])) for tok in row]
         for row in raw
     ]
+
+
+@router.post("/embed_all", response_model=EmbedAllResponse)
+@auto_handle_errors
+async def embed_all(req: EmbedRequest) -> EmbedAllResponse:
+    """
+    Combined dense + sparse embeddings in ONE forward pass.
+
+    A caller needing both representations would otherwise hit /embed and /embed_sparse and pay
+    two BGE-M3 forward passes; this route requests both heads from a single pass and returns the
+    two sub-shapes unchanged (``dense`` identical to POST /embed, ``sparse`` identical to POST
+    /embed_sparse). Not part of the TEI contract — the DocForge app falls back to the two
+    separate routes when this one is unavailable.
+
+    Unlike the batched dense/sparse queues, this path calls the model directly (no cross-request
+    coalescing) but is still serialised on the shared embed lock, so it never overlaps a dense or
+    sparse batch on the shared model instance. Request-size ceilings are enforced by EmbedRequest
+    (HTTP 422), exactly as for /embed and /embed_sparse.
+
+    Args:
+        req (EmbedRequest): Request body with texts to embed.
+
+    Returns:
+        EmbedAllResponse: ``{dense, sparse}`` for the input texts.
+    """
+    # 1. Normalize the TEI inputs field (str | list[str]) into a list
+    texts = InferenceHelpers.as_list(req.inputs)
+
+    # 2. Log batch size at DEBUG — never log text contents (may be large / sensitive)
+    logger.debug(f"POST /embed_all: {len(texts)} inputs")
+
+    # 3. Empty input — return immediately without touching the engine
+    if not texts:
+        return EmbedAllResponse(dense=[], sparse=[])
+
+    # 4. One combined forward pass through the engine (serialised on the shared embed lock).
+    #    max_length matches the value the engine's dense/sparse workers use (from the same config),
+    #    so the returned vectors are identical to the two separate routes.
+    dense, sparse_raw = await CONTEXT.batching_engine.embed_all(
+        texts, max_length=CONTEXT.CONFIG.BGE_M3_MAX_LENGTH
+    )
+
+    # 5. Wrap each sparse dict into the typed SparseToken model (matching /embed_sparse), pinning
+    #    each field to its declared type (the engine types weights as int | float).
+    return EmbedAllResponse(
+        dense=dense,
+        sparse=[
+            [SparseToken(index=int(tok["index"]), value=float(tok["value"])) for tok in row]
+            for row in sparse_raw
+        ],
+    )
 
 
 @router.post("/embed_colbert", response_model=list[list[list[float]]])

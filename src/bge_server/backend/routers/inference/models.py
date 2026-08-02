@@ -145,6 +145,27 @@ class RerankResult(BaseModel):
     score: float = Field(..., description="Sigmoid-normalized reranking score in [0, 1].")
 
 
+class EmbedAllResponse(BaseModel):
+    """
+    Combined dense + sparse response for POST /embed_all.
+
+    Returned when a caller needs BOTH representations for the same texts: the two sub-shapes are
+    identical to what POST /embed and POST /embed_sparse return separately, but a single
+    forward pass produces them. Not part of the TEI contract — an internal DocForge convention;
+    callers fall back to /embed + /embed_sparse when this route is unavailable.
+
+    Attributes:
+        dense (list[list[float]]): One 1024-dim dense vector per input text (as POST /embed).
+        sparse (list[list[SparseToken]]): Per text, a list of token index/weight pairs
+            (as POST /embed_sparse).
+    """
+
+    dense: list[list[float]] = Field(..., description="One 1024-dim dense vector per input text.")
+    sparse: list[list[SparseToken]] = Field(
+        ..., description="Per text, a list of sparse token index/weight pairs."
+    )
+
+
 # Per input text, a list of per-token 1024-dim L2-normalized float vectors (variable length
 # per text). Documents the POST /embed_colbert response shape — not a pydantic model, mirroring
 # the un-wrapped `list[list[float]]` response of POST /embed.

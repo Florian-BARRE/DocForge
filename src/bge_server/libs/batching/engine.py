@@ -360,6 +360,31 @@ class BatchingEngine(LoggerClass):
         self._colbert_worker.submit(item)
         return await future
 
+    async def embed_all(
+        self, texts: list[str], max_length: int
+    ) -> tuple[list[list[float]], list[list[dict[str, int | float]]]]:
+        """
+        Encode both dense and sparse vectors for ``texts`` in ONE shared model forward pass.
+
+        Unlike the dense/sparse/colbert workers, this path is NOT batched across concurrent
+        requests: it calls the model directly. It is still serialised on ``embed_lock`` — the
+        SAME lock the dense/sparse/colbert workers hold — so the combined forward pass can never
+        overlap a dense or sparse batch on the shared ``embed_model`` instance. The model call is
+        offloaded with ``asyncio.to_thread`` exactly like ``_process_dense``, keeping the event
+        loop free during the (seconds-long) forward pass.
+
+        Args:
+            texts (list[str]): Texts to embed. Must be non-empty (caller's responsibility).
+            max_length (int): Maximum token length for truncation.
+
+        Returns:
+            tuple[list[list[float]], list[list[dict]]]: A ``(dense, sparse)`` pair whose two
+                sub-shapes are identical to submitting the same texts to the dense and sparse
+                paths separately.
+        """
+        async with self._embed_lock:
+            return await asyncio.to_thread(self._models.encode_dense_sparse, texts, max_length)
+
     async def submit_rerank(self, query: str, texts: list[str]) -> list[dict[str, int | float]]:
         """
         Submit a rerank request and await its result.

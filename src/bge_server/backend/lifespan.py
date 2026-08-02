@@ -46,7 +46,9 @@ async def _keep_warm(interval_seconds: int, max_length: int) -> None:
         await asyncio.sleep(interval_seconds)
         try:
             # to_thread: the forward passes are synchronous/CPU-bound — keep the event loop free.
-            await asyncio.to_thread(CONTEXT.bge_models.encode_dense, ["warm"], max_length=max_length)
+            await asyncio.to_thread(
+                CONTEXT.bge_models.encode_dense, ["warm"], max_length=max_length
+            )
             await asyncio.to_thread(
                 CONTEXT.bge_models.encode_sparse, ["warm"], max_length=max_length
             )
@@ -134,6 +136,9 @@ def lifespan() -> Any:
                 max_length = CONTEXT.CONFIG.BGE_M3_MAX_LENGTH
                 CONTEXT.bge_models.encode_dense(["warmup"], max_length=max_length)
                 CONTEXT.bge_models.encode_sparse(["warmup"], max_length=max_length)
+                # Prime the combined dense+sparse path too (its own encode() call shape) so the
+                # first real /embed_all request doesn't pay lazy kernel-compile / allocator costs.
+                CONTEXT.bge_models.encode_dense_sparse(["warmup"], max_length=max_length)
                 CONTEXT.bge_models.encode_colbert(["warmup"], max_length=max_length)
                 CONTEXT.bge_models.compute_rerank_scores_flat([["warmup", "warmup"]])
                 logger.info(f"Warmup pass completed")
@@ -146,7 +151,9 @@ def lifespan() -> Any:
             # resident. Disabled with BGE_KEEPWARM_SECONDS=0 (e.g. on a GPU box that never pages out).
             if CONTEXT.CONFIG.BGE_KEEPWARM_SECONDS > 0:
                 keep_warm_task = asyncio.create_task(
-                    _keep_warm(CONTEXT.CONFIG.BGE_KEEPWARM_SECONDS, CONTEXT.CONFIG.BGE_M3_MAX_LENGTH)
+                    _keep_warm(
+                        CONTEXT.CONFIG.BGE_KEEPWARM_SECONDS, CONTEXT.CONFIG.BGE_M3_MAX_LENGTH
+                    )
                 )
                 logger.info(f"Keep-warm every {CONTEXT.CONFIG.BGE_KEEPWARM_SECONDS}s enabled")
 
