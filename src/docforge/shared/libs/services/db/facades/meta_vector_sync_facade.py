@@ -62,14 +62,56 @@ class MetaVectorSyncFacade(LoggerClass):
             text = MetaVectorSyncHelpers.render_value(value)
             if text is None:
                 continue
-            # 2. Semantic → the dense meta vector, only when the collection declares it.
+            # 2. A field that is BOTH semantic AND lexical earns the single forward pass when the
+            #    embedder exposes a combined route; when it can't apply, the per-axis calls below run.
+            if (
+                semantic
+                and lexical
+                and await self.__add_combined(
+                    embedder, field_name, text, declared_dense, declared_sparse, dense, sparse
+                )
+            ):
+                continue
+            # 3. Semantic → the dense meta vector, only when the collection declares it.
             if semantic:
                 await self.__add_dense(embedder, field_name, text, declared_dense, dense)
-            # 3. Lexical → the sparse meta vector, only when both the collection AND the embedder
+            # 4. Lexical → the sparse meta vector, only when both the collection AND the embedder
             #    carry the axis (a dense-only embedder simply skips it, loudly).
             if lexical:
                 await self.__add_sparse(embedder, field_name, text, declared_sparse, sparse)
         return dense, sparse
+
+    async def __add_combined(
+        self,
+        embedder: BaseEmbedderNode,
+        field_name: str,
+        text: str,
+        declared_dense: set[str],
+        declared_sparse: set[str],
+        dense: dict[str, list[float]],
+        sparse: dict[str, SparseVec],
+    ) -> bool:
+        """Embed a both-axes field in one pass; False (→ separate per-axis calls) when it can't apply.
+
+        Only attempts the combined route when BOTH named vectors are declared; a provider without the
+        combined route returns None and the caller falls back to the per-axis calls, which keep their
+        own declared-guards and warnings.
+        """
+        dense_name = VectorNames.field_dense(field_name)
+        sparse_name = VectorNames.field_sparse(field_name)
+        if dense_name not in declared_dense or sparse_name not in declared_sparse:
+            return False
+        combined = await embedder._embed_dense_sparse([text])
+        if not combined:
+            return False
+        dense_vectors, sparse_vectors = combined
+        if not sparse_vectors:
+            return False
+        dense[dense_name] = dense_vectors[0]
+        sparse[sparse_name] = SparseVec(
+            indices=sparse_vectors[0].indices, values=sparse_vectors[0].values
+        )
+        return True
 
     async def __add_dense(
         self,

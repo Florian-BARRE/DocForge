@@ -43,9 +43,9 @@ class EmbedBgeServerNode(BaseEmbedderNode):
     NAME = "bge_server (BGE-M3)"
     SUMMARY = "Dense + sparse vectors through DocForge's local BGE-M3 server."
     HOW_IT_WORKS = (
-        "POSTs the text batches to the server's TEI-compatible routes: /embed for the dense "
-        "vectors and /embed_sparse for the lexical ones. Both axes from one local server — "
-        "the product default."
+        "POSTs the text batches to the server's TEI-compatible routes: /embed_all for both axes in "
+        "one forward pass when the server exposes it (falling back to /embed + /embed_sparse on an "
+        "older server that answers 404). Both axes from one local server — the product default."
     )
     Config = EmbedBgeServerConfig
     UNIQUE_IN_GRAPH = True
@@ -76,20 +76,43 @@ class EmbedBgeServerNode(BaseEmbedderNode):
             response.raise_for_status()
         return response.json()
 
+    @staticmethod
+    def __parse_sparse(entries_per_input: list) -> list[SparseVector]:
+        """Parse a TEI sparse payload — one {index, value} list per input — into SparseVectors."""
+        return [
+            SparseVector(
+                indices=[int(entry["index"]) for entry in entries],
+                values=[float(entry["value"]) for entry in entries],
+            )
+            for entries in entries_per_input
+        ]
+
     async def _embed_dense(self, texts: list[str]) -> list[list[float]]:
         """Dense vectors via /embed."""
         return await self.__post("/embed", texts)
 
     async def _embed_sparse(self, texts: list[str]) -> list[SparseVector] | None:
         """Sparse vectors via /embed_sparse (TEI shape: one {index, value} list per input)."""
-        payload = await self.__post("/embed_sparse", texts)
-        return [
-            SparseVector(
-                indices=[int(entry["index"]) for entry in entries],
-                values=[float(entry["value"]) for entry in entries],
-            )
-            for entries in payload
-        ]
+        return self.__parse_sparse(await self.__post("/embed_sparse", texts))
+
+    async def _embed_dense_sparse(
+        self, texts: list[str]
+    ) -> tuple[list[list[float]], list[SparseVector]] | None:
+        """Dense + sparse in one forward pass via /embed_all — None when the server predates it.
+
+        The single-pass optimisation: /embed_all returns ``{"dense": [...], "sparse": [...]}`` from
+        one model call, halving the round-trips versus /embed + /embed_sparse. An older bge_server
+        has no such route and answers 404; that specific "route absent" case is mapped to None so the
+        caller falls back to the two separate routes. Genuine transient failures (timeouts, 5xx) are
+        deliberately NOT swallowed — they propagate for the resilient retry/split to handle.
+        """
+        try:
+            payload = await self.__post("/embed_all", texts)
+        except httpx.HTTPStatusError as error:
+            if error.response.status_code == 404:
+                return None
+            raise
+        return payload["dense"], self.__parse_sparse(payload["sparse"])
 
 
 __all__ = ["EmbedBgeServerNode", "EmbedBgeServerConfig"]

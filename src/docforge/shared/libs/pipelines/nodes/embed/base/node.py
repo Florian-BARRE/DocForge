@@ -13,6 +13,7 @@ import asyncio
 import re
 from abc import abstractmethod
 from collections.abc import Awaitable, Callable
+from typing import TypeVar
 
 # ====== Third-Party Library Imports ======
 import httpx
@@ -36,6 +37,10 @@ from .io import EmbedConsumes, EmbedProduces
 # A bare figure marker line — an "[Image: <kind>]" with NOTHING after the closing bracket (no
 # caption/OCR/description folded onto it). Such a line carries no searchable content of its own.
 _BARE_IMAGE_MARKER = re.compile(r"^\[Image:[^\]]*\]$")
+
+# The shape a resilient wrapper carries through its retry/split skeleton (a dense list, or the
+# (dense, sparse) pair of the combined path). Bound so the skeleton stays provider-agnostic.
+_Batch = TypeVar("_Batch")
 
 
 class BaseEmbedderNode(ActionNode):
@@ -71,6 +76,21 @@ class BaseEmbedderNode(ActionNode):
         _ = texts
         return None
 
+    async def _embed_dense_sparse(
+        self, texts: list[str]
+    ) -> tuple[list[list[float]], list[SparseVector]] | None:
+        """Embed one batch into dense AND sparse vectors in a single forward pass.
+
+        Optional optimisation: a provider that can emit both axes from one model pass (a combined
+        endpoint) overrides this to halve the embed cost versus two separate round-trips. Returning
+        None — the default — means "this provider has no combined path", and the caller falls back to
+        ``_embed_dense`` + ``_embed_sparse``. A returned tuple is aligned 1:1 with ``texts`` on both
+        axes. An implementer maps only the "route absent / unsupported" signal to None; a genuine
+        transient failure must still be raised so the resilient wrapper can retry and split it.
+        """
+        _ = texts
+        return None
+
     @staticmethod
     def __is_transient(error: Exception) -> bool:
         """A provider error worth retrying: a timeout, a transport blip, or a 429/5xx status."""
@@ -84,11 +104,12 @@ class BaseEmbedderNode(ActionNode):
             504,
         )
 
-    async def __resilient_batch(
+    async def __resilient(
         self,
-        embed_fn: Callable[[list[str]], Awaitable[list]],
+        embed_fn: Callable[[list[str]], Awaitable[_Batch | None]],
         texts: list[str],
-    ) -> list | None:
+        concat: Callable[[_Batch, _Batch], _Batch],
+    ) -> _Batch | None:
         """
         Call one provider embed hook with backoff-retry, then adaptive batch splitting.
 
@@ -98,8 +119,9 @@ class BaseEmbedderNode(ActionNode):
         halved and each half embedded independently — a smaller batch is lighter on a CPU-hosted
         model and usually succeeds. A single-text batch that still fails is a genuine error and is
         raised. max_retries=0 preserves the old one-shot behaviour (no retry, no split). Provider
-        hooks return outputs aligned 1:1 with their input, so concatenating the halves preserves
-        order; a None sub-result (provider has no sparse) propagates as None.
+        hooks return outputs aligned 1:1 with their input, so ``concat`` on the halves preserves
+        order; a None sub-result (no sparse / no combined route) propagates as None. Shape-agnostic:
+        the same skeleton serves the single-axis hook and the combined (dense, sparse) one.
         """
         config: BaseEmbedConfig = self.config
         if config.max_retries == 0:
@@ -124,21 +146,61 @@ class BaseEmbedderNode(ActionNode):
             f"Embedder '{self.KIND}' still failing a {len(texts)}-text batch — splitting to "
             f"{mid} + {len(texts) - mid} and retrying each half"
         )
-        left = await self.__resilient_batch(embed_fn, texts[:mid])
-        right = await self.__resilient_batch(embed_fn, texts[mid:])
+        left = await self.__resilient(embed_fn, texts[:mid], concat)
+        right = await self.__resilient(embed_fn, texts[mid:], concat)
         if left is None or right is None:
             return None
-        return [*left, *right]
+        return concat(left, right)
+
+    async def __resilient_batch(
+        self,
+        embed_fn: Callable[[list[str]], Awaitable[list]],
+        texts: list[str],
+    ) -> list | None:
+        """Resilient single-axis embed: retry + split around one dense/sparse hook (see __resilient)."""
+        return await self.__resilient(embed_fn, texts, lambda left, right: [*left, *right])
+
+    async def __resilient_combined(
+        self, texts: list[str]
+    ) -> tuple[list[list[float]], list[SparseVector]] | None:
+        """Resilient combined embed: the same retry + split skeleton around the single-pass hook.
+
+        A None from ``_embed_dense_sparse`` means "no combined route" (unsupported) and propagates up
+        so the batch loop can fall back to the two separate hooks — distinct from a raised transient
+        error, which is retried and split like any other. On a split the halves' dense and sparse
+        lists are concatenated independently, keeping each axis 1:1 with the input order.
+        """
+        return await self.__resilient(
+            self._embed_dense_sparse,
+            texts,
+            lambda left, right: ([*left[0], *right[0]], [*left[1], *right[1]]),
+        )
 
     async def __embed_all(
         self, texts: list[str], sparse: bool
     ) -> tuple[list[list[float]], list[SparseVector] | None]:
-        """Run the batched dense (and optional sparse) embedding over every text."""
+        """Run the batched dense (and optional sparse) embedding over every text.
+
+        When sparse is requested, each batch first tries the provider's single-forward-pass combined
+        hook; the first batch that reports it unsupported flips the run to the two separate hooks for
+        every remaining batch (no re-probing /embed_all once it is known absent).
+        """
         config: BaseEmbedConfig = self.config
         dense: list[list[float]] = []
         sparse_vectors: list[SparseVector] | None = [] if sparse else None
+        combined_supported = sparse  # probe once; a None on the first sparse batch disables it
         for start in range(0, len(texts), config.batch_size):
             batch = texts[start : start + config.batch_size]
+            if sparse_vectors is not None and combined_supported:
+                combined = await self.__resilient_combined(batch)
+                if combined is not None:
+                    dense_batch, batch_sparse = combined
+                    dense.extend(dense_batch)
+                    sparse_vectors.extend(batch_sparse)
+                    continue
+                # Unsupported combined route — remember it and fall through to the separate hooks
+                # for this batch and every later one.
+                combined_supported = False
             dense_batch = await self.__resilient_batch(self._embed_dense, batch)
             dense.extend(dense_batch if dense_batch is not None else [])  # dense hook never None
             if sparse_vectors is not None:

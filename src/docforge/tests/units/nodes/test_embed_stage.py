@@ -398,3 +398,207 @@ async def test_bge_server_hits_the_dense_and_sparse_routes(monkeypatch: pytest.M
     assert "/embed_sparse" in calls
     assert [i.chunk_id for i in emb.items] == [c.chunk_id for c in CHUNKS]
     assert all(item.dense is not None and item.sparse is not None for item in emb.items)
+
+
+@NodeRegistry.register("embed")
+class FakeCombined(BaseEmbedderNode):
+    """Provider with a single-pass combined route; records every hook it is asked to run."""
+
+    KIND = "test_embed_fake_combined"
+    NAME = "F"
+    SUMMARY = "t"
+    Config = BaseEmbedConfig
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.dense_calls: list[list[str]] = []
+        self.sparse_calls: list[list[str]] = []
+        self.combined_calls: list[list[str]] = []
+
+    async def _embed_dense(self, texts: list[str]) -> list[list[float]]:
+        self.dense_calls.append(list(texts))
+        return [[float(len(t))] * 100 for t in texts]
+
+    async def _embed_sparse(self, texts: list[str]) -> list[SparseVector] | None:
+        self.sparse_calls.append(list(texts))
+        return [SparseVector(indices=[1, 7], values=[0.5, float(len(t))]) for t in texts]
+
+    async def _embed_dense_sparse(
+        self, texts: list[str]
+    ) -> tuple[list[list[float]], list[SparseVector]] | None:
+        self.combined_calls.append(list(texts))
+        dense = [[float(len(t))] * 100 for t in texts]
+        sparse = [SparseVector(indices=[1, 7], values=[0.5, float(len(t))]) for t in texts]
+        return dense, sparse
+
+
+@NodeRegistry.register("embed")
+class FakeCombinedUnsupported(FakeCombined):
+    """Combined route absent (returns None, as a 404 maps to) — the caller must fall back."""
+
+    KIND = "test_embed_fake_combined_unsupported"
+
+    async def _embed_dense_sparse(
+        self, texts: list[str]
+    ) -> tuple[list[list[float]], list[SparseVector]] | None:
+        self.combined_calls.append(list(texts))
+        return None
+
+
+@NodeRegistry.register("embed")
+class FakeCombinedFlakyBySize(BaseEmbedderNode):
+    """Combined hook that fails (transient) on any batch larger than ``max_ok`` — forces the split."""
+
+    KIND = "test_embed_combined_flaky_by_size"
+    NAME = "F"
+    SUMMARY = "t"
+    Config = BaseEmbedConfig
+
+    def __init__(self, *args, max_ok: int = 2, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self._max_ok = max_ok
+        self.largest_success = 0
+
+    async def _embed_dense(self, texts: list[str]) -> list[list[float]]:
+        return [[float(len(t))] for t in texts]  # unused: the combined route is always supported
+
+    async def _embed_dense_sparse(
+        self, texts: list[str]
+    ) -> tuple[list[list[float]], list[SparseVector]] | None:
+        if len(texts) > self._max_ok:
+            raise httpx.ConnectError("simulated overload on a large combined batch")
+        self.largest_success = max(self.largest_success, len(texts))
+        dense = [[float(len(t))] for t in texts]
+        sparse = [SparseVector(indices=[len(t)], values=[float(len(t))]) for t in texts]
+        return dense, sparse
+
+
+async def test_combined_route_used_once_per_batch_without_the_separate_hooks() -> None:
+    # When a provider exposes the single-pass combined hook, each batch is embedded through it ONCE
+    # and the separate dense/sparse hooks are never touched — same vectors as the separate path.
+    node = FakeCombined(id="e", config=BaseEmbedConfig(model="m", batch_size=2))
+    out = await node.run(EmbedConsumes(chunks=CHUNKS, contract=CONTRACT))
+    emb = out.embeddings
+
+    assert [len(c) for c in node.combined_calls] == [
+        2,
+        2,
+        1,
+    ]  # 5 texts / batch 2 = 3 combined calls
+    assert node.dense_calls == [] and node.sparse_calls == []  # the separate routes were untouched
+    assert len(emb.items) == 5
+    assert emb.items[0].dense == [float(len(CHUNKS[0].enriched_text))] * 100
+    assert emb.items[0].sparse is not None and emb.items[0].sparse.indices == [1, 7]
+
+
+async def test_combined_unsupported_falls_back_and_is_not_reprobed() -> None:
+    # A None from the combined hook (an old server's 404) drops the run to the separate hooks — and
+    # the combined hook is probed only ONCE, never again for the later batches.
+    node = FakeCombinedUnsupported(id="e", config=BaseEmbedConfig(model="m", batch_size=2))
+    out = await node.run(EmbedConsumes(chunks=CHUNKS, contract=CONTRACT))
+    emb = out.embeddings
+
+    assert len(node.combined_calls) == 1  # probed once, then remembered as unsupported
+    assert [len(c) for c in node.dense_calls] == [
+        2,
+        2,
+        1,
+    ]  # every batch fell back to separate dense
+    assert [len(c) for c in node.sparse_calls] == [2, 2, 1]
+    assert len(emb.items) == 5
+    assert all(item.dense is not None and item.sparse is not None for item in emb.items)
+
+
+async def test_combined_route_split_preserves_order_on_both_axes() -> None:
+    # A batch too large for the combined hook keeps failing; halving it (5 -> 2+3 -> 1+2) recovers,
+    # and the halves' dense AND sparse lists are concatenated back in the original chunk order.
+    node = FakeCombinedFlakyBySize(
+        id="e",
+        config=BaseEmbedConfig(model="m", batch_size=8, max_retries=1, retry_backoff_seconds=0.0),
+        max_ok=2,
+    )
+    out = await node.run(EmbedConsumes(chunks=CHUNKS, contract=CONTRACT))
+    emb = out.embeddings
+
+    assert node.largest_success <= 2  # never succeeded on a batch above the tolerated size
+    assert len(emb.items) == 5
+    for item, chunk in zip(emb.items, CHUNKS, strict=True):
+        length = float(len(chunk.enriched_text))
+        assert item.dense == [length]  # dense aligned 1:1 after the split
+        assert item.sparse is not None and item.sparse.values == [length]  # sparse aligned too
+
+
+def _mock_bge_combined_transport(calls: list[str]) -> httpx.MockTransport:
+    """A MockTransport serving the combined /embed_all route and 404-ing the separate ones."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        inputs = json.loads(request.content)["inputs"]
+        calls.append(request.url.path)
+        if request.url.path == "/embed_all":
+            return httpx.Response(
+                200,
+                json={
+                    "dense": [[0.2] * 8 for _ in inputs],
+                    "sparse": [[{"index": 1, "value": 0.5}] for _ in inputs],
+                },
+            )
+        return httpx.Response(404)
+
+    return httpx.MockTransport(handler)
+
+
+async def test_bge_server_uses_embed_all_single_pass_when_available(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The real bge_server node, HTTP mocked: /embed_all serves both axes in one pass, so the separate
+    # /embed and /embed_sparse routes are never called.
+    calls: list[str] = []
+    transport = _mock_bge_combined_transport(calls)
+    original_client = httpx.AsyncClient
+    monkeypatch.setattr(
+        httpx, "AsyncClient", lambda *a, **k: original_client(*a, **{**k, "transport": transport})
+    )
+
+    node = EmbedBgeServerNode(id="e", config=EmbedBgeServerConfig(base_url="http://bge", model="m"))
+    out = await node.run(EmbedConsumes(chunks=CHUNKS, contract=CONTRACT))
+    emb = out.embeddings
+
+    assert "/embed_all" in calls
+    assert (
+        "/embed" not in calls and "/embed_sparse" not in calls
+    )  # a single pass, no separate calls
+    assert [i.chunk_id for i in emb.items] == [c.chunk_id for c in CHUNKS]
+    assert all(item.dense is not None and item.sparse is not None for item in emb.items)
+
+
+async def test_bge_embed_all_maps_404_to_none_but_propagates_transient(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The fallback contract at the provider seam: a 404 (route absent on an old server) becomes None
+    # so the caller falls back; a 5xx or a timeout still RAISES so the resilient retry/split applies.
+    original_client = httpx.AsyncClient
+
+    def install(handler) -> EmbedBgeServerNode:
+        transport = httpx.MockTransport(handler)
+        monkeypatch.setattr(
+            httpx,
+            "AsyncClient",
+            lambda *a, **k: original_client(*a, **{**k, "transport": transport}),
+        )
+        return EmbedBgeServerNode(
+            id="e", config=EmbedBgeServerConfig(base_url="http://bge", model="m")
+        )
+
+    absent = install(lambda request: httpx.Response(404))
+    assert await absent._embed_dense_sparse(["x"]) is None  # unsupported → None, not an error
+
+    server_error = install(lambda request: httpx.Response(503))
+    with pytest.raises(httpx.HTTPStatusError):  # genuine transient → propagates for retry/split
+        await server_error._embed_dense_sparse(["x"])
+
+    def timeout(request: httpx.Request) -> httpx.Response:
+        raise httpx.ReadTimeout("simulated timeout")
+
+    timing_out = install(timeout)
+    with pytest.raises(httpx.ReadTimeout):  # timeout must not be swallowed into None
+        await timing_out._embed_dense_sparse(["x"])
