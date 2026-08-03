@@ -1,8 +1,13 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # DocForge — development overrides. Use with:
 #   docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile full up -d --build
+#   GPU dev:  append  -f docker-compose.gpu.yml  LAST (compose is last-file-wins, so it must
+#             follow this file to override TORCH_VARIANT=cpu → gpu + grant the device):
+#     docker compose -f docker-compose.yml -f docker-compose.dev.yml -f docker-compose.gpu.yml ... up -d --build
 #
 # What this changes vs production:
+#   - app/worker/mcp/bge_server BUILD locally from source (each `build:` here overrides the
+#     prod GHCR `image:` pull in the base file), so `--build` compiles the current tree
 #   - app + worker mount the SOURCE tree, so edits reload without rebuilding
 #   - uvicorn runs with --reload; arq runs with --watch (watchfiles ships via uvicorn[standard])
 #   - the frontend runs as its OWN container on the Vite dev server (hot module reload),
@@ -15,6 +20,10 @@
 
 services:
   docforge_app:
+    # Build locally from source, overriding the prod GHCR image: pull in the base file.
+    build:
+      context: src/docforge
+      dockerfile: app/Dockerfile
     volumes:
       # Source overlays — edits on the host are live inside the container.
       - ./src/docforge/app:/app/app
@@ -30,6 +39,13 @@ services:
       --reload-dir /app/shared
 
   docforge_worker:
+    # Build locally from source, overriding the prod GHCR image: pull in the base file.
+    # CPU torch by default; the gpu override file flips TORCH_VARIANT to gpu.
+    build:
+      context: src/docforge
+      dockerfile: worker/Dockerfile
+      args:
+        TORCH_VARIANT: cpu
     volumes:
       - ./src/docforge/worker:/app/worker
       - ./src/docforge/shared:/app/shared
@@ -43,6 +59,14 @@ services:
     # whole process in `watchfiles` (a base dep via fastapi[standard]) does a real kill+restart that
     # re-imports everything. Watch the mounted source roots only.
     command: ["watchfiles", "arq entrypoint.WorkerSettings", "/app/shared", "/app/worker"]
+
+  # ── mcp — build locally from source (override the prod GHCR image: pull). No source
+  #    mounts: no hot-reload command, so a rebuild (`--build`) picks up its source changes.
+  #    (bge_server's build override lives on its own block below, alongside its port republish.) ──
+  docforge_mcp:
+    build:
+      context: src                # sibling context: the mcp source is src/mcp, not under docforge
+      dockerfile: mcp/Dockerfile
 
   # ── Data-plane stores — republish host ports for local dev (psql/redis-cli/alembic/
   #    browser access to Qdrant's/SeaweedFS's REST APIs). Prod keeps these internal only. ──
@@ -63,6 +87,13 @@ services:
       - "10044:8333"              # S3 API (local dev + operator inspection)
 
   docforge_bge_server:
+    # Build locally from source, overriding the prod GHCR image: pull in the base file.
+    # CPU torch by default; the gpu override file flips TORCH_VARIANT to gpu.
+    build:
+      context: src                # bge_server lives at src/bge_server (sibling of docforge)
+      dockerfile: bge_server/Dockerfile
+      args:
+        TORCH_VARIANT: cpu
     ports:
       - "10047:80"                # Operator access: http://localhost:10047/health
 

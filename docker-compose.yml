@@ -1,19 +1,22 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# DocForge stack — fully separate from the legacy docker-compose.yml
-# (distinct container names, volumes, network and host-port range 10040-10049,
-# so both stacks can run side by side during the transition).
+# DocForge stack — PRODUCTION deployment.
 #
-#   Stores only (local app/worker via uv):  docker compose -f docker-compose.yml up -d
-#   Full stack (containerised app+worker):  docker compose -f docker-compose.yml --profile full up -d --build
+# This base file PULLS the published GHCR images (no build, no source mounts) and
+# defaults to the CPU variant for the torch-bearing services (worker, bge_server).
+# ${DOCFORGE_TAG:-latest} selects the image version.
+#
+#   Prod (CPU, default):  docker compose -f docker-compose.yml --profile full up -d
+#   Prod GPU:             layer  -f docker-compose.gpu.yml  on top (pulls -gpu images + grants the device)
+#   Dev (build+reload):   layer  -f docker-compose.dev.yml  on top (builds locally, mounts source)
+#
+# Distinct container names, volumes, network and host-port range 10040-10049 so this
+# stack can run side by side with the legacy one.
 # ─────────────────────────────────────────────────────────────────────────────
 
 services:
   # ── FastAPI app — light image (design surface + admission + monitoring) ─────
   docforge_app:
-    build:
-      context: src/docforge
-      dockerfile: app/Dockerfile
-    image: docforge-app:latest
+    image: ghcr.io/florian-barre/docforge-app:${DOCFORGE_TAG:-latest}
     container_name: docforge-app
     profiles: ["full"]
     # Docker's embedded resolver (127.0.0.11) has no external upstream on this VM, so containers
@@ -52,12 +55,7 @@ services:
 
   # ── arq worker — heavy image (pipeline execution + persistence) ─────────────
   docforge_worker:
-    build:
-      context: src/docforge
-      dockerfile: worker/Dockerfile
-      args:
-        TORCH_VARIANT: cpu        # CPU torch (~200 MB); GPU: build --build-arg TORCH_VARIANT=gpu + BGE toolkit
-    image: docforge-worker:latest
+    image: ghcr.io/florian-barre/docforge-worker:${DOCFORGE_TAG:-latest}-cpu
     container_name: docforge-worker
     profiles: ["full"]
     # Same reason as docforge_app: the worker runs the figure VLM + metagen LLM provider calls, which
@@ -278,12 +276,7 @@ services:
   #   in-network  → http://bge_server:80   (the docforge_net alias below)
   #   from host   → http://localhost:10047 (dev only — see docker-compose.dev.yml)
   docforge_bge_server:
-    build:
-      context: src                # bge_server lives at src/bge_server (sibling of docforge)
-      dockerfile: bge_server/Dockerfile
-      args:
-        TORCH_VARIANT: cpu        # ~2 GB CPU image; GPU: build --build-arg TORCH_VARIANT=gpu + BGE_DEVICE=cuda
-    image: docforge-bge-server:latest   # reuse the legacy-built image if present (no rebuild)
+    image: ghcr.io/florian-barre/docforge-bge-server:${DOCFORGE_TAG:-latest}-cpu
     container_name: docforge-bge-server
     profiles: ["full", "bge"]
     # Same reason as docforge_app/docforge_worker: Docker's embedded resolver has no external
@@ -324,10 +317,7 @@ services:
   # tools over streamable-http. Its own MCP_AUTH_TOKEN gates inbound; DOCFORGE_API_TOKEN (the API root
   # token) authenticates outbound when the API has AUTH_ENABLED=true.
   docforge_mcp:
-    build:
-      context: src                # sibling context: the mcp source is src/mcp, not under docforge
-      dockerfile: mcp/Dockerfile
-    image: docforge-mcp:latest
+    image: ghcr.io/florian-barre/docforge-mcp:${DOCFORGE_TAG:-latest}
     container_name: docforge-mcp
     profiles: ["full"]
     env_file:

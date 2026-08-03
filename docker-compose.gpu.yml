@@ -1,16 +1,36 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# DocForge — GPU overrides. Use ON TOP of the base (+ dev) files:
-#   docker compose -f docker-compose.yml -f docker-compose.dev.yml #                  -f docker-compose.gpu.yml --profile full up -d
+# DocForge — PROD GPU variant. Layer ON TOP of the base:
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml --profile full up -d
 #
-# NOTE: no special image is needed — the LOCKED Linux torch wheel is already a CUDA
-# build (2.10.0+cu128); granting the device is the only missing piece. Requires the
-# NVIDIA Container Toolkit (Docker Desktop/WSL2 ships it).
-# bge_server (embeddings) self-manages its device via its own image/config; this override grants the
-# NVIDIA device to the worker (docling) + bge_server. There is no runtime DeviceManager by design —
-# device placement is a deployment concern (this file), not a per-node runtime knob. See CLAUDE.md #7.
+# What this changes vs the base (CPU) prod file:
+#   - worker + bge_server pull the -gpu image tags (CUDA torch wheel baked in)
+#   - both are granted the NVIDIA device (`gpus: all`, == `docker run --gpus all`)
+#
+# Requires the NVIDIA Container Toolkit (Docker Desktop/WSL2 ships it).
+# device placement is a deployment concern (this file), not a per-node runtime knob —
+# there is no runtime DeviceManager by design. See CLAUDE.md #7.
+#
+# The `build.args` below are INERT in pure prod-gpu (no build context is present, so the
+# `image:` pull wins). They exist so that when this file is combined with the dev file
+# (which supplies the build context), a GPU dev build steers torch to the CUDA wheel.
+# ORDER MATTERS: compose is last-file-wins, so this gpu file must come AFTER the dev file
+# (whose build.args pin TORCH_VARIANT=cpu) for the gpu value to survive:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml -f docker-compose.gpu.yml ...
 # ─────────────────────────────────────────────────────────────────────────────
 
 services:
   docforge_worker:
+    image: ghcr.io/florian-barre/docforge-worker:${DOCFORGE_TAG:-latest}-gpu
     # Service-level GPU grant — equivalent to `docker run --gpus all`.
     gpus: all
+    build:
+      args:
+        TORCH_VARIANT: gpu
+
+  docforge_bge_server:
+    image: ghcr.io/florian-barre/docforge-bge-server:${DOCFORGE_TAG:-latest}-gpu
+    # Service-level GPU grant — equivalent to `docker run --gpus all`.
+    gpus: all
+    build:
+      args:
+        TORCH_VARIANT: gpu

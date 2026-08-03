@@ -1,0 +1,104 @@
+# ============================================================================
+# Release workflow for the DocForge DOCKER IMAGES → GitHub Container Registry (GHCR).
+#
+# NOTHING PUBLISHES UNLESS THE FULL QUALITY GATE IS GREEN. The `images` job `needs` the reusable
+# `gate` (format + lint + type-check + every package's unit suite + frontend build + SDK↔backend
+# OpenAPI coherence) — the SAME gate that guards every merge and the SDK release. So a tag on a
+# broken tree runs the gate, fails, and never builds or pushes a single image.
+#
+# Pushing goes to GHCR via the built-in GITHUB_TOKEN (packages: write) — NO stored secret.
+#
+# ---------------------------------------------------------------------------
+# WHAT IT PUBLISHES (on tag `v1.2.3`, owner `<owner>`):
+#   ghcr.io/<owner>/docforge-app:1.2.3        + :latest              (CPU only, bundles the UI, no torch)
+#   ghcr.io/<owner>/docforge-mcp:1.2.3        + :latest              (CPU only, no torch)
+#   ghcr.io/<owner>/docforge-worker:1.2.3-cpu     :latest-cpu
+#   ghcr.io/<owner>/docforge-worker:1.2.3-gpu     :latest-gpu        (TORCH_VARIANT build-arg)
+#   ghcr.io/<owner>/docforge-bge-server:1.2.3-cpu :latest-cpu
+#   ghcr.io/<owner>/docforge-bge-server:1.2.3-gpu :latest-gpu        (TORCH_VARIANT build-arg)
+#
+# HOW TO RELEASE:
+#   Tag a commit with `v<version>` (the PRODUCT/image release; the SDK's `sdk-v*` prefix is separate,
+#   so the two release lines never collide) and push it.
+#     git tag v1.2.3 && git push origin v1.2.3
+# ============================================================================
+
+name: release-images
+
+on:
+  push:
+    tags:
+      - "v*"
+
+# Declaring `permissions:` sets every UNLISTED scope to `none`, so both are required here:
+permissions:
+  contents: read # actions/checkout must read the (private) repo
+  packages: write # GHCR push via the built-in GITHUB_TOKEN
+
+jobs:
+  # 1. Run the exact same gate that guards every merge — the images job depends on it.
+  gate:
+    uses: ./.github/workflows/gate.yml
+
+  # 2. Build + push every image, ONLY after the gate is fully green.
+  images:
+    needs: gate
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Explicit include (not a cross-product): app/mcp have no torch variant and no suffix,
+        # while worker/bge-server ship both a CPU and a GPU build via the TORCH_VARIANT arg.
+        # `file` is the REPO-RELATIVE Dockerfile path (context differs from the file's location).
+        include:
+          - { name: app,        context: src/docforge, file: src/docforge/app/Dockerfile,        torch: "",    suffix: "" }
+          - { name: mcp,        context: src,          file: src/mcp/Dockerfile,                  torch: "",    suffix: "" }
+          - { name: worker,     context: src/docforge, file: src/docforge/worker/Dockerfile,      torch: cpu,   suffix: "-cpu" }
+          - { name: worker,     context: src/docforge, file: src/docforge/worker/Dockerfile,      torch: gpu,   suffix: "-gpu" }
+          - { name: bge-server, context: src,          file: src/bge_server/Dockerfile,           torch: cpu,   suffix: "-cpu" }
+          - { name: bge-server, context: src,          file: src/bge_server/Dockerfile,           torch: gpu,   suffix: "-gpu" }
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Derive image version from the tag
+        # Strip the leading `v` so tag `v1.2.3` → version `1.2.3` (mirrors release-sdk.yml's
+        # `${GITHUB_REF_NAME#sdk-v}` tag→version extraction).
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute image tags + labels
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/docforge-${{ matrix.name }}
+          # Build the tag list by hand (rather than relying on the flavor `suffix`/`onlatest`
+          # interplay) so the result is unambiguous: exactly `<version><suffix>` and `latest<suffix>`.
+          tags: |
+            type=raw,value=${{ env.VERSION }}${{ matrix.suffix }}
+            type=raw,value=latest${{ matrix.suffix }}
+
+      - name: Build + push
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
+          push: true
+          platforms: linux/amd64
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # Only pass TORCH_VARIANT for the images that declare it (worker, bge-server);
+          # app/mcp have no such ARG, so their build-args stay empty.
+          build-args: ${{ matrix.torch && format('TORCH_VARIANT={0}', matrix.torch) || '' }}
+          # Per-entry GHA cache scope so the cpu/gpu builds of the same image don't clobber each other.
+          cache-from: type=gha,scope=${{ matrix.name }}${{ matrix.suffix }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}${{ matrix.suffix }}

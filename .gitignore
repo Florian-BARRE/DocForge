@@ -89,3 +89,6 @@ docs/archive/agent-memory-legacy/
 
 # Root AI project instructions — local dev tooling, kept private (like .claude/).
 /CLAUDE.md
+
+# Docker Compose interpolation vars (copied from .env.example) — may hold local pins
+/.env
