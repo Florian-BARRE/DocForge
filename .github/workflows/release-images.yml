@@ -99,6 +99,9 @@ jobs:
           # Only pass TORCH_VARIANT for the images that declare it (worker, bge-server);
           # app/mcp have no such ARG, so their build-args stay empty.
           build-args: ${{ matrix.torch && format('TORCH_VARIANT={0}', matrix.torch) || '' }}
-          # Per-entry GHA cache scope so the cpu/gpu builds of the same image don't clobber each other.
-          cache-from: type=gha,scope=${{ matrix.name }}${{ matrix.suffix }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.name }}${{ matrix.suffix }}
+          # GHA layer cache for the small images only. The GPU builds (CUDA torch, ~8.5 GB) blow past
+          # the 10 GB per-repo GHA cache limit — mode=max there corrupts the cache export and fails the
+          # build with Azure "BlobNotFound" — so caching is disabled for the gpu variant (empty = off).
+          # Per-entry scope keeps the cpu/gpu builds of the same image from clobbering each other.
+          cache-from: ${{ matrix.torch != 'gpu' && format('type=gha,scope={0}{1}', matrix.name, matrix.suffix) || '' }}
+          cache-to: ${{ matrix.torch != 'gpu' && format('type=gha,mode=max,scope={0}{1}', matrix.name, matrix.suffix) || '' }}
