@@ -29,6 +29,11 @@ _JOB_SAMPLE: dict[str, Any] = {
     "attempt": 1,
     "started_at": None,
     "finished_at": None,
+    "updated_at": "2026-08-03T12:00:00Z",
+    "stalled": False,
+    "total_prompt_tokens": 0,
+    "total_completion_tokens": 0,
+    "cost_usd": 0.0,
 }
 
 

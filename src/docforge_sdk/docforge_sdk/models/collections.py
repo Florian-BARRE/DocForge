@@ -5,7 +5,7 @@
 
 # ====== Standard Library Imports ======
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 # ====== Third-Party Library Imports ======
 from pydantic import BaseModel, Field
@@ -98,6 +98,11 @@ class CreateCollectionRequest(BaseModel):
     pipeline: dict[str, Any] | None = Field(
         default=None,
         description="The pipeline blob; omitted → the product default (all stages wired).",
+    )
+    preset: Literal["standard", "light"] | None = Field(
+        default=None,
+        description="Stock-blob selector (ignored when pipeline is set); 'light' = fast, "
+        "enrichment-free core.",
     )
 
 

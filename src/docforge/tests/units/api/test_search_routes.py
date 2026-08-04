@@ -375,7 +375,11 @@ def test_pageless_block_location_surfaces_null_page(fastapi_app) -> None:
         score=0.4,
         rank=2,
         text="t",
-        metadata={"page": 0, "bbox": [0, 0, 1, 1], "block_locations": [{"page": 0, "bbox": [0, 0, 1, 1]}]},
+        metadata={
+            "page": 0,
+            "bbox": [0, 0, 1, 1],
+            "block_locations": [{"page": 0, "bbox": [0, 0, 1, 1]}],
+        },
     )
     paged_model = SearchHelpers.to_hit_model(paged)
     assert paged_model.page == 0
@@ -394,7 +398,12 @@ def test_transient_error_messages_stay_honest_and_pin_the_contract(
 
     cases = [
         (SearchRunTimeout("pipeline exceeded 30.0s"), 504, ("timed out", "busy"), "invalid"),
-        (SearchUnavailableError("QueryEncodeError: embedder saturated"), 503, ("unavailable", "busy"), "invalid"),
+        (
+            SearchUnavailableError("QueryEncodeError: embedder saturated"),
+            503,
+            ("unavailable", "busy"),
+            "invalid",
+        ),
         (SearchRunError("final node produced RankedHits"), 422, ("invalid", "search graph"), None),
     ]
     for exc, status, must_contain, must_not_contain in cases:

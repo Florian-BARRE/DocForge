@@ -37,6 +37,19 @@ class JobStatus(BaseModel):
     attempt: int = Field(description="arq retry attempt (1 = first run).")
     started_at: datetime | None = Field(default=None, description="Picked up by the worker at.")
     finished_at: datetime | None = Field(default=None, description="Ended (done or failed) at.")
+    updated_at: datetime = Field(description="Last progress/lifecycle write (freezes on a wedge).")
+    stalled: bool = Field(
+        description="A RUNNING job idle past the stall threshold — an early wedge warning."
+    )
+    total_prompt_tokens: int = Field(
+        description="Prompt tokens billed across this job's paid text-gen calls."
+    )
+    total_completion_tokens: int = Field(
+        description="Completion tokens billed across this job's paid text-gen calls."
+    )
+    cost_usd: float = Field(
+        description="USD cost of this job's paid calls (0 when nothing priceable)."
+    )
 
 
 class JobEvent(BaseModel):
@@ -56,6 +69,15 @@ class JobEvent(BaseModel):
     started_at: datetime | None = Field(default=None, description="Node start.")
     finished_at: datetime | None = Field(default=None, description="Node end.")
     detail: str | None = Field(default=None, description="Duration, or the error when failed.")
+    prompt_tokens: int | None = Field(
+        default=None, description="Prompt tokens billed by this stage; null when it made none."
+    )
+    completion_tokens: int | None = Field(
+        default=None, description="Completion tokens billed by this stage; null when none."
+    )
+    cost_usd: float | None = Field(
+        default=None, description="USD cost of this stage; null when no usage or unknown price."
+    )
 
 
 class JobTrace(BaseModel):

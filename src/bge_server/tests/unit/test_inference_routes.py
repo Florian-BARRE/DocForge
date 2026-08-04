@@ -6,6 +6,7 @@
 # input — the like-for-like contract the DocForge app relies on when it falls back to the two routes.
 
 # ====== Standard Library Imports ======
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock
 
 # ====== Third-Party Library Imports ======
@@ -73,7 +74,7 @@ def test_embed_all_shape_matches_separate_routes(client: TestClient) -> None:
     assert combined["sparse"] == sparse_resp.json()
 
     # embed_all is resolved with the config max_length (same value the dense/sparse workers use)
-    CONTEXT.batching_engine.embed_all.assert_awaited_once_with(
+    cast(AsyncMock, CONTEXT.batching_engine.embed_all).assert_awaited_once_with(
         ["t1", "t2"], max_length=BgeServerConfig.BGE_M3_MAX_LENGTH
     )
 
@@ -87,4 +88,4 @@ def test_embed_all_empty_input(client: TestClient) -> None:
 
     assert resp.status_code == 200
     assert resp.json() == {"dense": [], "sparse": []}
-    CONTEXT.batching_engine.embed_all.assert_not_awaited()
+    cast(AsyncMock, CONTEXT.batching_engine.embed_all).assert_not_awaited()

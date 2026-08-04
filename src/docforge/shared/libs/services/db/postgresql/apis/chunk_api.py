@@ -161,9 +161,7 @@ class ChunkApi:
         )
         # A falsy page_count (0 or NULL) means the document has no real pages — the block's stored
         # page index is a placeholder, so report None rather than a misleading "page 1".
-        return [
-            (row[0], row[1], row[2] if row[4] else None, list(row[3])) for row in result.all()
-        ]
+        return [(row[0], row[1], row[2] if row[4] else None, list(row[3])) for row in result.all()]
 
     @staticmethod
     async def get_composition_for_document(
