@@ -11,6 +11,7 @@ they exercise the scope logic regardless of AUTH_ENABLED.
 """
 
 import uuid
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -60,6 +61,10 @@ def _fake_job(collection_id: str):
         attempt=1,
         started_at=None,
         finished_at=None,
+        updated_at=datetime(2026, 8, 3, 12, 0, tzinfo=UTC),
+        total_prompt_tokens=0,
+        total_completion_tokens=0,
+        cost_usd=0,
     )
 
 
