@@ -87,6 +87,19 @@ jobs:
             type=raw,value=${{ env.VERSION }}${{ matrix.suffix }}
             type=raw,value=latest${{ matrix.suffix }}
 
+      - name: Free up runner disk (GPU only)
+        # The CUDA images (~8.5 GB) + their build layers overflow the ~14 GB free on a stock
+        # ubuntu-latest runner, which kills the build mid-export (unretrievable logs). Reclaim
+        # ~30 GB by dropping preinstalled toolchains this build never uses. CPU builds are small
+        # and skip this. See docker/build-push-action GPU-image disk-pressure notes.
+        if: matrix.torch == 'gpu'
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android \
+                      /usr/local/share/boost /usr/local/lib/node_modules \
+                      "${AGENT_TOOLSDIRECTORY:-/opt/hostedtoolcache}"
+          sudo docker image prune --all --force || true
+          df -h /
+
       - name: Build + push
         uses: docker/build-push-action@v6
         with:
