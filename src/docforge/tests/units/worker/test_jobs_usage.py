@@ -1,9 +1,9 @@
 """The token/cost meter on the worker side:
 
-  * JobProgressRecorder._sum_usage / __call__ END — totals a stage's paid usage over its WHOLE
-    execution tree (per-figure VLM calls are nested child records), prices MIXED models per leaf,
-    lands the summed tokens/cost on the JobStageEvent, and folds the totals into the job aggregate
-    via add_usage. A stage with no usage writes NULL columns and never calls add_usage.
+  * StageUsageSummer.summarize / JobProgressRecorder.__call__ END — totals a stage's paid usage over
+    its WHOLE execution tree (per-figure VLM calls are nested child records), prices MIXED models per
+    leaf, lands the summed tokens/cost on the JobStageEvent, and folds the totals into the job
+    aggregate via add_usage. A stage with no usage writes NULL columns and never calls add_usage.
   * JobApi.avg_stage_durations / collection_cost — the query SHAPE (compiled SQL), mirroring the
     reaper test's statement-compilation style.
 
@@ -27,6 +27,12 @@ from shared_libs.pipelines.engine import ProgressEvent, ProgressPhase
 def progress_module(worker_jobs_modules):
     """The jobs.progress module (imported by the session fixture under the fake backend)."""
     return sys.modules["jobs.progress"]
+
+
+@pytest.fixture
+def usage_module(worker_jobs_modules):
+    """The jobs.usage module (StageUsageSummer), imported under the same fake backend."""
+    return sys.modules["jobs.usage"]
 
 
 def _leaf(model: str, prompt: int, completion: int) -> NodeExecutionRecord:
@@ -65,30 +71,30 @@ async def _run_end(progress_module, monkeypatch, record: NodeExecutionRecord) ->
 
 
 # --------------------------------------------------------------------------- #
-# _sum_usage — the pure recursive helper
+# StageUsageSummer.summarize — the pure recursive helper (moved out of JobProgressRecorder)
 # --------------------------------------------------------------------------- #
 
 
-def test_sum_usage_prices_mixed_models_per_leaf(progress_module) -> None:
+def test_sum_usage_prices_mixed_models_per_leaf(usage_module) -> None:
     record = _group([_group([_leaf("gpt-4o-mini", 1_000_000, 0), _leaf("gpt-4o", 0, 1_000_000)])])
-    prompt, completion, cost, count = progress_module.JobProgressRecorder._sum_usage(record)
+    prompt, completion, cost, count = usage_module.StageUsageSummer.summarize(record)
 
     assert (prompt, completion, count) == (1_000_000, 1_000_000, 2)
     # gpt-4o-mini input (0.15) + gpt-4o output (10.00) — priced per leaf, not one model per stage.
     assert cost == pytest.approx(0.15 + 10.00)
 
 
-def test_sum_usage_unknown_model_gives_tokens_but_no_cost(progress_module) -> None:
+def test_sum_usage_unknown_model_gives_tokens_but_no_cost(usage_module) -> None:
     record = _group([_leaf("local-model", 100, 50)])
-    prompt, completion, cost, count = progress_module.JobProgressRecorder._sum_usage(record)
+    prompt, completion, cost, count = usage_module.StageUsageSummer.summarize(record)
 
     assert (prompt, completion, count) == (100, 50, 1)
     assert cost is None  # no priceable leaf -> "—", never a fabricated 0
 
 
-def test_sum_usage_no_usage_is_empty(progress_module) -> None:
+def test_sum_usage_no_usage_is_empty(usage_module) -> None:
     record = _group([_group([])])
-    assert progress_module.JobProgressRecorder._sum_usage(record) == (0, 0, None, 0)
+    assert usage_module.StageUsageSummer.summarize(record) == (0, 0, None, 0)
 
 
 # --------------------------------------------------------------------------- #

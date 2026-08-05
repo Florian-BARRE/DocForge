@@ -4,7 +4,6 @@
 
 # ====== Standard Library Imports ======
 import uuid
-from collections import defaultdict
 
 # ====== Third-Party Library Imports ======
 from fastapi import APIRouter, Depends, HTTPException
@@ -14,13 +13,14 @@ from fastapi.responses import StreamingResponse
 from ...context import CONTEXT
 from ...libs.auth import AuthPrincipal, AuthzGuard, Capability, require
 from ...utils.error_handling import auto_handle_errors
+from .helpers import WorkersLiveHelpers
 from .models import (
     CollectionCost,
     JobEvent,
     JobStatus,
     JobTrace,
+    QueueDepth,
     StageDurations,
-    WorkerActivity,
     WorkersLive,
 )
 from .stream import stream_job_events
@@ -108,19 +108,43 @@ async def collection_cost(
 @auto_handle_errors
 async def live_workers() -> WorkersLive:
     """
-    Return what every worker is doing RIGHT NOW — derived from the RUNNING job rows.
+    Return every known worker's liveness + running jobs — the live fleet view.
+
+    Fuses two independent signals so an idle-but-alive worker is visible and a dead one is flagged:
+    the worker_heartbeats table drives ``alive`` (a fresh heartbeat), the RUNNING job rows drive
+    ``busy`` (owning a job). A worker with a heartbeat but no job appears ``alive=True, busy=False``.
 
     Returns:
-        WorkersLive: Running jobs grouped by worker (empty when the fleet is idle).
+        WorkersLive: One entry per worker (empty only when no worker has ever heartbeated).
     """
-    # 1. RUNNING rows carry worker_id + current_stage — that IS the live fleet view.
+    # 1. Liveness (heartbeats) + activity (running jobs) are two reads; the helper fuses them.
+    heartbeats = await CONTEXT.database.jobs.list_heartbeats()
     running = await CONTEXT.database.jobs.list_active()
-    by_worker: dict[str, list] = defaultdict(list)
-    for job in running:
-        by_worker[job.worker_id or "unknown"].append(_job_status(job))
-    return WorkersLive(
-        workers=[WorkerActivity(worker_id=w, jobs=jobs) for w, jobs in sorted(by_worker.items())]
-    )
+    return WorkersLiveHelpers.assemble(heartbeats, running)
+
+
+@router.get("/queue", response_model=QueueDepth)
+@auto_handle_errors
+async def queue_depth(
+    collection_id: uuid.UUID | None = None,
+    principal: AuthPrincipal = Depends(require(Capability.READ)),
+) -> QueueDepth:
+    """
+    Return the backlog depth — pending (queued, unclaimed) and running job counts.
+
+    Fleet-wide when no ``collection_id`` is given (mirrors the fleet-wide workers/live view),
+    otherwise scoped to that collection (and scope-gated the same way the list route is).
+
+    Returns:
+        QueueDepth: The pending and running counts (both zero when nothing is queued).
+    """
+    # 1. A scoped request must pass the collection-scope gate; a fleet-wide one only needs READ.
+    if collection_id is not None:
+        AuthzGuard.assert_collection_scope(principal, str(collection_id))
+
+    # 2. One grouped count read yields both numbers.
+    pending, running = await CONTEXT.database.jobs.queue_depth(collection_id)
+    return QueueDepth(pending=pending, running=running)
 
 
 @router.get("/{job_id}/events", response_model=JobTrace)

@@ -9,6 +9,7 @@ import { LoadingState } from "../../components/LoadingState";
 import type { Navigate } from "../../shell/view";
 import { theme } from "../../theme";
 import { JobRow } from "./JobRow";
+import { QueueDepthTile } from "./QueueDepthTile";
 
 const POLL_MS = 2500;
 
@@ -48,6 +49,7 @@ export function JobsPage({ collectionId, onNavigate }: JobsPageProps) {
 
   return (
     <div className="df-rise" style={{ padding: theme.space.xl, overflowY: "auto", height: "100%", maxWidth: 1200, margin: "0 auto", width: "100%" }}>
+      <QueueDepthTile collectionId={collectionId} />
       {jobs && jobs.length > 0 && (
         <div style={{ color: theme.color.dim, fontSize: theme.font.size.l, marginBottom: theme.space.l }}>
           {count} job{count === 1 ? "" : "s"}

@@ -52,6 +52,18 @@ class Job(Base, UUIDPrimaryKey, TimestampedMixin):
     total_prompt_tokens: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
     total_completion_tokens: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
     cost_usd: Mapped[Decimal] = mapped_column(Numeric(12, 6), nullable=False, default=0)
+    # Per-item counter for the CURRENT fan-out (foreach) root stage: how many child items have
+    # finished (items_done) out of the fan-out width (items_total). Both NULL when the current root
+    # stage is not a fan-out; reset to NULL when the job leaves a fan-out stage.
+    items_done: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
+    items_total: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
+    # Structured failure breadcrumb (free-text stays in ``error``): the deepest failed node, its kind
+    # (family/action label), the failing item index inside a fan-out (NULL outside a fan-out) and the
+    # exception class name. All NULL until the job fails.
+    failed_node_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    failed_node_kind: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    failed_item_index: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
+    error_type: Mapped[str | None] = mapped_column(String(128), nullable=True)
 
 
 __all__ = ["Job", "JobStatus"]

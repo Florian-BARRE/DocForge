@@ -1,6 +1,9 @@
 # ---------------------- Run-input contract ---------------------- #
 from .contract import SearchContractBuilder, SearchContractError
 
+# ---------------------- Query-embedder reachability probe ---------------------- #
+from .embedder_probe import QueryEmbedderProbe
+
 # ---------------------- Read-only capability port ---------------------- #
 from .read_port import CollectionReadPortImpl
 
@@ -19,6 +22,7 @@ from .service import SearchService, SearchServiceError
 __all__ = [
     "SearchContractBuilder",
     "SearchContractError",
+    "QueryEmbedderProbe",
     "CollectionReadPortImpl",
     "SearchRunner",
     "SearchRunError",

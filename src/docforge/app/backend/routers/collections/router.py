@@ -23,6 +23,7 @@ from shared_libs.services.db.qdrant import RESERVED_PAYLOAD_KEYS
 # ====== Local Project Imports ======
 from ...context import CONTEXT
 from ...libs.auth import AuthPrincipal, Capability, KeyPermissions, require
+from ...libs.health import CollectionHealthResponse
 from ...utils.error_handling import auto_handle_errors
 from ...utils.pipeline_validation import PipelineBlobValidator
 from ...utils.search_blob_validation import SearchBlobValidator
@@ -199,6 +200,29 @@ async def get_collection(collection_id: uuid.UUID) -> CollectionModel:
     if collection is None:
         raise HTTPException(status_code=404, detail=f"Collection {collection_id} not found.")
     return _to_model(collection, await CONTEXT.database.collections.get_schema(collection_id))
+
+
+@router.get(
+    "/{collection_id}/health",
+    response_model=CollectionHealthResponse,
+    dependencies=[Depends(require(Capability.READ))],
+)
+@auto_handle_errors
+async def get_collection_health(collection_id: uuid.UUID) -> CollectionHealthResponse:
+    """
+    Probe a collection's operational health on demand — provider reachability across the ingest AND
+    search graphs, index population and last successful ingest — WITHOUT enqueuing a job or spending.
+
+    Returns:
+        CollectionHealthResponse: Per-provider reachability, index stats and a rolled-up verdict.
+    """
+    # 1. Compose the snapshot from the shared build + reachability + index reads (no writes).
+    result = await CONTEXT.health_service.check(collection_id)
+
+    # 2. Unknown collection → 404, mirroring the other collection reads.
+    if result is None:
+        raise HTTPException(status_code=404, detail=f"Collection {collection_id} not found.")
+    return result
 
 
 @router.post(

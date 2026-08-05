@@ -30,11 +30,26 @@ export interface JobStatus {
   total_completion_tokens: number;
   /** Running USD cost of this job's paid calls (0 when nothing priceable ran). */
   cost_usd: number;
+  /** Child items finished in the CURRENT fan-out stage; null when not in a fan-out stage. */
+  items_done: number | null;
+  /** The current fan-out stage's width; null when not in a fan-out stage. */
+  items_total: number | null;
+  /** Deepest node that raised — only set on a failed job. */
+  failed_node_id: string | null;
+  /** That node's kind/family label — only set on a failed job. */
+  failed_node_kind: string | null;
+  /** The fan-out item index the failure sits in; null outside a fan-out. */
+  failed_item_index: number | null;
+  /** Exception class name of the failure (e.g. "TimeoutError"); only set on a failed job. */
+  error_type: string | null;
 }
 
 export interface JobEvent {
   stage: string;
   status: string;
+  /** The stage's structural kind (action/group/foreach) or the node's concrete kind — null for
+   * rows written before this column landed. */
+  node_kind: string | null;
   started_at: string | null;
   finished_at: string | null;
   detail: string | null;
@@ -68,11 +83,25 @@ export interface JobTrace {
 
 export interface WorkerActivity {
   worker_id: string;
+  /** Heartbeat fresher than the liveness threshold (~30s) — independent of `busy`. */
+  alive: boolean;
+  /** Owns at least one RUNNING job right now — independent of `alive`. */
+  busy: boolean;
+  /** Last heartbeat tick; null when the worker has no heartbeat row yet. */
+  last_seen: string | null;
+  /** When the worker process registered; null when no heartbeat row exists. */
+  started_at: string | null;
   jobs: JobStatus[];
 }
 
 export interface WorkersLive {
   workers: WorkerActivity[];
+}
+
+/** Backlog counters — pending (queued, unclaimed) and running job counts. */
+export interface QueueDepth {
+  pending: number;
+  running: number;
 }
 
 export function listJobs(collectionId: string): Promise<JobStatus[]> {
@@ -97,6 +126,16 @@ export function getCollectionCost(collectionId: string): Promise<CollectionCost>
 
 export function getWorkersLive(): Promise<WorkersLive> {
   return apiFetch(`${BASE}/workers/live`);
+}
+
+/**
+ * Return the backlog depth — pending (queued, unclaimed) and running job counts.
+ *
+ * Fleet-wide when `collectionId` is omitted, otherwise scoped to that collection.
+ */
+export function getQueueDepth(collectionId?: string): Promise<QueueDepth> {
+  const query = collectionId ? `?collection_id=${encodeURIComponent(collectionId)}` : "";
+  return apiFetch(`${BASE}/queue${query}`);
 }
 
 /** Callbacks the live job stream drives — one per new stage event, one per status snapshot change. */

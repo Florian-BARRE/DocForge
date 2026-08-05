@@ -6,6 +6,7 @@
 # ====== Standard Library Imports ======
 import uuid
 from datetime import UTC, datetime
+from decimal import Decimal
 
 # ====== Internal Project Imports ======
 from loggerplusplus import LoggerClass
@@ -16,6 +17,7 @@ from shared_libs.services.db.postgresql.tables import (
     DocumentStatus,
     Job,
     JobStageEvent,
+    WorkerHeartbeat,
 )
 
 
@@ -36,6 +38,11 @@ class JobsFacade(LoggerClass):
         async with self._postgres.session() as session:
             return await JobApi.list_for_collection(session, collection_id)
 
+    async def last_successful_ingest_at(self, collection_id: uuid.UUID) -> datetime | None:
+        """Return the finish time of the collection's most recent DONE ingest, or None."""
+        async with self._postgres.session() as session:
+            return await JobApi.last_successful_ingest_at(session, collection_id)
+
     async def mark_running(
         self, job_id: uuid.UUID, worker_id: str, attempt: int, started_at: datetime
     ) -> None:
@@ -48,15 +55,40 @@ class JobsFacade(LoggerClass):
         async with self._postgres.session() as session:
             await JobApi.set_progress(session, job_id, current_stage, progress)
 
+    async def set_items(
+        self, job_id: uuid.UUID, items_done: int | None, items_total: int | None
+    ) -> None:
+        """Set the fan-out per-item counter (both None = reset when leaving a fan-out stage)."""
+        async with self._postgres.session() as session:
+            await JobApi.set_items(session, job_id, items_done, items_total)
+
     async def mark_done(self, job_id: uuid.UUID, finished_at: datetime) -> None:
         """Complete the job successfully."""
         async with self._postgres.session() as session:
             await JobApi.mark_done(session, job_id, finished_at)
 
-    async def mark_failed(self, job_id: uuid.UUID, error: str, finished_at: datetime) -> None:
-        """Fail the job with its error message."""
+    async def mark_failed(
+        self,
+        job_id: uuid.UUID,
+        error: str,
+        finished_at: datetime,
+        failed_node_id: str | None = None,
+        failed_node_kind: str | None = None,
+        failed_item_index: int | None = None,
+        error_type: str | None = None,
+    ) -> None:
+        """Fail the job with its error message + structured breadcrumb; close its open stage row."""
         async with self._postgres.session() as session:
-            await JobApi.mark_failed(session, job_id, error, finished_at)
+            await JobApi.mark_failed(
+                session,
+                job_id,
+                error,
+                finished_at,
+                failed_node_id=failed_node_id,
+                failed_node_kind=failed_node_kind,
+                failed_item_index=failed_item_index,
+                error_type=error_type,
+            )
 
     async def list_events(self, job_id: uuid.UUID) -> list[JobStageEvent]:
         """Return a job's per-node trace, in execution order."""
@@ -68,10 +100,50 @@ class JobsFacade(LoggerClass):
         async with self._postgres.session() as session:
             return await JobApi.list_active(session)
 
+    async def list_heartbeats(self) -> list[WorkerHeartbeat]:
+        """Return every worker heartbeat row — the fleet's liveness snapshot (idle-alive included)."""
+        async with self._postgres.session() as session:
+            return await JobApi.list_heartbeats(session)
+
+    async def queue_depth(self, collection_id: uuid.UUID | None = None) -> tuple[int, int]:
+        """Count (pending, running) jobs — fleet-wide when collection_id is None, else scoped."""
+        async with self._postgres.session() as session:
+            return await JobApi.queue_depth(session, collection_id)
+
     async def record_event(self, event: JobStageEvent) -> JobStageEvent:
-        """Append a stage event to the job's timeline."""
+        """Append a stage event to the job's timeline (returns it with its id assigned)."""
         async with self._postgres.session() as session:
             return await JobApi.record_event(session, event)
+
+    async def finalize_event(
+        self,
+        event_id: uuid.UUID,
+        status: str,
+        finished_at: datetime,
+        detail: str | None,
+        prompt_tokens: int | None,
+        completion_tokens: int | None,
+        cost_usd: Decimal | None,
+    ) -> None:
+        """Close an open stage-event row (opened at START) with its final outcome/usage."""
+        async with self._postgres.session() as session:
+            await JobApi.finalize_event(
+                session,
+                event_id,
+                status,
+                finished_at,
+                detail,
+                prompt_tokens,
+                completion_tokens,
+                cost_usd,
+            )
+
+    async def upsert_heartbeat(
+        self, worker_id: str, last_seen: datetime, started_at: datetime
+    ) -> None:
+        """Register/refresh a worker's liveness heartbeat row (idle-but-alive visibility)."""
+        async with self._postgres.session() as session:
+            await JobApi.upsert_heartbeat(session, worker_id, last_seen, started_at)
 
     async def add_usage(
         self,

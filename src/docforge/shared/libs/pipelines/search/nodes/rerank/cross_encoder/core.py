@@ -16,6 +16,7 @@
 import asyncio
 
 # ====== Internal Project Imports ======
+from shared_libs.pipelines.nodes.openai_compat import EndpointReachability
 from shared_libs.pipelines.registry import NodeRegistry
 from shared_libs.public_models.search import CandidateSet
 
@@ -52,6 +53,22 @@ class RerankCrossEncoderNode(PortBackedNode):
     Consumes = RerankCrossEncoderConsumes
     Produces = RerankCrossEncoderProduces
     UNIQUE_IN_GRAPH = True
+
+    async def preflight(self) -> None:
+        """Verify the reranker endpoint is reachable and its token accepted, before any spend.
+
+        Probes the TEI-compatible ``/health`` route — any answer (even non-200) proves the host is
+        up; a 401/403 surfaces a rejected bearer token. Reads ``self.config`` only, so the app's
+        on-demand health sweep can call it without wiring the read port.
+        """
+        config: RerankCrossEncoderConfig = self.config
+        await EndpointReachability.check(
+            node_kind=self.KIND,
+            base_url=config.base_url,
+            api_key=config.api_key,
+            timeout_seconds=config.timeout_seconds,
+            path="/health",
+        )
 
     async def run(self, data: RerankCrossEncoderConsumes) -> RerankCrossEncoderProduces:
         """

@@ -16,6 +16,10 @@ from shared_libs.services.db.postgresql.tables import JobStatus as JobStatusEnum
 # reap window: the operator sees the wedge coming, then the reaper resolves it.
 STALLED_AFTER_SECONDS = 600
 
+# A worker whose heartbeat is fresher than this is ``alive`` — the worker upserts its heartbeat every
+# ~10s, so a value older than 30s (three missed ticks) means the process is gone, not merely idle.
+WORKER_ALIVE_THRESHOLD_SECONDS = 30
+
 
 class JobStatus(BaseModel):
     """
@@ -37,6 +41,12 @@ class JobStatus(BaseModel):
         total_prompt_tokens (int): The document's lifetime input tokens across paid text-gen calls.
         total_completion_tokens (int): The document's lifetime output tokens.
         cost_usd (float): The document's lifetime USD cost (0 while no priceable call has run).
+        items_done (int | None): Child items finished in the CURRENT fan-out stage (None off fan-out).
+        items_total (int | None): The current fan-out's width (None when not in a fan-out stage).
+        failed_node_id (str | None): The deepest node that raised (only set on a failed job).
+        failed_node_kind (str | None): That node's kind/family label (only set on a failed job).
+        failed_item_index (int | None): The fan-out item index the failure sits in (None outside one).
+        error_type (str | None): The exception class name (e.g. "TimeoutError") — set on failure.
     """
 
     job_id: str = Field(description="The job row's UUID.")
@@ -62,6 +72,24 @@ class JobStatus(BaseModel):
     )
     cost_usd: float = Field(
         description="Document's lifetime USD cost of paid calls (0 until a priceable call runs)."
+    )
+    items_done: int | None = Field(
+        default=None, description="Child items finished in the current fan-out stage (None off it)."
+    )
+    items_total: int | None = Field(
+        default=None, description="The current fan-out stage's width (None when not in a fan-out)."
+    )
+    failed_node_id: str | None = Field(
+        default=None, description="Deepest node that raised — only set on a failed job."
+    )
+    failed_node_kind: str | None = Field(
+        default=None, description="That node's kind/family label — only set on a failed job."
+    )
+    failed_item_index: int | None = Field(
+        default=None, description="Fan-out item index the failure sits in (None outside a fan-out)."
+    )
+    error_type: str | None = Field(
+        default=None, description="Exception class name of the failure (e.g. 'TimeoutError')."
     )
 
     @classmethod
@@ -90,6 +118,12 @@ class JobStatus(BaseModel):
             total_prompt_tokens=job.total_prompt_tokens,
             total_completion_tokens=job.total_completion_tokens,
             cost_usd=float(job.cost_usd),
+            items_done=job.items_done,
+            items_total=job.items_total,
+            failed_node_id=job.failed_node_id,
+            failed_node_kind=job.failed_node_kind,
+            failed_item_index=job.failed_item_index,
+            error_type=job.error_type,
         )
 
 
@@ -98,6 +132,11 @@ class JobEvent(BaseModel):
 
     stage: str = Field(description="The pipeline node id.")
     status: str = Field(description="success / failed / skipped.")
+    node_kind: str | None = Field(
+        default=None,
+        description="The stage's structural kind (action/group/foreach) or the node's concrete "
+        "kind — None for rows written before this column landed.",
+    )
     started_at: datetime | None = Field(default=None, description="Node start.")
     finished_at: datetime | None = Field(default=None, description="Node end.")
     detail: str | None = Field(default=None, description="Duration, or the error when failed.")
@@ -120,6 +159,7 @@ class JobEvent(BaseModel):
         return cls(
             stage=event.stage,
             status=event.status,
+            node_kind=event.node_kind,
             started_at=event.started_at,
             finished_at=event.finished_at,
             detail=event.detail,
@@ -137,16 +177,45 @@ class JobTrace(BaseModel):
 
 
 class WorkerActivity(BaseModel):
-    """One worker's live activity — derived from its RUNNING jobs (no extra heartbeat)."""
+    """
+    One worker's live activity — its heartbeat-derived liveness plus any RUNNING jobs it owns.
 
-    worker_id: str = Field(description="The worker's hostname.")
+    ``alive`` and ``busy`` are two INDEPENDENT signals: a worker with a fresh heartbeat but no
+    running job is ``alive=True, busy=False`` (idle-but-alive, previously invisible), while a worker
+    whose heartbeat went stale is ``alive=False`` even if a job row still names it (it likely died).
+
+    Attributes:
+        worker_id (str): The worker's stable id (its hostname).
+        alive (bool): Its heartbeat is fresher than the liveness threshold.
+        busy (bool): It currently owns at least one RUNNING job.
+        last_seen (datetime | None): Its last heartbeat tick (None when no heartbeat row exists).
+        started_at (datetime | None): When the worker process registered (None when no heartbeat).
+        jobs (list[JobStatus]): Its running jobs, live.
+    """
+
+    worker_id: str = Field(description="The worker's stable id (its hostname).")
+    alive: bool = Field(description="Heartbeat fresher than the liveness threshold.")
+    busy: bool = Field(description="Owns at least one RUNNING job right now.")
+    last_seen: datetime | None = Field(
+        default=None, description="Last heartbeat tick (None when the worker has no heartbeat row)."
+    )
+    started_at: datetime | None = Field(
+        default=None, description="When the worker process registered (None when no heartbeat)."
+    )
     jobs: list[JobStatus] = Field(default_factory=list, description="Its running jobs, live.")
 
 
 class WorkersLive(BaseModel):
-    """Everything running right now, grouped by worker — the monitoring view."""
+    """Every known worker's liveness + running jobs — the monitoring view (idle-alive included)."""
 
     workers: list[WorkerActivity] = Field(default_factory=list)
+
+
+class QueueDepth(BaseModel):
+    """Backlog counters — pending (queued, unclaimed) and running jobs, fleet-wide or per-collection."""
+
+    pending: int = Field(description="Jobs queued but not yet claimed by a worker.")
+    running: int = Field(description="Jobs a worker is currently executing.")
 
 
 class StageDurations(BaseModel):
@@ -176,6 +245,7 @@ __all__ = [
     "JobTrace",
     "WorkerActivity",
     "WorkersLive",
+    "QueueDepth",
     "StageDurations",
     "CollectionCost",
 ]

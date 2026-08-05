@@ -5,6 +5,7 @@
 import { useState } from "react";
 import type { JobStatus } from "../../api/jobs";
 import { theme } from "../../theme";
+import { ItemProgressChip } from "./ItemProgressChip";
 import { JobStatusChip } from "./JobStatusChip";
 import { ProgressBar } from "./ProgressBar";
 
@@ -57,6 +58,9 @@ export function JobRow({ job, onClick }: JobRowProps) {
         )}
         {job.current_stage && (
           <span style={{ color: theme.color.dim, fontSize: theme.font.size.xs }}>stage: {job.current_stage}</span>
+        )}
+        {job.items_done !== null && job.items_total !== null && (
+          <ItemProgressChip itemsDone={job.items_done} itemsTotal={job.items_total} />
         )}
         <span style={{ marginLeft: "auto", color: theme.color.dim, fontSize: theme.font.size.xs }}>
           attempt {job.attempt}

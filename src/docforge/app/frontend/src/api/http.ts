@@ -60,6 +60,11 @@ function normalizeDetail(detail: unknown): ApiIssue[] {
           location: typeof record.location === "string" ? record.location : undefined,
           message: record.message,
         };
+      // Search router's honest typed-error shape: {code, detail} (e.g. embedder_unreachable,
+      // embedder_auth_failed, embedder_overloaded, search_timeout) — `code` must survive so callers
+      // can distinguish a permanent config fault from a transient one instead of just reading prose.
+      if (typeof record.code === "string" && typeof record.detail === "string")
+        return { code: record.code, message: record.detail };
       // FastAPI's own validation error shape: {loc, msg, type}.
       if (typeof record.msg === "string")
         return {

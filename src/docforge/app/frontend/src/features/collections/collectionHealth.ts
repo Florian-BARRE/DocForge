@@ -1,11 +1,12 @@
 // ====== Code Summary ======
-// Derives one overall health verdict for a collection's Overview dashboard from its jobs and
-// documents — a single synthetic signal a user can read at a glance instead of cross-referencing
-// the jobs list and the document catalogue themselves.
+// Derives the provider-availability verdict for a collection's Overview health board. The verdict is
+// a PURE projection of the LIVE probe (`GET .../health`) — "can this collection reach its providers
+// and index right now" — and nothing else: past job/document failures are a separate concern owned
+// by the Jobs tab, deliberately kept OUT of this board so the header answers exactly one question.
+// An unresolved probe (still loading, or the check itself failed) must never claim "Operational" —
+// that silent fallback is the false-confidence bug this endpoint was built to close.
 
-import type { Collection } from "../../api/collections";
-import type { DocumentListItem } from "../../api/explorer";
-import type { JobStatus } from "../../api/jobs";
+import type { CollectionHealth, ProviderHealth } from "../../api/collections";
 import type { ChipTone } from "../../components/Chip";
 
 /** One rendered verdict — a tone for the headline Chip, its label, and one line of detail. */
@@ -15,54 +16,64 @@ export interface HealthVerdict {
   detail: string;
 }
 
+/** The first provider (ingest or search side) reporting a hard reachability/auth failure. */
+function firstFailingProvider(health: CollectionHealth): ProviderHealth | undefined {
+  return [...health.ingest.providers, ...health.search.providers].find(
+    (p) => p.status === "unreachable" || p.status === "auth_failed",
+  );
+}
+
+/** One human line naming what a failing/degraded provider or blob is, for the banner detail. */
+function describeProbeIssue(health: CollectionHealth): string {
+  if (health.ingest.build_error) return `Ingestion pipeline is invalid: ${health.ingest.build_error}`;
+  if (health.search.build_error) return `Search pipeline is invalid: ${health.search.build_error}`;
+
+  const bad = firstFailingProvider(health);
+  if (bad) {
+    const reason = bad.status === "auth_failed" ? "rejected its credentials" : "is unreachable";
+    return `${bad.kind} (${bad.node_id}) ${reason}${bad.detail ? ` — ${bad.detail}` : ""}.`;
+  }
+  if (health.search.index.vector_count === 0) return "The index holds 0 chunks — nothing is searchable yet.";
+  return "See the provider breakdown below for details.";
+}
+
+
 /**
- * Compute the collection's overall health verdict.
+ * Project the live provider probe onto the board's headline verdict — provider availability ONLY.
  *
- * Priority (most severe wins): still gathering signals → checking; any failed job/document →
- * errors; a stale index or a document disabled from search → attention needed; jobs still
- * running/pending → indexing; otherwise healthy.
+ * Priority (most severe wins): an unresolved probe → "Health unknown" (a failed check) or "Checking…"
+ * (still loading), never "Operational"; probe `down` → Down (red); probe `degraded` → Degraded
+ * (amber); probe `operational` → Operational (green). Past job/document failures are intentionally
+ * NOT considered here — they are surfaced by the Jobs tab, not this board.
  *
- * @param collection - The collection, for its `needs_reindex` flag.
- * @param jobs - Ingestion jobs, or null while still loading (a failed fetch degrades to `[]`).
- * @param docs - Documents, or null while still loading.
- * @returns The verdict to render in the health banner.
+ * @param health - The live provider probe, or null while it hasn't resolved yet (loading, or the
+ *   check itself failed) — never treated as "operational" by default.
+ * @param healthError - Set when the probe fetch itself failed, distinct from a probe that ran and
+ *   reported `down`/`degraded`.
+ * @returns The verdict to render in the health board header.
  */
-export function computeHealthVerdict(
-  collection: Collection,
-  jobs: JobStatus[] | null,
-  docs: DocumentListItem[] | null,
+export function probeVerdict(
+  health: CollectionHealth | null,
+  healthError: string | null,
 ): HealthVerdict {
-  // 1. Nothing to judge yet — the document catalogue hasn't resolved.
-  if (docs === null) {
-    return { tone: "dim", label: "Checking…", detail: "Gathering collection health signals…" };
+  // 1. The probe hasn't resolved — say so honestly, never assert "Operational" without live proof.
+  if (health === null) {
+    if (healthError) {
+      return { tone: "warn", label: "Health unknown", detail: `Could not verify live provider health — ${healthError}.` };
+    }
+    return { tone: "dim", label: "Checking…", detail: "Probing providers…" };
   }
 
-  const failedJobs = jobs?.filter((j) => j.status === "failed").length ?? 0;
-  const failedDocs = docs.filter((d) => d.status === "failed").length;
-  const activeJobs = jobs?.filter((j) => j.status === "running" || j.status === "pending").length ?? 0;
-  const disabledDocs = docs.filter((d) => !d.enabled).length;
-
-  // 2. Errors take priority — something in the pipeline actually broke.
-  if (failedJobs > 0 || failedDocs > 0) {
-    const parts: string[] = [];
-    if (failedJobs > 0) parts.push(`${failedJobs} job${failedJobs === 1 ? "" : "s"}`);
-    if (failedDocs > 0) parts.push(`${failedDocs} document${failedDocs === 1 ? "" : "s"}`);
-    return { tone: "error", label: "Errors", detail: `${parts.join(" and ")} failed — check Jobs for the cause.` };
+  // 2. A critical provider is unreachable/auth-failed, or a pipeline blob won't build.
+  if (health.verdict === "down") {
+    return { tone: "error", label: "Down", detail: describeProbeIssue(health) };
   }
 
-  // 3. A stale index or a document intentionally hidden from search both need a human look.
-  if (collection.needs_reindex || disabledDocs > 0) {
-    const parts: string[] = [];
-    if (collection.needs_reindex) parts.push("a config change needs reindexing");
-    if (disabledDocs > 0) parts.push(`${disabledDocs} document${disabledDocs === 1 ? "" : "s"} disabled from search`);
-    return { tone: "warn", label: "Attention needed", detail: parts.join(" · ") };
+  // 3. A non-critical provider is down, or the index holds nothing yet.
+  if (health.verdict === "degraded") {
+    return { tone: "warn", label: "Degraded", detail: describeProbeIssue(health) };
   }
 
-  // 4. Nothing wrong, but ingestion is still in flight.
-  if (activeJobs > 0) {
-    return { tone: "info", label: "Indexing…", detail: `${activeJobs} job${activeJobs === 1 ? "" : "s"} in progress.` };
-  }
-
-  // 5. Quiet and clean.
-  return { tone: "ok", label: "Healthy", detail: "All documents are indexed and searchable." };
+  // 4. Every probed provider answered.
+  return { tone: "ok", label: "Operational", detail: "All providers reachable." };
 }

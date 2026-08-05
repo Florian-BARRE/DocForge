@@ -272,6 +272,11 @@ class FlowEngine(LoggerClass):
                 error=ErrorInfo(error_type="ValueError", message=message),
             )
 
+        # 1b. The list is known — announce the fan-out START now, carrying its width so a consumer
+        #     can show a live "done / total" counter. Emitted here (not in __run_child) because only
+        #     after resolving ``over`` is the item total known.
+        await self.__emit(context, ProgressPhase.START, node, total_items=len(over_value))
+
         # 2. The collection contract must hold before anything is spent (the validator's rule,
         #    re-checked here so an unvalidated graph still fails loudly, never silently).
         expected = node.item_type()
@@ -342,12 +347,19 @@ class FlowEngine(LoggerClass):
         phase: ProgressPhase,
         node: AbstractNode,
         record: NodeExecutionRecord | None = None,
+        total_items: int | None = None,
     ) -> None:
         """Fire the run's progress callback for a node event, if one is registered."""
         if context.progress_callback is None:
             return
         await context.progress_callback(
-            ProgressEvent(phase=phase, node_id=node.id, kind=node.KIND, record=record)
+            ProgressEvent(
+                phase=phase,
+                node_id=node.id,
+                kind=node.KIND,
+                record=record,
+                total_items=total_items,
+            )
         )
 
     async def __dispatch(
@@ -391,7 +403,11 @@ class FlowEngine(LoggerClass):
         node_outputs: dict[str, NodeOutput],
     ) -> tuple[NodeOutput | None, NodeExecutionRecord]:
         """Run one child, wrapped in START/END progress events."""
-        await self.__emit(context, ProgressPhase.START, node)
+        # A ForEach emits its OWN START from inside __run_foreach — once it has resolved the iterated
+        # list, so the event can carry the item total for a live fan-out counter. Every other node
+        # starts here (its width is not a concept).
+        if not isinstance(node, ForEach):
+            await self.__emit(context, ProgressPhase.START, node)
         node_output, record = await self.__dispatch(node, group, context, group_input, node_outputs)
         await self.__emit(context, ProgressPhase.END, node, record)
         return node_output, record

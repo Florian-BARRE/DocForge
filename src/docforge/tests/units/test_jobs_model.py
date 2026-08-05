@@ -61,6 +61,12 @@ def _row(status: JobStatusEnum, *, idle_seconds: float) -> SimpleNamespace:
         total_prompt_tokens=1200,
         total_completion_tokens=340,
         cost_usd=Decimal("0.123456"),
+        items_done=3,
+        items_total=8,
+        failed_node_id=None,
+        failed_node_kind=None,
+        failed_item_index=None,
+        error_type=None,
     )
 
 
@@ -112,12 +118,39 @@ def test_job_status_maps_the_token_cost_meter(job_model) -> None:
     assert model.cost_usd == pytest.approx(0.123456)
 
 
+def test_job_status_maps_fan_out_counter(job_model) -> None:
+    """items_done/items_total pass through untouched for the currently-running fan-out stage."""
+    JobStatus, _ = job_model
+    model = JobStatus.from_row(_row(JobStatusEnum.RUNNING, idle_seconds=1))
+
+    assert model.items_done == 3
+    assert model.items_total == 8
+
+
+def test_job_status_maps_failure_breadcrumb(job_model) -> None:
+    """The structured failure breadcrumb (node id/kind, item index, error type) passes through."""
+    JobStatus, _ = job_model
+    row = _row(JobStatusEnum.FAILED, idle_seconds=1)
+    row.failed_node_id = "vlm_describe"
+    row.failed_node_kind = "vlm"
+    row.failed_item_index = 12
+    row.error_type = "TimeoutError"
+
+    model = JobStatus.from_row(row)
+
+    assert model.failed_node_id == "vlm_describe"
+    assert model.failed_node_kind == "vlm"
+    assert model.failed_item_index == 12
+    assert model.error_type == "TimeoutError"
+
+
 def test_job_event_maps_tokens_and_cost(jobs_models) -> None:
     """JobEvent.from_row lifts the per-stage token/cost columns; a NULL cost stays None."""
     JobEvent = jobs_models.JobEvent
     row = SimpleNamespace(
         stage="metagen",
         status="success",
+        node_kind="llm",
         started_at=None,
         finished_at=None,
         detail="120 ms",
@@ -129,6 +162,7 @@ def test_job_event_maps_tokens_and_cost(jobs_models) -> None:
     event = JobEvent.from_row(row)
     assert (event.prompt_tokens, event.completion_tokens) == (800, 210)
     assert event.cost_usd == pytest.approx(0.045)
+    assert event.node_kind == "llm"
 
 
 def test_job_event_null_meter_stays_none(jobs_models) -> None:
@@ -137,6 +171,7 @@ def test_job_event_null_meter_stays_none(jobs_models) -> None:
     row = SimpleNamespace(
         stage="chunk",
         status="success",
+        node_kind=None,
         started_at=None,
         finished_at=None,
         detail="12 ms",
@@ -149,3 +184,4 @@ def test_job_event_null_meter_stays_none(jobs_models) -> None:
     assert event.prompt_tokens is None
     assert event.completion_tokens is None
     assert event.cost_usd is None
+    assert event.node_kind is None

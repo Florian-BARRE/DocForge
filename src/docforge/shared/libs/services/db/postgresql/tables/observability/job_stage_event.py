@@ -27,6 +27,10 @@ class JobStageEvent(Base, UUIDPrimaryKey, CreatedAtMixin):
     )
     stage: Mapped[str] = mapped_column(String(64), nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False)
+    # Type label for this stage's root node — the structural kind (action/group/foreach) or the
+    # node's concrete kind — so the UI can render what each stage actually is. NULL for pre-existing
+    # rows written before this column landed.
+    node_kind: Mapped[str | None] = mapped_column(String(64), nullable=True)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     detail: Mapped[str | None] = mapped_column(Text, nullable=True)

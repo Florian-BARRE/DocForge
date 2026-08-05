@@ -138,6 +138,27 @@ class NodeRegistry:
             raise KeyError(f"No node registered for family '{family}', kind '{kind}'.")
 
     @classmethod
+    def family_of(cls, node_class: type[AbstractNode]) -> str | None:
+        """
+        Return the family a node class is registered under (the reverse of ``get``).
+
+        A node stores its KIND but not its family — the family is the registration key. This
+        reverse lookup lets an orchestration seam (e.g. a reachability sweep) label a built node
+        instance with its family without threading the family through the graph.
+
+        Args:
+            node_class (type[AbstractNode]): The registered node class to locate.
+
+        Returns:
+            str | None: The family the class is registered under, or None when unregistered
+            (structural nodes like Group/ForEach never register).
+        """
+        for family, members in cls._store.items():
+            if node_class in members.values():
+                return family
+        return None
+
+    @classmethod
     def kinds(cls, family: str) -> list[str]:
         """
         Return the available kinds for a family — the dynamic choice list for the UI.

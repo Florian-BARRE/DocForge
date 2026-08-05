@@ -41,3 +41,21 @@ export function Row({ label, value }: { label: string; value: ReactNode }) {
     </div>
   );
 }
+
+/** A compact clickable stat — a quick-glance number with a link out to the tab that owns it. */
+export function StatChip({ label, value, sub, onClick }: { label: string; value: ReactNode; sub?: ReactNode; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        display: "flex", flexDirection: "column", gap: 2, textAlign: "left", flex: "1 1 150px", minWidth: 140,
+        background: t.color.surface, border: `1px solid ${t.color.line}`, borderRadius: t.radius.m,
+        padding: `${t.space.s}px ${t.space.m}px`, cursor: "pointer", font: "inherit",
+      }}
+    >
+      <span style={{ color: t.color.mute, fontSize: t.font.size.xs, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>{label}</span>
+      <span style={{ fontFamily: t.font.display, fontWeight: 700, fontSize: t.font.size.xl, color: t.color.text }}>{value}</span>
+      {sub && <span style={{ color: t.color.dim, fontSize: t.font.size.xs }}>{sub}</span>}
+    </button>
+  );
+}

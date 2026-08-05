@@ -14,6 +14,7 @@ from shared_libs.pipelines.validation import GraphValidator
 from shared_libs.services.db import Database
 
 # ====== Local Project Imports ======
+from .libs.health import CollectionHealthService
 from .libs.search import SearchService
 from .utils.queue import QueueClient
 
@@ -45,3 +46,7 @@ class CONTEXT:
     # The /collections/{id}/search endpoint is NOT cut over to this yet; it is the invocation
     # seam for the search graph (a later phase wires it to a route).
     search_service: SearchService
+
+    # ── Collection health (on-demand, zero-spend reachability + build probe) ──
+    # Backs GET /collections/{id}/health — builds both graphs, sweeps their providers, rolls up.
+    health_service: CollectionHealthService

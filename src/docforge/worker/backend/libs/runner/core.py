@@ -5,32 +5,47 @@
 # ir object the run input carried), and enforces the OUTPUT CONTRACT: an ingestion pipeline must
 # deliver a RunBundle. Persistence lives elsewhere (the translator) — the runner only runs.
 
-# ====== Standard Library Imports ======
-import asyncio
-
 # ====== Third-Party Library Imports ======
 from loggerplusplus import LoggerClass
 
 # ====== Internal Project Imports ======
 from shared_libs.pipelines.base import (
-    ActionNode,
-    ForEach,
     Group,
     NodeExecutionRecord,
-    NodeStatus,
 )
 from shared_libs.pipelines.build import GroupNodeBlob, PipelineBuilder
 from shared_libs.pipelines.engine import FlowEngine, ProgressCallback
+from shared_libs.pipelines.reachability import ProbeStatus, ReachabilitySweep
 from shared_libs.pipelines.validation import GraphValidator
 from shared_libs.public_models import CollectionContract, RunBundle, SourceDocument
 
-# Overall wall-clock cap for the whole preflight sweep — a safety net above each probe's own
-# short timeout + retry (they run concurrently, so this bounds the sweep regardless of node count).
-_PREFLIGHT_TIMEOUT_SECONDS = 20.0
+# ====== Local Project Imports ======
+from .breadcrumb import FailureBreadcrumb
+
+# The side stamped on the worker's ingest preflight results (it only sweeps the ingest graph).
+_INGEST_SIDE = "ingest"
+
+# Probe outcomes that do NOT fail the run: the endpoint answered (ok) or there was nothing to
+# reach (a local leaf with no endpoint). Anything else aborts before the first spend.
+_PASSING_STATUSES = frozenset({ProbeStatus.OK, ProbeStatus.SKIPPED})
 
 
 class PipelineRunError(Exception):
-    """Raised when a run cannot start (invalid graph) or did not deliver (failed / no bundle)."""
+    """Raised when a run cannot start (invalid graph) or did not deliver (failed / no bundle).
+
+    Carries the structured ``breadcrumb`` when the failure came from a specific node, so the worker
+    persists WHERE it died (node / kind / item / error type) alongside the free-text message.
+    """
+
+    def __init__(self, message: str, breadcrumb: FailureBreadcrumb | None = None) -> None:
+        """
+        Args:
+            message (str): The human-readable failure reason.
+            breadcrumb (FailureBreadcrumb | None): The structured failing-node breadcrumb, when the
+                failure was located to a node (None for pre-run errors like an invalid graph).
+        """
+        super().__init__(message)
+        self.breadcrumb = breadcrumb
 
 
 class PipelineRunner(LoggerClass):
@@ -46,100 +61,32 @@ class PipelineRunner(LoggerClass):
         self._builder = PipelineBuilder()
         self._validator = GraphValidator()
         self._engine = FlowEngine(trace_payloads=False)
-
-    @staticmethod
-    def __failed_node_reason(record: NodeExecutionRecord) -> str | None:
-        """
-        Find the deepest node that actually raised and format it for the job error.
-
-        A group's own ``error`` is None — the fatal cause is a FAILED leaf nested in its
-        children. Walking depth-first turns the opaque "see the execution record" into the
-        actual node and message (e.g. "parse (docling): ModuleNotFoundError: ...").
-
-        Args:
-            record (NodeExecutionRecord): The run's root execution record.
-
-        Returns:
-            str | None: "node_id (kind): ErrorType: message" for the failing node, or None
-            when no FAILED leaf carries an error.
-        """
-        # 1. Depth-first — a nested failure is more specific than the group above it.
-        for child in record.children:
-            reason = PipelineRunner.__failed_node_reason(child)
-            if reason:
-                return reason
-        # 2. This node is the culprit only if it FAILED with a captured error.
-        if record.status == NodeStatus.FAILED and record.error is not None:
-            return f"{record.node_id} ({record.kind}): {record.error.error_type}: {record.error.message}"
-        return None
-
-    @staticmethod
-    def __collect_action_nodes(group: Group) -> list[ActionNode]:
-        """
-        Collect every ActionNode in the built graph, recursing into groups and ForEach bodies.
-
-        Walks the SAME node taxonomy the engine dispatches on, so a provider nested inside a
-        ForEach (e.g. a per-page VLM) is preflighted too — otherwise its unreachable endpoint
-        would only surface mid-run.
-
-        Args:
-            group (Group): The built pipeline (or a nested sub-graph).
-
-        Returns:
-            list[ActionNode]: Every action leaf reachable from this group.
-        """
-        nodes: list[ActionNode] = []
-        for child in group.children:
-            if isinstance(child, Group):
-                nodes.extend(PipelineRunner.__collect_action_nodes(child))
-            elif isinstance(child, ForEach):
-                nodes.extend(PipelineRunner.__collect_action_nodes(child.body))
-            elif isinstance(child, ActionNode):
-                nodes.append(child)
-        return nodes
+        self._sweep = ReachabilitySweep()
 
     async def __preflight(self, group: Group) -> None:
         """
-        Run every node's preflight() concurrently, BEFORE the first spend — fail fast if any is unreachable.
+        Sweep every provider leaf's reachability BEFORE the first spend — fail fast if any is down.
 
-        A node whose preflight is the default no-op costs nothing. Provider overrides probe their
-        endpoint's reachability + credentials; any failure (or the overall timeout) aborts the run
-        before a single byte is read or stored.
+        Delegates the walk + probing to the shared ReachabilitySweep (the same public seam the app's
+        on-demand collection-health endpoint uses), then applies the worker's own policy: any leaf
+        whose endpoint is unreachable or whose credentials are rejected aborts the run before a
+        single byte is read or stored. Local leaves (no endpoint) come back ``skipped`` and pass.
 
         Args:
             group (Group): The built + validated pipeline graph.
 
         Raises:
-            PipelineRunError: One or more nodes failed preflight (named with their reason), or the
-                sweep exceeded its overall timeout.
+            PipelineRunError: One or more provider leaves failed preflight (named with their reason).
         """
-        # 1. Every action leaf, including those nested in groups and ForEach bodies.
-        nodes = self.__collect_action_nodes(group)
-        if not nodes:
-            return
+        # 1. Structured per-leaf outcomes from the shared sweep (probes run concurrently, capped).
+        results = await self._sweep.sweep(group, _INGEST_SIDE)
 
-        async def probe(node: ActionNode) -> str | None:
-            """Run one node's preflight, turning any failure into a named reason string."""
-            try:
-                await node.preflight()
-                return None
-            except Exception as exc:  # noqa: BLE001 — any failure aborts the run, named below.
-                return f"{node.id} ({node.KIND}): {exc}"
-
-        # 2. All probes concurrently, under one overall cap (a hung probe cannot stall the run).
-        try:
-            results = await asyncio.wait_for(
-                asyncio.gather(*(probe(node) for node in nodes)),
-                timeout=_PREFLIGHT_TIMEOUT_SECONDS,
-            )
-        except TimeoutError as exc:
-            raise PipelineRunError(
-                f"preflight sweep exceeded {_PREFLIGHT_TIMEOUT_SECONDS:.0f}s — endpoint(s) too slow "
-                f"to reach before spend"
-            ) from exc
-
-        # 3. Any failure aborts BEFORE spend, naming each culprit node + reason.
-        failures = [reason for reason in results if reason]
+        # 2. The worker's policy: anything that is not ok/skipped aborts BEFORE spend, named.
+        failures = [
+            f"{result.node_id} ({result.kind}): {result.detail}"
+            for result in results
+            if result.status not in _PASSING_STATUSES
+        ]
         if failures:
             raise PipelineRunError(
                 f"preflight failed for {len(failures)} node(s) before any spend: "
@@ -198,12 +145,16 @@ class PipelineRunner(LoggerClass):
             group, run_input, timeout_seconds=timeout_seconds, progress_callback=progress_callback
         )
 
-        # 4. A failed run surfaces the engine's error, verbatim.
+        # 4. A failed run surfaces the engine's error, verbatim — and the structured breadcrumb (the
+        #    deepest failing node + its fan-out item) so the worker persists WHERE it died, not just why.
         if output is None:
-            reason = self.__failed_node_reason(record) or (
-                record.error.message if record.error else "see the execution record"
+            breadcrumb = FailureBreadcrumb.from_record(record)
+            reason = (
+                breadcrumb.reason
+                if breadcrumb is not None
+                else (record.error.message if record.error else "see the execution record")
             )
-            raise PipelineRunError(f"pipeline run failed: {reason}")
+            raise PipelineRunError(f"pipeline run failed: {reason}", breadcrumb=breadcrumb)
 
         # 5. The OUTPUT CONTRACT: the final node must deliver the RunBundle.
         bundle = getattr(output, "bundle", None)

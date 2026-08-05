@@ -23,6 +23,14 @@ class PreflightError(Exception):
     """A provider's preflight reachability/credential check failed before any spend."""
 
 
+class EndpointUnreachableError(PreflightError):
+    """The endpoint did not answer (DNS/refused/timeout) — a transport-level failure."""
+
+
+class EndpointAuthError(PreflightError):
+    """The endpoint answered but rejected the credentials (HTTP 401/403)."""
+
+
 class EndpointReachability:
     """Static HTTP reachability probe shared by every provider node's ``preflight()``."""
 
@@ -72,7 +80,7 @@ class EndpointReachability:
                 continue
             # 3. The host answered: rejected credentials are fatal, any other status is reachable.
             if response.status_code in (401, 403):
-                raise PreflightError(
+                raise EndpointAuthError(
                     f"{node_kind}: credentials rejected by {base_url} "
                     f"(HTTP {response.status_code}) — check the api_key"
                 )
@@ -82,10 +90,15 @@ class EndpointReachability:
             return
 
         # 4. Every attempt failed to connect — a genuine unreachable endpoint, fail loudly.
-        raise PreflightError(
+        raise EndpointUnreachableError(
             f"{node_kind}: endpoint unreachable at {base_url} "
             f"({type(last_error).__name__}: {last_error})"
         )
 
 
-__all__ = ["EndpointReachability", "PreflightError"]
+__all__ = [
+    "EndpointReachability",
+    "PreflightError",
+    "EndpointUnreachableError",
+    "EndpointAuthError",
+]

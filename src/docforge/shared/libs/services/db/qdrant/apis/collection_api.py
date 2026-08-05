@@ -113,6 +113,28 @@ class QdrantCollectionApi:
         return dense, sparse
 
     @staticmethod
+    async def count(client: AsyncQdrantClient, name: str) -> int:
+        """
+        Return the number of points stored in a collection (0 when it does not exist yet).
+
+        A collection provisions its Qdrant space lazily at first indexing, so a created-but-never
+        ingested collection has no space to count — that is reported as 0, never a 404. The count is
+        unfiltered (every point, enabled or not): it is the raw index size the health surface shows.
+
+        Args:
+            client (AsyncQdrantClient): The connection from QdrantClient.raw.
+            name (str): The Qdrant collection name.
+
+        Returns:
+            int: The point count, or 0 when the collection has no Qdrant space yet.
+        """
+        # 1. No space provisioned yet — nothing indexed, report 0 rather than raising.
+        if not await client.collection_exists(name):
+            return 0
+        # 2. An exact count of every point (unfiltered — the raw index size).
+        return (await client.count(collection_name=name, exact=True)).count
+
+    @staticmethod
     async def drop(client: AsyncQdrantClient, name: str) -> None:
         """Delete the whole Qdrant collection if it exists."""
         if await client.collection_exists(name):

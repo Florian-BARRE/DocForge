@@ -9,17 +9,23 @@
 import { useEffect, useState } from "react";
 import { getJob, getJobTrace, getStageDurations, streamJobEvents, type JobEvent, type JobStatus } from "../../api/jobs";
 import { BackLink } from "../../components/BackLink";
+import { Chip } from "../../components/Chip";
 import { ErrorState } from "../../components/ErrorState";
 import { LoadingState } from "../../components/LoadingState";
 import { PageHeader } from "../../components/PageHeader";
 import type { Navigate } from "../../shell/view";
 import { theme } from "../../theme";
+import { FailedNodeBreadcrumb } from "./FailedNodeBreadcrumb";
+import { ItemProgressChip } from "./ItemProgressChip";
 import { JobEventItem } from "./JobEventItem";
 import { JobStatusChip } from "./JobStatusChip";
 import { ProgressBar } from "./ProgressBar";
 
 const POLL_MS = 2500;
 const TERMINAL = new Set(["done", "failed"]);
+// A running stage is flagged "running long" once its elapsed time crosses this multiple of the
+// collection's own average for that stage — well before the 600s hard `stalled` flag.
+const RUNNING_LONG_FACTOR = 2.5;
 
 interface JobDetailPageProps {
   jobId: string;
@@ -91,10 +97,36 @@ export function JobDetailPage({ jobId, collectionId, onNavigate }: JobDetailPage
     return () => { cancelled = true; controller.abort(); window.clearTimeout(pollTimer); };
   }, [jobId]);
 
+  // Re-render every 5s while running so an elapsed-in-stage computed from Date.now() (below)
+  // doesn't freeze between status frames — needed for the "running long" flag to stay live.
+  const [, tick] = useState(0);
+  useEffect(() => {
+    if (!job || TERMINAL.has(job.status)) return;
+    const id = window.setInterval(() => tick((n) => n + 1), 5000);
+    return () => window.clearInterval(id);
+  }, [job?.status]);
+
   if (error) return <ErrorState message={error} />;
   if (!job) return <LoadingState label="loading job…" />;
 
   const running = !TERMINAL.has(job.status);
+
+  // The currently-open trace row for the active stage (worker writes it on START) gives the real
+  // stage-start time — elapsed-in-stage vs. the collection average is the "running long" signal.
+  const activeStageEvent = job.current_stage
+    ? [...events].reverse().find((e) => e.stage === job.current_stage && e.started_at && !e.finished_at)
+    : undefined;
+  const elapsedInStageSeconds =
+    running && activeStageEvent?.started_at
+      ? (Date.now() - new Date(activeStageEvent.started_at).getTime()) / 1000
+      : null;
+  const avgStageSeconds = job.current_stage ? stageSeconds[job.current_stage] : undefined;
+  const runningLong =
+    running &&
+    elapsedInStageSeconds !== null &&
+    avgStageSeconds !== undefined &&
+    avgStageSeconds > 0 &&
+    elapsedInStageSeconds > avgStageSeconds * RUNNING_LONG_FACTOR;
 
   // ETA: sum the collection-average durations of the stages this running job hasn't finished yet.
   const finishedStages = new Set(
@@ -134,14 +166,27 @@ export function JobDetailPage({ jobId, collectionId, onNavigate }: JobDetailPage
         }}
       >
         <ProgressBar progress={job.progress} status={job.status} />
-        <div style={{ display: "flex", gap: theme.space.l, color: theme.color.dim, fontSize: theme.font.size.s, marginTop: theme.space.s, flexWrap: "wrap" }}>
-          <span>stage: {job.current_stage ?? "—"}</span>
+        <div style={{ display: "flex", alignItems: "center", gap: theme.space.l, color: theme.color.dim, fontSize: theme.font.size.s, marginTop: theme.space.s, flexWrap: "wrap" }}>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: theme.space.xs }}>
+            stage: {job.current_stage ?? "—"}
+            {job.items_done !== null && job.items_total !== null && (
+              <ItemProgressChip itemsDone={job.items_done} itemsTotal={job.items_total} />
+            )}
+          </span>
           <span>started: {job.started_at ? new Date(job.started_at).toLocaleString() : "—"}</span>
           <span>finished: {job.finished_at ? new Date(job.finished_at).toLocaleString() : "—"}</span>
           {running && etaSeconds > 0 && (
             <span style={{ color: theme.color.accent, fontWeight: theme.font.weight.semibold }}>
               ~{etaSeconds < 90 ? `${Math.round(etaSeconds)}s` : `${Math.round(etaSeconds / 60)}m`} remaining
             </span>
+          )}
+          {runningLong && (
+            <Chip
+              tone="warn"
+              title={`Elapsed ${Math.round(elapsedInStageSeconds!)}s in "${job.current_stage}" vs. a ~${Math.round(avgStageSeconds!)}s collection average — may be wedged.`}
+            >
+              running long
+            </Chip>
           )}
         </div>
         {totalTokens > 0 && (
@@ -158,7 +203,18 @@ export function JobDetailPage({ jobId, collectionId, onNavigate }: JobDetailPage
           </div>
         )}
         {job.error && (
-          <div style={{ color: theme.color.error, fontSize: theme.font.size.s, marginTop: theme.space.s }}>{job.error}</div>
+          <div style={{ marginTop: theme.space.s }}>
+            <FailedNodeBreadcrumb job={job} />
+            <div
+              style={{
+                color: job.failed_node_id ? theme.color.dim : theme.color.error,
+                fontSize: theme.font.size.xs,
+                marginTop: job.failed_node_id ? theme.space.xs : 0,
+              }}
+            >
+              {job.error}
+            </div>
+          </div>
         )}
       </div>
 

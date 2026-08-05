@@ -36,13 +36,20 @@ export function WorkersPanel({ onNavigate }: { onNavigate: Navigate }) {
     return () => { cancelled = true; window.clearTimeout(timer); };
   }, []);
 
-  const activeCount = workers?.filter((w) => w.jobs.length > 0).length ?? 0;
+  const busyCount = workers?.filter((w) => w.busy).length ?? 0;
+  const aliveCount = workers?.filter((w) => w.alive).length ?? 0;
+  const idleCount = aliveCount - busyCount;
+  const offlineCount = (workers?.length ?? 0) - aliveCount;
 
   return (
     <div className="df-rise" style={{ padding: theme.space.xl, overflowY: "auto", height: "100%", maxWidth: 1200, margin: "0 auto", width: "100%" }}>
       <PageHeader
         title="Workers"
-        subtitle={workers ? `${activeCount} of ${workers.length} worker${workers.length === 1 ? "" : "s"} busy` : " "}
+        subtitle={
+          workers
+            ? `${busyCount} busy · ${idleCount} idle · ${offlineCount} offline (${workers.length} worker${workers.length === 1 ? "" : "s"} known)`
+            : " "
+        }
       />
       {error && <ErrorState message={error} />}
       {!error && !workers && <LoadingState label="loading fleet…" />}
@@ -53,7 +60,7 @@ export function WorkersPanel({ onNavigate }: { onNavigate: Navigate }) {
             padding: theme.space.xxl, textAlign: "center", color: theme.color.dim, fontSize: theme.font.size.l,
           }}
         >
-          Fleet idle — no worker has a running job.
+          No worker has ever heartbeated.
         </div>
       )}
       {workers && workers.length > 0 && (

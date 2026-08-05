@@ -25,6 +25,12 @@ class JobStatus(BaseModel):
         attempt (int): arq retry attempt (1 = first run).
         started_at (datetime | None): When the worker picked it up.
         finished_at (datetime | None): When it ended (done or failed).
+        items_done (int | None): Child items finished in the current fan-out stage (None off it).
+        items_total (int | None): The current fan-out stage's width (None when not in a fan-out).
+        failed_node_id (str | None): The deepest node that raised — only set on a failed job.
+        failed_node_kind (str | None): That node's kind/family label — only set on a failed job.
+        failed_item_index (int | None): The fan-out item index the failure sits in (None outside one).
+        error_type (str | None): The exception class name of the failure (e.g. "TimeoutError").
     """
 
     job_id: str = Field(description="The job row's UUID.")
@@ -50,6 +56,24 @@ class JobStatus(BaseModel):
     cost_usd: float = Field(
         description="USD cost of this job's paid calls (0 when nothing priceable)."
     )
+    items_done: int | None = Field(
+        default=None, description="Child items finished in the current fan-out stage (None off it)."
+    )
+    items_total: int | None = Field(
+        default=None, description="The current fan-out stage's width (None when not in a fan-out)."
+    )
+    failed_node_id: str | None = Field(
+        default=None, description="Deepest node that raised — only set on a failed job."
+    )
+    failed_node_kind: str | None = Field(
+        default=None, description="That node's kind/family label — only set on a failed job."
+    )
+    failed_item_index: int | None = Field(
+        default=None, description="Fan-out item index the failure sits in (None outside a fan-out)."
+    )
+    error_type: str | None = Field(
+        default=None, description="Exception class name of the failure (e.g. 'TimeoutError')."
+    )
 
 
 class JobEvent(BaseModel):
@@ -59,6 +83,8 @@ class JobEvent(BaseModel):
     Attributes:
         stage (str): The pipeline node id.
         status (str): success / failed / skipped.
+        node_kind (str | None): The stage's structural kind (action/group/foreach) or the node's
+            concrete kind — None for rows written before this column landed.
         started_at (datetime | None): Node start.
         finished_at (datetime | None): Node end.
         detail (str | None): Duration, or the error when failed.
@@ -66,6 +92,11 @@ class JobEvent(BaseModel):
 
     stage: str = Field(description="The pipeline node id.")
     status: str = Field(description="success / failed / skipped.")
+    node_kind: str | None = Field(
+        default=None,
+        description="The stage's structural kind (action/group/foreach) or the node's concrete "
+        "kind — None for rows written before this column landed.",
+    )
     started_at: datetime | None = Field(default=None, description="Node start.")
     finished_at: datetime | None = Field(default=None, description="Node end.")
     detail: str | None = Field(default=None, description="Duration, or the error when failed.")
@@ -95,14 +126,26 @@ class JobTrace(BaseModel):
 
 class WorkerActivity(BaseModel):
     """
-    One worker's live activity — derived from its RUNNING jobs (no extra heartbeat).
+    One worker's live activity — its heartbeat-derived liveness plus any RUNNING jobs it owns.
 
     Attributes:
-        worker_id (str): The worker's hostname.
+        worker_id (str): The worker's stable id (its hostname).
+        alive (bool): Its heartbeat is fresher than the liveness threshold.
+        busy (bool): It currently owns at least one RUNNING job.
+        last_seen (datetime | None): Its last heartbeat tick (None when no heartbeat row exists).
+        started_at (datetime | None): When the worker process registered (None when no heartbeat).
         jobs (list[JobStatus]): Its running jobs, live.
     """
 
-    worker_id: str = Field(description="The worker's hostname.")
+    worker_id: str = Field(description="The worker's stable id (its hostname).")
+    alive: bool = Field(description="Heartbeat fresher than the liveness threshold.")
+    busy: bool = Field(description="Owns at least one RUNNING job right now.")
+    last_seen: datetime | None = Field(
+        default=None, description="Last heartbeat tick (None when the worker has no heartbeat row)."
+    )
+    started_at: datetime | None = Field(
+        default=None, description="When the worker process registered (None when no heartbeat)."
+    )
     jobs: list[JobStatus] = Field(default_factory=list, description="Its running jobs, live.")
 
 

@@ -86,3 +86,62 @@ export function updateCollection(id: string, request: UpdateCollectionRequest): 
 export function deleteCollection(id: string): Promise<void> {
   return apiFetch(`${BASE}/${id}`, { method: "DELETE" });
 }
+
+// ====== Collection operational health (on-demand provider reachability probe) ======
+// Mirrors GET /api/v1/collections/{id}/health — a read-only sweep, zero spend, zero mutation.
+
+/** One provider-hosted action leaf's reachability outcome. */
+export type ProviderStatus = "ok" | "unreachable" | "auth_failed" | "not_configured" | "skipped";
+
+/** Side of the graph a probed provider node belongs to. */
+export type ProviderSide = "ingest" | "search";
+
+export interface ProviderHealth {
+  node_id: string;
+  kind: string;
+  family: string;
+  side: ProviderSide;
+  status: ProviderStatus;
+  /** Secret-free base URL the provider was probed at. `null` when the node has no endpoint concept
+   *  (a local/in-process step); `""` when the node inherits its endpoint from elsewhere in the graph. */
+  endpoint: string | null;
+  detail: string | null;
+  latency_ms: number | null;
+}
+
+export interface IngestHealth {
+  buildable: boolean;
+  build_error: string | null;
+  providers: ProviderHealth[];
+}
+
+export interface SearchIndexHealth {
+  vector_count: number;
+  last_ingest_at: string | null;
+}
+
+/** `true` = fully operational, `false` = unavailable, `"degraded"` = answers but impaired. */
+export type SearchOperational = true | false | "degraded";
+
+export interface SearchHealth {
+  buildable: boolean;
+  search_operational: SearchOperational;
+  build_error: string | null;
+  providers: ProviderHealth[];
+  index: SearchIndexHealth;
+}
+
+export type HealthVerdictValue = "operational" | "degraded" | "down";
+
+export interface CollectionHealth {
+  collection_id: string;
+  verdict: HealthVerdictValue;
+  checked_at: string;
+  ingest: IngestHealth;
+  search: SearchHealth;
+}
+
+/** Runs the on-demand provider reachability sweep — no job enqueued, no DB/S3 write. */
+export function getCollectionHealth(id: string): Promise<CollectionHealth> {
+  return apiFetch(`${BASE}/${id}/health`);
+}

@@ -31,12 +31,16 @@ class ProgressEvent(BaseModel):
         node_id (str): Identifier of the node.
         kind (str): The node's KIND.
         record (NodeExecutionRecord | None): The execution record — None at START, set at END.
+        total_items (int | None): The fan-out width — only set on a ForEach's START event (the
+            resolved ``over`` length), so a consumer can render a live "done / total" counter for a
+            fan-out stage. None for every other event.
     """
 
     phase: ProgressPhase
     node_id: str
     kind: str
     record: NodeExecutionRecord | None = None
+    total_items: int | None = None
 
 
 # Async callback the engine invokes for every progress event.

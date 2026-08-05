@@ -47,6 +47,11 @@ export function JobEventItem({ event }: { event: JobEvent }) {
         }}
       />
       <strong style={{ fontSize: theme.font.size.m, color: theme.color.text, minWidth: 140 }}>{event.stage}</strong>
+      {event.node_kind && (
+        <span style={{ fontFamily: theme.font.mono, fontSize: theme.font.size.xs, color: theme.color.mute }}>
+          {event.node_kind}
+        </span>
+      )}
       <JobStatusChip status={event.status} />
       <span style={{ color: theme.color.dim, fontSize: theme.font.size.xs, fontFamily: theme.font.mono }}>{durationLabel(event)}</span>
       {usageLabel(event) && (

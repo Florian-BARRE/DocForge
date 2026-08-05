@@ -6,7 +6,7 @@
 
 import { useEffect, useState } from "react";
 import { getCollection, type Collection } from "../../api/collections";
-import { search, type SearchResponse } from "../../api/search";
+import { classifySearchError, search, type SearchErrorInfo, type SearchResponse } from "../../api/search";
 import { ErrorState } from "../../components/ErrorState";
 import type { Navigate } from "../../shell/view";
 import { theme } from "../../theme";
@@ -29,7 +29,7 @@ export function SearchLabPage({ collectionId }: SearchLabPageProps) {
   const [filters, setFilters] = useState<Record<string, unknown>>({});
   const [targetSelection, setTargetSelection] = useState<TargetSelection>(DEFAULT_TARGET_SELECTION);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<SearchErrorInfo | null>(null);
   const [response, setResponse] = useState<SearchResponse | null>(null);
 
   // Best-effort: the filter builder is a supplementary affordance, so a failed fetch here
@@ -71,7 +71,7 @@ export function SearchLabPage({ collectionId }: SearchLabPageProps) {
       search_in: buildSearchIn(targetSelection),
     })
       .then(setResponse)
-      .catch((e) => setError(e instanceof Error ? e.message : String(e)))
+      .catch((e) => setError(classifySearchError(e)))
       .finally(() => setLoading(false));
   };
 
@@ -95,7 +95,13 @@ export function SearchLabPage({ collectionId }: SearchLabPageProps) {
           <SearchFilterBuilder fields={filterableFields} values={filters} onFilterChange={handleFilterChange} />
         </div>
 
-        {error && <ErrorState message={error} onRetry={runSearch} />}
+        {/* A permanent config/auth fault (424) must NOT offer "retry" — only transient/timeout do. */}
+        {error && (
+          <ErrorState
+            message={error.message}
+            onRetry={error.kind === "config" ? undefined : runSearch}
+          />
+        )}
         {!error && response && <SearchResultsList response={response} />}
       </div>
     </div>

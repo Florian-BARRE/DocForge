@@ -15,7 +15,12 @@ from fastapi import APIRouter, Depends, HTTPException
 # ====== Local Project Imports ======
 from ...context import CONTEXT
 from ...libs.auth import Capability, require
-from ...libs.search import SearchRunError, SearchRunTimeout, SearchUnavailableError
+from ...libs.search import (
+    QueryEmbedderProbe,
+    SearchRunError,
+    SearchRunTimeout,
+    SearchUnavailableError,
+)
 from ...utils.error_handling import auto_handle_errors
 from .helpers import SearchHelpers
 from .models import SearchRequest, SearchResponse
@@ -74,10 +79,13 @@ async def search_collection(collection_id: uuid.UUID, request: SearchRequest) ->
     if target_errors:
         raise HTTPException(status_code=422, detail=f"Invalid search target(s): {target_errors}")
 
-    # 5. Delegate the retrieval to the graph-based search pipeline. Three failure classes are mapped
-    #    distinctly so a TRANSIENT outage of a healthy graph is never mislabelled as an invalid blob:
-    #      - SearchRunTimeout      → 504 (the run blew its wall-clock cap; the provider is stuck)
-    #      - SearchUnavailableError→ 503 (the query could not be encoded; the embedder is busy)
+    # 5. Delegate the retrieval to the graph-based search pipeline. The failure classes are mapped
+    #    distinctly so the caller can tell "retry shortly" from "fix your config":
+    #      - SearchRunTimeout      → 504 {search_timeout} (the run blew its wall-clock cap)
+    #      - SearchUnavailableError→ the query could not be encoded; a targeted, bounded probe of the
+    #        collection's OWN query embedder then classifies it: a dead host / rejected key is a
+    #        PERMANENT 424 (embedder_unreachable / embedder_auth_failed), a still-answering embedder
+    #        means the failure was genuinely transient → 503 embedder_overloaded.
     #      - SearchRunError        → 422 (a genuinely invalid stored graph — re-save its blob)
     #    The subclasses are caught FIRST (Python matches except clauses in order), so only a real
     #    build/validate/output-contract failure keeps the alarming "invalid search graph" message.
@@ -93,13 +101,13 @@ async def search_collection(collection_id: uuid.UUID, request: SearchRequest) ->
     except SearchRunTimeout as exc:
         raise HTTPException(
             status_code=504,
-            detail=f"Search timed out — the embedder is busy, retry shortly. ({exc})",
+            detail={"code": "search_timeout", "detail": f"Search timed out. ({exc})"},
         )
     except SearchUnavailableError as exc:
-        raise HTTPException(
-            status_code=503,
-            detail=f"Search temporarily unavailable — the embedder is busy, retry shortly. ({exc})",
-        )
+        # The encode failed — probe the query embedder to classify permanent vs transient (bounded
+        # by the sweep's own ~5s per-probe cap; it spends no real call, only preflight()).
+        status = await QueryEmbedderProbe().classify(collection.pipeline)
+        raise SearchHelpers.encode_failure_http(status, str(exc))
     except SearchRunError as exc:
         raise HTTPException(
             status_code=422,

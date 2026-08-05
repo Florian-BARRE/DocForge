@@ -85,6 +85,23 @@ class CollectionsFacade(LoggerClass):
         async with self._postgres.session() as session:
             return await CollectionApi.list_all(session)
 
+    async def vector_count(self, collection_id: uuid.UUID) -> int:
+        """
+        Return the number of vector points indexed for a collection (0 when never ingested).
+
+        The raw Qdrant index size the health surface reports — a collection whose Qdrant space is not
+        provisioned yet (created but never ingested) counts as 0, never an error.
+
+        Args:
+            collection_id (uuid.UUID): The collection whose vector index is measured.
+
+        Returns:
+            int: The point count in the collection's Qdrant space (0 when it has none yet).
+        """
+        return await QdrantCollectionApi.count(
+            self._qdrant.raw, DatabaseHelpers.qdrant_collection_name(collection_id)
+        )
+
     async def update_contract(
         self,
         collection_id: uuid.UUID,

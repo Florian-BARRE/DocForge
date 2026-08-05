@@ -174,11 +174,20 @@ async def ingest_document(ctx: dict[str, Any], document_id: str, job_id: str) ->
         await database.jobs.mark_done(job_uuid, finished_at=datetime.now(UTC))
 
     except Exception as exc:
-        # Both truths flagged, the error in clear; re-raise so arq accounts the attempt.
+        # Both truths flagged, the error in clear; re-raise so arq accounts the attempt. A run
+        # failure carries a structured breadcrumb (deepest failing node + fan-out item) on the
+        # exception; other failures (rehydrate/persist) fall back to the exception's own type.
         CONTEXT.logger.exception(f"Ingestion failed for document {document_id}: {exc}")
+        breadcrumb = getattr(exc, "breadcrumb", None)
         await database.ingestion.mark_failed(doc_uuid)
         await database.jobs.mark_failed(
-            job_uuid, error=f"{type(exc).__name__}: {exc}", finished_at=datetime.now(UTC)
+            job_uuid,
+            error=f"{type(exc).__name__}: {exc}",
+            finished_at=datetime.now(UTC),
+            failed_node_id=breadcrumb.node_id if breadcrumb else None,
+            failed_node_kind=breadcrumb.node_kind if breadcrumb else None,
+            failed_item_index=breadcrumb.item_index if breadcrumb else None,
+            error_type=breadcrumb.error_type if breadcrumb else type(exc).__name__,
         )
         raise
 

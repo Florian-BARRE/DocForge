@@ -1,7 +1,12 @@
 # ---------------------- OpenAI-compatible endpoint access (shared) ---------------------- #
 from .client import OpenAICompatHelpers
 from .config import OpenAICompatConfig
-from .preflight import EndpointReachability, PreflightError
+from .preflight import (
+    EndpointAuthError,
+    EndpointReachability,
+    EndpointUnreachableError,
+    PreflightError,
+)
 from .pricing import MODEL_PRICING, price_usd
 
 # ------------------- Public API ------------------- #
@@ -10,6 +15,8 @@ __all__ = [
     "OpenAICompatHelpers",
     "EndpointReachability",
     "PreflightError",
+    "EndpointUnreachableError",
+    "EndpointAuthError",
     "MODEL_PRICING",
     "price_usd",
 ]

@@ -1,9 +1,12 @@
 # ====== Code Summary ======
-# JobProgressRecorder — turns the engine's per-node progress events into the job's LIVE state:
-# on START the job row shows which node is running NOW (current_stage); on END the global
-# percentage advances and ONE JobStageEvent trace row lands (stage, status, both timestamps,
-# duration or error detail). Only ROOT nodes are traced — per-item events inside a foreach
-# (hundreds of figures) would flood the trace table without adding stage-level meaning.
+# JobProgressRecorder — turns the engine's per-node progress events into the job's LIVE state. On a
+# root stage START it OPENS a stage-event row (status "running") and marks the job's current_stage;
+# on END it FINALIZES that row (status + timestamps + duration/error + token/cost) and advances the
+# coarse percentage. Opening the row at START is what lets a run cut mid-stage (timeout/cancel/reaper)
+# be closed as a red row on the exact stage it died in, instead of an all-green trace with a gap.
+# For a fan-out (foreach) root it also maintains a live per-item counter (items_done / items_total) by
+# counting the body ENTRY node's END events — the one node every item runs — without persisting the
+# per-item tree. The counter resets to NULL when the job enters a non-fan-out stage.
 
 # ====== Standard Library Imports ======
 import uuid
@@ -17,10 +20,12 @@ from loggerplusplus import LoggerClass
 from backend.context import CONTEXT
 
 # ====== Internal Project Imports ======
-from shared_libs.pipelines.base import NodeExecutionRecord
+from shared_libs.pipelines.base import ForEach
 from shared_libs.pipelines.engine import ProgressEvent, ProgressPhase
-from shared_libs.pipelines.nodes.openai_compat import price_usd
 from shared_libs.services.db.postgresql.tables import JobStageEvent
+
+# ====== Local Project Imports ======
+from .usage import StageUsageSummer
 
 
 class JobProgressRecorder(LoggerClass):
@@ -38,6 +43,16 @@ class JobProgressRecorder(LoggerClass):
         self._total = max(1, len(root_node_ids))
         self._done = 0
         self._started: dict[str, datetime] = {}
+        # The stage-event row opened at the current root stage's START, finalized at its END.
+        self._open_event_id: uuid.UUID | None = None
+        self._open_stage: str | None = None
+        # Live fan-out counter state for the CURRENT foreach root (None when not in a fan-out).
+        self._fanout_root: str | None = None
+        self._fanout_entry: str | None = None
+        self._items_done = 0
+        self._items_total: int | None = None
+        # Whether the job's item counter currently holds a value — avoids a redundant reset write.
+        self._items_active = False
 
     async def __call__(self, event: ProgressEvent) -> None:
         """
@@ -46,107 +61,138 @@ class JobProgressRecorder(LoggerClass):
         Args:
             event (ProgressEvent): START or END of one node, with its record on END.
         """
-        # 1. Per-item / nested events stay out of the stage trace.
-        if event.node_id not in self._roots:
+        # 1. Root stages drive the trace + percentage; nested events only feed the fan-out counter.
+        if event.node_id in self._roots:
+            if event.phase == ProgressPhase.START:
+                await self.__start_stage(event)
+            else:
+                await self.__end_stage(event)
             return
+        await self.__count_item(event)
+
+    def __percentage(self) -> int:
+        """Coarse 0-99 completion from finished root stages (100 is reserved for mark_done)."""
+        return min(99, int(self._done * 100 / self._total))
+
+    async def __start_stage(self, event: ProgressEvent) -> None:
+        """Open a running stage-event row and set the job's current stage + item counter."""
         now = datetime.now(UTC)
+        node_id = event.node_id
 
-        # 2. START: the job row shows what is running NOW.
-        if event.phase == ProgressPhase.START:
-            self._started[event.node_id] = now
-            await CONTEXT.database.jobs.set_progress(
-                self._job_id,
-                current_stage=event.node_id,
-                progress=min(99, int(self._done * 100 / self._total)),
+        # 1. Fan-out counter: a foreach root arms the counter (its START carries the item total); any
+        #    other root leaves a fan-out and resets the counter to NULL.
+        if event.kind == ForEach.KIND:
+            self._fanout_root = node_id
+            self._fanout_entry = None
+            self._items_done = 0
+            self._items_total = event.total_items
+            self._items_active = True
+            await CONTEXT.database.jobs.set_items(self._job_id, 0, event.total_items)
+        else:
+            self._fanout_root = None
+            self._fanout_entry = None
+            self._items_total = None
+            self._items_done = 0
+            if self._items_active:
+                await CONTEXT.database.jobs.set_items(self._job_id, None, None)
+                self._items_active = False
+
+        # 2. Open the stage-event row (finalized at END; closed as failed if the run is cut first).
+        self._started[node_id] = now
+        row = await CONTEXT.database.jobs.record_event(
+            JobStageEvent(
+                job_id=self._job_id,
+                stage=node_id,
+                status="running",
+                node_kind=event.kind,
+                started_at=now,
+                finished_at=None,
             )
-            return
+        )
+        self._open_event_id = row.id
+        self._open_stage = node_id
 
-        # 3. END: advance the percentage and land the trace row (status + duration or error).
+        # 3. The job row shows what is running NOW.
+        await CONTEXT.database.jobs.set_progress(
+            self._job_id, current_stage=node_id, progress=self.__percentage()
+        )
+
+    async def __count_item(self, event: ProgressEvent) -> None:
+        """Advance the fan-out counter: one END of the body's entry node = one item processed."""
+        if self._fanout_root is None:
+            return
+        # The body's ENTRY node is the FIRST nested node to START — it runs once per item, so its END
+        # count is a monotonic, topology-free items-done signal (bounded by items_total).
+        if event.phase == ProgressPhase.START:
+            if self._fanout_entry is None:
+                self._fanout_entry = event.node_id
+            return
+        if event.node_id == self._fanout_entry:
+            self._items_done += 1
+            await CONTEXT.database.jobs.set_items(self._job_id, self._items_done, self._items_total)
+
+    async def __end_stage(self, event: ProgressEvent) -> None:
+        """Finalize the stage's open row (status + duration/error + usage) and advance progress."""
+        now = datetime.now(UTC)
+        node_id = event.node_id
         self._done += 1
         record = event.record
         status = record.status.value if record else "success"
         if record and record.error:
-            detail = f"{record.error.error_type}: {record.error.message}"
+            detail: str | None = f"{record.error.error_type}: {record.error.message}"
         elif record:
             detail = f"{record.duration_ms:.0f} ms"
         else:
             detail = None
 
-        # 4. Total this stage's paid text-gen usage from its whole execution tree (per-figure VLM
-        #    calls are nested child records), priced per leaf, then land it on the trace row and fold
-        #    it into the job's per-document meter. No usage → NULL columns, no increment.
+        # 1. Total this stage's paid text-gen usage over its whole execution tree, priced per leaf.
         prompt_tokens, completion_tokens, cost_usd, usage_count = (
-            self._sum_usage(record) if record else (0, 0, None, 0)
+            StageUsageSummer.summarize(record) if record else (0, 0, None, 0)
         )
         has_usage = usage_count > 0
+        cost_column = Decimal(str(cost_usd)) if (has_usage and cost_usd is not None) else None
 
-        await CONTEXT.database.jobs.set_progress(
-            self._job_id,
-            current_stage=event.node_id,
-            progress=min(99, int(self._done * 100 / self._total)),
-        )
-        await CONTEXT.database.jobs.record_event(
-            JobStageEvent(
-                job_id=self._job_id,
-                stage=event.node_id,
-                status=status,
-                started_at=self._started.pop(event.node_id, None),
-                finished_at=now,
-                detail=detail,
-                prompt_tokens=prompt_tokens if has_usage else None,
-                completion_tokens=completion_tokens if has_usage else None,
-                cost_usd=(Decimal(str(cost_usd)) if (has_usage and cost_usd is not None) else None),
+        # 2. Finalize the row opened at START; fall back to a fresh row if this stage never opened
+        #    one (a foreach that failed before it could announce its START).
+        self._started.pop(node_id, None)
+        if self._open_event_id is not None and self._open_stage == node_id:
+            await CONTEXT.database.jobs.finalize_event(
+                self._open_event_id,
+                status,
+                now,
+                detail,
+                prompt_tokens if has_usage else None,
+                completion_tokens if has_usage else None,
+                cost_column,
             )
+            self._open_event_id = None
+            self._open_stage = None
+        else:
+            await CONTEXT.database.jobs.record_event(
+                JobStageEvent(
+                    job_id=self._job_id,
+                    stage=node_id,
+                    status=status,
+                    node_kind=event.kind,
+                    finished_at=now,
+                    detail=detail,
+                    prompt_tokens=prompt_tokens if has_usage else None,
+                    completion_tokens=completion_tokens if has_usage else None,
+                    cost_usd=cost_column,
+                )
+            )
+
+        # 3. Advance the percentage, fold usage into the job meter, and close the fan-out window.
+        await CONTEXT.database.jobs.set_progress(
+            self._job_id, current_stage=node_id, progress=self.__percentage()
         )
         if has_usage:
             await CONTEXT.database.jobs.add_usage(
                 self._job_id, prompt_tokens, completion_tokens, cost_usd
             )
-
-    @classmethod
-    def _sum_usage(cls, record: NodeExecutionRecord) -> tuple[int, int, float | None, int]:
-        """
-        Total a stage's paid-call usage over its execution tree, priced per leaf.
-
-        Only leaf action records carry ``usage`` (groups/foreach wrappers do not), and a stage may
-        fan out over MIXED models (a foreach whose items escalated to different providers), so each
-        leaf is priced individually and the costs summed — never a single-model assumption. Cost is
-        None when NO leaf's model is priceable (the UI shows tokens but a "—" cost) rather than a
-        fabricated zero; the summed cost otherwise (unpriceable leaves contribute tokens, no cost).
-
-        Args:
-            record (NodeExecutionRecord): The stage's record (recursed into its children).
-
-        Returns:
-            tuple[int, int, float | None, int]: (prompt tokens, completion tokens, USD cost or None,
-                number of leaves that carried usage).
-        """
-        prompt = 0
-        completion = 0
-        cost = 0.0
-        priced = False
-        usage_count = 0
-
-        if record.usage is not None:
-            usage = record.usage
-            prompt += usage.prompt_tokens
-            completion += usage.completion_tokens
-            usage_count += 1
-            leaf_cost = price_usd(usage.model, usage.prompt_tokens, usage.completion_tokens)
-            if leaf_cost is not None:
-                cost += leaf_cost
-                priced = True
-
-        for child in record.children:
-            child_prompt, child_completion, child_cost, child_count = cls._sum_usage(child)
-            prompt += child_prompt
-            completion += child_completion
-            usage_count += child_count
-            if child_cost is not None:
-                cost += child_cost
-                priced = True
-
-        return prompt, completion, (cost if priced else None), usage_count
+        if self._fanout_root == node_id:
+            self._fanout_root = None
+            self._fanout_entry = None
 
 
 __all__ = ["JobProgressRecorder"]

@@ -65,6 +65,12 @@ def _fake_job(collection_id: str):
         total_prompt_tokens=0,
         total_completion_tokens=0,
         cost_usd=0,
+        items_done=None,
+        items_total=None,
+        failed_node_id=None,
+        failed_node_kind=None,
+        failed_item_index=None,
+        error_type=None,
     )
 
 

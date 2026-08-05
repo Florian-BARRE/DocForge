@@ -10,6 +10,7 @@ from loggerplusplus import loggerplusplus
 
 # ====== Internal Project Imports ======
 from backend import CONTEXT, create_app
+from backend.libs.health import CollectionHealthService
 from backend.libs.search import SearchService
 from backend.utils.queue import QueueClient
 from config import RUNTIME_CONFIG  # MUST be first — registers backend/libs/ on sys.path
@@ -57,6 +58,12 @@ def _build_app() -> FastAPI:
     # runner is stateless; the read port is constructed per-request from the database facade.
     CONTEXT.search_service = SearchService(
         CONTEXT.database, timeout_seconds=RUNTIME_CONFIG.SEARCH_RUN_TIMEOUT_SECONDS
+    )
+
+    # 3c. Collection health — on-demand, zero-spend build + reachability probe (no job, no write).
+    #     Reuses the shared builder/validator so "does it build?" is answered exactly as a real run.
+    CONTEXT.health_service = CollectionHealthService(
+        CONTEXT.database, CONTEXT.pipeline_builder, CONTEXT.graph_validator
     )
 
     # 3. Create the FastAPI application with all routers registered.

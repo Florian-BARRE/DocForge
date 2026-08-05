@@ -12,10 +12,11 @@ from decimal import Decimal
 
 # ====== Third-Party Library Imports ======
 from sqlalchemy import func, select, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # ====== Internal Project Imports ======
-from ..tables import Job, JobStageEvent, JobStatus
+from ..tables import Job, JobStageEvent, JobStatus, WorkerHeartbeat
 
 
 class JobApi:
@@ -70,6 +71,32 @@ class JobApi:
         job.progress = progress
 
     @staticmethod
+    async def set_items(
+        session: AsyncSession,
+        job_id: uuid.UUID,
+        items_done: int | None,
+        items_total: int | None,
+    ) -> None:
+        """
+        Set the per-item counter for the CURRENT fan-out (foreach) root stage.
+
+        Both values are written verbatim, so passing ``None``/``None`` is the explicit reset the
+        worker uses when the job leaves a fan-out stage — a plain "None means skip" patch could
+        never clear a stale counter.
+
+        Args:
+            session (AsyncSession): The active DB session.
+            job_id (uuid.UUID): The job whose counter advances.
+            items_done (int | None): Items finished so far (None outside a fan-out).
+            items_total (int | None): Fan-out width (None outside a fan-out / until known).
+        """
+        job = await session.get(Job, job_id)
+        if job is None:
+            return
+        job.items_done = items_done
+        job.items_total = items_total
+
+    @staticmethod
     async def mark_done(session: AsyncSession, job_id: uuid.UUID, finished_at: datetime) -> None:
         """Complete the job successfully."""
         job = await session.get(Job, job_id)
@@ -81,22 +108,122 @@ class JobApi:
 
     @staticmethod
     async def mark_failed(
-        session: AsyncSession, job_id: uuid.UUID, error: str, finished_at: datetime
+        session: AsyncSession,
+        job_id: uuid.UUID,
+        error: str,
+        finished_at: datetime,
+        failed_node_id: str | None = None,
+        failed_node_kind: str | None = None,
+        failed_item_index: int | None = None,
+        error_type: str | None = None,
     ) -> None:
-        """Fail the job with its error message."""
+        """
+        Fail the job with its free-text error AND the structured failure breadcrumb.
+
+        Also closes the job's currently-OPEN stage-event row (``finished_at IS NULL``) as failed, so
+        a run cut mid-stage — a wall-clock timeout, a hard cancel or the reaper — leaves a red row on
+        the exact stage it died in rather than an all-green trace with a silent gap. A normal node
+        failure has already finalized its own stage row (via the END event), so this find-open update
+        simply matches nothing and is a no-op.
+
+        Args:
+            session (AsyncSession): The active DB session.
+            job_id (uuid.UUID): The job to fail.
+            error (str): The free-text error message (the human-readable reason).
+            finished_at (datetime): When the job ended.
+            failed_node_id (str | None): The deepest node that raised.
+            failed_node_kind (str | None): That node's kind.
+            failed_item_index (int | None): The fan-out item index the failure sits in (None outside).
+            error_type (str | None): The exception class name (e.g. "TimeoutError").
+        """
         job = await session.get(Job, job_id)
         if job is None:
             return
         job.status = JobStatus.FAILED
         job.error = error
         job.finished_at = finished_at
+        job.failed_node_id = failed_node_id
+        job.failed_node_kind = failed_node_kind
+        job.failed_item_index = failed_item_index
+        job.error_type = error_type
+        await session.execute(
+            update(JobStageEvent)
+            .where(JobStageEvent.job_id == job_id, JobStageEvent.finished_at.is_(None))
+            .values(status="failed", finished_at=finished_at, detail=error)
+        )
 
     @staticmethod
     async def record_event(session: AsyncSession, event: JobStageEvent) -> JobStageEvent:
-        """Append a stage event to the job's timeline and return it."""
+        """Append a stage event to the job's timeline and return it (flushed, id assigned)."""
         session.add(event)
         await session.flush()
         return event
+
+    @staticmethod
+    async def finalize_event(
+        session: AsyncSession,
+        event_id: uuid.UUID,
+        status: str,
+        finished_at: datetime,
+        detail: str | None,
+        prompt_tokens: int | None,
+        completion_tokens: int | None,
+        cost_usd: Decimal | None,
+    ) -> None:
+        """
+        Close an OPEN stage-event row (opened at the stage's START) with its outcome.
+
+        The stage timeline now writes a "running" row on START and finalizes it here on END, so a
+        run cut before END leaves the row visibly open (later closed as failed by ``mark_failed``).
+
+        Args:
+            session (AsyncSession): The active DB session.
+            event_id (uuid.UUID): The open row's id.
+            status (str): Final status (success / skipped / failed).
+            finished_at (datetime): When the stage ended.
+            detail (str | None): Duration or error detail.
+            prompt_tokens (int | None): Paid input tokens for the stage (None if no paid call).
+            completion_tokens (int | None): Paid output tokens for the stage.
+            cost_usd (Decimal | None): USD cost (None when unpriced).
+        """
+        await session.execute(
+            update(JobStageEvent)
+            .where(JobStageEvent.id == event_id)
+            .values(
+                status=status,
+                finished_at=finished_at,
+                detail=detail,
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                cost_usd=cost_usd,
+            )
+        )
+
+    @staticmethod
+    async def upsert_heartbeat(
+        session: AsyncSession, worker_id: str, last_seen: datetime, started_at: datetime
+    ) -> None:
+        """
+        Register/refresh a worker's liveness row (keyed by its stable worker id).
+
+        Upsert so a worker's first tick inserts and every later tick updates ``last_seen`` in place;
+        ``started_at`` is refreshed too, so a same-hostname restart reports the NEW process uptime.
+
+        Args:
+            session (AsyncSession): The active DB session.
+            worker_id (str): The worker's stable id (its hostname).
+            last_seen (datetime): This tick's timestamp — its age is the liveness signal.
+            started_at (datetime): When THIS worker process registered.
+        """
+        statement = pg_insert(WorkerHeartbeat).values(
+            worker_id=worker_id, last_seen=last_seen, started_at=started_at
+        )
+        await session.execute(
+            statement.on_conflict_do_update(
+                index_elements=[WorkerHeartbeat.worker_id],
+                set_={"last_seen": last_seen, "started_at": started_at},
+            )
+        )
 
     @staticmethod
     async def add_usage(
@@ -211,6 +338,40 @@ class JobApi:
         return list(result.scalars().all())
 
     @staticmethod
+    async def list_heartbeats(session: AsyncSession) -> list[WorkerHeartbeat]:
+        """Return every worker heartbeat row, ordered by worker id — the fleet liveness snapshot."""
+        result = await session.execute(
+            select(WorkerHeartbeat).order_by(WorkerHeartbeat.worker_id.asc())
+        )
+        return list(result.scalars().all())
+
+    @staticmethod
+    async def queue_depth(
+        session: AsyncSession, collection_id: uuid.UUID | None = None
+    ) -> tuple[int, int]:
+        """
+        Count the backlog: pending (queued, unclaimed) and running jobs.
+
+        Fleet-wide when ``collection_id`` is None, otherwise scoped to that collection. Done as one
+        grouped count so both numbers come from a single round-trip.
+
+        Args:
+            session (AsyncSession): The active DB session.
+            collection_id (uuid.UUID | None): Scope to one collection, or None for the whole fleet.
+
+        Returns:
+            tuple[int, int]: (pending count, running count) — both zero when nothing is queued.
+        """
+        conditions = [Job.status.in_([JobStatus.PENDING, JobStatus.RUNNING])]
+        if collection_id is not None:
+            conditions.append(Job.collection_id == collection_id)
+        result = await session.execute(
+            select(Job.status, func.count(Job.id)).where(*conditions).group_by(Job.status)
+        )
+        counts = {status: int(count) for status, count in result.all()}
+        return counts.get(JobStatus.PENDING, 0), counts.get(JobStatus.RUNNING, 0)
+
+    @staticmethod
     async def list_stale(session: AsyncSession, older_than_seconds: float) -> list[Job]:
         """
         Return RUNNING jobs whose ``updated_at`` froze past the threshold — the reap candidates.
@@ -236,6 +397,32 @@ class JobApi:
             .order_by(Job.updated_at.asc())
         )
         return list(result.scalars().all())
+
+    @staticmethod
+    async def last_successful_ingest_at(
+        session: AsyncSession, collection_id: uuid.UUID
+    ) -> datetime | None:
+        """
+        Return the ``finished_at`` of the collection's most recent DONE ingest job, or None.
+
+        Every job is one document's ingestion, so the newest DONE ``finished_at`` is the collection's
+        last successful indexing — the "last ingest" timestamp the health surface shows. None when the
+        collection has never completed an ingest.
+
+        Args:
+            session (AsyncSession): The active DB session.
+            collection_id (uuid.UUID): The collection whose last successful ingest is queried.
+
+        Returns:
+            datetime | None: The latest DONE job's finish time, or None when there is none.
+        """
+        result = await session.execute(
+            select(func.max(Job.finished_at)).where(
+                Job.collection_id == collection_id,
+                Job.status == JobStatus.DONE,
+            )
+        )
+        return result.scalar_one_or_none()
 
     @staticmethod
     async def list_for_collection(session: AsyncSession, collection_id: uuid.UUID) -> list[Job]:

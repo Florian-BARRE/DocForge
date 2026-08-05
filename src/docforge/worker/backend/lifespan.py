@@ -23,6 +23,7 @@ from shared_libs.services.db.s3 import S3Client
 
 # ====== Local Project Imports ======
 from .context import CONTEXT
+from .libs.heartbeat import HeartbeatWriter
 from .libs.runner import PipelineRunner
 
 # Total number of startup steps — update when adding/removing steps.
@@ -89,6 +90,11 @@ async def startup(ctx: dict[str, Any]) -> None:
     CONTEXT.runner = PipelineRunner()
     CONTEXT.worker_id = socket.gethostname()
     CONTEXT.job_timeout_seconds = RUNTIME_CONFIG.WORKER_JOB_TIMEOUT_SECONDS
+
+    # 5. Liveness heartbeat — refreshes worker_heartbeats on a timer so an idle-but-alive worker
+    #    stays visible and a dead one is detectable fast (independent of the stall/reaper path).
+    CONTEXT.heartbeat = HeartbeatWriter(CONTEXT.database, CONTEXT.worker_id)
+    CONTEXT.heartbeat.start()
     CONTEXT.logger.info(
         f"Worker '{CONTEXT.worker_id}' ready — "
         f"{RUNTIME_CONFIG.WORKER_CONCURRENCY} parallel job(s), listening on the queue"
@@ -98,6 +104,8 @@ async def startup(ctx: dict[str, Any]) -> None:
 async def shutdown(ctx: dict[str, Any]) -> None:
     """Close every connection the startup opened (arq on_shutdown)."""
     _ = ctx
+    if hasattr(CONTEXT, "heartbeat"):
+        await CONTEXT.heartbeat.stop()
     if hasattr(CONTEXT, "database"):
         await CONTEXT.database.close()
     CONTEXT.logger.info(f"Worker '{getattr(CONTEXT, 'worker_id', '?')}' shut down")

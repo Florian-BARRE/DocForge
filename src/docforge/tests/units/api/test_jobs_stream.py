@@ -30,6 +30,12 @@ def _job(status: str, progress: int, stage: str | None) -> SimpleNamespace:
         total_prompt_tokens=0,
         total_completion_tokens=0,
         cost_usd=0,
+        items_done=None,
+        items_total=None,
+        failed_node_id=None,
+        failed_node_kind=None,
+        failed_item_index=None,
+        error_type=None,
     )
 
 
@@ -38,6 +44,7 @@ def _event(stage: str, status: str) -> SimpleNamespace:
     return SimpleNamespace(
         stage=stage,
         status=status,
+        node_kind="action",
         started_at=None,
         finished_at=None,
         detail="0.1s",

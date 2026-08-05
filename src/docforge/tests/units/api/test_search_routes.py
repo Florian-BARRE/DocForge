@@ -389,40 +389,58 @@ def test_pageless_block_location_surfaces_null_page(fastapi_app) -> None:
 def test_transient_error_messages_stay_honest_and_pin_the_contract(
     client, wired, monkeypatch
 ) -> None:
-    """Guard the USER-FACING transient-error contract so a refactor can't silently regress it:
-    a run TimeoutError → 504 'timed out / busy', an embedder-unavailable → 503 'busy', and only a
-    GENUINE invalid blob → 422 'invalid search graph'. The two transient cases must NEVER say
-    'invalid'."""
+    """Guard the USER-FACING error contract so a refactor can't silently regress it: a run
+    TimeoutError → 504 ``search_timeout``, a probed-transient encode failure → 503
+    ``embedder_overloaded``, a probed-permanent encode failure → 424 ``embedder_unreachable``, and
+    only a GENUINE invalid blob → 422 'invalid search graph'. None of the encode-failure codes are
+    ever 422 — the classifier tells "fix your config" (424) from "retry shortly" (503)."""
     from backend.context import CONTEXT
-    from backend.libs.search import SearchRunError, SearchRunTimeout, SearchUnavailableError
+    from backend.libs.search import (
+        QueryEmbedderProbe,
+        SearchRunError,
+        SearchRunTimeout,
+        SearchUnavailableError,
+    )
+    from shared_libs.pipelines.reachability import ProbeStatus
 
     cases = [
-        (SearchRunTimeout("pipeline exceeded 30.0s"), 504, ("timed out", "busy"), "invalid"),
+        (SearchRunTimeout("pipeline exceeded 30.0s"), None, 504, "search_timeout"),
         (
             SearchUnavailableError("QueryEncodeError: embedder saturated"),
+            ProbeStatus.OK,
             503,
-            ("unavailable", "busy"),
-            "invalid",
+            "embedder_overloaded",
         ),
-        (SearchRunError("final node produced RankedHits"), 422, ("invalid", "search graph"), None),
+        (
+            SearchUnavailableError("connection refused"),
+            ProbeStatus.UNREACHABLE,
+            424,
+            "embedder_unreachable",
+        ),
+        (SearchRunError("final node produced RankedHits"), None, 422, None),
     ]
-    for exc, status, must_contain, must_not_contain in cases:
+    for exc, probe_status, status, code in cases:
         monkeypatch.setattr(CONTEXT.search_service, "search", AsyncMock(side_effect=exc))
+        if probe_status is not None:
+            monkeypatch.setattr(
+                QueryEmbedderProbe, "classify", AsyncMock(return_value=probe_status)
+            )
         response = client.post(
             "/api/v1/collections/33333333-3333-3333-3333-333333333333/search",
             json={"query": "q"},
         )
         assert response.status_code == status, (exc, response.text)
-        detail = response.json()["detail"].lower()
-        for token in must_contain:
-            assert token in detail, (exc, detail)
-        if must_not_contain:
-            assert must_not_contain not in detail, (exc, detail)
+        detail = response.json()["detail"]
+        if code is None:
+            # The genuinely invalid stored graph keeps its plain-string alarming message.
+            assert "invalid" in detail.lower() and "search graph" in detail.lower()
+        else:
+            assert detail["code"] == code, (exc, detail)
 
 
 def test_search_run_timeout_is_504_not_422(client, wired, monkeypatch) -> None:
-    """A run that blew its wall-clock cap (SearchRunTimeout) is a RETRYABLE 504 naming the busy
-    embedder — never the alarming 422 'invalid search graph' (the graph is fine, the provider stuck)."""
+    """A run that blew its wall-clock cap (SearchRunTimeout) is a RETRYABLE 504 ``search_timeout`` —
+    never the alarming 422 'invalid search graph' (the graph is fine, the provider stuck)."""
     from backend.context import CONTEXT
     from backend.libs.search import SearchRunTimeout
 
@@ -436,16 +454,20 @@ def test_search_run_timeout_is_504_not_422(client, wired, monkeypatch) -> None:
         json={"query": "q"},
     )
     assert response.status_code == 504, response.text
-    body = response.text.lower()
-    assert "timed out" in body and "busy" in body
-    assert "invalid" not in body  # never mislabelled as an invalid graph
+    detail = response.json()["detail"]
+    assert detail["code"] == "search_timeout"
+    assert "timed out" in detail["detail"].lower()
+    assert "invalid" not in response.text.lower()  # never mislabelled as an invalid graph
 
 
 def test_search_embedder_unavailable_is_503_not_422(client, wired, monkeypatch) -> None:
-    """A run that failed because the query could not be encoded (SearchUnavailableError, the shared
-    embedder is saturated) is a RETRYABLE 503 — never the invalid-graph 422."""
+    """A run that failed because the query could not be encoded (SearchUnavailableError) is
+    classified by the bounded query-embedder probe; a still-answering embedder (probe → ok) means
+    the failure was genuinely transient → a RETRYABLE 503 ``embedder_overloaded`` — never the
+    invalid-graph 422."""
     from backend.context import CONTEXT
-    from backend.libs.search import SearchUnavailableError
+    from backend.libs.search import QueryEmbedderProbe, SearchUnavailableError
+    from shared_libs.pipelines.reachability import ProbeStatus
 
     monkeypatch.setattr(
         CONTEXT.search_service,
@@ -456,14 +478,39 @@ def test_search_embedder_unavailable_is_503_not_422(client, wired, monkeypatch) 
             )
         ),
     )
+    monkeypatch.setattr(QueryEmbedderProbe, "classify", AsyncMock(return_value=ProbeStatus.OK))
     response = client.post(
         "/api/v1/collections/33333333-3333-3333-3333-333333333333/search",
         json={"query": "q"},
     )
     assert response.status_code == 503, response.text
-    body = response.text.lower()
-    assert "unavailable" in body and "busy" in body
-    assert "invalid" not in body
+    detail = response.json()["detail"]
+    assert detail["code"] == "embedder_overloaded"
+    assert "invalid" not in response.text.lower()
+
+
+def test_search_embedder_permanent_failure_is_424_not_503(client, wired, monkeypatch) -> None:
+    """A run that failed to encode because the embedder is genuinely unreachable (probe →
+    unreachable) is a PERMANENT 424 ``embedder_unreachable`` — not the retryable 503, and not 422."""
+    from backend.context import CONTEXT
+    from backend.libs.search import QueryEmbedderProbe, SearchUnavailableError
+    from shared_libs.pipelines.reachability import ProbeStatus
+
+    monkeypatch.setattr(
+        CONTEXT.search_service,
+        "search",
+        AsyncMock(side_effect=SearchUnavailableError("QueryEncodeError: connection refused")),
+    )
+    monkeypatch.setattr(
+        QueryEmbedderProbe, "classify", AsyncMock(return_value=ProbeStatus.UNREACHABLE)
+    )
+    response = client.post(
+        "/api/v1/collections/33333333-3333-3333-3333-333333333333/search",
+        json={"query": "q"},
+    )
+    assert response.status_code == 424, response.text
+    detail = response.json()["detail"]
+    assert detail["code"] == "embedder_unreachable"
 
 
 def test_target_resolver_drops_empty_dense_axis_for_lexical_only(fastapi_app) -> None:
