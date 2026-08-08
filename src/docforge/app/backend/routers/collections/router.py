@@ -141,17 +141,18 @@ async def create_collection(
         CollectionModel: The created contract (201); 409 on name clash, 422 on bad
         pipeline or colliding vector slugs.
     """
-    # 1. Name unicity — explicit 409, not a driver error.
-    if await CONTEXT.database.collections.get_by_name(request.name) is not None:
-        raise HTTPException(status_code=409, detail=f"Collection '{request.name}' already exists.")
-
+    # 1. Structural validation FIRST — fail-fast BEFORE any store touch (invariant #4), so a malformed
+    #    request is a clean 422 even when the DB is unreachable (never a 500 from a driver error).
+    #    Fields, then the pipeline blob: the caller's explicit graph wins, otherwise the stock blob the
+    #    ``preset`` selects (light = enrichment-free core), healed to the current engine and validated.
     CollectionHelpers.validate_fields(request.fields)
-
-    # 2. The pipeline blob: the caller's explicit graph wins; otherwise the stock blob the ``preset``
-    #    selects (light = enrichment-free core). Healed to the current engine, validated and stamped.
     blob = CollectionHelpers.canonical_pipeline(
         request.pipeline or CollectionHelpers.preset_blob(request.preset)
     )
+
+    # 2. Name unicity — explicit 409, not a driver error.
+    if await CONTEXT.database.collections.get_by_name(request.name) is not None:
+        raise HTTPException(status_code=409, detail=f"Collection '{request.name}' already exists.")
 
     # 3. Create contract + schema in one transaction (slug collisions → explicit 422).
     rows = CollectionHelpers.to_field_rows(request.fields)

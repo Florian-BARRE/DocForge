@@ -56,6 +56,8 @@ class CollectionModel(BaseModel):
         name (str): Unique human name.
         supported_formats (list[str]): Accepted upload extensions (e.g. pdf).
         max_file_size_bytes (int): Upload size ceiling, bytes.
+        job_timeout_seconds (float | None): Per-collection whole-ingest-job wall-clock budget,
+            seconds. None = inherit the worker's global WORKER_JOB_TIMEOUT_SECONDS default.
         needs_reindex (bool): True when a config change requires reindexing.
         created_at (datetime | None): Creation timestamp.
         pipeline (dict[str, Any]): The ingestion pipeline blob (the graph).
@@ -67,6 +69,14 @@ class CollectionModel(BaseModel):
     name: str = Field(description="Unique human name.")
     supported_formats: list[str] = Field(description="Accepted upload extensions (e.g. pdf).")
     max_file_size_bytes: int = Field(description="Upload size ceiling, bytes.")
+    job_timeout_seconds: float | None = Field(
+        default=None,
+        gt=0,
+        description=(
+            "Per-collection whole-ingest-job wall-clock budget, seconds. None = inherit the "
+            "worker's global WORKER_JOB_TIMEOUT_SECONDS default."
+        ),
+    )
     needs_reindex: bool = Field(description="True when a config change requires reindexing.")
     created_at: datetime | None = Field(default=None, description="Creation timestamp.")
     pipeline: dict[str, Any] = Field(description="The ingestion pipeline blob (the graph).")
@@ -84,6 +94,8 @@ class CreateCollectionRequest(BaseModel):
         name (str): Unique human name.
         supported_formats (list[str]): Accepted upload extensions (e.g. pdf).
         max_file_size_bytes (int): Upload size ceiling, bytes.
+        job_timeout_seconds (float | None): Per-collection whole-ingest-job wall-clock budget,
+            seconds. None = inherit the worker's global WORKER_JOB_TIMEOUT_SECONDS default.
         fields (list[FieldSpec]): The FULL schema, declared up front (vector space is fixed).
         pipeline (dict[str, Any] | None): The pipeline blob; omitted → the product default.
     """
@@ -91,6 +103,14 @@ class CreateCollectionRequest(BaseModel):
     name: str = Field(description="Unique human name.")
     supported_formats: list[str] = Field(description="Accepted upload extensions (e.g. pdf).")
     max_file_size_bytes: int = Field(description="Upload size ceiling, bytes.")
+    job_timeout_seconds: float | None = Field(
+        default=None,
+        gt=0,
+        description=(
+            "Per-collection whole-ingest-job wall-clock budget, seconds. None = inherit the "
+            "worker's global WORKER_JOB_TIMEOUT_SECONDS default."
+        ),
+    )
     fields: list[FieldSpec] = Field(
         default_factory=list,
         description="The FULL schema, declared up front (vector space is fixed at creation).",
@@ -114,6 +134,8 @@ class UpdateCollectionRequest(BaseModel):
         name (str | None): New unique name.
         supported_formats (list[str] | None): New accepted upload extensions.
         max_file_size_bytes (int | None): New size ceiling, bytes.
+        job_timeout_seconds (float | None): New per-collection whole-ingest-job wall-clock
+            budget, seconds. Omitted = leave the current value unchanged.
         fields (list[FieldSpec] | None): The TARGET schema (diffed by field name).
         pipeline (dict[str, Any] | None): New pipeline blob (validated before storage).
         search (dict[str, Any] | None): New search graph blob ({} = stock default).
@@ -125,6 +147,14 @@ class UpdateCollectionRequest(BaseModel):
         default=None, description="New accepted upload extensions."
     )
     max_file_size_bytes: int | None = Field(default=None, description="New size ceiling, bytes.")
+    job_timeout_seconds: float | None = Field(
+        default=None,
+        gt=0,
+        description=(
+            "New per-collection whole-ingest-job wall-clock budget, seconds. Omitted = leave the "
+            "current value unchanged; a set value overrides the global WORKER_JOB_TIMEOUT_SECONDS."
+        ),
+    )
     fields: list[FieldSpec] | None = Field(
         default=None,
         description="The TARGET schema (diffed by field name; omitted fields are removed).",
