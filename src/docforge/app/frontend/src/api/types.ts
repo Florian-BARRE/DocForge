@@ -56,8 +56,12 @@ export interface JsonSchemaProperty {
   enum?: string[];
   minimum?: number;
   maximum?: number;
+  /** Pydantic's `gt=`/`lt=` constraints — treated as a soft bound alongside minimum/maximum. */
+  exclusiveMinimum?: number;
+  exclusiveMaximum?: number;
   format?: string;
   items?: JsonSchemaProperty;
+  /** Pydantic's `X | None` shape — collapsed by `SchemaField.deref` into the non-null branch. */
   anyOf?: JsonSchemaProperty[];
   $ref?: string;
   allOf?: { $ref?: string }[];

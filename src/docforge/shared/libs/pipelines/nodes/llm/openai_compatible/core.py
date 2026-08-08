@@ -37,7 +37,10 @@ class LlmOpenAICompatibleNode(BaseLlmChatNode):
         """Build the chat client through the shared factory."""
         config: LlmOpenAICompatibleConfig = self.config
         return OpenAICompatHelpers.chat(
-            config, temperature=config.temperature, max_tokens=config.max_tokens
+            config,
+            temperature=config.temperature,
+            max_tokens=config.max_tokens,
+            max_retries=config.max_retries,
         )
 
 

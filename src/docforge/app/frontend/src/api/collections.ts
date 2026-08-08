@@ -3,9 +3,12 @@
 // from the backend's Pydantic models (see /openapi.json) — nothing invented.
 
 import { apiFetch, jsonInit } from "./http";
+import type { JsonSchema } from "./types";
 
 const BASE = "/api/v1/collections";
 
+// mirror of backend StrEnums (app/backend/routers/collections/models.py) — keep in sync; no
+// discovery/enums endpoint currently exposes these, so they stay hand-copied until one does.
 export type FieldType = "string" | "integer" | "float" | "bool" | "keyword_list" | "datetime" | "enum" | "text" | "integer_list" | "float_list" | "text_list";
 export type FieldOrigin = "system" | "user" | "generated";
 export type FieldScope = "document" | "chunk";
@@ -32,6 +35,8 @@ export interface Collection {
   name: string;
   supported_formats: string[];
   max_file_size_bytes: number;
+  /** Whole-ingest-job wall-clock budget override, in seconds; `null` inherits the worker's global default. */
+  job_timeout_seconds: number | null;
   needs_reindex: boolean;
   created_at: string | null;
   pipeline: Record<string, unknown>;
@@ -46,6 +51,8 @@ export interface CreateCollectionRequest {
   name: string;
   supported_formats: string[];
   max_file_size_bytes: number;
+  /** `null`/omitted inherits the worker's global default job timeout. */
+  job_timeout_seconds?: number | null;
   fields: FieldSpec[];
   pipeline?: Record<string, unknown> | null;
   /** Stock-blob selector (ignored when `pipeline` is set): "light" = fast, enrichment-free core. */
@@ -61,6 +68,8 @@ export interface UpdateCollectionRequest {
   name?: string | null;
   supported_formats?: string[] | null;
   max_file_size_bytes?: number | null;
+  /** `null` reverts to inheriting the worker's global default job timeout. */
+  job_timeout_seconds?: number | null;
   fields?: FieldSpec[] | null;
   pipeline?: Record<string, unknown> | null;
   search?: Record<string, unknown> | null;
@@ -85,6 +94,21 @@ export function updateCollection(id: string, request: UpdateCollectionRequest): 
 
 export function deleteCollection(id: string): Promise<void> {
   return apiFetch(`${BASE}/${id}`, { method: "DELETE" });
+}
+
+/** Mirrors a node card's `config_schema` face — see `GET /collections/contract-schema`. */
+interface CollectionContractSchemaResponse {
+  config_schema: JsonSchema;
+}
+
+/**
+ * Discover the collection identity/limits contract as JSON Schema — fed straight into the
+ * shared `SchemaForm`, exactly like a node's `config_schema`, so a new backend contract field
+ * auto-surfaces in the wizard with zero further frontend edit.
+ */
+export async function fetchCollectionContractSchema(): Promise<JsonSchema> {
+  const response = await apiFetch<CollectionContractSchemaResponse>(`${BASE}/contract-schema`);
+  return response.config_schema;
 }
 
 // ====== Collection operational health (on-demand provider reachability probe) ======

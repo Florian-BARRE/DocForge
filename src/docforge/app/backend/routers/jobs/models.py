@@ -16,10 +16,6 @@ from shared_libs.services.db.postgresql.tables import JobStatus as JobStatusEnum
 # reap window: the operator sees the wedge coming, then the reaper resolves it.
 STALLED_AFTER_SECONDS = 600
 
-# A worker whose heartbeat is fresher than this is ``alive`` — the worker upserts its heartbeat every
-# ~10s, so a value older than 30s (three missed ticks) means the process is gone, not merely idle.
-WORKER_ALIVE_THRESHOLD_SECONDS = 30
-
 
 class JobStatus(BaseModel):
     """

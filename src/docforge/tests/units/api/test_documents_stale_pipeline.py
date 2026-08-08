@@ -93,6 +93,7 @@ def test_upload_with_out_of_enum_metadata_value_is_422_at_the_boundary(
     collection = SimpleNamespace(
         pipeline=IngestPipeline.default_blob().model_dump(mode="json"),
         max_file_size_bytes=5_000_000,
+        job_timeout_seconds=None,
         supported_formats=["pdf"],
     )
     jurisdiction = SimpleNamespace(id=1, field_name="jurisdiction", enum_values=["EU", "US"])
@@ -132,6 +133,7 @@ def _install_format_context(monkeypatch, fastapi_app, supported_formats: list[st
     collection = SimpleNamespace(
         pipeline=IngestPipeline.default_blob().model_dump(mode="json"),
         max_file_size_bytes=5_000_000,
+        job_timeout_seconds=None,
         supported_formats=supported_formats,
     )
     collections = SimpleNamespace(

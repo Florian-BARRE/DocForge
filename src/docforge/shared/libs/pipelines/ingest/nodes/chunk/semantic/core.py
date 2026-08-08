@@ -54,7 +54,9 @@ class ChunkerSemanticNode(BaseChunkerNode):
     async def _embed(self, texts: list[str]) -> list[list[float]]:
         """Embed the context windows through the configured endpoint (overridable hook)."""
         config: ChunkerSemanticConfig = self.config
-        return await OpenAICompatHelpers.embeddings(config).aembed_documents(texts)
+        return await OpenAICompatHelpers.embeddings(
+            config, max_retries=config.max_retries
+        ).aembed_documents(texts)
 
     def __boundaries(self, distances: list[float]) -> set[int]:
         """The unit indexes AFTER which a boundary is placed."""

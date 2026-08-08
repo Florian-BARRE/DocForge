@@ -75,6 +75,95 @@ def test_valid_metadata_target_yields_no_errors(fastapi_app) -> None:
     assert errors == []
 
 
+# --------------------------------------------------------------------------- #
+# range_violations — the 422 gate for range ({gte/gt/lte/lt}) filter mappings
+# --------------------------------------------------------------------------- #
+
+
+def _typed_field(name: str, field_type, filterable: bool = True) -> SimpleNamespace:
+    return SimpleNamespace(field_name=name, field_type=field_type, filterable=filterable)
+
+
+def _range_schema() -> list[SimpleNamespace]:
+    from shared_libs.public_models import FieldType  # noqa: PLC0415
+
+    return [
+        _typed_field("pages", FieldType.INTEGER),
+        _typed_field("score", FieldType.FLOAT),
+        _typed_field("published", FieldType.DATETIME),
+        _typed_field("author", FieldType.STRING),  # keyword — NOT range-typed
+    ]
+
+
+def test_numeric_range_on_integer_field_is_valid(fastapi_app) -> None:
+    from backend.routers.search.helpers import SearchHelpers  # noqa: PLC0415
+
+    assert SearchHelpers.range_violations({"pages": {"gte": 1, "lte": 9}}, _range_schema()) == []
+
+
+def test_datetime_range_on_datetime_field_is_valid(fastapi_app) -> None:
+    from backend.routers.search.helpers import SearchHelpers  # noqa: PLC0415
+
+    errors = SearchHelpers.range_violations(
+        {"published": {"gte": "2024-01-01", "lte": "2024-12-31"}}, _range_schema()
+    )
+    assert errors == []
+
+
+def test_range_on_keyword_field_is_rejected(fastapi_app) -> None:
+    from backend.routers.search.helpers import SearchHelpers  # noqa: PLC0415
+
+    errors = SearchHelpers.range_violations({"author": {"gte": "a"}}, _range_schema())
+    assert any("not range-typed" in e for e in errors)
+
+
+def test_malformed_range_key_is_rejected(fastapi_app) -> None:
+    from backend.routers.search.helpers import SearchHelpers  # noqa: PLC0415
+
+    errors = SearchHelpers.range_violations({"pages": {"between": 3}}, _range_schema())
+    assert any("unsupported key" in e for e in errors)
+
+
+def test_numeric_bounds_on_datetime_field_are_rejected(fastapi_app) -> None:
+    from backend.routers.search.helpers import SearchHelpers  # noqa: PLC0415
+
+    errors = SearchHelpers.range_violations({"published": {"gte": 2024}}, _range_schema())
+    assert any("ISO-8601 datetime" in e for e in errors)
+
+
+def test_datetime_bounds_on_numeric_field_are_rejected(fastapi_app) -> None:
+    from backend.routers.search.helpers import SearchHelpers  # noqa: PLC0415
+
+    errors = SearchHelpers.range_violations({"pages": {"gte": "2024-01-01"}}, _range_schema())
+    assert any("numeric" in e for e in errors)
+
+
+def test_scalar_and_list_filters_are_not_range_violations(fastapi_app) -> None:
+    from backend.routers.search.helpers import SearchHelpers  # noqa: PLC0415
+
+    errors = SearchHelpers.range_violations(
+        {"author": "kafka", "pages": [1, 2, 3]}, _range_schema()
+    )
+    assert errors == []
+
+
+def test_range_on_non_filterable_field_is_not_this_gates_concern(fastapi_app) -> None:
+    from backend.routers.search.helpers import SearchHelpers  # noqa: PLC0415
+    from shared_libs.public_models import FieldType  # noqa: PLC0415
+
+    schema = [_typed_field("pages", FieldType.INTEGER, filterable=False)]
+    assert SearchHelpers.range_violations({"pages": {"gte": 1}}, schema) == []
+
+
+def test_range_violations_never_crashes_on_a_typeless_stand_in(fastapi_app) -> None:
+    """A plain scalar/list filter must never make range_violations inspect a field's type (it runs
+    on every search) — a stand-in schema carrying no field_type stays crash-free."""
+    from backend.routers.search.helpers import SearchHelpers  # noqa: PLC0415
+
+    schema = [SimpleNamespace(field_name="topic", filterable=True)]  # no field_type at all
+    assert SearchHelpers.range_violations({"topic": "ai"}, schema) == []
+
+
 def test_to_search_targets_none_passes_through(fastapi_app) -> None:
     from backend.routers.search.helpers import SearchHelpers  # noqa: PLC0415
 

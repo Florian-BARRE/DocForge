@@ -9,6 +9,9 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 
+# ====== Internal Project Imports ======
+from config import RUNTIME_CONFIG
+
 # ====== Local Project Imports ======
 from ...context import CONTEXT
 from ...libs.auth import AuthPrincipal, AuthzGuard, Capability, require
@@ -199,7 +202,11 @@ async def stream_job(
 
     # 2. Hand the poll-backed generator the jobs facade; it yields frames until the job terminates.
     return StreamingResponse(
-        stream_job_events(CONTEXT.database.jobs, job_id),
+        stream_job_events(
+            CONTEXT.database.jobs,
+            job_id,
+            poll_interval=RUNTIME_CONFIG.SSE_POLL_INTERVAL_SECONDS,
+        ),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )

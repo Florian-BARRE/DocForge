@@ -7,11 +7,17 @@
 from pydantic import Field
 
 # ====== Internal Project Imports ======
-from shared_libs.pipelines.base import NodeConfig
+from shared_libs.pipelines.base import TimeoutRetryConfig
 
 
-class BaseEmbedConfig(NodeConfig):
-    """Shared embedder config — children add their endpoint specifics."""
+class BaseEmbedConfig(TimeoutRetryConfig):
+    """Shared embedder config — children add their endpoint specifics.
+
+    Timeout/retry come from ``TimeoutRetryConfig``; ``max_retries`` (3) and ``retry_backoff_seconds``
+    (1.5) are overridden here to the embedder's own defaults, consumed by the embed node's retry +
+    adaptive-split hand-loop. ``timeout_seconds`` keeps the mixin's 30 s here — the bge_server child
+    overrides it to 60 s; the openai-compatible child keeps 30 s (unchanged).
+    """
 
     model: str = Field(description="Embedding model name (provenance, stored with the vectors).")
     batch_size: int = Field(default=32, gt=0, description="Texts embedded per provider call.")
@@ -24,7 +30,8 @@ class BaseEmbedConfig(NodeConfig):
     retry_backoff_seconds: float = Field(
         default=1.5,
         ge=0,
-        description="Base delay for the exponential backoff between retries (delay = base * attempt).",
+        description="Base delay for the exponential backoff between retries (delay = base * attempt). "
+        "Relaxed to allow 0 (the embed hand-loop treats 0 as no wait between retries).",
     )
     embed_sparse: bool = Field(
         default=True,

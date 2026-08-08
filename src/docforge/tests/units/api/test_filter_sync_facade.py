@@ -43,6 +43,9 @@ async def test_sync_document_no_filterable_values_returns_zero(monkeypatch) -> N
         fsf_module.DocumentApi, "get_filterable_metadata", AsyncMock(return_value={})
     )
     monkeypatch.setattr(
+        fsf_module.DocumentApi, "get_chunk_filterable_metadata", AsyncMock(return_value={})
+    )
+    monkeypatch.setattr(
         fsf_module.ChunkApi,
         "get_indexed_ids_for_document",
         AsyncMock(return_value=[uuid.uuid4()]),
@@ -63,6 +66,9 @@ async def test_sync_document_no_indexed_chunks_returns_zero(monkeypatch) -> None
     monkeypatch.setattr(fsf_module.DocumentApi, "get", AsyncMock(return_value=document))
     monkeypatch.setattr(
         fsf_module.DocumentApi, "get_filterable_metadata", AsyncMock(return_value={"topic": "ai"})
+    )
+    monkeypatch.setattr(
+        fsf_module.DocumentApi, "get_chunk_filterable_metadata", AsyncMock(return_value={})
     )
     monkeypatch.setattr(
         fsf_module.ChunkApi, "get_indexed_ids_for_document", AsyncMock(return_value=[])
@@ -89,6 +95,9 @@ async def test_sync_document_happy_path_sets_payload_per_chunk(monkeypatch) -> N
         AsyncMock(return_value={"topic": "ai", "year": 2026}),
     )
     monkeypatch.setattr(
+        fsf_module.DocumentApi, "get_chunk_filterable_metadata", AsyncMock(return_value={})
+    )
+    monkeypatch.setattr(
         fsf_module.ChunkApi, "get_indexed_ids_for_document", AsyncMock(return_value=chunk_ids)
     )
     set_payload = AsyncMock()
@@ -104,6 +113,42 @@ async def test_sync_document_happy_path_sets_payload_per_chunk(monkeypatch) -> N
     assert args[0] is qdrant.raw
     payloads = args[2]
     assert payloads == {str(cid): {"topic": "ai", "year": 2026} for cid in chunk_ids}
+
+
+async def test_sync_document_merges_doc_and_chunk_scope_values(monkeypatch) -> None:
+    """A CHUNK-scope filterable field (per-chunk value in chunk_metadata) is denormalised onto its
+    OWN point, merged over the uniform document-scope keys — the repair path for a chunk-scope field
+    toggled filterable after ingest. A chunk-scope key wins a name clash on its point."""
+    document_id = uuid.uuid4()
+    collection_id = uuid.uuid4()
+    chunk_a, chunk_b = uuid.uuid4(), uuid.uuid4()
+    document = MagicMock(id=document_id, collection_id=collection_id)
+    monkeypatch.setattr(fsf_module.DocumentApi, "get", AsyncMock(return_value=document))
+    monkeypatch.setattr(
+        fsf_module.DocumentApi, "get_filterable_metadata", AsyncMock(return_value={"topic": "ai"})
+    )
+    # chunk_a carries its own section tag; chunk_b has no chunk-scope value (doc-scope keys only).
+    monkeypatch.setattr(
+        fsf_module.DocumentApi,
+        "get_chunk_filterable_metadata",
+        AsyncMock(return_value={chunk_a: {"section": "intro"}}),
+    )
+    monkeypatch.setattr(
+        fsf_module.ChunkApi,
+        "get_indexed_ids_for_document",
+        AsyncMock(return_value=[chunk_a, chunk_b]),
+    )
+    set_payload = AsyncMock()
+    monkeypatch.setattr(fsf_module.QdrantIndexApi, "set_payload", set_payload)
+    qdrant = MagicMock()
+
+    facade = FilterSyncFacade(_postgres_yielding(MagicMock()), qdrant)
+    patched = await facade.sync_document_filter_payloads(document_id)
+
+    assert patched == 2
+    payloads = set_payload.await_args.args[2]
+    assert payloads[str(chunk_a)] == {"topic": "ai", "section": "intro"}
+    assert payloads[str(chunk_b)] == {"topic": "ai"}
 
 
 async def test_backfill_aggregates_only_patched_documents(monkeypatch) -> None:
@@ -125,6 +170,9 @@ async def test_backfill_aggregates_only_patched_documents(monkeypatch) -> None:
         return {} if document_id == doc_no_values.id else {"topic": "ai"}
 
     monkeypatch.setattr(fsf_module.DocumentApi, "get_filterable_metadata", _filterable)
+    monkeypatch.setattr(
+        fsf_module.DocumentApi, "get_chunk_filterable_metadata", AsyncMock(return_value={})
+    )
     monkeypatch.setattr(
         fsf_module.ChunkApi,
         "get_indexed_ids_for_document",

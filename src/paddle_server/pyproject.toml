@@ -1,0 +1,114 @@
+[project]
+name = "docforge-paddle-server"
+version = "1.0.0"
+description = "PaddleOCR PP-StructureV3 layout-parsing micro-service — PDF/image in, reading-ordered blocks (text/table-html/formula-latex) out"
+requires-python = ">=3.12"
+dependencies = [
+    # paddleocr ships the PPStructureV3 pipeline class and unconditionally depends on
+    # paddlex[ocr-core] (layout+OCR+PDF-reading via pypdfium2). Pinned exact — the
+    # parsing_res_list schema drifts across minor lines (see docstring in
+    # libs/ppstructure/normalizer.py), so an un-gated `uv lock --upgrade` must not silently
+    # change what the sidecar returns.
+    "paddleocr==3.7.0",
+    # Explicit paddlex[ocr] (superset of paddleocr's own ocr-core requirement) — pulls the extra
+    # deps PP-StructureV3's OPTIONAL sub-pipelines need at runtime (Jinja2/premailer/beautifulsoup4
+    # for table HTML serialization, latex2mathml/sentencepiece/tokenizers for formula recognition)
+    # so every sub-pipeline toggle works without a rebuild, matching the same pin as paddleocr.
+    "paddlex[ocr]==3.7.0",
+    # paddlepaddle itself is a DIRECT dependency (not just paddlex's transitive pull) so uv sources
+    # below can steer it to the correct wheel index — same reasoning as bge_server's direct torch
+    # declaration (uv sources are ignored for transitive deps).
+    "paddlepaddle==3.3.1",
+    # FastAPI + ASGI server.
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
+    # Config & logging (same internal libraries as the rest of the DocForge stack).
+    "configplusplus>=0.1.0",
+    "loggerplusplus>=1.0.0",
+    # ASCII startup banner printed by the lifespan.
+    "pyfiglet>=1.0.2",
+]
+
+# ── Paddle variant extras ─────────────────────────────────────────────────────────────────────
+# Exactly ONE of these extras must be selected at install time:
+#   cpu  → CPU-only paddlepaddle wheel (plain PyPI, ~100 MB). Target image size: ~1.2-1.5 GB.
+#   gpu  → CUDA 12.6 paddlepaddle-gpu wheel (Paddle's own CUDA index). Target image: ~4-5.5 GB.
+#
+# Declared as CONFLICTING extras in [tool.uv] below so uv enforces mutual exclusivity at lock
+# time. The Dockerfile selects the active extra via ARG TORCH_VARIANT (kept as the SAME arg name
+# used by worker/bge_server for zero release-workflow special-casing, even though this service is
+# Paddle not torch). Default: cpu.
+#
+# Build commands:
+#   CPU  (default): docker compose build paddle_server
+#   GPU  (opt-in):  docker build --build-arg TORCH_VARIANT=gpu -f src/paddle_server/Dockerfile \
+#                     -t docforge-paddle-server:gpu src
+[project.optional-dependencies]
+cpu = ["paddlepaddle"]
+gpu = ["paddlepaddle-gpu"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.24.0",
+    "ruff>=0.8.0",
+    "mypy>=1.13.0",
+    "httpx>=0.28.0",   # For FastAPI TestClient
+]
+
+[tool.uv]
+# This app is run as scripts (uvicorn entrypoint:app), not installed as a package.
+package = false
+
+# Declare cpu and gpu as mutually exclusive — uv enforces this at lock time.
+conflicts = [
+    [{ extra = "cpu" }, { extra = "gpu" }],
+]
+
+[tool.uv.sources]
+# Route paddlepaddle to the correct wheel index depending on the active extra.
+# paddlepaddle (cpu): plain PyPI — no special index needed for CPU wheels.
+# paddlepaddle-gpu (gpu): Paddle's own CUDA 12.6 index (matches the worker's cu12x line).
+paddlepaddle-gpu = [
+    { index = "paddle-cu126", extra = "gpu" },
+]
+
+[[tool.uv.index]]
+# CUDA 12.6 paddlepaddle-gpu wheels — Paddle publishes GPU wheels on its own package index,
+# not PyPI (unlike the CPU wheel, which IS on plain PyPI and needs no special index).
+name = "paddle-cu126"
+url = "https://www.paddlepaddle.org.cn/packages/stable/cu126/"
+explicit = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+ignore = [
+    "F541",   # f-string without placeholder (loggerplusplus convention)
+    "E501",   # line too long (handled by formatter)
+]
+
+[tool.ruff.lint.per-file-ignores]
+# config_loader.py reads DEV_MODE via an `import os` placed AFTER loggerplusplus.remove() so a
+# temporary debug sink exists before the config class is evaluated — a deliberate bootstrap
+# ordering (see the python.md runtime-config pattern), not a stray mid-file import.
+"config_loader.py" = ["E402"]
+# entrypoint.py MUST import PaddleServerConfig FIRST (its class body calls sys.path.append so
+# `from backend.*` / `from libs.*` resolve) — isort would reorder it after third-party and break
+# the import bootstrap, so the block-sort rule is disabled here on purpose.
+"entrypoint.py" = ["I001"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["config_loader", "libs", "backend"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true

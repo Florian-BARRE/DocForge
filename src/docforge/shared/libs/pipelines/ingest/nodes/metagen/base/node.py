@@ -123,12 +123,25 @@ class BaseMetagenNode(ActionNode):
 
     @staticmethod
     def _document_text(texts: list[str], max_words: int) -> str:
-        """Join texts into the generation view — structure kept when under the word cap."""
+        """Join texts into the generation view, keeping the HEAD and TAIL when over the word cap.
+
+        A head-only truncation would blind a closing-summary or conclusion field to the end of the
+        document; over the cap the view keeps the first and last halves, joined by an elision marker
+        so the model sees both ends of the text rather than only its opening.
+
+        Args:
+            texts (list[str]): The per-chunk texts to assemble into one document view.
+            max_words (int): Hard cap on the number of words handed to the model.
+
+        Returns:
+            str: The full text when under the cap, else its head + tail with the middle elided.
+        """
         joined = "\n\n".join(texts)
         words = joined.split()
         if len(words) <= max_words:
             return joined
-        return " ".join(words[:max_words])
+        half = max_words // 2
+        return " ".join([*words[:half], "[…]", *words[-half:]])
 
 
 __all__ = ["BaseMetagenNode", "ResolvedTarget"]

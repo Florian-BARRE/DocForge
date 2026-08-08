@@ -27,10 +27,11 @@ def create_worker_settings() -> type:
     Returns:
         type: The WorkerSettings class (task functions, lifecycle, queue and limits).
     """
-    # The stuck-job reaper runs every 5 minutes AND once at startup, so a wedge left by the previous
-    # (crashed/hot-reloaded) run is cleared immediately. Disabled -> no cron registered at all.
+    # The stuck-job reaper runs every WORKER_REAP_INTERVAL_MINUTES AND once at startup, so a wedge
+    # left by the previous (crashed/hot-reloaded) run is cleared immediately. Disabled -> no cron.
+    reap_minutes = set(range(0, 60, RUNTIME_CONFIG.WORKER_REAP_INTERVAL_MINUTES))
     reaper_crons = (
-        [cron(reap_stuck_jobs, minute=set(range(0, 60, 5)), run_at_startup=True)]
+        [cron(reap_stuck_jobs, minute=reap_minutes, run_at_startup=True)]
         if RUNTIME_CONFIG.WORKER_REAP_ENABLED
         else []
     )
@@ -48,11 +49,15 @@ def create_worker_settings() -> type:
         on_shutdown = shutdown
         redis_settings = RedisSettings.from_dsn(RUNTIME_CONFIG.REDIS_URL)
         max_jobs = RUNTIME_CONFIG.WORKER_CONCURRENCY
-        # arq's own cap sits ABOVE the engine's per-run timeout (the engine cancels first).
-        job_timeout = RUNTIME_CONFIG.WORKER_JOB_TIMEOUT_SECONDS + 60
-        # Write a health record to Redis every 30s; `arq entrypoint.WorkerSettings --check` reads it
-        # and exits non-zero when stale — the container healthcheck that surfaces a wedged worker.
-        health_check_interval = 30
+        # arq's own cap sits ABOVE the engine's per-run timeout (the engine cancels first). The grace
+        # is the SAME env the app enqueue side reads, so the two can never diverge.
+        job_timeout = (
+            RUNTIME_CONFIG.WORKER_JOB_TIMEOUT_SECONDS
+            + RUNTIME_CONFIG.WORKER_JOB_TIMEOUT_GRACE_SECONDS
+        )
+        # Write a health record to Redis on this interval; `arq entrypoint.WorkerSettings --check`
+        # reads it and exits non-zero when stale — the container healthcheck for a wedged worker.
+        health_check_interval = RUNTIME_CONFIG.WORKER_HEALTH_CHECK_INTERVAL_SECONDS
 
     return WorkerSettings
 

@@ -338,6 +338,51 @@ services:
     networks:
       - docforge_net
 
+  # ── PaddleOCR PP-StructureV3 layout-parsing sidecar — optional escalation parser ────────────
+  # Own image variants (cpu/gpu, TORCH_VARIANT build-arg) mirroring bge_server. In the `full`
+  # profile alongside the rest of the stack (a collection's pp_structure node is still OFF by
+  # default in every shipped blob, so the service being UP costs idle memory only, no traffic).
+  # A collection's pp_structure node points at it via base_url:
+  #   in-network  → http://paddle_server:80   (the docforge_net alias below)
+  #   from host   → http://localhost:10049 (dev only — see docker-compose.dev.yml)
+  docforge_paddle_server:
+    image: ghcr.io/florian-barre/docforge-paddle-server:${DOCFORGE_TAG:-latest}-cpu
+    container_name: docforge-paddle-server
+    profiles: ["full"]
+    # Same reason as docforge_app/docforge_worker/docforge_bge_server: Docker's embedded
+    # resolver has no external upstream on this VM, so without a pin the first-boot model
+    # download (PADDLE_PDX_MODEL_SOURCE=huggingface -> huggingface.co) fails to resolve.
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
+    env_file:
+      - services/paddle_server/.env
+    # No host port in prod — internal to docforge_net only (collections point at
+    # http://paddle_server:80). Dev re-publishes 10049 via docker-compose.dev.yml.
+    volumes:
+      - docforge_ppstructure_models:/models # PADDLE_PDX_CACHE_HOME — weights persist across restarts
+    healthcheck:
+      # stdlib probe (the slim runtime has no curl); generous start_period for the first
+      # models download (layout+OCR+table ≈ 270 MB lean default) + pipeline build.
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:80/health', timeout=5).status == 200 else 1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 300s
+    deploy:
+      resources:
+        # PP-StructureV3 loads ~7 CPU models (layout + OCRv5 + table_cls + SLANeXt/SLANet +
+        # RT-DETR wired/wireless cell det) and a predict peaks several GB — 3g OOM-crash-loops it.
+        limits:
+          memory: 16g
+        reservations:
+          memory: 1g
+    restart: unless-stopped
+    networks:
+      docforge_net:
+        aliases:
+          - paddle_server        # so a collection's default base_url http://paddle_server:80 resolves
+
 volumes:
   docforge_postgres_data:
   docforge_redis_data:
@@ -345,6 +390,7 @@ volumes:
   docforge_seaweedfs_data:
   docforge_bge_models:
   docforge_worker_hf_cache:
+  docforge_ppstructure_models:
 
 networks:
   docforge_net:

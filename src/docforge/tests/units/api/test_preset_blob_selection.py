@@ -1,7 +1,7 @@
 """Knob B — the create-endpoint's stock-blob preset selector.
 
 ``_preset_blob`` picks the light blob for ``preset='light'`` and the full default otherwise; the
-create endpoint's ``request.pipeline or _preset_blob(request.preset)`` makes an explicit pipeline
+create endpoint's ``request.pipeline or CollectionHelpers.preset_blob(request.preset)`` makes an explicit pipeline
 win over the preset. Exercised directly (no store, no HTTP) behind the booted app fixture.
 """
 
@@ -9,29 +9,31 @@ from shared_libs.pipelines.ingest import IngestPipeline
 
 
 def test_preset_light_selects_the_light_blob(fastapi_app) -> None:
-    from backend.routers.collections.router import _preset_blob  # noqa: PLC0415
+    from backend.routers.collections.helpers import CollectionHelpers  # noqa: PLC0415
 
-    assert _preset_blob("light") == IngestPipeline.light_blob().model_dump(mode="json")
+    assert CollectionHelpers.preset_blob("light") == IngestPipeline.light_blob().model_dump(
+        mode="json"
+    )
 
 
 def test_preset_standard_and_none_select_the_default_blob(fastapi_app) -> None:
-    from backend.routers.collections.router import _preset_blob  # noqa: PLC0415
+    from backend.routers.collections.helpers import CollectionHelpers  # noqa: PLC0415
 
     default = IngestPipeline.default_blob().model_dump(mode="json")
-    assert _preset_blob("standard") == default
-    assert _preset_blob(None) == default
+    assert CollectionHelpers.preset_blob("standard") == default
+    assert CollectionHelpers.preset_blob(None) == default
 
 
 def test_light_and_default_presets_differ(fastapi_app) -> None:
-    from backend.routers.collections.router import _preset_blob  # noqa: PLC0415
+    from backend.routers.collections.helpers import CollectionHelpers  # noqa: PLC0415
 
-    assert _preset_blob("light") != _preset_blob(None)
+    assert CollectionHelpers.preset_blob("light") != CollectionHelpers.preset_blob(None)
 
 
 def test_explicit_pipeline_wins_over_preset(fastapi_app) -> None:
     """Mirror the endpoint's selection expression: an explicit graph bypasses the preset entirely."""
+    from backend.routers.collections.helpers import CollectionHelpers  # noqa: PLC0415
     from backend.routers.collections.models import CreateCollectionRequest  # noqa: PLC0415
-    from backend.routers.collections.router import _preset_blob  # noqa: PLC0415
 
     explicit = {"node_type": "group", "id": "custom", "nodes": []}
     request = CreateCollectionRequest(
@@ -41,4 +43,4 @@ def test_explicit_pipeline_wins_over_preset(fastapi_app) -> None:
         pipeline=explicit,
         preset="light",
     )
-    assert (request.pipeline or _preset_blob(request.preset)) == explicit
+    assert (request.pipeline or CollectionHelpers.preset_blob(request.preset)) == explicit

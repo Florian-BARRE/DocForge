@@ -37,11 +37,13 @@ class FilterSyncFacade(LoggerClass):
 
     async def sync_document_filter_payloads(self, document_id: uuid.UUID) -> int:
         """
-        Write a document's filterable document-scope metadata onto all its chunk points.
+        Write a document's filterable metadata (BOTH scopes) onto its chunk points.
 
-        The value is read once from Postgres and set (merged) onto every indexed chunk point, so a
-        ``filters={field: value}`` search matches exactly the chunks of documents carrying it. Never
-        re-embeds; re-running yields the same payload (idempotent). Skips cleanly when the document
+        Document-scope values are uniform, so the same keys ride every indexed chunk point;
+        chunk-scope values live one-per-chunk, so each point also carries its OWN chunk-scope values
+        (a chunk-scope key overrides a document-scope one of the same name on that point). Set as a
+        merge, never a re-embed, so a ``filters={field: value}`` search matches exactly the chunks
+        carrying it. Idempotent (re-running yields the same payload); a clean no-op when the document
         has no filterable metadata or no indexed chunk yet.
 
         Args:
@@ -50,27 +52,36 @@ class FilterSyncFacade(LoggerClass):
         Returns:
             int: The number of chunk points patched (0 when there is nothing to carry or to filter).
         """
-        # 1. Read the document, its filterable doc-scope metadata and its indexed chunk ids.
+        # 1. Read the document, its filterable doc-scope + chunk-scope metadata and its point ids.
         async with self._postgres.session() as session:
             document = await DocumentApi.get(session, document_id)
             if document is None:
                 return 0
-            values = await DocumentApi.get_filterable_metadata(session, document_id)
+            doc_values = await DocumentApi.get_filterable_metadata(session, document_id)
+            chunk_values = await DocumentApi.get_chunk_filterable_metadata(session, document_id)
             chunk_ids = await ChunkApi.get_indexed_ids_for_document(session, document_id)
 
-        # 2. Nothing to filter on, or no point to carry it → clean no-op.
-        if not values or not chunk_ids:
+        # 2. No point to carry anything, or nothing filterable at either scope → clean no-op.
+        if not chunk_ids or (not doc_values and not chunk_values):
             return 0
 
-        # 3. Set the SAME payload keys on every chunk point (merge — other keys untouched).
+        # 3. Per-point payload = the uniform doc-scope keys merged with the point's own chunk-scope
+        #    keys (chunk-scope wins on a name clash). Points with no key to set are left out.
+        payloads: dict[str, dict] = {}
+        for chunk_id in chunk_ids:
+            merged = {**doc_values, **chunk_values.get(chunk_id, {})}
+            if merged:
+                payloads[str(chunk_id)] = merged
+        if not payloads:
+            return 0
+
+        # 4. Merge the keys onto each point (other payload keys untouched).
         name = DatabaseHelpers.qdrant_collection_name(document.collection_id)
-        payloads = {str(chunk_id): dict(values) for chunk_id in chunk_ids}
         await QdrantIndexApi.set_payload(self._qdrant.raw, name, payloads)
         self.logger.info(
-            f"Synced {len(values)} filter field(s) onto {len(chunk_ids)} point(s) "
-            f"for document {document_id}"
+            f"Synced filter payloads onto {len(payloads)} point(s) for document {document_id}"
         )
-        return len(chunk_ids)
+        return len(payloads)
 
     async def backfill_collection_filter_payloads(
         self, collection_id: uuid.UUID

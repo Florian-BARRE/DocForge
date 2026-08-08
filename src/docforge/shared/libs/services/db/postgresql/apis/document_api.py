@@ -16,6 +16,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shared_libs.public_models import FieldOrigin, FieldScope
 
 from ..tables import (
+    Chunk,
+    ChunkMetadata,
     Document,
     DocumentMetadata,
     DocumentStatus,
@@ -242,6 +244,43 @@ class DocumentApi:
         out: dict[uuid.UUID, dict[str, Any]] = {}
         for document_id, name, value in result.all():
             out.setdefault(document_id, {})[name] = value
+        return out
+
+    @staticmethod
+    async def get_chunk_filterable_metadata(
+        session: AsyncSession, document_id: uuid.UUID
+    ) -> dict[uuid.UUID, dict[str, Any]]:
+        """
+        Return a document's FILTERABLE CHUNK-scope metadata as ``{chunk_id: {field_name: value}}``.
+
+        The chunk-scope sibling of ``get_filterable_metadata``: chunk-scope values live one-per-chunk
+        in ``chunk_metadata``, so each chunk carries its OWN filterable values (unlike a document-scope
+        value that is uniform across the document). This is exactly what a backfill must denormalise
+        onto each individual chunk point when a chunk-scope field is toggled filterable after ingest —
+        the ingest write path already does it inline, this repairs points created before the toggle.
+        Only ``filterable`` + ``chunk``-scoped fields (any origin) are returned.
+
+        Args:
+            session (AsyncSession): The unit of work.
+            document_id (uuid.UUID): The document whose chunk-scope filterable metadata is read.
+
+        Returns:
+            dict[uuid.UUID, dict[str, Any]]: chunk id → {field name → decoded value} (a chunk with no
+                filterable chunk-scope metadata is simply absent from the map).
+        """
+        result = await session.execute(
+            select(ChunkMetadata.chunk_id, MetadataField.field_name, ChunkMetadata.value)
+            .join(MetadataField, MetadataField.id == ChunkMetadata.field_id)
+            .join(Chunk, Chunk.id == ChunkMetadata.chunk_id)
+            .where(
+                Chunk.document_id == document_id,
+                MetadataField.filterable.is_(True),
+                MetadataField.scope == FieldScope.CHUNK,
+            )
+        )
+        out: dict[uuid.UUID, dict[str, Any]] = {}
+        for chunk_id, name, value in result.all():
+            out.setdefault(chunk_id, {})[name] = value
         return out
 
     @staticmethod

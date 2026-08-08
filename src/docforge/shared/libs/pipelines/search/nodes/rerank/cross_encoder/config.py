@@ -8,15 +8,20 @@
 from pydantic import Field, field_validator
 
 # ====== Internal Project Imports ======
-from shared_libs.pipelines.base import NodeConfig
+from shared_libs.pipelines.base import TimeoutConfig
 
 # The in-stack bge_server reranker — the reachable default every stock rerank blob points at.
 _DEFAULT_BASE_URL = "http://bge_server:80"
 _DEFAULT_MODEL = "BAAI/bge-reranker-v2-m3"
 
 
-class RerankCrossEncoderConfig(NodeConfig):
-    """The cross-encoder reranker endpoint + how much of the fused pool to re-score."""
+class RerankCrossEncoderConfig(TimeoutConfig):
+    """The cross-encoder reranker endpoint + how much of the fused pool to re-score.
+
+    Mixes in the retry-agnostic ``TimeoutConfig`` (``timeout_seconds`` overridden to 60 s, plus a
+    dedicated ``preflight_timeout_seconds``): the reranker DEGRADES to fusion order on a slow/failed
+    call (see ``degrade_after_seconds``) rather than retrying, so it carries no retry knob.
+    """
 
     base_url: str = Field(
         default=_DEFAULT_BASE_URL,

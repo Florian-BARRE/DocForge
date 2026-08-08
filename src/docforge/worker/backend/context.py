@@ -12,6 +12,7 @@ from shared_libs.services.db import Database
 from shared_libs.services.db.s3 import S3Client
 
 # ====== Local Project Imports ======
+from .libs.heartbeat import HeartbeatWriter
 from .libs.runner import PipelineRunner
 
 
@@ -35,3 +36,6 @@ class CONTEXT:
     runner: PipelineRunner
     worker_id: str
     job_timeout_seconds: float
+
+    # ── Liveness ──
+    heartbeat: HeartbeatWriter

@@ -24,7 +24,7 @@ from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 # ====== Internal Project Imports ======
 # NodeConfig lives in public_models (the bottom vocabulary layer) and is re-exported here so every
 # node config keeps importing it from ``pipelines.base`` unchanged — see [[public_models_pipelines_import_cycle]].
-from shared_libs.public_models.base import NodeConfig
+from shared_libs.public_models.base import NodeConfig, TimeoutConfig, TimeoutRetryConfig
 
 # ====== Local Project Imports ======
 from .execution import NodeUsage
@@ -159,6 +159,8 @@ type Binding = Annotated[
 
 __all__ = [
     "NodeConfig",
+    "TimeoutConfig",
+    "TimeoutRetryConfig",
     "NodeInput",
     "NodeOutput",
     "ScoredOutput",

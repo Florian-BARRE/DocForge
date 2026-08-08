@@ -79,7 +79,11 @@ async def startup(ctx: dict[str, Any]) -> None:
     )
     CONTEXT.database = Database(
         postgres=PostgresClient(RUNTIME_CONFIG.POSTGRES_DSN),
-        qdrant=QdrantClient(RUNTIME_CONFIG.QDRANT_URL, api_key=RUNTIME_CONFIG.QDRANT_API_KEY),
+        qdrant=QdrantClient(
+            RUNTIME_CONFIG.QDRANT_URL,
+            api_key=RUNTIME_CONFIG.QDRANT_API_KEY,
+            timeout=RUNTIME_CONFIG.QDRANT_TIMEOUT_SECONDS,
+        ),
         s3=CONTEXT.s3,
     )
     # The worker writes blobs — make sure the bucket exists on a fresh volume (idempotent).
@@ -93,7 +97,11 @@ async def startup(ctx: dict[str, Any]) -> None:
 
     # 5. Liveness heartbeat — refreshes worker_heartbeats on a timer so an idle-but-alive worker
     #    stays visible and a dead one is detectable fast (independent of the stall/reaper path).
-    CONTEXT.heartbeat = HeartbeatWriter(CONTEXT.database, CONTEXT.worker_id)
+    CONTEXT.heartbeat = HeartbeatWriter(
+        CONTEXT.database,
+        CONTEXT.worker_id,
+        interval_seconds=RUNTIME_CONFIG.WORKER_HEARTBEAT_INTERVAL_SECONDS,
+    )
     CONTEXT.heartbeat.start()
     CONTEXT.logger.info(
         f"Worker '{CONTEXT.worker_id}' ready — "

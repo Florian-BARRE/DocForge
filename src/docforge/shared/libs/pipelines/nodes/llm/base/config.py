@@ -8,12 +8,16 @@
 from pydantic import Field
 
 # ====== Internal Project Imports ======
-from shared_libs.pipelines.base import NodeConfig
+from shared_libs.pipelines.base import TimeoutRetryConfig
 
 
-class BaseLlmChatConfig(NodeConfig):
+class BaseLlmChatConfig(TimeoutRetryConfig):
     """
     Common configuration of a chat-completions LLM endpoint.
+
+    The timeout/retry knobs come from ``TimeoutRetryConfig`` (``timeout_seconds`` overridden to 60 s
+    for chat generation; ``max_retries`` is forwarded to the LangChain client). This class adds the
+    endpoint identity and the generation knobs.
 
     Attributes:
         base_url (str): Base URL of the endpoint (set per collection).
@@ -21,7 +25,6 @@ class BaseLlmChatConfig(NodeConfig):
         model (str): Model name to request.
         temperature (float): Sampling temperature.
         max_tokens (int): Maximum number of tokens to generate.
-        timeout_seconds (float): Per-request timeout.
     """
 
     base_url: str = Field(description="Base URL of the chat-completions endpoint.")

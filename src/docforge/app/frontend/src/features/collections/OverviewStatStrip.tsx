@@ -58,6 +58,16 @@ export function OverviewStatStrip({ collection, docs, fields, health, collection
         sub={collection.created_at ? `created ${new Date(collection.created_at).toLocaleDateString()}` : undefined}
         onClick={() => onNavigate({ name: "collection-edit", collectionId })}
       />
+      <StatChip
+        label="Job timeout"
+        value={
+          <span style={{ fontFamily: t.font.mono }}>
+            {collection.job_timeout_seconds !== null ? `${collection.job_timeout_seconds}s` : "default"}
+          </span>
+        }
+        sub="whole-ingest-job wall-clock budget"
+        onClick={() => onNavigate({ name: "collection-edit", collectionId })}
+      />
     </div>
   );
 }

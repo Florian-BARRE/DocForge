@@ -1,9 +1,11 @@
 # ====== Code Summary ======
-# QdrantIndexApi — the WRITE operations of the vector store: upsert points (id = chunk id, so a
-# re-ingest overwrites the same point), delete a document's points, and the two POST-HOC metagen
-# writes on EXISTING points — patch payload values (a filterable generated field) and update named
-# vectors (a semantic/lexical generated field) — so new chunk metadata lands in the index without
-# re-embedding the content. Converts the clean QdrantPoint into qdrant structs; nothing leaks up.
+# QdrantIndexApi — the WRITE operations of the vector store: upsert points (id = chunk id), delete a
+# document's points (the re-ingest cleanup — the ingestion facade deletes-by-document before it
+# upserts, because each run remints chunk ids so a plain upsert would NOT overwrite the previous
+# run's points), and the two POST-HOC metagen writes on EXISTING points — patch payload values (a
+# filterable generated field) and update named vectors (a semantic/lexical generated field) — so new
+# chunk metadata lands in the index without re-embedding the content. Converts the clean QdrantPoint
+# into qdrant structs; nothing leaks up.
 
 # ====== Standard Library Imports ======
 import uuid
@@ -46,7 +48,8 @@ class QdrantIndexApi:
 
     @staticmethod
     async def upsert(client: AsyncQdrantClient, name: str, points: Sequence[QdrantPoint]) -> None:
-        """Upsert points (id = chunk id) — the same id overwrites, so re-ingest is idempotent."""
+        """Upsert points (id = chunk id) — a matching id overwrites in place. Re-ingest mints NEW
+        chunk ids, so its idempotency comes from the facade's prior delete-by-document, not here."""
         if not points:
             return
         # 1. Pack points into byte-bounded batches so no single request exceeds Qdrant's limit.
@@ -113,6 +116,12 @@ class QdrantIndexApi:
         client: AsyncQdrantClient, name: str, document_id: uuid.UUID
     ) -> None:
         """Delete every point of a document (filter on the document_id payload)."""
+        # A document that never reached the embed stage (parse/enrich failed) has no points AND no
+        # collection yet — Qdrant answers a filtered delete on a missing collection with a 404, not
+        # an empty result. Treat "collection absent" as "nothing to delete" so deleting/reingesting
+        # such a document is idempotent instead of surfacing a spurious 500.
+        if not await client.collection_exists(name):
+            return
         await client.delete(
             collection_name=name,
             points_selector=models.Filter(

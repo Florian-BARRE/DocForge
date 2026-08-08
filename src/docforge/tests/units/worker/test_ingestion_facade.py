@@ -182,18 +182,21 @@ async def test_index_derives_vector_space_from_schema_and_marks_chunks_indexed(m
     ]
     monkeypatch.setattr(facade_module.CollectionApi, "get_schema", AsyncMock(return_value=schema))
     ensure = AsyncMock()
+    delete_by_document = AsyncMock()
     upsert = AsyncMock()
     mark_indexed = AsyncMock()
     monkeypatch.setattr(facade_module.QdrantCollectionApi, "ensure", ensure)
+    monkeypatch.setattr(facade_module.QdrantIndexApi, "delete_by_document", delete_by_document)
     monkeypatch.setattr(facade_module.QdrantIndexApi, "upsert", upsert)
     monkeypatch.setattr(facade_module.ChunkApi, "mark_indexed", mark_indexed)
 
+    document_id = uuid.uuid4()
     chunk_ids = [uuid.uuid4(), uuid.uuid4()]
     points = [QdrantPoint(point_id=str(cid), payload={}) for cid in chunk_ids]
     qdrant = MagicMock()
 
     facade = IngestionFacade(_postgres_yielding(MagicMock()), qdrant, MagicMock())
-    await facade.index(collection_id, dense_dim=1024, points=points)
+    await facade.index(collection_id, document_id, dense_dim=1024, points=points)
 
     # 1. The Qdrant collection is ensured from the schema's searchability flags.
     ensure.assert_awaited_once()
@@ -206,8 +209,36 @@ async def test_index_derives_vector_space_from_schema_and_marks_chunks_indexed(m
         "topic": PayloadType.KEYWORD,
         "year": PayloadType.INTEGER,
     }
-    # 2. The points are upserted, then their chunks flagged indexed by parsed point ids.
+    # 2. The document's stale points are purged (scoped to this one document) before the upsert.
+    delete_by_document.assert_awaited_once_with(qdrant.raw, ANY, document_id)
+    # 3. The points are upserted, then their chunks flagged indexed by parsed point ids.
     upsert.assert_awaited_once_with(qdrant.raw, ANY, points)
     mark_indexed.assert_awaited_once()
     marked_ids = mark_indexed.await_args.args[1]
     assert set(marked_ids) == set(chunk_ids)
+
+
+async def test_index_deletes_document_points_before_upsert_so_reingest_never_orphans(
+    monkeypatch,
+) -> None:
+    """A re-ingest mints fresh chunk ids, so the facade must delete the document's OLD points BEFORE
+    upserting the new ones — otherwise the previous run's points survive with a live document_id +
+    enabled payload and pollute the candidate pool. Prove the delete-then-upsert ordering."""
+    collection_id = uuid.uuid4()
+    document_id = uuid.uuid4()
+    monkeypatch.setattr(facade_module.CollectionApi, "get_schema", AsyncMock(return_value=[]))
+    monkeypatch.setattr(facade_module.QdrantCollectionApi, "ensure", AsyncMock())
+    monkeypatch.setattr(facade_module.ChunkApi, "mark_indexed", AsyncMock())
+
+    calls: list[str] = []
+    monkeypatch.setattr(
+        facade_module.QdrantIndexApi, "delete_by_document", _tracking(calls, "delete")
+    )
+    monkeypatch.setattr(facade_module.QdrantIndexApi, "upsert", _tracking(calls, "upsert"))
+
+    points = [QdrantPoint(point_id=str(uuid.uuid4()), payload={})]
+    facade = IngestionFacade(_postgres_yielding(MagicMock()), MagicMock(), MagicMock())
+    await facade.index(collection_id, document_id, dense_dim=8, points=points)
+
+    # The stale-point purge always precedes the upsert — a re-ingest REPLACES, never accumulates.
+    assert calls == ["delete", "upsert"]

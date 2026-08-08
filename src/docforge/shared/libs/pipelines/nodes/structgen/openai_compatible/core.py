@@ -45,13 +45,13 @@ class StructGenOpenAICompatibleNode(BaseStructGenNode):
         config: StructGenConfig = self.config
         if not config.base_url:
             return
-        # timeout_seconds defaults to 0 (inherit the request's) — let the probe use its own cap then.
-        kwargs = {"timeout_seconds": config.timeout_seconds} if config.timeout_seconds > 0 else {}
+        # The probe uses the dedicated preflight budget (always set), never the run-request
+        # timeout_seconds (which defaults to 0 = "inherit the request's" and is not a probe cap).
         await EndpointReachability.check(
             node_kind=self.KIND,
             base_url=config.base_url,
             api_key=config.api_key,
-            **kwargs,
+            timeout_seconds=config.preflight_timeout_seconds,
         )
 
     async def _generate(
@@ -60,9 +60,15 @@ class StructGenOpenAICompatibleNode(BaseStructGenNode):
         """Run the structured-output chat call for one request."""
         # 1. Build the client on the effective endpoint and constrain it to the schema. ``include_raw``
         #    keeps the underlying AIMessage alongside the parsed value so its token usage survives —
-        #    plain ``with_structured_output`` would swallow it.
+        #    plain ``with_structured_output`` would swallow it. The step's optional ``seed`` pins
+        #    reproducibility when a deployment sets it.
+        config: StructGenConfig = self.config
         model = OpenAICompatHelpers.chat(
-            endpoint, temperature=request.temperature, max_tokens=request.max_tokens
+            endpoint,
+            temperature=request.temperature,
+            max_tokens=request.max_tokens,
+            seed=config.seed,
+            max_retries=config.max_retries,
         )
         structured = model.with_structured_output(schema, include_raw=True)
 

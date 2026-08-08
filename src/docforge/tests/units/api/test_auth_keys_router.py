@@ -21,7 +21,14 @@ def _auth_on(monkeypatch) -> None:
 
 
 def _root_principal_resolves(monkeypatch) -> None:
-    """The bearer presented by every test resolves to a full-access (root) principal."""
+    """The bearer presented by every test resolves to a full-access (root) principal.
+
+    ``last_used_at=None`` makes every authenticated request stale, so ``authenticate()``
+    unconditionally awaits ``touch_key_last_used`` — mock it here too (not just
+    ``get_key_with_user``) or it hits the REAL ``CONTEXT.database.auth`` facade against the
+    live dev Postgres, pinning a connection to this test's TestClient event loop and poisoning
+    the shared pool for later, unrelated tests (a "Future attached to a different loop" leak).
+    """
     from backend.context import CONTEXT
 
     root_key = SimpleNamespace(
@@ -38,10 +45,15 @@ def _root_principal_resolves(monkeypatch) -> None:
         "get_key_with_user",
         AsyncMock(return_value=(root_key, root_user)),
     )
+    monkeypatch.setattr(CONTEXT.database.auth, "touch_key_last_used", AsyncMock())
 
 
 def _scoped_non_admin_principal_resolves(monkeypatch) -> None:
-    """The bearer resolves to a key scoped to everything EXCEPT the admin capability."""
+    """The bearer resolves to a key scoped to everything EXCEPT the admin capability.
+
+    See ``_root_principal_resolves`` — ``touch_key_last_used`` must be mocked too, for the
+    same event-loop-leak reason.
+    """
     from backend.context import CONTEXT
 
     scoped_key = SimpleNamespace(
@@ -58,6 +70,7 @@ def _scoped_non_admin_principal_resolves(monkeypatch) -> None:
         "get_key_with_user",
         AsyncMock(return_value=(scoped_key, user)),
     )
+    monkeypatch.setattr(CONTEXT.database.auth, "touch_key_last_used", AsyncMock())
 
 
 def _headers() -> dict:

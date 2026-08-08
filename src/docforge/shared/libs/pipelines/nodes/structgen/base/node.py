@@ -93,7 +93,9 @@ class BaseStructGenNode(ActionNode):
         # 4. STRICT coercion — a wrong-typed value is dropped, never emitted.
         values: dict[str, Any] = {}
         for field in request.fields:
-            coerced = StructGenHelpers.coerce(raw.get(field.spec.field_name), field.spec.field_type)
+            coerced = StructGenHelpers.coerce(
+                raw.get(field.spec.field_name), field.spec.field_type, field.spec.enum_values
+            )
             if coerced is not None:
                 values[field.spec.field_name] = coerced
 

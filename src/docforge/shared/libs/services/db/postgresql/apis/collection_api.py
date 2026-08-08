@@ -54,6 +54,7 @@ class CollectionApi:
         name: str | None = None,
         supported_formats: list[str] | None = None,
         max_file_size_bytes: int | None = None,
+        job_timeout_seconds: float | None = None,
         pipeline: dict | None = None,
         search: dict | None = None,
         needs_reindex: bool | None = None,
@@ -68,6 +69,8 @@ class CollectionApi:
             collection.supported_formats = supported_formats
         if max_file_size_bytes is not None:
             collection.max_file_size_bytes = max_file_size_bytes
+        if job_timeout_seconds is not None:
+            collection.job_timeout_seconds = job_timeout_seconds
         if pipeline is not None:
             collection.pipeline = pipeline
         if search is not None:

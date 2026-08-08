@@ -3,7 +3,9 @@
 # (document + job), blob storage (S3 then registry), the ONE-TRANSACTION save of everything a pure
 # pipeline run produced (facts + pages + metadata + IR + chunks — idempotent on re-ingest via the
 # purge-then-insert pattern), and the vector indexing (ensure the Qdrant collection from the schema,
-# upsert the points, flag the chunks indexed).
+# delete the document's stale points, upsert the fresh ones, flag the chunks indexed). Re-ingest is
+# a REPLACE at every layer: Postgres purges-then-inserts, and Qdrant deletes-by-document before
+# upsert (the run remints chunk ids, so a plain upsert would orphan the previous run's points).
 
 # ====== Standard Library Imports ======
 import uuid
@@ -95,9 +97,11 @@ class IngestionFacade(LoggerClass):
 
         The original bytes are content-addressed (``source_hash``) and the worker refetches them,
         the collection's CURRENT pipeline is read at run time, and a run is idempotent (the previous
-        chunks/IR/pages are purged and the Qdrant points overwritten). So re-processing a document —
-        e.g. after a pipeline or engine change — is just a fresh job on the same document, reset to
-        PENDING. The USER-declared metadata rows survive (they are never touched here).
+        chunks/IR/pages are purged in ``save`` and the previous Qdrant points are deleted-by-document
+        in ``index`` before the fresh points are upserted — a REPLACE, never an accumulation). So
+        re-processing a document — e.g. after a pipeline or engine change — is just a fresh job on
+        the same document, reset to PENDING. The USER-declared metadata rows survive (never touched
+        here).
 
         Args:
             document_id (uuid.UUID): The document to re-ingest.
@@ -189,17 +193,24 @@ class IngestionFacade(LoggerClass):
     async def index(
         self,
         collection_id: uuid.UUID,
+        document_id: uuid.UUID,
         dense_dim: int,
         points: Sequence[QdrantPoint],
     ) -> None:
         """
-        Push the chunk vectors into Qdrant and flag the chunks indexed.
+        Push a document's chunk vectors into Qdrant (replacing its old points) and flag them indexed.
 
         The Qdrant collection is ensured (lazily created) from the CURRENT metadata schema; a
-        dimension change without reindex surfaces as a loud upsert error, never silently.
+        dimension change without reindex surfaces as a loud upsert error, never silently. Because
+        each run mints FRESH chunk point ids (the translator's chunk-UUID remap), a re-ingest's new
+        points would NOT overwrite the previous run's — so the document's old points are deleted
+        first (scoped to this one document_id), making a re-ingest a REPLACE, not an accumulation.
+        On a first ingest the delete is a harmless no-op (the document has no points yet).
 
         Args:
             collection_id (uuid.UUID): The target collection.
+            document_id (uuid.UUID): The document whose points these are — its stale points are
+                purged first so a re-ingest never orphans the previous run's vectors.
             dense_dim (int): Dense vector dimension (from the pipeline's embed config).
             points (Sequence[QdrantPoint]): The points (ids = chunk ids) with vectors + payload.
         """
@@ -220,7 +231,12 @@ class IngestionFacade(LoggerClass):
                 if f.filterable
             },
         )
-        # 2. Upsert, then flag the chunks as indexed.
+        # 2. Purge this document's previous points BEFORE upserting the fresh ones — the run remints
+        #    chunk ids, so without this a re-ingest would leave the old points orphaned (live
+        #    document_id + enabled payload → polluting the candidate pool and growing Qdrant
+        #    unbounded). Scoped to the single document; a first ingest deletes nothing.
+        await QdrantIndexApi.delete_by_document(self._qdrant.raw, name, document_id)
+        # 3. Upsert, then flag the chunks as indexed.
         await QdrantIndexApi.upsert(self._qdrant.raw, name, points)
         async with self._postgres.session() as session:
             await ChunkApi.mark_indexed(session, [uuid.UUID(point.point_id) for point in points])

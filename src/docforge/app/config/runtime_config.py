@@ -82,13 +82,33 @@ class RUNTIME_CONFIG(EnvConfigLoader):
     # it on a slow/contended deployment; the default stays snappy.
     SEARCH_RUN_TIMEOUT_SECONDS: float = env("SEARCH_RUN_TIMEOUT_SECONDS", cast=float, default=30.0)
 
+    # SSE poll cadence for the live job stream (poll-backed, no message bus). Short by design; kept
+    # injectable so unit tests drive the generator with a zero interval.
+    SSE_POLL_INTERVAL_SECONDS: float = env("SSE_POLL_INTERVAL_SECONDS", cast=float, default=0.75)
+
+    # A worker whose heartbeat is fresher than this reads as ``alive`` in the monitoring view. MUST
+    # stay >> WORKER_HEARTBEAT_INTERVAL_SECONDS (worker beats ~every 10s): 30s = three missed ticks,
+    # so a stale value means the process is gone, not merely idle.
+    WORKER_ALIVE_THRESHOLD_SECONDS: int = env(
+        "WORKER_ALIVE_THRESHOLD_SECONDS", cast=int, default=30
+    )
+
     # ───── Queue (enqueue only — the worker executes) ─────
     REDIS_URL = env("REDIS_URL")
+    # arq's outer per-job cap = the collection's run budget + this grace, so arq's cap sits ABOVE the
+    # engine's clean timeout (which fires first). The worker sources the SAME env in its own config —
+    # one wall-clock contract, no drift between the enqueue side and the WorkerSettings side.
+    WORKER_JOB_TIMEOUT_GRACE_SECONDS: float = env(
+        "WORKER_JOB_TIMEOUT_GRACE_SECONDS", cast=float, default=60.0
+    )
 
     # ───── Stores (admission writes + status/collection reads; never pipeline execution) ─────
     POSTGRES_DSN = env("POSTGRES_DSN")
     QDRANT_URL = env("QDRANT_URL")
     QDRANT_API_KEY = env("QDRANT_API_KEY", required=False, default=None)
+    # Per-request Qdrant timeout; passed into QdrantClient at construction (see the client's docstring
+    # for why the 5s library default is too low). Mirrors the worker config's identical knob.
+    QDRANT_TIMEOUT_SECONDS: float = env("QDRANT_TIMEOUT_SECONDS", cast=float, default=60.0)
     S3_ENDPOINT_URL = env("S3_ENDPOINT_URL")
     S3_ACCESS_KEY = env("S3_ACCESS_KEY")
     S3_SECRET_KEY = env("S3_SECRET_KEY")

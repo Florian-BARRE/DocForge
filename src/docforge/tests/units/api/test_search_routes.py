@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from shared_libs.public_models import FieldType
 from shared_libs.public_models.search import Hit, SearchResult
 
 
@@ -32,11 +33,19 @@ def _pipeline_with_embed() -> dict:
 
 
 def _schema() -> list:
-    """A filterable field ('topic'), a non-filterable one ('note'), and a filterable ENUM."""
+    """A filterable keyword field ('topic'), a non-filterable one ('note'), a filterable ENUM, and
+    the range-typed fields ('year' INTEGER, 'published' DATETIME) the range-filter tests use."""
     return [
-        SimpleNamespace(field_name="topic", filterable=True),
-        SimpleNamespace(field_name="note", filterable=False),
-        SimpleNamespace(field_name="doc_type", filterable=True, enum_values=["policy", "contract"]),
+        SimpleNamespace(field_name="topic", filterable=True, field_type=FieldType.STRING),
+        SimpleNamespace(field_name="note", filterable=False, field_type=FieldType.STRING),
+        SimpleNamespace(
+            field_name="doc_type",
+            filterable=True,
+            field_type=FieldType.ENUM,
+            enum_values=["policy", "contract"],
+        ),
+        SimpleNamespace(field_name="year", filterable=True, field_type=FieldType.INTEGER),
+        SimpleNamespace(field_name="published", filterable=True, field_type=FieldType.DATETIME),
     ]
 
 
@@ -125,6 +134,76 @@ def test_search_passes_list_filter_verbatim(client, wired) -> None:
     )
     assert response.status_code == 200, response.text
     assert wired.await_args.kwargs["filters"] == {"topic": ["ai", "ml"]}
+
+
+def test_search_passes_numeric_range_filter_verbatim(client, wired) -> None:
+    """A numeric range on a range-typed field reaches the service unchanged (the graph builds the
+    Qdrant Range) — a 200, with the range map threaded through untouched."""
+    response = client.post(
+        "/api/v1/collections/33333333-3333-3333-3333-333333333333/search",
+        json={"query": "q", "filters": {"year": {"gte": 2020, "lte": 2024}}},
+    )
+    assert response.status_code == 200, response.text
+    assert wired.await_args.kwargs["filters"] == {"year": {"gte": 2020, "lte": 2024}}
+
+
+def test_search_passes_datetime_range_filter_verbatim(client, wired) -> None:
+    """A datetime range (ISO bounds) on a DATETIME field flows through to the service unchanged."""
+    response = client.post(
+        "/api/v1/collections/33333333-3333-3333-3333-333333333333/search",
+        json={
+            "query": "q",
+            "filters": {"published": {"gte": "2024-01-01", "lte": "2024-12-31"}},
+        },
+    )
+    assert response.status_code == 200, response.text
+    assert wired.await_args.kwargs["filters"] == {
+        "published": {"gte": "2024-01-01", "lte": "2024-12-31"}
+    }
+
+
+def test_search_mixed_match_and_range_filter_passes(client, wired) -> None:
+    """A scalar match and a range in the same filter map both flow through (200)."""
+    response = client.post(
+        "/api/v1/collections/33333333-3333-3333-3333-333333333333/search",
+        json={"query": "q", "filters": {"topic": "ai", "year": {"gt": 2019}}},
+    )
+    assert response.status_code == 200, response.text
+    assert wired.await_args.kwargs["filters"] == {"topic": "ai", "year": {"gt": 2019}}
+
+
+def test_search_range_on_non_range_typed_field_is_422(client, wired) -> None:
+    """A range on a keyword field is a caller error rejected 422 before the service is invoked —
+    Qdrant cannot range a keyword index."""
+    response = client.post(
+        "/api/v1/collections/33333333-3333-3333-3333-333333333333/search",
+        json={"query": "q", "filters": {"topic": {"gte": "a"}}},
+    )
+    assert response.status_code == 422, response.text
+    assert "not range-typed" in response.text
+    wired.assert_not_awaited()
+
+
+def test_search_malformed_range_is_422(client, wired) -> None:
+    """A malformed range (an unsupported bound key) is a 422, never a 500."""
+    response = client.post(
+        "/api/v1/collections/33333333-3333-3333-3333-333333333333/search",
+        json={"query": "q", "filters": {"year": {"between": 3}}},
+    )
+    assert response.status_code == 422, response.text
+    assert "range" in response.text.lower()
+    wired.assert_not_awaited()
+
+
+def test_search_datetime_bounds_on_numeric_field_is_422(client, wired) -> None:
+    """An ISO-string range on an INTEGER field is rejected 422 — the bound kind must match the
+    field's declared type (a numeric field needs numeric bounds)."""
+    response = client.post(
+        "/api/v1/collections/33333333-3333-3333-3333-333333333333/search",
+        json={"query": "q", "filters": {"year": {"gte": "2024-01-01"}}},
+    )
+    assert response.status_code == 422, response.text
+    wired.assert_not_awaited()
 
 
 def test_search_non_filterable_field_is_422(client, wired) -> None:

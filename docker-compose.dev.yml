@@ -97,6 +97,17 @@ services:
     ports:
       - "10047:80"                # Operator access: http://localhost:10047/health
 
+  docforge_paddle_server:
+    # Build locally from source, overriding the prod GHCR image: pull in the base file.
+    # CPU paddlepaddle by default; the gpu override file flips TORCH_VARIANT to gpu.
+    build:
+      context: src                # paddle_server lives at src/paddle_server (sibling of docforge)
+      dockerfile: paddle_server/Dockerfile
+      args:
+        TORCH_VARIANT: cpu
+    ports:
+      - "10049:80"                # Operator access: http://localhost:10049/health
+
   # ── Vite dev server — hot-reloading frontend, dev-only service ───────────────
   docforge_frontend:
     image: node:22-bookworm-slim

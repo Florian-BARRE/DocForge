@@ -76,8 +76,13 @@ class MetagenDocumentPrepNode(BaseMetagenPrep):
         if not targets or not data.chunks:
             return MetagenDocumentPrepProduces(requests=[])
 
-        # 2. One document view, then one request per call group (chunk_id=None).
+        # 2. One document view — an empty/whitespace view means no request at all (no spend).
         text = self._document_text([chunk.text for chunk in data.chunks], config.max_document_words)
+        if not text.strip():
+            self.logger.debug("Empty document view — no request emitted (nothing to generate).")
+            return MetagenDocumentPrepProduces(requests=[])
+
+        # 3. One request per call group over the view (chunk_id=None).
         requests = self._build_requests(text, None, targets, "doc")
         self.logger.debug(f"Prepared {len(requests)} document-scope request(s)")
         return MetagenDocumentPrepProduces(requests=requests)

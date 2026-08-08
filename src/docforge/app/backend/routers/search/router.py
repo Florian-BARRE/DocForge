@@ -60,6 +60,14 @@ async def search_collection(collection_id: uuid.UUID, request: SearchRequest) ->
     # 3. Stay the filterability gate — the graph trusts the filters it is handed, so a filter that
     #    names a non-filterable field is rejected 422 BEFORE the service is invoked.
     schema = await CONTEXT.database.collections.get_schema(collection_id)
+
+    # 3a. Gate RANGE filters first (before build_conditions, which builds the range and would raise
+    #     on a malformed one): a range mapping is only valid on a range-typed filterable field
+    #     (integer/float/datetime), well-formed, and with bounds whose kind matches the field.
+    range_errors = SearchHelpers.range_violations(request.filters, schema)
+    if range_errors:
+        raise HTTPException(status_code=422, detail=f"Invalid range filter(s): {range_errors}")
+
     _, invalid = SearchHelpers.build_conditions(request.filters, schema)
     if invalid:
         raise HTTPException(

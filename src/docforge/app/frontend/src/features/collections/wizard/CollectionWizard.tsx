@@ -48,7 +48,11 @@ export function CollectionWizard({ onNavigate, mode = "create", initial, collect
   const [name, setName] = useState(prefill?.name ?? "");
   const [formats, setFormats] = useState<string[]>(prefill?.formats ?? []);
   const [maxSizeMb, setMaxSizeMb] = useState(prefill?.maxSizeMb ?? 50);
+  const [jobTimeoutSeconds, setJobTimeoutSeconds] = useState<number | null>(prefill?.jobTimeoutSeconds ?? null);
   const [preset, setPreset] = useState<CollectionPreset>("standard");
+  // Any contract field StepIdentity's schema-driven form renders that this wizard has no named
+  // slot for yet — see StepIdentity's `extra`/`onExtraChange` doc for why this exists.
+  const [extraContract, setExtraContract] = useState<Record<string, unknown>>({});
   const [fields, setFields] = useState<DraftField[]>(prefill?.fields ?? []);
   const toast = useToast();
   const [submitting, setSubmitting] = useState(false);
@@ -66,9 +70,11 @@ export function CollectionWizard({ onNavigate, mode = "create", initial, collect
     setIssues([]);
     try {
       const payload = {
+        ...extraContract,
         name: name.trim(),
         supported_formats: formats,
         max_file_size_bytes: mbToBytes(maxSizeMb),
+        job_timeout_seconds: jobTimeoutSeconds,
         fields: fields.map(toFieldSpec),
       };
       const result = mode === "edit" && collectionId
@@ -100,7 +106,9 @@ export function CollectionWizard({ onNavigate, mode = "create", initial, collect
           name={name} onNameChange={setName}
           formats={formats} onFormatsChange={setFormats}
           maxSizeMb={maxSizeMb} onMaxSizeMbChange={setMaxSizeMb}
+          jobTimeoutSeconds={jobTimeoutSeconds} onJobTimeoutSecondsChange={setJobTimeoutSeconds}
           preset={preset} onPresetChange={setPreset}
+          extra={extraContract} onExtraChange={setExtraContract}
           onNext={() => setStep(1)}
         />
       )}
@@ -110,7 +118,7 @@ export function CollectionWizard({ onNavigate, mode = "create", initial, collect
       {step === 2 && (
         <StepReview
           mode={mode}
-          name={name} formats={formats} maxSizeBytes={mbToBytes(maxSizeMb)} fields={fields}
+          name={name} formats={formats} maxSizeBytes={mbToBytes(maxSizeMb)} jobTimeoutSeconds={jobTimeoutSeconds} fields={fields}
           removedFieldNames={removed}
           onBack={() => setStep(1)} onSubmit={handleSubmit} submitting={submitting} issues={issues}
         />

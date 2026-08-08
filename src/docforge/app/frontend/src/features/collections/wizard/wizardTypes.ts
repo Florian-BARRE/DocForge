@@ -56,12 +56,14 @@ export function draftFromCollection(collection: Collection): {
   name: string;
   formats: string[];
   maxSizeMb: number;
+  jobTimeoutSeconds: number | null;
   fields: DraftField[];
 } {
   return {
     name: collection.name,
     formats: [...collection.supported_formats],
     maxSizeMb: bytesToMb(collection.max_file_size_bytes),
+    jobTimeoutSeconds: collection.job_timeout_seconds,
     fields: collection.fields.map(toDraftField),
   };
 }

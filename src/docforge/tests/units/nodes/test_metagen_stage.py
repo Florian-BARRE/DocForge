@@ -7,6 +7,7 @@ is the generative, scope-aware auto-prompt wording — kept here.
 """
 
 from shared_libs.pipelines.ingest.nodes.metagen.base.helpers import MetagenHelpers
+from shared_libs.pipelines.ingest.nodes.metagen.base.node import BaseMetagenNode
 from shared_libs.public_models import FieldOrigin, FieldScope, FieldType, MetadataFieldSpec
 
 
@@ -32,3 +33,21 @@ def test_auto_prompt_is_generative_and_scope_aware() -> None:
     # 2. Scope-aware: each prompt names its own granularity.
     assert "document" in doc_prompt and "chunk" not in doc_prompt
     assert "chunk" in chunk_prompt and "document" not in chunk_prompt
+
+
+def test_document_text_kept_whole_under_the_cap() -> None:
+    assert BaseMetagenNode._document_text(["alpha beta gamma"], max_words=10) == "alpha beta gamma"
+
+
+def test_document_text_keeps_head_and_tail_over_the_cap() -> None:
+    """Over the cap the view keeps the FIRST and LAST words (middle elided), never head-only."""
+    words = [f"w{i}" for i in range(100)]
+    view = BaseMetagenNode._document_text([" ".join(words)], max_words=10)
+    tokens = view.split()
+
+    # 1. Both ends survive — a closing-summary field can still see the end of the document.
+    assert tokens[0] == "w0"
+    assert tokens[-1] == "w99"
+    # 2. The middle is elided (marker present, a middle word gone).
+    assert "[…]" in tokens
+    assert "w50" not in tokens

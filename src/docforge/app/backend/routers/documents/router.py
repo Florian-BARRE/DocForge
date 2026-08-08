@@ -14,8 +14,11 @@ import uuid
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 
 # ====== Internal Project Imports ======
-from shared_libs.pipelines.ingest import BlobNormalizationError, BlobNormalizer
-from shared_libs.pipelines.ingest.nodes.intake.format_probe.helpers import FormatProbeHelpers
+from shared_libs.pipelines.ingest import (
+    BlobNormalizationError,
+    BlobNormalizer,
+    FormatProbeHelpers,
+)
 from shared_libs.public_models import FieldOrigin
 from shared_libs.services.db.postgresql.tables import (
     Blob,
@@ -91,7 +94,7 @@ async def upload_document(
     #     in milliseconds at the boundary instead of ~minutes later inside the queued run's admit
     #     node. The detection is the SAME content sniff the admit node keys on (never the extension),
     #     so the two gates can never disagree. The admit-node check stays as defence in depth.
-    detected_format, _detected_mime = FormatProbeHelpers.detect(content, file.filename or "upload")
+    detected_format, detected_mime = FormatProbeHelpers.detect(content, file.filename or "upload")
     if detected_format not in collection.supported_formats:
         raise HTTPException(
             status_code=422,
@@ -139,8 +142,12 @@ async def upload_document(
     field_ids = {row.field_name: row.id for row in schema}
 
     # 7. Store the ORIGINAL bytes BEFORE enqueueing (key = source_hash — the worker refetches).
+    #    Trust the CONTENT sniff for format/mime, never the filename extension or the client-sent
+    #    Content-Type: both are caller-controlled and routinely wrong (missing extension, a .txt that
+    #    is really a PDF, a browser sending application/octet-stream). detect() already ran the same
+    #    sniff for the format gate above, so the stored facts and the admission decision agree.
     filename = file.filename or "upload"
-    mime = file.content_type or "application/octet-stream"
+    mime = detected_mime or "application/octet-stream"
     await CONTEXT.database.ingestion.store_blobs(
         [S3Object(key=source_hash, data=content, content_type=mime)],
         [
@@ -155,12 +162,15 @@ async def upload_document(
     )
 
     # 8. Admission — document + job + declared metadata, ONE transaction.
-    #    source_kind starts DIGITAL_BORN; the pipeline learns the real one (update_facts).
+    #    format/mime come from the content sniff (step 7), NOT the extension/client Content-Type.
+    #    source_kind is a provisional DIGITAL_BORN: scanned/mixed detection is not yet wired into the
+    #    IR (the parser does not surface a reliable per-page scan signal), so update_facts leaves it
+    #    untouched. Do NOT read it as "confirmed native" until that detection lands.
     document = Document(
         collection_id=collection_id,
         source_hash=source_hash,
         filename=filename,
-        format=filename.rsplit(".", 1)[-1].lower() if "." in filename else "",
+        format=detected_format,
         mime_type=mime,
         file_size=len(content),
         source_kind=SourceKind.DIGITAL_BORN,
@@ -173,8 +183,9 @@ async def upload_document(
     ]
     created, job = await CONTEXT.database.ingestion.admit(document, Job(), rows)
 
-    # 9. Hand over to the worker — the queue message carries IDS ONLY.
-    await CONTEXT.queue.enqueue_ingest(str(created.id), str(job.id))
+    # 9. Hand over to the worker — the queue message carries IDS ONLY. The collection's
+    #    per-collection budget (None = inherit the worker's global default) caps arq's outer timeout.
+    await CONTEXT.queue.enqueue_ingest(str(created.id), str(job.id), collection.job_timeout_seconds)
     CONTEXT.logger.info(f"Admitted '{filename}' as {created.id} (job {job.id})")
     return UploadAccepted(document_id=str(created.id), job_id=str(job.id))
 
@@ -232,8 +243,11 @@ async def reingest_document(document_id: uuid.UUID) -> UploadAccepted:
         raise HTTPException(status_code=404, detail=f"Document {document_id} not found.")
 
     # 2. Hand over to the worker — it refetches the original by source_hash and re-runs the pipeline.
+    #    Load the collection for its per-collection job budget (None = inherit the global default).
     document, job = result
-    await CONTEXT.queue.enqueue_ingest(str(document.id), str(job.id))
+    collection = await CONTEXT.database.collections.get(document.collection_id)
+    job_timeout = collection.job_timeout_seconds if collection is not None else None
+    await CONTEXT.queue.enqueue_ingest(str(document.id), str(job.id), job_timeout)
     CONTEXT.logger.info(f"Re-ingest enqueued for {document.id} (job {job.id})")
     return UploadAccepted(document_id=str(document.id), job_id=str(job.id))
 

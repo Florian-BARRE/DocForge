@@ -115,12 +115,14 @@ async def ingest_document(ctx: dict[str, Any], document_id: str, job_id: str) ->
         )
         on_progress = JobProgressRecorder(job_uuid, root_ids)
 
-        # 3. Run (fresh input inside), then translate the delivery.
+        # 3. Run (fresh input inside), then translate the delivery. The wall-clock budget is the
+        #    collection's per-collection override when set, else the worker's global default (NULL).
+        run_budget = collection.job_timeout_seconds or CONTEXT.job_timeout_seconds
         bundle, _record = await runner.run(
             blob,
             source,
             contract,
-            timeout_seconds=CONTEXT.job_timeout_seconds,
+            timeout_seconds=run_budget,
             progress_callback=on_progress,
             preflight_enabled=CONTEXT.RUNTIME_CONFIG.WORKER_PREFLIGHT_ENABLED,
         )
@@ -143,6 +145,7 @@ async def ingest_document(ctx: dict[str, Any], document_id: str, job_id: str) ->
         if translated.points:
             await database.ingestion.index(
                 document.collection_id,
+                doc_uuid,
                 translated.dense_dim,
                 translated.points,
             )

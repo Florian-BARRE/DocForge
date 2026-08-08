@@ -1,8 +1,9 @@
 # ====== Code Summary ======
 # The collections router — the contract's CRUD: create (schema declared up front + pipeline
 # blob seeded with the product default), read, patch the config blobs (pipeline VALIDATED
-# before storage — a broken graph never reaches the worker), delete. Every rejection carries
-# an explicit HTTP code and a precise message.
+# before storage — a broken graph never reaches the worker), delete, plus the schema-driven
+# discovery of the identity/limits contract. Every rejection carries an explicit HTTP code and a
+# precise message. Non-route logic lives in helpers.py (pure) and store_sync.py (store follow-through).
 
 # ====== Standard Library Imports ======
 import uuid
@@ -11,158 +12,25 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException
 
 # ====== Internal Project Imports ======
-from shared_libs.pipelines.ingest import (
-    BlobNormalizationError,
-    BlobNormalizer,
-    IngestPipeline,
-)
-from shared_libs.public_models import FieldOrigin, FieldScope
-from shared_libs.services.db.postgresql.tables import Collection, MetadataField
-from shared_libs.services.db.qdrant import RESERVED_PAYLOAD_KEYS
+from shared_libs.services.db.postgresql.tables import Collection
 
 # ====== Local Project Imports ======
 from ...context import CONTEXT
-from ...libs.auth import AuthPrincipal, Capability, KeyPermissions, require
+from ...libs.auth import AuthPrincipal, Capability, require
 from ...libs.health import CollectionHealthResponse
 from ...utils.error_handling import auto_handle_errors
-from ...utils.pipeline_validation import PipelineBlobValidator
-from ...utils.search_blob_validation import SearchBlobValidator
+from .helpers import CollectionHelpers
 from .models import (
+    CollectionContractModel,
+    CollectionContractSchemaResponse,
     CollectionModel,
     CreateCollectionRequest,
-    FieldSpecModel,
     UpdateCollectionRequest,
 )
-from .redaction import redact_blob_secrets, restore_blob_secrets
+from .redaction import restore_blob_secrets
+from .store_sync import CollectionStoreSync
 
 router = APIRouter(prefix="/collections", tags=["collections"])
-
-
-def _public_pipeline(pipeline: dict | None) -> dict | None:
-    """Strip the internal version stamp so the API exposes a clean, editable graph blob.
-
-    The stamp is a STORAGE-side optimization (fast-path detection); the ``GroupNodeBlob`` the UI
-    posts back to the stage endpoints forbids extra keys, so it must never see the reserved key.
-    """
-    if not isinstance(pipeline, dict):
-        return pipeline
-    return {key: value for key, value in pipeline.items() if key != BlobNormalizer.STAMP_KEY}
-
-
-def _preset_blob(preset: str | None) -> dict:
-    """The stock ingestion blob a creation preset selects (used when no explicit pipeline is posted).
-
-    Args:
-        preset (str | None): ``"light"`` for the enrichment-free core, anything else the full default.
-
-    Returns:
-        dict: The selected stock blob as a JSON-ready dict.
-    """
-    blob = IngestPipeline.light_blob() if preset == "light" else IngestPipeline.default_blob()
-    return blob.model_dump(mode="json")
-
-
-def _to_model(collection: Collection, fields: list[MetadataField]) -> CollectionModel:
-    """Map the rows to the UI contract (shared by every read path).
-
-    Provider secrets (api_key on every provider node of the pipeline AND search blobs) are masked
-    here — the ONE serialisation boundary every read path funnels through — so a live key is never
-    echoed to a client. The stored blobs keep the real keys; only this outbound copy is masked.
-    """
-    return CollectionModel(
-        id=str(collection.id),
-        name=collection.name,
-        supported_formats=list(collection.supported_formats),
-        max_file_size_bytes=collection.max_file_size_bytes,
-        needs_reindex=collection.needs_reindex,
-        created_at=collection.created_at,
-        pipeline=redact_blob_secrets(_public_pipeline(collection.pipeline)),
-        search=redact_blob_secrets(collection.search),
-        fields=[
-            FieldSpecModel(
-                field_name=row.field_name,
-                field_type=row.field_type,
-                required=row.required,
-                filterable=row.filterable,
-                lexical=row.lexical,
-                semantic=row.semantic,
-                enum_values=row.enum_values,
-                origin=row.origin,
-                scope=row.scope,
-            )
-            for row in fields
-        ],
-    )
-
-
-# Payload keys the chunk point owns for its own machinery (id, ordinal, enable-filter). A
-# filterable field is denormalised onto the point by NAME, so a field sharing one of these would
-# overwrite it and corrupt search/deletion — reserved regardless of the current filterable flag,
-# which can be toggled on later.
-# "content" is the search-target sentinel for the chunk body; a metadata field of that name would
-# be un-targetable (it always resolves to the body vectors), so it is reserved alongside the
-# point's own payload keys (RESERVED_PAYLOAD_KEYS — the single source, shared with the writers).
-_RESERVED_FIELD_NAMES = RESERVED_PAYLOAD_KEYS | {"content"}
-
-
-def _validate_fields(fields: list[FieldSpecModel]) -> None:
-    """Schema-level guards with explicit 422s (mirror of the DB CHECK constraints)."""
-    for spec in fields:
-        # Chunk-scope values are produced by the pipeline — a user cannot declare them
-        # at upload, so chunk scope is reserved for GENERATED fields (DB CHECK mirrors this).
-        if spec.scope == FieldScope.CHUNK and spec.origin != FieldOrigin.GENERATED:
-            raise HTTPException(
-                status_code=422,
-                detail=f"Field '{spec.field_name}': chunk scope is reserved for generated "
-                f"fields — user-declared metadata is document-level.",
-            )
-        # A field name must never shadow a reserved chunk-payload key (it would overwrite it
-        # when denormalised onto the point, breaking the enabled-filter or deletion-by-document).
-        if spec.field_name in _RESERVED_FIELD_NAMES:
-            raise HTTPException(
-                status_code=422,
-                detail=f"Field name '{spec.field_name}' is reserved — pick another name "
-                f"(reserved: {sorted(_RESERVED_FIELD_NAMES)}).",
-            )
-        # Chunk-scope lexical has no producer: the embed node writes chunk-scope SEMANTIC (dense)
-        # vectors and the meta-vector facade is document-scope only, so a chunk-scope lexical field
-        # would declare a meta_<slug>_bm25 vector nothing ever fills — a silent-empty search. Reject
-        # it up front rather than accept a config that can never return results.
-        if spec.scope == FieldScope.CHUNK and spec.lexical:
-            raise HTTPException(
-                status_code=422,
-                detail=f"Field '{spec.field_name}': chunk-scope lexical search is not supported "
-                f"(no BM25 producer for chunk metadata) — use semantic, or document scope.",
-            )
-
-
-def _canonical_pipeline(blob: dict) -> dict:
-    """Heal a pipeline blob to the current engine, validate it, and return its stored form.
-
-    The stored form is normalized (auto-migrated to the current-engine topology) and version-stamped,
-    so a freshly written blob is already canonical and every subsequent run/upload fast-paths. A blob
-    that cannot be migrated is a 422 with the explicit recovery, mirroring the structural validator.
-
-    Args:
-        blob (dict): The caller's (or default) pipeline blob.
-
-    Returns:
-        dict: The normalized, version-stamped blob to persist.
-
-    Raises:
-        HTTPException: 422 when the blob cannot be migrated or fails structural validation.
-    """
-    # 1. Auto-heal to the current-engine topology (a stale/unrecognisable blob is a clear 422).
-    try:
-        canonical = BlobNormalizer.normalize(blob)
-    except BlobNormalizationError as exc:
-        raise HTTPException(status_code=422, detail=f"Pipeline blob cannot be migrated: {exc}")
-
-    # 2. Structural validation runs on the healed, stamp-free shape (the builder forbids extras).
-    PipelineBlobValidator.validate(canonical)
-
-    # 3. Persist the stamped canonical form so future reads fast-path.
-    return BlobNormalizer.stamp(canonical)
 
 
 @router.get(
@@ -180,7 +48,32 @@ async def list_collections() -> list[CollectionModel]:
     """
     # 1. Rows + their schemas (collection counts stay small — the N+1 is fine here).
     collections = await CONTEXT.database.collections.list_all()
-    return [_to_model(c, await CONTEXT.database.collections.get_schema(c.id)) for c in collections]
+    return [
+        CollectionHelpers.to_model(c, await CONTEXT.database.collections.get_schema(c.id))
+        for c in collections
+    ]
+
+
+@router.get(
+    "/contract-schema",
+    response_model=CollectionContractSchemaResponse,
+    dependencies=[Depends(require(Capability.READ))],
+)
+@auto_handle_errors
+async def get_contract_schema() -> CollectionContractSchemaResponse:
+    """
+    Discover the collection identity/limits contract as JSON Schema — the schema-driven UI form.
+
+    Mirrors a node's ``config_schema`` face so a new scalar contract field auto-surfaces in the UI
+    with zero frontend change (the frontend feeds it straight to its existing ``SchemaForm``).
+
+    Returns:
+        CollectionContractSchemaResponse: The ``model_json_schema()`` of the identity/limits contract.
+    """
+    # 1. The schema is derived from the SAME model CreateCollectionRequest composes — no drift.
+    return CollectionContractSchemaResponse(
+        config_schema=CollectionContractModel.model_json_schema()
+    )
 
 
 @router.get(
@@ -199,7 +92,9 @@ async def get_collection(collection_id: uuid.UUID) -> CollectionModel:
     collection = await CONTEXT.database.collections.get(collection_id)
     if collection is None:
         raise HTTPException(status_code=404, detail=f"Collection {collection_id} not found.")
-    return _to_model(collection, await CONTEXT.database.collections.get_schema(collection_id))
+    return CollectionHelpers.to_model(
+        collection, await CONTEXT.database.collections.get_schema(collection_id)
+    )
 
 
 @router.get(
@@ -250,33 +145,23 @@ async def create_collection(
     if await CONTEXT.database.collections.get_by_name(request.name) is not None:
         raise HTTPException(status_code=409, detail=f"Collection '{request.name}' already exists.")
 
-    _validate_fields(request.fields)
+    CollectionHelpers.validate_fields(request.fields)
 
     # 2. The pipeline blob: the caller's explicit graph wins; otherwise the stock blob the ``preset``
     #    selects (light = enrichment-free core). Healed to the current engine, validated and stamped.
-    blob = _canonical_pipeline(request.pipeline or _preset_blob(request.preset))
+    blob = CollectionHelpers.canonical_pipeline(
+        request.pipeline or CollectionHelpers.preset_blob(request.preset)
+    )
 
     # 3. Create contract + schema in one transaction (slug collisions → explicit 422).
-    rows = [
-        MetadataField(
-            field_name=f.field_name,
-            field_type=f.field_type,
-            required=f.required,
-            filterable=f.filterable,
-            lexical=f.lexical,
-            semantic=f.semantic,
-            enum_values=f.enum_values,
-            origin=f.origin,
-            scope=f.scope,
-        )
-        for f in request.fields
-    ]
+    rows = CollectionHelpers.to_field_rows(request.fields)
     try:
         created = await CONTEXT.database.collections.create(
             Collection(
                 name=request.name,
                 supported_formats=request.supported_formats,
                 max_file_size_bytes=request.max_file_size_bytes,
+                job_timeout_seconds=request.job_timeout_seconds,
                 pipeline=blob,
                 search={},
             ),
@@ -287,63 +172,12 @@ async def create_collection(
 
     # 4. Ownership: a scoped, list-scoped key that just created this collection is granted access to
     #    it by appending the id to its own scope (root / wildcard keys already cover everything).
-    await _grant_creator_scope(principal, str(created.id))
+    await CollectionStoreSync.grant_creator_scope(principal, str(created.id))
 
     CONTEXT.logger.info(f"Collection '{request.name}' created ({len(rows)} fields)")
-    return _to_model(created, await CONTEXT.database.collections.get_schema(created.id))
-
-
-async def _grant_creator_scope(principal: AuthPrincipal, collection_id: str) -> None:
-    """
-    Append a freshly created collection's id to the creating key's own scope.
-
-    No-op for the full-access principal (auth off / root key) and for wildcard-scoped keys, which
-    already cover every collection. Only a list-scoped key needs (and gets) the new id.
-
-    Args:
-        principal (AuthPrincipal): The authenticated creator.
-        collection_id (str): The new collection's id to bring into the key's scope.
-    """
-    key = principal.key
-    if principal.is_full_access or key is None or key.permissions is None:
-        return
-    scope = KeyPermissions.model_validate(key.permissions)
-    if "*" in scope.collections or collection_id in scope.collections:
-        return
-    scope.collections.append(collection_id)
-    await CONTEXT.database.auth.update_key_permissions(key.id, scope.model_dump(mode="json"))
-
-
-# The embed-node config keys that define the vector space (a change to any means already-stored
-# vectors were produced by a different/incompatible embedder → the collection must be reindexed).
-_EMBED_VECTOR_KEYS = ("base_url", "model", "embed_sparse", "embed_semantic_fields")
-
-
-def _embed_vector_space(blob: dict) -> list:
-    """A stable fingerprint of every embed node's vector-space-affecting config in a pipeline blob.
-
-    Two blobs with the same fingerprint produce vectors in the same space; a difference means a
-    reindex is required (e.g. a swapped embed model/provider, toggled sparse).
-    """
-    fingerprint: list = []
-
-    def walk(nodes: list) -> None:
-        for node in nodes:
-            if node.get("family") == "embed":
-                config = node.get("config") or {}
-                fingerprint.append(
-                    (
-                        node.get("id"),
-                        node.get("kind"),
-                        tuple((key, config.get(key)) for key in _EMBED_VECTOR_KEYS),
-                    )
-                )
-            body = node.get("body")
-            if isinstance(body, dict):
-                walk(body.get("nodes") or [])
-
-    walk(blob.get("nodes") or [])
-    return sorted(fingerprint)
+    return CollectionHelpers.to_model(
+        created, await CONTEXT.database.collections.get_schema(created.id)
+    )
 
 
 @router.patch(
@@ -387,62 +221,54 @@ async def update_collection(
     )
 
     # 3a. A new pipeline never reaches storage broken: heal it to the current engine, validate it,
-    #    and keep its stamped canonical form for storage (step 6).
-    stored_pipeline = _canonical_pipeline(healed_pipeline) if healed_pipeline is not None else None
+    #     and keep its stamped canonical form for storage (step 6).
+    stored_pipeline = (
+        CollectionHelpers.canonical_pipeline(healed_pipeline)
+        if healed_pipeline is not None
+        else None
+    )
 
-    # 3b. A new search blob is a search GRAPH blob. Only two shapes are valid: {} (the sentinel
-    #     "use the stock default", always allowed) or a real topology carrying a "nodes" list. A
-    #     non-empty dict WITHOUT "nodes" would be stored then silently ignored at read (__resolve_blob
-    #     falls back to the default) — reject it up front. A real topology is validated not just
-    #     structurally but as a genuine SEARCH pipeline (it must terminate on a SearchResult), so a
-    #     non-search graph cannot be stored to 500 on every subsequent query.
+    # 3b. A new search blob is a search GRAPH blob: {} (stock default) is always allowed; a non-empty
+    #     one is shape-guarded and validated as a genuine SEARCH pipeline before it can be stored.
     if healed_search is not None and healed_search != {}:
-        if "nodes" not in healed_search:
-            raise HTTPException(
-                status_code=422,
-                detail="collection.search must be empty ({} = stock default) or a search graph "
-                "blob with a 'nodes' list.",
-            )
-        SearchBlobValidator.validate(healed_search)
+        CollectionHelpers.validate_search_blob(healed_search)
 
     # 3c. Validate the schema diff BEFORE any write — a bad field must 422 without having already
     #     committed the identity/limits rename (the writes below are not one transaction).
     if request.fields is not None:
-        _validate_fields(request.fields)
+        CollectionHelpers.validate_fields(request.fields)
 
     # 4. Identity/limits (no-op when untouched).
     if any(
         v is not None
-        for v in (request.name, request.supported_formats, request.max_file_size_bytes)
+        for v in (
+            request.name,
+            request.supported_formats,
+            request.max_file_size_bytes,
+            request.job_timeout_seconds,
+        )
     ):
         await CONTEXT.database.collections.update_contract(
             collection_id,
             name=request.name,
             supported_formats=request.supported_formats,
             max_file_size_bytes=request.max_file_size_bytes,
+            job_timeout_seconds=request.job_timeout_seconds,
         )
 
-    # 5. Schema evolution by DIFF — existing metadata values survive untouched fields;
-    #    a searchable-surface change flips needs_reindex inside the facade.
+    # 5. Schema evolution by DIFF — existing metadata values survive untouched fields; a searchable
+    #    change flips needs_reindex inside the facade, then the store is RECONCILED (not just flagged):
+    #    a newly filterable field gets its Qdrant payload index added live and the backfills repopulate
+    #    existing points; a newly semantic/lexical field needs a named vector Qdrant can't add live, so
+    #    a reindex is required to make it searchable.
     if request.fields is not None:
-        rows = [
-            MetadataField(
-                field_name=f.field_name,
-                field_type=f.field_type,
-                required=f.required,
-                filterable=f.filterable,
-                lexical=f.lexical,
-                semantic=f.semantic,
-                enum_values=f.enum_values,
-                origin=f.origin,
-                scope=f.scope,
-            )
-            for f in request.fields
-        ]
         try:
-            reindex = await CONTEXT.database.collections.update_schema(collection_id, rows)
+            reindex = await CONTEXT.database.collections.update_schema(
+                collection_id, CollectionHelpers.to_field_rows(request.fields)
+            )
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc))
+        await CollectionStoreSync.reconcile_and_backfill(collection_id)
         if reindex:
             CONTEXT.logger.warning(
                 f"Collection {collection_id}: searchable schema changed — reindex required"
@@ -454,8 +280,8 @@ async def update_collection(
     #    — otherwise new documents would be embedded into a space incompatible with the stored ones,
     #    silently degrading search. None leaves the flag as-is (a schema change may already have set it).
     reindex_from_embed: bool | None = None
-    if stored_pipeline is not None and _embed_vector_space(current.pipeline) != _embed_vector_space(
-        stored_pipeline
+    if stored_pipeline is not None and CollectionHelpers.embed_space_changed(
+        current.pipeline, stored_pipeline
     ):
         reindex_from_embed = True
         CONTEXT.logger.warning(
@@ -471,7 +297,9 @@ async def update_collection(
         )
 
     updated = await CONTEXT.database.collections.get(collection_id)
-    return _to_model(updated, await CONTEXT.database.collections.get_schema(collection_id))
+    return CollectionHelpers.to_model(
+        updated, await CONTEXT.database.collections.get_schema(collection_id)
+    )
 
 
 @router.delete(

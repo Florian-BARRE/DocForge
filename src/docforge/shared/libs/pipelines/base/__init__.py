@@ -28,6 +28,8 @@ from .transition import (
 # ---------------------- Data-plane contracts ---------------------- #
 from .io import (
     NodeConfig,
+    TimeoutConfig,
+    TimeoutRetryConfig,
     Binding,
     BindingSource,
     FromFirst,
@@ -80,6 +82,8 @@ __all__ = [
     "FromNode",
     "FromRunInput",
     "NodeConfig",
+    "TimeoutConfig",
+    "TimeoutRetryConfig",
     "NodeInput",
     "NodeOutput",
     "ScoredOutput",

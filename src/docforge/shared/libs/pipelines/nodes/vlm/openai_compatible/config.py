@@ -14,10 +14,9 @@ from ..base import BaseVlmConfig
 
 
 class VlmOpenAICompatibleConfig(BaseVlmConfig, OpenAICompatConfig):
-    """OpenAI-compatible vision endpoint + model (endpoint fields inherited)."""
+    """OpenAI-compatible vision endpoint + model (endpoint + timeout/retry fields inherited)."""
 
     model: str = Field(description="Vision-capable model name (e.g. Qwen/Qwen2.5-VL-7B-Instruct).")
-    timeout_seconds: float = Field(default=60.0, gt=0, description="Per-request timeout (s).")
 
 
 __all__ = ["VlmOpenAICompatibleConfig"]

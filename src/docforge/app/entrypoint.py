@@ -43,7 +43,11 @@ def _build_app() -> FastAPI:
     # still boots and serves its design surface with no store running.
     CONTEXT.database = Database(
         postgres=PostgresClient(RUNTIME_CONFIG.POSTGRES_DSN),
-        qdrant=QdrantClient(RUNTIME_CONFIG.QDRANT_URL, api_key=RUNTIME_CONFIG.QDRANT_API_KEY),
+        qdrant=QdrantClient(
+            RUNTIME_CONFIG.QDRANT_URL,
+            api_key=RUNTIME_CONFIG.QDRANT_API_KEY,
+            timeout=RUNTIME_CONFIG.QDRANT_TIMEOUT_SECONDS,
+        ),
         s3=S3Client(
             endpoint_url=RUNTIME_CONFIG.S3_ENDPOINT_URL,
             access_key=RUNTIME_CONFIG.S3_ACCESS_KEY,

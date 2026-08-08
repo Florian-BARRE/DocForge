@@ -5,17 +5,28 @@
 
 import type { JsonSchema, JsonSchemaProperty } from "../../api/types";
 import { Switch } from "../Switch";
+import { TagsInput } from "../TagsInput";
 import { theme } from "../../theme";
 
 import { JsonField } from "./JsonField";
 import { NumberField } from "./NumberField";
 
-/** Pydantic hides enums behind $ref/$defs (sometimes wrapped in allOf) — inline them. */
+/**
+ * Pydantic hides enums behind $ref/$defs (sometimes wrapped in allOf) — inline them. Also
+ * collapses the `X | None` shape (serialized as `anyOf: [{...X}, {type:"null"}]`) down to the
+ * non-null branch, so every other control only ever has to reason about the plain typed/enum
+ * property — see `SchemaField`'s own `nullable` flag for the corresponding "can be unset" case.
+ */
 export function deref(prop: JsonSchemaProperty, schema: JsonSchema): JsonSchemaProperty {
-  const ref = prop.$ref ?? prop.allOf?.[0]?.$ref;
-  if (!ref) return prop;
+  let resolved = prop;
+  if (resolved.anyOf) {
+    const nonNull = resolved.anyOf.find((branch) => branch.type !== "null");
+    if (nonNull) resolved = { ...resolved, ...nonNull };
+  }
+  const ref = resolved.$ref ?? resolved.allOf?.[0]?.$ref;
+  if (!ref) return resolved;
   const definition = schema.$defs?.[ref.split("/").pop() ?? ""] ?? {};
-  return { ...definition, ...prop };
+  return { ...definition, ...resolved };
 }
 
 /** Human form of a property's type: "enum(a | b)", "number ≥ 0 ≤ 1", "string"… */
@@ -23,7 +34,9 @@ export function typeLabel(prop: JsonSchemaProperty): string {
   if (prop.enum) return prop.enum.join(" | ");
   let label = prop.type ?? "any";
   if (prop.minimum !== undefined) label += ` ≥ ${prop.minimum}`;
+  if (prop.exclusiveMinimum !== undefined) label += ` > ${prop.exclusiveMinimum}`;
   if (prop.maximum !== undefined) label += ` ≤ ${prop.maximum}`;
+  if (prop.exclusiveMaximum !== undefined) label += ` < ${prop.exclusiveMaximum}`;
   return label;
 }
 
@@ -50,11 +63,18 @@ interface SchemaFieldProps {
 export function SchemaField({ name, prop, schema, value, required = false, onChange }: SchemaFieldProps) {
   const resolved = deref(prop, schema);
   const current = value === undefined ? resolved.default : value;
+  // A `X | None` property (see `deref`) can always be explicitly cleared back to "unset".
+  const nullable = Boolean(prop.anyOf?.some((branch) => branch.type === "null"));
 
   let control: JSX.Element;
   if (resolved.enum) {
     control = (
-      <select style={inputStyle} value={String(current ?? "")} onChange={(e) => onChange(e.target.value)}>
+      <select
+        style={inputStyle}
+        value={current === null || current === undefined ? "" : String(current)}
+        onChange={(e) => onChange(e.target.value === "" ? null : e.target.value)}
+      >
+        {(nullable || current === null || current === undefined) && <option value="">—</option>}
         {resolved.enum.map((option) => (
           <option key={option} value={option}>{option}</option>
         ))}
@@ -66,9 +86,18 @@ export function SchemaField({ name, prop, schema, value, required = false, onCha
     control = (
       <NumberField
         value={typeof current === "number" ? current : undefined}
-        min={resolved.minimum}
-        max={resolved.maximum}
+        min={resolved.minimum ?? resolved.exclusiveMinimum}
+        max={resolved.maximum ?? resolved.exclusiveMaximum}
         style={inputStyle}
+        onChange={onChange}
+      />
+    );
+  } else if (resolved.type === "array" && resolved.items?.type === "string" && !resolved.items.enum) {
+    // A flat string list gets the reusable tag editor instead of raw JSON — same control the
+    // metadata schema step already uses for enum values / keyword_list.
+    control = (
+      <TagsInput
+        values={Array.isArray(current) ? (current as string[]) : []}
         onChange={onChange}
       />
     );

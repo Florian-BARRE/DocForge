@@ -14,34 +14,28 @@ from typing import Any
 
 # ====== Third-Party Library Imports ======
 from loggerplusplus import LoggerClass
-from pydantic import BaseModel, ValidationError
+from pydantic import ValidationError
 
 # ====== Internal Project Imports ======
 from shared_libs.pipelines.base import (
     AbstractNode,
     ActionNode,
-    Always,
-    Condition,
     ErrorInfo,
     ErrorPolicy,
     ForEach,
     ForEachItems,
-    GraphTopology,
     Group,
     NodeExecutionRecord,
     NodeOutput,
     NodeStatus,
-    OnFailure,
-    OnSuccess,
-    ScoreBelow,
-    ScoredOutput,
-    WhenEquals,
 )
 
 # ====== Local Project Imports ======
 from .context import RunContext
+from .navigation import GraphNavigator
 from .progress import ProgressCallback, ProgressEvent, ProgressPhase
 from .resolver import InputResolver, ResolutionError
+from .trace import RecordTrace
 
 
 class FlowEngine(LoggerClass):
@@ -52,9 +46,9 @@ class FlowEngine(LoggerClass):
     the group's bindings, running it, and emitting a NodeExecutionRecord. The engine is stateless
     across runs; all run-scoped state lives in the RunContext.
 
-    Deliberately a single cohesive class (one tightly-coupled execution loop: navigation + running
-    + recording + progress); its pure graph algorithms live in GraphTopology, but the loop itself
-    is kept whole rather than fragmented across modules.
+    Deliberately keeps the execution loop whole (one tightly-coupled unit: running + recording +
+    progress). Its stateless concerns are delegated to helpers — graph navigation to GraphNavigator,
+    trace payload-stripping to RecordTrace — while the loop itself is not fragmented across modules.
     """
 
     def __init__(self, trace_payloads: bool = True) -> None:
@@ -68,107 +62,6 @@ class FlowEngine(LoggerClass):
         """
         LoggerClass.__init__(self)
         self._trace_payloads = trace_payloads
-
-    def __entry(self, group: Group) -> AbstractNode | None:
-        """Return the group's entry node — the single child with no incoming transition."""
-        # 1. An empty group has nothing to run.
-        if not group.children:
-            return None
-        # 2. Exactly one entry (a child that is never a transition target) is required.
-        entries = GraphTopology.entries({child.id for child in group.children}, group.transitions)
-        if len(entries) != 1:
-            self.logger.error(
-                f"Group '{group.id}' must have exactly one entry node, found {len(entries)}"
-            )
-            raise ValueError(
-                f"Group '{group.id}' must have exactly one entry node, found {len(entries)}."
-            )
-        return self.__child_by_id(group, entries[0])
-
-    def __child_by_id(self, group: Group, node_id: str) -> AbstractNode:
-        """Return the child node with the given id, or fail loudly."""
-        for child in group.children:
-            if child.id == node_id:
-                return child
-        self.logger.error(f"Group '{group.id}' has no child '{node_id}' referenced by a transition")
-        raise ValueError(f"Group '{group.id}' has no child '{node_id}' referenced by a transition.")
-
-    # A numeric list longer than this (an embedding vector) is compacted in the records.
-    _NUMERIC_LIST_LIMIT = 64
-
-    @classmethod
-    def __strip_payloads(cls, value: Any) -> Any:
-        """Replace heavy payloads (bytes, long numeric lists) with size placeholders, recursively."""
-        if isinstance(value, bytes):
-            return f"<{len(value)} bytes>"
-        if isinstance(value, dict):
-            return {key: cls.__strip_payloads(item) for key, item in value.items()}
-        if isinstance(value, list):
-            # An embedding vector in a trace is dead weight — keep its size, drop its numbers.
-            if len(value) > cls._NUMERIC_LIST_LIMIT and all(
-                isinstance(item, (int, float)) and not isinstance(item, bool) for item in value
-            ):
-                return f"<{len(value)} numbers>"
-            return [cls.__strip_payloads(item) for item in value]
-        return value
-
-    @classmethod
-    def __dump(cls, model: BaseModel) -> dict[str, Any]:
-        """Dump a model for an execution record WITHOUT its heavy payloads (crops, vectors…) — a
-        record is a trace, not a store; re-serialising every image or embedding at every hop
-        multiplies a document's memory footprint several-fold."""
-        return cls.__strip_payloads(model.model_dump())
-
-    def __condition_matches(
-        self, condition: Condition, status: NodeStatus, output: NodeOutput | None
-    ) -> bool:
-        """Decide whether a transition's condition holds given the source node's outcome."""
-        if isinstance(condition, Always):
-            return True
-        if isinstance(condition, OnSuccess):
-            return status == NodeStatus.SUCCESS
-        if isinstance(condition, OnFailure):
-            return status == NodeStatus.FAILED
-        if isinstance(condition, ScoreBelow):
-            # Only a ScoredOutput can be score-gated; a plain output cannot fire this edge.
-            if not isinstance(output, ScoredOutput):
-                self.logger.warning(f"ScoreBelow transition skipped: output is not a ScoredOutput")
-                return False
-            return output.score < condition.threshold
-        if isinstance(condition, WhenEquals):
-            # Value routing only applies to a SUCCESSFUL output carrying the field.
-            if status != NodeStatus.SUCCESS or output is None:
-                return False
-            if not hasattr(output, condition.field):
-                self.logger.warning(
-                    f"WhenEquals transition skipped: output has no field '{condition.field}'"
-                )
-                return False
-            return str(getattr(output, condition.field)) == condition.equals
-        return False
-
-    def __condition_rank(self, condition: Condition) -> int:
-        """Specificity of a condition — the engine checks higher first so a specific edge beats a
-        generic one when several would match. ScoreBelow outranks WhenEquals: when quality is bad
-        the graph escalates before it routes by value."""
-        if isinstance(condition, ScoreBelow):
-            return 4
-        if isinstance(condition, WhenEquals):
-            return 3
-        if isinstance(condition, (OnSuccess, OnFailure)):
-            return 2
-        return 1  # Always
-
-    def __next(
-        self, group: Group, node: AbstractNode, status: NodeStatus, output: NodeOutput | None
-    ) -> AbstractNode | None:
-        """Return the next node to run — the MOST SPECIFIC matching outgoing transition (None = terminal)."""
-        outgoing = [t for t in group.transitions if t.from_node_id == node.id]
-        outgoing.sort(key=lambda t: self.__condition_rank(t.condition), reverse=True)
-        for transition in outgoing:
-            if self.__condition_matches(transition.condition, status, output):
-                return self.__child_by_id(group, transition.to_node_id)
-        return None
 
     async def __run_action(
         self,
@@ -223,9 +116,9 @@ class FlowEngine(LoggerClass):
             kind=node.KIND,
             status=status,
             duration_ms=(perf_counter() - started) * 1000,
-            resolved_input=self.__dump(node_input) if self._trace_payloads else None,
+            resolved_input=RecordTrace.dump(node_input) if self._trace_payloads else None,
             output=(
-                self.__dump(node_output)
+                RecordTrace.dump(node_output)
                 if (self._trace_payloads and node_output is not None)
                 else None
             ),
@@ -423,7 +316,7 @@ class FlowEngine(LoggerClass):
         group_output: NodeOutput | None = None
         visited: set[str] = set()
 
-        node = self.__entry(group)
+        node = GraphNavigator.entry(group)
         while node is not None:
             # 0. Guard against a cyclic graph that slipped past validation (no node runs twice).
             if node.id in visited:
@@ -441,7 +334,7 @@ class FlowEngine(LoggerClass):
                 group_output = node_output
 
             # 2. Pick the next node from the outgoing transitions.
-            next_node = self.__next(group, node, record.status, node_output)
+            next_node = GraphNavigator.next(group, node, record.status, node_output)
 
             # 3. A failure with no recovery edge hands control to the node's error policy.
             if next_node is None and record.status == NodeStatus.FAILED:
@@ -451,7 +344,7 @@ class FlowEngine(LoggerClass):
                 # SKIP: mark the node skipped (its error stays attached) and continue via its
                 # success-path edge, treating the failure as a skip.
                 record.status = NodeStatus.SKIPPED
-                next_node = self.__next(group, node, NodeStatus.SUCCESS, None)
+                next_node = GraphNavigator.next(group, node, NodeStatus.SUCCESS, None)
                 if next_node is None:
                     break
 
@@ -464,7 +357,7 @@ class FlowEngine(LoggerClass):
             status=group_status,
             duration_ms=(perf_counter() - started) * 1000,
             output=(
-                self.__dump(group_output)
+                RecordTrace.dump(group_output)
                 if (self._trace_payloads and group_output is not None)
                 else None
             ),

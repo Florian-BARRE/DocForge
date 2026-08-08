@@ -57,9 +57,20 @@ class RUNTIME_CONFIG(EnvConfigLoader):
     S3_BUCKET = env("S3_BUCKET")
     S3_REGION = env("S3_REGION", default="us-east-1")
 
+    # ───── Stores — client tuning ─────
+    # Per-request Qdrant timeout. The qdrant-client default (5s) is too low for heavy vector upserts
+    # indexed with wait=true; 60s covers a heavy batch. Passed into QdrantClient at construction.
+    QDRANT_TIMEOUT_SECONDS = env("QDRANT_TIMEOUT_SECONDS", cast=float, default=60.0)
+
     # ───── Run limits ─────
     WORKER_CONCURRENCY = env("WORKER_CONCURRENCY", cast=int, default=2)
     WORKER_JOB_TIMEOUT_SECONDS = env("WORKER_JOB_TIMEOUT_SECONDS", cast=float, default=1800.0)
+    # arq's outer per-job cap must stay ABOVE the engine's run budget (the engine cancels first), so
+    # arq only kills a genuinely-wedged run. Both processes source this ONE env (app enqueue side +
+    # worker WorkerSettings) so the wall-clock contract can never drift between them.
+    WORKER_JOB_TIMEOUT_GRACE_SECONDS = env(
+        "WORKER_JOB_TIMEOUT_GRACE_SECONDS", cast=float, default=60.0
+    )
     # Size of the BOUNDED thread pool the heavy CPU stages (docling/ocr/render/chunk, dispatched via
     # asyncio.to_thread) run on. Bounding it isolates native work from asyncio's default executor and
     # caps concurrent native calls — so a ForEach fan-out can't spawn dozens of docling/OCR threads
@@ -84,6 +95,23 @@ class RUNTIME_CONFIG(EnvConfigLoader):
     # the reaper entirely (the cron is then not even registered).
     WORKER_REAP_ENABLED = env("WORKER_REAP_ENABLED", cast=bool, default=True)
     WORKER_REAP_STALE_SECONDS = env("WORKER_REAP_STALE_SECONDS", cast=int, default=1200)
+    # Reaper cron cadence (minutes): the stuck-job cron runs on every Nth minute of the hour. 5 →
+    # every 5 minutes. It also runs once at startup so a wedge left by a crashed/hot-reloaded run is
+    # cleared immediately.
+    WORKER_REAP_INTERVAL_MINUTES = env("WORKER_REAP_INTERVAL_MINUTES", cast=int, default=5)
+
+    # ───── Liveness cadences ─────
+    # Heartbeat tick interval. Kept WELL BELOW the backend's WORKER_ALIVE_THRESHOLD_SECONDS (~30s) so
+    # a live worker never flaps to "offline" between ticks, and a dead one ages past that threshold
+    # within one window. The alive threshold MUST stay >> this interval (three-missed-ticks rule).
+    WORKER_HEARTBEAT_INTERVAL_SECONDS = env(
+        "WORKER_HEARTBEAT_INTERVAL_SECONDS", cast=int, default=10
+    )
+    # arq writes a health record to Redis every N seconds; `arq ... --check` reads it and exits
+    # non-zero when stale — the container healthcheck that surfaces a wedged worker.
+    WORKER_HEALTH_CHECK_INTERVAL_SECONDS = env(
+        "WORKER_HEALTH_CHECK_INTERVAL_SECONDS", cast=int, default=30
+    )
 
     # ───── Logging (mandatory set) ─────
     LOGGING_CONSOLE_LEVEL = env("LOGGING_CONSOLE_LEVEL")

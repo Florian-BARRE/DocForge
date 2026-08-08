@@ -13,18 +13,21 @@
 from pydantic import Field, field_validator
 
 # ====== Internal Project Imports ======
-from shared_libs.public_models.base import NodeConfig
+from shared_libs.public_models.base import TimeoutRetryConfig
 
 
-class OpenAICompatConfig(NodeConfig):
-    """The endpoint fields shared by every OpenAI-compatible consumer."""
+class OpenAICompatConfig(TimeoutRetryConfig):
+    """The endpoint fields shared by every OpenAI-compatible consumer.
+
+    The timeout/retry/preflight knobs come from ``TimeoutRetryConfig`` (``timeout_seconds`` keeps its
+    30 s default here); this class only adds the endpoint identity (url, key, model).
+    """
 
     base_url: str = Field(
         description="OpenAI-compatible endpoint (e.g. http://vllm:8000/v1 or https://api.openai.com/v1)."
     )
     api_key: str = Field(default="", description="API key for the endpoint (may be empty locally).")
     model: str = Field(description="Model name served by the endpoint.")
-    timeout_seconds: float = Field(default=30.0, gt=0, description="Per-request timeout (s).")
 
     @field_validator("base_url", "api_key", "model", mode="before")
     @classmethod

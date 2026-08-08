@@ -12,9 +12,11 @@ from typing import Any
 # ====== Third-Party Library Imports ======
 from loggerplusplus import loggerplusplus
 
+# ====== Internal Project Imports ======
+from config import RUNTIME_CONFIG
+
 # ====== Local Project Imports ======
 from .models import (
-    WORKER_ALIVE_THRESHOLD_SECONDS,
     JobStatus,
     WorkerActivity,
     WorkersLive,
@@ -34,7 +36,7 @@ class WorkersLiveHelpers:
         """Whether a heartbeat is fresher than the liveness threshold (None → not alive)."""
         if last_seen is None:
             return False
-        return (now - last_seen).total_seconds() <= WORKER_ALIVE_THRESHOLD_SECONDS
+        return (now - last_seen).total_seconds() <= RUNTIME_CONFIG.WORKER_ALIVE_THRESHOLD_SECONDS
 
     @staticmethod
     def assemble(

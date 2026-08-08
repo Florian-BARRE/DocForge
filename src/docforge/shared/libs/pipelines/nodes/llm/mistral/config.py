@@ -35,6 +35,13 @@ class LlmMistralConfig(BaseLlmChatConfig):
     temperature: float = Field(
         default=0.0, ge=0.0, le=1.0, description="Sampling temperature (0–1)."
     )
+    # ChatMistralAI's own default is 5 retries; keep that as the DocForge default so wiring the knob
+    # into the client preserves the pre-refactor retry count (the config is now the single source).
+    max_retries: int = Field(
+        default=5,
+        ge=0,
+        description="Transient-retry count forwarded to ChatMistralAI (its native default is 5).",
+    )
 
 
 __all__ = ["MistralModel", "LlmMistralConfig"]

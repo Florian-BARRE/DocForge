@@ -12,11 +12,16 @@
 import httpx
 from loggerplusplus import loggerplusplus
 
-# Hard cap on the probe timeout: preflight must be quick even when a node's config allows a long
-# per-request timeout for real generation. A single retry absorbs a transient blip; a real refusal
-# still fails loudly after it.
-_MAX_TIMEOUT_SECONDS = 5.0
-_RETRIES = 1
+# Default per-attempt probe timeout when a caller passes none. Nodes now forward their configured
+# ``preflight_timeout_seconds`` (a dedicated, per-collection knob), so the probe is NO LONGER capped
+# here — the config wins. This value is only the fallback for a caller that omits it. It is 10s (not a
+# couple of seconds) because a real hosted endpoint's FIRST probe pays a cold TLS handshake + routing
+# that legitimately exceeds a few seconds; a 5s ceiling turned that latency into spurious failures.
+_DEFAULT_PREFLIGHT_TIMEOUT_SECONDS = 10.0
+
+# Retries after the initial attempt. Two absorb a transient blip; a genuinely unreachable endpoint
+# still fails loudly after them. Exposed as a named default so the sweep can size its outer bound.
+RETRIES = 2
 
 
 class PreflightError(Exception):
@@ -39,6 +44,15 @@ class EndpointReachability:
     def __new__(cls, *args: object, **kwargs: object) -> None:
         raise TypeError("EndpointReachability is a static-only class and cannot be instantiated.")
 
+    @staticmethod
+    def budget(timeout_seconds: float = _DEFAULT_PREFLIGHT_TIMEOUT_SECONDS) -> float:
+        """Worst-case wall-clock of one full probe: every attempt paying its whole timeout.
+
+        The sweep sizes its outer per-node cap from this so the probe's OWN retries always complete
+        before the sweep would kill them (the pre-fix bug: a 5 s outer cap fired before the 10 s probe).
+        """
+        return timeout_seconds * (RETRIES + 1)
+
     @classmethod
     async def check(
         cls,
@@ -46,7 +60,7 @@ class EndpointReachability:
         node_kind: str,
         base_url: str,
         api_key: str = "",
-        timeout_seconds: float = _MAX_TIMEOUT_SECONDS,
+        timeout_seconds: float = _DEFAULT_PREFLIGHT_TIMEOUT_SECONDS,
         path: str = "/models",
     ) -> None:
         """
@@ -56,21 +70,23 @@ class EndpointReachability:
             node_kind (str): The calling node's KIND, named in the error for a clear message.
             base_url (str): The endpoint base URL to reach (per-collection config).
             api_key (str): Bearer token sent when non-empty (lets the probe surface a 401/403).
-            timeout_seconds (float): Requested timeout, hard-capped at ``_MAX_TIMEOUT_SECONDS``.
+            timeout_seconds (float): Per-attempt probe timeout — the node's configured
+                ``preflight_timeout_seconds``, used as-is (no ceiling; the config wins).
             path (str): The lightweight route appended to ``base_url`` (defaults to ``/models``).
 
         Raises:
-            PreflightError: The host is unreachable (DNS/refused/timeout, after one retry) or the
+            PreflightError: The host is unreachable (DNS/refused/timeout, after the retries) or the
                 credentials are rejected (HTTP 401/403). Any other status is treated as reachable.
         """
-        # 1. Build the probe URL + optional bearer; cap the timeout so preflight stays quick.
+        # 1. Build the probe URL + optional bearer. The configured timeout is used directly — the
+        #    sweep bounds the overall probe, so preflight no longer needs to cap the per-attempt value.
         url = base_url.rstrip("/") + path
         headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
-        timeout = min(timeout_seconds, _MAX_TIMEOUT_SECONDS)
+        timeout = timeout_seconds
 
-        # 2. Try once, retry once on a transport error to absorb a transient blip.
+        # 2. Try once, retry on a transport error to absorb a transient blip.
         last_error: Exception | None = None
-        for attempt in range(_RETRIES + 1):
+        for attempt in range(RETRIES + 1):
             try:
                 async with httpx.AsyncClient(timeout=timeout) as client:
                     response = await client.get(url, headers=headers)

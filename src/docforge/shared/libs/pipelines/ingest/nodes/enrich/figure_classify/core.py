@@ -86,7 +86,10 @@ class FigureClassifyNode(ActionNode):
         # 1. One multimodal message: the instruction + the image as a data URL.
         encoded = base64.b64encode(image).decode("ascii")
         model = OpenAICompatHelpers.chat(
-            config, temperature=config.temperature, max_tokens=config.max_tokens
+            config,
+            temperature=config.temperature,
+            max_tokens=config.max_tokens,
+            max_retries=config.max_retries,
         )
         answer = await model.ainvoke(
             [

@@ -9,11 +9,16 @@
 from pydantic import Field
 
 # ====== Internal Project Imports ======
-from shared_libs.pipelines.base import NodeConfig
+from shared_libs.pipelines.base import TimeoutRetryConfig
 
 
-class BaseVlmConfig(NodeConfig):
-    """Shared VLM config — the prompt IS the behaviour."""
+class BaseVlmConfig(TimeoutRetryConfig):
+    """Shared VLM config — the prompt IS the behaviour.
+
+    Timeout/retry come from ``TimeoutRetryConfig``; ``timeout_seconds`` is overridden to 60 s and
+    ``max_retries`` kept at the VLM-sober 1 (paid calls). The retry itself runs in the VLM base
+    node's own hand-loop (below the graph's escalation), so ``retry_backoff_seconds`` applies here.
+    """
 
     system_prompt: str = Field(
         default="Describe this image precisely, for retrieval purposes.",
@@ -26,17 +31,13 @@ class BaseVlmConfig(NodeConfig):
         description="Ask the model to ALSO output the underlying data as a fenced ```table``` "
         "block (chart-to-table); the block is parsed into rows and stripped from the description.",
     )
+    timeout_seconds: float = Field(default=60.0, gt=0, description="Per-request timeout (s).")
     max_retries: int = Field(
         default=1,
         ge=0,
         description="Retries on a TRANSIENT provider error (timeout/connection/429/5xx) before "
         "giving up and letting the graph escalate. VLM calls are PAID — kept sober (1): one retry "
         "recovers a transient blip without storming. 0 disables retry.",
-    )
-    retry_backoff_seconds: float = Field(
-        default=1.0,
-        gt=0,
-        description="Base delay for the exponential backoff between retries (delay = base * attempt).",
     )
 
 

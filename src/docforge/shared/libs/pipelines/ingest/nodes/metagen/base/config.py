@@ -77,14 +77,18 @@ class BaseMetagenConfig(OpenAICompatConfig):
     max_document_words: int = Field(
         default=4000,
         gt=0,
-        description="Hard cap on the text handed to the model (truncated from the start).",
+        description="Hard cap on the document text handed to the model (document scope). Over the "
+        "cap the head AND tail are kept (the middle is elided) so late sections stay visible.",
     )
     max_concurrency: int = Field(
-        default=4, ge=1, description="Simultaneous model calls (chunk scope)."
+        default=4,
+        ge=1,
+        description="Stage knob (read by the assembler): how many requests the ForEach runs at once.",
     )
     on_error: MetagenOnError = Field(
         default=MetagenOnError.SKIP_FIELDS,
-        description="Failure policy: skip the affected fields (default) or fail the node.",
+        description="Stage knob (read by the assembler): skip_fields wires a fail-soft skip terminal "
+        "so a failed request drops its fields; fail lets the failure propagate as an item failure.",
     )
 
 

@@ -19,6 +19,7 @@ from loggerplusplus import LoggerClass
 from shared_libs.pipelines.base import ActionNode, ForEach, Group
 from shared_libs.pipelines.nodes.openai_compat import (
     EndpointAuthError,
+    EndpointReachability,
     EndpointUnreachableError,
 )
 from shared_libs.pipelines.registry import NodeRegistry
@@ -27,9 +28,13 @@ from shared_libs.pipelines.registry import NodeRegistry
 from .result import ProviderProbeResult
 from .status import ProbeStatus
 
-# Hard per-probe cap — matches EndpointReachability's own 5 s ceiling so one hung endpoint cannot
-# stall the sweep. Probes run concurrently, so this also bounds the whole sweep to ~5 s wall-clock.
-_PROBE_TIMEOUT_SECONDS = 5.0
+# The outer per-probe cap is DERIVED from each node's own preflight budget (its
+# ``preflight_timeout_seconds`` × the probe's retries) plus this slack, so it always sits ABOVE the
+# probe's internal budget — the pre-fix bug was a fixed 5 s outer cap firing BEFORE the node's 10 s
+# probe, defeating its retries. An absolute ceiling still guards against a pathological config so one
+# hung endpoint cannot stall the concurrent sweep.
+_PROBE_MARGIN_SECONDS = 2.0
+_PROBE_CEILING_SECONDS = 60.0
 
 
 class ReachabilitySweep(LoggerClass):
@@ -47,6 +52,18 @@ class ReachabilitySweep(LoggerClass):
     def __detail(exc: Exception) -> str:
         """Format an exception into a compact, human-readable probe detail."""
         return f"{type(exc).__name__}: {exc}"
+
+    @staticmethod
+    def __probe_cap(node: ActionNode) -> float:
+        """The outer wait_for for one node: above its own probe budget, under the absolute ceiling.
+
+        Sized from the node's configured ``preflight_timeout_seconds`` so the probe's internal
+        retries always finish before this cap fires; a node without the knob falls back to the
+        probe's default budget. Clamped to the ceiling so a huge config cannot stall the sweep.
+        """
+        timeout = getattr(node.config, "preflight_timeout_seconds", None)
+        budget = EndpointReachability.budget(timeout) if timeout else EndpointReachability.budget()
+        return min(budget + _PROBE_MARGIN_SECONDS, _PROBE_CEILING_SECONDS)
 
     async def __probe(self, node: ActionNode, side: str) -> ProviderProbeResult:
         """
@@ -83,7 +100,7 @@ class ReachabilitySweep(LoggerClass):
         start = perf_counter()
         status, detail = ProbeStatus.OK, None
         try:
-            await asyncio.wait_for(node.preflight(), timeout=_PROBE_TIMEOUT_SECONDS)
+            await asyncio.wait_for(node.preflight(), timeout=self.__probe_cap(node))
         except EndpointAuthError as exc:
             status, detail = ProbeStatus.AUTH_FAILED, self.__detail(exc)
         except (EndpointUnreachableError, TimeoutError) as exc:

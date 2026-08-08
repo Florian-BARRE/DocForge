@@ -12,6 +12,7 @@ import httpx
 
 # ====== Internal Project Imports ======
 from shared_libs.pipelines.nodes.openai_compat import EndpointReachability
+from shared_libs.pipelines.nodes.retry import NetworkRetry
 from shared_libs.pipelines.registry import NodeRegistry
 
 # ====== Local Project Imports ======
@@ -39,11 +40,11 @@ class OcrMistralNode(BaseOcrNode):
             node_kind=self.KIND,
             base_url=config.base_url,
             api_key=config.api_key,
-            timeout_seconds=config.timeout_seconds,
+            timeout_seconds=config.preflight_timeout_seconds,
         )
 
     async def _read(self, image: bytes) -> tuple[str, float]:
-        """Call the OCR endpoint on one image."""
+        """Call the OCR endpoint on one image, with a bounded transient retry."""
         config: OcrMistralConfig = self.config
         # 1. The API takes the image as a data URL document.
         encoded = base64.b64encode(image).decode("ascii")
@@ -55,18 +56,27 @@ class OcrMistralNode(BaseOcrNode):
             },
         }
 
-        # 2. POST and join the pages' markdown.
-        async with httpx.AsyncClient(
-            base_url=config.base_url, timeout=config.timeout_seconds
-        ) as client:
-            response = await client.post(
-                "/ocr",
-                json=payload,
-                headers={"Authorization": f"Bearer {config.api_key}"},
-            )
-            response.raise_for_status()
-        pages = response.json().get("pages", [])
-        text = "\n\n".join(page.get("markdown", "") for page in pages).strip()
+        async def _post() -> str:
+            """POST and join the pages' markdown — the retryable network operation."""
+            async with httpx.AsyncClient(
+                base_url=config.base_url, timeout=config.timeout_seconds
+            ) as client:
+                response = await client.post(
+                    "/ocr",
+                    json=payload,
+                    headers={"Authorization": f"Bearer {config.api_key}"},
+                )
+                response.raise_for_status()
+            pages = response.json().get("pages", [])
+            return "\n\n".join(page.get("markdown", "") for page in pages).strip()
+
+        # 2. Run under the shared bounded retry; a non-transient error re-raises at once.
+        text = await NetworkRetry.run(
+            _post,
+            max_retries=config.max_retries,
+            retry_backoff_seconds=config.retry_backoff_seconds,
+            label=f"ocr '{self.KIND}'",
+        )
 
         # 3. No confidence from the API — non-empty text = accepted.
         return text, 1.0 if text else 0.0

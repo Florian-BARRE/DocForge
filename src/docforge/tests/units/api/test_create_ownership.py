@@ -33,14 +33,14 @@ def _mock_auth(monkeypatch):
 
 
 async def test_scoped_create_appends_new_collection_to_scope(fastapi_app, monkeypatch) -> None:
-    from backend.routers.collections.router import _grant_creator_scope  # noqa: PLC0415
+    from backend.routers.collections.store_sync import CollectionStoreSync  # noqa: PLC0415
 
     update = _mock_auth(monkeypatch)
     principal = _principal(
         permissions={"capabilities": ["read", "write", "create"], "collections": []}
     )
 
-    await _grant_creator_scope(principal, NEW_ID)
+    await CollectionStoreSync.grant_creator_scope(principal, NEW_ID)
 
     update.assert_awaited_once()
     key_id, permissions = update.await_args.args
@@ -49,26 +49,26 @@ async def test_scoped_create_appends_new_collection_to_scope(fastapi_app, monkey
 
 
 async def test_full_access_key_is_not_extended(fastapi_app, monkeypatch) -> None:
-    from backend.routers.collections.router import _grant_creator_scope  # noqa: PLC0415
+    from backend.routers.collections.store_sync import CollectionStoreSync  # noqa: PLC0415
 
     update = _mock_auth(monkeypatch)
-    await _grant_creator_scope(_principal(permissions=None), NEW_ID)
+    await CollectionStoreSync.grant_creator_scope(_principal(permissions=None), NEW_ID)
     update.assert_not_awaited()
 
 
 async def test_wildcard_scope_is_not_extended(fastapi_app, monkeypatch) -> None:
-    from backend.routers.collections.router import _grant_creator_scope  # noqa: PLC0415
+    from backend.routers.collections.store_sync import CollectionStoreSync  # noqa: PLC0415
 
     update = _mock_auth(monkeypatch)
     principal = _principal(permissions={"capabilities": ["create"], "collections": ["*"]})
-    await _grant_creator_scope(principal, NEW_ID)
+    await CollectionStoreSync.grant_creator_scope(principal, NEW_ID)
     update.assert_not_awaited()
 
 
 async def test_already_scoped_collection_is_not_duplicated(fastapi_app, monkeypatch) -> None:
-    from backend.routers.collections.router import _grant_creator_scope  # noqa: PLC0415
+    from backend.routers.collections.store_sync import CollectionStoreSync  # noqa: PLC0415
 
     update = _mock_auth(monkeypatch)
     principal = _principal(permissions={"capabilities": ["create"], "collections": [NEW_ID]})
-    await _grant_creator_scope(principal, NEW_ID)
+    await CollectionStoreSync.grant_creator_scope(principal, NEW_ID)
     update.assert_not_awaited()

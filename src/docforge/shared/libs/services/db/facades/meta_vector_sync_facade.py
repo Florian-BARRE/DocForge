@@ -223,6 +223,12 @@ class MetaVectorSyncFacade(LoggerClass):
         The maintenance path for data ingested before the meta vectors were populated: no content
         re-embed, only the short metadata values embedded and written per document. Idempotent.
 
+        SCOPE: backfills DOCUMENT-scope semantic/lexical fields only. Chunk-scope semantic values are
+        embedded per chunk at INGEST (their named vector is declared at collection creation), so they
+        need no backfill. A chunk-scope field toggled semantic AFTER first ingest needs a named vector
+        Qdrant cannot add to a live collection — the collections reconcile flags that as reindex-
+        required, so the honest fix is a reingest, never a silent post-hoc vector add.
+
         Args:
             collection_id (uuid.UUID): The collection whose documents are backfilled.
 

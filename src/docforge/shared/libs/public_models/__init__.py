@@ -1,5 +1,5 @@
 # ---------------------- Artefact base ---------------------- #
-from .base import Artifact
+from .base import Artifact, TimeoutConfig, TimeoutRetryConfig
 
 # ---------------------- IR (canonical parsed document) ---------------------- #
 from .ir import (
@@ -65,6 +65,8 @@ from .llm import Completion, Prompt
 # ------------------- Public API ------------------- #
 __all__ = [
     "Artifact",
+    "TimeoutConfig",
+    "TimeoutRetryConfig",
     "BlockType",
     "FigureKind",
     "FigureRouting",

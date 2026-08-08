@@ -109,6 +109,7 @@ class CollectionsFacade(LoggerClass):
         name: str | None = None,
         supported_formats: list[str] | None = None,
         max_file_size_bytes: int | None = None,
+        job_timeout_seconds: float | None = None,
     ) -> None:
         """Patch the collection's identity/limits (None = leave unchanged)."""
         async with self._postgres.session() as session:
@@ -118,6 +119,7 @@ class CollectionsFacade(LoggerClass):
                 name=name,
                 supported_formats=supported_formats,
                 max_file_size_bytes=max_file_size_bytes,
+                job_timeout_seconds=job_timeout_seconds,
             )
 
     async def update_schema(self, collection_id: uuid.UUID, desired: list[MetadataField]) -> bool:
@@ -185,6 +187,49 @@ class CollectionsFacade(LoggerClass):
             f"({len(desired)} fields, reindex_needed={reindex_needed})"
         )
         return reindex_needed
+
+    async def reconcile_store(self, collection_id: uuid.UUID) -> set[str]:
+        """
+        Additively reconcile the Qdrant collection with the CURRENT metadata schema (idempotent).
+
+        The store-side counterpart of a schema edit: a field toggled ``filterable`` after first
+        ingest gets its payload index added LIVE (no reindex, no destructive op), so its search
+        filter starts matching. A field toggled ``semantic``/``lexical`` needs a named vector, which
+        Qdrant cannot add to a live collection — those are returned as reindex-required, never
+        silently ignored. A no-op (empty set) when the collection has no Qdrant space yet: the first
+        ingest provisions it from the current schema, so nothing is missing to reconcile.
+
+        Args:
+            collection_id (uuid.UUID): The collection whose vector store is reconciled.
+
+        Returns:
+            set[str]: Fields whose semantic/lexical named vector is missing and needs a reindex
+                (empty when nothing is missing or the collection was never ingested).
+        """
+        # 1. No Qdrant space provisioned yet → the first ingest builds it from the schema; nothing
+        #    to reconcile. Guard here so reconcile() can assume the collection exists.
+        name = DatabaseHelpers.qdrant_collection_name(collection_id)
+        if not await self._qdrant.raw.collection_exists(name):
+            return set()
+        # 2. Derive the searchable surface from the current schema and additively align the store.
+        async with self._postgres.session() as session:
+            schema = await CollectionApi.get_schema(session, collection_id)
+        reindex_fields = await QdrantCollectionApi.reconcile(
+            self._qdrant.raw,
+            name,
+            semantic_fields=[f.field_name for f in schema if f.semantic],
+            lexical_fields=[f.field_name for f in schema if f.lexical],
+            filterable_fields={
+                f.field_name: DatabaseHelpers.payload_type_for(f.field_type)
+                for f in schema
+                if f.filterable
+            },
+        )
+        self.logger.info(
+            f"Reconciled Qdrant store for {collection_id} "
+            f"(reindex-required fields: {sorted(reindex_fields)})"
+        )
+        return reindex_fields
 
     async def update_config(
         self,

@@ -42,8 +42,11 @@ class SearchRequest(BaseModel):
     Attributes:
         query (str): The natural-language query, embedded with the collection's own embedder.
         limit (int): Number of fused results to return.
-        filters (dict | None): Exact/any-of constraints on the collection's FILTERABLE fields —
-            a scalar becomes an equality match, a list becomes a set-membership (any-of) match.
+        filters (dict | None): Constraints on the collection's FILTERABLE fields — a scalar becomes
+            an equality match, a list becomes a set-membership (any-of) match, and a mapping of range
+            bounds (``gte``/``gt``/``lte``/``lt``) becomes a numeric or datetime range (e.g.
+            ``{"published": {"gte": "2024-01-01", "lte": "2024-12-31"}}`` or ``{"pages": {"gt": 10}}``).
+            A range on a non-range-typed (keyword/bool) field, or a malformed range, is rejected 422.
         search_in (list[SearchTargetModel] | None): What to search — the fields (content and/or
             metadata) and modalities (semantic/lexical). None searches content on both axes
             (unchanged default). A target naming a vector the collection never indexed → 422.
@@ -55,7 +58,9 @@ class SearchRequest(BaseModel):
     limit: int = Field(default=10, ge=1, le=100, description="Number of fused results.")
     filters: dict[str, Any] | None = Field(
         default=None,
-        description="Constraints on the FILTERABLE metadata fields (field → value or [values]).",
+        description="Constraints on the FILTERABLE metadata fields — field → a scalar (equality), "
+        "a list (any-of), or a range mapping of gte/gt/lte/lt bounds (numeric or ISO-8601 datetime, "
+        'e.g. {"published": {"gte": "2024-01-01", "lte": "2024-12-31"}}).',
     )
     search_in: list[SearchTargetModel] | None = Field(
         default=None,

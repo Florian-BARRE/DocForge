@@ -45,6 +45,14 @@ class CollectionModel(BaseModel):
     name: str = Field(description="Unique human name.")
     supported_formats: list[str] = Field(description="Accepted upload extensions (e.g. pdf).")
     max_file_size_bytes: int = Field(description="Upload size ceiling, bytes.")
+    job_timeout_seconds: float | None = Field(
+        default=None,
+        gt=0,
+        description=(
+            "Per-collection whole-ingest-job wall-clock budget, seconds. None = inherit the "
+            "worker's global WORKER_JOB_TIMEOUT_SECONDS default."
+        ),
+    )
     needs_reindex: bool = Field(description="True when a config change requires reindexing.")
     created_at: datetime | None = Field(default=None, description="Creation timestamp.")
     pipeline: dict[str, Any] = Field(description="The ingestion pipeline blob (the graph).")
@@ -54,21 +62,30 @@ class CollectionModel(BaseModel):
     fields: list[FieldSpecModel] = Field(default_factory=list, description="The metadata schema.")
 
 
-class CreateCollectionRequest(BaseModel):
-    """Create a collection from A to Z — contract, schema and (optionally) its pipeline."""
+class CollectionContractModel(BaseModel):
+    """
+    The editable IDENTITY + LIMITS contract of a collection — the scalar/enum fields ONLY.
+
+    This is the ONE source of truth for the identity/limits shape: ``CreateCollectionRequest``
+    composes it (so the request and the schema can never drift), and its ``model_json_schema()``
+    is served on the discovery surface so a schema-driven UI renders the form with zero hardcoded
+    field knowledge — exactly like a node's ``config_schema``. It deliberately excludes ``fields``
+    (the metadata schema) and the ``pipeline`` / ``search`` graph blobs, which have their own
+    dedicated editors.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
     name: str = Field(description="Unique human name.")
     supported_formats: list[str] = Field(description="Accepted upload extensions (e.g. pdf).")
     max_file_size_bytes: int = Field(description="Upload size ceiling, bytes.")
-    fields: list[FieldSpecModel] = Field(
-        default_factory=list,
-        description="The FULL schema, declared up front (vector space is fixed at creation).",
-    )
-    pipeline: dict[str, Any] | None = Field(
+    job_timeout_seconds: float | None = Field(
         default=None,
-        description="The pipeline blob; omitted → the stock blob selected by ``preset``.",
+        gt=0,
+        description=(
+            "Per-collection whole-ingest-job wall-clock budget, seconds. None (default) = inherit "
+            "the worker's global WORKER_JOB_TIMEOUT_SECONDS."
+        ),
     )
     preset: Literal["standard", "light"] | None = Field(
         default=None,
@@ -77,6 +94,19 @@ class CreateCollectionRequest(BaseModel):
             "full pipeline) or 'light' (a fast, local, free core — no figure enrich, contextualise "
             "or metagen). An explicit ``pipeline`` always wins over this."
         ),
+    )
+
+
+class CreateCollectionRequest(CollectionContractModel):
+    """Create a collection from A to Z — the identity/limits contract, schema and (optionally) its pipeline."""
+
+    fields: list[FieldSpecModel] = Field(
+        default_factory=list,
+        description="The FULL schema, declared up front (vector space is fixed at creation).",
+    )
+    pipeline: dict[str, Any] | None = Field(
+        default=None,
+        description="The pipeline blob; omitted → the stock blob selected by ``preset``.",
     )
 
 
@@ -95,6 +125,14 @@ class UpdateCollectionRequest(BaseModel):
         default=None, description="New accepted upload extensions."
     )
     max_file_size_bytes: int | None = Field(default=None, description="New size ceiling, bytes.")
+    job_timeout_seconds: float | None = Field(
+        default=None,
+        gt=0,
+        description=(
+            "New per-collection whole-ingest-job wall-clock budget, seconds. Omitted = leave the "
+            "current value unchanged; a set value overrides the global WORKER_JOB_TIMEOUT_SECONDS."
+        ),
+    )
     fields: list[FieldSpecModel] | None = Field(
         default=None,
         description="The TARGET schema (diffed by field name; omitted fields are removed).",
@@ -109,9 +147,29 @@ class UpdateCollectionRequest(BaseModel):
     note: str | None = Field(default=None, description="Version note shown in the history.")
 
 
+class CollectionContractSchemaResponse(BaseModel):
+    """
+    The JSON Schema of the collection identity/limits contract — the discovery payload.
+
+    Mirrors a node's ``config_schema`` face: ``config_schema`` is the raw
+    ``CollectionContractModel.model_json_schema()`` the frontend hands to its existing
+    ``SchemaForm`` unchanged, so a new scalar contract field auto-surfaces in the UI with zero
+    frontend change.
+
+    Attributes:
+        config_schema (dict[str, Any]): JSON Schema of the editable identity/limits contract.
+    """
+
+    config_schema: dict[str, Any] = Field(
+        description="JSON Schema of the collection identity/limits contract (drives the UI form)."
+    )
+
+
 __all__ = [
     "FieldSpecModel",
     "CollectionModel",
+    "CollectionContractModel",
+    "CollectionContractSchemaResponse",
     "CreateCollectionRequest",
     "UpdateCollectionRequest",
 ]

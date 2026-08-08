@@ -41,7 +41,7 @@ class BaseLlmChatNode(ActionNode):
             node_kind=self.KIND,
             base_url=config.base_url,
             api_key=config.api_key,
-            timeout_seconds=config.timeout_seconds,
+            timeout_seconds=config.preflight_timeout_seconds,
         )
 
     @abstractmethod

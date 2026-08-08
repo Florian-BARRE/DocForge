@@ -34,3 +34,11 @@ services:
     build:
       args:
         TORCH_VARIANT: gpu
+
+  docforge_paddle_server:
+    image: ghcr.io/florian-barre/docforge-paddle-server:${DOCFORGE_TAG:-latest}-gpu
+    # Service-level GPU grant — equivalent to `docker run --gpus all`.
+    gpus: all
+    build:
+      args:
+        TORCH_VARIANT: gpu

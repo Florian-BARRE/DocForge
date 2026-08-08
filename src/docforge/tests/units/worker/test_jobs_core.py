@@ -47,7 +47,7 @@ def _fake_context(database: SimpleNamespace) -> SimpleNamespace:
     )
 
 
-def _wire(jobs_core, monkeypatch, database: SimpleNamespace, points):
+def _wire(jobs_core, monkeypatch, database: SimpleNamespace, points, job_timeout_seconds=None):
     """Patch CONTEXT + the module-level S3ObjectApi/RunTranslator seams for one run."""
     context = _fake_context(database)
     monkeypatch.setattr(jobs_core, "CONTEXT", context)
@@ -69,6 +69,7 @@ def _wire(jobs_core, monkeypatch, database: SimpleNamespace, points):
         name="c",
         supported_formats=["pdf"],
         max_file_size_bytes=100,
+        job_timeout_seconds=job_timeout_seconds,
         pipeline={"nodes": []},
     )
     database.documents.get = AsyncMock(return_value=document)
@@ -129,3 +130,30 @@ async def test_happy_path_calls_both_hooks_with_the_document_id(jobs_core, monke
     database.meta_vectors.sync_document_meta_vectors.assert_awaited_once_with(document_id)
     database.jobs.mark_done.assert_awaited_once()
     database.jobs.mark_failed.assert_not_awaited()
+
+
+async def test_run_budget_falls_back_to_the_global_default_when_collection_is_null(
+    jobs_core, monkeypatch
+) -> None:
+    """collection.job_timeout_seconds is NULL → the run is bounded by the worker's global default
+    (context.job_timeout_seconds = 30.0 in the fake)."""
+    database = _fake_database()
+    document_id, context = _wire(
+        jobs_core, monkeypatch, database, points=[MagicMock()], job_timeout_seconds=None
+    )
+
+    await jobs_core.ingest_document({}, str(document_id), str(uuid.uuid4()))
+
+    assert context.runner.run.await_args.kwargs["timeout_seconds"] == 30.0
+
+
+async def test_run_budget_uses_the_collection_override_when_set(jobs_core, monkeypatch) -> None:
+    """A per-collection override caps the run's wall-clock, taking precedence over the global."""
+    database = _fake_database()
+    document_id, context = _wire(
+        jobs_core, monkeypatch, database, points=[MagicMock()], job_timeout_seconds=99.0
+    )
+
+    await jobs_core.ingest_document({}, str(document_id), str(uuid.uuid4()))
+
+    assert context.runner.run.await_args.kwargs["timeout_seconds"] == 99.0

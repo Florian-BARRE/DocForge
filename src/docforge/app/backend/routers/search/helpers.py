@@ -6,7 +6,7 @@
 # model. Kept out of router.py so the route stays pure orchestration.
 
 # ====== Standard Library Imports ======
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 # ====== Third-Party Library Imports ======
@@ -18,8 +18,14 @@ from shared_libs.pipelines.build import ActionNodeBlob
 from shared_libs.pipelines.nodes.embed.blob import EmbedBlobResolver
 from shared_libs.pipelines.reachability import ProbeStatus
 from shared_libs.public_models.search import CONTENT_FIELD, Hit, SearchTarget
+from shared_libs.services.db.facades import DatabaseHelpers
 from shared_libs.services.db.postgresql.tables import MetadataField
-from shared_libs.services.db.qdrant import Condition, build_match_conditions
+from shared_libs.services.db.qdrant import (
+    Condition,
+    PayloadType,
+    build_match_conditions,
+    parse_range,
+)
 
 # ====== Local Project Imports ======
 from .models import BlockLocationModel, SearchHitModel, SearchTargetModel
@@ -113,6 +119,85 @@ class SearchHelpers:
             for item in value if isinstance(value, list) else [value]:
                 if item not in allowed:
                     errors.append(f"field '{name}' value {item!r} is not one of {allowed}")
+        return errors
+
+    # Payload index types a range filter can constrain (an exact-match keyword/bool cannot).
+    _RANGE_TYPED = frozenset({PayloadType.INTEGER, PayloadType.FLOAT, PayloadType.DATETIME})
+
+    @staticmethod
+    def _range_payload_type(field: MetadataField | None) -> PayloadType | None:
+        """
+        Resolve a field's Qdrant payload index type, defensively — None when unresolvable.
+
+        Only a range filter needs a field's type, so this is looked up lazily (never for a plain
+        scalar/list filter). A field object that carries no ``field_type`` (a lightweight stand-in
+        shape) or an unmapped type yields None rather than raising — the caller treats None as
+        "not range-typed" and reports a clean 422 instead of a 500.
+        """
+        # 1. A missing field (unknown/non-filterable) or a shape without a declared type → None.
+        field_type = getattr(field, "field_type", None)
+        if field_type is None:
+            return None
+        # 2. Map the declared type to its payload index type; an unmapped type is treated as None.
+        try:
+            return DatabaseHelpers.payload_type_for(field_type)
+        except KeyError:
+            return None
+
+    @staticmethod
+    def range_violations(
+        filters: dict[str, Any] | None, schema: Sequence[MetadataField]
+    ) -> list[str]:
+        """
+        Report range filters (``{gte/gt/lte/lt: bound}`` mappings) that a field cannot accept.
+
+        A range is only valid on a range-typed FILTERABLE field (integer/float/datetime); on a
+        keyword/bool field it would otherwise be silently mistranslated. The range's shape is also
+        validated (allowed keys, coercible bounds, ordered bounds) and its bound kind must match
+        the field's declared type — a datetime field needs ISO-8601 bounds, a numeric field numeric
+        bounds. Non-filterable fields are the filterability gate's concern, not this check's.
+
+        This runs on EVERY search, so it must never raise: a plain scalar/list filter is skipped
+        untouched (its field type is never inspected), and only an actual range mapping triggers the
+        (defensive) field-type lookup — an unknown/non-range-typed field yields a 422 message, not a
+        crash.
+
+        Args:
+            filters (dict | None): The requested constraints (field → scalar, list, or range map).
+            schema (Sequence[MetadataField]): The collection's metadata schema.
+
+        Returns:
+            list[str]: One human-readable message per offending range (empty when all valid).
+        """
+        # 1. Index the FILTERABLE fields by name — resolved lazily, only when a range needs a type.
+        by_name = {row.field_name: row for row in schema if getattr(row, "filterable", False)}
+        errors: list[str] = []
+        for name, value in (filters or {}).items():
+            # 2. Only a mapping is a range; scalars/lists are validated by the other gates untouched.
+            if not isinstance(value, Mapping):
+                continue
+            # 3. A range on an unknown/non-filterable field is the filterability gate's concern.
+            if name not in by_name:
+                continue
+            # 4. Resolve the field's payload type defensively; only range-typed accepts a range.
+            ptype = SearchHelpers._range_payload_type(by_name[name])
+            if ptype not in SearchHelpers._RANGE_TYPED:
+                label = ptype.value if ptype is not None else "non-range"
+                errors.append(
+                    f"field '{name}' is not range-typed ({label}) — a range filter needs an "
+                    f"integer, float or datetime field"
+                )
+                continue
+            # 5. Validate the range shape; a malformed range surfaces its reason as a 422 message.
+            try:
+                parsed = parse_range(name, value)
+            except ValueError as exc:
+                errors.append(str(exc))
+                continue
+            # 6. The bound kind must match the declared type (datetime ↔ DATETIME, numeric ↔ number).
+            if parsed.is_datetime != (ptype == PayloadType.DATETIME):
+                expected = "ISO-8601 datetime" if ptype == PayloadType.DATETIME else "numeric"
+                errors.append(f"field '{name}' expects {expected} range bounds")
         return errors
 
     @staticmethod

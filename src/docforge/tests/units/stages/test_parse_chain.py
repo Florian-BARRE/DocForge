@@ -126,6 +126,29 @@ def test_reader_round_trips_the_parse_chain(compiler) -> None:
     assert state.parse_chain.steps[1].score_below is None
 
 
+def test_docling_then_granite_escalation_chain_builds_and_validates(
+    compiler, builder, validator
+) -> None:
+    """The real granite_docling kind wires as a ScoreBelow escalation step after docling and passes
+    validation — proving the brick drops into a parser chain with zero engine change."""
+    default = IngestPipeline.default_blob()
+    chained, notices = compiler.apply(
+        default,
+        SetChain(
+            stage="parse",
+            slot=None,
+            steps=[
+                ChainStep(kind="docling", score_below=0.6),
+                ChainStep(kind="granite_docling"),
+            ],
+        ),
+    )
+    assert validator.validate(builder.build(chained)) == [], notices
+    state = StateReader.read(chained)
+    assert [s.kind for s in state.parse_chain.steps] == ["docling", "granite_docling"]
+    assert state.parse_chain.steps[0].score_below == 0.6
+
+
 def test_set_provider_parse_is_one_step_chain_sugar(compiler) -> None:
     default = IngestPipeline.default_blob()
     swapped, _ = compiler.apply(default, SetProvider(stage="parse", kind="docling"))

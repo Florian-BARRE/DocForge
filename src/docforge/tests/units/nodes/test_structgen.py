@@ -188,6 +188,47 @@ async def test_partial_override_is_resolved_per_field() -> None:
     assert endpoint.timeout_seconds == 17.0
 
 
+def test_out_of_enum_value_is_dropped() -> None:
+    """An ENUM value the model invents (outside the whitelist) is dropped, never stored wrong."""
+    # 1. Out-of-whitelist -> dropped.
+    assert StructGenHelpers.coerce("sports", FieldType.ENUM, ["science", "history"]) is None
+    # 2. A member survives, normalised to the DECLARED casing (case-insensitive match).
+    assert StructGenHelpers.coerce("Science", FieldType.ENUM, ["science", "history"]) == "science"
+    # 3. No declared whitelist -> the stripped string passes through (nothing to validate against).
+    assert StructGenHelpers.coerce("  freeform  ", FieldType.ENUM, None) == "freeform"
+
+
+def test_integer_drops_non_integral_numbers() -> None:
+    """A fractional value for an INTEGER field is dropped, not silently truncated to its floor."""
+    assert StructGenHelpers.coerce(3, FieldType.INTEGER) == 3
+    assert StructGenHelpers.coerce("2024", FieldType.INTEGER) == 2024
+    assert StructGenHelpers.coerce(4.0, FieldType.INTEGER) == 4  # an integral float is fine
+    assert StructGenHelpers.coerce(3.7, FieldType.INTEGER) is None  # not truncated to 3
+    assert StructGenHelpers.coerce("3.7", FieldType.INTEGER) is None
+    assert StructGenHelpers.coerce(True, FieldType.INTEGER) is None  # a bool is never a number
+
+
+def test_integer_list_drops_non_integral_items() -> None:
+    """INTEGER_LIST filters fractional items instead of truncating them."""
+    assert StructGenHelpers.coerce([1, 2, 3], FieldType.INTEGER_LIST) == [1, 2, 3]
+    assert StructGenHelpers.coerce([1, 2.0, 3], FieldType.INTEGER_LIST) == [1, 2, 3]
+    assert StructGenHelpers.coerce([1, 2.5, 3], FieldType.INTEGER_LIST) == [1, 3]  # 2.5 dropped
+
+
+def test_seed_config_defaults_to_none_and_is_forwarded() -> None:
+    """The optional seed is None by default and reaches the built chat client when pinned."""
+    from shared_libs.pipelines.nodes.openai_compat import OpenAICompatHelpers
+
+    # 1. It is available and defaults to unpinned.
+    assert StructGenConfig().seed is None
+    assert StructGenConfig(seed=42).seed == 42
+
+    # 2. The chat helper forwards it (None when unset, the pinned value otherwise).
+    endpoint = OpenAICompatConfig(base_url="http://x", model="m")
+    assert OpenAICompatHelpers.chat(endpoint).seed is None
+    assert OpenAICompatHelpers.chat(endpoint, seed=123).seed == 123
+
+
 def test_structgen_is_registered_and_not_scored() -> None:
     assert "openai_compatible" in NodeRegistry.kinds("structgen")
     described = StructGenOpenAICompatibleNode.describe()

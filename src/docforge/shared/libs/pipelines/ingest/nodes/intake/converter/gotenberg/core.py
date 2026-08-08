@@ -15,6 +15,7 @@ import httpx
 
 # ====== Internal Project Imports ======
 from shared_libs.pipelines.nodes.openai_compat import EndpointReachability
+from shared_libs.pipelines.nodes.retry import NetworkRetry
 from shared_libs.pipelines.registry import NodeRegistry
 from shared_libs.public_models import SourceDocument, SourceProbe
 
@@ -83,6 +84,7 @@ class ConverterGotenbergNode(BaseConverterNode):
         await EndpointReachability.check(
             node_kind=self.KIND,
             base_url=config.base_url,
+            timeout_seconds=config.preflight_timeout_seconds,
             path="/health",
         )
 
@@ -101,18 +103,27 @@ class ConverterGotenbergNode(BaseConverterNode):
             # Not office (incl. html/md, parsed natively downstream) — no PDF view from here.
             return None
 
-        # 2. POST the file; Gotenberg answers with the PDF bytes.
-        async with httpx.AsyncClient(
-            base_url=config.base_url, timeout=config.timeout_seconds
-        ) as client:
-            response = await client.post(
-                route, files={"files": (upload_name, source.content, probe.mime_type)}
-            )
-            response.raise_for_status()
-        self.logger.debug(
-            f"Gotenberg converted '{source.filename}' ({probe.format}) → {len(response.content)} bytes"
+        # 2. POST the file (under the shared bounded retry); Gotenberg answers with the PDF bytes.
+        async def _post() -> bytes:
+            async with httpx.AsyncClient(
+                base_url=config.base_url, timeout=config.timeout_seconds
+            ) as client:
+                response = await client.post(
+                    route, files={"files": (upload_name, source.content, probe.mime_type)}
+                )
+                response.raise_for_status()
+            return response.content
+
+        content = await NetworkRetry.run(
+            _post,
+            max_retries=config.max_retries,
+            retry_backoff_seconds=config.retry_backoff_seconds,
+            label=f"converter '{self.KIND}'",
         )
-        return response.content
+        self.logger.debug(
+            f"Gotenberg converted '{source.filename}' ({probe.format}) → {len(content)} bytes"
+        )
+        return content
 
     async def _preview(self, source: SourceDocument, probe: SourceProbe) -> bytes | None:
         """Render a VIEW-ONLY PDF for html/md via Gotenberg's Chromium routes (never parsed).

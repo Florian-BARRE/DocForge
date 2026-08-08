@@ -17,6 +17,7 @@ interface StepReviewProps {
   name: string;
   formats: string[];
   maxSizeBytes: number;
+  jobTimeoutSeconds: number | null;
   fields: DraftField[];
   removedFieldNames: string[];
   onBack: () => void;
@@ -26,7 +27,7 @@ interface StepReviewProps {
 }
 
 export function StepReview({
-  mode, name, formats, maxSizeBytes, fields, removedFieldNames, onBack, onSubmit, submitting, issues,
+  mode, name, formats, maxSizeBytes, jobTimeoutSeconds, fields, removedFieldNames, onBack, onSubmit, submitting, issues,
 }: StepReviewProps) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: theme.space.l }}>
@@ -41,7 +42,9 @@ export function StepReview({
           {formats.map((f) => <Chip key={f} tone="accent">{f}</Chip>)}
         </div>
         <div style={{ color: theme.color.dim, fontSize: theme.font.size.m, marginTop: theme.space.s }}>
-          Max file size: {bytesToMb(maxSizeBytes).toFixed(1)} MB · {fields.length} field(s)
+          Max file size: {bytesToMb(maxSizeBytes).toFixed(1)} MB · job timeout:{" "}
+          <span style={{ fontFamily: theme.font.mono }}>{jobTimeoutSeconds !== null ? `${jobTimeoutSeconds}s` : "default"}</span>
+          {" "}· {fields.length} field(s)
         </div>
       </div>
       <SchemaTable fields={fields.map(toFieldSpec)} />

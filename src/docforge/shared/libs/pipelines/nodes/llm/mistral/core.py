@@ -43,6 +43,7 @@ class LlmMistralNode(BaseLlmChatNode):
             temperature=config.temperature,
             max_tokens=config.max_tokens,
             timeout=config.timeout_seconds,
+            max_retries=config.max_retries,
         )
 
 

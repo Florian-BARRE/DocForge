@@ -14,10 +14,6 @@ from loggerplusplus import LoggerClass
 # ====== Internal Project Imports ======
 from shared_libs.services.db import Database
 
-# The heartbeat cadence. Kept well below the backend's alive threshold (~30s) so a live worker
-# never flaps to "offline" between ticks, and a dead one ages past the threshold within one window.
-_HEARTBEAT_INTERVAL_SECONDS = 10
-
 
 class HeartbeatWriter(LoggerClass):
     """
@@ -32,7 +28,7 @@ class HeartbeatWriter(LoggerClass):
         self,
         database: Database,
         worker_id: str,
-        interval_seconds: int = _HEARTBEAT_INTERVAL_SECONDS,
+        interval_seconds: int,
     ) -> None:
         LoggerClass.__init__(self)
         self._database = database
