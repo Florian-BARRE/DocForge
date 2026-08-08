@@ -248,6 +248,12 @@ with Client("http://localhost:10040", api_token="df_...") as client:
     print(collection.id)
 ```
 
+Key `CreateCollectionRequest` fields beyond the schema: `max_file_size_bytes` (bytes) and
+`job_timeout_seconds` (`float | None`, seconds) — the whole-ingest-job wall-clock budget for that
+collection; `None` (the default) inherits the worker's global job-timeout default. Same field, same
+semantics on `CollectionModel` (read) and `UpdateCollectionRequest` (write; there, omitting it
+leaves the current value unchanged, a set value overrides it).
+
 ### Upload a document and wait for ingestion
 
 `upload` returns immediately with a `job_id`; ingestion runs asynchronously on the worker. Poll the
@@ -442,7 +448,7 @@ server's OpenAPI on every change, so a published version is coherent with the AP
 version in production:
 
 ```bash
-pip install "docforge-sdk==0.1.0"
+pip install "docforge-sdk==0.3.0"
 ```
 
 ## License

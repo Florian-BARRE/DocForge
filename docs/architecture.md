@@ -22,7 +22,7 @@ flowchart LR
     subgraph PIPE["Ingestion pipeline (pure graph, run in the arq worker)"]
         direction LR
         I["1 · INTAKE<br/>probe · admit · convert<br/>· content-address"]
-        P["2 · PARSE<br/>Docling → IR<br/>+ figure render"]
+        P["2 · PARSE<br/>Docling → IR (granite_docling /<br/>pp_structure escalation)<br/>+ figure render"]
         E["3 · ENRICH<br/>figure classify<br/>→ OCR / VLM"]
         C["4 · CHUNK<br/>structure-aware /<br/>fixed / semantic"]
         X["5 · CONTEXTUALIZE<br/>doc_meta · breadcrumb<br/>· sliding · llm"]
@@ -49,7 +49,7 @@ stage-by-stage reference.
 
 ## 2. Monorepo layout
 
-DocForge is a monorepo of four packages plus per-service config.
+DocForge is a monorepo of five packages plus per-service config.
 
 ```
 src/
@@ -62,6 +62,7 @@ src/
   docforge_sdk/        # the published, typed Python client (docforge-sdk on PyPI)
   mcp/                 # standalone MCP server — a pure HTTP client of the API (AI bridge)
   bge_server/          # local BGE-M3 embed/rerank host (TEI-compatible)
+  paddle_server/       # PP-StructureV3 layout-parsing sidecar (POST /layout-parsing, GET /health)
 services/              # per-service .env (gitignored) + .env.example templates
 docker-compose.yml · docker-compose.dev.yml · docker-compose.gpu.yml
 ```
@@ -86,6 +87,13 @@ wrapping `docforge-sdk`; an LLM connected to it can drive DocForge end to end. S
 BGE-reranker-v2-m3, on a TEI-compatible contract. It owns its own image and GPU concerns; the
 pipeline's `embed` node just calls it as one interchangeable provider.
 
+**`paddle_server`** — a PP-StructureV3 (PaddleX) layout-parsing sidecar, mirroring `bge_server`:
+`POST /layout-parsing` + `GET /health`, cpu/gpu image variants released to GHCR in the same workflow.
+The pipeline's `pp_structure` parser node calls it as a network provider (in-network
+`http://paddle_server:80`, dev-published on host port `10049`). It requires an AVX-capable CPU with
+`enable_mkldnn=False` (handled) and a generous memory limit — PP-StructureV3 loads several models and
+peaks a few GB. It stays OFF in every shipped blob, so the service being up costs idle memory only.
+
 ---
 
 ## 3. The graph engine
@@ -106,7 +114,7 @@ inside a node. A node may *read* through an injected read-only capability, but n
 | # | Stage | What it does |
 |---|---|---|
 | 1 | **INTAKE** | Probe the true format from content, admit against the collection contract (format/size/metadata), convert to PDF (Gotenberg), probe the PDF, content-address the original bytes (sha256). |
-| 2 | **PARSE** | Docling parses into a complete `DocumentIR` (blocks, tables, figures, bbox, heading tree, quality score); `figure_render` embeds each figure's PNG crop into the IR. MinerU/Marker escalation is wired. |
+| 2 | **PARSE** | Docling (default) parses into a complete `DocumentIR` (blocks, tables, figures, bbox, heading tree, quality score); `figure_render` embeds each figure's PNG crop into the IR. `ScoreBelow` escalation heads are wired: `granite_docling` (Docling's Granite VLM pipeline, in-worker, same IR mapper) and `pp_structure` (PP-StructureV3 over the PaddleX sidecar). |
 | 3 | **ENRICH** | Extract figures, then a `ForEach` classifies each and routes it (switch) to OCR or VLM per class; `enrich_apply` folds the results back into the IR. |
 | 4 | **CHUNK** | One chunker (family choice): `structure_aware`, `fixed_size`, or `semantic`. |
 | 5 | **CONTEXTUALIZE** | Stackable methods that enrich chunk text: `doc_meta`, `breadcrumb`, `sliding` window, `llm`. |
@@ -128,7 +136,8 @@ inside a node. A node may *read* through an injected read-only capability, but n
   in the UI, nothing changes in the engine.
 - **Fallback chains**: every standard-interface call (`parser`/`ocr`/`vlm`/`embed`/`llm`/`structgen`)
   is an externalized chain — providers as nodes + fallback transitions converging on `FromFirst`
-  (best-first). A single provider is a one-step chain.
+  (best-first). A single provider is a one-step chain. `parser` is a real fallback family like the
+  rest: `docling` (default) escalates via `ScoreBelow` to `granite_docling` / `pp_structure`.
 
 ### Collection = contract, fail-fast at build
 
@@ -144,6 +153,14 @@ unreachable `base_url`/`api_key` builds cleanly and fails at **run** (surfaced b
 the offending node). A per-provider `preflight()` (`WORKER_PREFLIGHT_ENABLED`, **on by default** —
 safe because the stock pipeline ships its provider-hosted stages OFF) checks reachability before the
 first spend.
+
+Every network node inherits a **shared timeout/retry surface** (`TimeoutConfig`: `timeout_seconds`,
+`preflight_timeout_seconds` — plus `TimeoutRetryConfig`: `max_retries`, `retry_backoff_seconds` for
+retrying nodes), tuned **per collection in the blob**. The whole ingest job is additionally bounded by
+a per-collection `job_timeout_seconds` (nullable; NULL falls back to the worker's
+`WORKER_JOB_TIMEOUT_SECONDS`). The collection identity + limits (including `job_timeout_seconds`) are
+exposed as a JSON Schema by `GET /api/v1/collections/contract-schema` — the same mechanism as a node's
+`config_schema` — and the UI renders it via `SchemaForm`, so new contract fields surface automatically.
 
 ### Two pipeline kinds, one engine
 
@@ -164,7 +181,7 @@ must produce a `SearchResult`, or the write is rejected `422`.
 | Relational | **PostgreSQL 16** (SQLAlchemy 2 async + asyncpg + Alembic) | Canonical IR, chunks, rich metadata, collections, jobs, API keys |
 | Vectors | **Qdrant** | Named dense + sparse vectors; lean filterable payload |
 | Object store | **SeaweedFS** (S3-compatible, aioboto3) | Content-addressed blobs: page renders, figure crops, canonical PDF, original upload |
-| Parse | **Docling** (default; MinerU/Marker escalation ready) | Document → IR |
+| Parse | **Docling** (default) · **Granite-Docling** VLM (in-worker) · **PP-StructureV3** (PaddleX `paddle_server` sidecar) — `ScoreBelow` escalation heads | Document → IR |
 | OCR / VLM | RapidOCR (local) · Mistral OCR (API) · OpenAI-compatible VLM (Qwen2.5-VL…) | Figure/text enrichment |
 | Embed / rerank | **BGE-M3** + BGE-reranker-v2-m3 via `src/bge_server`, or any OpenAI-compatible endpoint | Dense + sparse embeddings, cross-encoder rerank |
 | Conversion | **Gotenberg** (LibreOffice + Chromium) | Any format → PDF |

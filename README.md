@@ -92,7 +92,7 @@ Full detail: **[docs/architecture.md](docs/architecture.md)** · living pipeline
 | Database | PostgreSQL 16 (SQLAlchemy 2 async + asyncpg + Alembic) |
 | Object store | SeaweedFS (S3-compatible, aioboto3) |
 | Vector DB | Qdrant (named dense + sparse) |
-| Parse | Docling (default; MinerU/Marker escalation ready) |
+| Parse | Docling (default) · Granite-Docling VLM (in-worker) · PP-StructureV3 (PaddleX sidecar) — `ScoreBelow` escalation heads |
 | OCR / VLM | RapidOCR (local) · Mistral OCR (API) · VLM OpenAI-compatible (Qwen2.5-VL…) |
 | Embed / rerank | BGE-M3 + BGE-reranker-v2-m3 via the local `bge_server` host |
 | Conversion | Gotenberg (LibreOffice + Chromium) |
@@ -158,12 +158,14 @@ src/
   docforge_sdk/        # the published typed Python client (PyPI: docforge-sdk)
   mcp/                 # MCP server — exposes the API as AI tools (pure docforge-sdk client)
   bge_server/          # local BGE-M3 model host (dense + sparse embed + rerank)
+  paddle_server/       # PP-StructureV3 layout-parsing sidecar (POST /layout-parsing) — AVX-only,
+                       #   enable_mkldnn=False (handled), needs a generous memory limit
 services/              # per-service .env (gitignored) + .env.example templates
 .github/workflows/     # gated CI (gate.yml) + PyPI release (release-sdk.yml)
 ```
 
 Ports (dev): API `10040` · postgres `10041` · redis `10042` · qdrant `10043` · seaweedfs `10044` ·
-gotenberg `10045` · frontend `10046` · bge_server `10047` · mcp `10048`.
+gotenberg `10045` · frontend `10046` · bge_server `10047` · mcp `10048` · paddle_server `10049`.
 
 ## Development & contributing
 

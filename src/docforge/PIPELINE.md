@@ -17,7 +17,7 @@ flowchart LR
     end
 
     subgraph S2["Étape 2 — PARSE ✅"]
-        s2["docling (escalade prête)"]
+        s2["docling (défaut) → granite_docling / pp_structure (escalade)"]
     end
 
     subgraph S3["Étape 3 — ENRICH ✅"]
@@ -148,11 +148,11 @@ flowchart TB
     IN["🟦 IntakeResult (← étape 1)"]:::artefact
 
     subgraph PARS["🔀 CHOIX / ESCALADE — famille parser"]
-        DOC["<b>docling</b> ✅<br/>─────────────<br/>convert off-thread · cache modèles process-wide<br/>mapper → IR (blocs, tables, figures, bbox,<br/>arbre de titres) · score qualité<br/>⚙️ do_ocr=false · do_table_structure=true"]:::choice
-        MIN["(futur : mineru — formules/tables sci.)"]:::choice
-        MAR["(futur : marker)"]:::choice
-        DOC -. "ScoreBelow(seuil) → escalade" .-> MIN
-        MIN -. "ScoreBelow → escalade" .-> MAR
+        DOC["<b>docling</b> ✅ (défaut)<br/>─────────────<br/>convert off-thread · cache modèles process-wide<br/>mapper → IR (blocs, tables, figures, bbox,<br/>arbre de titres) · score qualité<br/>⚙️ do_ocr=false · do_table_structure=true"]:::choice
+        GRA["<b>granite_docling</b> ✅<br/>─────────────<br/>pipeline VLM Docling IN-WORKER (DocTags, 258M)<br/>réutilise le même DoclingIRMapper + score<br/>⚙️ revision épinglée · force_backend_text=false · max_new_tokens=4096"]:::choice
+        PPS["<b>pp_structure</b> ✅<br/>─────────────<br/>PP-StructureV3 en RÉSEAU → sidecar paddle_server<br/>(POST /layout-parsing) · mapper HTML → IR<br/>⚙️ base_url · use_table_recognition=true · timeout_seconds=300"]:::choice
+        DOC -. "ScoreBelow(seuil) → escalade" .-> GRA
+        GRA -. "ScoreBelow → escalade" .-> PPS
     end
 
     FR["<b>figure_render</b> (render) ✅<br/>─────────────<br/>rasterise les pages (pypdfium2, off-thread)<br/>EMBARQUE le crop PNG de chaque figure<br/>dans l'IR (Block.figure.crop)<br/>⚙️ scale=2.0 · render_pages=true"]:::node
@@ -169,6 +169,8 @@ flowchart TB
 | Node | Config | Consomme | Produit |
 |---|---|---|---|
 | **parser / docling** | `do_ocr`=false · `do_table_structure`=true | `source : IntakeResult` ← étape 1 | `ir : DocumentIR` + `score` (part des blocs avec contenu : texte **ou** table ; figures = non → signal scan) |
+| **parser / granite_docling** | `revision` (épinglée) · `force_backend_text`=false · `max_new_tokens`=4096 | `source : IntakeResult` ← étape 1 | `ir : DocumentIR` + `score` (VLM DocTags in-worker — MÊME mapper/score que docling, GPU en pratique) |
+| **parser / pp_structure** | `base_url` (requis) · `api_key` · `use_table_recognition`=true · `use_formula/seal/orientation/unwarping`=false · `timeout_seconds`=300 (+ hérite `TimeoutRetryConfig` : `max_retries`, `retry_backoff_seconds`, `preflight_timeout_seconds`) | `source : IntakeResult` ← étape 1 | `ir : DocumentIR` + `score` (POST /layout-parsing au sidecar `paddle_server` — parser RÉSEAU) |
 | **parse / figure_render** | `scale`=2.0 · `render_pages`=true | `ingest : IntakeResult` ← étape 1 · `ir : DocumentIR` ← parser | `ir : DocumentIR` **complété** (crops embarqués) · `pages : PageRenders` |
 
 **Contrat de la famille** (`BaseParserNode`) : tout parseur consomme `{source: IntakeResult}` et produit `{ir, score}` ; pas de PDF → IR vide + score 0 (dégradation) ; l'escalade se câble dans le graphe par `ScoreBelow(threshold)` — rien à changer au moteur.
@@ -453,7 +455,7 @@ vive, `'<100 numbers>'` dans la trace**.
 - **Transitions** (contrôle) : `OnSuccess` (défaut) · `OnFailure` (recovery/escalade) · `ScoreBelow(threshold)` (escalade qualité) · **`WhenEquals(field, equals)`** (le switch — routage par valeur, ex. par classe de figure) · `Always`. **Priorité** : `ScoreBelow > WhenEquals > OnSuccess/OnFailure > Always` (la qualité escalade avant de router).
 - **Bindings** (données) : `FromRunInput(field)` · `FromNode(node_id, field)` (n'importe quel amont) · `FromGroupInput(field)` · **`FromFirst(candidates)`** (la jointure de convergence : après un embranchement `ScoreBelow`/`OnFailure`, le slot lit le PREMIER candidat qui a réellement produit — chaque candidat validé comme un `FromNode`). Slots typés : classe d'artefact nue **ou `list[Classe]`**.
 - **`ForEach`** (le sous-graphe par item) : `over` (un champ `list[T]` amont) · `item_field` (l'item exposé au corps) · `max_concurrency` · **contrat de collection** : tous les terminaux du corps produisent le MÊME **Artifact** à slot unique (les scalaires type `str` sont refusés) → le ForEach produit `items: list[T]` (ordre préservé, 1 record d'exécution par item `body[i]`, échec d'item = échec bruyant). L'escalade (`ScoreBelow`) et le switch (`WhenEquals` — avec **default** possible via une arête `OnSuccess`) fonctionnent PAR ITEM dans le corps. *(Re-audit adversarial passé : 3 crash-paths corrigés ; suivi v1 : les événements de progress ne portent pas encore l'index d'item.)*
-- **Configs** : chaque node = une `NodeConfig` (`extra="forbid"` → un typo dans le blob **fait échouer le build**, jamais ignoré).
+- **Configs** : chaque node = une `NodeConfig` (`extra="forbid"` → un typo dans le blob **fait échouer le build**, jamais ignoré). Tout node **RÉSEAU** hérite la surface partagée `TimeoutConfig` (`timeout_seconds`, `preflight_timeout_seconds`) — et `TimeoutRetryConfig` (+ `max_retries`, `retry_backoff_seconds`) pour ceux qui retentent — chaque famille ne re-déclarant que le DÉFAUT dont elle a besoin ; **par collection dans le blob**. Un budget wall-clock de tout le job d'ingest est porté par le champ collection **`job_timeout_seconds`** (nullable ; NULL = défaut worker `WORKER_JOB_TIMEOUT_SECONDS`, migration `b1c7e9a4d2f8`) ; plusieurs cadences worker sont passées en env `RUNTIME_CONFIG` (grâce, timeout Qdrant, heartbeat, health-check, intervalle du reaper, poll SSE app-side).
 - **`UNIQUE_IN_GRAPH`** (le flag de multiplicité, exposé par `describe()` et rejeté par le validateur en
   doublon — `duplicate_unique_node`) : **True** quand une 2e instance du kind est une erreur de câblage —
   logique d'étape et structurel (les 4 nodes intake · gotenberg · docling · figure_render · figure_extract ·
@@ -492,6 +494,11 @@ placeholder n'est jamais dans un graphe exécuté out-of-box — cf. invariant #
 **La découverte d'abord** — `GET /api/v1/pipelines` : la liste des surfaces de design disponibles
 (`{key, title, description, design_url, inspect_url, edit_url, stages_view_url, stages_apply_url}`) — le SEUL
 appel que l'UI connaît d'avance ; tout le reste se découvre.
+
+**Le contrat de collection est schema-driven** — `GET /api/v1/collections/contract-schema` expose l'identité et
+les limites de la collection (dont `job_timeout_seconds`) en **JSON Schema** — le même mécanisme que le
+`config_schema` d'un node — et l'UI le rend via `SchemaForm`, si bien qu'un nouveau champ du contrat **remonte
+automatiquement** dans le formulaire sans code front dédié.
 
 **L'UI canvas est retirée** (la page éditeur POC `/ingest/editor`, le feature React `pipeline-editor/` et les
 `recipes` avec elle) : le produit rend un **rail de stages** à forme fixe ; le niveau graphe reste servi en
