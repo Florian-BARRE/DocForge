@@ -19,6 +19,7 @@ from ...context import CONTEXT
 from ...libs.auth import AuthPrincipal, Capability, require
 from ...libs.health import CollectionHealthResponse
 from ...utils.error_handling import auto_handle_errors
+from .blob_helpers import CollectionBlobHelpers
 from .helpers import CollectionHelpers
 from .models import (
     CollectionContractModel,
@@ -146,8 +147,8 @@ async def create_collection(
     #    Fields, then the pipeline blob: the caller's explicit graph wins, otherwise the stock blob the
     #    ``preset`` selects (light = enrichment-free core), healed to the current engine and validated.
     CollectionHelpers.validate_fields(request.fields)
-    blob = CollectionHelpers.canonical_pipeline(
-        request.pipeline or CollectionHelpers.preset_blob(request.preset)
+    blob = CollectionBlobHelpers.canonical_pipeline(
+        request.pipeline or CollectionBlobHelpers.preset_blob(request.preset)
     )
 
     # 2. Name unicity — explicit 409, not a driver error.
@@ -224,7 +225,7 @@ async def update_collection(
     # 3a. A new pipeline never reaches storage broken: heal it to the current engine, validate it,
     #     and keep its stamped canonical form for storage (step 6).
     stored_pipeline = (
-        CollectionHelpers.canonical_pipeline(healed_pipeline)
+        CollectionBlobHelpers.canonical_pipeline(healed_pipeline)
         if healed_pipeline is not None
         else None
     )
@@ -281,7 +282,7 @@ async def update_collection(
     #    — otherwise new documents would be embedded into a space incompatible with the stored ones,
     #    silently degrading search. None leaves the flag as-is (a schema change may already have set it).
     reindex_from_embed: bool | None = None
-    if stored_pipeline is not None and CollectionHelpers.embed_space_changed(
+    if stored_pipeline is not None and CollectionBlobHelpers.embed_space_changed(
         current.pipeline, stored_pipeline
     ):
         reindex_from_embed = True

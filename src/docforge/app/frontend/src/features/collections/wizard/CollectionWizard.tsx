@@ -51,8 +51,10 @@ export function CollectionWizard({ onNavigate, mode = "create", initial, collect
   const [jobTimeoutSeconds, setJobTimeoutSeconds] = useState<number | null>(prefill?.jobTimeoutSeconds ?? null);
   const [preset, setPreset] = useState<CollectionPreset>("standard");
   // Any contract field StepIdentity's schema-driven form renders that this wizard has no named
-  // slot for yet — see StepIdentity's `extra`/`onExtraChange` doc for why this exists.
-  const [extraContract, setExtraContract] = useState<Record<string, unknown>>({});
+  // slot for yet — see StepIdentity's `extra`/`onExtraChange` doc for why this exists. In edit
+  // mode, seeded from the loaded collection (`draftFromCollection`) so a stored value for such a
+  // field survives onto the form instead of falling back to the schema default.
+  const [extraContract, setExtraContract] = useState<Record<string, unknown>>(prefill?.extraContract ?? {});
   const [fields, setFields] = useState<DraftField[]>(prefill?.fields ?? []);
   const toast = useToast();
   const [submitting, setSubmitting] = useState(false);

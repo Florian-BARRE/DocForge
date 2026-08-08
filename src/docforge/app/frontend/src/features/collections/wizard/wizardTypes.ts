@@ -51,6 +51,28 @@ export function toDraftField(spec: FieldSpec): DraftField {
   return { ...spec, _key: `draft-${nextKey}` };
 }
 
+// Collection response keys that already have a named wizard state slot, or are structural
+// (never part of the identity/limits contract schema StepIdentity renders) — everything else on
+// the loaded collection is a contract field the wizard doesn't know about by name yet.
+const NAMED_OR_STRUCTURAL_KEYS = new Set([
+  "id", "name", "supported_formats", "max_file_size_bytes", "job_timeout_seconds",
+  "needs_reindex", "created_at", "pipeline", "search", "fields",
+]);
+
+/**
+ * Any collection field beyond the wizard's named slots — kept verbatim so a future
+ * `CollectionContractModel` addition still shows its stored value (not the schema default) when
+ * editing, even before it earns its own named state. Runtime-only: such a key isn't declared on
+ * the `Collection` TS type until the frontend is updated to match the backend contract.
+ */
+function extraContractFromCollection(collection: Collection): Record<string, unknown> {
+  const extra: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(collection)) {
+    if (!NAMED_OR_STRUCTURAL_KEYS.has(key)) extra[key] = value;
+  }
+  return extra;
+}
+
 /** Prefill every editable draft slice from an existing collection — the edit wizard's starting point. */
 export function draftFromCollection(collection: Collection): {
   name: string;
@@ -58,6 +80,7 @@ export function draftFromCollection(collection: Collection): {
   maxSizeMb: number;
   jobTimeoutSeconds: number | null;
   fields: DraftField[];
+  extraContract: Record<string, unknown>;
 } {
   return {
     name: collection.name,
@@ -65,6 +88,7 @@ export function draftFromCollection(collection: Collection): {
     maxSizeMb: bytesToMb(collection.max_file_size_bytes),
     jobTimeoutSeconds: collection.job_timeout_seconds,
     fields: collection.fields.map(toDraftField),
+    extraContract: extraContractFromCollection(collection),
   };
 }
 

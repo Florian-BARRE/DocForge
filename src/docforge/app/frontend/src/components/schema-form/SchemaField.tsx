@@ -46,7 +46,7 @@ const inputStyle: React.CSSProperties = {
   color: theme.color.text,
   border: `1px solid ${theme.color.line}`,
   borderRadius: theme.radius.m,
-  padding: "6px 8px",
+  padding: `${theme.space.xs + 2}px ${theme.space.s}px`,
   fontSize: theme.font.size.m,
   width: "100%",
 };
@@ -117,7 +117,7 @@ export function SchemaField({ name, prop, schema, value, required = false, onCha
     control = (
       <textarea
         rows={Math.min(6, Math.max(1, text.split("\n").length))}
-        style={{ ...inputStyle, resize: "vertical", minHeight: 30, fontFamily: "inherit" }}
+        style={{ ...inputStyle, resize: "vertical", minHeight: theme.space.xl + 6, fontFamily: "inherit" }}
         value={text}
         onChange={(e) => onChange(e.target.value)}
       />
@@ -127,7 +127,7 @@ export function SchemaField({ name, prop, schema, value, required = false, onCha
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 2, fontSize: theme.font.size.s }}>
       {/* 1. Name + full type contract (+ required marker) */}
-      <div style={{ display: "flex", alignItems: "baseline", gap: 6, color: theme.color.dim }}>
+      <div style={{ display: "flex", alignItems: "baseline", gap: theme.space.xs + 2, color: theme.color.dim }}>
         <span style={{ color: theme.color.text }}>
           {name}
           {required && <span style={{ color: theme.color.error }} title="required"> *</span>}
@@ -137,8 +137,11 @@ export function SchemaField({ name, prop, schema, value, required = false, onCha
           style={{
             color: theme.color.mute, background: "transparent",
             border: `1px solid ${theme.color.line}`,
-            borderRadius: theme.radius.s, padding: "0 5px", fontSize: theme.font.size.xs,
+            borderRadius: theme.radius.s, padding: `0 ${theme.space.xs + 1}px`, fontSize: theme.font.size.xs,
             fontFamily: theme.font.mono, whiteSpace: "nowrap", overflow: "hidden",
+            // Fixed truncation column for the type badge — a layout constant, not a spacing
+            // increment, so it stays a plain literal (matches the app's raw maxWidth convention
+            // for component/container sizing, e.g. SearchStageFrame's icon offset).
             textOverflow: "ellipsis", maxWidth: 130,
           }}
         >

@@ -184,7 +184,55 @@ class FlowEngine(LoggerClass):
                 error=ErrorInfo(error_type="ValueError", message=message),
             )
 
-        # 3. Run the body once per item, bounded by max_concurrency; gather preserves item order.
+        # 3. Run the body once per item (bounded) and collect each terminal value in order.
+        child_records, items, failure = await self.__collect_foreach_items(
+            node, context, group_input, over_value, expected
+        )
+
+        # 4. Emit the foreach record wrapping the per-item runs. The record keeps only the item
+        #    COUNT: the values already live in the child records, and dumping them again would
+        #    duplicate every collected artefact (e.g. figure crops) in the trace.
+        if failure is not None:
+            self.logger.warning(f"ForEach '{node.id}' failed: {failure}")
+        output = None if failure is not None else ForEachItems(items=items)
+        return output, NodeExecutionRecord(
+            node_id=node.id,
+            kind=node.KIND,
+            status=NodeStatus.FAILED if failure is not None else NodeStatus.SUCCESS,
+            duration_ms=(perf_counter() - started) * 1000,
+            output={"items_count": len(items)} if output is not None else None,
+            error=ErrorInfo(error_type="ForEachError", message=failure) if failure else None,
+            children=child_records,
+        )
+
+    async def __collect_foreach_items(
+        self,
+        node: ForEach,
+        context: RunContext,
+        group_input: dict[str, Any],
+        over_value: list[Any],
+        expected: type,
+    ) -> tuple[list[NodeExecutionRecord], list[Any], str | None]:
+        """
+        Run a foreach body once per item and collect each item's terminal value in order.
+
+        Runs the body bounded by ``max_concurrency`` (a semaphore); ``asyncio.gather`` preserves
+        item order. Each item's terminal value is collected, failing loudly on any item that failed
+        or whose runtime path ended off-contract (e.g. an unmatched switch value stopping mid-graph).
+
+        Args:
+            node (ForEach): The foreach node (supplies ``body``, ``item_field``, ``max_concurrency``).
+            context (RunContext): The run-scoped context threaded into each item's sub-run.
+            group_input (dict[str, Any]): The enclosing group input passed to each item's sub-run.
+            over_value (list[Any]): The already-resolved list the loop iterates over.
+            expected (type): The body's terminal artefact type every item must end on.
+
+        Returns:
+            tuple[list[NodeExecutionRecord], list[Any], str | None]: The per-item execution records
+                (one per item, in order), the collected terminal values, and a failure message
+                (None when every item succeeded on-contract).
+        """
+        # 1. Run the body once per item, bounded by max_concurrency; gather preserves item order.
         semaphore = asyncio.Semaphore(node.max_concurrency)
 
         async def run_item(item: Any) -> tuple[NodeOutput | None, NodeExecutionRecord]:
@@ -195,7 +243,7 @@ class FlowEngine(LoggerClass):
 
         runs = await asyncio.gather(*(run_item(item) for item in over_value))
 
-        # 4. Collect each item's terminal value, failing loudly on any item that failed or whose
+        # 2. Collect each item's terminal value, failing loudly on any item that failed or whose
         #    runtime path ended off-contract (e.g. an unmatched switch value stopping mid-graph).
         child_records: list[NodeExecutionRecord] = []
         items: list[Any] = []
@@ -218,21 +266,7 @@ class FlowEngine(LoggerClass):
                 continue
             items.append(value)
 
-        # 5. Emit the foreach record wrapping the per-item runs. The record keeps only the item
-        #    COUNT: the values already live in the child records, and dumping them again would
-        #    duplicate every collected artefact (e.g. figure crops) in the trace.
-        if failure is not None:
-            self.logger.warning(f"ForEach '{node.id}' failed: {failure}")
-        output = None if failure is not None else ForEachItems(items=items)
-        return output, NodeExecutionRecord(
-            node_id=node.id,
-            kind=node.KIND,
-            status=NodeStatus.FAILED if failure is not None else NodeStatus.SUCCESS,
-            duration_ms=(perf_counter() - started) * 1000,
-            output={"items_count": len(items)} if output is not None else None,
-            error=ErrorInfo(error_type="ForEachError", message=failure) if failure else None,
-            children=child_records,
-        )
+        return child_records, items, failure
 
     async def __emit(
         self,

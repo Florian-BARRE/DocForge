@@ -1,46 +1,30 @@
 // ====== Code Summary ======
 // A single document's explorer: header (filename, status, facts) plus four tabs — Overview,
-// Pages, IR and Chunks. Each tab's payload is fetched lazily on first activation and cached in
-// this component's state for as long as the page stays mounted (navigating to a different
-// document remounts the page, which is exactly when the cache should reset — see the app's
-// "page remount = free refetch" convention).
+// Pages, IR and Chunks. Per-tab fetch/cache lives in `useDocumentTabs`; the header's action
+// cluster (toggle/re-ingest/delete) lives in `DocumentPageActions` — this component owns just the
+// document's own identity load + tab switching.
 
 import { useEffect, useState } from "react";
-import {
-  deleteDocument,
-  getDocument,
-  getDocumentChunks,
-  getDocumentIR,
-  getDocumentPages,
-  type ChunkInfo,
-  type DocumentDetail,
-  type DocumentIR,
-  type PageInfo,
-} from "../../api/explorer";
-import { reingestDocument } from "../../api/documents";
+import { getDocument, type DocumentDetail } from "../../api/explorer";
 import { BackLink } from "../../components/BackLink";
-import { Button } from "../../components/Button";
 import { Chip } from "../../components/Chip";
 import { ErrorState } from "../../components/ErrorState";
 import { LoadingState } from "../../components/LoadingState";
 import { PageBoxLightbox } from "../../components/PageBoxLightbox";
-import type { OverlayBox } from "../../components/PageBoxOverlay";
 import { PageHeader } from "../../components/PageHeader";
 import { TabNav } from "../../components/TabNav";
 import type { Navigate } from "../../shell/view";
-import { useToast } from "../../shell/toast";
 import { theme } from "../../theme";
 import { ChunksTab } from "./chunks/ChunksTab";
-import { DocumentEnabledToggle } from "./DocumentEnabledToggle";
+import { DocumentPageActions } from "./DocumentPageActions";
 import { DocumentStatusChip } from "./DocumentStatusChip";
-import { displayPage, formatBytes, formatDateTime } from "./format";
+import { formatBytes, formatDateTime } from "./format";
 import { IRTab } from "./ir/IRTab";
 import { OverviewTab } from "./overview/OverviewTab";
 import { PagesTab } from "./pages/PagesTab";
+import { useDocumentTabs, type DocumentTabKey } from "./state/useDocumentTabs";
 
-type TabKey = "overview" | "pages" | "ir" | "chunks";
-
-const TABS: { key: TabKey; label: string }[] = [
+const TABS: { key: DocumentTabKey; label: string }[] = [
   { key: "overview", label: "Overview" },
   { key: "pages", label: "Pages" },
   { key: "ir", label: "IR" },
@@ -53,32 +37,11 @@ interface DocumentPageProps {
   onNavigate: Navigate;
 }
 
-interface BoxLightboxState {
-  renderBlobHash: string | null;
-  width: number | null;
-  height: number | null;
-  boxes: OverlayBox[];
-  caption: string;
-}
-
 export function DocumentPage({ collectionId, documentId, onNavigate }: DocumentPageProps) {
-  const toast = useToast();
   const [document, setDocument] = useState<DocumentDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<TabKey>("overview");
+  const [activeTab, setActiveTab] = useState<DocumentTabKey>("overview");
   const [focusBlockId, setFocusBlockId] = useState<string | null>(null);
-  const [boxLightbox, setBoxLightbox] = useState<BoxLightboxState | null>(null);
-
-  const [pages, setPages] = useState<PageInfo[] | null>(null);
-  const [pagesError, setPagesError] = useState<string | null>(null);
-  const [ir, setIr] = useState<DocumentIR | null>(null);
-  const [irError, setIrError] = useState<string | null>(null);
-  const [chunks, setChunks] = useState<ChunkInfo[] | null>(null);
-  const [chunksError, setChunksError] = useState<string | null>(null);
-
-  const [confirmingDelete, setConfirmingDelete] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-  const [reingesting, setReingesting] = useState(false);
 
   const load = () => {
     setError(null);
@@ -86,62 +49,9 @@ export function DocumentPage({ collectionId, documentId, onNavigate }: DocumentP
       .then(setDocument)
       .catch((e) => setError(e instanceof Error ? e.message : String(e)));
   };
-
   useEffect(load, [documentId]);
 
-  const loadPages = () => {
-    setPagesError(null);
-    getDocumentPages(documentId).then(setPages).catch((e) => setPagesError(e instanceof Error ? e.message : String(e)));
-  };
-  const loadIr = () => {
-    setIrError(null);
-    getDocumentIR(documentId).then(setIr).catch((e) => setIrError(e instanceof Error ? e.message : String(e)));
-  };
-  const loadChunks = () => {
-    setChunksError(null);
-    getDocumentChunks(documentId).then(setChunks).catch((e) => setChunksError(e instanceof Error ? e.message : String(e)));
-  };
-
-  // Fetch each tab's payload once, the first time it is activated — never all four upfront. The
-  // chunks tab additionally warms pages + IR so a chunk can be located on its source page (the
-  // "view on page" box overlay joins chunk.block_ids → IR block bbox → the page render).
-  useEffect(() => {
-    if (activeTab === "pages" && pages === null && !pagesError) loadPages();
-    if (activeTab === "ir" && ir === null && !irError) loadIr();
-    if (activeTab === "chunks") {
-      if (chunks === null && !chunksError) loadChunks();
-      if (pages === null && !pagesError) loadPages();
-      if (ir === null && !irError) loadIr();
-    }
-    // Deliberately reacting only to the tab/document — the load* functions themselves are stable
-    // enough for this effect's purpose (avoid a re-run loop on every render).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, documentId]);
-
-  // Resolve a chunk to its source page + block boxes and open the overlay. Requires IR + pages
-  // (only offered to the chunk card once both are loaded). The chunk may span pages — we show its
-  // leading block's page with a box around every block that sits on that same page.
-  const showChunkOnPage = (chunk: ChunkInfo) => {
-    if (!ir || !pages) return;
-    const blocks = chunk.block_ids
-      .map((id) => ir.blocks.find((block) => block.id === id))
-      .filter((block): block is NonNullable<typeof block> => Boolean(block));
-    if (!blocks.length) {
-      toast.info("This chunk has no located source blocks.");
-      return;
-    }
-    const targetPage = blocks[0].page;
-    const boxes: OverlayBox[] = blocks.filter((block) => block.page === targetPage).map((block) => ({ bbox: block.bbox }));
-    const page = pages.find((p) => p.page_number === targetPage) ?? null;
-    setBoxLightbox({
-      renderBlobHash: page?.render_blob_hash ?? null,
-      width: page?.width ?? null,
-      height: page?.height ?? null,
-      boxes,
-      caption: `Page ${displayPage(targetPage)} · chunk #${chunk.chunk_index}`,
-    });
-  };
-  const chunkLocator = ir && pages ? showChunkOnPage : undefined;
+  const tabs = useDocumentTabs(documentId, activeTab);
 
   const jumpToBlock = (blockId: string) => {
     setFocusBlockId(blockId);
@@ -150,35 +60,6 @@ export function DocumentPage({ collectionId, documentId, onNavigate }: DocumentP
 
   const handleDocumentEnabledChanged = (enabled: boolean) => {
     setDocument((prev) => (prev ? { ...prev, enabled } : prev));
-  };
-
-  const handleChunkEnabledChanged = (chunkId: string, enabled: boolean) => {
-    setChunks((prev) => (prev ? prev.map((chunk) => (chunk.id === chunkId ? { ...chunk, enabled } : chunk)) : prev));
-  };
-
-  const handleDelete = async () => {
-    setDeleting(true);
-    try {
-      await deleteDocument(documentId);
-      onNavigate({ name: "collection-documents", collectionId });
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-      setDeleting(false);
-    }
-  };
-
-  const handleReingest = async () => {
-    setReingesting(true);
-    try {
-      // Re-runs the stored original through the collection's current pipeline — no re-upload. Jump
-      // to the new job so its progress (and the live stage feed) is watched straight away.
-      const { job_id } = await reingestDocument(documentId);
-      toast.success("Re-ingest started");
-      onNavigate({ name: "job", collectionId, jobId: job_id });
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-      setReingesting(false);
-    }
   };
 
   if (error) return <ErrorState message={error} onRetry={load} />;
@@ -199,19 +80,14 @@ export function DocumentPage({ collectionId, documentId, onNavigate }: DocumentP
           </span>
         }
         actions={
-          <>
-            <DocumentEnabledToggle documentId={documentId} enabled={document.enabled} onChanged={handleDocumentEnabledChanged} />
-            <Button onClick={handleReingest} disabled={reingesting}>{reingesting ? "re-ingesting…" : "Re-ingest"}</Button>
-            {confirmingDelete ? (
-              <span style={{ display: "inline-flex", gap: theme.space.s, alignItems: "center" }}>
-                <span style={{ color: theme.color.dim, fontSize: theme.font.size.s }}>Delete for good?</span>
-                <Button variant="danger" disabled={deleting} onClick={handleDelete}>{deleting ? "deleting…" : "Confirm delete"}</Button>
-                <Button onClick={() => setConfirmingDelete(false)}>Cancel</Button>
-              </span>
-            ) : (
-              <Button variant="danger" onClick={() => setConfirmingDelete(true)}>Delete document</Button>
-            )}
-          </>
+          <DocumentPageActions
+            documentId={documentId}
+            collectionId={collectionId}
+            enabled={document.enabled}
+            onEnabledChanged={handleDocumentEnabledChanged}
+            onNavigate={onNavigate}
+            onError={setError}
+          />
         }
       />
 
@@ -220,39 +96,44 @@ export function DocumentPage({ collectionId, documentId, onNavigate }: DocumentP
       <div style={{ marginTop: theme.space.l, flex: 1, minHeight: 0 }}>
         {activeTab === "overview" && <OverviewTab document={document} />}
         {activeTab === "pages" &&
-          (pagesError ? (
-            <ErrorState message={pagesError} onRetry={loadPages} />
-          ) : pages ? (
-            <PagesTab pages={pages} />
+          (tabs.pagesError ? (
+            <ErrorState message={tabs.pagesError} onRetry={tabs.loadPages} />
+          ) : tabs.pages ? (
+            <PagesTab pages={tabs.pages} />
           ) : (
             <LoadingState label="loading pages…" />
           ))}
         {activeTab === "ir" &&
-          (irError ? (
-            <ErrorState message={irError} onRetry={loadIr} />
-          ) : ir ? (
-            <IRTab ir={ir} focusBlockId={focusBlockId} />
+          (tabs.irError ? (
+            <ErrorState message={tabs.irError} onRetry={tabs.loadIr} />
+          ) : tabs.ir ? (
+            <IRTab ir={tabs.ir} focusBlockId={focusBlockId} />
           ) : (
             <LoadingState label="loading IR…" />
           ))}
         {activeTab === "chunks" &&
-          (chunksError ? (
-            <ErrorState message={chunksError} onRetry={loadChunks} />
-          ) : chunks ? (
-            <ChunksTab chunks={chunks} onJumpToBlock={jumpToBlock} onChunkEnabledChanged={handleChunkEnabledChanged} onShowChunkOnPage={chunkLocator} />
+          (tabs.chunksError ? (
+            <ErrorState message={tabs.chunksError} onRetry={tabs.loadChunks} />
+          ) : tabs.chunks ? (
+            <ChunksTab
+              chunks={tabs.chunks}
+              onJumpToBlock={jumpToBlock}
+              onChunkEnabledChanged={tabs.handleChunkEnabledChanged}
+              onShowChunkOnPage={tabs.chunkLocator}
+            />
           ) : (
             <LoadingState label="loading chunks…" />
           ))}
       </div>
 
-      {boxLightbox && (
+      {tabs.boxLightbox && (
         <PageBoxLightbox
-          renderBlobHash={boxLightbox.renderBlobHash}
-          width={boxLightbox.width}
-          height={boxLightbox.height}
-          boxes={boxLightbox.boxes}
-          caption={boxLightbox.caption}
-          onClose={() => setBoxLightbox(null)}
+          renderBlobHash={tabs.boxLightbox.renderBlobHash}
+          width={tabs.boxLightbox.width}
+          height={tabs.boxLightbox.height}
+          boxes={tabs.boxLightbox.boxes}
+          caption={tabs.boxLightbox.caption}
+          onClose={tabs.closeBoxLightbox}
         />
       )}
     </div>
