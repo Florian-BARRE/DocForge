@@ -10,6 +10,7 @@ from ..models.collections import (
     CreateCollectionRequest,
     UpdateCollectionRequest,
 )
+from ..models.storage import CollectionStorageResponse
 from ._base import AsyncResource, SyncResource, _ResourceMixin
 
 
@@ -80,6 +81,18 @@ class _CollectionsSpecs(_ResourceMixin):
         """
         return RequestSpec("DELETE", f"{self._COLLECTIONS_PATH}/{collection_id}")
 
+    def _storage_spec(self, collection_id: str) -> RequestSpec:
+        """
+        Build the spec for measuring a collection's material storage footprint.
+
+        Args:
+            collection_id (str): The collection's UUID.
+
+        Returns:
+            RequestSpec: A GET on the collection's storage sub-resource.
+        """
+        return RequestSpec("GET", f"{self._COLLECTIONS_PATH}/{collection_id}/storage")
+
 
 class AsyncCollections(AsyncResource, _CollectionsSpecs):
     """Asynchronous collection management (list / get / create / update / delete)."""
@@ -141,6 +154,20 @@ class AsyncCollections(AsyncResource, _CollectionsSpecs):
         """
         return await self._transport.request(self._delete_spec(collection_id), type(None))
 
+    async def storage(self, collection_id: str) -> CollectionStorageResponse:
+        """
+        Measure a collection's material footprint per store (S3 exact, Postgres/Qdrant estimated).
+
+        Args:
+            collection_id (str): The collection's UUID.
+
+        Returns:
+            CollectionStorageResponse: Per-store totals + the per-document breakdown, heaviest first.
+        """
+        return await self._transport.request(
+            self._storage_spec(collection_id), CollectionStorageResponse
+        )
+
 
 class SyncCollections(SyncResource, _CollectionsSpecs):
     """Synchronous collection management (list / get / create / update / delete)."""
@@ -199,6 +226,18 @@ class SyncCollections(SyncResource, _CollectionsSpecs):
             collection_id (str): The collection to delete.
         """
         return self._transport.request(self._delete_spec(collection_id), type(None))
+
+    def storage(self, collection_id: str) -> CollectionStorageResponse:
+        """
+        Measure a collection's material footprint per store (S3 exact, Postgres/Qdrant estimated).
+
+        Args:
+            collection_id (str): The collection's UUID.
+
+        Returns:
+            CollectionStorageResponse: Per-store totals + the per-document breakdown, heaviest first.
+        """
+        return self._transport.request(self._storage_spec(collection_id), CollectionStorageResponse)
 
 
 __all__ = ["AsyncCollections", "SyncCollections"]

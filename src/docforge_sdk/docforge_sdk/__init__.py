@@ -80,6 +80,15 @@ from .models.pipelines import (
 # ------------------- Search models ------------------- #
 from .models.search import BlockLocation, SearchHit, SearchRequest, SearchResponse, SearchTarget
 
+# ------------------- Storage models ------------------- #
+from .models.storage import (
+    CollectionStorageResponse,
+    DocumentStorageModel,
+    PostgresFootprintModel,
+    QdrantFootprintModel,
+    S3FootprintModel,
+)
+
 # ------------------- Public API ------------------- #
 __all__ = [
     "__version__",
@@ -150,6 +159,12 @@ __all__ = [
     "EditResponse",
     "StageViewResponse",
     "StageApplyResponse",
+    # Storage
+    "S3FootprintModel",
+    "PostgresFootprintModel",
+    "QdrantFootprintModel",
+    "DocumentStorageModel",
+    "CollectionStorageResponse",
     # Exceptions
     "DocForgeError",
     "APIConnectionError",

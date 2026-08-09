@@ -46,6 +46,13 @@ from docforge_sdk.models.search import (
     SearchResponse,
     SearchTarget,
 )
+from docforge_sdk.models.storage import (
+    CollectionStorageResponse,
+    DocumentStorageModel,
+    PostgresFootprintModel,
+    QdrantFootprintModel,
+    S3FootprintModel,
+)
 
 # Maps the OpenAPI component-schema NAME to the SDK model that mirrors it. A handful of SDK classes
 # drop the backend's "Model" suffix (FieldSpec, SearchTarget, SearchHit), so the key is authoritative.
@@ -100,6 +107,12 @@ MODELS: dict[str, type[BaseModel]] = {
     "EditResponse": EditResponse,
     "StageViewResponse": StageViewResponse,
     "StageApplyResponse": StageApplyResponse,
+    # Storage
+    "S3FootprintModel": S3FootprintModel,
+    "PostgresFootprintModel": PostgresFootprintModel,
+    "QdrantFootprintModel": QdrantFootprintModel,
+    "DocumentStorageModel": DocumentStorageModel,
+    "CollectionStorageResponse": CollectionStorageResponse,
 }
 
 # SDK models deliberately WITHOUT a 1:1 OpenAPI schema, each with the reason it is skipped.

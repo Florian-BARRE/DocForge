@@ -201,7 +201,8 @@ documents counts once), while **PostgreSQL and Qdrant bytes are estimates** (rea
 via `pg_column_size`, excluding index/TOAST; Qdrant dense/sparse/payload from point counts and a
 sample, on-disk float32 excluding the HNSW index). It returns per-store totals, a `grand_total_bytes`
 (deduped-physical S3 + PG + Qdrant) and a heaviest-first per-document breakdown; the collection
-Overview UI renders it as a panel.
+Overview UI renders it as a panel. It is also reachable through the typed SDK
+(`client.collections.storage(id)`) and the MCP `collection_storage_footprint` tool.
 
 ---
 

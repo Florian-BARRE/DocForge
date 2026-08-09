@@ -166,6 +166,7 @@ are identical.
 | `create(CreateCollectionRequest)` | `CollectionModel` | Create a collection (contract). |
 | `update(collection_id, UpdateCollectionRequest)` | `CollectionModel` | Patch name / formats / fields / pipelines. |
 | `delete(collection_id)` | `None` | Delete a collection. |
+| `storage(collection_id)` | `CollectionStorageResponse` | Material storage footprint per store (S3 exact, Postgres/Qdrant estimated) + per-document breakdown. |
 
 ### `documents`
 | Method | Returns | Purpose |
@@ -321,6 +322,20 @@ with Client("http://localhost:10040", api_token="df_...") as client:
     client.explorer.set_chunk_enabled(chunks[0].chunk_id, enabled=False)
 ```
 
+### Measure a collection's storage footprint
+
+`storage` reports the material footprint per store — S3 bytes are exact (deduped), Postgres/Qdrant
+bytes are estimates (each section flags this via its own `estimated`) — plus a per-document
+breakdown sorted heaviest first.
+
+```python
+with Client("http://localhost:10040", api_token="df_...") as client:
+    footprint = client.collections.storage(collection_id)
+    print(footprint.grand_total_bytes, footprint.s3.physical_unique_bytes)
+    for doc in footprint.documents[:5]:
+        print(doc.filename, doc.total_bytes)
+```
+
 ### Manage API keys
 
 Mint a scoped, expiring key (the plaintext is shown **once**, on creation):
@@ -407,6 +422,7 @@ from docforge_sdk import (
     UpdateCollectionRequest,
     FieldSpec,
     FieldType,
+    CollectionStorageResponse,
     # documents / explorer
     UploadAccepted,
     DocumentDetail,

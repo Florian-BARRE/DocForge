@@ -68,6 +68,7 @@ vector space is fixed at creation), plus optional ingestion/search pipeline blob
 | `create_collection` | Create a collection A-to-Z: `name`, `supported_formats`, `max_file_size_bytes`, `fields` (metadata schema), optional `pipeline` blob (omit for the product default). |
 | `update_collection` | Patch identity/limits, the schema (diffed by `field_name` — omitted = removed), and/or the `pipeline`/`search` config blobs. Schema changes flip `needs_reindex`. |
 | `delete_collection` | Delete a collection (irreversible). |
+| `collection_storage_footprint` | Measure a collection's material footprint per store — S3 bytes exact (deduped), Postgres/Qdrant estimated — plus a per-document breakdown, heaviest first. |
 
 ### Documents (upload / admission)
 
@@ -124,7 +125,7 @@ plain dicts. See [`PIPELINE.md`](../src/docforge/PIPELINE.md) for what the graph
 | `view_pipeline_stages` | Derive the ordered stage view of a blob + its validity verdict. |
 | `apply_pipeline_stage` | Compile a stage-level action into a blob (always buildable); returns recompiled blob + stage view + issues. |
 
-**Total: 32 tools** across 9 domains.
+**Total: 33 tools** across 9 domains.
 
 ---
 
@@ -211,7 +212,7 @@ Add an entry to your client's MCP config (`.mcp.json`-style):
 }
 ```
 
-The client launches the process and speaks MCP over stdio; the model can then call any of the 32
+The client launches the process and speaks MCP over stdio; the model can then call any of the 33
 tools. (Use an absolute path to `entrypoint.py` if your client does not run from the repo root, and
 run it through `uv`/the project venv so `docforge_sdk` and `mcp` are importable.)
 

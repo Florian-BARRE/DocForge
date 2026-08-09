@@ -43,7 +43,7 @@ server** that lets an AI model drive the whole platform.
 - **Material footprint, observable.** A per-collection storage endpoint reports how much hardware a
   collection occupies across all three stores — S3/SeaweedFS bytes are **exact** (content-addressed,
   deduped), PostgreSQL and Qdrant bytes are **estimated** — down to a heaviest-first per-document
-  breakdown.
+  breakdown. Reachable over the REST API, the typed SDK, and an MCP tool.
 - **Production-minded.** API-key auth (bearer, per-key capability + collection scoping, expiry &
   rotation), a fully-gated CI (format · lint · type · test · SDK↔API contract), and a published,
   drift-guarded SDK.

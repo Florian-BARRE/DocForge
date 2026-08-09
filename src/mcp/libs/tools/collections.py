@@ -98,3 +98,13 @@ def register(mcp: FastMCP, sdk: AsyncClient) -> None:
         """Delete a collection (404 when unknown). Irreversible."""
         await sdk.collections.delete(collection_id)
         return {}
+
+    @mcp.tool()
+    async def collection_storage_footprint(collection_id: str) -> Any:
+        """
+        Measure a collection's material footprint per store (404 when unknown). S3 bytes are
+        EXACT (deduped); Postgres and Qdrant bytes are ESTIMATES (each section flags this via
+        its own `estimated`). Includes a per-document breakdown, heaviest first.
+        """
+        storage = await sdk.collections.storage(collection_id)
+        return storage.model_dump(mode="json")

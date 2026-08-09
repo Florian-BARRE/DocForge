@@ -64,6 +64,15 @@ from .pipelines import (
 # ------------------- Search models ------------------- #
 from .search import BlockLocation, SearchHit, SearchRequest, SearchResponse, SearchTarget
 
+# ------------------- Storage models ------------------- #
+from .storage import (
+    CollectionStorageResponse,
+    DocumentStorageModel,
+    PostgresFootprintModel,
+    QdrantFootprintModel,
+    S3FootprintModel,
+)
+
 # ------------------- Public API ------------------- #
 __all__ = [
     # Shared vocabulary
@@ -130,4 +139,10 @@ __all__ = [
     "EditResponse",
     "StageViewResponse",
     "StageApplyResponse",
+    # Storage
+    "S3FootprintModel",
+    "PostgresFootprintModel",
+    "QdrantFootprintModel",
+    "DocumentStorageModel",
+    "CollectionStorageResponse",
 ]

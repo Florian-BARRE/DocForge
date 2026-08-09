@@ -89,3 +89,72 @@ def test_sync_delete_returns_none() -> None:
         result = client.collections.delete(CID)
     assert route.calls.last.request.method == "DELETE"
     assert result is None
+
+
+_S3_FOOTPRINT_SAMPLE: dict[str, Any] = {
+    "original_bytes": 1000,
+    "rendered_bytes": 200,
+    "total_bytes": 1200,
+    "physical_unique_bytes": 900,
+    "estimated": False,
+}
+_POSTGRES_FOOTPRINT_SAMPLE: dict[str, Any] = {
+    "documents_bytes": 10,
+    "ir_blocks_bytes": 20,
+    "enrichment_bytes": 5,
+    "chunks_bytes": 30,
+    "metadata_bytes": 3,
+    "observability_bytes": 2,
+    "total_bytes": 70,
+    "estimated": True,
+}
+_QDRANT_FOOTPRINT_SAMPLE: dict[str, Any] = {
+    "points": 42,
+    "dense_bytes": 400,
+    "sparse_bytes": 100,
+    "payload_bytes": 50,
+    "total_bytes": 550,
+    "estimated": True,
+}
+_STORAGE_SAMPLE: dict[str, Any] = {
+    "collection_id": CID,
+    "s3": _S3_FOOTPRINT_SAMPLE,
+    "postgres": _POSTGRES_FOOTPRINT_SAMPLE,
+    "qdrant": _QDRANT_FOOTPRINT_SAMPLE,
+    "grand_total_bytes": 1520,
+    "documents": [
+        {
+            "document_id": "33333333-3333-3333-3333-333333333333",
+            "filename": "report.pdf",
+            "s3": _S3_FOOTPRINT_SAMPLE,
+            "postgres": _POSTGRES_FOOTPRINT_SAMPLE,
+            "qdrant": _QDRANT_FOOTPRINT_SAMPLE,
+            "total_bytes": 1820,
+        }
+    ],
+}
+
+
+@respx.mock
+async def test_storage_returns_typed_footprint() -> None:
+    route = respx.get(f"{API}/collections/{CID}/storage").mock(
+        return_value=httpx.Response(200, json=_STORAGE_SAMPLE)
+    )
+    async with AsyncClient(BASE) as client:
+        result = await client.collections.storage(CID)
+    assert route.calls.last.request.method == "GET"
+    assert route.calls.last.request.url.path == f"/api/v1/collections/{CID}/storage"
+    assert result.grand_total_bytes == 1520
+    assert result.documents[0].filename == "report.pdf"
+
+
+@respx.mock
+def test_sync_storage_returns_typed_footprint() -> None:
+    route = respx.get(f"{API}/collections/{CID}/storage").mock(
+        return_value=httpx.Response(200, json=_STORAGE_SAMPLE)
+    )
+    with Client(BASE) as client:
+        result = client.collections.storage(CID)
+    assert route.calls.last.request.method == "GET"
+    assert result.s3.estimated is False
+    assert result.postgres.estimated is True
