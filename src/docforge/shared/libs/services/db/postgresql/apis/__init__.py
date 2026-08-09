@@ -6,6 +6,7 @@ from .ir_api import IRApi
 from .chunk_api import ChunkApi
 from .job_api import JobApi
 from .auth_api import AuthApi
+from .storage_footprint_api import StorageFootprintApi
 
 # ------------------- Public API ------------------- #
 __all__ = [
@@ -16,4 +17,5 @@ __all__ = [
     "ChunkApi",
     "JobApi",
     "AuthApi",
+    "StorageFootprintApi",
 ]

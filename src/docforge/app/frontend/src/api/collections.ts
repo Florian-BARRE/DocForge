@@ -169,3 +169,67 @@ export interface CollectionHealth {
 export function getCollectionHealth(id: string): Promise<CollectionHealth> {
   return apiFetch(`${BASE}/${id}/health`);
 }
+
+// ====== Collection storage footprint (per-store byte accounting) ======
+// Mirrors GET /api/v1/collections/{id}/storage — a read-only accounting sweep across the three
+// physical stores a collection touches. `estimated` on postgres/qdrant flags a sampled/approximated
+// number (row-size heuristics, no exact SELECT pg_total_relation_size per collection); s3 is exact
+// (content-addressed object sizes).
+
+/** S3 object storage for a collection or a single document — `physical_unique_bytes` can be lower
+ *  than `total_bytes` when content-addressing dedupes identical blobs across documents. */
+export interface StorageS3Stats {
+  original_bytes: number;
+  rendered_bytes: number;
+  total_bytes: number;
+  physical_unique_bytes: number;
+  estimated: boolean;
+}
+
+/** Postgres row storage for a collection or a single document, broken down by table family. */
+export interface StoragePostgresStats {
+  documents_bytes: number;
+  ir_blocks_bytes: number;
+  enrichment_bytes: number;
+  chunks_bytes: number;
+  metadata_bytes: number;
+  observability_bytes: number;
+  total_bytes: number;
+  estimated: boolean;
+}
+
+/** Qdrant vector storage for a collection or a single document. */
+export interface StorageQdrantStats {
+  points: number;
+  dense_bytes: number;
+  sparse_bytes: number;
+  payload_bytes: number;
+  total_bytes: number;
+  estimated: boolean;
+}
+
+/** One document's slice of the collection's storage footprint. */
+export interface DocumentStorageBreakdown {
+  document_id: string;
+  filename: string;
+  s3: StorageS3Stats;
+  postgres: StoragePostgresStats;
+  qdrant: StorageQdrantStats;
+  total_bytes: number;
+}
+
+/** Full per-collection storage footprint — the three stores plus a per-document breakdown, already
+ *  sorted descending by `total_bytes`. */
+export interface CollectionStorage {
+  collection_id: string;
+  s3: StorageS3Stats;
+  postgres: StoragePostgresStats;
+  qdrant: StorageQdrantStats;
+  grand_total_bytes: number;
+  documents: DocumentStorageBreakdown[];
+}
+
+/** Runs the storage accounting sweep — read-only, no job enqueued. */
+export function fetchCollectionStorage(id: string): Promise<CollectionStorage> {
+  return apiFetch(`${BASE}/${id}/storage`);
+}

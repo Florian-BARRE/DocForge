@@ -12,6 +12,13 @@ from pydantic import BaseModel, ConfigDict, Field
 
 # ====== Internal Project Imports ======
 from shared_libs.public_models import FieldOrigin, FieldScope, FieldType
+from shared_libs.services.db import (
+    CollectionFootprint,
+    DocumentFootprint,
+    PostgresFootprint,
+    QdrantFootprint,
+    S3Footprint,
+)
 
 
 class FieldSpecModel(BaseModel):
@@ -165,6 +172,147 @@ class CollectionContractSchemaResponse(BaseModel):
     )
 
 
+class S3FootprintModel(BaseModel):
+    """EXACT S3 bytes from the content-addressed blob registry (``estimated`` is always false)."""
+
+    original_bytes: int = Field(description="Uploaded source file bytes.")
+    rendered_bytes: int = Field(
+        description="Derived-blob bytes (canonical PDF, page renders, crops)."
+    )
+    total_bytes: int = Field(description="Logical bytes (original + rendered).")
+    physical_unique_bytes: int = Field(
+        description="Deduped disk cost — a blob shared across documents counts once (<= total)."
+    )
+    estimated: bool = Field(description="Always false: S3 bytes are measured exactly.")
+
+    @classmethod
+    def from_payload(cls, payload: S3Footprint) -> "S3FootprintModel":
+        """Map the facade dataclass to the response model."""
+        return cls(
+            original_bytes=payload.original_bytes,
+            rendered_bytes=payload.rendered_bytes,
+            total_bytes=payload.total_bytes,
+            physical_unique_bytes=payload.physical_unique_bytes,
+            estimated=payload.estimated,
+        )
+
+
+class PostgresFootprintModel(BaseModel):
+    """ESTIMATED Postgres row bytes via ``pg_column_size`` (excludes index/TOAST/bloat)."""
+
+    documents_bytes: int = Field(description="``document`` + ``page`` rows.")
+    ir_blocks_bytes: int = Field(description="``block`` + ``block_table`` + ``block_figure`` rows.")
+    enrichment_bytes: int = Field(description="``block_enrichment`` + ``enrichment_attempt`` rows.")
+    chunks_bytes: int = Field(
+        description="``chunk`` + ``chunk_block`` + ``chunk_metadata`` + ``entity_mention`` rows."
+    )
+    metadata_bytes: int = Field(description="``document_metadata`` rows.")
+    observability_bytes: int = Field(description="``job`` + ``job_stage_event`` rows.")
+    total_bytes: int = Field(description="Sum of every bucket.")
+    estimated: bool = Field(description="Always true: real row bytes, no index/TOAST/bloat.")
+
+    @classmethod
+    def from_payload(cls, payload: PostgresFootprint) -> "PostgresFootprintModel":
+        """Map the facade dataclass to the response model."""
+        return cls(
+            documents_bytes=payload.documents_bytes,
+            ir_blocks_bytes=payload.ir_blocks_bytes,
+            enrichment_bytes=payload.enrichment_bytes,
+            chunks_bytes=payload.chunks_bytes,
+            metadata_bytes=payload.metadata_bytes,
+            observability_bytes=payload.observability_bytes,
+            total_bytes=payload.total_bytes,
+            estimated=payload.estimated,
+        )
+
+
+class QdrantFootprintModel(BaseModel):
+    """ESTIMATED vector-store bytes (points × declared shape — excludes HNSW index overhead)."""
+
+    points: int = Field(description="Point count (collection total, or a document's points).")
+    dense_bytes: int = Field(
+        description=(
+            "On-disk float32 dense bytes, summed per named vector weighted by its carrier count "
+            "(content_dense on every point, each meta vector only on its field's documents). "
+            "Excludes the int8 quantized RAM-resident copy — this is disk, not RAM."
+        )
+    )
+    sparse_bytes: int = Field(
+        description="``points × avg_sparse_entries × 8`` (int32 index + float32 value)."
+    )
+    payload_bytes: int = Field(description="``points × avg_payload_json_bytes``.")
+    total_bytes: int = Field(description="Sum of dense + sparse + payload.")
+    estimated: bool = Field(description="Always true: count-based, excludes index overhead.")
+
+    @classmethod
+    def from_payload(cls, payload: QdrantFootprint) -> "QdrantFootprintModel":
+        """Map the facade dataclass to the response model."""
+        return cls(
+            points=payload.points,
+            dense_bytes=payload.dense_bytes,
+            sparse_bytes=payload.sparse_bytes,
+            payload_bytes=payload.payload_bytes,
+            total_bytes=payload.total_bytes,
+            estimated=payload.estimated,
+        )
+
+
+class DocumentStorageModel(BaseModel):
+    """One document's footprint across the three stores."""
+
+    document_id: str = Field(description="The document's UUID.")
+    filename: str = Field(description="The document's display name.")
+    s3: S3FootprintModel = Field(description="EXACT S3 bytes.")
+    postgres: PostgresFootprintModel = Field(description="ESTIMATED Postgres row bytes.")
+    qdrant: QdrantFootprintModel = Field(description="ESTIMATED vector-store bytes.")
+    total_bytes: int = Field(description="S3 (logical) + Postgres + Qdrant.")
+
+    @classmethod
+    def from_payload(cls, payload: DocumentFootprint) -> "DocumentStorageModel":
+        """Map the facade dataclass to the response model."""
+        return cls(
+            document_id=str(payload.document_id),
+            filename=payload.filename,
+            s3=S3FootprintModel.from_payload(payload.s3),
+            postgres=PostgresFootprintModel.from_payload(payload.postgres),
+            qdrant=QdrantFootprintModel.from_payload(payload.qdrant),
+            total_bytes=payload.total_bytes,
+        )
+
+
+class CollectionStorageResponse(BaseModel):
+    """
+    A collection's material footprint per store, plus the per-document breakdown (heaviest first).
+
+    S3 bytes are EXACT; Postgres and Qdrant bytes are ESTIMATES (each section flags this via
+    ``estimated``). ``grand_total_bytes`` uses the DEDUPED S3 disk cost (``physical_unique_bytes``),
+    so it reflects real hardware rather than the logical per-document sum.
+    """
+
+    collection_id: str = Field(description="The measured collection's UUID.")
+    s3: S3FootprintModel = Field(description="EXACT S3 totals (logical + deduped physical).")
+    postgres: PostgresFootprintModel = Field(description="ESTIMATED Postgres row bytes.")
+    qdrant: QdrantFootprintModel = Field(description="ESTIMATED vector-store bytes.")
+    grand_total_bytes: int = Field(
+        description="Material footprint — S3 physical_unique + Postgres + Qdrant."
+    )
+    documents: list[DocumentStorageModel] = Field(
+        description="Per-document breakdown, sorted by total bytes descending (doubles as top-N)."
+    )
+
+    @classmethod
+    def from_payload(cls, payload: CollectionFootprint) -> "CollectionStorageResponse":
+        """Map the facade dataclass to the response model."""
+        return cls(
+            collection_id=str(payload.collection_id),
+            s3=S3FootprintModel.from_payload(payload.s3),
+            postgres=PostgresFootprintModel.from_payload(payload.postgres),
+            qdrant=QdrantFootprintModel.from_payload(payload.qdrant),
+            grand_total_bytes=payload.grand_total_bytes,
+            documents=[DocumentStorageModel.from_payload(doc) for doc in payload.documents],
+        )
+
+
 __all__ = [
     "FieldSpecModel",
     "CollectionModel",
@@ -172,4 +320,9 @@ __all__ = [
     "CollectionContractSchemaResponse",
     "CreateCollectionRequest",
     "UpdateCollectionRequest",
+    "S3FootprintModel",
+    "PostgresFootprintModel",
+    "QdrantFootprintModel",
+    "DocumentStorageModel",
+    "CollectionStorageResponse",
 ]

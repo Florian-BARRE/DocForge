@@ -25,6 +25,7 @@ from .facades import (
     JobsFacade,
     MetaVectorSyncFacade,
     SearchFacade,
+    StorageFootprintFacade,
 )
 
 
@@ -42,6 +43,7 @@ class Database(LoggerClass):
         search (SearchFacade): Hybrid filtered search + Postgres hydration.
         jobs (JobsFacade): Ingestion job lifecycle + stage timeline.
         auth (AuthFacade): User accounts + API keys.
+        storage (StorageFootprintFacade): On-demand material footprint (S3 + Postgres + Qdrant).
     """
 
     def __init__(self, postgres: PostgresClient, qdrant: QdrantClient, s3: S3Client) -> None:
@@ -66,6 +68,7 @@ class Database(LoggerClass):
         self.search = SearchFacade(postgres, qdrant)
         self.jobs = JobsFacade(postgres)
         self.auth = AuthFacade(postgres)
+        self.storage = StorageFootprintFacade(postgres, qdrant)
         self.logger.info(f"Database facade ready (postgres + qdrant + s3)")
 
     async def ensure_object_store(self) -> None:

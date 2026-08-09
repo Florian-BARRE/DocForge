@@ -7,7 +7,15 @@ from .qdrant import QdrantClient
 from .s3 import S3Client
 
 # ---------------------- Façade transfer objects ---------------------- #
-from .facades import IngestionPayload, IRBundle
+from .facades import (
+    CollectionFootprint,
+    DocumentFootprint,
+    IngestionPayload,
+    IRBundle,
+    PostgresFootprint,
+    QdrantFootprint,
+    S3Footprint,
+)
 
 # ------------------- Public API ------------------- #
 __all__ = [
@@ -17,4 +25,9 @@ __all__ = [
     "S3Client",
     "IngestionPayload",
     "IRBundle",
+    "CollectionFootprint",
+    "DocumentFootprint",
+    "S3Footprint",
+    "PostgresFootprint",
+    "QdrantFootprint",
 ]

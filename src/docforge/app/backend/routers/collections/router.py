@@ -25,6 +25,7 @@ from .models import (
     CollectionContractModel,
     CollectionContractSchemaResponse,
     CollectionModel,
+    CollectionStorageResponse,
     CreateCollectionRequest,
     UpdateCollectionRequest,
 )
@@ -119,6 +120,33 @@ async def get_collection_health(collection_id: uuid.UUID) -> CollectionHealthRes
     if result is None:
         raise HTTPException(status_code=404, detail=f"Collection {collection_id} not found.")
     return result
+
+
+@router.get(
+    "/{collection_id}/storage",
+    response_model=CollectionStorageResponse,
+    dependencies=[Depends(require(Capability.READ))],
+)
+@auto_handle_errors
+async def get_collection_storage(collection_id: uuid.UUID) -> CollectionStorageResponse:
+    """
+    Measure a collection's material footprint per store — how much hardware it occupies.
+
+    S3 bytes are EXACT (content-addressed blob registry, deduped); Postgres and Qdrant bytes are
+    ESTIMATES (real row bytes via ``pg_column_size`` / point-count arithmetic). Aggregated in SQL +
+    Qdrant count/facet calls — no per-document N+1, no caching. The per-document list is sorted
+    heaviest-first, so it doubles as the top-N.
+
+    Returns:
+        CollectionStorageResponse: Per-store totals + the per-document breakdown (404 when unknown).
+    """
+    # 1. Existence first — an unknown collection is a 404, mirroring the other collection reads.
+    if await CONTEXT.database.collections.get(collection_id) is None:
+        raise HTTPException(status_code=404, detail=f"Collection {collection_id} not found.")
+
+    # 2. Compose the footprint (grouped aggregates + one Qdrant profile) and shape the response.
+    footprint = await CONTEXT.database.storage.collection_footprint(collection_id)
+    return CollectionStorageResponse.from_payload(footprint)
 
 
 @router.post(

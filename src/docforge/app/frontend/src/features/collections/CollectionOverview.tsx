@@ -16,6 +16,7 @@ import { probeVerdict } from "./collectionHealth";
 import { OverviewStatStrip } from "./OverviewStatStrip";
 import { ProviderHealthBoard } from "./ProviderHealthBoard";
 import { ReindexBanner } from "./ReindexBanner";
+import { StorageFootprintPanel } from "./storage/StorageFootprintPanel";
 
 interface Props {
   collectionId: string;
@@ -69,6 +70,10 @@ export function CollectionOverview({ collectionId, onNavigate }: Props) {
         collectionId={collectionId}
         onNavigate={onNavigate}
       />
+
+      <div style={{ marginTop: t.space.xl }}>
+        <StorageFootprintPanel collectionId={collectionId} onNavigate={onNavigate} />
+      </div>
     </div>
   );
 }

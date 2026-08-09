@@ -1,6 +1,13 @@
 # ---------------------- Shared conventions & payloads ---------------------- #
 from .helpers import DatabaseHelpers
 from .payloads import ChunkToggle, IngestionPayload, IRBundle
+from .storage_footprint_payloads import (
+    CollectionFootprint,
+    DocumentFootprint,
+    PostgresFootprint,
+    QdrantFootprint,
+    S3Footprint,
+)
 
 # ---------------------- Domain façades ---------------------- #
 from .collections_facade import CollectionsFacade
@@ -12,6 +19,7 @@ from .meta_vector_sync_facade import MetaVectorSyncFacade
 from .search_facade import SearchFacade
 from .jobs_facade import JobsFacade
 from .auth_facade import AuthFacade
+from .storage_footprint_facade import StorageFootprintFacade
 
 # ------------------- Public API ------------------- #
 __all__ = [
@@ -19,6 +27,11 @@ __all__ = [
     "ChunkToggle",
     "IngestionPayload",
     "IRBundle",
+    "CollectionFootprint",
+    "DocumentFootprint",
+    "S3Footprint",
+    "PostgresFootprint",
+    "QdrantFootprint",
     "CollectionsFacade",
     "DocumentsFacade",
     "EnablementFacade",
@@ -28,4 +41,5 @@ __all__ = [
     "SearchFacade",
     "JobsFacade",
     "AuthFacade",
+    "StorageFootprintFacade",
 ]
