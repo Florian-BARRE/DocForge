@@ -15,7 +15,7 @@ import { formatBytes } from "../../explorer/format";
 import { DocumentStorageTable } from "./DocumentStorageTable";
 import { StorageBar } from "./StorageBar";
 import { StorageGrandTotal } from "./StorageGrandTotal";
-import { STORAGE_STORES, storeSharePercent } from "./storageStores";
+import { STORAGE_STORES, storeSharePercent, storeStats } from "./storageStores";
 import { StorageStoreBreakdown } from "./StorageStoreBreakdown";
 
 interface StorageFootprintPanelProps {
@@ -30,9 +30,12 @@ interface StoreBreakdownContent {
 
 function storeBreakdowns(storage: CollectionStorage): Record<"s3" | "postgres" | "qdrant", StoreBreakdownContent> {
   const { s3, postgres, qdrant } = storage;
+  // The card headline is the ON-DISK figure (deduped physical). This note reconciles it to the
+  // logical sum: identical blobs shared by several documents (e.g. the same file uploaded twice) are
+  // stored once, so the referenced bytes exceed what actually lands on disk.
   const s3DedupNote =
     s3.physical_unique_bytes !== s3.total_bytes
-      ? `Deduplicated on disk: ${formatBytes(s3.physical_unique_bytes)} physical (saves ${formatBytes(s3.total_bytes - s3.physical_unique_bytes)}).`
+      ? `${formatBytes(s3.total_bytes)} referenced across documents — identical blobs are stored once, so ${formatBytes(s3.physical_unique_bytes)} hits disk (dedup saves ${formatBytes(s3.total_bytes - s3.physical_unique_bytes)}).`
       : undefined;
 
   return {
@@ -105,15 +108,15 @@ export function StorageFootprintPanel({ collectionId, onNavigate }: StorageFootp
 
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: t.space.m }}>
                 {STORAGE_STORES.map(({ key, label, color }) => {
-                  const stats = storage[key];
+                  const s = storeStats(storage, key);
                   return (
                     <StorageStoreBreakdown
                       key={key}
                       label={label}
                       swatchColor={color}
-                      totalBytes={stats.total_bytes}
-                      sharePercent={storeSharePercent(stats.total_bytes, storage.grand_total_bytes)}
-                      estimated={stats.estimated}
+                      totalBytes={s.totalBytes}
+                      sharePercent={storeSharePercent(s.totalBytes, storage.grand_total_bytes)}
+                      estimated={s.estimated}
                       rows={breakdowns[key].rows}
                       note={breakdowns[key].note}
                     />

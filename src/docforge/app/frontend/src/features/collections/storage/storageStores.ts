@@ -22,14 +22,19 @@ export const STORAGE_STORES: StoreMeta[] = [
   { key: "qdrant", label: "Qdrant", color: t.color.store.qdrant },
 ];
 
-/** Reads a store's `{total_bytes, estimated}` off either the collection-level or a per-document
- *  storage payload — both shapes carry the same three store keys. */
+/** A store's ON-DISK contribution off either the collection-level or a per-document storage payload.
+ *  For S3 that is the content-address DEDUPED `physical_unique_bytes` — the bytes actually written to
+ *  disk — NOT the logical per-document `total_bytes`, which double-counts a blob shared by several
+ *  documents (e.g. the same file uploaded twice) and would push a store's share past 100%. This is
+ *  the figure that composes `grand_total_bytes`, so the three stores' shares sum to 100%. PG/Qdrant
+ *  have no logical/physical split, so they fall back to `total_bytes`. */
 export function storeStats(
   source: CollectionStorage | DocumentStorageBreakdown,
   key: StoreKey,
 ): { totalBytes: number; estimated: boolean } {
   const stats = source[key];
-  return { totalBytes: stats.total_bytes, estimated: stats.estimated };
+  const onDisk = "physical_unique_bytes" in stats ? stats.physical_unique_bytes : stats.total_bytes;
+  return { totalBytes: onDisk, estimated: stats.estimated };
 }
 
 /** A store's share of the grand total as a rounded percentage — 0 when there is nothing to divide. */
