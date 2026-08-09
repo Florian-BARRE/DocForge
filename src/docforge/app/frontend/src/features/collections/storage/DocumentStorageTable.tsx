@@ -8,6 +8,7 @@ import type { DocumentStorageBreakdown } from "../../../api/collections";
 import type { Navigate } from "../../../shell/view";
 import { theme as t } from "../../../theme";
 import { DocumentStorageRow } from "./DocumentStorageRow";
+import { STORAGE_STORES, type StoreKey } from "./storageStores";
 
 type SortKey = "filename" | "s3" | "postgres" | "qdrant" | "total";
 type SortDirection = "asc" | "desc";
@@ -18,11 +19,13 @@ interface DocumentStorageTableProps {
   onNavigate: Navigate;
 }
 
-const COLUMNS: { key: SortKey; label: string; align: "left" | "right" }[] = [
+const STORE_COLOR: Record<StoreKey, string> = Object.fromEntries(STORAGE_STORES.map(({ key, color }) => [key, color])) as Record<StoreKey, string>;
+
+const COLUMNS: { key: SortKey; label: string; align: "left" | "right"; storeKey?: StoreKey }[] = [
   { key: "filename", label: "Document", align: "left" },
-  { key: "s3", label: "S3", align: "right" },
-  { key: "postgres", label: "PostgreSQL", align: "right" },
-  { key: "qdrant", label: "Qdrant", align: "right" },
+  { key: "s3", label: "S3", align: "right", storeKey: "s3" },
+  { key: "postgres", label: "PostgreSQL", align: "right", storeKey: "postgres" },
+  { key: "qdrant", label: "Qdrant", align: "right", storeKey: "qdrant" },
   { key: "total", label: "Total", align: "right" },
 ];
 
@@ -70,7 +73,7 @@ export function DocumentStorageTable({ documents, collectionId, onNavigate }: Do
       <table style={{ borderCollapse: "collapse", width: "100%" }}>
         <thead>
           <tr style={{ borderBottom: `1px solid ${t.color.line}` }}>
-            {COLUMNS.map(({ key, label, align }) => (
+            {COLUMNS.map(({ key, label, align, storeKey }) => (
               <th
                 key={key}
                 onClick={() => toggleSort(key)}
@@ -80,6 +83,9 @@ export function DocumentStorageTable({ documents, collectionId, onNavigate }: Do
                   textTransform: "uppercase", letterSpacing: "0.04em", cursor: "pointer", userSelect: "none",
                 }}
               >
+                {storeKey && (
+                  <span style={{ display: "inline-block", width: 7, height: 7, borderRadius: t.radius.pill, background: STORE_COLOR[storeKey], marginRight: t.space.xs }} />
+                )}
                 {label}{sortKey === key && (sortDirection === "asc" ? " ▲" : " ▼")}
               </th>
             ))}

@@ -40,6 +40,14 @@ export const theme = {
     loop: "var(--iris)", loopSoft: "var(--iris-soft)", // legacy alias
     iris: "var(--iris)", irisSoft: "var(--iris-soft)",
     chain: "var(--chain)", chainSoft: "var(--chain-soft)",
+
+    // Categorical data-viz triad — one hue per physical store on the storage-footprint panel.
+    // Warm steel / clay terracotta / olive-moss: three distinct warm hues, never the forge accent.
+    store: {
+      s3: "var(--store-s3)", s3Soft: "var(--store-s3-soft)",
+      postgres: "var(--store-postgres)", postgresSoft: "var(--store-postgres-soft)",
+      qdrant: "var(--store-qdrant)", qdrantSoft: "var(--store-qdrant-soft)",
+    },
   },
   radius: { s: 6, m: 10, l: 14, xl: 20, pill: 999 },
   space: { xs: 4, s: 8, m: 12, l: 16, xl: 24, xxl: 40 },

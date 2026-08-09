@@ -38,6 +38,13 @@
   --iris: #8a8378;      --iris-soft: rgba(138, 131, 120, 0.12);   /* neutralized (no indigo) */
   --chain: #8a8378;     --chain-soft: rgba(138, 131, 120, 0.12);  /* neutralized (no cyan) */
 
+  /* Categorical data-viz triad — three physical stores (S3/Postgres/Qdrant) on a footprint bar.
+     No hue borrows accent/ok/error/warn: warm steel (near-neutral), clay terracotta, olive-moss —
+     spread ~30° apart so they read as different colours, not just different shades of one grey. */
+  --store-s3: #837563;       --store-s3-soft: rgba(131, 117, 99, 0.14);
+  --store-postgres: #974f35; --store-postgres-soft: rgba(151, 79, 53, 0.14);
+  --store-qdrant: #6f7133;   --store-qdrant-soft: rgba(111, 113, 51, 0.14);
+
   --shadow-1: 0 1px 2px rgba(31, 26, 15, 0.06);
   --shadow-2: 0 12px 30px -10px rgba(31, 26, 15, 0.16);
   --shadow-pop: 0 18px 46px -12px rgba(31, 26, 15, 0.22);
@@ -70,6 +77,11 @@
   --info: #c3c7cd;      --info-soft: rgba(195, 199, 205, 0.12);
   --iris: #8b939d;      --iris-soft: rgba(139, 147, 157, 0.14);
   --chain: #8b939d;     --chain-soft: rgba(139, 147, 157, 0.14);
+
+  /* Same three hues, stepped lighter to stay legible on ink. */
+  --store-s3: #aea393;       --store-s3-soft: rgba(174, 163, 147, 0.16);
+  --store-postgres: #c77c60; --store-postgres-soft: rgba(199, 124, 96, 0.18);
+  --store-qdrant: #b0b356;   --store-qdrant-soft: rgba(176, 179, 86, 0.18);
 
   --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.45);
   --shadow-2: 0 10px 30px -10px rgba(0, 0, 0, 0.6);

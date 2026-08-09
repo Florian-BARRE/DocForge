@@ -15,7 +15,7 @@ import { formatBytes } from "../../explorer/format";
 import { DocumentStorageTable } from "./DocumentStorageTable";
 import { StorageBar } from "./StorageBar";
 import { StorageGrandTotal } from "./StorageGrandTotal";
-import { STORAGE_STORES } from "./storageStores";
+import { STORAGE_STORES, storeSharePercent } from "./storageStores";
 import { StorageStoreBreakdown } from "./StorageStoreBreakdown";
 
 interface StorageFootprintPanelProps {
@@ -97,7 +97,7 @@ export function StorageFootprintPanel({ collectionId, onNavigate }: StorageFootp
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: t.space.xl }}>
               <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: t.space.l }}>
-                <StorageGrandTotal bytes={storage.grand_total_bytes} />
+                <StorageGrandTotal bytes={storage.grand_total_bytes} documentCount={storage.documents.length} />
                 <div style={{ flex: "1 1 320px", minWidth: 260 }}>
                   <StorageBar storage={storage} />
                 </div>
@@ -112,6 +112,7 @@ export function StorageFootprintPanel({ collectionId, onNavigate }: StorageFootp
                       label={label}
                       swatchColor={color}
                       totalBytes={stats.total_bytes}
+                      sharePercent={storeSharePercent(stats.total_bytes, storage.grand_total_bytes)}
                       estimated={stats.estimated}
                       rows={breakdowns[key].rows}
                       note={breakdowns[key].note}
