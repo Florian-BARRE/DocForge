@@ -194,6 +194,15 @@ The engine is **pure**: nodes never touch these stores. All I/O is a **façade**
 search), called by the worker or a router — never from a node. Providers (URL + secret) live **per
 collection in the DB**, never in `.env`, so they are swappable within a family without redeploying.
 
+A read-only **storage-footprint** surface (`GET /api/v1/collections/{id}/storage`, the
+`StorageFootprintFacade`) reports how much hardware a collection occupies across these three stores:
+**S3/SeaweedFS bytes are exact** (from the content-addressed blob registry — a blob shared across
+documents counts once), while **PostgreSQL and Qdrant bytes are estimates** (real in-tuple row bytes
+via `pg_column_size`, excluding index/TOAST; Qdrant dense/sparse/payload from point counts and a
+sample, on-disk float32 excluding the HNSW index). It returns per-store totals, a `grand_total_bytes`
+(deduped-physical S3 + PG + Qdrant) and a heaviest-first per-document breakdown; the collection
+Overview UI renders it as a panel.
+
 ---
 
 ## 5. Retrieval

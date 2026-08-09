@@ -40,6 +40,10 @@ server** that lets an AI model drive the whole platform.
   **fail-fast at build time** (topology + config shape) before a cent of compute is spent.
 - **Hybrid retrieval, first-class.** Named dense + sparse vectors in Qdrant, fusion, optional ColBERT
   cross-encoder rerank, and per-field **filterable / semantic / lexical** metadata surfaces.
+- **Material footprint, observable.** A per-collection storage endpoint reports how much hardware a
+  collection occupies across all three stores — S3/SeaweedFS bytes are **exact** (content-addressed,
+  deduped), PostgreSQL and Qdrant bytes are **estimated** — down to a heaviest-first per-document
+  breakdown.
 - **Production-minded.** API-key auth (bearer, per-key capability + collection scoping, expiry &
   rotation), a fully-gated CI (format · lint · type · test · SDK↔API contract), and a published,
   drift-guarded SDK.
