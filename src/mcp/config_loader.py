@@ -61,7 +61,7 @@ class McpConfig(EnvConfigLoader):
     # "stdio"        → local Claude Desktop / Claude Code (protocol over stdin/stdout).
     # "streamable-http" → long-lived container service. No separate MCP-level auth gate: each
     # request's own "Authorization: Bearer <docforge-api-key>" is forwarded upstream as-is, so
-    # DocForge's own authN/authZ enforces access. TLS must front this port in production.
+    # DocForge's own authN/authZ enforces access. Plain HTTP works; add TLS on an untrusted network.
     MCP_TRANSPORT: str = env("MCP_TRANSPORT", default="stdio")
     # Bind address — must be 0.0.0.0 inside a container to be reachable from the host.
     MCP_HOST: str = env("MCP_HOST", default="0.0.0.0")

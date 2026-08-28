@@ -50,13 +50,13 @@ def main() -> None:
         return
 
     # 4. Serve the streamable-HTTP app — auth is fully delegated to DocForge (see build_http_app);
-    #    the caller's own DocForge API key must be presented on every request and TLS should
-    #    front this port in production, since the key travels in the Authorization header.
+    #    the caller's own DocForge API key must be presented on every request. Plain HTTP works;
+    #    front with TLS on an untrusted network since the key travels in the Authorization header.
     app = build_http_app(mcp, McpConfig)
     logger.info(
         f"Starting DocForge MCP server (streamable-http) on "
         f"{McpConfig.MCP_HOST}:{McpConfig.MCP_PORT}{McpConfig.MCP_HTTP_PATH} "
-        f"-> {McpConfig.DOCFORGE_API_URL} (auth delegated to DocForge; front with TLS in production)"
+        f"-> {McpConfig.DOCFORGE_API_URL} (auth delegated to DocForge)"
     )
     try:
         uvicorn.run(app, host=McpConfig.MCP_HOST, port=McpConfig.MCP_PORT)

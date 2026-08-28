@@ -182,11 +182,15 @@ published on host port **`10048`**:
 docker compose -f docker-compose.yml --profile full up -d docforge_mcp
 ```
 
-Set `MCP_AUTH_TOKEN` (and `DOCFORGE_API_TOKEN` if the API has auth on) in `services/mcp/.env`. The
-endpoint is then reachable at `http://<host>:10048/mcp`, and every request must carry
-`Authorization: Bearer <MCP_AUTH_TOKEN>` — a constant-time bearer check
-(`StaticBearerAuthMiddleware`) rejects anything else with `401`. The HTTP app is stateless and
-returns JSON responses, so it proxies cleanly.
+The endpoint is then reachable at `http://<host>:10048/mcp`. There is **no separate MCP-level
+token** — auth is delegated to DocForge: every request must carry
+`Authorization: Bearer <docforge-api-key>`, which is forwarded upstream as-is, so a caller gets
+**exactly the rights that key has on the REST API** (one token = same scope on the API and via the
+MCP). A request without a bearer falls back to `DOCFORGE_API_TOKEN` (set it in `services/mcp/.env`
+when the API has `AUTH_ENABLED=true`). The HTTP app is stateless and returns JSON responses, so it
+proxies cleanly. **Plain HTTP works out of the box**; the key rides in the `Authorization` header, so
+on an untrusted network front the port with TLS (a reverse proxy terminating HTTPS) — on a trusted
+LAN/VPN plain HTTP is fine.
 
 ---
 

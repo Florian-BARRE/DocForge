@@ -47,7 +47,7 @@ def build_mcp(sdk: AsyncClient) -> FastMCP:
     #    overrides mcp.settings.host to "0.0.0.0" AFTER this call, so without this explicit override
     #    the protection would silently stay localhost-only and reject every remote Host header. DNS
     #    rebinding is a browser-CSRF-style threat; this server's clients are programmatic, key-authed
-    #    MCP clients that (in production) sit behind TLS, so the Host/Origin check adds no value here.
+    #    MCP clients (not browsers), so the Host/Origin check adds no value here.
     mcp = FastMCP(
         name="DocForge",
         instructions=_INSTRUCTIONS,
