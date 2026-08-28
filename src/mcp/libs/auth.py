@@ -1,59 +1,86 @@
 # ====== Code Summary ======
-# StaticBearerAuthMiddleware — a minimal ASGI middleware that gates the streamable-HTTP MCP app
-# behind a single static bearer token. Used because the MCP port is exposed on the host; without
-# it, anyone reaching the port could drive the document corpus. Built-in FastMCP auth is OAuth2-
-# oriented and overkill for a shared-secret deployment.
+# BearerPassthroughMiddleware — a raw ASGI middleware wrapping the streamable-HTTP MCP app. It
+# captures each request's incoming "Authorization: Bearer <docforge-api-key>" header into a
+# contextvar (token_context.py) so downstream tool calls forward the CALLER's own DocForge API key
+# upstream — the MCP does not gate access itself. Auth is fully delegated to DocForge: a
+# missing/invalid/unscoped key surfaces as a 401/403 from the DocForge API, relayed to the caller.
+#
+# Implemented as a plain ASGI callable, NOT starlette's BaseHTTPMiddleware, because
+# BaseHTTPMiddleware runs the downstream app inside a separate anyio task via call_next() — a
+# contextvar set in dispatch() is not guaranteed to be visible there. A raw ASGI wrapper calls the
+# app inline in the same task, so the token set here stays visible through every nested tool call.
 
 from __future__ import annotations
 
-# ====== Standard Library Imports ======
-import hmac
-from typing import Any
-
 # ====== Third-Party Library Imports ======
-from loggerplusplus import loggerplusplus
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request
-from starlette.responses import JSONResponse
+from starlette.types import ASGIApp, Receive, Scope, Send
+
+# ====== Local Project Imports ======
+from .token_context import incoming_docforge_token
 
 
-class StaticBearerAuthMiddleware(BaseHTTPMiddleware):
+class BearerPassthroughMiddleware:
     """
-    Reject any request whose ``Authorization`` header is not ``Bearer <expected_token>``.
+    Stash the incoming request's bearer token into a contextvar for the duration of the call.
 
-    The token is injected at construction (read from McpConfig) — never from the environment
-    directly — so the middleware stays testable and the secret has a single source.
+    Carries no secret of its own — it neither validates nor rejects a request; DocForge's own API
+    enforces auth (and scope) on every proxied call the tools go on to make.
     """
 
-    logger = loggerplusplus.bind(identifier="McpAuth")
-
-    def __init__(self, app: Any, expected_token: str) -> None:
+    def __init__(self, app: ASGIApp) -> None:
         """
-        Store the expected bearer value.
+        Wrap the downstream ASGI application.
 
         Args:
-            app (Any): The wrapped ASGI application.
-            expected_token (str): The shared secret clients must present.
+            app (ASGIApp): The wrapped ASGI application (the MCP streamable-HTTP app).
         """
-        super().__init__(app)
-        self._expected_header = f"Bearer {expected_token}"
+        self._app = app
 
-    async def dispatch(self, request: Request, call_next: Any) -> Any:
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         """
-        Compare the Authorization header in constant time and forward or reject.
+        Set the token contextvar for HTTP requests, then delegate to the wrapped app.
 
         Args:
-            request (Request): The incoming request.
-            call_next (Any): The downstream handler.
+            scope (Scope): The ASGI connection scope.
+            receive (Receive): The ASGI receive channel.
+            send (Send): The ASGI send channel.
+        """
+        # 1. Only HTTP connections carry an Authorization header worth extracting.
+        if scope["type"] != "http":
+            await self._app(scope, receive, send)
+            return
+
+        # 2. Stash the caller's token (or None) for the lifetime of this request only.
+        token = self._extract_bearer(scope)
+        reset = incoming_docforge_token.set(token)
+        try:
+            await self._app(scope, receive, send)
+        finally:
+            incoming_docforge_token.reset(reset)
+
+    @staticmethod
+    def _extract_bearer(scope: Scope) -> str | None:
+        """
+        Pull the bearer token out of the raw ASGI header list.
+
+        Args:
+            scope (Scope): The ASGI connection scope.
 
         Returns:
-            Any: A 401 JSON response on mismatch, otherwise the downstream response.
+            str | None: The token, or None when the header is absent or not a bearer token.
         """
-        # 1. Constant-time comparison avoids leaking the token via timing
-        provided = request.headers.get("authorization", "")
-        if not hmac.compare_digest(provided, self._expected_header):
-            self.logger.warning(f"Rejected unauthenticated request to {request.url.path}")
-            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        # 1. ASGI headers are a list of (lowercase-name, value) byte-string pairs.
+        raw_headers = dict(scope.get("headers") or [])
+        raw_value = raw_headers.get(b"authorization")
+        if not raw_value:
+            return None
 
-        # 2. Authorised — forward to the MCP app
-        return await call_next(request)
+        # 2. Only the bearer scheme carries a DocForge API key; anything else is ignored.
+        value = raw_value.decode("latin-1")
+        prefix = "Bearer "
+        if not value.startswith(prefix):
+            return None
+        return value[len(prefix) :] or None
+
+
+__all__ = ["BearerPassthroughMiddleware"]

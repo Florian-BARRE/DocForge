@@ -1,13 +1,15 @@
 # ====== Code Summary ======
 # Entry point for the standalone DocForge MCP server (name aligned with docforge/entrypoint.py).
-# Wires McpConfig → AsyncClient (docforge_sdk) → FastMCP, then runs the requested transport:
-#   - stdio           → local Claude Desktop / Claude Code
-#   - streamable-http → long-lived container service, behind the bearer-auth middleware
+# Wires McpConfig → ScopedSdkProvider (docforge_sdk) → FastMCP, then runs the requested transport:
+#   - stdio           → local Claude Desktop / Claude Code (env DOCFORGE_API_TOKEN)
+#   - streamable-http → long-lived container service; auth is delegated to DocForge — each
+#                        request's own Authorization bearer is forwarded upstream as-is
 # Invoked as `python entrypoint.py` (it cannot be a pure `uvicorn entrypoint:app` target because
 # the stdio mode is not an ASGI server).
 
 # ====== Standard Library Imports ======
 import asyncio
+from typing import cast
 
 # ====== Third-Party Library Imports ======
 import uvicorn
@@ -16,56 +18,50 @@ from loggerplusplus import loggerplusplus
 
 # ====== Internal Project Imports ======
 from config_loader import McpConfig  # MUST be first — registers sys.path + configures logging
+from libs.scoped_sdk import ScopedSdk, ScopedSdkProvider
 from libs.server import build_http_app, build_mcp
 
 logger = loggerplusplus.bind(identifier="McpServer")
 
 
 def main() -> None:
-    """
-    Build the MCP server and run it under the configured transport.
-
-    Raises:
-        RuntimeError: When HTTP transport is selected without an MCP_AUTH_TOKEN.
-    """
-    # 1. Build the SDK client and the MCP server (tools registered over the SDK).
-    #    Pass DOCFORGE_API_TOKEN so every outbound request carries "Authorization: Bearer <token>"
-    #    when the DocForge API has AUTH_ENABLED=true. An empty token is forward-compatible with
-    #    auth-disabled deployments (no Authorization header will be sent in that case).
-    sdk = AsyncClient(
+    """Build the MCP server and run it under the configured transport."""
+    # 1. Build the per-token SDK client provider. DOCFORGE_API_TOKEN is the fallback used by
+    #    stdio and by any HTTP request that carries no Authorization header; an HTTP request that
+    #    DOES carry one gets its own cached client using THAT token (see scoped_sdk.py). An empty
+    #    fallback token is forward-compatible with auth-disabled DocForge deployments.
+    provider = ScopedSdkProvider(
         McpConfig.DOCFORGE_API_URL,
         timeout=float(McpConfig.MCP_API_TIMEOUT_S),
-        api_token=McpConfig.DOCFORGE_API_TOKEN,
+        fallback_token=McpConfig.DOCFORGE_API_TOKEN,
     )
+    # 2. Inject the scoped proxy wherever an AsyncClient is expected — every tool file keeps its
+    #    original `sdk: AsyncClient` signature; only this cast site knows it's actually the proxy.
+    sdk = cast(AsyncClient, ScopedSdk(provider))
     mcp = build_mcp(sdk)
 
-    # 2. stdio transport — local protocol over stdin/stdout (no auth, no network)
+    # 3. stdio transport — local protocol over stdin/stdout (no network, contextvar never set)
     if McpConfig.MCP_TRANSPORT == "stdio":
         logger.info(f"Starting DocForge MCP server (stdio) -> {McpConfig.DOCFORGE_API_URL}")
         try:
             mcp.run(transport="stdio")
         finally:
-            asyncio.run(sdk.aclose())
+            asyncio.run(provider.aclose())
         return
 
-    # 3. HTTP transport — refuse to expose the corpus without a bearer token
-    if not McpConfig.MCP_AUTH_TOKEN:
-        raise RuntimeError(
-            "MCP_AUTH_TOKEN is required when MCP_TRANSPORT is not 'stdio' — refusing to expose "
-            "the DocForge MCP server without authentication."
-        )
-
-    # 4. Serve the auth-wrapped streamable-HTTP app
+    # 4. Serve the streamable-HTTP app — auth is fully delegated to DocForge (see build_http_app);
+    #    the caller's own DocForge API key must be presented on every request and TLS should
+    #    front this port in production, since the key travels in the Authorization header.
     app = build_http_app(mcp, McpConfig)
     logger.info(
         f"Starting DocForge MCP server (streamable-http) on "
         f"{McpConfig.MCP_HOST}:{McpConfig.MCP_PORT}{McpConfig.MCP_HTTP_PATH} "
-        f"-> {McpConfig.DOCFORGE_API_URL}"
+        f"-> {McpConfig.DOCFORGE_API_URL} (auth delegated to DocForge; front with TLS in production)"
     )
     try:
         uvicorn.run(app, host=McpConfig.MCP_HOST, port=McpConfig.MCP_PORT)
     finally:
-        asyncio.run(sdk.aclose())
+        asyncio.run(provider.aclose())
 
 
 if __name__ == "__main__":

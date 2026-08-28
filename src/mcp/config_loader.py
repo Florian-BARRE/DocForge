@@ -49,15 +49,19 @@ class McpConfig(EnvConfigLoader):
     DOCFORGE_API_URL: str = env("DOCFORGE_API_URL", default="http://localhost:8000")
     # Per-request timeout (seconds) for SDK HTTP calls.
     MCP_API_TIMEOUT_S: int = env("MCP_API_TIMEOUT_S", cast=int, default="60")
-    # Bearer token sent on every outbound request to the DocForge REST API when AUTH_ENABLED=true
-    # on the docforge side. Must match the DocForge AUTH_ROOT_API_KEY or any per-user API key
-    # registered in the DB. Leave empty only when targeting a DocForge instance with auth disabled.
-    # The name contains "TOKEN" so configplusplus auto-masks this value in log output.
+    # Fallback bearer token used for outbound DocForge API calls: always for stdio, and for any
+    # streamable-http request that carries no Authorization header of its own. An HTTP request
+    # THAT DOES carry a bearer forwards it upstream unchanged instead (see libs/scoped_sdk.py) —
+    # auth is delegated to DocForge, one API key gives the same rights on the API and via the MCP.
+    # Leave empty only when targeting a DocForge instance with auth disabled. The name contains
+    # "TOKEN" so configplusplus auto-masks this value in log output.
     DOCFORGE_API_TOKEN: str = env("DOCFORGE_API_TOKEN", required=False, default="")
 
     # ───── MCP transport ─────
     # "stdio"        → local Claude Desktop / Claude Code (protocol over stdin/stdout).
-    # "streamable-http" → long-lived container service (HTTP, behind the bearer middleware).
+    # "streamable-http" → long-lived container service. No separate MCP-level auth gate: each
+    # request's own "Authorization: Bearer <docforge-api-key>" is forwarded upstream as-is, so
+    # DocForge's own authN/authZ enforces access. TLS must front this port in production.
     MCP_TRANSPORT: str = env("MCP_TRANSPORT", default="stdio")
     # Bind address — must be 0.0.0.0 inside a container to be reachable from the host.
     MCP_HOST: str = env("MCP_HOST", default="0.0.0.0")
@@ -65,9 +69,6 @@ class McpConfig(EnvConfigLoader):
     MCP_PORT: int = env("MCP_PORT", cast=int, default="9000")
     # URL path the streamable-http endpoint is served on.
     MCP_HTTP_PATH: str = env("MCP_HTTP_PATH", default="/mcp")
-    # Shared bearer token required on every HTTP request. Empty is only valid in stdio mode;
-    # the entry point refuses to start an HTTP server without it. Auto-masked when printed.
-    MCP_AUTH_TOKEN: str = env("MCP_AUTH_TOKEN", required=False, default="")
 
 
 # ─── Apply logging configuration AFTER class definition ───
