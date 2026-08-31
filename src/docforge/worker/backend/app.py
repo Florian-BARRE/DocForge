@@ -14,6 +14,8 @@ from config import RUNTIME_CONFIG
 from .libs.jobs import (
     backfill_collection_filters,
     backfill_collection_meta_vectors,
+    export_collection,
+    import_collection,
     ingest_document,
     reap_stuck_jobs,
 )
@@ -43,14 +45,17 @@ def create_worker_settings() -> type:
             ingest_document,
             backfill_collection_filters,
             backfill_collection_meta_vectors,
+            export_collection,
+            import_collection,
         ]
         cron_jobs = reaper_crons
         on_startup = startup
         on_shutdown = shutdown
         redis_settings = RedisSettings.from_dsn(RUNTIME_CONFIG.REDIS_URL)
         max_jobs = RUNTIME_CONFIG.WORKER_CONCURRENCY
-        # arq's own cap sits ABOVE the engine's per-run timeout (the engine cancels first). The grace
-        # is the SAME env the app enqueue side reads, so the two can never diverge.
+        # arq's UNIFORM worker-level cap = the global budget + grace, a backstop ABOVE the engine's
+        # per-collection timeout (which fires first, per collection). arq has no per-message timeout,
+        # so this same cap applies to every job; a per-collection budget above it is capped by it.
         job_timeout = (
             RUNTIME_CONFIG.WORKER_JOB_TIMEOUT_SECONDS
             + RUNTIME_CONFIG.WORKER_JOB_TIMEOUT_GRACE_SECONDS

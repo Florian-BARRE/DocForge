@@ -62,6 +62,39 @@ class QueueClient(LoggerClass):
         await pool.enqueue_job("ingest_document", document_id, job_id)
         self.logger.info(f"Enqueued ingestion for document {document_id} (job {job_id})")
 
+    async def enqueue_export(self, collection_id: str, transfer_id: str) -> None:
+        """
+        Enqueue one collection EXPORT — the message carries IDS ONLY (retry-safe, light).
+
+        Mirrors ``enqueue_ingest``: no arq control kwarg (``_job_timeout`` and friends) ever rides the
+        wire — arq would serialize an unknown kwarg as a task argument and crash ``export_collection``.
+        The worker drives the pre-created ``collection_transfer`` row through its lifecycle.
+
+        Args:
+            collection_id (str): The collection to export (UUID as string; the queue carries strings).
+            transfer_id (str): The pre-created tracking row's id (UUID as string).
+        """
+        pool = await self.__get_pool()
+        await pool.enqueue_job("export_collection", collection_id, transfer_id)
+        self.logger.info(f"Enqueued export for collection {collection_id} (transfer {transfer_id})")
+
+    async def enqueue_import(self, s3_key: str, transfer_id: str, target_name: str | None) -> None:
+        """
+        Enqueue one collection IMPORT — the message carries IDS/SCALARS ONLY (retry-safe, light).
+
+        The uploaded bundle is already staged in S3 under ``s3_key``; the worker downloads, validates
+        and restores it as a brand-new collection. As with every enqueue call, NO arq control kwarg is
+        passed (an unknown kwarg lands as a task argument and crashes ``import_collection``).
+
+        Args:
+            s3_key (str): The staged bundle's object key in S3.
+            transfer_id (str): The pre-created tracking row's id (UUID as string).
+            target_name (str | None): Optional name for the new collection (collision → renamed).
+        """
+        pool = await self.__get_pool()
+        await pool.enqueue_job("import_collection", s3_key, transfer_id, target_name)
+        self.logger.info(f"Enqueued import from {s3_key} (transfer {transfer_id})")
+
     async def enqueue_backfill(self, collection_id: str) -> None:
         """
         Enqueue the two collection-wide backfill repairs (filter payloads + meta vectors).

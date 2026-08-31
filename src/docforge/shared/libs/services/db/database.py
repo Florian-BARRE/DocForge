@@ -18,6 +18,7 @@ from shared_libs.services.db.s3 import S3Client
 from .facades import (
     AuthFacade,
     CollectionsFacade,
+    CollectionTransferFacade,
     DocumentsFacade,
     EnablementFacade,
     FilterSyncFacade,
@@ -26,6 +27,7 @@ from .facades import (
     MetaVectorSyncFacade,
     SearchFacade,
     StorageFootprintFacade,
+    TransferTrackerFacade,
 )
 
 
@@ -44,6 +46,9 @@ class Database(LoggerClass):
         jobs (JobsFacade): Ingestion job lifecycle + stage timeline.
         auth (AuthFacade): User accounts + API keys.
         storage (StorageFootprintFacade): On-demand material footprint (S3 + Postgres + Qdrant).
+        transfer (CollectionTransferFacade): The collection export/import store gateway (streamed
+            reads, id-preserving restore writes, rollback).
+        transfer_tracker (TransferTrackerFacade): The collection-transfer tracking-row lifecycle.
     """
 
     def __init__(self, postgres: PostgresClient, qdrant: QdrantClient, s3: S3Client) -> None:
@@ -69,6 +74,8 @@ class Database(LoggerClass):
         self.jobs = JobsFacade(postgres)
         self.auth = AuthFacade(postgres)
         self.storage = StorageFootprintFacade(postgres, qdrant)
+        self.transfer = CollectionTransferFacade(postgres, qdrant, s3)
+        self.transfer_tracker = TransferTrackerFacade(postgres)
         self.logger.info(f"Database facade ready (postgres + qdrant + s3)")
 
     async def ensure_object_store(self) -> None:

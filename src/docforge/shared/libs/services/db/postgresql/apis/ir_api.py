@@ -103,5 +103,19 @@ class IRApi:
         )
         return list(result.scalars().all())
 
+    @staticmethod
+    async def get_document_attempts(
+        session: AsyncSession, document_id: uuid.UUID
+    ) -> list[EnrichmentAttempt]:
+        """Return every enrichment-attempt trace of a document's enrichments (the export read)."""
+        result = await session.execute(
+            select(EnrichmentAttempt)
+            .join(BlockEnrichment, EnrichmentAttempt.block_enrichment_id == BlockEnrichment.id)
+            .join(Block, BlockEnrichment.block_id == Block.id)
+            .where(Block.document_id == document_id)
+            .order_by(EnrichmentAttempt.position)
+        )
+        return list(result.scalars().all())
+
 
 __all__ = ["IRApi"]

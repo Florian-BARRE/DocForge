@@ -6,5 +6,17 @@ from .worker_heartbeat import WorkerHeartbeat
 # ---------------------- Config history ---------------------- #
 from .config_version import ConfigVersion
 
+# ---------------------- Collection transfer ---------------------- #
+from .collection_transfer import CollectionTransfer, TransferKind, TransferStatus
+
 # ------------------- Public API ------------------- #
-__all__ = ["Job", "JobStatus", "JobStageEvent", "WorkerHeartbeat", "ConfigVersion"]
+__all__ = [
+    "Job",
+    "JobStatus",
+    "JobStageEvent",
+    "WorkerHeartbeat",
+    "ConfigVersion",
+    "CollectionTransfer",
+    "TransferKind",
+    "TransferStatus",
+]

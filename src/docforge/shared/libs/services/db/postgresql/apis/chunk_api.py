@@ -7,6 +7,7 @@
 # ====== Standard Library Imports ======
 import uuid
 from collections.abc import Sequence
+from typing import Any
 
 # ====== Third-Party Library Imports ======
 from sqlalchemy import delete, select, update
@@ -16,7 +17,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 # ====== Internal Project Imports ======
 from shared_libs.public_models import FieldOrigin
 
-from ..tables import Block, Chunk, ChunkBlock, ChunkMetadata, Document, EntityMention
+from ..tables import (
+    Block,
+    Chunk,
+    ChunkBlock,
+    ChunkMetadata,
+    Document,
+    EntityMention,
+    MetadataField,
+)
 
 
 class ChunkApi:
@@ -180,6 +189,42 @@ class ChunkApi:
             .order_by(ChunkBlock.chunk_id, ChunkBlock.position)
         )
         return list(result.scalars().all())
+
+    @staticmethod
+    async def get_entities_for_document(
+        session: AsyncSession, document_id: uuid.UUID
+    ) -> list[EntityMention]:
+        """Return every entity mention of a document's chunks in ONE query (the export read)."""
+        result = await session.execute(
+            select(EntityMention)
+            .join(Chunk, EntityMention.chunk_id == Chunk.id)
+            .where(Chunk.document_id == document_id)
+        )
+        return list(result.scalars().all())
+
+    @staticmethod
+    async def get_metadata_with_names_for_document(
+        session: AsyncSession, document_id: uuid.UUID
+    ) -> list[tuple[uuid.UUID, str, Any, FieldOrigin]]:
+        """
+        Return (chunk_id, field_name, value, origin) for a document's chunk metadata — export shape.
+
+        The field NAME travels instead of the autoincrement ``field_id`` so a bundle stays portable:
+        the importer re-resolves the value to the freshly-minted field id by name, never by the old
+        integer key (which is re-assigned on the target server).
+        """
+        result = await session.execute(
+            select(
+                ChunkMetadata.chunk_id,
+                MetadataField.field_name,
+                ChunkMetadata.value,
+                ChunkMetadata.origin,
+            )
+            .join(MetadataField, MetadataField.id == ChunkMetadata.field_id)
+            .join(Chunk, Chunk.id == ChunkMetadata.chunk_id)
+            .where(Chunk.document_id == document_id)
+        )
+        return [(row[0], row[1], row[2], row[3]) for row in result.all()]
 
     @staticmethod
     async def get_metadata_for_document(

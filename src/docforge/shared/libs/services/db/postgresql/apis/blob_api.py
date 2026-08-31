@@ -62,6 +62,16 @@ class BlobApi:
         return await session.get(Blob, content_hash)
 
     @staticmethod
+    async def get_many(session: AsyncSession, content_hashes: Sequence[str]) -> list[Blob]:
+        """Fetch registry rows for a set of content hashes (the export blob-manifest read)."""
+        if not content_hashes:
+            return []
+        result = await session.execute(
+            select(Blob).where(Blob.content_hash.in_(list(content_hashes)))
+        )
+        return list(result.scalars().all())
+
+    @staticmethod
     async def collections_for_hash(session: AsyncSession, content_hash: str) -> list[uuid.UUID]:
         """
         Return every collection whose documents reference this content-addressed blob.

@@ -30,7 +30,16 @@ from .ir import (
 from .chunks import Chunk, ChunkBlock, ChunkMetadata, EntityMention
 
 # ---------------------- Observability ---------------------- #
-from .observability import ConfigVersion, Job, JobStageEvent, JobStatus, WorkerHeartbeat
+from .observability import (
+    CollectionTransfer,
+    ConfigVersion,
+    Job,
+    JobStageEvent,
+    JobStatus,
+    TransferKind,
+    TransferStatus,
+    WorkerHeartbeat,
+)
 
 # ---------------------- Authentication ---------------------- #
 from .authentication import ApiKey, AppUser, UserRole
@@ -75,6 +84,9 @@ __all__ = [
     "JobStageEvent",
     "WorkerHeartbeat",
     "ConfigVersion",
+    "CollectionTransfer",
+    "TransferKind",
+    "TransferStatus",
     # authentication
     "AppUser",
     "UserRole",

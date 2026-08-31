@@ -261,6 +261,24 @@ class DocumentApi:
         return list(result.scalars().all())
 
     @staticmethod
+    async def get_metadata_with_names(
+        session: AsyncSession, document_id: uuid.UUID
+    ) -> list[tuple[str, Any, FieldOrigin]]:
+        """
+        Return (field_name, value, origin) for every metadata value of a document — the export shape.
+
+        The field NAME travels instead of the autoincrement ``field_id`` so a bundle stays portable:
+        the importer re-resolves the value to the freshly-minted field id by name (the integer key
+        is re-assigned on the target server).
+        """
+        result = await session.execute(
+            select(MetadataField.field_name, DocumentMetadata.value, DocumentMetadata.origin)
+            .join(MetadataField, MetadataField.id == DocumentMetadata.field_id)
+            .where(DocumentMetadata.document_id == document_id)
+        )
+        return [(name, value, origin) for name, value, origin in result.all()]
+
+    @staticmethod
     async def get_metadata_for_documents(
         session: AsyncSession, document_ids: Sequence[uuid.UUID]
     ) -> dict[uuid.UUID, list[DocumentMetadata]]:

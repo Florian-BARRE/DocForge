@@ -8,6 +8,7 @@ from .chunk_api import ChunkApi
 from .job_api import JobApi
 from .auth_api import AuthApi
 from .storage_footprint_api import StorageFootprintApi
+from .transfer_api import TransferApi
 
 # ---------------------- Query spec (grid filter/sort) ---------------------- #
 from .document_query_spec import (
@@ -29,6 +30,7 @@ __all__ = [
     "JobApi",
     "AuthApi",
     "StorageFootprintApi",
+    "TransferApi",
     "DocumentQuerySpec",
     "MetadataCondition",
     "MetadataOp",

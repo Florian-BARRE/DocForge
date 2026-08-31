@@ -25,6 +25,7 @@ from .routers import (
     pipelines_router,
     scalar_router,
     search_router,
+    transfers_router,
 )
 
 
@@ -62,6 +63,9 @@ def create_app(
     # API v1 — admission (upload → enqueue) and live ingestion status.
     app.include_router(router=documents_router, prefix="/api/v1")
     app.include_router(router=jobs_router, prefix="/api/v1")
+
+    # API v1 — collection export/import (async bundle transfer + status + download delivery).
+    app.include_router(router=transfers_router, prefix="/api/v1")
 
     # API v1 — the document explorer (read surface) and the blob byte stream.
     app.include_router(router=explorer_router, prefix="/api/v1")

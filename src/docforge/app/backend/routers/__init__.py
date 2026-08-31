@@ -22,6 +22,9 @@ from .blobs.router import router as blobs_router
 # -------------------- Jobs (ingestion status) ------------------- #
 from .jobs.router import router as jobs_router
 
+# -------------------- Transfers (collection export/import) ------------------- #
+from .transfers.router import router as transfers_router
+
 # -------------------- Pipelines (design surface) ------------------- #
 from .pipelines.router import router as pipelines_router
 
@@ -41,6 +44,7 @@ __all__ = [
     "search_router",
     "blobs_router",
     "jobs_router",
+    "transfers_router",
     "pipelines_router",
     "scalar_router",
     "health_router",

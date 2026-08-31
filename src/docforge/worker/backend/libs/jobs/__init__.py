@@ -5,6 +5,9 @@ from .core import ingest_document
 from .backfill import backfill_collection_filters, backfill_collection_meta_vectors
 from .reaper import reap_stuck_jobs
 
+# ---------------------- Collection transfer jobs ---------------------- #
+from .transfer import export_collection, import_collection
+
 # ---------------------- Live progress ---------------------- #
 from .progress import JobProgressRecorder
 
@@ -17,6 +20,8 @@ __all__ = [
     "backfill_collection_filters",
     "backfill_collection_meta_vectors",
     "reap_stuck_jobs",
+    "export_collection",
+    "import_collection",
     "JobProgressRecorder",
     "CancellationGuard",
     "JobCancelledError",

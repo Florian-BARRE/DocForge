@@ -109,13 +109,11 @@ class RUNTIME_CONFIG(EnvConfigLoader):
     WORKER_PRUNE_STALE_SECONDS: int = env("WORKER_PRUNE_STALE_SECONDS", cast=int, default=180)
 
     # ───── Queue (enqueue only — the worker executes) ─────
+    # The message carries IDS ONLY; the per-collection run budget is applied by the WORKER (it reads
+    # collection.job_timeout_seconds and hands it to the engine). arq has no per-message timeout, so
+    # the app never threads a timeout onto the enqueue — WORKER_JOB_TIMEOUT_GRACE_SECONDS lives in the
+    # worker config alone (its WorkerSettings backstop), not here.
     REDIS_URL = env("REDIS_URL")
-    # arq's outer per-job cap = the collection's run budget + this grace, so arq's cap sits ABOVE the
-    # engine's clean timeout (which fires first). The worker sources the SAME env in its own config —
-    # one wall-clock contract, no drift between the enqueue side and the WorkerSettings side.
-    WORKER_JOB_TIMEOUT_GRACE_SECONDS: float = env(
-        "WORKER_JOB_TIMEOUT_GRACE_SECONDS", cast=float, default=60.0
-    )
 
     # ───── Stores (admission writes + status/collection reads; never pipeline execution) ─────
     POSTGRES_DSN = env("POSTGRES_DSN")
@@ -129,6 +127,13 @@ class RUNTIME_CONFIG(EnvConfigLoader):
     S3_SECRET_KEY = env("S3_SECRET_KEY")
     S3_BUCKET = env("S3_BUCKET")
     S3_REGION = env("S3_REGION", default="us-east-1")
+
+    # ───── Collection export/import (portable bundles) ─────
+    # S3 key prefix an UPLOADED import bundle is staged under before the worker consumes it (kept
+    # distinct from the worker's EXPORT_BUNDLE_PREFIX so produced exports and staged imports do not
+    # collide). The staged object is content-addressed by a fresh UUID; a GC sweep of this prefix
+    # reclaims bundles whose import never completed.
+    IMPORT_STAGING_PREFIX = env("IMPORT_STAGING_PREFIX", default="collection-imports")
 
     # ───── Logging ─────
     LOGGING_CONSOLE_LEVEL = env("LOGGING_CONSOLE_LEVEL")

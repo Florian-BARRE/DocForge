@@ -5,7 +5,8 @@
 # the way the Postgres apis run against a session.
 
 # ====== Standard Library Imports ======
-from collections.abc import Sequence
+import os
+from collections.abc import AsyncIterator, Sequence
 from typing import Any
 
 # ====== Local Project Imports ======
@@ -32,6 +33,79 @@ class S3ObjectApi:
         response = await client.get_object(Bucket=bucket, Key=key)
         async with response["Body"] as stream:
             return await stream.read()
+
+    @staticmethod
+    async def put_file(client: Any, bucket: str, key: str, path: Any, content_type: str) -> int:
+        """
+        Upload a file's bytes at ``path`` under ``key`` WITHOUT loading it into memory.
+
+        Used to publish a large collection-export bundle: the open file handle is streamed as the
+        request body (a plain PUT sends it with a known Content-Length). Returns the byte size.
+
+        Args:
+            client (Any): The S3 client from S3Client.client().
+            bucket (str): The target bucket.
+            key (str): The object key.
+            path (Any): The local file path to upload.
+            content_type (str): The object's content type.
+
+        Returns:
+            int: The uploaded object's size in bytes.
+        """
+        size = os.path.getsize(path)
+        with open(path, "rb") as handle:
+            await client.put_object(
+                Bucket=bucket,
+                Key=key,
+                Body=handle,
+                ContentType=content_type,
+                ContentLength=size,
+            )
+        return size
+
+    @staticmethod
+    async def download_to(client: Any, bucket: str, key: str, path: Any) -> None:
+        """
+        Stream an object's bytes to a local file at ``path`` in bounded chunks (never whole in memory).
+
+        The read side of ``put_file`` — used to fetch a collection-export bundle before extraction.
+        """
+        response = await client.get_object(Bucket=bucket, Key=key)
+        # Use the StreamingBody's async chunk iterator rather than a sized ``read(n)``: under
+        # ``async with`` the body can unwrap to a raw aiohttp ClientResponse whose ``read()`` rejects
+        # a size argument. ``iter_chunks`` is the portable path (see S3ObjectApi.stream).
+        with open(path, "wb") as handle:
+            async for chunk in response["Body"].iter_chunks(1024 * 1024):
+                if chunk:
+                    handle.write(chunk)
+
+    @staticmethod
+    async def stream(
+        client: Any, bucket: str, key: str, chunk_size: int = 1024 * 1024
+    ) -> AsyncIterator[bytes]:
+        """
+        Yield an object's bytes in bounded chunks, never the whole object in memory.
+
+        The delivery read side of ``put_file``: used to stream a collection-export bundle straight to
+        an HTTP client behind auth (a ``StreamingResponse``) without buffering a multi-GB file. The
+        caller must keep the ``client`` scope open for the lifetime of the iteration.
+
+        Args:
+            client (Any): The S3 client from S3Client.client().
+            bucket (str): The source bucket.
+            key (str): The object key.
+            chunk_size (int): The per-read window in bytes.
+
+        Yields:
+            bytes: The next window of the object's bytes.
+        """
+        response = await client.get_object(Bucket=bucket, Key=key)
+        # aiobotocore's StreamingBody exposes an async chunk iterator; use it rather than a sized
+        # ``read(n)`` — under ``async with`` the body can unwrap to a raw aiohttp ClientResponse
+        # whose ``read()`` rejects a size argument, so ``iter_chunks`` is the portable path.
+        async for chunk in response["Body"].iter_chunks(chunk_size):
+            if chunk:
+                yield chunk
 
     @staticmethod
     async def delete(client: Any, bucket: str, key: str) -> None:

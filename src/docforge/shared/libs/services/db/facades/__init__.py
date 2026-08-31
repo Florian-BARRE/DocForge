@@ -1,6 +1,7 @@
 # ---------------------- Shared conventions & payloads ---------------------- #
 from .helpers import DatabaseHelpers
 from .payloads import ChunkToggle, IngestionPayload, IRBundle
+from .transfer_payloads import DocumentExportRows
 from .storage_footprint_payloads import (
     CollectionFootprint,
     DocumentFootprint,
@@ -20,6 +21,8 @@ from .search_facade import SearchFacade
 from .jobs_facade import JobsFacade
 from .auth_facade import AuthFacade
 from .storage_footprint_facade import StorageFootprintFacade
+from .transfer_facade import CollectionTransferFacade
+from .transfer_tracker_facade import TransferTrackerFacade
 
 # ------------------- Public API ------------------- #
 __all__ = [
@@ -27,6 +30,7 @@ __all__ = [
     "ChunkToggle",
     "IngestionPayload",
     "IRBundle",
+    "DocumentExportRows",
     "CollectionFootprint",
     "DocumentFootprint",
     "S3Footprint",
@@ -42,4 +46,6 @@ __all__ = [
     "JobsFacade",
     "AuthFacade",
     "StorageFootprintFacade",
+    "CollectionTransferFacade",
+    "TransferTrackerFacade",
 ]

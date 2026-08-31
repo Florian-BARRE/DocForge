@@ -57,6 +57,16 @@ class RUNTIME_CONFIG(EnvConfigLoader):
     S3_BUCKET = env("S3_BUCKET")
     S3_REGION = env("S3_REGION", default="us-east-1")
 
+    # ───── Collection export/import (portable bundles) ─────
+    # Stamped into a bundle's manifest as provenance (sourced from the deployment's pinned image tag).
+    DOCFORGE_VERSION = env("DOCFORGE_TAG", required=False, default="unknown")
+    # The S3 key prefix export bundles are published under (NOT content-addressed blobs).
+    EXPORT_BUNDLE_PREFIX = env("EXPORT_BUNDLE_PREFIX", default="collection-exports")
+    # Bundle compression codec: "zstd" (default) or "none".
+    EXPORT_COMPRESSION = env("EXPORT_COMPRESSION", default="zstd")
+    # How long an exported bundle object is retained before it may be garbage-collected (seconds).
+    EXPORT_TTL_SECONDS = env("EXPORT_TTL_SECONDS", cast=int, default=604800)
+
     # ───── Stores — client tuning ─────
     # Per-request Qdrant timeout. The qdrant-client default (5s) is too low for heavy vector upserts
     # indexed with wait=true; 60s covers a heavy batch. Passed into QdrantClient at construction.
