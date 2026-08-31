@@ -7,6 +7,9 @@ export const METADATA_PREFIX = "meta:";
 
 export type ColumnFilterKind = "text" | "enumMulti" | "bool" | "numberRange" | "dateRange" | "listIn";
 
+/** Which section of the column-visibility menu a column belongs to. */
+export type ColumnGroup = "document" | "system" | "generated" | "user";
+
 export interface TextFilterValue { kind: "text"; contains: string }
 export interface EnumFilterValue { kind: "enumMulti"; values: string[] }
 export interface BoolFilterValue { kind: "bool"; value: boolean | null }

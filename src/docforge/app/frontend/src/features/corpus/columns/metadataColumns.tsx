@@ -42,7 +42,10 @@ export function buildMetadataColumns(fields: FieldSpec[]): ColumnDef<DocumentGri
       return {
         id: metadataColumnId(field.field_name),
         header: field.field_name,
-        meta: filterKind ? { filterKind, enumOptions: field.enum_values ?? undefined } : undefined,
+        meta: {
+          group: field.origin,
+          ...(filterKind ? { filterKind, enumOptions: field.enum_values ?? undefined } : {}),
+        },
         accessorFn: (row) => row.metadata[field.field_name],
         cell: ({ row }) => <MetadataValueCell value={row.original.metadata[field.field_name]} />,
       } satisfies ColumnDef<DocumentGridRow>;

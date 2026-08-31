@@ -28,7 +28,7 @@ export function buildBaseColumns({ onOpen, onEnabledChanged, supportedFormats }:
       id: "filename",
       accessorKey: "filename",
       header: "Filename",
-      meta: { filterKind: "text" },
+      meta: { filterKind: "text", group: "document" },
       cell: ({ row }) => (
         <button
           onClick={() => onOpen(row.original.id)}
@@ -46,56 +46,56 @@ export function buildBaseColumns({ onOpen, onEnabledChanged, supportedFormats }:
       id: "status",
       accessorKey: "status",
       header: "Status",
-      meta: { filterKind: "enumMulti", enumOptions: ["pending", "processing", "done", "failed"] },
+      meta: { filterKind: "enumMulti", enumOptions: ["pending", "processing", "done", "failed"], group: "document" },
       cell: ({ row }) => <CorpusStatusChip status={row.original.status} />,
     },
     {
       id: "format",
       accessorKey: "format",
       header: "Format",
-      meta: { filterKind: "enumMulti", enumOptions: supportedFormats },
+      meta: { filterKind: "enumMulti", enumOptions: supportedFormats, group: "document" },
       cell: ({ row }) => <Chip tone="neutral">{row.original.format}</Chip>,
     },
     {
       id: "page_count",
       accessorKey: "page_count",
       header: "Pages",
-      meta: { filterKind: "numberRange", mono: true, align: "right" },
+      meta: { filterKind: "numberRange", mono: true, align: "right", group: "document" },
       cell: ({ row }) => row.original.page_count ?? "—",
     },
     {
       id: "file_size",
       accessorKey: "file_size",
       header: "Size",
-      meta: { filterKind: "numberRange", mono: true, align: "right" },
+      meta: { filterKind: "numberRange", mono: true, align: "right", group: "document" },
       cell: ({ row }) => formatBytes(row.original.file_size),
     },
     {
       id: "created_at",
       accessorKey: "created_at",
       header: "Created",
-      meta: { filterKind: "dateRange", mono: true },
+      meta: { filterKind: "dateRange", mono: true, group: "document" },
       cell: ({ row }) => formatDateTime(row.original.created_at),
     },
     {
       id: "title",
       accessorKey: "title",
       header: "Title",
-      meta: { filterKind: "text" },
+      meta: { filterKind: "text", group: "document" },
       cell: ({ row }) => <span style={truncateStyle}>{row.original.title || "—"}</span>,
     },
     {
       id: "language",
       accessorKey: "language",
       header: "Language",
-      meta: { filterKind: "listIn" },
+      meta: { filterKind: "listIn", group: "document" },
       cell: ({ row }) => row.original.language ?? "—",
     },
     {
       id: "enabled",
       accessorKey: "enabled",
       header: "Enabled",
-      meta: { filterKind: "bool" },
+      meta: { filterKind: "bool", group: "document" },
       cell: ({ row }) => (
         <CorpusEnabledToggle
           documentId={row.original.id}
