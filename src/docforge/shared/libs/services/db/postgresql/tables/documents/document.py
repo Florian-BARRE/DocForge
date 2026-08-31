@@ -9,7 +9,16 @@ import uuid
 from enum import StrEnum
 
 # ====== Third-Party Library Imports ======
-from sqlalchemy import BigInteger, Boolean, ForeignKey, Integer, String, UniqueConstraint, text
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 # ====== Local Project Imports ======
@@ -37,7 +46,18 @@ class Document(Base, UUIDPrimaryKey, TimestampedMixin):
     """Catalogue record for one ingested document."""
 
     __tablename__ = "document"
-    __table_args__ = (UniqueConstraint("collection_id", "source_hash", "pipeline_version"),)
+    # Read-path indexes for the server-side document grid (filter/sort at 100k docs). Created by
+    # migration c3e9a1f7d2b4; declared here so ``--autogenerate`` reconciles them instead of dropping
+    # them. The metadata-side functional index ``ix_docmeta_field_value_text`` and GIN index
+    # ``ix_docmeta_value_gin`` are intentionally left migration-only (expression/GIN indexes compare
+    # unreliably under autogenerate) — see ``DocumentMetadata``.
+    __table_args__ = (
+        UniqueConstraint("collection_id", "source_hash", "pipeline_version"),
+        Index("ix_document_collection_created_at", "collection_id", text("created_at DESC")),
+        Index("ix_document_collection_status", "collection_id", "status"),
+        Index("ix_document_collection_filename", "collection_id", "filename"),
+        Index("ix_document_collection_enabled", "collection_id", "enabled"),
+    )
 
     collection_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("collection.id", ondelete="CASCADE"), nullable=False

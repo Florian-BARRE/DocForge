@@ -132,6 +132,50 @@ class BlobApi:
         return list(hashes)
 
     @staticmethod
+    async def collect_hashes_for_documents(
+        session: AsyncSession, document_ids: Sequence[uuid.UUID]
+    ) -> list[str]:
+        """
+        Gather every blob hash a SET of documents uses — the batched purge-candidate collector.
+
+        The set-based sibling of ``collect_hashes_for_document``: three ``IN``-scoped queries for a
+        whole batch of documents (own blobs, page renders, figure crops) instead of ~3 per document,
+        so a mass delete stays a handful of round-trips per batch rather than O(N).
+
+        Args:
+            session (AsyncSession): The unit of work.
+            document_ids (Sequence[uuid.UUID]): The documents whose blob hashes are collected.
+
+        Returns:
+            list[str]: The distinct candidate hashes (feed to ``find_unreferenced`` after the delete).
+        """
+        if not document_ids:
+            return []
+        hashes: set[str] = set()
+        # 1. Every document's own blobs (original + canonical PDF).
+        documents = await session.execute(
+            select(Document.source_hash, Document.pdf_blob_hash).where(
+                Document.id.in_(document_ids)
+            )
+        )
+        for source_hash, pdf_hash in documents.all():
+            hashes.add(source_hash)
+            if pdf_hash is not None:
+                hashes.add(pdf_hash)
+        # 2. Every page render and figure crop across the batch.
+        pages = await session.execute(
+            select(Page.render_blob_hash).where(Page.document_id.in_(document_ids))
+        )
+        figures = await session.execute(
+            select(BlockFigure.crop_blob_hash)
+            .join(Block, BlockFigure.block_id == Block.id)
+            .where(Block.document_id.in_(document_ids))
+        )
+        hashes.update(h for h in pages.scalars() if h is not None)
+        hashes.update(h for h in figures.scalars() if h is not None)
+        return list(hashes)
+
+    @staticmethod
     async def collect_hashes_for_collection(
         session: AsyncSession, collection_id: uuid.UUID
     ) -> list[str]:

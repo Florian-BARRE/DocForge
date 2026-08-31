@@ -12,7 +12,14 @@ from collections.abc import Sequence
 from loggerplusplus import LoggerClass
 
 from shared_libs.services.db.postgresql import PostgresClient
-from shared_libs.services.db.postgresql.apis import BlobApi, ChunkApi, DocumentApi, IRApi
+from shared_libs.services.db.postgresql.apis import (
+    BlobApi,
+    ChunkApi,
+    DocumentApi,
+    DocumentQueryApi,
+    DocumentQuerySpec,
+    IRApi,
+)
 from shared_libs.services.db.postgresql.tables import (
     Chunk,
     ChunkBlock,
@@ -60,6 +67,45 @@ class DocumentsFacade(LoggerClass):
         """Return a collection's documents, newest first."""
         async with self._postgres.session() as session:
             return await DocumentApi.list_for_collection(session, collection_id)
+
+    # -------------------- grid query --------------------
+    async def query(
+        self, collection_id: uuid.UUID, spec: DocumentQuerySpec, limit: int, offset: int
+    ) -> tuple[list[Document], int]:
+        """
+        Return one filtered/sorted/paginated page of a collection's documents + the total match count.
+
+        The page rows and the count run under the SAME predicates in one session, so the total the
+        grid pager shows can never disagree with the rows it renders. Metadata bulk-load is a
+        SEPARATE call (``get_metadata_for_documents``) keyed on the returned page ids — no N+1.
+
+        Args:
+            collection_id (uuid.UUID): The owning collection (always the first predicate).
+            spec (DocumentQuerySpec): The fully-resolved filter + sort.
+            limit (int): Page size (the caller clamps it to the configured ceiling).
+            offset (int): Page offset (deep offsets are acceptable for v1; see the contract note).
+
+        Returns:
+            tuple[list[Document], int]: the page of rows, and the total number of matches.
+        """
+        async with self._postgres.session() as session:
+            rows = await DocumentQueryApi.query(session, collection_id, spec, limit, offset)
+            total = await DocumentQueryApi.count(session, collection_id, spec)
+        return rows, total
+
+    async def resolve_query_ids(
+        self, collection_id: uuid.UUID, spec: DocumentQuerySpec
+    ) -> list[uuid.UUID]:
+        """Return every document id matching a filter — the concrete target set of a filter-selector."""
+        async with self._postgres.session() as session:
+            return await DocumentQueryApi.resolve_ids(session, collection_id, spec)
+
+    async def get_metadata_for_documents(
+        self, document_ids: Sequence[uuid.UUID]
+    ) -> dict[uuid.UUID, list[DocumentMetadata]]:
+        """Bulk-load every metadata value for a page of documents, grouped by document (no N+1)."""
+        async with self._postgres.session() as session:
+            return await DocumentApi.get_metadata_for_documents(session, document_ids)
 
     async def get_metadata(self, document_id: uuid.UUID) -> list[DocumentMetadata]:
         """Return the document's metadata values."""
@@ -182,6 +228,73 @@ class DocumentsFacade(LoggerClass):
                 await S3ObjectApi.delete_many(s3, self._s3.bucket, orphans)
         self.logger.info(f"Document {document_id} deleted ({len(orphans)} blobs purged)")
         return True
+
+    async def delete_many(self, document_ids: Sequence[uuid.UUID]) -> int:
+        """
+        Delete a SET of documents everywhere, in bounded batches, in the single-delete's coherent order.
+
+        Generalises ``delete`` for the 100k-scale bulk path WITHOUT a long single transaction: the
+        target set is processed in bounded chunks (``_DELETE_BATCH_SIZE``), each chunk one short
+        transaction that is fully set-based (no per-document round-trip) — Qdrant points first (one
+        ``MatchAny`` per collection so the vectors are gone before any search could return them), then
+        the Postgres cascade (``DELETE ... WHERE id IN``), then the reference-filtered blob purge (a
+        blob still referenced by a surviving document — even one in a later batch — is kept), and S3
+        last, after each chunk's commit, so a failed object delete only leaves harmless orphans. The
+        whole matched set is always processed (no silent cap — unlike the reingest fan-out).
+
+        Args:
+            document_ids (Sequence[uuid.UUID]): The already-resolved, already-authorised targets.
+
+        Returns:
+            int: How many documents actually existed and were deleted.
+        """
+        # 1. De-duplicate while preserving order; nothing to do on an empty set.
+        unique_ids = list(dict.fromkeys(document_ids))
+        if not unique_ids:
+            return 0
+
+        # 2. Delete in bounded batches so transaction/lock/memory footprint stays flat at any scale.
+        total_deleted = 0
+        for start in range(0, len(unique_ids), _DELETE_BATCH_SIZE):
+            batch = unique_ids[start : start + _DELETE_BATCH_SIZE]
+            total_deleted += await self._delete_batch(batch)
+        self.logger.info(f"Bulk-deleted {total_deleted} document(s) across {len(unique_ids)} target(s)")
+        return total_deleted
+
+    async def _delete_batch(self, batch: Sequence[uuid.UUID]) -> int:
+        """Delete one bounded batch coherently (Qdrant points → PG cascade → orphan-only S3 purge)."""
+        async with self._postgres.session() as session:
+            # 1. Resolve the LIVE targets in this batch and group them by their Qdrant collection.
+            documents = await DocumentApi.get_by_ids(session, batch)
+            if not documents:
+                return 0
+            live_ids = [document.id for document in documents]
+            by_collection: dict[uuid.UUID, list[uuid.UUID]] = {}
+            for document in documents:
+                by_collection.setdefault(document.collection_id, []).append(document.id)
+
+            # 2. Derived index first — purge every collection's points before the PG cascade.
+            for collection_id, ids in by_collection.items():
+                name = DatabaseHelpers.qdrant_collection_name(collection_id)
+                await QdrantIndexApi.delete_by_documents(self._qdrant.raw, name, ids)
+
+            # 3. Candidates (batched), set-based cascade delete, then keep only true orphans.
+            candidates = await BlobApi.collect_hashes_for_documents(session, live_ids)
+            deleted = await DocumentApi.delete_many(session, live_ids)
+            await session.flush()
+            orphans = await BlobApi.find_unreferenced(session, candidates)
+            await BlobApi.delete_rows(session, orphans)
+
+        # 4. S3 last, AFTER the commit — a failed object delete only leaves harmless orphans.
+        if orphans:
+            async with self._s3.client() as s3:
+                await S3ObjectApi.delete_many(s3, self._s3.bucket, orphans)
+        return deleted
+
+
+# The bulk-delete chunk size: each batch is one short transaction, so a 100k delete stays a stream
+# of bounded units rather than a single long-held write lock. Tune with load, not correctness.
+_DELETE_BATCH_SIZE = 500
 
 
 __all__ = ["DocumentsFacade"]

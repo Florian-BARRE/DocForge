@@ -9,7 +9,7 @@ from collections.abc import Sequence
 from typing import Any
 
 # ====== Third-Party Library Imports ======
-from sqlalchemy import delete, or_, select
+from sqlalchemy import delete, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # ====== Internal Project Imports ======
@@ -114,6 +114,34 @@ class DocumentApi:
         return True
 
     @staticmethod
+    async def set_enabled_many(
+        session: AsyncSession, document_ids: Sequence[uuid.UUID], enabled: bool
+    ) -> int:
+        """
+        Bulk-flip the searchability toggle of a set of documents in ONE statement.
+
+        The document-level toggle is pure Postgres (search reads the flag via a bounded ``must_not``
+        exclusion), so a mass enable/disable never fans out to Qdrant. Returns the number of rows
+        actually changed so the caller can report ``updated`` distinctly from ``matched``.
+
+        Args:
+            session (AsyncSession): The unit of work.
+            document_ids (Sequence[uuid.UUID]): The documents to toggle.
+            enabled (bool): The new searchability state.
+
+        Returns:
+            int: How many rows were updated (0 when the set is empty).
+        """
+        if not document_ids:
+            return 0
+        result = await session.execute(
+            update(Document)
+            .where(Document.id.in_(document_ids), Document.enabled.is_(not enabled))
+            .values(enabled=enabled)
+        )
+        return int(result.rowcount or 0)
+
+    @staticmethod
     async def list_disabled_ids(session: AsyncSession, collection_id: uuid.UUID) -> list[uuid.UUID]:
         """
         Return the ids of a collection's DISABLED documents — the search exclusion set.
@@ -171,6 +199,28 @@ class DocumentApi:
         await session.delete(document)
         return True
 
+    @staticmethod
+    async def delete_many(session: AsyncSession, document_ids: Sequence[uuid.UUID]) -> int:
+        """
+        Set-based bulk delete — ``DELETE FROM document WHERE id IN (:ids)`` in ONE statement.
+
+        The child rows (blocks, chunks, metadata, pages, jobs) fall away through the DB-level
+        ``ON DELETE CASCADE`` on their ``document_id`` foreign keys — the same mechanism the
+        single-row ``delete`` relies on (there are no ORM relationships), so a bulk delete is
+        coherent without a per-row round-trip. The caller feeds this BOUNDED chunks.
+
+        Args:
+            session (AsyncSession): The unit of work.
+            document_ids (Sequence[uuid.UUID]): The documents to delete (one bounded batch).
+
+        Returns:
+            int: How many document rows were actually removed.
+        """
+        if not document_ids:
+            return 0
+        result = await session.execute(delete(Document).where(Document.id.in_(document_ids)))
+        return int(result.rowcount or 0)
+
     # -------------------- metadata values --------------------
     @staticmethod
     async def get_metadata(session: AsyncSession, document_id: uuid.UUID) -> list[DocumentMetadata]:
@@ -179,6 +229,34 @@ class DocumentApi:
             select(DocumentMetadata).where(DocumentMetadata.document_id == document_id)
         )
         return list(result.scalars().all())
+
+    @staticmethod
+    async def get_metadata_for_documents(
+        session: AsyncSession, document_ids: Sequence[uuid.UUID]
+    ) -> dict[uuid.UUID, list[DocumentMetadata]]:
+        """
+        Bulk-load EVERY document-metadata value for a page of documents — one query, no N+1.
+
+        The grid renders a compact ``{field_name: value}`` map per row; resolving the field names
+        (against the collection schema) is the caller's job, so this returns the raw value rows
+        grouped by document. A document with no metadata is simply absent from the map.
+
+        Args:
+            session (AsyncSession): The unit of work.
+            document_ids (Sequence[uuid.UUID]): The page's documents (bounded by the page size).
+
+        Returns:
+            dict[uuid.UUID, list[DocumentMetadata]]: document id → its metadata value rows.
+        """
+        if not document_ids:
+            return {}
+        result = await session.execute(
+            select(DocumentMetadata).where(DocumentMetadata.document_id.in_(document_ids))
+        )
+        grouped: dict[uuid.UUID, list[DocumentMetadata]] = {}
+        for row in result.scalars().all():
+            grouped.setdefault(row.document_id, []).append(row)
+        return grouped
 
     @staticmethod
     async def get_filterable_metadata(

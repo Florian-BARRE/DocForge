@@ -13,8 +13,8 @@ import { CollectionSearchPage } from "./features/collections/CollectionSearchPag
 import { CollectionShell } from "./features/collections/CollectionShell";
 import { CollectionsPage } from "./features/collections/CollectionsPage";
 import { CollectionWizard } from "./features/collections/wizard/CollectionWizard";
+import { CorpusPage } from "./features/corpus/CorpusPage";
 import { DocumentPage } from "./features/explorer/DocumentPage";
-import { DocumentsPage } from "./features/explorer/DocumentsPage";
 import { JobDetailPage } from "./features/monitoring/JobDetailPage";
 import { JobsPage } from "./features/monitoring/JobsPage";
 import { WorkersPanel } from "./features/monitoring/WorkersPanel";
@@ -61,7 +61,7 @@ export function App() {
         )}
         {view.name === "collection-documents" && (
           <CollectionShell collectionId={view.collectionId} active="documents" onNavigate={setView}>
-            <DocumentsPage collectionId={view.collectionId} onNavigate={setView} />
+            <CorpusPage collectionId={view.collectionId} onNavigate={setView} />
           </CollectionShell>
         )}
         {view.name === "collection-search" && (

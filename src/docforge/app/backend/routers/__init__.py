@@ -10,6 +10,9 @@ from .documents.router import router as documents_router
 # -------------------- Explorer (document read surface) ------------------- #
 from .explorer.router import router as explorer_router
 
+# -------------------- Corpus (large-scale document grid + bulk ops) ------------------- #
+from .corpus.router import router as corpus_router
+
 # -------------------- Search (retrieval read surface) ------------------- #
 from .search.router import router as search_router
 
@@ -34,6 +37,7 @@ __all__ = [
     "collections_router",
     "documents_router",
     "explorer_router",
+    "corpus_router",
     "search_router",
     "blobs_router",
     "jobs_router",

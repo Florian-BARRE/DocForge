@@ -57,6 +57,30 @@ class EnablementFacade(LoggerClass):
             self.logger.info(f"Document {document_id} enabled={enabled}")
         return existed
 
+    async def set_documents_enabled(
+        self, document_ids: Sequence[uuid.UUID], enabled: bool
+    ) -> int:
+        """
+        Bulk-toggle a set of documents' searchability — one Postgres statement, no Qdrant fan-out.
+
+        The mass sibling of ``set_document_enabled``: because the document-level flag is read by the
+        search filter (a bounded ``must_not document_id`` exclusion), flipping thousands of documents
+        never has to patch a single Qdrant point. Returns how many rows actually changed so a bulk
+        op can report ``updated`` distinctly from ``matched`` (already-in-state rows are not counted).
+
+        Args:
+            document_ids (Sequence[uuid.UUID]): The documents to toggle.
+            enabled (bool): The new searchability state.
+
+        Returns:
+            int: The number of documents whose state actually changed.
+        """
+        # 1. One bulk Postgres flip — the source of truth the search filter reads.
+        async with self._postgres.session() as session:
+            updated = await DocumentApi.set_enabled_many(session, document_ids, enabled)
+        self.logger.info(f"Bulk-toggled {updated} document(s) enabled={enabled}")
+        return updated
+
     # -------------------- chunks --------------------
     async def set_chunks_enabled(
         self, chunk_ids: Sequence[uuid.UUID], enabled: bool

@@ -133,5 +133,35 @@ class QdrantIndexApi:
             ),
         )
 
+    @staticmethod
+    async def delete_by_documents(
+        client: AsyncQdrantClient, name: str, document_ids: Sequence[uuid.UUID]
+    ) -> None:
+        """
+        Delete every point of a SET of documents in one filtered delete (the bulk-delete path).
+
+        Uses a single ``MatchAny`` over the document_id payload so a mass delete is one Qdrant call
+        rather than one per document. The missing-collection guard mirrors the single-document
+        variant: a filtered delete on a never-embedded collection 404s, so absence = nothing to do.
+
+        Args:
+            client (AsyncQdrantClient): The raw Qdrant client.
+            name (str): The collection's Qdrant collection name.
+            document_ids (Sequence[uuid.UUID]): The documents whose points are purged.
+        """
+        if not document_ids or not await client.collection_exists(name):
+            return
+        await client.delete(
+            collection_name=name,
+            points_selector=models.Filter(
+                must=[
+                    models.FieldCondition(
+                        key=DOCUMENT_ID_KEY,
+                        match=models.MatchAny(any=[str(doc_id) for doc_id in document_ids]),
+                    )
+                ]
+            ),
+        )
+
 
 __all__ = ["QdrantIndexApi"]

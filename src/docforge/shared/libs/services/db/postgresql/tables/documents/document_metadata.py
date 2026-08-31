@@ -9,7 +9,7 @@ import uuid
 from typing import Any
 
 # ====== Third-Party Library Imports ======
-from sqlalchemy import ForeignKey, Integer, UniqueConstraint
+from sqlalchemy import ForeignKey, Index, Integer, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -24,7 +24,15 @@ class DocumentMetadata(Base):
     """One metadata value of a document (document-scope)."""
 
     __tablename__ = "document_metadata"
-    __table_args__ = (UniqueConstraint("document_id", "field_id"),)
+    # Field-leading composite backing the grid's correlated EXISTS + scalar sort subquery (created by
+    # migration c3e9a1f7d2b4). Its two siblings from that migration are intentionally NOT declared
+    # here: the functional index ``ix_docmeta_field_value_text`` on
+    # ``(field_id, jsonb_extract_path_text(value))`` and the GIN index ``ix_docmeta_value_gin`` on
+    # ``value`` both compare unreliably under ``--autogenerate``, so they live migration-only.
+    __table_args__ = (
+        UniqueConstraint("document_id", "field_id"),
+        Index("ix_docmeta_field_document", "field_id", "document_id"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     document_id: Mapped[uuid.UUID] = mapped_column(

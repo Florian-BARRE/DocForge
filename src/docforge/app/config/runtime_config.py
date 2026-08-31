@@ -86,6 +86,15 @@ class RUNTIME_CONFIG(EnvConfigLoader):
     # injectable so unit tests drive the generator with a zero interval.
     SSE_POLL_INTERVAL_SECONDS: float = env("SSE_POLL_INTERVAL_SECONDS", cast=float, default=0.75)
 
+    # ───── Document grid (large-scale corpus view) ─────
+    # Hard ceiling for one grid query page — the server clamps a larger requested ``limit`` down to
+    # this so a client can never demand an unbounded scan of a 100k-document collection.
+    CORPUS_MAX_PAGE_SIZE: int = env("CORPUS_MAX_PAGE_SIZE", cast=int, default=200)
+    # Per-call cap on a bulk re-ingest fan-out: a filter selector matching MORE than this enqueues
+    # only the first N (deterministic order) and reports ``capped=true`` + the total ``matched``, so a
+    # single call can never silently flood the queue with 100k jobs. Raise it for a big planned re-run.
+    CORPUS_MAX_REINGEST_FANOUT: int = env("CORPUS_MAX_REINGEST_FANOUT", cast=int, default=1000)
+
     # A worker whose heartbeat is fresher than this reads as ``alive`` in the monitoring view. MUST
     # stay >> WORKER_HEARTBEAT_INTERVAL_SECONDS (worker beats ~every 10s): 30s = three missed ticks,
     # so a stale value means the process is gone, not merely idle.

@@ -1,0 +1,157 @@
+// ====== Code Summary ======
+// The corpus grid's top-level page — owns every piece of query/selection/view state and wires
+// them into the headless TanStack table: the collection's field schema (for metadata columns +
+// format options), per-column filters, the single active sort, offset pagination, column
+// visibility, and the cross-page selection model. Replaces the old DocumentsPage.
+
+import { getCoreRowModel, useReactTable, type SortingState, type VisibilityState } from "@tanstack/react-table";
+import { useEffect, useMemo, useState } from "react";
+import { getCollection, type Collection } from "../../api/collections";
+import type { DocumentGridRow, DocumentSort } from "../../api/corpus";
+import { deleteDocument } from "../../api/explorer";
+import { Button } from "../../components/Button";
+import { ErrorState } from "../../components/ErrorState";
+import { LoadingState } from "../../components/LoadingState";
+import type { Navigate } from "../../shell/view";
+import { theme } from "../../theme";
+import { BulkActionBar } from "./BulkActionBar";
+import { buildColumns } from "./columns/buildColumns";
+import { ColumnVisibilityMenu } from "./ColumnVisibilityMenu";
+import { CorpusTable } from "./CorpusTable";
+import { buildDocumentFilter } from "./filterBuilder";
+import { Pager } from "./Pager";
+import { apiFieldName, type ColumnFiltersState, type ColumnFilterValue } from "./types";
+import { useCorpusQuery } from "./useCorpusQuery";
+import { useSelection } from "./useSelection";
+
+interface CorpusPageProps {
+  collectionId: string;
+  onNavigate: Navigate;
+}
+
+const DEFAULT_LIMIT = 100;
+
+export function CorpusPage({ collectionId, onNavigate }: CorpusPageProps) {
+  const [collection, setCollection] = useState<Collection | null>(null);
+  const [collectionError, setCollectionError] = useState<string | null>(null);
+
+  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>({});
+  const [sorting, setSorting] = useState<SortingState>([{ id: "created_at", desc: true }]);
+  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
+  const [limit, setLimit] = useState(DEFAULT_LIMIT);
+  const [offset, setOffset] = useState(0);
+
+  const selection = useSelection();
+
+  useEffect(() => {
+    setCollectionError(null);
+    getCollection(collectionId)
+      .then(setCollection)
+      .catch((e) => setCollectionError(e instanceof Error ? e.message : String(e)));
+  }, [collectionId]);
+
+  const filter = useMemo(() => buildDocumentFilter(columnFilters), [columnFilters]);
+  const sort: DocumentSort | null = useMemo(() => {
+    const active = sorting[0];
+    return active ? { field: apiFieldName(active.id), direction: active.desc ? "desc" : "asc" } : null;
+  }, [sorting]);
+
+  // A filter/sort/collection change invalidates both the current page window and any in-flight
+  // selection (a filter-mode selector is only meaningful against the filter it was captured with).
+  useEffect(() => {
+    setOffset(0);
+    selection.clear();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [collectionId, JSON.stringify(filter)]);
+
+  const query = useCorpusQuery({ collectionId, filter, sort, limit, offset });
+
+  const onOpen = (documentId: string) => onNavigate({ name: "document", collectionId, documentId });
+
+  const onEnabledChanged = (documentId: string, enabled: boolean) => query.patchRow(documentId, { enabled });
+
+  const onDelete = async (documentId: string) => {
+    await deleteDocument(documentId);
+    if (selection.isSelected(documentId)) selection.toggleRow(documentId);
+    query.refetch();
+  };
+
+  const columns = useMemo(
+    () => buildColumns({
+      selection,
+      fields: collection?.fields ?? [],
+      supportedFormats: collection?.supported_formats ?? [],
+      onOpen,
+      onEnabledChanged,
+      onDelete,
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [selection, collection?.fields, collection?.supported_formats],
+  );
+
+  const table = useReactTable<DocumentGridRow>({
+    data: query.rows,
+    columns,
+    state: { sorting, columnVisibility },
+    onSortingChange: setSorting,
+    onColumnVisibilityChange: setColumnVisibility,
+    getCoreRowModel: getCoreRowModel(),
+    getRowId: (row) => row.id,
+    manualSorting: true,
+    manualPagination: true,
+    enableMultiSort: false,
+  });
+
+  const onColumnFilterChange = (columnId: string, value: ColumnFilterValue) =>
+    setColumnFilters((prev) => ({ ...prev, [columnId]: value }));
+
+  const pageIds = query.rows.map((row) => row.id);
+  const allOnPageSelected = selection.allOnPageSelected(pageIds);
+  const showSelectAllPrompt = selection.mode === "ids" && allOnPageSelected && query.total > pageIds.length;
+
+  const bulkDone = () => {
+    selection.clear();
+    setOffset(0);
+    query.refetch();
+  };
+
+  if (collectionError) return <ErrorState message={collectionError} onRetry={() => setCollectionError(null)} />;
+  if (!collection) return <LoadingState label="loading collection…" />;
+
+  return (
+    <div className="df-rise" style={{ padding: theme.space.xl, height: "100%", display: "flex", flexDirection: "column", gap: theme.space.m, minHeight: 0 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: theme.space.m, flexWrap: "wrap" }}>
+        <BulkActionBar
+          collectionId={collectionId}
+          count={selection.count(query.total)}
+          buildSelector={() => selection.toSelector(filter)}
+          onDone={bulkDone}
+        />
+        {showSelectAllPrompt && (
+          <span style={{ display: "inline-flex", alignItems: "center", gap: theme.space.xs, fontSize: theme.font.size.s, color: theme.color.dim }}>
+            All {pageIds.length} on this page selected.
+            <Button size="sm" variant="ghost" onClick={selection.selectAllFiltered}>
+              Select all {query.total.toLocaleString()} matching documents
+            </Button>
+          </span>
+        )}
+        <span style={{ marginLeft: "auto" }} />
+        <ColumnVisibilityMenu table={table} />
+      </div>
+
+      {query.error ? (
+        <ErrorState message={query.error} onRetry={query.refetch} />
+      ) : (
+        <>
+          <CorpusTable
+            table={table}
+            loading={query.loading}
+            columnFilters={columnFilters}
+            onColumnFilterChange={onColumnFilterChange}
+          />
+          <Pager total={query.total} limit={limit} offset={offset} onOffsetChange={setOffset} onLimitChange={(next) => { setLimit(next); setOffset(0); }} />
+        </>
+      )}
+    </div>
+  );
+}
