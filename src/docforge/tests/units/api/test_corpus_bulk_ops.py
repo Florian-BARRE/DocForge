@@ -54,7 +54,9 @@ def test_bulk_delete_unknown_collection_is_404(client, monkeypatch) -> None:
     monkeypatch.setattr(
         CONTEXT,
         "database",
-        SimpleNamespace(collections=collections, documents=SimpleNamespace(delete_many=delete_many)),
+        SimpleNamespace(
+            collections=collections, documents=SimpleNamespace(delete_many=delete_many)
+        ),
     )
     response = client.post(
         f"/api/v1/collections/{COLLECTION_ID}/documents/delete",
@@ -257,7 +259,11 @@ def test_bulk_reingest_filter_fans_out(client, monkeypatch) -> None:
         "database",
         SimpleNamespace(
             collections=SimpleNamespace(
-                get=AsyncMock(return_value=SimpleNamespace(id=COLLECTION_ID, pipeline={}, job_timeout_seconds=None)),
+                get=AsyncMock(
+                    return_value=SimpleNamespace(
+                        id=COLLECTION_ID, pipeline={}, job_timeout_seconds=None
+                    )
+                ),
                 get_schema=AsyncMock(return_value=[]),
             ),
             documents=SimpleNamespace(
@@ -294,7 +300,11 @@ def test_bulk_reingest_caps_fanout(client, monkeypatch) -> None:
         "database",
         SimpleNamespace(
             collections=SimpleNamespace(
-                get=AsyncMock(return_value=SimpleNamespace(id=COLLECTION_ID, pipeline={}, job_timeout_seconds=None)),
+                get=AsyncMock(
+                    return_value=SimpleNamespace(
+                        id=COLLECTION_ID, pipeline={}, job_timeout_seconds=None
+                    )
+                ),
                 get_schema=AsyncMock(return_value=[]),
             ),
             documents=SimpleNamespace(

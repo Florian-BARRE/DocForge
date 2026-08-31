@@ -258,7 +258,9 @@ class DocumentsFacade(LoggerClass):
         for start in range(0, len(unique_ids), _DELETE_BATCH_SIZE):
             batch = unique_ids[start : start + _DELETE_BATCH_SIZE]
             total_deleted += await self._delete_batch(batch)
-        self.logger.info(f"Bulk-deleted {total_deleted} document(s) across {len(unique_ids)} target(s)")
+        self.logger.info(
+            f"Bulk-deleted {total_deleted} document(s) across {len(unique_ids)} target(s)"
+        )
         return total_deleted
 
     async def _delete_batch(self, batch: Sequence[uuid.UUID]) -> int:

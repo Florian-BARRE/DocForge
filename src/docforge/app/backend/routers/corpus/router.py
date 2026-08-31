@@ -110,7 +110,9 @@ async def query_documents(
         CorpusMapper.grid_row(document, metadata.get(document.id, []), names)
         for document in documents
     ]
-    return DocumentQueryResponse(total=total, limit=limit, offset=request.pagination.offset, rows=rows)
+    return DocumentQueryResponse(
+        total=total, limit=limit, offset=request.pagination.offset, rows=rows
+    )
 
 
 @router.post("/{collection_id}/documents/delete", response_model=BulkDeleteResponse)
@@ -221,7 +223,9 @@ async def bulk_reingest(
 
     # 5. Fan out one full-pipeline job per resolved document.
     documents = await CONTEXT.database.documents.get_by_ids(targets)
-    handles = await BulkReingestService(CONTEXT.database, CONTEXT.queue).enqueue(collection, documents)
+    handles = await BulkReingestService(CONTEXT.database, CONTEXT.queue).enqueue(
+        collection, documents
+    )
     return BulkReingestResponse(
         collection_id=str(collection_id),
         matched=len(matched),

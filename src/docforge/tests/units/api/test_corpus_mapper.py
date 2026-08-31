@@ -169,9 +169,7 @@ def test_builder_statement_is_id_stabilised_and_carries_metadata_exists() -> Non
         DocumentSort(field="created_at", direction="desc"),
         schema,
     )
-    statement = DocumentQueryApi._apply_order(
-        DocumentQueryApi._filtered(uuid.uuid4(), spec), spec
-    )
+    statement = DocumentQueryApi._apply_order(DocumentQueryApi._filtered(uuid.uuid4(), spec), spec)
     sql = str(statement)
     # The metadata predicate compiled to a correlated EXISTS over document_metadata.
     assert "EXISTS" in sql and "document_metadata" in sql

@@ -73,8 +73,8 @@ class DocumentQueryApi:
     ) -> int:
         """Return how many documents match the filter (the grid's total, for the pager)."""
         # 1. COUNT over the same predicates — no ordering, no window.
-        statement = select(func.count()).select_from(Document).where(
-            *cls._conditions(collection_id, spec)
+        statement = (
+            select(func.count()).select_from(Document).where(*cls._conditions(collection_id, spec))
         )
         return int((await session.execute(statement)).scalar_one())
 
@@ -175,9 +175,7 @@ class DocumentQueryApi:
         return text == str(condition.value)
 
     @staticmethod
-    def _in_predicate(
-        column: Any, text: Any, condition: MetadataCondition
-    ) -> ColumnElement[bool]:
+    def _in_predicate(column: Any, text: Any, condition: MetadataCondition) -> ColumnElement[bool]:
         """
         ANY-membership for the ``in`` operator, correct for BOTH scalar and list-typed fields.
 

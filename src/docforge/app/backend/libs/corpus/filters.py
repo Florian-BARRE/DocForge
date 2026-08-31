@@ -59,7 +59,9 @@ class MetadataFilter(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     field: str = Field(description="The metadata field name to filter on.")
-    op: Literal["eq", "contains", "in", "gte", "lte"] = Field(description="The comparison operator.")
+    op: Literal["eq", "contains", "in", "gte", "lte"] = Field(
+        description="The comparison operator."
+    )
     value: Any = Field(description="The comparison value (a list for the ``in`` operator).")
 
 
@@ -78,7 +80,9 @@ class DocumentFilter(BaseModel):
     status: list[DocumentStatus] | None = Field(
         default=None, description="Ingestion status membership (pending/processing/done/failed)."
     )
-    format: list[str] | None = Field(default=None, description="File-format membership (pdf, docx…).")
+    format: list[str] | None = Field(
+        default=None, description="File-format membership (pdf, docx…)."
+    )
     language: list[str] | None = Field(default=None, description="Detected-language membership.")
     file_size: NumberRange | None = Field(default=None, description="Original size range, bytes.")
     page_count: NumberRange | None = Field(default=None, description="Parsed page-count range.")

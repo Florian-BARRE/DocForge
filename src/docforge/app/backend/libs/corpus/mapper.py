@@ -173,7 +173,9 @@ class CorpusMapper:
         else:
             allowed = {MetadataOp.EQ}
         if op not in allowed:
-            raise ValueError(f"Operator '{op}' is invalid for field '{clause.field}' ({field_type}).")
+            raise ValueError(
+                f"Operator '{op}' is invalid for field '{clause.field}' ({field_type})."
+            )
         return op
 
     @staticmethod
@@ -206,9 +208,7 @@ class CorpusMapper:
     ) -> DocumentGridRow:
         """Map a document row + its metadata values into a grid row (a compact name→value map)."""
         # 1. Resolve each metadata value's field name (drop values whose field left the schema).
-        values = {
-            names[row.field_id]: row.value for row in metadata_rows if row.field_id in names
-        }
+        values = {names[row.field_id]: row.value for row in metadata_rows if row.field_id in names}
         return DocumentGridRow(
             id=str(document.id),
             filename=document.filename,

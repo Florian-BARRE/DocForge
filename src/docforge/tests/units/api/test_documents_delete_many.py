@@ -49,7 +49,9 @@ def _doc(collection_id: uuid.UUID) -> SimpleNamespace:
     return SimpleNamespace(id=uuid.uuid4(), collection_id=collection_id)
 
 
-def _patch_apis(monkeypatch, *, get_by_ids, deleted_per_batch: int, orphans, order_log: list) -> dict:
+def _patch_apis(
+    monkeypatch, *, get_by_ids, deleted_per_batch: int, orphans, order_log: list
+) -> dict:
     """Patch the data-access APIs the facade calls; record the cross-store call order."""
     qdrant_delete = AsyncMock(side_effect=lambda *a, **k: order_log.append("qdrant"))
     pg_delete = AsyncMock(
@@ -97,7 +99,9 @@ def test_delete_many_processes_in_bounded_batches(monkeypatch) -> None:
     # deleted_per_batch None → make delete_many return the count of ids it was given.
     mocks["pg_delete"].side_effect = lambda session, live: (order.append("pg_delete"), len(live))[1]
 
-    facade = DocumentsFacade(_postgres_yielding(_session_mock()), MagicMock(raw=MagicMock()), _s3_client())
+    facade = DocumentsFacade(
+        _postgres_yielding(_session_mock()), MagicMock(raw=MagicMock()), _s3_client()
+    )
     total = asyncio.run(_run_delete_many(facade, ids))
 
     # 3 ids, batch size 2 → batches of 2 and 1; every target processed, none dropped.
@@ -123,7 +127,9 @@ def test_delete_many_deduplicates_ids(monkeypatch) -> None:
     _patch_apis(
         monkeypatch, get_by_ids=get_by_ids, deleted_per_batch=1, orphans=[], order_log=order
     )
-    facade = DocumentsFacade(_postgres_yielding(_session_mock()), MagicMock(raw=MagicMock()), _s3_client())
+    facade = DocumentsFacade(
+        _postgres_yielding(_session_mock()), MagicMock(raw=MagicMock()), _s3_client()
+    )
 
     # The same id three times collapses to one target (one batch, one id).
     asyncio.run(_run_delete_many(facade, [doc.id, doc.id, doc.id]))
@@ -137,7 +143,9 @@ def test_delete_many_empty_is_zero_and_touches_nothing(monkeypatch) -> None:
     mocks = _patch_apis(
         monkeypatch, get_by_ids=lambda s, w: [], deleted_per_batch=0, orphans=[], order_log=order
     )
-    facade = DocumentsFacade(_postgres_yielding(_session_mock()), MagicMock(raw=MagicMock()), _s3_client())
+    facade = DocumentsFacade(
+        _postgres_yielding(_session_mock()), MagicMock(raw=MagicMock()), _s3_client()
+    )
     total = asyncio.run(_run_delete_many(facade, []))
     assert total == 0
     mocks["qdrant"].assert_not_awaited()

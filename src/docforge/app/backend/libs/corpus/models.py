@@ -50,7 +50,8 @@ class DocumentSelector(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     document_ids: list[uuid.UUID] | None = Field(
-        default=None, description="Explicit target ids (id mode). Mutually exclusive with ``filter``."
+        default=None,
+        description="Explicit target ids (id mode). Mutually exclusive with ``filter``.",
     )
     filter: DocumentFilter | None = Field(
         default=None,
@@ -90,7 +91,9 @@ class BulkEnabledResponse(BaseModel):
     collection_id: str = Field(description="The target collection's UUID.")
     enabled: bool = Field(description="The state applied to every target.")
     matched: int = Field(description="Documents the selector resolved to.")
-    updated: int = Field(description="Documents whose state actually changed (already-in-state skip).")
+    updated: int = Field(
+        description="Documents whose state actually changed (already-in-state skip)."
+    )
     reindex_implied: bool = Field(
         description="Always false — a document toggle is a Postgres flag, never a re-index."
     )
@@ -102,9 +105,13 @@ class BulkReingestResponse(BaseModel):
     collection_id: str = Field(description="The target collection's UUID.")
     matched: int = Field(description="Documents the selector resolved to.")
     enqueued: int = Field(description="Jobs actually enqueued (<= the fan-out ceiling).")
-    capped: bool = Field(description="True when the match count exceeded the per-call fan-out ceiling.")
+    capped: bool = Field(
+        description="True when the match count exceeded the per-call fan-out ceiling."
+    )
     max_fanout: int = Field(description="The per-call fan-out ceiling that was applied.")
-    jobs: list[ReingestJobHandle] = Field(description="One handle per enqueued run (poll each job).")
+    jobs: list[ReingestJobHandle] = Field(
+        description="One handle per enqueued run (poll each job)."
+    )
 
 
 __all__ = [

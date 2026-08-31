@@ -57,9 +57,7 @@ class EnablementFacade(LoggerClass):
             self.logger.info(f"Document {document_id} enabled={enabled}")
         return existed
 
-    async def set_documents_enabled(
-        self, document_ids: Sequence[uuid.UUID], enabled: bool
-    ) -> int:
+    async def set_documents_enabled(self, document_ids: Sequence[uuid.UUID], enabled: bool) -> int:
         """
         Bulk-toggle a set of documents' searchability — one Postgres statement, no Qdrant fan-out.
 
