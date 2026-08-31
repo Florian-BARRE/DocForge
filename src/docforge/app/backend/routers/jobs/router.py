@@ -105,11 +105,11 @@ async def collection_cost(
     )
 
 
-@router.get(
-    "/workers/live", response_model=WorkersLive, dependencies=[Depends(require(Capability.READ))]
-)
+@router.get("/workers/live", response_model=WorkersLive)
 @auto_handle_errors
-async def live_workers() -> WorkersLive:
+async def live_workers(
+    principal: AuthPrincipal = Depends(require(Capability.READ)),
+) -> WorkersLive:
     """
     Return every known worker's liveness + running jobs — the live fleet view.
 
@@ -117,13 +117,26 @@ async def live_workers() -> WorkersLive:
     the worker_heartbeats table drives ``alive`` (a fresh heartbeat), the RUNNING job rows drive
     ``busy`` (owning a job). A worker with a heartbeat but no job appears ``alive=True, busy=False``.
 
+    Tenant isolation: this endpoint is fleet-wide with no ``collection_id`` in the path, so a
+    full-access / wildcard key sees every worker's jobs while a collection-scoped key sees worker
+    liveness but ONLY its own collections' running jobs — it can never read another tenant's
+    job/document/collection ids here.
+
     Returns:
         WorkersLive: One entry per worker (empty only when no worker has ever heartbeated).
     """
-    # 1. Liveness (heartbeats) + activity (running jobs) are two reads; the helper fuses them.
+    # 1. Resolve the caller's visible collections BEFORE any DB read (None = unrestricted). This is
+    #    the in-memory scope gate for a query-less, fleet-wide endpoint — it may 403 a malformed key.
+    allowed = AuthzGuard.scoped_collections(principal)
+
+    # 2. Prune crashed workers (heartbeat frozen past the cutoff) so the fleet view is not a
+    #    graveyard: a cleanly-stopped worker already de-registered itself, this clears the rest.
+    await CONTEXT.database.jobs.prune_stale_heartbeats(RUNTIME_CONFIG.WORKER_PRUNE_STALE_SECONDS)
+
+    # 3. Liveness (heartbeats) + activity (running jobs) are two reads; the helper fuses + scopes them.
     heartbeats = await CONTEXT.database.jobs.list_heartbeats()
     running = await CONTEXT.database.jobs.list_active()
-    return WorkersLiveHelpers.assemble(heartbeats, running)
+    return WorkersLiveHelpers.assemble(heartbeats, running, allowed_collections=allowed)
 
 
 @router.get("/queue", response_model=QueueDepth)

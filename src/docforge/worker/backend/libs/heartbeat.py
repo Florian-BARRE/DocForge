@@ -63,15 +63,28 @@ class HeartbeatWriter(LoggerClass):
         )
 
     async def stop(self) -> None:
-        """Cancel the background loop and wait for it to unwind."""
-        if self._task is None:
-            return
-        self._task.cancel()
+        """
+        Cancel the background loop, then de-register this worker's heartbeat row.
+
+        The row is DELETED on a clean shutdown so the worker disappears from the fleet immediately
+        (rather than lingering as a stale "off" card until the read-side prune ages it out). The
+        delete is best-effort: a shutdown-time DB error is logged and swallowed so it can never crash
+        an otherwise-clean shutdown — the read-side prune is the backstop for a row left behind.
+        """
+        # 1. Stop beating first, so no tick can re-insert the row after we delete it.
+        if self._task is not None:
+            self._task.cancel()
+            try:
+                await self._task
+            except asyncio.CancelledError:
+                pass
+            self._task = None
+
+        # 2. Remove our own liveness row (best-effort — never fail a clean shutdown over it).
         try:
-            await self._task
-        except asyncio.CancelledError:
-            pass
-        self._task = None
+            await self._database.jobs.delete_heartbeat(self._worker_id)
+        except Exception as exc:  # noqa: BLE001 — de-registration must never crash shutdown
+            self.logger.warning(f"Heartbeat de-register failed for '{self._worker_id}': {exc}")
 
 
 __all__ = ["HeartbeatWriter"]

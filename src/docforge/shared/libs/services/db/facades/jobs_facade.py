@@ -145,6 +145,16 @@ class JobsFacade(LoggerClass):
         async with self._postgres.session() as session:
             await JobApi.upsert_heartbeat(session, worker_id, last_seen, started_at)
 
+    async def delete_heartbeat(self, worker_id: str) -> None:
+        """De-register a worker on clean shutdown — its heartbeat row vanishes immediately."""
+        async with self._postgres.session() as session:
+            await JobApi.delete_heartbeat(session, worker_id)
+
+    async def prune_stale_heartbeats(self, older_than_seconds: float) -> list[str]:
+        """Delete heartbeat rows frozen past the cutoff (crashed workers); return the removed ids."""
+        async with self._postgres.session() as session:
+            return await JobApi.prune_stale_heartbeats(session, older_than_seconds)
+
     async def add_usage(
         self,
         job_id: uuid.UUID,

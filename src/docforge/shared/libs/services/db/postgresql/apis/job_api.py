@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 
 # ====== Third-Party Library Imports ======
-from sqlalchemy import func, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -224,6 +224,55 @@ class JobApi:
                 set_={"last_seen": last_seen, "started_at": started_at},
             )
         )
+
+    @staticmethod
+    async def delete_heartbeat(session: AsyncSession, worker_id: str) -> None:
+        """
+        Remove a worker's liveness row — its graceful de-registration on clean shutdown.
+
+        A cleanly-stopped worker deletes its own row so it vanishes from the fleet immediately,
+        instead of lingering as a stale "off" card until it ages past the prune cutoff.
+
+        Args:
+            session (AsyncSession): The active DB session.
+            worker_id (str): The stable id of the worker de-registering itself.
+        """
+        await session.execute(
+            delete(WorkerHeartbeat).where(WorkerHeartbeat.worker_id == worker_id)
+        )
+
+    @staticmethod
+    async def prune_stale_heartbeats(
+        session: AsyncSession, older_than_seconds: float
+    ) -> list[str]:
+        """
+        Delete heartbeat rows not refreshed within the cutoff — the crashed-worker sweep.
+
+        A worker that dies without a clean shutdown never deletes its own row, so its heartbeat
+        simply stops ageing forward. This removes any row whose ``last_seen`` froze past the cutoff,
+        so a crashed worker eventually disappears from the fleet instead of accumulating forever.
+
+        The comparison is genuinely cross-clock: the cutoff is the DATABASE clock (``func.now()``)
+        while ``last_seen`` was written on the WORKER's Python clock (see ``HeartbeatWriter``). On the
+        single-host compose deployment both share the host clock so skew ≈ 0; the wide margin between
+        this prune cutoff and the alive threshold absorbs any normal drift, and a live worker's next
+        beat (every ~10s) immediately refreshes ``last_seen`` — so a merely-drifted live worker is
+        not pruned, and even if one were, it reappears on its next tick. Keep the cutoff well above
+        the alive threshold so a live worker that missed a couple of beats is never deleted.
+
+        Args:
+            session (AsyncSession): The active DB session.
+            older_than_seconds (float): A heartbeat older than this (by the DB clock) is pruned.
+
+        Returns:
+            list[str]: The worker ids removed (empty when nothing was stale).
+        """
+        result = await session.execute(
+            delete(WorkerHeartbeat)
+            .where(WorkerHeartbeat.last_seen < func.now() - timedelta(seconds=older_than_seconds))
+            .returning(WorkerHeartbeat.worker_id)
+        )
+        return list(result.scalars().all())
 
     @staticmethod
     async def add_usage(

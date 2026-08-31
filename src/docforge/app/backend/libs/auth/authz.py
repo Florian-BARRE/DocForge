@@ -133,6 +133,31 @@ class AuthzGuard:
             )
 
     @classmethod
+    def scoped_collections(cls, principal: AuthPrincipal) -> set[str] | None:
+        """
+        Return the set of collection ids a principal may see, or None for unrestricted access.
+
+        Used by fleet-wide endpoints (no ``collection_id`` in the path) that must NOT leak other
+        tenants' resources: a ``None`` result means "every collection" (a full-access or wildcard
+        key), while a concrete set is exactly the collections a scoped key is allowed to observe.
+
+        Args:
+            principal (AuthPrincipal): The authenticated caller.
+
+        Returns:
+            set[str] | None: The observable collection ids, or None when the key is unrestricted.
+
+        Raises:
+            HTTPException: 403 when the scoped key's permissions blob is malformed.
+        """
+        # 1. Full access (root / auth-off synthetic) sees every collection.
+        if principal.is_full_access:
+            return None
+
+        # 2. A scoped key sees its enumerated set (None when it holds the wildcard).
+        return cls.__parse(principal).scoped_collection_ids()
+
+    @classmethod
     def assert_any_collection_scope(
         cls, principal: AuthPrincipal, collection_ids: list[str]
     ) -> None:

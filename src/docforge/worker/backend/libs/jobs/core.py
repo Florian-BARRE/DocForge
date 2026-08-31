@@ -74,6 +74,10 @@ async def ingest_document(ctx: dict[str, Any], document_id: str, job_id: str) ->
         attempt=ctx.get("job_try") or 1,
         started_at=datetime.now(UTC),
     )
+    # Flip the DOCUMENT row PENDING → PROCESSING too: mark_running only moves the JOB to RUNNING, so
+    # without this the document reads "pending" for the whole run. Guarded to PENDING → PROCESSING,
+    # and the terminal DONE/FAILED writes below still win.
+    await database.ingestion.mark_processing(doc_uuid)
     try:
         # 1. Rehydrate the inputs: rows, original bytes (key = source_hash), contract + blob.
         document = await database.documents.get(doc_uuid)

@@ -17,7 +17,11 @@ def _fake_database() -> SimpleNamespace:
         documents=SimpleNamespace(get=AsyncMock(), get_metadata=AsyncMock(return_value=[])),
         collections=SimpleNamespace(get=AsyncMock(), get_schema=AsyncMock(return_value=[])),
         ingestion=SimpleNamespace(
-            store_blobs=AsyncMock(), save=AsyncMock(), index=AsyncMock(), mark_failed=AsyncMock()
+            store_blobs=AsyncMock(),
+            save=AsyncMock(),
+            index=AsyncMock(),
+            mark_failed=AsyncMock(),
+            mark_processing=AsyncMock(),
         ),
         filters=SimpleNamespace(sync_document_filter_payloads=AsyncMock()),
         meta_vectors=SimpleNamespace(sync_document_meta_vectors=AsyncMock()),
@@ -130,6 +134,19 @@ async def test_happy_path_calls_both_hooks_with_the_document_id(jobs_core, monke
     database.meta_vectors.sync_document_meta_vectors.assert_awaited_once_with(document_id)
     database.jobs.mark_done.assert_awaited_once()
     database.jobs.mark_failed.assert_not_awaited()
+
+
+async def test_claim_transitions_the_document_to_processing(jobs_core, monkeypatch) -> None:
+    """The worker flips the DOCUMENT PENDING → PROCESSING as it claims the job, so it no longer
+    reads 'pending' for the whole run — mark_running only moves the JOB row."""
+    database = _fake_database()
+    document_id, context = _wire(jobs_core, monkeypatch, database, points=[MagicMock()])
+
+    await jobs_core.ingest_document({}, str(document_id), str(uuid.uuid4()))
+
+    database.ingestion.mark_processing.assert_awaited_once_with(document_id)
+    # The terminal DONE write still wins at the end of the run.
+    database.jobs.mark_done.assert_awaited_once()
 
 
 async def test_run_budget_falls_back_to_the_global_default_when_collection_is_null(

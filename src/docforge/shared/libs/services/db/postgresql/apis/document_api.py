@@ -92,6 +92,23 @@ class DocumentApi:
             document.status = status
 
     @staticmethod
+    async def mark_processing(session: AsyncSession, document_id: uuid.UUID) -> None:
+        """
+        Transition a document PENDING → PROCESSING at job-claim time.
+
+        Guarded to the PENDING → PROCESSING edge only: a document already DONE/FAILED (or already
+        PROCESSING) is left untouched, so a late claim or a race can never clobber a terminal state
+        with PROCESSING. A re-ingest resets the row to PENDING first, so it is eligible again.
+
+        Args:
+            session (AsyncSession): The unit of work.
+            document_id (uuid.UUID): The document whose ingestion is starting.
+        """
+        document = await session.get(Document, document_id)
+        if document is not None and document.status == DocumentStatus.PENDING:
+            document.status = DocumentStatus.PROCESSING
+
+    @staticmethod
     async def set_enabled(session: AsyncSession, document_id: uuid.UUID, enabled: bool) -> bool:
         """
         Flip a document's searchability toggle (the reversible enable/disable flag).

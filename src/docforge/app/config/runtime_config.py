@@ -101,6 +101,14 @@ class RUNTIME_CONFIG(EnvConfigLoader):
     WORKER_ALIVE_THRESHOLD_SECONDS: int = env(
         "WORKER_ALIVE_THRESHOLD_SECONDS", cast=int, default=30
     )
+    # A worker whose heartbeat froze past this cutoff is PRUNED — deleted from worker_heartbeats and
+    # dropped from the live-fleet view — so a crashed worker (no clean shutdown to de-register itself)
+    # eventually vanishes instead of lingering as a permanent "off" card. MUST stay comfortably above
+    # WORKER_ALIVE_THRESHOLD_SECONDS so a live worker that merely missed a few beats is never deleted;
+    # the gap between the two thresholds is the brief window a just-died worker still shows as "off".
+    WORKER_PRUNE_STALE_SECONDS: int = env(
+        "WORKER_PRUNE_STALE_SECONDS", cast=int, default=180
+    )
 
     # ───── Queue (enqueue only — the worker executes) ─────
     REDIS_URL = env("REDIS_URL")

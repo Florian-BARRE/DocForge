@@ -109,5 +109,20 @@ class KeyPermissions(BaseModel):
         # 1. Wildcard covers everything; otherwise the id must be explicitly enumerated.
         return _ALL_COLLECTIONS in self.collections or collection_id in self.collections
 
+    def scoped_collection_ids(self) -> set[str] | None:
+        """
+        Return the explicit collection ids this key may see, or None when wildcard-scoped.
+
+        A ``None`` result means "every collection" (the wildcard), letting a caller treat a
+        wildcard key the same as full access. An explicit scope returns exactly its id set.
+
+        Returns:
+            set[str] | None: The scoped collection ids, or None for wildcard (all) scope.
+        """
+        # 1. Wildcard = unrestricted; otherwise the exact enumerated set.
+        if _ALL_COLLECTIONS in self.collections:
+            return None
+        return set(self.collections)
+
 
 __all__ = ["Capability", "KeyPermissions"]

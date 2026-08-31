@@ -185,6 +185,17 @@ class IngestionFacade(LoggerClass):
             f"{len(payload.blocks)} blocks, {len(payload.chunks)} chunks"
         )
 
+    async def mark_processing(self, document_id: uuid.UUID) -> None:
+        """
+        Move the document PENDING → PROCESSING as the worker claims its job.
+
+        Guarded to the PENDING → PROCESSING edge (see ``DocumentApi.mark_processing``): the terminal
+        DONE/FAILED writes at the end of the run always win, so a failure mid-run never leaves the
+        document stuck in PROCESSING.
+        """
+        async with self._postgres.session() as session:
+            await DocumentApi.mark_processing(session, document_id)
+
     async def mark_failed(self, document_id: uuid.UUID) -> None:
         """Flag the document's ingestion as failed (the job carries the error detail)."""
         async with self._postgres.session() as session:

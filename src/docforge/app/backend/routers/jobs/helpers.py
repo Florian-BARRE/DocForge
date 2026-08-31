@@ -42,6 +42,7 @@ class WorkersLiveHelpers:
     def assemble(
         heartbeats: list[Any],
         running_jobs: list[Any],
+        allowed_collections: set[str] | None = None,
         now: datetime | None = None,
     ) -> WorkersLive:
         """
@@ -52,18 +53,30 @@ class WorkersLiveHelpers:
         owning a running job. An idle-but-alive worker (fresh heartbeat, no job) is therefore visible
         with ``alive=True, busy=False``; a worker whose heartbeat went stale reads ``alive=False``.
 
+        Tenant isolation: ``allowed_collections`` restricts which running jobs are attached to (and
+        counted towards ``busy`` for) each worker. ``None`` = unrestricted (a full-access / wildcard
+        key sees every job); a concrete set means a scoped key sees ONLY its own collections' jobs, so
+        this fleet-wide view never leaks another tenant's job/document/collection ids. Worker liveness
+        (infra, not tenant data) is still shown for every worker.
+
         Args:
             heartbeats (list[Any]): The worker_heartbeats rows (worker_id, last_seen, started_at).
             running_jobs (list[Any]): The RUNNING job rows (each carries worker_id + live state).
+            allowed_collections (set[str] | None): Collection ids whose jobs may be surfaced, or None
+                for unrestricted (full-access / wildcard) callers.
             now (datetime | None): The reference instant for staleness (defaults to now, UTC).
 
         Returns:
             WorkersLive: One WorkerActivity per known worker, ordered by worker id.
         """
-        # 1. Index each worker's live jobs by worker id (unknown worker_id folds into "unknown").
+        # 1. Index each worker's live jobs by worker id (unknown worker_id folds into "unknown"),
+        #    dropping any job outside the caller's allowed collections so a scoped key sees only its
+        #    own — the fleet-wide endpoint must never leak another tenant's job identifiers.
         reference = now or datetime.now(UTC)
         jobs_by_worker: dict[str, list[JobStatus]] = defaultdict(list)
         for job in running_jobs:
+            if allowed_collections is not None and str(job.collection_id) not in allowed_collections:
+                continue
             jobs_by_worker[job.worker_id or "unknown"].append(JobStatus.from_row(job))
 
         # 2. Index the heartbeats by worker id — the liveness source of truth.
