@@ -40,6 +40,10 @@ class DocumentStatus(StrEnum):
     PROCESSING = "processing"
     DONE = "done"
     FAILED = "failed"
+    # Terminal state for a document whose ingestion was explicitly cancelled (distinct from a genuine
+    # FAILED so it reads as "stopped on purpose, re-ingestable" in the UI). "cancelled" (9 chars) fits
+    # the existing VARCHAR(10) status column ("processing" is longer), so this adds no column-width DDL.
+    CANCELLED = "cancelled"
 
 
 class Document(Base, UUIDPrimaryKey, TimestampedMixin):

@@ -12,7 +12,12 @@ from unittest.mock import AsyncMock, MagicMock
 def _fake_database() -> SimpleNamespace:
     return SimpleNamespace(
         jobs=SimpleNamespace(
-            mark_running=AsyncMock(), mark_done=AsyncMock(), mark_failed=AsyncMock()
+            get=AsyncMock(return_value=None),
+            mark_running=AsyncMock(),
+            mark_done=AsyncMock(),
+            mark_failed=AsyncMock(),
+            force_terminate=AsyncMock(),
+            is_cancel_requested=AsyncMock(return_value=False),
         ),
         documents=SimpleNamespace(get=AsyncMock(), get_metadata=AsyncMock(return_value=[])),
         collections=SimpleNamespace(get=AsyncMock(), get_schema=AsyncMock(return_value=[])),
@@ -174,3 +179,61 @@ async def test_run_budget_uses_the_collection_override_when_set(jobs_core, monke
     await jobs_core.ingest_document({}, str(document_id), str(uuid.uuid4()))
 
     assert context.runner.run.await_args.kwargs["timeout_seconds"] == 99.0
+
+
+async def test_dequeue_skip_guard_bails_on_a_cancelled_job(jobs_core, monkeypatch) -> None:
+    """A job cancelled while queued is already CANCELLED in the DB: the worker bails at dequeue —
+    it never claims the job (mark_running) nor runs the pipeline, so the terminal state stands."""
+    from shared_libs.services.db.postgresql.tables import JobStatus  # noqa: PLC0415
+
+    database = _fake_database()
+    document_id, context = _wire(jobs_core, monkeypatch, database, points=[MagicMock()])
+    database.jobs.get = AsyncMock(return_value=SimpleNamespace(status=JobStatus.CANCELLED))
+
+    await jobs_core.ingest_document({}, str(document_id), str(uuid.uuid4()))
+
+    database.jobs.mark_running.assert_not_awaited()
+    database.ingestion.mark_processing.assert_not_awaited()
+    context.runner.run.assert_not_awaited()
+    database.jobs.mark_done.assert_not_awaited()
+
+
+async def test_cooperative_cancel_at_boundary_terminates_without_failing(
+    jobs_core, monkeypatch
+) -> None:
+    """A cancellation requested mid-run is honoured at the next stage boundary: the guard raises
+    JobCancelledError, and the task marks the job CANCELLED (force_terminate) WITHOUT failing it,
+    completing normally (no re-raise → arq does not retry)."""
+    import sys  # noqa: PLC0415
+
+    from shared_libs.pipelines.engine import ProgressEvent, ProgressPhase  # noqa: PLC0415
+
+    database = _fake_database()
+    database.jobs.is_cancel_requested = AsyncMock(return_value=True)
+    document_id, context = _wire(jobs_core, monkeypatch, database, points=[MagicMock()])
+    # The cancel guard resolves services through its OWN module-level CONTEXT (jobs.cancellation),
+    # so patch it to the same fake the core module uses.
+    monkeypatch.setattr(sys.modules["jobs.cancellation"], "CONTEXT", context)
+    # Give the blob a single root node so the guard has a stage boundary to probe.
+    monkeypatch.setattr(
+        jobs_core.BlobNormalizer,
+        "normalize",
+        lambda blob: {"nodes": [{"id": "n1", "kind": "intake", "family": "intake"}]},
+    )
+
+    async def _run(*args, **kwargs):
+        # The engine would fire the run's progress callback at each node boundary; simulate the
+        # START of the root node — where the cancel guard re-reads the flag and aborts.
+        await kwargs["progress_callback"](
+            ProgressEvent(phase=ProgressPhase.START, node_id="n1", kind="intake")
+        )
+        return (MagicMock(), MagicMock())
+
+    context.runner.run = AsyncMock(side_effect=_run)
+
+    # Must NOT raise — a cooperative cancel is a clean completion, not an arq failure.
+    await jobs_core.ingest_document({}, str(document_id), str(uuid.uuid4()))
+
+    database.jobs.force_terminate.assert_awaited_once()
+    database.jobs.mark_done.assert_not_awaited()
+    database.jobs.mark_failed.assert_not_awaited()

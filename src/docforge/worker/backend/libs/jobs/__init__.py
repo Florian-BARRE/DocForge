@@ -8,6 +8,9 @@ from .reaper import reap_stuck_jobs
 # ---------------------- Live progress ---------------------- #
 from .progress import JobProgressRecorder
 
+# ---------------------- Cooperative cancel ---------------------- #
+from .cancellation import CancellationGuard, JobCancelledError
+
 # ------------------- Public API ------------------- #
 __all__ = [
     "ingest_document",
@@ -15,4 +18,6 @@ __all__ = [
     "backfill_collection_meta_vectors",
     "reap_stuck_jobs",
     "JobProgressRecorder",
+    "CancellationGuard",
+    "JobCancelledError",
 ]

@@ -20,6 +20,10 @@ class WorkerHeartbeat(Base):
     __tablename__ = "worker_heartbeats"
 
     worker_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    # A human-friendly display label for the worker (WORKER_NAME, defaults to the hostname). Kept
+    # alongside worker_id so the UI can show "what is ingesting" without exposing only a hostname;
+    # NULL for a row written before this column landed (the read falls back to worker_id).
+    worker_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
     # Refreshed on every heartbeat tick (~10s); its age is the liveness signal.
     last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     # Set once when the worker first registers; lets the UI show process uptime.

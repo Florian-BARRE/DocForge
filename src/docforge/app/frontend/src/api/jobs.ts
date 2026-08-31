@@ -6,14 +6,22 @@ import { apiFetch, clearApiToken, getApiToken, HttpError } from "./http";
 const BASE = "/api/v1/jobs";
 
 // Mirrors the backend's JobStatus StrEnum verbatim (`pending`, not `queued`) — the `| string`
-// fallback keeps this open to a future status without breaking the build.
-export type JobStatusValue = "pending" | "running" | "done" | "failed" | string;
+// fallback keeps this open to a future status without breaking the build. `cancelled` is the
+// terminal state for a stopped job (queued-before-it-ran, cooperative stop honoured, or forced).
+export type JobStatusValue = "pending" | "running" | "done" | "failed" | "cancelled" | string;
 
 export interface JobStatus {
   job_id: string;
   document_id: string;
+  /** The document's filename, joined at read — null only if the document row is gone. */
+  document_filename: string | null;
   collection_id: string;
+  /** The collection's name, joined at read — null only if the collection row is gone. */
+  collection_name: string | null;
   status: JobStatusValue;
+  /** A cooperative stop has been requested; a RUNNING job stops at its next stage boundary and
+   *  stays `status: "running"` (with this flag set) until it does. */
+  cancel_requested: boolean;
   progress: number;
   current_stage: string | null;
   error: string | null;
@@ -83,6 +91,8 @@ export interface JobTrace {
 
 export interface WorkerActivity {
   worker_id: string;
+  /** Friendly display name (WORKER_NAME, defaults to the hostname); null for a pre-column heartbeat row. */
+  worker_name: string | null;
   /** Heartbeat fresher than the liveness threshold (~30s) — independent of `busy`. */
   alive: boolean;
   /** Owns at least one RUNNING job right now — independent of `alive`. */
@@ -110,6 +120,30 @@ export function listJobs(collectionId: string): Promise<JobStatus[]> {
 
 export function getJob(jobId: string): Promise<JobStatus> {
   return apiFetch(`${BASE}/${jobId}`);
+}
+
+/** The coarse outcome of a cancel call: the job is now terminal, or a running job was only
+ *  flagged to stop cooperatively at its next stage boundary (still `status: "running"`). */
+export type CancelOutcome = "cancelled" | "cancellation_requested";
+
+export interface CancelResult {
+  job_id: string;
+  status: JobStatusValue;
+  cancel_requested: boolean;
+  outcome: CancelOutcome;
+  detail: string;
+}
+
+/**
+ * Stop an ingestion job — cooperatively for a running job, immediately for a queued or wedged one.
+ *
+ * `force=false` (default) on a queued job cancels it now; on a running job it requests a
+ * cooperative stop at the next stage boundary. `force=true` force-terminates a running job
+ * immediately regardless of worker state — the manual escape hatch for a wedged/looping job.
+ * Throws `HttpError` 409 when the job is already terminal (done/failed/cancelled).
+ */
+export function cancelJob(jobId: string, force: boolean): Promise<CancelResult> {
+  return apiFetch(`${BASE}/${jobId}/cancel?force=${force}`, { method: "POST" });
 }
 
 export function getJobTrace(jobId: string): Promise<JobTrace> {

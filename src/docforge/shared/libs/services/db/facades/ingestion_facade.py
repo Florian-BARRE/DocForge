@@ -178,8 +178,8 @@ class IngestionFacade(LoggerClass):
                 metadata=payload.chunk_metadata,
                 entities=payload.entities,
             )
-            # 4. The persisted truth is complete.
-            await DocumentApi.set_status(session, document_id, DocumentStatus.DONE)
+            # 4. The persisted truth is complete — unless a force-cancel raced in (guarded DONE).
+            await DocumentApi.finalize_done(session, document_id)
         self.logger.info(
             f"Ingestion saved for document {document_id}: "
             f"{len(payload.blocks)} blocks, {len(payload.chunks)} chunks"

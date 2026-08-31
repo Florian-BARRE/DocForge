@@ -3,7 +3,7 @@
 // page is open (there is no "settled" state for a fleet monitor — it is always live).
 
 import { useEffect, useState } from "react";
-import { getWorkersLive, type WorkerActivity } from "../../api/jobs";
+import { getWorkersLive, type JobStatus, type WorkerActivity } from "../../api/jobs";
 import { ErrorState } from "../../components/ErrorState";
 import { LoadingState } from "../../components/LoadingState";
 import { PageHeader } from "../../components/PageHeader";
@@ -36,6 +36,16 @@ export function WorkersPanel({ onNavigate }: { onNavigate: Navigate }) {
     return () => { cancelled = true; window.clearTimeout(timer); };
   }, []);
 
+  // Applied right after a cancel/stop/force call resolves, so the affected job's card reflects the
+  // new state immediately rather than waiting for the next poll tick.
+  const updateJob = (jobId: string, patch: Partial<JobStatus>) => {
+    setWorkers((prev) =>
+      prev
+        ? prev.map((w) => ({ ...w, jobs: w.jobs.map((j) => (j.job_id === jobId ? { ...j, ...patch } : j)) }))
+        : prev,
+    );
+  };
+
   const busyCount = workers?.filter((w) => w.busy).length ?? 0;
   const aliveCount = workers?.filter((w) => w.alive).length ?? 0;
   const idleCount = aliveCount - busyCount;
@@ -65,7 +75,9 @@ export function WorkersPanel({ onNavigate }: { onNavigate: Navigate }) {
       )}
       {workers && workers.length > 0 && (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: theme.space.l }}>
-          {workers.map((activity) => <WorkerCard key={activity.worker_id} activity={activity} onNavigate={onNavigate} />)}
+          {workers.map((activity) => (
+            <WorkerCard key={activity.worker_id} activity={activity} onNavigate={onNavigate} onJobUpdated={updateJob} />
+          ))}
         </div>
       )}
     </div>

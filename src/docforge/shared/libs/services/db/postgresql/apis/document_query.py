@@ -12,7 +12,7 @@ import uuid
 from typing import Any
 
 # ====== Third-Party Library Imports ======
-from sqlalchemy import TIMESTAMP, Numeric, Select, cast, func, or_, select
+from sqlalchemy import TIMESTAMP, Numeric, Select, cast, func, literal_column, or_, select
 from sqlalchemy.dialects.postgresql import array
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
@@ -244,9 +244,11 @@ class DocumentQueryApi:
 
 def _as_text(column: Any) -> Any:
     """The JSONB scalar's UNQUOTED text form (a string stays 'Ada', not '"Ada"') for compare/cast."""
-    # jsonb_extract_path_text with no path returns the whole scalar as text — the portable way to get
-    # an unquoted value (``.astext`` is only valid on a JSON *path* expression, not the column).
-    return func.jsonb_extract_path_text(column)
+    # ``#>>`` with an empty path array yields the whole scalar as unquoted text. Rendered inline as
+    # ``value #>> '{}'`` (via literal_column, NOT a bound param) so it matches the functional index
+    # ``ix_docmeta_field_value_text`` expression byte-for-byte — a placeholder would defeat the index.
+    # (The 1-arg ``jsonb_extract_path_text(value)`` this replaced is not a real Postgres function.)
+    return column.op("#>>")(literal_column("'{}'"))
 
 
 def _escape_like(value: str) -> str:

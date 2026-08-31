@@ -55,6 +55,7 @@ def _fake_job(collection_id: str):
         document_id=uuid.uuid4(),
         collection_id=uuid.UUID(collection_id),
         status=SimpleNamespace(value="done"),
+        cancel_requested=False,
         progress=100,
         current_stage="embed",
         error=None,
@@ -71,6 +72,13 @@ def _fake_job(collection_id: str):
         failed_node_kind=None,
         failed_item_index=None,
         error_type=None,
+    )
+
+
+def _fake_job_with_names(collection_id: str):
+    """The joined read model the get/list routes consume — a job row plus its display names."""
+    return SimpleNamespace(
+        job=_fake_job(collection_id), document_filename="f.pdf", collection_name="c"
     )
 
 
@@ -222,7 +230,7 @@ async def test_get_job_scoped_key_foreign_is_403(fastapi_app, monkeypatch) -> No
     from backend.context import CONTEXT  # noqa: PLC0415
     from backend.routers.jobs.router import get_job  # noqa: PLC0415
 
-    jobs = SimpleNamespace(get=AsyncMock(return_value=_fake_job(COLL_B)))
+    jobs = SimpleNamespace(get_with_names=AsyncMock(return_value=_fake_job_with_names(COLL_B)))
     monkeypatch.setattr(CONTEXT, "database", SimpleNamespace(jobs=jobs))
 
     with pytest.raises(HTTPException) as exc:
@@ -235,7 +243,7 @@ async def test_get_job_scoped_key_owned_is_allowed(fastapi_app, monkeypatch) -> 
     from backend.context import CONTEXT  # noqa: PLC0415
     from backend.routers.jobs.router import get_job  # noqa: PLC0415
 
-    jobs = SimpleNamespace(get=AsyncMock(return_value=_fake_job(COLL_A)))
+    jobs = SimpleNamespace(get_with_names=AsyncMock(return_value=_fake_job_with_names(COLL_A)))
     monkeypatch.setattr(CONTEXT, "database", SimpleNamespace(jobs=jobs))
 
     result = await get_job(job_id=uuid.uuid4(), principal=_scoped(COLL_A))
@@ -247,7 +255,7 @@ async def test_get_job_full_access_reaches_foreign_job(fastapi_app, monkeypatch)
     from backend.context import CONTEXT  # noqa: PLC0415
     from backend.routers.jobs.router import get_job  # noqa: PLC0415
 
-    jobs = SimpleNamespace(get=AsyncMock(return_value=_fake_job(COLL_B)))
+    jobs = SimpleNamespace(get_with_names=AsyncMock(return_value=_fake_job_with_names(COLL_B)))
     monkeypatch.setattr(CONTEXT, "database", SimpleNamespace(jobs=jobs))
 
     result = await get_job(job_id=uuid.uuid4(), principal=_full())
@@ -259,7 +267,7 @@ async def test_list_jobs_scoped_key_foreign_query_is_403(fastapi_app, monkeypatc
     from backend.context import CONTEXT  # noqa: PLC0415
     from backend.routers.jobs.router import list_jobs  # noqa: PLC0415
 
-    jobs = SimpleNamespace(list_for_collection=AsyncMock(return_value=[]))
+    jobs = SimpleNamespace(list_for_collection_with_names=AsyncMock(return_value=[]))
     monkeypatch.setattr(CONTEXT, "database", SimpleNamespace(jobs=jobs))
 
     with pytest.raises(HTTPException) as exc:
@@ -267,14 +275,14 @@ async def test_list_jobs_scoped_key_foreign_query_is_403(fastapi_app, monkeypatc
 
     assert exc.value.status_code == 403
     # The scope gate fires BEFORE any read of the foreign collection's rows.
-    jobs.list_for_collection.assert_not_called()
+    jobs.list_for_collection_with_names.assert_not_called()
 
 
 async def test_list_jobs_scoped_key_owned_query_is_allowed(fastapi_app, monkeypatch) -> None:
     from backend.context import CONTEXT  # noqa: PLC0415
     from backend.routers.jobs.router import list_jobs  # noqa: PLC0415
 
-    jobs = SimpleNamespace(list_for_collection=AsyncMock(return_value=[]))
+    jobs = SimpleNamespace(list_for_collection_with_names=AsyncMock(return_value=[]))
     monkeypatch.setattr(CONTEXT, "database", SimpleNamespace(jobs=jobs))
 
     assert await list_jobs(collection_id=uuid.UUID(COLL_A), principal=_scoped(COLL_A)) == []

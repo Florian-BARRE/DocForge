@@ -6,9 +6,9 @@
 import type { ReactNode } from "react";
 import { theme as t } from "../theme";
 
-export type ChipTone = "accent" | "ok" | "warn" | "error" | "info" | "neutral" | "dim" | "loop";
+export type ChipTone = "accent" | "ok" | "warn" | "error" | "info" | "neutral" | "dim" | "loop" | "skip";
 
-const TONE: Record<ChipTone, { color: string; background: string; border: string }> = {
+const TONE: Record<ChipTone, { color: string; background: string; border: string; dashed?: boolean }> = {
   accent: { color: t.color.accent, background: t.color.accentSoft, border: t.color.accentLine },
   ok: { color: t.color.ok, background: t.color.okSoft, border: "transparent" },
   warn: { color: t.color.warn, background: t.color.warnSoft, border: "transparent" },
@@ -19,6 +19,9 @@ const TONE: Record<ChipTone, { color: string; background: string; border: string
   // Quiet meta tag (family/kind/flags) — a hairline outline on no fill, so it reads as metadata
   // beside a title rather than a heavy grey slab.
   dim: { color: t.color.mute, background: "transparent", border: t.color.line },
+  // A deliberate stop (cancelled job/document, skipped stage) — dashed per brand.md, never the
+  // error red (it wasn't a failure).
+  skip: { color: t.color.skip, background: t.color.skipSoft, border: t.color.skip, dashed: true },
 };
 
 interface ChipProps {
@@ -34,7 +37,7 @@ export function Chip({ tone = "neutral", children, title }: ChipProps) {
       title={title}
       style={{
         display: "inline-flex", alignItems: "center",
-        color: c.color, background: c.background, border: `1px solid ${c.border}`,
+        color: c.color, background: c.background, border: `1px ${c.dashed ? "dashed" : "solid"} ${c.border}`,
         borderRadius: t.radius.pill, padding: "2px 9px",
         fontSize: t.font.size.xs, fontWeight: 600, letterSpacing: "0.01em", whiteSpace: "nowrap",
       }}

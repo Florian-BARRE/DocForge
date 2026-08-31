@@ -92,6 +92,19 @@ class DocumentApi:
             document.status = status
 
     @staticmethod
+    async def finalize_done(session: AsyncSession, document_id: uuid.UUID) -> None:
+        """
+        Mark a document DONE at the end of a successful run — UNLESS it was CANCELLED meanwhile.
+
+        A force-cancel can commit CANCELLED in the sub-second window while the persist tail runs;
+        guarding the terminal DONE write keeps a force-cancelled document from flipping back to DONE
+        (mirrors the ``JobApi.mark_done`` CANCELLED guard on the job side).
+        """
+        document = await session.get(Document, document_id)
+        if document is not None and document.status != DocumentStatus.CANCELLED:
+            document.status = DocumentStatus.DONE
+
+    @staticmethod
     async def mark_processing(session: AsyncSession, document_id: uuid.UUID) -> None:
         """
         Transition a document PENDING → PROCESSING at job-claim time.

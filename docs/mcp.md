@@ -100,10 +100,11 @@ vector space is fixed at creation), plus optional ingestion/search pipeline blob
 
 | Tool | Purpose |
 |---|---|
-| `list_jobs` | A collection's ingestion jobs, newest first. |
+| `list_jobs` | A collection's ingestion jobs, newest first — includes `document_filename`, `collection_name`, `current_stage`, `cancel_requested`. |
 | `get_job` | One ingestion job's live state — poll after an upload. |
 | `get_job_events` | The per-node execution trace (stage, status, timing, error), in order. |
-| `get_live_workers` | What every worker is doing right now, grouped by worker. |
+| `get_live_workers` | What every worker is doing right now, grouped by worker (each with `worker_name`). |
+| `cancel_job` | Stop a job — cooperative by default (running job stops at its next stage boundary), or `force=true` to terminate immediately. |
 
 ### Blobs
 
@@ -125,7 +126,7 @@ plain dicts. See [`PIPELINE.md`](../src/docforge/PIPELINE.md) for what the graph
 | `view_pipeline_stages` | Derive the ordered stage view of a blob + its validity verdict. |
 | `apply_pipeline_stage` | Compile a stage-level action into a blob (always buildable); returns recompiled blob + stage view + issues. |
 
-**Total: 33 tools** across 9 domains.
+**Total: 34 tools** across 9 domains.
 
 ---
 
@@ -216,7 +217,7 @@ Add an entry to your client's MCP config (`.mcp.json`-style):
 }
 ```
 
-The client launches the process and speaks MCP over stdio; the model can then call any of the 33
+The client launches the process and speaks MCP over stdio; the model can then call any of the 34
 tools. (Use an absolute path to `entrypoint.py` if your client does not run from the repo root, and
 run it through `uv`/the project venv so `docforge_sdk` and `mcp` are importable.)
 

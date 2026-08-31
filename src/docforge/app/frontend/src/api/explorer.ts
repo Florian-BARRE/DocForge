@@ -11,7 +11,7 @@ const COLLECTIONS_BASE = "/api/v1/collections";
 const BLOBS_BASE = "/api/v1/blobs";
 const CHUNKS_BASE = "/api/v1/chunks";
 
-export type DocumentStatus = "pending" | "processing" | "done" | "failed";
+export type DocumentStatus = "pending" | "processing" | "done" | "failed" | "cancelled";
 export type SourceKind = "digital_born" | "scanned" | "mixed";
 export type EnrichmentKind = "classify" | "ocr" | "vlm" | "chart_to_data" | "table_summary";
 export type EnrichmentStatus = "ok" | "failed" | "skipped";

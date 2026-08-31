@@ -13,6 +13,7 @@ const TONE_BY_STATUS: Record<string, ChipTone> = {
   failed: "error",
   error: "error",
   skipped: "dim",
+  cancelled: "skip",
 };
 
 export function JobStatusChip({ status }: { status: string }) {

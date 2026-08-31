@@ -8,15 +8,19 @@ import uuid
 from datetime import UTC, datetime
 from decimal import Decimal
 
-# ====== Internal Project Imports ======
+# ====== Third-Party Library Imports ======
 from loggerplusplus import LoggerClass
+from sqlalchemy.ext.asyncio import AsyncSession
 
+# ====== Internal Project Imports ======
 from shared_libs.services.db.postgresql import PostgresClient
 from shared_libs.services.db.postgresql.apis import DocumentApi, JobApi
+from shared_libs.services.db.postgresql.apis.job_api import JobWithNames
 from shared_libs.services.db.postgresql.tables import (
     DocumentStatus,
     Job,
     JobStageEvent,
+    JobStatus,
     WorkerHeartbeat,
 )
 
@@ -33,10 +37,25 @@ class JobsFacade(LoggerClass):
         async with self._postgres.session() as session:
             return await JobApi.get(session, job_id)
 
+    async def get_with_names(self, job_id: uuid.UUID) -> JobWithNames | None:
+        """Fetch a job joined to its document filename + collection name (the monitoring view)."""
+        async with self._postgres.session() as session:
+            return await JobApi.get_with_names(session, job_id)
+
     async def list_for_collection(self, collection_id: uuid.UUID) -> list[Job]:
         """Return a collection's jobs, newest first."""
         async with self._postgres.session() as session:
             return await JobApi.list_for_collection(session, collection_id)
+
+    async def list_for_collection_with_names(self, collection_id: uuid.UUID) -> list[JobWithNames]:
+        """Return a collection's jobs (newest first), each joined to its display names."""
+        async with self._postgres.session() as session:
+            return await JobApi.list_for_collection_with_names(session, collection_id)
+
+    async def list_active_with_names(self) -> list[JobWithNames]:
+        """Return every RUNNING job joined to its display names — the fleet activity view."""
+        async with self._postgres.session() as session:
+            return await JobApi.list_active_with_names(session)
 
     async def last_successful_ingest_at(self, collection_id: uuid.UUID) -> datetime | None:
         """Return the finish time of the collection's most recent DONE ingest, or None."""
@@ -139,11 +158,11 @@ class JobsFacade(LoggerClass):
             )
 
     async def upsert_heartbeat(
-        self, worker_id: str, last_seen: datetime, started_at: datetime
+        self, worker_id: str, worker_name: str, last_seen: datetime, started_at: datetime
     ) -> None:
         """Register/refresh a worker's liveness heartbeat row (idle-but-alive visibility)."""
         async with self._postgres.session() as session:
-            await JobApi.upsert_heartbeat(session, worker_id, last_seen, started_at)
+            await JobApi.upsert_heartbeat(session, worker_id, worker_name, last_seen, started_at)
 
     async def delete_heartbeat(self, worker_id: str) -> None:
         """De-register a worker on clean shutdown — its heartbeat row vanishes immediately."""
@@ -176,6 +195,86 @@ class JobsFacade(LoggerClass):
         async with self._postgres.session() as session:
             return await JobApi.collection_cost(session, collection_id)
 
+    async def request_cancel(self, job_id: uuid.UUID) -> Job | None:
+        """
+        Raise a running job's cooperative-cancel flag (honoured at its next stage boundary).
+
+        Leaves the job RUNNING — the worker's between-stages guard re-reads the flag and stops
+        itself. Returns the flagged job (or None for an unknown id) so the caller reports its state.
+        """
+        async with self._postgres.session() as session:
+            job = await JobApi.request_cancel(session, job_id)
+            if job is not None:
+                self.logger.info(f"Cancellation requested for running job {job_id}")
+            return job
+
+    async def is_cancel_requested(self, job_id: uuid.UUID) -> bool:
+        """Cheap read of a job's cancel flag — the worker's between-stages cancellation probe."""
+        async with self._postgres.session() as session:
+            return await JobApi.is_cancel_requested(session, job_id)
+
+    async def _terminate(
+        self,
+        session: AsyncSession,
+        job_id: uuid.UUID,
+        *,
+        job_status: JobStatus,
+        doc_status: DocumentStatus,
+        reason: str,
+    ) -> Job | None:
+        """
+        Transition ONE job to a terminal status AND its document to a terminal status, atomically.
+
+        The single force-terminate code path shared by cancel-force and the cron reaper: it marks the
+        job terminal (closing its open stage row) via ``JobApi.mark_terminal`` and flags its owning
+        document terminal, in the SAME transaction. Session-scoped so the reaper can loop it over many
+        stale jobs in one unit of work.
+
+        Args:
+            session (AsyncSession): The active DB session (the caller owns the transaction).
+            job_id (uuid.UUID): The job to terminate.
+            job_status (JobStatus): The job's terminal status (CANCELLED for cancel, FAILED for reap).
+            doc_status (DocumentStatus): The document's terminal status to mirror.
+            reason (str): The human-readable reason recorded on the job + its open stage row.
+
+        Returns:
+            Job | None: The terminated job, or None when the id is unknown.
+        """
+        job = await JobApi.mark_terminal(
+            session, job_id, status=job_status, reason=reason, finished_at=datetime.now(UTC)
+        )
+        if job is not None and job.document_id is not None:
+            await DocumentApi.set_status(session, job.document_id, doc_status)
+        return job
+
+    async def force_terminate(self, job_id: uuid.UUID, reason: str) -> Job | None:
+        """
+        Immediately CANCEL a job and its document, regardless of worker state — the manual reaper.
+
+        For a wedged/infinite job (or a queued job cancelled before it runs): marks the job CANCELLED
+        and its document CANCELLED now, sharing the reaper's transition semantics via ``_terminate``.
+        A still-alive worker also stops cooperatively at its next boundary (mark_terminal raises the
+        cancel flag) and can never resurrect the job (mark_done/mark_failed no-op once CANCELLED).
+
+        Args:
+            job_id (uuid.UUID): The job to force-terminate.
+            reason (str): The recorded human-readable reason.
+
+        Returns:
+            Job | None: The terminated job, or None when the id is unknown.
+        """
+        async with self._postgres.session() as session:
+            job = await self._terminate(
+                session,
+                job_id,
+                job_status=JobStatus.CANCELLED,
+                doc_status=DocumentStatus.CANCELLED,
+                reason=reason,
+            )
+        if job is not None:
+            self.logger.info(f"Force-terminated job {job_id} (CANCELLED): {reason}")
+        return job
+
     async def reap_stale(self, older_than_seconds: float) -> list[uuid.UUID]:
         """
         Fail every RUNNING job whose progress froze past the threshold — orphaned-job recovery.
@@ -183,9 +282,9 @@ class JobsFacade(LoggerClass):
         A dev worker hot-reload (or a crash) drops the in-flight arq task, but the DB job row stays
         RUNNING forever and its document PROCESSING. This lists such wedged jobs and, for each, marks
         the job FAILED with an operator-clear reason AND flags its owning document FAILED (so the
-        document is visibly re-ingestable). Idempotent under concurrency: a row already reaped no
-        longer matches ``status == RUNNING``, so a second pass — or a second worker — is a harmless
-        no-op that simply finds nothing to reap.
+        document is visibly re-ingestable) — through the SAME ``_terminate`` path a manual cancel-force
+        uses. Idempotent under concurrency: a row already reaped no longer matches ``status ==
+        RUNNING``, so a second pass — or a second worker — is a harmless no-op that finds nothing.
 
         Args:
             older_than_seconds (float): A RUNNING job idle longer than this is reaped.
@@ -200,10 +299,13 @@ class JobsFacade(LoggerClass):
         reaped: list[uuid.UUID] = []
         async with self._postgres.session() as session:
             for job in await JobApi.list_stale(session, older_than_seconds):
-                now = datetime.now(UTC)
-                await JobApi.mark_failed(session, job.id, error=error, finished_at=now)
-                if job.document_id is not None:
-                    await DocumentApi.set_status(session, job.document_id, DocumentStatus.FAILED)
+                await self._terminate(
+                    session,
+                    job.id,
+                    job_status=JobStatus.FAILED,
+                    doc_status=DocumentStatus.FAILED,
+                    reason=error,
+                )
                 reaped.append(job.id)
         if reaped:
             self.logger.warning(f"Reaped {len(reaped)} stale job(s): {error}")

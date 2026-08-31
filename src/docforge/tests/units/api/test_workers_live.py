@@ -51,13 +51,14 @@ def _full():
 
 
 def _running_job(collection_id: str, worker_id: str):
-    """A stand-in RUNNING Job row carrying every field the status mapper + assembler read."""
-    return SimpleNamespace(
+    """A stand-in RUNNING job as JobWithNames — the job row plus its joined display names."""
+    job = SimpleNamespace(
         id=uuid.uuid4(),
         document_id=uuid.uuid4(),
         collection_id=uuid.UUID(collection_id),
         worker_id=worker_id,
         status=SimpleNamespace(value="running"),
+        cancel_requested=False,
         progress=50,
         current_stage="embed",
         error=None,
@@ -75,12 +76,15 @@ def _running_job(collection_id: str, worker_id: str):
         failed_item_index=None,
         error_type=None,
     )
+    return SimpleNamespace(job=job, document_filename="report.pdf", collection_name="my-collection")
 
 
-def _heartbeat(worker_id: str):
-    """A fresh heartbeat row for one worker."""
+def _heartbeat(worker_id: str, worker_name: str | None = None):
+    """A fresh heartbeat row for one worker (worker_name defaults to the id when omitted)."""
     now = datetime.now(UTC)
-    return SimpleNamespace(worker_id=worker_id, last_seen=now, started_at=now)
+    return SimpleNamespace(
+        worker_id=worker_id, worker_name=worker_name or worker_id, last_seen=now, started_at=now
+    )
 
 
 # ── WorkersLiveHelpers.assemble — job scoping ────────────────────────────────────────────────────
@@ -137,7 +141,7 @@ def _wire_jobs(monkeypatch, *, running):
     jobs = SimpleNamespace(
         prune_stale_heartbeats=prune,
         list_heartbeats=AsyncMock(return_value=[_heartbeat("w1")]),
-        list_active=AsyncMock(return_value=running),
+        list_active_with_names=AsyncMock(return_value=running),
     )
     monkeypatch.setattr(CONTEXT, "database", SimpleNamespace(jobs=jobs))
     return prune
@@ -221,7 +225,7 @@ async def test_live_workers_drops_a_job_with_no_collection_for_a_scoped_key(
     from backend.routers.jobs.router import live_workers  # noqa: PLC0415
 
     orphan = _running_job(COLL_A, "w1")
-    orphan.collection_id = None
+    orphan.job.collection_id = None
     _wire_jobs(monkeypatch, running=[orphan])
 
     view = await live_workers(principal=_scoped(COLL_A))

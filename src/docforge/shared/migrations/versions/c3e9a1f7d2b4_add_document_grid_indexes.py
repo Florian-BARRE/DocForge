@@ -10,7 +10,7 @@
 # always-present scope predicate) for the default created-at ordering plus the status / filename /
 # enabled filters. On ``document_metadata``: a field-leading composite ``(field_id, document_id)``
 # for the correlated EXISTS + scalar sort subquery, a FUNCTIONAL btree on
-# ``(field_id, jsonb_extract_path_text(value))`` mirroring the exact expression the query builder
+# ``(field_id, (value #>> '{}'))`` mirroring the exact expression the query builder
 # emits for eq/in/ordered metadata predicates, and a GIN index on the raw JSONB ``value`` for
 # list-field containment (``has_any``). The functional and GIN indexes use raw DDL because
 # ``op.create_index`` cannot express a functional key or the ``USING gin`` access method cleanly.
@@ -53,9 +53,11 @@ def upgrade() -> None:
     op.create_index("ix_docmeta_field_document", "document_metadata", ["field_id", "document_id"])
 
     # 3. Functional btree matching the query builder's exact expression for eq/in/ordered predicates.
+    # Corrected from a broken 1-arg ``jsonb_extract_path_text(value)`` (no such Postgres function) to
+    # the ``value #>> '{}'`` empty-path text extraction the runtime builder now emits inline.
     op.execute(
         "CREATE INDEX ix_docmeta_field_value_text "
-        "ON document_metadata (field_id, jsonb_extract_path_text(value))"
+        "ON document_metadata (field_id, ((value #>> '{}')))"
     )
 
     # 4. GIN on the raw JSONB value — backs list-field containment (has_any / @>).

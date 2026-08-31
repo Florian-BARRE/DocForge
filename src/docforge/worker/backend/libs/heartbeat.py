@@ -28,11 +28,13 @@ class HeartbeatWriter(LoggerClass):
         self,
         database: Database,
         worker_id: str,
+        worker_name: str,
         interval_seconds: int,
     ) -> None:
         LoggerClass.__init__(self)
         self._database = database
         self._worker_id = worker_id
+        self._worker_name = worker_name
         self._interval = interval_seconds
         self._started_at = datetime.now(UTC)
         self._task: asyncio.Task[None] | None = None
@@ -41,7 +43,7 @@ class HeartbeatWriter(LoggerClass):
         """Write one heartbeat, swallowing any DB error so the loop survives a transient blip."""
         try:
             await self._database.jobs.upsert_heartbeat(
-                self._worker_id, datetime.now(UTC), self._started_at
+                self._worker_id, self._worker_name, datetime.now(UTC), self._started_at
             )
         except Exception as exc:  # noqa: BLE001 — liveness must never crash the worker
             self.logger.warning(f"Heartbeat write failed for '{self._worker_id}': {exc}")

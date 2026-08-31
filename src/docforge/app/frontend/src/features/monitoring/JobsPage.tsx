@@ -70,7 +70,14 @@ export function JobsPage({ collectionId, onNavigate }: JobsPageProps) {
       {jobs && jobs.length > 0 && (
         <div style={{ display: "flex", flexDirection: "column", gap: theme.space.s }}>
           {jobs.map((job) => (
-            <JobRow key={job.job_id} job={job} onClick={() => onNavigate({ name: "job", collectionId, jobId: job.job_id })} />
+            <JobRow
+              key={job.job_id}
+              job={job}
+              onClick={() => onNavigate({ name: "job", collectionId, jobId: job.job_id })}
+              onUpdated={(patch) =>
+                setJobs((prev) => (prev ? prev.map((j) => (j.job_id === job.job_id ? { ...j, ...patch } : j)) : prev))
+              }
+            />
           ))}
         </div>
       )}

@@ -29,7 +29,14 @@ from docforge_sdk.models.explorer import (
     PageInfo,
 )
 from docforge_sdk.models.ir import DocumentIRModel, IRBlock, IREnrichment, IRFigure, IRTable
-from docforge_sdk.models.jobs import JobEvent, JobStatus, JobTrace, WorkerActivity, WorkersLive
+from docforge_sdk.models.jobs import (
+    CancelResult,
+    JobEvent,
+    JobStatus,
+    JobTrace,
+    WorkerActivity,
+    WorkersLive,
+)
 from docforge_sdk.models.pipelines import (
     EditResponse,
     InspectResponse,
@@ -99,6 +106,7 @@ MODELS: dict[str, type[BaseModel]] = {
     "JobTrace": JobTrace,
     "WorkerActivity": WorkerActivity,
     "WorkersLive": WorkersLive,
+    "CancelResult": CancelResult,
     # Pipelines (opaque graph JSON typed as dicts, but property names + required still 1:1)
     "PipelineSurface": PipelineSurface,
     "PipelineIndexResponse": PipelineIndexResponse,

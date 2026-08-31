@@ -11,7 +11,6 @@ from unittest.mock import ANY, AsyncMock, MagicMock
 from shared_libs.public_models import FieldType
 from shared_libs.services.db.facades import IngestionFacade, IngestionPayload
 from shared_libs.services.db.facades import ingestion_facade as facade_module
-from shared_libs.services.db.postgresql.tables import DocumentStatus
 from shared_libs.services.db.qdrant import PayloadType, QdrantPoint
 
 
@@ -92,7 +91,9 @@ async def test_save_purges_chunks_and_ir_before_reinserting(monkeypatch) -> None
     monkeypatch.setattr(facade_module.IRApi, "delete_for_document", _tracking(calls, "ir_delete"))
     monkeypatch.setattr(facade_module.IRApi, "persist_ir", _tracking(calls, "ir_persist"))
     monkeypatch.setattr(facade_module.ChunkApi, "persist_chunks", _tracking(calls, "chunk_persist"))
-    monkeypatch.setattr(facade_module.DocumentApi, "set_status", _tracking(calls, "set_status"))
+    monkeypatch.setattr(
+        facade_module.DocumentApi, "finalize_done", _tracking(calls, "finalize_done")
+    )
 
     facade = IngestionFacade(_postgres_yielding(MagicMock()), MagicMock(), MagicMock())
     await facade.save(uuid.uuid4(), IngestionPayload())
@@ -101,7 +102,7 @@ async def test_save_purges_chunks_and_ir_before_reinserting(monkeypatch) -> None
     assert calls.index("chunk_delete") < calls.index("chunk_persist")
     assert calls.index("ir_delete") < calls.index("ir_persist")
     # 2. The persisted truth is only marked complete once everything else landed.
-    assert calls[-1] == "set_status"
+    assert calls[-1] == "finalize_done"
 
 
 async def test_save_sets_status_done(monkeypatch) -> None:
@@ -113,13 +114,13 @@ async def test_save_sets_status_done(monkeypatch) -> None:
     monkeypatch.setattr(facade_module.IRApi, "delete_for_document", AsyncMock())
     monkeypatch.setattr(facade_module.IRApi, "persist_ir", AsyncMock())
     monkeypatch.setattr(facade_module.ChunkApi, "persist_chunks", AsyncMock())
-    set_status = AsyncMock()
-    monkeypatch.setattr(facade_module.DocumentApi, "set_status", set_status)
+    finalize_done = AsyncMock()
+    monkeypatch.setattr(facade_module.DocumentApi, "finalize_done", finalize_done)
 
     facade = IngestionFacade(_postgres_yielding(MagicMock()), MagicMock(), MagicMock())
     await facade.save(document_id, IngestionPayload())
 
-    set_status.assert_awaited_once_with(ANY, document_id, DocumentStatus.DONE)
+    finalize_done.assert_awaited_once_with(ANY, document_id)
 
 
 # --------------------------------------------------------------------------- #

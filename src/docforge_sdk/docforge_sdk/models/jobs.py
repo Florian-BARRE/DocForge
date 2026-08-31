@@ -17,8 +17,14 @@ class JobStatus(BaseModel):
     Attributes:
         job_id (str): The job row's UUID.
         document_id (str): The document being ingested.
+        document_filename (str | None): The document's filename, joined at read (None if the
+            document is gone).
         collection_id (str): Its collection.
-        status (str): queued / running / done / failed.
+        collection_name (str | None): The collection's name, joined at read (None if the
+            collection is gone).
+        status (str): queued / running / done / failed / cancelled.
+        cancel_requested (bool): A cooperative stop has been requested; the running job stops at
+            its next stage boundary (still 'running' until it does).
         progress (int): 0–100 (completed pipeline nodes over total).
         current_stage (str | None): The node currently (or last) executed.
         error (str | None): The failure, verbatim — only set when status is failed.
@@ -35,8 +41,21 @@ class JobStatus(BaseModel):
 
     job_id: str = Field(description="The job row's UUID.")
     document_id: str = Field(description="The document being ingested.")
+    document_filename: str | None = Field(
+        default=None,
+        description="The document's filename, joined at read (None if the document is gone).",
+    )
     collection_id: str = Field(description="Its collection.")
-    status: str = Field(description="queued / running / done / failed.")
+    collection_name: str | None = Field(
+        default=None,
+        description="The collection's name, joined at read (None if the collection is gone).",
+    )
+    status: str = Field(description="queued / running / done / failed / cancelled.")
+    cancel_requested: bool = Field(
+        default=False,
+        description="A cooperative stop has been requested; the running job stops at its next "
+        "stage boundary (still 'running' until it does).",
+    )
     progress: int = Field(description="0-100, completed pipeline nodes over total.")
     current_stage: str | None = Field(default=None, description="Node currently/last executed.")
     error: str | None = Field(default=None, description="Failure detail when status=failed.")
@@ -130,6 +149,8 @@ class WorkerActivity(BaseModel):
 
     Attributes:
         worker_id (str): The worker's stable id (its hostname).
+        worker_name (str | None): Its friendly display name (WORKER_NAME, defaults to the
+            hostname); None only for a heartbeat row written before this column landed.
         alive (bool): Its heartbeat is fresher than the liveness threshold.
         busy (bool): It currently owns at least one RUNNING job.
         last_seen (datetime | None): Its last heartbeat tick (None when no heartbeat row exists).
@@ -138,6 +159,11 @@ class WorkerActivity(BaseModel):
     """
 
     worker_id: str = Field(description="The worker's stable id (its hostname).")
+    worker_name: str | None = Field(
+        default=None,
+        description="Friendly display name (WORKER_NAME, defaults to hostname); None for a "
+        "pre-column row.",
+    )
     alive: bool = Field(description="Heartbeat fresher than the liveness threshold.")
     busy: bool = Field(description="Owns at least one RUNNING job right now.")
     last_seen: datetime | None = Field(
@@ -162,4 +188,38 @@ class WorkersLive(BaseModel):
     )
 
 
-__all__ = ["JobStatus", "JobEvent", "JobTrace", "WorkerActivity", "WorkersLive"]
+class CancelResult(BaseModel):
+    """
+    The typed outcome of a cancel request — what the job's state is after the call.
+
+    Attributes:
+        job_id (str): The targeted job's UUID.
+        status (str): The job's status AFTER the call (cancelled / running).
+        cancel_requested (bool): Whether a cooperative stop is now pending (true only while a
+            running job is still winding down to the CANCELLED terminal state).
+        outcome (str): cancelled (now terminal) | cancellation_requested (running, will stop at
+            the next stage boundary).
+        detail (str): A human-readable description of what happened.
+    """
+
+    job_id: str = Field(description="The targeted job's UUID.")
+    status: str = Field(description="The job's status AFTER the call (cancelled / running).")
+    cancel_requested: bool = Field(
+        description="Whether a cooperative stop is now pending (true only while a running job is "
+        "still winding down to the CANCELLED terminal state)."
+    )
+    outcome: str = Field(
+        description="cancelled (now terminal) | cancellation_requested (running, will stop at "
+        "the next stage boundary)."
+    )
+    detail: str = Field(description="A human-readable description of what happened.")
+
+
+__all__ = [
+    "JobStatus",
+    "JobEvent",
+    "JobTrace",
+    "WorkerActivity",
+    "WorkersLive",
+    "CancelResult",
+]

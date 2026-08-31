@@ -44,7 +44,7 @@ async def test_stop_deletes_its_own_heartbeat_row() -> None:
     """A cleanly-stopped worker removes its own liveness row so it disappears from the fleet."""
     delete_heartbeat = AsyncMock()
     database = SimpleNamespace(jobs=SimpleNamespace(delete_heartbeat=delete_heartbeat))
-    writer = HeartbeatWriter(database, worker_id="w1", interval_seconds=10)
+    writer = HeartbeatWriter(database, worker_id="w1", worker_name="w1", interval_seconds=10)
 
     writer.start()
     await writer.stop()
@@ -56,7 +56,7 @@ async def test_stop_deletes_even_when_never_started() -> None:
     """stop() de-registers the row regardless of whether the beat loop ever ran."""
     delete_heartbeat = AsyncMock()
     database = SimpleNamespace(jobs=SimpleNamespace(delete_heartbeat=delete_heartbeat))
-    writer = HeartbeatWriter(database, worker_id="w1", interval_seconds=10)
+    writer = HeartbeatWriter(database, worker_id="w1", worker_name="w1", interval_seconds=10)
 
     await writer.stop()
 
@@ -67,7 +67,7 @@ async def test_stop_swallows_a_delete_error() -> None:
     """A DB blip during de-registration must never crash an otherwise-clean shutdown."""
     delete_heartbeat = AsyncMock(side_effect=RuntimeError("db down"))
     database = SimpleNamespace(jobs=SimpleNamespace(delete_heartbeat=delete_heartbeat))
-    writer = HeartbeatWriter(database, worker_id="w1", interval_seconds=10)
+    writer = HeartbeatWriter(database, worker_id="w1", worker_name="w1", interval_seconds=10)
 
     # No exception escapes stop().
     await writer.stop()

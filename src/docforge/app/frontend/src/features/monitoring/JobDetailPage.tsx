@@ -14,6 +14,7 @@ import { LoadingState } from "../../components/LoadingState";
 import { PageHeader } from "../../components/PageHeader";
 import type { Navigate } from "../../shell/view";
 import { theme } from "../../theme";
+import { JobCancelControl } from "./JobCancelControl";
 import { JobEventItem } from "./JobEventItem";
 import { JobStatusChip } from "./JobStatusChip";
 import { JobSummaryCard } from "./JobSummaryCard";
@@ -30,16 +31,19 @@ export function JobDetailPage({ jobId, collectionId, onNavigate }: JobDetailPage
 
   if (detail.error) return <ErrorState message={detail.error} />;
   if (!detail.job) return <LoadingState label="loading job…" />;
-  const { job, events, live, running, etaSeconds, runningLong, elapsedInStageSeconds, avgStageSeconds, totalTokens } = detail;
+  const { job, events, live, running, patchJob, etaSeconds, runningLong, elapsedInStageSeconds, avgStageSeconds, totalTokens } = detail;
 
   return (
     <div className="df-rise" style={{ padding: theme.space.xl, overflowY: "auto", height: "100%", maxWidth: 1200, margin: "0 auto", width: "100%" }}>
       <PageHeader
         eyebrow={<BackLink label="Jobs" onClick={() => onNavigate({ name: "collection-jobs", collectionId })} />}
-        title={<span style={{ fontFamily: theme.font.mono, fontSize: theme.font.size.xxl }}>{job.job_id}</span>}
+        title={<span>{job.document_filename ?? "untitled document"}</span>}
         subtitle={
           <span style={{ display: "inline-flex", alignItems: "center", gap: theme.space.s, flexWrap: "wrap" }}>
-            <span>document {job.document_id} · attempt {job.attempt}</span>
+            {job.collection_name && <span>{job.collection_name}</span>}
+            <span style={{ fontFamily: theme.font.mono, fontSize: theme.font.size.s, color: theme.color.mute }}>job {job.job_id}</span>
+            <span style={{ fontFamily: theme.font.mono, fontSize: theme.font.size.s, color: theme.color.mute }}>doc {job.document_id}</span>
+            <span>attempt {job.attempt}</span>
             <JobStatusChip status={job.status} />
             {live && running && (
               <span style={{ display: "inline-flex", alignItems: "center", gap: theme.space.xs, color: theme.color.accent, fontSize: theme.font.size.xs, fontWeight: theme.font.weight.semibold }}>
@@ -47,6 +51,7 @@ export function JobDetailPage({ jobId, collectionId, onNavigate }: JobDetailPage
                 live
               </span>
             )}
+            <JobCancelControl job={job} onUpdated={patchJob} />
           </span>
         }
       />

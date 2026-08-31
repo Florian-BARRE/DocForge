@@ -4,11 +4,11 @@
 // stage" live, and every value derived from that raw state (running-long flag, ETA, token totals)
 // — extracted out of `JobDetailPage` so that component stays pure render.
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { getJob, getJobTrace, getStageDurations, streamJobEvents, type JobEvent, type JobStatus } from "../../../api/jobs";
 
 const POLL_MS = 2500;
-const TERMINAL = new Set(["done", "failed"]);
+const TERMINAL = new Set(["done", "failed", "cancelled"]);
 // A running stage is flagged "running long" once its elapsed time crosses this multiple of the
 // collection's own average for that stage — well before the 600s hard `stalled` flag.
 const RUNNING_LONG_FACTOR = 2.5;
@@ -86,7 +86,13 @@ export function useJobDetail(jobId: string, collectionId: string) {
     return () => window.clearInterval(id);
   }, [job?.status]);
 
-  if (!job) return { job: null, events, error, live } as const;
+  // Optimistic local patch after a cancel call — the SSE stream / poll will reconcile the rest,
+  // but this makes the new status/cancel_requested show immediately instead of waiting a tick.
+  const patchJob = useCallback((patch: Partial<JobStatus>) => {
+    setJob((prev) => (prev ? { ...prev, ...patch } : prev));
+  }, []);
+
+  if (!job) return { job: null, events, error, live, patchJob } as const;
 
   const running = !TERMINAL.has(job.status);
 
@@ -119,7 +125,7 @@ export function useJobDetail(jobId: string, collectionId: string) {
   const totalTokens = job.total_prompt_tokens + job.total_completion_tokens;
 
   return {
-    job, events, error, live,
+    job, events, error, live, patchJob,
     running, elapsedInStageSeconds, avgStageSeconds, runningLong, etaSeconds, totalTokens,
   } as const;
 }

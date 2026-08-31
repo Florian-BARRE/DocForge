@@ -73,7 +73,9 @@ export function JobSummaryCard({
           <FailedNodeBreadcrumb job={job} />
           <div
             style={{
-              color: job.failed_node_id ? theme.color.dim : theme.color.error,
+              // A cancelled job's `error` is just the cancellation detail, not a failure — never the
+              // error-red token for it (brand.md: cancelled reads as a deliberate stop, not a failure).
+              color: job.status !== "failed" ? theme.color.skip : job.failed_node_id ? theme.color.dim : theme.color.error,
               fontSize: theme.font.size.xs,
               marginTop: job.failed_node_id ? theme.space.xs : 0,
             }}

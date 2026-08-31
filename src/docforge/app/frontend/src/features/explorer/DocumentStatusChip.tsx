@@ -10,6 +10,7 @@ const TONE_BY_STATUS: Record<DocumentStatus, ChipTone> = {
   processing: "accent",
   done: "ok",
   failed: "error",
+  cancelled: "skip",
 };
 
 export function DocumentStatusChip({ status }: { status: DocumentStatus }) {

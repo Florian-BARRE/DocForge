@@ -35,6 +35,7 @@ class CONTEXT:
     # ── Execution ──
     runner: PipelineRunner
     worker_id: str
+    worker_name: str
     job_timeout_seconds: float
 
     # ── Liveness ──

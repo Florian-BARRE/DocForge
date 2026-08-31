@@ -5,13 +5,15 @@
 // shown greyed/"offline" regardless of any job row still naming it.
 
 import type { Navigate } from "../../shell/view";
-import type { WorkerActivity } from "../../api/jobs";
+import type { JobStatus, WorkerActivity } from "../../api/jobs";
 import { theme } from "../../theme";
 import { JobRow } from "./JobRow";
 
 interface WorkerCardProps {
   activity: WorkerActivity;
   onNavigate: Navigate;
+  /** Applied to the matching job in this worker's list when a cancel/stop/force call resolves. */
+  onJobUpdated: (jobId: string, patch: Partial<JobStatus>) => void;
 }
 
 type Liveness = "busy" | "idle" | "offline";
@@ -37,7 +39,7 @@ function formatSince(value: string | null): string {
   return `${Math.floor(seconds / 60)}m ago`;
 }
 
-export function WorkerCard({ activity, onNavigate }: WorkerCardProps) {
+export function WorkerCard({ activity, onNavigate, onJobUpdated }: WorkerCardProps) {
   const state = liveness(activity);
   const color = COLOR_BY_LIVENESS[state];
 
@@ -52,9 +54,16 @@ export function WorkerCard({ activity, onNavigate }: WorkerCardProps) {
     >
       <div style={{ display: "flex", alignItems: "center", gap: theme.space.s }}>
         <span style={{ width: 8, height: 8, borderRadius: theme.radius.pill, background: color, flexShrink: 0 }} />
-        <strong style={{ fontFamily: theme.font.mono, fontSize: theme.font.size.m, color: theme.color.text }}>
-          {activity.worker_id}
-        </strong>
+        <div style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
+          <strong style={{ fontFamily: theme.font.display, fontSize: theme.font.size.m, color: theme.color.text }}>
+            {activity.worker_name ?? activity.worker_id}
+          </strong>
+          {activity.worker_name && (
+            <span style={{ fontFamily: theme.font.mono, fontSize: theme.font.size.xs, color: theme.color.mute }}>
+              {activity.worker_id}
+            </span>
+          )}
+        </div>
         <span
           style={{
             marginLeft: "auto", color, fontSize: theme.font.size.xs, fontWeight: theme.font.weight.semibold,
@@ -80,6 +89,7 @@ export function WorkerCard({ activity, onNavigate }: WorkerCardProps) {
           key={job.job_id}
           job={job}
           onClick={() => onNavigate({ name: "job", collectionId: job.collection_id, jobId: job.job_id })}
+          onUpdated={(patch) => onJobUpdated(job.job_id, patch)}
         />
       ))}
     </div>

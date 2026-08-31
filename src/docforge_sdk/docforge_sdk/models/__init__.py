@@ -48,7 +48,7 @@ from .health import HealthStatus
 from .ir import DocumentIRModel, IRBlock, IREnrichment, IRFigure, IRTable
 
 # ------------------- Jobs models ------------------- #
-from .jobs import JobEvent, JobStatus, JobTrace, WorkerActivity, WorkersLive
+from .jobs import CancelResult, JobEvent, JobStatus, JobTrace, WorkerActivity, WorkersLive
 
 # ------------------- Pipelines models ------------------- #
 from .pipelines import (
@@ -129,6 +129,7 @@ __all__ = [
     "JobTrace",
     "WorkerActivity",
     "WorkersLive",
+    "CancelResult",
     # Blobs
     "BlobContent",
     # Pipelines

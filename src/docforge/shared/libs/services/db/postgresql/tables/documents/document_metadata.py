@@ -27,7 +27,7 @@ class DocumentMetadata(Base):
     # Field-leading composite backing the grid's correlated EXISTS + scalar sort subquery (created by
     # migration c3e9a1f7d2b4). Its two siblings from that migration are intentionally NOT declared
     # here: the functional index ``ix_docmeta_field_value_text`` on
-    # ``(field_id, jsonb_extract_path_text(value))`` and the GIN index ``ix_docmeta_value_gin`` on
+    # ``(field_id, (value #>> '{}'))`` and the GIN index ``ix_docmeta_value_gin`` on
     # ``value`` both compare unreliably under ``--autogenerate``, so they live migration-only.
     __table_args__ = (
         UniqueConstraint("document_id", "field_id"),

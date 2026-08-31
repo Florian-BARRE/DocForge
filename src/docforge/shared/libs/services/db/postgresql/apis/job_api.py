@@ -7,6 +7,7 @@
 
 # ====== Standard Library Imports ======
 import uuid
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from decimal import Decimal
 
@@ -16,7 +17,27 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # ====== Internal Project Imports ======
-from ..tables import Job, JobStageEvent, JobStatus, WorkerHeartbeat
+from ..tables import Collection, Document, Job, JobStageEvent, JobStatus, WorkerHeartbeat
+
+
+@dataclass(frozen=True)
+class JobWithNames:
+    """
+    A job row joined to the human-readable names the fleet view shows alongside its ids.
+
+    The jobs list is per-collection and small, so the display names (the document's filename, the
+    collection's name) are resolved by a JOIN at read rather than denormalised onto the job row —
+    this keeps names authoritative (a rename is reflected instantly) and needs no extra migration.
+
+    Attributes:
+        job (Job): The job row, verbatim.
+        document_filename (str | None): The job's document filename (None if the document is gone).
+        collection_name (str | None): The job's collection name (None if the collection is gone).
+    """
+
+    job: Job
+    document_filename: str | None
+    collection_name: str | None
 
 
 class JobApi:
@@ -98,9 +119,15 @@ class JobApi:
 
     @staticmethod
     async def mark_done(session: AsyncSession, job_id: uuid.UUID, finished_at: datetime) -> None:
-        """Complete the job successfully."""
+        """
+        Complete the job successfully — unless it was already CANCELLED.
+
+        A CANCELLED job is terminal on purpose (a force-terminate, or a cooperative stop the worker
+        may have honoured just before finishing): a late ``mark_done`` from the still-running task
+        must NOT resurrect it to DONE, so this is a no-op once the job reads CANCELLED.
+        """
         job = await session.get(Job, job_id)
-        if job is None:
+        if job is None or job.status == JobStatus.CANCELLED:
             return
         job.status = JobStatus.DONE
         job.progress = 100
@@ -137,7 +164,9 @@ class JobApi:
             error_type (str | None): The exception class name (e.g. "TimeoutError").
         """
         job = await session.get(Job, job_id)
-        if job is None:
+        # A CANCELLED job is terminal on purpose — a late failure write from the still-running task
+        # (e.g. the run raising after a force-terminate) must not overwrite the cancellation.
+        if job is None or job.status == JobStatus.CANCELLED:
             return
         job.status = JobStatus.FAILED
         job.error = error
@@ -151,6 +180,76 @@ class JobApi:
             .where(JobStageEvent.job_id == job_id, JobStageEvent.finished_at.is_(None))
             .values(status="failed", finished_at=finished_at, detail=error)
         )
+
+    @staticmethod
+    async def request_cancel(session: AsyncSession, job_id: uuid.UUID) -> Job | None:
+        """
+        Raise the cooperative-cancel flag on a job (the worker honours it at its next stage boundary).
+
+        Leaves ``status`` untouched (a RUNNING job stays RUNNING until the worker actually stops), so
+        every status-keyed query is unaffected; the flag alone is the signal the worker's stage-boundary
+        guard re-reads. Returns the job so the caller can report its post-request state.
+
+        Args:
+            session (AsyncSession): The active DB session.
+            job_id (uuid.UUID): The job to flag for cancellation.
+
+        Returns:
+            Job | None: The flagged job, or None when the id is unknown.
+        """
+        job = await session.get(Job, job_id)
+        if job is None:
+            return None
+        job.cancel_requested = True
+        return job
+
+    @staticmethod
+    async def is_cancel_requested(session: AsyncSession, job_id: uuid.UUID) -> bool:
+        """Cheap read of a job's cancel flag — the worker's between-stages cancellation probe."""
+        result = await session.execute(select(Job.cancel_requested).where(Job.id == job_id))
+        return bool(result.scalar_one_or_none())
+
+    @staticmethod
+    async def mark_terminal(
+        session: AsyncSession,
+        job_id: uuid.UUID,
+        status: JobStatus,
+        reason: str,
+        finished_at: datetime,
+    ) -> Job | None:
+        """
+        Force a job to a terminal ``status`` with a reason — the shared stop/terminate primitive.
+
+        Both the force-terminate (CANCELLED) and the cron reaper (FAILED) transition a job the same
+        way: set the terminal status + reason + finish time, raise ``cancel_requested`` as a backstop
+        stop signal for a still-alive worker, and CLOSE the job's currently-open stage-event row (the
+        stage it was cut in) as terminal, so the trace shows a red/stopped stage rather than a silent
+        gap. Idempotent enough for concurrent reaping: re-terminating a terminal row simply rewrites
+        the same outcome.
+
+        Args:
+            session (AsyncSession): The active DB session.
+            job_id (uuid.UUID): The job to terminate.
+            status (JobStatus): The terminal status (CANCELLED or FAILED).
+            reason (str): The human-readable reason recorded on the job and its open stage row.
+            finished_at (datetime): When the job was terminated.
+
+        Returns:
+            Job | None: The terminated job (so the caller can read its ``document_id``), or None.
+        """
+        job = await session.get(Job, job_id)
+        if job is None:
+            return None
+        job.status = status
+        job.error = reason
+        job.finished_at = finished_at
+        job.cancel_requested = True
+        await session.execute(
+            update(JobStageEvent)
+            .where(JobStageEvent.job_id == job_id, JobStageEvent.finished_at.is_(None))
+            .values(status=status.value, finished_at=finished_at, detail=reason)
+        )
+        return job
 
     @staticmethod
     async def record_event(session: AsyncSession, event: JobStageEvent) -> JobStageEvent:
@@ -201,27 +300,40 @@ class JobApi:
 
     @staticmethod
     async def upsert_heartbeat(
-        session: AsyncSession, worker_id: str, last_seen: datetime, started_at: datetime
+        session: AsyncSession,
+        worker_id: str,
+        worker_name: str,
+        last_seen: datetime,
+        started_at: datetime,
     ) -> None:
         """
         Register/refresh a worker's liveness row (keyed by its stable worker id).
 
         Upsert so a worker's first tick inserts and every later tick updates ``last_seen`` in place;
-        ``started_at`` is refreshed too, so a same-hostname restart reports the NEW process uptime.
+        ``started_at`` and ``worker_name`` are refreshed too, so a same-hostname restart reports the
+        NEW process uptime and any changed friendly name.
 
         Args:
             session (AsyncSession): The active DB session.
             worker_id (str): The worker's stable id (its hostname).
+            worker_name (str): The worker's friendly display name (WORKER_NAME, defaults to hostname).
             last_seen (datetime): This tick's timestamp — its age is the liveness signal.
             started_at (datetime): When THIS worker process registered.
         """
         statement = pg_insert(WorkerHeartbeat).values(
-            worker_id=worker_id, last_seen=last_seen, started_at=started_at
+            worker_id=worker_id,
+            worker_name=worker_name,
+            last_seen=last_seen,
+            started_at=started_at,
         )
         await session.execute(
             statement.on_conflict_do_update(
                 index_elements=[WorkerHeartbeat.worker_id],
-                set_={"last_seen": last_seen, "started_at": started_at},
+                set_={
+                    "worker_name": worker_name,
+                    "last_seen": last_seen,
+                    "started_at": started_at,
+                },
             )
         )
 
@@ -477,5 +589,57 @@ class JobApi:
         )
         return list(result.scalars().all())
 
+    # -------------------- joined reads (job + display names) --------------------
+    @staticmethod
+    def _with_names_select():  # type: ignore[no-untyped-def]
+        """The base ``job`` select LEFT-joined to its document filename and collection name.
 
-__all__ = ["JobApi"]
+        Outer joins so a job whose document or collection was deleted mid-flight still returns (with a
+        None name) rather than vanishing from the monitoring view.
+        """
+        return (
+            select(Job, Document.filename, Collection.name)
+            .outerjoin(Document, Document.id == Job.document_id)
+            .outerjoin(Collection, Collection.id == Job.collection_id)
+        )
+
+    @classmethod
+    async def get_with_names(cls, session: AsyncSession, job_id: uuid.UUID) -> JobWithNames | None:
+        """Fetch one job joined to its document filename + collection name, or None."""
+        result = await session.execute(cls._with_names_select().where(Job.id == job_id))
+        row = result.first()
+        if row is None:
+            return None
+        job, filename, collection_name = row
+        return JobWithNames(job=job, document_filename=filename, collection_name=collection_name)
+
+    @classmethod
+    async def list_for_collection_with_names(
+        cls, session: AsyncSession, collection_id: uuid.UUID
+    ) -> list[JobWithNames]:
+        """Return a collection's jobs (newest first), each joined to its display names."""
+        result = await session.execute(
+            cls._with_names_select()
+            .where(Job.collection_id == collection_id)
+            .order_by(Job.created_at.desc())
+        )
+        return [
+            JobWithNames(job=job, document_filename=filename, collection_name=collection_name)
+            for job, filename, collection_name in result.all()
+        ]
+
+    @classmethod
+    async def list_active_with_names(cls, session: AsyncSession) -> list[JobWithNames]:
+        """Return every RUNNING job joined to its display names — the fleet activity view."""
+        result = await session.execute(
+            cls._with_names_select()
+            .where(Job.status == JobStatus.RUNNING)
+            .order_by(Job.started_at.asc())
+        )
+        return [
+            JobWithNames(job=job, document_filename=filename, collection_name=collection_name)
+            for job, filename, collection_name in result.all()
+        ]
+
+
+__all__ = ["JobApi", "JobWithNames"]

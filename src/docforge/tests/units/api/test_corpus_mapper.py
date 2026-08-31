@@ -161,6 +161,43 @@ def test_number_list_in_single_value_matches_any_element() -> None:
     assert sql.count("@>") == 1 and "jsonb_build_array" in sql
 
 
+# -------------------- scalar text extraction (P0 jsonb_extract_path_text regression) --------------------
+def _scalar_filter_sql(op, value, field_type=FieldType.STRING):
+    """Compile a SCALAR-field metadata value predicate (eq/contains/range) to SQL text."""
+    schema = [_field(1, "f", field_type)]
+    spec = CorpusMapper.to_spec(
+        DocumentFilter(metadata=[MetadataFilter(field="f", op=op, value=value)]), None, schema
+    )
+    return str(DocumentQueryApi._value_predicate(spec.metadata[0]))
+
+
+def test_scalar_eq_uses_jsonb_arrow_extraction_not_invalid_function() -> None:
+    """eq on a scalar field extracts the value via ``#>>`` — the 1-arg jsonb_extract_path_text is
+    not a real Postgres function and 500'd at runtime; lock it out of the compiled SQL."""
+    sql = _scalar_filter_sql("eq", "Ada")
+    assert "#>>" in sql
+    assert "jsonb_extract_path_text" not in sql
+
+
+def test_scalar_contains_and_range_use_arrow_extraction() -> None:
+    """contains + ordered comparisons share the same ``#>>`` text extraction (no invalid function)."""
+    contains_sql = _scalar_filter_sql("contains", "ad")
+    assert "#>>" in contains_sql and "jsonb_extract_path_text" not in contains_sql
+    range_sql = _scalar_filter_sql("gte", 2020, field_type=FieldType.INTEGER)
+    assert "#>>" in range_sql and "jsonb_extract_path_text" not in range_sql
+
+
+def test_metadata_sort_subquery_uses_arrow_extraction() -> None:
+    """The metadata sort subquery must extract with ``#>>`` too, or its ORDER BY key won't match the
+    functional index ``ix_docmeta_field_value_text`` and would reuse the invalid function."""
+    schema = [_field(3, "priority", FieldType.INTEGER)]
+    spec = CorpusMapper.to_spec(None, DocumentSort(field="priority", direction="desc"), schema)
+    statement = DocumentQueryApi._apply_order(DocumentQueryApi._filtered(uuid.uuid4(), spec), spec)
+    sql = str(statement)
+    assert "#>>" in sql
+    assert "jsonb_extract_path_text" not in sql
+
+
 # -------------------- builder statement assembly --------------------
 def test_builder_statement_is_id_stabilised_and_carries_metadata_exists() -> None:
     schema = [_field(4, "author", FieldType.STRING)]

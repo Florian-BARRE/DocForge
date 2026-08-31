@@ -5,7 +5,7 @@
 
 # ====== Local Project Imports ======
 from .._requestspec import RequestSpec
-from ..models.jobs import JobStatus, JobTrace, WorkersLive
+from ..models.jobs import CancelResult, JobStatus, JobTrace, WorkersLive
 from ._base import AsyncResource, SyncResource, _ResourceMixin
 
 
@@ -59,6 +59,20 @@ class _JobsSpecs(_ResourceMixin):
         """
         return RequestSpec("GET", f"{self._JOBS_PATH}/workers/live")
 
+    def _cancel_spec(self, job_id: str, force: bool) -> RequestSpec:
+        """
+        Build the spec for cancelling a job.
+
+        Args:
+            job_id (str): The job's UUID.
+            force (bool): Immediately terminate a running/wedged job instead of asking it to stop
+                cooperatively at its next stage boundary.
+
+        Returns:
+            RequestSpec: A POST on the job's ``/cancel`` route carrying ``force`` as a query param.
+        """
+        return RequestSpec("POST", f"{self._JOBS_PATH}/{job_id}/cancel", params={"force": force})
+
 
 class AsyncJobs(AsyncResource, _JobsSpecs):
     """Asynchronous ingestion-job monitoring."""
@@ -108,6 +122,22 @@ class AsyncJobs(AsyncResource, _JobsSpecs):
         """
         return await self._transport.request(self._live_workers_spec(), WorkersLive)
 
+    async def cancel(self, job_id: str, force: bool = False) -> CancelResult:
+        """
+        Cancel an ingestion job — cooperatively for a running job, immediately for a queued or
+        wedged one.
+
+        Args:
+            job_id (str): The job's UUID.
+            force (bool): Immediately terminate a running/wedged job regardless of worker state
+                instead of asking it to stop cooperatively at its next stage boundary.
+
+        Returns:
+            CancelResult: The job's post-call status, whether a cooperative stop is pending, and
+            the outcome.
+        """
+        return await self._transport.request(self._cancel_spec(job_id, force), CancelResult)
+
 
 class SyncJobs(SyncResource, _JobsSpecs):
     """Synchronous ingestion-job monitoring."""
@@ -156,6 +186,22 @@ class SyncJobs(SyncResource, _JobsSpecs):
             WorkersLive: The live per-worker activity view.
         """
         return self._transport.request(self._live_workers_spec(), WorkersLive)
+
+    def cancel(self, job_id: str, force: bool = False) -> CancelResult:
+        """
+        Cancel an ingestion job — cooperatively for a running job, immediately for a queued or
+        wedged one.
+
+        Args:
+            job_id (str): The job's UUID.
+            force (bool): Immediately terminate a running/wedged job regardless of worker state
+                instead of asking it to stop cooperatively at its next stage boundary.
+
+        Returns:
+            CancelResult: The job's post-call status, whether a cooperative stop is pending, and
+            the outcome.
+        """
+        return self._transport.request(self._cancel_spec(job_id, force), CancelResult)
 
 
 __all__ = ["AsyncJobs", "SyncJobs"]

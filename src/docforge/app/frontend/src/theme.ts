@@ -36,6 +36,9 @@ export const theme = {
     error: "var(--error)", errorSoft: "var(--error-soft)",
     warn: "var(--warn)", warnSoft: "var(--warn-soft)",
     info: "var(--info)", infoSoft: "var(--info-soft)",
+    // A stopped/skipped state — cancelled jobs+documents, skipped stages. Deliberately NOT the
+    // error red (per brand.md, "cancelled" reads as a deliberate stop, not a failure).
+    skip: "var(--skip)", skipSoft: "var(--skip-soft)",
     // Fallback chains + loop concepts get their own hues so they read as distinct.
     loop: "var(--iris)", loopSoft: "var(--iris-soft)", // legacy alias
     iris: "var(--iris)", irisSoft: "var(--iris-soft)",

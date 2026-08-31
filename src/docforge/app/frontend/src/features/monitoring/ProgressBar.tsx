@@ -8,6 +8,7 @@ import type { JobStatusValue } from "../../api/jobs";
 const COLOR_BY_STATUS: Record<string, string> = {
   failed: theme.color.error,
   done: theme.color.ok,
+  cancelled: theme.color.skip,
 };
 
 export function ProgressBar({ progress, status }: { progress: number; status: JobStatusValue }) {

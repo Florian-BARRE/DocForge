@@ -198,6 +198,7 @@ are identical.
 | `get(job_id)` | `JobStatus` | One job's status + progress. |
 | `get_events(job_id)` | `JobTrace` | Per-stage event trace. |
 | `live_workers()` | `WorkersLive` | Currently active workers. |
+| `cancel(job_id, force=False)` | `CancelResult` | Stop a job — cooperative by default, immediate with `force=True`. |
 
 ### `blobs`
 | Method | Returns | Purpose |

@@ -1,6 +1,5 @@
 # ====== Code Summary ======
-# MCP tools for the jobs domain — thin wrappers over sdk.jobs (read-only; the DocForge API has
-# no cancel endpoint).
+# MCP tools for the jobs domain — thin wrappers over sdk.jobs.
 
 from __future__ import annotations
 
@@ -43,3 +42,15 @@ def register(mcp: FastMCP, sdk: AsyncClient) -> None:
         """Return what every worker is doing right now, grouped by worker (empty when idle)."""
         live = await sdk.jobs.live_workers()
         return live.model_dump(mode="json")
+
+    @mcp.tool()
+    async def cancel_job(job_id: str, force: bool = False) -> Any:
+        """
+        Stop an ingestion job. By default (force=False) a running job is asked to stop
+        cooperatively at its next stage boundary (stays 'running' with cancel_requested=true
+        until it does); a queued job is cancelled immediately either way. Pass force=True to
+        immediately terminate a running or wedged job regardless of worker state. 409 if the
+        job is already terminal (done/failed/cancelled).
+        """
+        result = await sdk.jobs.cancel(job_id, force=force)
+        return result.model_dump(mode="json")

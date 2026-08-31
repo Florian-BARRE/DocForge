@@ -10,7 +10,17 @@ from decimal import Decimal
 from enum import StrEnum
 
 # ====== Third-Party Library Imports ======
-from sqlalchemy import BigInteger, DateTime, ForeignKey, Numeric, SmallInteger, String, Text
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Numeric,
+    SmallInteger,
+    String,
+    Text,
+    text,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 # ====== Local Project Imports ======
@@ -24,6 +34,11 @@ class JobStatus(StrEnum):
     RUNNING = "running"
     DONE = "done"
     FAILED = "failed"
+    # Terminal state for a job stopped on request: a queued job cancelled before it ran, a running
+    # job that honoured a cooperative stop at a stage boundary, or a wedged job force-terminated.
+    # "cancelled" (9 chars) exceeds the status column's current VARCHAR(7) — this REQUIRES a migration
+    # to widen the column (see the migration handoff), even though value_enum adds no CHECK constraint.
+    CANCELLED = "cancelled"
 
 
 class Job(Base, UUIDPrimaryKey, TimestampedMixin):
@@ -39,6 +54,12 @@ class Job(Base, UUIDPrimaryKey, TimestampedMixin):
     )
     status: Mapped[JobStatus] = mapped_column(
         value_enum(JobStatus), nullable=False, default=JobStatus.PENDING
+    )
+    # The cooperative-cancel signal: set True to REQUEST a running job stop at its next stage boundary
+    # (the job stays RUNNING until the worker honours it, so status-keyed queries — reaper, list_active,
+    # queue_depth — are untouched). Also raised by a force-terminate as a backstop stop signal.
+    cancel_requested: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false"), default=False
     )
     worker_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     attempt: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=1)

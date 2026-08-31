@@ -107,6 +107,10 @@ class RUNTIME_CONFIG(EnvConfigLoader):
     WORKER_HEARTBEAT_INTERVAL_SECONDS = env(
         "WORKER_HEARTBEAT_INTERVAL_SECONDS", cast=int, default=10
     )
+    # A human-friendly display name for this worker, surfaced next to its hostname in the fleet view.
+    # Empty (the default) → the lifespan falls back to the hostname, so an unset deployment is
+    # unchanged. Set it per replica (e.g. "gpu-box-1") to make "what is ingesting" legible at a glance.
+    WORKER_NAME = env("WORKER_NAME", required=False, default="")
     # arq writes a health record to Redis every N seconds; `arq ... --check` reads it and exits
     # non-zero when stale — the container healthcheck that surfaces a wedged worker.
     WORKER_HEALTH_CHECK_INTERVAL_SECONDS = env(

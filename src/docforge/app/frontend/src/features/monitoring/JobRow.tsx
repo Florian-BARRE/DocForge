@@ -6,12 +6,17 @@ import { useState } from "react";
 import type { JobStatus } from "../../api/jobs";
 import { theme } from "../../theme";
 import { ItemProgressChip } from "./ItemProgressChip";
+import { JobCancelControl } from "./JobCancelControl";
+import { JobIdentity } from "./JobIdentity";
 import { JobStatusChip } from "./JobStatusChip";
 import { ProgressBar } from "./ProgressBar";
 
 interface JobRowProps {
   job: JobStatus;
   onClick: () => void;
+  /** Applied to the row's own job when a cancel/stop/force call resolves — lets the parent's list
+   *  reflect the new state immediately. */
+  onUpdated: (patch: Partial<JobStatus>) => void;
 }
 
 function formatTimestamp(value: string | null): string {
@@ -25,7 +30,7 @@ function idleFor(updatedAt: string): string {
   return `${Math.floor(minutes / 60)}h ${minutes % 60}m ago`;
 }
 
-export function JobRow({ job, onClick }: JobRowProps) {
+export function JobRow({ job, onClick, onUpdated }: JobRowProps) {
   const [hover, setHover] = useState(false);
   return (
     <div
@@ -41,37 +46,39 @@ export function JobRow({ job, onClick }: JobRowProps) {
         transition: "transform .15s ease, box-shadow .15s ease, border-color .15s ease",
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: theme.space.s }}>
-        <span style={{ fontFamily: theme.font.mono, fontSize: theme.font.size.s, color: theme.color.dim }}>{job.job_id.slice(0, 8)}</span>
-        <JobStatusChip status={job.status} />
-        {job.stalled && (
-          <span
-            title={`No progress since ${formatTimestamp(job.updated_at)} — the worker reaper will fail it if it stays wedged.`}
-            style={{
-              color: theme.color.warn, background: theme.color.warnSoft,
-              fontSize: theme.font.size.xs, fontWeight: theme.font.weight.semibold,
-              padding: "1px 7px", borderRadius: theme.radius.pill, border: `1px solid ${theme.color.warn}`,
-            }}
-          >
-            stalled · idle {idleFor(job.updated_at)}
-          </span>
-        )}
-        {job.current_stage && (
-          <span style={{ color: theme.color.dim, fontSize: theme.font.size.xs }}>stage: {job.current_stage}</span>
-        )}
-        {job.items_done !== null && job.items_total !== null && (
-          <ItemProgressChip itemsDone={job.items_done} itemsTotal={job.items_total} />
-        )}
-        <span style={{ marginLeft: "auto", color: theme.color.dim, fontSize: theme.font.size.xs }}>
-          attempt {job.attempt}
-        </span>
+      <div style={{ display: "flex", alignItems: "flex-start", gap: theme.space.s }}>
+        <JobIdentity job={job} />
+        <div style={{ marginLeft: "auto", display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "flex-end", gap: theme.space.xs }}>
+          <JobStatusChip status={job.status} />
+          {job.stalled && (
+            <span
+              title={`No progress since ${formatTimestamp(job.updated_at)} — the worker reaper will fail it if it stays wedged.`}
+              style={{
+                color: theme.color.warn, background: theme.color.warnSoft,
+                fontSize: theme.font.size.xs, fontWeight: theme.font.weight.semibold,
+                padding: "1px 7px", borderRadius: theme.radius.pill, border: `1px solid ${theme.color.warn}`,
+              }}
+            >
+              stalled · idle {idleFor(job.updated_at)}
+            </span>
+          )}
+          {job.items_done !== null && job.items_total !== null && (
+            <ItemProgressChip itemsDone={job.items_done} itemsTotal={job.items_total} />
+          )}
+          <span style={{ color: theme.color.dim, fontSize: theme.font.size.xs }}>attempt {job.attempt}</span>
+          <JobCancelControl job={job} onUpdated={onUpdated} />
+        </div>
       </div>
       <ProgressBar progress={job.progress} status={job.status} />
       <div style={{ display: "flex", justifyContent: "space-between", color: theme.color.dim, fontSize: theme.font.size.xs }}>
         <span>started: {formatTimestamp(job.started_at)}</span>
         <span>finished: {formatTimestamp(job.finished_at)}</span>
       </div>
-      {job.error && <div style={{ color: theme.color.error, fontSize: theme.font.size.xs }}>{job.error}</div>}
+      {job.error && (
+        <div style={{ color: job.status === "failed" ? theme.color.error : theme.color.skip, fontSize: theme.font.size.xs }}>
+          {job.error}
+        </div>
+      )}
     </div>
   );
 }

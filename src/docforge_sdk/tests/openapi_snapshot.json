@@ -307,6 +307,45 @@
         "title": "BulkChunkEnabledResponse",
         "type": "object"
       },
+      "CancelResult": {
+        "description": "The typed outcome of a cancel request \u2014 what the job's state is after the call.\n\n``outcome`` is the coarse verb the UI shows: ``cancelled`` when the job is now terminal (a queued\njob stopped before it ran, or a force-terminate of a running/wedged one), or ``cancellation_requested``\nwhen a running job was flagged to stop cooperatively at its next stage boundary (it is still\n``status=running`` with ``cancel_requested=true`` until it does).",
+        "properties": {
+          "cancel_requested": {
+            "description": "Whether a cooperative stop is now pending (true only while a running job is still winding down to the CANCELLED terminal state).",
+            "title": "Cancel Requested",
+            "type": "boolean"
+          },
+          "detail": {
+            "description": "A human-readable description of what happened.",
+            "title": "Detail",
+            "type": "string"
+          },
+          "job_id": {
+            "description": "The targeted job's UUID.",
+            "title": "Job Id",
+            "type": "string"
+          },
+          "outcome": {
+            "description": "cancelled (now terminal) | cancellation_requested (running, will stop at the next stage boundary).",
+            "title": "Outcome",
+            "type": "string"
+          },
+          "status": {
+            "description": "The job's status AFTER the call (cancelled / running).",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "job_id",
+          "status",
+          "cancel_requested",
+          "outcome",
+          "detail"
+        ],
+        "title": "CancelResult",
+        "type": "object"
+      },
       "Capability": {
         "description": "A coarse action class an endpoint requires of the calling key.",
         "enum": [
@@ -2585,10 +2624,28 @@
             "title": "Attempt",
             "type": "integer"
           },
+          "cancel_requested": {
+            "default": false,
+            "description": "A cooperative stop has been requested; the running job stops at its next stage boundary (still 'running' until it does).",
+            "title": "Cancel Requested",
+            "type": "boolean"
+          },
           "collection_id": {
             "description": "Its collection.",
             "title": "Collection Id",
             "type": "string"
+          },
+          "collection_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The collection's name, joined at read (None if the collection is gone).",
+            "title": "Collection Name"
           },
           "cost_usd": {
             "description": "Document's lifetime USD cost of paid calls (0 until a priceable call runs).",
@@ -2606,6 +2663,18 @@
             ],
             "description": "Node currently/last executed.",
             "title": "Current Stage"
+          },
+          "document_filename": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The document's filename, joined at read (None if the document is gone).",
+            "title": "Document Filename"
           },
           "document_id": {
             "description": "The document being ingested.",
@@ -2738,7 +2807,7 @@
             "title": "Started At"
           },
           "status": {
-            "description": "queued / running / done / failed.",
+            "description": "queued / running / done / failed / cancelled.",
             "title": "Status",
             "type": "string"
           },
@@ -5081,7 +5150,7 @@
         "type": "object"
       },
       "WorkerActivity": {
-        "description": "One worker's live activity \u2014 its heartbeat-derived liveness plus any RUNNING jobs it owns.\n\n``alive`` and ``busy`` are two INDEPENDENT signals: a worker with a fresh heartbeat but no\nrunning job is ``alive=True, busy=False`` (idle-but-alive, previously invisible), while a worker\nwhose heartbeat went stale is ``alive=False`` even if a job row still names it (it likely died).\n\nAttributes:\n    worker_id (str): The worker's stable id (its hostname).\n    alive (bool): Its heartbeat is fresher than the liveness threshold.\n    busy (bool): It currently owns at least one RUNNING job.\n    last_seen (datetime | None): Its last heartbeat tick (None when no heartbeat row exists).\n    started_at (datetime | None): When the worker process registered (None when no heartbeat).\n    jobs (list[JobStatus]): Its running jobs, live.",
+        "description": "One worker's live activity \u2014 its heartbeat-derived liveness plus any RUNNING jobs it owns.\n\n``alive`` and ``busy`` are two INDEPENDENT signals: a worker with a fresh heartbeat but no\nrunning job is ``alive=True, busy=False`` (idle-but-alive, previously invisible), while a worker\nwhose heartbeat went stale is ``alive=False`` even if a job row still names it (it likely died).\n\nAttributes:\n    worker_id (str): The worker's stable id (its hostname).\n    worker_name (str | None): Its friendly display name (WORKER_NAME, defaults to the hostname);\n        None only for a heartbeat row written before this column landed.\n    alive (bool): Its heartbeat is fresher than the liveness threshold.\n    busy (bool): It currently owns at least one RUNNING job.\n    last_seen (datetime | None): Its last heartbeat tick (None when no heartbeat row exists).\n    started_at (datetime | None): When the worker process registered (None when no heartbeat).\n    jobs (list[JobStatus]): Its running jobs, live.",
         "properties": {
           "alive": {
             "description": "Heartbeat fresher than the liveness threshold.",
@@ -5131,6 +5200,18 @@
             "description": "The worker's stable id (its hostname).",
             "title": "Worker Id",
             "type": "string"
+          },
+          "worker_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Friendly display name (WORKER_NAME, defaults to hostname); None for a pre-column row.",
+            "title": "Worker Name"
           }
         },
         "required": [

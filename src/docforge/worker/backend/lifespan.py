@@ -93,6 +93,8 @@ async def startup(ctx: dict[str, Any]) -> None:
     log_step(3, "Pipeline runner")
     CONTEXT.runner = PipelineRunner()
     CONTEXT.worker_id = socket.gethostname()
+    # The friendly display name defaults to the hostname when WORKER_NAME is unset.
+    CONTEXT.worker_name = RUNTIME_CONFIG.WORKER_NAME or CONTEXT.worker_id
     CONTEXT.job_timeout_seconds = RUNTIME_CONFIG.WORKER_JOB_TIMEOUT_SECONDS
 
     # 5. Liveness heartbeat — refreshes worker_heartbeats on a timer so an idle-but-alive worker
@@ -100,6 +102,7 @@ async def startup(ctx: dict[str, Any]) -> None:
     CONTEXT.heartbeat = HeartbeatWriter(
         CONTEXT.database,
         CONTEXT.worker_id,
+        CONTEXT.worker_name,
         interval_seconds=RUNTIME_CONFIG.WORKER_HEARTBEAT_INTERVAL_SECONDS,
     )
     CONTEXT.heartbeat.start()

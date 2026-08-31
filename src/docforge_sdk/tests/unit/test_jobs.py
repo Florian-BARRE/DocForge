@@ -11,7 +11,7 @@ import respx
 
 # ====== Local Project Imports ======
 from docforge_sdk import AsyncClient, Client
-from docforge_sdk.models.jobs import JobStatus, JobTrace
+from docforge_sdk.models.jobs import CancelResult, JobStatus, JobTrace
 
 BASE = "http://test"
 API = f"{BASE}/api/v1"
@@ -57,3 +57,47 @@ def test_sync_get_events_returns_trace() -> None:
         result = client.jobs.get_events(JID)
     assert route.calls.last.request.url.path == f"/api/v1/jobs/{JID}/events"
     assert isinstance(result, JobTrace)
+
+
+@respx.mock
+async def test_cancel_defaults_to_non_force_and_returns_typed_result() -> None:
+    route = respx.post(f"{API}/jobs/{JID}/cancel").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "job_id": JID,
+                "status": "running",
+                "cancel_requested": True,
+                "outcome": "cancellation_requested",
+                "detail": "Cooperative cancellation requested.",
+            },
+        )
+    )
+    async with AsyncClient(BASE) as client:
+        result = await client.jobs.cancel(JID)
+    sent = route.calls.last.request.url
+    assert sent.path == f"/api/v1/jobs/{JID}/cancel"
+    assert sent.params.get("force") == "false"
+    assert isinstance(result, CancelResult)
+    assert result.outcome == "cancellation_requested"
+
+
+@respx.mock
+def test_sync_cancel_passes_force_query_param() -> None:
+    route = respx.post(f"{API}/jobs/{JID}/cancel").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "job_id": JID,
+                "status": "cancelled",
+                "cancel_requested": False,
+                "outcome": "cancelled",
+                "detail": "force-terminated while running.",
+            },
+        )
+    )
+    with Client(BASE) as client:
+        result = client.jobs.cancel(JID, force=True)
+    sent = route.calls.last.request.url
+    assert sent.params.get("force") == "true"
+    assert result.outcome == "cancelled"

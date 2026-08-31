@@ -6,7 +6,7 @@
 import uuid
 
 # ====== Third-Party Library Imports ======
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
 # ====== Internal Project Imports ======
@@ -16,8 +16,9 @@ from config import RUNTIME_CONFIG
 from ...context import CONTEXT
 from ...libs.auth import AuthPrincipal, AuthzGuard, Capability, require
 from ...utils.error_handling import auto_handle_errors
-from .helpers import WorkersLiveHelpers
+from .helpers import CancelAction, JobCancellationHelpers, WorkersLiveHelpers
 from .models import (
+    CancelResult,
     CollectionCost,
     JobEvent,
     JobStatus,
@@ -29,11 +30,6 @@ from .models import (
 from .stream import stream_job_events
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
-
-
-def _job_status(job) -> JobStatus:
-    """Map one job row to its polling model (shared by every route here)."""
-    return JobStatus.from_row(job)
 
 
 @router.get("", response_model=list[JobStatus])
@@ -51,9 +47,13 @@ async def list_jobs(
     # 1. The collection is a QUERY param, invisible to the path-scope gate — enforce it here.
     AuthzGuard.assert_collection_scope(principal, str(collection_id))
 
-    # 2. Straight read — the worker maintains every row.
-    jobs = await CONTEXT.database.jobs.list_for_collection(collection_id)
-    return [_job_status(job) for job in jobs]
+    # 2. Straight read — the worker maintains every row; the join adds the document filename +
+    #    collection name so the table can show "what is ingesting" without a second round-trip.
+    jobs = await CONTEXT.database.jobs.list_for_collection_with_names(collection_id)
+    return [
+        JobStatus.from_row(entry.job, entry.document_filename, entry.collection_name)
+        for entry in jobs
+    ]
 
 
 @router.get("/stage-durations", response_model=StageDurations)
@@ -133,9 +133,10 @@ async def live_workers(
     #    graveyard: a cleanly-stopped worker already de-registered itself, this clears the rest.
     await CONTEXT.database.jobs.prune_stale_heartbeats(RUNTIME_CONFIG.WORKER_PRUNE_STALE_SECONDS)
 
-    # 3. Liveness (heartbeats) + activity (running jobs) are two reads; the helper fuses + scopes them.
+    # 3. Liveness (heartbeats) + activity (running jobs, joined to their document/collection names)
+    #    are two reads; the helper fuses + scopes them and carries the display names through.
     heartbeats = await CONTEXT.database.jobs.list_heartbeats()
-    running = await CONTEXT.database.jobs.list_active()
+    running = await CONTEXT.database.jobs.list_active_with_names()
     return WorkersLiveHelpers.assemble(heartbeats, running, allowed_collections=allowed)
 
 
@@ -235,18 +236,91 @@ async def get_job(
     Return one ingestion job's live state (poll this after an upload).
 
     Returns:
-        JobStatus: Status, progress, current stage, and the error when failed.
+        JobStatus: Status, progress, current stage, document/collection name, and the error when failed.
     """
-    # 1. The row is the truth — the worker maintains it, we only read.
-    job = await CONTEXT.database.jobs.get(job_id)
-    if job is None:
+    # 1. The row is the truth — the worker maintains it; the join adds the display names.
+    entry = await CONTEXT.database.jobs.get_with_names(job_id)
+    if entry is None:
         raise HTTPException(status_code=404, detail=f"Job {job_id} not found.")
 
     # 2. No collection in the path — scope the read by the job's own collection.
+    AuthzGuard.assert_collection_scope(principal, str(entry.job.collection_id))
+
+    # 3. Serve it as the UI's polling model, carrying the joined names.
+    return JobStatus.from_row(entry.job, entry.document_filename, entry.collection_name)
+
+
+@router.post("/{job_id}/cancel", response_model=CancelResult)
+@auto_handle_errors
+async def cancel_job(
+    job_id: uuid.UUID,
+    force: bool = Query(
+        default=False,
+        description="Immediately CANCEL a running/wedged job regardless of worker state (the manual "
+        "force-fail) instead of asking it to stop cooperatively at its next stage boundary.",
+    ),
+    principal: AuthPrincipal = Depends(require(Capability.WRITE)),
+) -> CancelResult:
+    """
+    Stop an ingestion job — cooperatively for a running job, immediately for a queued or wedged one.
+
+    Behaviour by the job's current state:
+      * queued (pending) → CANCELLED now; the worker skips it when it dequeues (its arq task id was
+        never captured, so it cannot be pulled from the queue) — the document is marked CANCELLED.
+      * running, ``force=false`` → a cooperative-cancel flag is raised; the worker's runner stops at
+        its next stage boundary and marks job + document CANCELLED. The job stays ``running`` (with
+        ``cancel_requested=true``) until it does.
+      * running, ``force=true`` → force-terminated NOW (job + document CANCELLED) regardless of the
+        worker — the manual reaper for a wedged/infinite job (shares the cron reaper's transition).
+      * already terminal (done / failed / cancelled) → 409 (nothing to cancel).
+
+    Returns:
+        CancelResult: The job's post-call status, whether a cooperative stop is pending, and the outcome.
+    """
+    # 1. Resolve the job (404) and scope it by its own collection (403 cross-tenant) BEFORE any
+    #    mutation — a scoped key can never cancel another collection's job.
+    job = await CONTEXT.database.jobs.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail=f"Job {job_id} not found.")
     AuthzGuard.assert_collection_scope(principal, str(job.collection_id))
 
-    # 3. Serve it as the UI's polling model.
-    return _job_status(job)
+    # 2. Decide the action from the current state (pure, no I/O) — an already-terminal job is a 409
+    #    before any write, satisfying the fail-fast contract.
+    action = JobCancellationHelpers.decide(job.status, force)
+    if action == CancelAction.ALREADY_TERMINAL:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Job {job_id} is already {job.status.value} — nothing to cancel.",
+        )
+
+    # 3. Cooperative stop of a running job: flag it; it winds down at its next stage boundary.
+    if action == CancelAction.REQUEST:
+        await CONTEXT.database.jobs.request_cancel(job_id)
+        CONTEXT.logger.info(f"Cancellation requested for running job {job_id}")
+        return CancelResult(
+            job_id=str(job_id),
+            status="running",
+            cancel_requested=True,
+            outcome="cancellation_requested",
+            detail="Cooperative cancellation requested; the job stops at its next stage boundary.",
+        )
+
+    # 4. Queued job, or a forced running/wedged one: terminate immediately (job + document CANCELLED)
+    #    through the SAME force-terminate path the cron reaper uses.
+    reason = (
+        "cancelled while queued (before it ran)"
+        if action == CancelAction.TERMINATE
+        else "force-terminated while running (wedged-job override)"
+    )
+    await CONTEXT.database.jobs.force_terminate(job_id, reason=reason)
+    CONTEXT.logger.info(f"Cancelled job {job_id} ({action.value}): {reason}")
+    return CancelResult(
+        job_id=str(job_id),
+        status="cancelled",
+        cancel_requested=False,
+        outcome="cancelled",
+        detail=reason,
+    )
 
 
 __all__ = ["router"]

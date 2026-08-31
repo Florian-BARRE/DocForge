@@ -20,7 +20,7 @@ from sqlalchemy.dialects import postgresql
 
 from shared_libs.services.db.facades import JobsFacade
 from shared_libs.services.db.facades import jobs_facade as facade_module
-from shared_libs.services.db.postgresql.tables import DocumentStatus
+from shared_libs.services.db.postgresql.tables import DocumentStatus, JobStatus
 
 
 def _postgres_yielding(session: MagicMock) -> MagicMock:
@@ -76,21 +76,30 @@ async def test_reap_stale_fails_each_stale_job_and_its_document(monkeypatch) -> 
         SimpleNamespace(id=uuid.uuid4(), document_id=uuid.uuid4()),
         SimpleNamespace(id=uuid.uuid4(), document_id=uuid.uuid4()),
     ]
+    doc_by_job = {job.id: job.document_id for job in stale}
     monkeypatch.setattr(facade_module.JobApi, "list_stale", AsyncMock(return_value=stale))
-    mark_failed = AsyncMock()
+    # reap_stale now routes through the SHARED force-terminate path: JobApi.mark_terminal (which
+    # returns the terminated job so the facade can mirror its document) + DocumentApi.set_status.
+    mark_terminal = AsyncMock(
+        side_effect=lambda session, job_id, **kw: SimpleNamespace(
+            id=job_id, document_id=doc_by_job[job_id]
+        )
+    )
     set_status = AsyncMock()
-    monkeypatch.setattr(facade_module.JobApi, "mark_failed", mark_failed)
+    monkeypatch.setattr(facade_module.JobApi, "mark_terminal", mark_terminal)
     monkeypatch.setattr(facade_module.DocumentApi, "set_status", set_status)
 
     facade = JobsFacade(_postgres_yielding(MagicMock()))
     reaped = await facade.reap_stale(older_than_seconds=1200)
 
-    # Every stale job is returned, marked FAILED, and its owning document flagged FAILED.
+    # Every stale job is returned, marked terminal FAILED, and its owning document flagged FAILED.
     assert reaped == [stale[0].id, stale[1].id]
-    assert mark_failed.await_count == 2
-    assert {call.args[1] for call in mark_failed.await_args_list} == {stale[0].id, stale[1].id}
+    assert mark_terminal.await_count == 2
+    assert {call.args[1] for call in mark_terminal.await_args_list} == {stale[0].id, stale[1].id}
+    for call in mark_terminal.await_args_list:
+        assert call.kwargs["status"] == JobStatus.FAILED
     # The operator-clear reason names the minutes and the presumed cause.
-    reason = mark_failed.await_args_list[0].kwargs["error"]
+    reason = mark_terminal.await_args_list[0].kwargs["reason"]
     assert "20m" in reason and "orphaned" in reason
     assert set_status.await_count == 2
     for call in set_status.await_args_list:
@@ -103,16 +112,16 @@ async def test_reap_stale_fails_each_stale_job_and_its_document(monkeypatch) -> 
 
 async def test_reap_stale_is_a_noop_when_nothing_is_stale(monkeypatch) -> None:
     monkeypatch.setattr(facade_module.JobApi, "list_stale", AsyncMock(return_value=[]))
-    mark_failed = AsyncMock()
+    mark_terminal = AsyncMock()
     set_status = AsyncMock()
-    monkeypatch.setattr(facade_module.JobApi, "mark_failed", mark_failed)
+    monkeypatch.setattr(facade_module.JobApi, "mark_terminal", mark_terminal)
     monkeypatch.setattr(facade_module.DocumentApi, "set_status", set_status)
 
     facade = JobsFacade(_postgres_yielding(MagicMock()))
     reaped = await facade.reap_stale(older_than_seconds=1200)
 
     assert reaped == []
-    mark_failed.assert_not_awaited()
+    mark_terminal.assert_not_awaited()
     set_status.assert_not_awaited()
 
 

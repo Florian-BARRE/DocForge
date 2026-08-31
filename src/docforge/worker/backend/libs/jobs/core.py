@@ -25,10 +25,11 @@ from shared_libs.pipelines.ingest import (
     IngestPipeline,
 )
 from shared_libs.public_models import CollectionContract, MetadataFieldSpec, SourceDocument
-from shared_libs.services.db.postgresql.tables import MetadataField
+from shared_libs.services.db.postgresql.tables import JobStatus, MetadataField
 from shared_libs.services.db.s3 import S3ObjectApi
 
 # ====== Local Project Imports ======
+from .cancellation import CancellationGuard, JobCancelledError
 from .progress import JobProgressRecorder
 
 
@@ -66,6 +67,14 @@ async def ingest_document(ctx: dict[str, Any], document_id: str, job_id: str) ->
     """
     database, s3, runner = CONTEXT.database, CONTEXT.s3, CONTEXT.runner
     doc_uuid, job_uuid = uuid.UUID(document_id), uuid.UUID(job_id)
+
+    # Dequeue-skip guard: a job cancelled while still queued was marked CANCELLED in the DB (its arq
+    # task id was never captured, so it could not be pulled from the queue). Bail before any work —
+    # the document is already terminal (CANCELLED) and must not be resurrected to PROCESSING.
+    existing = await database.jobs.get(job_uuid)
+    if existing is not None and existing.status == JobStatus.CANCELLED:
+        CONTEXT.logger.info(f"Skipping cancelled job {job_id} (document {document_id}) at dequeue")
+        return
 
     # arq's job_try is the attempt counter (1 on first run, increments on retries).
     await database.jobs.mark_running(
@@ -118,6 +127,9 @@ async def ingest_document(ctx: dict[str, Any], document_id: str, job_id: str) ->
             else [node.id for node in blob.nodes]
         )
         on_progress = JobProgressRecorder(job_uuid, root_ids)
+        # Cooperative cancel: the guard wraps the recorder and re-reads the job's cancel flag at each
+        # root-stage boundary, raising JobCancelledError to stop the run between nodes when requested.
+        guarded_progress = CancellationGuard(job_uuid, root_ids, on_progress)
 
         # 3. Run (fresh input inside), then translate the delivery. The wall-clock budget is the
         #    collection's per-collection override when set, else the worker's global default (NULL).
@@ -127,7 +139,7 @@ async def ingest_document(ctx: dict[str, Any], document_id: str, job_id: str) ->
             source,
             contract,
             timeout_seconds=run_budget,
-            progress_callback=on_progress,
+            progress_callback=guarded_progress,
             preflight_enabled=CONTEXT.RUNTIME_CONFIG.WORKER_PREFLIGHT_ENABLED,
         )
         strategy = next(
@@ -179,6 +191,14 @@ async def ingest_document(ctx: dict[str, Any], document_id: str, job_id: str) ->
                     f"(ingestion kept; repair via backfill): {meta_exc}"
                 )
         await database.jobs.mark_done(job_uuid, finished_at=datetime.now(UTC))
+
+    except JobCancelledError as exc:
+        # A cooperative stop honoured at a stage boundary: mark BOTH truths CANCELLED (never FAILED)
+        # and DO NOT re-raise — arq must not retry a job the operator explicitly cancelled. The shared
+        # force-terminate path also sets the document CANCELLED, so this is the single terminal write.
+        CONTEXT.logger.info(f"Ingestion cancelled for document {document_id}: {exc}")
+        await database.jobs.force_terminate(job_uuid, reason=f"cancelled: {exc}")
+        return
 
     except Exception as exc:
         # Both truths flagged, the error in clear; re-raise so arq accounts the attempt. A run

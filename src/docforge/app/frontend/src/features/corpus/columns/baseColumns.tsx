@@ -46,7 +46,7 @@ export function buildBaseColumns({ onOpen, onEnabledChanged, supportedFormats }:
       id: "status",
       accessorKey: "status",
       header: "Status",
-      meta: { filterKind: "enumMulti", enumOptions: ["pending", "processing", "done", "failed"], group: "document" },
+      meta: { filterKind: "enumMulti", enumOptions: ["pending", "processing", "done", "failed", "cancelled"], group: "document" },
       cell: ({ row }) => <CorpusStatusChip status={row.original.status} />,
     },
     {

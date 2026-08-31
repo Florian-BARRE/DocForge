@@ -10,9 +10,9 @@ from docforge_sdk import AsyncClient
 # ====== Internal Project Imports ======
 from libs.server import build_mcp
 
-# 33 = health(1) + auth(4) + collections(6) + documents(2) + explorer(8) + search(1)
-#    + jobs(4) + blobs(1) + pipelines(6)
-EXPECTED_TOOL_COUNT = 33
+# 34 = health(1) + auth(4) + collections(6) + documents(2) + explorer(8) + search(1)
+#    + jobs(5) + blobs(1) + pipelines(6)
+EXPECTED_TOOL_COUNT = 34
 
 EXPECTED_TOOL_NAMES = {
     # health
@@ -48,6 +48,7 @@ EXPECTED_TOOL_NAMES = {
     "get_job",
     "get_job_events",
     "get_live_workers",
+    "cancel_job",
     # blobs
     "get_blob",
     # pipelines
