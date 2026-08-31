@@ -4879,6 +4879,216 @@
         "title": "StageViewResponse",
         "type": "object"
       },
+      "TransferAccepted": {
+        "description": "The 202 envelope returned the instant a transfer is created and enqueued.\n\nAttributes:\n    transfer_id (str): The tracking row's id \u2014 poll GET /transfers/{id} with it.\n    kind (str): The transfer direction (\"export\" or \"import\").\n    status (str): The transfer's status at acceptance (always \"pending\").",
+        "properties": {
+          "kind": {
+            "description": "Transfer direction: 'export' or 'import'.",
+            "title": "Kind",
+            "type": "string"
+          },
+          "status": {
+            "description": "Lifecycle status at acceptance (pending).",
+            "title": "Status",
+            "type": "string"
+          },
+          "transfer_id": {
+            "description": "The tracking row's id; poll it for progress.",
+            "title": "Transfer Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "transfer_id",
+          "kind",
+          "status"
+        ],
+        "title": "TransferAccepted",
+        "type": "object"
+      },
+      "TransferStatus": {
+        "description": "The full poll model of a collection transfer \u2014 its live status and (when done) its artifact.\n\nAttributes:\n    transfer_id (str): The tracking row's id.\n    kind (str): \"export\" or \"import\".\n    status (str): pending / running / done / failed.\n    progress (int): Coarse 0-100 percentage.\n    stage (str | None): The current engine stage label, when running.\n    counts (dict | None): Per-table counts snapshot ({\"documents\": n, \"chunks\": m, ...}).\n    error (str | None): The failure message, verbatim, when failed.\n    collection_id (str | None): Export \u2192 the source collection; import \u2192 the NEW collection once\n        done (None while an import is still in flight).\n    collection_name (str | None): The source (export) or produced (import) collection name.\n    size_bytes (int | None): The produced export bundle's size (done export only).\n    format_version (int | None): The bundle format version (done export only).\n    dense_dim (int | None): The captured dense vector size (done export only).\n    expires_at (datetime | None): When a produced export bundle may be garbage-collected.\n    started_at (datetime | None): When the worker claimed the transfer.\n    finished_at (datetime | None): When the transfer reached a terminal state.\n    created_at (datetime): When the tracking row was created.\n    updated_at (datetime): When the tracking row was last touched.",
+        "properties": {
+          "collection_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Export: source collection. Import: the new collection once done.",
+            "title": "Collection Id"
+          },
+          "collection_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Source or produced collection name.",
+            "title": "Collection Name"
+          },
+          "counts": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Per-table counts snapshot.",
+            "title": "Counts"
+          },
+          "created_at": {
+            "description": "When the tracking row was created.",
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "dense_dim": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Captured dense vector size (done export).",
+            "title": "Dense Dim"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Failure message (verbatim) when failed.",
+            "title": "Error"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When a produced bundle may be GC'd.",
+            "title": "Expires At"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the transfer reached a terminal state.",
+            "title": "Finished At"
+          },
+          "format_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Bundle format version (done export).",
+            "title": "Format Version"
+          },
+          "kind": {
+            "description": "Transfer direction: 'export' or 'import'.",
+            "title": "Kind",
+            "type": "string"
+          },
+          "progress": {
+            "description": "Coarse completion percentage (0-100).",
+            "title": "Progress",
+            "type": "integer"
+          },
+          "size_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Produced bundle size in bytes (done export).",
+            "title": "Size Bytes"
+          },
+          "stage": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Current engine stage label, when running.",
+            "title": "Stage"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the worker claimed the transfer.",
+            "title": "Started At"
+          },
+          "status": {
+            "description": "Lifecycle status: pending / running / done / failed.",
+            "title": "Status",
+            "type": "string"
+          },
+          "transfer_id": {
+            "description": "The tracking row's id.",
+            "title": "Transfer Id",
+            "type": "string"
+          },
+          "updated_at": {
+            "description": "When the tracking row was last touched.",
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "transfer_id",
+          "kind",
+          "status",
+          "progress",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "TransferStatus",
+        "type": "object"
+      },
       "Transition": {
         "description": "A directed, condition-gated edge between two nodes of the same graph.\n\nAttributes:\n    from_node_id (str): Identifier of the source node.\n    to_node_id (str): Identifier of the target node, followed when the condition holds.\n    condition (Condition): Gate evaluated against the source node's outcome. Defaults to\n        ``OnSuccess`` \u2014 a plain edge proceeds only when the source node succeeded; use an\n        explicit ``Always`` for a truly unconditional edge.",
         "properties": {

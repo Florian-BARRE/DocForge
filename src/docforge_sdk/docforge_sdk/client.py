@@ -18,6 +18,7 @@ from .resources.health import AsyncHealth, SyncHealth
 from .resources.jobs import AsyncJobs, SyncJobs
 from .resources.pipelines import AsyncPipelines, SyncPipelines
 from .resources.search import AsyncSearch, SyncSearch
+from .resources.transfers import AsyncTransfers, SyncTransfers
 
 
 class AsyncClient:
@@ -34,6 +35,7 @@ class AsyncClient:
         jobs (AsyncJobs): Ingestion-job monitoring.
         blobs (AsyncBlobs): Content-addressed blob fetch.
         pipelines (AsyncPipelines): Pipeline discovery + design.
+        transfers (AsyncTransfers): Collection export/import.
     """
 
     def __init__(self, base_url: str, timeout: float = 30.0, api_token: str = "") -> None:
@@ -55,6 +57,7 @@ class AsyncClient:
         self.jobs = AsyncJobs(self._transport)
         self.blobs = AsyncBlobs(self._transport)
         self.pipelines = AsyncPipelines(self._transport)
+        self.transfers = AsyncTransfers(self._transport)
 
     async def __aenter__(self) -> "AsyncClient":
         """Enter the async context, returning the client itself."""
@@ -88,6 +91,7 @@ class Client:
         jobs (SyncJobs): Ingestion-job monitoring.
         blobs (SyncBlobs): Content-addressed blob fetch.
         pipelines (SyncPipelines): Pipeline discovery + design.
+        transfers (SyncTransfers): Collection export/import.
     """
 
     def __init__(self, base_url: str, timeout: float = 30.0, api_token: str = "") -> None:
@@ -109,6 +113,7 @@ class Client:
         self.jobs = SyncJobs(self._transport)
         self.blobs = SyncBlobs(self._transport)
         self.pipelines = SyncPipelines(self._transport)
+        self.transfers = SyncTransfers(self._transport)
 
     def __enter__(self) -> "Client":
         """Enter the context, returning the client itself."""

@@ -73,6 +73,9 @@ from .storage import (
     S3FootprintModel,
 )
 
+# ------------------- Transfers models ------------------- #
+from .transfers import TransferAccepted, TransferStatus
+
 # ------------------- Public API ------------------- #
 __all__ = [
     # Shared vocabulary
@@ -146,4 +149,7 @@ __all__ = [
     "QdrantFootprintModel",
     "DocumentStorageModel",
     "CollectionStorageResponse",
+    # Transfers
+    "TransferAccepted",
+    "TransferStatus",
 ]

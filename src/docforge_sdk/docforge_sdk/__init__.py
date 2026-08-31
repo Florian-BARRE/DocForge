@@ -89,6 +89,9 @@ from .models.storage import (
     S3FootprintModel,
 )
 
+# ------------------- Transfers models ------------------- #
+from .models.transfers import TransferAccepted, TransferStatus
+
 # ------------------- Public API ------------------- #
 __all__ = [
     "__version__",
@@ -166,6 +169,9 @@ __all__ = [
     "QdrantFootprintModel",
     "DocumentStorageModel",
     "CollectionStorageResponse",
+    # Transfers
+    "TransferAccepted",
+    "TransferStatus",
     # Exceptions
     "DocForgeError",
     "APIConnectionError",

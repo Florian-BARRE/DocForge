@@ -60,6 +60,7 @@ from docforge_sdk.models.storage import (
     QdrantFootprintModel,
     S3FootprintModel,
 )
+from docforge_sdk.models.transfers import TransferAccepted, TransferStatus
 
 # Maps the OpenAPI component-schema NAME to the SDK model that mirrors it. A handful of SDK classes
 # drop the backend's "Model" suffix (FieldSpec, SearchTarget, SearchHit), so the key is authoritative.
@@ -121,6 +122,9 @@ MODELS: dict[str, type[BaseModel]] = {
     "QdrantFootprintModel": QdrantFootprintModel,
     "DocumentStorageModel": DocumentStorageModel,
     "CollectionStorageResponse": CollectionStorageResponse,
+    # Transfers
+    "TransferAccepted": TransferAccepted,
+    "TransferStatus": TransferStatus,
 }
 
 # SDK models deliberately WITHOUT a 1:1 OpenAPI schema, each with the reason it is skipped.

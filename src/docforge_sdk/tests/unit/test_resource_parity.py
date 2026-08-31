@@ -19,6 +19,7 @@ from docforge_sdk.resources.health import AsyncHealth, SyncHealth
 from docforge_sdk.resources.jobs import AsyncJobs, SyncJobs
 from docforge_sdk.resources.pipelines import AsyncPipelines, SyncPipelines
 from docforge_sdk.resources.search import AsyncSearch, SyncSearch
+from docforge_sdk.resources.transfers import AsyncTransfers, SyncTransfers
 
 # Every (async, sync) resource pair that must stay in lockstep.
 _PAIRS: list[tuple[type, type]] = [
@@ -31,6 +32,7 @@ _PAIRS: list[tuple[type, type]] = [
     (AsyncJobs, SyncJobs),
     (AsyncBlobs, SyncBlobs),
     (AsyncPipelines, SyncPipelines),
+    (AsyncTransfers, SyncTransfers),
 ]
 
 

@@ -4,6 +4,7 @@
 # through that single chokepoint, so no endpoint hand-rolls its own parsing.
 
 # ====== Standard Library Imports ======
+from collections.abc import Iterator
 from typing import Any
 
 # ====== Third-Party Library Imports ======
@@ -159,6 +160,35 @@ class SyncTransport(_TransportBase):
         self._raise_for_status(response)
         mime_type = response.headers.get("content-type", "application/octet-stream")
         return response.content, mime_type
+
+    def stream_get(self, path: str) -> Iterator[bytes]:
+        """
+        Stream a GET response body in bounded chunks, never buffering it whole in memory.
+
+        Bypasses ``_send`` (which returns a fully-read response) since httpx only streams the
+        response body via its ``.stream()`` context manager; the same timeout/connection mapping is
+        applied around it so callers see the same SDK exceptions either way.
+
+        Args:
+            path (str): The API-relative path.
+
+        Yields:
+            bytes: Successive chunks of the response body.
+
+        Raises:
+            APITimeoutError: When the request timed out.
+            APIConnectionError: When the API could not be reached.
+        """
+        try:
+            with self._client.stream("GET", self._url(path)) as response:
+                if response.status_code >= 400:
+                    response.read()
+                    self._raise_for_status(response)
+                yield from response.iter_bytes()
+        except httpx.TimeoutException as error:
+            raise APITimeoutError(str(error)) from error
+        except httpx.TransportError as error:
+            raise APIConnectionError(str(error)) from error
 
     def close(self) -> None:
         """Close the underlying httpx client and release its connections."""

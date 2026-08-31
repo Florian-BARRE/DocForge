@@ -11,6 +11,7 @@ import { PageHeader } from "../../components/PageHeader";
 import { theme } from "../../theme";
 import type { Navigate } from "../../shell/view";
 import { CollectionCard } from "./CollectionCard";
+import { ImportPanel } from "./transfer/ImportPanel";
 
 interface CollectionsPageProps {
   onNavigate: Navigate;
@@ -19,6 +20,7 @@ interface CollectionsPageProps {
 export function CollectionsPage({ onNavigate }: CollectionsPageProps) {
   const [collections, setCollections] = useState<Collection[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [showImport, setShowImport] = useState(false);
 
   const load = () => {
     setError(null);
@@ -36,11 +38,21 @@ export function CollectionsPage({ onNavigate }: CollectionsPageProps) {
         title="Collections"
         subtitle={collections ? `${count} contract${count === 1 ? "" : "s"} — each a schema + ingestion + search pipeline` : " "}
         actions={
-          <Button variant="primary" onClick={() => onNavigate({ name: "new-collection" })}>
-            + New collection
-          </Button>
+          <>
+            <Button variant="secondary" onClick={() => setShowImport((v) => !v)}>
+              {showImport ? "Cancel import" : "Import collection"}
+            </Button>
+            <Button variant="primary" onClick={() => onNavigate({ name: "new-collection" })}>
+              + New collection
+            </Button>
+          </>
         }
       />
+      {showImport && (
+        <div style={{ marginBottom: theme.space.l }}>
+          <ImportPanel onNavigate={onNavigate} />
+        </div>
+      )}
       {error && <ErrorState message={error} onRetry={load} />}
       {!error && !collections && <LoadingState label="loading collections…" />}
       {!error && collections && collections.length === 0 && (

@@ -6,7 +6,18 @@ from docforge_sdk import AsyncClient
 from mcp.server.fastmcp import FastMCP
 
 # ====== Local Project Imports ======
-from . import auth, blobs, collections, documents, explorer, health, jobs, pipelines, search
+from . import (
+    auth,
+    blobs,
+    collections,
+    documents,
+    explorer,
+    health,
+    jobs,
+    pipelines,
+    search,
+    transfers,
+)
 
 # Every domain tool module, in catalogue order. Each exposes register(mcp, sdk).
 _MODULES = (
@@ -19,6 +30,7 @@ _MODULES = (
     jobs,
     blobs,
     pipelines,
+    transfers,
 )
 
 

@@ -126,7 +126,19 @@ plain dicts. See [`PIPELINE.md`](../src/docforge/PIPELINE.md) for what the graph
 | `view_pipeline_stages` | Derive the ordered stage view of a blob + its validity verdict. |
 | `apply_pipeline_stage` | Compile a stage-level action into a blob (always buildable); returns recompiled blob + stage view + issues. |
 
-**Total: 34 tools** across 9 domains.
+### Transfers (collection export / import)
+
+A completed export bundle's bytes are **never** streamed back through a tool result (a bundle can be
+multi-GB) — `get_export_download_ref` instead points the caller at the REST download endpoint.
+
+| Tool | Purpose |
+|---|---|
+| `export_collection` | Open an asynchronous export of a whole collection into a portable `.dcexport` bundle. Returns the transfer handle (202) — poll `get_transfer`. |
+| `import_collection` | Import a `.dcexport` bundle as a brand-new collection. `file_path` is read from the **MCP SERVER's own filesystem**, not the caller's local disk — a remote deployment must stage the bundle there first. Returns the transfer handle (202). |
+| `get_transfer` | Poll a transfer's live status — progress, stage, counts, error, and (done) the artifact: bundle `size_bytes`/`expires_at` for an export, the new `collection_id`/`collection_name` for an import. |
+| `get_export_download_ref` | For a done export, returns `size_bytes`/`expires_at` and the REST `download_path` to `GET` directly (or via `docforge_sdk`'s streaming `transfers.download_export`) — never the bundle bytes themselves. |
+
+**Total: 38 tools** across 10 domains.
 
 ---
 
@@ -217,7 +229,7 @@ Add an entry to your client's MCP config (`.mcp.json`-style):
 }
 ```
 
-The client launches the process and speaks MCP over stdio; the model can then call any of the 34
+The client launches the process and speaks MCP over stdio; the model can then call any of the 38
 tools. (Use an absolute path to `entrypoint.py` if your client does not run from the repo root, and
 run it through `uv`/the project venv so `docforge_sdk` and `mcp` are importable.)
 

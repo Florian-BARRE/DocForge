@@ -28,6 +28,9 @@ from .pipelines import AsyncPipelines, SyncPipelines
 # ------------------- Search resource ------------------- #
 from .search import AsyncSearch, SyncSearch
 
+# ------------------- Transfers resource ------------------- #
+from .transfers import AsyncTransfers, SyncTransfers
+
 # ------------------- Public API ------------------- #
 __all__ = [
     "AsyncResource",
@@ -50,4 +53,6 @@ __all__ = [
     "SyncBlobs",
     "AsyncPipelines",
     "SyncPipelines",
+    "AsyncTransfers",
+    "SyncTransfers",
 ]

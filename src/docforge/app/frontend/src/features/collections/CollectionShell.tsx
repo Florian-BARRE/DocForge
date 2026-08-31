@@ -17,6 +17,7 @@ import { PageHeader } from "../../components/PageHeader";
 import { TabNav, type TabItem } from "../../components/TabNav";
 import type { Navigate, View } from "../../shell/view";
 import { theme as t } from "../../theme";
+import { ExportPanel } from "./transfer/ExportPanel";
 import { UploadPanel } from "./UploadPanel";
 
 // A tab key — the caller passes the active one; the section (level-1 group) is derived from it.
@@ -103,6 +104,7 @@ export function CollectionShell({ collectionId, active, onNavigate, children }: 
   const [collection, setCollection] = useState<Collection | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showUpload, setShowUpload] = useState(false);
+  const [showExport, setShowExport] = useState(false);
 
   const load = () => {
     setError(null);
@@ -136,7 +138,18 @@ export function CollectionShell({ collectionId, active, onNavigate, children }: 
           actions={
             <>
               <Button variant="secondary" onClick={() => onNavigate({ name: "collection-edit", collectionId })}>Edit</Button>
-              <Button variant="primary" onClick={() => setShowUpload((v) => !v)}>{showUpload ? "Cancel upload" : "Upload"}</Button>
+              <Button
+                variant="secondary"
+                onClick={() => { setShowExport((v) => !v); setShowUpload(false); }}
+              >
+                {showExport ? "Cancel export" : "Export"}
+              </Button>
+              <Button
+                variant="primary"
+                onClick={() => { setShowUpload((v) => !v); setShowExport(false); }}
+              >
+                {showUpload ? "Cancel upload" : "Upload"}
+              </Button>
             </>
           }
         />
@@ -147,6 +160,11 @@ export function CollectionShell({ collectionId, active, onNavigate, children }: 
               fields={collection.fields}
               onUploaded={(jobId) => { setShowUpload(false); onNavigate({ name: "job", collectionId, jobId }); }}
             />
+          </div>
+        )}
+        {showExport && (
+          <div style={{ marginBottom: t.space.l, maxWidth: 480 }}>
+            <ExportPanel collectionId={collectionId} collectionName={collection.name} />
           </div>
         )}
 
