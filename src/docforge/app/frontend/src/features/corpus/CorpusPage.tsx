@@ -107,6 +107,8 @@ export function CorpusPage({ collectionId, onNavigate }: CorpusPageProps) {
 
   const pageIds = query.rows.map((row) => row.id);
   const allOnPageSelected = selection.allOnPageSelected(pageIds);
+  const inFilteredMode = selection.mode === "filtered";
+  // The page is fully ticked but the corpus spills onto other pages — offer the whole-set escape hatch.
   const showSelectAllPrompt = selection.mode === "ids" && allOnPageSelected && query.total > pageIds.length;
 
   const bulkDone = () => {
@@ -127,17 +129,34 @@ export function CorpusPage({ collectionId, onNavigate }: CorpusPageProps) {
           buildSelector={() => selection.toSelector(filter)}
           onDone={bulkDone}
         />
-        {showSelectAllPrompt && (
-          <span style={{ display: "inline-flex", alignItems: "center", gap: theme.space.xs, fontSize: theme.font.size.s, color: theme.color.dim }}>
-            All {pageIds.length} on this page selected.
-            <Button size="sm" variant="ghost" onClick={selection.selectAllFiltered}>
-              Select all {query.total.toLocaleString()} matching documents
-            </Button>
-          </span>
-        )}
         <span style={{ marginLeft: "auto" }} />
         <ColumnVisibilityMenu table={table} />
       </div>
+
+      {(showSelectAllPrompt || inFilteredMode) && (
+        <div
+          style={{
+            display: "flex", alignItems: "center", justifyContent: "center", gap: theme.space.s,
+            flexWrap: "wrap", padding: `${theme.space.s}px ${theme.space.m}px`,
+            background: theme.color.surface2, border: `1px solid ${theme.color.line}`,
+            borderRadius: theme.radius.m, fontSize: theme.font.size.s, color: theme.color.text,
+          }}
+        >
+          {inFilteredMode ? (
+            <>
+              <span>All <strong>{query.total.toLocaleString()}</strong> matching documents are selected.</span>
+              <Button size="sm" variant="ghost" onClick={selection.clear}>Clear selection</Button>
+            </>
+          ) : (
+            <>
+              <span>All <strong>{pageIds.length}</strong> on this page are selected.</span>
+              <Button size="sm" onClick={selection.selectAllFiltered}>
+                Select all {query.total.toLocaleString()} matching documents
+              </Button>
+            </>
+          )}
+        </div>
+      )}
 
       {query.error ? (
         <ErrorState message={query.error} onRetry={query.refetch} />

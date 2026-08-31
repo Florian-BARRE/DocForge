@@ -14,7 +14,7 @@ interface PagerProps {
   onLimitChange: (limit: number) => void;
 }
 
-const PAGE_SIZES = [50, 100, 200];
+const PAGE_SIZES = [10, 25, 50, 100, 200, 500];
 
 export function Pager({ total, limit, offset, onOffsetChange, onLimitChange }: PagerProps) {
   const page = Math.floor(offset / limit) + 1;

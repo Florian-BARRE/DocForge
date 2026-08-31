@@ -15,11 +15,16 @@ export function buildSelectColumn(selection: UseSelectionResult): ColumnDef<Docu
     enableSorting: false,
     header: ({ table }) => {
       const pageIds = table.getRowModel().rows.map((r) => r.original.id);
+      const allSelected = selection.allOnPageSelected(pageIds);
+      // Partial page selection reads as an indeterminate (dash) box, so a fully-checked header
+      // unambiguously means "the whole page", not "some rows".
+      const partial = !allSelected && pageIds.some((id) => selection.isSelected(id));
       return (
         <input
           type="checkbox"
+          ref={(el) => { if (el) el.indeterminate = partial; }}
           aria-label="Select all rows on this page"
-          checked={selection.allOnPageSelected(pageIds)}
+          checked={allSelected}
           onChange={() => selection.toggleAllOnPage(pageIds)}
         />
       );

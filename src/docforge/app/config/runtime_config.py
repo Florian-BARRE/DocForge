@@ -89,7 +89,7 @@ class RUNTIME_CONFIG(EnvConfigLoader):
     # ───── Document grid (large-scale corpus view) ─────
     # Hard ceiling for one grid query page — the server clamps a larger requested ``limit`` down to
     # this so a client can never demand an unbounded scan of a 100k-document collection.
-    CORPUS_MAX_PAGE_SIZE: int = env("CORPUS_MAX_PAGE_SIZE", cast=int, default=200)
+    CORPUS_MAX_PAGE_SIZE: int = env("CORPUS_MAX_PAGE_SIZE", cast=int, default=500)
     # Per-call cap on a bulk re-ingest fan-out: a filter selector matching MORE than this enqueues
     # only the first N (deterministic order) and reports ``capped=true`` + the total ``matched``, so a
     # single call can never silently flood the queue with 100k jobs. Raise it for a big planned re-run.
