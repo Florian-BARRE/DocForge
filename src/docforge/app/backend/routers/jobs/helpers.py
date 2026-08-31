@@ -75,7 +75,10 @@ class WorkersLiveHelpers:
         reference = now or datetime.now(UTC)
         jobs_by_worker: dict[str, list[JobStatus]] = defaultdict(list)
         for job in running_jobs:
-            if allowed_collections is not None and str(job.collection_id) not in allowed_collections:
+            if (
+                allowed_collections is not None
+                and str(job.collection_id) not in allowed_collections
+            ):
                 continue
             jobs_by_worker[job.worker_id or "unknown"].append(JobStatus.from_row(job))
 

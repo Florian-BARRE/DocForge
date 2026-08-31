@@ -237,14 +237,10 @@ class JobApi:
             session (AsyncSession): The active DB session.
             worker_id (str): The stable id of the worker de-registering itself.
         """
-        await session.execute(
-            delete(WorkerHeartbeat).where(WorkerHeartbeat.worker_id == worker_id)
-        )
+        await session.execute(delete(WorkerHeartbeat).where(WorkerHeartbeat.worker_id == worker_id))
 
     @staticmethod
-    async def prune_stale_heartbeats(
-        session: AsyncSession, older_than_seconds: float
-    ) -> list[str]:
+    async def prune_stale_heartbeats(session: AsyncSession, older_than_seconds: float) -> list[str]:
         """
         Delete heartbeat rows not refreshed within the cutoff — the crashed-worker sweep.
 
