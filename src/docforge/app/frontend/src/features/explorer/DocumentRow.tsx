@@ -13,6 +13,8 @@ import { formatBytes, formatDateTime } from "./format";
 
 interface DocumentRowProps {
   document: DocumentListItem;
+  selected: boolean;
+  onToggleSelect: (documentId: string) => void;
   onOpen: () => void;
   onDelete: () => Promise<void>;
   onEnabledChanged: (enabled: boolean) => void;
@@ -20,7 +22,7 @@ interface DocumentRowProps {
 
 const cellStyle: React.CSSProperties = { padding: `${theme.space.s}px ${theme.space.m}px`, fontSize: theme.font.size.s };
 
-export function DocumentRow({ document, onOpen, onDelete, onEnabledChanged }: DocumentRowProps) {
+export function DocumentRow({ document, selected, onToggleSelect, onOpen, onDelete, onEnabledChanged }: DocumentRowProps) {
   const [confirming, setConfirming] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -49,6 +51,9 @@ export function DocumentRow({ document, onOpen, onDelete, onEnabledChanged }: Do
       onMouseEnter={(e) => (e.currentTarget.style.background = theme.color.surface2)}
       onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
     >
+      <td style={cellStyle} onClick={(e) => e.stopPropagation()}>
+        <input type="checkbox" checked={selected} onChange={() => onToggleSelect(document.id)} />
+      </td>
       <td style={cellStyle}>
         <span style={{ display: "inline-flex", alignItems: "center", gap: theme.space.xs }}>
           <span style={{ fontWeight: 500, color: theme.color.text }}>{document.filename}</span>

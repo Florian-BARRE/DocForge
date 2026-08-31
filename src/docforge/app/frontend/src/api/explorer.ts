@@ -145,6 +145,10 @@ export interface ChunkInfo {
   role: ChunkRole;
   /** The recomputed EFFECTIVE searchability state (enabled_override ?? role_default_enabled). */
   enabled: boolean;
+  /** The chunk's section breadcrumb (outer→inner headings); [] when none. */
+  heading_path: string[];
+  /** Page of the chunk's primary (leading) block; null when it has no located block. */
+  page: number | null;
 }
 
 /** The desired searchability state for one chunk (its enabled_override). */

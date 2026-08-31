@@ -12,13 +12,16 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException
 
 # ====== Internal Project Imports ======
+from shared_libs.pipelines.ingest import BlobNormalizationError, BlobNormalizer
 from shared_libs.services.db.postgresql.tables import Collection
 
 # ====== Local Project Imports ======
 from ...context import CONTEXT
-from ...libs.auth import AuthPrincipal, Capability, require
+from ...libs.auth import AuthPrincipal, AuthzGuard, Capability, require
 from ...libs.health import CollectionHealthResponse
+from ...libs.reingest import BulkReingestAccepted, BulkReingestRequest, BulkReingestService
 from ...utils.error_handling import auto_handle_errors
+from ...utils.pipeline_validation import PipelineBlobValidator
 from .blob_helpers import CollectionBlobHelpers
 from .helpers import CollectionHelpers
 from .models import (
@@ -330,6 +333,79 @@ async def update_collection(
     return CollectionHelpers.to_model(
         updated, await CONTEXT.database.collections.get_schema(collection_id)
     )
+
+
+@router.post(
+    "/{collection_id}/reingest",
+    response_model=BulkReingestAccepted,
+    status_code=202,
+)
+@auto_handle_errors
+async def reingest_collection(
+    collection_id: uuid.UUID,
+    request: BulkReingestRequest,
+    principal: AuthPrincipal = Depends(require(Capability.WRITE)),
+) -> BulkReingestAccepted:
+    """
+    Re-run the full pipeline over a collection's corpus — all documents, or an explicit subset.
+
+    The run is idempotent per document (a REPLACE at every layer: chunks/IR purged-then-inserted,
+    Qdrant points deleted-by-document before upsert) and the original bytes are already stored, so
+    this never re-uploads. Each document gets a FRESH job; poll each returned job for progress.
+
+    Returns:
+        BulkReingestAccepted: One job handle per enqueued run (202); 404 when the collection is
+            unknown, 422 on a stale/broken pipeline or a bad document subset.
+    """
+    # 1. The collection must exist — its budget + pipeline drive every run.
+    collection = await CONTEXT.database.collections.get(collection_id)
+    if collection is None:
+        raise HTTPException(status_code=404, detail=f"Collection {collection_id} not found.")
+
+    # 2. Belt-and-suspenders: require(WRITE) already collection-scopes the `collection_id` path
+    #    param before this body runs, so a cross-tenant key is a 403 there; this restates it locally.
+    AuthzGuard.assert_collection_scope(principal, str(collection_id))
+
+    # 3. Fail-fast on a STALE/broken pipeline BEFORE minting any job — auto-heal then structurally
+    #    validate the blob, exactly as an upload does, so a broken collection surfaces once here
+    #    instead of as N failed jobs.
+    try:
+        pipeline_blob = BlobNormalizer.normalize(collection.pipeline)
+    except BlobNormalizationError as exc:
+        raise HTTPException(status_code=422, detail=f"Collection {collection_id}: {exc}")
+    PipelineBlobValidator.validate(pipeline_blob)
+
+    # 4. Resolve targets: an explicit subset (validated to exist AND belong here) or the whole
+    #    collection. An empty explicit list is an ambiguous no-op — rejected.
+    if request.document_ids is not None:
+        if not request.document_ids:
+            raise HTTPException(
+                status_code=422, detail="document_ids must be a non-empty list or omitted."
+            )
+        try:
+            wanted = [uuid.UUID(value) for value in request.document_ids]
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=f"document_ids: not a UUID ({exc}).")
+        documents = await CONTEXT.database.documents.get_by_ids(wanted)
+        found = {document.id for document in documents}
+        missing = [str(value) for value in wanted if value not in found]
+        if missing:
+            raise HTTPException(status_code=422, detail=f"unknown document(s): {missing}")
+        foreign = [
+            str(document.id) for document in documents if document.collection_id != collection_id
+        ]
+        if foreign:
+            raise HTTPException(
+                status_code=422,
+                detail=f"document(s) not in collection {collection_id}: {foreign}",
+            )
+    else:
+        documents = await CONTEXT.database.documents.list_for_collection(collection_id)
+
+    # 5. Fan out one full-pipeline job per resolved document (empty corpus → empty acceptance).
+    service = BulkReingestService(CONTEXT.database, CONTEXT.queue)
+    handles = await service.enqueue(collection, documents)
+    return BulkReingestAccepted(collection_id=str(collection_id), count=len(handles), jobs=handles)
 
 
 @router.delete(

@@ -233,3 +233,34 @@ export interface CollectionStorage {
 export function fetchCollectionStorage(id: string): Promise<CollectionStorage> {
   return apiFetch(`${BASE}/${id}/storage`);
 }
+
+// ====== Mass re-ingestion (whole collection or a document subset) ======
+// Mirrors POST /api/v1/collections/{id}/reingest — always a FULL-pipeline re-run per document
+// (no partial/stage-scoped re-run exists). Omitting `document_ids` targets the whole collection.
+
+/** `document_ids` omitted/null re-ingests the WHOLE collection; `[]` is rejected (422) by the API. */
+export interface ReingestRequest {
+  document_ids?: string[] | null;
+}
+
+/** One document's freshly-enqueued re-ingest job. */
+export interface ReingestJobHandle {
+  document_id: string;
+  job_id: string;
+}
+
+export interface ReingestResponse {
+  collection_id: string;
+  count: number;
+  jobs: ReingestJobHandle[];
+}
+
+/**
+ * Re-run the FULL ingestion pipeline on every stored original in `documentIds`, or the whole
+ * collection when omitted. Idempotent per document (previous chunks/IR/pages purged, vectors
+ * overwritten) — each targeted document gets its own queued job.
+ */
+export function reingestCollection(id: string, documentIds?: string[]): Promise<ReingestResponse> {
+  const request: ReingestRequest = { document_ids: documentIds ?? null };
+  return apiFetch(`${BASE}/${id}/reingest`, jsonInit("POST", request));
+}

@@ -1,14 +1,17 @@
 // ====== Code Summary ======
 // One chunk's full card — index, size, indexed flag, structural role, enable/disable toggle, its
-// text, generated metadata and the source blocks it was assembled from. Greyed out while its
+// heading breadcrumb, text, generated metadata, the source blocks it was assembled from, and a
+// collapsed-by-default details disclosure (id/parent/page/char count). Greyed out while its
 // effective state is disabled.
 
 import { useState } from "react";
 import type { ChunkInfo } from "../../../api/explorer";
 import { Chip } from "../../../components/Chip";
 import { theme } from "../../../theme";
+import { displayPage } from "../format";
 import { ChunkMetadataBlock } from "../metadata/ChunkMetadataBlock";
 import { ChunkBlockLinks } from "./ChunkBlockLinks";
+import { ChunkDetails } from "./ChunkDetails";
 import { ChunkEnabledToggle } from "./ChunkEnabledToggle";
 import { ChunkRoleBadge } from "./ChunkRoleBadge";
 import { ChunkText } from "./ChunkText";
@@ -38,10 +41,13 @@ export function ChunkCard({ chunk, selected, onToggleSelect, onJumpToBlock, onEn
       <div style={{ display: "flex", alignItems: "center", gap: theme.space.s, flexWrap: "wrap" }}>
         <input type="checkbox" checked={selected} onChange={() => onToggleSelect(chunk.id)} />
         <strong style={{ fontFamily: theme.font.mono, fontSize: theme.font.size.m, color: theme.color.text }}>#{chunk.chunk_index}</strong>
-        <span style={{ color: theme.color.dim, fontSize: theme.font.size.xs }}>{chunk.token_count} tokens</span>
+        <span style={{ color: theme.color.dim, fontSize: theme.font.size.xs }}>
+          {chunk.token_count} tokens · {chunk.text.length.toLocaleString()} chars
+        </span>
         <Chip tone={chunk.is_indexed ? "ok" : "dim"}>{chunk.is_indexed ? "indexed" : "not indexed"}</Chip>
         <span style={{ color: theme.color.dim, fontSize: theme.font.size.xs }}>{chunk.strategy}</span>
         <ChunkRoleBadge role={chunk.role} />
+        {chunk.page !== null && <Chip tone="dim">page {displayPage(chunk.page)}</Chip>}
         {!chunk.enabled && <Chip tone="warn">disabled</Chip>}
         <span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: theme.space.s }}>
           {onShowOnPage && chunk.block_ids.length > 0 && (
@@ -82,6 +88,17 @@ export function ChunkCard({ chunk, selected, onToggleSelect, onJumpToBlock, onEn
           <ChunkBlockLinks blockIds={chunk.block_ids} onJumpToBlock={onJumpToBlock} />
         </div>
       )}
+
+      <div style={{ borderTop: `1px solid ${theme.color.line}`, paddingTop: theme.space.s }}>
+        <ChunkDetails
+          id={chunk.id}
+          parentId={chunk.parent_id}
+          headingPath={chunk.heading_path}
+          charCount={chunk.text.length}
+          blockCount={chunk.block_ids.length}
+          page={chunk.page}
+        />
+      </div>
     </div>
   );
 }
