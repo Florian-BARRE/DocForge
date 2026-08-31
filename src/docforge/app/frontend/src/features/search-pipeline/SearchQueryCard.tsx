@@ -26,6 +26,14 @@ const OPTIONS: Option[] = [
   { value: "hyde", label: "HyDE" },
 ];
 
+// Per-mode summary — the card's one-line explanation should say what's actually about to happen,
+// not a generic blurb that doesn't distinguish "off" from either transform.
+const SUMMARY_BY_MODE: Record<"off" | QueryTransformKind, string> = {
+  off: "The raw query goes straight to retrieval — no extra LLM call, no added latency or cost.",
+  rewrite: "An LLM rewrites/expands the query before retrieval; adds a paid call per search, degrades to the raw query on any error.",
+  hyde: "An LLM drafts a hypothetical answer and embeds THAT instead of the raw query (HyDE); adds a paid call per search, degrades to the raw query on any error.",
+};
+
 const inputStyle: React.CSSProperties = {
   background: t.color.surface2,
   color: t.color.text,
@@ -91,7 +99,7 @@ export function SearchQueryCard({ active, config, onSelect, onChangeConfig }: Se
       left={selector}
       title="Query understanding"
       tag="query"
-      summary="An LLM rewrites/expands the query before retrieval; adds a paid call per search, degrades to the raw query on any error."
+      summary={SUMMARY_BY_MODE[active ?? "off"]}
       enabled={enabled}
     >
       {enabled && (

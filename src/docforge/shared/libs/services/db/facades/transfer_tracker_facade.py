@@ -95,9 +95,10 @@ class TransferTrackerFacade(LoggerClass):
         finished_at: datetime,
         *,
         collection_id: uuid.UUID | None = None,
+        collection_name: str | None = None,
         counts: dict[str, Any] | None = None,
     ) -> None:
-        """Terminal success — 100%, DONE, and (for import) the new collection id."""
+        """Terminal success — 100%, DONE, and (for import) the new collection's id AND name."""
         async with self._postgres.session() as session:
             await TransferApi.update(
                 session,
@@ -106,6 +107,7 @@ class TransferTrackerFacade(LoggerClass):
                 progress=100,
                 finished_at=finished_at,
                 collection_id=collection_id,
+                collection_name=collection_name,
                 counts=counts,
             )
 

@@ -10,6 +10,20 @@ import type { DocumentGridRow } from "../../../api/corpus";
 import { MetadataValueCell } from "../MetadataValueCell";
 import { metadataColumnId, type ColumnFilterKind } from "../types";
 
+// The fixed base columns a metadata field name can collide with by pure coincidence (e.g. a
+// schema field named "language" vs. the base "Language" column) — disambiguated with a suffix
+// rather than restructuring the header into JSX, so the column-visibility menu (which falls back
+// to `column.id` for non-string headers) keeps showing a readable label too.
+const BASE_COLUMN_HEADERS = new Set([
+  "filename", "status", "format", "pages", "size", "created", "title", "language", "enabled",
+]);
+
+function headerFor(field: FieldSpec): string {
+  return BASE_COLUMN_HEADERS.has(field.field_name.toLowerCase())
+    ? `${field.field_name} (meta)`
+    : field.field_name;
+}
+
 function filterKindFor(fieldType: FieldType): ColumnFilterKind | undefined {
   switch (fieldType) {
     case "string":
@@ -41,7 +55,7 @@ export function buildMetadataColumns(fields: FieldSpec[]): ColumnDef<DocumentGri
       const filterKind = field.filterable ? filterKindFor(field.field_type) : undefined;
       return {
         id: metadataColumnId(field.field_name),
-        header: field.field_name,
+        header: headerFor(field),
         meta: {
           group: field.origin,
           ...(filterKind ? { filterKind, enumOptions: field.enum_values ?? undefined } : {}),

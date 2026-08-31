@@ -20,21 +20,27 @@ export function TableHeaderCell({ header }: { header: Header<DocumentGridRow, un
         color: theme.color.dim, whiteSpace: "nowrap",
       }}
     >
-      {!header.isPlaceholder && (
+      {!header.isPlaceholder && (canSort ? (
         <button
           type="button"
-          onClick={canSort ? header.column.getToggleSortingHandler() : undefined}
-          disabled={!canSort}
+          onClick={header.column.getToggleSortingHandler()}
           style={{
             background: "none", border: "none", padding: 0, display: "inline-flex", alignItems: "center", gap: 4,
-            cursor: canSort ? "pointer" : "default", color: sorted ? theme.color.accent : theme.color.dim,
+            cursor: "pointer", color: sorted ? theme.color.accent : theme.color.dim,
             font: "inherit", textTransform: "inherit", letterSpacing: "inherit",
           }}
         >
           {flexRender(header.column.columnDef.header, header.getContext())}
-          {canSort && <span aria-hidden>{sorted === "asc" ? "▲" : sorted === "desc" ? "▼" : ""}</span>}
+          <span aria-hidden>{sorted === "asc" ? "▲" : sorted === "desc" ? "▼" : ""}</span>
         </button>
-      )}
+      ) : (
+        // A plain wrapper, not a `<button disabled>`: a disabled ancestor form control blocks
+        // event bubbling to descendants in Chromium, which silently ate clicks on the select-all
+        // checkbox nested inside an unsortable header (see BUG #1 in QA batch 2026-08-31).
+        <div style={{ display: "inline-flex", alignItems: "center", gap: 4, color: theme.color.dim }}>
+          {flexRender(header.column.columnDef.header, header.getContext())}
+        </div>
+      ))}
     </th>
   );
 }

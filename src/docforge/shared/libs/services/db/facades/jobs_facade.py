@@ -293,8 +293,11 @@ class JobsFacade(LoggerClass):
             list[uuid.UUID]: The reaped job ids (empty when nothing was stale).
         """
         minutes = int(older_than_seconds // 60)
+        # The reaper's terminal status is FAILED, so its message must read like a failure — NEVER a
+        # "cancelled:" prefix (that belongs to the operator/worker cancel path, which sets CANCELLED).
         error = (
-            f"reaped: job made no progress for >{minutes}m — presumed orphaned by a worker restart"
+            f"reaped: progress stalled for >{minutes}m beyond the reap window — "
+            f"worker unwedged, presumed orphaned by a worker restart"
         )
         reaped: list[uuid.UUID] = []
         async with self._postgres.session() as session:

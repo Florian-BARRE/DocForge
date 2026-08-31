@@ -84,9 +84,10 @@ export function CorpusPage({ collectionId, onNavigate }: CorpusPageProps) {
       onOpen,
       onEnabledChanged,
       onDelete,
+      onReingested: query.refetch,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [selection, collection?.fields, collection?.supported_formats],
+    [selection, collection?.fields, collection?.supported_formats, query.refetch],
   );
 
   const table = useReactTable<DocumentGridRow>({

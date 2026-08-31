@@ -58,7 +58,10 @@ export function WorkerCard({ activity, onNavigate, onJobUpdated }: WorkerCardPro
           <strong style={{ fontFamily: theme.font.display, fontSize: theme.font.size.m, color: theme.color.text }}>
             {activity.worker_name ?? activity.worker_id}
           </strong>
-          {activity.worker_name && (
+          {/* An unconfigured worker's `worker_name` falls back to its own id server-side — showing
+           *  both lines would just duplicate the same string, so only render the id sub-line when
+           *  it's genuinely a second, distinct identifier. */}
+          {activity.worker_name && activity.worker_name !== activity.worker_id && (
             <span style={{ fontFamily: theme.font.mono, fontSize: theme.font.size.xs, color: theme.color.mute }}>
               {activity.worker_id}
             </span>

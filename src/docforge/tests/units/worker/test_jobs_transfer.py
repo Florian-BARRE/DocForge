@@ -97,4 +97,9 @@ async def test_import_collection_returns_new_collection_and_marks_done(jobs_tran
     assert result["collection_id"] == str(new_id)
     assert result["collection_name"] == "DemoCollection (imported)"
     tracker.mark_done.assert_awaited_once()
+    # The new collection's NAME (not just its id) is stamped on the tracking row, so a polled
+    # transfer surfaces the real name instead of a null the UI falls back to generic text for.
+    done_kwargs = tracker.mark_done.await_args.kwargs
+    assert done_kwargs["collection_id"] == new_id
+    assert done_kwargs["collection_name"] == "DemoCollection (imported)"
     tracker.mark_failed.assert_not_awaited()

@@ -14,6 +14,7 @@ import { LoadingState } from "../../../components/LoadingState";
 import { SchemaForm } from "../../../components/schema-form/SchemaForm";
 import { theme } from "../../../theme";
 import type { WizardMode } from "./CollectionWizard";
+import { MaxFileSizeField } from "./MaxFileSizeField";
 import { bytesToMb, mbToBytes } from "./wizardTypes";
 
 interface StepIdentityProps {
@@ -64,8 +65,11 @@ export function StepIdentity({
 
   // 1. The create-only `preset` field is hidden from the schema in edit mode — it only ever
   //    selects the stock blob at creation, the edit wizard has no analogous notion.
+  //    `max_file_size_bytes` is always pulled out too — it gets its own MB-labeled control
+  //    (`MaxFileSizeField`) below instead of the generic schema-driven raw-byte number input.
   const properties = { ...schema.properties };
   if (mode === "edit") delete properties.preset;
+  delete properties.max_file_size_bytes;
   const visibleSchema: JsonSchema = { ...schema, properties };
 
   // 2. Fold the wizard's named state + the untyped overflow bag into ONE values record keyed by
@@ -119,9 +123,11 @@ export function StepIdentity({
         style={{
           background: theme.color.surface, border: `1px solid ${theme.color.line}`,
           borderRadius: theme.radius.l, boxShadow: theme.shadow.sm, padding: theme.space.l,
+          display: "flex", flexDirection: "column", gap: "10px",
         }}
       >
         <SchemaForm schema={visibleSchema} values={values} onChange={handleChange} columns={1} />
+        <MaxFileSizeField valueMb={maxSizeMb} onChange={onMaxSizeMbChange} />
       </div>
       <div>
         <Button variant="primary" disabled={!valid} onClick={onNext}>

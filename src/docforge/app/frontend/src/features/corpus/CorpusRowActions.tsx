@@ -13,9 +13,14 @@ import { theme } from "../../theme";
 interface CorpusRowActionsProps {
   documentId: string;
   onDelete: () => Promise<void>;
+  /** Called right after a reingest is queued — refetches the grid so the row's status flips to
+   *  "pending" immediately, which is what makes the grid's own live-poll (see `useCorpusQuery`)
+   *  pick it up in the first place. Without this the row never leaves its stale terminal status
+   *  locally, so the poll-while-active check never has anything to activate on. */
+  onReingested: () => void;
 }
 
-export function CorpusRowActions({ documentId, onDelete }: CorpusRowActionsProps) {
+export function CorpusRowActions({ documentId, onDelete, onReingested }: CorpusRowActionsProps) {
   const toast = useToast();
   const [confirming, setConfirming] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -26,6 +31,7 @@ export function CorpusRowActions({ documentId, onDelete }: CorpusRowActionsProps
     try {
       await reingestDocument(documentId);
       toast.success("Re-ingestion queued — see the Jobs tab");
+      onReingested();
     } catch (e) {
       toast.error(e instanceof HttpError ? e.message : String(e));
     } finally {

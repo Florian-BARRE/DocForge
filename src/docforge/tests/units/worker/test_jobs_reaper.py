@@ -98,9 +98,13 @@ async def test_reap_stale_fails_each_stale_job_and_its_document(monkeypatch) -> 
     assert {call.args[1] for call in mark_terminal.await_args_list} == {stale[0].id, stale[1].id}
     for call in mark_terminal.await_args_list:
         assert call.kwargs["status"] == JobStatus.FAILED
-    # The operator-clear reason names the minutes and the presumed cause.
+    # The operator-clear reason names the minutes and the presumed cause, and — because the reaper's
+    # terminal status is FAILED — it must read like a REAP, never a "cancelled:" (that prefix belongs
+    # to the CANCELLED cancel path; a failed chip carrying "cancelled:" is the contradiction QA caught).
     reason = mark_terminal.await_args_list[0].kwargs["reason"]
     assert "20m" in reason and "orphaned" in reason
+    assert reason.startswith("reaped:")
+    assert not reason.lower().startswith("cancelled")
     assert set_status.await_count == 2
     for call in set_status.await_args_list:
         assert call.args[2] == DocumentStatus.FAILED

@@ -21,6 +21,11 @@ interface CorpusTableProps {
 }
 
 const ROW_HEIGHT = 40;
+// `tableLayout: fixed` needs an explicit width to compress against — without a floor the browser
+// happily squeezes every column to near-zero at narrow viewports instead of ever overflowing the
+// `overflow-x: auto` wrapper (scrollWidth stayed === clientWidth, so it never scrolled sideways).
+const MIN_COLUMN_WIDTH = 110;
+const MIN_TABLE_WIDTH = 1100;
 
 export function CorpusTable({ table, loading, columnFilters, onColumnFilterChange }: CorpusTableProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -41,11 +46,19 @@ export function CorpusTable({ table, loading, columnFilters, onColumnFilterChang
     <div
       ref={scrollRef}
       style={{
-        flex: 1, minHeight: 0, overflow: "auto",
+        // `minWidth: 0` overrides the flex item's default `min-width: auto`, which would otherwise
+        // let the table's own min-width balloon this wrapper (and the page) past the viewport
+        // instead of confining the overflow to this container's own horizontal scrollbar.
+        flex: 1, minHeight: 0, minWidth: 0, overflow: "auto",
         background: theme.color.surface, border: `1px solid ${theme.color.line}`, borderRadius: theme.radius.l,
       }}
     >
-      <table style={{ borderCollapse: "collapse", width: "100%", tableLayout: "fixed" }}>
+      <table
+        style={{
+          borderCollapse: "collapse", width: "100%", tableLayout: "fixed",
+          minWidth: Math.max(MIN_TABLE_WIDTH, columnCount * MIN_COLUMN_WIDTH),
+        }}
+      >
         <thead style={{ position: "sticky", top: 0, zIndex: 5, background: theme.color.surface }}>
           {table.getHeaderGroups().map((headerGroup) => (
             <tr key={headerGroup.id}>

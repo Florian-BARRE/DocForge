@@ -154,7 +154,11 @@ async def import_collection(
         result = await importer.run(target_name)
 
         await database.transfer_tracker.mark_done(
-            tid, datetime.now(UTC), collection_id=result.collection_id, counts=result.counts
+            tid,
+            datetime.now(UTC),
+            collection_id=result.collection_id,
+            collection_name=result.collection_name,
+            counts=result.counts,
         )
         CONTEXT.logger.info(
             f"Imported bundle {s3_key} → collection {result.collection_id} "

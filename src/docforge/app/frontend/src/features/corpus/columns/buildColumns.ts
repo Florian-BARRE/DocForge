@@ -18,14 +18,15 @@ interface BuildColumnsArgs {
   onOpen: (documentId: string) => void;
   onEnabledChanged: (documentId: string, enabled: boolean) => void;
   onDelete: (documentId: string) => Promise<void>;
+  onReingested: () => void;
 }
 
 export function buildColumns(args: BuildColumnsArgs): ColumnDef<DocumentGridRow>[] {
-  const { selection, fields, supportedFormats, onOpen, onEnabledChanged, onDelete } = args;
+  const { selection, fields, supportedFormats, onOpen, onEnabledChanged, onDelete, onReingested } = args;
   return [
     buildSelectColumn(selection),
     ...buildBaseColumns({ onOpen, onEnabledChanged, supportedFormats }),
     ...buildMetadataColumns(fields),
-    buildActionsColumn({ onDelete }),
+    buildActionsColumn({ onDelete, onReingested }),
   ];
 }

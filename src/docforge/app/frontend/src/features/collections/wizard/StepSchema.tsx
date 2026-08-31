@@ -59,7 +59,7 @@ export function StepSchema({ mode, fields, onFieldsChange, onBack, onNext }: Ste
         </table>
         {fields.length === 0 && (
           <div style={{ color: theme.color.dim, fontSize: theme.font.size.s, padding: theme.space.l, textAlign: "center" }}>
-            No fields yet — add at least one.
+            No fields yet — add one if you need filterable or searchable metadata.
           </div>
         )}
       </div>

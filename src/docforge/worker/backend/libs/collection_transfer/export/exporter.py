@@ -90,11 +90,12 @@ class CollectionExporter:
         writer.write_collection(await self._contract(collection))
         fields_written = self._write_schema(writer, schema)
 
-        # 2. The documents + their IR/chunks, streamed a document at a time.
-        counts = await self._write_documents(writer, collection_id)
+        # 2. The documents + their IR/chunks, streamed a document at a time. The live chunk ids are
+        #    collected here so the vector pass can drop orphan points (see step 3).
+        counts, live_chunk_ids = await self._write_documents(writer, collection_id)
 
-        # 3. The vectors (scrolled) and the deduped blob bytes.
-        counts["points"] = await self._write_points(writer, collection_id)
+        # 3. The vectors (scrolled, orphan points filtered) and the deduped blob bytes.
+        counts["points"] = await self._write_points(writer, collection_id, live_chunk_ids)
         counts["blobs"] = await self._write_blobs(writer, collection_id)
         counts["metadata_fields"] = fields_written
 
@@ -141,24 +142,28 @@ class CollectionExporter:
                 sink.write(RowSerializer.metadata_field(row))
             return sink.rows
 
-    async def _write_documents(self, writer, collection_id: uuid.UUID) -> dict[str, int]:
-        """Stream every document's row set into the per-table sinks; return the row counts."""
+    async def _write_documents(
+        self, writer, collection_id: uuid.UUID
+    ) -> tuple[dict[str, int], set[str]]:
+        """Stream every document's row set into the sinks; return the counts + the live chunk ids."""
         document_ids = await self._facade.list_document_ids(collection_id)
         total = len(document_ids)
+        live_chunk_ids: set[str] = set()
         with contextlib.ExitStack() as stack:
             sinks = {
                 key: stack.enter_context(writer.sink(path)) for key, path in _DOCUMENT_SINKS.items()
             }
             for index, document_id in enumerate(document_ids):
                 rows = await self._facade.read_document_export(document_id)
-                self._fan_out(sinks, rows)
+                self._fan_out(sinks, rows, live_chunk_ids)
                 if total:
                     self._progress("documents", 5 + int(70 * (index + 1) / total))
-            return {field: sinks[key].rows for key, field in _COUNTED_SINKS.items()}
+            counts = {field: sinks[key].rows for key, field in _COUNTED_SINKS.items()}
+            return counts, live_chunk_ids
 
     @staticmethod
-    def _fan_out(sinks: dict, rows) -> None:
-        """Serialize one document's rows into the matching sinks."""
+    def _fan_out(sinks: dict, rows, live_chunk_ids: set[str]) -> None:
+        """Serialize one document's rows into the sinks, recording every live chunk id emitted."""
         sinks["documents"].write(RowSerializer.document(rows.document))
         for name, value, origin in rows.metadata:
             sinks["document_metadata"].write(
@@ -178,6 +183,7 @@ class CollectionExporter:
             sinks["ir_enrichment_attempts"].write(RowSerializer.enrichment_attempt(attempt))
         for chunk in rows.chunks:
             sinks["chunks"].write(RowSerializer.chunk(chunk))
+            live_chunk_ids.add(str(chunk.id))
         for link in rows.composition:
             sinks["chunk_blocks"].write(RowSerializer.chunk_block(link))
         for chunk_id, name, value, origin in rows.chunk_metadata:
@@ -187,11 +193,21 @@ class CollectionExporter:
         for entity in rows.entities:
             sinks["entity_mentions"].write(RowSerializer.entity_mention(entity))
 
-    async def _write_points(self, writer, collection_id: uuid.UUID) -> int:
-        """Scroll every Qdrant point into points.jsonl; return the point count."""
+    async def _write_points(
+        self, writer, collection_id: uuid.UUID, live_chunk_ids: set[str]
+    ) -> int:
+        """Scroll Qdrant points into points.jsonl, DROPPING orphans; return the emitted count.
+
+        A point whose id has no live chunk row in the bundle (``point.id == chunk.id``) is an orphan
+        the importer would discard anyway — skipping it here keeps ``counts.points`` equal to the
+        vector count the import actually restores, so source vs imported never appears to lose points.
+        """
         with writer.sink(BundlePaths.POINTS) as sink:
             async for record in self._facade.scroll_points(collection_id, self._scroll_batch):
-                sink.write(RowSerializer.point(record))
+                row = RowSerializer.point(record)
+                if row["id"] not in live_chunk_ids:
+                    continue
+                sink.write(row)
             self._progress("vectors", 85)
             return sink.rows
 

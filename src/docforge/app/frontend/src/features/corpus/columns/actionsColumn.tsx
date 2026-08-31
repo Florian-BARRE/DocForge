@@ -8,14 +8,17 @@ import { CorpusRowActions } from "../CorpusRowActions";
 
 interface ActionsColumnArgs {
   onDelete: (documentId: string) => Promise<void>;
+  onReingested: () => void;
 }
 
-export function buildActionsColumn({ onDelete }: ActionsColumnArgs): ColumnDef<DocumentGridRow> {
+export function buildActionsColumn({ onDelete, onReingested }: ActionsColumnArgs): ColumnDef<DocumentGridRow> {
   return {
     id: "__actions",
     header: "",
     enableSorting: false,
     size: 140,
-    cell: ({ row }) => <CorpusRowActions documentId={row.original.id} onDelete={() => onDelete(row.original.id)} />,
+    cell: ({ row }) => (
+      <CorpusRowActions documentId={row.original.id} onDelete={() => onDelete(row.original.id)} onReingested={onReingested} />
+    ),
   };
 }
