@@ -52,3 +52,12 @@ export function apiFieldName(columnId: string): string {
 export function isMetadataColumn(columnId: string): boolean {
   return columnId.startsWith(METADATA_PREFIX);
 }
+
+// The selection checkbox and row-actions columns are structural chrome, not data — they stay
+// pinned first/last and are excluded from both drag-reorder and resize.
+export const PINNED_FIRST_COLUMN_ID = "__select";
+export const PINNED_LAST_COLUMN_ID = "__actions";
+
+export function isPinnedColumn(columnId: string): boolean {
+  return columnId === PINNED_FIRST_COLUMN_ID || columnId === PINNED_LAST_COLUMN_ID;
+}

@@ -23,7 +23,12 @@ function groupColumns(columns: GridColumn[]): Partial<Record<ColumnGroup, GridCo
   return grouped;
 }
 
-export function ColumnVisibilityMenu({ table }: { table: Table<DocumentGridRow> }) {
+interface ColumnVisibilityMenuProps {
+  table: Table<DocumentGridRow>;
+  onResetLayout: () => void;
+}
+
+export function ColumnVisibilityMenu({ table, onResetLayout }: ColumnVisibilityMenuProps) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -59,6 +64,16 @@ export function ColumnVisibilityMenu({ table }: { table: Table<DocumentGridRow> 
               divider={index > 0}
             />
           ))}
+          <div style={{ borderTop: `1px solid ${theme.color.line}`, marginTop: theme.space.xs, paddingTop: theme.space.xs }}>
+            <Button
+              size="sm"
+              variant="ghost"
+              style={{ width: "100%" }}
+              onClick={() => { onResetLayout(); setOpen(false); }}
+            >
+              Reset columns
+            </Button>
+          </div>
         </div>
       )}
     </div>

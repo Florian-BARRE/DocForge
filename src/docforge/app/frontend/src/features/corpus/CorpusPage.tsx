@@ -21,6 +21,7 @@ import { CorpusTable } from "./CorpusTable";
 import { buildDocumentFilter } from "./filterBuilder";
 import { Pager } from "./Pager";
 import { apiFieldName, type ColumnFiltersState, type ColumnFilterValue } from "./types";
+import { useColumnLayout } from "./useColumnLayout";
 import { useCorpusQuery } from "./useCorpusQuery";
 import { useSelection } from "./useSelection";
 
@@ -90,17 +91,25 @@ export function CorpusPage({ collectionId, onNavigate }: CorpusPageProps) {
     [selection, collection?.fields, collection?.supported_formats, query.refetch],
   );
 
+  const columnIds = useMemo(() => columns.map((c) => c.id).filter((id): id is string => !!id), [columns]);
+  const columnLayout = useColumnLayout(collectionId, columnIds);
+
   const table = useReactTable<DocumentGridRow>({
     data: query.rows,
     columns,
-    state: { sorting, columnVisibility },
+    state: { sorting, columnVisibility, columnOrder: columnLayout.columnOrder, columnSizing: columnLayout.columnSizing },
     onSortingChange: setSorting,
     onColumnVisibilityChange: setColumnVisibility,
+    onColumnOrderChange: columnLayout.onColumnOrderChange,
+    onColumnSizingChange: columnLayout.onColumnSizingChange,
     getCoreRowModel: getCoreRowModel(),
     getRowId: (row) => row.id,
     manualSorting: true,
     manualPagination: true,
     enableMultiSort: false,
+    enableColumnResizing: true,
+    columnResizeMode: "onChange",
+    defaultColumn: { size: 150, minSize: 60, maxSize: 640 },
   });
 
   const onColumnFilterChange = (columnId: string, value: ColumnFilterValue) =>
@@ -131,7 +140,13 @@ export function CorpusPage({ collectionId, onNavigate }: CorpusPageProps) {
           onDone={bulkDone}
         />
         <span style={{ marginLeft: "auto" }} />
-        <ColumnVisibilityMenu table={table} />
+        <ColumnVisibilityMenu
+          table={table}
+          onResetLayout={() => {
+            columnLayout.reset();
+            table.resetColumnVisibility();
+          }}
+        />
       </div>
 
       {(showSelectAllPrompt || inFilteredMode) && (

@@ -13,6 +13,7 @@ export function buildSelectColumn(selection: UseSelectionResult): ColumnDef<Docu
     id: "__select",
     size: 34,
     enableSorting: false,
+    enableResizing: false,
     header: ({ table }) => {
       const pageIds = table.getRowModel().rows.map((r) => r.original.id);
       const allSelected = selection.allOnPageSelected(pageIds);

@@ -16,6 +16,7 @@ export function buildActionsColumn({ onDelete, onReingested }: ActionsColumnArgs
     id: "__actions",
     header: "",
     enableSorting: false,
+    enableResizing: false,
     size: 140,
     cell: ({ row }) => (
       <CorpusRowActions documentId={row.original.id} onDelete={() => onDelete(row.original.id)} onReingested={onReingested} />
