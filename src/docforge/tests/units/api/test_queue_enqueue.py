@@ -1,8 +1,9 @@
-"""QueueClient.enqueue_ingest — the per-collection job budget is threaded to arq as the control
-kwarg ``_job_timeout`` (budget + 60, so arq's outer cap sits ABOVE the engine's clean timeout),
-and is OMITTED entirely when the collection inherits the global default (None) so arq falls back
-to its WorkerSettings default. The queued message itself stays IDS ONLY — the budget is never a
-task arg. The lazy arq pool is faked, so no Redis is touched.
+"""QueueClient.enqueue_ingest — the queued message is IDS ONLY. arq has no per-message job timeout
+(``enqueue_job`` accepts only ``_job_id``/``_queue_name``/``_defer_*``/``_expires``), so a budget is
+NEVER passed to it — passing an unknown ``_job_timeout`` kwarg would land as a task arg and crash
+``ingest_document``. The per-collection budget is applied by the WORKER (it reads
+``collection.job_timeout_seconds`` and hands it to the engine). The lazy arq pool is faked, so no
+Redis is touched.
 """
 
 from unittest.mock import AsyncMock
@@ -24,29 +25,20 @@ def _queue_with_fake_pool(fastapi_app) -> tuple:
     return client, pool
 
 
-async def test_enqueue_ingest_passes_job_timeout_when_budget_set(fastapi_app) -> None:
-    client, pool = _queue_with_fake_pool(fastapi_app)
-
-    await client.enqueue_ingest("doc-1", "job-1", 120.0)
-
-    # Positional args stay IDS ONLY; the budget rides as arq's _job_timeout = budget + 60.
-    pool.enqueue_job.assert_awaited_once_with(
-        "ingest_document", "doc-1", "job-1", _job_timeout=180.0
-    )
-
-
-async def test_enqueue_ingest_omits_job_timeout_when_budget_none(fastapi_app) -> None:
-    client, pool = _queue_with_fake_pool(fastapi_app)
-
-    await client.enqueue_ingest("doc-1", "job-1", None)
-
-    # No override → arq uses its WorkerSettings default; _job_timeout must not be passed at all.
-    pool.enqueue_job.assert_awaited_once_with("ingest_document", "doc-1", "job-1")
-
-
-async def test_enqueue_ingest_defaults_to_no_budget(fastapi_app) -> None:
+async def test_enqueue_ingest_message_is_ids_only(fastapi_app) -> None:
     client, pool = _queue_with_fake_pool(fastapi_app)
 
     await client.enqueue_ingest("doc-1", "job-1")
 
+    # IDS ONLY — no _job_timeout (or any other control kwarg): arq has no per-message timeout, and an
+    # unknown kwarg would be serialized as a task arg and blow up ingest_document at dispatch.
     pool.enqueue_job.assert_awaited_once_with("ingest_document", "doc-1", "job-1")
+
+
+async def test_enqueue_ingest_never_passes_a_timeout_kwarg(fastapi_app) -> None:
+    client, pool = _queue_with_fake_pool(fastapi_app)
+
+    await client.enqueue_ingest("doc-1", "job-1")
+
+    _, kwargs = pool.enqueue_job.await_args
+    assert kwargs == {}, "enqueue_ingest must pass no control kwargs (arq rejects _job_timeout)"

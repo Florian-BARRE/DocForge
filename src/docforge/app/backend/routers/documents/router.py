@@ -183,9 +183,9 @@ async def upload_document(
     ]
     created, job = await CONTEXT.database.ingestion.admit(document, Job(), rows)
 
-    # 9. Hand over to the worker — the queue message carries IDS ONLY. The collection's
-    #    per-collection budget (None = inherit the worker's global default) caps arq's outer timeout.
-    await CONTEXT.queue.enqueue_ingest(str(created.id), str(job.id), collection.job_timeout_seconds)
+    # 9. Hand over to the worker — the queue message carries IDS ONLY. The worker reads the
+    #    collection's per-collection budget itself and applies it as the engine's run timeout.
+    await CONTEXT.queue.enqueue_ingest(str(created.id), str(job.id))
     CONTEXT.logger.info(f"Admitted '{filename}' as {created.id} (job {job.id})")
     return UploadAccepted(document_id=str(created.id), job_id=str(job.id))
 
@@ -242,12 +242,10 @@ async def reingest_document(document_id: uuid.UUID) -> UploadAccepted:
     if result is None:
         raise HTTPException(status_code=404, detail=f"Document {document_id} not found.")
 
-    # 2. Hand over to the worker — it refetches the original by source_hash and re-runs the pipeline.
-    #    Load the collection for its per-collection job budget (None = inherit the global default).
+    # 2. Hand over to the worker — it refetches the original by source_hash and re-runs the pipeline,
+    #    reading the collection's per-collection job budget itself for the engine's run timeout.
     document, job = result
-    collection = await CONTEXT.database.collections.get(document.collection_id)
-    job_timeout = collection.job_timeout_seconds if collection is not None else None
-    await CONTEXT.queue.enqueue_ingest(str(document.id), str(job.id), job_timeout)
+    await CONTEXT.queue.enqueue_ingest(str(document.id), str(job.id))
     CONTEXT.logger.info(f"Re-ingest enqueued for {document.id} (job {job.id})")
     return UploadAccepted(document_id=str(document.id), job_id=str(job.id))
 

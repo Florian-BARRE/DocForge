@@ -64,9 +64,7 @@ class BulkReingestService(LoggerClass):
                 continue
             _document, job = result
             try:
-                await self._queue.enqueue_ingest(
-                    str(document.id), str(job.id), collection.job_timeout_seconds
-                )
+                await self._queue.enqueue_ingest(str(document.id), str(job.id))
             except Exception as exc:
                 # The job is already committed PENDING but never made it onto the queue (e.g. a Redis
                 # blip). The reaper only collects RUNNING jobs, so mark it FAILED here rather than
