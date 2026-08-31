@@ -9,7 +9,7 @@ export const COLUMN_GROUP_ORDER: ColumnGroup[] = ["document", "system", "generat
 
 export const COLUMN_GROUP_LABELS: Record<ColumnGroup, string> = {
   document: "Document",
-  system: "Métadonnées système",
-  generated: "Métadonnées générées",
-  user: "Métadonnées (upload)",
+  system: "System metadata",
+  generated: "Generated metadata",
+  user: "Upload metadata",
 };

@@ -17,7 +17,7 @@ export function SearchRerankCard({ enabled, onToggle }: SearchRerankCardProps) {
       left={<StageSwitch checked={enabled} onChange={onToggle} title={enabled ? "Disable reranking" : "Enable reranking"} />}
       title="Reranking"
       tag="rerank"
-      summary="Re-note les meilleurs résultats avec un cross-encoder (BGE)."
+      summary="Re-ranks the top results with a cross-encoder (BGE)."
       enabled={enabled}
     />
   );

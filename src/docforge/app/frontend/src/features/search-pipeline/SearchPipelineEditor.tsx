@@ -1,6 +1,6 @@
 // ====== Code Summary ======
 // The search pipeline editor: a simple top section (the always-on fusion summary + the Reranking
-// Switch — the only two things a non-technical user needs) over a collapsed-by-default "Avancé"
+// Switch — the only two things a non-technical user needs) over a collapsed-by-default "Advanced"
 // rail exposing every node's raw config, in blob order (or a read-only step when a node has none).
 // Unlike the ingestion stage rail there is NO stage compiler for search (`stages_view_url`/
 // `stages_apply_url` are null) — every edit mutates the blob locally (config edits are a plain
