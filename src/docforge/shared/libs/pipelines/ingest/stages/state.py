@@ -107,7 +107,12 @@ def default_state() -> PipelineState:
         enrich_on=False,
         metachunk_on=False,
         metadoc_on=False,
-        intake_configs={"convert": {"base_url": "http://gotenberg:3000"}},
+        intake_configs={
+            "convert": {"base_url": "http://gotenberg:3000"},
+            # Seed the page-count admission ceiling explicitly so a new collection carries it in its
+            # blob (existing blobs that lack it fall back to the node's own 2000 default at build).
+            "pdf_probe": {"max_pages": 2000},
+        },
         classify_config=dict(_VLM_ENDPOINT),
         chains={
             "scanned_text_ocr": ChainSpec(

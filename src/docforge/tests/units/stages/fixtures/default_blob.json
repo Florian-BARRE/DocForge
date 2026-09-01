@@ -177,7 +177,9 @@
       "node_type": "action"
     },
     {
-      "config": {},
+      "config": {
+        "max_pages": 2000
+      },
       "family": "intake",
       "id": "pdf_probe",
       "kind": "pdf_probe",

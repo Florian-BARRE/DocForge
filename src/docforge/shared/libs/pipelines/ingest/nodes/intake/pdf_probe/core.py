@@ -1,8 +1,11 @@
 # ====== Code Summary ======
 # PdfProbeNode — reads the PDF view's SYSTEM facts: the page count, with loud, clear failures
-# on encrypted or corrupt PDFs (never a cryptic pypdf traceback). Nothing more: deciding what a
-# non-text zone IS (scanned text / logo / photo / chart) happens at the finest grain — per IR
-# block, in the enrich stage — never here. Degrades to an empty probe when there is no PDF view.
+# on encrypted or corrupt PDFs (never a cryptic pypdf traceback). It also owns the one policy the
+# page count enables: a page-count admission ceiling (``max_pages``) that rejects an over-large
+# document HERE — the earliest point the count is known — BEFORE the expensive parse/OCR ever runs
+# (the cheap mitigation for a runaway CPU parse). Deciding what a non-text zone IS (scanned text /
+# logo / photo / chart) still happens at the finest grain — per IR block, in the enrich stage —
+# never here. Degrades to an empty probe when there is no PDF view.
 
 # ====== Standard Library Imports ======
 import io
@@ -18,7 +21,17 @@ from shared_libs.public_models import PdfProbe, PdfView
 
 
 class PdfProbeConfig(NodeConfig):
-    """No knobs — the probe reads objective facts off the PDF."""
+    """The one policy the page count enables: the page-count admission ceiling."""
+
+    max_pages: int = Field(
+        default=2000,
+        ge=0,
+        description=(
+            "Reject a document whose PDF view exceeds this many pages, BEFORE the expensive "
+            "parse/OCR runs — the cheap guard against a runaway parse. 0 disables the ceiling "
+            "(no cap). Defaults to 2000."
+        ),
+    )
 
 
 class PdfProbeConsumes(NodeInput):
@@ -44,8 +57,10 @@ class PdfProbeNode(ActionNode):
     HOW_IT_WORKS = (
         "Opens the PDF and counts the pages. An encrypted PDF is tried with the empty user "
         "password, then rejected with a clear message; a corrupt PDF never leaks a parser "
-        "traceback. What each non-text zone IS (scanned text, logo, photo…) is decided per IR "
-        "block by the enrich stage — not here."
+        "traceback. A document over the ``max_pages`` ceiling is rejected here — the earliest "
+        "point the page count is known — so an over-large document never reaches parse/OCR. What "
+        "each non-text zone IS (scanned text, logo, photo…) is decided per IR block by the enrich "
+        "stage — not here."
     )
     Config = PdfProbeConfig
 
@@ -57,9 +72,12 @@ class PdfProbeNode(ActionNode):
         Inspect the PDF view (empty probe when there is none).
 
         Raises:
-            ValueError: When the PDF is password-protected or unreadable (clear message).
+            ValueError: When the PDF is password-protected or unreadable, or when its page count
+                exceeds the ``max_pages`` ceiling (clear message naming the count and the limit).
         """
-        # 1. No PDF view → nothing to probe; the parser will degrade downstream.
+        config: PdfProbeConfig = self.config
+
+        # 1. No PDF view → nothing to probe (0 pages, cannot breach the cap); the parser degrades.
         if data.pdf.content is None:
             self.logger.warning(f"No PDF view to probe; emitting an empty probe")
             return PdfProbeProduces(probe=PdfProbe())
@@ -76,7 +94,16 @@ class PdfProbeNode(ActionNode):
         except Exception as exc:
             raise ValueError(f"unreadable PDF: {exc}") from exc
 
-        # 3. Report the facts.
+        # 3. Admission ceiling: reject an over-large document BEFORE parse/OCR spend. A 0 cap
+        #    disables the check (escape hatch). The message names the actual count and the limit so
+        #    ``job.error`` tells the operator exactly why the document was rejected.
+        if config.max_pages and page_count > config.max_pages:
+            raise ValueError(
+                f"document has {page_count} pages, exceeds the collection's "
+                f"max_pages={config.max_pages}"
+            )
+
+        # 4. Report the facts.
         self.logger.debug(f"PDF probe: {page_count} pages")
         return PdfProbeProduces(probe=PdfProbe(page_count=page_count))
 
