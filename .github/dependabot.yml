@@ -1,0 +1,113 @@
+# ============================================================================
+# Dependabot — automated dependency updates.
+#
+# One entry per ecosystem x directory that actually holds a manifest Dependabot can parse:
+#   - github-actions : action versions pinned in .github/workflows/*.yml
+#   - uv             : each of the 5 independent Python projects in this monorepo (own
+#                       pyproject.toml + uv.lock — mirrors the gate.yml job split)
+#   - npm            : the frontend (package.json + package-lock.json)
+#   - docker         : base images in each Dockerfile (FROM lines), one entry per directory
+#                       that holds a Dockerfile — matches the release-images.yml build matrix
+#
+# Every Python/npm group collapses minor+patch bumps into a single weekly PR to keep noise
+# down; majors still open their own PR (deliberately not grouped — those need a human look).
+# ============================================================================
+
+version: 2
+updates:
+  # --- GitHub Actions (workflow files under .github/workflows/) ---
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    groups:
+      actions-minor-patch:
+        update-types: ["minor", "patch"]
+
+  # --- Python projects (uv-managed: pyproject.toml + uv.lock) ---
+  - package-ecosystem: "uv"
+    directory: "/src/docforge"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    groups:
+      docforge-minor-patch:
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: "uv"
+    directory: "/src/docforge_sdk"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    groups:
+      docforge-sdk-minor-patch:
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: "uv"
+    directory: "/src/mcp"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    groups:
+      mcp-minor-patch:
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: "uv"
+    directory: "/src/bge_server"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    groups:
+      bge-server-minor-patch:
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: "uv"
+    directory: "/src/paddle_server"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    groups:
+      paddle-server-minor-patch:
+        update-types: ["minor", "patch"]
+
+  # --- Frontend (npm: package.json + package-lock.json) ---
+  - package-ecosystem: "npm"
+    directory: "/src/docforge/app/frontend"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    groups:
+      frontend-minor-patch:
+        update-types: ["minor", "patch"]
+
+  # --- Docker base images (one entry per directory containing a Dockerfile) ---
+  - package-ecosystem: "docker"
+    directory: "/src/docforge/app"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: "docker"
+    directory: "/src/docforge/worker"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: "docker"
+    directory: "/src/mcp"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: "docker"
+    directory: "/src/bge_server"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: "docker"
+    directory: "/src/paddle_server"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
