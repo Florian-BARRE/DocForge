@@ -58,6 +58,32 @@ class FakeProduceAll(ActionNode):
         )
 
 
+@NodeRegistry.register("deliver")
+class FakeProduceEmpty(ActionNode):
+    """Delivers a valid RunBundle with ZERO chunks — the empty/failed-parse silent-failure shape."""
+
+    KIND = "test_worker_runner_produce_empty"
+    NAME = "E"
+    SUMMARY = "t"
+    Config = NodeConfig
+
+    class Consumes(NodeInput):
+        source: SourceDocument
+
+    class Produces(NodeOutput):
+        ingest: IntakeResult
+        ir: DocumentIR
+        chunks: list[Chunk]
+
+    async def run(self, data: "FakeProduceEmpty.Consumes") -> "FakeProduceEmpty.Produces":
+        _ = data
+        return self.Produces(
+            ingest=IntakeResult(source_hash="h", pdf_content=None, page_count=0),
+            ir=DocumentIR(doc_id="d", source_hash="h", n_pages=0, blocks=[]),
+            chunks=[],
+        )
+
+
 BLOB = {
     "node_type": "group",
     "id": "mini_ingest",
@@ -130,6 +156,52 @@ async def test_failed_run_surfaces_the_engine_error(runner, contract) -> None:
     source = SourceDocument(filename="boom.pdf", content=b"x", declared_meta={})
     with pytest.raises(PipelineRunError, match="failed"):
         await runner.run(BLOB, source, contract, timeout_seconds=30)
+
+
+async def test_empty_delivery_zero_chunks_is_a_loud_failure(runner, contract) -> None:
+    """A run that chunks nothing (empty/failed parse, all-OCR-fail, unbound chunker) must fail
+    loudly, never mark a green job with no retrievable output."""
+    empty_blob = {
+        "node_type": "group",
+        "id": "empty_ingest",
+        "nodes": [
+            {
+                "node_type": "action",
+                "id": "produce",
+                "family": "deliver",
+                "kind": "test_worker_runner_produce_empty",
+                "config": {},
+            },
+            {
+                "node_type": "action",
+                "id": "bundle",
+                "family": "deliver",
+                "kind": "bundle",
+                "config": {},
+            },
+        ],
+        "transitions": [{"from_node_id": "produce", "to_node_id": "bundle"}],
+        "bindings": {
+            "produce": {"source": {"source": "run", "field_name": "source"}},
+            "bundle": {
+                slot: {"source": "node", "node_id": "produce", "field_name": slot}
+                for slot in ("ingest", "ir", "chunks")
+            },
+        },
+    }
+    source = SourceDocument(filename="blank.pdf", content=b"x", declared_meta={})
+    with pytest.raises(PipelineRunError, match="zero chunks"):
+        await runner.run(empty_blob, source, contract, timeout_seconds=30)
+
+
+async def test_legitimate_empty_vectors_with_chunks_is_not_a_failure(runner, contract) -> None:
+    """The legitimate empty case: chunks present but ZERO vectors (an all-furniture document, or a
+    pipeline with no embed stage) — the delivery guard keys on chunks, so this run still succeeds.
+    Covered by the stock BLOB (one chunk, embeddings with empty items)."""
+    source = SourceDocument(filename="r.pdf", content=b"x", declared_meta={})
+    bundle, record = await runner.run(BLOB, source, contract, timeout_seconds=30)
+    assert bundle.chunks and not bundle.embeddings.items
+    assert record.status.value == "success"
 
 
 async def test_output_contract_rejects_a_pipeline_not_ending_on_bundle(runner, contract) -> None:

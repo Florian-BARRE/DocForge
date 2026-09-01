@@ -163,6 +163,25 @@ class PipelineRunner(LoggerClass):
                 f"the pipeline's final node produced '{type(output).__name__}' — an ingestion "
                 f"pipeline must end on a deliver/bundle node producing a RunBundle"
             )
+
+        # 6. The DELIVERY CONTRACT: a run that chunked NOTHING delivered nothing retrievable. Causes
+        #    span a mis-wired chunker (chunks slot unbound), an empty/failed parse, every page failing
+        #    OCR, AND a genuinely content-free input (an image-only PDF with OCR off, a blank scanned
+        #    page). The chunker treats the last case as a warn-and-continue, but at the job edge all of
+        #    them are the same user-visible outcome: a green job whose document is INVISIBLE to search
+        #    (silent data loss). Surface it as a loud, actionable failure instead — an operator can
+        #    then enable OCR / fix the source and reingest. Deliberately keyed on chunks, NOT vectors:
+        #    an embed stage legitimately yields zero vectors for an all-furniture document (embed keeps
+        #    only enabled/searchable chunks), and a pipeline with no embed stage yields none by design
+        #    (Postgres-complete) — neither is a failure, and distinguishing them from a mis-wire would
+        #    duplicate the node's embed policy into the worker. Zero CHUNKS has no retrievable outcome.
+        if not bundle.chunks:
+            raise PipelineRunError(
+                "the pipeline delivered zero chunks — nothing retrievable was produced "
+                "(an empty or failed parse, every page failing OCR, a document with no extractable "
+                "text content, or an unbound chunker slot)"
+            )
+
         vector_sets = len(bundle.embeddings.items) if bundle.embeddings else 0
         self.logger.info(
             f"Run delivered: {len(bundle.chunks)} chunk(s), "

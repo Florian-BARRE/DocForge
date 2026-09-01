@@ -62,11 +62,12 @@ def create_worker_settings() -> type:
         on_shutdown = shutdown
         redis_settings = RedisSettings.from_dsn(RUNTIME_CONFIG.REDIS_URL)
         max_jobs = RUNTIME_CONFIG.WORKER_CONCURRENCY
-        # arq's UNIFORM worker-level cap = the global budget + grace, a backstop ABOVE the engine's
-        # per-collection timeout (which fires first, per collection). arq has no per-message timeout,
-        # so this same cap applies to every job; a per-collection budget above it is capped by it.
+        # arq's UNIFORM worker-level cap = the HARD ceiling + grace, a backstop ABOVE the engine's
+        # per-collection timeout (which fires first for any budget up to the ceiling, keeping the
+        # engine authoritative). arq has no per-message timeout, so this one cap applies to every
+        # job; a per-collection budget ABOVE the ceiling is rejected fail-fast (never truncated here).
         job_timeout = (
-            RUNTIME_CONFIG.WORKER_JOB_TIMEOUT_SECONDS
+            RUNTIME_CONFIG.WORKER_JOB_TIMEOUT_MAX_SECONDS
             + RUNTIME_CONFIG.WORKER_JOB_TIMEOUT_GRACE_SECONDS
         )
         # Write a health record to Redis on this interval; `arq entrypoint.WorkerSettings --check`

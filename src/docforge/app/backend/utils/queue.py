@@ -50,9 +50,10 @@ class QueueClient(LoggerClass):
         The per-collection wall-clock budget is NOT an enqueue concern. arq has no per-message job
         timeout (``enqueue_job`` only accepts ``_job_id``/``_queue_name``/``_defer_*``/``_expires``),
         so the worker reads ``collection.job_timeout_seconds`` itself and hands it to the engine as
-        the run's clean internal timeout; arq's uniform worker-level ``job_timeout`` is the outer
-        backstop for every job. (A per-collection budget larger than the worker's global timeout is
-        therefore capped by it — raise WORKER_JOB_TIMEOUT_SECONDS if you need bigger budgets.)
+        the run's clean internal timeout; arq's uniform worker-level ``job_timeout`` (derived from
+        the worker's WORKER_JOB_TIMEOUT_MAX_SECONDS hard ceiling) is the outer backstop. A
+        per-collection budget up to that ceiling is authoritative; one ABOVE it fails fast on the
+        worker (named), never silently truncated — raise WORKER_JOB_TIMEOUT_MAX_SECONDS for bigger.
 
         Args:
             document_id (str): The admitted document's UUID.

@@ -84,9 +84,18 @@ class RUNTIME_CONFIG(EnvConfigLoader):
     # ───── Run limits ─────
     WORKER_CONCURRENCY = env("WORKER_CONCURRENCY", cast=int, default=2)
     WORKER_JOB_TIMEOUT_SECONDS = env("WORKER_JOB_TIMEOUT_SECONDS", cast=float, default=1800.0)
+    # The HARD ceiling any single run may request: a per-collection job_timeout_seconds is honoured
+    # up to this bound and REJECTED (fail-fast, named) above it — never silently truncated. arq's
+    # outer job_timeout is derived from THIS value (+ grace), so the engine's per-run budget always
+    # fires FIRST for any valid budget (the engine stays authoritative), while a single run can never
+    # exceed max + grace. Raise this to allow bigger per-collection budgets. See PROD-HARDENING.md.
+    WORKER_JOB_TIMEOUT_MAX_SECONDS = env(
+        "WORKER_JOB_TIMEOUT_MAX_SECONDS", cast=float, default=7200.0
+    )
     # arq's outer per-job cap must stay ABOVE the engine's run budget (the engine cancels first), so
-    # arq only kills a genuinely-wedged run. Both processes source this ONE env (app enqueue side +
-    # worker WorkerSettings) so the wall-clock contract can never drift between them.
+    # arq only kills a genuinely-wedged run. Derived from the MAX budget (not the default) so a
+    # per-collection budget up to the ceiling is authoritative; the app enqueue side carries no
+    # timeout (arq has no per-message cap), so this WorkerSettings backstop is the sole outer bound.
     WORKER_JOB_TIMEOUT_GRACE_SECONDS = env(
         "WORKER_JOB_TIMEOUT_GRACE_SECONDS", cast=float, default=60.0
     )
@@ -155,6 +164,14 @@ if RUNTIME_CONFIG.WORKER_REAP_STALE_SECONDS < 60:
     raise ValueError(
         "WORKER_REAP_STALE_SECONDS must be >= 60 seconds "
         f"(got {RUNTIME_CONFIG.WORKER_REAP_STALE_SECONDS})."
+    )
+
+# ─── The global default budget must fit under the hard ceiling (arq's cap is derived from MAX) ───
+if RUNTIME_CONFIG.WORKER_JOB_TIMEOUT_SECONDS > RUNTIME_CONFIG.WORKER_JOB_TIMEOUT_MAX_SECONDS:
+    raise ValueError(
+        "WORKER_JOB_TIMEOUT_SECONDS must be <= WORKER_JOB_TIMEOUT_MAX_SECONDS "
+        f"(got {RUNTIME_CONFIG.WORKER_JOB_TIMEOUT_SECONDS} > "
+        f"{RUNTIME_CONFIG.WORKER_JOB_TIMEOUT_MAX_SECONDS})."
     )
 
 # ─── Apply logging configuration AFTER class definition ───

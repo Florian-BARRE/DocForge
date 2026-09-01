@@ -33,6 +33,39 @@ from .cancellation import CancellationGuard, JobCancelledError
 from .progress import JobProgressRecorder
 
 
+def _resolve_run_budget(
+    collection_budget: float | None,
+    default_budget: float,
+    max_budget: float,
+) -> float:
+    """Resolve the run's wall-clock budget, failing fast on a budget above the hard ceiling.
+
+    The engine's per-run budget must stay authoritative — it fires BEFORE arq's outer job_timeout
+    (which is ``max_budget`` + grace). A per-collection budget above the ceiling would be silently
+    truncated by arq's cap, so it is surfaced here BY NAME as a configuration error rather than
+    applied partially — the operator raises the ceiling or lowers the collection's budget.
+
+    Args:
+        collection_budget (float | None): The collection's per-run override (None → the default).
+        default_budget (float): The worker's global default budget.
+        max_budget (float): The hard ceiling any single run may request.
+
+    Returns:
+        float: The wall-clock budget to hand the engine.
+
+    Raises:
+        ValueError: The requested per-collection budget exceeds the hard ceiling.
+    """
+    budget = collection_budget or default_budget
+    if budget > max_budget:
+        raise ValueError(
+            f"collection job_timeout_seconds={collection_budget}s exceeds the worker's hard "
+            f"ceiling WORKER_JOB_TIMEOUT_MAX_SECONDS={max_budget}s — raise the ceiling or lower "
+            f"the per-collection budget (the engine budget must stay under arq's outer cap)"
+        )
+    return budget
+
+
 def _contract_from_rows(collection: Any, schema: list[MetadataField]) -> CollectionContract:
     """Build the pipeline's run-input contract from the collection + field rows."""
     return CollectionContract(
@@ -132,8 +165,13 @@ async def ingest_document(ctx: dict[str, Any], document_id: str, job_id: str) ->
         guarded_progress = CancellationGuard(job_uuid, root_ids, on_progress)
 
         # 3. Run (fresh input inside), then translate the delivery. The wall-clock budget is the
-        #    collection's per-collection override when set, else the worker's global default (NULL).
-        run_budget = collection.job_timeout_seconds or CONTEXT.job_timeout_seconds
+        #    collection's per-collection override when set, else the worker's global default (NULL) —
+        #    fail-fast (before any spend) if the override exceeds arq's hard ceiling, never truncated.
+        run_budget = _resolve_run_budget(
+            collection.job_timeout_seconds,
+            CONTEXT.job_timeout_seconds,
+            CONTEXT.RUNTIME_CONFIG.WORKER_JOB_TIMEOUT_MAX_SECONDS,
+        )
         bundle, _record = await runner.run(
             blob,
             source,
