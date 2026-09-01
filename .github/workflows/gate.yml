@@ -43,9 +43,57 @@ jobs:
         # real file is gitignored and absent on CI, so materialize it from the committed template.
         # Nothing ever connects — the suite is fully mocked (placeholder DSN/URLs are never dialed).
         run: cp ../../services/docforge/.env.example ../../services/docforge/.env
-      - name: Unit suite (serviceless)
-        # Units mock every store; the real-OCR test auto-skips without the worker group.
-        run: uv run pytest tests/units -q
+      - name: Unit suite (serviceless, coverage-gated)
+        # Coverage floor is a ratchet, not an instant-red gate — see [tool.coverage.report]
+        # fail_under in src/docforge/pyproject.toml for the measured baseline this sits under.
+        # Scoped to app/worker/shared (product code) — tests/ itself is excluded, it is
+        # trivially ~100% self-covered and would inflate the number into meaninglessness.
+        run: uv run pytest tests/units -q --cov=app --cov=worker --cov=shared --cov-report=term-missing
+
+  db-tests:
+    # DB-backed suite (`-m db`, tests/db/) — needs a REAL Postgres, unlike every other job in this
+    # gate. Spins its OWN throwaway postgres:16 service container with credentials this job defines
+    # (never the dev stack's) — each test then CREATEs/DROPs its own `docforge_test_*` database
+    # against it, so the role needs CREATEDB (the default postgres image's POSTGRES_USER already
+    # gets superuser, which covers it). Kept as a separate job (not folded into "docforge" above) so
+    # the serviceless unit suite stays the fast fail-fast front with zero service-container cost.
+    name: docforge — db-backed tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: docforge
+          POSTGRES_PASSWORD: docforge
+          POSTGRES_DB: docforge
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    defaults:
+      run:
+        working-directory: src/docforge
+    env:
+      # tests/db/conftest.py reads these; defaults already match (localhost/docforge/docforge), but
+      # set explicitly so the job never silently depends on conftest's dev-stack-shaped defaults.
+      TEST_POSTGRES_HOST: localhost
+      TEST_POSTGRES_PORT: 5432
+      TEST_POSTGRES_USER: docforge
+      TEST_POSTGRES_PASSWORD: docforge
+      TEST_POSTGRES_ADMIN_DB: postgres
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Sync dependencies (locked)
+        run: uv sync --frozen
+      - name: DB-backed suite (real Postgres)
+        run: uv run pytest tests/db -m db -q
 
   python-packages:
     # Uniform gate for the two lean Python packages: format + lint + mypy + tests.
@@ -104,6 +152,35 @@ jobs:
         with:
           enable-cache: true
       - name: Sync dependencies (locked, CPU torch)
+        run: uv sync --frozen --extra cpu
+      - name: Format check (ruff format --check)
+        run: uv run --no-sync ruff format --check .
+      - name: Lint (ruff check)
+        run: uv run --no-sync ruff check .
+      - name: Type check (mypy)
+        run: uv run --no-sync mypy .
+      - name: Unit suite
+        run: uv run --no-sync pytest -q
+
+  paddle-server:
+    # Mirrors bge-server exactly: own job (not the python-packages matrix) because of the ML
+    # dependency cost. `cpu` extra steers uv to the CPU paddlepaddle wheel (~100 MB, plain PyPI)
+    # instead of the GPU extra's CUDA index. `--no-sync` on later steps pins the env so `uv run`
+    # can't silently re-resolve back onto a different variant. The one test module
+    # (test_normalizer.py) imports nothing paddle-related, so this job never actually loads
+    # paddlepaddle at test time — the sync cost is paid regardless, same as bge-server/torch.
+    name: paddle_server — format + lint + mypy + tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/paddle_server
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Sync dependencies (locked, CPU paddlepaddle)
         run: uv sync --frozen --extra cpu
       - name: Format check (ruff format --check)
         run: uv run --no-sync ruff format --check .

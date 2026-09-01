@@ -12,7 +12,18 @@ import uuid
 from typing import Any
 
 # ====== Third-Party Library Imports ======
-from sqlalchemy import TIMESTAMP, Numeric, Select, cast, func, literal_column, or_, select
+from sqlalchemy import (
+    TIMESTAMP,
+    Numeric,
+    Select,
+    String,
+    cast,
+    func,
+    literal,
+    literal_column,
+    or_,
+    select,
+)
 from sqlalchemy.dialects.postgresql import array
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
@@ -165,12 +176,18 @@ class DocumentQueryApi:
         # 2. Membership — any list element (list field) or the scalar itself in the given set.
         if condition.op is MetadataOp.IN:
             return cls._in_predicate(column, text, condition)
-        # 3. Ordered comparisons — cast the JSON text to number/timestamp for a real inequality.
+        # 3. Ordered comparisons — cast BOTH the JSON text AND the bound value to number/timestamp.
+        #    The request value arrives as a plain str/int/float (Pydantic's MetadataFilter.value:
+        #    Any never coerces a datetime string to a real datetime), so leaving the bound value
+        #    untyped makes SQLAlchemy infer VARCHAR for it — and Postgres has no `timestamp >=
+        #    varchar` operator (unlike numeric-vs-float, which Postgres compares via implicit casts,
+        #    so this only ever surfaced for DATETIME fields).
         if condition.op in (MetadataOp.GTE, MetadataOp.LTE):
             typed = cls._typed_value(text, condition.field_type)
+            bound = cls._typed_bound(condition.value, condition.field_type)
             if condition.op is MetadataOp.GTE:
-                return typed >= condition.value
-            return typed <= condition.value
+                return typed >= bound
+            return typed <= bound
         # 4. Equality — compare the JSON scalar's text form to the stringified value.
         return text == str(condition.value)
 
@@ -201,13 +218,31 @@ class DocumentQueryApi:
 
     @staticmethod
     def _typed_value(text: Any, field_type: FieldType) -> Any:
-        """Cast a JSONB value's text form to Numeric/Timestamp for an ordered comparison."""
+        """Cast the JSONB text column to Numeric/Timestamp for an ordered comparison."""
         # 1. Number vs timestamp vs raw text — driven by the resolved field type.
         if field_type in _NUMERIC_TYPES:
             return cast(text, Numeric)
         if field_type is FieldType.DATETIME:
             return cast(text, TIMESTAMP)
         return text
+
+    @staticmethod
+    def _typed_bound(value: Any, field_type: FieldType) -> Any:
+        """
+        Cast a GTE/LTE request value to the SAME SQL type as ``_typed_value``'s column side.
+
+        The value is stringified and bound as ``String`` FIRST, then SQL-``CAST`` to Numeric/
+        Timestamp — never bound directly with ``type_=Numeric``/``TIMESTAMP``: asyncpg's
+        type-directed parameter encoder demands a native ``Decimal``/``datetime`` for those DBAPI
+        types and raises before the query ever reaches Postgres, whereas a plain text bind lets
+        Postgres itself parse the cast server-side (matching how the column side is already text).
+        """
+        bound = literal(str(value), type_=String)
+        if field_type in _NUMERIC_TYPES:
+            return cast(bound, Numeric)
+        if field_type is FieldType.DATETIME:
+            return cast(bound, TIMESTAMP)
+        return bound
 
     @classmethod
     def _apply_order(cls, statement: Select, spec: DocumentQuerySpec) -> Select:

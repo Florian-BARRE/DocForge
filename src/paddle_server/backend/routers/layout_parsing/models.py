@@ -32,9 +32,13 @@ class LayoutBlockResponse(BaseModel):
     label: str = Field(..., description="PP-StructureV3 layout label.")
     bbox: list[int] = Field(..., description="[x1, y1, x2, y2] in pixels, top-left origin.")
     reading_order: int = Field(..., description="0-based position in this page's reading order.")
-    text: str | None = Field(default=None, description="Recognized/joined text (non table/formula).")
+    text: str | None = Field(
+        default=None, description="Recognized/joined text (non table/formula)."
+    )
     html: str | None = Field(default=None, description="Recognized table HTML (label=='table').")
-    latex: str | None = Field(default=None, description="Recognized formula LaTeX (label=='formula').")
+    latex: str | None = Field(
+        default=None, description="Recognized formula LaTeX (label=='formula')."
+    )
 
 
 class LayoutPageResponse(BaseModel):

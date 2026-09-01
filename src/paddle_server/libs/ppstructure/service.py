@@ -169,10 +169,8 @@ class PpStructureService(LoggerClass):
         # 1. Bounded wait on the shared lock — an unbounded wait would let requests pile up
         # forever behind one slow predict() call; a timeout surfaces as a clear 503 instead.
         try:
-            await asyncio.wait_for(
-                self._lock.acquire(), timeout=self._lock_wait_timeout_seconds
-            )
-        except asyncio.TimeoutError as exc:
+            await asyncio.wait_for(self._lock.acquire(), timeout=self._lock_wait_timeout_seconds)
+        except TimeoutError as exc:
             raise TimeoutError(
                 f"Timed out after {self._lock_wait_timeout_seconds}s waiting for the "
                 f"PP-StructureV3 predict lock — the service is busy."
@@ -187,12 +185,16 @@ class PpStructureService(LoggerClass):
 
                 # 3. Run the CPU/GPU-bound predict() call off the event loop.
                 t0 = time.perf_counter()
-                results = await asyncio.to_thread(self._predict_sync, tmp_path, {
-                    "use_table_recognition": use_table_recognition,
-                    "use_formula_recognition": use_formula_recognition,
-                    "use_seal_recognition": use_seal_recognition,
-                    "use_doc_orientation_classify": use_doc_orientation_classify,
-                })
+                results = await asyncio.to_thread(
+                    self._predict_sync,
+                    tmp_path,
+                    {
+                        "use_table_recognition": use_table_recognition,
+                        "use_formula_recognition": use_formula_recognition,
+                        "use_seal_recognition": use_seal_recognition,
+                        "use_doc_orientation_classify": use_doc_orientation_classify,
+                    },
+                )
                 elapsed = time.perf_counter() - t0
             finally:
                 # 5. Always clean up the temp file, even on a predict() failure.
@@ -208,7 +210,9 @@ class PpStructureService(LoggerClass):
             PpStructureResponseNormalizer.to_page(res, fallback_page_index=i)
             for i, res in enumerate(results)
         ]
-        self.logger.info(f"Parsed PDF ({len(pdf_bytes)} bytes) -> {len(pages)} pages in {elapsed:.1f}s")
+        self.logger.info(
+            f"Parsed PDF ({len(pdf_bytes)} bytes) -> {len(pages)} pages in {elapsed:.1f}s"
+        )
 
         model_settings = results[0].get("model_settings", {}) if results else {}
         return {

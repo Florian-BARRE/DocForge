@@ -9,6 +9,7 @@
 
 # ====== Standard Library Imports ======
 from collections.abc import Sequence
+from datetime import datetime
 
 # ====== Third-Party Library Imports ======
 from loggerplusplus import loggerplusplus
@@ -138,6 +139,7 @@ class CorpusMapper:
         for clause in filter_.metadata:
             field = cls._require_filterable(clause, by_name)
             op = cls._require_valid_op(clause, field.field_type)
+            cls._require_valid_value(clause, field.field_type, op)
             conditions.append(
                 MetadataCondition(
                     field_id=field.id, field_type=field.field_type, op=op, value=clause.value
@@ -177,6 +179,40 @@ class CorpusMapper:
                 f"Operator '{op}' is invalid for field '{clause.field}' ({field_type})."
             )
         return op
+
+    @staticmethod
+    def _require_valid_value(clause: MetadataFilter, field_type: FieldType, op: MetadataOp) -> None:
+        """Reject a range bound that cannot be cast to the field's type, as a clean 422.
+
+        Only GTE/LTE cast the bound value server-side (``CAST($1 AS NUMERIC/TIMESTAMP)`` in the data
+        layer); a null, boolean, empty or otherwise unparseable bound would otherwise surface as an
+        opaque Postgres 500 at query time. EQ/CONTAINS/IN compare as text and never cast the column, so
+        they are not validated here. ``clause.value`` is ``Any`` off the wire — coerce-test it, do not
+        mutate it (the data layer still binds it as text and lets Postgres parse the cast).
+        """
+        # 1. Only the typed-cast range operators can crash on a bad bound.
+        if op not in (MetadataOp.GTE, MetadataOp.LTE):
+            return
+        value = clause.value
+        # 2. A bool is never a valid numeric/date bound (and bool is an int subclass — screen it first).
+        if value is None or isinstance(value, bool):
+            raise ValueError(
+                f"Filter value for '{clause.field}' ({field_type}) with operator '{op}' "
+                f"must be a {field_type} value, got {value!r}."
+            )
+        # 3. Must parse as the target type — a datetime for DATETIME, a real number otherwise.
+        try:
+            if field_type is FieldType.DATETIME:
+                if isinstance(value, datetime):
+                    return
+                datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+            else:
+                float(value)
+        except (TypeError, ValueError):
+            raise ValueError(
+                f"Filter value {value!r} for '{clause.field}' ({field_type}) with operator "
+                f"'{op}' is not a valid {field_type}."
+            )
 
     @staticmethod
     def _sort_spec(sort: DocumentSort | None, by_name: dict[str, MetadataField]) -> SortSpec:

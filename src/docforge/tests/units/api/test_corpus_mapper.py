@@ -89,6 +89,48 @@ def test_bad_operator_for_type_raises() -> None:
         )
 
 
+@pytest.mark.parametrize(
+    ("ftype", "value"),
+    [
+        (FieldType.INTEGER, None),  # null bound — previously rendered `>= NULL` (empty), now a 422
+        (FieldType.FLOAT, ""),  # empty string — CAST('' AS NUMERIC) would 500 server-side
+        (FieldType.INTEGER, True),  # bool is an int subclass but never a valid numeric bound
+        (FieldType.INTEGER, "abc"),  # unparseable number
+        (FieldType.DATETIME, "not-a-date"),  # unparseable datetime
+        (FieldType.DATETIME, None),
+    ],
+)
+def test_range_bound_that_cannot_cast_raises_422(ftype, value) -> None:
+    """A GTE/LTE bound that can't cast to the field type is a clean ValueError (422), not a SQL 500."""
+    schema = [_field(3, "n", ftype)]
+    with pytest.raises(ValueError, match="not a valid|must be a"):
+        CorpusMapper.to_spec(
+            DocumentFilter(metadata=[MetadataFilter(field="n", op="gte", value=value)]),
+            None,
+            schema,
+        )
+
+
+@pytest.mark.parametrize(
+    ("ftype", "value"),
+    [
+        (FieldType.INTEGER, 2020),  # native number
+        (FieldType.FLOAT, "3.5"),  # numeric string (the wire shape) still accepted
+        (FieldType.DATETIME, "2020-01-01T00:00:00Z"),  # ISO string with Z offset
+        (FieldType.DATETIME, "2020-01-01"),  # date-only ISO
+    ],
+)
+def test_range_bound_that_casts_is_accepted(ftype, value) -> None:
+    """A well-formed numeric/ISO bound (incl. the string wire shape) passes validation unchanged."""
+    schema = [_field(3, "n", ftype)]
+    spec = CorpusMapper.to_spec(
+        DocumentFilter(metadata=[MetadataFilter(field="n", op="lte", value=value)]),
+        None,
+        schema,
+    )
+    assert spec.metadata[0].value == value  # value passed through un-mutated (data layer casts it)
+
+
 def test_sort_base_column_vs_metadata_field() -> None:
     schema = [_field(3, "priority", FieldType.INTEGER)]
     base = CorpusMapper.to_spec(None, DocumentSort(field="filename", direction="asc"), schema)

@@ -1,8 +1,7 @@
 # ------------------- Service ------------------- #
-from .service import PpStructureService
-
 # ------------------- Revision pins ------------------- #
 from .revision import PADDLE_PIN_INFO
+from .service import PpStructureService
 
 # ------------------- Public API ------------------- #
 __all__ = [

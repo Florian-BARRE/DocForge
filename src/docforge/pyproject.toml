@@ -5,7 +5,7 @@
 # structure grows, never speculatively.
 [project]
 name = "docforge"
-version = "0.9.1"
+version = "0.9.2"
 description = "DocForge clean-slate rewrite — minimal foundation"
 requires-python = ">=3.12"
 dependencies = [
@@ -78,9 +78,11 @@ explicit = true
 [dependency-groups]
 # Dev tooling — installed by `uv sync` locally, excluded from runtime images.
 dev = [
+    "fakeredis>=2.37.1",
     "psycopg2-binary>=2.9.12",
     "pytest>=8.3.0",
     "pytest-asyncio>=0.24.0",
+    "pytest-cov>=6.0.0",
     "ruff>=0.8.0",
 ]
 worker = [
@@ -114,3 +116,15 @@ ignore = [
 # them lets isort's grouping line up with the four labelled import sections from python.md instead of
 # lumping them in with third-party packages.
 known-first-party = ["shared_libs", "base_config", "config", "backend", "libs"]
+
+[tool.coverage.run]
+# Measure only actual product code — app/worker/shared — never the tests/ package itself, which is
+# trivially ~100% self-covered and would inflate the floor into meaninglessness.
+source = ["app", "worker", "shared"]
+
+[tool.coverage.report]
+show_missing = true
+# CI floor for `tests/units --cov` (gate.yml "docforge" job). Measured 85.2% on 2026-09-01 (1085
+# tests); set a few points below as a ratchet, not a red gate on day one. Raise this once new
+# coverage lands — never lower it to make a red run green.
+fail_under = 80

@@ -253,7 +253,7 @@ def test_image_dims_are_cast_to_int() -> None:
 
 def test_image_dims_default_to_zero_when_missing() -> None:
     """Missing `width`/`height` default to 0 (a caller-side 0-divisor guard, not this module's job)."""
-    res = {"parsing_res_list": []}
+    res: dict[str, object] = {"parsing_res_list": []}
 
     page = PpStructureResponseNormalizer.to_page(res, fallback_page_index=0)
 
