@@ -10,7 +10,7 @@ description = "DocForge clean-slate rewrite — minimal foundation"
 requires-python = ">=3.12"
 dependencies = [
     # Web framework (uvicorn + python-multipart come transitively via [standard])
-    "fastapi[standard]>=0.115.0",
+    "fastapi[standard]>=0.141.1",
     "pydantic>=2.10.0",
     # Config & logging (internal libraries, pulled from the default index)
     "configplusplus>=0.1.0",
