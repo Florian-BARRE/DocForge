@@ -12,8 +12,10 @@ web UI and via `curl`. Every command here is verified against the repository.
 ## 1. Prerequisites
 
 - **Docker** and **Docker Compose v2** (`docker compose`, not the legacy `docker-compose`).
-- ~10 GB free disk and ~8 GB RAM available to Docker. The first boot downloads the BGE-M3 embedding
-  model and the reranker from Hugging Face (~4–5 GB), so give it a few minutes.
+- **~20 GB free disk and 12–16 GB RAM** available to Docker for the stock CPU stack (8 GB survives
+  light use but leaves no headroom). No GPU is needed out of the box. The first boot downloads the
+  BGE-M3 embedder + reranker from Hugging Face (~6.4–6.9 GB), so give it a few minutes. Full sizing
+  (and what each parser/OCR/embed choice costs) → **[deployment-resources.md](deployment-resources.md)**.
 - Open ports in the `10040–10048` range (the stack publishes its dev ports there).
 - **GPU is optional and deferred** — the default images build with CPU-only PyTorch. GPU is an
   opt-in override (`docker-compose.gpu.yml`) and is not needed to complete this guide.
