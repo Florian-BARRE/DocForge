@@ -169,9 +169,68 @@ class UpdateCollectionRequest(BaseModel):
     note: str | None = Field(default=None, description="Version note shown in the history.")
 
 
+class BulkReingestRequest(BaseModel):
+    """
+    The re-run request over a collection's corpus (a full-pipeline re-ingest).
+
+    Attributes:
+        document_ids (list[str] | None): The explicit subset to re-run. Omit or null → EVERY document
+            in the collection. An empty list is rejected by the API (an ambiguous no-op).
+    """
+
+    document_ids: list[str] | None = Field(
+        default=None,
+        description="Explicit document UUIDs to re-run; omit for the whole collection.",
+    )
+
+
+class ReingestJobHandle(BaseModel):
+    """
+    One enqueued re-ingestion — poll the job for status/progress.
+
+    Attributes:
+        document_id (str): The document being re-ingested.
+        job_id (str): The fresh ingestion job driving its lifecycle.
+    """
+
+    document_id: str = Field(description="The re-ingested document's UUID.")
+    job_id: str = Field(description="The fresh ingestion job's UUID (poll this).")
+
+
+class BulkReingestAccepted(BaseModel):
+    """
+    The accepted bulk re-run — the runs execute asynchronously (poll each job).
+
+    A match count above the server's per-call fan-out ceiling enqueues only the first N and reports
+    ``capped=true`` with the full ``matched`` count, so one call never floods the queue.
+
+    Attributes:
+        collection_id (str): The target collection.
+        count (int): Jobs enqueued (= ``enqueued``; kept for backward compatibility).
+        matched (int): Documents the request resolved to (before the cap).
+        enqueued (int): Jobs actually enqueued (<= the fan-out ceiling).
+        capped (bool): True when ``matched`` exceeded the per-call fan-out ceiling.
+        max_fanout (int): The per-call fan-out ceiling that was applied.
+        jobs (list[ReingestJobHandle]): One handle per enqueued run.
+    """
+
+    collection_id: str = Field(description="The target collection's UUID.")
+    count: int = Field(description="Jobs enqueued (= enqueued; kept for backward compatibility).")
+    matched: int = Field(description="Documents the request resolved to (before the cap).")
+    enqueued: int = Field(description="Jobs actually enqueued (<= the fan-out ceiling).")
+    capped: bool = Field(
+        description="True when the match count exceeded the per-call fan-out ceiling."
+    )
+    max_fanout: int = Field(description="The per-call fan-out ceiling that was applied.")
+    jobs: list[ReingestJobHandle] = Field(description="One handle per enqueued run.")
+
+
 __all__ = [
     "FieldSpec",
     "CollectionModel",
     "CreateCollectionRequest",
     "UpdateCollectionRequest",
+    "BulkReingestRequest",
+    "ReingestJobHandle",
+    "BulkReingestAccepted",
 ]

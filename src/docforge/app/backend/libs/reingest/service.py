@@ -6,7 +6,9 @@
 # per-document reingest admission — the worker does the actual full-pipeline run.
 
 # ====== Standard Library Imports ======
+import uuid
 from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime
 
 # ====== Third-Party Library Imports ======
@@ -21,6 +23,25 @@ from ...utils.queue import QueueClient
 from .models import ReingestJobHandle
 
 
+@dataclass(slots=True)
+class CappedFanout:
+    """The outcome of a capped fan-out: how many matched, how many were enqueued, and the handles.
+
+    Attributes:
+        matched (int): The full resolved target count (before the cap).
+        enqueued (int): Jobs actually enqueued (<= the ceiling).
+        capped (bool): True when ``matched`` exceeded the ceiling (the tail was NOT enqueued).
+        ceiling (int): The per-call fan-out ceiling that was applied.
+        handles (list[ReingestJobHandle]): One handle per enqueued run.
+    """
+
+    matched: int
+    enqueued: int
+    capped: bool
+    ceiling: int
+    handles: list[ReingestJobHandle]
+
+
 class BulkReingestService(LoggerClass):
     """Fan out a full re-run across a collection's documents — one fresh job per document."""
 
@@ -33,6 +54,47 @@ class BulkReingestService(LoggerClass):
         LoggerClass.__init__(self)
         self._database = database
         self._queue = queue
+
+    async def enqueue_capped(
+        self,
+        collection: Collection,
+        matched_ids: Sequence[uuid.UUID],
+        ceiling: int,
+    ) -> CappedFanout:
+        """
+        Cap an already-resolved target set, fetch the kept documents, and fan out one job each.
+
+        The single capped fan-out path BOTH reingest routes share (the collection-wide route and the
+        corpus selector route), so neither can silently flood the queue: a match count above
+        ``ceiling`` enqueues only the first N (deterministic order) and reports ``capped=true`` with
+        the full ``matched`` count.
+
+        Args:
+            collection (Collection): The target collection (its job budget caps arq's outer timeout).
+            matched_ids (Sequence[uuid.UUID]): The resolved, already-authorised target ids.
+            ceiling (int): The per-call fan-out ceiling.
+
+        Returns:
+            CappedFanout: matched / enqueued / capped + the ceiling + one handle per enqueued run.
+        """
+        # 1. Cap the fan-out — never flood the queue with 100k jobs on one call.
+        capped = len(matched_ids) > ceiling
+        targets = list(matched_ids[:ceiling])
+        if capped:
+            self.logger.warning(
+                f"Reingest on {collection.id}: {len(matched_ids)} matched, capped to {ceiling}"
+            )
+
+        # 2. Fetch the kept documents and fan out one full-pipeline job each.
+        documents = await self._database.documents.get_by_ids(targets)
+        handles = await self.enqueue(collection, documents)
+        return CappedFanout(
+            matched=len(matched_ids),
+            enqueued=len(handles),
+            capped=capped,
+            ceiling=ceiling,
+            handles=handles,
+        )
 
     async def enqueue(
         self,

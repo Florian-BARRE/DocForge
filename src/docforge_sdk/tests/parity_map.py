@@ -11,9 +11,12 @@ from pydantic import BaseModel
 # ====== Local Project Imports ======
 from docforge_sdk.models.auth import CreatedKey, CreateKeyRequest, KeyInfo, RotateKeyRequest
 from docforge_sdk.models.collections import (
+    BulkReingestAccepted,
+    BulkReingestRequest,
     CollectionModel,
     CreateCollectionRequest,
     FieldSpec,
+    ReingestJobHandle,
     UpdateCollectionRequest,
 )
 from docforge_sdk.models.documents import DocumentEnabledResponse, EnabledPatch, UploadAccepted
@@ -32,6 +35,7 @@ from docforge_sdk.models.ir import DocumentIRModel, IRBlock, IREnrichment, IRFig
 from docforge_sdk.models.jobs import (
     CancelResult,
     JobEvent,
+    JobPage,
     JobStatus,
     JobTrace,
     WorkerActivity,
@@ -75,6 +79,9 @@ MODELS: dict[str, type[BaseModel]] = {
     "CollectionModel": CollectionModel,
     "CreateCollectionRequest": CreateCollectionRequest,
     "UpdateCollectionRequest": UpdateCollectionRequest,
+    "BulkReingestRequest": BulkReingestRequest,
+    "ReingestJobHandle": ReingestJobHandle,
+    "BulkReingestAccepted": BulkReingestAccepted,
     # Documents
     "UploadAccepted": UploadAccepted,
     "EnabledPatch": EnabledPatch,
@@ -103,6 +110,7 @@ MODELS: dict[str, type[BaseModel]] = {
     "SearchResponse": SearchResponse,
     # Jobs
     "JobStatus": JobStatus,
+    "JobPage": JobPage,
     "JobEvent": JobEvent,
     "JobTrace": JobTrace,
     "WorkerActivity": WorkerActivity,

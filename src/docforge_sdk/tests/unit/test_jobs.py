@@ -11,7 +11,7 @@ import respx
 
 # ====== Local Project Imports ======
 from docforge_sdk import AsyncClient, Client
-from docforge_sdk.models.jobs import CancelResult, JobStatus, JobTrace
+from docforge_sdk.models.jobs import CancelResult, JobPage, JobStatus, JobTrace
 
 BASE = "http://test"
 API = f"{BASE}/api/v1"
@@ -38,14 +38,31 @@ _JOB_SAMPLE: dict[str, Any] = {
 
 
 @respx.mock
-async def test_list_passes_collection_id_query_and_returns_list() -> None:
-    route = respx.get(f"{API}/jobs").mock(return_value=httpx.Response(200, json=[_JOB_SAMPLE]))
+async def test_list_passes_collection_id_query_and_returns_paged_envelope() -> None:
+    page = {"total": 1, "limit": 500, "offset": 0, "jobs": [_JOB_SAMPLE]}
+    route = respx.get(f"{API}/jobs").mock(return_value=httpx.Response(200, json=page))
     async with AsyncClient(BASE) as client:
         result = await client.jobs.list(CID)
     sent = route.calls.last.request.url
     assert sent.path == "/api/v1/jobs"
     assert sent.params.get("collection_id") == CID
-    assert len(result) == 1 and isinstance(result[0], JobStatus)
+    # The list is now a bounded, paginated envelope: total + limit/offset echo + the page of jobs.
+    assert isinstance(result, JobPage)
+    assert result.total == 1 and result.limit == 500 and result.offset == 0
+    assert len(result.jobs) == 1 and isinstance(result.jobs[0], JobStatus)
+
+
+@respx.mock
+def test_sync_list_threads_limit_and_offset_query_params() -> None:
+    page = {"total": 0, "limit": 50, "offset": 100, "jobs": []}
+    route = respx.get(f"{API}/jobs").mock(return_value=httpx.Response(200, json=page))
+    with Client(BASE) as client:
+        result = client.jobs.list(CID, limit=50, offset=100)
+    sent = route.calls.last.request.url
+    # Paging is threaded as query params; omitted params fall back to the server defaults.
+    assert sent.params.get("limit") == "50"
+    assert sent.params.get("offset") == "100"
+    assert isinstance(result, JobPage) and result.offset == 100
 
 
 @respx.mock

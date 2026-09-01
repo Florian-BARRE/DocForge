@@ -42,12 +42,22 @@ class BulkReingestAccepted(BaseModel):
 
     Attributes:
         collection_id (str): The target collection.
-        count (int): How many jobs were enqueued (= len(jobs)).
+        count (int): How many jobs were enqueued (= len(jobs) = ``enqueued``; kept for compatibility).
+        matched (int): The full resolved target count (before the fan-out cap).
+        enqueued (int): Jobs actually enqueued (<= the fan-out ceiling).
+        capped (bool): True when ``matched`` exceeded the per-call fan-out ceiling.
+        max_fanout (int): The per-call fan-out ceiling that was applied.
         jobs (list[ReingestJobHandle]): One handle per enqueued run.
     """
 
     collection_id: str = Field(description="The target collection's UUID.")
-    count: int = Field(description="Number of jobs enqueued.")
+    count: int = Field(description="Number of jobs enqueued (= enqueued; kept for compatibility).")
+    matched: int = Field(description="Documents the request resolved to (before the cap).")
+    enqueued: int = Field(description="Jobs actually enqueued (<= the fan-out ceiling).")
+    capped: bool = Field(
+        description="True when the match count exceeded the per-call fan-out ceiling."
+    )
+    max_fanout: int = Field(description="The per-call fan-out ceiling that was applied.")
     jobs: list[ReingestJobHandle] = Field(description="One handle per enqueued run.")
 
 

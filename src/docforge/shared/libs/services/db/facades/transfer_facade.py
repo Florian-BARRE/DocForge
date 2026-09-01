@@ -11,6 +11,7 @@
 # ====== Standard Library Imports ======
 import uuid
 from collections.abc import AsyncIterator, Sequence
+from datetime import datetime
 from typing import Any
 
 # ====== Internal Project Imports ======
@@ -23,6 +24,7 @@ from shared_libs.services.db.postgresql.apis import (
     CollectionApi,
     DocumentApi,
     IRApi,
+    TransferApi,
 )
 from shared_libs.services.db.postgresql.tables import (
     Blob,
@@ -158,6 +160,44 @@ class CollectionTransferFacade(LoggerClass):
         """
         async with self._s3.client() as client:
             return await S3ObjectApi.put_file(client, self._s3.bucket, s3_key, path, content_type)
+
+    async def gc_expired_bundles(self, now: datetime) -> list[uuid.UUID]:
+        """
+        Delete every expired export bundle everywhere — the S3 object AND its tracking row.
+
+        Nothing GC's these otherwise: the download route refuses an expired bundle, but the S3 object
+        and the ``collection_transfer`` row leak forever without this sweep (an unbounded storage +
+        row leak). Per row: drop the S3 object first (best-effort — a missing object is fine, the S3
+        delete is idempotent), then delete the row, so a crash mid-sweep never orphans a row pointing
+        at a still-present object. Backs the worker's ``gc_expired_transfers`` cron.
+
+        Args:
+            now (datetime): The cutoff — any export whose ``expires_at`` is before this is reclaimed.
+
+        Returns:
+            list[uuid.UUID]: The ids of the transfers actually reclaimed (empty when none expired).
+        """
+        # 1. Find the expired export bundles that still hold an S3 object (one short read).
+        async with self._postgres.session() as session:
+            rows = await TransferApi.list_expired(session, now)
+
+        # 2. Per row: reclaim the bytes, then the tracking row (bytes-first, so no row ever outlives
+        #    its object pointing at a still-present blob). One row's failure (e.g. a transient S3
+        #    error) must not head-of-line-block the rest of the sweep — log it and move on; the row
+        #    stays expired and is retried next cycle.
+        deleted: list[uuid.UUID] = []
+        for row in rows:
+            try:
+                async with self._s3.client() as client:
+                    await S3ObjectApi.delete(client, self._s3.bucket, row.s3_key)
+                async with self._postgres.session() as session:
+                    await TransferApi.delete(session, row.id)
+                deleted.append(row.id)
+            except Exception:
+                self.logger.exception(f"GC failed to reclaim expired transfer {row.id}; will retry")
+        if deleted:
+            self.logger.info(f"GC reclaimed {len(deleted)} expired export bundle(s)")
+        return deleted
 
     async def dense_dim(self, collection_id: uuid.UUID) -> int:
         """

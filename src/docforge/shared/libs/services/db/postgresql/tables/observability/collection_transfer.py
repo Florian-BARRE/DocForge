@@ -13,7 +13,17 @@ from enum import StrEnum
 from typing import Any
 
 # ====== Third-Party Library Imports ======
-from sqlalchemy import BigInteger, DateTime, ForeignKey, Integer, SmallInteger, String, Text
+from sqlalchemy import (
+    BigInteger,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    SmallInteger,
+    String,
+    Text,
+    text,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -41,6 +51,23 @@ class CollectionTransfer(Base, UUIDPrimaryKey, TimestampedMixin):
     """An async collection export/import job and (for export) its bundle artifact reference."""
 
     __tablename__ = "collection_transfer"
+    # Read-path index for the ``gc_expired_transfers`` worker cron. Created by migration a3f7c2e91b64;
+    # declared here so ``--autogenerate`` reconciles it instead of dropping it. ``ix_collection_transfer_
+    # expires_at`` is a PARTIAL btree on ``expires_at`` whose predicate pins the STATIC conjuncts the
+    # sweep filters on (``kind = 'export' AND s3_key IS NOT NULL AND expires_at IS NOT NULL``); the
+    # time bound ``expires_at < now()`` is NOT in the predicate (``now()`` is non-immutable) — it rides
+    # the btree as a range scan at query time. ``kind`` is a value_enum stored as VARCHAR, so the
+    # ``kind = 'export'`` comparison carries no enum cast and Alembic's comparator normalises the
+    # ``postgresql_where`` predicate and reconciles it cleanly (verified via ``alembic check``).
+    __table_args__ = (
+        Index(
+            "ix_collection_transfer_expires_at",
+            "expires_at",
+            postgresql_where=text(
+                "kind = 'export' AND s3_key IS NOT NULL AND expires_at IS NOT NULL"
+            ),
+        ),
+    )
 
     kind: Mapped[TransferKind] = mapped_column(value_enum(TransferKind), nullable=False)
     status: Mapped[TransferStatus] = mapped_column(

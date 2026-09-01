@@ -12,6 +12,7 @@ from fastapi import HTTPException
 from loggerplusplus import loggerplusplus
 
 # ====== Internal Project Imports ======
+from shared_libs.pipelines.blob_secrets import redact_blob_secrets
 from shared_libs.pipelines.ingest import BlobNormalizer
 from shared_libs.public_models import FieldOrigin, FieldScope, FieldType
 from shared_libs.services.db.postgresql.tables import Collection, MetadataField
@@ -20,7 +21,6 @@ from shared_libs.services.db.qdrant import RESERVED_PAYLOAD_KEYS
 # ====== Local Project Imports ======
 from ...utils.search_blob_validation import SearchBlobValidator
 from .models import CollectionModel, FieldSpecModel
-from .redaction import redact_blob_secrets
 
 # Payload keys the chunk point owns for its own machinery (id, ordinal, enable-filter). A
 # filterable field is denormalised onto the point by NAME, so a field sharing one of these would

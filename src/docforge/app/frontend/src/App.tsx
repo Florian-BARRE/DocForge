@@ -19,6 +19,7 @@ import { JobDetailPage } from "./features/monitoring/JobDetailPage";
 import { JobsPage } from "./features/monitoring/JobsPage";
 import { WorkersPanel } from "./features/monitoring/WorkersPanel";
 import { SearchLabPage } from "./features/search/SearchLabPage";
+import { ErrorBoundary } from "./shell/ErrorBoundary";
 import { TopBar } from "./shell/TopBar";
 import { ToastProvider } from "./shell/toast";
 import type { View } from "./shell/view";
@@ -31,6 +32,9 @@ export function App() {
     <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
       <TopBar view={view} onNavigate={setView} />
       <div style={{ flex: 1, minHeight: 0 }}>
+      {/* Keyed by view.name so navigating away (shell nav, or the fallback's own action) always
+          remounts a fresh boundary — a crashed view never keeps blocking an unrelated route. */}
+      <ErrorBoundary key={view.name} onReset={() => setView({ name: "collections" })}>
         {view.name === "collections" && <CollectionsPage onNavigate={setView} />}
         {view.name === "new-collection" && <CollectionWizard onNavigate={setView} />}
         {view.name === "collection" && (
@@ -78,6 +82,7 @@ export function App() {
         {view.name === "workers" && <WorkersPanel onNavigate={setView} />}
         {view.name === "api-keys" && <AuthKeysPage onNavigate={setView} />}
         {view.name === "api-key" && <KeyDetailPage keyId={view.keyId} onNavigate={setView} />}
+      </ErrorBoundary>
       </div>
     </div>
     </ToastProvider>

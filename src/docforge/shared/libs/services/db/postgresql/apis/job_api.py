@@ -615,18 +615,38 @@ class JobApi:
 
     @classmethod
     async def list_for_collection_with_names(
-        cls, session: AsyncSession, collection_id: uuid.UUID
+        cls,
+        session: AsyncSession,
+        collection_id: uuid.UUID,
+        limit: int | None = None,
+        offset: int = 0,
     ) -> list[JobWithNames]:
-        """Return a collection's jobs (newest first), each joined to its display names."""
-        result = await session.execute(
+        """Return a collection's jobs (newest first), each joined to its display names.
+
+        A ``limit`` bounds the page (``None`` = no bound, the legacy behaviour); ``offset`` skips rows
+        for paging. The order is stable (created_at desc, then id) so paging never repeats/drops a row.
+        """
+        query = (
             cls._with_names_select()
             .where(Job.collection_id == collection_id)
-            .order_by(Job.created_at.desc())
+            .order_by(Job.created_at.desc(), Job.id.desc())
+            .offset(offset)
         )
+        if limit is not None:
+            query = query.limit(limit)
+        result = await session.execute(query)
         return [
             JobWithNames(job=job, document_filename=filename, collection_name=collection_name)
             for job, filename, collection_name in result.all()
         ]
+
+    @staticmethod
+    async def count_for_collection(session: AsyncSession, collection_id: uuid.UUID) -> int:
+        """Count a collection's jobs — the pager's total (independent of limit/offset)."""
+        result = await session.execute(
+            select(func.count()).select_from(Job).where(Job.collection_id == collection_id)
+        )
+        return int(result.scalar_one())
 
     @classmethod
     async def list_active_with_names(cls, session: AsyncSession) -> list[JobWithNames]:

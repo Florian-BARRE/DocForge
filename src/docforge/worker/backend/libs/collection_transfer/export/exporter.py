@@ -16,6 +16,7 @@ import uuid
 from collections.abc import Callable
 
 # ====== Internal Project Imports ======
+from shared_libs.pipelines.blob_secrets import redact_blob_secrets, redact_config_snapshot
 from shared_libs.services.db.facades import CollectionTransferFacade
 from shared_libs.services.db.postgresql.tables import Collection
 
@@ -114,7 +115,15 @@ class CollectionExporter:
         return manifest
 
     async def _contract(self, collection: Collection) -> CollectionContractModel:
-        """Build collection.json from the collection row + its config history."""
+        """Build collection.json from the collection row + its config history.
+
+        Provider secrets (every provider node's ``api_key`` across the live ``pipeline`` and ``search``
+        blobs AND every archived ``config_versions[].config`` snapshot) are REDACTED here — the same
+        masking every outbound collection GET applies — so a portable bundle never carries live keys
+        off the server. A READ-scoped key can export→download a collection; the mask (last 4 chars,
+        non-reversible) is all it ever sees. On import the redacted placeholder restores as a plain
+        string, so the operator re-enters each provider key on the new server.
+        """
         versions = await self._facade.list_config_versions(collection.id)
         return CollectionContractModel(
             name=collection.name,
@@ -122,12 +131,12 @@ class CollectionExporter:
             max_file_size_bytes=collection.max_file_size_bytes,
             job_timeout_seconds=collection.job_timeout_seconds,
             needs_reindex=collection.needs_reindex,
-            pipeline=collection.pipeline or {},
-            search=collection.search or {},
+            pipeline=redact_blob_secrets(collection.pipeline) or {},
+            search=redact_blob_secrets(collection.search) or {},
             config_versions=[
                 ConfigVersionModel(
                     version=version.version,
-                    config=version.config,
+                    config=redact_config_snapshot(version.config),
                     note=version.note,
                     created_at=version.created_at.isoformat() if version.created_at else None,
                 )

@@ -11,10 +11,11 @@ from datetime import datetime
 from typing import Any
 
 # ====== Third-Party Library Imports ======
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # ====== Internal Project Imports ======
-from ..tables import CollectionTransfer, TransferStatus
+from ..tables import CollectionTransfer, TransferKind, TransferStatus
 
 
 class TransferApi:
@@ -34,6 +35,30 @@ class TransferApi:
     async def get(session: AsyncSession, transfer_id: uuid.UUID) -> CollectionTransfer | None:
         """Fetch a transfer row by id, or None."""
         return await session.get(CollectionTransfer, transfer_id)
+
+    @staticmethod
+    async def list_expired(session: AsyncSession, now: datetime) -> list[CollectionTransfer]:
+        """Return every EXPORT transfer whose bundle has expired and still has an S3 object to reclaim.
+
+        Only export rows carry a produced bundle; ``expires_at`` NULL means keep-forever (skipped),
+        and a row with no ``s3_key`` has nothing to delete. The GC caller drops the S3 object + the row.
+        """
+        result = await session.execute(
+            select(CollectionTransfer).where(
+                CollectionTransfer.kind == TransferKind.EXPORT,
+                CollectionTransfer.s3_key.is_not(None),
+                CollectionTransfer.expires_at.is_not(None),
+                CollectionTransfer.expires_at < now,
+            )
+        )
+        return list(result.scalars().all())
+
+    @staticmethod
+    async def delete(session: AsyncSession, transfer_id: uuid.UUID) -> None:
+        """Delete a transfer tracking row (its bundle bytes are the caller's to reclaim first)."""
+        row = await session.get(CollectionTransfer, transfer_id)
+        if row is not None:
+            await session.delete(row)
 
     @staticmethod
     async def update(

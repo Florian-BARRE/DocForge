@@ -49,19 +49,23 @@ class McpConfig(EnvConfigLoader):
     DOCFORGE_API_URL: str = env("DOCFORGE_API_URL", default="http://localhost:8000")
     # Per-request timeout (seconds) for SDK HTTP calls.
     MCP_API_TIMEOUT_S: int = env("MCP_API_TIMEOUT_S", cast=int, default="60")
-    # Fallback bearer token used for outbound DocForge API calls: always for stdio, and for any
-    # streamable-http request that carries no Authorization header of its own. An HTTP request
-    # THAT DOES carry a bearer forwards it upstream unchanged instead (see libs/scoped_sdk.py) —
-    # auth is delegated to DocForge, one API key gives the same rights on the API and via the MCP.
-    # Leave empty only when targeting a DocForge instance with auth disabled. The name contains
-    # "TOKEN" so configplusplus auto-masks this value in log output.
+    # Fallback bearer token for outbound DocForge API calls — STDIO-ONLY. stdio has no
+    # Authorization header to forward, so this is its sole credential. In streamable-http mode this
+    # is NEVER used to serve a request: every incoming request MUST carry its own Authorization
+    # bearer, or BearerPassthroughMiddleware rejects it with 401 (see libs/auth.py,
+    # libs/scoped_sdk.py) — there is no anonymous-request fallback over the network. Leave empty
+    # only for a local stdio run against a DocForge instance with auth disabled; if ever set for a
+    # networked deployment, it must NOT be a root/admin key. The name contains "TOKEN" so
+    # configplusplus auto-masks this value in log output.
     DOCFORGE_API_TOKEN: str = env("DOCFORGE_API_TOKEN", required=False, default="")
 
     # ───── MCP transport ─────
     # "stdio"        → local Claude Desktop / Claude Code (protocol over stdin/stdout).
     # "streamable-http" → long-lived container service. No separate MCP-level auth gate: each
     # request's own "Authorization: Bearer <docforge-api-key>" is forwarded upstream as-is, so
-    # DocForge's own authN/authZ enforces access. Plain HTTP works; add TLS on an untrusted network.
+    # DocForge's own authN/authZ enforces access. A request with NO bearer is refused with 401 by
+    # BearerPassthroughMiddleware — it never falls back to DOCFORGE_API_TOKEN. Plain HTTP works; add
+    # TLS on an untrusted network since the key travels in the Authorization header.
     MCP_TRANSPORT: str = env("MCP_TRANSPORT", default="stdio")
     # Bind address — must be 0.0.0.0 inside a container to be reachable from the host.
     MCP_HOST: str = env("MCP_HOST", default="0.0.0.0")

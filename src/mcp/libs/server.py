@@ -63,8 +63,9 @@ def build_http_app(mcp: FastMCP, config: type[McpConfig]) -> Starlette:
 
     Settings are applied BEFORE ``streamable_http_app()`` so the session manager is built in the
     intended mode. ``stateless_http`` + ``json_response`` keep the service simple and proxy-friendly.
-    Auth is delegated to DocForge: each request's own Authorization bearer is captured by
-    BearerPassthroughMiddleware and forwarded upstream — this app never checks it itself.
+    BearerPassthroughMiddleware requires a bearer to be present (401 otherwise, before any tool
+    runs) and captures it; VALIDATING that token is delegated to DocForge — this app forwards it
+    upstream as-is and never checks the token's validity or scope itself.
 
     Args:
         mcp (FastMCP): The built MCP server.

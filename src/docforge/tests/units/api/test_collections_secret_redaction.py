@@ -113,7 +113,7 @@ def _mock_db(monkeypatch, **collections_methods) -> SimpleNamespace:
 
 
 def test_redact_masks_every_provider_key_and_leaves_empties(fastapi_app) -> None:
-    from backend.routers.collections.redaction import MASK_PREFIX, redact_blob_secrets
+    from shared_libs.pipelines.blob_secrets import MASK_PREFIX, redact_blob_secrets
 
     blob = _leaky_pipeline()
     masked = redact_blob_secrets(blob)
@@ -129,7 +129,7 @@ def test_redact_masks_every_provider_key_and_leaves_empties(fastapi_app) -> None
 
 
 def test_redact_masks_search_blob_reranker_key(fastapi_app) -> None:
-    from backend.routers.collections.redaction import MASK_PREFIX, redact_blob_secrets
+    from shared_libs.pipelines.blob_secrets import MASK_PREFIX, redact_blob_secrets
 
     masked = redact_blob_secrets(_leaky_search())
     assert RERANK_KEY not in str(masked)
@@ -137,7 +137,7 @@ def test_redact_masks_search_blob_reranker_key(fastapi_app) -> None:
 
 
 def test_redact_does_not_mutate_the_stored_blob(fastapi_app) -> None:
-    from backend.routers.collections.redaction import redact_blob_secrets
+    from shared_libs.pipelines.blob_secrets import redact_blob_secrets
 
     blob = _leaky_pipeline()
     redact_blob_secrets(blob)
@@ -146,7 +146,7 @@ def test_redact_does_not_mutate_the_stored_blob(fastapi_app) -> None:
 
 
 def test_redact_passes_through_empty_and_none(fastapi_app) -> None:
-    from backend.routers.collections.redaction import redact_blob_secrets
+    from shared_libs.pipelines.blob_secrets import redact_blob_secrets
 
     assert redact_blob_secrets({}) == {}
     assert redact_blob_secrets(None) is None
@@ -156,7 +156,7 @@ def test_redact_passes_through_empty_and_none(fastapi_app) -> None:
 
 
 def test_restore_keeps_stored_key_when_mask_is_sent_back(fastapi_app) -> None:
-    from backend.routers.collections.redaction import redact_blob_secrets, restore_blob_secrets
+    from shared_libs.pipelines.blob_secrets import redact_blob_secrets, restore_blob_secrets
 
     stored = _leaky_pipeline()
     incoming = redact_blob_secrets(stored)  # the client read the mask and PATCHes it back untouched
@@ -167,7 +167,7 @@ def test_restore_keeps_stored_key_when_mask_is_sent_back(fastapi_app) -> None:
 
 
 def test_restore_keeps_a_genuinely_new_key(fastapi_app) -> None:
-    from backend.routers.collections.redaction import redact_blob_secrets, restore_blob_secrets
+    from shared_libs.pipelines.blob_secrets import redact_blob_secrets, restore_blob_secrets
 
     stored = _leaky_pipeline()
     incoming = redact_blob_secrets(stored)
@@ -177,7 +177,7 @@ def test_restore_keeps_a_genuinely_new_key(fastapi_app) -> None:
 
 
 def test_restore_keeps_an_intentional_clear(fastapi_app) -> None:
-    from backend.routers.collections.redaction import redact_blob_secrets, restore_blob_secrets
+    from shared_libs.pipelines.blob_secrets import redact_blob_secrets, restore_blob_secrets
 
     stored = _leaky_pipeline()
     incoming = redact_blob_secrets(stored)
@@ -187,7 +187,7 @@ def test_restore_keeps_an_intentional_clear(fastapi_app) -> None:
 
 
 def test_restore_blanks_an_orphan_mask_never_persists_it(fastapi_app) -> None:
-    from backend.routers.collections.redaction import MASK_PREFIX, restore_blob_secrets
+    from shared_libs.pipelines.blob_secrets import MASK_PREFIX, restore_blob_secrets
 
     # a masked value on a node with no stored counterpart (unknown id) must never be stored verbatim
     incoming = {
@@ -247,7 +247,7 @@ def test_detail_response_masks_every_secret(client, monkeypatch) -> None:
 def test_patch_round_trip_of_masked_pipeline_keeps_the_stored_key(client, monkeypatch) -> None:
     """A client reads a masked collection then PATCHes the blob back: the real stored key survives,
     the literal mask is NEVER written, and the response is masked again."""
-    from backend.routers.collections.redaction import redact_blob_secrets
+    from shared_libs.pipelines.blob_secrets import redact_blob_secrets
     from shared_libs.pipelines.ingest import BlobNormalizer, IngestPipeline
 
     # A VALID stored pipeline (the stock default) carrying a real embed key.

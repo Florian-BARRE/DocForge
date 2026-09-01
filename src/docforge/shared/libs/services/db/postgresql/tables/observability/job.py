@@ -15,6 +15,7 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     ForeignKey,
+    Index,
     Numeric,
     SmallInteger,
     String,
@@ -45,6 +46,22 @@ class Job(Base, UUIDPrimaryKey, TimestampedMixin):
     """An async ingestion job for one document."""
 
     __tablename__ = "job"
+    # Hot-path indexes for the reaper / active-job scans and the jobs-by-collection listing. Created by
+    # migration f2b9d7c4a1e8; declared here so ``--autogenerate`` reconciles them instead of dropping
+    # them. ``ix_job_collection_created_at`` is a plain btree composite for the collection-scoped,
+    # created-at-descending listing. ``ix_job_status_active`` is a PARTIAL index whose predicate covers
+    # only the live rows (``status IN ('pending', 'running')``) the reaper / list_active / queue_depth
+    # scan — Alembic's comparator normalises the ``postgresql_where`` predicate and reconciles it
+    # cleanly (verified via ``alembic check``), so unlike the grid's functional/GIN indexes it is safe
+    # to declare here rather than leave migration-only.
+    __table_args__ = (
+        Index("ix_job_collection_created_at", "collection_id", text("created_at DESC")),
+        Index(
+            "ix_job_status_active",
+            "status",
+            postgresql_where=text("status IN ('pending', 'running')"),
+        ),
+    )
 
     document_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("document.id", ondelete="CASCADE"), nullable=False, index=True

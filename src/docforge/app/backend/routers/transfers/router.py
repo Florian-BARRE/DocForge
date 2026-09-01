@@ -100,7 +100,9 @@ async def import_collection(
     #    touches no DB — a client disconnect leaves at most an orphan staging object (GC-able), never
     #    a dangling tracking row. Streamed to disk then to S3, so RAM stays flat regardless of size.
     staging_key = f"{RUNTIME_CONFIG.IMPORT_STAGING_PREFIX}/{uuid.uuid4()}.dcexport"
-    await TransferHelpers.stage_upload(file, staging_key, CONTEXT.database.transfer)
+    await TransferHelpers.stage_upload(
+        file, staging_key, CONTEXT.database.transfer, RUNTIME_CONFIG.IMPORT_MAX_BUNDLE_BYTES
+    )
 
     # 2. Create the PENDING tracking row (kind=import, the staged bundle's key) BEFORE enqueue.
     row = await CONTEXT.database.transfer_tracker.create(

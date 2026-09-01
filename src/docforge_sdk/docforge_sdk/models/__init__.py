@@ -19,9 +19,12 @@ from .blobs import BlobContent
 
 # ------------------- Collections models ------------------- #
 from .collections import (
+    BulkReingestAccepted,
+    BulkReingestRequest,
     CollectionModel,
     CreateCollectionRequest,
     FieldSpec,
+    ReingestJobHandle,
     UpdateCollectionRequest,
 )
 
@@ -48,7 +51,15 @@ from .health import HealthStatus
 from .ir import DocumentIRModel, IRBlock, IREnrichment, IRFigure, IRTable
 
 # ------------------- Jobs models ------------------- #
-from .jobs import CancelResult, JobEvent, JobStatus, JobTrace, WorkerActivity, WorkersLive
+from .jobs import (
+    CancelResult,
+    JobEvent,
+    JobPage,
+    JobStatus,
+    JobTrace,
+    WorkerActivity,
+    WorkersLive,
+)
 
 # ------------------- Pipelines models ------------------- #
 from .pipelines import (
@@ -100,6 +111,9 @@ __all__ = [
     "CollectionModel",
     "CreateCollectionRequest",
     "UpdateCollectionRequest",
+    "BulkReingestRequest",
+    "ReingestJobHandle",
+    "BulkReingestAccepted",
     # Documents
     "UploadAccepted",
     "EnabledPatch",
@@ -128,6 +142,7 @@ __all__ = [
     "SearchResponse",
     # Jobs
     "JobStatus",
+    "JobPage",
     "JobEvent",
     "JobTrace",
     "WorkerActivity",

@@ -66,6 +66,15 @@ class RUNTIME_CONFIG(EnvConfigLoader):
     EXPORT_COMPRESSION = env("EXPORT_COMPRESSION", default="zstd")
     # How long an exported bundle object is retained before it may be garbage-collected (seconds).
     EXPORT_TTL_SECONDS = env("EXPORT_TTL_SECONDS", cast=int, default=604800)
+    # Reclaim expired export bundles (the S3 object AND its `collection_transfer` row) on a cron —
+    # without it the download route refuses an expired bundle but the bytes + row leak forever. ON by
+    # default; disable to skip the sweep entirely (the cron is then not even registered).
+    WORKER_TRANSFER_GC_ENABLED = env("WORKER_TRANSFER_GC_ENABLED", cast=bool, default=True)
+    # Transfer-GC cron cadence (minutes): the sweep runs on every Nth minute of the hour. 15 → every
+    # 15 minutes. It also runs once at startup so a backlog left while GC was off is cleared promptly.
+    WORKER_TRANSFER_GC_INTERVAL_MINUTES = env(
+        "WORKER_TRANSFER_GC_INTERVAL_MINUTES", cast=int, default=15
+    )
 
     # ───── Stores — client tuning ─────
     # Per-request Qdrant timeout. The qdrant-client default (5s) is too low for heavy vector upserts
@@ -105,6 +114,12 @@ class RUNTIME_CONFIG(EnvConfigLoader):
     # the reaper entirely (the cron is then not even registered).
     WORKER_REAP_ENABLED = env("WORKER_REAP_ENABLED", cast=bool, default=True)
     WORKER_REAP_STALE_SECONDS = env("WORKER_REAP_STALE_SECONDS", cast=int, default=1200)
+    # A worker heartbeat frozen past this cutoff is PRUNED by the reaper cron (crashed workers that
+    # never de-registered). This ran on the read path (GET /jobs/workers/live) before — a fleet-wide
+    # DELETE on every poll — and now lives in the cron alone. MUST stay well above the app's
+    # WORKER_ALIVE_THRESHOLD_SECONDS so a live worker that missed a few beats is never deleted; the
+    # backend reads the SAME env, so the "off" window between the two thresholds is consistent.
+    WORKER_PRUNE_STALE_SECONDS = env("WORKER_PRUNE_STALE_SECONDS", cast=int, default=180)
     # Reaper cron cadence (minutes): the stuck-job cron runs on every Nth minute of the hour. 5 →
     # every 5 minutes. It also runs once at startup so a wedge left by a crashed/hot-reloaded run is
     # cleared immediately.

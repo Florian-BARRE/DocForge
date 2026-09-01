@@ -6,6 +6,8 @@
 # ====== Local Project Imports ======
 from .._requestspec import RequestSpec
 from ..models.collections import (
+    BulkReingestAccepted,
+    BulkReingestRequest,
     CollectionModel,
     CreateCollectionRequest,
     UpdateCollectionRequest,
@@ -93,6 +95,23 @@ class _CollectionsSpecs(_ResourceMixin):
         """
         return RequestSpec("GET", f"{self._COLLECTIONS_PATH}/{collection_id}/storage")
 
+    def _reingest_spec(self, collection_id: str, request: BulkReingestRequest) -> RequestSpec:
+        """
+        Build the spec for re-running the full pipeline over a collection's corpus.
+
+        Args:
+            collection_id (str): The collection to re-ingest.
+            request (BulkReingestRequest): Whole collection (default) or an explicit subset.
+
+        Returns:
+            RequestSpec: A POST on the collection's ``/reingest`` route with the subset body.
+        """
+        return RequestSpec(
+            "POST",
+            f"{self._COLLECTIONS_PATH}/{collection_id}/reingest",
+            json=request.model_dump(mode="json"),
+        )
+
 
 class AsyncCollections(AsyncResource, _CollectionsSpecs):
     """Asynchronous collection management (list / get / create / update / delete)."""
@@ -168,6 +187,27 @@ class AsyncCollections(AsyncResource, _CollectionsSpecs):
             self._storage_spec(collection_id), CollectionStorageResponse
         )
 
+    async def reingest(
+        self, collection_id: str, request: BulkReingestRequest | None = None
+    ) -> BulkReingestAccepted:
+        """
+        Re-run the full pipeline over a collection's corpus — all documents, or an explicit subset.
+
+        A match above the server's per-call fan-out ceiling enqueues only the first N and reports
+        ``capped=true`` with the full ``matched`` count. Poll each returned job handle for progress.
+
+        Args:
+            collection_id (str): The collection to re-ingest.
+            request (BulkReingestRequest | None): The subset to re-run; omit for the whole collection.
+
+        Returns:
+            BulkReingestAccepted: matched / enqueued / capped + one job handle per enqueued run.
+        """
+        return await self._transport.request(
+            self._reingest_spec(collection_id, request or BulkReingestRequest()),
+            BulkReingestAccepted,
+        )
+
 
 class SyncCollections(SyncResource, _CollectionsSpecs):
     """Synchronous collection management (list / get / create / update / delete)."""
@@ -238,6 +278,27 @@ class SyncCollections(SyncResource, _CollectionsSpecs):
             CollectionStorageResponse: Per-store totals + the per-document breakdown, heaviest first.
         """
         return self._transport.request(self._storage_spec(collection_id), CollectionStorageResponse)
+
+    def reingest(
+        self, collection_id: str, request: BulkReingestRequest | None = None
+    ) -> BulkReingestAccepted:
+        """
+        Re-run the full pipeline over a collection's corpus — all documents, or an explicit subset.
+
+        A match above the server's per-call fan-out ceiling enqueues only the first N and reports
+        ``capped=true`` with the full ``matched`` count. Poll each returned job handle for progress.
+
+        Args:
+            collection_id (str): The collection to re-ingest.
+            request (BulkReingestRequest | None): The subset to re-run; omit for the whole collection.
+
+        Returns:
+            BulkReingestAccepted: matched / enqueued / capped + one job handle per enqueued run.
+        """
+        return self._transport.request(
+            self._reingest_spec(collection_id, request or BulkReingestRequest()),
+            BulkReingestAccepted,
+        )
 
 
 __all__ = ["AsyncCollections", "SyncCollections"]

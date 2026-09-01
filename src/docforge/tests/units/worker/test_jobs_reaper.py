@@ -140,10 +140,21 @@ def _reaper_module(worker_jobs_modules):
     return sys.modules["jobs.reaper"]
 
 
-def _fake_context(*, enabled: bool, reap_stale: AsyncMock) -> SimpleNamespace:
+def _fake_context(
+    *, enabled: bool, reap_stale: AsyncMock, prune: AsyncMock | None = None
+) -> SimpleNamespace:
     return SimpleNamespace(
-        RUNTIME_CONFIG=SimpleNamespace(WORKER_REAP_ENABLED=enabled, WORKER_REAP_STALE_SECONDS=1200),
-        database=SimpleNamespace(jobs=SimpleNamespace(reap_stale=reap_stale)),
+        RUNTIME_CONFIG=SimpleNamespace(
+            WORKER_REAP_ENABLED=enabled,
+            WORKER_REAP_STALE_SECONDS=1200,
+            WORKER_PRUNE_STALE_SECONDS=180,
+        ),
+        database=SimpleNamespace(
+            jobs=SimpleNamespace(
+                reap_stale=reap_stale,
+                prune_stale_heartbeats=prune or AsyncMock(return_value=[]),
+            )
+        ),
         logger=MagicMock(),
     )
 
@@ -154,20 +165,30 @@ async def test_reap_stuck_jobs_reaps_and_returns_ids_when_enabled(
     reaper = _reaper_module(worker_jobs_modules)
     reaped_ids = [uuid.uuid4(), uuid.uuid4()]
     reap_stale = AsyncMock(return_value=reaped_ids)
-    monkeypatch.setattr(reaper, "CONTEXT", _fake_context(enabled=True, reap_stale=reap_stale))
+    prune = AsyncMock(return_value=["worker-dead-1"])
+    monkeypatch.setattr(
+        reaper, "CONTEXT", _fake_context(enabled=True, reap_stale=reap_stale, prune=prune)
+    )
 
     result = await reaper.reap_stuck_jobs({})
 
     reap_stale.assert_awaited_once_with(1200)
+    # The reaper cron now ALSO prunes crashed workers' stale heartbeats (moved off GET /workers/live).
+    prune.assert_awaited_once_with(180)
     assert result == [str(job_id) for job_id in reaped_ids]
 
 
 async def test_reap_stuck_jobs_is_a_noop_when_disabled(worker_jobs_modules, monkeypatch) -> None:
     reaper = _reaper_module(worker_jobs_modules)
     reap_stale = AsyncMock(return_value=[uuid.uuid4()])
-    monkeypatch.setattr(reaper, "CONTEXT", _fake_context(enabled=False, reap_stale=reap_stale))
+    prune = AsyncMock(return_value=[uuid.uuid4()])
+    monkeypatch.setattr(
+        reaper, "CONTEXT", _fake_context(enabled=False, reap_stale=reap_stale, prune=prune)
+    )
 
     result = await reaper.reap_stuck_jobs({})
 
     assert result == []
     reap_stale.assert_not_awaited()
+    # Disabled reaper prunes nothing either (the cron isn't registered; a direct call is a full no-op).
+    prune.assert_not_awaited()

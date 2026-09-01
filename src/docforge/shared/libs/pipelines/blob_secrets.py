@@ -1,10 +1,11 @@
 # ====== Code Summary ======
-# Secret redaction for the collection config blobs (pipeline + search). The product STORES provider
-# secrets per collection in clear (an accepted design choice), but must NEVER echo them back on the
-# wire: any READ-capable caller would otherwise read live api_key values from a collection GET. This
-# masks every provider node's secret config field on the OUTBOUND blob, and — on write — restores the
-# real stored key whenever the caller sends back the mask untouched (read → PATCH round-trip), so a
-# masked value never overwrites the real secret.
+# Secret redaction for the collection config blobs (pipeline + search) — SHARED between the app (which
+# masks secrets on every outbound collection read and restores them on a PATCH round-trip) and the
+# worker (which masks secrets before writing a portable export bundle). The product STORES provider
+# secrets per collection in clear (an accepted design choice), but must NEVER leak them off the server:
+# not on a GET, and not inside an exported `.dcexport` bundle a READ-scoped key can download. This
+# module is the ONE definition of "walk a node graph, mask/restore every provider ``api_key``", so the
+# API surface and the export surface can never drift on what counts as a secret.
 
 # ====== Standard Library Imports ======
 import copy
@@ -101,7 +102,7 @@ def redact_blob_secrets(blob: dict | None) -> dict | None:
         blob (dict | None): The stored pipeline or search blob (or ``None``/``{}``).
 
     Returns:
-        dict | None: A masked copy safe to serialise to a client.
+        dict | None: A masked copy safe to serialise to a client or write into an export bundle.
     """
     if not isinstance(blob, dict):
         return blob
@@ -110,6 +111,30 @@ def redact_blob_secrets(blob: dict | None) -> dict | None:
         for field in SECRET_FIELDS:
             if field in config:
                 config[field] = _mask_secret(config[field])
+    return redacted
+
+
+def redact_config_snapshot(config: dict | None) -> dict | None:
+    """Return a masked copy of an archived config-version snapshot ``{"pipeline": …, "search": …}``.
+
+    A ``config_versions[].config`` row is NOT a raw node blob — it wraps the pipeline and search blobs
+    under their own keys (see ``CollectionsFacade`` add_config_version writers). Feeding it straight to
+    ``redact_blob_secrets`` would look for a top-level ``nodes`` list, find none, and pass the snapshot
+    through with LIVE keys intact — leaking every historical provider secret into an export bundle. This
+    redacts each wrapped sub-blob through the node walker and preserves any other snapshot keys verbatim.
+
+    Args:
+        config (dict | None): The stored config-version snapshot (or ``None``/``{}``).
+
+    Returns:
+        dict | None: A masked copy safe to write into an export bundle.
+    """
+    if not isinstance(config, dict):
+        return config
+    redacted = copy.deepcopy(config)
+    for key in ("pipeline", "search"):
+        if isinstance(redacted.get(key), dict):
+            redacted[key] = redact_blob_secrets(redacted[key])
     return redacted
 
 

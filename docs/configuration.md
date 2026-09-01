@@ -116,8 +116,11 @@ A pure HTTP client of the DocForge API — no DB/S3 secrets.
 | `MCP_API_TIMEOUT_S` | `60` | Outbound request timeout. |
 | `MCP_TRANSPORT` | `streamable-http` | `streamable-http` \| `stdio`. |
 | `MCP_HOST` / `MCP_PORT` / `MCP_HTTP_PATH` | `0.0.0.0` / `9000` / `/mcp` | HTTP transport binding. |
-| `MCP_AUTH_TOKEN` | *(change me)* | **Required in HTTP mode** — the bearer clients must present. Generate: `python -c "import secrets; print(secrets.token_urlsafe(32))"`. |
-| `DOCFORGE_API_TOKEN` | *(unset)* | Outbound bearer to the DocForge API — set when the API has `AUTH_ENABLED=true` (equal to `AUTH_ROOT_TOKEN` or any registered key). Auto-masked in logs. |
+| `DOCFORGE_API_TOKEN` | *(unset)* | **stdio-only fallback.** Outbound bearer used only when running over stdio (no `Authorization` header exists there to forward). In `streamable-http` mode it is never used to serve a request — every incoming request MUST carry its own `Authorization: Bearer <docforge-api-key>`, or the MCP refuses it with 401. Never set this to `AUTH_ROOT_TOKEN` (or any root key) for a networked deployment. Auto-masked in logs. |
+
+> **Access control.** The MCP has no auth of its own — it forwards each caller's own DocForge API
+> key upstream, so a caller gets exactly that key's scope. An HTTP request with no bearer is
+> refused (401); it never falls back to a shared/local token. See [mcp.md](mcp.md#access-control).
 
 See the [MCP guide](mcp.md) for running and connecting a client.
 

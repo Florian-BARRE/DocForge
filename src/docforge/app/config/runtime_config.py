@@ -95,6 +95,12 @@ class RUNTIME_CONFIG(EnvConfigLoader):
     # single call can never silently flood the queue with 100k jobs. Raise it for a big planned re-run.
     CORPUS_MAX_REINGEST_FANOUT: int = env("CORPUS_MAX_REINGEST_FANOUT", cast=int, default=1000)
 
+    # ───── Jobs list (monitoring view) ─────
+    # Hard ceiling for one GET /jobs page — the server clamps a larger requested ``limit`` down to
+    # this (and defaults to it), so a heavily re-ingested collection with thousands of job rows can
+    # never be dumped unbounded in one call.
+    JOBS_MAX_PAGE_SIZE: int = env("JOBS_MAX_PAGE_SIZE", cast=int, default=500)
+
     # A worker whose heartbeat is fresher than this reads as ``alive`` in the monitoring view. MUST
     # stay >> WORKER_HEARTBEAT_INTERVAL_SECONDS (worker beats ~every 10s): 30s = three missed ticks,
     # so a stale value means the process is gone, not merely idle.
@@ -134,6 +140,13 @@ class RUNTIME_CONFIG(EnvConfigLoader):
     # collide). The staged object is content-addressed by a fresh UUID; a GC sweep of this prefix
     # reclaims bundles whose import never completed.
     IMPORT_STAGING_PREFIX = env("IMPORT_STAGING_PREFIX", default="collection-imports")
+    # Hard ceiling on an uploaded import bundle. The multipart body is spooled to S3 with NO cap
+    # otherwise — a single upload could fill the object store (a disk-exhaustion DoS). The spool aborts
+    # with a 413 the instant the streamed size crosses this, and the partial staged object is removed.
+    # Default 5 GiB; raise it for a deployment that legitimately moves very large corpora.
+    IMPORT_MAX_BUNDLE_BYTES: int = env(
+        "IMPORT_MAX_BUNDLE_BYTES", cast=int, default=5 * 1024 * 1024 * 1024
+    )
 
     # ───── Logging ─────
     LOGGING_CONSOLE_LEVEL = env("LOGGING_CONSOLE_LEVEL")

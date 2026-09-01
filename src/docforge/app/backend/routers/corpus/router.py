@@ -212,27 +212,18 @@ async def bulk_reingest(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
 
-    # 4. Cap the fan-out — never silently flood the queue with 100k jobs on one call.
-    ceiling = RUNTIME_CONFIG.CORPUS_MAX_REINGEST_FANOUT
-    capped = len(matched) > ceiling
-    targets = matched[:ceiling]
-    if capped:
-        CONTEXT.logger.warning(
-            f"Bulk reingest on {collection_id}: {len(matched)} matched, capped to {ceiling}"
-        )
-
-    # 5. Fan out one full-pipeline job per resolved document.
-    documents = await CONTEXT.database.documents.get_by_ids(targets)
-    handles = await BulkReingestService(CONTEXT.database, CONTEXT.queue).enqueue(
-        collection, documents
+    # 4. Fan out through the SHARED capped path — caps the fan-out (never floods the queue with 100k
+    #    jobs on one call) and fetches + enqueues the kept documents; same code the collection route uses.
+    result = await BulkReingestService(CONTEXT.database, CONTEXT.queue).enqueue_capped(
+        collection, matched, RUNTIME_CONFIG.CORPUS_MAX_REINGEST_FANOUT
     )
     return BulkReingestResponse(
         collection_id=str(collection_id),
-        matched=len(matched),
-        enqueued=len(handles),
-        capped=capped,
-        max_fanout=ceiling,
-        jobs=handles,
+        matched=result.matched,
+        enqueued=result.enqueued,
+        capped=result.capped,
+        max_fanout=result.ceiling,
+        jobs=result.handles,
     )
 
 

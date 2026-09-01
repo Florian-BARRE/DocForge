@@ -21,6 +21,7 @@ from .models import (
     CancelResult,
     CollectionCost,
     JobEvent,
+    JobPage,
     JobStatus,
     JobTrace,
     QueueDepth,
@@ -32,28 +33,49 @@ from .stream import stream_job_events
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 
 
-@router.get("", response_model=list[JobStatus])
+@router.get("", response_model=JobPage)
 @auto_handle_errors
 async def list_jobs(
     collection_id: uuid.UUID,
+    limit: int = Query(
+        default=RUNTIME_CONFIG.JOBS_MAX_PAGE_SIZE,
+        ge=1,
+        description="Page size, clamped down to JOBS_MAX_PAGE_SIZE. Defaults to that ceiling.",
+    ),
+    offset: int = Query(default=0, ge=0, description="Rows to skip for paging."),
     principal: AuthPrincipal = Depends(require(Capability.READ)),
-) -> list[JobStatus]:
+) -> JobPage:
     """
-    Return a collection's jobs, newest first — the task table of the monitoring view.
+    Return one page of a collection's jobs, newest first — the task table of the monitoring view.
+
+    A heavily re-ingested collection can hold thousands of job rows, so the list is BOUNDED: ``limit``
+    is clamped to ``JOBS_MAX_PAGE_SIZE`` (and defaults to it) and the response carries the total so the
+    UI can page. The row join adds the document filename + collection name (no second round-trip).
 
     Returns:
-        list[JobStatus]: Every job of the collection with its live state.
+        JobPage: total + limit/offset echo + the page of jobs.
     """
     # 1. The collection is a QUERY param, invisible to the path-scope gate — enforce it here.
     AuthzGuard.assert_collection_scope(principal, str(collection_id))
 
-    # 2. Straight read — the worker maintains every row; the join adds the document filename +
-    #    collection name so the table can show "what is ingesting" without a second round-trip.
-    jobs = await CONTEXT.database.jobs.list_for_collection_with_names(collection_id)
-    return [
-        JobStatus.from_row(entry.job, entry.document_filename, entry.collection_name)
-        for entry in jobs
-    ]
+    # 2. Clamp the page size so a client can never demand an unbounded scan of a huge job table.
+    page_size = min(limit, RUNTIME_CONFIG.JOBS_MAX_PAGE_SIZE)
+
+    # 3. One bounded page + the total, under the same collection predicate; the worker maintains every
+    #    row and the join carries the display names so the table shows "what is ingesting" in one call.
+    total = await CONTEXT.database.jobs.count_for_collection(collection_id)
+    jobs = await CONTEXT.database.jobs.list_for_collection_with_names(
+        collection_id, page_size, offset
+    )
+    return JobPage(
+        total=total,
+        limit=page_size,
+        offset=offset,
+        jobs=[
+            JobStatus.from_row(entry.job, entry.document_filename, entry.collection_name)
+            for entry in jobs
+        ],
+    )
 
 
 @router.get("/stage-durations", response_model=StageDurations)
@@ -129,12 +151,11 @@ async def live_workers(
     #    the in-memory scope gate for a query-less, fleet-wide endpoint — it may 403 a malformed key.
     allowed = AuthzGuard.scoped_collections(principal)
 
-    # 2. Prune crashed workers (heartbeat frozen past the cutoff) so the fleet view is not a
-    #    graveyard: a cleanly-stopped worker already de-registered itself, this clears the rest.
-    await CONTEXT.database.jobs.prune_stale_heartbeats(RUNTIME_CONFIG.WORKER_PRUNE_STALE_SECONDS)
-
-    # 3. Liveness (heartbeats) + activity (running jobs, joined to their document/collection names)
-    #    are two reads; the helper fuses + scopes them and carries the display names through.
+    # 2. Liveness (heartbeats) + activity (running jobs, joined to their document/collection names)
+    #    are two reads; the helper fuses + scopes them and carries the display names through. Pruning
+    #    crashed workers is NOT done here — a GET must not fleet-wide DELETE; the worker reaper cron
+    #    owns that (worker/backend/libs/jobs/reaper.py), so this read is side-effect-free and a stale
+    #    card ages out within one reaper cycle instead of on every poll.
     heartbeats = await CONTEXT.database.jobs.list_heartbeats()
     running = await CONTEXT.database.jobs.list_active_with_names()
     return WorkersLiveHelpers.assemble(heartbeats, running, allowed_collections=allowed)
@@ -149,15 +170,24 @@ async def queue_depth(
     """
     Return the backlog depth — pending (queued, unclaimed) and running job counts.
 
-    Fleet-wide when no ``collection_id`` is given (mirrors the fleet-wide workers/live view),
-    otherwise scoped to that collection (and scope-gated the same way the list route is).
+    Fleet-wide counts are FULL-ACCESS only: a collection-scoped key must pass a ``collection_id`` (a
+    query-less call would otherwise leak the whole fleet's backlog to a single-tenant key). A scoped
+    request is gated the same way the list route is.
 
     Returns:
         QueueDepth: The pending and running counts (both zero when nothing is queued).
     """
-    # 1. A scoped request must pass the collection-scope gate; a fleet-wide one only needs READ.
+    # 1. A scoped request passes the collection-scope gate; a fleet-wide one (no collection_id) is
+    #    only allowed for an unrestricted key — a scoped key must name a collection it owns (403 else),
+    #    so it can never read cross-tenant fleet totals.
     if collection_id is not None:
         AuthzGuard.assert_collection_scope(principal, str(collection_id))
+    elif AuthzGuard.scoped_collections(principal) is not None:
+        raise HTTPException(
+            status_code=403,
+            detail="collection_id is required for a collection-scoped key (fleet-wide counts are "
+            "restricted to full-access keys).",
+        )
 
     # 2. One grouped count read yields both numbers.
     pending, running = await CONTEXT.database.jobs.queue_depth(collection_id)

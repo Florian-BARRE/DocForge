@@ -1,7 +1,8 @@
 # ====== Code Summary ======
 # Unit tests for libs/server.py: DNS-rebinding protection is explicitly disabled on the built
 # FastMCP instance, the HTTP app no longer requires any MCP-level auth token to build/serve, and
-# (functional sanity) a request carrying a bearer reaches the SDK client selection with that token.
+# (functional sanity) a request carrying a bearer reaches the SDK client selection with that token
+# while a bearer-less request is rejected with 401 before ever reaching it.
 
 from __future__ import annotations
 
@@ -63,22 +64,31 @@ class _FakeAsyncClient:
 
 def test_caller_bearer_reaches_the_scoped_sdk_selection(monkeypatch: pytest.MonkeyPatch) -> None:
     """
-    Functional sanity: a request's own bearer, captured by the middleware, selects the matching
-    SDK client — proving the passthrough mechanism end to end without a real DocForge instance.
+    Functional sanity, wired the way entrypoint.py wires HTTP mode (require_bearer=True): a
+    request's own bearer, captured by the middleware, selects the matching SDK client, while a
+    bearer-less request is rejected with 401 before the tool-equivalent handler ever runs — proving
+    end to end that an anonymous HTTP request can never resolve the fallback token's client.
     """
     monkeypatch.setattr(scoped_sdk_module, "AsyncClient", _FakeAsyncClient)
-    provider = ScopedSdkProvider("http://api", timeout=5.0, fallback_token="fallback-tok")
+    provider = ScopedSdkProvider(
+        "http://api", timeout=5.0, fallback_token="fallback-tok", require_bearer=True
+    )
     sdk = ScopedSdk(provider)
+    calls: list[str] = []
 
     async def whoami(request: Request) -> JSONResponse:
         # Mirrors what a tool does: read an attribute off the injected sdk at call time.
+        calls.append("handler-called")
         return JSONResponse({"api_token": sdk.api_token})
 
     app = Starlette(routes=[Route("/whoami", whoami)])
     app.add_middleware(BearerPassthroughMiddleware)
     client = TestClient(app)
 
-    assert client.get("/whoami").json() == {"api_token": "fallback-tok"}
+    anonymous = client.get("/whoami")
+    assert anonymous.status_code == 401
+    assert calls == [], "no bearer -> the handler must never run, so it can't hit the fallback"
+
     assert client.get("/whoami", headers={"Authorization": "Bearer caller-key"}).json() == {
         "api_token": "caller-key"
     }

@@ -6,7 +6,8 @@ These tests prove:
   * WorkersLiveHelpers.assemble strips jobs outside the caller's allowed collections (None = all),
     while still surfacing worker liveness for every worker.
   * live_workers derives the allowed set from the principal (full access = all, scoped = its own),
-    and prunes stale heartbeats on the DB clock before assembling the view.
+    and is SIDE-EFFECT-FREE: pruning stale heartbeats moved to the worker reaper cron, so a poll
+    never triggers a fleet-wide DELETE.
 
 Store access is mocked via CONTEXT.database; ``from backend...`` imports are deferred until the
 ``fastapi_app`` fixture has registered app/ on sys.path (see tests/units/api/conftest.py).
@@ -185,16 +186,16 @@ async def test_live_workers_wildcard_key_sees_every_job(fastapi_app, monkeypatch
     assert all_collections == {COLL_A, COLL_B}
 
 
-async def test_live_workers_prunes_stale_heartbeats_first(fastapi_app, monkeypatch) -> None:
+async def test_live_workers_never_prunes_on_the_read_path(fastapi_app, monkeypatch) -> None:
+    """A GET must not fleet-wide DELETE: pruning stale heartbeats now belongs to the reaper cron."""
     from backend.routers.jobs.router import live_workers  # noqa: PLC0415
-    from config import RUNTIME_CONFIG  # noqa: PLC0415
 
     prune = _wire_jobs(monkeypatch, running=[])
 
     await live_workers(principal=_full())
 
-    # Crashed workers are swept on the configured cutoff before the view is assembled.
-    prune.assert_awaited_once_with(RUNTIME_CONFIG.WORKER_PRUNE_STALE_SECONDS)
+    # The read is side-effect-free — no prune fires on a poll (the worker reaper owns pruning now).
+    prune.assert_not_awaited()
 
 
 # ── fail-closed authz contract ───────────────────────────────────────────────────────────────────

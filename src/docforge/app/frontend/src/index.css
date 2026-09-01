@@ -23,7 +23,7 @@
   --line-strong: #d5cfc4;    /* inputs, strong dividers */
   --text: #14161a;           /* ink */
   --text-dim: #3d454f;       /* steel — secondary text */
-  --text-mute: #8a8378;      /* warm grey — labels, timestamps */
+  --text-mute: #6e6960;      /* warm grey, darkened for AA (4.5:1 min) — labels, timestamps */
 
   --accent: #ef5b1e;             /* forge — fills, active, primary */
   --accent-strong: #c1440a;      /* accent TEXT on paper + pressed (500 fails body contrast) */

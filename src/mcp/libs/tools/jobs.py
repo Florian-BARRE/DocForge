@@ -20,10 +20,16 @@ def register(mcp: FastMCP, sdk: AsyncClient) -> None:
     """
 
     @mcp.tool()
-    async def list_jobs(collection_id: str) -> Any:
-        """List a collection's ingestion jobs, newest first."""
-        jobs = await sdk.jobs.list(collection_id)
-        return [job.model_dump(mode="json") for job in jobs]
+    async def list_jobs(
+        collection_id: str, limit: int | None = None, offset: int | None = None
+    ) -> Any:
+        """List one page of a collection's ingestion jobs, newest first.
+
+        The list is bounded server-side; ``total``/``limit``/``offset`` drive pagination and
+        ``jobs`` holds the page. Pass ``limit``/``offset`` to page a heavily re-ingested collection.
+        """
+        page = await sdk.jobs.list(collection_id, limit=limit, offset=offset)
+        return page.model_dump(mode="json")
 
     @mcp.tool()
     async def get_job(job_id: str) -> Any:

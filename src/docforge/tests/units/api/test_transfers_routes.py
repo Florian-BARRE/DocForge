@@ -361,6 +361,39 @@ async def test_download_expired_bundle_is_404(fastapi_app, monkeypatch) -> None:
     assert exc.value.status_code == 404
 
 
+# ── import upload size cap (stage_upload) ───────────────────────────────────────────────────────
+
+
+async def test_stage_upload_rejects_oversized_bundle(fastapi_app) -> None:
+    """The spool aborts with a 413 past the ceiling and stages NOTHING (no partial S3 object)."""
+    from backend.routers.transfers.helpers import TransferHelpers  # noqa: PLC0415
+
+    # Three 4-byte windows = 12 bytes streamed; the 8-byte ceiling trips on the second window.
+    file = SimpleNamespace(read=AsyncMock(side_effect=[b"aaaa", b"bbbb", b"cccc", b""]))
+    stage_bundle = AsyncMock()
+    transfer = SimpleNamespace(stage_bundle=stage_bundle)
+
+    with pytest.raises(HTTPException) as exc:
+        await TransferHelpers.stage_upload(file, "collection-imports/x.dcexport", transfer, 8)
+
+    assert exc.value.status_code == 413
+    # The S3 PUT never ran — an aborted upload leaves no staged object.
+    stage_bundle.assert_not_awaited()
+
+
+async def test_stage_upload_accepts_within_limit(fastapi_app) -> None:
+    from backend.routers.transfers.helpers import TransferHelpers  # noqa: PLC0415
+
+    file = SimpleNamespace(read=AsyncMock(side_effect=[b"aaaa", b""]))
+    stage_bundle = AsyncMock(return_value=4)
+    transfer = SimpleNamespace(stage_bundle=stage_bundle)
+
+    size = await TransferHelpers.stage_upload(file, "collection-imports/x.dcexport", transfer, 1000)
+
+    assert size == 4
+    stage_bundle.assert_awaited_once()
+
+
 # ── the queue seam (ids/scalars only) ───────────────────────────────────────────────────────────
 
 

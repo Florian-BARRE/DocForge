@@ -4,8 +4,15 @@
 # created lazily and cached, so the httpx connection pool is reused across calls sharing a token —
 # but never mutated/shared ACROSS tokens (that would race under concurrent HTTP requests from
 # different callers: a header mutated on a shared client can be overwritten mid-flight by another
-# in-flight request). stdio transport, and any HTTP request without a bearer, always resolve to
-# the single fallback client built from the env DOCFORGE_API_TOKEN — today's unchanged behaviour.
+# in-flight request).
+#
+# The fallback client (built from the env DOCFORGE_API_TOKEN) is ONLY resolved for the stdio
+# transport (`require_bearer=False`) — the local, single-caller, no-network case where there is no
+# Authorization header to forward. In HTTP mode (`require_bearer=True`) a missing context token
+# raises MissingBearerTokenError instead of silently granting the fallback token's rights: in
+# practice this never triggers in production because BearerPassthroughMiddleware (auth.py) already
+# rejects a bearer-less HTTP request with 401 before any tool call resolves an SDK client — this is
+# the defense-in-depth backstop for that invariant, not the primary enforcement point.
 #
 # ScopedSdk is the thin proxy actually injected into the tools: its __getattr__ forwards every
 # attribute access (`.search`, `.collections`, ...) to the provider's CURRENT client, so no tool
@@ -31,22 +38,40 @@ from .token_context import incoming_docforge_token
 _MAX_CACHED_CLIENTS = 64
 
 
+class MissingBearerTokenError(RuntimeError):
+    """
+    Raised by ``ScopedSdkProvider.current`` when running with ``require_bearer=True`` (HTTP
+    transport) and the current call has no caller token in context.
+
+    This must never happen in a running server: ``BearerPassthroughMiddleware`` rejects a
+    bearer-less HTTP request with 401 before any tool call reaches the SDK client selection. Its
+    only job is to make sure that IF that invariant is ever bypassed (a wiring mistake, a future
+    code path), the failure is loud and denies access rather than silently granting the fallback
+    (local, potentially root-scoped) token's rights.
+    """
+
+
 class ScopedSdkProvider(LoggerClass):
     """Owns one AsyncClient per distinct caller token, plus the env-token fallback client."""
 
-    def __init__(self, base_url: str, timeout: float, fallback_token: str) -> None:
+    def __init__(
+        self, base_url: str, timeout: float, fallback_token: str, *, require_bearer: bool
+    ) -> None:
         """
         Build the fallback client; per-token clients are created lazily on first use.
 
         Args:
             base_url (str): The DocForge API origin.
             timeout (float): Per-request timeout in seconds, shared by every client.
-            fallback_token (str): DOCFORGE_API_TOKEN — used for stdio, and for any HTTP request
-                that carries no Authorization header.
+            fallback_token (str): DOCFORGE_API_TOKEN — used only when ``require_bearer`` is False.
+            require_bearer (bool): True for the streamable-HTTP transport, where every call MUST
+                have a caller token in context — ``current`` raises instead of falling back. False
+                for stdio, where the fallback token is the intended, sole credential.
         """
         LoggerClass.__init__(self)
         self._base_url = base_url
         self._timeout = timeout
+        self._require_bearer = require_bearer
         self._fallback_client = AsyncClient(base_url, timeout=timeout, api_token=fallback_token)
         self._by_token: dict[str, AsyncClient] = {}
 
@@ -56,13 +81,24 @@ class ScopedSdkProvider(LoggerClass):
         Resolve the client for the token stashed in the current request's context (if any).
 
         Returns:
-            AsyncClient: The caller-scoped client, or the fallback client outside of an HTTP
-                request (stdio) or when the caller sent no Authorization header.
+            AsyncClient: The caller-scoped client, or (stdio only) the fallback client when the
+                context carries no token.
+
+        Raises:
+            MissingBearerTokenError: ``require_bearer`` is True (HTTP transport) and the context
+                carries no caller token — see the class docstring for why this is a backstop, not
+                the primary enforcement point.
         """
         token = incoming_docforge_token.get()
-        if not token:
-            return self._fallback_client
-        return self._client_for_token(token)
+        if token:
+            return self._client_for_token(token)
+        if self._require_bearer:
+            raise MissingBearerTokenError(
+                "No caller bearer token in context while running with require_bearer=True; the "
+                "request should have been rejected by BearerPassthroughMiddleware before reaching "
+                "this point."
+            )
+        return self._fallback_client
 
     async def aclose(self) -> None:
         """Close the fallback client and every cached per-token client."""
@@ -130,4 +166,4 @@ class ScopedSdk:
         return getattr(self._provider.current, name)
 
 
-__all__ = ["ScopedSdk", "ScopedSdkProvider"]
+__all__ = ["MissingBearerTokenError", "ScopedSdk", "ScopedSdkProvider"]

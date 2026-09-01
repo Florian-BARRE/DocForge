@@ -12,12 +12,15 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException
 
 # ====== Internal Project Imports ======
+from config import RUNTIME_CONFIG
+from shared_libs.pipelines.blob_secrets import restore_blob_secrets
 from shared_libs.pipelines.ingest import BlobNormalizationError, BlobNormalizer
 from shared_libs.services.db.postgresql.tables import Collection
 
 # ====== Local Project Imports ======
 from ...context import CONTEXT
 from ...libs.auth import AuthPrincipal, AuthzGuard, Capability, require
+from ...libs.corpus import DocumentFilter, DocumentSelector, DocumentSelectorResolver
 from ...libs.health import CollectionHealthResponse
 from ...libs.reingest import BulkReingestAccepted, BulkReingestRequest, BulkReingestService
 from ...utils.error_handling import auto_handle_errors
@@ -32,7 +35,6 @@ from .models import (
     CreateCollectionRequest,
     UpdateCollectionRequest,
 )
-from .redaction import restore_blob_secrets
 from .store_sync import CollectionStoreSync
 
 router = APIRouter(prefix="/collections", tags=["collections"])
@@ -354,8 +356,8 @@ async def reingest_collection(
     this never re-uploads. Each document gets a FRESH job; poll each returned job for progress.
 
     Returns:
-        BulkReingestAccepted: One job handle per enqueued run (202); 404 when the collection is
-            unknown, 422 on a stale/broken pipeline or a bad document subset.
+        BulkReingestAccepted: matched / enqueued / capped + one job handle per enqueued run (202);
+            404 when the collection is unknown, 422 on a stale/broken pipeline or a bad document subset.
     """
     # 1. The collection must exist — its budget + pipeline drive every run.
     collection = await CONTEXT.database.collections.get(collection_id)
@@ -375,37 +377,47 @@ async def reingest_collection(
         raise HTTPException(status_code=422, detail=f"Collection {collection_id}: {exc}")
     PipelineBlobValidator.validate(pipeline_blob)
 
-    # 4. Resolve targets: an explicit subset (validated to exist AND belong here) or the whole
-    #    collection. An empty explicit list is an ambiguous no-op — rejected.
+    # 4. Map the request to the SHARED DocumentSelector: an explicit subset → id mode (validated to
+    #    exist AND belong here by the resolver), or omitted → filter mode with an EMPTY filter (the
+    #    whole collection). This reuses the corpus route's resolution + ownership guards instead of a
+    #    hand-duplicated id-validation block. An empty explicit list is an ambiguous no-op — rejected.
     if request.document_ids is not None:
         if not request.document_ids:
             raise HTTPException(
                 status_code=422, detail="document_ids must be a non-empty list or omitted."
             )
         try:
-            wanted = [uuid.UUID(value) for value in request.document_ids]
+            selector = DocumentSelector(
+                document_ids=[uuid.UUID(value) for value in request.document_ids]
+            )
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=f"document_ids: not a UUID ({exc}).")
-        documents = await CONTEXT.database.documents.get_by_ids(wanted)
-        found = {document.id for document in documents}
-        missing = [str(value) for value in wanted if value not in found]
-        if missing:
-            raise HTTPException(status_code=422, detail=f"unknown document(s): {missing}")
-        foreign = [
-            str(document.id) for document in documents if document.collection_id != collection_id
-        ]
-        if foreign:
-            raise HTTPException(
-                status_code=422,
-                detail=f"document(s) not in collection {collection_id}: {foreign}",
-            )
     else:
-        documents = await CONTEXT.database.documents.list_for_collection(collection_id)
+        selector = DocumentSelector(filter=DocumentFilter())
 
-    # 5. Fan out one full-pipeline job per resolved document (empty corpus → empty acceptance).
+    schema = await CONTEXT.database.collections.get_schema(collection_id)
+    try:
+        matched = await DocumentSelectorResolver(CONTEXT.database).resolve(
+            collection_id, selector, schema
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+    # 5. Fan out through the SHARED capped path — a huge corpus enqueues only the first N and reports
+    #    capped=true (never silently floods the queue), exactly like the corpus selector route.
     service = BulkReingestService(CONTEXT.database, CONTEXT.queue)
-    handles = await service.enqueue(collection, documents)
-    return BulkReingestAccepted(collection_id=str(collection_id), count=len(handles), jobs=handles)
+    result = await service.enqueue_capped(
+        collection, matched, RUNTIME_CONFIG.CORPUS_MAX_REINGEST_FANOUT
+    )
+    return BulkReingestAccepted(
+        collection_id=str(collection_id),
+        count=result.enqueued,
+        matched=result.matched,
+        enqueued=result.enqueued,
+        capped=result.capped,
+        max_fanout=result.ceiling,
+        jobs=result.handles,
+    )
 
 
 @router.delete(

@@ -59,12 +59,19 @@ async def test_list_jobs_carries_filename_collection_name_and_stage(
     from backend.routers.jobs.router import list_jobs  # noqa: PLC0415
 
     entry = _with_names(_job(cancel_requested=True))
-    jobs = SimpleNamespace(list_for_collection_with_names=AsyncMock(return_value=[entry]))
+    jobs = SimpleNamespace(
+        list_for_collection_with_names=AsyncMock(return_value=[entry]),
+        count_for_collection=AsyncMock(return_value=1),
+    )
     monkeypatch.setattr(CONTEXT, "database", SimpleNamespace(jobs=jobs), raising=False)
 
-    result = await list_jobs(collection_id=uuid.UUID(COLL_A), principal=_full())
+    result = await list_jobs(
+        collection_id=uuid.UUID(COLL_A), limit=500, offset=0, principal=_full()
+    )
 
-    row = result[0]
+    # The list is now a paginated envelope: total + limit/offset echo + the page of jobs.
+    assert result.total == 1
+    row = result.jobs[0]
     assert row.document_filename == "contract.pdf"
     assert row.collection_name == "legal"
     assert row.current_stage == "chunk"

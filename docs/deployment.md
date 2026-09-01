@@ -29,7 +29,11 @@ MCP — should be published to the outside; keep the data-plane services interna
 
 1. **Secrets.** Replace every placeholder in `services/*/.env`, `postgres.env`, `s3_config.json`:
    - `AUTH_ROOT_TOKEN` (strong, rotated), Postgres password (matched in `POSTGRES_DSN` **and**
-     `postgres.env`), S3 access/secret, `MCP_AUTH_TOKEN` (if running the MCP).
+     `postgres.env`), S3 access/secret.
+   - If running the MCP, set `services/mcp/.env`'s `DOCFORGE_API_TOKEN` (its stdio-only fallback —
+     never the HTTP path) to a **non-root, narrowly-scoped** DocForge API key, or leave it empty.
+     There is no `MCP_AUTH_TOKEN` to set: the MCP has no auth of its own, see the
+     [MCP guide](mcp.md#access-control).
    - `POSTGRES_DSN` can also be driven from a shell/`.env` `POSTGRES_DSN` — the compose default is only a
      fallback (`${POSTGRES_DSN:-...}`).
 2. **Turn auth ON.** Set `AUTH_ENABLED=true` + a strong `AUTH_ROOT_TOKEN`, then **recreate** the app
@@ -65,8 +69,12 @@ A GPU host needs the NVIDIA Container Toolkit. See the commented `reservations:`
 
 ## The MCP server (optional)
 
-If you want AI clients to drive DocForge, run the MCP service and expose its port with a strong
-`MCP_AUTH_TOKEN`. See the [MCP guide](mcp.md) for transports, ports and connecting a client.
+If you want AI clients to drive DocForge, run the MCP service. It has no auth of its own — it is a
+pure pass-through that forwards each caller's own `Authorization: Bearer <docforge-api-key>`
+upstream, and refuses (401) any request that doesn't carry one. **Port 10048 IS published in this
+prod compose**, so front it with TLS on an untrusted network and set its stdio-only
+`DOCFORGE_API_TOKEN` fallback to a non-root key (or leave it empty) — never a root/admin key. See
+the [MCP guide](mcp.md#access-control) for the full model, transports, ports, and connecting a client.
 
 ## Upgrades & migrations
 

@@ -1,9 +1,10 @@
 # ====== Code Summary ======
 # Entry point for the standalone DocForge MCP server (name aligned with docforge/entrypoint.py).
 # Wires McpConfig → ScopedSdkProvider (docforge_sdk) → FastMCP, then runs the requested transport:
-#   - stdio           → local Claude Desktop / Claude Code (env DOCFORGE_API_TOKEN)
+#   - stdio           → local Claude Desktop / Claude Code (env DOCFORGE_API_TOKEN, no network)
 #   - streamable-http → long-lived container service; auth is delegated to DocForge — each
-#                        request's own Authorization bearer is forwarded upstream as-is
+#                        request's own Authorization bearer is forwarded upstream as-is, and a
+#                        request with no bearer is rejected with 401 (no fallback over HTTP)
 # Invoked as `python entrypoint.py` (it cannot be a pure `uvicorn entrypoint:app` target because
 # the stdio mode is not an ASGI server).
 
@@ -26,14 +27,17 @@ logger = loggerplusplus.bind(identifier="McpServer")
 
 def main() -> None:
     """Build the MCP server and run it under the configured transport."""
-    # 1. Build the per-token SDK client provider. DOCFORGE_API_TOKEN is the fallback used by
-    #    stdio and by any HTTP request that carries no Authorization header; an HTTP request that
-    #    DOES carry one gets its own cached client using THAT token (see scoped_sdk.py). An empty
-    #    fallback token is forward-compatible with auth-disabled DocForge deployments.
+    # 1. Build the per-token SDK client provider. DOCFORGE_API_TOKEN is the fallback used ONLY by
+    #    stdio (require_bearer=False) — no Authorization header exists to forward there. In HTTP
+    #    mode (require_bearer=True) every call must carry its own caller token (see scoped_sdk.py);
+    #    BearerPassthroughMiddleware already rejects a bearer-less request with 401 before any tool
+    #    runs, so the fallback is never resolved to serve a network request. An HTTP request that
+    #    DOES carry a bearer gets its own cached client using THAT token.
     provider = ScopedSdkProvider(
         McpConfig.DOCFORGE_API_URL,
         timeout=float(McpConfig.MCP_API_TIMEOUT_S),
         fallback_token=McpConfig.DOCFORGE_API_TOKEN,
+        require_bearer=McpConfig.MCP_TRANSPORT != "stdio",
     )
     # 2. Inject the scoped proxy wherever an AsyncClient is expected — every tool file keeps its
     #    original `sdk: AsyncClient` signature; only this cast site knows it's actually the proxy.

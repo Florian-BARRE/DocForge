@@ -41,9 +41,15 @@ def test_bulk_reingest_all_documents_fans_out(client, monkeypatch) -> None:
     jobs = [SimpleNamespace(id=uuid.uuid4()) for _ in docs]
     enqueue = AsyncMock()
     monkeypatch.setattr(CONTEXT.database.collections, "get", AsyncMock(return_value=_collection()))
+    monkeypatch.setattr(CONTEXT.database.collections, "get_schema", AsyncMock(return_value=[]))
+    # Whole-collection now routes through the shared DocumentSelector (filter mode, empty filter =
+    # everything): the resolver projects ids, then the capped fan-out fetches the kept documents.
     monkeypatch.setattr(
-        CONTEXT.database.documents, "list_for_collection", AsyncMock(return_value=docs)
+        CONTEXT.database.documents,
+        "resolve_query_ids",
+        AsyncMock(return_value=[d.id for d in docs]),
     )
+    monkeypatch.setattr(CONTEXT.database.documents, "get_by_ids", AsyncMock(return_value=docs))
     monkeypatch.setattr(
         CONTEXT.database.ingestion,
         "reingest",
@@ -56,6 +62,9 @@ def test_bulk_reingest_all_documents_fans_out(client, monkeypatch) -> None:
     assert response.status_code == 202, response.text
     body = response.json()
     assert body["count"] == 3
+    assert body["matched"] == 3
+    assert body["enqueued"] == 3
+    assert body["capped"] is False
     assert len(body["jobs"]) == 3
     assert enqueue.await_count == 3
 
@@ -68,6 +77,9 @@ def test_bulk_reingest_explicit_subset_is_validated(client, monkeypatch) -> None
     job = SimpleNamespace(id=uuid.uuid4())
     enqueue = AsyncMock()
     monkeypatch.setattr(CONTEXT.database.collections, "get", AsyncMock(return_value=_collection()))
+    monkeypatch.setattr(CONTEXT.database.collections, "get_schema", AsyncMock(return_value=[]))
+    # Id-mode selector: the resolver validates existence + ownership (get_by_ids), then the capped
+    # fan-out fetches the kept documents (get_by_ids again) — the same mock serves both reads.
     monkeypatch.setattr(CONTEXT.database.documents, "get_by_ids", AsyncMock(return_value=[doc]))
     monkeypatch.setattr(CONTEXT.database.ingestion, "reingest", AsyncMock(return_value=(doc, job)))
     monkeypatch.setattr(CONTEXT.queue, "enqueue_ingest", enqueue)
@@ -102,6 +114,7 @@ def test_bulk_reingest_rejects_foreign_document(client, monkeypatch) -> None:
     _patch_pipeline_validation(monkeypatch)
     foreign = SimpleNamespace(id=uuid.uuid4(), collection_id=uuid.uuid4())
     monkeypatch.setattr(CONTEXT.database.collections, "get", AsyncMock(return_value=_collection()))
+    monkeypatch.setattr(CONTEXT.database.collections, "get_schema", AsyncMock(return_value=[]))
     monkeypatch.setattr(CONTEXT.database.documents, "get_by_ids", AsyncMock(return_value=[foreign]))
 
     response = client.post(
@@ -157,9 +170,13 @@ def test_bulk_reingest_enqueue_failure_marks_job_failed_and_continues(client, mo
     jobs = [SimpleNamespace(id=uuid.uuid4()) for _ in docs]
     mark_failed = AsyncMock()
     monkeypatch.setattr(CONTEXT.database.collections, "get", AsyncMock(return_value=_collection()))
+    monkeypatch.setattr(CONTEXT.database.collections, "get_schema", AsyncMock(return_value=[]))
     monkeypatch.setattr(
-        CONTEXT.database.documents, "list_for_collection", AsyncMock(return_value=docs)
+        CONTEXT.database.documents,
+        "resolve_query_ids",
+        AsyncMock(return_value=[d.id for d in docs]),
     )
+    monkeypatch.setattr(CONTEXT.database.documents, "get_by_ids", AsyncMock(return_value=docs))
     monkeypatch.setattr(
         CONTEXT.database.ingestion,
         "reingest",

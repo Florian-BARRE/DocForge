@@ -152,22 +152,46 @@ The server dispatches on `MCP_TRANSPORT` (`src/mcp/entrypoint.py`).
 |---|---|---|
 | `MCP_TRANSPORT` | `stdio` | `stdio` (local) or `streamable-http` (container service). |
 | `DOCFORGE_API_URL` | `http://localhost:8000` | Base URL of the DocForge REST API. |
-| `DOCFORGE_API_TOKEN` | *(empty)* | Bearer token sent on every outbound API request when DocForge has `AUTH_ENABLED=true`. Must match the root key or a registered per-user key. Leave empty only against an auth-disabled instance. |
+| `DOCFORGE_API_TOKEN` | *(empty)* | **stdio-only fallback bearer.** Used for every outbound API call when running over stdio (no `Authorization` header exists there to forward). In `streamable-http` mode this is **never** used to serve a request — see [Access control](#access-control) below. Leave empty only against an auth-disabled DocForge instance, and never set it to a root/admin key for a networked deployment. |
 | `MCP_API_TIMEOUT_S` | `60` | Per-request timeout (seconds) for SDK HTTP calls. |
-| `MCP_AUTH_TOKEN` | *(empty)* | Shared bearer the **HTTP** transport requires from clients. Empty is valid only in stdio mode — the server refuses to start HTTP without it. |
 | `MCP_HOST` | `0.0.0.0` | Bind address for the HTTP transport. |
 | `MCP_PORT` | `9000` | Internal HTTP listen port. |
 | `MCP_HTTP_PATH` | `/mcp` | URL path the streamable-HTTP endpoint is served on. |
 
-> Two distinct tokens: **`DOCFORGE_API_TOKEN`** authenticates the MCP server *to DocForge*;
-> **`MCP_AUTH_TOKEN`** authenticates *clients to the MCP server* (HTTP transport only).
+> There is no `MCP_AUTH_TOKEN` (removed) and no MCP-level auth gate of its own. The MCP is a pure
+> pass-through: it forwards each caller's own DocForge API key, so one token gives the same rights
+> on the REST API and via the MCP — see [Access control](#access-control).
 
-> **Scoping the LLM's power.** The MCP can do exactly what its `DOCFORGE_API_TOKEN` allows — the
-> LLM never sees that token, only `MCP_AUTH_TOKEN`. Rather than the root key, prefer a dedicated
-> **owner key** with capabilities `["read","write","search","create"]` and an empty collection
-> scope: it may create collections and is auto-granted ownership of each one it creates (the new id
-> is appended to its scope), so the agent can set up collections but can't touch anything it didn't
-> make. For an app's runtime, mint a separate `search`-only key scoped to the one collection it uses.
+> **Scoping the LLM's power.** The MCP can do exactly what the bearer it was given allows. Rather
+> than a root key, prefer a dedicated **owner key** with capabilities `["read","write","search","create"]`
+> and an empty collection scope: it may create collections and is auto-granted ownership of each one
+> it creates (the new id is appended to its scope), so the agent can set up collections but can't
+> touch anything it didn't make. For an app's runtime, mint a separate `search`-only key scoped to
+> the one collection it uses.
+
+### Access control
+
+**The MCP has no auth of its own — it is a pass-through.** Every HTTP request presents the caller's
+own DocForge API key in `Authorization: Bearer <docforge-api-key>`, forwarded upstream as-is, so the
+caller gets exactly that key's scope on the REST API (`BearerPassthroughMiddleware` +
+`ScopedSdkProvider` in `src/mcp/libs/`).
+
+**An HTTP request with no bearer (missing, empty, or a non-`Bearer` scheme) is refused with 401
+before any tool runs.** It never falls back to `DOCFORGE_API_TOKEN` or any other credential — that
+fallback exists ONLY for the stdio transport, which has no Authorization header to forward in the
+first place. This distinction matters: **MCP port `10048` IS published in production** (it's how AI
+clients reach DocForge), so an unauthenticated request reaching it must be rejected, not silently
+served with a privileged local token.
+
+Operational checklist for a networked (streamable-http) deployment:
+- Front the port with TLS (reverse proxy) — the caller's DocForge API key rides in the
+  `Authorization` header on every call.
+- Never expose port `10048` without a reason to trust every caller on the network path to it.
+- Set `DOCFORGE_API_TOKEN` (the stdio fallback) to a **non-root, narrowly-scoped** key, or leave it
+  empty — it is not read on the request path in HTTP mode, but an unused root token sitting in the
+  service's env is still a needless blast-radius increase if ever misconfigured or reused elsewhere.
+
+See also [PROD-HARDENING.md](PROD-HARDENING.md) for the full go-live checklist.
 
 ### (a) stdio — local clients
 
@@ -199,11 +223,11 @@ The endpoint is then reachable at `http://<host>:10048/mcp`. There is **no separ
 token** — auth is delegated to DocForge: every request must carry
 `Authorization: Bearer <docforge-api-key>`, which is forwarded upstream as-is, so a caller gets
 **exactly the rights that key has on the REST API** (one token = same scope on the API and via the
-MCP). A request without a bearer falls back to `DOCFORGE_API_TOKEN` (set it in `services/mcp/.env`
-when the API has `AUTH_ENABLED=true`). The HTTP app is stateless and returns JSON responses, so it
-proxies cleanly. **Plain HTTP works out of the box**; the key rides in the `Authorization` header, so
-on an untrusted network front the port with TLS (a reverse proxy terminating HTTPS) — on a trusted
-LAN/VPN plain HTTP is fine.
+MCP). **A request without a bearer is refused with 401** — it does NOT fall back to
+`DOCFORGE_API_TOKEN`; that fallback is stdio-only (see [Access control](#access-control)). The HTTP
+app is stateless and returns JSON responses, so it proxies cleanly. **Plain HTTP works out of the
+box**; the key rides in the `Authorization` header, so on an untrusted network front the port with
+TLS (a reverse proxy terminating HTTPS) — on a trusted LAN/VPN plain HTTP is fine.
 
 ---
 
@@ -236,8 +260,9 @@ run it through `uv`/the project venv so `docforge_sdk` and `mcp` are importable.
 ### streamable-HTTP
 
 For clients that support HTTP MCP, point them at `http://<host>:10048/mcp` and configure the bearer
-header `Authorization: Bearer <MCP_AUTH_TOKEN>`. This is the deployment to use when the model and the
-DocForge stack live on different hosts.
+header `Authorization: Bearer <your-docforge-api-key>` — the caller's own DocForge API key, not a
+separate MCP-level secret (there isn't one; see [Access control](#access-control)). This is the
+deployment to use when the model and the DocForge stack live on different hosts.
 
 ---
 

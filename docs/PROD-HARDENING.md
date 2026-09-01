@@ -90,7 +90,10 @@ AUTH_ROOT_TOKEN=df_root_<strong random>   # python3 -c "import secrets; print('d
 
 `RUNTIME_CONFIG.validate()` fails the boot if `AUTH_ENABLED=true` with an empty `AUTH_ROOT_TOKEN`
 (prevents the lockout footgun). The startup bootstrap provisions the root user + key idempotently.
-The MCP (if/when deployed) uses this same token as `DOCFORGE_API_TOKEN`.
+The MCP (if/when deployed) does NOT need this token: `DOCFORGE_API_TOKEN` in `services/mcp/.env` is
+only its stdio-local fallback and should be a separate, non-root, narrowly-scoped key — see
+[§4](#4-network-posture--verify-already-enforced-in-prod-compose) and
+[mcp.md#access-control](mcp.md#access-control).
 
 ---
 
@@ -113,6 +116,14 @@ FASTAPI_CORS_ALLOWED_ORIGINS=https://<your real UI origin>   # never "*" with au
   ```
 - Only the API (10040) and Gotenberg (10045) are published. Restrict even these at the OS firewall
   to trusted sources if the VM is reachable from an untrusted network.
+- **MCP port 10048 IS published by `docker-compose.yml`** (`docforge_mcp`, `profiles: ["full"]`)
+  whenever the MCP is deployed. It has no auth of its own: every request must carry
+  `Authorization: Bearer <docforge-api-key>` (a caller's own DocForge API key), forwarded upstream
+  as-is; a request without one is refused with 401 — it never falls back to a shared/local token
+  (`DOCFORGE_API_TOKEN` is a stdio-only fallback, unreachable from this port). Front 10048 with TLS
+  on an untrusted network, restrict it at the OS firewall the same as 10040, and set
+  `services/mcp/.env`'s `DOCFORGE_API_TOKEN` to a non-root, narrowly-scoped key (or leave it empty)
+  — never `AUTH_ROOT_TOKEN`. Full model: [mcp.md#access-control](mcp.md#access-control).
 
 ---
 

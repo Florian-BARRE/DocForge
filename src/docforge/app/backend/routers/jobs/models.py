@@ -293,8 +293,24 @@ class CollectionCost(BaseModel):
     document_count: int = Field(description="Number of jobs (documents) in the roll-up.")
 
 
+class JobPage(BaseModel):
+    """One paginated page of a collection's jobs plus the total match count and the pagination echo.
+
+    A heavily re-ingested collection can hold thousands of job rows; the list is served bounded (the
+    server clamps ``limit`` to ``JOBS_MAX_PAGE_SIZE``) so the monitoring view never dumps them all.
+    """
+
+    total: int = Field(
+        description="Total jobs in the collection (drives the pager; ignores paging)."
+    )
+    limit: int = Field(description="The applied page size (after the server ceiling clamp).")
+    offset: int = Field(description="The applied offset.")
+    jobs: list[JobStatus] = Field(description="The page of jobs, newest first.")
+
+
 __all__ = [
     "JobStatus",
+    "JobPage",
     "JobEvent",
     "JobTrace",
     "WorkerActivity",

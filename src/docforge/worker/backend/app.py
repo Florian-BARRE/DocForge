@@ -15,6 +15,7 @@ from .libs.jobs import (
     backfill_collection_filters,
     backfill_collection_meta_vectors,
     export_collection,
+    gc_expired_transfers,
     import_collection,
     ingest_document,
     reap_stuck_jobs,
@@ -31,10 +32,18 @@ def create_worker_settings() -> type:
     """
     # The stuck-job reaper runs every WORKER_REAP_INTERVAL_MINUTES AND once at startup, so a wedge
     # left by the previous (crashed/hot-reloaded) run is cleared immediately. Disabled -> no cron.
-    reap_minutes = set(range(0, 60, RUNTIME_CONFIG.WORKER_REAP_INTERVAL_MINUTES))
+    reap_minutes = set(range(0, 60, max(1, RUNTIME_CONFIG.WORKER_REAP_INTERVAL_MINUTES)))
     reaper_crons = (
         [cron(reap_stuck_jobs, minute=reap_minutes, run_at_startup=True)]
         if RUNTIME_CONFIG.WORKER_REAP_ENABLED
+        else []
+    )
+    # The transfer GC reclaims expired export bundles (S3 object + row) every
+    # WORKER_TRANSFER_GC_INTERVAL_MINUTES AND once at startup. Disabled -> no cron.
+    gc_minutes = set(range(0, 60, max(1, RUNTIME_CONFIG.WORKER_TRANSFER_GC_INTERVAL_MINUTES)))
+    transfer_gc_crons = (
+        [cron(gc_expired_transfers, minute=gc_minutes, run_at_startup=True)]
+        if RUNTIME_CONFIG.WORKER_TRANSFER_GC_ENABLED
         else []
     )
 
@@ -48,7 +57,7 @@ def create_worker_settings() -> type:
             export_collection,
             import_collection,
         ]
-        cron_jobs = reaper_crons
+        cron_jobs = reaper_crons + transfer_gc_crons
         on_startup = startup
         on_shutdown = shutdown
         redis_settings = RedisSettings.from_dsn(RUNTIME_CONFIG.REDIS_URL)

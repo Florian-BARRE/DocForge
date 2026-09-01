@@ -14,7 +14,7 @@ import pytest
 
 # ====== Internal Project Imports ======
 import libs.scoped_sdk as scoped_sdk_module
-from libs.scoped_sdk import ScopedSdk, ScopedSdkProvider
+from libs.scoped_sdk import MissingBearerTokenError, ScopedSdk, ScopedSdkProvider
 from libs.token_context import incoming_docforge_token
 
 
@@ -38,14 +38,39 @@ def _patch_async_client(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_current_falls_back_without_a_context_token() -> None:
-    """No context token (stdio, or an HTTP request without a header) -> the fallback client."""
-    provider = ScopedSdkProvider("http://api", timeout=5.0, fallback_token="fallback-tok")
+    """stdio (require_bearer=False) with no context token -> the fallback client."""
+    provider = ScopedSdkProvider(
+        "http://api", timeout=5.0, fallback_token="fallback-tok", require_bearer=False
+    )
     assert cast(_FakeAsyncClient, provider.current).api_token == "fallback-tok"
+
+
+def test_current_raises_without_a_context_token_when_bearer_is_required() -> None:
+    """HTTP mode (require_bearer=True) with no context token -> raise, never the fallback."""
+    provider = ScopedSdkProvider(
+        "http://api", timeout=5.0, fallback_token="fallback-tok", require_bearer=True
+    )
+    with pytest.raises(MissingBearerTokenError):
+        _ = provider.current
+
+
+def test_current_resolves_a_context_token_even_when_bearer_is_required() -> None:
+    """HTTP mode with a context token still resolves the caller-scoped client normally."""
+    provider = ScopedSdkProvider(
+        "http://api", timeout=5.0, fallback_token="fallback-tok", require_bearer=True
+    )
+    reset = incoming_docforge_token.set("caller-tok")
+    try:
+        assert cast(_FakeAsyncClient, provider.current).api_token == "caller-tok"
+    finally:
+        incoming_docforge_token.reset(reset)
 
 
 def test_current_resolves_and_caches_per_token() -> None:
     """A context token resolves to (and reuses) a dedicated client for that token."""
-    provider = ScopedSdkProvider("http://api", timeout=5.0, fallback_token="fallback-tok")
+    provider = ScopedSdkProvider(
+        "http://api", timeout=5.0, fallback_token="fallback-tok", require_bearer=False
+    )
     reset = incoming_docforge_token.set("caller-tok")
     try:
         first = provider.current
@@ -59,7 +84,9 @@ def test_current_resolves_and_caches_per_token() -> None:
 
 def test_scoped_sdk_proxy_forwards_to_the_current_client() -> None:
     """ScopedSdk.__getattr__ reads through to the provider's CURRENT client's attribute."""
-    provider = ScopedSdkProvider("http://api", timeout=5.0, fallback_token="fallback-tok")
+    provider = ScopedSdkProvider(
+        "http://api", timeout=5.0, fallback_token="fallback-tok", require_bearer=False
+    )
     sdk = ScopedSdk(provider)
     assert sdk.api_token == "fallback-tok"
 
@@ -75,7 +102,9 @@ def test_scoped_sdk_proxy_forwards_to_the_current_client() -> None:
 
 async def test_aclose_closes_the_fallback_and_every_cached_client() -> None:
     """aclose() tears down the fallback client plus every per-token client ever created."""
-    provider = ScopedSdkProvider("http://api", timeout=5.0, fallback_token="fallback-tok")
+    provider = ScopedSdkProvider(
+        "http://api", timeout=5.0, fallback_token="fallback-tok", require_bearer=False
+    )
     reset = incoming_docforge_token.set("caller-tok")
     try:
         cached = provider.current
@@ -93,7 +122,9 @@ async def test_cache_evicts_the_oldest_entry_beyond_the_bound(
 ) -> None:
     """Beyond the cache bound, the oldest per-token client is evicted rather than kept forever."""
     monkeypatch.setattr(scoped_sdk_module, "_MAX_CACHED_CLIENTS", 2)
-    provider = ScopedSdkProvider("http://api", timeout=5.0, fallback_token="fallback-tok")
+    provider = ScopedSdkProvider(
+        "http://api", timeout=5.0, fallback_token="fallback-tok", require_bearer=False
+    )
 
     for token in ("t1", "t2", "t3"):
         reset = incoming_docforge_token.set(token)

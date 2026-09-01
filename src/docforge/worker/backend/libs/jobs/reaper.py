@@ -3,8 +3,10 @@
 # (or crashes) mid-run, arq drops the in-flight task but the DB job row stays RUNNING forever and its
 # document PROCESSING. Job.updated_at bumps on every progress write, so a wedged job's timestamp
 # FREEZES; this cron fails every RUNNING job idle past the configured threshold (and releases its
-# document to FAILED) via the JobsFacade. Guarded by WORKER_REAP_ENABLED; idempotent (a reaped row no
-# longer matches RUNNING, so a re-run or a second worker is a harmless no-op).
+# document to FAILED) via the JobsFacade. It ALSO prunes crashed workers' stale heartbeats — a
+# fleet-wide DELETE that used to run on every GET /jobs/workers/live and now belongs to this cron, so
+# the read path is side-effect-free. Guarded by WORKER_REAP_ENABLED; idempotent (a reaped row no
+# longer matches RUNNING, a pruned heartbeat is already gone — a re-run or a second worker is a no-op).
 
 # ====== Standard Library Imports ======
 import uuid
@@ -38,6 +40,14 @@ async def reap_stuck_jobs(ctx: dict[str, Any]) -> list[str]:
             f"Reaped {len(reaped)} stuck job(s) idle >{minutes}m "
             f"(presumed orphaned by a worker restart): {[str(job_id) for job_id in reaped]}"
         )
+
+    # Prune crashed workers' stale heartbeats here (moved off the GET /jobs/workers/live read path, so
+    # a poll never triggers a fleet-wide DELETE). A cleanly-stopped worker already de-registered
+    # itself; this clears the rest so the fleet view is not a graveyard.
+    pruned = await CONTEXT.database.jobs.prune_stale_heartbeats(config.WORKER_PRUNE_STALE_SECONDS)
+    if pruned:
+        CONTEXT.logger.info(f"Pruned {len(pruned)} stale worker heartbeat(s): {pruned}")
+
     return [str(job_id) for job_id in reaped]
 
 

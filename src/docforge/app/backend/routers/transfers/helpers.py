@@ -14,7 +14,7 @@ from datetime import datetime
 from typing import Any
 
 # ====== Third-Party Library Imports ======
-from fastapi import UploadFile
+from fastapi import HTTPException, UploadFile
 from loggerplusplus import loggerplusplus
 
 _BUNDLE_CONTENT_TYPE = "application/x-dcexport"
@@ -32,30 +32,47 @@ class TransferHelpers:
         raise TypeError("TransferHelpers is a static-only class and cannot be instantiated.")
 
     @classmethod
-    async def stage_upload(cls, file: UploadFile, s3_key: str, transfer: Any) -> int:
+    async def stage_upload(
+        cls, file: UploadFile, s3_key: str, transfer: Any, max_bytes: int
+    ) -> int:
         """
         Stream a multipart bundle upload to S3 under ``s3_key`` without holding it all in memory.
 
         The multipart body is spooled to a temp file in bounded windows (never the whole file in
         RAM), then published to S3 with a known Content-Length via the transfer façade's
-        ``stage_bundle`` (a plain PUT of the open handle). The temp file is always removed.
+        ``stage_bundle`` (a plain PUT of the open handle). The spool aborts with a 413 the instant the
+        streamed size crosses ``max_bytes`` — an uncapped upload could exhaust the object store's disk
+        (a DoS). Nothing reaches S3 until the whole body has been spooled, so an aborted upload leaves
+        NO partial staged object; the temp file is always removed.
 
         Args:
             file (UploadFile): The multipart-uploaded bundle.
             s3_key (str): The staging object key to publish under.
             transfer (Any): The CollectionTransferFacade (CONTEXT.database.transfer).
+            max_bytes (int): The hard ceiling on the streamed body (413 past it).
 
         Returns:
             int: The staged object's size in bytes.
+
+        Raises:
+            HTTPException: 413 the moment the spooled size exceeds ``max_bytes``.
         """
-        # 1. Spool the upload to a temp file in bounded windows (no multi-GB RAM buffer).
+        # 1. Spool the upload to a temp file in bounded windows (no multi-GB RAM buffer), aborting the
+        #    instant the ceiling is crossed — the S3 PUT below never runs, so nothing is staged.
         fd, tmp_path = tempfile.mkstemp(suffix=".dcexport")
         try:
+            spooled = 0
             with os.fdopen(fd, "wb") as handle:
                 while True:
                     chunk = await file.read(cls.CHUNK_BYTES)
                     if not chunk:
                         break
+                    spooled += len(chunk)
+                    if spooled > max_bytes:
+                        raise HTTPException(
+                            status_code=413,
+                            detail=f"Import bundle exceeds the limit (> {max_bytes} bytes).",
+                        )
                     handle.write(chunk)
 
             # 2. Publish the spooled file to S3 with a known Content-Length (streamed PUT).

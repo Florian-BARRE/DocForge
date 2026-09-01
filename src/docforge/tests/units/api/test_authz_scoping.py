@@ -282,10 +282,16 @@ async def test_list_jobs_scoped_key_owned_query_is_allowed(fastapi_app, monkeypa
     from backend.context import CONTEXT  # noqa: PLC0415
     from backend.routers.jobs.router import list_jobs  # noqa: PLC0415
 
-    jobs = SimpleNamespace(list_for_collection_with_names=AsyncMock(return_value=[]))
+    jobs = SimpleNamespace(
+        list_for_collection_with_names=AsyncMock(return_value=[]),
+        count_for_collection=AsyncMock(return_value=0),
+    )
     monkeypatch.setattr(CONTEXT, "database", SimpleNamespace(jobs=jobs))
 
-    assert await list_jobs(collection_id=uuid.UUID(COLL_A), principal=_scoped(COLL_A)) == []
+    page = await list_jobs(
+        collection_id=uuid.UUID(COLL_A), limit=500, offset=0, principal=_scoped(COLL_A)
+    )
+    assert page.total == 0 and page.jobs == []
 
 
 async def test_get_job_trace_scoped_key_foreign_is_403(fastapi_app, monkeypatch) -> None:
