@@ -160,7 +160,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Scan app image (HIGH/CRITICAL)
-        uses: aquasecurity/trivy-action@v0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         continue-on-error: true
         with:
           image-ref: ghcr.io/${{ github.repository_owner }}/docforge-app:${{ env.VERSION }}
@@ -170,7 +170,7 @@ jobs:
           output: trivy-app.txt
 
       - name: Scan mcp image (HIGH/CRITICAL)
-        uses: aquasecurity/trivy-action@v0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         continue-on-error: true
         with:
           image-ref: ghcr.io/${{ github.repository_owner }}/docforge-mcp:${{ env.VERSION }}
@@ -180,7 +180,7 @@ jobs:
           output: trivy-mcp.txt
 
       - name: Scan docforge deps — filesystem (covers app + worker, one shared uv.lock)
-        uses: aquasecurity/trivy-action@v0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         continue-on-error: true
         with:
           scan-type: fs
@@ -191,7 +191,7 @@ jobs:
           output: trivy-docforge-deps.txt
 
       - name: Scan bge_server deps — filesystem
-        uses: aquasecurity/trivy-action@v0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         continue-on-error: true
         with:
           scan-type: fs
@@ -202,7 +202,7 @@ jobs:
           output: trivy-bge-server-deps.txt
 
       - name: Scan paddle_server deps — filesystem
-        uses: aquasecurity/trivy-action@v0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         continue-on-error: true
         with:
           scan-type: fs
