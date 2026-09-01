@@ -6,6 +6,7 @@
 import { useState } from "react";
 import { importCollection } from "../../../api/transfers";
 import { Button } from "../../../components/Button";
+import { FileInputButton } from "../../../components/FileInputButton";
 import { FormField } from "../../../components/FormField";
 import { inputStyle } from "../../../components/inputStyle";
 import type { Navigate } from "../../../shell/view";
@@ -50,11 +51,11 @@ export function ImportPanel({ onNavigate }: ImportPanelProps) {
       {!transferId && (
         <>
           <FormField label="Bundle" hint="A .dcexport file produced by another DocForge server's export.">
-            <input
-              type="file"
+            <FileInputButton
+              label="Choose file"
               accept=".dcexport"
-              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-              style={{ fontSize: theme.font.size.s, color: theme.color.text }}
+              selectedText={file?.name ?? null}
+              onFilesSelected={(files) => setFile(files?.[0] ?? null)}
             />
           </FormField>
           <FormField label="Name (optional)" hint="Defaults to the bundle's original collection name.">

@@ -24,7 +24,9 @@ export function CollectionCard({ collection, onClick }: CollectionCardProps) {
         background: t.color.surface,
         border: `1px solid ${hover ? t.color.accentLine : t.color.line}`,
         borderRadius: t.radius.l, padding: t.space.l, cursor: "pointer",
-        display: "flex", flexDirection: "column", gap: t.space.m,
+        // `space-between` anchors the format-chip row to the card's bottom edge regardless of how
+        // many chips it holds, so every card in a grid row ends flush with its siblings.
+        display: "flex", flexDirection: "column", justifyContent: "space-between", gap: t.space.m,
         boxShadow: hover ? t.shadow.md : t.shadow.sm,
         transform: hover ? "translateY(-2px)" : "none",
         transition: "transform .18s ease, box-shadow .18s ease, border-color .18s ease",

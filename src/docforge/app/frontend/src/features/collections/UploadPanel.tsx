@@ -12,6 +12,7 @@ import { HttpError, type ApiIssue } from "../../api/http";
 import { uploadDocument } from "../../api/documents";
 import { ApiIssueList } from "../../components/ApiIssueList";
 import { Button } from "../../components/Button";
+import { FileInputButton } from "../../components/FileInputButton";
 import { FormField } from "../../components/FormField";
 import { useToast } from "../../shell/toast";
 import { theme } from "../../theme";
@@ -131,11 +132,11 @@ export function UploadPanel({ collectionId, fields, onUploaded }: UploadPanelPro
       }}
     >
       <FormField label="Files">
-        <input
-          type="file"
+        <FileInputButton
+          label={entries.length > 1 ? "Choose files" : "Choose file"}
           multiple
-          onChange={(e) => onPick(e.target.files)}
-          style={{ fontSize: theme.font.size.s, color: theme.color.text }}
+          selectedText={entries.length ? `${entries.length} file${entries.length === 1 ? "" : "s"} selected` : null}
+          onFilesSelected={onPick}
         />
       </FormField>
       {declarable.map((field) => (

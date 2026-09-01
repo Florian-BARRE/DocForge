@@ -14,8 +14,10 @@ import { LoadingState } from "../../components/LoadingState";
 import { theme } from "../../theme";
 import { autoFitColumnWidth } from "./columnAutoFit";
 import { ColumnFilterCell } from "./ColumnFilterCell";
+import { ScrollEdgeFade } from "./ScrollEdgeFade";
 import { TableHeaderCell, type DropSide } from "./TableHeaderCell";
 import { isPinnedColumn, type ColumnFilterValue, type ColumnFiltersState } from "./types";
+import { useTrailingScrollFade } from "./useTrailingScrollFade";
 
 interface CorpusTableProps {
   table: Table<DocumentGridRow>;
@@ -53,6 +55,7 @@ export function CorpusTable({ table, loading, columnFilters, onColumnFilterChang
   const virtualItems = virtualizer.getVirtualItems();
   const paddingTop = virtualItems.length ? virtualItems[0].start : 0;
   const paddingBottom = virtualItems.length ? virtualizer.getTotalSize() - virtualItems[virtualItems.length - 1].end : 0;
+  const canScrollRight = useTrailingScrollFade(scrollRef, [tableWidth, columnCount, rows.length]);
 
   const onHeaderDragStart = (columnId: string) => setDrag({ sourceId: columnId, overId: null, side: "after" });
 
@@ -90,8 +93,12 @@ export function CorpusTable({ table, loading, columnFilters, onColumnFilterChang
         // `minWidth: 0` overrides the flex item's default `min-width: auto`, which would otherwise
         // let the table's own min-width balloon this wrapper (and the page) past the viewport
         // instead of confining the overflow to this container's own horizontal scrollbar.
-        flex: 1, minHeight: 0, minWidth: 0, overflow: "auto",
-        background: theme.color.surface, border: `1px solid ${theme.color.line}`, borderRadius: theme.radius.l,
+        // No background here (each row/header paints its own) — this box is exempt from the
+        // list-page width cap (it's an intentionally wide, scrollable grid), but a plain surface
+        // fill still shouldn't bleed past the actual rows on a short result set; leaving it
+        // transparent lets the warm page-ground show through there instead.
+        position: "relative", flex: 1, minHeight: 0, minWidth: 0, overflow: "auto",
+        border: `1px solid ${theme.color.line}`, borderRadius: theme.radius.l,
       }}
     >
       <table style={{ borderCollapse: "collapse", tableLayout: "fixed", width: tableWidth }}>
@@ -143,10 +150,10 @@ export function CorpusTable({ table, loading, columnFilters, onColumnFilterChang
         </thead>
         <tbody>
           {loading && rows.length === 0 && (
-            <tr><td colSpan={columnCount}><LoadingState label="loading documents…" /></td></tr>
+            <tr style={{ background: theme.color.surface }}><td colSpan={columnCount}><LoadingState label="loading documents…" /></td></tr>
           )}
           {!loading && rows.length === 0 && (
-            <tr>
+            <tr style={{ background: theme.color.surface }}>
               <td colSpan={columnCount} style={{ textAlign: "center", padding: theme.space.xxl, color: theme.color.dim, fontSize: theme.font.size.l }}>
                 No documents match the current filter.
               </td>
@@ -156,7 +163,11 @@ export function CorpusTable({ table, loading, columnFilters, onColumnFilterChang
           {virtualItems.map((virtualRow) => {
             const row = rows[virtualRow.index];
             return (
-              <tr key={row.id} style={{ borderBottom: `1px solid ${theme.color.line}`, opacity: row.original.enabled ? 1 : 0.6 }}>
+              <tr
+                key={row.id}
+                className="df-row-hover"
+                style={{ borderBottom: `1px solid ${theme.color.line}`, opacity: row.original.enabled ? 1 : 0.6 }}
+              >
                 {row.getVisibleCells().map((cell) => (
                   <td
                     key={cell.id}
@@ -177,6 +188,7 @@ export function CorpusTable({ table, loading, columnFilters, onColumnFilterChang
           {rows.length > 0 && paddingBottom > 0 && <tr aria-hidden style={{ height: paddingBottom }} />}
         </tbody>
       </table>
+      <ScrollEdgeFade visible={canScrollRight} />
     </div>
   );
 }

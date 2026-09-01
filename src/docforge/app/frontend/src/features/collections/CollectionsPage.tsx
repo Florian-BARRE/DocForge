@@ -49,7 +49,7 @@ export function CollectionsPage({ onNavigate }: CollectionsPageProps) {
         }
       />
       {showImport && (
-        <div style={{ marginBottom: theme.space.l }}>
+        <div className="df-rise" style={{ marginBottom: theme.space.l }}>
           <ImportPanel onNavigate={onNavigate} />
         </div>
       )}

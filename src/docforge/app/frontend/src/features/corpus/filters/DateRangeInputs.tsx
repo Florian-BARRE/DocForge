@@ -3,6 +3,8 @@
 // metadata field. Kept as plain `<input type="date">` (a day-granularity bound is enough for
 // corpus triage) rather than a full datetime picker.
 
+import { inputStyle } from "../../../components/inputStyle";
+import { useTheme } from "../../../shell/useTheme";
 import { theme } from "../../../theme";
 
 interface DateRangeInputsProps {
@@ -11,12 +13,15 @@ interface DateRangeInputsProps {
   onChange: (next: { gte: string; lte: string }) => void;
 }
 
-const cellInputStyle: React.CSSProperties = {
-  background: theme.color.surface2, border: `1px solid ${theme.color.line}`, borderRadius: theme.radius.s,
-  padding: "5px 6px", fontSize: 11, color: theme.color.text, width: "100%", fontFamily: theme.font.mono,
-};
-
 export function DateRangeInputs({ gte, lte, onChange }: DateRangeInputsProps) {
+  // Native date-picker/spinner chrome tracks `color-scheme`, not our CSS variables — without this
+  // it always renders light, looking foreign against the ink theme.
+  const { theme: activeTheme } = useTheme();
+  const cellInputStyle: React.CSSProperties = {
+    ...inputStyle, borderRadius: theme.radius.s, padding: "5px 6px",
+    fontSize: 11, fontFamily: theme.font.mono, colorScheme: activeTheme,
+  };
+
   return (
     <div style={{ display: "flex", gap: 4 }}>
       <input

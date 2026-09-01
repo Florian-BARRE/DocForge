@@ -34,7 +34,10 @@ export function StageRailHeader({
         borderBottom: `1px solid ${theme.color.line}`,
       }}
     >
-      <Chip tone={busy ? "dim" : valid ? "ok" : "warn"}>
+      {/* A missing binding / structural issue is a hard build failure — same tone as ApiIssueList's
+          error cards below, never the softer "warn" (that's reserved for staleness/attention, not
+          a build-blocking problem). */}
+      <Chip tone={busy ? "dim" : valid ? "ok" : "error"}>
         {busy ? "applying…" : valid ? "valid" : `${issueCount} issue${issueCount === 1 ? "" : "s"}`}
       </Chip>
       {saveError && <span style={{ color: theme.color.error, fontSize: theme.font.size.s }}>{saveError}</span>}

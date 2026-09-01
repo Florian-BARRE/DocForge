@@ -93,7 +93,8 @@ export function DocumentPage({ collectionId, documentId, onNavigate }: DocumentP
 
       <TabNav tabs={TABS} active={activeTab} onSelect={setActiveTab} />
 
-      <div style={{ marginTop: theme.space.l, flex: 1, minHeight: 0 }}>
+      {/* Keyed on the active tab so switching replays a short df-rise instead of hard-cutting. */}
+      <div key={activeTab} className="df-rise" style={{ marginTop: theme.space.l, flex: 1, minHeight: 0 }}>
         {activeTab === "overview" && <OverviewTab document={document} />}
         {activeTab === "pages" &&
           (tabs.pagesError ? (

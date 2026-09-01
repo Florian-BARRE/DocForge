@@ -156,6 +156,11 @@ button { letter-spacing: 0.005em; }
 .df-toast { animation: df-toast-in 0.24s cubic-bezier(0.22, 1, 0.36, 1) both; }
 @media (prefers-reduced-motion: reduce) { .df-toast { animation: none; } }
 
+/* Data-table row — a quiet surface-2 highlight on hover, shared by every list/grid table (kept as
+   plain CSS so virtualized grids don't need per-row hover state). */
+.df-row-hover { background: var(--surface); transition: background .12s ease; }
+.df-row-hover:hover { background: var(--surface-2); }
+
 /* Native disclosure: drop the default triangle, rotate our own chevron when open. */
 summary { list-style: none; }
 summary::-webkit-details-marker { display: none; }

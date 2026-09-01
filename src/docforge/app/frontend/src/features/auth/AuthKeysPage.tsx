@@ -88,12 +88,12 @@ export function AuthKeysPage({ onNavigate }: AuthKeysPageProps) {
       )}
 
       {showCreate && (
-        <div style={{ marginBottom: theme.space.l }}>
+        <div className="df-rise" style={{ marginBottom: theme.space.l }}>
           <CreateKeyForm onCreated={handleCreated} onCancel={() => setShowCreate(false)} />
         </div>
       )}
       {rotatingKey && (
-        <div style={{ marginBottom: theme.space.l }}>
+        <div className="df-rise" style={{ marginBottom: theme.space.l }}>
           <CreateKeyForm
             mode="rotate"
             initial={deriveRotateInitial(rotatingKey)}
@@ -127,7 +127,7 @@ export function AuthKeysPage({ onNavigate }: AuthKeysPageProps) {
         </div>
       )}
       {visibleKeys && visibleKeys.length > 0 && (
-        <div style={{ display: "flex", flexDirection: "column", gap: theme.space.s }}>
+        <div key={filter} className="df-rise" style={{ display: "flex", flexDirection: "column", gap: theme.space.s }}>
           {visibleKeys.map((key) => (
             <ApiKeyRow
               key={key.id}

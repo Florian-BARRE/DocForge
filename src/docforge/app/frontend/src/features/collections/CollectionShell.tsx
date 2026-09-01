@@ -154,7 +154,7 @@ export function CollectionShell({ collectionId, active, onNavigate, children }: 
           }
         />
         {showUpload && (
-          <div style={{ marginBottom: t.space.l, maxWidth: 480 }}>
+          <div className="df-rise" style={{ marginBottom: t.space.l, maxWidth: 480 }}>
             <UploadPanel
               collectionId={collectionId}
               fields={collection.fields}
@@ -163,7 +163,7 @@ export function CollectionShell({ collectionId, active, onNavigate, children }: 
           </div>
         )}
         {showExport && (
-          <div style={{ marginBottom: t.space.l, maxWidth: 480 }}>
+          <div className="df-rise" style={{ marginBottom: t.space.l, maxWidth: 480 }}>
             <ExportPanel collectionId={collectionId} collectionName={collection.name} />
           </div>
         )}

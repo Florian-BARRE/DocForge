@@ -13,8 +13,10 @@ interface GeneratedFactsListProps {
 export function GeneratedFactsList({ fieldName, facts }: GeneratedFactsListProps) {
   return (
     <div
+      // A plain surface-2 fill instead of a bordered card — this is already the 3rd nested box
+      // inside the chunk card, another hairline border here just adds card-in-card weight.
       style={{
-        background: theme.color.loopSoft, border: `1px solid ${theme.color.loop}`,
+        background: theme.color.surface2,
         borderRadius: theme.radius.m, padding: theme.space.m,
       }}
     >

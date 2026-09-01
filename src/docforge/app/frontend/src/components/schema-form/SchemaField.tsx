@@ -29,6 +29,21 @@ export function deref(prop: JsonSchemaProperty, schema: JsonSchema): JsonSchemaP
   return { ...definition, ...resolved };
 }
 
+// Words in a description that signal the field is meant to hold multi-line prose (a prompt or
+// template) even while its current/default value happens to be short or empty.
+const MULTILINE_HINT_RE = /\b(prompt|template|multi-?line)\b/i;
+
+/**
+ * A frontend-only display heuristic (no schema-form contract change): a string field renders as a
+ * single-line `<input>` unless its value/default already contains a newline, or its description
+ * hints it's meant to hold prose (a prompt/template) — those keep the resizable `<textarea>`.
+ */
+export function isSingleLineString(text: string, description?: string): boolean {
+  if (text.includes("\n")) return false;
+  if (description && MULTILINE_HINT_RE.test(description)) return false;
+  return true;
+}
+
 /** Human form of a property's type: "enum(a | b)", "number ≥ 0 ≤ 1", "string"… */
 export function typeLabel(prop: JsonSchemaProperty): string {
   if (prop.enum) return prop.enum.join(" | ");
@@ -111,10 +126,18 @@ export function SchemaField({ name, prop, schema, value, required = false, onCha
       />
     );
   } else {
-    // A resizable textarea for EVERY string: short values stay one line, long values
-    // (prompts, endpoints) can be dragged bigger via the native resize grip.
+    // A plain single-line input for ordinary short strings (names, endpoints); a resizable
+    // textarea only for values that are actually multi-line or read as prose (prompts/templates) —
+    // see `isSingleLineString`.
     const text = String(current ?? "");
-    control = (
+    control = isSingleLineString(text, resolved.description) ? (
+      <input
+        type="text"
+        style={inputStyle}
+        value={text}
+        onChange={(e) => onChange(e.target.value)}
+      />
+    ) : (
       <textarea
         rows={Math.min(6, Math.max(1, text.split("\n").length))}
         style={{ ...inputStyle, resize: "vertical", minHeight: theme.space.xl + 6, fontFamily: "inherit" }}

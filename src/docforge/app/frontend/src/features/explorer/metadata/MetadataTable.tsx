@@ -31,7 +31,7 @@ export function MetadataTable({ metadata }: { metadata: MetadataValue[] }) {
       </thead>
       <tbody>
         {metadata.map((m) => (
-          <tr key={m.field_name} style={{ borderBottom: `1px solid ${theme.color.line}` }}>
+          <tr key={m.field_name} className="df-row-hover" style={{ borderBottom: `1px solid ${theme.color.line}` }}>
             <td style={{ ...cellStyle, fontFamily: theme.font.mono, color: theme.color.text }}>{m.field_name}</td>
             <td style={cellStyle}><ValueRenderer value={m.value} /></td>
             <td style={cellStyle}>
