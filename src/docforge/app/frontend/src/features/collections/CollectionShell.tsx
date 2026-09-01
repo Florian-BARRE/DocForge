@@ -14,7 +14,8 @@ import { Chip } from "../../components/Chip";
 import { ErrorState } from "../../components/ErrorState";
 import { LoadingState } from "../../components/LoadingState";
 import { PageHeader } from "../../components/PageHeader";
-import { TabNav, type TabItem } from "../../components/TabNav";
+import { TabNav, tabButtonId, type TabItem } from "../../components/TabNav";
+import { useRovingTabIndex } from "../../components/useRovingTabIndex";
 import type { Navigate, View } from "../../shell/view";
 import { theme as t } from "../../theme";
 import { ExportPanel } from "./transfer/ExportPanel";
@@ -82,10 +83,30 @@ interface CollectionShellProps {
   children: ReactNode;
 }
 
-function SectionTab({ active, label, onClick }: { active: boolean; label: string; onClick: () => void }) {
+/** Deterministic id for a level-1 section tab — used for both roving focus and the panel's `aria-labelledby`. */
+function sectionTabId(key: Section): string {
+  return `collection-section-tab-${key}`;
+}
+
+interface SectionTabProps {
+  sectionKey: Section;
+  active: boolean;
+  label: string;
+  onClick: () => void;
+  registerRef: (el: HTMLElement | null) => void;
+  onKeyDown: (e: React.KeyboardEvent) => void;
+}
+
+function SectionTab({ sectionKey, active, label, onClick, registerRef, onKeyDown }: SectionTabProps) {
   return (
     <button
+      id={sectionTabId(sectionKey)}
+      ref={registerRef}
+      role="tab"
+      aria-selected={active}
+      tabIndex={active ? 0 : -1}
       onClick={onClick}
+      onKeyDown={onKeyDown}
       style={{
         background: active ? t.color.accentSoft : "transparent",
         color: active ? t.color.accent : t.color.dim,
@@ -115,6 +136,13 @@ export function CollectionShell({ collectionId, active, onNavigate, children }: 
 
   useEffect(load, [collectionId]);
 
+  // Called unconditionally (before the early returns below) — the Rules of Hooks require the same
+  // hooks on every render regardless of the loading/error branches.
+  const sectionRoving = useRovingTabIndex(
+    SECTION_ORDER.map((s) => s.key),
+    (key) => onNavigate(viewForTab(SECTION_DEFAULT[key], collectionId)),
+  );
+
   if (error) return <ErrorState message={error} onRetry={load} />;
   if (!collection) return <LoadingState label="loading collection…" />;
 
@@ -122,6 +150,11 @@ export function CollectionShell({ collectionId, active, onNavigate, children }: 
   const maxSizeMb = (collection.max_file_size_bytes / (1024 * 1024)).toFixed(1);
   const subtitle = `${collection.supported_formats.join(", ")} · ${maxSizeMb} MB max · `
     + `${collection.fields.length} field${collection.fields.length === 1 ? "" : "s"}`;
+
+  // The panel below is `aria-labelledby` whichever tab strip is actually "in charge" of it right
+  // now — the level-2 sub-tabs when the section has any, otherwise the level-1 section tab itself
+  // (Overview/Jobs are leaves with no sub-tabs).
+  const activeTabId = SUBTABS[section].length > 1 ? tabButtonId("collection-subtabs", active) : sectionTabId(section);
 
   return (
     <div className="df-rise" style={{ height: "100%", display: "flex", flexDirection: "column", overflow: "hidden" }}>
@@ -170,6 +203,8 @@ export function CollectionShell({ collectionId, active, onNavigate, children }: 
 
         {/* Level 1 — Overview | Corpus | Search | Jobs. */}
         <div
+          role="tablist"
+          aria-label="Collection sections"
           style={{
             display: "flex", gap: t.space.xs,
             marginBottom: SUBTABS[section].length > 1 ? t.space.m : 0,
@@ -180,18 +215,30 @@ export function CollectionShell({ collectionId, active, onNavigate, children }: 
           {SECTION_ORDER.map((s) => (
             <SectionTab
               key={s.key}
+              sectionKey={s.key}
               active={section === s.key}
               label={s.label}
               onClick={() => onNavigate(viewForTab(SECTION_DEFAULT[s.key], collectionId))}
+              registerRef={sectionRoving.register(s.key)}
+              onKeyDown={(e) => sectionRoving.onKeyDown(e, s.key)}
             />
           ))}
         </div>
         {/* Level 2 — the active section's sub-tabs (Overview/Jobs have none). */}
         {SUBTABS[section].length > 1 && (
-          <TabNav tabs={SUBTABS[section]} active={active} onSelect={(tab) => onNavigate(viewForTab(tab, collectionId))} />
+          <TabNav
+            tabs={SUBTABS[section]}
+            active={active}
+            onSelect={(tab) => onNavigate(viewForTab(tab, collectionId))}
+            navId="collection-subtabs"
+            ariaLabel={`${SECTION_ORDER.find((s) => s.key === section)?.label ?? "Section"} views`}
+            panelId="collection-panel"
+          />
         )}
       </div>
-      <div style={{ flex: 1, minHeight: 0 }}>{children}</div>
+      <div role="tabpanel" id="collection-panel" aria-labelledby={activeTabId} style={{ flex: 1, minHeight: 0 }}>
+        {children}
+      </div>
     </div>
   );
 }

@@ -13,28 +13,30 @@ import { emptyFilterValue, type ColumnFilterKind, type ColumnFilterValue } from 
 interface ColumnFilterCellProps {
   columnId: string;
   filterKind: ColumnFilterKind;
+  /** The column's header text — every filter control derives its accessible name from it. */
+  label: string;
   enumOptions?: string[];
   value: ColumnFilterValue | undefined;
   onChange: (columnId: string, value: ColumnFilterValue) => void;
 }
 
-export function ColumnFilterCell({ columnId, filterKind, enumOptions, value, onChange }: ColumnFilterCellProps) {
+export function ColumnFilterCell({ columnId, filterKind, label, enumOptions, value, onChange }: ColumnFilterCellProps) {
   const current = value ?? emptyFilterValue(filterKind);
   const set = (next: ColumnFilterValue) => onChange(columnId, next);
 
   switch (current.kind) {
     case "text":
-      return <TextFilterInput value={current.contains} onChange={(contains) => set({ kind: "text", contains })} />;
+      return <TextFilterInput ariaLabel={`Filter ${label}`} value={current.contains} onChange={(contains) => set({ kind: "text", contains })} />;
     case "enumMulti":
-      return <EnumMultiSelect options={enumOptions ?? []} values={current.values} onChange={(values) => set({ kind: "enumMulti", values })} />;
+      return <EnumMultiSelect ariaLabel={`Filter ${label}`} options={enumOptions ?? []} values={current.values} onChange={(values) => set({ kind: "enumMulti", values })} />;
     case "listIn":
-      return <ListFilterInput values={current.values} onChange={(values) => set({ kind: "listIn", values })} />;
+      return <ListFilterInput ariaLabel={`Filter ${label}`} values={current.values} onChange={(values) => set({ kind: "listIn", values })} />;
     case "bool":
-      return <BoolTriStateSelect value={current.value} onChange={(v) => set({ kind: "bool", value: v })} />;
+      return <BoolTriStateSelect ariaLabel={`Filter ${label}`} value={current.value} onChange={(v) => set({ kind: "bool", value: v })} />;
     case "numberRange":
-      return <NumberRangeInputs gte={current.gte} lte={current.lte} onChange={(next) => set({ kind: "numberRange", ...next })} />;
+      return <NumberRangeInputs label={label} gte={current.gte} lte={current.lte} onChange={(next) => set({ kind: "numberRange", ...next })} />;
     case "dateRange":
-      return <DateRangeInputs gte={current.gte} lte={current.lte} onChange={(next) => set({ kind: "dateRange", ...next })} />;
+      return <DateRangeInputs label={label} gte={current.gte} lte={current.lte} onChange={(next) => set({ kind: "dateRange", ...next })} />;
     default:
       return null;
   }

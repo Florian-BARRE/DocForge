@@ -12,9 +12,10 @@ interface TextFilterInputProps {
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
+  ariaLabel?: string;
 }
 
-export function TextFilterInput({ value, onChange, placeholder }: TextFilterInputProps) {
+export function TextFilterInput({ value, onChange, placeholder, ariaLabel }: TextFilterInputProps) {
   const [draft, setDraft] = useState(value);
   const timerRef = useRef<number>();
 
@@ -34,6 +35,7 @@ export function TextFilterInput({ value, onChange, placeholder }: TextFilterInpu
       value={draft}
       onChange={(e) => handleChange(e.target.value)}
       placeholder={placeholder ?? "contains…"}
+      aria-label={ariaLabel}
       style={{ ...inputStyle, padding: `${theme.space.xs}px ${theme.space.s}px`, fontSize: theme.font.size.s }}
     />
   );

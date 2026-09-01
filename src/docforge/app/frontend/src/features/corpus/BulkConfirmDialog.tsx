@@ -4,7 +4,9 @@
 // features/auth/CreatedKeyModal.tsx (feature-local duplicate, not shared — see feature-slice
 // isolation convention).
 
+import { useId } from "react";
 import { Button, type ButtonVariant } from "../../components/Button";
+import { useFocusTrap } from "../../shell/useFocusTrap";
 import { theme } from "../../theme";
 
 interface BulkConfirmDialogProps {
@@ -19,6 +21,9 @@ interface BulkConfirmDialogProps {
 }
 
 export function BulkConfirmDialog({ title, description, count, confirmLabel, variant, pending, onConfirm, onCancel }: BulkConfirmDialogProps) {
+  const titleId = useId();
+  const panelRef = useFocusTrap<HTMLDivElement>(onCancel);
+
   return (
     <div
       style={{
@@ -27,13 +32,18 @@ export function BulkConfirmDialog({ title, description, count, confirmLabel, var
       }}
     >
       <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
         style={{
           background: theme.color.panel, border: `1px solid ${theme.color.accentLine}`, borderRadius: theme.radius.l,
           boxShadow: theme.shadow.pop, padding: theme.space.l, maxWidth: 440, width: "100%",
           display: "flex", flexDirection: "column", gap: theme.space.m,
         }}
       >
-        <h2 style={{ fontFamily: theme.font.display, fontSize: theme.font.size.xl, fontWeight: 700, color: theme.color.text, margin: 0 }}>
+        <h2 id={titleId} style={{ fontFamily: theme.font.display, fontSize: theme.font.size.xl, fontWeight: 700, color: theme.color.text, margin: 0 }}>
           {title}
         </h2>
         <div style={{ color: theme.color.dim, fontSize: theme.font.size.m, lineHeight: 1.5 }}>{description}</div>

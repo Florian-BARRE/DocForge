@@ -83,6 +83,9 @@ export function AuthKeysPage({ onNavigate }: AuthKeysPageProps) {
             ]}
             active={filter}
             onSelect={setFilter}
+            navId="key-status-filter"
+            ariaLabel="Key status filter"
+            role="group"
           />
         </div>
       )}

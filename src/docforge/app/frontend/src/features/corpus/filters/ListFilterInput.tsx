@@ -9,12 +9,13 @@ interface ListFilterInputProps {
   values: string[];
   onChange: (values: string[]) => void;
   placeholder?: string;
+  ariaLabel?: string;
 }
 
-export function ListFilterInput({ values, onChange, placeholder }: ListFilterInputProps) {
+export function ListFilterInput({ values, onChange, placeholder, ariaLabel }: ListFilterInputProps) {
   return (
     <div style={{ fontSize: 12 }}>
-      <TagsInput values={values} onChange={onChange} placeholder={placeholder ?? "add + enter"} />
+      <TagsInput values={values} onChange={onChange} placeholder={placeholder ?? "add + enter"} ariaLabel={ariaLabel} />
     </div>
   );
 }

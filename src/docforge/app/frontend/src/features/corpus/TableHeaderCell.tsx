@@ -7,7 +7,7 @@
 // their trailing edge.
 
 import { flexRender, type Header } from "@tanstack/react-table";
-import type { DragEvent } from "react";
+import type { DragEvent, KeyboardEvent } from "react";
 import type { DocumentGridRow } from "../../api/corpus";
 import { theme } from "../../theme";
 import { ColumnResizeHandle } from "./ColumnResizeHandle";
@@ -24,14 +24,24 @@ interface TableHeaderCellProps {
   onDrop: () => void;
   onDragEnd: () => void;
   onAutoFit: (columnId: string) => void;
+  onResizeStep: (columnId: string, nextSize: number) => void;
+  /** Keyboard path for drag-reorder — Alt+Left/Right on the header's own sort button (mouse drag is unchanged). */
+  onReorderStep: (columnId: string, direction: -1 | 1) => void;
 }
 
 export function TableHeaderCell({
-  header, reorderable, isDragSource, dropSide, onDragStart, onDragOver, onDrop, onDragEnd, onAutoFit,
+  header, reorderable, isDragSource, dropSide, onDragStart, onDragOver, onDrop, onDragEnd, onAutoFit, onResizeStep, onReorderStep,
 }: TableHeaderCellProps) {
   const sorted = header.column.getIsSorted();
   const canSort = header.column.getCanSort();
   const canResize = header.column.getCanResize();
+  const label = typeof header.column.columnDef.header === "string" ? header.column.columnDef.header : header.column.id;
+
+  const onSortButtonKeyDown = (e: KeyboardEvent<HTMLButtonElement>) => {
+    if (!reorderable || !e.altKey) return;
+    if (e.key === "ArrowLeft") { e.preventDefault(); onReorderStep(header.column.id, -1); }
+    else if (e.key === "ArrowRight") { e.preventDefault(); onReorderStep(header.column.id, 1); }
+  };
 
   return (
     <th
@@ -50,7 +60,7 @@ export function TableHeaderCell({
       onDragOver={(e) => { if (reorderable) { e.preventDefault(); onDragOver(e, header.column.id); } }}
       onDrop={(e) => { if (reorderable) { e.preventDefault(); onDrop(); } }}
       onDragEnd={onDragEnd}
-      title={reorderable ? "Drag to reorder" : undefined}
+      title={reorderable ? "Drag to reorder · focus the label + Alt+←/→ to reorder via keyboard" : undefined}
       style={{
         position: "relative",
         textAlign: header.column.columnDef.meta?.align === "right" ? "right" : "left",
@@ -70,6 +80,8 @@ export function TableHeaderCell({
         <button
           type="button"
           onClick={header.column.getToggleSortingHandler()}
+          onKeyDown={onSortButtonKeyDown}
+          aria-keyshortcuts={reorderable ? "Alt+ArrowLeft Alt+ArrowRight" : undefined}
           style={{
             background: "none", border: "none", padding: 0, display: "inline-flex", alignItems: "center", gap: 4,
             cursor: "pointer", color: sorted ? theme.color.accent : theme.color.dim,
@@ -87,7 +99,14 @@ export function TableHeaderCell({
           {flexRender(header.column.columnDef.header, header.getContext())}
         </div>
       ))}
-      {canResize && <ColumnResizeHandle header={header} onAutoFit={() => onAutoFit(header.column.id)} />}
+      {canResize && (
+        <ColumnResizeHandle
+          header={header}
+          label={label}
+          onAutoFit={() => onAutoFit(header.column.id)}
+          onResizeStep={(nextSize) => onResizeStep(header.column.id, nextSize)}
+        />
+      )}
     </th>
   );
 }

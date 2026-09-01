@@ -8,6 +8,8 @@ interface NumberRangeInputsProps {
   gte: string;
   lte: string;
   onChange: (next: { gte: string; lte: string }) => void;
+  /** The column's header text, used to build each bound's accessible name. */
+  label?: string;
 }
 
 const cellInputStyle: React.CSSProperties = {
@@ -15,13 +17,14 @@ const cellInputStyle: React.CSSProperties = {
   padding: "5px 6px", fontSize: 12, color: theme.color.text, width: "100%", fontFamily: theme.font.mono,
 };
 
-export function NumberRangeInputs({ gte, lte, onChange }: NumberRangeInputsProps) {
+export function NumberRangeInputs({ gte, lte, onChange, label }: NumberRangeInputsProps) {
   return (
     <div style={{ display: "flex", gap: 4 }}>
       <input
         type="number"
         value={gte}
         placeholder="min"
+        aria-label={label ? `${label} minimum` : "minimum"}
         onChange={(e) => onChange({ gte: e.target.value, lte })}
         style={cellInputStyle}
       />
@@ -29,6 +32,7 @@ export function NumberRangeInputs({ gte, lte, onChange }: NumberRangeInputsProps
         type="number"
         value={lte}
         placeholder="max"
+        aria-label={label ? `${label} maximum` : "maximum"}
         onChange={(e) => onChange({ gte, lte: e.target.value })}
         style={cellInputStyle}
       />

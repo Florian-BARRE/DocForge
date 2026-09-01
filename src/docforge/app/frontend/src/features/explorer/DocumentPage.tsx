@@ -12,7 +12,7 @@ import { ErrorState } from "../../components/ErrorState";
 import { LoadingState } from "../../components/LoadingState";
 import { PageBoxLightbox } from "../../components/PageBoxLightbox";
 import { PageHeader } from "../../components/PageHeader";
-import { TabNav } from "../../components/TabNav";
+import { TabNav, tabButtonId } from "../../components/TabNav";
 import type { Navigate } from "../../shell/view";
 import { theme } from "../../theme";
 import { ChunksTab } from "./chunks/ChunksTab";
@@ -91,10 +91,24 @@ export function DocumentPage({ collectionId, documentId, onNavigate }: DocumentP
         }
       />
 
-      <TabNav tabs={TABS} active={activeTab} onSelect={setActiveTab} />
+      <TabNav
+        tabs={TABS}
+        active={activeTab}
+        onSelect={setActiveTab}
+        navId="document-tabs"
+        ariaLabel="Document sections"
+        panelId="document-tabpanel"
+      />
 
       {/* Keyed on the active tab so switching replays a short df-rise instead of hard-cutting. */}
-      <div key={activeTab} className="df-rise" style={{ marginTop: theme.space.l, flex: 1, minHeight: 0 }}>
+      <div
+        key={activeTab}
+        className="df-rise"
+        role="tabpanel"
+        id="document-tabpanel"
+        aria-labelledby={tabButtonId("document-tabs", activeTab)}
+        style={{ marginTop: theme.space.l, flex: 1, minHeight: 0 }}
+      >
         {activeTab === "overview" && <OverviewTab document={document} />}
         {activeTab === "pages" &&
           (tabs.pagesError ? (

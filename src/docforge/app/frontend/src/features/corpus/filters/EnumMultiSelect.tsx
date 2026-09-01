@@ -11,9 +11,10 @@ interface EnumMultiSelectProps {
   options: string[];
   values: string[];
   onChange: (values: string[]) => void;
+  ariaLabel?: string;
 }
 
-export function EnumMultiSelect({ options, values, onChange }: EnumMultiSelectProps) {
+export function EnumMultiSelect({ options, values, onChange, ariaLabel }: EnumMultiSelectProps) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -35,6 +36,9 @@ export function EnumMultiSelect({ options, values, onChange }: EnumMultiSelectPr
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
+        aria-label={ariaLabel}
+        aria-haspopup="true"
+        aria-expanded={open}
         style={{
           width: "100%", textAlign: "left", background: theme.color.surface2, border: `1px solid ${theme.color.line}`,
           borderRadius: theme.radius.s, padding: "5px 6px", fontSize: 12, color: values.length ? theme.color.text : theme.color.mute,

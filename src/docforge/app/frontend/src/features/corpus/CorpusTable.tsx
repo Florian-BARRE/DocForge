@@ -86,6 +86,24 @@ export function CorpusTable({ table, loading, columnFilters, onColumnFilterChang
     table.setColumnSizing((prev) => ({ ...prev, [columnId]: fitted }));
   };
 
+  // Keyboard counterpart to the mouse drag on ColumnResizeHandle — same `setColumnSizing` write.
+  const onResizeStep = (columnId: string, nextSize: number) => {
+    table.setColumnSizing((prev) => ({ ...prev, [columnId]: nextSize }));
+  };
+
+  // Keyboard counterpart to the mouse drag-and-drop reorder — swaps with the adjacent reorderable
+  // column (pinned select/actions columns sit at the array's edges and are skipped).
+  const onReorderStep = (columnId: string, direction: -1 | 1) => {
+    const current = table.getState().columnOrder;
+    const index = current.indexOf(columnId);
+    if (index === -1) return;
+    const targetIndex = index + direction;
+    if (targetIndex < 0 || targetIndex >= current.length || isPinnedColumn(current[targetIndex])) return;
+    const next = [...current];
+    [next[index], next[targetIndex]] = [next[targetIndex], next[index]];
+    table.setColumnOrder(next);
+  };
+
   return (
     <div
       ref={scrollRef}
@@ -122,6 +140,8 @@ export function CorpusTable({ table, loading, columnFilters, onColumnFilterChang
                   onDrop={onHeaderDrop}
                   onDragEnd={() => setDrag(null)}
                   onAutoFit={onAutoFit}
+                  onResizeStep={onResizeStep}
+                  onReorderStep={onReorderStep}
                 />
               ))}
             </tr>
@@ -138,6 +158,7 @@ export function CorpusTable({ table, loading, columnFilters, onColumnFilterChang
                     <ColumnFilterCell
                       columnId={column.id}
                       filterKind={filterKind}
+                      label={typeof column.columnDef.header === "string" ? column.columnDef.header : column.id}
                       enumOptions={column.columnDef.meta?.enumOptions}
                       value={columnFilters[column.id]}
                       onChange={onColumnFilterChange}

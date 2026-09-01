@@ -11,8 +11,9 @@
 // of covering the viewport — exactly what broke the chunk-explorer "view on page" close affordance.
 // A portal sidesteps the whole containing-block class of bug regardless of what ancestors do.
 
-import { useEffect } from "react";
+import { useId } from "react";
 import { createPortal } from "react-dom";
+import { useFocusTrap } from "../shell/useFocusTrap";
 import { PageBoxOverlay, type OverlayBox } from "./PageBoxOverlay";
 import { theme } from "../theme";
 
@@ -26,11 +27,10 @@ interface PageBoxLightboxProps {
 }
 
 export function PageBoxLightbox({ renderBlobHash, width, height, boxes, caption, onClose }: PageBoxLightboxProps) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  const captionId = useId();
+  // Replaces the primitive's own window-level Escape listener — `useFocusTrap` covers Escape plus
+  // Tab-cycling and focus restore in one place.
+  const figureRef = useFocusTrap<HTMLElement>(onClose);
 
   return createPortal(
     <div
@@ -41,6 +41,11 @@ export function PageBoxLightbox({ renderBlobHash, width, height, boxes, caption,
       }}
     >
       <figure
+        ref={figureRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={captionId}
+        tabIndex={-1}
         onClick={(e) => e.stopPropagation()}
         style={{
           position: "relative", margin: 0, maxWidth: "90vw", maxHeight: "90vh",
@@ -72,7 +77,7 @@ export function PageBoxLightbox({ renderBlobHash, width, height, boxes, caption,
           alt={caption}
           style={{ maxWidth: "86vw", maxHeight: "76vh" }}
         />
-        <figcaption style={{ textAlign: "center", color: theme.color.dim, fontSize: theme.font.size.s }}>
+        <figcaption id={captionId} style={{ textAlign: "center", color: theme.color.dim, fontSize: theme.font.size.s }}>
           {caption}
         </figcaption>
       </figure>

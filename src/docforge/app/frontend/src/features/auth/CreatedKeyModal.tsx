@@ -3,9 +3,10 @@
 // transient state (never persisted, never refetched) — this modal is the only place it is ever
 // rendered, and closing it is the caller's cue to drop that state for good.
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import type { CreatedApiKey } from "../../api/auth";
 import { Button } from "../../components/Button";
+import { useFocusTrap } from "../../shell/useFocusTrap";
 import { theme } from "../../theme";
 
 interface CreatedKeyModalProps {
@@ -15,6 +16,8 @@ interface CreatedKeyModalProps {
 
 export function CreatedKeyModal({ createdKey, onClose }: CreatedKeyModalProps) {
   const [copied, setCopied] = useState(false);
+  const titleId = useId();
+  const panelRef = useFocusTrap<HTMLDivElement>(onClose);
 
   const copy = async () => {
     try {
@@ -33,6 +36,11 @@ export function CreatedKeyModal({ createdKey, onClose }: CreatedKeyModalProps) {
       }}
     >
       <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
         style={{
           background: theme.color.panel, border: `1px solid ${theme.color.accentLine}`,
           borderRadius: theme.radius.l, boxShadow: theme.shadow.pop, padding: theme.space.l, maxWidth: 480,
@@ -48,7 +56,7 @@ export function CreatedKeyModal({ createdKey, onClose }: CreatedKeyModalProps) {
           >
             🔑
           </span>
-          <h2 style={{ fontFamily: theme.font.display, fontSize: theme.font.size.xl, fontWeight: 700, color: theme.color.text, margin: 0 }}>
+          <h2 id={titleId} style={{ fontFamily: theme.font.display, fontSize: theme.font.size.xl, fontWeight: 700, color: theme.color.text, margin: 0 }}>
             Key created — "{createdKey.name}"
           </h2>
         </div>

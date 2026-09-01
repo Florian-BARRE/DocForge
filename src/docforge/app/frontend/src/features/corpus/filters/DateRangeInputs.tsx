@@ -11,9 +11,11 @@ interface DateRangeInputsProps {
   gte: string;
   lte: string;
   onChange: (next: { gte: string; lte: string }) => void;
+  /** The column's header text, used to build each bound's accessible name. */
+  label?: string;
 }
 
-export function DateRangeInputs({ gte, lte, onChange }: DateRangeInputsProps) {
+export function DateRangeInputs({ gte, lte, onChange, label }: DateRangeInputsProps) {
   // Native date-picker/spinner chrome tracks `color-scheme`, not our CSS variables — without this
   // it always renders light, looking foreign against the ink theme.
   const { theme: activeTheme } = useTheme();
@@ -27,12 +29,14 @@ export function DateRangeInputs({ gte, lte, onChange }: DateRangeInputsProps) {
       <input
         type="date"
         value={gte}
+        aria-label={label ? `${label} from` : "from"}
         onChange={(e) => onChange({ gte: e.target.value, lte })}
         style={cellInputStyle}
       />
       <input
         type="date"
         value={lte}
+        aria-label={label ? `${label} to` : "to"}
         onChange={(e) => onChange({ gte, lte: e.target.value })}
         style={cellInputStyle}
       />

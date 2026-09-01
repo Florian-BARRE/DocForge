@@ -10,9 +10,10 @@ interface TagsInputProps {
   values: string[];
   onChange: (values: string[]) => void;
   placeholder?: string;
+  ariaLabel?: string;
 }
 
-export function TagsInput({ values, onChange, placeholder }: TagsInputProps) {
+export function TagsInput({ values, onChange, placeholder, ariaLabel }: TagsInputProps) {
   const [draft, setDraft] = useState("");
 
   const commit = () => {
@@ -53,6 +54,7 @@ export function TagsInput({ values, onChange, placeholder }: TagsInputProps) {
         }}
         onBlur={commit}
         placeholder={placeholder}
+        aria-label={ariaLabel}
         style={{
           background: "none", border: "none", outline: "none", color: theme.color.text,
           fontSize: theme.font.size.s, flex: 1, minWidth: 60,

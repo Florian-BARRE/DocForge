@@ -14,9 +14,11 @@ export interface NumberFieldProps {
   style: React.CSSProperties;
   /** Called with the parsed number, or `undefined` when the field is cleared. */
   onChange: (value: number | undefined) => void;
+  /** Accessible name — only needed when the field has no visible/associated `<label>`. */
+  ariaLabel?: string;
 }
 
-export function NumberField({ value, min, max, style, onChange }: NumberFieldProps) {
+export function NumberField({ value, min, max, style, onChange, ariaLabel }: NumberFieldProps) {
   const [draft, setDraft] = useState(value === undefined || value === null ? "" : String(value));
   const [focused, setFocused] = useState(false);
 
@@ -44,6 +46,7 @@ export function NumberField({ value, min, max, style, onChange }: NumberFieldPro
       max={max}
       style={style}
       value={draft}
+      aria-label={ariaLabel}
       onChange={(e) => handleChange(e.target.value)}
       onFocus={() => setFocused(true)}
       onBlur={() => setFocused(false)}

@@ -9,13 +9,15 @@ interface BoolTriStateSelectProps {
   onChange: (value: boolean | null) => void;
   trueLabel?: string;
   falseLabel?: string;
+  ariaLabel?: string;
 }
 
-export function BoolTriStateSelect({ value, onChange, trueLabel = "true", falseLabel = "false" }: BoolTriStateSelectProps) {
+export function BoolTriStateSelect({ value, onChange, trueLabel = "true", falseLabel = "false", ariaLabel }: BoolTriStateSelectProps) {
   return (
     <select
       value={value === null ? "" : String(value)}
       onChange={(e) => onChange(e.target.value === "" ? null : e.target.value === "true")}
+      aria-label={ariaLabel}
       style={{ ...inputStyle, padding: "5px 6px", fontSize: 12 }}
     >
       <option value="">any</option>

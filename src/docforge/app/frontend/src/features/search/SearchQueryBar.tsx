@@ -33,6 +33,7 @@ export function SearchQueryBar({ query, onQueryChange, limit, onLimitChange, loa
           onChange={(e) => onQueryChange(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && onSubmit()}
           placeholder="Search this collection…"
+          aria-label="Search this collection"
           style={{ ...inputStyle, border: "none", background: "transparent", fontSize: theme.font.size.l, padding: "6px 4px" }}
         />
       </div>
@@ -42,6 +43,7 @@ export function SearchQueryBar({ query, onQueryChange, limit, onLimitChange, loa
           min={MIN_LIMIT}
           style={{ ...inputStyle, borderRadius: theme.radius.m, textAlign: "center" }}
           onChange={(value) => onLimitChange(value === undefined ? MIN_LIMIT : Math.max(MIN_LIMIT, value))}
+          ariaLabel="Result limit"
         />
       </div>
       <Button variant="primary" disabled={loading || !query.trim() || limit < MIN_LIMIT} onClick={onSubmit}>
