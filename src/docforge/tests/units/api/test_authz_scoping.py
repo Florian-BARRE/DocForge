@@ -78,7 +78,10 @@ def _fake_job(collection_id: str):
 def _fake_job_with_names(collection_id: str):
     """The joined read model the get/list routes consume — a job row plus its display names."""
     return SimpleNamespace(
-        job=_fake_job(collection_id), document_filename="f.pdf", collection_name="c"
+        job=_fake_job(collection_id),
+        document_filename="f.pdf",
+        document_title="Doc",
+        collection_name="c",
     )
 
 

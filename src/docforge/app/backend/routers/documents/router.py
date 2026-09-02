@@ -37,6 +37,7 @@ from ...libs.auth import AuthPrincipal, AuthzGuard, Capability, require
 from ...utils.error_handling import auto_handle_errors
 from ...utils.pipeline_validation import PipelineBlobValidator
 from ...utils.upload_reader import UploadReader
+from .helpers import DocumentAdmissionHelpers
 from .models import DocumentEnabledResponse, EnabledPatch, UploadAccepted
 
 router = APIRouter(prefix="/documents", tags=["documents"])
@@ -92,9 +93,21 @@ async def upload_document(
 
     # 4b. Format gate — reject an unaccepted format HERE, before storing or enqueueing, so it fails
     #     in milliseconds at the boundary instead of ~minutes later inside the queued run's admit
-    #     node. The detection is the SAME content sniff the admit node keys on (never the extension),
-    #     so the two gates can never disagree. The admit-node check stays as defence in depth.
-    detected_format, detected_mime = FormatProbeHelpers.detect(content, file.filename or "upload")
+    #     node. TWO composing checks, both must pass:
+    #       (a) content-truth (anti-spoof): the DETECTED format (content sniff, never the extension)
+    #           must be accepted — a ``.pdf`` that is really HTML is caught here.
+    #       (b) extension-declaration (anti-garbage): a PRESENT-but-foreign extension (e.g.
+    #           ``badfile.xyz``) is rejected with a clear message instead of being silently bucketed
+    #           as ``txt`` by the decodable-text fallback. An extensionless upload skips (b) and is
+    #           decided by (a) alone. This makes a wrong file fail as cleanly as an oversized one.
+    #     The admit-node content check stays as defence in depth.
+    filename = file.filename or "upload"
+    extension_error = DocumentAdmissionHelpers.extension_rejection(
+        filename, collection.supported_formats
+    )
+    if extension_error is not None:
+        raise HTTPException(status_code=422, detail=extension_error)
+    detected_format, detected_mime = FormatProbeHelpers.detect(content, filename)
     if detected_format not in collection.supported_formats:
         raise HTTPException(
             status_code=422,
@@ -146,7 +159,6 @@ async def upload_document(
     #    Content-Type: both are caller-controlled and routinely wrong (missing extension, a .txt that
     #    is really a PDF, a browser sending application/octet-stream). detect() already ran the same
     #    sniff for the format gate above, so the stored facts and the admission decision agree.
-    filename = file.filename or "upload"
     mime = detected_mime or "application/octet-stream"
     await CONTEXT.database.ingestion.store_blobs(
         [S3Object(key=source_hash, data=content, content_type=mime)],

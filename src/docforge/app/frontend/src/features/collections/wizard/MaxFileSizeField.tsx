@@ -23,9 +23,11 @@ const inputStyle: React.CSSProperties = {
 interface MaxFileSizeFieldProps {
   valueMb: number;
   onChange: (mb: number) => void;
+  /** Shares the wizard's own "Show technical details" state — see `SchemaForm`'s `advanced` prop. */
+  advanced?: boolean;
 }
 
-export function MaxFileSizeField({ valueMb, onChange }: MaxFileSizeFieldProps) {
+export function MaxFileSizeField({ valueMb, onChange, advanced = false }: MaxFileSizeFieldProps) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 2, fontSize: theme.font.size.s }}>
       <div style={{ display: "flex", alignItems: "baseline", gap: theme.space.xs + 2, color: theme.color.dim }}>
@@ -33,26 +35,29 @@ export function MaxFileSizeField({ valueMb, onChange }: MaxFileSizeFieldProps) {
           Max file size
           <span style={{ color: theme.color.error }} title="required"> *</span>
         </span>
-        <span
-          title="integer >= 1"
-          style={{
-            color: theme.color.mute, background: "transparent",
-            border: `1px solid ${theme.color.line}`,
-            borderRadius: theme.radius.s, padding: `0 ${theme.space.xs + 1}px`, fontSize: theme.font.size.xs,
-            fontFamily: theme.font.mono, whiteSpace: "nowrap",
-          }}
-        >
-          MB ≥ {MIN_MB}
-        </span>
+        {advanced && (
+          <span
+            title="integer >= 1"
+            style={{
+              color: theme.color.mute, background: "transparent",
+              border: `1px solid ${theme.color.line}`,
+              borderRadius: theme.radius.s, padding: `0 ${theme.space.xs + 1}px`, fontSize: theme.font.size.xs,
+              fontFamily: theme.font.mono, whiteSpace: "nowrap",
+            }}
+          >
+            ≥ {MIN_MB}
+          </span>
+        )}
       </div>
       <NumberField
         value={valueMb}
         min={MIN_MB}
         style={inputStyle}
+        suffix="MB"
         onChange={(mb) => onChange(Math.max(MIN_MB, mb ?? MIN_MB))}
       />
       <div style={{ color: theme.color.dim, fontSize: theme.font.size.xs, lineHeight: 1.35 }}>
-        Upload size ceiling. Sent to the backend as bytes (contract field <code>max_file_size_bytes</code>).
+        Documents larger than this are rejected at upload.
       </div>
     </div>
   );

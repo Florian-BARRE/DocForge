@@ -54,7 +54,11 @@ const STATUS_LABEL: Record<FileStatus, string> = {
 interface UploadPanelProps {
   collectionId: string;
   fields: FieldSpec[];
-  onUploaded: (jobId: string) => void;
+  /** Called once the batch settles with at least one job launched. `lastJobId` is that batch's most
+   *  recently launched job; `launchedCount` is how many — callers land on that job's own detail page
+   *  for a single upload, or the collection's job list (filtered) once N>1, so a multi-file batch
+   *  doesn't hide every job but the last one behind the Jobs tab. */
+  onUploaded: (lastJobId: string, launchedCount: number) => void;
 }
 
 export function UploadPanel({ collectionId, fields, onUploaded }: UploadPanelProps) {
@@ -116,8 +120,9 @@ export function UploadPanel({ collectionId, fields, onUploaded }: UploadPanelPro
     if (failed > 0) toast.error(`${failed} of ${entries.length} file(s) failed to upload`);
     else if (succeeded > 0) toast.success(`Ingestion launched — ${succeeded} file(s)`);
     else toast.info("Nothing ingested — every file was a duplicate");
-    // Focus the monitoring view on the last freshly-launched job (mirrors the single-file behaviour).
-    if (lastJobId) onUploaded(lastJobId);
+    // A single file lands the caller on that one job's own detail page; a batch lands on the
+    // collection's job list instead, so all N launched jobs stay reachable (not just the last one).
+    if (lastJobId) onUploaded(lastJobId, succeeded);
   };
 
   const doneCount = entries.filter((e) => e.status === "done" || e.status === "duplicate").length;

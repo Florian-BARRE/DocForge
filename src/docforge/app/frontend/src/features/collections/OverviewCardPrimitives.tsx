@@ -42,6 +42,18 @@ export function Row({ label, value }: { label: string; value: ReactNode }) {
   );
 }
 
+/** A quiet header meta line — facts ABOUT the collection as a whole (created, last ingest), kept
+ *  out of the stat tiles below so each tile's sub-label stays scoped to its own metric. */
+export function MetaLine({ items }: { items: (string | null)[] }) {
+  const parts = items.filter((i): i is string => Boolean(i));
+  if (parts.length === 0) return null;
+  return (
+    <div style={{ color: t.color.mute, fontSize: t.font.size.xs, marginBottom: t.space.s }}>
+      {parts.join(" · ")}
+    </div>
+  );
+}
+
 /** A compact clickable stat — a quick-glance number with a link out to the tab that owns it. */
 export function StatChip({ label, value, sub, onClick }: { label: string; value: ReactNode; sub?: ReactNode; onClick: () => void }) {
   return (

@@ -24,6 +24,11 @@ interface ChainSectionProps {
 
 export function ChainSection({ stageKey, chain, palette, actions }: ChainSectionProps) {
   const scored = familyIsScored(palette, chain.family);
+  // A chain-owned stage (parse/embed): `chain.title`/`chain.description` mirror the stage's OWN
+  // title/description verbatim (see StageViewer.__stage_chain_view) — the stage card above already
+  // shows both, so repeating them here would be the same text three times over. An enrich per-figure
+  // branch or a contextualize method's chain has a genuinely distinct title, so it keeps showing it.
+  const isStageOwnedChain = chain.slot === stageKey;
 
   return (
     <div
@@ -36,11 +41,13 @@ export function ChainSection({ stageKey, chain, palette, actions }: ChainSection
     >
       <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 3, background: theme.color.chain }} />
       <div style={{ display: "flex", alignItems: "baseline", gap: theme.space.s, flexWrap: "wrap" }}>
-        <strong style={{ color: theme.color.chain, fontSize: theme.font.size.m }}>⛓ {chain.title}</strong>
-        <Chip tone={scored ? "warn" : "dim"} title={scored ? "Escalates on a quality threshold or on failure" : "This family reports no quality score — escalates on failure only"}>
+        <strong style={{ color: theme.color.chain, fontSize: theme.font.size.m }}>
+          ⛓ {isStageOwnedChain ? "Fallback chain" : chain.title}
+        </strong>
+        <Chip tone={scored ? "info" : "dim"} title={scored ? "Escalates on a quality threshold or on failure" : "This family reports no quality score — escalates on failure only"}>
           {scored ? "quality-gated" : "failure-only"}
         </Chip>
-        <span style={{ color: theme.color.dim, fontSize: theme.font.size.xs }}>{chain.description}</span>
+        {!isStageOwnedChain && <span style={{ color: theme.color.dim, fontSize: theme.font.size.xs }}>{chain.description}</span>}
       </div>
       <ChainStepList
         steps={chain.steps}
@@ -48,6 +55,7 @@ export function ChainSection({ stageKey, chain, palette, actions }: ChainSection
         available={chain.available}
         palette={palette}
         scored={scored}
+        primaryKindEditable={isStageOwnedChain}
         onStepsChange={(steps) => actions.setChainSteps(stageKey, chain.slot, steps)}
         onStepConfigChange={(index, field, value) => actions.setChainStepConfig(stageKey, chain.slot, index, field, value)}
         onStepScoreBelowChange={scored ? (index, value) => actions.setChainStepScoreBelow(stageKey, chain.slot, index, value) : undefined}

@@ -25,10 +25,16 @@ interface ChainStepListProps {
   onStepsChange: (steps: ChainStep[]) => void;
   onStepConfigChange: (index: number, field: string, value: unknown) => void;
   onStepScoreBelowChange?: (index: number, value: number | null) => void;
+  /** True for a chain-owned stage's own chain (parse/embed) — its step 0 doubles as the stage's
+   *  provider picker: a kind-select instead of a static name, expanded by default (config used to
+   *  always be visible via the now-removed top-level `ProviderPicker`/`StageConfigForm`). See
+   *  `StageCard`'s own-chain branch. */
+  primaryKindEditable?: boolean;
 }
 
 export function ChainStepList({
   steps, family, available, palette, scored, onStepsChange, onStepConfigChange, onStepScoreBelowChange,
+  primaryKindEditable = false,
 }: ChainStepListProps) {
   const [addKind, setAddKind] = useState("");
   // Stable per-slot identity, independent of `kind`/index, so reordering two same-kind fallback
@@ -53,6 +59,13 @@ export function ChainStepList({
     onStepsChange([...steps, { kind: addKind, config: {}, score_below: null }]);
     setAddKind("");
   };
+  // Swaps step 0's kind in place — the config resets (a new provider's schema rarely matches the
+  // old one's), everything else about the chain (further fallbacks) is untouched.
+  const changePrimaryKind = (kind: string) =>
+    onStepsChange(steps.map((step, i) => (i === 0 ? { kind, config: {}, score_below: step.score_below } : step)));
+  const primaryKindOptions = primaryKindEditable
+    ? available.map((kind) => ({ kind, label: findNodeCard(palette, family, kind)?.name ?? kind }))
+    : undefined;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: theme.space.xs }}>
@@ -74,6 +87,9 @@ export function ChainStepList({
           onRemove={() => remove(index)}
           onConfigChange={(field, value) => onStepConfigChange(index, field, value)}
           onScoreBelowChange={onStepScoreBelowChange ? (value) => onStepScoreBelowChange(index, value) : undefined}
+          kindOptions={index === 0 ? primaryKindOptions : undefined}
+          onKindChange={index === 0 && primaryKindEditable ? changePrimaryKind : undefined}
+          defaultExpanded={index === 0 && primaryKindEditable}
         />
       ))}
       <div style={{ display: "flex", gap: theme.space.s, alignItems: "center" }}>

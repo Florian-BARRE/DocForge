@@ -105,7 +105,21 @@ def _mock_db(monkeypatch, **collections_methods) -> SimpleNamespace:
     from backend.context import CONTEXT  # noqa: PLC0415
 
     facade = SimpleNamespace(**collections_methods)
-    monkeypatch.setattr(CONTEXT, "database", SimpleNamespace(collections=facade))
+    # The list route also reads three BATCHED fleet counters (doc / chunk / last-ingest) for the
+    # health summary; stub them empty so any read path resolves without a store (redaction is the
+    # concern under test here, not the counts).
+    documents = SimpleNamespace(
+        count_by_collections=AsyncMock(return_value={}),
+        count_chunks_by_collections=AsyncMock(return_value={}),
+    )
+    jobs = SimpleNamespace(
+        last_successful_ingest_at_by_collections=AsyncMock(return_value={}),
+    )
+    monkeypatch.setattr(
+        CONTEXT,
+        "database",
+        SimpleNamespace(collections=facade, documents=documents, jobs=jobs),
+    )
     return facade
 
 

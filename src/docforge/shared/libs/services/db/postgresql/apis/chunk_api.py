@@ -10,7 +10,7 @@ from collections.abc import Sequence
 from typing import Any
 
 # ====== Third-Party Library Imports ======
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -67,6 +67,36 @@ class ChunkApi:
             return []
         result = await session.execute(select(Chunk).where(Chunk.id.in_(chunk_ids)))
         return list(result.scalars().all())
+
+    @staticmethod
+    async def count_by_collections(
+        session: AsyncSession, collection_ids: Sequence[uuid.UUID]
+    ) -> dict[uuid.UUID, int]:
+        """
+        Return the chunk count of each collection in ONE grouped query (no per-collection N+1).
+
+        The fleet-dashboard chunk-count, read straight from Postgres (the truth) rather than a
+        per-collection Qdrant round-trip. Counts chunk rows via their document's collection; a
+        collection with no chunks is absent from the map (the caller defaults it to 0).
+
+        Args:
+            session (AsyncSession): The unit of work.
+            collection_ids (Sequence[uuid.UUID]): The collections to count (empty → empty map).
+
+        Returns:
+            dict[uuid.UUID, int]: collection id → its chunk count (collections with 0 omitted).
+        """
+        # 1. Nothing to count — skip the round-trip.
+        if not collection_ids:
+            return {}
+        # 2. One joined GROUP BY: chunk → document → collection, the whole fleet in a single scan.
+        result = await session.execute(
+            select(Document.collection_id, func.count(Chunk.id))
+            .join(Chunk, Chunk.document_id == Document.id)
+            .where(Document.collection_id.in_(collection_ids))
+            .group_by(Document.collection_id)
+        )
+        return {collection_id: count for collection_id, count in result.all()}
 
     @staticmethod
     async def collections_for_chunks(

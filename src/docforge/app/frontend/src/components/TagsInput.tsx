@@ -13,12 +13,27 @@ interface TagsInputProps {
   ariaLabel?: string;
 }
 
+/** Splits a raw string on commas and/or whitespace into trimmed, non-empty tokens — the same
+ *  delimiter set a user reaches for when pasting a list ("md, html, pdf" or "md html pdf"). */
+function splitIntoTokens(raw: string): string[] {
+  return raw.split(/[,\s]+/).map((token) => token.trim()).filter(Boolean);
+}
+
 export function TagsInput({ values, onChange, placeholder, ariaLabel }: TagsInputProps) {
   const [draft, setDraft] = useState("");
 
+  const commitTokens = (tokens: string[]) => {
+    if (!tokens.length) return;
+    const next = [...values];
+    for (const token of tokens) if (!next.includes(token)) next.push(token);
+    onChange(next);
+  };
+
+  // Tokenizes the WHOLE draft (not just a trimmed single value) so a value typed without ever
+  // pressing Enter/comma — or one that arrived via paste, see onPaste below — still splits into
+  // one chip per format/keyword instead of a single bogus "md, html, pdf" tag.
   const commit = () => {
-    const value = draft.trim();
-    if (value && !values.includes(value)) onChange([...values, value]);
+    commitTokens(splitIntoTokens(draft));
     setDraft("");
   };
 
@@ -32,7 +47,8 @@ export function TagsInput({ values, onChange, placeholder, ariaLabel }: TagsInpu
     >
       {values.map((value) => (
         <span key={value} style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>
-          <Chip tone="accent">{value}</Chip>
+          {/* Neutral, not accent — a stored tag is metadata at rest, not the one active thing. */}
+          <Chip tone="neutral">{value}</Chip>
           <span
             onClick={() => onChange(values.filter((v) => v !== value))}
             style={{ cursor: "pointer", color: theme.color.dim, fontSize: theme.font.size.xs }}
@@ -51,6 +67,16 @@ export function TagsInput({ values, onChange, placeholder, ariaLabel }: TagsInpu
           } else if (e.key === "Backspace" && !draft && values.length) {
             onChange(values.slice(0, -1));
           }
+        }}
+        onPaste={(e) => {
+          // Pasting a comma/space-separated list bypasses onKeyDown entirely (no per-character
+          // keydown fires for a paste) — tokenize it immediately instead of leaving one raw blob
+          // in the draft until blur. Applies on-change right away, so a downstream "Next" button
+          // gated on the tokenized value enables without the field ever needing to blur.
+          e.preventDefault();
+          const pasted = e.clipboardData.getData("text");
+          commitTokens(splitIntoTokens(draft + pasted));
+          setDraft("");
         }}
         onBlur={commit}
         placeholder={placeholder}

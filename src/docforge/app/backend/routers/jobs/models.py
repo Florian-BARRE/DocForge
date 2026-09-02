@@ -51,6 +51,12 @@ class JobStatus(BaseModel):
         default=None,
         description="The document's filename, joined at read (None if the document is gone).",
     )
+    document_title: str | None = Field(
+        default=None,
+        description="The document's metagen-generated title, joined at read — a nicer display label "
+        "than the filename when present (None if none was generated or the document is gone; the UI "
+        "falls back to document_filename).",
+    )
     collection_id: str = Field(description="Its collection.")
     collection_name: str | None = Field(
         default=None,
@@ -107,6 +113,7 @@ class JobStatus(BaseModel):
         job: Any,
         document_filename: str | None = None,
         collection_name: str | None = None,
+        document_title: str | None = None,
     ) -> "JobStatus":
         """
         Map one job row to its polling model (shared by the poll routes and the SSE stream).
@@ -116,6 +123,7 @@ class JobStatus(BaseModel):
             document_filename (str | None): The joined document filename (None off the joined reads,
                 e.g. the SSE stream which re-reads only the job row).
             collection_name (str | None): The joined collection name (same None-off-stream contract).
+            document_title (str | None): The joined metagen title (same None-off-stream contract).
         """
         # Only a RUNNING job can stall: its updated_at bumps on every progress write, so a value
         # older than the threshold means progress has frozen. done/failed/pending are never stalled.
@@ -128,6 +136,7 @@ class JobStatus(BaseModel):
             job_id=str(job.id),
             document_id=str(job.document_id),
             document_filename=document_filename,
+            document_title=document_title,
             collection_id=str(job.collection_id),
             collection_name=collection_name,
             status=job.status.value,

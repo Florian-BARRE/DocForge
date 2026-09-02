@@ -161,11 +161,12 @@ are identical.
 ### `collections`
 | Method | Returns | Purpose |
 |---|---|---|
-| `list()` | `list[CollectionModel]` | Every collection. |
+| `list()` | `list[CollectionListItem]` | Every collection (schema + pipelines), each with its server-computed health summary. |
 | `get(collection_id)` | `CollectionModel` | One collection (schema + pipelines). |
 | `create(CreateCollectionRequest)` | `CollectionModel` | Create a collection (contract). |
 | `update(collection_id, UpdateCollectionRequest)` | `CollectionModel` | Patch name / formats / fields / pipelines. |
 | `delete(collection_id)` | `None` | Delete a collection. |
+| `health(collection_id)` | `CollectionHealthResponse` | On-demand operational health — 5-state verdict, provider reachability sweep, index stats. No job enqueued, no spend. |
 | `storage(collection_id)` | `CollectionStorageResponse` | Material storage footprint per store (S3 exact, Postgres/Qdrant estimated) + per-document breakdown. |
 
 ### `documents`

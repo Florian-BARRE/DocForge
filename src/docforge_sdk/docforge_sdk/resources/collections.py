@@ -11,11 +11,13 @@ from .._requestspec import RequestSpec
 from ..models.collections import (
     BulkReingestAccepted,
     BulkReingestRequest,
+    CollectionListItem,
     CollectionModel,
     CreateCollectionRequest,
     UpdateCollectionRequest,
 )
 from ..models.estimate import CollectionEstimateRequest, CostEstimate
+from ..models.health import CollectionHealthResponse
 from ..models.storage import CollectionStorageResponse
 from ._base import AsyncResource, SyncResource, _ResourceMixin
 
@@ -87,6 +89,18 @@ class _CollectionsSpecs(_ResourceMixin):
         """
         return RequestSpec("DELETE", f"{self._COLLECTIONS_PATH}/{collection_id}")
 
+    def _health_spec(self, collection_id: str) -> RequestSpec:
+        """
+        Build the spec for probing a collection's on-demand operational health.
+
+        Args:
+            collection_id (str): The collection's UUID.
+
+        Returns:
+            RequestSpec: A GET on the collection's health sub-resource.
+        """
+        return RequestSpec("GET", f"{self._COLLECTIONS_PATH}/{collection_id}/health")
+
     def _storage_spec(self, collection_id: str) -> RequestSpec:
         """
         Build the spec for measuring a collection's material storage footprint.
@@ -137,14 +151,14 @@ class _CollectionsSpecs(_ResourceMixin):
 class AsyncCollections(AsyncResource, _CollectionsSpecs):
     """Asynchronous collection management (list / get / create / update / delete)."""
 
-    async def list(self) -> list[CollectionModel]:
+    async def list(self) -> list[CollectionListItem]:
         """
-        List every collection with its full schema.
+        List every collection with its full schema and server-computed health summary.
 
         Returns:
-            list[CollectionModel]: All contracts, schema included.
+            list[CollectionListItem]: All contracts (schema included), each with its health summary.
         """
-        return await self._transport.request(self._list_spec(), list[CollectionModel])
+        return await self._transport.request(self._list_spec(), list[CollectionListItem])
 
     async def get(self, collection_id: str) -> CollectionModel:
         """
@@ -193,6 +207,20 @@ class AsyncCollections(AsyncResource, _CollectionsSpecs):
             collection_id (str): The collection to delete.
         """
         return await self._transport.request(self._delete_spec(collection_id), type(None))
+
+    async def health(self, collection_id: str) -> CollectionHealthResponse:
+        """
+        Probe a collection's operational health on demand (no job enqueued, no spend).
+
+        Args:
+            collection_id (str): The collection's UUID.
+
+        Returns:
+            CollectionHealthResponse: Per-provider reachability, index stats and the rolled-up verdict.
+        """
+        return await self._transport.request(
+            self._health_spec(collection_id), CollectionHealthResponse
+        )
 
     async def storage(self, collection_id: str) -> CollectionStorageResponse:
         """
@@ -253,14 +281,14 @@ class AsyncCollections(AsyncResource, _CollectionsSpecs):
 class SyncCollections(SyncResource, _CollectionsSpecs):
     """Synchronous collection management (list / get / create / update / delete)."""
 
-    def list(self) -> list[CollectionModel]:
+    def list(self) -> list[CollectionListItem]:
         """
-        List every collection with its full schema.
+        List every collection with its full schema and server-computed health summary.
 
         Returns:
-            list[CollectionModel]: All contracts, schema included.
+            list[CollectionListItem]: All contracts (schema included), each with its health summary.
         """
-        return self._transport.request(self._list_spec(), list[CollectionModel])
+        return self._transport.request(self._list_spec(), list[CollectionListItem])
 
     def get(self, collection_id: str) -> CollectionModel:
         """
@@ -307,6 +335,18 @@ class SyncCollections(SyncResource, _CollectionsSpecs):
             collection_id (str): The collection to delete.
         """
         return self._transport.request(self._delete_spec(collection_id), type(None))
+
+    def health(self, collection_id: str) -> CollectionHealthResponse:
+        """
+        Probe a collection's operational health on demand (no job enqueued, no spend).
+
+        Args:
+            collection_id (str): The collection's UUID.
+
+        Returns:
+            CollectionHealthResponse: Per-provider reachability, index stats and the rolled-up verdict.
+        """
+        return self._transport.request(self._health_spec(collection_id), CollectionHealthResponse)
 
     def storage(self, collection_id: str) -> CollectionStorageResponse:
         """

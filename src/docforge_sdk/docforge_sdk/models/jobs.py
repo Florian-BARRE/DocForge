@@ -19,6 +19,9 @@ class JobStatus(BaseModel):
         document_id (str): The document being ingested.
         document_filename (str | None): The document's filename, joined at read (None if the
             document is gone).
+        document_title (str | None): The document's metagen-generated title, joined at read — a
+            nicer display label than the filename when present (None if none was generated or the
+            document is gone; the UI falls back to document_filename).
         collection_id (str): Its collection.
         collection_name (str | None): The collection's name, joined at read (None if the
             collection is gone).
@@ -44,6 +47,12 @@ class JobStatus(BaseModel):
     document_filename: str | None = Field(
         default=None,
         description="The document's filename, joined at read (None if the document is gone).",
+    )
+    document_title: str | None = Field(
+        default=None,
+        description="The document's metagen-generated title, joined at read — a nicer display label "
+        "than the filename when present (None if none was generated or the document is gone; the UI "
+        "falls back to document_filename).",
     )
     collection_id: str = Field(description="Its collection.")
     collection_name: str | None = Field(

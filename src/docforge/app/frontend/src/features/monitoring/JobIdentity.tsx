@@ -4,7 +4,7 @@
 // secondary mono metadata underneath — ids stay visible, just demoted. Reused by JobRow (so both
 // JobsPage and WorkerCard get it) and JobDetailPage's header.
 
-import type { JobStatus } from "../../api/jobs";
+import { jobDisplayName, type JobStatus } from "../../api/jobs";
 import { theme } from "../../theme";
 
 export function JobIdentity({ job }: { job: JobStatus }) {
@@ -17,7 +17,7 @@ export function JobIdentity({ job }: { job: JobStatus }) {
           color: theme.color.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 420,
         }}
       >
-        {job.document_filename ?? "untitled document"}
+        {jobDisplayName(job)}
       </span>
       <span
         style={{

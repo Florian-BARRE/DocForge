@@ -143,11 +143,19 @@ class SearchResponse(BaseModel):
     Attributes:
         query (str): The query that was searched (echoed for the client).
         hits (list[SearchHit]): The hydrated hits, best first.
+        score_kind (str): What each hit's ``score`` represents — so the UI can label it correctly.
         debug_info (dict[str, Any] | None): Non-fatal diagnostics; None when there is nothing to report.
     """
 
     query: str = Field(description="The query that was searched.")
     hits: list[SearchHit] = Field(default_factory=list, description="Ranked hits, best first.")
+    score_kind: str = Field(
+        default="rrf_fusion",
+        description="What every hit's ``score`` represents, so the UI labels it honestly: "
+        "'rrf_fusion' (Reciprocal Rank Fusion of the dense+sparse branches — the default; "
+        "rank-based, not a similarity), 'dbsf_fusion' (Distribution-Based Score Fusion), or "
+        "'cross_encoder_rerank' (a cross-encoder relevance score, when reranking is enabled).",
+    )
     debug_info: dict[str, Any] | None = Field(
         default=None,
         description="Non-fatal diagnostics about how the search ran. None when empty.",

@@ -13,6 +13,7 @@ import { BackLink } from "../../../components/BackLink";
 import { PageHeader } from "../../../components/PageHeader";
 import { theme } from "../../../theme";
 import type { Navigate } from "../../../shell/view";
+import { DangerZone } from "./DangerZone";
 import { StepIdentity } from "./StepIdentity";
 import { StepReview } from "./StepReview";
 import { StepSchema } from "./StepSchema";
@@ -124,6 +125,11 @@ export function CollectionWizard({ onNavigate, mode = "create", initial, collect
           removedFieldNames={removed}
           onBack={() => setStep(1)} onSubmit={handleSubmit} submitting={submitting} issues={issues}
         />
+      )}
+      {/* Deletion is a settings action, not a wizard step — shown once, below every step, so it
+          reads as belonging to the collection as a whole rather than to whichever step is active. */}
+      {mode === "edit" && collectionId && initial && (
+        <DangerZone collectionId={collectionId} collectionName={initial.name} onNavigate={onNavigate} />
       )}
     </div>
   );

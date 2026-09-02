@@ -69,6 +69,20 @@ class DocumentsFacade(LoggerClass):
         async with self._postgres.session() as session:
             return await DocumentApi.list_for_collection(session, collection_id)
 
+    async def count_by_collections(
+        self, collection_ids: Sequence[uuid.UUID]
+    ) -> dict[uuid.UUID, int]:
+        """Document count of each collection in ONE grouped query — the fleet-dashboard doc-count."""
+        async with self._postgres.session() as session:
+            return await DocumentApi.count_by_collections(session, collection_ids)
+
+    async def count_chunks_by_collections(
+        self, collection_ids: Sequence[uuid.UUID]
+    ) -> dict[uuid.UUID, int]:
+        """Chunk count of each collection in ONE grouped query — the fleet-dashboard chunk-count."""
+        async with self._postgres.session() as session:
+            return await ChunkApi.count_by_collections(session, collection_ids)
+
     # -------------------- grid query --------------------
     async def query(
         self, collection_id: uuid.UUID, spec: DocumentQuerySpec, limit: int, offset: int

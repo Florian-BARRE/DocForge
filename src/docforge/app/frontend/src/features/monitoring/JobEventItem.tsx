@@ -22,6 +22,13 @@ function durationLabel(event: JobEvent): string {
   return `${(ms / 1000).toFixed(2)}s`;
 }
 
+/** The worker writes a bare "N ms" into `detail` on a successful stage — the SAME duration
+ *  `durationLabel` already renders from the timestamps. Suppress that redundant echo; a non-duration
+ *  `detail` (the error text on a failed stage, or any future note) still shows. */
+function isDurationEcho(detail: string): boolean {
+  return /^\d+(\.\d+)?\s*ms$/.test(detail.trim());
+}
+
 function usageLabel(event: JobEvent): string | null {
   if (event.prompt_tokens === null && event.completion_tokens === null) return null;
   const tokens = (event.prompt_tokens ?? 0) + (event.completion_tokens ?? 0);
@@ -62,7 +69,7 @@ export function JobEventItem({ event }: { event: JobEvent }) {
           {usageLabel(event)}
         </span>
       )}
-      {event.detail && (
+      {event.detail && !isDurationEcho(event.detail) && (
         <span
           style={{ color: event.status === "failed" ? theme.color.error : theme.color.dim, fontSize: theme.font.size.xs }}
         >

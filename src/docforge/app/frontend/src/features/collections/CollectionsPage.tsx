@@ -1,16 +1,20 @@
 // ====== Code Summary ======
-// The landing page: every collection as a card, "New collection" to open the wizard, click a
-// card to open its detail page.
+// The landing page: every collection as a fleet-dashboard card (name, live health, doc/chunk counts,
+// last ingest, parser), with a search/sort/health-filter toolbar above the grid, "New collection" to
+// open the wizard, and click a card to open its detail page. State (list load, per-card health/doc-
+// count fan-out, search/sort/filter) lives in useCollectionsFleet.
 
-import { useEffect, useState } from "react";
-import { listCollections, type Collection } from "../../api/collections";
+import { useState } from "react";
 import { Button } from "../../components/Button";
+import { EmptyState } from "../../components/EmptyState";
 import { ErrorState } from "../../components/ErrorState";
 import { LoadingState } from "../../components/LoadingState";
 import { PageHeader } from "../../components/PageHeader";
-import { theme } from "../../theme";
 import type { Navigate } from "../../shell/view";
+import { theme } from "../../theme";
 import { CollectionCard } from "./CollectionCard";
+import { CollectionsToolbar } from "./CollectionsToolbar";
+import { useCollectionsFleet } from "./state/useCollectionsFleet";
 import { ImportPanel } from "./transfer/ImportPanel";
 
 interface CollectionsPageProps {
@@ -18,25 +22,17 @@ interface CollectionsPageProps {
 }
 
 export function CollectionsPage({ onNavigate }: CollectionsPageProps) {
-  const [collections, setCollections] = useState<Collection[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [showImport, setShowImport] = useState(false);
+  const {
+    collections, loadError, load, visibleEntries, totalCount,
+    searchQuery, setSearchQuery, sortKey, setSortKey, healthFilter, setHealthFilter,
+  } = useCollectionsFleet();
 
-  const load = () => {
-    setError(null);
-    listCollections()
-      .then(setCollections)
-      .catch((e) => setError(e instanceof Error ? e.message : String(e)));
-  };
-
-  useEffect(load, []);
-
-  const count = collections?.length ?? 0;
   return (
     <div className="df-rise" style={{ padding: `${theme.space.xl}px`, overflowY: "auto", height: "100%", maxWidth: 1200, margin: "0 auto", width: "100%" }}>
       <PageHeader
         title="Collections"
-        subtitle={collections ? `${count} contract${count === 1 ? "" : "s"} — each a schema + ingestion + search pipeline` : " "}
+        subtitle={collections ? `${totalCount} collection${totalCount === 1 ? "" : "s"} — each with its own schema, ingestion and search pipeline` : " "}
         actions={
           <>
             <Button variant="secondary" onClick={() => setShowImport((v) => !v)}>
@@ -53,25 +49,48 @@ export function CollectionsPage({ onNavigate }: CollectionsPageProps) {
           <ImportPanel onNavigate={onNavigate} />
         </div>
       )}
-      {error && <ErrorState message={error} onRetry={load} />}
-      {!error && !collections && <LoadingState label="loading collections…" />}
-      {!error && collections && collections.length === 0 && (
-        <div
-          style={{
-            border: `1px dashed ${theme.color.lineStrong}`, borderRadius: theme.radius.l,
-            padding: `${theme.space.xxl}px`, textAlign: "center", color: theme.color.dim,
-          }}
-        >
-          <div style={{ fontSize: theme.font.size.l, marginBottom: theme.space.s }}>No collections yet.</div>
-          <Button variant="primary" onClick={() => onNavigate({ name: "new-collection" })}>Create the first one</Button>
-        </div>
+      {loadError && <ErrorState message={loadError} onRetry={load} />}
+      {!loadError && !collections && <LoadingState label="loading collections…" />}
+      {!loadError && collections && collections.length === 0 && (
+        <EmptyState
+          title="No collections yet"
+          subtitle="A collection pairs a metadata schema with its own ingestion and search pipeline — create the first one to start ingesting documents."
+          action={<Button variant="primary" onClick={() => onNavigate({ name: "new-collection" })}>Create the first one</Button>}
+        />
       )}
       {collections && collections.length > 0 && (
-        <div className="df-stagger" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: theme.space.l }}>
-          {collections.map((c) => (
-            <CollectionCard key={c.id} collection={c} onClick={() => onNavigate({ name: "collection", collectionId: c.id })} />
-          ))}
-        </div>
+        <>
+          <CollectionsToolbar
+            searchQuery={searchQuery}
+            onSearchQueryChange={setSearchQuery}
+            healthFilter={healthFilter}
+            onHealthFilterChange={setHealthFilter}
+            sortKey={sortKey}
+            onSortKeyChange={setSortKey}
+            visibleCount={visibleEntries.length}
+            totalCount={totalCount}
+          />
+          {visibleEntries.length === 0 ? (
+            <EmptyState
+              title="No collections match"
+              subtitle="Try a different name, or clear the health filter."
+              action={<Button variant="secondary" onClick={() => { setSearchQuery(""); setHealthFilter("all"); }}>Clear filters</Button>}
+            />
+          ) : (
+            <div className="df-stagger" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: theme.space.l }}>
+              {visibleEntries.map(({ collection, health, healthError, docCount }) => (
+                <CollectionCard
+                  key={collection.id}
+                  collection={collection}
+                  health={health}
+                  healthError={healthError}
+                  docCount={docCount}
+                  onClick={() => onNavigate({ name: "collection", collectionId: collection.id })}
+                />
+              ))}
+            </div>
+          )}
+        </>
       )}
     </div>
   );
