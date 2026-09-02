@@ -65,7 +65,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 #   configured model hoster (PADDLE_PDX_MODEL_SOURCE, default huggingface) and cached under
 #   PADDLE_PDX_CACHE_HOME, mounted as a named volume so they persist across restarts.
 ###############################################################################
-FROM python:3.12-slim-bookworm AS runtime
+FROM python:3.14-slim-bookworm AS runtime
 
 # opencv-contrib-python (a paddlex[ocr-core] dependency, non-headless build) dynamically links
 # against libGL/libglib/libSM/libXext/libXrender at import time — without these the very first
