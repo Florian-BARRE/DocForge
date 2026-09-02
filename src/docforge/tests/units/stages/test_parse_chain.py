@@ -173,9 +173,7 @@ def test_docling_then_pp_structure_escalation_defaults_base_url_to_sidecar(
 
     # 2. The pp_structure step's config resolves base_url to the in-stack sidecar (non-empty),
     #    because base_url now carries a default and is no longer a required-empty field.
-    step = next(
-        s for s in StateReader.read(chained).parse_chain.steps if s.kind == "pp_structure"
-    )
+    step = next(s for s in StateReader.read(chained).parse_chain.steps if s.kind == "pp_structure")
     resolved = NodeRegistry.get("parser", "pp_structure").Config.model_validate(step.config)
     assert resolved.base_url == "http://paddle_server:80"
 

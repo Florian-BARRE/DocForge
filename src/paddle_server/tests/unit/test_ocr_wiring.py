@@ -20,7 +20,9 @@ from backend.routers import ocr_router
 class _StubOcrService:
     """A no-paddle stand-in for PaddleOcrService — build/unload are no-ops, read_image is canned."""
 
-    def __init__(self, *, reading: dict[str, Any] | None = None, raise_timeout: bool = False) -> None:
+    def __init__(
+        self, *, reading: dict[str, Any] | None = None, raise_timeout: bool = False
+    ) -> None:
         self.ready = True
         self._reading = reading or {"text": "FACTURE 1500", "confidence": 0.91}
         self._raise_timeout = raise_timeout
@@ -41,9 +43,7 @@ def _client() -> TestClient:
 
 def test_ocr_route_reaches_the_service_and_returns_text_and_confidence() -> None:
     CONTEXT.paddleocr = _StubOcrService()  # type: ignore[assignment]
-    response = _client().post(
-        "/ocr", content=b"\x89PNG...", headers={"Content-Type": "image/png"}
-    )
+    response = _client().post("/ocr", content=b"\x89PNG...", headers={"Content-Type": "image/png"})
     assert response.status_code == 200
     body = response.json()
     assert body["text"] == "FACTURE 1500"
