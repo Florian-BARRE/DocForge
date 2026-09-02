@@ -132,7 +132,7 @@ COPY --chown=appuser:appuser paddle_server /app/paddle_server
 USER appuser
 
 # HTTP port served by uvicorn. Internal-only in prod compose (network alias paddle_server);
-# dev republishes it to a host port (see docker-compose.dev.yml).
+# dev republishes it to a host port (see compose/overlays/dev.yml).
 EXPOSE 80
 
 # Start the PP-StructureV3 layout-parsing HTTP server.

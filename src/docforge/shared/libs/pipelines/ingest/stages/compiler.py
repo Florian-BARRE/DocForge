@@ -121,16 +121,63 @@ class StageCompiler(LoggerClass):
 
     @classmethod
     def __warn_placeholders(cls, blob: GroupNodeBlob, notices: list[str]) -> None:
-        """Append one notice per enabled action node whose config still holds a template placeholder."""
+        """Append one notice per enabled action node with a placeholder or missing endpoint/key."""
         flagged: set[str] = set()
         for node_id, config in cls.__action_configs(blob):
-            blob_text = repr(config)
-            if node_id not in flagged and any(m in blob_text for m in cls._PLACEHOLDER_MARKERS):
+            if node_id in flagged:
+                continue
+            notice = cls.__endpoint_notice(node_id, config)
+            if notice is not None:
                 flagged.add(node_id)
-                notices.append(
-                    f"node '{node_id}' still points at a template placeholder endpoint/key — set a "
-                    f"reachable URL and credentials before ingesting, or the run fails at preflight."
-                )
+                notices.append(notice)
+
+    @classmethod
+    def __endpoint_notice(cls, node_id: str, config: object) -> str | None:
+        """The edit-time endpoint caveat for one enabled action node, or ``None`` when it is sound.
+
+        The assembled blob holds only ENABLED stages' nodes, so every node reached here is live.
+        A missing endpoint (or a template placeholder) builds cleanly — GraphValidator is structural
+        only — and would otherwise fail at the first spend (or at preflight). Surfacing it here, at
+        edit time, lets the user wire a real endpoint before ingesting rather than discovering it
+        from a failed job.
+
+        Args:
+            node_id (str): The node whose config is inspected (named in the notice).
+            config (object): The node's config dict (any non-dict is treated as endpoint-free).
+
+        Returns:
+            str | None: The caveat to surface, or ``None`` when the node needs none.
+        """
+        # 1. A template placeholder endpoint/key — a stage shipping OFF carries these until opt-in.
+        if any(marker in repr(config) for marker in cls._PLACEHOLDER_MARKERS):
+            return (
+                f"node '{node_id}' still points at a template placeholder endpoint/key — set a "
+                f"reachable URL and credentials before ingesting, or the run fails at preflight."
+            )
+        if not isinstance(config, dict):
+            return None
+        # 2. A network node with no endpoint at all — an empty base_url is never legitimate (an
+        #    in-stack service still has a concrete host), so flag it whatever the node kind.
+        base_url = config.get("base_url")
+        if isinstance(base_url, str) and not base_url.strip():
+            return (
+                f"node '{node_id}' has no endpoint set (base_url is empty) — set a reachable URL "
+                f"before ingesting, or the run fails at preflight."
+            )
+        # 3. A HOSTED endpoint (https) with an empty api_key — an in-stack http service legitimately
+        #    needs no key, so the key is only flagged when the endpoint is a remote https one.
+        api_key = config.get("api_key")
+        if (
+            isinstance(base_url, str)
+            and base_url.strip().lower().startswith("https://")
+            and isinstance(api_key, str)
+            and not api_key.strip()
+        ):
+            return (
+                f"node '{node_id}' points at a hosted endpoint with no api_key — set the credential "
+                f"before ingesting, or the run fails at preflight."
+            )
+        return None
 
     @classmethod
     def __action_configs(cls, blob: GroupNodeBlob):

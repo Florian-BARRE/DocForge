@@ -277,12 +277,13 @@ def test_pp_structure_brick_shape_matches_the_plan() -> None:
     assert ParserPpStructureNode.describe().scored is True
 
 
-def test_config_forbids_unknown_fields_and_requires_base_url() -> None:
-    """extra='forbid' (via NodeConfig) rejects a typo; base_url has no default."""
+def test_config_forbids_unknown_fields_and_defaults_base_url() -> None:
+    """extra='forbid' (via NodeConfig) rejects a typo; base_url defaults to the in-stack sidecar."""
     with pytest.raises(ValidationError):
         ParserPpStructureConfig(base_url="http://x:80", do_ocr=True)
-    with pytest.raises(ValidationError):
-        ParserPpStructureConfig()
+    # base_url is no longer required: it defaults to the in-stack paddle_server so a pp_structure
+    # escalation step added to a chain builds with a reachable endpoint instead of an empty URL.
+    assert ParserPpStructureConfig().base_url == "http://paddle_server:80"
 
 
 def test_config_defaults_lean_toggles() -> None:

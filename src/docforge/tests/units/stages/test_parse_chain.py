@@ -25,6 +25,7 @@ from shared_libs.pipelines.ingest.stages import (
     IngestAssembler,
     SetChain,
     SetProvider,
+    SetStageConfig,
     StateReader,
     default_state,
 )
@@ -147,6 +148,50 @@ def test_docling_then_granite_escalation_chain_builds_and_validates(
     state = StateReader.read(chained)
     assert [s.kind for s in state.parse_chain.steps] == ["docling", "granite_docling"]
     assert state.parse_chain.steps[0].score_below == 0.6
+
+
+def test_docling_then_pp_structure_escalation_defaults_base_url_to_sidecar(
+    compiler, builder, validator
+) -> None:
+    """A ``docling → ScoreBelow(0.30) → pp_structure`` chain builds/validates AND the added
+    pp_structure step resolves its base_url to the in-stack sidecar (default), so an escalation
+    added to a collection is reachable out of the box instead of pointing at an empty endpoint."""
+    default = IngestPipeline.default_blob()
+    chained, notices = compiler.apply(
+        default,
+        SetChain(
+            stage="parse",
+            slot=None,
+            steps=[
+                ChainStep(kind="docling", score_below=0.30),
+                ChainStep(kind="pp_structure"),
+            ],
+        ),
+    )
+    # 1. The escalation chain builds and validates with zero structural issues.
+    assert validator.validate(builder.build(chained)) == [], notices
+
+    # 2. The pp_structure step's config resolves base_url to the in-stack sidecar (non-empty),
+    #    because base_url now carries a default and is no longer a required-empty field.
+    step = next(
+        s for s in StateReader.read(chained).parse_chain.steps if s.kind == "pp_structure"
+    )
+    resolved = NodeRegistry.get("parser", "pp_structure").Config.model_validate(step.config)
+    assert resolved.base_url == "http://paddle_server:80"
+
+    # 3. No "missing endpoint" placeholder notice was raised for the reachable-by-default step.
+    assert not any("no endpoint" in n for n in notices)
+
+
+def test_empty_base_url_on_enabled_network_node_is_flagged(compiler) -> None:
+    """Blanking an enabled network node's endpoint surfaces a notice at edit time (the guard),
+    instead of building cleanly and only failing at the first spend."""
+    default = IngestPipeline.default_blob()
+    _, notices = compiler.apply(
+        default,
+        SetStageConfig(stage="intake", node="convert", config={"base_url": ""}),
+    )
+    assert any("no endpoint" in n for n in notices)
 
 
 def test_set_provider_parse_is_one_step_chain_sugar(compiler) -> None:
