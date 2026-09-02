@@ -11,6 +11,8 @@ interface TagsInputProps {
   onChange: (values: string[]) => void;
   placeholder?: string;
   ariaLabel?: string;
+  /** Wires the draft `<input>` to an external `<label htmlFor>` (e.g. SchemaField's own label). */
+  id?: string;
 }
 
 /** Splits a raw string on commas and/or whitespace into trimmed, non-empty tokens — the same
@@ -19,7 +21,7 @@ function splitIntoTokens(raw: string): string[] {
   return raw.split(/[,\s]+/).map((token) => token.trim()).filter(Boolean);
 }
 
-export function TagsInput({ values, onChange, placeholder, ariaLabel }: TagsInputProps) {
+export function TagsInput({ values, onChange, placeholder, ariaLabel, id }: TagsInputProps) {
   const [draft, setDraft] = useState("");
 
   const commitTokens = (tokens: string[]) => {
@@ -41,7 +43,7 @@ export function TagsInput({ values, onChange, placeholder, ariaLabel }: TagsInpu
     <div
       style={{
         display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center",
-        background: theme.color.surface2, border: `1px solid ${theme.color.line}`,
+        background: theme.color.surface2, border: `1px solid ${theme.color.lineStrong}`,
         borderRadius: theme.radius.m, padding: "6px 8px", minHeight: 34,
       }}
     >
@@ -58,6 +60,7 @@ export function TagsInput({ values, onChange, placeholder, ariaLabel }: TagsInpu
         </span>
       ))}
       <input
+        id={id}
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
         onKeyDown={(e) => {
@@ -82,7 +85,9 @@ export function TagsInput({ values, onChange, placeholder, ariaLabel }: TagsInpu
         placeholder={placeholder}
         aria-label={ariaLabel}
         style={{
-          background: "none", border: "none", outline: "none", color: theme.color.text,
+          // No inline `outline: none` — relies on the global `:focus-visible` rule (index.css) for
+          // a visible forge ring; other inputs in the app never suppress it either.
+          background: "none", border: "none", color: theme.color.text,
           fontSize: theme.font.size.s, flex: 1, minWidth: 60,
         }}
       />

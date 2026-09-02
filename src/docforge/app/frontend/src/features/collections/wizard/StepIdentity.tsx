@@ -77,7 +77,16 @@ export function StepIdentity({
   const properties = { ...schema.properties };
   if (mode === "edit") delete properties.preset;
   delete properties.max_file_size_bytes;
-  const visibleSchema: JsonSchema = { ...schema, properties };
+
+  // 1b. Required fields lead, optional fields follow — SchemaForm renders in object key order, so
+  //     reordering the object here (relative order preserved within each group) is enough to group
+  //     the form without touching the generic renderer.
+  const required = new Set(schema.required ?? []);
+  const orderedEntries = [
+    ...Object.entries(properties).filter(([name]) => required.has(name)),
+    ...Object.entries(properties).filter(([name]) => !required.has(name)),
+  ];
+  const visibleSchema: JsonSchema = { ...schema, properties: Object.fromEntries(orderedEntries) };
 
   // 2. Fold the wizard's named state + the untyped overflow bag into ONE values record keyed by
   //    the contract's own field names — this is the only place unit conversion happens
@@ -115,7 +124,6 @@ export function StepIdentity({
     }
   };
 
-  const required = new Set(visibleSchema.required ?? []);
   const valid = [...required].every((field) => {
     const v = values[field];
     if (v === undefined || v === null) return false;
@@ -129,10 +137,19 @@ export function StepIdentity({
       <div
         style={{
           background: theme.color.surface, border: `1px solid ${theme.color.line}`,
-          borderRadius: theme.radius.l, boxShadow: theme.shadow.sm, padding: theme.space.l,
-          display: "flex", flexDirection: "column", gap: "10px",
+          borderRadius: theme.radius.l, boxShadow: theme.shadow.sm,
+          display: "flex", flexDirection: "column",
         }}
       >
+        {/* A real card header — the "Show technical details"/"JSON view" toggle SchemaForm renders
+            right below used to be the very first thing in the box with nothing above it (reading as
+            unanchored, floating furniture); it now sits directly under this title/divider instead. */}
+        <div style={{ padding: `${theme.space.m}px ${theme.space.l}px`, borderBottom: `1px solid ${theme.color.line}` }}>
+          <span style={{ fontFamily: theme.font.display, fontWeight: theme.font.weight.bold, fontSize: theme.font.size.xl, color: theme.color.text }}>
+            Identity &amp; limits
+          </span>
+        </div>
+        <div style={{ padding: theme.space.l, display: "flex", flexDirection: "column", gap: "10px" }}>
         <SchemaForm
           schema={visibleSchema}
           values={values}
@@ -146,6 +163,7 @@ export function StepIdentity({
         {!jsonMode && (
           <MaxFileSizeField valueMb={maxSizeMb} onChange={onMaxSizeMbChange} advanced={advanced} />
         )}
+        </div>
       </div>
       <div>
         <Button variant="primary" disabled={!valid} onClick={onNext}>

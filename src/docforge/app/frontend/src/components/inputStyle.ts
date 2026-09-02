@@ -6,7 +6,10 @@ import { theme } from "../theme";
 
 export const inputStyle: React.CSSProperties = {
   background: theme.color.surface2,
-  border: `1px solid ${theme.color.line}`,
+  // lineStrong, not line — the plain hairline token is near-invisible against surface-2, especially
+  // on ink (see theme.ts / index.css comments). lineStrong is documented for exactly this ("inputs,
+  // strong dividers") and was bumped to a real 3:1+ UI-component contrast in this pass.
+  border: `1px solid ${theme.color.lineStrong}`,
   borderRadius: theme.radius.m,
   padding: "8px 10px",
   fontSize: theme.font.size.l,

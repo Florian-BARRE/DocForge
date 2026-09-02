@@ -63,7 +63,9 @@ export function buildBaseColumns({ onOpen, onEnabledChanged, supportedFormats }:
       id: "page_count",
       accessorKey: "page_count",
       header: "Pages",
-      size: 90,
+      // Wide enough that its min/max header filter never squeezes below the placeholder text.
+      size: 110,
+      minSize: 110,
       meta: { filterKind: "numberRange", mono: true, align: "right", group: "document" },
       cell: ({ row }) => row.original.page_count ?? "—",
     },
@@ -71,7 +73,9 @@ export function buildBaseColumns({ onOpen, onEnabledChanged, supportedFormats }:
       id: "file_size",
       accessorKey: "file_size",
       header: "Size",
-      size: 100,
+      // Same floor as Pages — its filter is the same two-input numberRange control.
+      size: 110,
+      minSize: 110,
       meta: { filterKind: "numberRange", mono: true, align: "right", group: "document" },
       cell: ({ row }) => formatBytes(row.original.file_size),
     },
@@ -80,6 +84,9 @@ export function buildBaseColumns({ onOpen, onEnabledChanged, supportedFormats }:
       accessorKey: "created_at",
       header: "Created",
       size: 170,
+      // Its dateRange filter stacks its two inputs vertically, so this only needs to fit one native
+      // date value's own width, not two side by side.
+      minSize: 120,
       meta: { filterKind: "dateRange", mono: true, group: "document" },
       cell: ({ row }) => formatDateTime(row.original.created_at),
     },

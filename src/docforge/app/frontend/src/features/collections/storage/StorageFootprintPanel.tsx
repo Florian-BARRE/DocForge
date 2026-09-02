@@ -107,7 +107,7 @@ export function StorageFootprintPanel({ collectionId, onNavigate }: StorageFootp
               </div>
 
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: t.space.m }}>
-                {STORAGE_STORES.map(({ key, label, color }) => {
+                {STORAGE_STORES.map(({ key, label, color, emptyLabel }) => {
                   const s = storeStats(storage, key);
                   return (
                     <StorageStoreBreakdown
@@ -119,6 +119,7 @@ export function StorageFootprintPanel({ collectionId, onNavigate }: StorageFootp
                       estimated={s.estimated}
                       rows={breakdowns[key].rows}
                       note={breakdowns[key].note}
+                      emptyLabel={emptyLabel}
                     />
                   );
                 })}

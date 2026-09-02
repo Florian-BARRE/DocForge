@@ -40,12 +40,18 @@ interface SearchTargetPickerProps {
   fields: FieldSpec[];
   selection: TargetSelection;
   onToggle: (field: string, modality: "semantic" | "lexical", checked: boolean) => void;
+  /** True once the collection is confirmed to hold zero documents — the axis stays on screen but
+   *  disabled, with a note explaining why ticking it wouldn't do anything yet. `undefined` while the
+   *  document count hasn't loaded, treated the same as "has documents" (no premature disabling). */
+  emptyCollection?: boolean;
 }
 
-/** Renders nothing when the collection has no searchable metadata field — the content-only default needs no picker. */
-export function SearchTargetPicker({ fields, selection, onToggle }: SearchTargetPickerProps) {
+/** Renders nothing when the collection has no searchable metadata field AND already holds documents
+ *  — the content-only default needs no picker. An empty collection keeps the axis visible (disabled)
+ *  instead, so a first-time user still sees WHERE a query would search once something is indexed. */
+export function SearchTargetPicker({ fields, selection, onToggle, emptyCollection }: SearchTargetPickerProps) {
   const searchableFields = fields.filter((f) => f.semantic || f.lexical);
-  if (searchableFields.length === 0) return null;
+  if (searchableFields.length === 0 && !emptyCollection) return null;
 
   const emptyModalities = { semantic: false, lexical: false };
 
@@ -55,15 +61,22 @@ export function SearchTargetPicker({ fields, selection, onToggle }: SearchTarget
         display: "flex", flexDirection: "column", gap: theme.space.s,
         padding: theme.space.m, border: `1px solid ${theme.color.line}`,
         borderRadius: theme.radius.l, background: theme.color.surface,
+        opacity: emptyCollection ? 0.6 : 1,
       }}
     >
-      <span style={{ fontSize: theme.font.size.s, fontWeight: 600, color: theme.color.text }}>Search in</span>
+      <div style={{ display: "flex", alignItems: "baseline", gap: theme.space.s, flexWrap: "wrap" }}>
+        <span style={{ fontSize: theme.font.size.s, fontWeight: 600, color: theme.color.text }}>Search in</span>
+        {emptyCollection && (
+          <span style={{ fontSize: theme.font.size.xs, color: theme.color.mute }}>No documents indexed yet</span>
+        )}
+      </div>
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: theme.space.m }}>
         <TargetRow
           label="Content"
           supportsSemantic
           supportsLexical
+          disabled={emptyCollection}
           value={selection[CONTENT_FIELD] ?? emptyModalities}
           onToggle={(modality, checked) => onToggle(CONTENT_FIELD, modality, checked)}
         />
@@ -73,6 +86,7 @@ export function SearchTargetPicker({ fields, selection, onToggle }: SearchTarget
             label={field.field_name}
             supportsSemantic={field.semantic}
             supportsLexical={field.lexical}
+            disabled={emptyCollection}
             value={selection[field.field_name] ?? emptyModalities}
             onToggle={(modality, checked) => onToggle(field.field_name, modality, checked)}
           />
@@ -86,12 +100,13 @@ interface TargetRowProps {
   label: string;
   supportsSemantic: boolean;
   supportsLexical: boolean;
+  disabled?: boolean;
   value: { semantic: boolean; lexical: boolean };
   onToggle: (modality: "semantic" | "lexical", checked: boolean) => void;
 }
 
 /** One target's name plus a checkbox per modality it actually supports — never the unsupported one. */
-function TargetRow({ label, supportsSemantic, supportsLexical, value, onToggle }: TargetRowProps) {
+function TargetRow({ label, supportsSemantic, supportsLexical, disabled, value, onToggle }: TargetRowProps) {
   return (
     <div
       style={{
@@ -102,14 +117,14 @@ function TargetRow({ label, supportsSemantic, supportsLexical, value, onToggle }
     >
       <span style={{ fontFamily: theme.font.mono, fontWeight: 600 }}>{label}</span>
       {supportsSemantic && (
-        <label style={{ display: "flex", alignItems: "center", gap: 3, fontSize: theme.font.size.xs, color: theme.color.dim, cursor: "pointer" }}>
-          <input type="checkbox" checked={value.semantic} onChange={(e) => onToggle("semantic", e.target.checked)} />
+        <label style={{ display: "flex", alignItems: "center", gap: 3, fontSize: theme.font.size.xs, color: theme.color.dim, cursor: disabled ? "default" : "pointer" }}>
+          <input type="checkbox" disabled={disabled} checked={value.semantic} onChange={(e) => onToggle("semantic", e.target.checked)} />
           semantic
         </label>
       )}
       {supportsLexical && (
-        <label style={{ display: "flex", alignItems: "center", gap: 3, fontSize: theme.font.size.xs, color: theme.color.dim, cursor: "pointer" }}>
-          <input type="checkbox" checked={value.lexical} onChange={(e) => onToggle("lexical", e.target.checked)} />
+        <label style={{ display: "flex", alignItems: "center", gap: 3, fontSize: theme.font.size.xs, color: theme.color.dim, cursor: disabled ? "default" : "pointer" }}>
+          <input type="checkbox" disabled={disabled} checked={value.lexical} onChange={(e) => onToggle("lexical", e.target.checked)} />
           lexical
         </label>
       )}

@@ -8,17 +8,23 @@
 // probe on one collection never blocks the rest of the grid — this component only renders what it's
 // handed, showing "…" while its own slice hasn't resolved yet.
 
+import type { ReactNode } from "react";
 import { useState } from "react";
 import type { Collection, CollectionHealth } from "../../api/collections";
 import { Chip, type ChipTone } from "../../components/Chip";
 import { theme as t } from "../../theme";
 import { lastIngestLabel, parserBadge, probeVerdict } from "./collectionHealth";
+import { humanizeProviderLabel } from "./providerKindLabels";
 
 interface CollectionCardProps {
   collection: Collection;
   health: CollectionHealth | null;
   healthError: string | null;
   docCount: number | null;
+  /** Whether this collection owns at least one RUNNING job right now — the ONLY condition that
+   *  earns the avatar forge orange (brand.md: orange marks the one active thing, never a static
+   *  at-rest identity mark shared by every card in the grid). */
+  jobRunning: boolean;
   onClick: () => void;
 }
 
@@ -37,20 +43,42 @@ function formatsSummary(formats: string[]): string {
 }
 
 /** A compact label/value pair used for the doc/chunk/last-ingest metric row. */
-function Metric({ label, value }: { label: string; value: string }) {
+function Metric({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 1, minWidth: 0 }}>
       <span style={{ color: t.color.mute, fontSize: t.font.size.xs, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em" }}>
         {label}
       </span>
-      <span style={{ fontFamily: t.font.mono, fontSize: t.font.size.m, color: t.color.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+      <span style={{ fontFamily: t.font.mono, fontSize: t.font.size.m, color: t.color.text, minWidth: 0 }}>
         {value}
       </span>
     </div>
   );
 }
 
-export function CollectionCard({ collection, health, healthError, docCount, onClick }: CollectionCardProps) {
+/**
+ * The "Last ingest" metric's value — an "imported <relative-time>" label (see `lastIngestLabel`'s
+ * own doc for why that fallback exists) is too long to survive the metric column's width at full
+ * precision. Rather than ellipsis-truncating the relative time itself (the one number that
+ * actually matters here), split "imported" off into its own small tag and always render the
+ * relative time whole.
+ */
+function LastIngestValue({ label }: { label: string }) {
+  const importedMatch = label.match(/^imported\s+(.+)$/);
+  if (!importedMatch) {
+    return <span style={{ whiteSpace: "nowrap" }}>{label}</span>;
+  }
+  return (
+    <span style={{ display: "flex", alignItems: "baseline", gap: 4, minWidth: 0 }}>
+      <span style={{ color: t.color.mute, fontSize: t.font.size.xs, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.03em", flexShrink: 0 }}>
+        imported
+      </span>
+      <span style={{ whiteSpace: "nowrap" }}>{importedMatch[1]}</span>
+    </span>
+  );
+}
+
+export function CollectionCard({ collection, health, healthError, docCount, jobRunning, onClick }: CollectionCardProps) {
   const [hover, setHover] = useState(false);
   const verdict = probeVerdict(health, healthError);
   const parser = parserBadge(health);
@@ -78,9 +106,13 @@ export function CollectionCard({ collection, health, healthError, docCount, onCl
 
       <div style={{ display: "flex", alignItems: "flex-start", gap: t.space.m }}>
         <span
+          title={jobRunning ? "A job is running for this collection" : undefined}
           style={{
             width: 38, height: 38, flexShrink: 0, borderRadius: t.radius.m, display: "grid", placeItems: "center",
-            background: t.color.accentSoft, color: t.color.accent,
+            // Steel at rest — orange is earned ONLY by an actual running job, never a static
+            // per-card identity mark (brand.md: orange is the one active thing, not decoration).
+            background: jobRunning ? t.color.accentSoft : t.color.surface2,
+            color: jobRunning ? t.color.accent : t.color.dim,
             fontFamily: t.font.display, fontWeight: 700, fontSize: t.font.size.xl,
           }}
         >
@@ -103,13 +135,15 @@ export function CollectionCard({ collection, health, healthError, docCount, onCl
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: t.space.m }}>
         <Metric label="Documents" value={docCount !== null ? docCount.toLocaleString() : "…"} />
         <Metric label="Chunks" value={chunkCount !== undefined ? chunkCount.toLocaleString() : "…"} />
-        <Metric label="Last ingest" value={lastIngest} />
+        <Metric label="Last ingest" value={<LastIngestValue label={lastIngest} />} />
       </div>
 
       <div style={{ display: "flex", alignItems: "center", gap: t.space.s, flexWrap: "wrap" }}>
         {/* Steel, not orange — a parser badge is metadata, not "the one thing being worked" (brand.md
-            reserves forge orange for the single active/primary thing on screen). */}
-        {parser && <Chip tone="info">{parser}</Chip>}
+            reserves forge orange for the single active/primary thing on screen). Humanized via the
+            shared provider-kind vocabulary so raw graph tokens (e.g. "granite_docling") never leak
+            onto the card. */}
+        {parser && <Chip tone="info">{humanizeProviderLabel("parser", parser)}</Chip>}
         <Chip tone="neutral">{formatsSummary(collection.supported_formats)}</Chip>
       </div>
     </div>

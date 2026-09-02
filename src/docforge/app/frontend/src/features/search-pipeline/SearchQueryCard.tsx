@@ -37,7 +37,7 @@ const SUMMARY_BY_MODE: Record<"off" | QueryTransformKind, string> = {
 const inputStyle: React.CSSProperties = {
   background: t.color.surface2,
   color: t.color.text,
-  border: `1px solid ${t.color.line}`,
+  border: `1px solid ${t.color.lineStrong}`,
   borderRadius: t.radius.m,
   padding: "6px 8px",
   fontSize: t.font.size.m,
@@ -51,9 +51,13 @@ interface SearchQueryCardProps {
   config: Record<string, unknown> | null;
   onSelect: (kind: QueryTransformKind | null) => void;
   onChangeConfig: (field: string, value: unknown) => void;
+  /** Folds this into step 1's own card body (a plain inset block, no second numbered frame) instead
+   *  of rendering it as its own full SearchStageFrame — Query understanding is a modifier of the
+   *  first step (normalize), not a numbered sibling step of its own. */
+  nested?: boolean;
 }
 
-export function SearchQueryCard({ active, config, onSelect, onChangeConfig }: SearchQueryCardProps) {
+export function SearchQueryCard({ active, config, onSelect, onChangeConfig, nested }: SearchQueryCardProps) {
   const enabled = active !== null;
 
   const selector = (
@@ -62,7 +66,7 @@ export function SearchQueryCard({ active, config, onSelect, onChangeConfig }: Se
       aria-label="Query understanding"
       style={{
         display: "inline-flex", alignItems: "stretch", gap: 2, padding: 2,
-        background: t.color.surface2, border: `1px solid ${t.color.line}`, borderRadius: t.radius.pill,
+        background: t.color.surface2, border: `1px solid ${t.color.lineStrong}`, borderRadius: t.radius.pill,
       }}
     >
       {OPTIONS.map((option) => {
@@ -94,6 +98,65 @@ export function SearchQueryCard({ active, config, onSelect, onChangeConfig }: Se
   const rawKey = String(config?.api_key ?? "");
   const keyRedacted = rawKey.startsWith(REDACTED_PREFIX);
 
+  const fields = enabled && (
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "10px 10px" }}>
+      <Field label="Endpoint URL">
+        <input
+          style={inputStyle}
+          value={String(config?.base_url ?? CONFIG_DEFAULTS.base_url)}
+          onChange={(e) => onChangeConfig("base_url", e.target.value)}
+        />
+      </Field>
+      <Field label="Model">
+        <input
+          style={inputStyle}
+          value={String(config?.model ?? CONFIG_DEFAULTS.model)}
+          onChange={(e) => onChangeConfig("model", e.target.value)}
+        />
+      </Field>
+      <Field label="API key">
+        {/* A stored key is masked on read (`__redacted__<last4>`) — show it as the placeholder and
+            keep the field blank so leaving it untouched restores the real key server-side; typing
+            overwrites it. */}
+        <input
+          type="password"
+          style={inputStyle}
+          value={keyRedacted ? "" : rawKey}
+          placeholder={keyRedacted ? rawKey : "sk-…"}
+          onChange={(e) => onChangeConfig("api_key", e.target.value)}
+        />
+      </Field>
+      <Field label="Temperature">
+        <NumberField
+          value={typeof config?.temperature === "number" ? (config.temperature as number) : CONFIG_DEFAULTS.temperature}
+          min={0}
+          style={inputStyle}
+          onChange={(value) => onChangeConfig("temperature", value)}
+        />
+      </Field>
+    </div>
+  );
+
+  if (nested) {
+    return (
+      <div
+        style={{
+          marginTop: t.space.m, paddingTop: t.space.m, borderTop: `1px dashed ${t.color.line}`,
+          display: "flex", flexDirection: "column", gap: t.space.s,
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: t.space.s, flexWrap: "wrap" }}>
+          <span style={{ fontFamily: t.font.family, fontSize: t.font.size.s, fontWeight: 600, color: t.color.text }}>
+            Query understanding
+          </span>
+          {selector}
+        </div>
+        <div style={{ color: t.color.dim, fontSize: t.font.size.s }}>{SUMMARY_BY_MODE[active ?? "off"]}</div>
+        {fields}
+      </div>
+    );
+  }
+
   return (
     <SearchStageFrame
       left={selector}
@@ -102,44 +165,7 @@ export function SearchQueryCard({ active, config, onSelect, onChangeConfig }: Se
       summary={SUMMARY_BY_MODE[active ?? "off"]}
       enabled={enabled}
     >
-      {enabled && (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "10px 10px" }}>
-          <Field label="base_url">
-            <input
-              style={inputStyle}
-              value={String(config?.base_url ?? CONFIG_DEFAULTS.base_url)}
-              onChange={(e) => onChangeConfig("base_url", e.target.value)}
-            />
-          </Field>
-          <Field label="model">
-            <input
-              style={inputStyle}
-              value={String(config?.model ?? CONFIG_DEFAULTS.model)}
-              onChange={(e) => onChangeConfig("model", e.target.value)}
-            />
-          </Field>
-          <Field label="api_key">
-            {/* A stored key is masked on read (`__redacted__<last4>`) — show it as the placeholder and
-                keep the field blank so leaving it untouched restores the real key server-side; typing
-                overwrites it. */}
-            <input
-              type="password"
-              style={inputStyle}
-              value={keyRedacted ? "" : rawKey}
-              placeholder={keyRedacted ? rawKey : "sk-…"}
-              onChange={(e) => onChangeConfig("api_key", e.target.value)}
-            />
-          </Field>
-          <Field label="temperature">
-            <NumberField
-              value={typeof config?.temperature === "number" ? (config.temperature as number) : CONFIG_DEFAULTS.temperature}
-              min={0}
-              style={inputStyle}
-              onChange={(value) => onChangeConfig("temperature", value)}
-            />
-          </Field>
-        </div>
-      )}
+      {fields}
     </SearchStageFrame>
   );
 }

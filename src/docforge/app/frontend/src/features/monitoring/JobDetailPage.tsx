@@ -47,7 +47,7 @@ export function JobDetailPage({ jobId, collectionId, onNavigate }: JobDetailPage
             <span>attempt {job.attempt}</span>
             <JobStatusChip status={job.status} />
             {live && running && (
-              <span style={{ display: "inline-flex", alignItems: "center", gap: theme.space.xs, color: theme.color.accent, fontSize: theme.font.size.xs, fontWeight: theme.font.weight.semibold }}>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: theme.space.xs, color: theme.color.accentSafe, fontSize: theme.font.size.xs, fontWeight: theme.font.weight.semibold }}>
                 <span style={{ width: 7, height: 7, borderRadius: theme.radius.pill, background: theme.color.accent }} />
                 live
               </span>

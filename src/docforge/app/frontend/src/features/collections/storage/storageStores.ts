@@ -14,12 +14,15 @@ export interface StoreMeta {
   key: StoreKey;
   label: string;
   color: string;
+  /** What "0 B" means for THIS store — read instead of the Breakdown/estimated furniture when a
+   *  store hasn't written anything yet (see `StorageStoreBreakdown`'s zero-state branch). */
+  emptyLabel: string;
 }
 
 export const STORAGE_STORES: StoreMeta[] = [
-  { key: "s3", label: "S3", color: t.color.store.s3 },
-  { key: "postgres", label: "PostgreSQL", color: t.color.store.postgres },
-  { key: "qdrant", label: "Qdrant", color: t.color.store.qdrant },
+  { key: "s3", label: "S3", color: t.color.store.s3, emptyLabel: "no files stored" },
+  { key: "postgres", label: "PostgreSQL", color: t.color.store.postgres, emptyLabel: "no records stored" },
+  { key: "qdrant", label: "Qdrant", color: t.color.store.qdrant, emptyLabel: "no vectors indexed" },
 ];
 
 /** A store's ON-DISK contribution off either the collection-level or a per-document storage payload.

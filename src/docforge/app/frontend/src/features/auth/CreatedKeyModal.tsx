@@ -9,6 +9,17 @@ import { Button } from "../../components/Button";
 import { useFocusTrap } from "../../shell/useFocusTrap";
 import { theme } from "../../theme";
 
+/** A minimal key glyph, `currentColor`-only — brand.md bans emoji everywhere in the UI. */
+function KeyGlyph() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+      strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="8" cy="15" r="4" />
+      <path d="M10.5 12.5 20 3M17 6l2.5 2.5M14 9l2 2" />
+    </svg>
+  );
+}
+
 interface CreatedKeyModalProps {
   createdKey: CreatedApiKey;
   onClose: () => void;
@@ -51,10 +62,10 @@ export function CreatedKeyModal({ createdKey, onClose }: CreatedKeyModalProps) {
           <span
             style={{
               width: 32, height: 32, borderRadius: theme.radius.pill, flexShrink: 0, display: "grid", placeItems: "center",
-              background: theme.color.accentSoft, color: theme.color.accent, fontSize: theme.font.size.l,
+              background: theme.color.accentSoft, color: theme.color.accentSafe, fontSize: theme.font.size.l,
             }}
           >
-            🔑
+            <KeyGlyph />
           </span>
           <h2 id={titleId} style={{ fontFamily: theme.font.display, fontSize: theme.font.size.xl, fontWeight: 700, color: theme.color.text, margin: 0 }}>
             Key created — "{createdKey.name}"

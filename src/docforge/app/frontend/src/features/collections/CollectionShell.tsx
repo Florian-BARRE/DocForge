@@ -132,7 +132,7 @@ function SectionTab({ sectionKey, active, label, onClick, registerRef, onKeyDown
       onKeyDown={onKeyDown}
       style={{
         background: active ? t.color.accentSoft : "transparent",
-        color: active ? t.color.accent : t.color.dim,
+        color: active ? t.color.accentSafe : t.color.dim,
         border: `1px solid ${active ? t.color.accentLine : "transparent"}`,
         borderRadius: t.radius.m, padding: "7px 16px",
         fontSize: t.font.size.l, fontWeight: active ? 700 : 600, cursor: "pointer",

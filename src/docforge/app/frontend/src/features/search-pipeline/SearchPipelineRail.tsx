@@ -1,8 +1,11 @@
 // ====== Code Summary ======
-// The connected rail of search-pipeline steps — one card per blob node, in blob order, plus the
-// two toggleable cards (query transform, rerank) spliced in right after their canonical anchor
-// node (`normalize` / `retrieve`) so the whole chain reads top-to-bottom exactly like the backend
-// topology. Pure render: every gesture is handed straight to the caller-owned edit functions.
+// The connected rail of search-pipeline steps — one numbered card per blob node, in blob order,
+// plus Reranking (the one other toggleable, numbered top-level step) spliced in right after its
+// canonical anchor node (`retrieve`) so the whole chain reads top-to-bottom exactly like the
+// backend topology. Query understanding is NOT a sibling step: it's nested inside `normalize`'s own
+// card (SearchNodeCard's `extra` slot) since it's a modifier of step 1, not a step of its own —
+// keeps numbering either "every top-level card" or "none", never a mix. Pure render: every gesture
+// is handed straight to the caller-owned edit functions.
 
 import { Fragment } from "react";
 import type { ActionBlob, GroupBlob, Palette } from "../../api/types";
@@ -31,8 +34,9 @@ export function SearchPipelineRail({
   blob, palette, railNodes, hasAnchor, hasQueryAnchor, queryKind, queryConfig,
   onChangeNodeConfig, onSelectQueryTransform, onToggleRerank,
 }: SearchPipelineRailProps) {
-  const queryCard = (
+  const queryExtra = (
     <SearchQueryCard
+      nested
       active={queryKind}
       config={queryConfig?.config ?? null}
       onSelect={onSelectQueryTransform}
@@ -41,6 +45,13 @@ export function SearchPipelineRail({
       }}
     />
   );
+
+  // Reranking occupies a real numbered slot right after `retrieve` — count it into the same
+  // sequence as the plain nodes rather than assigning numbers purely from `railNodes`' own index,
+  // so every card downstream of the splice still reads its correct position.
+  const rerankIndexInRail = railNodes.findIndex((node) => node.id === RERANK_ANCHOR_ID);
+  const stepFor = (nodeIndex: number) => (hasAnchor && nodeIndex > rerankIndexInRail ? nodeIndex + 2 : nodeIndex + 1);
+  const rerankStep = hasAnchor ? rerankIndexInRail + 2 : railNodes.length + 1;
 
   return (
     // One connected rail — the same pattern as the ingestion stage rail. Reranking is the one
@@ -51,21 +62,16 @@ export function SearchPipelineRail({
         <Fragment key={node.id}>
           {index > 0 && <StageConnector />}
           <SearchNodeCard
-            step={index + 1}
+            step={stepFor(index)}
             node={node}
             palette={palette}
             onChangeConfig={(field, value) => onChangeNodeConfig(node.id, field, value)}
+            extra={node.id === QUERY_ANCHOR_ID ? queryExtra : undefined}
           />
-          {node.id === QUERY_ANCHOR_ID && (
-            <>
-              <StageConnector />
-              {queryCard}
-            </>
-          )}
           {node.id === RERANK_ANCHOR_ID && (
             <>
               <StageConnector />
-              <SearchRerankCard enabled={isRerankEnabled(blob)} onToggle={onToggleRerank} />
+              <SearchRerankCard step={rerankStep} enabled={isRerankEnabled(blob)} onToggle={onToggleRerank} />
             </>
           )}
         </Fragment>
@@ -73,13 +79,22 @@ export function SearchPipelineRail({
       {!hasQueryAnchor && (
         <>
           {railNodes.length > 0 && <StageConnector />}
-          {queryCard}
+          {/* Fallback for the rare custom blob without a `normalize` node to nest under — falls
+              back to its own (unnumbered) card since there's no step 1 to fold into. */}
+          <SearchQueryCard
+            active={queryKind}
+            config={queryConfig?.config ?? null}
+            onSelect={onSelectQueryTransform}
+            onChangeConfig={(field, value) => {
+              if (queryKind) onChangeNodeConfig(queryKind, field, value);
+            }}
+          />
         </>
       )}
       {!hasAnchor && (
         <>
           {(railNodes.length > 0 || !hasQueryAnchor) && <StageConnector />}
-          <SearchRerankCard enabled={isRerankEnabled(blob)} onToggle={onToggleRerank} />
+          <SearchRerankCard step={rerankStep} enabled={isRerankEnabled(blob)} onToggle={onToggleRerank} />
         </>
       )}
     </div>

@@ -14,7 +14,9 @@ function flagChip(active: boolean, label: string, tone: ChipTone) {
   return active ? <Chip tone={tone}>{label}</Chip> : <span style={{ color: t.color.mute }}>–</span>;
 }
 
-const ORIGIN_TONE: Record<FieldSpec["origin"], ChipTone> = { generated: "loop", system: "warn", user: "accent" };
+// "generated"/"system" are still meaningfully distinct facts (an escalation-worthy provenance,
+// a locked system field); "user" is just the plain/default case — capability-neutral, not forge.
+const ORIGIN_TONE: Record<FieldSpec["origin"], ChipTone> = { generated: "loop", system: "warn", user: "capability" };
 
 export function SchemaTableRow({ field }: { field: FieldSpec }) {
   const [hover, setHover] = useState(false);
@@ -26,10 +28,10 @@ export function SchemaTableRow({ field }: { field: FieldSpec }) {
     >
       <td style={{ ...cellStyle, fontFamily: t.font.mono, color: t.color.text }}>{field.field_name}</td>
       <td style={{ ...cellStyle, fontFamily: t.font.mono, color: t.color.dim }}>{field.field_type}</td>
-      <td style={{ ...cellStyle, textAlign: "center" }}>{flagChip(field.required, "required", "accent")}</td>
-      <td style={{ ...cellStyle, textAlign: "center" }}>{flagChip(field.filterable, "filter", "info")}</td>
-      <td style={{ ...cellStyle, textAlign: "center" }}>{flagChip(field.lexical, "lexical", "loop")}</td>
-      <td style={{ ...cellStyle, textAlign: "center" }}>{flagChip(field.semantic, "semantic", "ok")}</td>
+      <td style={{ ...cellStyle, textAlign: "center" }}>{flagChip(field.required, "required", "capability")}</td>
+      <td style={{ ...cellStyle, textAlign: "center" }}>{flagChip(field.filterable, "filter", "capability")}</td>
+      <td style={{ ...cellStyle, textAlign: "center" }}>{flagChip(field.lexical, "lexical", "capability")}</td>
+      <td style={{ ...cellStyle, textAlign: "center" }}>{flagChip(field.semantic, "semantic", "capability")}</td>
       <td style={cellStyle}>
         {field.enum_values?.length ? (
           <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>

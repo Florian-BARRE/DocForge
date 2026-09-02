@@ -55,13 +55,14 @@ export function PermissionsBuilder({
       <label
         style={{
           display: "flex", alignItems: "center", gap: theme.space.s, fontSize: theme.font.size.s, color: theme.color.text,
-          background: fullAccess ? theme.color.accentSoft : theme.color.surface2,
-          border: `1px solid ${fullAccess ? theme.color.accentLine : theme.color.line}`,
+          fontWeight: fullAccess ? theme.font.weight.semibold : theme.font.weight.normal,
+          background: fullAccess ? theme.color.surface3 : theme.color.surface2,
+          border: `1px solid ${fullAccess ? theme.color.lineStrong : theme.color.line}`,
           borderRadius: theme.radius.m, padding: `${theme.space.s}px ${theme.space.m}px`,
         }}
       >
         <input type="checkbox" checked={fullAccess} onChange={(e) => onFullAccessChange(e.target.checked)} />
-        <span>Full access <span style={{ color: theme.color.dim }}>— every capability, every collection</span></span>
+        <span>Full access <span style={{ color: theme.color.dim, fontWeight: theme.font.weight.normal }}>— every capability, every collection</span></span>
       </label>
 
       {!fullAccess && (

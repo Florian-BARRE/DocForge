@@ -3,6 +3,7 @@
 // number → numeric input, string → text (masked when the name smells like a secret) — with its
 // full contract made visible: type (+ bounds / enum values), required flag, default, description.
 
+import { useId } from "react";
 import type { JsonSchema, JsonSchemaProperty } from "../../api/types";
 import { Switch } from "../Switch";
 import { TagsInput } from "../TagsInput";
@@ -60,7 +61,8 @@ export function typeLabel(prop: JsonSchemaProperty): string {
 const inputStyle: React.CSSProperties = {
   background: theme.color.surface2,
   color: theme.color.text,
-  border: `1px solid ${theme.color.line}`,
+  // lineStrong, not line — see components/inputStyle.ts (this is SchemaField's own local copy).
+  border: `1px solid ${theme.color.lineStrong}`,
   borderRadius: theme.radius.m,
   padding: `${theme.space.xs + 2}px ${theme.space.s}px`,
   fontSize: theme.font.size.m,
@@ -81,15 +83,22 @@ interface SchemaFieldProps {
 }
 
 export function SchemaField({ name, prop, schema, value, required = false, onChange, advanced = false }: SchemaFieldProps) {
+  // Hook first, before any control-shape branching below — a stable id to pair the visible
+  // <label> with whichever control this property resolves to.
+  const controlId = useId();
+
   const resolved = deref(prop, schema);
   const current = value === undefined ? resolved.default : value;
   // A `X | None` property (see `deref`) can always be explicitly cleared back to "unset".
   const nullable = Boolean(prop.anyOf?.some((branch) => branch.type === "null"));
+  const ariaRequired = required || undefined;
 
   let control: JSX.Element;
   if (resolved.enum) {
     control = (
       <select
+        id={controlId}
+        aria-required={ariaRequired}
         style={inputStyle}
         value={current === null || current === undefined ? "" : String(current)}
         onChange={(e) => onChange(e.target.value === "" ? null : e.target.value)}
@@ -101,10 +110,11 @@ export function SchemaField({ name, prop, schema, value, required = false, onCha
       </select>
     );
   } else if (resolved.type === "boolean") {
-    control = <Switch checked={Boolean(current)} onChange={onChange} />;
+    control = <Switch id={controlId} checked={Boolean(current)} onChange={onChange} />;
   } else if (resolved.type === "number" || resolved.type === "integer") {
     control = (
       <NumberField
+        id={controlId}
         value={typeof current === "number" ? current : undefined}
         min={resolved.minimum ?? resolved.exclusiveMinimum}
         max={resolved.maximum ?? resolved.exclusiveMaximum}
@@ -118,6 +128,7 @@ export function SchemaField({ name, prop, schema, value, required = false, onCha
     // metadata schema step already uses for enum values / keyword_list.
     control = (
       <TagsInput
+        id={controlId}
         values={Array.isArray(current) ? (current as string[]) : []}
         onChange={onChange}
       />
@@ -127,6 +138,7 @@ export function SchemaField({ name, prop, schema, value, required = false, onCha
     // so an array field can never receive a raw string.
     control = (
       <JsonField
+        id={controlId}
         value={current ?? (resolved.type === "array" ? [] : {})}
         onChange={onChange}
       />
@@ -138,6 +150,8 @@ export function SchemaField({ name, prop, schema, value, required = false, onCha
     const text = String(current ?? "");
     control = isSingleLineString(text, resolved.description) ? (
       <input
+        id={controlId}
+        aria-required={ariaRequired}
         type="text"
         style={inputStyle}
         value={text}
@@ -145,6 +159,8 @@ export function SchemaField({ name, prop, schema, value, required = false, onCha
       />
     ) : (
       <textarea
+        id={controlId}
+        aria-required={ariaRequired}
         rows={Math.min(6, Math.max(1, text.split("\n").length))}
         style={{ ...inputStyle, resize: "vertical", minHeight: theme.space.xl + 6, fontFamily: "inherit" }}
         value={text}
@@ -158,9 +174,11 @@ export function SchemaField({ name, prop, schema, value, required = false, onCha
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 2, fontSize: theme.font.size.s }}>
-      {/* 1. Human label (+ required marker) — the raw type/constraint contract only shows up in
-         "Show technical details" mode, see SchemaForm's advanced toggle. */}
-      <div style={{ display: "flex", alignItems: "baseline", gap: theme.space.xs + 2, color: theme.color.dim }}>
+      {/* 1. Human label (+ required marker) — a real <label htmlFor> (not a detached <span>) so
+         assistive tech announces it and clicking it focuses the paired control. The raw
+         type/constraint contract only shows up in "Show technical details" mode, see SchemaForm's
+         advanced toggle. */}
+      <label htmlFor={controlId} style={{ display: "flex", alignItems: "baseline", gap: theme.space.xs + 2, color: theme.color.dim }}>
         <span style={{ color: theme.color.text }}>
           {label}
           {required && <span style={{ color: theme.color.error }} title="required"> *</span>}
@@ -182,7 +200,7 @@ export function SchemaField({ name, prop, schema, value, required = false, onCha
             {typeLabel(resolved)}
           </span>
         )}
-      </div>
+      </label>
       {/* 2. The control itself */}
       {control}
       {/* 3. Meaning, always visible (not a hover-only tooltip) — the raw `default: …` suffix only

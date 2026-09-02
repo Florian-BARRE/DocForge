@@ -20,7 +20,7 @@ export function NoticesBar({ notices, issues }: NoticesBarProps) {
         <div
           key={index}
           style={{
-            color: theme.color.accent, background: theme.color.accentSoft, borderRadius: theme.radius.m,
+            color: theme.color.accentSafe, background: theme.color.accentSoft, borderRadius: theme.radius.m,
             border: `1px solid ${theme.color.accentLine}`,
             padding: `${theme.space.xs}px ${theme.space.s}px`, fontSize: theme.font.size.s,
           }}

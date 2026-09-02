@@ -6,6 +6,7 @@
 
 import type { JobStatus } from "../../api/jobs";
 import { theme } from "../../theme";
+import { humanizeStageId } from "./stageLabels";
 
 interface FailedNodeBreadcrumbProps {
   job: JobStatus;
@@ -14,7 +15,7 @@ interface FailedNodeBreadcrumbProps {
 export function FailedNodeBreadcrumb({ job }: FailedNodeBreadcrumbProps) {
   if (job.status !== "failed" || !job.failed_node_id) return null;
 
-  const stage = job.current_stage ?? "unknown stage";
+  const stage = job.current_stage ? humanizeStageId(job.current_stage) : "unknown stage";
   const itemLabel =
     job.failed_item_index !== null
       ? `item ${job.failed_item_index}${job.items_total !== null ? `/${job.items_total}` : ""}`
@@ -28,7 +29,7 @@ export function FailedNodeBreadcrumb({ job }: FailedNodeBreadcrumbProps) {
       }}
     >
       <span>failed at</span>
-      <span style={{ fontFamily: theme.font.mono }}>{stage}</span>
+      <span title={job.current_stage ?? undefined}>{stage}</span>
       {itemLabel && <span style={{ fontFamily: theme.font.mono }}>{itemLabel}</span>}
       <span>· node</span>
       <span style={{ fontFamily: theme.font.mono }}>{job.failed_node_id}</span>
