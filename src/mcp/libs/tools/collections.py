@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 # ====== Standard Library Imports ======
-from typing import Any
+from typing import Any, Literal
 
 # ====== Third-Party Library Imports ======
 from docforge_sdk import AsyncClient, CreateCollectionRequest, FieldSpec, UpdateCollectionRequest
@@ -108,3 +108,18 @@ def register(mcp: FastMCP, sdk: AsyncClient) -> None:
         """
         storage = await sdk.collections.storage(collection_id)
         return storage.model_dump(mode="json")
+
+    @mcp.tool()
+    async def estimate_collection_cost(
+        collection_id: str, scope: Literal["pending", "all"] = "pending"
+    ) -> Any:
+        """
+        Project a collection's ingestion cost and volume BEFORE spending (404 when unknown). This
+        is an ESTIMATE, not a quote: `scope` picks the documents it covers — `pending`
+        (uploaded-but-not-yet-ingested, the default preview target) or `all` (every document).
+        Returns the per-stage token/call/cost breakdown, projected material volume, totals, the
+        assumptions it rests on, and human-readable caveats. `total_cost_usd` is null when no stage
+        could be priced; `cost_complete` is false when any enabled paid stage had no known rate.
+        """
+        estimate = await sdk.collections.estimate(collection_id, scope=scope)
+        return estimate.model_dump(mode="json")

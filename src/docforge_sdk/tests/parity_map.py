@@ -21,6 +21,13 @@ from docforge_sdk.models.collections import (
     UpdateCollectionRequest,
 )
 from docforge_sdk.models.documents import DocumentEnabledResponse, EnabledPatch, UploadAccepted
+from docforge_sdk.models.estimate import (
+    CollectionEstimateRequest,
+    CostEstimate,
+    EstimateAssumptions,
+    StageEstimate,
+    VolumeEstimate,
+)
 from docforge_sdk.models.explorer import (
     BulkChunkEnabledPatch,
     BulkChunkEnabledResponse,
@@ -90,6 +97,12 @@ MODELS: dict[str, type[BaseModel]] = {
     "UploadAccepted": UploadAccepted,
     "EnabledPatch": EnabledPatch,
     "DocumentEnabledResponse": DocumentEnabledResponse,
+    # Estimate
+    "CollectionEstimateRequest": CollectionEstimateRequest,
+    "EstimateAssumptions": EstimateAssumptions,
+    "StageEstimate": StageEstimate,
+    "VolumeEstimate": VolumeEstimate,
+    "CostEstimate": CostEstimate,
     # Explorer
     "MetadataValue": MetadataValue,
     "DocumentListItem": DocumentListItem,

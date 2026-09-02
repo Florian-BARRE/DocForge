@@ -3,6 +3,9 @@
 # the pure _CollectionsSpecs mixin, so AsyncCollections and SyncCollections have identical public
 # surfaces whose bodies differ ONLY by ``await``.
 
+# ====== Standard Library Imports ======
+from typing import Literal
+
 # ====== Local Project Imports ======
 from .._requestspec import RequestSpec
 from ..models.collections import (
@@ -12,6 +15,7 @@ from ..models.collections import (
     CreateCollectionRequest,
     UpdateCollectionRequest,
 )
+from ..models.estimate import CollectionEstimateRequest, CostEstimate
 from ..models.storage import CollectionStorageResponse
 from ._base import AsyncResource, SyncResource, _ResourceMixin
 
@@ -112,6 +116,23 @@ class _CollectionsSpecs(_ResourceMixin):
             json=request.model_dump(mode="json"),
         )
 
+    def _estimate_spec(self, collection_id: str, request: CollectionEstimateRequest) -> RequestSpec:
+        """
+        Build the spec for projecting a collection's ingestion cost/volume before spending.
+
+        Args:
+            collection_id (str): The collection to estimate over.
+            request (CollectionEstimateRequest): The scope (pending documents or all).
+
+        Returns:
+            RequestSpec: A POST on the collection's ``/estimate`` route with the scope body.
+        """
+        return RequestSpec(
+            "POST",
+            f"{self._COLLECTIONS_PATH}/{collection_id}/estimate",
+            json=request.model_dump(mode="json"),
+        )
+
 
 class AsyncCollections(AsyncResource, _CollectionsSpecs):
     """Asynchronous collection management (list / get / create / update / delete)."""
@@ -208,6 +229,25 @@ class AsyncCollections(AsyncResource, _CollectionsSpecs):
             BulkReingestAccepted,
         )
 
+    async def estimate(
+        self, collection_id: str, scope: Literal["pending", "all"] = "pending"
+    ) -> CostEstimate:
+        """
+        Project a collection's ingestion cost and volume before spending a cent.
+
+        Args:
+            collection_id (str): The collection to estimate over.
+            scope (str): Which documents to cover — ``pending`` (not-yet-ingested, the default) or
+                ``all`` (every document in the collection).
+
+        Returns:
+            CostEstimate: The per-stage breakdown, projected volume, totals, assumptions and caveats.
+        """
+        return await self._transport.request(
+            self._estimate_spec(collection_id, CollectionEstimateRequest(scope=scope)),
+            CostEstimate,
+        )
+
 
 class SyncCollections(SyncResource, _CollectionsSpecs):
     """Synchronous collection management (list / get / create / update / delete)."""
@@ -298,6 +338,25 @@ class SyncCollections(SyncResource, _CollectionsSpecs):
         return self._transport.request(
             self._reingest_spec(collection_id, request or BulkReingestRequest()),
             BulkReingestAccepted,
+        )
+
+    def estimate(
+        self, collection_id: str, scope: Literal["pending", "all"] = "pending"
+    ) -> CostEstimate:
+        """
+        Project a collection's ingestion cost and volume before spending a cent.
+
+        Args:
+            collection_id (str): The collection to estimate over.
+            scope (str): Which documents to cover — ``pending`` (not-yet-ingested, the default) or
+                ``all`` (every document in the collection).
+
+        Returns:
+            CostEstimate: The per-stage breakdown, projected volume, totals, assumptions and caveats.
+        """
+        return self._transport.request(
+            self._estimate_spec(collection_id, CollectionEstimateRequest(scope=scope)),
+            CostEstimate,
         )
 
 

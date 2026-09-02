@@ -10,6 +10,7 @@ from loggerplusplus import loggerplusplus
 
 # ====== Internal Project Imports ======
 from backend import CONTEXT, create_app
+from backend.libs.estimate import CostEstimateService
 from backend.libs.health import CollectionHealthService
 from backend.libs.metrics import MetricsService
 from backend.libs.search import SearchService
@@ -77,6 +78,10 @@ def _build_app() -> FastAPI:
     CONTEXT.health_service = CollectionHealthService(
         CONTEXT.database, CONTEXT.pipeline_builder, CONTEXT.graph_validator
     )
+
+    # 3c-bis. Pre-hoc cost estimate — on-demand token/$/volume preview of an ingestion (no job, no
+    #         spend). Reads the collection's config + cheap document stats and runs the pure estimator.
+    CONTEXT.estimate_service = CostEstimateService(CONTEXT.database)
 
     # 3d. Metrics — refreshes the ops infra gauges (arq queue depth, job/worker counts) at scrape
     #     time and renders the Prometheus exposition (HTTP series fed passively by the middleware).

@@ -7,11 +7,31 @@
 
 # Model id → (input USD per 1M tokens, output USD per 1M tokens).
 # Extend here as new models are used — an absent model prices to None (tokens shown, cost "—").
+# This chat table is the canonical rate source for BOTH the post-hoc meter (actual spend, priced by
+# ``price_usd``) and the pre-hoc estimator (projected spend) — so an estimate and its later actual
+# use the same numbers. LLM and VLM calls (structgen + contextualize + figure captioning) price here.
 MODEL_PRICING: dict[str, tuple[float, float]] = {
     "gpt-4o-mini": (0.15, 0.60),
     "gpt-4o": (2.50, 10.00),
     "gpt-4.1-mini": (0.40, 1.60),
     "gpt-4.1": (2.00, 8.00),
+}
+
+# Embedding model id → USD per 1M tokens (a single input rate; embeddings have no completion side).
+# Used ONLY by the pre-hoc estimator — the post-hoc meter does not price embeddings (the default
+# bge_server embedder is local/free). A locally hosted embedder is priced 0 by the estimator (a
+# known-free provider), not looked up here; this table is for the paid, hosted embedders.
+EMBED_PRICING: dict[str, float] = {
+    "text-embedding-3-small": 0.02,
+    "text-embedding-3-large": 0.13,
+    "text-embedding-ada-002": 0.10,
+}
+
+# OCR provider kind → USD per page. OCR is priced per PAGE, not per token (that is how the hosted
+# OCR providers bill). The local ``rapidocr`` kind is free and is not listed here (the estimator
+# prices it 0 as a known-local provider). An absent paid kind estimates to a null cost.
+OCR_PAGE_PRICING: dict[str, float] = {
+    "mistral": 0.001,  # Mistral OCR: ~$1 per 1000 pages.
 }
 
 
@@ -35,4 +55,4 @@ def price_usd(model: str, prompt_tokens: int, completion_tokens: int) -> float |
     return prompt_tokens / 1e6 * input_rate + completion_tokens / 1e6 * output_rate
 
 
-__all__ = ["MODEL_PRICING", "price_usd"]
+__all__ = ["MODEL_PRICING", "EMBED_PRICING", "OCR_PAGE_PRICING", "price_usd"]

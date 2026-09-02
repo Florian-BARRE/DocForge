@@ -50,6 +50,15 @@ from .models.collections import (
 # ------------------- Documents models ------------------- #
 from .models.documents import DocumentEnabledResponse, EnabledPatch, UploadAccepted
 
+# ------------------- Estimate models ------------------- #
+from .models.estimate import (
+    CollectionEstimateRequest,
+    CostEstimate,
+    EstimateAssumptions,
+    StageEstimate,
+    VolumeEstimate,
+)
+
 # ------------------- Explorer models ------------------- #
 from .models.explorer import (
     BulkChunkEnabledPatch,
@@ -144,6 +153,12 @@ __all__ = [
     "UploadAccepted",
     "EnabledPatch",
     "DocumentEnabledResponse",
+    # Estimate
+    "CollectionEstimateRequest",
+    "EstimateAssumptions",
+    "StageEstimate",
+    "VolumeEstimate",
+    "CostEstimate",
     # Explorer
     "MetadataValue",
     "DocumentListItem",

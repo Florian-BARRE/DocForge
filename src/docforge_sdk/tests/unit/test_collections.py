@@ -158,3 +158,62 @@ def test_sync_storage_returns_typed_footprint() -> None:
     assert route.calls.last.request.method == "GET"
     assert result.s3.estimated is False
     assert result.postgres.estimated is True
+
+
+_ESTIMATE_SAMPLE: dict[str, Any] = {
+    "document_count": 3,
+    "stages": [
+        {
+            "stage": "embed",
+            "family": "embed",
+            "provider": "bge_server",
+            "model": "bge-m3",
+            "calls": 12,
+            "prompt_tokens": 6000,
+            "completion_tokens": 0,
+            "pages": 0,
+            "cost_usd": 0.0,
+            "rate_known": True,
+        }
+    ],
+    "volume": {
+        "pages": 30,
+        "chunks": 12,
+        "dense_vectors": 12,
+        "sparse_vectors": 12,
+        "storage_bytes": 50000,
+    },
+    "total_prompt_tokens": 6000,
+    "total_completion_tokens": 0,
+    "total_cost_usd": 0.0,
+    "cost_complete": True,
+    "assumptions": {},
+    "caveats": ["Figure count is unknown until parse."],
+}
+
+
+@respx.mock
+async def test_estimate_posts_scope_and_returns_typed_estimate() -> None:
+    route = respx.post(f"{API}/collections/{CID}/estimate").mock(
+        return_value=httpx.Response(200, json=_ESTIMATE_SAMPLE)
+    )
+    async with AsyncClient(BASE) as client:
+        result = await client.collections.estimate(CID, scope="all")
+    assert route.calls.last.request.method == "POST"
+    assert route.calls.last.request.url.path == f"/api/v1/collections/{CID}/estimate"
+    assert json.loads(route.calls.last.request.content) == {"scope": "all"}
+    assert result.document_count == 3
+    assert result.stages[0].provider == "bge_server"
+    assert result.assumptions.target_chunk_tokens == 512
+
+
+@respx.mock
+def test_sync_estimate_defaults_to_pending_scope() -> None:
+    route = respx.post(f"{API}/collections/{CID}/estimate").mock(
+        return_value=httpx.Response(200, json=_ESTIMATE_SAMPLE)
+    )
+    with Client(BASE) as client:
+        result = client.collections.estimate(CID)
+    assert json.loads(route.calls.last.request.content) == {"scope": "pending"}
+    assert result.cost_complete is True
+    assert result.volume.chunks == 12

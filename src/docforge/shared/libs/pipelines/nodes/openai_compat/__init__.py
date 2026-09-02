@@ -7,7 +7,7 @@ from .preflight import (
     EndpointUnreachableError,
     PreflightError,
 )
-from .pricing import MODEL_PRICING, price_usd
+from .pricing import EMBED_PRICING, MODEL_PRICING, OCR_PAGE_PRICING, price_usd
 
 # ------------------- Public API ------------------- #
 __all__ = [
@@ -18,5 +18,7 @@ __all__ = [
     "EndpointUnreachableError",
     "EndpointAuthError",
     "MODEL_PRICING",
+    "EMBED_PRICING",
+    "OCR_PAGE_PRICING",
     "price_usd",
 ]

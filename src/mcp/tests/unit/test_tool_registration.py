@@ -10,9 +10,9 @@ from docforge_sdk import AsyncClient
 # ====== Internal Project Imports ======
 from libs.server import build_mcp
 
-# 38 = health(1) + auth(4) + collections(6) + documents(2) + explorer(8) + search(1)
-#    + jobs(5) + blobs(1) + pipelines(6) + transfers(4)
-EXPECTED_TOOL_COUNT = 39
+# 39 = health(1) + auth(4) + collections(7) + documents(2) + explorer(8) + search(1)
+#    + jobs(5) + audit(1) + blobs(1) + pipelines(6) + transfers(4)
+EXPECTED_TOOL_COUNT = 40
 
 EXPECTED_TOOL_NAMES = {
     # health
@@ -29,6 +29,7 @@ EXPECTED_TOOL_NAMES = {
     "update_collection",
     "delete_collection",
     "collection_storage_footprint",
+    "estimate_collection_cost",
     # documents
     "upload_document",
     "set_document_enabled",

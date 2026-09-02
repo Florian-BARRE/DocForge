@@ -264,3 +264,65 @@ export function reingestCollection(id: string, documentIds?: string[]): Promise<
   const request: ReingestRequest = { document_ids: documentIds ?? null };
   return apiFetch(`${BASE}/${id}/reingest`, jsonInit("POST", request));
 }
+
+// ====== Cost/volume dry-run estimate (read-only pipeline pricing preview) ======
+// Mirrors POST /api/v1/collections/{id}/estimate — a read-only sweep across the collection's
+// configured pipeline. Never enqueues a job and never spends against a provider.
+
+/** "pending" (default) scopes the sweep to not-yet-ingested documents; "all" re-projects the whole collection. */
+export type EstimateScope = "pending" | "all";
+
+export interface EstimateRequest {
+  scope?: EstimateScope;
+}
+
+/**
+ * One pipeline stage's projected usage and price. `cost_usd`/`rate_known` are `null`/`false` when
+ * the stage's provider has no configured rate card — that is distinct from a genuinely free stage,
+ * which reports `cost_usd: 0` with `rate_known: true`.
+ */
+export interface CostEstimateStage {
+  stage: string;
+  family: string;
+  provider: string;
+  model: string | null;
+  calls: number;
+  prompt_tokens: number;
+  completion_tokens: number;
+  pages: number;
+  cost_usd: number | null;
+  rate_known: boolean;
+}
+
+/** Projected ingest output volume — independent of pricing, always known even for an unpriced pipeline. */
+export interface CostEstimateVolume {
+  pages: number;
+  chunks: number;
+  dense_vectors: number;
+  sparse_vectors: number;
+  storage_bytes: number;
+}
+
+/**
+ * Full dry-run estimate for a collection. `total_cost_usd` is `null` only when NO stage is
+ * priceable at all (never conflated with `0.0`, which means an actually-free/parse-only
+ * pipeline); `cost_complete` is `false` whenever at least one priced stage's provider has no
+ * known rate, so the total understates the real spend.
+ */
+export interface CostEstimate {
+  document_count: number;
+  stages: CostEstimateStage[];
+  volume: CostEstimateVolume;
+  total_prompt_tokens: number;
+  total_completion_tokens: number;
+  total_cost_usd: number | null;
+  cost_complete: boolean;
+  assumptions: Record<string, unknown>;
+  caveats: string[];
+}
+
+/** Runs the dry-run cost/volume estimate — read-only, no job enqueued, no provider spend. */
+export function estimateCollectionCost(id: string, scope: EstimateScope = "pending"): Promise<CostEstimate> {
+  const request: EstimateRequest = { scope };
+  return apiFetch(`${BASE}/${id}/estimate`, jsonInit("POST", request));
+}

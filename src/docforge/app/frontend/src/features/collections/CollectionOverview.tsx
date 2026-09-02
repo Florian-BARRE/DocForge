@@ -13,6 +13,7 @@ import { LoadingState } from "../../components/LoadingState";
 import type { Navigate } from "../../shell/view";
 import { theme as t } from "../../theme";
 import { probeVerdict } from "./collectionHealth";
+import { CostEstimatePanel } from "./estimate/CostEstimatePanel";
 import { OverviewStatStrip } from "./OverviewStatStrip";
 import { ProviderHealthBoard } from "./ProviderHealthBoard";
 import { ReindexBanner } from "./ReindexBanner";
@@ -73,6 +74,10 @@ export function CollectionOverview({ collectionId, onNavigate }: Props) {
 
       <div style={{ marginTop: t.space.xl }}>
         <StorageFootprintPanel collectionId={collectionId} onNavigate={onNavigate} />
+      </div>
+
+      <div>
+        <CostEstimatePanel collectionId={collectionId} />
       </div>
     </div>
   );

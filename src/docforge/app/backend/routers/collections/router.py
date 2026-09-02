@@ -15,12 +15,14 @@ from fastapi import APIRouter, Depends, HTTPException
 from config import RUNTIME_CONFIG
 from shared_libs.pipelines.blob_secrets import restore_blob_secrets
 from shared_libs.pipelines.ingest import BlobNormalizationError, BlobNormalizer
+from shared_libs.pipelines.ingest.estimate import CostEstimate
 from shared_libs.services.db.postgresql.tables import Collection
 
 # ====== Local Project Imports ======
 from ...context import CONTEXT
 from ...libs.auth import AuthPrincipal, AuthzGuard, Capability, require
 from ...libs.corpus import DocumentFilter, DocumentSelector, DocumentSelectorResolver
+from ...libs.estimate import CollectionEstimateRequest
 from ...libs.health import CollectionHealthResponse
 from ...libs.reingest import BulkReingestAccepted, BulkReingestRequest, BulkReingestService
 from ...utils.error_handling import auto_handle_errors
@@ -152,6 +154,42 @@ async def get_collection_storage(collection_id: uuid.UUID) -> CollectionStorageR
     # 2. Compose the footprint (grouped aggregates + one Qdrant profile) and shape the response.
     footprint = await CONTEXT.database.storage.collection_footprint(collection_id)
     return CollectionStorageResponse.from_payload(footprint)
+
+
+@router.post(
+    "/{collection_id}/estimate",
+    response_model=CostEstimate,
+    dependencies=[Depends(require(Capability.READ))],
+)
+@auto_handle_errors
+async def estimate_collection(
+    collection_id: uuid.UUID,
+    request: CollectionEstimateRequest | None = None,
+) -> CostEstimate:
+    """
+    Preview the projected cost (tokens + $) and volume of ingesting a collection's documents.
+
+    A PRE-hoc ESTIMATE — no job is enqueued, nothing is spent. It reads the collection's ACTUAL
+    pipeline config (only enabled cost-incurring stages are costed) and cheap per-document stats,
+    then projects per-stage usage and cost against the same rate model as the post-hoc meter. The
+    assumptions it rests on are echoed in the response; a stage whose model has no known rate is
+    reported with a null cost (tokens still shown), never a fabricated number.
+
+    Returns:
+        CostEstimate: The per-stage breakdown, projected volume, totals, assumptions and caveats
+        (404 when the collection is unknown; 422 when its stored pipeline blob is unreadable).
+    """
+    # 1. Default the body — the endpoint is callable with no payload (scope defaults to pending).
+    scope = (request or CollectionEstimateRequest()).scope
+
+    # 2. Run the estimate; an unreadable stored blob is a 422 (mirrors reingest), unknown a 404.
+    try:
+        estimate = await CONTEXT.estimate_service.estimate(collection_id, scope)
+    except BlobNormalizationError as exc:
+        raise HTTPException(status_code=422, detail=f"Collection {collection_id}: {exc}")
+    if estimate is None:
+        raise HTTPException(status_code=404, detail=f"Collection {collection_id} not found.")
+    return estimate
 
 
 @router.post(

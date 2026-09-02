@@ -14,6 +14,7 @@ from shared_libs.pipelines.validation import GraphValidator
 from shared_libs.services.db import Database
 
 # ====== Local Project Imports ======
+from .libs.estimate import CostEstimateService
 from .libs.health import CollectionHealthService
 from .libs.metrics import MetricsService
 from .libs.search import SearchService
@@ -51,6 +52,10 @@ class CONTEXT:
     # ── Collection health (on-demand, zero-spend reachability + build probe) ──
     # Backs GET /collections/{id}/health — builds both graphs, sweeps their providers, rolls up.
     health_service: CollectionHealthService
+
+    # ── Cost estimate (on-demand, zero-spend pre-hoc token/$/volume preview of an ingestion) ──
+    # Backs POST /collections/{id}/estimate — reads config + cheap doc stats, runs the pure estimator.
+    estimate_service: CostEstimateService
 
     # ── Metrics (Prometheus /metrics — infra-gauge refresh + exposition rendering) ──
     # Backs GET /metrics; the HTTP request series are fed passively by HttpMetricsMiddleware.
