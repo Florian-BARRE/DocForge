@@ -60,7 +60,9 @@ class DatabaseHelpers:
         Returns:
             str: The deterministic ``col_<hex>`` Qdrant collection name.
         """
-        canonical = collection_id if isinstance(collection_id, uuid.UUID) else uuid.UUID(collection_id)
+        canonical = (
+            collection_id if isinstance(collection_id, uuid.UUID) else uuid.UUID(collection_id)
+        )
         return f"col_{canonical.hex}"
 
     @staticmethod

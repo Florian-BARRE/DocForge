@@ -45,7 +45,9 @@ class DocumentAdmissionHelpers:
     }
 
     def __new__(cls, *args: object, **kwargs: object) -> None:
-        raise TypeError("DocumentAdmissionHelpers is a static-only class and cannot be instantiated.")
+        raise TypeError(
+            "DocumentAdmissionHelpers is a static-only class and cannot be instantiated."
+        )
 
     @staticmethod
     def _extension(filename: str) -> str:
@@ -71,9 +73,7 @@ class DocumentAdmissionHelpers:
         return extensions
 
     @classmethod
-    def extension_rejection(
-        cls, filename: str, supported_formats: Sequence[str]
-    ) -> str | None:
+    def extension_rejection(cls, filename: str, supported_formats: Sequence[str]) -> str | None:
         """
         Reject a PRESENT-but-undeclared filename extension, or pass (None) when it is acceptable.
 

@@ -69,9 +69,7 @@ class HealthVerdictResolver:
         return not embedders or any(cls.__is_down(p) for p in embedders)
 
     @staticmethod
-    def __down_reason(
-        search_buildable: bool, search_providers: list[ProviderProbeResult]
-    ) -> str:
+    def __down_reason(search_buildable: bool, search_providers: list[ProviderProbeResult]) -> str:
         """Explain WHY search cannot be served (broken graph vs unreachable/missing embedder)."""
         # 1. A structurally invalid search graph cannot run at all.
         if not search_buildable:
