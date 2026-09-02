@@ -14,6 +14,7 @@ from docforge_sdk.models.auth import CreatedKey, CreateKeyRequest, KeyInfo, Rota
 from docforge_sdk.models.collections import (
     BulkReingestAccepted,
     BulkReingestRequest,
+    CollectionListItem,
     CollectionModel,
     CreateCollectionRequest,
     FieldSpec,
@@ -38,6 +39,14 @@ from docforge_sdk.models.explorer import (
     DocumentListItem,
     MetadataValue,
     PageInfo,
+)
+from docforge_sdk.models.health import (
+    CollectionHealthResponse,
+    CollectionHealthSummary,
+    IngestHealth,
+    ProviderProbeResult,
+    SearchHealth,
+    SearchIndex,
 )
 from docforge_sdk.models.ir import DocumentIRModel, IRBlock, IREnrichment, IRFigure, IRTable
 from docforge_sdk.models.jobs import (
@@ -85,9 +94,20 @@ MODELS: dict[str, type[BaseModel]] = {
     "RotateKeyRequest": RotateKeyRequest,
     "CreatedKey": CreatedKey,
     "KeyInfo": KeyInfo,
+    # Health (collection health probe + list-attached summary; bare-root liveness is SKIPPED).
+    # Pure StrEnum schemas (ProbeStatus/HealthVerdict/CollectionListVerdict) are NOT tracked here —
+    # they have no model_json_schema() of their own (see SKIPPED); their values are still exercised
+    # indirectly via the composite models below that carry them as fields.
+    "ProviderProbeResult": ProviderProbeResult,
+    "IngestHealth": IngestHealth,
+    "SearchIndex": SearchIndex,
+    "SearchHealth": SearchHealth,
+    "CollectionHealthResponse": CollectionHealthResponse,
+    "CollectionHealthSummary": CollectionHealthSummary,
     # Collections
     "FieldSpecModel": FieldSpec,
     "CollectionModel": CollectionModel,
+    "CollectionListItem": CollectionListItem,
     "CreateCollectionRequest": CreateCollectionRequest,
     "UpdateCollectionRequest": UpdateCollectionRequest,
     "BulkReingestRequest": BulkReingestRequest,
@@ -156,6 +176,12 @@ MODELS: dict[str, type[BaseModel]] = {
 SKIPPED: dict[str, str] = {
     "HealthStatus": "health route is registered with include_in_schema=False (absent from the schema).",
     "BlobContent": "SDK-only wrapper — the blobs endpoint streams raw bytes, not a JSON schema.",
+    "ProbeStatus": "pure StrEnum, not a BaseModel — no model_json_schema() of its own; its values "
+    "are exercised indirectly via ProviderProbeResult.status.",
+    "HealthVerdict": "pure StrEnum, not a BaseModel — no model_json_schema() of its own; its values "
+    "are exercised indirectly via CollectionHealthResponse.verdict.",
+    "CollectionListVerdict": "pure StrEnum, not a BaseModel — no model_json_schema() of its own; its "
+    "values are exercised indirectly via CollectionHealthSummary.verdict.",
 }
 
 __all__ = ["MODELS", "SKIPPED"]

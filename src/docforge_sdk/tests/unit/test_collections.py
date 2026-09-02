@@ -13,10 +13,12 @@ import respx
 # ====== Local Project Imports ======
 from docforge_sdk import AsyncClient, Client
 from docforge_sdk.models.collections import (
+    CollectionListItem,
     CollectionModel,
     CreateCollectionRequest,
     UpdateCollectionRequest,
 )
+from docforge_sdk.models.health import CollectionHealthResponse
 
 BASE = "http://test"
 API = f"{BASE}/api/v1"
@@ -34,16 +36,54 @@ _COLLECTION_SAMPLE: dict[str, Any] = {
     "fields": [],
 }
 
+_COLLECTION_LIST_ITEM_SAMPLE: dict[str, Any] = {
+    **_COLLECTION_SAMPLE,
+    "health": {
+        "verdict": "operational",
+        "doc_count": 3,
+        "chunk_count": 42,
+        "last_ingest_at": "2026-01-02T00:00:00Z",
+    },
+}
+
+_HEALTH_SAMPLE: dict[str, Any] = {
+    "collection_id": CID,
+    "verdict": "degraded",
+    "reason": "The configured embedder is unreachable.",
+    "checked_at": "2026-01-03T00:00:00Z",
+    "ingest": {"buildable": True, "build_error": None, "providers": []},
+    "search": {
+        "buildable": True,
+        "search_operational": "degraded",
+        "build_error": None,
+        "providers": [
+            {
+                "node_id": "embed_query",
+                "kind": "bge_server",
+                "family": "embed",
+                "side": "search",
+                "status": "unreachable",
+                "endpoint": "http://bge:8080",
+                "detail": "connection refused",
+                "latency_ms": None,
+            }
+        ],
+        "index": {"vector_count": 42, "last_ingest_at": "2026-01-02T00:00:00Z"},
+    },
+}
+
 
 @respx.mock
 async def test_list_returns_typed_list() -> None:
     route = respx.get(f"{API}/collections").mock(
-        return_value=httpx.Response(200, json=[_COLLECTION_SAMPLE])
+        return_value=httpx.Response(200, json=[_COLLECTION_LIST_ITEM_SAMPLE])
     )
     async with AsyncClient(BASE) as client:
         result = await client.collections.list()
     assert route.calls.last.request.method == "GET"
-    assert len(result) == 1 and isinstance(result[0], CollectionModel)
+    assert len(result) == 1 and isinstance(result[0], CollectionListItem)
+    assert result[0].health.verdict == "operational"
+    assert result[0].health.chunk_count == 42
 
 
 @respx.mock
@@ -89,6 +129,31 @@ def test_sync_delete_returns_none() -> None:
         result = client.collections.delete(CID)
     assert route.calls.last.request.method == "DELETE"
     assert result is None
+
+
+@respx.mock
+async def test_health_returns_typed_response() -> None:
+    route = respx.get(f"{API}/collections/{CID}/health").mock(
+        return_value=httpx.Response(200, json=_HEALTH_SAMPLE)
+    )
+    async with AsyncClient(BASE) as client:
+        result = await client.collections.health(CID)
+    assert route.calls.last.request.method == "GET"
+    assert route.calls.last.request.url.path == f"/api/v1/collections/{CID}/health"
+    assert isinstance(result, CollectionHealthResponse)
+    assert result.verdict == "degraded"
+    assert result.search.providers[0].status == "unreachable"
+
+
+@respx.mock
+def test_sync_health_returns_typed_response() -> None:
+    route = respx.get(f"{API}/collections/{CID}/health").mock(
+        return_value=httpx.Response(200, json=_HEALTH_SAMPLE)
+    )
+    with Client(BASE) as client:
+        result = client.collections.health(CID)
+    assert route.calls.last.request.method == "GET"
+    assert result.ingest.buildable is True
 
 
 _S3_FOOTPRINT_SAMPLE: dict[str, Any] = {

@@ -24,6 +24,7 @@ from .blobs import BlobContent
 from .collections import (
     BulkReingestAccepted,
     BulkReingestRequest,
+    CollectionListItem,
     CollectionModel,
     CreateCollectionRequest,
     FieldSpec,
@@ -57,7 +58,18 @@ from .explorer import (
 )
 
 # ------------------- Health models ------------------- #
-from .health import HealthStatus
+from .health import (
+    CollectionHealthResponse,
+    CollectionHealthSummary,
+    CollectionListVerdict,
+    HealthStatus,
+    HealthVerdict,
+    IngestHealth,
+    ProbeStatus,
+    ProviderProbeResult,
+    SearchHealth,
+    SearchIndex,
+)
 
 # ------------------- IR models ------------------- #
 from .ir import DocumentIRModel, IRBlock, IREnrichment, IRFigure, IRTable
@@ -121,9 +133,19 @@ __all__ = [
     "KeyInfo",
     # Health
     "HealthStatus",
+    "ProbeStatus",
+    "ProviderProbeResult",
+    "HealthVerdict",
+    "IngestHealth",
+    "SearchIndex",
+    "SearchHealth",
+    "CollectionHealthResponse",
+    "CollectionListVerdict",
+    "CollectionHealthSummary",
     # Collections
     "FieldSpec",
     "CollectionModel",
+    "CollectionListItem",
     "CreateCollectionRequest",
     "UpdateCollectionRequest",
     "BulkReingestRequest",

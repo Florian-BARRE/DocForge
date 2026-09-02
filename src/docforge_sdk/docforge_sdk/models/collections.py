@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 
 # ====== Local Project Imports ======
 from ._shared import FieldOrigin, FieldScope, FieldType
+from .health import CollectionHealthSummary
 
 
 class FieldSpec(BaseModel):
@@ -84,6 +85,21 @@ class CollectionModel(BaseModel):
         description="The search pipeline graph blob ({} = use the stock default)."
     )
     fields: list[FieldSpec] = Field(default_factory=list, description="The metadata schema.")
+
+
+class CollectionListItem(CollectionModel):
+    """
+    One fleet-list row: the full collection contract PLUS its server-computed health summary.
+
+    Attributes:
+        health (CollectionHealthSummary): The collection's rolled-up health verdict + index/doc
+            stats (list-consistent with the on-demand detail probe).
+    """
+
+    health: CollectionHealthSummary = Field(
+        description="The collection's rolled-up health verdict + index/doc stats (list-consistent "
+        "with the detail probe)."
+    )
 
 
 class CreateCollectionRequest(BaseModel):
@@ -235,6 +251,7 @@ class BulkReingestAccepted(BaseModel):
 __all__ = [
     "FieldSpec",
     "CollectionModel",
+    "CollectionListItem",
     "CreateCollectionRequest",
     "UpdateCollectionRequest",
     "BulkReingestRequest",
