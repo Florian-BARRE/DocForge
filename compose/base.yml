@@ -1,0 +1,417 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# DocForge stack — BASE service set (every service, every scenario builds on this).
+#
+# WHEN TO USE THIS FILE DIRECTLY: never on its own — always via one of the scenario
+# files at the repo root of compose/ (prod-cpu.yml, prod-gpu.yml, dev-cpu.yml, dev-gpu.yml),
+# which `include:` this file plus the overlay(s) for their scenario. See compose/README.md
+# for the full usage matrix and the Makefile targets.
+#
+# This base file PULLS the published GHCR images (no build, no source mounts) and
+# defaults to the CPU variant for the torch-bearing services (worker, bge_server,
+# paddle_server). ${DOCFORGE_TAG:-latest} selects the image version. Relative paths in
+# this file (e.g. the seaweedfs s3_config.json mount) resolve relative to THIS file's
+# own directory (compose/), per Compose's `include:` semantics — hence the `../` prefix.
+#
+# Distinct container names, volumes, network and host-port range 10040-10049 so this
+# stack can run side by side with the legacy one.
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: docforge
+
+services:
+  # ── FastAPI app — light image (design surface + admission + monitoring) ─────
+  docforge_app:
+    image: ghcr.io/florian-barre/docforge-app:${DOCFORGE_TAG:-latest}
+    container_name: docforge-app
+    profiles: ["full"]
+    # Docker's embedded resolver (127.0.0.11) has no external upstream on this VM, so containers
+    # cannot resolve public hostnames (api.openai.com, api.mistral.ai): every external VLM/LLM/metagen
+    # provider call fails with APIConnectionError. Pin public resolvers so provider calls resolve.
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
+    ports:
+      - "10040:8000"              # Public API (firewall: only 10000-11000 open)
+    env_file:
+      - ../services/docforge/.env
+    environment:
+      # In-container endpoints override the localhost dev values from the .env.
+      # POSTGRES_DSN falls back to the local-dev default (matches services/docforge/postgres.env's
+      # docforge/docforge bootstrap) so nothing changes for local dev; a real deployment overrides it via
+      # a shell-exported POSTGRES_DSN or a root .env — ONE place to change instead of editing this
+      # literal in both docforge_app and docforge_worker.
+      POSTGRES_DSN: ${POSTGRES_DSN:-postgresql+asyncpg://docforge:docforge@docforge_postgres:5432/docforge}
+      REDIS_URL: redis://docforge_redis:6379/0
+      QDRANT_URL: http://docforge_qdrant:6333
+      # botocore rejects '_' in hostnames — the hyphenated container_name resolves on the network
+      S3_ENDPOINT_URL: http://docforge-seaweedfs:8333
+      # Surfaced as FASTAPI_APP_VERSION's default (see app/config/runtime_config.py) — without
+      # this the running container never sees the tag compose resolved for the image pull, so
+      # /health and export-bundle provenance both report "unknown" even on a pinned release.
+      DOCFORGE_TAG: ${DOCFORGE_TAG:-latest}
+    depends_on:
+      docforge_postgres:
+        condition: service_healthy
+      docforge_redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+    restart: unless-stopped
+    networks:
+      - docforge_net
+
+  # ── arq worker — heavy image (pipeline execution + persistence) ─────────────
+  # No fixed container_name: a static name collides across replicas, which blocks
+  # `docker compose up --scale docforge_worker=N`. Nothing addresses the worker by container name
+  # or hostname (unlike docforge-seaweedfs above) — it only makes outbound calls to
+  # postgres/redis/seaweedfs — so this is safe to drop. Default stays 1 worker; to scale:
+  #   docker compose --profile full up -d --scale docforge_worker=3
+  # (arq's own Redis-backed queue already fans work out safely across replicas — no per-worker
+  # config needed. Compose auto-suffixes container names, e.g. docforge_worker-1/-2/-3.)
+  docforge_worker:
+    image: ghcr.io/florian-barre/docforge-worker:${DOCFORGE_TAG:-latest}-cpu
+    profiles: ["full"]
+    # Same reason as docforge_app: the worker runs the figure VLM + metagen LLM provider calls, which
+    # target external hostnames Docker's embedded resolver can't reach. Pin public resolvers.
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
+    env_file:
+      - ../services/docforge/.env
+    environment:
+      # Same override mechanism as docforge_app — see comment there.
+      POSTGRES_DSN: ${POSTGRES_DSN:-postgresql+asyncpg://docforge:docforge@docforge_postgres:5432/docforge}
+      REDIS_URL: redis://docforge_redis:6379/0
+      QDRANT_URL: http://docforge_qdrant:6333
+      # botocore rejects '_' in hostnames — the hyphenated container_name resolves on the network
+      S3_ENDPOINT_URL: http://docforge-seaweedfs:8333
+      # Native BLAS/OpenMP threads are LEFT UNPINNED so docling/torch/onnx use all available cores —
+      # the host has 8 CPUs and no CPU cap is set (see the deploy block), so heavy stages run at full
+      # power. If many ingestions run at once and oversubscribe, lower WORKER_CONCURRENCY or re-pin
+      # OMP_NUM_THREADS to cores/concurrency.
+      # Surfaced as DOCFORGE_VERSION (see worker/config/runtime_config.py) — export-bundle
+      # provenance records this on every collection export; unset it and bundles say "unknown".
+      DOCFORGE_TAG: ${DOCFORGE_TAG:-latest}
+    volumes:
+      # Persist the docling/rapidocr HF cache across recreations (the dev override binds
+      # the HOST's cache instead; prod has no host cache to bind, so it needs its own
+      # named volume — mirrors the docforge_bge_models pattern on docforge_bge_server). Mount
+      # target is the non-root runtime user's home (HOME=/home/appuser, see worker/Dockerfile),
+      # not /root — the image no longer runs as root.
+      - docforge_worker_hf_cache:/home/appuser/.cache/huggingface
+    depends_on:
+      docforge_postgres:
+        condition: service_healthy
+      docforge_redis:
+        condition: service_healthy
+      docforge_seaweedfs:
+        condition: service_healthy
+    # `arq --check` reads the health record the worker writes to Redis every 30s and exits non-zero
+    # when it is stale — surfaces a wedged worker (e.g. a hung native call holding all heavy threads)
+    # as `unhealthy`. Docker does not auto-restart on unhealthy; see PROD-HARDENING.md for the
+    # optional autoheal sidecar. start_period covers the cold docling/rapidocr model load.
+    healthcheck:
+      test: ["CMD", "arq", "entrypoint.WorkerSettings", "--check"]
+      # The health record is written every 30s; a 60s probe still catches a wedge within one cycle
+      # while halving the cost of spawning a full arq/python process per check.
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
+    deploy:
+      resources:
+        # Live idle ~0.9 GiB; a large PDF + OCR peaks ~2-4 GiB. 5g ceiling keeps headroom without the
+        # old 8g that (with bge 6g) oversubscribed a 23 GB shared host. Soft floor so the OOM-killer
+        # can't evict a mid-ingest worker under host pressure.
+        limits:
+          memory: 5g
+        reservations:
+          memory: 1g
+    restart: unless-stopped
+    networks:
+      - docforge_net
+
+  # ── PostgreSQL 16 — the tabular source of truth ─────────────────────────────
+  docforge_postgres:
+    image: postgres:16-bookworm
+    container_name: docforge-postgres
+    # No host port in prod — data-plane services are reachable only on docforge_net;
+    # operator access is `docker compose exec docforge_postgres psql ...`. Dev re-publishes
+    # 10041 via compose/overlays/dev.yml.
+    # Tune off the stock 128MB profile for the 4g container: cache hot IR/chunk pages, tell the
+    # planner the real OS-cache size, and cap connections (only app+worker connect, small pools).
+    command:
+      - postgres
+      - "-c"
+      - "shared_buffers=1GB"
+      - "-c"
+      - "effective_cache_size=3GB"
+      - "-c"
+      - "work_mem=16MB"
+      - "-c"
+      - "maintenance_work_mem=256MB"
+      - "-c"
+      - "max_connections=50"
+    env_file:
+      - ../services/docforge/postgres.env
+    volumes:
+      - docforge_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U docforge"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 4g
+        reservations:
+          memory: 1g
+    restart: unless-stopped
+    networks:
+      - docforge_net
+
+  # ── Redis 7 — the arq job queue (transport only, no monitoring truth) ───────
+  docforge_redis:
+    image: redis:7-bookworm
+    container_name: docforge-redis
+    # No host port in prod — internal to docforge_net only (app enqueue / worker listen).
+    # Dev re-publishes 10042 via compose/overlays/dev.yml.
+    # Bound RAM below the container cap and refuse writes rather than silently EVICT queued jobs
+    # (noeviction). Disable RDB snapshots (--save "") — the queue is transport-only; job truth lives
+    # in Postgres, so the periodic fork+copy-on-write is wasted CPU/RAM.
+    command: ["redis-server", "--maxmemory", "400mb", "--maxmemory-policy", "noeviction", "--save", ""]
+    volumes:
+      - docforge_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+        reservations:
+          memory: 128m
+    restart: unless-stopped
+    networks:
+      - docforge_net
+
+  # ── Qdrant — vector store (named dense + sparse per collection) ─────────────
+  docforge_qdrant:
+    image: qdrant/qdrant:v1.18.2
+    container_name: docforge-qdrant
+    # No host port in prod — REST API internal to docforge_net only. Dev re-publishes
+    # 10043 via compose/overlays/dev.yml.
+    volumes:
+      - docforge_qdrant_data:/qdrant/storage
+    healthcheck:
+      # The qdrant image ships neither curl nor wget, and its default shell (sh=dash) has no
+      # /dev/tcp. It DOES ship bash, so probe /healthz over bash's /dev/tcp using only builtins
+      # (read + [[ ]]) — no head/grep dependency. CMD form invokes bash directly (not sh).
+      # $$ escapes compose's own variable interpolation so bash receives a literal $line.
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/localhost/6333 && printf 'GET /healthz HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && read -r line <&3 && [[ $$line == *200* ]]"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 4g
+        reservations:
+          memory: 1g
+    restart: unless-stopped
+    networks:
+      - docforge_net
+
+  # ── SeaweedFS — S3-compatible blob store (content-addressed objects) ────────
+  docforge_seaweedfs:
+    image: chrislusf/seaweedfs:4.38
+    container_name: docforge-seaweedfs
+    command: >
+      server
+      -dir=/data
+      -s3
+      -s3.port=8333
+      -s3.config=/etc/seaweedfs/s3_config.json
+      -master.volumeSizeLimitMB=256
+      -volume.max=0
+      -volume.index=leveldb
+    # No host port in prod — S3 API internal to docforge_net only. Dev re-publishes
+    # 10044 via compose/overlays/dev.yml.
+    volumes:
+      - docforge_seaweedfs_data:/data
+      # S3 identity so authenticated clients (the app/worker sign with S3_ACCESS_KEY/SECRET)
+      # are accepted — without it SeaweedFS rejects every signed request with AccessDenied.
+      - ../services/docforge/s3_config.json:/etc/seaweedfs/s3_config.json:ro
+    healthcheck:
+      # Master status endpoint (default port 9333, always up alongside -s3) — confirmed
+      # the image ships curl, unlike qdrant's.
+      test: ["CMD", "curl", "-f", "http://localhost:9333/cluster/status"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+    restart: unless-stopped
+    networks:
+      - docforge_net
+
+  # ── Gotenberg 8 — office→PDF conversion used by the intake converter node ───
+  docforge_gotenberg:
+    image: gotenberg/gotenberg:8
+    container_name: docforge-gotenberg
+    # Large office documents convert in ~20-25s warm but exceed the default 30s deadline
+    # cold (LibreOffice spin-up) — raise the API timeout so borderline files never 503.
+    command: ["gotenberg", "--api-timeout=180s"]
+    ports:
+      - "10045:3000"              # HTTP conversion API (collection configs point here)
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          # Gotenberg spawns LibreOffice/Chromium per conversion — give it a real ceiling.
+          memory: 2g
+    restart: unless-stopped
+    networks:
+      docforge_net:
+        aliases:
+          - gotenberg             # so a collection's default base_url http://gotenberg:3000 resolves
+
+  # ── BGE model host — the SAME image as the legacy stack (embed BGE-M3 + rerank) ──
+  # Profiled `full` + `bge`: the two models pin ~3.5 GiB resident, so a plain `up` (stores only, for
+  # local `uv` dev that doesn't exercise embeddings) no longer pays that idle tax on the shared VM.
+  #   Full containerised stack:  --profile full   (includes bge)
+  #   Stores + embeddings only:  --profile bge    (bge alongside the stores, no app/worker)
+  # A collection's embed node points at it via base_url:
+  #   in-network  → http://bge_server:80   (the docforge_net alias below)
+  #   from host   → http://localhost:10047 (dev only — see compose/overlays/dev.yml)
+  docforge_bge_server:
+    image: ghcr.io/florian-barre/docforge-bge-server:${DOCFORGE_TAG:-latest}-cpu
+    container_name: docforge-bge-server
+    profiles: ["full", "bge"]
+    # Same reason as docforge_app/docforge_worker: Docker's embedded resolver has no external
+    # upstream on this VM, so without a pin the first-boot HF weights download
+    # (huggingface.co) fails to resolve.
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
+    env_file:
+      - ../services/bge_server/.env
+    # No host port in prod — internal to docforge_net only (collections point at
+    # http://bge_server:80). Dev re-publishes 10047 via compose/overlays/dev.yml.
+    volumes:
+      - docforge_bge_models:/models # HF cache (HF_HOME=/models) — weights persist across restarts
+    healthcheck:
+      # stdlib probe (the slim runtime has no curl); generous start_period for the first
+      # weights download (~4.4 GiB) + two-model load.
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:80/health', timeout=5).status == 200 else 1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 300s
+    deploy:
+      resources:
+        # Live resident ~3.5 GiB (both models). 5g ceiling = models + batch headroom (was 6g); soft
+        # floor at the resident set so the host OOM-killer keeps the loaded models alive.
+        limits:
+          memory: 5g
+        reservations:
+          memory: 3500m
+    restart: unless-stopped
+    networks:
+      docforge_net:
+        aliases:
+          - bge_server            # so a collection's default base_url http://bge_server:80 resolves
+
+  # Standalone MCP server — a PURE HTTP client of the DocForge API (no DB/S3). Exposes the API as MCP
+  # tools over streamable-http. No separate MCP-level auth: each request's own "Authorization:
+  # Bearer <docforge-api-key>" is forwarded upstream as-is, and a request without one is refused
+  # with 401. DOCFORGE_API_TOKEN is the stdio-only fallback — never used to serve an HTTP request.
+  docforge_mcp:
+    image: ghcr.io/florian-barre/docforge-mcp:${DOCFORGE_TAG:-latest}
+    container_name: docforge-mcp
+    profiles: ["full"]
+    env_file:
+      - ../services/mcp/.env
+    environment:
+      MCP_TRANSPORT: streamable-http
+      DOCFORGE_API_URL: http://docforge_app:8000
+    ports:
+      - "10048:9000"              # MCP streamable-http endpoint at /mcp (firewall: 10000-11000)
+    depends_on:
+      docforge_app:
+        condition: service_started
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+    restart: unless-stopped
+    networks:
+      - docforge_net
+
+  # ── PaddleOCR PP-StructureV3 layout-parsing sidecar — optional escalation parser ────────────
+  # Own image variants (cpu/gpu, TORCH_VARIANT build-arg) mirroring bge_server. In the `full`
+  # profile alongside the rest of the stack (a collection's pp_structure node is still OFF by
+  # default in every shipped blob, so the service being UP costs idle memory only, no traffic).
+  # A collection's pp_structure node points at it via base_url:
+  #   in-network  → http://paddle_server:80   (the docforge_net alias below)
+  #   from host   → http://localhost:10049 (dev only — see compose/overlays/dev.yml)
+  docforge_paddle_server:
+    image: ghcr.io/florian-barre/docforge-paddle-server:${DOCFORGE_TAG:-latest}-cpu
+    container_name: docforge-paddle-server
+    profiles: ["full"]
+    # Same reason as docforge_app/docforge_worker/docforge_bge_server: Docker's embedded
+    # resolver has no external upstream on this VM, so without a pin the first-boot model
+    # download (PADDLE_PDX_MODEL_SOURCE=huggingface -> huggingface.co) fails to resolve.
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
+    env_file:
+      - ../services/paddle_server/.env
+    # No host port in prod — internal to docforge_net only (collections point at
+    # http://paddle_server:80). Dev re-publishes 10049 via compose/overlays/dev.yml.
+    volumes:
+      - docforge_ppstructure_models:/models # PADDLE_PDX_CACHE_HOME — weights persist across restarts
+    healthcheck:
+      # stdlib probe (the slim runtime has no curl); generous start_period for the first
+      # models download (layout+OCR+table ≈ 270 MB lean default) + pipeline build.
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:80/health', timeout=5).status == 200 else 1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 300s
+    deploy:
+      resources:
+        # PP-StructureV3 loads ~7 CPU models (layout + OCRv5 + table_cls + SLANeXt/SLANet +
+        # RT-DETR wired/wireless cell det) and a predict peaks several GB — 3g OOM-crash-loops it.
+        limits:
+          memory: 16g
+        reservations:
+          memory: 1g
+    restart: unless-stopped
+    networks:
+      docforge_net:
+        aliases:
+          - paddle_server        # so a collection's default base_url http://paddle_server:80 resolves
+
+volumes:
+  docforge_postgres_data:
+  docforge_redis_data:
+  docforge_qdrant_data:
+  docforge_seaweedfs_data:
+  docforge_bge_models:
+  docforge_worker_hf_cache:
+  docforge_ppstructure_models:
+
+networks:
+  docforge_net:

@@ -83,7 +83,7 @@ at their `localhost` values here (they're used when running the app straight fro
 | `QDRANT_URL` | `http://localhost:10043` | |
 | `QDRANT_API_KEY` | *(unset)* | Optional — unset for the local unauthenticated Qdrant. |
 | `S3_ENDPOINT_URL` | `http://localhost:10044` | SeaweedFS (S3-compatible). |
-| `S3_ACCESS_KEY` / `S3_SECRET_KEY` | `docforge` / `change_me_s3_secret` | Any non-empty creds work against the local anonymous SeaweedFS. |
+| `S3_ACCESS_KEY` / `S3_SECRET_KEY` | `CHANGE_ME_ACCESS_KEY` / `CHANGE_ME_SECRET_KEY` | SeaweedFS is **identity-authenticated**, not anonymous — these MUST match `s3_config.json`'s `identities[0].credentials[0].accessKey`/`secretKey` exactly, or every S3 call gets a 403. |
 | `S3_BUCKET` | `docforge-objects` | Created at startup if missing. |
 | `S3_REGION` | `us-east-1` | |
 | `QDRANT_TIMEOUT_SECONDS` | `60.0` | Per-request Qdrant timeout (the client's own 5s default is too low for heavy `wait=true` upserts). Read by both app and worker. |
@@ -126,6 +126,22 @@ at their `localhost` values here (they're used when running the app straight fro
 | `WORKER_REAP_ENABLED` | `true` | Stuck-job reaper cron: fails RUNNING jobs idle past the stale cutoff and releases their document to FAILED. Set `false` to skip the reaper (cron not registered). |
 | `WORKER_REAP_STALE_SECONDS` | `1200` | A RUNNING job idle longer than this is reaped. **Must be `>= 60`** (the worker refuses to boot below that). 1200s (20m) sits above the slowest observed single-doc run. |
 | `WORKER_REAP_INTERVAL_MINUTES` | `5` | Reaper cron cadence (runs on every Nth minute of the hour; also once at startup). |
+
+### Artifact cache & partial re-run
+
+The worker can cache a stage's expensive artefact (e.g. the parsed IR) and replay it on a later run
+instead of recomputing. The cache is keyed on content + config + collection, so a wrong hit is
+impossible and it is safe to leave on out-of-box. It never self-deletes on the hot path — a cron
+bounds it by TTL (LRU on last hit) and a per-collection byte cap, then reclaims any S3 stage-artefact
+blob whose last pointer was removed.
+
+| Variable | Default | Notes |
+|---|---|---|
+| `WORKER_CACHE_ENABLED` | `true` | Master switch for the stage-artefact cache. Off (or on a forced reingest) → the worker builds **no** cache hook and the engine runs byte-for-byte as before (nothing read or written). |
+| `WORKER_ARTIFACT_GC_ENABLED` | `true` | Cache-GC cron: evicts by TTL (LRU) + the per-collection byte cap, then sweeps any S3 stage-artefact blob whose last pointer was removed. Set `false` to skip the sweep (cron not registered). |
+| `WORKER_ARTIFACT_GC_INTERVAL_MINUTES` | `60` | Cache-GC cron cadence (runs on every Nth minute of the hour; also once at startup, so a backlog left while the sweep was off is cleared promptly). |
+| `CACHE_TTL_DAYS` | `30` | TTL (days) for a cached artefact, measured from its last hit (else its creation). A row untouched longer is evicted. `0` disables the TTL pass (the size cap still bounds growth). |
+| `CACHE_MAX_BYTES_PER_COLLECTION` | `5000000000` (5 GB) | Per-collection byte ceiling for cached artefacts. Over it, the least-recently-used rows are evicted until under. `0` disables the size cap. |
 
 ### Collection export / import (portable `.dcexport` bundles)
 
@@ -229,6 +245,11 @@ selects the `pp_structure` brick. See [architecture.md](architecture.md) and
 | bge_server | `10047` |
 | MCP | `10048` |
 | paddle_server | `10049` |
+| Grafana (optional telemetry add-on) | `10050` |
+| Prometheus (optional telemetry add-on) | `10051` |
+| Loki (optional telemetry add-on) | `10052` |
 
 Production closes the data-plane ports (postgres/redis/qdrant/seaweedfs) — only the API (and optionally
-the MCP) are exposed. See [deployment.md](deployment.md).
+the MCP) are exposed. See [deployment.md](deployment.md). The telemetry ports are only published when
+`compose/overlays/telemetry.yml` is layered on top of a scenario — see
+[compose/README.md](../compose/README.md#the-telemetry-stack).

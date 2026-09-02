@@ -1,9 +1,15 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# DocForge — development overrides. Use with:
-#   docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile full up -d --build
-#   GPU dev:  append  -f docker-compose.gpu.yml  LAST (compose is last-file-wins, so it must
-#             follow this file to override TORCH_VARIANT=cpu → gpu + grant the device):
-#     docker compose -f docker-compose.yml -f docker-compose.dev.yml -f docker-compose.gpu.yml ... up -d --build
+# DocForge — development overlay. Never used standalone — included by dev-cpu.yml /
+# dev-gpu.yml, or layered manually on top of the base file:
+#   docker compose -f compose/base.yml -f compose/overlays/dev.yml --profile full up -d --build
+#   GPU dev: also layer compose/overlays/gpu.yml LAST (last-file/last-include wins, so it
+#            must follow this overlay to override TORCH_VARIANT=cpu → gpu + grant the device).
+#
+# WHEN TO USE THIS FILE: local development with hot reload / source mounts. Prefer the
+# ready-made scenario files (compose/dev-cpu.yml, compose/dev-gpu.yml) over hand-assembling
+# -f flags. Relative paths in this file resolve relative to THIS file's own directory
+# (compose/overlays/), per Compose's `include:` semantics — hence the `../../` prefix on
+# every host path (context/volumes), one level deeper than base.yml's `../`.
 #
 # What this changes vs production:
 #   - app/worker/mcp/bge_server BUILD locally from source (each `build:` here overrides the
@@ -22,12 +28,12 @@ services:
   docforge_app:
     # Build locally from source, overriding the prod GHCR image: pull in the base file.
     build:
-      context: src/docforge
+      context: ../../src/docforge
       dockerfile: app/Dockerfile
     volumes:
       # Source overlays — edits on the host are live inside the container.
-      - ./src/docforge/app:/app/app
-      - ./src/docforge/shared:/app/shared
+      - ../../src/docforge/app:/app/app
+      - ../../src/docforge/shared:/app/shared
     environment:
       DEV_MODE: "true"
     command: >
@@ -42,13 +48,13 @@ services:
     # Build locally from source, overriding the prod GHCR image: pull in the base file.
     # CPU torch by default; the gpu override file flips TORCH_VARIANT to gpu.
     build:
-      context: src/docforge
+      context: ../../src/docforge
       dockerfile: worker/Dockerfile
       args:
         TORCH_VARIANT: cpu
     volumes:
-      - ./src/docforge/worker:/app/worker
-      - ./src/docforge/shared:/app/shared
+      - ../../src/docforge/worker:/app/worker
+      - ../../src/docforge/shared:/app/shared
       # Reuse the host's HF cache so docling never re-downloads models. Mount target is the
       # non-root runtime user's home (HOME=/home/appuser, uid/gid 10001, see worker/Dockerfile)
       # — NOT /root, the image no longer runs as root.
@@ -74,7 +80,7 @@ services:
   #    (bge_server's build override lives on its own block below, alongside its port republish.) ──
   docforge_mcp:
     build:
-      context: src                # sibling context: the mcp source is src/mcp, not under docforge
+      context: ../../src          # sibling context: the mcp source is src/mcp, not under docforge
       dockerfile: mcp/Dockerfile
 
   # ── Data-plane stores — republish host ports for local dev (psql/redis-cli/alembic/
@@ -99,7 +105,7 @@ services:
     # Build locally from source, overriding the prod GHCR image: pull in the base file.
     # CPU torch by default; the gpu override file flips TORCH_VARIANT to gpu.
     build:
-      context: src                # bge_server lives at src/bge_server (sibling of docforge)
+      context: ../../src          # bge_server lives at src/bge_server (sibling of docforge)
       dockerfile: bge_server/Dockerfile
       args:
         TORCH_VARIANT: cpu
@@ -110,7 +116,7 @@ services:
     # Build locally from source, overriding the prod GHCR image: pull in the base file.
     # CPU paddlepaddle by default; the gpu override file flips TORCH_VARIANT to gpu.
     build:
-      context: src                # paddle_server lives at src/paddle_server (sibling of docforge)
+      context: ../../src          # paddle_server lives at src/paddle_server (sibling of docforge)
       dockerfile: paddle_server/Dockerfile
       args:
         TORCH_VARIANT: cpu
@@ -135,7 +141,7 @@ services:
       - 8.8.8.8
     working_dir: /frontend
     volumes:
-      - ./src/docforge/app/frontend:/frontend
+      - ../../src/docforge/app/frontend:/frontend
       # node_modules stays container-side: the host's Windows-built tree must never leak in.
       - docforge_frontend_modules:/frontend/node_modules
     environment:

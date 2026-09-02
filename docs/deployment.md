@@ -6,20 +6,30 @@ This guide covers running DocForge beyond local dev. For the exhaustive pre-go-l
 
 ## Production vs dev compose
 
-DocForge ships three compose files:
+DocForge's compose files live under [`compose/`](../compose/README.md) — a base file, overlays,
+and four ready-made scenario files, layered via `include:`. The repo-root `docker-compose.yml` is
+a thin `include: [compose/prod-cpu.yml]`, so a bare `docker compose --profile full up -d` at the
+repo root is still the production default.
 
 | File | Role |
 |---|---|
-| `docker-compose.yml` | The base stack — **this is production**. Baked images, data-plane ports **not** published (postgres/redis/qdrant/seaweedfs stay internal to `docforge_net`). |
-| `docker-compose.dev.yml` | Dev overlay — hot reload + publishes the store ports to `localhost` for inspection. |
-| `docker-compose.gpu.yml` | GPU overlay for docling (worker) acceleration. |
-| `docker-compose.proxy.yml` | **Optional** — opt-in Caddy TLS front door (auto-HTTPS) for hosts with no proxy/LB already terminating TLS. Off by default; see [PROD-HARDENING.md §8](PROD-HARDENING.md#8-optional-tls-reverse-proxy). |
+| `compose/base.yml` | ALL services + volumes + network. Never used alone — always via one of the scenario files below. Baked images, data-plane ports **not** published (postgres/redis/qdrant/seaweedfs stay internal to `docforge_net`). |
+| `compose/prod-cpu.yml` | **This is production** (the default). `base.yml` alone — CPU is the base variant, no separate CPU overlay exists. |
+| `compose/prod-gpu.yml` | Production on a GPU host — `base.yml` + `overlays/gpu.yml`. |
+| `compose/dev-cpu.yml` | Local dev — `base.yml` + `overlays/dev.yml` (hot reload + publishes the store ports to `localhost` for inspection). |
+| `compose/dev-gpu.yml` | Local dev on a GPU-equipped machine. |
+| `compose/overlays/proxy.yml` | **Optional add-on** (layered with an extra `-f`, never baked into a scenario file) — opt-in Caddy TLS front door (auto-HTTPS) for hosts with no proxy/LB already terminating TLS. Off by default; see [PROD-HARDENING.md §8](PROD-HARDENING.md#8-optional-tls-reverse-proxy). |
+| `compose/overlays/telemetry.yml` | **Optional add-on** — Prometheus + Loki + Promtail + Grafana. See [compose/README.md](../compose/README.md#the-telemetry-stack). |
+
+See [compose/README.md](../compose/README.md) for the full usage matrix, the Makefile targets,
+and the `include:` merge-order gotcha (why overlays are listed *before* `base.yml` in each
+scenario file).
 
 **Production start** (no dev overlay):
 
 ```bash
-docker compose -f docker-compose.yml --profile full up -d
-docker compose -f docker-compose.yml exec docforge_app \
+docker compose --profile full up -d
+docker compose exec docforge_app \
   sh -c 'alembic -c /app/shared/alembic.ini upgrade head'
 ```
 
@@ -44,7 +54,7 @@ MCP — should be published to the outside; keep the data-plane services interna
    stay public by design.
 3. **`FASTAPI_DEBUG_MODE=false`** — `true` leaks tracebacks to clients.
 4. **CORS** — set `FASTAPI_CORS_ALLOWED_ORIGINS` to your real front-end origins.
-5. **Data-plane ports closed** — verify with `docker compose -f docker-compose.yml config` that
+5. **Data-plane ports closed** — verify with `docker compose -f compose/prod-cpu.yml config` that
    postgres/redis/qdrant/seaweedfs have no `ports:` mapping.
 6. **Persistence** — the named volumes (postgres data, Qdrant, SeaweedFS, the `bge_server` HF model
    cache) are where your data lives; back them up.
@@ -55,18 +65,17 @@ MCP — should be published to the outside; keep the data-plane services interna
 
 ## GPU
 
-The `bge_server` and the worker's docling stage can use a GPU:
+The `bge_server`, `paddle_server`, and the worker's docling stage can use a GPU. Use the
+`prod-gpu` scenario — it pulls the published `-gpu` image tags and grants the NVIDIA device to
+all three:
 
-- **`bge_server`**: build the GPU image and set the device policy.
-  ```bash
-  docker compose -f docker-compose.yml build --build-arg TORCH_VARIANT=gpu bge_server
-  # then in services/bge_server/.env:  BGE_DEVICE=cuda   (BGE_FP16=true is gated to CUDA)
-  ```
-- **Worker docling**: add the GPU overlay:
-  `docker compose -f docker-compose.yml -f docker-compose.gpu.yml --profile full up -d`.
+```bash
+docker compose -f compose/prod-gpu.yml --profile full up -d
+# then in services/bge_server/.env:  BGE_DEVICE=cuda   (BGE_FP16=true is gated to CUDA)
+```
 
-A GPU host needs the NVIDIA Container Toolkit. See the commented `reservations:` block under
-`bge_server` in the compose file.
+A GPU host needs the NVIDIA Container Toolkit. See [compose/README.md](../compose/README.md) for
+the full scenario matrix, and `compose/overlays/gpu.yml` for the resource `reservations:`.
 
 ## The MCP server (optional)
 

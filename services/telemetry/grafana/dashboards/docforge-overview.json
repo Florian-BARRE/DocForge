@@ -1,0 +1,302 @@
+{
+  "title": "DocForge — Control Tower",
+  "uid": "docforge-overview",
+  "tags": ["docforge"],
+  "schemaVersion": 39,
+  "version": 3,
+  "editable": true,
+  "timezone": "browser",
+  "graphTooltip": 1,
+  "time": { "from": "now-6h", "to": "now" },
+  "refresh": "10s",
+  "links": [
+    {
+      "asDropdown": false,
+      "icon": "external link",
+      "includeVars": true,
+      "keepTime": true,
+      "tags": ["docforge"],
+      "targetBlank": false,
+      "title": "DocForge dashboards",
+      "type": "dashboards"
+    }
+  ],
+  "panels": [
+    { "id": 100, "type": "row", "title": "API", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }, "collapsed": false, "panels": [] },
+
+    {
+      "id": 1,
+      "title": "Total request rate",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "docforge-prometheus" },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "reqps", "decimals": 2 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "graphMode": "area" },
+      "targets": [
+        { "refId": "A", "expr": "sum(rate(docforge_http_requests_total[5m]))" }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Error ratio (4xx+5xx)",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "docforge-prometheus" },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 1 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "noValue": "No data",
+          "mappings": [
+            { "type": "special", "options": { "match": "null+nan", "result": { "text": "No data", "color": "#8a8378" } } }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "#2f7d4f", "value": null },
+              { "color": "#f4a63b", "value": 0.01 },
+              { "color": "#c8402c", "value": 0.05 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "graphMode": "area", "colorMode": "value" },
+      "targets": [
+        { "refId": "A", "expr": "sum(rate(docforge_http_requests_total{status=~\"[45]..\"}[5m])) / sum(rate(docforge_http_requests_total[5m]))" }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "p95 latency",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "docforge-prometheus" },
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "ms", "decimals": 1 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "graphMode": "area" },
+      "targets": [
+        { "refId": "A", "expr": "1000 * histogram_quantile(0.95, sum by (le) (rate(docforge_http_request_duration_seconds_bucket[5m])))" }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "In-flight requests",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "docforge-prometheus" },
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "graphMode": "area" },
+      "targets": [
+        { "refId": "A", "expr": "sum(docforge_http_requests_in_progress)" }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Request rate by status class",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "docforge-prometheus" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 5 },
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "fillOpacity": 15, "stacking": { "mode": "normal" } } }, "overrides": [
+        { "matcher": { "id": "byRegexp", "options": "2xx" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "#2f7d4f" } }] },
+        { "matcher": { "id": "byRegexp", "options": "4xx" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "#f4a63b" } }] },
+        { "matcher": { "id": "byRegexp", "options": "5xx" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "#c8402c" } }] }
+      ] },
+      "links": [{ "title": "Open API & HTTP dashboard", "url": "/d/docforge-api?orgId=1" }],
+      "targets": [
+        { "refId": "A", "expr": "sum by (status_class) (label_replace(rate(docforge_http_requests_total[1m]), \"status_class\", \"${1}xx\", \"status\", \"(.)..\"))", "legendFormat": "{{status_class}}" }
+      ]
+    },
+
+    { "id": 101, "type": "row", "title": "Jobs & Workers", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 13 }, "collapsed": false, "panels": [] },
+
+    {
+      "id": 10,
+      "title": "Queue depth",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "docforge-prometheus" },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 14 },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "graphMode": "area" },
+      "targets": [
+        { "refId": "A", "expr": "docforge_arq_queue_depth" }
+      ]
+    },
+    {
+      "id": 11,
+      "title": "Jobs running",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "docforge-prometheus" },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 14 },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0, "color": { "mode": "fixed", "fixedColor": "#ef7a45" } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "graphMode": "area", "colorMode": "value" },
+      "targets": [
+        { "refId": "A", "expr": "docforge_jobs_running" }
+      ]
+    },
+    {
+      "id": 12,
+      "title": "Jobs failed",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "docforge-prometheus" },
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 14 },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0, "thresholds": { "mode": "absolute", "steps": [
+        { "color": "#2f7d4f", "value": null },
+        { "color": "#c8402c", "value": 1 }
+      ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" },
+      "targets": [
+        { "refId": "A", "expr": "docforge_jobs_failed" }
+      ]
+    },
+    {
+      "id": 13,
+      "title": "Workers live",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "docforge-prometheus" },
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 14 },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0, "thresholds": { "mode": "absolute", "steps": [
+        { "color": "#c8402c", "value": null },
+        { "color": "#2f7d4f", "value": 1 }
+      ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" },
+      "targets": [
+        { "refId": "A", "expr": "docforge_workers_live" }
+      ]
+    },
+    {
+      "id": 14,
+      "title": "Jobs by state",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "docforge-prometheus" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 18 },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 }, "overrides": [
+        { "matcher": { "id": "byName", "options": "pending" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "#8a8378" } }] },
+        { "matcher": { "id": "byName", "options": "running" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "#ef7a45" } }] },
+        { "matcher": { "id": "byName", "options": "failed" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "#c8402c" } }] }
+      ] },
+      "links": [{ "title": "Open Jobs & Workers dashboard", "url": "/d/docforge-jobs?orgId=1" }],
+      "targets": [
+        { "refId": "A", "expr": "docforge_jobs_pending", "legendFormat": "pending" },
+        { "refId": "B", "expr": "docforge_jobs_running", "legendFormat": "running" },
+        { "refId": "C", "expr": "docforge_jobs_failed", "legendFormat": "failed" }
+      ]
+    },
+
+    { "id": 102, "type": "row", "title": "Logs", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 26 }, "collapsed": false, "panels": [] },
+
+    {
+      "id": 20,
+      "title": "Errors & warnings (5m)",
+      "type": "stat",
+      "datasource": { "type": "loki", "uid": "docforge-loki" },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 27 },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0, "noValue": "0", "thresholds": { "mode": "absolute", "steps": [
+        { "color": "#2f7d4f", "value": null },
+        { "color": "#f4a63b", "value": 1 },
+        { "color": "#c8402c", "value": 10 }
+      ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" },
+      "targets": [
+        { "refId": "A", "expr": "sum(count_over_time({compose_service=~\"docforge_.+\"} |~ \"(?i)\\\\b(error|exception|traceback|critical|warn)\\\\b\" !~ \"j_failed=0\" [5m]))", "instant": true }
+      ]
+    },
+    {
+      "id": 21,
+      "title": "Log volume by service",
+      "type": "timeseries",
+      "datasource": { "type": "loki", "uid": "docforge-loki" },
+      "gridPos": { "h": 8, "w": 18, "x": 6, "y": 27 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "bars", "fillOpacity": 60, "stacking": { "mode": "normal" }, "lineWidth": 0 } }, "overrides": [] },
+      "links": [{ "title": "Open Logs dashboard", "url": "/d/docforge-logs?orgId=1" }],
+      "targets": [
+        { "refId": "A", "expr": "sum by (compose_service) (count_over_time({compose_service=~\"docforge_.+\"}[1m]))", "legendFormat": "{{compose_service}}" }
+      ]
+    },
+
+    { "id": 103, "type": "row", "title": "Runtime", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 35 }, "collapsed": false, "panels": [] },
+
+    {
+      "id": 30,
+      "title": "Resident memory (app)",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "docforge-prometheus" },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 36 },
+      "fieldConfig": { "defaults": { "unit": "bytes", "decimals": 1 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "graphMode": "area" },
+      "targets": [
+        { "refId": "A", "expr": "process_resident_memory_bytes{job=\"docforge_app\"}" }
+      ]
+    },
+    {
+      "id": 31,
+      "title": "CPU (app)",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "docforge-prometheus" },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 36 },
+      "fieldConfig": { "defaults": { "unit": "percent", "decimals": 1 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "graphMode": "area" },
+      "targets": [
+        { "refId": "A", "expr": "100 * rate(process_cpu_seconds_total{job=\"docforge_app\"}[5m])" }
+      ]
+    },
+    {
+      "id": 32,
+      "title": "Uptime (app)",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "docforge-prometheus" },
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 36 },
+      "fieldConfig": { "defaults": { "unit": "s", "decimals": 0 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        { "refId": "A", "expr": "time() - process_start_time_seconds{job=\"docforge_app\"}" }
+      ]
+    },
+    {
+      "id": 33,
+      "title": "Open file descriptors (app)",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "docforge-prometheus" },
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 36 },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "links": [{ "title": "Open Runtime dashboard", "url": "/d/docforge-runtime?orgId=1" }],
+      "targets": [
+        { "refId": "A", "expr": "process_open_fds{job=\"docforge_app\"}" }
+      ]
+    },
+
+    { "id": 104, "type": "row", "title": "Scrape health", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 40 }, "collapsed": false, "panels": [] },
+
+    {
+      "id": 40,
+      "title": "Targets up",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "docforge-prometheus" },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 41 },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0, "thresholds": { "mode": "absolute", "steps": [
+        { "color": "#c8402c", "value": null },
+        { "color": "#2f7d4f", "value": 1 }
+      ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" },
+      "targets": [
+        { "refId": "A", "expr": "sum(up)", "instant": true }
+      ]
+    },
+    {
+      "id": 41,
+      "title": "Scrape targets",
+      "type": "table",
+      "datasource": { "type": "prometheus", "uid": "docforge-prometheus" },
+      "gridPos": { "h": 9, "w": 18, "x": 6, "y": 41 },
+      "fieldConfig": { "defaults": { "custom": { "align": "auto" } }, "overrides": [] },
+      "options": { "showHeader": true },
+      "targets": [
+        { "refId": "A", "expr": "up", "format": "table", "instant": true }
+      ],
+      "transformations": [
+        { "id": "organize", "options": { "excludeByName": { "Time": true, "__name__": true } } }
+      ]
+    }
+  ]
+}

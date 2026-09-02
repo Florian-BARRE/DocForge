@@ -1,9 +1,9 @@
 # DocForge — Resource Footprint & Hardware Sizing
 
 How much CPU/RAM/disk/GPU each service costs, the per-service ceilings enforced in
-`docker-compose.yml`, and a decision table that maps *your* model/feature choices onto a
+`compose/base.yml`, and a decision table that maps *your* model/feature choices onto a
 concrete machine. Every number below was verified against the current compose files
-(`docker-compose.yml`, `docker-compose.gpu.yml`) and, where marked **(observed)**, against a
+(`compose/base.yml`, `compose/overlays/gpu.yml`) and, where marked **(observed)**, against a
 live stack running on this repo's reference dev VM. Anything not directly measurable is marked
 **(estimate)** with its basis — do not treat those as guarantees.
 
@@ -47,7 +47,7 @@ scope — this pass only refreshes `deployment-resources.md`).
 
 ## 1. What actually runs — current topology
 
-Prod topology (`docker-compose.yml`, pulls `ghcr.io/florian-barre/docforge-*` images, no build):
+Prod topology (`compose/prod-cpu.yml`, pulls `ghcr.io/florian-barre/docforge-*` images, no build):
 
 | Service | Role | Profile |
 |---|---|---|
@@ -62,9 +62,9 @@ Prod topology (`docker-compose.yml`, pulls `ghcr.io/florian-barre/docforge-*` im
 | `docforge_mcp` | Standalone MCP server — pure HTTP client of the API, no DB/S3 | `full` |
 | `docforge_paddle_server` | PP-StructureV3 layout-parsing sidecar — **new since the last revision of this doc** | `full` |
 
-`docker-compose.dev.yml` adds a dev-only `docforge_frontend` (Vite dev server, hot reload) and
+`compose/overlays/dev.yml` (via `compose/dev-cpu.yml`/`compose/dev-gpu.yml`) adds a dev-only `docforge_frontend` (Vite dev server, hot reload) and
 switches app/worker/mcp/bge_server/paddle_server to local builds. **No `pgadmin` container exists
-anywhere in this stack.** `docker-compose.gpu.yml` overlays GPU images + `gpus: all` onto
+anywhere in this stack.** `compose/overlays/gpu.yml` overlays GPU images + `gpus: all` onto
 `worker`, `bge_server`, and `paddle_server` (the only three torch/paddle-bearing services).
 
 Bring-up:
@@ -72,14 +72,14 @@ Bring-up:
 # Prod CPU (default)
 docker compose --profile full up -d
 # Prod GPU
-docker compose -f docker-compose.yml -f docker-compose.gpu.yml --profile full up -d
+docker compose -f compose/prod-gpu.yml --profile full up -d
 ```
 `--profile full` is required for app/worker/mcp/paddle_server/frontend — omit it and only the
 data-plane stores start.
 
 ---
 
-## 2. Per-service RAM ceilings (verified in `docker-compose.yml`)
+## 2. Per-service RAM ceilings (verified in `compose/base.yml`)
 
 > **No `cpus:` limit is set on any service, anywhere in the compose files.** The previous version
 > of this doc listed a CPU ceiling per service — that was never actually enforced; there is no
@@ -100,7 +100,7 @@ data-plane stores start.
 | `docforge_bge_server` (cpu) | 5 GiB | 3.5 GiB | Both models (BGE-M3 + reranker) resident ~3.5 GiB per in-file comment; **observed (live) 2.82 GiB / 56%** |
 | `docforge_mcp` | 512 MiB | — | Pure HTTP client, no DB/S3; **observed (live) 21.8 MiB** |
 | `docforge_paddle_server` (cpu) | **16 GiB** | 1 GiB | PP-StructureV3 loads ~7 CPU models (layout+OCRv5+table+formula/seal heads); ceiling sized for a predict() spike, not idle. **Observed (live, after prior pp_structure use) 2.48 GiB / 15.5%** — a never-used cold instance is lighter, but budget for multi-GiB spikes once a collection actually selects `pp_structure` |
-| `docforge_frontend` (dev only) | **not set** | — | No `deploy.resources` block exists for it in `docker-compose.dev.yml` — unconstrained. Vite dev server; typically light (~100–300 MB) |
+| `docforge_frontend` (dev only) | **not set** | — | No `deploy.resources` block exists for it in `compose/overlays/dev.yml` — unconstrained. Vite dev server; typically light (~100–300 MB) |
 
 **Sum of ceilings, full CPU profile (all 10 prod services): ≈ 24 GiB.** This is intentionally
 larger than any reasonable single box — ceilings are hard caps, not reservations, and they don't
@@ -181,9 +181,9 @@ collections).
 
 ---
 
-## 5. GPU images and sizing (from `docker-compose.gpu.yml` + per-service Dockerfile/`.env.example` comments — not locally measured, no GPU on this dev VM)
+## 5. GPU images and sizing (from `compose/overlays/gpu.yml` + per-service Dockerfile/`.env.example` comments — not locally measured, no GPU on this dev VM)
 
-`docker-compose.gpu.yml` swaps `worker`, `bge_server`, and `paddle_server` to `-gpu` image tags and
+`compose/overlays/gpu.yml` swaps `worker`, `bge_server`, and `paddle_server` to `-gpu` image tags and
 grants `gpus: all` to all three (the only torch/paddle-bearing services — `app`, `postgres`,
 `redis`, `qdrant`, `seaweedfs`, `gotenberg`, `mcp` are never GPU-aware).
 
@@ -225,7 +225,7 @@ Pick your rows, sum the "extra" columns onto the minimal baseline (§ TL;DR) to 
 | **Embed: OpenAI-compat endpoint** | ~0 local | No | ~0 | **Yes** (key + network) | Dense-only — no sparse vector, so lexical/hybrid search on that field loses its sparse axis |
 | **Rerank: BGE-reranker-v2-m3 (in `bge_server`)** | included in bge_server's ceiling if enabled | No (works on CPU) but **impractical on CPU for production** | none extra (same process) | No | **OFF by default.** Measured CPU ceiling: ~1.6s/passage, top_n=5→9s up to top_n=50→79s (8-core container) — the built-in 12s degrade-after kicks in past ~top_n=8-10, silently falling back to fusion-order results. Production path is a hosted/GPU reranker via the per-collection `base_url` override, not the in-stack CPU one |
 | **torch/paddle variant: cpu** (default) | baseline (§2/§4) | No | baseline | No | ~200 MB torch wheel / ~100 MB paddle wheel |
-| **torch/paddle variant: gpu** | same RAM ceilings, PLUS GPU vRAM (§5) | **Yes** — NVIDIA Container Toolkit required | +5.5–7.5 GB per swapped image (§5) | No | Only `worker`, `bge_server`, `paddle_server` have `-gpu` tags; layer `docker-compose.gpu.yml` last |
+| **torch/paddle variant: gpu** | same RAM ceilings, PLUS GPU vRAM (§5) | **Yes** — NVIDIA Container Toolkit required | +5.5–7.5 GB per swapped image (§5) | No | Only `worker`, `bge_server`, `paddle_server` have `-gpu` tags — use `compose/prod-gpu.yml` / `compose/dev-gpu.yml` |
 
 ---
 
@@ -260,7 +260,7 @@ in §6 (production-quality rerank needs GPU/hosted, not this box).
 
 ### (c) Full / GPU — granite_docling parser + GPU embed/rerank + pp_structure
 
-`docker-compose.yml` + `docker-compose.gpu.yml`, `--profile full`. `worker`, `bge_server`,
+`compose/prod-gpu.yml`, `--profile full`. `worker`, `bge_server`,
 `paddle_server` all GPU. VLM/LLM stages may stay on hosted APIs (no self-host required for those
 — DocForge doesn't ship a VLM/LLM host) or point at an external self-hosted endpoint outside this
 compose.
@@ -290,7 +290,7 @@ docker inspect <container> --format '{{.HostConfig.Memory}}'
 ```
 
 **Re-tune:** edit the `deploy.resources.limits`/`reservations` block of the service in
-`docker-compose.yml` (memory only — there is no `cpus:` knob today), then `docker compose up -d` —
+`compose/base.yml` (memory only — there is no `cpus:` knob today), then `docker compose up -d` —
 Compose recreates only the changed container, no rebuild needed.
 
 **Watch for OOM kills** — if a service is `OOMKilled`:
@@ -323,4 +323,4 @@ docker system df -v | grep docforge
 - [Deployment guide](deployment.md) — production hardening, ports, secrets, GPU bring-up.
 - [Configuration reference](configuration.md) — every environment variable per service.
 - [PROD-HARDENING.md](PROD-HARDENING.md) — the exhaustive go-live runbook.
-- Compose files — `docker-compose.yml`, `docker-compose.dev.yml`, `docker-compose.gpu.yml` (repo root).
+- Compose files — `compose/base.yml`, `compose/overlays/{dev,gpu}.yml`, `compose/{prod,dev}-{cpu,gpu}.yml` (see `compose/README.md`).

@@ -4,7 +4,7 @@
 # of hit@k + MRR so the effect of structure-aware granularity (min_tokens/target_tokens) is measured
 # on data, not guessed. Zero LLM/VLM cost: the default pipeline embeds locally with BGE-M3. Usage:
 #
-#   DOCFORGE_TOKEN=$(docker compose -f docker-compose.yml -f docker-compose.dev.yml \
+#   DOCFORGE_TOKEN=$(docker compose -f compose/dev-cpu.yml \
 #       exec -T docforge_app printenv AUTH_ROOT_TOKEN | tr -d '\r') \
 #     uv run python -m tests.rag_eval.runner --papers 150 --sweep
 #

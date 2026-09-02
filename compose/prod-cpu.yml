@@ -1,0 +1,19 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# DocForge — PROD CPU scenario (the default). Pulls published GHCR images, no build, no
+# source mounts; worker/bge_server/paddle_server run the -cpu image tags.
+#
+# WHEN TO USE THIS FILE: a normal CPU production/staging deployment. This is also what the
+# thin root docker-compose.yml includes, so a bare `docker compose --profile full up -d`
+# at the repo root already gets you this scenario.
+#
+#   docker compose -f compose/prod-cpu.yml --profile full up -d
+#
+# Add-ons (layer with an extra -f, never baked in here):
+#   docker compose -f compose/prod-cpu.yml -f compose/overlays/proxy.yml --profile full up -d
+#   docker compose -f compose/prod-cpu.yml -f compose/overlays/telemetry.yml --profile full up -d
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: docforge
+
+include:
+  - base.yml

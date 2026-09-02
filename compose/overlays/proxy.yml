@@ -1,12 +1,16 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# DocForge — OPTIONAL TLS reverse-proxy overlay. Use with:
-#   docker compose -f docker-compose.yml -f docker-compose.proxy.yml --profile full up -d
+# DocForge — OPTIONAL TLS reverse-proxy add-on. Layer on top of any scenario file, e.g.:
+#   docker compose -f compose/prod-cpu.yml -f compose/overlays/proxy.yml --profile full up -d
+#   docker compose -f compose/prod-gpu.yml -f compose/overlays/proxy.yml --profile full up -d
 #
-# Only relevant when DocForge itself must terminate TLS (e.g. a bare VM with a public IP
-# and no host/VM-level reverse proxy or corporate load balancer in front of it already).
-# If your infrastructure already terminates TLS upstream, do NOT layer this file — leave
-# docforge_app on plain HTTP behind that proxy instead. See docs/PROD-HARDENING.md's
-# "Optional TLS reverse proxy" section for the full when-to-use-this decision.
+# WHEN TO USE THIS FILE: only relevant when DocForge itself must terminate TLS (e.g. a bare
+# VM with a public IP and no host/VM-level reverse proxy or corporate load balancer in front
+# of it already). If your infrastructure already terminates TLS upstream, do NOT layer this
+# file — leave docforge_app on plain HTTP behind that proxy instead. See
+# docs/PROD-HARDENING.md's "Optional TLS reverse proxy" section for the full decision.
+# NOT baked into any scenario file (compose/prod-*.yml, compose/dev-*.yml) — it is an
+# opt-in add-on layered with an extra `-f`, same as overlays/telemetry.yml. Relative paths
+# below resolve relative to THIS file's own directory (compose/overlays/) — hence `../../`.
 #
 # What this changes vs the base (CPU) prod file:
 #   - adds docforge_caddy: Caddy 2, auto-HTTPS (Let's Encrypt) for DOCFORGE_DOMAIN,
@@ -34,14 +38,14 @@ services:
     environment:
       # ':?' fails `up`/`config` fast with a clear message instead of Caddy erroring on an
       # empty site address once the container is already running.
-      DOCFORGE_DOMAIN: ${DOCFORGE_DOMAIN:?set DOCFORGE_DOMAIN in the project-root .env before using docker-compose.proxy.yml}
-      DOCFORGE_ACME_EMAIL: ${DOCFORGE_ACME_EMAIL:?set DOCFORGE_ACME_EMAIL in the project-root .env before using docker-compose.proxy.yml}
+      DOCFORGE_DOMAIN: ${DOCFORGE_DOMAIN:?set DOCFORGE_DOMAIN in the project-root .env before using compose/overlays/proxy.yml}
+      DOCFORGE_ACME_EMAIL: ${DOCFORGE_ACME_EMAIL:?set DOCFORGE_ACME_EMAIL in the project-root .env before using compose/overlays/proxy.yml}
     ports:
       - "80:80"                 # ACME HTTP-01 challenge + HTTP->HTTPS redirect
       - "443:443"                # Public HTTPS (the only public entry point once this overlay is used)
       - "443:443/udp"             # HTTP/3 (QUIC)
     volumes:
-      - ./services/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ../../services/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       # Persists the ACME account + issued certs across recreations — without this, every
       # `up` re-runs the HTTP-01 challenge and can hit Let's Encrypt's rate limits.
       - docforge_caddy_data:/data

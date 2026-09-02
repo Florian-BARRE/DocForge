@@ -1,0 +1,118 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# DocForge — OPTIONAL observability add-on (Prometheus + Loki + Promtail + Grafana).
+# Layer on top of any scenario file, e.g.:
+#   docker compose -f compose/prod-cpu.yml -f compose/overlays/telemetry.yml --profile full up -d
+#   docker compose -f compose/dev-cpu.yml  -f compose/overlays/telemetry.yml --profile full up -d
+#
+# WHEN TO USE THIS FILE: you want metrics/log dashboards without standing up your own
+# Prometheus/Grafana. NOT baked into any scenario file — opt-in add-on, same pattern as
+# overlays/proxy.yml. These 4 services carry NO `profiles:` key (unlike app/worker/frontend/
+# mcp, which are gated behind "full") — they start unconditionally whenever this overlay is
+# included, so `--profile full` still starts the rest of the stack exactly as before; the
+# telemetry containers just come along for free. Config lives under services/telemetry/ (the
+# per-service config home, same as services/caddy, services/docforge). Relative paths below
+# resolve from the compose/ PROJECT dir (first -f file's dir), NOT this file's dir — an -f
+# overlay resolves from the project dir — hence `../services/telemetry/...`.
+#
+# What this adds:
+#   - prometheus: scrapes docforge_app:8000/metrics over the internal docforge_net (NOT
+#     the published host port — /metrics is unauthenticated, see docs/configuration.md).
+#   - loki + promtail: promtail tails every container's Docker json-file log (via
+#     docker_sd_configs against the read-only docker.sock + /var/lib/docker/containers
+#     mounts) and ships it to loki.
+#   - grafana: provisioned with both datasources + one starter dashboard
+#     (services/telemetry/grafana/dashboards/docforge-overview.json) — request rate, p95
+#     latency, error rate, arq queue depth, job counts, live workers.
+#
+# Grafana admin login: services/telemetry/.env (GF_SECURITY_ADMIN_USER / GF_SECURITY_ADMIN_PASSWORD,
+# injected via env_file — the discoverable per-service config home). Copy .env.example → .env and
+# CHANGE the password before exposing Grafana beyond localhost/an operator VPN.
+#
+# Ports (VM firewall range 10000-11000; 10040-10049 already used by the core stack — see
+# compose/README.md's port table): grafana 10050, prometheus 10051, loki 10052.
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+  # ── Prometheus — scrapes DocForge app metrics ───────────────────────────────
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: docforge-prometheus
+    volumes:
+      - ../services/telemetry/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - docforge_prometheus_data:/prometheus
+    ports:
+      - "10051:9090"              # Operator access: http://localhost:10051
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9090/-/healthy || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - docforge_net
+
+  # ── Loki — log storage/index, receives from promtail ────────────────────────
+  loki:
+    image: grafana/loki:2.9.8
+    container_name: docforge-loki
+    command: ["-config.file=/etc/loki/loki-config.yml"]
+    volumes:
+      - ../services/telemetry/loki-config.yml:/etc/loki/loki-config.yml:ro
+      - docforge_loki_data:/loki
+    ports:
+      - "10052:3100"              # Operator access / ad-hoc LogQL queries: http://localhost:10052
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3100/ready || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - docforge_net
+
+  # ── Promtail — tails every container's Docker log and ships it to loki ──────
+  promtail:
+    image: grafana/promtail:2.9.8
+    container_name: docforge-promtail
+    command: ["-config.file=/etc/promtail/promtail-config.yml"]
+    volumes:
+      - ../services/telemetry/promtail-config.yml:/etc/promtail/promtail-config.yml:ro
+      # Read-only: promtail only ever reads container logs, never writes to the Docker state dir.
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      # Read-only: needed for docker_sd_configs container discovery (name/label relabeling) —
+      # promtail never starts/stops/inspects-with-write anything through this socket.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      - loki
+    restart: unless-stopped
+    networks:
+      - docforge_net
+
+  # ── Grafana — dashboards over Prometheus + Loki, provisioned on boot ────────
+  grafana:
+    image: grafana/grafana:11.3.0
+    container_name: docforge-grafana
+    # Admin credentials live in services/telemetry/.env (GF_SECURITY_ADMIN_USER / _PASSWORD) —
+    # the discoverable per-service config home (like services/caddy, services/docforge). Change
+    # them THERE before exposing Grafana beyond localhost/an operator VPN.
+    env_file:
+      - ../services/telemetry/.env
+    environment:
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ../services/telemetry/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ../services/telemetry/grafana/dashboards:/etc/grafana/dashboards:ro
+      - docforge_grafana_data:/var/lib/grafana
+    ports:
+      - "10050:3000"              # Grafana UI: http://localhost:10050 (user: admin)
+    depends_on:
+      - prometheus
+      - loki
+    restart: unless-stopped
+    networks:
+      - docforge_net
+
+volumes:
+  docforge_prometheus_data:
+  docforge_loki_data:
+  docforge_grafana_data:

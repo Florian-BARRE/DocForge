@@ -1,12 +1,15 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# DocForge — thin root entrypoint. Includes the prod-CPU scenario so a bare
-#   docker compose --profile full up -d
-# at the repo root keeps working exactly as before the compose/ reorg (see compose/README.md
-# for the full usage matrix). For every other scenario (GPU, dev, proxy, telemetry), use the
-# files under compose/ directly — see compose/README.md and the root Makefile.
+# Grafana dashboard provisioning — loads every JSON file under the mounted dashboards/
+# directory (see compose/overlays/telemetry.yml's grafana volumes) into a "DocForge" folder.
 # ─────────────────────────────────────────────────────────────────────────────
+apiVersion: 1
 
-name: docforge
-
-include:
-  - compose/prod-cpu.yml
+providers:
+  - name: DocForge
+    orgId: 1
+    folder: DocForge
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    options:
+      path: /etc/grafana/dashboards

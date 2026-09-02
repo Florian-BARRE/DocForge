@@ -1,0 +1,167 @@
+{
+  "title": "DocForge — Runtime & Process",
+  "uid": "docforge-runtime",
+  "tags": ["docforge"],
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "timezone": "browser",
+  "graphTooltip": 1,
+  "time": { "from": "now-6h", "to": "now" },
+  "refresh": "10s",
+  "links": [
+    {
+      "asDropdown": false,
+      "icon": "external link",
+      "includeVars": true,
+      "keepTime": true,
+      "tags": ["docforge"],
+      "targetBlank": false,
+      "title": "DocForge dashboards",
+      "type": "dashboards"
+    }
+  ],
+  "panels": [
+    { "id": 100, "type": "row", "title": "Current state (app)", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }, "collapsed": false, "panels": [] },
+
+    {
+      "id": 1,
+      "title": "Resident memory",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "docforge-prometheus" },
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "bytes", "decimals": 1 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "graphMode": "area" },
+      "targets": [
+        { "refId": "A", "expr": "process_resident_memory_bytes{job=\"docforge_app\"}" }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "CPU usage",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "docforge-prometheus" },
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "percent", "decimals": 1 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "graphMode": "area" },
+      "targets": [
+        { "refId": "A", "expr": "100 * rate(process_cpu_seconds_total{job=\"docforge_app\"}[5m])" }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Uptime",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "docforge-prometheus" },
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "s", "decimals": 0 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        { "refId": "A", "expr": "time() - process_start_time_seconds{job=\"docforge_app\"}" }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Open file descriptors",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "docforge-prometheus" },
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        { "refId": "A", "expr": "process_open_fds{job=\"docforge_app\"}" }
+      ]
+    },
+
+    { "id": 101, "type": "row", "title": "Memory & CPU over time", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 6 }, "collapsed": false, "panels": [] },
+
+    {
+      "id": 10,
+      "title": "Resident vs virtual memory",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "docforge-prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 7 },
+      "fieldConfig": { "defaults": { "unit": "bytes", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "process_resident_memory_bytes{job=\"docforge_app\"}", "legendFormat": "resident" },
+        { "refId": "B", "expr": "process_virtual_memory_bytes{job=\"docforge_app\"}", "legendFormat": "virtual" }
+      ]
+    },
+    {
+      "id": 11,
+      "title": "CPU usage over time",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "docforge-prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 7 },
+      "fieldConfig": { "defaults": { "unit": "percent", "custom": { "fillOpacity": 15 } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "100 * rate(process_cpu_seconds_total{job=\"docforge_app\"}[5m])", "legendFormat": "cpu %" }
+      ]
+    },
+    {
+      "id": 12,
+      "title": "Open fds vs max fds",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "docforge-prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 15 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "fillOpacity": 10 } }, "overrides": [
+        { "matcher": { "id": "byName", "options": "max fds" }, "properties": [{ "id": "custom.lineStyle", "value": { "dash": [10, 10], "fill": "dash" } }] }
+      ] },
+      "targets": [
+        { "refId": "A", "expr": "process_open_fds{job=\"docforge_app\"}", "legendFormat": "open fds" },
+        { "refId": "B", "expr": "process_max_fds{job=\"docforge_app\"}", "legendFormat": "max fds" }
+      ]
+    },
+    {
+      "id": 13,
+      "title": "Python GC — collections rate",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "docforge-prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 15 },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 4, "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "rate(python_gc_collections_total{job=\"docforge_app\"}[5m])", "legendFormat": "gen {{generation}}" }
+      ]
+    },
+
+    { "id": 102, "type": "row", "title": "Python GC & scrape health", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 23 }, "collapsed": false, "panels": [] },
+
+    {
+      "id": 20,
+      "title": "Python GC — objects collected",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "docforge-prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "rate(python_gc_objects_collected_total{job=\"docforge_app\"}[5m])", "legendFormat": "gen {{generation}}" }
+      ]
+    },
+    {
+      "id": 21,
+      "title": "Scrape duration",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "docforge-prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 24 },
+      "fieldConfig": { "defaults": { "unit": "s", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "scrape_duration_seconds", "legendFormat": "{{job}}" }
+      ]
+    },
+    {
+      "id": 22,
+      "title": "Targets up",
+      "type": "table",
+      "datasource": { "type": "prometheus", "uid": "docforge-prometheus" },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 32 },
+      "fieldConfig": { "defaults": { "custom": { "align": "auto" } }, "overrides": [] },
+      "options": { "showHeader": true },
+      "targets": [
+        { "refId": "A", "expr": "up", "format": "table", "instant": true }
+      ],
+      "transformations": [
+        { "id": "organize", "options": { "excludeByName": { "Time": true, "__name__": true } } }
+      ]
+    }
+  ]
+}
