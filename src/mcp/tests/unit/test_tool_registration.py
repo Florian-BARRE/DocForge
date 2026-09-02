@@ -12,7 +12,7 @@ from libs.server import build_mcp
 
 # 38 = health(1) + auth(4) + collections(6) + documents(2) + explorer(8) + search(1)
 #    + jobs(5) + blobs(1) + pipelines(6) + transfers(4)
-EXPECTED_TOOL_COUNT = 38
+EXPECTED_TOOL_COUNT = 39
 
 EXPECTED_TOOL_NAMES = {
     # health
@@ -49,6 +49,8 @@ EXPECTED_TOOL_NAMES = {
     "get_job_events",
     "get_live_workers",
     "cancel_job",
+    # audit
+    "list_audit",
     # blobs
     "get_blob",
     # pipelines
