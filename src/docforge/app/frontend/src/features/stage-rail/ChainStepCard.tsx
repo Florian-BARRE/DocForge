@@ -31,12 +31,21 @@ interface ChainStepCardProps {
   onConfigChange: (field: string, value: unknown) => void;
   /** Absent for a non-scored chain — the threshold row degrades to a plain failure-only label. */
   onScoreBelowChange?: (value: number | null) => void;
+  /** Present only for a chain-owned stage's primary step (parse/embed's step 0) — lets that ONE
+   *  representation double as the stage's own provider picker (see `ChainStepList`), instead of a
+   *  separate dropdown duplicating it above the chain. Swapping resets the step's config. */
+  kindOptions?: { kind: string; label: string }[];
+  onKindChange?: (kind: string) => void;
+  /** Starts this step's config panel open — used for the primary step above so its config reads
+   *  the same as before it was folded into the chain (previously always-visible). */
+  defaultExpanded?: boolean;
 }
 
 export function ChainStepCard({
   step, index, isLast, scored, card, onMoveUp, onMoveDown, onRemove, onConfigChange, onScoreBelowChange,
+  kindOptions, onKindChange, defaultExpanded = false,
 }: ChainStepCardProps) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(defaultExpanded);
   const configurable = hasConfigFields(card);
 
   return (
@@ -51,7 +60,20 @@ export function ChainStepCard({
         >
           {index + 1}
         </span>
-        <strong style={{ fontSize: theme.font.size.m }}>{card?.name ?? step.kind}</strong>
+        {kindOptions && onKindChange ? (
+          <select
+            value={step.kind}
+            onChange={(e) => onKindChange(e.target.value)}
+            style={{
+              background: theme.color.surface2, color: theme.color.text, border: `1px solid ${theme.color.line}`,
+              borderRadius: theme.radius.s, padding: "2px 6px", fontSize: theme.font.size.m, fontWeight: 700,
+            }}
+          >
+            {kindOptions.map((o) => <option key={o.kind} value={o.kind}>{o.label}</option>)}
+          </select>
+        ) : (
+          <strong style={{ fontSize: theme.font.size.m }}>{card?.name ?? step.kind}</strong>
+        )}
         <span style={{ flex: 1, color: theme.color.dim, fontSize: theme.font.size.xs }}>{card?.summary}</span>
         <button onClick={onMoveUp} disabled={index === 0} style={iconButton} title="move up">↑</button>
         <button onClick={onMoveDown} disabled={isLast} style={iconButton} title="move down">↓</button>

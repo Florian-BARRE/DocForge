@@ -6,7 +6,7 @@
 import { useState } from "react";
 import { importCollection } from "../../../api/transfers";
 import { Button } from "../../../components/Button";
-import { FileInputButton } from "../../../components/FileInputButton";
+import { Dropzone } from "../../../components/Dropzone";
 import { FormField } from "../../../components/FormField";
 import { inputStyle } from "../../../components/inputStyle";
 import type { Navigate } from "../../../shell/view";
@@ -50,14 +50,14 @@ export function ImportPanel({ onNavigate }: ImportPanelProps) {
 
       {!transferId && (
         <>
-          <FormField label="Bundle" hint="A .dcexport file produced by another DocForge server's export.">
-            <FileInputButton
-              label="Choose file"
-              accept=".dcexport"
-              selectedText={file?.name ?? null}
-              onFilesSelected={(files) => setFile(files?.[0] ?? null)}
-            />
-          </FormField>
+          <Dropzone
+            prompt="Drop a .dcexport bundle here, or click to browse"
+            hint="Produced by another DocForge server's export."
+            accept=".dcexport"
+            selectedName={file?.name ?? null}
+            onFileSelected={setFile}
+            disabled={uploading}
+          />
           <FormField label="Name (optional)" hint="Defaults to the bundle's original collection name.">
             <input
               type="text"
@@ -68,7 +68,7 @@ export function ImportPanel({ onNavigate }: ImportPanelProps) {
             />
           </FormField>
           {startError && <div style={{ color: theme.color.error, fontSize: theme.font.size.s }}>{startError}</div>}
-          <div>
+          <div style={{ display: "flex", justifyContent: "flex-end" }}>
             <Button variant="secondary" disabled={!file || uploading} onClick={start}>
               {uploading ? "uploading…" : "Start import"}
             </Button>

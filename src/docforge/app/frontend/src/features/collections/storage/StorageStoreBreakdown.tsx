@@ -1,8 +1,9 @@
 // ====== Code Summary ======
-// One store's card — a hairline top accent in the store's own colour, a header (swatch, label,
-// total, share of the grand total, "≈ estimated" badge when the backend flags it) plus a
-// collapsed-by-default disclosure of that store's per-field byte rows. The card never decides what
-// "estimated" means; it only renders the flag it's handed.
+// One store's card — a neutral card (the store's colour lives ONLY in the header swatch dot, never
+// on the card border, so it can't be misread as a status frame per brand.md's "reserve the colour"
+// principle) with a header (swatch, label, total, share of the grand total, "≈ estimated" badge when
+// the backend flags it) plus a collapsed-by-default disclosure of that store's per-field byte rows.
+// The card never decides what "estimated" means; it only renders the flag it's handed.
 
 import { AdvancedDisclosure } from "../../search-pipeline/AdvancedDisclosure";
 import { theme as t } from "../../../theme";
@@ -22,7 +23,7 @@ interface StorageStoreBreakdownProps {
 
 export function StorageStoreBreakdown({ label, swatchColor, totalBytes, sharePercent, estimated, rows, note }: StorageStoreBreakdownProps) {
   return (
-    <div style={{ background: t.color.surface, border: `1px solid ${t.color.line}`, borderTop: `3px solid ${swatchColor}`, borderRadius: t.radius.l, padding: t.space.l, boxShadow: t.shadow.sm, display: "flex", flexDirection: "column", gap: t.space.m }}>
+    <div style={{ background: t.color.surface, border: `1px solid ${t.color.line}`, borderRadius: t.radius.l, padding: t.space.l, boxShadow: t.shadow.sm, display: "flex", flexDirection: "column", gap: t.space.m }}>
       <div style={{ display: "flex", alignItems: "center", gap: t.space.s }}>
         <span style={{ width: 9, height: 9, borderRadius: t.radius.pill, background: swatchColor, flexShrink: 0 }} />
         <span style={{ fontFamily: t.font.display, fontWeight: t.font.weight.semibold, fontSize: t.font.size.l, color: t.color.text }}>{label}</span>

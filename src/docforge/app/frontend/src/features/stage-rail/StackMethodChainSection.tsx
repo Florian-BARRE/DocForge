@@ -39,7 +39,7 @@ export function StackMethodChainSection({
     >
       <div style={{ display: "flex", alignItems: "baseline", gap: theme.space.s, flexWrap: "wrap" }}>
         <strong style={{ color: theme.color.chain, fontSize: theme.font.size.s }}>⛓ {chainView.title}</strong>
-        <Chip tone={scored ? "warn" : "dim"}>{scored ? "quality-gated" : "failure-only"}</Chip>
+        <Chip tone={scored ? "info" : "dim"}>{scored ? "quality-gated" : "failure-only"}</Chip>
         <span style={{ color: theme.color.dim, fontSize: theme.font.size.xs }}>{chainView.description}</span>
       </div>
       <ChainStepList

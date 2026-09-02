@@ -16,6 +16,11 @@ import { theme } from "../theme";
 /** One rectangle to draw — a bounding box normalised to [0, 1] as [x0, y0, x1, y1]. */
 export interface OverlayBox {
   bbox: number[];
+  /** The single primary/matched block draws in full forge-orange; any other box on the same call
+   *  (e.g. a chunk's other spanned blocks) draws muted so only ONE thing reads as "the match" (per
+   *  brand.md — orange marks the one thing being worked, never a uniform decoration). Defaults to
+   *  `true` so existing single/uniform-box callers are unaffected. */
+  primary?: boolean;
 }
 
 interface PageBoxOverlayProps {
@@ -74,6 +79,7 @@ export function PageBoxOverlay({ renderBlobHash, width, height, boxes, alt, styl
         const top = clamp01(y0);
         const right = clamp01(x1);
         const bottom = clamp01(y1);
+        const isPrimary = box.primary !== false;
         return (
           <div
             key={index}
@@ -83,9 +89,9 @@ export function PageBoxOverlay({ renderBlobHash, width, height, boxes, alt, styl
               top: `${top * 100}%`,
               width: `${Math.max(0, right - left) * 100}%`,
               height: `${Math.max(0, bottom - top) * 100}%`,
-              border: `2px solid ${theme.color.accent}`,
+              border: isPrimary ? `2px solid ${theme.color.accent}` : `1.5px dashed ${theme.color.lineStrong}`,
               borderRadius: theme.radius.s,
-              boxShadow: `0 0 0 1px ${theme.color.accentSoft}`,
+              boxShadow: isPrimary ? `0 0 0 1px ${theme.color.accentSoft}` : "none",
               pointerEvents: "none",
             }}
           />

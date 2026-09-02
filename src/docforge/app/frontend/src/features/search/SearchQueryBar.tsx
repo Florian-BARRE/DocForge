@@ -37,14 +37,22 @@ export function SearchQueryBar({ query, onQueryChange, limit, onLimitChange, loa
           style={{ ...inputStyle, border: "none", background: "transparent", fontSize: theme.font.size.l, padding: "6px 4px" }}
         />
       </div>
-      <div style={{ width: 72 }} title="Result limit">
-        <NumberField
-          value={limit}
-          min={MIN_LIMIT}
-          style={{ ...inputStyle, borderRadius: theme.radius.m, textAlign: "center" }}
-          onChange={(value) => onLimitChange(value === undefined ? MIN_LIMIT : Math.max(MIN_LIMIT, value))}
-          ariaLabel="Result limit"
-        />
+      <div
+        style={{ display: "flex", alignItems: "center", gap: theme.space.xs }}
+        title="Number of results returned (top-k)"
+      >
+        <span style={{ color: theme.color.dim, fontSize: theme.font.size.xs, fontWeight: theme.font.weight.semibold, whiteSpace: "nowrap" }}>
+          Results
+        </span>
+        <div style={{ width: 56 }}>
+          <NumberField
+            value={limit}
+            min={MIN_LIMIT}
+            style={{ ...inputStyle, borderRadius: theme.radius.m, textAlign: "center" }}
+            onChange={(value) => onLimitChange(value === undefined ? MIN_LIMIT : Math.max(MIN_LIMIT, value))}
+            ariaLabel="Number of results returned (top-k)"
+          />
+        </div>
       </div>
       <Button variant="primary" disabled={loading || !query.trim() || limit < MIN_LIMIT} onClick={onSubmit}>
         {loading ? "searching…" : "Search"}

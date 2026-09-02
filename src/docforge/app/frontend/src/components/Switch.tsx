@@ -1,6 +1,9 @@
 // ====== Code Summary ======
 // A theme-tokened on/off switch — the reversible enable/disable control shared by documents and
 // chunks in the explorer (and any future toggle). A styled button, not a native checkbox/switch.
+// ON reads in steel, not forge orange: many of these are on-screen enabled at once (per-row
+// document/chunk toggles), and orange is reserved for the one thing actively being worked, never a
+// static at-rest state — see brand.md.
 
 import { theme } from "../theme";
 
@@ -28,7 +31,7 @@ export function Switch({ checked, onChange, disabled, title }: SwitchProps) {
       style={{
         width: WIDTH, height: HEIGHT, borderRadius: HEIGHT / 2,
         border: "none", padding: 2, position: "relative", flexShrink: 0,
-        background: checked ? theme.color.accent : theme.color.lineStrong,
+        background: checked ? theme.color.dim : theme.color.lineStrong,
         cursor: disabled ? "not-allowed" : "pointer",
         opacity: disabled ? 0.6 : 1,
         transition: `background .2s ease`,

@@ -3,6 +3,7 @@
 // list from the api layer's canonical enums, never an inline literal.
 
 import { FIELD_ORIGINS, FIELD_SCOPES, FIELD_TYPES } from "../../../api/collections";
+import { humanizeEnumOption } from "../../../components/schema-form/fieldLabels";
 import { Switch } from "../../../components/Switch";
 import { TagsInput } from "../../../components/TagsInput";
 import { inputStyle } from "../../../components/inputStyle";
@@ -38,11 +39,11 @@ export function FieldRow({ field, onChange, onRemove }: FieldRowProps) {
       </td>
       <td style={cellStyle}>
         <select
-          style={inputStyle}
+          style={{ ...inputStyle, minWidth: 108 }}
           value={field.field_type}
           onChange={(e) => set("field_type", e.target.value as DraftField["field_type"])}
         >
-          {FIELD_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+          {FIELD_TYPES.map((t) => <option key={t} value={t}>{humanizeEnumOption(t)}</option>)}
         </select>
       </td>
       {(["required", "filterable", "lexical", "semantic"] as const).map((flag) => (
@@ -71,7 +72,7 @@ export function FieldRow({ field, onChange, onRemove }: FieldRowProps) {
       </td>
       <td style={cellStyle}>
         <select
-          style={inputStyle}
+          style={{ ...inputStyle, minWidth: 112 }}
           value={field.origin}
           onChange={(e) => {
             const origin = e.target.value as DraftField["origin"];
@@ -79,14 +80,16 @@ export function FieldRow({ field, onChange, onRemove }: FieldRowProps) {
             if (origin !== "generated" && field.scope === "chunk") set("scope", "document");
           }}
         >
-          {FIELD_ORIGINS.map((o) => <option key={o} value={o}>{o}</option>)}
+          {FIELD_ORIGINS.map((o) => <option key={o} value={o}>{humanizeEnumOption(o)}</option>)}
         </select>
       </td>
       <td style={cellStyle}>
-        {/* Chunk scope is reserved for generated fields (backend + DB enforce it). */}
-        <select style={inputStyle} value={field.scope} onChange={(e) => set("scope", e.target.value as DraftField["scope"])}>
+        {/* Chunk scope is reserved for generated fields (backend + DB enforce it). minWidth is wide
+            enough for the longest option label ("Document") plus the select's own affordance —
+            narrower widths clip it to "Docume…". */}
+        <select style={{ ...inputStyle, minWidth: 132 }} value={field.scope} onChange={(e) => set("scope", e.target.value as DraftField["scope"])}>
           {FIELD_SCOPES.filter((s) => s !== "chunk" || field.origin === "generated").map((s) => (
-            <option key={s} value={s}>{s}</option>
+            <option key={s} value={s}>{humanizeEnumOption(s)}</option>
           ))}
         </select>
       </td>

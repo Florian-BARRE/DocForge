@@ -5,6 +5,7 @@
 import { useEffect, useState } from "react";
 import { listJobs, type JobStatus } from "../../api/jobs";
 import { ErrorState } from "../../components/ErrorState";
+import { InlineErrorBoundary } from "../../components/InlineErrorBoundary";
 import { LoadingState } from "../../components/LoadingState";
 import type { Navigate } from "../../shell/view";
 import { theme } from "../../theme";
@@ -68,18 +69,20 @@ export function JobsPage({ collectionId, onNavigate }: JobsPageProps) {
         </div>
       )}
       {jobs && jobs.length > 0 && (
-        <div style={{ display: "flex", flexDirection: "column", gap: theme.space.s }}>
-          {jobs.map((job) => (
-            <JobRow
-              key={job.job_id}
-              job={job}
-              onClick={() => onNavigate({ name: "job", collectionId, jobId: job.job_id })}
-              onUpdated={(patch) =>
-                setJobs((prev) => (prev ? prev.map((j) => (j.job_id === job.job_id ? { ...j, ...patch } : j)) : prev))
-              }
-            />
-          ))}
-        </div>
+        <InlineErrorBoundary label="the job list">
+          <div style={{ display: "flex", flexDirection: "column", gap: theme.space.s }}>
+            {jobs.map((job) => (
+              <JobRow
+                key={job.job_id}
+                job={job}
+                onClick={() => onNavigate({ name: "job", collectionId, jobId: job.job_id })}
+                onUpdated={(patch) =>
+                  setJobs((prev) => (prev ? prev.map((j) => (j.job_id === job.job_id ? { ...j, ...patch } : j)) : prev))
+                }
+              />
+            ))}
+          </div>
+        </InlineErrorBoundary>
       )}
     </div>
   );

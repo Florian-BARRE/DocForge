@@ -1,9 +1,11 @@
 // ====== Code Summary ======
-// One search hit: its score (as a premium ember badge), the chunk text (reusing the explorer's
-// truncatable ChunkText), and a small mono meta line (short document id, chunk index, token count).
-// When the hit carries a block location, a "view page" action opens the hit's source page with a
-// forge-orange box drawn around it — the render blob is looked up lazily (GET /documents/{id}/pages)
-// on click, and degrades gracefully (text-only lightbox) when the page has no render.
+// One search hit: its score (as a premium ember badge, tooltip explains what it is), a human
+// citation (document title/filename · page · section path — SearchHitCitation), the chunk text
+// (reusing the explorer's truncatable ChunkText), and a small mono meta line (short document id,
+// chunk index, token count) demoted below the text. When the hit carries a block location, a "view
+// page" action opens the hit's source page with the matched block(s) boxed — the render blob is
+// looked up lazily (GET /documents/{id}/pages) on click, and degrades gracefully (text-only
+// lightbox) when the page has no render.
 
 import { useState } from "react";
 import { getDocumentPages } from "../../api/explorer";
@@ -14,7 +16,15 @@ import type { OverlayBox } from "../../components/PageBoxOverlay";
 import { useToast } from "../../shell/toast";
 import { theme } from "../../theme";
 import { displayPage } from "../explorer/format";
-import { ChunkText } from "../explorer/chunks/ChunkText";
+import { SearchHitCitation } from "./SearchHitCitation";
+import { SearchHitText } from "./SearchHitText";
+
+/** What the score actually is — a rank-fused signal, not a raw similarity, so it doesn't read
+ *  as a plain [0,1] confidence and near-top ties are expected. */
+const SCORE_TOOLTIP =
+  "Fused rank-based relevance score (Reciprocal Rank Fusion across the searched semantic/lexical " +
+  "targets, reranked when the collection has a reranker configured) — higher is better. Not a raw " +
+  "similarity, so it is not directly comparable across different queries or target selections.";
 
 interface SearchHitCardProps {
   hit: SearchHitModel;
@@ -28,15 +38,25 @@ interface HitBoxState {
   caption: string;
 }
 
-/** The hit's block locations on its primary page — from block_locations, or the single primary bbox. */
+/** The hit's block locations on its primary page — from block_locations, or the single primary bbox.
+ *  The PRIMARY (leading) block — `hit.bbox` when present, else the first located one — is flagged
+ *  `primary: true` so PageBoxOverlay draws it in full forge-orange while the chunk's other spanned
+ *  blocks (same chunk, secondary context) draw muted: only ONE thing reads as "the match". */
 function primaryPageBoxes(hit: SearchHitModel): { page: number; boxes: OverlayBox[] } | null {
   const locations: BlockLocationModel[] = hit.block_locations ?? [];
   if (locations.length) {
     const page = hit.page ?? locations[0].page;
-    const boxes = locations.filter((loc) => loc.page === page).map((loc) => ({ bbox: loc.bbox }));
-    return { page, boxes: boxes.length ? boxes : [{ bbox: locations[0].bbox }] };
+    const onPage = locations.filter((loc) => loc.page === page);
+    const boxed = onPage.length ? onPage : [locations[0]];
+    return {
+      page,
+      boxes: boxed.map((loc, index) => ({
+        bbox: loc.bbox,
+        primary: hit.bbox ? loc.bbox.join(",") === hit.bbox.join(",") : index === 0,
+      })),
+    };
   }
-  if (hit.page != null && hit.bbox) return { page: hit.page, boxes: [{ bbox: hit.bbox }] };
+  if (hit.page != null && hit.bbox) return { page: hit.page, boxes: [{ bbox: hit.bbox, primary: true }] };
   return null;
 }
 
@@ -81,35 +101,39 @@ export function SearchHitCard({ hit }: SearchHitCardProps) {
         transition: "transform .15s ease, box-shadow .15s ease, border-color .15s ease",
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: theme.space.s }}>
+      <div style={{ display: "flex", alignItems: "flex-start", gap: theme.space.s }}>
         <strong
+          title={SCORE_TOOLTIP}
           style={{
             fontFamily: theme.font.mono, fontSize: theme.font.size.m, fontWeight: 700,
             color: theme.color.accent, background: theme.color.accentSoft,
-            borderRadius: theme.radius.pill, padding: "2px 10px",
+            borderRadius: theme.radius.pill, padding: "2px 10px", whiteSpace: "nowrap", cursor: "help",
           }}
         >
           {hit.score.toFixed(4)}
         </strong>
-        <span style={{ marginLeft: "auto", fontFamily: theme.font.mono, fontSize: theme.font.size.xs, color: theme.color.dim }}>
-          doc {hit.document_id.slice(0, 8)} · chunk #{hit.chunk_index} · {hit.token_count} tokens
-        </span>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <SearchHitCitation hit={hit} />
+        </div>
         {located && (
           <button
             onClick={handleViewPage}
             disabled={locating}
             title="Show this hit on its source page"
             style={{
-              background: theme.color.surface2, border: `1px solid ${theme.color.line}`, borderRadius: theme.radius.s,
-              color: theme.color.accent, cursor: locating ? "default" : "pointer", fontSize: theme.font.size.xs,
-              padding: "3px 8px", whiteSpace: "nowrap",
+              marginLeft: "auto", background: theme.color.surface2, border: `1px solid ${theme.color.line}`,
+              borderRadius: theme.radius.s, color: theme.color.accent, cursor: locating ? "default" : "pointer",
+              fontSize: theme.font.size.xs, padding: "3px 8px", whiteSpace: "nowrap", flexShrink: 0,
             }}
           >
             {locating ? "loading…" : "view page"}
           </button>
         )}
       </div>
-      <ChunkText text={hit.text} />
+      <SearchHitText text={hit.text} />
+      <span style={{ fontFamily: theme.font.mono, fontSize: theme.font.size.xs, color: theme.color.mute }}>
+        doc {hit.document_id.slice(0, 8)} · chunk #{hit.chunk_index} · {hit.token_count} tokens
+      </span>
 
       {box && (
         <PageBoxLightbox
