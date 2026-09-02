@@ -6,6 +6,7 @@
 
 import { useEffect, useState } from "react";
 import { getCollection, type Collection } from "../../api/collections";
+import { listDocuments } from "../../api/explorer";
 import { classifySearchError, search, type SearchErrorInfo, type SearchResponse } from "../../api/search";
 import { ErrorState } from "../../components/ErrorState";
 import type { Navigate } from "../../shell/view";
@@ -31,11 +32,20 @@ export function SearchLabPage({ collectionId }: SearchLabPageProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<SearchErrorInfo | null>(null);
   const [response, setResponse] = useState<SearchResponse | null>(null);
+  // `null` = not yet known (kept as "has documents" until it resolves, so the picker never flashes
+  // disabled then enabled). Best-effort, mirrors the collection fetch below.
+  const [hasDocuments, setHasDocuments] = useState<boolean | null>(null);
 
   // Best-effort: the filter builder is a supplementary affordance, so a failed fetch here
   // just means no filter section is offered — it never blocks the query bar.
   useEffect(() => {
     getCollection(collectionId).then(setCollection).catch(() => setCollection(null));
+  }, [collectionId]);
+
+  // Best-effort, same reasoning: only used to soften the "Search in" axis + explain a guaranteed
+  // empty result on a brand-new collection, never to block the query bar itself.
+  useEffect(() => {
+    listDocuments(collectionId).then((docs) => setHasDocuments(docs.length > 0)).catch(() => setHasDocuments(true));
   }, [collectionId]);
 
   const filterableFields = (collection?.fields ?? []).filter((f) => f.filterable);
@@ -91,7 +101,12 @@ export function SearchLabPage({ collectionId }: SearchLabPageProps) {
             loading={loading}
             onSubmit={runSearch}
           />
-          <SearchTargetPicker fields={collection?.fields ?? []} selection={targetSelection} onToggle={handleTargetToggle} />
+          <SearchTargetPicker
+            fields={collection?.fields ?? []}
+            selection={targetSelection}
+            onToggle={handleTargetToggle}
+            emptyCollection={hasDocuments === false}
+          />
           <SearchFilterBuilder fields={filterableFields} values={filters} onFilterChange={handleFilterChange} />
         </div>
 
@@ -103,6 +118,13 @@ export function SearchLabPage({ collectionId }: SearchLabPageProps) {
           />
         )}
         {!error && response && <SearchResultsList response={response} />}
+        {/* Pre-search placeholder — sits exactly where the hit-card column will render, left-aligned
+            like the rest of this page (no extra centering/indent). */}
+        {!error && !response && !loading && (
+          <div style={{ color: theme.color.dim, fontSize: theme.font.size.s }}>
+            Run a query to see ranked hits.
+          </div>
+        )}
       </div>
     </div>
   );

@@ -9,6 +9,7 @@ import { theme } from "../../theme";
 import { FailedNodeBreadcrumb } from "./FailedNodeBreadcrumb";
 import { ItemProgressChip } from "./ItemProgressChip";
 import { ProgressBar } from "./ProgressBar";
+import { humanizeStageId } from "./stageLabels";
 
 interface JobSummaryCardProps {
   job: JobStatus;
@@ -23,6 +24,7 @@ interface JobSummaryCardProps {
 export function JobSummaryCard({
   job, running, etaSeconds, runningLong, elapsedInStageSeconds, avgStageSeconds, totalTokens,
 }: JobSummaryCardProps) {
+  const stageLabel = job.current_stage ? humanizeStageId(job.current_stage) : null;
   return (
     <div
       style={{
@@ -34,7 +36,7 @@ export function JobSummaryCard({
       <ProgressBar progress={job.progress} status={job.status} />
       <div style={{ display: "flex", alignItems: "center", gap: theme.space.l, color: theme.color.dim, fontSize: theme.font.size.s, marginTop: theme.space.s, flexWrap: "wrap" }}>
         <span style={{ display: "inline-flex", alignItems: "center", gap: theme.space.xs }}>
-          stage: {job.current_stage ?? "—"}
+          <span title={job.current_stage ?? undefined}>stage: {stageLabel ?? "—"}</span>
           {job.items_done !== null && job.items_total !== null && (
             <ItemProgressChip itemsDone={job.items_done} itemsTotal={job.items_total} />
           )}
@@ -42,14 +44,14 @@ export function JobSummaryCard({
         <span>started: {job.started_at ? new Date(job.started_at).toLocaleString() : "—"}</span>
         <span>finished: {job.finished_at ? new Date(job.finished_at).toLocaleString() : "—"}</span>
         {running && etaSeconds > 0 && (
-          <span style={{ color: theme.color.accent, fontWeight: theme.font.weight.semibold }}>
+          <span style={{ color: theme.color.accentSafe, fontWeight: theme.font.weight.semibold }}>
             ~{etaSeconds < 90 ? `${Math.round(etaSeconds)}s` : `${Math.round(etaSeconds / 60)}m`} remaining
           </span>
         )}
         {runningLong && (
           <Chip
             tone="warn"
-            title={`Elapsed ${Math.round(elapsedInStageSeconds!)}s in "${job.current_stage}" vs. a ~${Math.round(avgStageSeconds!)}s collection average — may be wedged.`}
+            title={`Elapsed ${Math.round(elapsedInStageSeconds!)}s in "${stageLabel}" vs. a ~${Math.round(avgStageSeconds!)}s collection average — may be wedged.`}
           >
             running long
           </Chip>
@@ -60,7 +62,7 @@ export function JobSummaryCard({
           <span title="Prompt + completion tokens billed across this document's paid model calls." style={{ color: theme.color.text }}>
             {totalTokens.toLocaleString()} tokens
           </span>
-          <span title="Total USD cost of this document's paid calls." style={{ color: theme.color.accent, fontWeight: theme.font.weight.semibold }}>
+          <span title="Total USD cost of this document's paid calls." style={{ color: theme.color.accentSafe, fontWeight: theme.font.weight.semibold }}>
             ${job.cost_usd.toFixed(4)}
           </span>
           <span style={{ color: theme.color.mute }}>

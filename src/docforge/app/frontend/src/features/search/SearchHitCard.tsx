@@ -106,7 +106,7 @@ export function SearchHitCard({ hit }: SearchHitCardProps) {
           title={SCORE_TOOLTIP}
           style={{
             fontFamily: theme.font.mono, fontSize: theme.font.size.m, fontWeight: 700,
-            color: theme.color.accent, background: theme.color.accentSoft,
+            color: theme.color.accentSafe, background: theme.color.accentSoft,
             borderRadius: theme.radius.pill, padding: "2px 10px", whiteSpace: "nowrap", cursor: "help",
           }}
         >
@@ -122,7 +122,9 @@ export function SearchHitCard({ hit }: SearchHitCardProps) {
             title="Show this hit on its source page"
             style={{
               marginLeft: "auto", background: theme.color.surface2, border: `1px solid ${theme.color.line}`,
-              borderRadius: theme.radius.s, color: theme.color.accent, cursor: locating ? "default" : "pointer",
+              // accentStrongOnSurface, not accentSafe — this link sits on the surface-2 card
+              // background where accentSafe's paper-tuned contrast falls under AA at this size.
+              borderRadius: theme.radius.s, color: theme.color.accentStrongOnSurface, cursor: locating ? "default" : "pointer",
               fontSize: theme.font.size.xs, padding: "3px 8px", whiteSpace: "nowrap", flexShrink: 0,
             }}
           >

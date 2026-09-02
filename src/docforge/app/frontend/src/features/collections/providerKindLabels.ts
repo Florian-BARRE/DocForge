@@ -26,7 +26,7 @@ const FAMILY_LABELS: Record<string, string> = {
 /** Provider kind → display label, mirroring every `KIND` constant that ships a `preflight()`. */
 const KIND_LABELS: Record<string, string> = {
   docling: "Docling",
-  granite_docling: "Granite Docling",
+  granite_docling: "Granite-Docling",
   pp_structure: "PP-StructureV3",
   rapidocr: "RapidOCR",
   paddle: "PaddleOCR",

@@ -1,7 +1,9 @@
 // ====== Code Summary ======
 // Two date inputs (from/to) for a datetime-range column filter — created_at, or a datetime
 // metadata field. Kept as plain `<input type="date">` (a day-granularity bound is enough for
-// corpus triage) rather than a full datetime picker.
+// corpus triage) rather than a full datetime picker. Stacked (from above to) instead of
+// side-by-side: a native date input's own rendered value ("yyyy-mm-dd") needs more width than a
+// narrow grid column has to spare two of side by side without truncating.
 
 import { inputStyle } from "../../../components/inputStyle";
 import { useTheme } from "../../../shell/useTheme";
@@ -16,18 +18,19 @@ interface DateRangeInputsProps {
 }
 
 export function DateRangeInputs({ gte, lte, onChange, label }: DateRangeInputsProps) {
-  // Native date-picker/spinner chrome tracks `color-scheme`, not our CSS variables — without this
-  // it always renders light, looking foreign against the ink theme.
+  // Native date-picker/spinner chrome (including the calendar-icon glyph) tracks `color-scheme`,
+  // not our CSS variables — without this it always renders light, looking foreign on the ink theme.
   const { theme: activeTheme } = useTheme();
   const cellInputStyle: React.CSSProperties = {
     ...inputStyle, borderRadius: theme.radius.s, padding: "5px 6px",
-    fontSize: 11, fontFamily: theme.font.mono, colorScheme: activeTheme,
+    fontSize: 11, fontFamily: theme.font.mono, colorScheme: activeTheme, width: "100%",
   };
 
   return (
-    <div style={{ display: "flex", gap: 4 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
       <input
         type="date"
+        className="df-filter-input"
         value={gte}
         aria-label={label ? `${label} from` : "from"}
         onChange={(e) => onChange({ gte: e.target.value, lte })}
@@ -35,6 +38,7 @@ export function DateRangeInputs({ gte, lte, onChange, label }: DateRangeInputsPr
       />
       <input
         type="date"
+        className="df-filter-input"
         value={lte}
         aria-label={label ? `${label} to` : "to"}
         onChange={(e) => onChange({ gte, lte: e.target.value })}

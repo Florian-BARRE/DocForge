@@ -24,8 +24,11 @@ import { OverviewTab } from "./overview/OverviewTab";
 import { PagesTab } from "./pages/PagesTab";
 import { useDocumentTabs, type DocumentTabKey } from "./state/useDocumentTabs";
 
+// "Overview" collides with the collection shell's own top-level "Overview" tab — a document is
+// nested two levels under that, so its landing tab reads "Summary" instead (still the same
+// facts+metadata content; see OverviewTab.tsx).
 const TABS: { key: DocumentTabKey; label: string }[] = [
-  { key: "overview", label: "Overview" },
+  { key: "overview", label: "Summary" },
   { key: "pages", label: "Pages" },
   { key: "ir", label: "IR" },
   { key: "chunks", label: "Chunks" },

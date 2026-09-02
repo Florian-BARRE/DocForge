@@ -9,6 +9,7 @@
 import { useEffect, useState } from "react";
 import { getCollection, getCollectionHealth, type Collection, type CollectionHealth } from "../../api/collections";
 import { listDocuments, type DocumentListItem } from "../../api/explorer";
+import { listJobs, type JobStatus } from "../../api/jobs";
 import { EmptyState } from "../../components/EmptyState";
 import { ErrorState } from "../../components/ErrorState";
 import { LoadingState } from "../../components/LoadingState";
@@ -31,6 +32,7 @@ interface Props {
 export function CollectionOverview({ collectionId, onNavigate }: Props) {
   const [collection, setCollection] = useState<Collection | null>(null);
   const [docs, setDocs] = useState<DocumentListItem[] | null>(null);
+  const [jobs, setJobs] = useState<JobStatus[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [health, setHealth] = useState<CollectionHealth | null>(null);
   const [healthLoading, setHealthLoading] = useState(false);
@@ -40,6 +42,7 @@ export function CollectionOverview({ collectionId, onNavigate }: Props) {
     setError(null);
     getCollection(collectionId).then(setCollection).catch((e) => setError(e instanceof Error ? e.message : String(e)));
     listDocuments(collectionId).then(setDocs).catch(() => setDocs([]));
+    listJobs(collectionId).then(setJobs).catch(() => setJobs([]));
   };
   useEffect(load, [collectionId]);
 
@@ -116,6 +119,7 @@ export function CollectionOverview({ collectionId, onNavigate }: Props) {
             docs={docs}
             fields={collection.fields}
             health={health}
+            jobs={jobs}
             collectionId={collectionId}
             onNavigate={onNavigate}
           />

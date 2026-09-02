@@ -12,9 +12,15 @@ interface NumberRangeInputsProps {
   label?: string;
 }
 
+// A floor wide enough for the "min"/"max" placeholder to render in full at 12px mono — without it
+// the flex row silently shrinks each input below its own text (browsers give a bare <input> no
+// intrinsic min-width of its own), truncating to "m"/"mi".
+const INPUT_MIN_WIDTH = 46;
+
 const cellInputStyle: React.CSSProperties = {
-  background: theme.color.surface2, border: `1px solid ${theme.color.line}`, borderRadius: theme.radius.s,
-  padding: "5px 6px", fontSize: 12, color: theme.color.text, width: "100%", fontFamily: theme.font.mono,
+  background: theme.color.surface2, border: `1px solid ${theme.color.lineStrong}`, borderRadius: theme.radius.s,
+  padding: "5px 6px", fontSize: 12, color: theme.color.text, width: "100%", minWidth: INPUT_MIN_WIDTH,
+  fontFamily: theme.font.mono,
 };
 
 export function NumberRangeInputs({ gte, lte, onChange, label }: NumberRangeInputsProps) {
@@ -22,6 +28,7 @@ export function NumberRangeInputs({ gte, lte, onChange, label }: NumberRangeInpu
     <div style={{ display: "flex", gap: 4 }}>
       <input
         type="number"
+        className="df-filter-input"
         value={gte}
         placeholder="min"
         aria-label={label ? `${label} minimum` : "minimum"}
@@ -30,6 +37,7 @@ export function NumberRangeInputs({ gte, lte, onChange, label }: NumberRangeInpu
       />
       <input
         type="number"
+        className="df-filter-input"
         value={lte}
         placeholder="max"
         aria-label={label ? `${label} maximum` : "maximum"}

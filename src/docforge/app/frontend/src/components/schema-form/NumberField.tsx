@@ -18,13 +18,15 @@ export interface NumberFieldProps {
   onChange: (value: number | undefined) => void;
   /** Accessible name — only needed when the field has no visible/associated `<label>`. */
   ariaLabel?: string;
+  /** Wires the inner `<input>` to an external `<label htmlFor>`. */
+  id?: string;
   /** A short unit adornment rendered right after the input (e.g. "MB", "seconds") — the unit is
    *  MEANING, not a technical detail, so it's always visible, never gated behind an "advanced"
    *  toggle. Omit for unitless numbers (counts, ratios). */
   suffix?: string;
 }
 
-export function NumberField({ value, min, max, style, onChange, ariaLabel, suffix }: NumberFieldProps) {
+export function NumberField({ value, min, max, style, onChange, ariaLabel, suffix, id }: NumberFieldProps) {
   const [draft, setDraft] = useState(value === undefined || value === null ? "" : String(value));
   const [focused, setFocused] = useState(false);
 
@@ -46,6 +48,7 @@ export function NumberField({ value, min, max, style, onChange, ariaLabel, suffi
 
   const input = (
     <input
+      id={id}
       type="number"
       step="any"
       min={min}

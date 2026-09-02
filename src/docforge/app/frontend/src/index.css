@@ -20,24 +20,32 @@
   --surface-2: #efece7;      /* sheet — panels, table headers, hovers, inset fills */
   --surface-3: #e6e1da;      /* deeper sheet */
   --line: #e6e1da;           /* hairlines */
-  --line-strong: #d5cfc4;    /* inputs, strong dividers */
+  --line-strong: #8c8673;    /* inputs, strong dividers — 3:1+ UI-component contrast vs surface/surface-2 */
   --text: #14161a;           /* ink */
   --text-dim: #3d454f;       /* steel — secondary text */
   --text-mute: #6e6960;      /* warm grey, darkened for AA (4.5:1 min) — labels, timestamps */
 
   --accent: #ef5b1e;             /* forge — fills, active, primary */
   --accent-strong: #c1440a;      /* accent TEXT on paper + pressed (500 fails body contrast) */
+  /* AA-safe accent for THIS theme — text/light-knockout-fill use only, never a plain icon/border.
+     Paper: base --accent is ~3.4:1 (fails AA), so this steps to --accent-strong (~5:1). */
+  --accent-safe: var(--accent-strong);
+  /* One step darker still — for accent TEXT sitting on an already-tinted card surface (surface-2)
+     rather than plain paper, where accent-safe's ~4.35:1 falls just under AA. Paper-only concern
+     (see SearchHitCard's "view page" link); ink reuses accent-safe unchanged, already ~5.6:1 there. */
+  --accent-strong-on-surface: #a83c07;
   --accent-contrast: #ffffff;    /* text on a forge fill */
   --accent-soft: rgba(239, 91, 30, 0.10);
   --accent-line: rgba(239, 91, 30, 0.28);
 
-  --ok: #2f7d4f;        --ok-soft: rgba(47, 125, 79, 0.12);       /* done — printed / indexed */
-  --error: #c8402c;     --error-soft: rgba(200, 64, 44, 0.12);
-  --warn: #f4a63b;      --warn-soft: rgba(244, 166, 59, 0.16);    /* ember — stale / attention */
-  --info: #3d454f;      --info-soft: rgba(61, 69, 79, 0.10);      /* neutral steel (no blue) */
-  --skip: #b0a99c;      --skip-soft: rgba(176, 169, 156, 0.18);   /* cancelled/skipped — not error red */
-  --iris: #8a8378;      --iris-soft: rgba(138, 131, 120, 0.12);   /* neutralized (no indigo) */
-  --chain: #8a8378;     --chain-soft: rgba(138, 131, 120, 0.12);  /* neutralized (no cyan) */
+  --ok: #2f7d4f;        --ok-soft: rgba(47, 125, 79, 0.12);       --ok-strong: #2f7d4f;       /* done — printed / indexed */
+  --error: #c8402c;     --error-soft: rgba(200, 64, 44, 0.12);    --error-strong: #c8402c;
+  --warn: #f4a63b;      --warn-soft: rgba(244, 166, 59, 0.16);    --warn-strong: #976725;     /* ember — stale / attention; base fails as text (~2:1), darkened for chips */
+  --info: #3d454f;      --info-soft: rgba(61, 69, 79, 0.10);      --info-strong: #3d454f;     /* neutral steel (no blue) */
+  --skip: #b0a99c;      --skip-soft: rgba(176, 169, 156, 0.18);   --skip-strong: #6a655e;     /* cancelled/skipped — not error red; base fails as text (~2.3:1) */
+  --iris: #8a8378;      --iris-soft: rgba(138, 131, 120, 0.12);   --iris-strong: #6c665e;     /* neutralized (no indigo); base under 4.5:1 as text */
+  --chain: #8a8378;     --chain-soft: rgba(138, 131, 120, 0.12);  --chain-strong: #6c665e;    /* neutralized (no cyan) */
+  --capability: #3d454f; --capability-soft: rgba(61, 69, 79, 0.10); --capability-strong: #3d454f; /* steel — passive capability/origin tags (user/semantic/lexical/filter), same hue as --info */
 
   /* Categorical data-viz triad — three physical stores (S3/Postgres/Qdrant) on a footprint bar.
      No hue borrows accent/ok/error/warn: warm steel (near-neutral), clay terracotta, olive-moss —
@@ -61,24 +69,29 @@
   --surface-2: #20232a;
   --surface-3: #262a32;
   --line: #26282e;
-  --line-strong: #2f333b;
+  --line-strong: #6b6c70;    /* inputs, strong dividers — 3:1+ UI-component contrast vs surface/surface-2 */
   --text: #f7f5f2;
   --text-dim: #c3c7cd;
   --text-mute: #8b939d;
 
   --accent: #ef7a45;             /* forge steps one lighter on ink */
   --accent-strong: #ef5b1e;
+  /* AA-safe accent for THIS theme — text/light-knockout-fill use only. Ink: base --accent already
+     passes (~6:1), so this stays identical — the accent-strong swap is a paper-only concern. */
+  --accent-safe: var(--accent);
+  --accent-strong-on-surface: var(--accent-safe); /* already ~5.6:1 on surface-2 in ink — unchanged */
   --accent-contrast: #14161a;    /* ink text on the lighter forge fill */
   --accent-soft: rgba(239, 122, 69, 0.14);
   --accent-line: rgba(239, 122, 69, 0.34);
 
-  --ok: #4bb67e;        --ok-soft: rgba(75, 182, 126, 0.16);
-  --error: #f06a52;     --error-soft: rgba(240, 106, 82, 0.16);
-  --warn: #f4a63b;      --warn-soft: rgba(244, 166, 59, 0.16);
-  --info: #c3c7cd;      --info-soft: rgba(195, 199, 205, 0.12);
-  --skip: #5a6068;      --skip-soft: rgba(90, 96, 104, 0.24);
-  --iris: #8b939d;      --iris-soft: rgba(139, 147, 157, 0.14);
-  --chain: #8b939d;     --chain-soft: rgba(139, 147, 157, 0.14);
+  --ok: #4bb67e;        --ok-soft: rgba(75, 182, 126, 0.16);      --ok-strong: #4bb67e;
+  --error: #f06a52;     --error-soft: rgba(240, 106, 82, 0.16);   --error-strong: #f06a52;
+  --warn: #f4a63b;      --warn-soft: rgba(244, 166, 59, 0.16);    --warn-strong: #f4a63b;
+  --info: #c3c7cd;      --info-soft: rgba(195, 199, 205, 0.12);   --info-strong: #c3c7cd;
+  --skip: #5a6068;      --skip-soft: rgba(90, 96, 104, 0.24);     --skip-strong: #8c9095;     /* base fails as text on ink (~2.7:1) */
+  --iris: #8b939d;      --iris-soft: rgba(139, 147, 157, 0.14);   --iris-strong: #8b939d;
+  --chain: #8b939d;     --chain-soft: rgba(139, 147, 157, 0.14);  --chain-strong: #8b939d;
+  --capability: #c3c7cd; --capability-soft: rgba(195, 199, 205, 0.12); --capability-strong: #c3c7cd; /* steel — passive capability/origin tags, same hue as --info */
 
   /* Same three hues, stepped lighter to stay legible on ink. */
   --store-s3: #aea393;       --store-s3-soft: rgba(174, 163, 147, 0.16);
@@ -164,6 +177,15 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
    plain CSS so virtualized grids don't need per-row hover state). */
 .df-row-hover { background: var(--surface); transition: background .12s ease; }
 .df-row-hover:hover { background: var(--surface-2); }
+
+/* Corpus grid header-filter inputs (min/max, date bounds) — muted placeholder + tabular figures,
+   kept as a CSS class since `::placeholder` isn't reachable from an inline React style. */
+.df-filter-input { font-variant-numeric: tabular-nums; }
+.df-filter-input::placeholder { color: var(--text-mute); }
+
+/* Free-text search boxes (Search Lab query bar, etc.) — pin the placeholder to the muted token
+   instead of the browser's unstyled UA default, same reasoning as .df-filter-input above. */
+.df-search-input::placeholder { color: var(--text-mute); }
 
 /* Native disclosure: drop the default triangle, rotate our own chevron when open. */
 summary { list-style: none; }

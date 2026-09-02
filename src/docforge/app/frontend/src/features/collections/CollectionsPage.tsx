@@ -78,13 +78,14 @@ export function CollectionsPage({ onNavigate }: CollectionsPageProps) {
             />
           ) : (
             <div className="df-stagger" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: theme.space.l }}>
-              {visibleEntries.map(({ collection, health, healthError, docCount }) => (
+              {visibleEntries.map(({ collection, health, healthError, docCount, jobRunning }) => (
                 <CollectionCard
                   key={collection.id}
                   collection={collection}
                   health={health}
                   healthError={healthError}
                   docCount={docCount}
+                  jobRunning={jobRunning}
                   onClick={() => onNavigate({ name: "collection", collectionId: collection.id })}
                 />
               ))}

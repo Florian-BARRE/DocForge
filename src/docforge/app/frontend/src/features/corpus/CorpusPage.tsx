@@ -10,6 +10,7 @@ import { getCollection, type Collection } from "../../api/collections";
 import type { DocumentGridRow, DocumentSort } from "../../api/corpus";
 import { deleteDocument } from "../../api/explorer";
 import { Button } from "../../components/Button";
+import { EmptyState } from "../../components/EmptyState";
 import { ErrorState } from "../../components/ErrorState";
 import { LoadingState } from "../../components/LoadingState";
 import type { Navigate } from "../../shell/view";
@@ -120,6 +121,11 @@ export function CorpusPage({ collectionId, onNavigate }: CorpusPageProps) {
   const inFilteredMode = selection.mode === "filtered";
   // The page is fully ticked but the corpus spills onto other pages — offer the whole-set escape hatch.
   const showSelectAllPrompt = selection.mode === "ids" && allOnPageSelected && query.total > pageIds.length;
+  // No column filter is active AND the query still came back empty — this collection has never had
+  // anything ingested (as opposed to a real filter just matching nothing). Distinct copy + an actual
+  // upload affordance, same tone as the collection Overview's first-run hero.
+  const hasActiveFilters = Object.keys(filter).length > 0;
+  const isFirstRunEmpty = !query.loading && !query.error && query.total === 0 && !hasActiveFilters;
 
   const bulkDone = () => {
     selection.clear();
@@ -176,6 +182,17 @@ export function CorpusPage({ collectionId, onNavigate }: CorpusPageProps) {
 
       {query.error ? (
         <ErrorState message={query.error} onRetry={query.refetch} />
+      ) : isFirstRunEmpty ? (
+        <EmptyState
+          icon="↑"
+          title="No documents yet"
+          subtitle="Upload one to populate this collection's corpus — the Overview tab has the upload panel."
+          action={
+            <Button onClick={() => onNavigate({ name: "collection", collectionId })}>
+              Upload a document
+            </Button>
+          }
+        />
       ) : (
         <>
           <CorpusTable

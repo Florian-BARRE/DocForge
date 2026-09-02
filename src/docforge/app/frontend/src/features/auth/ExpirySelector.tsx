@@ -20,6 +20,14 @@ const PRESETS: { label: string; days: number }[] = [
   { label: "1 year", days: 365 },
 ];
 
+// A sober "selected" look for this segmented control — it picks ONE mutually-exclusive choice, not
+// a primary call to action, so the selection reads via steel emphasis, never the forge-orange fill
+// `Button`'s "primary" variant carries (brand.md: orange is never a static selection wash).
+const SELECTED_STYLE: React.CSSProperties = {
+  background: theme.color.surface3, border: `1px solid ${theme.color.lineStrong}`,
+  color: theme.color.text, fontWeight: theme.font.weight.bold,
+};
+
 export function ExpirySelector({ value, onChange }: ExpirySelectorProps) {
   const isCustom = value.kind === "custom";
 
@@ -27,22 +35,24 @@ export function ExpirySelector({ value, onChange }: ExpirySelectorProps) {
     <FormField label="Expiration" hint="Never-expiring keys stay valid until manually revoked.">
       <div style={{ display: "flex", gap: theme.space.xs, flexWrap: "wrap" }}>
         <Button
-          type="button" size="sm" variant={value.kind === "never" ? "primary" : "secondary"}
+          type="button" size="sm" variant="secondary"
+          style={value.kind === "never" ? SELECTED_STYLE : undefined}
           onClick={() => onChange({ kind: "never" })}
         >
           Never
         </Button>
         {PRESETS.map((preset) => (
           <Button
-            key={preset.days} type="button" size="sm"
-            variant={value.kind === "preset" && value.days === preset.days ? "primary" : "secondary"}
+            key={preset.days} type="button" size="sm" variant="secondary"
+            style={value.kind === "preset" && value.days === preset.days ? SELECTED_STYLE : undefined}
             onClick={() => onChange({ kind: "preset", days: preset.days })}
           >
             {preset.label}
           </Button>
         ))}
         <Button
-          type="button" size="sm" variant={isCustom ? "primary" : "secondary"}
+          type="button" size="sm" variant="secondary"
+          style={isCustom ? SELECTED_STYLE : undefined}
           onClick={() => onChange({ kind: "custom", date: isCustom ? value.date : "" })}
         >
           Custom

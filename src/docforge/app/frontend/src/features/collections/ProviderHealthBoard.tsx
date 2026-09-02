@@ -7,6 +7,11 @@
 // last-known board on screen instead of blanking it. The row detail (headers + Ingest/Search rows)
 // sits behind a collapsed-by-default "Provider status (N)" disclosure — the headline Chip + reason
 // line already answer "is it healthy", the per-node table is the drill-down, not the first read.
+//
+// ONE locus of "loading" status — the header Chip ("Checking…") — not three: the Re-check button
+// keeps its static label (just disabled while probing) and the unresolved-probe banner is
+// suppressed in favour of a skeleton in the body, so a fresh mount never repeats "Checking…"/
+// "Probing providers…" across the button, a banner AND the body all at once.
 
 import type { CollectionHealth, ProviderHealth } from "../../api/collections";
 import { Button } from "../../components/Button";
@@ -51,6 +56,30 @@ function dedupeAndKeyProviders(providers: ProviderHealth[]): { key: string; prov
     kept.push({ key: `${p.side}:${p.node_id}:${index}`, provider: p });
   });
   return kept;
+}
+
+/** A quiet 3-bar placeholder for the board body while the probe is in flight — a distinct visual
+ *  (not a repeat of the header Chip's "Checking…" text) so a fresh mount reads as "working", not
+ *  as the same status line printed three times. */
+function HealthBoardSkeleton() {
+  const widths = [70, 45, 58];
+  return (
+    <div style={{ padding: `${t.space.m}px ${t.space.l}px`, display: "flex", flexDirection: "column", gap: t.space.s }}>
+      {widths.map((w, i) => (
+        <div
+          key={i}
+          style={{
+            height: 13, width: `${w}%`, borderRadius: t.radius.s, background: t.color.surface2,
+            animation: "df-pulse 1.4s ease-in-out infinite", animationDelay: `${i * 0.15}s`,
+          }}
+        />
+      ))}
+      <style>
+        {"@keyframes df-pulse { 0%, 100% { opacity: 0.45; } 50% { opacity: 1; } } "
+          + "@media (prefers-reduced-motion: reduce) { [style*=\"df-pulse\"] { animation: none !important; } }"}
+      </style>
+    </div>
+  );
 }
 
 /** One side's group — a section caption plus its endpoint-bearing rows, or nothing when every step
@@ -102,19 +131,23 @@ export function ProviderHealthBoard({ health, verdict, loading, error, onRecheck
               checked <span style={{ fontFamily: t.font.mono }}>{humanizeRelativeTime(health.checked_at)}</span>
             </span>
           )}
-          {/* Fix outranks Re-check as the screen's one accent action — brand.md reserves forge
-              orange for the single thing being worked, and repairing the fault matters more than
-              re-probing it. */}
-          <Button size="sm" variant={fixTarget ? "secondary" : "primary"} onClick={onRecheck} disabled={loading}>
-            {loading ? "Checking…" : "Re-check"}
+          {/* Steel, not orange — Re-check is a routine re-probe, not the screen's one accent action;
+              brand.md reserves forge orange for the single primary thing (here, "Fix" the actual
+              fault, or the Overview's own Upload hero). Static label — "Checking…" already has its
+              one locus in the header Chip above, disabled state alone conveys "in flight". */}
+          <Button size="sm" variant="secondary" onClick={onRecheck} disabled={loading}>
+            Re-check
           </Button>
         </div>
       </div>
 
-      {/* Names WHY right under the header for every resolved verdict but the calm "Operational" one —
+      {/* Names WHY right under the header for every RESOLVED verdict but the calm "Operational" one —
           including the NEUTRAL "empty" state (styled quietly, not as an alarm) so a brand-new
-          collection reads as "ready to ingest" rather than an unexplained non-green chip. */}
-      {verdict.tone !== "ok" && verdict.detail && (
+          collection reads as "ready to ingest" rather than an unexplained non-green chip. Gated on
+          `health !== null || error` so the unresolved-probe placeholder ("Checking…"/"Probing
+          providers…") never ALSO prints here — the header Chip is its one locus, the body below is
+          its skeleton. */}
+      {verdict.tone !== "ok" && verdict.detail && (health !== null || error) && (
         <div
           style={{
             display: "flex", alignItems: "center", gap: t.space.m,
@@ -134,9 +167,13 @@ export function ProviderHealthBoard({ health, verdict, loading, error, onRecheck
       )}
 
       {!health ? (
-        <div style={{ padding: t.space.l, color: t.color.dim, fontSize: t.font.size.m }}>
-          {error ? `Could not verify — ${error}` : loading ? "Probing providers…" : "Not yet checked."}
-        </div>
+        error ? (
+          <div style={{ padding: t.space.l, color: t.color.dim, fontSize: t.font.size.m }}>Could not verify — {error}</div>
+        ) : loading ? (
+          <HealthBoardSkeleton />
+        ) : (
+          <div style={{ padding: t.space.l, color: t.color.dim, fontSize: t.font.size.m }}>Not yet checked.</div>
+        )
       ) : visibleCount === 0 ? (
         skippedCount > 0 && (
           <div style={{ padding: `${t.space.s}px ${t.space.l}px`, color: t.color.mute, fontSize: t.font.size.xs }}>

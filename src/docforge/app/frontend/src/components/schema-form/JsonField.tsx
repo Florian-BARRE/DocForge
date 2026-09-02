@@ -11,9 +11,11 @@ export interface JsonFieldProps {
   value: unknown;
   /** Called with the PARSED value — only when the draft is valid JSON. */
   onChange: (value: unknown) => void;
+  /** Wires the inner `<textarea>` to an external `<label htmlFor>`. */
+  id?: string;
 }
 
-export function JsonField({ value, onChange }: JsonFieldProps) {
+export function JsonField({ value, onChange, id }: JsonFieldProps) {
   const [draft, setDraft] = useState(() => JSON.stringify(value ?? null, null, 2));
   const [error, setError] = useState<string | null>(null);
   const [focused, setFocused] = useState(false);
@@ -39,6 +41,7 @@ export function JsonField({ value, onChange }: JsonFieldProps) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
       <textarea
+        id={id}
         rows={Math.min(14, Math.max(3, draft.split("\n").length))}
         spellCheck={false}
         style={{

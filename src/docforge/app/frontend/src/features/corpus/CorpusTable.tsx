@@ -43,8 +43,24 @@ export function CorpusTable({ table, loading, columnFilters, onColumnFilterChang
   const scrollRef = useRef<HTMLDivElement>(null);
   const [drag, setDrag] = useState<DragState | null>(null);
   const rows = table.getRowModel().rows;
-  const columnCount = table.getVisibleLeafColumns().length;
+  const visibleColumns = table.getVisibleLeafColumns();
+  const columnCount = visibleColumns.length;
   const tableWidth = Math.max(MIN_TABLE_WIDTH, table.getTotalSize());
+
+  // `table-layout: fixed` with an explicit `<table>` width wider than the sum of the `<colgroup>`
+  // widths (the MIN_TABLE_WIDTH floor on a narrow/few-column collection, e.g. one with zero metadata
+  // fields) hands the leftover space to whichever <col> is LAST in the browser's own distribution —
+  // that's the pinned, non-resizable "__actions" column, which renders as a wide blank void after its
+  // small button cluster (a "ghost" trailing column). Route the leftover to the last REAL column
+  // instead, so it reads as one column stretching to fill the row rather than empty dead space.
+  const lastFlexColumnIndex = (() => {
+    for (let i = visibleColumns.length - 1; i >= 0; i--) {
+      if (!isPinnedColumn(visibleColumns[i].id)) return i;
+    }
+    return -1;
+  })();
+  const definedWidth = visibleColumns.reduce((sum, column) => sum + column.getSize(), 0);
+  const leftoverWidth = Math.max(0, tableWidth - definedWidth);
 
   const virtualizer = useVirtualizer({
     count: rows.length,
@@ -121,8 +137,11 @@ export function CorpusTable({ table, loading, columnFilters, onColumnFilterChang
     >
       <table style={{ borderCollapse: "collapse", tableLayout: "fixed", width: tableWidth }}>
         <colgroup>
-          {table.getVisibleLeafColumns().map((column) => (
-            <col key={column.id} style={{ width: column.getSize() }} />
+          {visibleColumns.map((column, index) => (
+            <col
+              key={column.id}
+              style={{ width: index === lastFlexColumnIndex ? column.getSize() + leftoverWidth : column.getSize() }}
+            />
           ))}
         </colgroup>
         <thead style={{ position: "sticky", top: 0, zIndex: 5, background: theme.color.surface }}>

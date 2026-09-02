@@ -17,8 +17,11 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 function variantStyle(variant: ButtonVariant, hover: boolean): React.CSSProperties {
   switch (variant) {
     case "primary":
+      // Rest fill is `accentSafe` (accent-strong on paper — plain `accent` fails ~3.4:1 under the
+      // white knockout text; unchanged on ink, already ~6:1). Hover always steps to `accentStrong`,
+      // which on ink is what "rest" used to be — so ink stays byte-identical to before this pass.
       return {
-        background: hover ? t.color.accentStrong : t.color.accent,
+        background: hover ? t.color.accentStrong : t.color.accentSafe,
         color: t.color.onAccent, border: "1px solid transparent",
         boxShadow: hover ? `0 6px 18px -6px ${t.color.accent}` : t.shadow.sm,
       };
@@ -28,9 +31,11 @@ function variantStyle(variant: ButtonVariant, hover: boolean): React.CSSProperti
         color: t.color.text, border: "1px solid transparent",
       };
     case "danger":
+      // Border is always `error` (not just on hover) — a danger action must read as one at rest,
+      // not only once you're already hovering it.
       return {
         background: hover ? t.color.errorSoft : "transparent",
-        color: t.color.error, border: `1px solid ${hover ? t.color.error : t.color.line}`,
+        color: t.color.error, border: `1px solid ${t.color.error}`,
       };
     default: // secondary — tonal
       return {

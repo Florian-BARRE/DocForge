@@ -6,6 +6,7 @@
 import type { JobEvent } from "../../api/jobs";
 import { theme } from "../../theme";
 import { JobStatusChip } from "./JobStatusChip";
+import { humanizeStageId } from "./stageLabels";
 
 const NODE_COLOR_BY_STATUS: Record<string, string> = {
   running: theme.color.accent,
@@ -53,7 +54,9 @@ export function JobEventItem({ event }: { event: JobEvent }) {
           boxShadow: `0 0 0 3px ${theme.color.bg}`,
         }}
       />
-      <strong style={{ fontSize: theme.font.size.m, color: theme.color.text, minWidth: 140 }}>{event.stage}</strong>
+      <strong title={event.stage} style={{ fontSize: theme.font.size.m, color: theme.color.text, minWidth: 140 }}>
+        {humanizeStageId(event.stage)}
+      </strong>
       {event.node_kind && (
         <span style={{ fontFamily: theme.font.mono, fontSize: theme.font.size.xs, color: theme.color.mute }}>
           {event.node_kind}
@@ -64,7 +67,7 @@ export function JobEventItem({ event }: { event: JobEvent }) {
       {usageLabel(event) && (
         <span
           title="Tokens billed by this stage's paid model calls (and their cost)."
-          style={{ color: theme.color.accent, fontSize: theme.font.size.xs, fontFamily: theme.font.mono }}
+          style={{ color: theme.color.accentSafe, fontSize: theme.font.size.xs, fontFamily: theme.font.mono }}
         >
           {usageLabel(event)}
         </span>

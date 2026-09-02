@@ -15,7 +15,7 @@ interface PageHeaderProps {
 
 export function PageHeader({ title, subtitle, eyebrow, actions }: PageHeaderProps) {
   return (
-    <div style={{ display: "flex", alignItems: "flex-end", gap: t.space.l, marginBottom: t.space.xl }}>
+    <div style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-end", gap: t.space.l, marginBottom: t.space.xl }}>
       <div style={{ minWidth: 0 }}>
         {eyebrow && <div style={{ marginBottom: t.space.s }}>{eyebrow}</div>}
         <h1
@@ -30,7 +30,11 @@ export function PageHeader({ title, subtitle, eyebrow, actions }: PageHeaderProp
           <div style={{ color: t.color.dim, fontSize: t.font.size.l, marginTop: 6 }}>{subtitle}</div>
         )}
       </div>
-      {actions && <div style={{ marginLeft: "auto", display: "flex", gap: t.space.s, flexShrink: 0 }}>{actions}</div>}
+      {actions && (
+        <div style={{ marginLeft: "auto", display: "flex", flexWrap: "wrap", gap: t.space.s, minWidth: 0 }}>
+          {actions}
+        </div>
+      )}
     </div>
   );
 }
