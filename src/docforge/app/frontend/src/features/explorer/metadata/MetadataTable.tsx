@@ -35,7 +35,7 @@ export function MetadataTable({ metadata }: { metadata: MetadataValue[] }) {
             <td style={{ ...cellStyle, fontFamily: theme.font.mono, color: theme.color.text }}>{m.field_name}</td>
             <td style={cellStyle}><ValueRenderer value={m.value} /></td>
             <td style={cellStyle}>
-              <Chip tone={m.origin === "generated" ? "loop" : m.origin === "system" ? "warn" : "accent"}>{m.origin}</Chip>
+              <Chip tone={m.origin === "generated" ? "loop" : m.origin === "system" ? "warn" : "dim"}>{m.origin}</Chip>
             </td>
           </tr>
         ))}

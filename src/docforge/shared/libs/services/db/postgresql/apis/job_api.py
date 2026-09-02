@@ -7,6 +7,7 @@
 
 # ====== Standard Library Imports ======
 import uuid
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from decimal import Decimal
@@ -32,11 +33,15 @@ class JobWithNames:
     Attributes:
         job (Job): The job row, verbatim.
         document_filename (str | None): The job's document filename (None if the document is gone).
+        document_title (str | None): The document's metagen-generated title, when one was produced
+            (None if the document is gone; empty string coalesced to None so the UI can fall back to
+            the filename cleanly).
         collection_name (str | None): The job's collection name (None if the collection is gone).
     """
 
     job: Job
     document_filename: str | None
+    document_title: str | None
     collection_name: str | None
 
 
@@ -599,6 +604,38 @@ class JobApi:
         return result.scalar_one_or_none()
 
     @staticmethod
+    async def last_successful_ingest_at_by_collections(
+        session: AsyncSession, collection_ids: Sequence[uuid.UUID]
+    ) -> dict[uuid.UUID, datetime]:
+        """
+        Return each collection's last successful ingest time in ONE grouped query (no N+1).
+
+        The fleet-dashboard "last ingest" for every collection at once — a collection that has never
+        completed an ingest is simply absent from the map (the caller defaults it to None).
+
+        Args:
+            session (AsyncSession): The active DB session.
+            collection_ids (Sequence[uuid.UUID]): The collections to look up (empty → empty map).
+
+        Returns:
+            dict[uuid.UUID, datetime]: collection id → the latest DONE job's finish time.
+        """
+        # 1. Nothing to look up — skip the round-trip.
+        if not collection_ids:
+            return {}
+        # 2. One GROUP BY over the DONE jobs — the whole fleet's last-ingest in a single scan.
+        result = await session.execute(
+            select(Job.collection_id, func.max(Job.finished_at))
+            .where(Job.collection_id.in_(collection_ids), Job.status == JobStatus.DONE)
+            .group_by(Job.collection_id)
+        )
+        return {
+            collection_id: finished_at
+            for collection_id, finished_at in result.all()
+            if finished_at is not None
+        }
+
+    @staticmethod
     async def list_for_collection(session: AsyncSession, collection_id: uuid.UUID) -> list[Job]:
         """Return a collection's jobs, newest first."""
         result = await session.execute(
@@ -615,20 +652,32 @@ class JobApi:
         None name) rather than vanishing from the monitoring view.
         """
         return (
-            select(Job, Document.filename, Collection.name)
+            select(Job, Document.filename, Document.title, Collection.name)
             .outerjoin(Document, Document.id == Job.document_id)
             .outerjoin(Collection, Collection.id == Job.collection_id)
         )
 
+    @staticmethod
+    def _row_to_names(job: Job, filename: str | None, title: str | None, name: str | None):  # type: ignore[no-untyped-def]
+        """Build a JobWithNames from a joined row, coalescing an empty metagen title to None."""
+        # The title column defaults to "" pre-metagen; surface it as None so the UI can cleanly
+        # fall back to the filename instead of rendering a blank string.
+        return JobWithNames(
+            job=job,
+            document_filename=filename,
+            document_title=title or None,
+            collection_name=name,
+        )
+
     @classmethod
     async def get_with_names(cls, session: AsyncSession, job_id: uuid.UUID) -> JobWithNames | None:
-        """Fetch one job joined to its document filename + collection name, or None."""
+        """Fetch one job joined to its document filename + title + collection name, or None."""
         result = await session.execute(cls._with_names_select().where(Job.id == job_id))
         row = result.first()
         if row is None:
             return None
-        job, filename, collection_name = row
-        return JobWithNames(job=job, document_filename=filename, collection_name=collection_name)
+        job, filename, title, collection_name = row
+        return cls._row_to_names(job, filename, title, collection_name)
 
     @classmethod
     async def list_for_collection_with_names(
@@ -653,8 +702,8 @@ class JobApi:
             query = query.limit(limit)
         result = await session.execute(query)
         return [
-            JobWithNames(job=job, document_filename=filename, collection_name=collection_name)
-            for job, filename, collection_name in result.all()
+            cls._row_to_names(job, filename, title, collection_name)
+            for job, filename, title, collection_name in result.all()
         ]
 
     @staticmethod
@@ -674,8 +723,8 @@ class JobApi:
             .order_by(Job.started_at.asc())
         )
         return [
-            JobWithNames(job=job, document_filename=filename, collection_name=collection_name)
-            for job, filename, collection_name in result.all()
+            cls._row_to_names(job, filename, title, collection_name)
+            for job, filename, title, collection_name in result.all()
         ]
 
 

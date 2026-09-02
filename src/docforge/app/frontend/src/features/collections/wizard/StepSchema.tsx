@@ -35,8 +35,11 @@ export function StepSchema({ mode, fields, onFieldsChange, onBack, onNext }: Ste
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: theme.space.m }}>
-      <div style={{ background: theme.color.surface, border: `1px solid ${theme.color.line}`, borderRadius: theme.radius.l, boxShadow: theme.shadow.sm, overflow: "hidden" }}>
-        <table style={{ borderCollapse: "collapse", width: "100%" }}>
+      <div style={{ background: theme.color.surface, border: `1px solid ${theme.color.line}`, borderRadius: theme.radius.l, boxShadow: theme.shadow.sm, overflowX: "auto" }}>
+        {/* A floor wide enough for every column's minWidth control (Type/Origin/Scope selects,
+            the Enum-values tag editor) to render its full label instead of being squeezed by the
+            browser's table layout — the wrapper above scrolls sideways rather than truncating. */}
+        <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 950 }}>
           <thead>
             <tr style={{ borderBottom: `1px solid ${theme.color.line}` }}>
               <th style={headStyle}>Name</th>
@@ -59,7 +62,8 @@ export function StepSchema({ mode, fields, onFieldsChange, onBack, onNext }: Ste
         </table>
         {fields.length === 0 && (
           <div style={{ color: theme.color.dim, fontSize: theme.font.size.s, padding: theme.space.l, textAlign: "center" }}>
-            No fields yet — add one if you need filterable or searchable metadata.
+            Metadata is optional — most collections need none. Add a field below only if you need
+            filterable or searchable metadata; otherwise skip straight to review.
           </div>
         )}
       </div>
@@ -74,7 +78,7 @@ export function StepSchema({ mode, fields, onFieldsChange, onBack, onNext }: Ste
       <div style={{ display: "flex", gap: theme.space.s }}>
         <Button onClick={onBack}>Back</Button>
         <Button variant="primary" disabled={!valid} onClick={onNext}>
-          Next — review
+          {fields.length === 0 ? "Skip — no metadata" : "Next — review"}
         </Button>
       </div>
     </div>

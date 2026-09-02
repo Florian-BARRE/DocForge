@@ -32,6 +32,7 @@ from .helpers import CollectionHelpers
 from .models import (
     CollectionContractModel,
     CollectionContractSchemaResponse,
+    CollectionListItem,
     CollectionModel,
     CollectionStorageResponse,
     CreateCollectionRequest,
@@ -44,21 +45,47 @@ router = APIRouter(prefix="/collections", tags=["collections"])
 
 @router.get(
     "",
-    response_model=list[CollectionModel],
+    response_model=list[CollectionListItem],
     dependencies=[Depends(require(Capability.READ))],
 )
 @auto_handle_errors
-async def list_collections() -> list[CollectionModel]:
+async def list_collections() -> list[CollectionListItem]:
     """
-    Return every collection with its full schema.
+    Return every collection with its full schema AND a server-computed health summary.
+
+    The health summary is rolled up through the SAME path the detail probe (`GET /{id}/health`) uses,
+    so a fleet card's verdict + doc/vector counts + last-ingest can never disagree with the
+    collection's own overview — and the front no longer fans out N live probes per page load.
 
     Returns:
-        list[CollectionModel]: All contracts, schema included.
+        list[CollectionListItem]: All contracts (schema included) each with its health summary.
     """
     # 1. Rows + their schemas (collection counts stay small — the N+1 is fine here).
     collections = await CONTEXT.database.collections.list_all()
+
+    # 2. Fresh, cheap counters for the WHOLE fleet — three BATCHED grouped queries, no N+1, no Qdrant.
+    ids = [c.id for c in collections]
+    doc_counts = await CONTEXT.database.documents.count_by_collections(ids)
+    chunk_counts = await CONTEXT.database.documents.count_chunks_by_collections(ids)
+    last_ingests = await CONTEXT.database.jobs.last_successful_ingest_at_by_collections(ids)
+
+    # 3. Pure, structural-only health roll-up (no provider sweep) — the list's single source of truth,
+    #    consistent with the detail overview's structural determination.
+    summaries = CONTEXT.health_service.summarize_structural(
+        collections,
+        doc_counts=doc_counts,
+        chunk_counts=chunk_counts,
+        last_ingests=last_ingests,
+    )
+
+    # 4. Attach each collection's summary to its full contract (masking applied by to_model).
     return [
-        CollectionHelpers.to_model(c, await CONTEXT.database.collections.get_schema(c.id))
+        CollectionListItem(
+            **CollectionHelpers.to_model(
+                c, await CONTEXT.database.collections.get_schema(c.id)
+            ).model_dump(),
+            health=summaries[c.id],
+        )
         for c in collections
     ]
 

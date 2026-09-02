@@ -6,7 +6,7 @@
 // under Corpus›Documents, so the nav stays visible while inspecting a document. Fetches the collection
 // only to render this chrome — each nested page still owns its own data fetch.
 
-import { useEffect, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { getCollection, type Collection } from "../../api/collections";
 import { BackLink } from "../../components/BackLink";
 import { Button } from "../../components/Button";
@@ -20,6 +20,29 @@ import type { Navigate, View } from "../../shell/view";
 import { theme as t } from "../../theme";
 import { ExportPanel } from "./transfer/ExportPanel";
 import { UploadPanel } from "./UploadPanel";
+
+// Lets a nested page (namely the empty-collection Overview hero) hide the shell header's "Upload"
+// toggle so it never opens a second upload panel alongside a page's own inline one — see
+// `useHideHeaderUpload`. Context, not a prop, because the nested page is passed in as `children`
+// from `App.tsx` (a sibling of this component's own state, not a descendant that could receive props
+// directly) yet still renders inside this component's tree, where context does reach it.
+const HideHeaderUploadContext = createContext<((hide: boolean) => void) | null>(null);
+
+/**
+ * Hide (or restore) the collection shell's header "Upload" toggle from a nested page.
+ *
+ * A no-op outside a `CollectionShell` (context absent) so a page using this hook never crashes if
+ * rendered standalone (e.g. in isolation during a future test).
+ *
+ * @param hide - Whether the header's Upload action should be hidden right now.
+ */
+export function useHideHeaderUpload(hide: boolean): void {
+  const setHidden = useContext(HideHeaderUploadContext);
+  useEffect(() => {
+    setHidden?.(hide);
+    return () => setHidden?.(false);
+  }, [hide, setHidden]);
+}
 
 // A tab key — the caller passes the active one; the section (level-1 group) is derived from it.
 export type CollectionTabKey =
@@ -126,6 +149,14 @@ export function CollectionShell({ collectionId, active, onNavigate, children }: 
   const [error, setError] = useState<string | null>(null);
   const [showUpload, setShowUpload] = useState(false);
   const [showExport, setShowExport] = useState(false);
+  // Set by a nested page via `useHideHeaderUpload` (namely the empty-collection Overview hero) so
+  // the header action never opens a second upload panel next to that page's own inline one.
+  const [uploadActionHidden, setUploadActionHidden] = useState(false);
+
+  const hideUploadAction = useCallback((hide: boolean) => {
+    setUploadActionHidden(hide);
+    if (hide) setShowUpload(false);
+  }, []);
 
   const load = () => {
     setError(null);
@@ -177,21 +208,26 @@ export function CollectionShell({ collectionId, active, onNavigate, children }: 
               >
                 {showExport ? "Cancel export" : "Export"}
               </Button>
-              <Button
-                variant="primary"
-                onClick={() => { setShowUpload((v) => !v); setShowExport(false); }}
-              >
-                {showUpload ? "Cancel upload" : "Upload"}
-              </Button>
+              {!uploadActionHidden && (
+                <Button
+                  variant="primary"
+                  onClick={() => { setShowUpload((v) => !v); setShowExport(false); }}
+                >
+                  {showUpload ? "Cancel upload" : "Upload"}
+                </Button>
+              )}
             </>
           }
         />
-        {showUpload && (
+        {showUpload && !uploadActionHidden && (
           <div className="df-rise" style={{ marginBottom: t.space.l, maxWidth: 480 }}>
             <UploadPanel
               collectionId={collectionId}
               fields={collection.fields}
-              onUploaded={(jobId) => { setShowUpload(false); onNavigate({ name: "job", collectionId, jobId }); }}
+              onUploaded={(jobId, count) => {
+                setShowUpload(false);
+                onNavigate(count > 1 ? { name: "collection-jobs", collectionId } : { name: "job", collectionId, jobId });
+              }}
             />
           </div>
         )}
@@ -237,7 +273,9 @@ export function CollectionShell({ collectionId, active, onNavigate, children }: 
         )}
       </div>
       <div role="tabpanel" id="collection-panel" aria-labelledby={activeTabId} style={{ flex: 1, minHeight: 0 }}>
-        {children}
+        <HideHeaderUploadContext.Provider value={hideUploadAction}>
+          {children}
+        </HideHeaderUploadContext.Provider>
       </div>
     </div>
   );

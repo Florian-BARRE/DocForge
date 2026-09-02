@@ -8,8 +8,8 @@ import type { Collection, CollectionHealth, FieldSpec } from "../../api/collecti
 import type { DocumentListItem } from "../../api/explorer";
 import type { Navigate } from "../../shell/view";
 import { theme as t } from "../../theme";
-import { StatChip } from "./OverviewCardPrimitives";
-import { humanizeRelativeTime } from "./relativeTime";
+import { lastIngestLabel } from "./collectionHealth";
+import { MetaLine, StatChip } from "./OverviewCardPrimitives";
 
 interface OverviewStatStripProps {
   collection: Collection;
@@ -27,47 +27,57 @@ export function OverviewStatStrip({ collection, docs, fields, health, collection
   const vectorCount = health?.search.index.vector_count;
 
   return (
-    <div style={{ display: "flex", flexWrap: "wrap", gap: t.space.m, marginBottom: t.space.xl }}>
-      <StatChip
-        label="Documents"
-        value={docs ? docs.length : "…"}
-        sub={docs ? `${enabledDocs} enabled` : undefined}
-        onClick={() => onNavigate({ name: "collection-documents", collectionId })}
+    <>
+      {/* Facts ABOUT the collection, not about any one tile — kept out of the chips below so each
+          chip's sub-label stays scoped to its own metric. */}
+      <MetaLine
+        items={[
+          collection.created_at ? `created ${new Date(collection.created_at).toLocaleDateString()}` : null,
+          `last ingest ${lastIngestLabel(health, collection.created_at)}`,
+        ]}
       />
-      <StatChip
-        label="Metadata fields"
-        value={fields.length}
-        sub={`${requiredFields} required`}
-        onClick={() => onNavigate({ name: "collection-metadata", collectionId })}
-      />
-      <StatChip
-        label="Indexed vectors"
-        value={vectorCount !== undefined ? vectorCount.toLocaleString() : "…"}
-        sub={health ? `last ingest ${humanizeRelativeTime(health.search.index.last_ingest_at)}` : undefined}
-        onClick={() => onNavigate({ name: "collection-search", collectionId })}
-      />
-      <StatChip
-        label="Formats"
-        value={collection.supported_formats.length}
-        sub={collection.supported_formats.join(", ")}
-        onClick={() => onNavigate({ name: "collection-pipeline", collectionId })}
-      />
-      <StatChip
-        label="Max file"
-        value={`${maxSizeMb} MB`}
-        sub={collection.created_at ? `created ${new Date(collection.created_at).toLocaleDateString()}` : undefined}
-        onClick={() => onNavigate({ name: "collection-edit", collectionId })}
-      />
-      <StatChip
-        label="Job timeout"
-        value={
-          <span style={{ fontFamily: t.font.mono }}>
-            {collection.job_timeout_seconds !== null ? `${collection.job_timeout_seconds}s` : "default"}
-          </span>
-        }
-        sub="whole-ingest-job wall-clock budget"
-        onClick={() => onNavigate({ name: "collection-edit", collectionId })}
-      />
-    </div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: t.space.m, marginBottom: t.space.xl }}>
+        <StatChip
+          label="Documents"
+          value={docs ? docs.length : "…"}
+          sub={docs ? `${enabledDocs} enabled` : undefined}
+          onClick={() => onNavigate({ name: "collection-documents", collectionId })}
+        />
+        <StatChip
+          label="Metadata fields"
+          value={fields.length}
+          sub={`${requiredFields} required`}
+          onClick={() => onNavigate({ name: "collection-metadata", collectionId })}
+        />
+        <StatChip
+          label="Indexed vectors"
+          value={vectorCount !== undefined ? vectorCount.toLocaleString() : "…"}
+          sub={docs ? `across ${enabledDocs} enabled doc${enabledDocs === 1 ? "" : "s"}` : undefined}
+          onClick={() => onNavigate({ name: "collection-search", collectionId })}
+        />
+        <StatChip
+          label="Formats"
+          value={collection.supported_formats.length}
+          sub={collection.supported_formats.join(", ")}
+          onClick={() => onNavigate({ name: "collection-pipeline", collectionId })}
+        />
+        <StatChip
+          label="Max file"
+          value={`${maxSizeMb} MB`}
+          sub="per upload"
+          onClick={() => onNavigate({ name: "collection-edit", collectionId })}
+        />
+        <StatChip
+          label="Job timeout"
+          value={
+            <span style={{ fontFamily: t.font.mono }}>
+              {collection.job_timeout_seconds !== null ? `${collection.job_timeout_seconds}s` : "default"}
+            </span>
+          }
+          sub="whole-ingest-job wall-clock budget"
+          onClick={() => onNavigate({ name: "collection-edit", collectionId })}
+        />
+      </div>
+    </>
   );
 }

@@ -5,11 +5,13 @@ from .service import CollectionHealthService
 from .graph_builds import CollectionGraphBuilder, GraphBuildOutcome
 
 # ---------------------- Verdict roll-up ---------------------- #
-from .verdict import HealthVerdictResolver
+from .verdict import HealthRollup, HealthVerdictResolver
 
 # ---------------------- API response contract ---------------------- #
 from .models import (
     CollectionHealthResponse,
+    CollectionHealthSummary,
+    CollectionListVerdict,
     HealthVerdict,
     IngestHealth,
     SearchHealth,
@@ -23,7 +25,10 @@ __all__ = [
     "CollectionGraphBuilder",
     "GraphBuildOutcome",
     "HealthVerdictResolver",
+    "HealthRollup",
     "CollectionHealthResponse",
+    "CollectionHealthSummary",
+    "CollectionListVerdict",
     "HealthVerdict",
     "IngestHealth",
     "SearchHealth",

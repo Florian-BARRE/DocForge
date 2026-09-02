@@ -39,7 +39,7 @@ export function StepReview({
       >
         <div style={{ fontFamily: theme.font.display, fontSize: theme.font.size.xxl, fontWeight: 700 }}>{name}</div>
         <div style={{ display: "flex", gap: 6, marginTop: theme.space.s, flexWrap: "wrap" }}>
-          {formats.map((f) => <Chip key={f} tone="accent">{f}</Chip>)}
+          {formats.map((f) => <Chip key={f} tone="neutral">{f}</Chip>)}
         </div>
         <div style={{ color: theme.color.dim, fontSize: theme.font.size.m, marginTop: theme.space.s }}>
           Max file size: {bytesToMb(maxSizeBytes).toFixed(1)} MB · job timeout:{" "}

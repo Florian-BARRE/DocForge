@@ -36,7 +36,14 @@ from .reader import StateReader
 # The engine/blob schema version. Bump it whenever a change to the assembler, reader or a stage
 # builder alters the shape the engine emits for an UNCHANGED PipelineState — so already-stored blobs
 # fall through the fast path and get re-healed to the new topology on their next read.
-ENGINE_BLOB_VERSION = 1
+#
+# v2: the intake ContentAddress node gained a ``source_probe`` slot (commit 053f98d, native HTML/MD
+# parsing) and the assembler began wiring ``bindings["address"]["source_probe"]``. That change
+# altered the emitted shape but the version was NOT bumped at the time, so v1-stamped blobs stored
+# BEFORE it wrongly fast-pathed as "current" and validated as invalid (missing_binding on address).
+# Bumping to 2 forces every v1 blob back through the heal round-trip, re-emitting the source_probe
+# wiring; blobs already carrying it round-trip identically (no drift).
+ENGINE_BLOB_VERSION = 2
 
 
 class BlobNormalizationError(Exception):

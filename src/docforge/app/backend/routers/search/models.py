@@ -135,7 +135,16 @@ class SearchHitModel(BaseModel):
         description="The document's filterable metadata (field → value) — so a hit self-cites "
         "without a second GET /documents/{id}.",
     )
-    score: float = Field(description="Fused RRF score (higher is better).")
+    score: float = Field(
+        description="The hit's ranking score, higher is better. Its meaning is given by the "
+        "response-level ``score_kind``: for the default hybrid retrieval it is Qdrant's SERVER-SIDE "
+        "FUSION score (Reciprocal Rank Fusion by default, or DBSF) — a RANK-based aggregate, NOT a "
+        "cosine similarity or a 0-1 probability; when reranking is enabled it is the cross-encoder "
+        "relevance score instead. The absolute magnitude is NOT comparable across queries or "
+        "collections — only the relative ordering WITHIN one response is meaningful. On a tiny corpus "
+        "(e.g. a single document) the top hit's score can legitimately pin to a round value like "
+        "1.0000 — that is expected, not a bug.",
+    )
     text: str = Field(description="The chunk's enriched text.")
     chunk_index: int = Field(description="Ordinal within the document.")
     token_count: int = Field(description="Token count of the chunk.")
@@ -167,12 +176,22 @@ class SearchResponse(BaseModel):
     Attributes:
         query (str): The query that was searched (echoed for the client).
         hits (list[SearchHitModel]): The hydrated hits, best first.
+        score_kind (str): What each hit's ``score`` represents — so the UI can label it correctly.
         debug_info (dict | None): Non-fatal diagnostics about how the search ran. None when there
             is nothing to report.
     """
 
     query: str = Field(description="The query that was searched.")
     hits: list[SearchHitModel] = Field(default_factory=list, description="Ranked hits, best first.")
+    score_kind: str = Field(
+        default="rrf_fusion",
+        description="What every hit's ``score`` represents, so the UI labels it honestly: "
+        "'rrf_fusion' (Reciprocal Rank Fusion of the dense+sparse branches — the default; "
+        "rank-based, not a similarity), 'dbsf_fusion' (Distribution-Based Score Fusion), or "
+        "'cross_encoder_rerank' (a cross-encoder relevance score, when reranking is enabled). "
+        "Fusion scores are only comparable within one response; a round 1.0000 on a tiny/single-doc "
+        "corpus is normal.",
+    )
     debug_info: dict[str, Any] | None = Field(
         default=None,
         description="Non-fatal diagnostics about how the search ran. None when empty.",

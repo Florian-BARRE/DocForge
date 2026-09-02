@@ -8,6 +8,7 @@
 // derived metric (ETA, running-long, token totals) — lives in `useJobDetail`; the summary card is
 // `JobSummaryCard`. This component is pure top-level layout.
 
+import { jobDisplayName } from "../../api/jobs";
 import { BackLink } from "../../components/BackLink";
 import { ErrorState } from "../../components/ErrorState";
 import { LoadingState } from "../../components/LoadingState";
@@ -37,7 +38,7 @@ export function JobDetailPage({ jobId, collectionId, onNavigate }: JobDetailPage
     <div className="df-rise" style={{ padding: theme.space.xl, overflowY: "auto", height: "100%", maxWidth: 1200, margin: "0 auto", width: "100%" }}>
       <PageHeader
         eyebrow={<BackLink label="Jobs" onClick={() => onNavigate({ name: "collection-jobs", collectionId })} />}
-        title={<span>{job.document_filename ?? "untitled document"}</span>}
+        title={<span>{jobDisplayName(job)}</span>}
         subtitle={
           <span style={{ display: "inline-flex", alignItems: "center", gap: theme.space.s, flexWrap: "wrap" }}>
             {job.collection_name && <span>{job.collection_name}</span>}

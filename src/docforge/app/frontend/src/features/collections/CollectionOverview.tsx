@@ -1,23 +1,27 @@
 // ====== Code Summary ======
-// The collection's Overview tab — a calm provider-availability dashboard. The hero is the live
-// provider health board (grouped Ingest/Search, probed on mount + "Re-check"), whose verdict is a
-// pure projection of that probe; below it a slim strip of quick-glance stat chips links out to the
-// tabs that own the detail (past job/document failures live in the Jobs tab, not here). Read-only;
-// editing lives in the Metadata / Pipeline / Search studios.
+// The collection's Overview tab — a calm provider-availability dashboard. For an EMPTY collection (0
+// documents) the FIRST thing on screen is the upload hero (CTA + "what happens next"); the provider
+// health board follows below it as the drill-down, not the headline — an empty collection has nothing
+// to ingest yet, so "how do I add something" outranks "is the plumbing healthy". A populated
+// collection flips the order: the health board leads, then the normal quick-glance stat strip +
+// storage + cost panels. Read-only; editing lives in the Metadata / Pipeline / Search studios.
 
 import { useEffect, useState } from "react";
 import { getCollection, getCollectionHealth, type Collection, type CollectionHealth } from "../../api/collections";
 import { listDocuments, type DocumentListItem } from "../../api/explorer";
+import { EmptyState } from "../../components/EmptyState";
 import { ErrorState } from "../../components/ErrorState";
 import { LoadingState } from "../../components/LoadingState";
 import type { Navigate } from "../../shell/view";
 import { theme as t } from "../../theme";
-import { probeVerdict } from "./collectionHealth";
+import { useHideHeaderUpload } from "./CollectionShell";
+import { healthFixTarget, probeVerdict } from "./collectionHealth";
 import { CostEstimatePanel } from "./estimate/CostEstimatePanel";
 import { OverviewStatStrip } from "./OverviewStatStrip";
 import { ProviderHealthBoard } from "./ProviderHealthBoard";
 import { ReindexBanner } from "./ReindexBanner";
 import { StorageFootprintPanel } from "./storage/StorageFootprintPanel";
+import { UploadPanel } from "./UploadPanel";
 
 interface Props {
   collectionId: string;
@@ -52,33 +56,79 @@ export function CollectionOverview({ collectionId, onNavigate }: Props) {
   };
   useEffect(recheckHealth, [collectionId]);
 
+  // An empty collection's hero below is the ONE active upload path — hide the shell header's
+  // "Upload" toggle so it never opens a second, competing input alongside it. Must run before any
+  // conditional return below (Rules of Hooks); tolerates docs === null.
+  useHideHeaderUpload(docs !== null && docs.length === 0);
+
   if (error) return <ErrorState message={error} onRetry={load} />;
   if (!collection) return <LoadingState label="loading overview…" />;
 
   const verdict = probeVerdict(health, healthError);
+  // "empty" only means "stalled" (worth a Jobs-tab drill-down) when documents already exist — a
+  // genuinely empty collection's fix IS the upload hero below, not a second button on the board.
+  const fixTarget = healthFixTarget(health, collectionId, docs !== null && docs.length > 0);
 
   return (
     <div className="df-rise" style={{ padding: t.space.xl, overflowY: "auto", height: "100%", maxWidth: 1100, margin: "0 auto", width: "100%" }}>
       {collection.needs_reindex && <div style={{ marginBottom: t.space.l }}><ReindexBanner /></div>}
 
-      <ProviderHealthBoard health={health} verdict={verdict} loading={healthLoading} error={healthError} onRecheck={recheckHealth} />
+      {docs && docs.length === 0 ? (
+        <>
+          <EmptyState
+            icon="↑"
+            title="Upload your first document"
+            subtitle="This collection is empty — ingest a document to see it parsed, chunked and indexed for search."
+          >
+            <div style={{ display: "flex", flexDirection: "column", gap: t.space.l }}>
+              <UploadPanel
+                collectionId={collectionId}
+                fields={collection.fields}
+                onUploaded={(jobId, count) =>
+                  onNavigate(count > 1 ? { name: "collection-jobs", collectionId } : { name: "job", collectionId, jobId })
+                }
+              />
+              <div style={{ color: t.color.dim, fontSize: t.font.size.s }}>
+                What happens next: the file is parsed, enriched, chunked, contextualized and embedded —
+                track progress from the job page this opens, or the Jobs tab any time.
+              </div>
+            </div>
+          </EmptyState>
 
-      <OverviewStatStrip
-        collection={collection}
-        docs={docs}
-        fields={collection.fields}
-        health={health}
-        collectionId={collectionId}
-        onNavigate={onNavigate}
-      />
+          {/* Still the drill-down for "can this empty collection even ingest right now" — kept
+              below the upload CTA, not above it. */}
+          <div style={{ marginTop: t.space.xl }}>
+            <ProviderHealthBoard
+              health={health} verdict={verdict} loading={healthLoading} error={healthError}
+              onRecheck={recheckHealth} fixTarget={fixTarget} onNavigate={onNavigate}
+            />
+          </div>
+        </>
+      ) : (
+        <>
+          <ProviderHealthBoard
+            health={health} verdict={verdict} loading={healthLoading} error={healthError}
+            onRecheck={recheckHealth} fixTarget={fixTarget} onNavigate={onNavigate}
+          />
 
-      <div style={{ marginTop: t.space.xl }}>
-        <StorageFootprintPanel collectionId={collectionId} onNavigate={onNavigate} />
-      </div>
+          <OverviewStatStrip
+            collection={collection}
+            docs={docs}
+            fields={collection.fields}
+            health={health}
+            collectionId={collectionId}
+            onNavigate={onNavigate}
+          />
 
-      <div>
-        <CostEstimatePanel collectionId={collectionId} />
-      </div>
+          <div style={{ marginTop: t.space.xl }}>
+            <StorageFootprintPanel collectionId={collectionId} onNavigate={onNavigate} />
+          </div>
+
+          <div>
+            <CostEstimatePanel collectionId={collectionId} />
+          </div>
+        </>
+      )}
     </div>
   );
 }

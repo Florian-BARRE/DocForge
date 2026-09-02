@@ -8,6 +8,7 @@ import { Switch } from "../Switch";
 import { TagsInput } from "../TagsInput";
 import { theme } from "../../theme";
 
+import { humanizeEnumOption, humanizeFieldHelp, humanizeFieldLabel, humanizeFieldUnit } from "./fieldLabels";
 import { JsonField } from "./JsonField";
 import { NumberField } from "./NumberField";
 
@@ -73,9 +74,13 @@ interface SchemaFieldProps {
   value: unknown;
   required?: boolean;
   onChange: (value: unknown) => void;
+  /** Progressive disclosure — when false (the default), the raw type/constraint badge and the
+   *  `default: …` suffix are hidden so the form reads like a normal form, not a schema dump. Flip
+   *  via the form's own "Show technical details" toggle. */
+  advanced?: boolean;
 }
 
-export function SchemaField({ name, prop, schema, value, required = false, onChange }: SchemaFieldProps) {
+export function SchemaField({ name, prop, schema, value, required = false, onChange, advanced = false }: SchemaFieldProps) {
   const resolved = deref(prop, schema);
   const current = value === undefined ? resolved.default : value;
   // A `X | None` property (see `deref`) can always be explicitly cleared back to "unset".
@@ -91,7 +96,7 @@ export function SchemaField({ name, prop, schema, value, required = false, onCha
       >
         {(nullable || current === null || current === undefined) && <option value="">—</option>}
         {resolved.enum.map((option) => (
-          <option key={option} value={option}>{option}</option>
+          <option key={option} value={option}>{humanizeEnumOption(option)}</option>
         ))}
       </select>
     );
@@ -104,6 +109,7 @@ export function SchemaField({ name, prop, schema, value, required = false, onCha
         min={resolved.minimum ?? resolved.exclusiveMinimum}
         max={resolved.maximum ?? resolved.exclusiveMaximum}
         style={inputStyle}
+        suffix={humanizeFieldUnit(name)}
         onChange={onChange}
       />
     );
@@ -147,39 +153,47 @@ export function SchemaField({ name, prop, schema, value, required = false, onCha
     );
   }
 
+  const label = humanizeFieldLabel(name);
+  const help = humanizeFieldHelp(name, resolved.description);
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 2, fontSize: theme.font.size.s }}>
-      {/* 1. Name + full type contract (+ required marker) */}
+      {/* 1. Human label (+ required marker) — the raw type/constraint contract only shows up in
+         "Show technical details" mode, see SchemaForm's advanced toggle. */}
       <div style={{ display: "flex", alignItems: "baseline", gap: theme.space.xs + 2, color: theme.color.dim }}>
         <span style={{ color: theme.color.text }}>
-          {name}
+          {label}
           {required && <span style={{ color: theme.color.error }} title="required"> *</span>}
         </span>
-        <span
-          title={typeLabel(resolved)}
-          style={{
-            color: theme.color.mute, background: "transparent",
-            border: `1px solid ${theme.color.line}`,
-            borderRadius: theme.radius.s, padding: `0 ${theme.space.xs + 1}px`, fontSize: theme.font.size.xs,
-            fontFamily: theme.font.mono, whiteSpace: "nowrap", overflow: "hidden",
-            // Fixed truncation column for the type badge — a layout constant, not a spacing
-            // increment, so it stays a plain literal (matches the app's raw maxWidth convention
-            // for component/container sizing, e.g. SearchStageFrame's icon offset).
-            textOverflow: "ellipsis", maxWidth: 130,
-          }}
-        >
-          {typeLabel(resolved)}
-        </span>
+        {advanced && (
+          <span
+            title={typeLabel(resolved)}
+            style={{
+              color: theme.color.mute, background: "transparent",
+              border: `1px solid ${theme.color.line}`,
+              borderRadius: theme.radius.s, padding: `0 ${theme.space.xs + 1}px`, fontSize: theme.font.size.xs,
+              fontFamily: theme.font.mono, whiteSpace: "nowrap", overflow: "hidden",
+              // Fixed truncation column for the type badge — a layout constant, not a spacing
+              // increment, so it stays a plain literal (matches the app's raw maxWidth convention
+              // for component/container sizing, e.g. SearchStageFrame's icon offset).
+              textOverflow: "ellipsis", maxWidth: 130,
+            }}
+          >
+            {typeLabel(resolved)}
+          </span>
+        )}
       </div>
       {/* 2. The control itself */}
       {control}
-      {/* 3. Meaning + default, always visible (not a hover-only tooltip) */}
-      {(resolved.description || resolved.default !== undefined) && (
+      {/* 3. Meaning, always visible (not a hover-only tooltip) — the raw `default: …` suffix only
+         shows in advanced mode: an unset default so often reads as noise ("default: null") to a
+         normal user rather than useful information. */}
+      {(help || (advanced && resolved.default !== undefined)) && (
         <div style={{ color: theme.color.dim, fontSize: theme.font.size.xs, lineHeight: 1.35 }}>
-          {resolved.description}
-          {resolved.default !== undefined && (
+          {help}
+          {advanced && resolved.default !== undefined && (
             <span style={{ color: theme.color.dim, opacity: 0.8 }}>
-              {resolved.description ? " — " : ""}default: {String(resolved.default)}
+              {help ? " — " : ""}default: {String(resolved.default)}
             </span>
           )}
         </div>

@@ -180,3 +180,31 @@ def test_to_search_targets_round_trips_a_list(fastapi_app) -> None:
     assert targets[0].field == "author"
     assert targets[0].semantic is True
     assert targets[0].lexical is False
+
+
+# ---------------------- score_kind (F15 — score semantics) ---------------------- #
+def test_score_kind_empty_blob_is_rrf_fusion(fastapi_app) -> None:
+    from backend.routers.search.helpers import SearchHelpers  # noqa: PLC0415
+
+    # An empty / None search blob is the stock default topology: hybrid retrieve, RRF fusion.
+    assert SearchHelpers.score_kind(None) == "rrf_fusion"
+    assert SearchHelpers.score_kind({}) == "rrf_fusion"
+
+
+def test_score_kind_dbsf_when_retrieve_config_says_so(fastapi_app) -> None:
+    from backend.routers.search.helpers import SearchHelpers  # noqa: PLC0415
+
+    blob = {"nodes": [{"family": "retrieve", "kind": "hybrid", "config": {"fusion": "dbsf"}}]}
+    assert SearchHelpers.score_kind(blob) == "dbsf_fusion"
+
+
+def test_score_kind_cross_encoder_when_rerank_present(fastapi_app) -> None:
+    from backend.routers.search.helpers import SearchHelpers  # noqa: PLC0415
+
+    blob = {
+        "nodes": [
+            {"family": "retrieve", "kind": "hybrid", "config": {"fusion": "rrf"}},
+            {"family": "rerank", "kind": "cross_encoder", "config": {}},
+        ]
+    }
+    assert SearchHelpers.score_kind(blob) == "cross_encoder_rerank"

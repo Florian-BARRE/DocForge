@@ -46,7 +46,7 @@ export function StackMethodCard({
         <span
           style={{
             width: 20, height: 20, flexShrink: 0, borderRadius: "50%", display: "grid", placeItems: "center",
-            background: theme.color.accentSoft, color: theme.color.accent,
+            background: theme.color.surface3, color: theme.color.dim,
             fontSize: theme.font.size.xs, fontWeight: 700,
           }}
         >

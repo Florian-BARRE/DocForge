@@ -15,6 +15,10 @@ export interface JobStatus {
   document_id: string;
   /** The document's filename, joined at read — null only if the document row is gone. */
   document_filename: string | null;
+  /** The document's metagen-generated title, joined at read — a nicer display label than the
+   *  filename when present. Null if none was generated, the document is gone, or (SSE status
+   *  frames only) the snapshot didn't re-join it — see streamJobEvents. */
+  document_title: string | null;
   collection_id: string;
   /** The collection's name, joined at read — null only if the collection row is gone. */
   collection_name: string | null;
@@ -50,6 +54,14 @@ export interface JobStatus {
   failed_item_index: number | null;
   /** Exception class name of the failure (e.g. "TimeoutError"); only set on a failed job. */
   error_type: string | null;
+}
+
+/** The one human label to show for a job, everywhere it's shown (job rows, worker cards, the job
+ *  detail header): the metagen title when one was generated, else the filename, else a generic
+ *  fallback for the rare gone-document edge case. Keeping this in one place is what keeps the job
+ *  list and the job detail header in sync. */
+export function jobDisplayName(job: Pick<JobStatus, "document_title" | "document_filename">): string {
+  return job.document_title || job.document_filename || "untitled document";
 }
 
 export interface JobEvent {
@@ -114,8 +126,24 @@ export interface QueueDepth {
   running: number;
 }
 
-export function listJobs(collectionId: string): Promise<JobStatus[]> {
-  return apiFetch(`${BASE}?collection_id=${encodeURIComponent(collectionId)}`);
+/** One paginated page of a collection's jobs — mirrors the backend's bounded-list envelope. */
+export interface JobPage {
+  total: number;
+  limit: number;
+  offset: number;
+  jobs: JobStatus[];
+}
+
+/**
+ * List a collection's jobs, newest first.
+ *
+ * The endpoint returns a BOUNDED, paginated envelope (`{total, limit, offset, jobs}`), not a bare
+ * array — this unwraps it. Monitoring's job list has no pager UI yet, so callers get the first page
+ * (server-clamped to `JOBS_MAX_PAGE_SIZE`) verbatim.
+ */
+export async function listJobs(collectionId: string): Promise<JobStatus[]> {
+  const page = await apiFetch<JobPage>(`${BASE}?collection_id=${encodeURIComponent(collectionId)}`);
+  return page.jobs;
 }
 
 export function getJob(jobId: string): Promise<JobStatus> {

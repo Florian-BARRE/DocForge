@@ -109,6 +109,10 @@ body {
 input, select, button, textarea { font: inherit; color: inherit; }
 button { letter-spacing: 0.005em; }
 
+/* Native checkboxes/radios (bulk-select, permission builders, filter menus) pick up the forge
+   accent instead of the browser's default blue — brand.md bans that cool blue everywhere. */
+input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
+
 /* Machine values ONLY (types, hashes, ids, scores, timings, dims, versions). Never prose. */
 .mono { font-family: "JetBrains Mono", ui-monospace, monospace; }
 

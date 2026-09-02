@@ -47,9 +47,23 @@ class DatabaseHelpers:
         raise TypeError("DatabaseHelpers is a static-only class and cannot be instantiated.")
 
     @staticmethod
-    def qdrant_collection_name(collection_id: uuid.UUID) -> str:
-        """The Qdrant collection backing a DocForge collection — stable, id-derived."""
-        return f"col_{collection_id.hex}"
+    def qdrant_collection_name(collection_id: uuid.UUID | str) -> str:
+        """
+        The Qdrant collection backing a DocForge collection — stable, id-derived.
+
+        Accepts a ``UUID`` or its string form: callers coming straight from a request path or a
+        serialized id pass a str, so coerce here rather than let ``.hex`` blow up on a str.
+
+        Args:
+            collection_id (uuid.UUID | str): The collection id (either representation).
+
+        Returns:
+            str: The deterministic ``col_<hex>`` Qdrant collection name.
+        """
+        canonical = (
+            collection_id if isinstance(collection_id, uuid.UUID) else uuid.UUID(collection_id)
+        )
+        return f"col_{canonical.hex}"
 
     @staticmethod
     def validate_vector_slugs(fields: Sequence[MetadataField]) -> None:

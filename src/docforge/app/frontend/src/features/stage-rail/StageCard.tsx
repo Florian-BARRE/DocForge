@@ -30,6 +30,12 @@ export function StageCard({ stage, palette, actions }: StageCardProps) {
     : stage.enabled
     ? "Disable this stage"
     : "Enable this stage";
+  // A chain-capable provider stage (parse/embed) IS its own chain — see StageViewer.__provider —
+  // so ProviderPicker + StageConfigForm below would just duplicate the chain's own step 0 (same
+  // provider identity, same config, TWO editors for one value). ChainSection renders that single
+  // step as the provider picker itself (ChainStepList's `primaryKindEditable`), so those two are
+  // skipped entirely for this case; every other provider stage (chunk) keeps them.
+  const ownChain = stage.chains.length === 1 && stage.chains[0].slot === stage.key;
 
   return (
     <div
@@ -43,11 +49,13 @@ export function StageCard({ stage, palette, actions }: StageCardProps) {
         transition: "opacity .15s ease, border-color .15s ease",
       }}
     >
-      {/* Left accent hairline — reads "active pipeline stage" at a glance. */}
+      {/* Left hairline — reads "this stage is part of the pipeline" at a glance. Steel, not forge:
+          several stages are enabled at once, and orange is reserved for the one thing actively
+          being worked (a running job, the primary action) — not every at-rest "on" state. */}
       <div
         style={{
           position: "absolute", left: 0, top: 0, bottom: 0, width: 3,
-          background: stage.enabled ? theme.color.accent : "transparent",
+          background: stage.enabled ? theme.color.dim : "transparent",
         }}
       />
       <div style={{ display: "flex", alignItems: "flex-start", gap: theme.space.m }}>
@@ -83,7 +91,7 @@ export function StageCard({ stage, palette, actions }: StageCardProps) {
 
       {stage.enabled && stage.kind !== "fixed" && (
         <div style={{ display: "flex", flexDirection: "column", gap: theme.space.m, paddingLeft: 34 + theme.space.m }}>
-          {stage.kind === "provider" && (
+          {stage.kind === "provider" && !ownChain && (
             <>
               <ProviderPicker stage={stage} palette={palette} actions={actions} />
               <StageConfigForm stage={stage} palette={palette} actions={actions} />

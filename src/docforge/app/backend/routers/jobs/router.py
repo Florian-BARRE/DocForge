@@ -72,7 +72,12 @@ async def list_jobs(
         limit=page_size,
         offset=offset,
         jobs=[
-            JobStatus.from_row(entry.job, entry.document_filename, entry.collection_name)
+            JobStatus.from_row(
+                entry.job,
+                entry.document_filename,
+                entry.collection_name,
+                document_title=entry.document_title,
+            )
             for entry in jobs
         ],
     )
@@ -277,7 +282,12 @@ async def get_job(
     AuthzGuard.assert_collection_scope(principal, str(entry.job.collection_id))
 
     # 3. Serve it as the UI's polling model, carrying the joined names.
-    return JobStatus.from_row(entry.job, entry.document_filename, entry.collection_name)
+    return JobStatus.from_row(
+        entry.job,
+        entry.document_filename,
+        entry.collection_name,
+        document_title=entry.document_title,
+    )
 
 
 @router.post("/{job_id}/cancel", response_model=CancelResult)

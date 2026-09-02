@@ -87,7 +87,7 @@ async def test_list_keys_returns_typed_list() -> None:
 async def test_revoke_key_hits_delete_and_returns_none() -> None:
     route = respx.delete(f"{API}/auth/keys/{KEY_ID}").mock(return_value=httpx.Response(204))
     async with AsyncClient(BASE) as client:
-        result = await client.auth.revoke_key(KEY_ID)
+        result = await client.auth.revoke_key(KEY_ID)  # type: ignore[func-returns-value]
     assert route.calls.last.request.method == "DELETE"
     assert result is None
 

@@ -44,6 +44,13 @@ export function StepIdentity({
   const [schema, setSchema] = useState<JsonSchema | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
+  // Shared with `MaxFileSizeField` below (see its `advanced` prop) so the whole Identity panel has
+  // ONE "Show technical details" toggle, not one per control.
+  const [advanced, setAdvanced] = useState(false);
+  // Shared with the SchemaForm's own JSON escape hatch — while it's active, `max_file_size_bytes`
+  // is already editable there (it's part of `values` below), so the dedicated MB widget is hidden
+  // rather than offering a second, easy-to-desync editor for the same value (see MaxFileSizeField).
+  const [jsonMode, setJsonMode] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -126,8 +133,19 @@ export function StepIdentity({
           display: "flex", flexDirection: "column", gap: "10px",
         }}
       >
-        <SchemaForm schema={visibleSchema} values={values} onChange={handleChange} columns={1} />
-        <MaxFileSizeField valueMb={maxSizeMb} onChange={onMaxSizeMbChange} />
+        <SchemaForm
+          schema={visibleSchema}
+          values={values}
+          onChange={handleChange}
+          columns={1}
+          advanced={advanced}
+          onAdvancedChange={setAdvanced}
+          jsonMode={jsonMode}
+          onJsonModeChange={setJsonMode}
+        />
+        {!jsonMode && (
+          <MaxFileSizeField valueMb={maxSizeMb} onChange={onMaxSizeMbChange} advanced={advanced} />
+        )}
       </div>
       <div>
         <Button variant="primary" disabled={!valid} onClick={onNext}>

@@ -155,11 +155,17 @@ export interface SearchHealth {
   index: SearchIndexHealth;
 }
 
-export type HealthVerdictValue = "operational" | "degraded" | "down";
+/** Mirrors the backend's `HealthVerdict` StrEnum — five honest states, not a binary up/down.
+ *  `empty` is NEUTRAL (nothing indexed yet, not a fault); `ingest_unavailable` means new documents
+ *  cannot be ingested while an existing index may still be searchable (not a global outage). */
+export type HealthVerdictValue = "operational" | "empty" | "degraded" | "ingest_unavailable" | "down";
 
 export interface CollectionHealth {
   collection_id: string;
   verdict: HealthVerdictValue;
+  /** A human-readable, jargon-free first line explaining the verdict — the ONLY text the UI should
+   *  show as the headline detail; raw engine errors stay in `ingest.build_error`/`search.build_error`. */
+  reason: string;
   checked_at: string;
   ingest: IngestHealth;
   search: SearchHealth;

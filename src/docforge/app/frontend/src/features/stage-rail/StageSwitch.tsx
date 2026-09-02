@@ -1,6 +1,8 @@
 // ====== Code Summary ======
 // The on/off switch every stage card uses to enable/disable itself — a plain checkbox styled as
-// a pill, disabled (with a tooltip explaining why) for stages that can never be turned off.
+// a pill, disabled (with a tooltip explaining why) for stages that can never be turned off. ON
+// reads in steel: several stages are enabled at once, and forge orange is reserved for the one
+// thing actively being worked, not a static at-rest state — see brand.md.
 
 import { theme } from "../../theme";
 

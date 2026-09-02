@@ -26,6 +26,7 @@ from shared_libs.pipelines.ingest.stages import (
     default_state,
 )
 from shared_libs.pipelines.ingest.stages.models import ChainSpec, ChainStep, StackMethod
+from shared_libs.pipelines.ingest.stages.normalizer import ENGINE_BLOB_VERSION
 
 
 def _assert_lossless(state) -> None:
@@ -170,7 +171,7 @@ def test_stamp_is_current_and_normalize_fast_paths() -> None:
     blob = IngestAssembler.assemble(default_state()).model_dump(mode="json")
     stored = BlobNormalizer.stamp(blob)
 
-    assert stored[BlobNormalizer.STAMP_KEY] == 1
+    assert stored[BlobNormalizer.STAMP_KEY] == ENGINE_BLOB_VERSION
     # A stamped-current blob normalizes to the stripped-but-identical topology (round-trip skipped).
     assert BlobNormalizer.normalize(stored) == blob
     # Stamping is idempotent — re-storing a canonical blob is a no-op.
@@ -190,6 +191,23 @@ def test_stale_blob_missing_structural_wiring_is_healed_whole() -> None:
     healed = BlobNormalizer.normalize(stale)
 
     assert any(node.get("id") == "bundle" for node in healed["nodes"])
+    assert healed == blob
+
+
+def test_stale_blob_missing_address_source_probe_binding_is_rebound() -> None:
+    """Regression — the exact live QA failure. A blob stored BEFORE the intake ContentAddress node
+    gained its ``source_probe`` slot lacks ``bindings['address']['source_probe']``. Even STAMPED as
+    a prior engine version it must heal (the version bump forces it off the fast path), re-emitting
+    the binding so the graph validates (no ``missing_binding`` on 'address')."""
+    blob = IngestAssembler.assemble(default_state()).model_dump(mode="json")
+    stale = copy.deepcopy(blob)
+    del stale["bindings"]["address"]["source_probe"]
+    # Simulate the real stored form: a version stamp from BEFORE the shape change.
+    stale[BlobNormalizer.STAMP_KEY] = ENGINE_BLOB_VERSION - 1
+
+    healed = BlobNormalizer.normalize(stale)
+
+    assert "source_probe" in healed["bindings"]["address"]
     assert healed == blob
 
 

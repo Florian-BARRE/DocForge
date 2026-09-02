@@ -9,7 +9,7 @@ from collections.abc import Sequence
 from typing import Any
 
 # ====== Third-Party Library Imports ======
-from sqlalchemy import delete, or_, select, update
+from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # ====== Internal Project Imports ======
@@ -81,6 +81,34 @@ class DocumentApi:
             .order_by(Document.created_at.desc())
         )
         return list(result.scalars().all())
+
+    @staticmethod
+    async def count_by_collections(
+        session: AsyncSession, collection_ids: Sequence[uuid.UUID]
+    ) -> dict[uuid.UUID, int]:
+        """
+        Return the document count of each collection in ONE grouped query (no per-collection N+1).
+
+        The fleet-dashboard doc-count for every collection at once — a collection with no documents
+        is simply absent from the result map (the caller defaults it to 0), never a missing row error.
+
+        Args:
+            session (AsyncSession): The active session.
+            collection_ids (Sequence[uuid.UUID]): The collections to count (empty → empty map).
+
+        Returns:
+            dict[uuid.UUID, int]: collection id → its document count (collections with 0 omitted).
+        """
+        # 1. Nothing to count — skip the round-trip entirely.
+        if not collection_ids:
+            return {}
+        # 2. One GROUP BY over the scoped set — the whole fleet's counts in a single index scan.
+        result = await session.execute(
+            select(Document.collection_id, func.count())
+            .where(Document.collection_id.in_(collection_ids))
+            .group_by(Document.collection_id)
+        )
+        return {collection_id: count for collection_id, count in result.all()}
 
     @staticmethod
     async def set_status(
