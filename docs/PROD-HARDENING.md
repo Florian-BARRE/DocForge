@@ -188,7 +188,115 @@ structural validator can't cover). It is **on by default** (`WORKER_PREFLIGHT_EN
 - Set `WORKER_PREFLIGHT_ENABLED=false` (+ recreate the worker) only to skip reachability checks
   entirely — e.g. to defer a not-yet-configured provider to run-time failure instead of preflight.
 
-## 8. Final pre-flight
+## 8. Optional TLS reverse proxy
+
+DocForge does **not** terminate TLS by default — `docker-compose.yml` publishes the API in plain
+HTTP (port 10040) on the assumption that something in front of it already handles TLS.
+
+**When NOT to use this section:** if the host/VM, a corporate load balancer, or a platform ingress
+already terminates TLS in front of DocForge, leave the base compose alone. DocForge stays on plain
+HTTP behind that proxy — just make sure the operator's proxy:
+- forwards `X-Forwarded-For` with the real client IP (the app's rate-limiter keys on it — see
+  [§9](#9-rate-limiting) below), and
+- enables the app-level rate limit, since there is no edge limiter of DocForge's own in this case.
+
+**When to use it:** a bare host with a public IP and nothing else terminating TLS. Layer the optional
+`docker-compose.proxy.yml` overlay — a Caddy 2 front door with automatic HTTPS (Let's Encrypt):
+
+```bash
+# project-root .env (compose interpolation, same mechanism as DOCFORGE_TAG):
+DOCFORGE_DOMAIN=docforge.example.com     # A/AAAA record must already point at this host
+DOCFORGE_ACME_EMAIL=ops@example.com      # Let's Encrypt expiry/revocation contact
+
+docker compose -f docker-compose.yml -f docker-compose.proxy.yml --profile full up -d
+```
+
+What it changes:
+- Adds `docforge_caddy`, publishing **80/443** (80 = ACME HTTP-01 challenge + auto HTTP→HTTPS
+  redirect, 443 = the public entry point, TCP and UDP/QUIC).
+- `docforge_app` **stops publishing 10040**: once this overlay is used, 443 on `docforge_caddy` is
+  the only public entry point, so plaintext API access can no longer bypass TLS. Internal/operator
+  access still works via `docker compose exec docforge_app ...`.
+- Caddy's `reverse_proxy` **sets** (not appends) `X-Forwarded-For` to the actual connecting peer and
+  `X-Forwarded-Proto`/`X-Forwarded-Host` accordingly (`services/caddy/Caddyfile`) — any
+  client-supplied `X-Forwarded-For` is discarded rather than trusted, so the app's rate-limiter can
+  key on it safely without needing to parse "last hop only" out of an appendable header.
+- ACME account + certs persist in the `docforge_caddy_data` volume — they are **not** re-fetched on
+  every `docker compose up`, which would otherwise risk Let's Encrypt's rate limits.
+
+Edge rate-limiting is intentionally not added to Caddy — the app's own rate limit
+([§9](#9-rate-limiting)) is keyed on the `X-Forwarded-For` Caddy sets above, and a real Caddy rate
+limiter needs a custom `xcaddy` build, which is more machinery than a TLS-only front door needs.
+
+## 9. Rate limiting
+
+Enable the app's own rate limit in `services/docforge/.env`, then recreate `docforge_app`:
+- `RATE_LIMIT_ENABLED` (default `false`) — off out-of-box so nothing breaks; set `true` in prod.
+- `RATE_LIMIT_PER_MINUTE` (default `600`) — per-caller rolling-minute budget.
+- `RATE_LIMIT_TRUST_FORWARDED_FOR` (default `true`) — key IP-based limiting on the proxy-set
+  `X-Forwarded-For`; set `false` on a direct-exposed deployment where XFF is client-forgeable.
+
+When auth is on, the limiter keys by API-key identity (XFF is ignored); when auth is off, it keys by
+client IP. The high-frequency job-poll/SSE routes, `/health`, `/metrics`, docs and static assets are
+exempt, so the UI is never throttled. It keys on `X-Forwarded-For`, so:
+- **Behind `docker-compose.proxy.yml`:** already correct out of the box — Caddy authoritatively sets
+  that header (see [§8](#8-optional-tls-reverse-proxy)).
+- **Behind your own TLS-terminating proxy/LB:** you must configure it to forward
+  `X-Forwarded-For` with the real client IP yourself, or every request will appear to come from the
+  proxy's own IP and share one limiter bucket.
+- **No proxy at all (direct to 10040):** `X-Forwarded-For` is client-supplied and trivially spoofable
+  — do not rely on it for anything beyond coarse abuse mitigation in that topology.
+
+## 10. Metrics scraping
+
+DocForge exposes app + job-queue metrics at `/metrics` (Prometheus exposition format) on the API
+service. Knobs (`services/docforge/.env`): `METRICS_ENABLED` (default `true`; set `false` to disable
+the endpoint entirely) and `METRICS_SCRAPE_TIMEOUT_SECONDS` (default `5.0`; bounds the infra-gauge
+refresh per scrape). The endpoint is **unauthenticated** — never expose it publicly:
+- Behind `docker-compose.proxy.yml`, do not route it through Caddy's public site block; scrape it
+  over `docforge_net` directly (`http://docforge_app:8000/metrics`) from a Prometheus that also lives
+  on that network, or restrict it at the OS firewall if scraping from outside the Docker network.
+- DocForge does **not** ship a bundled Prometheus/Grafana stack. A minimal external scrape config:
+  ```yaml
+  scrape_configs:
+    - job_name: docforge
+      static_configs:
+        - targets: ["docforge_app:8000"]   # or host:10040 if you still publish it directly
+  ```
+- **Container CPU/RAM/GPU are out of scope for this endpoint** — DocForge exposes application-level
+  metrics only (jobs, queue depth, request latency, etc.), never host/container resource usage. Get
+  those from your own `cAdvisor` / `node-exporter` / `dcgm-exporter` deployment, independent of
+  DocForge.
+
+## 11. Log aggregation
+
+DocForge does not run its own ELK/Loki stack — the app/worker log to **stdout** (via
+`loggerplusplus`, see `LOGGING_CONSOLE_LEVEL` / `LOGGING_LPP_FORMAT` in
+[configuration.md](configuration.md)), exactly what Docker's own logging drivers are built to collect.
+Point the **Docker logging driver** at your external collector instead of adding one to the stack.
+
+Per-service, in whichever compose file you layer last (or a small local override you keep out of git):
+```yaml
+services:
+  docforge_app:
+    logging:
+      driver: loki                # or fluentd, gelf, syslog, journald, awslogs, ...
+      options:
+        loki-url: "https://loki.example.com:3100/loki/api/v1/push"
+```
+Or globally for the whole Docker host, in `/etc/docker/daemon.json` (applies to every container,
+requires `dockerd` restart):
+```json
+{
+  "log-driver": "fluentd",
+  "log-opts": { "fluentd-address": "fluentd.example.com:24224" }
+}
+```
+The `json-file` default (unbounded by default — pair with `max-size`/`max-file` options if you keep
+it) works fine for a single VM without external aggregation; switch drivers only when you have a
+collector to point at.
+
+## 12. Final pre-flight
 
 ```bash
 # both configs still resolve

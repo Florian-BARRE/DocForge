@@ -1,0 +1,28 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# DocForge — optional Caddy TLS-termination front door (see docker-compose.proxy.yml).
+# Auto-HTTPS via Let's Encrypt for DOCFORGE_DOMAIN; HTTP->HTTPS redirect is automatic.
+# DOCFORGE_DOMAIN / DOCFORGE_ACME_EMAIL are injected from the project-root .env — see
+# docs/PROD-HARDENING.md's "Optional TLS reverse proxy" section.
+# ─────────────────────────────────────────────────────────────────────────────
+{
+	email {$DOCFORGE_ACME_EMAIL}
+}
+
+{$DOCFORGE_DOMAIN} {
+	# header_up SETS (replaces), it does not append — any X-Forwarded-For/-Proto the client
+	# sent is discarded, not trusted. This is deliberate: the app's rate-limiter keys on
+	# X-Forwarded-For, and Caddy's default reverse_proxy behavior only APPENDS to a client-
+	# supplied X-Forwarded-For, which would let an external client inject a fake first entry
+	# and spoof its way past the limiter unless the app carefully parsed "last hop only".
+	# Setting it here makes Caddy the sole, authoritative source of both headers instead.
+	reverse_proxy docforge_app:8000 {
+		header_up X-Forwarded-For {remote_host}
+		header_up X-Forwarded-Proto {scheme}
+		header_up X-Forwarded-Host {host}
+	}
+
+	# Edge rate-limiting is intentionally NOT added here — the app already rate-limits
+	# (RATE_LIMIT_ENABLED, see PROD-HARDENING.md) keyed on the X-Forwarded-For set above.
+	# Caddy ships no built-in rate-limit directive; a real one needs a custom xcaddy build,
+	# which is more machinery than this TLS-only front door needs.
+}

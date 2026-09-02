@@ -15,6 +15,7 @@ from shared_libs.services.db import Database
 
 # ====== Local Project Imports ======
 from .libs.health import CollectionHealthService
+from .libs.metrics import MetricsService
 from .libs.search import SearchService
 from .utils.queue import QueueClient
 
@@ -50,3 +51,7 @@ class CONTEXT:
     # ── Collection health (on-demand, zero-spend reachability + build probe) ──
     # Backs GET /collections/{id}/health — builds both graphs, sweeps their providers, rolls up.
     health_service: CollectionHealthService
+
+    # ── Metrics (Prometheus /metrics — infra-gauge refresh + exposition rendering) ──
+    # Backs GET /metrics; the HTTP request series are fed passively by HttpMetricsMiddleware.
+    metrics_service: MetricsService

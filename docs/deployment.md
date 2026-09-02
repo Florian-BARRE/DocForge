@@ -13,6 +13,7 @@ DocForge ships three compose files:
 | `docker-compose.yml` | The base stack — **this is production**. Baked images, data-plane ports **not** published (postgres/redis/qdrant/seaweedfs stay internal to `docforge_net`). |
 | `docker-compose.dev.yml` | Dev overlay — hot reload + publishes the store ports to `localhost` for inspection. |
 | `docker-compose.gpu.yml` | GPU overlay for docling (worker) acceleration. |
+| `docker-compose.proxy.yml` | **Optional** — opt-in Caddy TLS front door (auto-HTTPS) for hosts with no proxy/LB already terminating TLS. Off by default; see [PROD-HARDENING.md §8](PROD-HARDENING.md#8-optional-tls-reverse-proxy). |
 
 **Production start** (no dev overlay):
 

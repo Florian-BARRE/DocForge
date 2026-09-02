@@ -86,6 +86,37 @@ class RUNTIME_CONFIG(EnvConfigLoader):
     # injectable so unit tests drive the generator with a zero interval.
     SSE_POLL_INTERVAL_SECONDS: float = env("SSE_POLL_INTERVAL_SECONDS", cast=float, default=0.75)
 
+    # ───── Rate limiting (in-app, OFF by default) ─────
+    # OFF out-of-box so no deployment ever breaks; enable per the prod runbook. When ON, each caller
+    # may issue at most RATE_LIMIT_PER_MINUTE requests per rolling minute to /api/v1/* — the caller is
+    # keyed by its API key when auth is on, else by client IP. The high-frequency job monitoring
+    # subtree (live SSE stream + the UI's job/queue/worker polls) is EXEMPT so a normal UI session
+    # never trips the limit. Over-budget requests get a 429 + Retry-After.
+    RATE_LIMIT_ENABLED: bool = env("RATE_LIMIT_ENABLED", cast=bool, default=False)
+    # The per-caller budget (requests per rolling minute). Generous by default so a normal UI session
+    # never trips it; lower it to harden a publicly-exposed deployment.
+    RATE_LIMIT_PER_MINUTE: int = env("RATE_LIMIT_PER_MINUTE", cast=int, default=600)
+    # Trust the leftmost X-Forwarded-For hop for IP keying (auth-off mode). DocForge normally sits
+    # behind a reverse proxy that sets XFF, so ON by default — the proxy MUST overwrite (never append)
+    # a client-supplied XFF for this to be spoof-safe. Set false for a direct-exposure deployment
+    # where XFF would be client-forgeable; the transport peer address is then used instead.
+    RATE_LIMIT_TRUST_FORWARDED_FOR: bool = env(
+        "RATE_LIMIT_TRUST_FORWARDED_FOR", cast=bool, default=True
+    )
+
+    # ───── Metrics (Prometheus /metrics, ON by default) ─────
+    # ON out-of-box — the exposition carries NO PII, only ops counters/gauges. /metrics lives outside
+    # /api/v1 so it is EXEMPT from auth (scrapers carry no bearer) and from the rate limiter; operators
+    # MUST network-restrict it at the proxy/firewall (see docs/PROD-HARDENING.md). Set false to hide
+    # the endpoint (it then 404s). Container CPU/RAM is the runtime's cAdvisor concern, not this app.
+    METRICS_ENABLED: bool = env("METRICS_ENABLED", cast=bool, default=True)
+    # Wall-clock cap for one scrape's infra-gauge refresh (arq queue depth + job/worker counts). A
+    # degraded store can never wedge a scrape past this — the HTTP series and the gauge definitions
+    # always render; the infra gauges simply keep their previous value for that scrape.
+    METRICS_SCRAPE_TIMEOUT_SECONDS: float = env(
+        "METRICS_SCRAPE_TIMEOUT_SECONDS", cast=float, default=5.0
+    )
+
     # ───── Document grid (large-scale corpus view) ─────
     # Hard ceiling for one grid query page — the server clamps a larger requested ``limit`` down to
     # this so a client can never demand an unbounded scan of a 100k-document collection.

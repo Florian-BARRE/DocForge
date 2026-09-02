@@ -5,7 +5,7 @@
 # structure grows, never speculatively.
 [project]
 name = "docforge"
-version = "0.9.4"
+version = "0.9.5"
 description = "DocForge clean-slate rewrite — minimal foundation"
 requires-python = ">=3.12"
 dependencies = [
@@ -32,6 +32,8 @@ dependencies = [
     "httpx>=0.28.1",
     # Token counting (chunker) — transitive via langchain-openai anyway; declared for intent
     "tiktoken>=0.13.0",
+    "limits>=3.13",
+    "prometheus-client>=0.21.0",
 ]
 
 # Torch is a transitive dep of docling (worker group). Declared here as a DIRECT dep split across

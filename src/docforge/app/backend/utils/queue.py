@@ -10,6 +10,7 @@ import asyncio
 # ====== Third-Party Library Imports ======
 from arq import create_pool
 from arq.connections import ArqRedis, RedisSettings
+from arq.constants import default_queue_name
 from loggerplusplus import LoggerClass
 
 # ====== Internal Project Imports ======
@@ -111,6 +112,21 @@ class QueueClient(LoggerClass):
         await pool.enqueue_job("backfill_collection_filters", collection_id)
         await pool.enqueue_job("backfill_collection_meta_vectors", collection_id)
         self.logger.info(f"Enqueued filter + meta-vector backfill for collection {collection_id}")
+
+    async def queue_depth(self) -> int:
+        """
+        Return the arq queue backlog — jobs enqueued but not yet claimed by a worker.
+
+        arq holds queued job ids in a Redis sorted set (the default queue name); its cardinality is the
+        unclaimed backlog (a worker removes the id from this set the moment it claims the job). Read for
+        the /metrics ``docforge_arq_queue_depth`` gauge.
+
+        Returns:
+            int: The number of queued, unclaimed jobs (0 when the queue is empty).
+        """
+        # 1. One Redis round-trip: the queue sorted set's cardinality is the pending backlog.
+        pool = await self.__get_pool()
+        return int(await pool.zcard(default_queue_name))
 
     async def close(self) -> None:
         """Close the pool if it was ever opened."""

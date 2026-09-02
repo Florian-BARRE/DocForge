@@ -138,6 +138,11 @@ class JobsFacade(LoggerClass):
         async with self._postgres.session() as session:
             return await JobApi.queue_depth(session, collection_id)
 
+    async def status_counts(self) -> dict[JobStatus, int]:
+        """Return the fleet-wide job count per status — the /metrics state gauges (one grouped read)."""
+        async with self._postgres.session() as session:
+            return await JobApi.status_counts(session)
+
     async def record_event(self, event: JobStageEvent) -> JobStageEvent:
         """Append a stage event to the job's timeline (returns it with its id assigned)."""
         async with self._postgres.session() as session:

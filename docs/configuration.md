@@ -49,6 +49,21 @@ at their `localhost` values here (they're used when running the app straight fro
 | `AUTH_ENABLED` | `false` | **Off by default** — dev + the unit suite run unauthenticated. Set `true` to gate every `/api/v1/*` route (Scalar docs + `/openapi.json` stay public). |
 | `AUTH_ROOT_TOKEN` | `df_dev_root_token_change_me` | Provisioned at startup as the root user's full-access key. **Use a strong value** and rotate it. Required when `AUTH_ENABLED=true`. |
 
+### Rate limiting (app-only)
+
+| Variable | Default | Notes |
+|---|---|---|
+| `RATE_LIMIT_ENABLED` | `false` | **Off by default** — nothing is throttled out-of-box. Set `true` in prod. Limits `/api/v1/*` except the high-frequency job-poll/SSE routes, `/health`, `/metrics`, docs and static (so the UI is never throttled). |
+| `RATE_LIMIT_PER_MINUTE` | `600` | Per-caller rolling-minute budget. Keyed by API-key identity when auth is on, else by client IP. |
+| `RATE_LIMIT_TRUST_FORWARDED_FOR` | `true` | Key IP-based limiting on the proxy-set `X-Forwarded-For`. Set `false` on a **direct-exposed** deployment where XFF is client-forgeable. In-process counter — the limit is **per app instance**; run multiple replicas → use a shared store (not shipped). |
+
+### Metrics (app-only)
+
+| Variable | Default | Notes |
+|---|---|---|
+| `METRICS_ENABLED` | `true` | Exposes `GET /metrics` (Prometheus text; app + job-queue gauges). **Unauthenticated** — network-restrict it (see PROD-HARDENING §10). Set `false` to disable. Not in the OpenAPI document. |
+| `METRICS_SCRAPE_TIMEOUT_SECONDS` | `5.0` | Bounds the infra-gauge refresh (queue depth / job counts / live workers) per scrape. |
+
 ### Logging (all five required)
 
 | Variable | Default | Notes |

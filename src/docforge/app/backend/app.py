@@ -12,6 +12,8 @@ from config import RUNTIME_CONFIG  # noqa: F401 — side-effect import (path reg
 
 # ====== Local Project Imports ======
 from .libs.auth import AuthMiddleware
+from .libs.metrics import HttpMetricsMiddleware
+from .libs.ratelimit import RateLimitMiddleware
 from .lifespan import lifespan
 from .routers import (
     auth_router,
@@ -22,6 +24,7 @@ from .routers import (
     explorer_router,
     health_router,
     jobs_router,
+    metrics_router,
     pipelines_router,
     scalar_router,
     search_router,
@@ -40,16 +43,35 @@ def create_app(
         debug=debug,
     )
 
-    # The global authN gate — a PURE ASGI middleware that runs BEFORE FastAPI parses the request
-    # body, so a missing/revoked bearer yields 401 (never a 422-before-401 on a malformed body). It
-    # gates every /api/v1/* path and injects the principal for the per-endpoint `require` authZ gate.
-    # With AUTH_ENABLED=false it stays transparent (synthetic root). Scalar + /openapi.json stay public.
+    # Middleware nesting is built LIFO: the LAST `add_middleware` call is the OUTERMOST wrapper. CORS
+    # is added last (in entrypoint.py), so it stays outermost. The three gates below nest, from the
+    # request's point of view, as:  CORS → HttpMetrics → Auth → RateLimit → routes.
+    #
+    # 1. Rate limiter (added first → INNERMOST of the three). It runs AFTER AuthMiddleware has resolved
+    #    the principal, so it can key by the caller's API key when auth is on (else by client IP). OFF
+    #    by default → transparent. Only /api/v1/* (minus the job-poll/SSE subtree) is limited.
+    app.add_middleware(RateLimitMiddleware)
+
+    # 2. The global authN gate — a PURE ASGI middleware that runs BEFORE FastAPI parses the request
+    #    body, so a missing/revoked bearer yields 401 (never a 422-before-401 on a malformed body). It
+    #    gates every /api/v1/* path and injects the principal for the per-endpoint `require` authZ gate
+    #    AND for the rate limiter's identity keying. With AUTH_ENABLED=false it stays transparent
+    #    (synthetic root). Scalar + /openapi.json + /metrics stay public (outside /api/v1).
     app.add_middleware(AuthMiddleware)
+
+    # 3. HTTP request metrics (added last of the three → OUTERMOST, inside CORS). Being outer to the
+    #    gates, it counts 401/429 responses too (those short-circuit before routing, so their route
+    #    label is "__unmatched__"). Passive — it only records; GET /metrics serves what it collects.
+    app.add_middleware(HttpMetricsMiddleware)
 
     # Public surfaces — no authentication dependency (both live outside /api/v1, so the authN
     # middleware leaves them untouched: scalar docs + the orchestration liveness probe).
     app.include_router(router=scalar_router, prefix=f"/scalar")
     app.include_router(router=health_router)
+
+    # Ops scrape surface — Prometheus /metrics, also outside /api/v1 (auth- and rate-limit-exempt by
+    # placement; network-restrict it at the proxy). Excluded from the OpenAPI schema.
+    app.include_router(router=metrics_router)
 
     # API v1 — API-key management (create / list / revoke; gated like the rest).
     app.include_router(router=auth_router, prefix="/api/v1")

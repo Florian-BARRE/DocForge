@@ -11,6 +11,7 @@ from loggerplusplus import loggerplusplus
 # ====== Internal Project Imports ======
 from backend import CONTEXT, create_app
 from backend.libs.health import CollectionHealthService
+from backend.libs.metrics import MetricsService
 from backend.libs.search import SearchService
 from backend.utils.queue import QueueClient
 from config import RUNTIME_CONFIG  # MUST be first — registers backend/libs/ on sys.path
@@ -68,6 +69,15 @@ def _build_app() -> FastAPI:
     #     Reuses the shared builder/validator so "does it build?" is answered exactly as a real run.
     CONTEXT.health_service = CollectionHealthService(
         CONTEXT.database, CONTEXT.pipeline_builder, CONTEXT.graph_validator
+    )
+
+    # 3d. Metrics — refreshes the ops infra gauges (arq queue depth, job/worker counts) at scrape
+    #     time and renders the Prometheus exposition (HTTP series fed passively by the middleware).
+    CONTEXT.metrics_service = MetricsService(
+        CONTEXT.database,
+        CONTEXT.queue,
+        scrape_timeout_seconds=RUNTIME_CONFIG.METRICS_SCRAPE_TIMEOUT_SECONDS,
+        worker_alive_threshold_seconds=RUNTIME_CONFIG.WORKER_ALIVE_THRESHOLD_SECONDS,
     )
 
     # 3. Create the FastAPI application with all routers registered.

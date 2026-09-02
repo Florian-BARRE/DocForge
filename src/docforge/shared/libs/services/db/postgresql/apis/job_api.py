@@ -529,6 +529,23 @@ class JobApi:
         return counts.get(JobStatus.PENDING, 0), counts.get(JobStatus.RUNNING, 0)
 
     @staticmethod
+    async def status_counts(session: AsyncSession) -> dict[JobStatus, int]:
+        """
+        Count all jobs grouped by status — the fleet-wide state histogram for /metrics gauges.
+
+        One grouped count over the whole jobs table (every status, not just the backlog), so the
+        pending / running / failed gauges come from a single round-trip.
+
+        Args:
+            session (AsyncSession): The active DB session.
+
+        Returns:
+            dict[JobStatus, int]: Job count per status (statuses with no rows are absent).
+        """
+        result = await session.execute(select(Job.status, func.count(Job.id)).group_by(Job.status))
+        return {status: int(count) for status, count in result.all()}
+
+    @staticmethod
     async def list_stale(session: AsyncSession, older_than_seconds: float) -> list[Job]:
         """
         Return RUNNING jobs whose ``updated_at`` froze past the threshold — the reap candidates.
