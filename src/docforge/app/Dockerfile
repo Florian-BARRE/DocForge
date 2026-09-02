@@ -68,7 +68,7 @@ RUN npm run build
 #     /app/app/frontend/dist  -> the compiled UI bundle, built above (not host state)
 # - Serve the API with uvicorn as the container's process
 ###############################################################################
-FROM python:3.12-slim-bookworm AS runtime
+FROM python:3.14-slim-bookworm AS runtime
 
 # Runtime best practices:
 # - PYTHONDONTWRITEBYTECODE: no .pyc files written to disk
