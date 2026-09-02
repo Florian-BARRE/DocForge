@@ -5,6 +5,7 @@
 
 # ====== Standard Library Imports ======
 import uuid
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from decimal import Decimal
 
@@ -70,6 +71,13 @@ class JobsFacade(LoggerClass):
         """Return the finish time of the collection's most recent DONE ingest, or None."""
         async with self._postgres.session() as session:
             return await JobApi.last_successful_ingest_at(session, collection_id)
+
+    async def last_successful_ingest_at_by_collections(
+        self, collection_ids: Sequence[uuid.UUID]
+    ) -> dict[uuid.UUID, datetime]:
+        """Each collection's last successful ingest in ONE grouped query — the fleet last-ingest."""
+        async with self._postgres.session() as session:
+            return await JobApi.last_successful_ingest_at_by_collections(session, collection_ids)
 
     async def mark_running(
         self, job_id: uuid.UUID, worker_id: str, attempt: int, started_at: datetime
