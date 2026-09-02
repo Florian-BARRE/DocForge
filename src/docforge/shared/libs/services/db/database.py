@@ -16,6 +16,7 @@ from shared_libs.services.db.s3 import S3Client
 
 # ====== Local Project Imports ======
 from .facades import (
+    AuditFacade,
     AuthFacade,
     CollectionsFacade,
     CollectionTransferFacade,
@@ -49,6 +50,7 @@ class Database(LoggerClass):
         transfer (CollectionTransferFacade): The collection export/import store gateway (streamed
             reads, id-preserving restore writes, rollback).
         transfer_tracker (TransferTrackerFacade): The collection-transfer tracking-row lifecycle.
+        audit (AuditFacade): The append-only audit trail (record, keyset read, retention prune).
     """
 
     def __init__(self, postgres: PostgresClient, qdrant: QdrantClient, s3: S3Client) -> None:
@@ -76,6 +78,7 @@ class Database(LoggerClass):
         self.storage = StorageFootprintFacade(postgres, qdrant)
         self.transfer = CollectionTransferFacade(postgres, qdrant, s3)
         self.transfer_tracker = TransferTrackerFacade(postgres)
+        self.audit = AuditFacade(postgres)
         self.logger.info(f"Database facade ready (postgres + qdrant + s3)")
 
     async def ensure_object_store(self) -> None:

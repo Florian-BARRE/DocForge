@@ -11,6 +11,9 @@ from ._shared import (
     SourceKind,
 )
 
+# ------------------- Audit models ------------------- #
+from .audit import AuditEntry, AuditPage
+
 # ------------------- Auth models ------------------- #
 from .auth import CreatedKey, CreateKeyRequest, KeyInfo, RotateKeyRequest
 
@@ -99,6 +102,9 @@ __all__ = [
     "DocumentStatus",
     "EnrichmentKind",
     "EnrichmentStatus",
+    # Audit
+    "AuditEntry",
+    "AuditPage",
     # Auth
     "CreateKeyRequest",
     "RotateKeyRequest",

@@ -42,10 +42,10 @@ class RateLimitKeyResolver:
             return f"key:{principal.key.id}"
 
         # 2. No identity (auth off / synthetic root) → key by the resolved client IP.
-        return f"ip:{RateLimitKeyResolver._client_ip(scope, trust_forwarded_for)}"
+        return f"ip:{RateLimitKeyResolver.client_ip(scope, trust_forwarded_for)}"
 
     @staticmethod
-    def _client_ip(scope: Scope, trust_forwarded_for: bool) -> str:
+    def client_ip(scope: Scope, trust_forwarded_for: bool) -> str:
         """
         Resolve the caller's IP — the leftmost trusted X-Forwarded-For hop, else the transport peer.
 

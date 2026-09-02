@@ -7,6 +7,7 @@ from mcp.server.fastmcp import FastMCP
 
 # ====== Local Project Imports ======
 from . import (
+    audit,
     auth,
     blobs,
     collections,
@@ -31,6 +32,7 @@ _MODULES = (
     blobs,
     pipelines,
     transfers,
+    audit,
 )
 
 

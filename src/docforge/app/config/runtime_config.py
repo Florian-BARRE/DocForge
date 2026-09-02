@@ -141,6 +141,16 @@ class RUNTIME_CONFIG(EnvConfigLoader):
     # never be dumped unbounded in one call.
     JOBS_MAX_PAGE_SIZE: int = env("JOBS_MAX_PAGE_SIZE", cast=int, default=500)
 
+    # ───── Audit trail ─────
+    # Record one append-only audit_log row per mutating /api/v1 request. ON out-of-box (the trail is
+    # observability, never a correctness gate — its writes are fail-safe: a DB error is logged and
+    # swallowed, never surfaced to the user). Set false for a transparent passthrough (no rows written).
+    AUDIT_ENABLED: bool = env("AUDIT_ENABLED", cast=bool, default=True)
+    # Hard ceiling for one GET /audit page — the server clamps a larger requested ``limit`` down to
+    # this (and defaults to it), so a client can never demand an unbounded scan of the append-only
+    # audit table. The endpoint keyset-paginates, so a caller walks the whole trail via next_cursor.
+    AUDIT_MAX_PAGE_SIZE: int = env("AUDIT_MAX_PAGE_SIZE", cast=int, default=200)
+
     # A worker whose heartbeat is fresher than this reads as ``alive`` in the monitoring view. MUST
     # stay >> WORKER_HEARTBEAT_INTERVAL_SECONDS (worker beats ~every 10s): 30s = three missed ticks,
     # so a stale value means the process is gone, not merely idle.

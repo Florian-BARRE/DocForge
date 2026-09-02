@@ -11,12 +11,14 @@ from fastapi import FastAPI
 from config import RUNTIME_CONFIG  # noqa: F401 — side-effect import (path registration)
 
 # ====== Local Project Imports ======
+from .libs.audit import AuditMiddleware
 from .libs.auth import AuthMiddleware
 from .libs.metrics import HttpMetricsMiddleware
 from .libs.ratelimit import RateLimitMiddleware
 from .libs.requestid import RequestIdMiddleware
 from .lifespan import lifespan
 from .routers import (
+    audit_router,
     auth_router,
     blobs_router,
     collections_router,
@@ -46,27 +48,37 @@ def create_app(
 
     # Middleware nesting is built LIFO: the LAST `add_middleware` call is the OUTERMOST wrapper. CORS
     # is added last (in entrypoint.py), so it stays outermost. The gates below nest, from the
-    # request's point of view, as:  CORS → HttpMetrics → RequestId → Auth → RateLimit → routes.
+    # request's point of view, as:
+    #   CORS → HttpMetrics → RequestId → Auth → RateLimit → Audit → routes.
     #
-    # 1. Rate limiter (added first → INNERMOST). It runs AFTER AuthMiddleware has resolved
-    #    the principal, so it can key by the caller's API key when auth is on (else by client IP). OFF
-    #    by default → transparent. Only /api/v1/* (minus the job-poll/SSE subtree) is limited.
+    # 1. Audit trail (added first → INNERMOST, inside RateLimit). It records one row per mutating
+    #    /api/v1 request AFTER it has been routed and answered. Innermost is deliberate: it needs the
+    #    principal Auth injected (actor) AND must run only for requests that passed RateLimit — a
+    #    throttled 429 is not spammed into the trail, and every audited request has a real route
+    #    TEMPLATE for its `path` (never a raw-id path). It still records routed 4xx/5xx. Its write is
+    #    fail-safe (errors logged + swallowed) so audit can never affect the request. AUDIT_ENABLED
+    #    (default true) toggles it; off → transparent passthrough.
+    app.add_middleware(AuditMiddleware)
+
+    # 2. Rate limiter (added → inner of Auth, outer of Audit). It runs AFTER AuthMiddleware has
+    #    resolved the principal, so it can key by the caller's API key when auth is on (else by client
+    #    IP). OFF by default → transparent. Only /api/v1/* (minus the job-poll/SSE subtree) is limited.
     app.add_middleware(RateLimitMiddleware)
 
-    # 2. The global authN gate — a PURE ASGI middleware that runs BEFORE FastAPI parses the request
+    # 3. The global authN gate — a PURE ASGI middleware that runs BEFORE FastAPI parses the request
     #    body, so a missing/revoked bearer yields 401 (never a 422-before-401 on a malformed body). It
     #    gates every /api/v1/* path and injects the principal for the per-endpoint `require` authZ gate
-    #    AND for the rate limiter's identity keying. With AUTH_ENABLED=false it stays transparent
-    #    (synthetic root). Scalar + /openapi.json + /metrics stay public (outside /api/v1).
+    #    AND for the rate limiter's identity keying AND for the audit actor. With AUTH_ENABLED=false it
+    #    stays transparent (synthetic root). Scalar + /openapi.json + /metrics stay public (outside /api/v1).
     app.add_middleware(AuthMiddleware)
 
-    # 3. Correlation id (added here → OUTER to Auth + RateLimit, INNER to HttpMetrics). It must be
+    # 4. Correlation id (added here → OUTER to Auth + RateLimit, INNER to HttpMetrics). It must be
     #    outside both gates so their short-circuit 401/429 responses are emitted INSIDE the correlation
     #    context (those log lines carry the id) AND still get the `X-Request-ID` header stamped on the
     #    way out. Always-on, zero-config: it binds an inbound or freshly-minted id for the request.
     app.add_middleware(RequestIdMiddleware)
 
-    # 4. HTTP request metrics (added last → OUTERMOST, inside CORS). Being outer to the
+    # 5. HTTP request metrics (added last → OUTERMOST, inside CORS). Being outer to the
     #    gates, it counts 401/429 responses too (those short-circuit before routing, so their route
     #    label is "__unmatched__"). Passive — it only records; GET /metrics serves what it collects.
     app.add_middleware(HttpMetricsMiddleware)
@@ -105,6 +117,9 @@ def create_app(
 
     # API v1 — hybrid retrieval search over a collection.
     app.include_router(router=search_router, prefix="/api/v1")
+
+    # API v1 — the append-only audit trail read surface (ROOT/full-access only).
+    app.include_router(router=audit_router, prefix="/api/v1")
 
     return app
 

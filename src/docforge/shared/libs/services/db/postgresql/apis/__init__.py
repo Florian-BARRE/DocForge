@@ -9,6 +9,7 @@ from .job_api import JobApi
 from .auth_api import AuthApi
 from .storage_footprint_api import StorageFootprintApi
 from .transfer_api import TransferApi
+from .audit_api import AuditApi
 
 # ---------------------- Query spec (grid filter/sort) ---------------------- #
 from .document_query_spec import (
@@ -31,6 +32,7 @@ __all__ = [
     "AuthApi",
     "StorageFootprintApi",
     "TransferApi",
+    "AuditApi",
     "DocumentQuerySpec",
     "MetadataCondition",
     "MetadataOp",

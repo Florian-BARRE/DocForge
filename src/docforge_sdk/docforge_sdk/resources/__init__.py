@@ -1,6 +1,9 @@
 # ------------------- Bases ------------------- #
 from ._base import AsyncResource, SyncResource
 
+# ------------------- Audit resource ------------------- #
+from .audit import AsyncAudit, SyncAudit
+
 # ------------------- Auth resource ------------------- #
 from .auth import AsyncAuth, SyncAuth
 
@@ -35,6 +38,8 @@ from .transfers import AsyncTransfers, SyncTransfers
 __all__ = [
     "AsyncResource",
     "SyncResource",
+    "AsyncAudit",
+    "SyncAudit",
     "AsyncAuth",
     "SyncAuth",
     "AsyncHealth",

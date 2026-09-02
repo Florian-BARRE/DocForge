@@ -23,6 +23,7 @@ from .auth_facade import AuthFacade
 from .storage_footprint_facade import StorageFootprintFacade
 from .transfer_facade import CollectionTransferFacade
 from .transfer_tracker_facade import TransferTrackerFacade
+from .audit_facade import AuditFacade
 
 # ------------------- Public API ------------------- #
 __all__ = [
@@ -48,4 +49,5 @@ __all__ = [
     "StorageFootprintFacade",
     "CollectionTransferFacade",
     "TransferTrackerFacade",
+    "AuditFacade",
 ]

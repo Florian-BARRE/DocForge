@@ -76,6 +76,18 @@ class RUNTIME_CONFIG(EnvConfigLoader):
         "WORKER_TRANSFER_GC_INTERVAL_MINUTES", cast=int, default=15
     )
 
+    # ───── Audit-log retention ─────
+    # How long an audit_log row is kept before the retention cron prunes it (DAYS). 0 = KEEP FOREVER
+    # (the default): when 0 the prune cron is not even registered, so an out-of-box deployment never
+    # deletes audit history. Set >0 (e.g. 365) to age out rows older than N days.
+    AUDIT_RETENTION_DAYS = env("AUDIT_RETENTION_DAYS", cast=int, default=0)
+    # Master switch for the audit retention sweep. ON by default, but a no-op unless AUDIT_RETENTION_DAYS
+    # > 0 (with retention at 0 the cron is not registered at all). Disable to skip the sweep entirely.
+    WORKER_AUDIT_GC_ENABLED = env("WORKER_AUDIT_GC_ENABLED", cast=bool, default=True)
+    # Audit-GC cron cadence (minutes): the prune runs on every Nth minute of the hour. 60 → hourly. It
+    # also runs once at startup so a backlog left while retention was disabled is cleared promptly.
+    WORKER_AUDIT_GC_INTERVAL_MINUTES = env("WORKER_AUDIT_GC_INTERVAL_MINUTES", cast=int, default=60)
+
     # ───── Stores — client tuning ─────
     # Per-request Qdrant timeout. The qdrant-client default (5s) is too low for heavy vector upserts
     # indexed with wait=true; 60s covers a heavy batch. Passed into QdrantClient at construction.

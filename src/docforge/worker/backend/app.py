@@ -15,6 +15,7 @@ from .libs.jobs import (
     backfill_collection_filters,
     backfill_collection_meta_vectors,
     export_collection,
+    gc_audit_log,
     gc_expired_transfers,
     import_collection,
     ingest_document,
@@ -53,6 +54,16 @@ def create_worker_settings() -> type:
         if RUNTIME_CONFIG.WORKER_TRANSFER_GC_ENABLED
         else []
     )
+    # The audit retention sweep prunes rows older than AUDIT_RETENTION_DAYS every
+    # WORKER_AUDIT_GC_INTERVAL_MINUTES AND once at startup. It is only registered when GC is enabled
+    # AND retention is a positive window — with retention at 0 (keep-forever, the default) there is
+    # no cron at all, so an out-of-box deployment never deletes audit history.
+    audit_gc_minutes = set(range(0, 60, max(1, RUNTIME_CONFIG.WORKER_AUDIT_GC_INTERVAL_MINUTES)))
+    audit_gc_crons = (
+        [cron(with_correlation(gc_audit_log), minute=audit_gc_minutes, run_at_startup=True)]
+        if RUNTIME_CONFIG.WORKER_AUDIT_GC_ENABLED and RUNTIME_CONFIG.AUDIT_RETENTION_DAYS > 0
+        else []
+    )
 
     class WorkerSettings:
         """The queue server: listens on Redis, runs up to max_jobs tasks in parallel."""
@@ -64,7 +75,7 @@ def create_worker_settings() -> type:
             with_correlation(export_collection),
             with_correlation(import_collection),
         ]
-        cron_jobs = reaper_crons + transfer_gc_crons
+        cron_jobs = reaper_crons + transfer_gc_crons + audit_gc_crons
         on_startup = startup
         on_shutdown = shutdown
         redis_settings = RedisSettings.from_dsn(RUNTIME_CONFIG.REDIS_URL)

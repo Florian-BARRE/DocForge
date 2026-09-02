@@ -37,6 +37,9 @@ from .health.router import router as health_router
 # -------------------- Metrics (Prometheus scrape endpoint) ------------------- #
 from .metrics.router import router as metrics_router
 
+# -------------------- Audit (append-only trail read surface) ------------------- #
+from .audit.router import router as audit_router
+
 # ------------------- Public API ------------------- #
 __all__ = [
     "auth_router",
@@ -52,4 +55,5 @@ __all__ = [
     "scalar_router",
     "health_router",
     "metrics_router",
+    "audit_router",
 ]

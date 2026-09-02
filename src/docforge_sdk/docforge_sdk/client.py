@@ -9,6 +9,7 @@ from types import TracebackType
 # ====== Local Project Imports ======
 from ._transport_async import AsyncTransport
 from ._transport_sync import SyncTransport
+from .resources.audit import AsyncAudit, SyncAudit
 from .resources.auth import AsyncAuth, SyncAuth
 from .resources.blobs import AsyncBlobs, SyncBlobs
 from .resources.collections import AsyncCollections, SyncCollections
@@ -36,6 +37,7 @@ class AsyncClient:
         blobs (AsyncBlobs): Content-addressed blob fetch.
         pipelines (AsyncPipelines): Pipeline discovery + design.
         transfers (AsyncTransfers): Collection export/import.
+        audit (AsyncAudit): Root-only audit-trail reads.
     """
 
     def __init__(self, base_url: str, timeout: float = 30.0, api_token: str = "") -> None:
@@ -48,6 +50,7 @@ class AsyncClient:
             api_token (str): Bearer token; empty means unauthenticated requests.
         """
         self._transport = AsyncTransport(base_url, timeout, api_token)
+        self.audit = AsyncAudit(self._transport)
         self.auth = AsyncAuth(self._transport)
         self.health = AsyncHealth(self._transport)
         self.collections = AsyncCollections(self._transport)
@@ -92,6 +95,7 @@ class Client:
         blobs (SyncBlobs): Content-addressed blob fetch.
         pipelines (SyncPipelines): Pipeline discovery + design.
         transfers (SyncTransfers): Collection export/import.
+        audit (SyncAudit): Root-only audit-trail reads.
     """
 
     def __init__(self, base_url: str, timeout: float = 30.0, api_token: str = "") -> None:
@@ -104,6 +108,7 @@ class Client:
             api_token (str): Bearer token; empty means unauthenticated requests.
         """
         self._transport = SyncTransport(base_url, timeout, api_token)
+        self.audit = SyncAudit(self._transport)
         self.auth = SyncAuth(self._transport)
         self.health = SyncHealth(self._transport)
         self.collections = SyncCollections(self._transport)

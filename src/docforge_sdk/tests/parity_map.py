@@ -9,6 +9,7 @@
 from pydantic import BaseModel
 
 # ====== Local Project Imports ======
+from docforge_sdk.models.audit import AuditEntry, AuditPage
 from docforge_sdk.models.auth import CreatedKey, CreateKeyRequest, KeyInfo, RotateKeyRequest
 from docforge_sdk.models.collections import (
     BulkReingestAccepted,
@@ -69,6 +70,9 @@ from docforge_sdk.models.transfers import TransferAccepted, TransferStatus
 # Maps the OpenAPI component-schema NAME to the SDK model that mirrors it. A handful of SDK classes
 # drop the backend's "Model" suffix (FieldSpec, SearchTarget, SearchHit), so the key is authoritative.
 MODELS: dict[str, type[BaseModel]] = {
+    # Audit
+    "AuditEntry": AuditEntry,
+    "AuditPage": AuditPage,
     # Auth
     "CreateKeyRequest": CreateKeyRequest,
     "RotateKeyRequest": RotateKeyRequest,

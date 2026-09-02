@@ -31,6 +31,7 @@ from .chunks import Chunk, ChunkBlock, ChunkMetadata, EntityMention
 
 # ---------------------- Observability ---------------------- #
 from .observability import (
+    AuditLog,
     CollectionTransfer,
     ConfigVersion,
     Job,
@@ -83,6 +84,7 @@ __all__ = [
     "JobStatus",
     "JobStageEvent",
     "WorkerHeartbeat",
+    "AuditLog",
     "ConfigVersion",
     "CollectionTransfer",
     "TransferKind",

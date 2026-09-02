@@ -3,6 +3,9 @@ from .job import Job, JobStatus
 from .job_stage_event import JobStageEvent
 from .worker_heartbeat import WorkerHeartbeat
 
+# ---------------------- Audit trail ---------------------- #
+from .audit_log import AuditLog
+
 # ---------------------- Config history ---------------------- #
 from .config_version import ConfigVersion
 
@@ -15,6 +18,7 @@ __all__ = [
     "JobStatus",
     "JobStageEvent",
     "WorkerHeartbeat",
+    "AuditLog",
     "ConfigVersion",
     "CollectionTransfer",
     "TransferKind",

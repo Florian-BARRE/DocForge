@@ -27,6 +27,9 @@ from .models._shared import (
     SourceKind,
 )
 
+# ------------------- Audit models ------------------- #
+from .models.audit import AuditEntry, AuditPage
+
 # ------------------- Auth models ------------------- #
 from .models.auth import CreatedKey, CreateKeyRequest, KeyInfo, RotateKeyRequest
 
@@ -119,6 +122,9 @@ __all__ = [
     "DocumentStatus",
     "EnrichmentKind",
     "EnrichmentStatus",
+    # Audit
+    "AuditEntry",
+    "AuditPage",
     # Auth
     "CreateKeyRequest",
     "RotateKeyRequest",

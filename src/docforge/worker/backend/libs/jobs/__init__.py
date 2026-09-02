@@ -9,6 +9,9 @@ from .reaper import reap_stuck_jobs
 from .transfer import export_collection, import_collection
 from .transfer_gc import gc_expired_transfers
 
+# ---------------------- Audit retention ---------------------- #
+from .audit_gc import gc_audit_log
+
 # ---------------------- Live progress ---------------------- #
 from .progress import JobProgressRecorder
 
@@ -28,6 +31,7 @@ __all__ = [
     "export_collection",
     "import_collection",
     "gc_expired_transfers",
+    "gc_audit_log",
     "JobProgressRecorder",
     "CancellationGuard",
     "JobCancelledError",
