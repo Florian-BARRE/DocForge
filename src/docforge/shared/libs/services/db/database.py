@@ -16,6 +16,7 @@ from shared_libs.services.db.s3 import S3Client
 
 # ====== Local Project Imports ======
 from .facades import (
+    ArtifactCacheFacade,
     AuditFacade,
     AuthFacade,
     CollectionsFacade,
@@ -40,6 +41,7 @@ class Database(LoggerClass):
     Attributes:
         collections (CollectionsFacade): Collection lifecycle (create fail-fast, config, delete).
         ingestion (IngestionFacade): The worker's persistence path (admit, blobs, save, index).
+        artifact_cache (ArtifactCacheFacade): The per-collection stage-artifact cache (hook I/O + GC).
         documents (DocumentsFacade): Reading, inspection (raw/enriched IR, chunks), deletion.
         enablement (EnablementFacade): Reversible enable/disable of documents/chunks (flag + payload).
         filters (FilterSyncFacade): Denormalise document-scope filterable metadata onto chunk points.
@@ -71,6 +73,7 @@ class Database(LoggerClass):
         # 2. Wire each domain façade with exactly the stores it needs.
         self.collections = CollectionsFacade(postgres, qdrant, s3)
         self.ingestion = IngestionFacade(postgres, qdrant, s3)
+        self.artifact_cache = ArtifactCacheFacade(postgres, s3)
         self.documents = DocumentsFacade(postgres, qdrant, s3)
         self.enablement = EnablementFacade(postgres, qdrant)
         self.filters = FilterSyncFacade(postgres, qdrant)

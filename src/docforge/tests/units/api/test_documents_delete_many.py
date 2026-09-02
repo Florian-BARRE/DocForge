@@ -63,6 +63,7 @@ def _patch_apis(
     monkeypatch.setattr(
         df_module.BlobApi, "collect_hashes_for_documents", AsyncMock(return_value=["h"])
     )
+    monkeypatch.setattr(df_module.ArtifactCacheApi, "delete_for_documents", AsyncMock())
     monkeypatch.setattr(df_module.BlobApi, "find_unreferenced", AsyncMock(return_value=orphans))
     monkeypatch.setattr(df_module.BlobApi, "delete_rows", AsyncMock())
     monkeypatch.setattr(df_module.S3ObjectApi, "delete_many", AsyncMock())

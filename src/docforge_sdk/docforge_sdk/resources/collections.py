@@ -220,6 +220,7 @@ class AsyncCollections(AsyncResource, _CollectionsSpecs):
         Args:
             collection_id (str): The collection to re-ingest.
             request (BulkReingestRequest | None): The subset to re-run; omit for the whole collection.
+                Set ``request.force`` to bypass the stage cache and recompute every stage.
 
         Returns:
             BulkReingestAccepted: matched / enqueued / capped + one job handle per enqueued run.
@@ -331,6 +332,7 @@ class SyncCollections(SyncResource, _CollectionsSpecs):
         Args:
             collection_id (str): The collection to re-ingest.
             request (BulkReingestRequest | None): The subset to re-run; omit for the whole collection.
+                Set ``request.force`` to bypass the stage cache and recompute every stage.
 
         Returns:
             BulkReingestAccepted: matched / enqueued / capped + one job handle per enqueued run.

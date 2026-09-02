@@ -22,6 +22,7 @@ class BlobKind(StrEnum):
     CANONICAL_PDF = "canonical_pdf"  # the PDF view after conversion
     PAGE_RENDER = "page_render"  # a rasterized page image
     FIGURE_CROP = "figure_crop"  # a cropped figure image
+    STAGE_ARTIFACT = "stage_artifact"  # a cached pipeline stage output (see artifact_cache)
 
 
 class Blob(Base, CreatedAtMixin):

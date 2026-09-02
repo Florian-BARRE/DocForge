@@ -3,6 +3,7 @@ from .collection_api import CollectionApi
 from .document_api import DocumentApi
 from .document_query import DocumentQueryApi
 from .blob_api import BlobApi
+from .artifact_cache_api import ArtifactCacheApi
 from .ir_api import IRApi
 from .chunk_api import ChunkApi
 from .job_api import JobApi
@@ -27,6 +28,7 @@ __all__ = [
     "DocumentApi",
     "DocumentQueryApi",
     "BlobApi",
+    "ArtifactCacheApi",
     "IRApi",
     "ChunkApi",
     "JobApi",

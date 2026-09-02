@@ -61,7 +61,7 @@ class QueueClient(LoggerClass):
         correlation_id = CorrelationContext.get()
         return {"correlation_id": correlation_id} if correlation_id else {}
 
-    async def enqueue_ingest(self, document_id: str, job_id: str) -> None:
+    async def enqueue_ingest(self, document_id: str, job_id: str, force: bool = False) -> None:
         """
         Enqueue one ingestion — the message carries IDS ONLY (retry-safe, light).
 
@@ -76,12 +76,16 @@ class QueueClient(LoggerClass):
         Args:
             document_id (str): The admitted document's UUID.
             job_id (str): The job row driving the lifecycle.
+            force (bool): When True, ride a ``force`` task kwarg so the worker skips the stage cache
+                (a full recompute). A normal task kwarg, never a reserved arq control kwarg.
         """
         pool = await self.__get_pool()
         await pool.enqueue_job(
-            "ingest_document", document_id, job_id, **self.__correlation_kwargs()
+            "ingest_document", document_id, job_id, force=force, **self.__correlation_kwargs()
         )
-        self.logger.info(f"Enqueued ingestion for document {document_id} (job {job_id})")
+        self.logger.info(
+            f"Enqueued ingestion for document {document_id} (job {job_id}, force={force})"
+        )
 
     async def enqueue_export(self, collection_id: str, transfer_id: str) -> None:
         """

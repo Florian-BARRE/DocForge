@@ -21,6 +21,11 @@ class BulkReingestRequest(BaseModel):
         default=None,
         description="Explicit document UUIDs to re-run; omit for the whole collection.",
     )
+    force: bool = Field(
+        default=False,
+        description="Bypass the stage cache and recompute every stage from scratch (no cache "
+        "read/write). Use to rebuild after a code change that did not bump a node's CACHE_VERSION.",
+    )
 
 
 class ReingestJobHandle(BaseModel):

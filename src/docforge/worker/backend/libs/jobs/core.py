@@ -14,6 +14,7 @@ from typing import Any
 
 # ====== Local Project Imports ======
 from persistence import RunTranslator
+from runner.cache import StageCacheHook
 
 # ====== Internal Project Imports (worker) ======
 from backend.context import CONTEXT
@@ -89,7 +90,9 @@ def _contract_from_rows(collection: Any, schema: list[MetadataField]) -> Collect
     )
 
 
-async def ingest_document(ctx: dict[str, Any], document_id: str, job_id: str) -> None:
+async def ingest_document(
+    ctx: dict[str, Any], document_id: str, job_id: str, force: bool = False
+) -> None:
     """
     Execute one ingestion end to end: rehydrate → run → translate → persist.
 
@@ -97,6 +100,8 @@ async def ingest_document(ctx: dict[str, Any], document_id: str, job_id: str) ->
         ctx (dict): arq's context dict (unused — services live on CONTEXT).
         document_id (str): The admitted document's UUID (the queue carries ids only).
         job_id (str): The job row driving the lifecycle/status.
+        force (bool): When True, build NO stage-cache hook — a full recompute that reads nothing
+            from and writes nothing to the artifact cache (the reingest ``force=true`` path).
     """
     database, s3, runner = CONTEXT.database, CONTEXT.s3, CONTEXT.runner
     doc_uuid, job_uuid = uuid.UUID(document_id), uuid.UUID(job_id)
@@ -172,6 +177,14 @@ async def ingest_document(ctx: dict[str, Any], document_id: str, job_id: str) ->
             CONTEXT.job_timeout_seconds,
             CONTEXT.RUNTIME_CONFIG.WORKER_JOB_TIMEOUT_MAX_SECONDS,
         )
+        # Stage cache: attached ONLY when enabled AND this is not a forced full recompute. When it is
+        # None the engine runs byte-for-byte as if the cache did not exist. A cacheable stage (parse)
+        # is served from / stored into the per-collection cache; the report surfaces hit/miss/stored.
+        cache_hook = (
+            StageCacheHook(blob, document.collection_id, doc_uuid, database)
+            if CONTEXT.RUNTIME_CONFIG.WORKER_CACHE_ENABLED and not force
+            else None
+        )
         bundle, _record = await runner.run(
             blob,
             source,
@@ -179,7 +192,10 @@ async def ingest_document(ctx: dict[str, Any], document_id: str, job_id: str) ->
             timeout_seconds=run_budget,
             progress_callback=guarded_progress,
             preflight_enabled=CONTEXT.RUNTIME_CONFIG.WORKER_PREFLIGHT_ENABLED,
+            cache_hook=cache_hook,
         )
+        if cache_hook is not None and cache_hook.report:
+            CONTEXT.logger.info(f"Stage cache for document {document_id}: {cache_hook.report}")
         strategy = next(
             (
                 node.get("kind", "")

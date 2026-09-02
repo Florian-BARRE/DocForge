@@ -12,7 +12,7 @@ from .collections import Collection, MetadataField
 from .documents import Document, DocumentMetadata, DocumentStatus, Page, SourceKind
 
 # ---------------------- Blobs ---------------------- #
-from .blobs import Blob, BlobKind
+from .blobs import ArtifactCache, ArtifactType, Blob, BlobKind
 
 # ---------------------- IR (parse + enrich) ---------------------- #
 from .ir import (
@@ -67,6 +67,8 @@ __all__ = [
     # blobs
     "Blob",
     "BlobKind",
+    "ArtifactCache",
+    "ArtifactType",
     # ir
     "Block",
     "BlockTable",

@@ -60,6 +60,7 @@ class BulkReingestService(LoggerClass):
         collection: Collection,
         matched_ids: Sequence[uuid.UUID],
         ceiling: int,
+        force: bool = False,
     ) -> CappedFanout:
         """
         Cap an already-resolved target set, fetch the kept documents, and fan out one job each.
@@ -73,6 +74,7 @@ class BulkReingestService(LoggerClass):
             collection (Collection): The target collection (its job budget caps arq's outer timeout).
             matched_ids (Sequence[uuid.UUID]): The resolved, already-authorised target ids.
             ceiling (int): The per-call fan-out ceiling.
+            force (bool): When True, each run bypasses the stage cache (full recompute).
 
         Returns:
             CappedFanout: matched / enqueued / capped + the ceiling + one handle per enqueued run.
@@ -87,7 +89,7 @@ class BulkReingestService(LoggerClass):
 
         # 2. Fetch the kept documents and fan out one full-pipeline job each.
         documents = await self._database.documents.get_by_ids(targets)
-        handles = await self.enqueue(collection, documents)
+        handles = await self.enqueue(collection, documents, force=force)
         return CappedFanout(
             matched=len(matched_ids),
             enqueued=len(handles),
@@ -100,6 +102,7 @@ class BulkReingestService(LoggerClass):
         self,
         collection: Collection,
         documents: Sequence[Document],
+        force: bool = False,
     ) -> list[ReingestJobHandle]:
         """
         Create + enqueue one full re-ingestion job per target document.
@@ -111,6 +114,7 @@ class BulkReingestService(LoggerClass):
         Args:
             collection (Collection): The target collection (its job budget caps arq's outer timeout).
             documents (Sequence[Document]): The already-resolved, already-authorised targets.
+            force (bool): When True, each run bypasses the stage cache (full recompute).
 
         Returns:
             list[ReingestJobHandle]: One handle (document id + job id) per enqueued run.
@@ -126,7 +130,7 @@ class BulkReingestService(LoggerClass):
                 continue
             _document, job = result
             try:
-                await self._queue.enqueue_ingest(str(document.id), str(job.id))
+                await self._queue.enqueue_ingest(str(document.id), str(job.id), force=force)
             except Exception as exc:
                 # The job is already committed PENDING but never made it onto the queue (e.g. a Redis
                 # blip). The reaper only collects RUNNING jobs, so mark it FAILED here rather than

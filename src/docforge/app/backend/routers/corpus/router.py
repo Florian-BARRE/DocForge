@@ -11,7 +11,7 @@
 import uuid
 
 # ====== Third-Party Library Imports ======
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 # ====== Internal Project Imports ======
 from config import RUNTIME_CONFIG
@@ -179,6 +179,11 @@ async def bulk_set_enabled(
 async def bulk_reingest(
     collection_id: uuid.UUID,
     selector: DocumentSelector,
+    force: bool = Query(
+        default=False,
+        description="Bypass the stage cache and recompute every stage from scratch (no cache "
+        "read/write). Use to rebuild after a code change that did not bump a node's CACHE_VERSION.",
+    ),
     principal: AuthPrincipal = Depends(require(Capability.WRITE)),
 ) -> BulkReingestResponse:
     """
@@ -215,7 +220,7 @@ async def bulk_reingest(
     # 4. Fan out through the SHARED capped path — caps the fan-out (never floods the queue with 100k
     #    jobs on one call) and fetches + enqueues the kept documents; same code the collection route uses.
     result = await BulkReingestService(CONTEXT.database, CONTEXT.queue).enqueue_capped(
-        collection, matched, RUNTIME_CONFIG.CORPUS_MAX_REINGEST_FANOUT
+        collection, matched, RUNTIME_CONFIG.CORPUS_MAX_REINGEST_FANOUT, force=force
     )
     return BulkReingestResponse(
         collection_id=str(collection_id),

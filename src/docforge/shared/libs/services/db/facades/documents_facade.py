@@ -13,6 +13,7 @@ from loggerplusplus import LoggerClass
 
 from shared_libs.services.db.postgresql import PostgresClient
 from shared_libs.services.db.postgresql.apis import (
+    ArtifactCacheApi,
     BlobApi,
     ChunkApi,
     DocumentApi,
@@ -218,6 +219,9 @@ class DocumentsFacade(LoggerClass):
             await QdrantIndexApi.delete_by_document(self._qdrant.raw, name, document_id)
             # 3. Gather purge candidates, cascade-delete, keep only true orphans.
             candidates = await BlobApi.collect_hashes_for_document(session, document_id)
+            # Drop the document's stage-cache pointer rows too (its cached parse is now unreachable);
+            # the orphaned S3 bytes are reclaimed by the cache GC's global orphan sweep.
+            await ArtifactCacheApi.delete_for_documents(session, [document_id])
             await DocumentApi.delete(session, document_id)
             await session.flush()
             orphans = await BlobApi.find_unreferenced(session, candidates)
@@ -282,6 +286,8 @@ class DocumentsFacade(LoggerClass):
 
             # 3. Candidates (batched), set-based cascade delete, then keep only true orphans.
             candidates = await BlobApi.collect_hashes_for_documents(session, live_ids)
+            # Drop the batch's stage-cache pointer rows; the cache GC sweeps the orphaned S3 bytes.
+            await ArtifactCacheApi.delete_for_documents(session, live_ids)
             deleted = await DocumentApi.delete_many(session, live_ids)
             await session.flush()
             orphans = await BlobApi.find_unreferenced(session, candidates)

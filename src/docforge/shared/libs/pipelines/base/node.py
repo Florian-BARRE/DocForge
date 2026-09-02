@@ -99,6 +99,15 @@ class ActionNode(AbstractNode, ABC):
     Consumes: type[NodeInput]
     Produces: type[NodeOutput]
 
+    # Stage-cache opt-in (read by the engine's cache seam, honoured only at a root-stage boundary).
+    # A node sets CACHEABLE True ONLY when its output is a pure, deterministic function of its
+    # resolved input + its config — so serving a stored artefact is byte-for-byte equivalent to
+    # re-running it. CACHE_VERSION is folded into the cache key: BUMP IT whenever a code change alters
+    # what this node's output MEANS for an unchanged input+config (a mapper fix, a scoring change),
+    # so stale artefacts from the old semantics can never be served. Default: not cacheable.
+    CACHEABLE: bool = False
+    CACHE_VERSION: str = "0"
+
     def __init__(self, id: str, config: BaseModel) -> None:
         """
         Args:

@@ -30,6 +30,9 @@ def _fake_database() -> SimpleNamespace:
         ),
         filters=SimpleNamespace(sync_document_filter_payloads=AsyncMock()),
         meta_vectors=SimpleNamespace(sync_document_meta_vectors=AsyncMock()),
+        # The StageCacheHook only touches this facade if before/after fire; the mocked runner.run
+        # never invokes the hook, so a bare namespace is enough to let the hook be constructed.
+        artifact_cache=SimpleNamespace(),
     )
 
 
@@ -52,7 +55,9 @@ def _fake_context(database: SimpleNamespace) -> SimpleNamespace:
         worker_id="w1",
         job_timeout_seconds=30.0,
         RUNTIME_CONFIG=SimpleNamespace(
-            WORKER_PREFLIGHT_ENABLED=True, WORKER_JOB_TIMEOUT_MAX_SECONDS=7200.0
+            WORKER_PREFLIGHT_ENABLED=True,
+            WORKER_JOB_TIMEOUT_MAX_SECONDS=7200.0,
+            WORKER_CACHE_ENABLED=True,
         ),
         logger=MagicMock(),
     )

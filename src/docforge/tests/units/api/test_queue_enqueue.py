@@ -30,9 +30,10 @@ async def test_enqueue_ingest_message_is_ids_only(fastapi_app) -> None:
 
     await client.enqueue_ingest("doc-1", "job-1")
 
-    # IDS ONLY — no _job_timeout (or any other control kwarg): arq has no per-message timeout, and an
-    # unknown kwarg would be serialized as a task arg and blow up ingest_document at dispatch.
-    pool.enqueue_job.assert_awaited_once_with("ingest_document", "doc-1", "job-1")
+    # IDS ONLY plus the ``force`` task flag (a NORMAL task kwarg ingest_document declares, NOT an arq
+    # control kwarg): no _job_timeout or any other _-prefixed control kwarg — arq has no per-message
+    # timeout, and an unknown control kwarg would be serialized as a task arg and blow up dispatch.
+    pool.enqueue_job.assert_awaited_once_with("ingest_document", "doc-1", "job-1", force=False)
 
 
 async def test_enqueue_ingest_never_passes_a_timeout_kwarg(fastapi_app) -> None:
@@ -41,4 +42,6 @@ async def test_enqueue_ingest_never_passes_a_timeout_kwarg(fastapi_app) -> None:
     await client.enqueue_ingest("doc-1", "job-1")
 
     _, kwargs = pool.enqueue_job.await_args
-    assert kwargs == {}, "enqueue_ingest must pass no control kwargs (arq rejects _job_timeout)"
+    # Only ``force`` (a declared task kwarg) rides — never an arq CONTROL kwarg like _job_timeout.
+    assert kwargs == {"force": False}, "enqueue_ingest must pass no arq control kwargs"
+    assert not any(key.startswith("_") for key in kwargs), "no reserved arq control kwarg"

@@ -11,7 +11,7 @@ import json
 import uuid
 
 # ====== Third-Party Library Imports ======
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 
 # ====== Internal Project Imports ======
 from shared_libs.pipelines.ingest import (
@@ -224,7 +224,14 @@ async def set_document_enabled(
     dependencies=[Depends(require(Capability.WRITE))],
 )
 @auto_handle_errors
-async def reingest_document(document_id: uuid.UUID) -> UploadAccepted:
+async def reingest_document(
+    document_id: uuid.UUID,
+    force: bool = Query(
+        default=False,
+        description="Bypass the stage cache and recompute every stage from scratch (no cache "
+        "read/write). Use to rebuild after a code change that did not bump a node's CACHE_VERSION.",
+    ),
+) -> UploadAccepted:
     """
     Re-run ingestion on an existing document — no delete-and-re-upload.
 
@@ -232,7 +239,7 @@ async def reingest_document(document_id: uuid.UUID) -> UploadAccepted:
     re-uploading the same file is refused as a duplicate; this re-processes the stored original with
     the collection's CURRENT pipeline (and the current engine) instead. The run is idempotent — the
     previous chunks/IR/pages are purged and the vectors overwritten — and the user-declared metadata
-    survives. Poll the returned job for progress.
+    survives. Poll the returned job for progress. ``force=true`` recomputes every stage (no cache).
 
     Returns:
         UploadAccepted: The document id and the new ingestion job id (202); 404 when unknown.
@@ -245,8 +252,8 @@ async def reingest_document(document_id: uuid.UUID) -> UploadAccepted:
     # 2. Hand over to the worker — it refetches the original by source_hash and re-runs the pipeline,
     #    reading the collection's per-collection job budget itself for the engine's run timeout.
     document, job = result
-    await CONTEXT.queue.enqueue_ingest(str(document.id), str(job.id))
-    CONTEXT.logger.info(f"Re-ingest enqueued for {document.id} (job {job.id})")
+    await CONTEXT.queue.enqueue_ingest(str(document.id), str(job.id), force=force)
+    CONTEXT.logger.info(f"Re-ingest enqueued for {document.id} (job {job.id}, force={force})")
     return UploadAccepted(document_id=str(document.id), job_id=str(job.id))
 
 

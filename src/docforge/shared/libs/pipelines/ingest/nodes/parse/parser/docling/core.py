@@ -37,6 +37,14 @@ class ParserDoclingNode(BaseDoclingParserNode):
     Config = ParserDoclingConfig
     UNIQUE_IN_GRAPH = True
 
+    # Stage-cacheable (Phase-5 P1 flagship): a Docling parse is a pure, deterministic, LOCAL function
+    # of the intake result + the OCR/table config axes — no network, no sampling — so a stored IR is
+    # byte-identical to a re-parse. Only the standard Docling node opts in this slice; the Granite-VLM
+    # and PP-Structure sidecar parsers are NOT cacheable here (VLM sampling / remote non-determinism).
+    # Reviewer rule: bump CACHE_VERSION if the DoclingIRMapper output or the quality score changes.
+    CACHEABLE = True
+    CACHE_VERSION = "1"
+
     # Structured text formats Docling parses natively from the original bytes; the base reads the
     # matching temp-file suffix from _NATIVE_SUFFIX. Their heading tree survives intact, unlike a PDF
     # round-trip. The default converter already allows every InputFormat, so no OCR/table native libs

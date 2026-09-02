@@ -38,9 +38,10 @@ def test_reingest_creates_a_job_and_enqueues_it(client, monkeypatch) -> None:
     body = response.json()
     assert body["document_id"] == str(DOC_ID)
     assert body["job_id"] == str(JOB_ID)
-    # The stored original is re-processed via the worker — IDS ONLY on the wire (no timeout kwarg;
-    # arq rejects a per-message timeout, and the worker applies the collection budget itself).
-    enqueue.assert_awaited_once_with(str(DOC_ID), str(JOB_ID))
+    # The stored original is re-processed via the worker — ids + the ``force`` flag (default False,
+    # a normal task kwarg) on the wire; no timeout kwarg (arq rejects a per-message timeout, and the
+    # worker applies the collection budget itself).
+    enqueue.assert_awaited_once_with(str(DOC_ID), str(JOB_ID), force=False)
     assert reingest.await_args.args[0] == DOC_ID
 
 
@@ -60,9 +61,9 @@ def test_reingest_enqueue_is_ids_only_even_with_a_budget(client, monkeypatch) ->
     response = client.post(f"/api/v1/documents/{DOC_ID}/reingest")
 
     assert response.status_code == 202, response.text
-    # Even with a per-collection budget set, the enqueue is IDS ONLY — the budget is NOT threaded to
-    # arq (it has no per-message timeout); the worker reads it from the collection and applies it.
-    enqueue.assert_awaited_once_with(str(DOC_ID), str(JOB_ID))
+    # Even with a per-collection budget set, the enqueue carries ids + ``force`` only — the budget is
+    # NOT threaded to arq (it has no per-message timeout); the worker reads it from the collection.
+    enqueue.assert_awaited_once_with(str(DOC_ID), str(JOB_ID), force=False)
 
 
 def test_reingest_unknown_document_is_404_and_enqueues_nothing(client, monkeypatch) -> None:

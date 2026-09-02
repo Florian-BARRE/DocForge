@@ -4,6 +4,9 @@ from .core import FlowEngine
 # ---------------------- Run context ---------------------- #
 from .context import RunContext
 
+# ---------------------- Cache seam ---------------------- #
+from .cache import CacheHook, ENGINE_CACHE_EPOCH
+
 # ---------------------- Input resolution ---------------------- #
 from .resolver import InputResolver, ResolutionError
 
@@ -14,6 +17,8 @@ from .progress import ProgressCallback, ProgressEvent, ProgressPhase
 __all__ = [
     "FlowEngine",
     "RunContext",
+    "CacheHook",
+    "ENGINE_CACHE_EPOCH",
     "InputResolver",
     "ResolutionError",
     "ProgressPhase",

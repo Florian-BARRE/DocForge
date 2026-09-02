@@ -445,7 +445,7 @@ async def reingest_collection(
     #    capped=true (never silently floods the queue), exactly like the corpus selector route.
     service = BulkReingestService(CONTEXT.database, CONTEXT.queue)
     result = await service.enqueue_capped(
-        collection, matched, RUNTIME_CONFIG.CORPUS_MAX_REINGEST_FANOUT
+        collection, matched, RUNTIME_CONFIG.CORPUS_MAX_REINGEST_FANOUT, force=request.force
     )
     return BulkReingestAccepted(
         collection_id=str(collection_id),

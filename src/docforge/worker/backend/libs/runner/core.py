@@ -14,7 +14,7 @@ from shared_libs.pipelines.base import (
     NodeExecutionRecord,
 )
 from shared_libs.pipelines.build import GroupNodeBlob, PipelineBuilder
-from shared_libs.pipelines.engine import FlowEngine, ProgressCallback
+from shared_libs.pipelines.engine import CacheHook, FlowEngine, ProgressCallback
 from shared_libs.pipelines.reachability import ProbeStatus, ReachabilitySweep
 from shared_libs.pipelines.validation import GraphValidator
 from shared_libs.public_models import CollectionContract, RunBundle, SourceDocument
@@ -101,6 +101,7 @@ class PipelineRunner(LoggerClass):
         timeout_seconds: float,
         progress_callback: ProgressCallback | None = None,
         preflight_enabled: bool = True,
+        cache_hook: CacheHook | None = None,
     ) -> tuple[RunBundle, NodeExecutionRecord]:
         """
         Execute one ingestion run end to end.
@@ -114,6 +115,9 @@ class PipelineRunner(LoggerClass):
             preflight_enabled (bool): When True (default), sweep every node's preflight() after
                 build/validate and BEFORE the first spend — a provider pointed at an unreachable
                 endpoint fails fast, having stored nothing.
+            cache_hook (CacheHook | None): Optional per-run stage-cache seam. When provided, a
+                cacheable root stage may be served from / stored into the cache; None runs the
+                pipeline exactly as if no cache existed (a full recompute).
 
         Returns:
             tuple[RunBundle, NodeExecutionRecord]: The delivery and the full execution trace.
@@ -142,7 +146,11 @@ class PipelineRunner(LoggerClass):
         # 4. Execute under the wall-clock cap.
         self.logger.info(f"Running ingestion pipeline '{group.id}' for '{source.filename}'")
         output, record = await self._engine.execute(
-            group, run_input, timeout_seconds=timeout_seconds, progress_callback=progress_callback
+            group,
+            run_input,
+            timeout_seconds=timeout_seconds,
+            progress_callback=progress_callback,
+            cache_hook=cache_hook,
         )
 
         # 4. A failed run surfaces the engine's error, verbatim — and the structured breadcrumb (the

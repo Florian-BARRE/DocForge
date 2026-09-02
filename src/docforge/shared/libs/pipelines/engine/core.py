@@ -31,6 +31,7 @@ from shared_libs.pipelines.base import (
 )
 
 # ====== Local Project Imports ======
+from .cache import CacheHook
 from .context import RunContext
 from .navigation import GraphNavigator
 from .progress import ProgressCallback, ProgressEvent, ProgressPhase
@@ -70,8 +71,9 @@ class FlowEngine(LoggerClass):
         context: RunContext,
         group_input: dict[str, Any],
         node_outputs: dict[str, NodeOutput],
+        at_root: bool = False,
     ) -> tuple[NodeOutput | None, NodeExecutionRecord]:
-        """Resolve, run and record a single action node."""
+        """Resolve, run and record a single action node (consulting the cache seam at the root)."""
         started = perf_counter()
         self.logger.debug(f"Running node '{node.id}' ({node.KIND})")
 
@@ -92,6 +94,32 @@ class FlowEngine(LoggerClass):
                 duration_ms=(perf_counter() - started) * 1000,
                 error=ErrorInfo(error_type=type(exc).__name__, message=str(exc)),
             )
+
+        # 1b. Cache seam — ONLY at a root-stage boundary, ONLY when a hook is attached AND the node
+        #     declares itself cacheable. A HIT serves the stored artefact and SKIPS ``run`` entirely;
+        #     the cached output flows on exactly like a fresh one (it carries any score a ScoreBelow
+        #     edge reads). The engine knows nothing of keys/storage — it just calls the seam.
+        if at_root and context.cache_hook is not None and getattr(node, "CACHEABLE", False):
+            # Defensive boundary: the CacheHook contract is "never raises" (its impl swallows its own
+            # storage/load errors and returns None on a miss), but a buggy hook must NEVER fail an
+            # otherwise-good run — an escaped error degrades to a cache miss, not a failed node.
+            try:
+                cached = await context.cache_hook.before(node.id, node_input)
+            except Exception as exc:
+                self.logger.warning(
+                    f"Node '{node.id}' cache lookup errored; treating as miss: {exc}"
+                )
+                cached = None
+            if cached is not None:
+                self.logger.debug(f"Node '{node.id}' served from cache")
+                return cached, NodeExecutionRecord(
+                    node_id=node.id,
+                    kind=node.KIND,
+                    status=NodeStatus.SUCCESS,
+                    duration_ms=(perf_counter() - started) * 1000,
+                    resolved_input=RecordTrace.dump(node_input) if self._trace_payloads else None,
+                    output=RecordTrace.dump(cached) if self._trace_payloads else None,
+                )
 
         # 2. Run the node, capturing success or failure.
         try:
@@ -127,6 +155,22 @@ class FlowEngine(LoggerClass):
         )
         if status == NodeStatus.SUCCESS:
             self.logger.debug(f"Node '{node.id}' succeeded in {record.duration_ms:.1f}ms")
+            # 3b. Cache seam (store) — mirror of the lookup above: a freshly-run cacheable root node
+            #     hands its output to the seam to persist for a future run. Best-effort by contract
+            #     (the seam swallows its own storage errors), so it never turns a good run into a
+            #     failure.
+            if (
+                at_root
+                and context.cache_hook is not None
+                and node_output is not None
+                and getattr(node, "CACHEABLE", False)
+            ):
+                # Defensive boundary (mirror of the lookup): a hook that lets a store error escape must
+                # never fail a run that already succeeded — swallow + log, the output still flows on.
+                try:
+                    await context.cache_hook.after(node.id, node_input, node_output)
+                except Exception as exc:
+                    self.logger.warning(f"Node '{node.id}' cache store errored; not cached: {exc}")
         return node_output, record
 
     async def __run_foreach(
@@ -296,10 +340,17 @@ class FlowEngine(LoggerClass):
         context: RunContext,
         group_input: dict[str, Any],
         node_outputs: dict[str, NodeOutput],
+        at_root: bool = False,
     ) -> tuple[NodeOutput | None, NodeExecutionRecord]:
-        """Run a child: an action directly, a foreach per item, a sub-group recursively."""
+        """Run a child: an action directly, a foreach per item, a sub-group recursively.
+
+        ``at_root`` is forwarded only to an action — the cache seam fires at a stage node (an action
+        in the root group), never at a ForEach or a nested sub-group boundary.
+        """
         if isinstance(node, ActionNode):
-            return await self.__run_action(node, group, context, group_input, node_outputs)
+            return await self.__run_action(
+                node, group, context, group_input, node_outputs, at_root=at_root
+            )
         if isinstance(node, ForEach):
             return await self.__run_foreach(node, group, context, group_input, node_outputs)
         if isinstance(node, Group):
@@ -328,6 +379,7 @@ class FlowEngine(LoggerClass):
         context: RunContext,
         group_input: dict[str, Any],
         node_outputs: dict[str, NodeOutput],
+        at_root: bool = False,
     ) -> tuple[NodeOutput | None, NodeExecutionRecord]:
         """Run one child, wrapped in START/END progress events."""
         # A ForEach emits its OWN START from inside __run_foreach — once it has resolved the iterated
@@ -335,14 +387,25 @@ class FlowEngine(LoggerClass):
         # starts here (its width is not a concept).
         if not isinstance(node, ForEach):
             await self.__emit(context, ProgressPhase.START, node)
-        node_output, record = await self.__dispatch(node, group, context, group_input, node_outputs)
+        node_output, record = await self.__dispatch(
+            node, group, context, group_input, node_outputs, at_root=at_root
+        )
         await self.__emit(context, ProgressPhase.END, node, record)
         return node_output, record
 
     async def _run_group(
-        self, group: Group, context: RunContext, group_input: dict[str, Any]
+        self,
+        group: Group,
+        context: RunContext,
+        group_input: dict[str, Any],
+        is_root: bool = False,
     ) -> tuple[NodeOutput | None, NodeExecutionRecord]:
-        """Walk a group from its entry node, following transitions, and record every step."""
+        """Walk a group from its entry node, following transitions, and record every step.
+
+        ``is_root`` marks the OUTERMOST group (the pipeline itself). Only its direct action children
+        are stage-node cache boundaries; sub-groups and ForEach bodies run with ``is_root`` False, so
+        the cache seam never fires inside them.
+        """
         started = perf_counter()
         node_outputs: dict[str, NodeOutput] = {}
         child_records: list[NodeExecutionRecord] = []
@@ -358,9 +421,10 @@ class FlowEngine(LoggerClass):
                 raise ValueError(f"Cycle detected in group '{group.id}' at node '{node.id}'.")
             visited.add(node.id)
 
-            # 1. Run the child (START/END progress + action-vs-sub-group dispatch).
+            # 1. Run the child (START/END progress + action-vs-sub-group dispatch). Only the root
+            #    group's direct children are stage-cache boundaries.
             node_output, record = await self.__run_child(
-                node, group, context, group_input, node_outputs
+                node, group, context, group_input, node_outputs, at_root=is_root
             )
             child_records.append(record)
             if node_output is not None:
@@ -405,6 +469,7 @@ class FlowEngine(LoggerClass):
         run_input: dict[str, Any],
         timeout_seconds: float | None = None,
         progress_callback: ProgressCallback | None = None,
+        cache_hook: "CacheHook | None" = None,
     ) -> tuple[NodeOutput | None, NodeExecutionRecord]:
         """
         Execute a pipeline graph and return its output plus the full execution trace.
@@ -416,15 +481,20 @@ class FlowEngine(LoggerClass):
                 timeout the run is cancelled and a FAILED record is returned.
             progress_callback (ProgressCallback | None): Optional async callback fired at each
                 node's START and END (for a UI live-status feed).
+            cache_hook (CacheHook | None): Optional stage-cache seam. When provided, a cacheable
+                root stage is served from / stored into it; when None, the run is byte-for-byte the
+                same as if the cache did not exist.
 
         Returns:
             tuple[NodeOutput | None, NodeExecutionRecord]: The final output (None if the run failed)
                 and the recursive execution record.
         """
         self.logger.info(f"Running pipeline '{group.id}'")
-        context = RunContext(run_input=run_input, progress_callback=progress_callback)
+        context = RunContext(
+            run_input=run_input, progress_callback=progress_callback, cache_hook=cache_hook
+        )
         started = perf_counter()
-        run = self._run_group(group, context, group_input=run_input)
+        run = self._run_group(group, context, group_input=run_input, is_root=True)
 
         # 1. Run, optionally under a global timeout.
         try:

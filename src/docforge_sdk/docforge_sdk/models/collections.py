@@ -176,11 +176,18 @@ class BulkReingestRequest(BaseModel):
     Attributes:
         document_ids (list[str] | None): The explicit subset to re-run. Omit or null → EVERY document
             in the collection. An empty list is rejected by the API (an ambiguous no-op).
+        force (bool): Bypass the stage cache and recompute every stage from scratch (no cache
+            read/write). Use to rebuild after a code change that did not bump a node's CACHE_VERSION.
     """
 
     document_ids: list[str] | None = Field(
         default=None,
         description="Explicit document UUIDs to re-run; omit for the whole collection.",
+    )
+    force: bool = Field(
+        default=False,
+        description="Bypass the stage cache and recompute every stage from scratch (no cache "
+        "read/write). Use to rebuild after a code change that did not bump a node's CACHE_VERSION.",
     )
 
 

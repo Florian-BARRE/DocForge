@@ -99,6 +99,29 @@ class RUNTIME_CONFIG(EnvConfigLoader):
         "WORKER_IDEMPOTENCY_GC_INTERVAL_MINUTES", cast=int, default=60
     )
 
+    # ───── Stage artifact cache (Phase-5 P1) ─────
+    # Master switch for the per-collection stage-artifact cache. ON by default; when off (or on a
+    # forced reingest) the worker builds NO cache hook, so the engine runs byte-for-byte as before —
+    # nothing is read from or written to the cache. The cache is content+config+collection keyed, so a
+    # wrong hit is impossible: turning it on out-of-box is safe.
+    WORKER_CACHE_ENABLED = env("WORKER_CACHE_ENABLED", cast=bool, default=True)
+    # The cache GC cron: evicts by TTL (LRU on last_hit_at) and a per-collection byte cap, then sweeps
+    # any S3 stage-artifact blob whose last pointer was removed. ON by default; disable → no cron.
+    WORKER_ARTIFACT_GC_ENABLED = env("WORKER_ARTIFACT_GC_ENABLED", cast=bool, default=True)
+    # Cache-GC cron cadence (minutes): the sweep runs on every Nth minute of the hour AND once at
+    # startup, so a backlog left while the sweep was off is cleared promptly. 60 → hourly.
+    WORKER_ARTIFACT_GC_INTERVAL_MINUTES = env(
+        "WORKER_ARTIFACT_GC_INTERVAL_MINUTES", cast=int, default=60
+    )
+    # Time-to-live for a cached artefact (days), measured from its last hit (else its creation). A row
+    # untouched for longer is evicted. 0 disables the TTL pass (the size cap still bounds growth).
+    CACHE_TTL_DAYS = env("CACHE_TTL_DAYS", cast=int, default=30)
+    # Per-collection byte ceiling for cached artefacts. When a collection is over it, the
+    # least-recently-used rows are evicted until it is under. 0 disables the size cap.
+    CACHE_MAX_BYTES_PER_COLLECTION = env(
+        "CACHE_MAX_BYTES_PER_COLLECTION", cast=int, default=5_000_000_000
+    )
+
     # ───── Stores — client tuning ─────
     # Per-request Qdrant timeout. The qdrant-client default (5s) is too low for heavy vector upserts
     # indexed with wait=true; 60s covers a heavy batch. Passed into QdrantClient at construction.

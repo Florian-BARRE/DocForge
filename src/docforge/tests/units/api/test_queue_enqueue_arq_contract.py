@@ -34,7 +34,11 @@ async def _deserialize(fake, job_id: str) -> tuple[str, tuple, dict]:
 
 
 async def test_enqueue_ingest_wire_payload_has_no_stray_kwargs(fastapi_app) -> None:
-    """The task actually dispatched to the worker carries ids-only args and ZERO kwargs."""
+    """The task dispatched to the worker carries ids-only args and ONLY the declared ``force`` kwarg.
+
+    ``force`` is part of ingest_document's signature (a normal task kwarg, like correlation_id), so it
+    is NOT a stray kwarg — the contract this guards is that no UNDECLARED / arq-control kwarg leaks
+    onto the wire (which would be stuffed into the task args and crash the worker at dispatch)."""
     from backend.utils.queue import QueueClient  # noqa: PLC0415
 
     pool, fake = await _fake_pool()
@@ -50,7 +54,9 @@ async def test_enqueue_ingest_wire_payload_has_no_stray_kwargs(fastapi_app) -> N
 
         assert function == "ingest_document"
         assert args == ("doc-1", "job-1")
-        assert kwargs == {}, f"stray kwarg reached the wire (would crash the worker task): {kwargs}"
+        # Only the declared ``force`` flag rides; no _-prefixed arq control kwarg leaked.
+        assert kwargs == {"force": False}, f"stray kwarg reached the wire: {kwargs}"
+        assert not any(key.startswith("_") for key in kwargs)
     finally:
         await fake.aclose()
 

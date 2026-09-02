@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from typing import Any
 
 # ====== Local Project Imports ======
+from .cache import CacheHook
 from .progress import ProgressCallback
 
 
@@ -20,10 +21,14 @@ class RunContext:
     Attributes:
         run_input (dict[str, Any]): The pipeline's external input, addressable by ``FromRunInput``.
         progress_callback (ProgressCallback | None): Called at each node's START/END, if provided.
+        cache_hook (CacheHook | None): The worker-provided stage-cache seam. When present, the engine
+            consults it at a cacheable root node's boundary (a HIT skips the node). None (the default)
+            makes the engine run exactly as if no cache existed — no behaviour change whatsoever.
     """
 
     run_input: dict[str, Any]
     progress_callback: ProgressCallback | None = None
+    cache_hook: CacheHook | None = None
 
 
 __all__ = ["RunContext"]

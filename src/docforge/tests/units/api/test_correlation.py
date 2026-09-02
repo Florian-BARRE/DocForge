@@ -192,7 +192,8 @@ async def test_enqueue_threads_correlation_id_as_normal_kwarg(fastapi_app) -> No
         )
         assert function == "ingest_document"
         assert args == ("doc-1", "job-1")
-        assert kwargs == {"correlation_id": "enqueue-cid-1"}
+        # correlation_id + the declared ``force`` flag both ride as NORMAL task kwargs.
+        assert kwargs == {"correlation_id": "enqueue-cid-1", "force": False}
     finally:
         CorrelationContext.reset(token)
         await fake.aclose()
@@ -211,6 +212,7 @@ async def test_enqueue_omits_kwarg_when_no_id_bound(fastapi_app) -> None:
         _function, _args, kwargs = await _deserialize(
             fake, job_id.decode().removeprefix(job_key_prefix)
         )
-        assert kwargs == {}
+        # No correlation id bound → only the declared ``force`` flag rides (no stray/control kwarg).
+        assert kwargs == {"force": False}
     finally:
         await fake.aclose()
