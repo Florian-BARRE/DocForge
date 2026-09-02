@@ -1,8 +1,9 @@
 # ====== Code Summary ======
 # Route definition for the GET /health liveness probe. Mirrors src/bge_server's readiness-gate
-# convention: HTTP 503 (status="loading", ready=False) while the PP-StructureV3 pipeline is still
-# building, so compose healthchecks and the DocForge worker's EndpointReachability preflight never
-# hit an unready container. Logged at DEBUG only — health is polled frequently.
+# convention: HTTP 503 (status="loading", ready=False) while EITHER pipeline (PP-StructureV3 layout
+# or PaddleOCR) is still building, so compose healthchecks and the DocForge worker's
+# EndpointReachability preflight (both the pp_structure parser AND the paddle OCR node probe this
+# route) never hit an unready container. Logged at DEBUG only — health is polled frequently.
 
 # ====== Standard Library Imports ======
 
@@ -30,8 +31,9 @@ async def health(response: Response) -> HealthResponse:
     """
     Liveness + readiness probe.
 
-    Returns HTTP 200 with status="ok" and ready=True once the PP-StructureV3 pipeline is built.
-    Returns HTTP 503 with status="loading" and ready=False while startup is in progress.
+    Returns HTTP 200 with status="ok" and ready=True once BOTH the PP-StructureV3 layout pipeline
+    and the PaddleOCR pipeline are built. Returns HTTP 503 with status="loading" and ready=False
+    while either is still starting up.
 
     Args:
         response (Response): FastAPI response object used to set the HTTP status code.
@@ -41,7 +43,12 @@ async def health(response: Response) -> HealthResponse:
     """
     logger.debug(f"GET /health")
 
-    pipeline_ready = hasattr(CONTEXT, "ppstructure") and CONTEXT.ppstructure.ready
+    pipeline_ready = (
+        hasattr(CONTEXT, "ppstructure")
+        and CONTEXT.ppstructure.ready
+        and hasattr(CONTEXT, "paddleocr")
+        and CONTEXT.paddleocr.ready
+    )
 
     if not pipeline_ready:
         response.status_code = 503

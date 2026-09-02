@@ -1,0 +1,41 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Loki single-binary config for the DocForge telemetry overlay. Filesystem storage only
+# (no S3/GCS) — fine for a single-host deployment; the `loki_data` named volume (see the
+# overlay) persists chunks/index/rules across recreations.
+# ─────────────────────────────────────────────────────────────────────────────
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+
+common:
+  path_prefix: /loki
+  storage:
+    filesystem:
+      chunks_directory: /loki/chunks
+      rules_directory: /loki/rules
+  replication_factor: 1
+  ring:
+    instance_addr: 127.0.0.1
+    kvstore:
+      store: inmemory
+
+query_range:
+  results_cache:
+    cache:
+      embedded_cache:
+        enabled: true
+        max_size_mb: 100
+
+schema_config:
+  configs:
+    - from: 2024-01-01
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+ruler:
+  alertmanager_url: http://localhost:9093

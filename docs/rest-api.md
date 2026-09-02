@@ -50,6 +50,10 @@ Everything is JSON in and JSON out, with two exceptions:
 | Jobs | `/api/v1/jobs` | §7 |
 | Blobs | `/api/v1/blobs/{hash}` | §8 |
 | Pipelines (design) | `/api/v1/pipelines` | §9 |
+| Cost estimate (dry-run) | `/api/v1/collections/{id}/estimate` | §10 |
+| Audit trail | `/api/v1/audit` | §11 |
+| Idempotency (request header) | `Idempotency-Key` on mutating routes | §12 |
+| Request correlation (response header) | `X-Request-Id` on every response | §13 |
 
 ---
 
@@ -536,7 +540,159 @@ curl -s http://localhost:10040/api/v1/pipelines/ingest
 
 ---
 
-## 10. Errors
+## 10. Cost estimate (dry-run)
+
+Before spending anything on ingestion, project the cost and volume of running a collection's
+pipeline over its documents. This is a **pre-hoc estimate** — no job is enqueued, nothing is spent,
+no writes happen. It reads the collection's **actual** pipeline config (only enabled cost-incurring
+stages are costed) plus cheap per-document stats, then projects per-stage token/page usage and
+dollar cost against the same rate model the post-hoc job meter uses.
+
+| Method | Path | Cap | Returns |
+|---|---|---|---|
+| `POST` | `/api/v1/collections/{id}/estimate` | `read` | A `CostEstimate` — per-stage breakdown + totals |
+
+The body is optional; when omitted, `scope` defaults to `pending`.
+
+```json
+{ "scope": "pending" }
+```
+
+- `scope` (`"pending"` \| `"all"`, default `"pending"`) — which documents to estimate over.
+  `pending` covers uploaded-but-not-yet-ingested documents (the usual "what will this ingest cost?"
+  preview); `all` covers every document in the collection (the cost of a full reingest).
+
+The response is a `CostEstimate`: a per-stage breakdown, the projected volume, the totals, plus the
+**assumptions** it rests on (chunk sizing taken from the collection's chunker config) and any
+caveats. A stage whose model has no known rate is reported with a **null cost** (its token/page
+volume is still shown) — never a fabricated number.
+
+```bash
+curl -s -X POST http://localhost:10040/api/v1/collections/$CID/estimate \
+  -H 'content-type: application/json' -d '{"scope":"all"}'
+```
+
+`404` when the collection is unknown; `422` when its stored pipeline blob is unreadable (mirrors
+the reingest error contract).
+
+---
+
+## 11. Audit trail
+
+An append-only log of every **mutating** `/api/v1` request (`POST`/`PUT`/`PATCH`/`DELETE`). A
+middleware records exactly one row per routed mutating request **after** the response is sent
+(fail-safe — an audit write can never delay or fail the user's request); reads and non-API paths
+are never audited. Each row captures the actor, the low-cardinality route **template** (not the
+raw-id path), the final response status, the target resource (type + id parsed from the path), the
+client IP, and the request's correlation id (see §13).
+
+| Method | Path | Cap | Returns |
+|---|---|---|---|
+| `GET` | `/api/v1/audit` | `read` + **full-access** | One newest-first, keyset-paginated page of the trail |
+
+The trail spans **every tenant**, so it is restricted to a **full-access (root / unscoped) key** — a
+collection-scoped key is rejected `403`, mirroring the fleet-wide job counts. Query params (all
+optional filters):
+
+| Param | Meaning |
+|---|---|
+| `limit` | Page size, clamped down to `AUDIT_MAX_PAGE_SIZE` (default `200`); defaults to that ceiling |
+| `cursor` | Opaque keyset cursor from a previous page's `next_cursor` |
+| `actor_user_id` | Filter to one acting user (UUID) |
+| `actor_key_id` | Filter to one acting API key (UUID) |
+| `target_type` | Filter to one target type (e.g. `collection`) |
+| `target_id` | Filter to one target id (pair with `target_type`) |
+| `correlation_id` | Filter to one request's correlation id (see §13) |
+| `created_from` | Lower bound (**inclusive**) on `created_at` |
+| `created_to` | Upper bound (**exclusive**) on `created_at` |
+
+The response is an `AuditPage` — `entries`, the applied `limit`, and `next_cursor` (null once the
+trail is exhausted). Page forward by feeding `next_cursor` back as `cursor`. A malformed cursor is a
+`400`.
+
+```bash
+curl -s "http://localhost:10040/api/v1/audit?target_type=collection&limit=50" \
+  -H "Authorization: Bearer $ROOT_TOKEN"
+```
+
+The trail is gated by `AUDIT_ENABLED` (default `true`); with it off, no rows are written.
+
+---
+
+## 12. Idempotency (`Idempotency-Key`)
+
+Stripe-style safe retries on a small allow-list of mutating JSON endpoints. Send an
+`Idempotency-Key: <your-key>` request header on an eligible request; the first call runs once and
+its response is cached, and any **retry with the same key + same body** replays that stored response
+verbatim instead of re-running the operation.
+
+Idempotency is strictly **opt-in per request** (no header → normal behaviour) and engages **only**
+on this explicit allow-list:
+
+| Method | Route |
+|---|---|
+| `POST` | `/api/v1/collections` |
+| `PATCH` | `/api/v1/collections/{collection_id}` |
+| `POST` | `/api/v1/collections/{collection_id}/reingest` |
+| `POST` | `/api/v1/collections/{collection_id}/documents/reingest` |
+| `POST` | `/api/v1/collections/{collection_id}/export` |
+
+Multipart uploads (document ingest, import-bundle upload) and the API-key create/rotate routes are
+**deliberately excluded** — uploads are already content-addressed by sha256, and secret-returning
+routes must never cache their one-time plaintext response body.
+
+Behaviour:
+
+- **Replay** — a completed key replayed with the **same body** returns the cached status + body,
+  stamped with `Idempotency-Replayed: true`. A replay is *not* re-audited, but it still passes the
+  auth + rate-limit gates (a retry still costs budget).
+- **In progress** (`409`) — a second request arrives while the first with that key is still running.
+- **Body mismatch** (`422`) — the same key is reused with a **different** request body (a client
+  bug: the key was meant to identify one specific operation).
+- **Scope** — a key is scoped to its actor (per API key, per user, or `anon` when auth is off), so
+  one tenant's key never collides with another's.
+- **TTL** — a cached record lives for `IDEMPOTENCY_TTL_HOURS` (default `24`), after which the key is
+  forgotten and a GC cron prunes it.
+- **Body cap** — a request body over `IDEMPOTENCY_MAX_BODY_BYTES` (default `262144` = 256 KiB) skips
+  idempotency entirely (transparent passthrough).
+- Only **definitive** (`< 500`) outcomes are cached; a `5xx`/exception drops the guard so a retry
+  actually re-runs.
+
+The whole feature is gated by `IDEMPOTENCY_ENABLED` (default `true`); with it off, the header is
+ignored.
+
+```bash
+curl -s -X POST http://localhost:10040/api/v1/collections \
+  -H 'content-type: application/json' \
+  -H 'Idempotency-Key: 3f9c1a20-collection-create-001' \
+  -d '{ ... collection contract ... }'
+```
+
+---
+
+## 13. Request correlation (`X-Request-Id`)
+
+Every response carries an `X-Request-Id` header — a per-request correlation id that also tags every
+log line emitted while handling the request (so a response id maps straight to its logs in
+Loki/loguru). This is always on and needs no configuration.
+
+- **Propagation** — send an inbound `X-Request-Id` (or `X-Correlation-Id`) and it is honoured and
+  echoed back unchanged, so an upstream proxy's id is preserved end-to-end. Omit it and the server
+  mints one.
+- **Coverage** — the id is stamped even on short-circuit `401`/`429` responses (the correlation
+  middleware wraps auth + rate-limiting).
+- **Client use** — log or surface the `X-Request-Id` from a response; quote it in a bug report to
+  trace the exact request through the logs, or feed it to the audit trail's `correlation_id` filter
+  (§11) to pull the audit row for that request.
+
+```bash
+curl -s -D - -o /dev/null http://localhost:10040/api/v1/collections | grep -i x-request-id
+# X-Request-Id: 6b1f...   (echo an inbound one: -H 'X-Request-Id: my-trace-42')
+```
+
+---
+
+## 14. Errors
 
 FastAPI's standard error envelope is used throughout:
 
@@ -556,9 +712,9 @@ production.
 
 | Status | When |
 |---|---|
-| `400` / `422` | Validation failure — bad body, blank query, unknown metadata field, non-filterable filter, invalid search target, unmigratable/invalid pipeline blob. |
+| `400` / `422` | Validation failure — bad body, blank query, unknown metadata field, non-filterable filter, invalid search target, unmigratable/invalid pipeline blob, or an `Idempotency-Key` reused with a different body (§12). |
 | `401` | Auth on and the bearer is missing/invalid/revoked/expired (carries `WWW-Authenticate: Bearer`). |
-| `403` | Authenticated but lacking the capability, or not scoped to the target collection/resource. |
+| `403` | Authenticated but lacking the capability, not scoped to the target collection/resource, or a scoped key on the full-access audit trail (§11). |
 | `404` | Unknown collection / document / chunk / job / blob / pipeline key. |
-| `409` | Name clash (collection / key), rotating an already-revoked key, root not provisioned, or a collection with no embed node on search. |
+| `409` | Name clash (collection / key), rotating an already-revoked key, root not provisioned, a collection with no embed node on search, or an `Idempotency-Key` whose request is still in progress (§12). |
 | `500` | Unexpected server error (opaque). |

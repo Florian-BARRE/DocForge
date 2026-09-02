@@ -1,0 +1,75 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# DocForge — GPU overlay. Never used standalone — included by prod-gpu.yml / dev-gpu.yml,
+# or layered manually on top of a base/dev combo:
+#   docker compose -f compose/base.yml -f compose/overlays/gpu.yml --profile full up -d
+#
+# WHEN TO USE THIS FILE: any scenario that must run worker/bge_server/paddle_server on a
+# GPU. Prefer the ready-made scenario files (compose/prod-gpu.yml, compose/dev-gpu.yml)
+# over hand-assembling -f flags.
+#
+# What this changes vs the base (CPU) file:
+#   - worker + bge_server + paddle_server pull the -gpu image tags (CUDA wheel baked in)
+#   - all three are granted the NVIDIA device (`gpus: all`, == `docker run --gpus all`)
+#
+# Requires the NVIDIA Container Toolkit (Docker Desktop/WSL2 ships it).
+# device placement is a deployment concern (this file), not a per-node runtime knob —
+# there is no runtime DeviceManager by design. See CLAUDE.md #7.
+#
+# The `build:` blocks below are INERT in pure prod-gpu (both `image:` and `build:` are
+# present with no active build context passed via CLI, so `up` without `--build` just pulls
+# the image). They exist so that when this overlay is combined with the dev overlay (dev-gpu),
+# a GPU dev build steers torch/paddle to the CUDA wheel.
+#
+# IMPORTANT — `include:`'s merge order is OPPOSITE of `-f`'s: verified on this repo's Compose
+# v5.1.1, when the SAME service is (re)defined by two `include:`d files, the FIRST file listed
+# wins any leaf value they both set (scalars, and list/map entries keyed by target — e.g.
+# `image:`, `build.context`, a `volumes:` entry with the same mount target), not the last one
+# as `-f` does. (`-f` stacking is unaffected — proxy.yml/telemetry.yml are always layered with
+# `-f`, never `include:`d, so this quirk doesn't touch them.) Every scenario file therefore
+# lists this gpu overlay FIRST (before dev.yml, before base.yml) — see compose/prod-gpu.yml and
+# compose/dev-gpu.yml's include order (gpu, [dev,] base).
+#
+# Because `include:` resolves EACH file's OWN relative paths before merging, a `build:` stanza
+# here with no explicit `context:`/`dockerfile:` would silently default to THIS file's own
+# directory (compose/overlays/) — wrong, and since this file is listed first it would WIN over
+# dev.yml's real context. So `context:`/`dockerfile:` below are spelled out explicitly,
+# duplicating dev.yml's values exactly (kept in sync manually) — precisely so the "first file
+# wins" quirk is harmless here: both files agree on the value.
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+  docforge_worker:
+    image: ghcr.io/florian-barre/docforge-worker:${DOCFORGE_TAG:-latest}-gpu
+    # Service-level GPU grant — equivalent to `docker run --gpus all`.
+    gpus: all
+    build:
+      # Matches overlays/dev.yml's docforge_worker build context/dockerfile exactly — see the
+      # header comment on why this duplication is required.
+      context: ../../src/docforge
+      dockerfile: worker/Dockerfile
+      args:
+        TORCH_VARIANT: gpu
+
+  docforge_bge_server:
+    image: ghcr.io/florian-barre/docforge-bge-server:${DOCFORGE_TAG:-latest}-gpu
+    # Service-level GPU grant — equivalent to `docker run --gpus all`.
+    gpus: all
+    build:
+      # Matches overlays/dev.yml's docforge_bge_server build context/dockerfile exactly — see
+      # the header comment on why this duplication is required.
+      context: ../../src
+      dockerfile: bge_server/Dockerfile
+      args:
+        TORCH_VARIANT: gpu
+
+  docforge_paddle_server:
+    image: ghcr.io/florian-barre/docforge-paddle-server:${DOCFORGE_TAG:-latest}-gpu
+    # Service-level GPU grant — equivalent to `docker run --gpus all`.
+    gpus: all
+    build:
+      # Matches overlays/dev.yml's docforge_paddle_server build context/dockerfile exactly —
+      # see the header comment on why this duplication is required.
+      context: ../../src
+      dockerfile: paddle_server/Dockerfile
+      args:
+        TORCH_VARIANT: gpu

@@ -93,6 +93,18 @@ class PaddleServerConfig(EnvConfigLoader):
     # deliberately; the request-level knob in the API schema is documented as always False.
     PADDLE_USE_DOC_UNWARPING: bool = env("PADDLE_USE_DOC_UNWARPING", cast=bool, default="false")
 
+    # ───── PaddleOCR (OCR-only pipeline) ─────
+    # The OCR-only capability runs a SEPARATE PaddleOCR (text detection + recognition) instance,
+    # independent of the PP-StructureV3 layout pipeline above. These knobs are set at build time
+    # (no request-level override), so the same image runs any language without a rebuild.
+    # Recognition language pack (e.g. "en", "fr", "ch") — selects the det+rec model pair.
+    PADDLE_OCR_LANG: str = env("PADDLE_OCR_LANG", default="en")
+    # Run the textline-orientation classifier before recognition — helps rotated lines at the cost
+    # of an extra model + latency. OFF by default (born-digital crops are upright).
+    PADDLE_OCR_USE_TEXTLINE_ORIENTATION: bool = env(
+        "PADDLE_OCR_USE_TEXTLINE_ORIENTATION", cast=bool, default="false"
+    )
+
     # ───── Concurrency ─────
     # PaddlePaddle inference is not thread-safe; every /layout-parsing call is serialized behind
     # a single asyncio.Lock (libs/ppstructure/service.py). This is the max time a request waits

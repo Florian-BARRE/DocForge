@@ -18,7 +18,7 @@ from shared_libs.pipelines.nodes.openai_compat import (
 
 # Provider kinds that run locally / in-stack and therefore cost nothing — priced 0 (a KNOWN rate),
 # distinct from a paid provider whose model is missing from the tables (unknown ⇒ None).
-LOCAL_FREE_KINDS: frozenset[str] = frozenset({"bge_server", "rapidocr"})
+LOCAL_FREE_KINDS: frozenset[str] = frozenset({"bge_server", "rapidocr", "paddle"})
 
 
 @dataclass(frozen=True, slots=True)

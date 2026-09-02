@@ -21,7 +21,10 @@ class ParserPpStructureConfig(TimeoutRetryConfig):
     """
 
     base_url: str = Field(
-        description="PP-StructureV3 sidecar endpoint (e.g. http://paddle_server:80)."
+        default="http://paddle_server:80",
+        description="PP-StructureV3 sidecar endpoint. Defaults to the in-stack sidecar so a parse "
+        "chain escalation step added to a collection is reachable out of the box; override per "
+        "collection to point at a remote sidecar.",
     )
     api_key: str = Field(default="", description="Bearer token when the sidecar requires one.")
     timeout_seconds: float = Field(

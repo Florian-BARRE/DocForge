@@ -1,0 +1,40 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Promtail config for the DocForge telemetry overlay. Discovers every container on this
+# Docker host via the socket (docker_sd_configs — needs the read-only docker.sock mount on
+# the overlay's promtail service), then (filtered to the docforge compose project) tails each container's json-file log
+# the socket reports (under /var/lib/docker/containers, also read-only mounted). Ships
+# everything to Loki.
+# ─────────────────────────────────────────────────────────────────────────────
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  - job_name: docker_containers
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 5s
+    relabel_configs:
+      # SCOPE TO THE DOCFORGE STACK ONLY — this VM runs other projects (stockstream, portainer,
+      # pgadmin, …); drop every container that is NOT part of the `docforge` compose project so
+      # their logs never leak into DocForge's Loki. Remove/widen this block for VM-wide logging.
+      - source_labels: ["__meta_docker_container_label_com_docker_compose_project"]
+        regex: "docforge"
+        action: keep
+      # Container name (strip the leading '/' Docker's API always prefixes).
+      - source_labels: ["__meta_docker_container_name"]
+        regex: "/(.*)"
+        target_label: "container"
+      # stdout/stderr stream.
+      - source_labels: ["__meta_docker_container_log_stream"]
+        target_label: "stream"
+      # The compose service name (e.g. docforge_app, docforge_worker) — set on every
+      # container compose creates, so this labels logs by service without any manual list.
+      - source_labels: ["__meta_docker_container_label_com_docker_compose_service"]
+        target_label: "compose_service"

@@ -1,0 +1,142 @@
+{
+  "title": "DocForge — Logs",
+  "uid": "docforge-logs",
+  "tags": ["docforge"],
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "timezone": "browser",
+  "graphTooltip": 1,
+  "time": { "from": "now-6h", "to": "now" },
+  "refresh": "10s",
+  "links": [
+    {
+      "asDropdown": false,
+      "icon": "external link",
+      "includeVars": true,
+      "keepTime": true,
+      "tags": ["docforge"],
+      "targetBlank": false,
+      "title": "DocForge dashboards",
+      "type": "dashboards"
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "service",
+        "label": "Service",
+        "type": "query",
+        "datasource": { "type": "loki", "uid": "docforge-loki" },
+        "query": "label_values(compose_service)",
+        "regex": "/^docforge_.+/",
+        "multi": true,
+        "includeAll": true,
+        "current": { "text": "All", "value": "$__all" },
+        "refresh": 2,
+        "sort": 1
+      }
+    ]
+  },
+  "panels": [
+    { "id": 100, "type": "row", "title": "Volume", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }, "collapsed": false, "panels": [] },
+
+    {
+      "id": 1,
+      "title": "Log volume by service (stacked)",
+      "type": "timeseries",
+      "datasource": { "type": "loki", "uid": "docforge-loki" },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "bars", "fillOpacity": 60, "stacking": { "mode": "normal" }, "lineWidth": 0 } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "sum by (compose_service) (count_over_time({compose_service=~\"docforge_.+\"}[1m]))", "legendFormat": "{{compose_service}}" }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Errors & warnings volume",
+      "type": "timeseries",
+      "datasource": { "type": "loki", "uid": "docforge-loki" },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 10 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "bars", "fillOpacity": 60, "lineWidth": 0 }, "color": { "mode": "fixed", "fixedColor": "#c8402c" } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "sum(count_over_time({compose_service=~\"docforge_.+\"} |~ \"(?i)\\\\b(error|exception|traceback|critical|warn)\\\\b\" !~ \"j_failed=0\" [1m]))", "legendFormat": "errors & warnings" }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Top services by log volume (last 1h)",
+      "type": "bargauge",
+      "datasource": { "type": "loki", "uid": "docforge-loki" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 19 },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "options": { "orientation": "horizontal", "displayMode": "gradient", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        { "refId": "A", "expr": "sum by (compose_service) (count_over_time({compose_service=~\"docforge_.+\"}[1h]))", "legendFormat": "{{compose_service}}", "instant": true }
+      ]
+    },
+
+    { "id": 101, "type": "row", "title": "Live tail", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 27 }, "collapsed": false, "panels": [] },
+
+    {
+      "id": 10,
+      "title": "All services — live tail",
+      "type": "logs",
+      "datasource": { "type": "loki", "uid": "docforge-loki" },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 28 },
+      "options": {
+        "showTime": true,
+        "showLabels": true,
+        "showCommonLabels": false,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": false,
+        "enableLogDetails": true,
+        "dedupStrategy": "none",
+        "sortOrder": "Descending"
+      },
+      "targets": [
+        { "refId": "A", "expr": "{compose_service=~\"docforge_.+\"}" }
+      ]
+    },
+    {
+      "id": 11,
+      "title": "Errors & warnings — tail",
+      "type": "logs",
+      "datasource": { "type": "loki", "uid": "docforge-loki" },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 38 },
+      "options": {
+        "showTime": true,
+        "showLabels": true,
+        "showCommonLabels": false,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": false,
+        "enableLogDetails": true,
+        "dedupStrategy": "none",
+        "sortOrder": "Descending"
+      },
+      "targets": [
+        { "refId": "A", "expr": "{compose_service=~\"docforge_.+\"} |~ \"(?i)\\\\b(error|exception|traceback|critical|warn)\\\\b\" !~ \"j_failed=0\"" }
+      ]
+    },
+    {
+      "id": 12,
+      "title": "$service — filtered tail",
+      "type": "logs",
+      "datasource": { "type": "loki", "uid": "docforge-loki" },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 47 },
+      "options": {
+        "showTime": true,
+        "showLabels": false,
+        "showCommonLabels": false,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": false,
+        "enableLogDetails": true,
+        "dedupStrategy": "none",
+        "sortOrder": "Descending"
+      },
+      "targets": [
+        { "refId": "A", "expr": "{compose_service=~\"$service\"}" }
+      ]
+    }
+  ]
+}

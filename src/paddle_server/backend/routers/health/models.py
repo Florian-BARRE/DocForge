@@ -10,10 +10,12 @@ class HealthResponse(BaseModel):
     Response model for the GET /health liveness probe.
 
     Attributes:
-        status (str): "ok" when the pipeline is built and ready; "loading" during startup.
-        ready (bool): True only when the PP-StructureV3 pipeline is built and requests will
-            be served.
+        status (str): "ok" when both pipelines are built and ready; "loading" during startup.
+        ready (bool): True only when BOTH the PP-StructureV3 layout pipeline and the PaddleOCR
+            pipeline are built and requests will be served.
     """
 
     status: str = Field(..., description="'ok' when ready, 'loading' during startup.")
-    ready: bool = Field(..., description="True when the PP-StructureV3 pipeline is built.")
+    ready: bool = Field(
+        ..., description="True when both the PP-StructureV3 and PaddleOCR pipelines are built."
+    )

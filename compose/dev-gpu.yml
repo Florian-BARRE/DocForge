@@ -1,0 +1,33 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# DocForge — DEV GPU scenario. Same as dev-cpu.yml (local build + source mounts + hot
+# reload + Vite frontend), but worker/bge_server/paddle_server build against the GPU torch/
+# paddle wheel and are granted the NVIDIA device.
+#
+# INCLUDE ORDER MATTERS, and is COUNTER-INTUITIVE: gpu.yml FIRST, then dev.yml, then base.yml
+# LAST. Verified on this repo's Compose v5.1.1: `include:`'s conflict resolution is
+# FIRST-listed-file-wins for any leaf two included files both set — the OPPOSITE of `-f`'s
+# last-wins (which is what a plain `-f base -f dev -f gpu` stack correctly does). Concretely:
+#   - gpu.yml must precede dev.yml so `build.args.TORCH_VARIANT: gpu` wins over dev's `cpu`,
+#     and so `image:` (`-gpu` tag) wins over base's `-cpu` tag.
+#   - dev.yml must precede base.yml so dev's source-mount `volumes:` and host-cache bind win
+#     over base's named-volume defaults.
+#   - gpu.yml's `build.context`/`dockerfile` are spelled out explicitly (matching dev.yml's
+#     values) specifically so it doesn't matter that gpu.yml "wins" that leaf too — both files
+#     agree. See compose/overlays/gpu.yml's header comment for the full explanation, the
+#     reproduction that uncovered this, and why proxy.yml/telemetry.yml (always `-f`-layered,
+#     never `include:`d) are unaffected.
+#
+# WHEN TO USE THIS FILE: local development on a GPU-equipped machine.
+#
+#   docker compose -f compose/dev-gpu.yml --profile full up -d --build
+#
+# Add-ons (layer with an extra -f, never baked in here):
+#   docker compose -f compose/dev-gpu.yml -f compose/overlays/telemetry.yml --profile full up -d --build
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: docforge
+
+include:
+  - overlays/gpu.yml
+  - overlays/dev.yml
+  - base.yml

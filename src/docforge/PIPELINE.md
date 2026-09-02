@@ -442,7 +442,7 @@ vive, `'<100 numbers>'` dans la trace**.
 | `IntakeResult` | source_hash · pdf_content · page_count | content_address → **parser, figure_render** |
 | `DocumentIR` | doc_id · source_hash · title · n_pages · language · blocks[] (figures avec `crop: bytes` après figure_render) | parser → figure_render → **enrich, chunk** (+ vues backend) |
 | `PageRenders` | pages[] (png, dimensions) | figure_render → worker (blobs `page.render_blob_hash`) |
-| `FigureItem` | block_id · image (bytes) · page_coverage · kind · context | l'item du ForEach enrich — enrichi en copies au fil du corps (classify estampille `kind`, l'OCR remplit `context`) |
+| `FigureItem` | block_id · image (bytes) · page_coverage · kind · read_text | l'item du ForEach enrich — enrichi en copies au fil du corps (classify estampille `kind`, l'OCR remplit `read_text`) |
 | `EnrichmentEntry` | block_id · kind · ocr_text · description · data_table | le terminal UNIFORME de chaque branche enrich → collecté par le ForEach → enrich_apply |
 | `ChunkEmbeddings` | model · dimension · items[] (`ChunkVectors{chunk_id, dense, sparse, fields}`) | embed → worker (points Qdrant, zippé avec les chunks par chunk_id) |
 | `GeneratedDocumentMeta` | values (champ → valeur coercée) | metagen/document → worker (`document_metadata`) |
@@ -477,11 +477,11 @@ vive, `'<100 numbers>'` dans la trace**.
 
 ---
 
-*Dernière mise à jour : étape 1 + 2 blindées (chasses aux failles passées) · étapes 3-7 à construire.*
+*Dernière mise à jour : les 7 étapes (INTAKE → EMBED) construites, câblées dans le blob par défaut et validées au build.*
 
 ---
 
-## 6. La surface de design (défaut = produit maigre · avancé = API headless — zéro texte en dur)
+## 7. La surface de design (défaut = produit maigre · avancé = API headless — zéro texte en dur)
 
 **Le défaut est preflight-clean** — `default_blob()` livre **ON** uniquement les stages joignables avec
 les services in-stack (`intake`/`parse` docling · `contextualize` local · `embed` bge_server). Les stages

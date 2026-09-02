@@ -4,7 +4,8 @@
 # Responsibilities (in strict order):
 #   1. Import PaddleServerConfig FIRST — registers sys.path and configures logging sinks.
 #   2. Inject config into CONTEXT.
-#   3. Instantiate PpStructureService and inject into CONTEXT (unbuilt — lifespan builds it).
+#   3. Instantiate PpStructureService + PaddleOcrService and inject into CONTEXT (unbuilt — the
+#      lifespan builds both).
 #   4. Call create_app() and assign the result to the module-level `app` variable.
 # No business logic here — only wiring and assembly.
 
@@ -19,6 +20,7 @@ from loggerplusplus import loggerplusplus
 
 # ====== Internal Project Imports ======
 from backend import CONTEXT, create_app
+from libs.paddleocr import PaddleOcrService
 from libs.ppstructure import PpStructureService
 
 _logger = loggerplusplus.bind(identifier="PaddleEntrypoint")
@@ -46,7 +48,17 @@ def _build_app() -> FastAPI:
         lock_wait_timeout_seconds=PaddleServerConfig.PADDLE_LOCK_WAIT_TIMEOUT_SECONDS,
     )
 
-    # 3. Create the FastAPI app (lifespan registered inside create_app)
+    # 3. Instantiate the OCR-only service (NOT built yet — lifespan calls .build()). A SEPARATE
+    # PaddleOCR instance from ppstructure: pure text det+rec, no layout, one image → one reading.
+    CONTEXT.paddleocr = PaddleOcrService(
+        lang=PaddleServerConfig.PADDLE_OCR_LANG,
+        use_textline_orientation=PaddleServerConfig.PADDLE_OCR_USE_TEXTLINE_ORIENTATION,
+        model_cache_home=PaddleServerConfig.PADDLE_PDX_CACHE_HOME,
+        model_source=PaddleServerConfig.PADDLE_PDX_MODEL_SOURCE,
+        lock_wait_timeout_seconds=PaddleServerConfig.PADDLE_LOCK_WAIT_TIMEOUT_SECONDS,
+    )
+
+    # 4. Create the FastAPI app (lifespan registered inside create_app)
     fastapi_app = create_app()
     _logger.debug(
         f"Paddle server wired: table={PaddleServerConfig.PADDLE_USE_TABLE_RECOGNITION}, "
