@@ -48,7 +48,11 @@ interface TabProps<K extends string> {
 
 function Tab<K extends string>({ navId, itemKey, label, isActive, isGroup, panelId, onClick, registerRef, onKeyDown }: TabProps<K>) {
   const [hover, setHover] = useState(false);
-  const color = isActive ? theme.color.accent : hover ? theme.color.text : theme.color.dim;
+  // Text uses accentSafe (accent-strong on paper) — plain accent fails AA as text on paper. The
+  // underline below is non-text (a 3:1 graphical-object minimum applies, which plain accent clears),
+  // so it stays on the base accent — this is the one "deepest active level" the tab owns, not a
+  // second stacked accent treatment.
+  const color = isActive ? theme.color.accentSafe : hover ? theme.color.text : theme.color.dim;
   return (
     <button
       id={tabButtonId(navId, itemKey)}

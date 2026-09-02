@@ -13,7 +13,9 @@ const MIN_MB = 1;
 const inputStyle: React.CSSProperties = {
   background: theme.color.surface2,
   color: theme.color.text,
-  border: `1px solid ${theme.color.line}`,
+  // lineStrong, not line — line is near-invisible against surface2 on ink (~1.1:1); matches
+  // SchemaField's own local inputStyle copy.
+  border: `1px solid ${theme.color.lineStrong}`,
   borderRadius: theme.radius.m,
   padding: `${theme.space.xs + 2}px ${theme.space.s}px`,
   fontSize: theme.font.size.m,
@@ -31,6 +33,12 @@ export function MaxFileSizeField({ valueMb, onChange, advanced = false }: MaxFil
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 2, fontSize: theme.font.size.s }}>
       <div style={{ display: "flex", alignItems: "baseline", gap: theme.space.xs + 2, color: theme.color.dim }}>
+        {/* `NumberField` has no `id` passthrough today (see its prop surface), so a true
+            `htmlFor`/`id` pairing isn't wireable from here without changing that shared primitive
+            (out of this pass's scope — flagged for the primitives owner). The visible text below
+            stays a plain `<span>` (a `<label>` with a `htmlFor` pointing at nothing would be a
+            worse a11y regression than no association at all) — the control's real accessible name
+            comes from the `ariaLabel` passed to `NumberField` below instead. */}
         <span style={{ color: theme.color.text }}>
           Max file size
           <span style={{ color: theme.color.error }} title="required"> *</span>
@@ -54,6 +62,7 @@ export function MaxFileSizeField({ valueMb, onChange, advanced = false }: MaxFil
         min={MIN_MB}
         style={inputStyle}
         suffix="MB"
+        ariaLabel="Max file size in megabytes, required"
         onChange={(mb) => onChange(Math.max(MIN_MB, mb ?? MIN_MB))}
       />
       <div style={{ color: theme.color.dim, fontSize: theme.font.size.xs, lineHeight: 1.35 }}>

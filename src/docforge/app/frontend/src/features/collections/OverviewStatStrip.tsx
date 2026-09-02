@@ -6,6 +6,7 @@
 
 import type { Collection, CollectionHealth, FieldSpec } from "../../api/collections";
 import type { DocumentListItem } from "../../api/explorer";
+import type { JobStatus } from "../../api/jobs";
 import type { Navigate } from "../../shell/view";
 import { theme as t } from "../../theme";
 import { lastIngestLabel } from "./collectionHealth";
@@ -16,15 +17,22 @@ interface OverviewStatStripProps {
   docs: DocumentListItem[] | null;
   fields: FieldSpec[];
   health: CollectionHealth | null;
+  /** This collection's own job history — null while unresolved. Drives the "Jobs" chip below;
+   *  always carries `done/total` alongside the live `pending`/`running` counts so the chip still
+   *  reads as informative once the backlog has drained to 0/0. */
+  jobs: JobStatus[] | null;
   collectionId: string;
   onNavigate: Navigate;
 }
 
-export function OverviewStatStrip({ collection, docs, fields, health, collectionId, onNavigate }: OverviewStatStripProps) {
+export function OverviewStatStrip({ collection, docs, fields, health, jobs, collectionId, onNavigate }: OverviewStatStripProps) {
   const enabledDocs = docs?.filter((d) => d.enabled).length ?? 0;
   const requiredFields = fields.filter((f) => f.required).length;
   const maxSizeMb = (collection.max_file_size_bytes / (1024 * 1024)).toFixed(1);
   const vectorCount = health?.search.index.vector_count;
+  const pendingJobs = jobs?.filter((j) => j.status === "pending").length ?? 0;
+  const runningJobs = jobs?.filter((j) => j.status === "running").length ?? 0;
+  const doneJobs = jobs?.filter((j) => j.status === "done").length ?? 0;
 
   return (
     <>
@@ -42,6 +50,12 @@ export function OverviewStatStrip({ collection, docs, fields, health, collection
           value={docs ? docs.length : "…"}
           sub={docs ? `${enabledDocs} enabled` : undefined}
           onClick={() => onNavigate({ name: "collection-documents", collectionId })}
+        />
+        <StatChip
+          label="Jobs"
+          value={jobs ? jobs.length.toLocaleString() : "…"}
+          sub={jobs ? `${pendingJobs} pending · ${runningJobs} running · ${doneJobs}/${jobs.length} done` : undefined}
+          onClick={() => onNavigate({ name: "collection-jobs", collectionId })}
         />
         <StatChip
           label="Metadata fields"
@@ -70,9 +84,11 @@ export function OverviewStatStrip({ collection, docs, fields, health, collection
         <StatChip
           label="Job timeout"
           value={
-            <span style={{ fontFamily: t.font.mono }}>
-              {collection.job_timeout_seconds !== null ? `${collection.job_timeout_seconds}s` : "default"}
-            </span>
+            // Only the machine value (a duration) is mono per brand.md — "default" is prose, not a
+            // number, and reads in the app's normal Archivo voice like everywhere else.
+            collection.job_timeout_seconds !== null
+              ? <span style={{ fontFamily: t.font.mono }}>{collection.job_timeout_seconds}s</span>
+              : "default"
           }
           sub="whole-ingest-job wall-clock budget"
           onClick={() => onNavigate({ name: "collection-edit", collectionId })}

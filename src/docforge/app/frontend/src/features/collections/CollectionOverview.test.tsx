@@ -35,8 +35,14 @@ vi.mock("../../api/explorer", async (importOriginal) => ({
   listDocuments: vi.fn(),
 }));
 
+vi.mock("../../api/jobs", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../api/jobs")>()),
+  listJobs: vi.fn(),
+}));
+
 const { getCollection, getCollectionHealth, fetchCollectionStorage } = await import("../../api/collections");
 const { listDocuments } = await import("../../api/explorer");
+const { listJobs } = await import("../../api/jobs");
 
 const baseCollection: Collection = {
   id: "col-1",
@@ -89,6 +95,7 @@ describe("CollectionOverview — loading to loaded transition", () => {
     vi.mocked(getCollection).mockResolvedValue(baseCollection);
     vi.mocked(listDocuments).mockResolvedValue([]);
     vi.mocked(getCollectionHealth).mockResolvedValue(baseHealth);
+    vi.mocked(listJobs).mockResolvedValue([]);
 
     expect(() => renderWithProviders(<CollectionOverview collectionId="col-1" onNavigate={vi.fn()} />)).not.toThrow();
 
@@ -105,6 +112,7 @@ describe("CollectionOverview — loading to loaded transition", () => {
     vi.mocked(listDocuments).mockResolvedValue([documentFixture("doc-1"), documentFixture("doc-2")]);
     vi.mocked(getCollectionHealth).mockResolvedValue(baseHealth);
     vi.mocked(fetchCollectionStorage).mockResolvedValue(baseStorage);
+    vi.mocked(listJobs).mockResolvedValue([]);
 
     expect(() => renderWithProviders(<CollectionOverview collectionId="col-1" onNavigate={vi.fn()} />)).not.toThrow();
 

@@ -50,7 +50,7 @@ export function SearchFilterBuilder({ fields, values, onFilterChange }: SearchFi
             return (
               <Chip
                 key={name}
-                tone="accent"
+                tone="capability"
                 title="Click to remove this filter"
               >
                 <span style={{ cursor: "pointer" }} onClick={() => onFilterChange(name, undefined)}>

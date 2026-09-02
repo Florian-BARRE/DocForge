@@ -1,25 +1,32 @@
 // ====== Code Summary ======
 // The wizard's horizontal step indicator — numbered circles joined by a line; done steps fill
 // accent, the current step outlines accent, future steps stay dim. Purely presentational.
+//
+// The row never wraps (labels must stay on one line) and the connecting line keeps a floor width
+// instead of shrinking to 0, so on a narrow viewport the content overflows its own width rather
+// than the last step's label getting clipped by the page — that overflow is contained to an
+// internal horizontal scroll on this component instead of leaking into page-level scroll.
 
 import { theme as t } from "../../../theme";
 
 export function WizardSteps({ labels, current }: { labels: string[]; current: number }) {
   return (
-    <div style={{ display: "flex", alignItems: "center", marginBottom: t.space.xl }}>
+    <div style={{ display: "flex", alignItems: "center", marginBottom: t.space.xl, overflowX: "auto", overflowY: "hidden" }}>
       {labels.map((label, index) => {
         const done = index < current;
         const active = index === current;
         return (
-          <div key={label} style={{ display: "flex", alignItems: "center", flex: index < labels.length - 1 ? 1 : "0 0 auto" }}>
+          <div key={label} style={{ display: "flex", alignItems: "center", flex: index < labels.length - 1 ? "1 1 auto" : "0 0 auto" }}>
             <div style={{ display: "flex", alignItems: "center", gap: t.space.s, flexShrink: 0 }}>
               <span
                 style={{
                   width: 26, height: 26, borderRadius: t.radius.pill, display: "grid", placeItems: "center",
                   fontSize: t.font.size.s, fontWeight: t.font.weight.semibold, flexShrink: 0,
-                  background: done || active ? t.color.accent : t.color.surface2,
+                  // accentSafe, not accent — this fill carries white knockout text, and plain
+                  // accent fails AA (~3.4:1) at this size (see theme.ts accentSafe doc).
+                  background: done || active ? t.color.accentSafe : t.color.surface2,
                   color: done || active ? t.color.onAccent : t.color.dim,
-                  border: `1px solid ${done || active ? t.color.accent : t.color.line}`,
+                  border: `1px solid ${done || active ? t.color.accentSafe : t.color.line}`,
                 }}
               >
                 {done ? "✓" : index + 1}
@@ -29,7 +36,7 @@ export function WizardSteps({ labels, current }: { labels: string[]; current: nu
               </span>
             </div>
             {index < labels.length - 1 && (
-              <div style={{ flex: 1, height: 1, background: done ? t.color.accent : t.color.line, margin: `0 ${t.space.m}px` }} />
+              <div style={{ flex: 1, minWidth: t.space.xl, height: 1, background: done ? t.color.accent : t.color.line, margin: `0 ${t.space.m}px` }} />
             )}
           </div>
         );

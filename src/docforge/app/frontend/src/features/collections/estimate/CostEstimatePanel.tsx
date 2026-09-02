@@ -55,7 +55,10 @@ export function CostEstimatePanel({ collectionId }: CostEstimatePanelProps) {
             ariaLabel="Estimate scope"
             role="group"
           />
-          <Button size="sm" variant="primary" onClick={run} disabled={loading}>
+          {/* Steel, not orange — this is a routine, repeatable dry-run action, not the Overview's
+              one primary thing (that's the Upload hero); brand.md reserves forge orange for a
+              single accent per screen. */}
+          <Button size="sm" variant="secondary" onClick={run} disabled={loading}>
             {loading ? "Estimating…" : estimate ? "Re-estimate" : "Estimate cost"}
           </Button>
         </div>

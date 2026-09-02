@@ -2,10 +2,29 @@
 // The top bar's API token control — paste/save/clear the Bearer token used by every request (see
 // `apiFetch` in api/http.ts). Collapsed to a single button by default so it stays unobtrusive;
 // expands into an inline field on click. The token itself is never displayed once saved.
+//
+// The trigger reads a currentColor key glyph, never an emoji. Below ~480px the "Token"/"Token
+// set" label hides (icon + the border colour already carry the state), which is one of the
+// widths saved by collapsing the top bar so the whole app stops scrolling horizontally on mobile.
 
 import { useEffect, useState } from "react";
 import { API_TOKEN_CLEARED_EVENT, clearApiToken, getApiToken, setApiToken } from "../api/http";
 import { theme } from "../theme";
+
+const RESPONSIVE_LABEL_CSS = `
+  @media (max-width: 480px) {
+    .df-token-label { display: none; }
+  }
+`;
+
+function KeyGlyph() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+      strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4" />
+    </svg>
+  );
+}
 
 export function TokenControl() {
   const [open, setOpen] = useState(false);
@@ -37,18 +56,23 @@ export function TokenControl() {
 
   if (!open) {
     return (
-      <button
-        onClick={() => setOpen(true)}
-        title={hasToken ? "API token set" : "No API token set"}
-        style={{
-          background: "none", border: `1px solid ${hasToken ? theme.color.ok : theme.color.line}`,
-          color: hasToken ? theme.color.ok : theme.color.dim,
-          borderRadius: theme.radius.s, padding: "5px 10px",
-          fontSize: theme.font.size.m, cursor: "pointer",
-        }}
-      >
-        🔑 {hasToken ? "Token set" : "Token"}
-      </button>
+      <>
+        <style>{RESPONSIVE_LABEL_CSS}</style>
+        <button
+          onClick={() => setOpen(true)}
+          title={hasToken ? "API token set" : "No API token set"}
+          style={{
+            display: "inline-flex", alignItems: "center", gap: 6,
+            background: "none", border: `1px solid ${hasToken ? theme.color.ok : theme.color.line}`,
+            color: hasToken ? theme.color.ok : theme.color.dim,
+            borderRadius: theme.radius.s, padding: "5px 10px",
+            fontSize: theme.font.size.m, cursor: "pointer",
+          }}
+        >
+          <KeyGlyph />
+          <span className="df-token-label">{hasToken ? "Token set" : "Token"}</span>
+        </button>
+      </>
     );
   }
 

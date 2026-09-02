@@ -1,13 +1,15 @@
 // ====== Code Summary ======
 // State for the collections list turned fleet dashboard: loads the collection list, then fans out
-// TWO cheap per-collection reads concurrently — the live health probe (verdict/parser/vector count/
-// last ingest) and a lightweight document-count query — updating each collection's slice
-// INDEPENDENTLY as it resolves (progressive card population, never blocked on the slowest one).
-// Also owns the toolbar's derived state: text search (by name), a health-status filter, and a sort key.
+// THREE cheap per-collection reads concurrently — the live health probe (verdict/parser/vector count/
+// last ingest), a lightweight document-count query, and the job queue depth (pending/running) — updating
+// each collection's slice INDEPENDENTLY as it resolves (progressive card population, never blocked on
+// the slowest one). Also owns the toolbar's derived state: text search (by name), a health-status
+// filter, and a sort key.
 
 import { useEffect, useMemo, useState } from "react";
 import { getCollectionHealth, listCollections, type Collection, type CollectionHealth } from "../../../api/collections";
 import { queryDocuments } from "../../../api/corpus";
+import { getQueueDepth } from "../../../api/jobs";
 
 export type FleetSortKey = "name" | "health" | "activity";
 export type FleetHealthFilter = "all" | "attention" | "empty" | "operational";
@@ -28,6 +30,10 @@ interface FleetEntry {
   healthError: string | null;
   docCount: number | null;
   docCountError: string | null;
+  /** Whether this collection owns at least one RUNNING job right now — drives the fleet card's
+   *  avatar accent (orange is earned by activity, never a static at-rest mark). Defaults to false
+   *  while the queue-depth probe hasn't resolved yet — a card never guesses "active". */
+  jobRunning: boolean;
 }
 
 function matchesHealthFilter(filter: FleetHealthFilter, health: CollectionHealth | null): boolean {
@@ -45,6 +51,7 @@ export function useCollectionsFleet() {
   const [healthErrorById, setHealthErrorById] = useState<Record<string, string>>({});
   const [docCountById, setDocCountById] = useState<Record<string, number>>({});
   const [docCountErrorById, setDocCountErrorById] = useState<Record<string, string>>({});
+  const [runningById, setRunningById] = useState<Record<string, boolean>>({});
 
   const [searchQuery, setSearchQuery] = useState("");
   const [sortKey, setSortKey] = useState<FleetSortKey>("name");
@@ -56,13 +63,14 @@ export function useCollectionsFleet() {
     setHealthErrorById({});
     setDocCountById({});
     setDocCountErrorById({});
+    setRunningById({});
     listCollections()
       .then(setCollections)
       .catch((e) => setLoadError(e instanceof Error ? e.message : String(e)));
   };
   useEffect(load, []);
 
-  // Fan out the two per-card probes CONCURRENTLY across every collection, each settling
+  // Fan out the three per-card probes CONCURRENTLY across every collection, each settling
   // independently — a slow/unreachable provider on one collection never stalls the rest of the grid.
   useEffect(() => {
     if (!collections) return;
@@ -73,6 +81,11 @@ export function useCollectionsFleet() {
       queryDocuments(c.id, { pagination: { limit: 1, offset: 0 } })
         .then((r) => setDocCountById((prev) => ({ ...prev, [c.id]: r.total })))
         .catch((e) => setDocCountErrorById((prev) => ({ ...prev, [c.id]: e instanceof Error ? e.message : String(e) })));
+      // Silent on failure — an unresolved queue-depth probe just keeps the card's avatar steel,
+      // never a fault worth surfacing on top of the health/doc-count errors above.
+      getQueueDepth(c.id)
+        .then((depth) => setRunningById((prev) => ({ ...prev, [c.id]: depth.running > 0 })))
+        .catch(() => {});
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- fan-out keys off the collection id set only.
   }, [collections]);
@@ -85,8 +98,9 @@ export function useCollectionsFleet() {
       healthError: healthErrorById[collection.id] ?? null,
       docCount: docCountById[collection.id] ?? null,
       docCountError: docCountErrorById[collection.id] ?? null,
+      jobRunning: runningById[collection.id] ?? false,
     }));
-  }, [collections, healthById, healthErrorById, docCountById, docCountErrorById]);
+  }, [collections, healthById, healthErrorById, docCountById, docCountErrorById, runningById]);
 
   const visibleEntries: FleetEntry[] = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();

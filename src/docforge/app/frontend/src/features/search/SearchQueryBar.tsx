@@ -29,6 +29,7 @@ export function SearchQueryBar({ query, onQueryChange, limit, onLimitChange, loa
     >
       <div style={{ flex: 1 }}>
         <input
+          className="df-search-input"
           value={query}
           onChange={(e) => onQueryChange(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && onSubmit()}

@@ -43,7 +43,9 @@ export function StepReview({
         </div>
         <div style={{ color: theme.color.dim, fontSize: theme.font.size.m, marginTop: theme.space.s }}>
           Max file size: {bytesToMb(maxSizeBytes).toFixed(1)} MB · job timeout:{" "}
-          <span style={{ fontFamily: theme.font.mono }}>{jobTimeoutSeconds !== null ? `${jobTimeoutSeconds}s` : "default"}</span>
+          {jobTimeoutSeconds !== null
+            ? <span style={{ fontFamily: theme.font.mono }}>{jobTimeoutSeconds}s</span>
+            : "default"}
           {" "}· {fields.length} field(s)
         </div>
       </div>

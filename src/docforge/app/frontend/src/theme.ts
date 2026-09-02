@@ -27,22 +27,38 @@ export const theme = {
     // Accent (the ember/forge signature).
     accent: "var(--accent)",
     accentStrong: "var(--accent-strong)",
+    // The AA-safe accent for the CURRENT theme — resolves to accent-strong on paper (base --accent
+    // fails ~3.4:1 as text/fill under light knockout content) and to plain --accent on ink (already
+    // ~6:1, unchanged). Use this — never raw `accent` — for any accent rendered as TEXT on a paper-ish
+    // surface, or as a solid fill that carries light knockout text (see Button primary). Documented
+    // for page-owning agents in agent-memory/frontend/design-round1-2026-09.md.
+    accentSafe: "var(--accent-safe)",
+    // One step darker than accentSafe — for accent TEXT on a tinted card surface (surface-2), where
+    // accentSafe's paper-tuned ~4.35:1 falls under AA. Narrow use: SearchHitCard's "view page" link.
+    accentStrongOnSurface: "var(--accent-strong-on-surface)",
     accentSoft: "var(--accent-soft)",
     accentLine: "var(--accent-line)",
     onAccent: "var(--accent-contrast)",
 
-    // Semantics.
-    ok: "var(--ok)", okSoft: "var(--ok-soft)",
-    error: "var(--error)", errorSoft: "var(--error-soft)",
-    warn: "var(--warn)", warnSoft: "var(--warn-soft)",
-    info: "var(--info)", infoSoft: "var(--info-soft)",
+    // Semantics. Each has a "-strong" text-safe step for when the tone is rendered as TEXT over its
+    // own soft tint (a chip) rather than as a plain icon/border — several base tones (warn, skip,
+    // iris/chain) fail AA as text at their base value. Fills stay unchanged; only text should switch.
+    ok: "var(--ok)", okSoft: "var(--ok-soft)", okStrong: "var(--ok-strong)",
+    error: "var(--error)", errorSoft: "var(--error-soft)", errorStrong: "var(--error-strong)",
+    warn: "var(--warn)", warnSoft: "var(--warn-soft)", warnStrong: "var(--warn-strong)",
+    info: "var(--info)", infoSoft: "var(--info-soft)", infoStrong: "var(--info-strong)",
     // A stopped/skipped state — cancelled jobs+documents, skipped stages. Deliberately NOT the
     // error red (per brand.md, "cancelled" reads as a deliberate stop, not a failure).
-    skip: "var(--skip)", skipSoft: "var(--skip-soft)",
+    skip: "var(--skip)", skipSoft: "var(--skip-soft)", skipStrong: "var(--skip-strong)",
     // Fallback chains + loop concepts get their own hues so they read as distinct.
-    loop: "var(--iris)", loopSoft: "var(--iris-soft)", // legacy alias
-    iris: "var(--iris)", irisSoft: "var(--iris-soft)",
-    chain: "var(--chain)", chainSoft: "var(--chain-soft)",
+    loop: "var(--iris)", loopSoft: "var(--iris-soft)", loopStrong: "var(--iris-strong)", // legacy alias
+    iris: "var(--iris)", irisSoft: "var(--iris-soft)", irisStrong: "var(--iris-strong)",
+    chain: "var(--chain)", chainSoft: "var(--chain-soft)", chainStrong: "var(--chain-strong)",
+    // A passive capability/origin flag (e.g. "user"-authored field, a metadata surface like
+    // semantic/lexical/filterable) — steel, never a status colour. Reserved for badges that
+    // describe WHAT something is, not whether it succeeded/failed/is-the-active-one; per
+    // brand.md, forge and the "done" green are both off-limits for this kind of passive tag.
+    capability: "var(--capability)", capabilitySoft: "var(--capability-soft)", capabilityStrong: "var(--capability-strong)",
 
     // Categorical data-viz triad — one hue per physical store on the storage-footprint panel.
     // Warm steel / clay terracotta / olive-moss: three distinct warm hues, never the forge accent.

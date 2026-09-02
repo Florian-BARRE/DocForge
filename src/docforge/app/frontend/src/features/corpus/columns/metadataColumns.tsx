@@ -7,21 +7,24 @@
 import type { ColumnDef } from "@tanstack/react-table";
 import type { FieldSpec, FieldType } from "../../../api/collections";
 import type { DocumentGridRow } from "../../../api/corpus";
+import { humanizeFieldLabel } from "../../../components/schema-form/fieldLabels";
 import { MetadataValueCell } from "../MetadataValueCell";
 import { metadataColumnId, type ColumnFilterKind } from "../types";
 
 // The fixed base columns a metadata field name can collide with by pure coincidence (e.g. a
-// schema field named "language" vs. the base "Language" column) — disambiguated with a suffix
-// rather than restructuring the header into JSX, so the column-visibility menu (which falls back
-// to `column.id` for non-string headers) keeps showing a readable label too.
+// schema field named "language" vs. the base "Language" column) — disambiguated with a "Metadata "
+// prefix rather than restructuring the header into JSX, so the column-visibility menu (which falls
+// back to `column.id` for non-string headers) keeps showing a readable label too.
 const BASE_COLUMN_HEADERS = new Set([
   "filename", "status", "format", "pages", "size", "created", "title", "language", "enabled",
 ]);
 
+// Same humanization layer every schema-driven form uses (see fieldLabels.ts) — a raw wire name like
+// `document_type` must never reach the header cell verbatim; the header's own `text-transform:
+// uppercase` (TableHeaderCell) only capitalizes letters, it doesn't turn underscores into spaces.
 function headerFor(field: FieldSpec): string {
-  return BASE_COLUMN_HEADERS.has(field.field_name.toLowerCase())
-    ? `${field.field_name} (meta)`
-    : field.field_name;
+  const label = humanizeFieldLabel(field.field_name);
+  return BASE_COLUMN_HEADERS.has(field.field_name.toLowerCase()) ? `Metadata ${label}` : label;
 }
 
 function filterKindFor(fieldType: FieldType): ColumnFilterKind | undefined {

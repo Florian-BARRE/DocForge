@@ -47,7 +47,7 @@ export function BulkConfirmDialog({ title, description, count, confirmLabel, var
           {title}
         </h2>
         <div style={{ color: theme.color.dim, fontSize: theme.font.size.m, lineHeight: 1.5 }}>{description}</div>
-        <div style={{ fontFamily: theme.font.mono, fontSize: theme.font.size.xl, color: theme.color.accent, fontWeight: 700 }}>
+        <div style={{ fontFamily: theme.font.mono, fontSize: theme.font.size.xl, color: theme.color.accentSafe, fontWeight: 700 }}>
           {count.toLocaleString()} document{count === 1 ? "" : "s"}
         </div>
         <div style={{ display: "flex", gap: theme.space.s, justifyContent: "flex-end" }}>

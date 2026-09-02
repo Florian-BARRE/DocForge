@@ -56,7 +56,7 @@ export function ChunkCard({ chunk, selected, onToggleSelect, onJumpToBlock, onEn
               title="Show this chunk on its source page"
               style={{
                 background: theme.color.surface2, border: `1px solid ${theme.color.line}`, borderRadius: theme.radius.s,
-                color: theme.color.accent, cursor: "pointer", fontSize: theme.font.size.xs, padding: "3px 8px",
+                color: theme.color.accentSafe, cursor: "pointer", fontSize: theme.font.size.xs, padding: "3px 8px",
               }}
             >
               view on page

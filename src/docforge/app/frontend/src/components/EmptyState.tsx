@@ -31,7 +31,7 @@ export function EmptyState({ icon, title, subtitle, action, children }: EmptySta
       <span
         style={{
           width: 48, height: 48, borderRadius: t.radius.pill, display: "grid", placeItems: "center",
-          background: t.color.accentSoft, color: t.color.accent,
+          background: t.color.accentSoft, color: t.color.accentSafe,
           fontFamily: t.font.display, fontWeight: t.font.weight.bold, fontSize: t.font.size.xxl,
         }}
       >

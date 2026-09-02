@@ -80,7 +80,7 @@ export function SearchHitText({ text }: { text: string }) {
         <button
           onClick={() => setExpanded((v) => !v)}
           style={{
-            background: "none", border: "none", color: theme.color.accent, cursor: "pointer",
+            background: "none", border: "none", color: theme.color.accentSafe, cursor: "pointer",
             fontSize: theme.font.size.xs, fontWeight: 600, padding: 0, marginTop: 6,
           }}
         >

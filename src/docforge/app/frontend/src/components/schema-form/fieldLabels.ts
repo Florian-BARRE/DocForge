@@ -56,6 +56,15 @@ const FIELD_COPY: Record<string, FieldCopy> = {
   enabled: { label: "Enabled" },
   do_ocr: { label: "Run OCR", help: "Extract text from scanned pages and images." },
   do_table_structure: { label: "Detect table structure", help: "Recognize table rows/columns instead of reading them as plain text." },
+
+  // Search pipeline — query/normalize + encode/collection node knobs. Sentence case (not the
+  // auto-humanized Title Case fallback) to match the rest of the search rail's control labels.
+  fold_case: { label: "Fold case" },
+  candidate_multiplier: { label: "Candidate multiplier" },
+  candidate_floor: { label: "Candidate floor" },
+  // The `_seconds` suffix already renders as a unit adornment (humanizeFieldUnit) — repeating
+  // "seconds" in the label itself would say it twice.
+  axis_timeout_seconds: { label: "Axis timeout" },
 };
 
 /** snake_case → "Title Case" — the fallback for any field not curated in `FIELD_COPY` above. */
@@ -94,9 +103,16 @@ export function humanizeFieldHelp(name: string, backendDescription?: string): st
   return FIELD_COPY[name]?.help ?? backendDescription;
 }
 
-/** snake_case enum member → "Title Case" display text — the wire `value` never changes, only the
- *  rendered `<option>` label, so a raw backend literal (`digital_born`, `keyword_list`) never
- *  reaches the user verbatim. */
+// A handful of enum members ARE acronyms (fusion strategies, mostly) — Title Case would mangle them
+// into "Rrf"/"Dbsf" instead of the industry-standard all-caps spelling.
+const ACRONYM_ENUM_OPTIONS: Record<string, string> = {
+  rrf: "RRF",
+  dbsf: "DBSF",
+};
+
+/** snake_case enum member → "Title Case" display text (or its curated acronym spelling) — the wire
+ *  `value` never changes, only the rendered `<option>` label, so a raw backend literal
+ *  (`digital_born`, `keyword_list`) never reaches the user verbatim. */
 export function humanizeEnumOption(value: string): string {
-  return autoHumanizeLabel(value);
+  return ACRONYM_ENUM_OPTIONS[value] ?? autoHumanizeLabel(value);
 }
