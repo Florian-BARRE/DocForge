@@ -99,16 +99,37 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 # uvicorn targets `entrypoint:app` (a flat module name, not a package path).
 WORKDIR /app/paddle_server
 
-# Copy the prebuilt virtual environment from the builder stage.
+# Non-root runtime user (fixed uid/gid). --no-create-home: PADDLE_PDX_CACHE_HOME above is an
+# absolute path (/models), not home-relative, so this service needs no home directory of its own.
+RUN groupadd --gid 10001 appuser \
+    && useradd --uid 10001 --gid appuser --no-create-home --shell /usr/sbin/nologin appuser
+
+# WORKDIR above created /app/paddle_server as root (it predates the COPYs below, so their
+# --chown never touches it) — chown the directory itself too, or appuser can read everything
+# inside it but can't create NEW entries (e.g. `logs/`) directly under it.
+RUN chown appuser:appuser /app/paddle_server
+
+# Pre-create the model cache mount point owned by appuser. docker-compose.yml mounts a named
+# volume at /models; Docker seeds a freshly created volume from whatever already exists (content
+# + ownership) at its mount target in the image, so a fresh volume comes up appuser-writable
+# instead of root-owned — without this, the first predict() call's model download would crash
+# with a cache-write PermissionError.
+RUN mkdir -p /models && chown appuser:appuser /models
+
+# Copy the prebuilt virtual environment from the builder stage, owned by the runtime user.
 # This layer is the largest (paddlepaddle + paddleocr/paddlex + opencv/numpy/pillow) and
 # changes only when pyproject.toml / uv.lock change — not on every code edit.
-COPY --from=py-build /opt/venv /opt/venv
+COPY --from=py-build --chown=appuser:appuser /opt/venv /opt/venv
 
-# Copy application source code into the working directory.
+# Copy application source code into the working directory, owned by the runtime user so it can
+# create `logs/` under it at runtime if LOGGING_ENABLE_FILE is turned on.
 # config_loader.py, entrypoint.py, backend/, and libs/ land directly under /app/paddle_server/
 # so they are importable as top-level modules without package qualification.
 # This layer is small and rebuilt only when source files change.
-COPY paddle_server /app/paddle_server
+COPY --chown=appuser:appuser paddle_server /app/paddle_server
+
+# Drop root for the actual process.
+USER appuser
 
 # HTTP port served by uvicorn. Internal-only in prod compose (network alias paddle_server);
 # dev republishes it to a host port (see docker-compose.dev.yml).

@@ -40,6 +40,10 @@ services:
       QDRANT_URL: http://docforge_qdrant:6333
       # botocore rejects '_' in hostnames — the hyphenated container_name resolves on the network
       S3_ENDPOINT_URL: http://docforge-seaweedfs:8333
+      # Surfaced as FASTAPI_APP_VERSION's default (see app/config/runtime_config.py) — without
+      # this the running container never sees the tag compose resolved for the image pull, so
+      # /health and export-bundle provenance both report "unknown" even on a pinned release.
+      DOCFORGE_TAG: ${DOCFORGE_TAG:-latest}
     depends_on:
       docforge_postgres:
         condition: service_healthy
@@ -54,9 +58,15 @@ services:
       - docforge_net
 
   # ── arq worker — heavy image (pipeline execution + persistence) ─────────────
+  # No fixed container_name: a static name collides across replicas, which blocks
+  # `docker compose up --scale docforge_worker=N`. Nothing addresses the worker by container name
+  # or hostname (unlike docforge-seaweedfs above) — it only makes outbound calls to
+  # postgres/redis/seaweedfs — so this is safe to drop. Default stays 1 worker; to scale:
+  #   docker compose --profile full up -d --scale docforge_worker=3
+  # (arq's own Redis-backed queue already fans work out safely across replicas — no per-worker
+  # config needed. Compose auto-suffixes container names, e.g. docforge_worker-1/-2/-3.)
   docforge_worker:
     image: ghcr.io/florian-barre/docforge-worker:${DOCFORGE_TAG:-latest}-cpu
-    container_name: docforge-worker
     profiles: ["full"]
     # Same reason as docforge_app: the worker runs the figure VLM + metagen LLM provider calls, which
     # target external hostnames Docker's embedded resolver can't reach. Pin public resolvers.
@@ -76,11 +86,16 @@ services:
       # the host has 8 CPUs and no CPU cap is set (see the deploy block), so heavy stages run at full
       # power. If many ingestions run at once and oversubscribe, lower WORKER_CONCURRENCY or re-pin
       # OMP_NUM_THREADS to cores/concurrency.
+      # Surfaced as DOCFORGE_VERSION (see worker/config/runtime_config.py) — export-bundle
+      # provenance records this on every collection export; unset it and bundles say "unknown".
+      DOCFORGE_TAG: ${DOCFORGE_TAG:-latest}
     volumes:
       # Persist the docling/rapidocr HF cache across recreations (the dev override binds
       # the HOST's cache instead; prod has no host cache to bind, so it needs its own
-      # named volume — mirrors the docforge_bge_models pattern on docforge_bge_server).
-      - docforge_worker_hf_cache:/root/.cache/huggingface
+      # named volume — mirrors the docforge_bge_models pattern on docforge_bge_server). Mount
+      # target is the non-root runtime user's home (HOME=/home/appuser, see worker/Dockerfile),
+      # not /root — the image no longer runs as root.
+      - docforge_worker_hf_cache:/home/appuser/.cache/huggingface
     depends_on:
       docforge_postgres:
         condition: service_healthy

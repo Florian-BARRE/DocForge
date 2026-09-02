@@ -49,9 +49,18 @@ services:
     volumes:
       - ./src/docforge/worker:/app/worker
       - ./src/docforge/shared:/app/shared
-      # Reuse the host's HF cache so docling never re-downloads models.
+      # Reuse the host's HF cache so docling never re-downloads models. Mount target is the
+      # non-root runtime user's home (HOME=/home/appuser, uid/gid 10001, see worker/Dockerfile)
+      # — NOT /root, the image no longer runs as root.
       # ${HOME} on Linux; on Windows/Docker Desktop export HOME or swap for ${USERPROFILE}.
-      - ${HOME}/.cache/huggingface:/root/.cache/huggingface
+      # CAVEAT (native Linux hosts only): a bind mount preserves host-side ownership as-is —
+      # if ${HOME}/.cache/huggingface is owned by your host user (not uid 10001), appuser gets
+      # read access but can't WRITE new model files into it, and a cold cache first-download
+      # will fail. Fix once with `sudo chown -R 10001:10001 ~/.cache/huggingface`, or delete the
+      # line to fall back to the container's own (root-seeded, appuser-owned) cache. Docker
+      # Desktop's bind-mount layer (Windows/Mac) is typically permissive across uids and does
+      # not hit this.
+      - ${HOME}/.cache/huggingface:/home/appuser/.cache/huggingface
     environment:
       DEV_MODE: "true"
     # Hot-reload the arq worker on source edits. arq's own --watch only recreates the asyncio

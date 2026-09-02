@@ -65,8 +65,17 @@ class RUNTIME_CONFIG(EnvConfigLoader):
     FASTAPI_DEBUG_MODE: bool = env("FASTAPI_DEBUG_MODE", cast=bool)
     FASTAPI_CORS_ALLOWED_ORIGINS: str = env("FASTAPI_CORS_ALLOWED_ORIGINS")
 
-    # Application version surfaced in OpenAPI docs and the public /health endpoint.
-    FASTAPI_APP_VERSION: str = env("FASTAPI_APP_VERSION")
+    # Application version surfaced in OpenAPI docs (info.version) and the public /health endpoint.
+    # Defaults from the deployment's pinned image tag (DOCFORGE_TAG — the same var compose uses to
+    # select the image, injected into the app container's env), so the API advertises the version it
+    # actually ships. Mirrors the worker's exact resolution (env("DOCFORGE_TAG", default="unknown"))
+    # so app + worker agree. An explicit FASTAPI_APP_VERSION still wins; falls back to "unknown" when
+    # neither is set (local dev), never a stale pinned number.
+    FASTAPI_APP_VERSION: str = env(
+        "FASTAPI_APP_VERSION",
+        required=False,
+        default=env("DOCFORGE_TAG", required=False, default="unknown"),
+    )
 
     # ───── Authentication (API-key bearer, keys-only) ─────
     # OFF by default so local dev and the units suite run without credentials. When ON, every

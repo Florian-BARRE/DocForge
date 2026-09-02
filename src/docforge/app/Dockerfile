@@ -80,17 +80,36 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app/app
 
-# Copy the prebuilt virtual environment from the builder.
-COPY --from=py-build /opt/venv /opt/venv
+# Non-root runtime user (fixed uid/gid so bind-mount/volume ownership is predictable across
+# rebuilds and hosts). --no-create-home: the app writes nothing under a home dir — its only
+# runtime writes are /tmp (LOGGING_ENABLE_FILE off by default; loguru's file sink, when enabled,
+# creates `logs/` under the CWD below, which --chown on the COPYs already makes writable) and
+# /tmp (world-writable 1777 in the base image already, no extra chown needed).
+RUN groupadd --gid 10001 appuser \
+    && useradd --uid 10001 --gid appuser --no-create-home --shell /usr/sbin/nologin appuser
+
+# WORKDIR above created /app/app as root (it predates the COPYs below, so their --chown never
+# touches it) — chown the directory itself too, or appuser can read everything inside it but
+# can't create NEW entries (e.g. `logs/`) directly under it.
+RUN chown appuser:appuser /app/app
+
+# Copy the prebuilt virtual environment from the builder, owned by the runtime user so it can
+# execute the interpreter and import site-packages without relying on world-read defaults.
+COPY --from=py-build --chown=appuser:appuser /opt/venv /opt/venv
 
 # Copy the shared socle then the app itself (app/config bootstraps the
-# shared_libs alias from /app/shared/libs at startup).
-COPY shared /app/shared
-COPY app /app/app
+# shared_libs alias from /app/shared/libs at startup). --chown so appuser owns /app/app and can
+# create `logs/` under it at runtime if LOGGING_ENABLE_FILE is turned on.
+COPY --chown=appuser:appuser shared /app/shared
+COPY --chown=appuser:appuser app /app/app
 
 # Overlay the compiled UI bundle from the ui-build stage, replacing whatever
 # dist/ (if any) came along in the COPY above.
-COPY --from=ui-build /workspace/frontend/dist /app/app/frontend/dist
+COPY --from=ui-build --chown=appuser:appuser /workspace/frontend/dist /app/app/frontend/dist
+
+# Drop root for the actual process — everything above (dependency install, npm build, chown)
+# still ran as root, which is fine since only the final runtime layer's process user matters.
+USER appuser
 
 # FastAPI port served by uvicorn below.
 EXPOSE 8000

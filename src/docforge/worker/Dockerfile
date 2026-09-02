@@ -81,14 +81,46 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app/worker
 
-# Copy the prebuilt virtual environment and the baked tokenizer cache from the builder.
-COPY --from=py-build /opt/venv /opt/venv
-COPY --from=py-build /opt/tiktoken_cache /opt/tiktoken_cache
+# Non-root runtime user with a real home directory: docling/rapidocr/huggingface_hub resolve
+# their model cache from $HOME/.cache/huggingface (HF_HOME) by default, so unlike the app/mcp
+# images this one needs a writable, addressable home — NOT nested under /app/worker or
+# /app/shared, because docker-compose.dev.yml bind-mounts host source directly over both of
+# those paths, which would shadow (and in prod, simply never seed) a cache dir placed inside
+# them. --create-home materializes /home/appuser owned by the new user.
+RUN groupadd --gid 10001 appuser \
+    && useradd --uid 10001 --gid appuser --create-home --home-dir /home/appuser \
+        --shell /usr/sbin/nologin appuser
+
+# Pin HOME explicitly (don't rely on nsswitch/passwd resolution) so huggingface_hub's default
+# cache path ($HOME/.cache/huggingface) is deterministic regardless of how the container is run.
+ENV HOME=/home/appuser
+
+# WORKDIR above created /app/worker as root (it predates the COPYs below, so their --chown
+# never touches it) — chown the directory itself too, or appuser can read everything inside it
+# but can't create NEW entries (e.g. `logs/`) directly under it.
+RUN chown appuser:appuser /app/worker
+
+# Pre-create the exact cache directory Docker mounts the persistent volume onto (see
+# docker-compose.yml's docforge_worker_hf_cache), owned by appuser. Docker seeds a freshly
+# created named volume from whatever already exists (content + ownership) at its mount target
+# in the image, so a fresh volume on a clean deploy comes up appuser-writable instead of
+# root-owned (which would crash the first docling parse with a cache-write PermissionError).
+RUN mkdir -p /home/appuser/.cache/huggingface && chown -R appuser:appuser /home/appuser
+
+# Copy the prebuilt virtual environment and the baked tokenizer cache from the builder, owned by
+# the runtime user (execute access to the venv, read access to the pre-populated tiktoken cache).
+COPY --from=py-build --chown=appuser:appuser /opt/venv /opt/venv
+COPY --from=py-build --chown=appuser:appuser /opt/tiktoken_cache /opt/tiktoken_cache
 
 # Copy the shared socle then the worker itself (worker/config bootstraps the
-# shared_libs alias from /app/shared/libs at startup).
-COPY shared /app/shared
-COPY worker /app/worker
+# shared_libs alias from /app/shared/libs at startup). --chown so appuser owns /app/worker and
+# can create `logs/` under it at runtime if LOGGING_ENABLE_FILE is turned on.
+COPY --chown=appuser:appuser shared /app/shared
+COPY --chown=appuser:appuser worker /app/worker
+
+# Drop root for the actual process — the apt install and chown steps above still ran as root,
+# which is fine since only the final runtime layer's process user matters.
+USER appuser
 
 # Start the queue server: arq loads WorkerSettings, connects Redis, runs startup
 # (all store clients instantiated once), then polls the queue until SIGTERM.

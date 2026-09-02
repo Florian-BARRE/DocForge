@@ -69,11 +69,28 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 # Run from the app root so `python entrypoint.py` resolves config_loader + libs without PYTHONPATH.
 WORKDIR /app/mcp
 
-# Copy the prebuilt virtual environment from the builder stage (no uv, no build tools in runtime).
-COPY --from=py-build /opt/venv /opt/venv
+# Non-root runtime user (fixed uid/gid). --no-create-home: this service has no model cache and
+# no home-relative state — its only runtime writes are /tmp (already world-writable in the base
+# image) and, when LOGGING_ENABLE_FILE is turned on, `logs/` under the CWD, which the --chown on
+# the COPY below already makes writable.
+RUN groupadd --gid 10001 appuser \
+    && useradd --uid 10001 --gid appuser --no-create-home --shell /usr/sbin/nologin appuser
 
-# Copy the MCP application source tree (rebuilt only when app code changes).
-COPY mcp /app/mcp
+# WORKDIR above created /app/mcp as root (it predates the COPY below, so its --chown never
+# touches it) — chown the directory itself too, or appuser can read everything inside it but
+# can't create NEW entries (e.g. `logs/`) directly under it.
+RUN chown appuser:appuser /app/mcp
+
+# Copy the prebuilt virtual environment from the builder stage (no uv, no build tools in
+# runtime), owned by the runtime user so it can execute the interpreter and its console scripts.
+COPY --from=py-build --chown=appuser:appuser /opt/venv /opt/venv
+
+# Copy the MCP application source tree (rebuilt only when app code changes), owned by the
+# runtime user.
+COPY --chown=appuser:appuser mcp /app/mcp
+
+# Drop root for the actual process.
+USER appuser
 
 # Expose the internal MCP HTTP port (matched by MCP_PORT and published in docker-compose.yml).
 EXPOSE 9000
