@@ -39,6 +39,47 @@ class SearchHelpers:
     def __new__(cls, *args: object, **kwargs: object) -> None:
         raise TypeError("SearchHelpers is a static-only class and cannot be instantiated.")
 
+    @classmethod
+    def __iter_action_blobs(cls, blob: dict[str, Any]):  # type: ignore[no-untyped-def]
+        """Yield every action-node dict in a (possibly nested) group/foreach search blob."""
+        # 1. A foreach wraps a single group body; a group holds children — descend into both.
+        if "body" in blob:
+            yield from cls.__iter_action_blobs(blob["body"])
+        elif "nodes" in blob:
+            for child in blob["nodes"]:
+                yield from cls.__iter_action_blobs(child)
+        # 2. A leaf action carries a family — it is what we iterate over.
+        elif blob.get("family"):
+            yield blob
+
+    @classmethod
+    def score_kind(cls, search_blob: dict[str, Any] | None) -> str:
+        """
+        Classify what a collection's search score represents, so the client can label it.
+
+        Cheap, store-free blob inspection (no I/O): a rerank node makes the delivered score a
+        cross-encoder relevance score; otherwise it is the retrieve node's server-side fusion score
+        (RRF by default, DBSF when configured). An empty/None blob is the stock default (RRF).
+
+        Args:
+            search_blob (dict | None): The collection's stored search blob ({}/None = stock default).
+
+        Returns:
+            str: One of 'cross_encoder_rerank', 'dbsf_fusion', 'rrf_fusion'.
+        """
+        # 1. Empty/None → the stock default topology (hybrid retrieve, RRF fusion, no rerank).
+        blob = search_blob or {}
+        if not blob.get("nodes") and "body" not in blob:
+            return "rrf_fusion"
+        # 2. A rerank node re-scores the pool — the delivered score is then the cross-encoder's.
+        actions = list(cls.__iter_action_blobs(blob))
+        if any(node.get("family") == "rerank" for node in actions):
+            return "cross_encoder_rerank"
+        # 3. Otherwise the retrieve node's fusion strategy decides (defaults to RRF).
+        retrieve = next((node for node in actions if node.get("family") == "retrieve"), None)
+        fusion = (retrieve or {}).get("config", {}).get("fusion", "rrf")
+        return "dbsf_fusion" if fusion == "dbsf" else "rrf_fusion"
+
     @staticmethod
     def embed_node_blob(pipeline: dict[str, Any]) -> ActionNodeBlob | None:
         """

@@ -192,7 +192,7 @@ jobs:
         run: uv run --no-sync pytest -q
 
   frontend:
-    name: frontend — tsc + build
+    name: frontend — lint + tsc + test + build
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -207,7 +207,13 @@ jobs:
           cache-dependency-path: src/docforge/app/frontend/package-lock.json
       - name: Install (locked)
         run: npm ci
-      - name: Build (tsc --noEmit && vite build)
+      - name: Lint (eslint — rules-of-hooks is an error, not a warning)
+        run: npm run lint
+      - name: Type check (tsc --noEmit)
+        run: npx tsc --noEmit
+      - name: Render smoke tests (vitest)
+        run: npm run test
+      - name: Build (vite build)
         run: npm run build
 
   sdk-parity:

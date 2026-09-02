@@ -48,8 +48,13 @@ def _job(*, cancel_requested=False):
     )
 
 
-def _with_names(job, filename="contract.pdf", collection_name="legal"):
-    return SimpleNamespace(job=job, document_filename=filename, collection_name=collection_name)
+def _with_names(job, filename="contract.pdf", collection_name="legal", title="Master Agreement"):
+    return SimpleNamespace(
+        job=job,
+        document_filename=filename,
+        document_title=title,
+        collection_name=collection_name,
+    )
 
 
 async def test_list_jobs_carries_filename_collection_name_and_stage(
@@ -73,6 +78,7 @@ async def test_list_jobs_carries_filename_collection_name_and_stage(
     assert result.total == 1
     row = result.jobs[0]
     assert row.document_filename == "contract.pdf"
+    assert row.document_title == "Master Agreement"
     assert row.collection_name == "legal"
     assert row.current_stage == "chunk"
     assert row.cancel_requested is True
@@ -89,5 +95,6 @@ async def test_get_job_carries_filename_and_collection_name(fastapi_app, monkeyp
     result = await get_job(job_id=entry.job.id, principal=_full())
 
     assert result.document_filename == "contract.pdf"
+    assert result.document_title == "Master Agreement"
     assert result.collection_name == "legal"
     assert result.current_stage == "chunk"

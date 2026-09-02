@@ -5,6 +5,9 @@
 # shared reachability seam (ingest sweep + search sweep — query embedder + reranker), reads the raw
 # vector-index size + last successful ingest, and rolls it all up into the operational verdict. It
 # writes NOTHING, enqueues NO job, and never runs the engine — the sweep only calls node.preflight().
+# ``summarize_structural`` is the fleet-list counterpart: a CHEAP, structural-only roll-up (buildability +
+# batched DB counters, NO provider sweep, NO Qdrant round-trip) so rendering the list never probes
+# every provider of every collection — the live sweep stays exclusively on the per-collection check().
 
 # ====== Standard Library Imports ======
 import uuid
@@ -23,11 +26,14 @@ from shared_libs.pipelines.reachability import (
 )
 from shared_libs.pipelines.validation import GraphValidator
 from shared_libs.services.db import Database
+from shared_libs.services.db.postgresql.tables import Collection
 
 # ====== Local Project Imports ======
 from .graph_builds import CollectionGraphBuilder, GraphBuildOutcome
 from .models import (
     CollectionHealthResponse,
+    CollectionHealthSummary,
+    CollectionListVerdict,
     IngestHealth,
     SearchHealth,
     SearchIndex,
@@ -112,11 +118,12 @@ class CollectionHealthService(LoggerClass):
         vector_count = await self._database.collections.vector_count(collection_id)
         last_ingest_at = await self._database.jobs.last_successful_ingest_at(collection_id)
 
-        # 5. Roll the raw signals up into the two headline verdicts.
-        verdict = HealthVerdictResolver.overall(
+        # 5. Roll the raw signals up into the headline verdict + reason and the search tri-state.
+        rollup = HealthVerdictResolver.overall(
             ingest_buildable=ingest_build.buildable,
             search_buildable=search_build.buildable,
-            providers=ingest_providers + search_providers,
+            ingest_providers=ingest_providers,
+            search_providers=search_providers,
             vector_count=vector_count,
         )
         search_operational = HealthVerdictResolver.search(
@@ -128,7 +135,8 @@ class CollectionHealthService(LoggerClass):
         # 6. Assemble the response contract.
         return CollectionHealthResponse(
             collection_id=str(collection_id),
-            verdict=verdict,
+            verdict=rollup.verdict,
+            reason=rollup.reason,
             checked_at=datetime.now(UTC),
             ingest=IngestHealth(
                 buildable=ingest_build.buildable,
@@ -143,6 +151,80 @@ class CollectionHealthService(LoggerClass):
                 index=SearchIndex(vector_count=vector_count, last_ingest_at=last_ingest_at),
             ),
         )
+
+    def __list_verdict(self, *, ingest_buildable: bool, chunk_count: int) -> CollectionListVerdict:
+        """
+        Derive the fleet list's LIGHTWEIGHT structural verdict — no provider probe, no Qdrant read.
+
+        Mirrors the structural core of the detail roll-up (`HealthVerdictResolver.overall`) but from
+        buildability + a cheap DB count only: a structurally broken ingest blob is ``cannot_ingest``;
+        an empty index is the neutral ``empty``; otherwise ``operational``. The network-dependent
+        degraded/down states stay EXCLUSIVELY on the on-demand detail probe.
+
+        Args:
+            ingest_buildable (bool): Whether the stored ingest blob heals, builds and validates.
+            chunk_count (int): The collection's Postgres chunk count.
+
+        Returns:
+            CollectionListVerdict: empty / operational / cannot_ingest.
+        """
+        # 1. A structurally invalid ingest pipeline blocks new ingestion — surface it first.
+        if not ingest_buildable:
+            return CollectionListVerdict.CANNOT_INGEST
+        # 2. Buildable but nothing indexed yet → NEUTRAL empty (ready to ingest).
+        if chunk_count == 0:
+            return CollectionListVerdict.EMPTY
+        # 3. Buildable and populated → operational.
+        return CollectionListVerdict.OPERATIONAL
+
+    def summarize_structural(
+        self,
+        collections: list[Collection],
+        *,
+        doc_counts: dict[uuid.UUID, int],
+        chunk_counts: dict[uuid.UUID, int],
+        last_ingests: dict[uuid.UUID, datetime],
+    ) -> dict[uuid.UUID, CollectionHealthSummary]:
+        """
+        Roll up a CHEAP, structural health summary for every fleet collection — the list's single
+        server-side source of truth for the dashboard cards.
+
+        PURE (no I/O): it derives a structural verdict from each stored blob's buildability (in-memory
+        heal + build + validate) and the caller-supplied BATCHED counters. It deliberately never
+        probes a provider nor hits Qdrant (the on-demand detail endpoint owns the live sweep), so
+        rendering the list costs three grouped DB queries (fetched by the caller) + a few in-memory
+        graph builds — never a per-collection provider stampede. The card thus shows the SAME
+        structural determination + the SAME counters as the collection's own overview.
+
+        Args:
+            collections (list[Collection]): The already-loaded fleet rows.
+            doc_counts (dict[uuid.UUID, int]): Batched document count per collection (0 when absent).
+            chunk_counts (dict[uuid.UUID, int]): Batched chunk count per collection (0 when absent).
+            last_ingests (dict[uuid.UUID, datetime]): Batched last-successful-ingest per collection.
+
+        Returns:
+            dict[uuid.UUID, CollectionHealthSummary]: collection id → its compact health summary.
+        """
+        # 1. Per collection: a purely structural verdict from the blob's buildability (no I/O) + the
+        #    caller's batched counts — never a provider sweep or a Qdrant call.
+        summaries: dict[uuid.UUID, CollectionHealthSummary] = {}
+        for collection in collections:
+            stored_pipeline = collection.pipeline or IngestPipeline.default_blob().model_dump(
+                mode="json"
+            )
+            ingest_build = CollectionGraphBuilder.build_ingest(
+                self._builder, self._validator, stored_pipeline
+            )
+            chunk_count = chunk_counts.get(collection.id, 0)
+            summaries[collection.id] = CollectionHealthSummary(
+                verdict=self.__list_verdict(
+                    ingest_buildable=ingest_build.buildable, chunk_count=chunk_count
+                ),
+                doc_count=doc_counts.get(collection.id, 0),
+                chunk_count=chunk_count,
+                last_ingest_at=last_ingests.get(collection.id),
+            )
+        return summaries
 
 
 __all__ = ["CollectionHealthService"]

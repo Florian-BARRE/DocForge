@@ -138,7 +138,12 @@ class WorkersLiveHelpers:
             ):
                 continue
             jobs_by_worker[job.worker_id or "unknown"].append(
-                JobStatus.from_row(job, entry.document_filename, entry.collection_name)
+                JobStatus.from_row(
+                    job,
+                    entry.document_filename,
+                    entry.collection_name,
+                    document_title=getattr(entry, "document_title", None),
+                )
             )
 
         # 2. Index the heartbeats by worker id — the liveness source of truth.

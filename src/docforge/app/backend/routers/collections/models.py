@@ -20,6 +20,9 @@ from shared_libs.services.db import (
     S3Footprint,
 )
 
+# ====== Local Project Imports ======
+from ...libs.health import CollectionHealthSummary
+
 
 class FieldSpecModel(BaseModel):
     """One metadata field of the collection's contract (declared OR generated)."""
@@ -67,6 +70,21 @@ class CollectionModel(BaseModel):
         description="The search pipeline graph blob ({} = use the stock default)."
     )
     fields: list[FieldSpecModel] = Field(default_factory=list, description="The metadata schema.")
+
+
+class CollectionListItem(CollectionModel):
+    """
+    One fleet-list row: the full collection contract PLUS its server-computed health summary.
+
+    The list endpoint attaches ``health`` so the dashboard cards render verdict + doc/vector counts +
+    last-ingest from the SAME server-side roll-up the collection's own overview (`GET /{id}/health`)
+    uses — the two can no longer disagree, and the front no longer fans out N live probes per load.
+    """
+
+    health: CollectionHealthSummary = Field(
+        description="The collection's rolled-up health verdict + index/doc stats (list-consistent "
+        "with the detail probe)."
+    )
 
 
 class CollectionContractModel(BaseModel):
@@ -316,6 +334,7 @@ class CollectionStorageResponse(BaseModel):
 __all__ = [
     "FieldSpecModel",
     "CollectionModel",
+    "CollectionListItem",
     "CollectionContractModel",
     "CollectionContractSchemaResponse",
     "CreateCollectionRequest",

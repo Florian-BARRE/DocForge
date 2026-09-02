@@ -130,6 +130,7 @@ async def search_collection(collection_id: uuid.UUID, request: SearchRequest) ->
     return SearchResponse(
         query=request.query,
         hits=[SearchHelpers.to_hit_model(hit) for hit in result.hits],
+        score_kind=SearchHelpers.score_kind(collection.search),
         debug_info=result.debug,
     )
 
