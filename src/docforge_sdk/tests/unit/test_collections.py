@@ -126,7 +126,7 @@ async def test_update_patches_only_set_fields() -> None:
 def test_sync_delete_returns_none() -> None:
     route = respx.delete(f"{API}/collections/{CID}").mock(return_value=httpx.Response(204))
     with Client(BASE) as client:
-        result = client.collections.delete(CID)
+        result = client.collections.delete(CID)  # type: ignore[func-returns-value]
     assert route.calls.last.request.method == "DELETE"
     assert result is None
 

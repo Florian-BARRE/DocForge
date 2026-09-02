@@ -67,7 +67,8 @@ class ProviderProbeResult(BaseModel):
     node_id: str = Field(description="The graph-unique id of the probed node.")
     kind: str = Field(description="The node's KIND within its family (e.g. bge_server, mistral).")
     family: str | None = Field(
-        default=None, description="The registry family the node belongs to (e.g. embed, ocr, rerank)."
+        default=None,
+        description="The registry family the node belongs to (e.g. embed, ocr, rerank).",
     )
     side: str = Field(description="Which pipeline the node was swept in: 'ingest' or 'search'.")
     status: ProbeStatus = Field(description="The probe outcome.")
