@@ -57,7 +57,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 #     /opt/venv          → prebuilt virtual environment
 #     /app/mcp  → MCP application source code
 ###############################################################################
-FROM python:3.12-slim-bookworm AS runtime
+FROM python:3.14-slim-bookworm AS runtime
 
 # PYTHONDONTWRITEBYTECODE: no .pyc files written to disk (smaller, immutable runtime).
 # PYTHONUNBUFFERED: flush stdout/stderr immediately so `docker logs` shows output in real time.
