@@ -236,6 +236,13 @@ lpp_format = getattr(
     lpp_formats.DebugFormat,
 )()
 
+# Surface the request/job correlation id at the tail of every line. The field name here is a raw
+# loguru template token (like {message}) and MUST match CorrelationContext.FIELD — shared_libs cannot
+# be imported this early. The neutral "-" default is seeded below so this token always resolves; the
+# real per-record value is written by CorrelationContext's patcher (installed in the entrypoint).
+lpp_format = f"{lpp_format} <light-black>| cid=</light-black><cyan>{{extra[correlation_id]}}</cyan>"
+loggerplusplus.configure(extra={"correlation_id": "-"})
+
 if RUNTIME_CONFIG.LOGGING_ENABLE_CONSOLE:
     loggerplusplus.add(
         sink=sys.stdout,

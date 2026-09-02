@@ -19,6 +19,7 @@ from .libs.jobs import (
     import_collection,
     ingest_document,
     reap_stuck_jobs,
+    with_correlation,
 )
 from .lifespan import shutdown, startup
 
@@ -30,11 +31,17 @@ def create_worker_settings() -> type:
     Returns:
         type: The WorkerSettings class (task functions, lifecycle, queue and limits).
     """
+    # Every task + cron is wrapped in `with_correlation` at this boundary (the worker's mirror of the
+    # app's RequestIdMiddleware): it binds the enqueued correlation id — or a freshly-minted one for a
+    # cron job — for the whole execution so the job's logs are correlatable with the request that
+    # triggered it. `functools.wraps` preserves each function's name, so arq still registers/dispatches
+    # them under their original names (matching the string names QueueClient enqueues).
+
     # The stuck-job reaper runs every WORKER_REAP_INTERVAL_MINUTES AND once at startup, so a wedge
     # left by the previous (crashed/hot-reloaded) run is cleared immediately. Disabled -> no cron.
     reap_minutes = set(range(0, 60, max(1, RUNTIME_CONFIG.WORKER_REAP_INTERVAL_MINUTES)))
     reaper_crons = (
-        [cron(reap_stuck_jobs, minute=reap_minutes, run_at_startup=True)]
+        [cron(with_correlation(reap_stuck_jobs), minute=reap_minutes, run_at_startup=True)]
         if RUNTIME_CONFIG.WORKER_REAP_ENABLED
         else []
     )
@@ -42,7 +49,7 @@ def create_worker_settings() -> type:
     # WORKER_TRANSFER_GC_INTERVAL_MINUTES AND once at startup. Disabled -> no cron.
     gc_minutes = set(range(0, 60, max(1, RUNTIME_CONFIG.WORKER_TRANSFER_GC_INTERVAL_MINUTES)))
     transfer_gc_crons = (
-        [cron(gc_expired_transfers, minute=gc_minutes, run_at_startup=True)]
+        [cron(with_correlation(gc_expired_transfers), minute=gc_minutes, run_at_startup=True)]
         if RUNTIME_CONFIG.WORKER_TRANSFER_GC_ENABLED
         else []
     )
@@ -51,11 +58,11 @@ def create_worker_settings() -> type:
         """The queue server: listens on Redis, runs up to max_jobs tasks in parallel."""
 
         functions = [
-            ingest_document,
-            backfill_collection_filters,
-            backfill_collection_meta_vectors,
-            export_collection,
-            import_collection,
+            with_correlation(ingest_document),
+            with_correlation(backfill_collection_filters),
+            with_correlation(backfill_collection_meta_vectors),
+            with_correlation(export_collection),
+            with_correlation(import_collection),
         ]
         cron_jobs = reaper_crons + transfer_gc_crons
         on_startup = startup

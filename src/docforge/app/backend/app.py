@@ -14,6 +14,7 @@ from config import RUNTIME_CONFIG  # noqa: F401 — side-effect import (path reg
 from .libs.auth import AuthMiddleware
 from .libs.metrics import HttpMetricsMiddleware
 from .libs.ratelimit import RateLimitMiddleware
+from .libs.requestid import RequestIdMiddleware
 from .lifespan import lifespan
 from .routers import (
     auth_router,
@@ -44,10 +45,10 @@ def create_app(
     )
 
     # Middleware nesting is built LIFO: the LAST `add_middleware` call is the OUTERMOST wrapper. CORS
-    # is added last (in entrypoint.py), so it stays outermost. The three gates below nest, from the
-    # request's point of view, as:  CORS → HttpMetrics → Auth → RateLimit → routes.
+    # is added last (in entrypoint.py), so it stays outermost. The gates below nest, from the
+    # request's point of view, as:  CORS → HttpMetrics → RequestId → Auth → RateLimit → routes.
     #
-    # 1. Rate limiter (added first → INNERMOST of the three). It runs AFTER AuthMiddleware has resolved
+    # 1. Rate limiter (added first → INNERMOST). It runs AFTER AuthMiddleware has resolved
     #    the principal, so it can key by the caller's API key when auth is on (else by client IP). OFF
     #    by default → transparent. Only /api/v1/* (minus the job-poll/SSE subtree) is limited.
     app.add_middleware(RateLimitMiddleware)
@@ -59,7 +60,13 @@ def create_app(
     #    (synthetic root). Scalar + /openapi.json + /metrics stay public (outside /api/v1).
     app.add_middleware(AuthMiddleware)
 
-    # 3. HTTP request metrics (added last of the three → OUTERMOST, inside CORS). Being outer to the
+    # 3. Correlation id (added here → OUTER to Auth + RateLimit, INNER to HttpMetrics). It must be
+    #    outside both gates so their short-circuit 401/429 responses are emitted INSIDE the correlation
+    #    context (those log lines carry the id) AND still get the `X-Request-ID` header stamped on the
+    #    way out. Always-on, zero-config: it binds an inbound or freshly-minted id for the request.
+    app.add_middleware(RequestIdMiddleware)
+
+    # 4. HTTP request metrics (added last → OUTERMOST, inside CORS). Being outer to the
     #    gates, it counts 401/429 responses too (those short-circuit before routing, so their route
     #    label is "__unmatched__"). Passive — it only records; GET /metrics serves what it collects.
     app.add_middleware(HttpMetricsMiddleware)

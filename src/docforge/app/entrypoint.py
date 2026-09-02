@@ -15,6 +15,7 @@ from backend.libs.metrics import MetricsService
 from backend.libs.search import SearchService
 from backend.utils.queue import QueueClient
 from config import RUNTIME_CONFIG  # MUST be first — registers backend/libs/ on sys.path
+from shared_libs.observability import CorrelationContext
 from shared_libs.pipelines.build import PipelineBuilder
 from shared_libs.pipelines.edit import GraphEditor
 from shared_libs.pipelines.ingest.stages import StageCompiler
@@ -33,6 +34,12 @@ def _build_app() -> FastAPI:
     # 1. Inject logger and runtime config into the shared context.
     CONTEXT.logger = loggerplusplus.bind(identifier="BACKEND")
     CONTEXT.RUNTIME_CONFIG = RUNTIME_CONFIG
+
+    # 1b. Wire the correlation id into the log records — the patcher reads the ambient request id
+    #     (bound by RequestIdMiddleware) so every log line during a request carries it. Installed here
+    #     because it needs shared_libs (unavailable that early in config's logging setup, which only
+    #     seeds the neutral placeholder so the format token always resolves until this runs).
+    CorrelationContext.install_log_patcher()
 
     # 2. Pipeline design services (stateless — one instance for the app's lifetime).
     CONTEXT.pipeline_builder = PipelineBuilder()

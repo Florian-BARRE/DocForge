@@ -16,6 +16,7 @@ from pyfiglet import Figlet
 
 # ====== Internal Project Imports ======
 from config import RUNTIME_CONFIG
+from shared_libs.observability import CorrelationContext
 from shared_libs.services.db import Database
 from shared_libs.services.db.postgresql import PostgresClient
 from shared_libs.services.db.qdrant import QdrantClient
@@ -41,6 +42,11 @@ async def startup(ctx: dict[str, Any]) -> None:
     # 1. Identity + banner.
     CONTEXT.logger = loggerplusplus.bind(identifier="WORKER")
     CONTEXT.RUNTIME_CONFIG = RUNTIME_CONFIG
+
+    # 1b. Wire the correlation id into the log records — the patcher reads the id `with_correlation`
+    #     binds for each job (installed here because it needs shared_libs, unavailable in config's
+    #     early logging setup, which only seeds the neutral placeholder until this runs).
+    CorrelationContext.install_log_patcher()
     banner = "\n" + Figlet(font="slant").renderText(
         "".join(
             c

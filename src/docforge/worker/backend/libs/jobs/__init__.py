@@ -15,9 +15,13 @@ from .progress import JobProgressRecorder
 # ---------------------- Cooperative cancel ---------------------- #
 from .cancellation import CancellationGuard, JobCancelledError
 
+# ---------------------- Correlation binding ---------------------- #
+from .correlation import with_correlation
+
 # ------------------- Public API ------------------- #
 __all__ = [
     "ingest_document",
+    "with_correlation",
     "backfill_collection_filters",
     "backfill_collection_meta_vectors",
     "reap_stuck_jobs",

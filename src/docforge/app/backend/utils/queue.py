@@ -14,6 +14,7 @@ from arq.constants import default_queue_name
 from loggerplusplus import LoggerClass
 
 # ====== Internal Project Imports ======
+from shared_libs.observability import CorrelationContext
 
 
 class QueueClient(LoggerClass):
@@ -44,6 +45,22 @@ class QueueClient(LoggerClass):
                 self.logger.info(f"Queue pool connected")
         return self._pool
 
+    def __correlation_kwargs(self) -> dict[str, str]:
+        """
+        Return the ambient request's correlation id as a task kwarg, or empty when none is bound.
+
+        The id is bound by RequestIdMiddleware and read here from the shared ContextVar — enqueue
+        always happens inside the request's async context, so no router needs to thread it through.
+        It rides as a NORMAL ``correlation_id`` task kwarg (never a reserved arq control kwarg like
+        ``_expires``), which the worker's ``with_correlation`` wrapper consumes to rebind the same id
+        for the job's logs. Empty when unbound (e.g. a background enqueue) → the worker mints its own.
+
+        Returns:
+            dict[str, str]: ``{"correlation_id": <id>}`` or ``{}``.
+        """
+        correlation_id = CorrelationContext.get()
+        return {"correlation_id": correlation_id} if correlation_id else {}
+
     async def enqueue_ingest(self, document_id: str, job_id: str) -> None:
         """
         Enqueue one ingestion — the message carries IDS ONLY (retry-safe, light).
@@ -61,7 +78,9 @@ class QueueClient(LoggerClass):
             job_id (str): The job row driving the lifecycle.
         """
         pool = await self.__get_pool()
-        await pool.enqueue_job("ingest_document", document_id, job_id)
+        await pool.enqueue_job(
+            "ingest_document", document_id, job_id, **self.__correlation_kwargs()
+        )
         self.logger.info(f"Enqueued ingestion for document {document_id} (job {job_id})")
 
     async def enqueue_export(self, collection_id: str, transfer_id: str) -> None:
@@ -77,7 +96,9 @@ class QueueClient(LoggerClass):
             transfer_id (str): The pre-created tracking row's id (UUID as string).
         """
         pool = await self.__get_pool()
-        await pool.enqueue_job("export_collection", collection_id, transfer_id)
+        await pool.enqueue_job(
+            "export_collection", collection_id, transfer_id, **self.__correlation_kwargs()
+        )
         self.logger.info(f"Enqueued export for collection {collection_id} (transfer {transfer_id})")
 
     async def enqueue_import(self, s3_key: str, transfer_id: str, target_name: str | None) -> None:
@@ -94,7 +115,9 @@ class QueueClient(LoggerClass):
             target_name (str | None): Optional name for the new collection (collision → renamed).
         """
         pool = await self.__get_pool()
-        await pool.enqueue_job("import_collection", s3_key, transfer_id, target_name)
+        await pool.enqueue_job(
+            "import_collection", s3_key, transfer_id, target_name, **self.__correlation_kwargs()
+        )
         self.logger.info(f"Enqueued import from {s3_key} (transfer {transfer_id})")
 
     async def enqueue_backfill(self, collection_id: str) -> None:
@@ -109,8 +132,11 @@ class QueueClient(LoggerClass):
             collection_id (str): The collection to backfill (UUID as string, the queue carries strings).
         """
         pool = await self.__get_pool()
-        await pool.enqueue_job("backfill_collection_filters", collection_id)
-        await pool.enqueue_job("backfill_collection_meta_vectors", collection_id)
+        correlation_kwargs = self.__correlation_kwargs()
+        await pool.enqueue_job("backfill_collection_filters", collection_id, **correlation_kwargs)
+        await pool.enqueue_job(
+            "backfill_collection_meta_vectors", collection_id, **correlation_kwargs
+        )
         self.logger.info(f"Enqueued filter + meta-vector backfill for collection {collection_id}")
 
     async def queue_depth(self) -> int:
