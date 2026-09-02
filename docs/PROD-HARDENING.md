@@ -5,8 +5,11 @@ secrets and network posture that must NOT ship with the dev defaults. Items alre
 the compose files (data-plane ports unpublished in prod, resource limits, healthchecks) are noted
 as "already done — verify only".
 
-> The prod stack is `docker-compose.yml` **alone** (no dev override). The dev override
-> `docker-compose.dev.yml` is the only place that re-publishes the data-plane ports.
+> The prod stack is `compose/prod-cpu.yml` (or `compose/prod-gpu.yml` on a GPU host) — the
+> repo-root `docker-compose.yml` is a thin `include:` of `compose/prod-cpu.yml`, so the two are
+> equivalent. The dev overlay `compose/overlays/dev.yml` (only reachable via `compose/dev-cpu.yml`
+> / `compose/dev-gpu.yml`) is the only place that re-publishes the data-plane ports. See
+> [compose/README.md](../compose/README.md) for the full scenario/add-on matrix.
 
 ---
 
@@ -47,7 +50,7 @@ Mirror it in the app/worker DSN (`services/docforge/.env`, `POSTGRES_*` / DSN).
 Existing volume (password already baked in) — rotate in-place instead:
 
 ```bash
-docker compose -f docker-compose.yml exec docforge_postgres \
+docker compose exec docforge_postgres \
   psql -U docforge -c "ALTER USER docforge PASSWORD '<strong random>';"
 # then update postgres.env + .env and recreate app+worker
 ```
@@ -56,7 +59,7 @@ docker compose -f docker-compose.yml exec docforge_postgres \
 Add `requirepass` and wire it into the app/worker Redis URL.
 
 ```yaml
-# docker-compose.yml, docforge_redis
+# compose/base.yml, docforge_redis
 command: ["redis-server", "--requirepass", "${REDIS_PASSWORD}"]
 ```
 ```
@@ -69,7 +72,7 @@ REDIS_URL=redis://:<strong random>@docforge_redis:6379/0
 The app already reads `QDRANT_API_KEY` as optional — set it and pass it to Qdrant.
 
 ```yaml
-# docker-compose.yml, docforge_qdrant
+# compose/base.yml, docforge_qdrant
 environment:
   QDRANT__SERVICE__API_KEY: ${QDRANT_API_KEY}
 ```
@@ -109,14 +112,14 @@ FASTAPI_CORS_ALLOWED_ORIGINS=https://<your real UI origin>   # never "*" with au
 ## 4. Network posture — verify (already enforced in prod compose)
 
 - Data-plane ports (postgres 10041, redis 10042, qdrant 10043, seaweedfs 10044, bge 10047) are
-  **not** published by `docker-compose.yml` — operator access is via `docker compose exec`.
-  Confirm nothing re-publishes them:
+  **not** published by `compose/prod-cpu.yml` / `compose/prod-gpu.yml` — operator access is via
+  `docker compose exec`. Confirm nothing re-publishes them:
   ```bash
-  docker compose -f docker-compose.yml --profile full config | grep -E "10041|10042|10043|10044|10047" || echo "clean"
+  docker compose -f compose/prod-cpu.yml --profile full config | grep -E "10041|10042|10043|10044|10047" || echo "clean"
   ```
 - Only the API (10040) and Gotenberg (10045) are published. Restrict even these at the OS firewall
   to trusted sources if the VM is reachable from an untrusted network.
-- **MCP port 10048 IS published by `docker-compose.yml`** (`docforge_mcp`, `profiles: ["full"]`)
+- **MCP port 10048 IS published by the prod compose** (`docforge_mcp`, `profiles: ["full"]`)
   whenever the MCP is deployed. It has no auth of its own: every request must carry
   `Authorization: Bearer <docforge-api-key>` (a caller's own DocForge API key), forwarded upstream
   as-is; a request without one is refused with 401 — it never falls back to a shared/local token
@@ -156,7 +159,7 @@ sidecar (trade-off: it needs the Docker socket) or restart the worker manually w
 unhealthy:
 
 ```yaml
-# docker-compose.yml (optional) — restarts any container that reports unhealthy
+# compose/base.yml (optional) — restarts any container that reports unhealthy
   autoheal:
     image: willfarrell/autoheal:1.2.0
     environment: { AUTOHEAL_CONTAINER_LABEL: all }
@@ -190,7 +193,7 @@ structural validator can't cover). It is **on by default** (`WORKER_PREFLIGHT_EN
 
 ## 8. Optional TLS reverse proxy
 
-DocForge does **not** terminate TLS by default — `docker-compose.yml` publishes the API in plain
+DocForge does **not** terminate TLS by default — the prod compose publishes the API in plain
 HTTP (port 10040) on the assumption that something in front of it already handles TLS.
 
 **When NOT to use this section:** if the host/VM, a corporate load balancer, or a platform ingress
@@ -200,15 +203,17 @@ HTTP behind that proxy — just make sure the operator's proxy:
   [§9](#9-rate-limiting) below), and
 - enables the app-level rate limit, since there is no edge limiter of DocForge's own in this case.
 
-**When to use it:** a bare host with a public IP and nothing else terminating TLS. Layer the optional
-`docker-compose.proxy.yml` overlay — a Caddy 2 front door with automatic HTTPS (Let's Encrypt):
+**When to use it:** a bare host with a public IP and nothing else terminating TLS. Layer the
+optional `compose/overlays/proxy.yml` add-on on top of any scenario file — a Caddy 2 front door
+with automatic HTTPS (Let's Encrypt):
 
 ```bash
 # project-root .env (compose interpolation, same mechanism as DOCFORGE_TAG):
 DOCFORGE_DOMAIN=docforge.example.com     # A/AAAA record must already point at this host
 DOCFORGE_ACME_EMAIL=ops@example.com      # Let's Encrypt expiry/revocation contact
 
-docker compose -f docker-compose.yml -f docker-compose.proxy.yml --profile full up -d
+docker compose -f compose/prod-cpu.yml -f compose/overlays/proxy.yml --profile full up -d
+# or: make up-prod-cpu-proxy  (see compose/README.md for every scenario × proxy combo)
 ```
 
 What it changes:
@@ -239,8 +244,8 @@ Enable the app's own rate limit in `services/docforge/.env`, then recreate `docf
 When auth is on, the limiter keys by API-key identity (XFF is ignored); when auth is off, it keys by
 client IP. The high-frequency job-poll/SSE routes, `/health`, `/metrics`, docs and static assets are
 exempt, so the UI is never throttled. It keys on `X-Forwarded-For`, so:
-- **Behind `docker-compose.proxy.yml`:** already correct out of the box — Caddy authoritatively sets
-  that header (see [§8](#8-optional-tls-reverse-proxy)).
+- **Behind `compose/overlays/proxy.yml`:** already correct out of the box — Caddy authoritatively
+  sets that header (see [§8](#8-optional-tls-reverse-proxy)).
 - **Behind your own TLS-terminating proxy/LB:** you must configure it to forward
   `X-Forwarded-For` with the real client IP yourself, or every request will appear to come from the
   proxy's own IP and share one limiter bucket.
@@ -253,10 +258,19 @@ DocForge exposes app + job-queue metrics at `/metrics` (Prometheus exposition fo
 service. Knobs (`services/docforge/.env`): `METRICS_ENABLED` (default `true`; set `false` to disable
 the endpoint entirely) and `METRICS_SCRAPE_TIMEOUT_SECONDS` (default `5.0`; bounds the infra-gauge
 refresh per scrape). The endpoint is **unauthenticated** — never expose it publicly:
-- Behind `docker-compose.proxy.yml`, do not route it through Caddy's public site block; scrape it
+- Behind `compose/overlays/proxy.yml`, do not route it through Caddy's public site block; scrape it
   over `docforge_net` directly (`http://docforge_app:8000/metrics`) from a Prometheus that also lives
   on that network, or restrict it at the OS firewall if scraping from outside the Docker network.
-- DocForge does **not** ship a bundled Prometheus/Grafana stack. A minimal external scrape config:
+- DocForge ships an **optional** turnkey Prometheus/Loki/Promtail/Grafana stack —
+  `compose/overlays/telemetry.yml`, layered the same way as the proxy add-on:
+  ```bash
+  docker compose -f compose/prod-cpu.yml -f compose/overlays/telemetry.yml --profile full up -d
+  # or: make up-prod-cpu-telemetry
+  ```
+  It scrapes exactly the target below (in-network, not the published port) and provisions a
+  starter dashboard. See [compose/README.md](../compose/README.md#the-telemetry-stack) for the
+  ports, the Grafana admin password, and the full config. If you'd rather point your own external
+  Prometheus at DocForge instead:
   ```yaml
   scrape_configs:
     - job_name: docforge
@@ -299,10 +313,10 @@ collector to point at.
 ## 12. Final pre-flight
 
 ```bash
-# both configs still resolve
-docker compose -f docker-compose.yml --profile full config >/dev/null && echo "prod config OK"
+# config still resolves
+docker compose -f compose/prod-cpu.yml --profile full config >/dev/null && echo "prod config OK"
 # migrations applied
-docker compose -f docker-compose.yml exec docforge_app sh -c 'alembic -c /app/shared/alembic.ini upgrade head'
+docker compose exec docforge_app sh -c 'alembic -c /app/shared/alembic.ini upgrade head'
 # health
 curl -fsS http://localhost:10040/health && echo " API healthy"
 ```

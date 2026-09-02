@@ -1,0 +1,15 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Grafana dashboard provisioning — loads every JSON file under the mounted dashboards/
+# directory (see compose/overlays/telemetry.yml's grafana volumes) into a "DocForge" folder.
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: 1
+
+providers:
+  - name: DocForge
+    orgId: 1
+    folder: DocForge
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    options:
+      path: /etc/grafana/dashboards

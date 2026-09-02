@@ -1,0 +1,169 @@
+{
+  "title": "DocForge — Jobs & Workers",
+  "uid": "docforge-jobs",
+  "tags": ["docforge"],
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "timezone": "browser",
+  "graphTooltip": 1,
+  "time": { "from": "now-6h", "to": "now" },
+  "refresh": "10s",
+  "links": [
+    {
+      "asDropdown": false,
+      "icon": "external link",
+      "includeVars": true,
+      "keepTime": true,
+      "tags": ["docforge"],
+      "targetBlank": false,
+      "title": "DocForge dashboards",
+      "type": "dashboards"
+    }
+  ],
+  "panels": [
+    { "id": 100, "type": "row", "title": "Current state", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }, "collapsed": false, "panels": [] },
+
+    {
+      "id": 1,
+      "title": "Queue depth",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "docforge-prometheus" },
+      "gridPos": { "h": 5, "w": 5, "x": 0, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0, "color": { "mode": "fixed", "fixedColor": "#8a8378" } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" },
+      "targets": [
+        { "refId": "A", "expr": "docforge_arq_queue_depth" }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Jobs pending",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "docforge-prometheus" },
+      "gridPos": { "h": 5, "w": 5, "x": 5, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0, "color": { "mode": "fixed", "fixedColor": "#8a8378" } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" },
+      "targets": [
+        { "refId": "A", "expr": "docforge_jobs_pending" }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Jobs running",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "docforge-prometheus" },
+      "gridPos": { "h": 5, "w": 5, "x": 10, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0, "color": { "mode": "fixed", "fixedColor": "#ef7a45" } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" },
+      "targets": [
+        { "refId": "A", "expr": "docforge_jobs_running" }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Jobs failed",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "docforge-prometheus" },
+      "gridPos": { "h": 5, "w": 5, "x": 15, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0, "thresholds": { "mode": "absolute", "steps": [
+        { "color": "#2f7d4f", "value": null },
+        { "color": "#c8402c", "value": 1 }
+      ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" },
+      "targets": [
+        { "refId": "A", "expr": "docforge_jobs_failed" }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Workers live",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "docforge-prometheus" },
+      "gridPos": { "h": 5, "w": 4, "x": 20, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0, "thresholds": { "mode": "absolute", "steps": [
+        { "color": "#c8402c", "value": null },
+        { "color": "#2f7d4f", "value": 1 }
+      ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" },
+      "targets": [
+        { "refId": "A", "expr": "docforge_workers_live" }
+      ]
+    },
+
+    { "id": 101, "type": "row", "title": "Trends", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 6 }, "collapsed": false, "panels": [] },
+
+    {
+      "id": 10,
+      "title": "Queue depth over time",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "docforge-prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 7 },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0, "custom": { "fillOpacity": 15 } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "docforge_arq_queue_depth", "legendFormat": "queued" }
+      ]
+    },
+    {
+      "id": 11,
+      "title": "Jobs by state (stacked)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "docforge-prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 7 },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0, "custom": { "fillOpacity": 20, "stacking": { "mode": "normal" } } }, "overrides": [
+        { "matcher": { "id": "byName", "options": "pending" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "#8a8378" } }] },
+        { "matcher": { "id": "byName", "options": "running" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "#ef7a45" } }] },
+        { "matcher": { "id": "byName", "options": "failed" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "#c8402c" } }] }
+      ] },
+      "targets": [
+        { "refId": "A", "expr": "docforge_jobs_pending", "legendFormat": "pending" },
+        { "refId": "B", "expr": "docforge_jobs_running", "legendFormat": "running" },
+        { "refId": "C", "expr": "docforge_jobs_failed", "legendFormat": "failed" }
+      ]
+    },
+    {
+      "id": 12,
+      "title": "Workers live over time",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "docforge-prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 15 },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0, "custom": { "fillOpacity": 15 } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "docforge_workers_live", "legendFormat": "live workers" }
+      ]
+    },
+    {
+      "id": 13,
+      "title": "Failed jobs — rate of change",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "docforge-prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 15 },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 3, "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "deriv(docforge_jobs_failed[5m])", "legendFormat": "failed jobs / s" }
+      ]
+    },
+
+    { "id": 102, "type": "row", "title": "Derived", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 23 }, "collapsed": false, "panels": [] },
+
+    {
+      "id": 20,
+      "title": "Running / queue depth ratio",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "docforge-prometheus" },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 24 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 2,
+          "custom": { "fillOpacity": 10 },
+          "noValue": "No data (queue currently empty)"
+        },
+        "overrides": []
+      },
+      "targets": [
+        { "refId": "A", "expr": "docforge_jobs_running / (docforge_arq_queue_depth > 0)", "legendFormat": "running / queued" }
+      ]
+    }
+  ]
+}

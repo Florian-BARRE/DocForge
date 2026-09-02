@@ -1,0 +1,25 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# DocForge — PROD GPU scenario. Pulls published GHCR -gpu images for worker/bge_server/
+# paddle_server and grants them the NVIDIA device (`gpus: all`). Requires the NVIDIA
+# Container Toolkit on the host.
+#
+# WHEN TO USE THIS FILE: production/staging on a GPU host.
+#
+#   docker compose -f compose/prod-gpu.yml --profile full up -d
+#
+# Add-ons (layer with an extra -f, never baked in here):
+#   docker compose -f compose/prod-gpu.yml -f compose/overlays/proxy.yml --profile full up -d
+#   docker compose -f compose/prod-gpu.yml -f compose/overlays/telemetry.yml --profile full up -d
+#
+# INCLUDE ORDER: gpu.yml BEFORE base.yml — looks backwards, is not. Verified on this repo's
+# Compose v5.1.1: `include:`'s conflict resolution is FIRST-listed-file-wins for any leaf two
+# included files both set (e.g. `image:`) — the opposite of `-f`'s last-wins. Listing base.yml
+# first (the "intuitive" order) would let base's -cpu image silently win. See
+# compose/overlays/gpu.yml's header comment for the full explanation and evidence.
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: docforge
+
+include:
+  - overlays/gpu.yml
+  - base.yml

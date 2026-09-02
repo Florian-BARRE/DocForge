@@ -1,0 +1,24 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Prometheus scrape config for the DocForge telemetry overlay (compose/overlays/telemetry.yml).
+# Scrapes the app's /metrics over the internal docforge_net — NOT the published host port,
+# since Prometheus itself joins docforge_net (see the overlay) and /metrics is unauthenticated
+# (see METRICS_ENABLED in docs/configuration.md); scraping in-network keeps it off any public
+# interface entirely.
+# ─────────────────────────────────────────────────────────────────────────────
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  # DocForge API — HTTP request series (rate/latency/errors) + infra gauges (arq queue
+  # depth, job counts by state, live workers). See app/backend/libs/metrics/collectors.py
+  # for the full series list (docforge_http_*, docforge_arq_queue_depth, docforge_jobs_*,
+  # docforge_workers_live).
+  - job_name: docforge_app
+    static_configs:
+      - targets: ["docforge_app:8000"]
+
+  # Prometheus' own self-scrape (standard, useful for "is Prometheus itself healthy").
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]

@@ -64,7 +64,8 @@ src/
   bge_server/          # local BGE-M3 embed/rerank host (TEI-compatible)
   paddle_server/       # PP-StructureV3 layout-parsing sidecar (POST /layout-parsing, GET /health)
 services/              # per-service .env (gitignored) + .env.example templates
-docker-compose.yml · docker-compose.dev.yml · docker-compose.gpu.yml
+compose/               # per-scenario compose files (base + overlays + prod/dev × cpu/gpu) — see compose/README.md
+docker-compose.yml     # thin root default: include: [compose/prod-cpu.yml]
 ```
 
 **`docforge`** — the product itself, a single `uv` project with three roots. `shared/libs/`
@@ -244,3 +245,83 @@ The gate covers **every package**:
 - **`sdk-parity`** — an **SDK↔backend OpenAPI coherence gate**: it dumps the backend's current
   OpenAPI (serviceless) and fails red if the `docforge-sdk` models or committed snapshot drift from
   it. SDK/backend drift can never merge — nor publish.
+
+---
+
+## 7. Deployment topology & service interactions
+
+All containers share one Docker bridge network, `docforge_net` — services address each other by
+**service DNS name** (`docforge_app`, `docforge_postgres`, `bge_server`, `paddle_server`, …), never
+`localhost`. In prod, only the app, worker-adjacent tools (gotenberg), frontend, and MCP publish host
+ports; the data stores (`postgres`, `redis`, `qdrant`, `seaweedfs`) stay internal-only. See
+`compose/README.md` for the full scenario/overlay matrix and the port table in
+[`docs/configuration.md`](configuration.md).
+
+```mermaid
+flowchart TB
+    BR([Browser]) -->|"10046 (dev, Vite) / bundled by app (prod)"| FE
+    AI([AI client / LLM]) -->|"HTTP, Bearer token forwarded as-is"| MCP
+
+    subgraph NET["docforge_net — service DNS, no localhost"]
+        FE["docforge_frontend<br/>Vite dev server (dev only)"]
+        APP["docforge_app<br/>FastAPI · :8000 → host 10040"]
+        MCP["docforge_mcp<br/>pure HTTP client of the app · :9000 → host 10048"]
+        WK["docforge_worker<br/>arq — polls redis, runs the PURE graph"]
+        PG[(docforge_postgres<br/>IR · chunks · metadata · jobs)]
+        RD[(docforge_redis<br/>arq queue, transport only)]
+        S3[(docforge_seaweedfs<br/>renders · crops · PDFs)]
+        QD[(docforge_qdrant<br/>dense + sparse vectors)]
+        GB["docforge_gotenberg<br/>office → PDF"]
+        BGE["docforge_bge_server<br/>embed dense+sparse, rerank"]
+        PDL["docforge_paddle_server<br/>PP-StructureV3 layout parse (opt-in per collection)"]
+
+        FE -->|proxied API calls| APP
+        MCP -->|proxied API calls| APP
+        APP -->|"write at the edges"| PG
+        APP -->|enqueue job| RD
+        APP -->|blob read/write| S3
+        RD -->|poll| WK
+        WK -->|conversion| GB
+        WK -->|embed / rerank| BGE
+        WK -->|"pp_structure escalation"| PDL
+        WK -->|"persist IR/chunks/metadata"| PG
+        WK -->|"persist named vectors"| QD
+        WK -->|"persist renders/crops/PDF"| S3
+    end
+```
+
+The worker never talks to the frontend or MCP — it only consumes jobs off Redis and writes results
+at the edges (Postgres/Qdrant/SeaweedFS), through the same `Database` façade the API uses. `gotenberg`,
+`bge_server`, and `paddle_server` are called as interchangeable **providers** (base URL + secret live
+per collection in the DB, not in `.env`); `paddle_server` in particular ships OFF in every stock
+pipeline blob, so its container being up costs idle memory only until a collection opts a `pp_structure`
+node in.
+
+### Optional telemetry add-on
+
+Metrics/logs are **not** part of the core stack — they are an opt-in overlay,
+`compose/overlays/telemetry.yml`, layered with a plain `-f` on top of any scenario and **not gated by
+`--profile full`** (its four containers start unconditionally whenever the overlay is included).
+
+```mermaid
+flowchart LR
+    subgraph ADDON["compose/overlays/telemetry.yml — optional add-on"]
+        PROM["prometheus<br/>:10051"]
+        LOKI["loki<br/>:10052"]
+        PTAIL["promtail<br/>tails every container's Docker log"]
+        GRAF["grafana<br/>:10050, admin login in services/telemetry/.env"]
+    end
+    METRICS["docforge_app:8000/metrics<br/>unauthenticated — reached only over docforge_net,<br/>never through the public :10040 port"]
+
+    PROM -->|scrape, over docforge_net| METRICS
+    PTAIL -->|ship logs| LOKI
+    GRAF -->|query| PROM
+    GRAF -->|query| LOKI
+```
+
+`prometheus` scrapes `/metrics` on the internal network specifically because that endpoint is
+**unauthenticated** by design (`METRICS_ENABLED`, see [`docs/configuration.md`](configuration.md)) —
+routing the scrape through `docforge_net` instead of the published host port keeps it off any public
+interface. `promtail` discovers containers via the read-only Docker socket and tails their JSON-file
+logs into `loki`; `grafana` is provisioned with both datasources plus a starter dashboard (request
+rate, p95 latency, error rate, arq queue depth, job counts, live workers).

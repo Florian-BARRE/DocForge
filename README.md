@@ -117,10 +117,10 @@ cp services/docforge/s3_config.json.example services/docforge/s3_config.json
 cp services/bge_server/.env.example              services/bge_server/.env
 
 # 2. Start the full stack with hot reload (--profile full is MANDATORY)
-docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile full up --build -d
+docker compose -f compose/dev-cpu.yml --profile full up --build -d
 
 # 3. Apply database migrations
-docker compose -f docker-compose.yml exec docforge_app \
+docker compose -f compose/dev-cpu.yml exec docforge_app \
   sh -c 'alembic -c /app/shared/alembic.ini upgrade head'
 ```
 
@@ -131,8 +131,9 @@ of minutes (`curl http://localhost:10047/health`). Then open:
 - **Web UI** → http://localhost:10046
 
 **Production** (baked images, data-plane ports closed):
-`docker compose -f docker-compose.yml --profile full up -d` — read
+`docker compose --profile full up -d` — read
 **[docs/deployment.md](docs/deployment.md)** and **[docs/PROD-HARDENING.md](docs/PROD-HARDENING.md)** first.
+Compose files live under **[compose/](compose/README.md)** (per-scenario, `include:`-based).
 
 ---
 
