@@ -22,10 +22,14 @@ import { SearchLabPage } from "./features/search/SearchLabPage";
 import { ErrorBoundary } from "./shell/ErrorBoundary";
 import { TopBar } from "./shell/TopBar";
 import { ToastProvider } from "./shell/toast";
+import { parseViewFromHash } from "./shell/urlSync";
+import { useUrlSync } from "./shell/useUrlSync";
 import type { View } from "./shell/view";
 
 export function App() {
-  const [view, setView] = useState<View>({ name: "collections" });
+  // Bootstrap from the current URL hash so a refresh or a shared link restores the same view.
+  const [view, setView] = useState<View>(() => parseViewFromHash(window.location.hash));
+  useUrlSync(view, setView);
 
   return (
     <ToastProvider>
