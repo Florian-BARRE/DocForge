@@ -6,6 +6,9 @@ from .worker_heartbeat import WorkerHeartbeat
 # ---------------------- Audit trail ---------------------- #
 from .audit_log import AuditLog
 
+# ---------------------- Idempotency store ---------------------- #
+from .idempotency_key import IdempotencyKey, IdempotencyState
+
 # ---------------------- Config history ---------------------- #
 from .config_version import ConfigVersion
 
@@ -19,6 +22,8 @@ __all__ = [
     "JobStageEvent",
     "WorkerHeartbeat",
     "AuditLog",
+    "IdempotencyKey",
+    "IdempotencyState",
     "ConfigVersion",
     "CollectionTransfer",
     "TransferKind",

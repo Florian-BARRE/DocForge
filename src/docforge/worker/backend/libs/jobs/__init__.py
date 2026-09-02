@@ -12,6 +12,9 @@ from .transfer_gc import gc_expired_transfers
 # ---------------------- Audit retention ---------------------- #
 from .audit_gc import gc_audit_log
 
+# ---------------------- Idempotency retention ---------------------- #
+from .idempotency_gc import gc_idempotency_keys
+
 # ---------------------- Live progress ---------------------- #
 from .progress import JobProgressRecorder
 
@@ -32,6 +35,7 @@ __all__ = [
     "import_collection",
     "gc_expired_transfers",
     "gc_audit_log",
+    "gc_idempotency_keys",
     "JobProgressRecorder",
     "CancellationGuard",
     "JobCancelledError",

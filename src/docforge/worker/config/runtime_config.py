@@ -88,6 +88,17 @@ class RUNTIME_CONFIG(EnvConfigLoader):
     # also runs once at startup so a backlog left while retention was disabled is cleared promptly.
     WORKER_AUDIT_GC_INTERVAL_MINUTES = env("WORKER_AUDIT_GC_INTERVAL_MINUTES", cast=int, default=60)
 
+    # ───── Idempotency-key retention ─────
+    # The app stamps each idempotency record with an ``expires_at`` (now + IDEMPOTENCY_TTL_HOURS); this
+    # cron deletes every row past it so the table never grows unbounded. ON by default (the store is a
+    # cache, not history — expired rows carry no value); disable to skip the sweep (cron not registered).
+    WORKER_IDEMPOTENCY_GC_ENABLED = env("WORKER_IDEMPOTENCY_GC_ENABLED", cast=bool, default=True)
+    # Idempotency-GC cron cadence (minutes): the prune runs on every Nth minute of the hour. 60 →
+    # hourly. It also runs once at startup so a backlog left while the sweep was off is cleared promptly.
+    WORKER_IDEMPOTENCY_GC_INTERVAL_MINUTES = env(
+        "WORKER_IDEMPOTENCY_GC_INTERVAL_MINUTES", cast=int, default=60
+    )
+
     # ───── Stores — client tuning ─────
     # Per-request Qdrant timeout. The qdrant-client default (5s) is too low for heavy vector upserts
     # indexed with wait=true; 60s covers a heavy batch. Passed into QdrantClient at construction.

@@ -113,6 +113,28 @@ class RUNTIME_CONFIG(EnvConfigLoader):
         "RATE_LIMIT_TRUST_FORWARDED_FOR", cast=bool, default=True
     )
 
+    # ───── Idempotency (Idempotency-Key middleware, ON by default) ─────
+    # ON out-of-box, but SAFE: the middleware only engages when a mutating request to an ELIGIBLE
+    # small-JSON endpoint (create/update collection, reingest, export, create/rotate key) carries an
+    # ``Idempotency-Key`` header — every other request is a transparent passthrough. On a first request
+    # it INSERTs an in-progress guard row (the UNIQUE constraint is the concurrency guard), runs the
+    # handler once, and caches a definitive (< 500) response; a retry with the same key+body replays the
+    # cached response WITHOUT re-running the handler. Set false to disable entirely (full passthrough).
+    IDEMPOTENCY_ENABLED: bool = env("IDEMPOTENCY_ENABLED", cast=bool, default=True)
+    # How long a cached idempotency record is honoured before the worker GC prunes it (HOURS). The
+    # record's ``expires_at`` is stamped at insert (now + this window); the retention sweep deletes past
+    # it. 24h matches the Stripe convention — long enough for a client's retry storm, short enough to
+    # keep the table small.
+    IDEMPOTENCY_TTL_HOURS: int = env("IDEMPOTENCY_TTL_HOURS", cast=int, default=24)
+    # Hard cap (BYTES) on a request body the middleware will BUFFER to fingerprint + a response it will
+    # buffer to cache. Eligible endpoints take small JSON, so 256 KiB is ample; a rare eligible request
+    # whose body somehow exceeds this SKIPS idempotency (logged) and streams straight through rather
+    # than risk an out-of-memory buffer. The large multipart uploads (document + import bundle) are
+    # excluded from the eligible set outright, so this cap only ever guards a pathological JSON body.
+    IDEMPOTENCY_MAX_BODY_BYTES: int = env(
+        "IDEMPOTENCY_MAX_BODY_BYTES", cast=int, default=256 * 1024
+    )
+
     # ───── Metrics (Prometheus /metrics, ON by default) ─────
     # ON out-of-box — the exposition carries NO PII, only ops counters/gauges. /metrics lives outside
     # /api/v1 so it is EXEMPT from auth (scrapers carry no bearer) and from the rate limiter; operators

@@ -2,6 +2,7 @@
 from .helpers import DatabaseHelpers
 from .payloads import ChunkToggle, IngestionPayload, IRBundle
 from .transfer_payloads import DocumentExportRows
+from .idempotency_payloads import IdempotencyBegin, IdempotencyRecord
 from .storage_footprint_payloads import (
     CollectionFootprint,
     DocumentFootprint,
@@ -24,6 +25,7 @@ from .storage_footprint_facade import StorageFootprintFacade
 from .transfer_facade import CollectionTransferFacade
 from .transfer_tracker_facade import TransferTrackerFacade
 from .audit_facade import AuditFacade
+from .idempotency_facade import IdempotencyFacade
 
 # ------------------- Public API ------------------- #
 __all__ = [
@@ -32,6 +34,8 @@ __all__ = [
     "IngestionPayload",
     "IRBundle",
     "DocumentExportRows",
+    "IdempotencyBegin",
+    "IdempotencyRecord",
     "CollectionFootprint",
     "DocumentFootprint",
     "S3Footprint",
@@ -50,4 +54,5 @@ __all__ = [
     "CollectionTransferFacade",
     "TransferTrackerFacade",
     "AuditFacade",
+    "IdempotencyFacade",
 ]

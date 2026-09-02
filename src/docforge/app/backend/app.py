@@ -13,6 +13,7 @@ from config import RUNTIME_CONFIG  # noqa: F401 — side-effect import (path reg
 # ====== Local Project Imports ======
 from .libs.audit import AuditMiddleware
 from .libs.auth import AuthMiddleware
+from .libs.idempotency import IdempotencyMiddleware
 from .libs.metrics import HttpMetricsMiddleware
 from .libs.ratelimit import RateLimitMiddleware
 from .libs.requestid import RequestIdMiddleware
@@ -49,36 +50,46 @@ def create_app(
     # Middleware nesting is built LIFO: the LAST `add_middleware` call is the OUTERMOST wrapper. CORS
     # is added last (in entrypoint.py), so it stays outermost. The gates below nest, from the
     # request's point of view, as:
-    #   CORS → HttpMetrics → RequestId → Auth → RateLimit → Audit → routes.
+    #   CORS → HttpMetrics → RequestId → Auth → RateLimit → Idempotency → Audit → routes.
     #
-    # 1. Audit trail (added first → INNERMOST, inside RateLimit). It records one row per mutating
+    # 1. Audit trail (added first → INNERMOST, inside Idempotency). It records one row per mutating
     #    /api/v1 request AFTER it has been routed and answered. Innermost is deliberate: it needs the
     #    principal Auth injected (actor) AND must run only for requests that passed RateLimit — a
     #    throttled 429 is not spammed into the trail, and every audited request has a real route
     #    TEMPLATE for its `path` (never a raw-id path). It still records routed 4xx/5xx. Its write is
     #    fail-safe (errors logged + swallowed) so audit can never affect the request. AUDIT_ENABLED
-    #    (default true) toggles it; off → transparent passthrough.
+    #    (default true) toggles it; off → transparent passthrough. Being INNER to Idempotency, an
+    #    idempotent REPLAY (which short-circuits above Audit) is NOT re-audited: the operation was
+    #    already audited on its one real execution, so the trail carries no duplicate replay rows.
     app.add_middleware(AuditMiddleware)
 
-    # 2. Rate limiter (added → inner of Auth, outer of Audit). It runs AFTER AuthMiddleware has
+    # 2. Idempotency (added → inner of RateLimit, OUTER of Audit). On an eligible mutating request that
+    #    carries an `Idempotency-Key`, it dedups by (actor, route, key): first request runs once + the
+    #    response is cached; retries replay it. It needs the principal (actor scope) so it sits inner to
+    #    Auth; it sits INNER to RateLimit so a replay still costs the caller budget (no replay-spam
+    #    bypass); it sits OUTER to Audit so a replay is not re-audited (see above). ON by default but
+    #    only ever engages when the header is present on an allow-listed endpoint → otherwise passthrough.
+    app.add_middleware(IdempotencyMiddleware)
+
+    # 3. Rate limiter (added → inner of Auth, outer of Idempotency). It runs AFTER AuthMiddleware has
     #    resolved the principal, so it can key by the caller's API key when auth is on (else by client
     #    IP). OFF by default → transparent. Only /api/v1/* (minus the job-poll/SSE subtree) is limited.
     app.add_middleware(RateLimitMiddleware)
 
-    # 3. The global authN gate — a PURE ASGI middleware that runs BEFORE FastAPI parses the request
+    # 4. The global authN gate — a PURE ASGI middleware that runs BEFORE FastAPI parses the request
     #    body, so a missing/revoked bearer yields 401 (never a 422-before-401 on a malformed body). It
     #    gates every /api/v1/* path and injects the principal for the per-endpoint `require` authZ gate
     #    AND for the rate limiter's identity keying AND for the audit actor. With AUTH_ENABLED=false it
     #    stays transparent (synthetic root). Scalar + /openapi.json + /metrics stay public (outside /api/v1).
     app.add_middleware(AuthMiddleware)
 
-    # 4. Correlation id (added here → OUTER to Auth + RateLimit, INNER to HttpMetrics). It must be
+    # 5. Correlation id (added here → OUTER to Auth + RateLimit, INNER to HttpMetrics). It must be
     #    outside both gates so their short-circuit 401/429 responses are emitted INSIDE the correlation
     #    context (those log lines carry the id) AND still get the `X-Request-ID` header stamped on the
     #    way out. Always-on, zero-config: it binds an inbound or freshly-minted id for the request.
     app.add_middleware(RequestIdMiddleware)
 
-    # 5. HTTP request metrics (added last → OUTERMOST, inside CORS). Being outer to the
+    # 6. HTTP request metrics (added last → OUTERMOST, inside CORS). Being outer to the
     #    gates, it counts 401/429 responses too (those short-circuit before routing, so their route
     #    label is "__unmatched__"). Passive — it only records; GET /metrics serves what it collects.
     app.add_middleware(HttpMetricsMiddleware)

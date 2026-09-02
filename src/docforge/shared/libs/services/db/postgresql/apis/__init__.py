@@ -10,6 +10,7 @@ from .auth_api import AuthApi
 from .storage_footprint_api import StorageFootprintApi
 from .transfer_api import TransferApi
 from .audit_api import AuditApi
+from .idempotency_api import IdempotencyApi
 
 # ---------------------- Query spec (grid filter/sort) ---------------------- #
 from .document_query_spec import (
@@ -33,6 +34,7 @@ __all__ = [
     "StorageFootprintApi",
     "TransferApi",
     "AuditApi",
+    "IdempotencyApi",
     "DocumentQuerySpec",
     "MetadataCondition",
     "MetadataOp",
