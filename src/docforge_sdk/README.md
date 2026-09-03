@@ -169,6 +169,7 @@ are identical.
 | `health(collection_id)` | `CollectionHealthResponse` | On-demand operational health — 5-state verdict, provider reachability sweep, index stats. No job enqueued, no spend. |
 | `storage(collection_id)` | `CollectionStorageResponse` | Material storage footprint per store (S3 exact, Postgres/Qdrant estimated) + per-document breakdown. |
 | `estimate(collection_id, scope="pending", document_ids=None, filter=None)` | `CostEstimate` | Pre-hoc cost + volume dry-run over the whole collection (`scope`), a selected subset (`document_ids`), or a corpus `filter`. No spend. Per-collection rate/assumption overrides apply. |
+| `contract_schema()` | `CollectionContractSchemaResponse` | JSON Schema of the identity/limits contract (build a valid create/update). |
 
 ### `documents`
 | Method | Returns | Purpose |
@@ -177,6 +178,7 @@ are identical.
 | `set_enabled(document_id, enabled)` | `DocumentEnabledResponse` | Reversibly hide/show a document from search. |
 | `get_markdown(document_id, download=False)` | `DocumentView` | The document rendered as Markdown from the canonical IR (a generated view). |
 | `get_html(document_id, download=False)` | `DocumentView` | The document rendered as HTML from the canonical IR (a generated view). |
+| `reingest(document_id, force=False)` | `UploadAccepted` | Re-run the full ingestion of a single document. |
 
 ### `search`
 | Method | Returns | Purpose |
@@ -203,11 +205,25 @@ are identical.
 | `get_events(job_id)` | `JobTrace` | Per-stage event trace. |
 | `live_workers()` | `WorkersLive` | Currently active workers. |
 | `cancel(job_id, force=False)` | `CancelResult` | Stop a job — cooperative by default, immediate with `force=True`. |
+| `cost(collection_id)` | `CollectionCost` | Paid text-gen roll-up (tokens + USD).
+| `queue(collection_id=None)` | `QueueDepth` | Pending/running backlog (fleet-wide or per-collection).
+| `stage_durations(collection_id)` | `StageDurations` | Average per-stage wall-clock (ETA basis). |
 
 ### `blobs`
 | Method | Returns | Purpose |
 |---|---|---|
 | `get(content_hash)` | `BlobContent` | Fetch a content-addressed blob (bytes + media type). |
+
+
+### `corpus`
+Server-side document grid + bulk operations at scale.
+
+| Method | Returns | Purpose |
+|---|---|---|
+| `query(collection_id, DocumentQueryRequest)` | `DocumentQueryResponse` | Filtered/sorted/paginated page + total match count. |
+| `bulk_delete(collection_id, DocumentSelector)` | `BulkDeleteResponse` | Delete by id-set XOR filter-minus-excludes. |
+| `bulk_set_enabled(collection_id, DocumentSelector, enabled)` | `BulkEnabledResponse` | Bulk enable/disable searchability. |
+| `bulk_reingest(collection_id, DocumentSelector, force=False)` | `BulkReingestResponse` | Bulk full re-ingest (capped fan-out). |
 
 ### `snippets`
 Granular, config-only export/import of ONE collection slice — synchronous, secret-masked, versioned
@@ -225,6 +241,7 @@ Granular, config-only export/import of ONE collection slice — synchronous, sec
 | `list_keys()` | `list[KeyInfo]` | Every key (metadata only, never the secret). |
 | `rotate_key(key_id, ...)` | `CreatedKey` | Roll a key's secret. |
 | `revoke_key(key_id)` | `None` | Revoke a key. |
+| `whoami()` | `WhoAmI` | THIS token's own capabilities + collection scope. |
 
 ### `pipelines`
 Discovery + design surface for the ingestion / search graphs (advanced).

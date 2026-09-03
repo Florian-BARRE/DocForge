@@ -15,7 +15,7 @@ from ._shared import (
 from .audit import AuditEntry, AuditPage
 
 # ------------------- Auth models ------------------- #
-from .auth import CreatedKey, CreateKeyRequest, KeyInfo, RotateKeyRequest
+from .auth import CreatedKey, CreateKeyRequest, KeyInfo, RotateKeyRequest, WhoAmI
 
 # ------------------- Blobs models ------------------- #
 from .blobs import BlobContent
@@ -24,6 +24,7 @@ from .blobs import BlobContent
 from .collections import (
     BulkReingestAccepted,
     BulkReingestRequest,
+    CollectionContractSchemaResponse,
     CollectionListItem,
     CollectionModel,
     CreateCollectionRequest,
@@ -32,8 +33,23 @@ from .collections import (
     UpdateCollectionRequest,
 )
 
-# ------------------- Corpus filter models ------------------- #
-from .corpus import DateRange, DocumentFilter, MetadataFilter, NumberRange, TextFilter
+# ------------------- Corpus filter + grid models ------------------- #
+from .corpus import (
+    BulkDeleteResponse,
+    BulkEnabledResponse,
+    BulkReingestResponse,
+    DateRange,
+    DocumentFilter,
+    DocumentGridRow,
+    DocumentQueryRequest,
+    DocumentQueryResponse,
+    DocumentSelector,
+    DocumentSort,
+    MetadataFilter,
+    NumberRange,
+    Pagination,
+    TextFilter,
+)
 
 # ------------------- Documents models ------------------- #
 from .documents import DocumentEnabledResponse, DocumentView, EnabledPatch, UploadAccepted
@@ -84,10 +100,13 @@ from .ir import DocumentIRModel, IRBlock, IREnrichment, IRFigure, IRTable
 # ------------------- Jobs models ------------------- #
 from .jobs import (
     CancelResult,
+    CollectionCost,
     JobEvent,
     JobPage,
     JobStatus,
     JobTrace,
+    QueueDepth,
+    StageDurations,
     WorkerActivity,
     WorkersLive,
 )
@@ -238,6 +257,23 @@ __all__ = [
     "QdrantFootprintModel",
     "DocumentStorageModel",
     "CollectionStorageResponse",
+    # Corpus grid + bulk ops
+    "DocumentSort",
+    "Pagination",
+    "DocumentQueryRequest",
+    "DocumentGridRow",
+    "DocumentQueryResponse",
+    "DocumentSelector",
+    "BulkDeleteResponse",
+    "BulkEnabledResponse",
+    "BulkReingestResponse",
+    # Jobs telemetry
+    "QueueDepth",
+    "StageDurations",
+    "CollectionCost",
+    # Discovery + introspection
+    "CollectionContractSchemaResponse",
+    "WhoAmI",
     # Transfers
     "TransferAccepted",
     "TransferStatus",

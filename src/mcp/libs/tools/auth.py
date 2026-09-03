@@ -99,3 +99,8 @@ def register(mcp: FastMCP, sdk: AsyncClient) -> None:
             key_id, name=new_name, permissions=scope, expires_at=expiry
         )
         return rotated.model_dump(mode="json")
+
+    @mcp.tool()
+    async def whoami() -> Any:
+        """Report THIS token's capabilities + collection scope — what it is allowed to do."""
+        return (await sdk.auth.whoami()).model_dump(mode="json")

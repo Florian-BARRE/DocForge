@@ -1,5 +1,6 @@
 # -------------------- Auth (API-key management) ------------------- #
 from .auth.router import router as auth_router
+from .auth.whoami import router as auth_whoami_router
 
 # -------------------- Collections (contract CRUD) ------------------- #
 from .collections.router import router as collections_router
@@ -46,6 +47,7 @@ from .audit.router import router as audit_router
 # ------------------- Public API ------------------- #
 __all__ = [
     "auth_router",
+    "auth_whoami_router",
     "collections_router",
     "documents_router",
     "explorer_router",

@@ -13,6 +13,7 @@ from .resources.audit import AsyncAudit, SyncAudit
 from .resources.auth import AsyncAuth, SyncAuth
 from .resources.blobs import AsyncBlobs, SyncBlobs
 from .resources.collections import AsyncCollections, SyncCollections
+from .resources.corpus import AsyncCorpus, SyncCorpus
 from .resources.documents import AsyncDocuments, SyncDocuments
 from .resources.explorer import AsyncExplorer, SyncExplorer
 from .resources.health import AsyncHealth, SyncHealth
@@ -64,6 +65,7 @@ class AsyncClient:
         self.pipelines = AsyncPipelines(self._transport)
         self.transfers = AsyncTransfers(self._transport)
         self.snippets = AsyncSnippets(self._transport)
+        self.corpus = AsyncCorpus(self._transport)
 
     async def __aenter__(self) -> "AsyncClient":
         """Enter the async context, returning the client itself."""
@@ -124,6 +126,7 @@ class Client:
         self.pipelines = SyncPipelines(self._transport)
         self.transfers = SyncTransfers(self._transport)
         self.snippets = SyncSnippets(self._transport)
+        self.corpus = SyncCorpus(self._transport)
 
     def __enter__(self) -> "Client":
         """Enter the context, returning the client itself."""

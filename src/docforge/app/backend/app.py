@@ -21,6 +21,7 @@ from .lifespan import lifespan
 from .routers import (
     audit_router,
     auth_router,
+    auth_whoami_router,
     blobs_router,
     collections_router,
     corpus_router,
@@ -106,6 +107,7 @@ def create_app(
 
     # API v1 — API-key management (create / list / revoke; gated like the rest).
     app.include_router(router=auth_router, prefix="/api/v1")
+    app.include_router(router=auth_whoami_router, prefix="/api/v1")
 
     # API v1 — the pipeline design surface (palette / stages / inspect / edit).
     app.include_router(router=pipelines_router, prefix="/api/v1")

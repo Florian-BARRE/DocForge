@@ -11,7 +11,7 @@ from types import EllipsisType
 # ====== Local Project Imports ======
 from .._requestspec import RequestSpec
 from ..models._shared import KeyPermissions
-from ..models.auth import CreatedKey, CreateKeyRequest, KeyInfo, RotateKeyRequest
+from ..models.auth import CreatedKey, CreateKeyRequest, KeyInfo, RotateKeyRequest, WhoAmI
 from ._base import AsyncResource, SyncResource, _ResourceMixin
 
 
@@ -110,6 +110,10 @@ class _AuthSpecs(_ResourceMixin):
         # 2. Validate from the dict so model_fields_set carries exactly the supplied keys.
         return RotateKeyRequest.model_validate(provided)
 
+    def _whoami_spec(self) -> RequestSpec:
+        """A GET of the calling token's own capabilities + collection scope."""
+        return RequestSpec("GET", "/auth/whoami")
+
 
 class AsyncAuth(AsyncResource, _AuthSpecs):
     """Asynchronous API-key management (create / list / revoke / rotate)."""
@@ -185,6 +189,10 @@ class AsyncAuth(AsyncResource, _AuthSpecs):
             CreatedKey,
         )
 
+    async def whoami(self) -> WhoAmI:
+        """Report the calling token's capabilities + collection scope (what it may do)."""
+        return await self._transport.request(self._whoami_spec(), WhoAmI)
+
 
 class SyncAuth(SyncResource, _AuthSpecs):
     """Synchronous API-key management (create / list / revoke / rotate)."""
@@ -259,6 +267,10 @@ class SyncAuth(SyncResource, _AuthSpecs):
             self._rotate_spec(key_id, self._build_rotate_request(name, permissions, expires_at)),
             CreatedKey,
         )
+
+    def whoami(self) -> WhoAmI:
+        """Report the calling token's capabilities + collection scope (what it may do)."""
+        return self._transport.request(self._whoami_spec(), WhoAmI)
 
 
 __all__ = ["AsyncAuth", "SyncAuth"]

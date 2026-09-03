@@ -163,6 +163,28 @@
         }
       }
     },
+    "/api/v1/auth/whoami": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Whoami",
+        "description": "Report the calling token's capabilities and collection scope — what it is allowed to do.\n\nReturns:\n    WhoAmI: The resolved access (full/unscoped for a root or auth-off principal, else the key's\n    parsed capabilities + collection scope).",
+        "operationId": "whoami_api_v1_auth_whoami_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WhoAmI"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/pipelines": {
       "get": {
         "tags": [
@@ -9966,6 +9988,45 @@
         ],
         "title": "WhenEquals",
         "description": "Follow the edge when a field of the source node's SUCCESSFUL output equals a value.\n\nThe switch of the graph: several ``WhenEquals`` edges on the SAME field with DISTINCT values\nroute each outcome to its own branch (e.g. a figure classifier's ``kind``). Values are\ncompared as strings, which covers the StrEnum outputs the routing is meant for.\n\nAttributes:\n    field (str): Field name on the source node's PRODUCES model to read.\n    equals (str): The edge is taken when ``str(output.field) == equals``."
+      },
+      "WhoAmI": {
+        "properties": {
+          "authenticated": {
+            "type": "boolean",
+            "title": "Authenticated",
+            "description": "Always true for a resolved principal."
+          },
+          "root": {
+            "type": "boolean",
+            "title": "Root",
+            "description": "Full, unscoped access (auth off, or a NULL-permissions key)."
+          },
+          "capabilities": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Capabilities",
+            "description": "Action classes this token grants (read / write / search / create / admin)."
+          },
+          "collections": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Collections",
+            "description": "Collection scope: ['*'] for all, else explicit collection UUID strings."
+          }
+        },
+        "type": "object",
+        "required": [
+          "authenticated",
+          "root",
+          "capabilities",
+          "collections"
+        ],
+        "title": "WhoAmI",
+        "description": "The calling token's own access — what it may do, for self-introspection.\n\nLets a client (an MCP agent especially) discover its rights without trial-and-error: the coarse\naction classes it holds and the collections it is scoped to. A 401 never reaches this model\n(unauthenticated requests are rejected upstream), so ``authenticated`` is always true.\n\nAttributes:\n    authenticated (bool): Always true for a resolved principal.\n    root (bool): Full, unscoped access — auth disabled, or a NULL-permissions (root) key.\n    capabilities (list[str]): Action classes granted (read / write / search / create / admin).\n    collections (list[str]): Collection scope — ``[\"*\"]`` for all, else explicit UUID strings."
       },
       "WorkerActivity": {
         "properties": {

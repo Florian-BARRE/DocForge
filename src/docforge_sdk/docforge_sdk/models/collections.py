@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 from ._shared import FieldOrigin, FieldScope, FieldType
 from .estimate import EstimateOverrides
 from .health import CollectionHealthSummary
+from .reingest import ReingestJobHandle
 
 
 class FieldSpec(BaseModel):
@@ -223,19 +224,6 @@ class BulkReingestRequest(BaseModel):
     )
 
 
-class ReingestJobHandle(BaseModel):
-    """
-    One enqueued re-ingestion — poll the job for status/progress.
-
-    Attributes:
-        document_id (str): The document being re-ingested.
-        job_id (str): The fresh ingestion job driving its lifecycle.
-    """
-
-    document_id: str = Field(description="The re-ingested document's UUID.")
-    job_id: str = Field(description="The fresh ingestion job's UUID (poll this).")
-
-
 class BulkReingestAccepted(BaseModel):
     """
     The accepted bulk re-run — the runs execute asynchronously (poll each job).
@@ -264,6 +252,14 @@ class BulkReingestAccepted(BaseModel):
     jobs: list[ReingestJobHandle] = Field(description="One handle per enqueued run.")
 
 
+class CollectionContractSchemaResponse(BaseModel):
+    """The JSON Schema of the collection identity/limits contract — the discovery payload."""
+
+    config_schema: dict[str, Any] = Field(
+        description="JSON Schema of the collection identity/limits contract (drives the UI form)."
+    )
+
+
 __all__ = [
     "FieldSpec",
     "CollectionModel",
@@ -273,4 +269,5 @@ __all__ = [
     "BulkReingestRequest",
     "ReingestJobHandle",
     "BulkReingestAccepted",
+    "CollectionContractSchemaResponse",
 ]
