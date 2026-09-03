@@ -26,6 +26,13 @@ class Collection(Base, UUIDPrimaryKey, TimestampedMixin):
     job_timeout_seconds: Mapped[float | None] = mapped_column(
         Float, nullable=True, server_default=None
     )
+    # Per-collection PARTIAL override of the cost-estimate inputs. NULL = use the global defaults
+    # (hardcoded RateTable in nodes/openai_compat/pricing.py + EstimateAssumptions in
+    # ingest/estimate/models.py). A set value is a partial dict merged over those defaults, shape:
+    # {"rates": {"models": {...}, "embed": {...}, "ocr": {...}}, "assumptions": {"tokens_per_page": ...}}.
+    estimate_overrides: Mapped[dict | None] = mapped_column(
+        JSONB, nullable=True, server_default=None
+    )
     needs_reindex: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     pipeline: Mapped[dict] = mapped_column(
         JSONB, nullable=False, default=dict

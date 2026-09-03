@@ -10,7 +10,7 @@ from typing import Any
 
 # ====== Local Project Imports ======
 from .._requestspec import RequestSpec
-from ..models.documents import DocumentEnabledResponse, EnabledPatch, UploadAccepted
+from ..models.documents import DocumentEnabledResponse, DocumentView, EnabledPatch, UploadAccepted
 from ._base import AsyncResource, SyncResource, _ResourceMixin
 
 
@@ -67,6 +67,30 @@ class _DocumentsSpecs(_ResourceMixin):
             json=EnabledPatch(enabled=enabled).model_dump(mode="json"),
         )
 
+    def _markdown_path(self, document_id: str) -> str:
+        """
+        Build the API-relative path to a document's on-the-fly markdown view.
+
+        Args:
+            document_id (str): The document to render.
+
+        Returns:
+            str: The path to the document's ``/markdown`` sub-resource.
+        """
+        return f"{self._DOCUMENTS_PATH}/{document_id}/markdown"
+
+    def _html_path(self, document_id: str) -> str:
+        """
+        Build the API-relative path to a document's on-the-fly HTML view.
+
+        Args:
+            document_id (str): The document to render.
+
+        Returns:
+            str: The path to the document's ``/html`` sub-resource.
+        """
+        return f"{self._DOCUMENTS_PATH}/{document_id}/html"
+
 
 class AsyncDocuments(AsyncResource, _DocumentsSpecs):
     """Asynchronous document admission and searchability control."""
@@ -108,6 +132,40 @@ class AsyncDocuments(AsyncResource, _DocumentsSpecs):
             self._set_enabled_spec(document_id, enabled), DocumentEnabledResponse
         )
 
+    async def get_markdown(self, document_id: str, download: bool = False) -> DocumentView:
+        """
+        Render a document as an on-the-fly markdown view generated from the canonical IR.
+
+        Args:
+            document_id (str): The document to render.
+            download (bool): When true, ask the server for the attachment-style response (the caller
+                still only gets the text back; the flag only affects the server-side response header).
+
+        Returns:
+            DocumentView: The rendered markdown body and its ``text/markdown`` content type.
+        """
+        content, mime_type = await self._transport.get_text_typed(
+            self._markdown_path(document_id), params={"download": download}
+        )
+        return DocumentView(content=content, mime_type=mime_type)
+
+    async def get_html(self, document_id: str, download: bool = False) -> DocumentView:
+        """
+        Render a document as an on-the-fly HTML view generated from the canonical IR.
+
+        Args:
+            document_id (str): The document to render.
+            download (bool): When true, ask the server for the attachment-style response (the caller
+                still only gets the text back; the flag only affects the server-side response header).
+
+        Returns:
+            DocumentView: The rendered HTML body and its ``text/html`` content type.
+        """
+        content, mime_type = await self._transport.get_text_typed(
+            self._html_path(document_id), params={"download": download}
+        )
+        return DocumentView(content=content, mime_type=mime_type)
+
 
 class SyncDocuments(SyncResource, _DocumentsSpecs):
     """Synchronous document admission and searchability control."""
@@ -148,6 +206,40 @@ class SyncDocuments(SyncResource, _DocumentsSpecs):
         return self._transport.request(
             self._set_enabled_spec(document_id, enabled), DocumentEnabledResponse
         )
+
+    def get_markdown(self, document_id: str, download: bool = False) -> DocumentView:
+        """
+        Render a document as an on-the-fly markdown view generated from the canonical IR.
+
+        Args:
+            document_id (str): The document to render.
+            download (bool): When true, ask the server for the attachment-style response (the caller
+                still only gets the text back; the flag only affects the server-side response header).
+
+        Returns:
+            DocumentView: The rendered markdown body and its ``text/markdown`` content type.
+        """
+        content, mime_type = self._transport.get_text_typed(
+            self._markdown_path(document_id), params={"download": download}
+        )
+        return DocumentView(content=content, mime_type=mime_type)
+
+    def get_html(self, document_id: str, download: bool = False) -> DocumentView:
+        """
+        Render a document as an on-the-fly HTML view generated from the canonical IR.
+
+        Args:
+            document_id (str): The document to render.
+            download (bool): When true, ask the server for the attachment-style response (the caller
+                still only gets the text back; the flag only affects the server-side response header).
+
+        Returns:
+            DocumentView: The rendered HTML body and its ``text/html`` content type.
+        """
+        content, mime_type = self._transport.get_text_typed(
+            self._html_path(document_id), params={"download": download}
+        )
+        return DocumentView(content=content, mime_type=mime_type)
 
 
 __all__ = ["AsyncDocuments", "SyncDocuments"]

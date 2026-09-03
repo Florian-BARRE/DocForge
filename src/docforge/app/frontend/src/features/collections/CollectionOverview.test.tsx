@@ -55,6 +55,7 @@ const baseCollection: Collection = {
   pipeline: {},
   search: {},
   fields: [],
+  estimate_overrides: null,
 };
 
 const baseHealth: CollectionHealth = {

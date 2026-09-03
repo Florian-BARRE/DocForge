@@ -1,36 +1,30 @@
 // ====== Code Summary ======
 // The collection export panel — mirrors UploadPanel's inline-card placement under the collection
-// header (CollectionShell owns the show/hide toggle). Opens the export transfer on demand, then
-// hands the live state to ExportProgress for polling + the eventual authenticated download.
+// header (CollectionShell owns the show/hide toggle). A SCOPE selector picks between the whole
+// collection (the existing async `.dcexport` flow, unchanged — ExportCollectionSection) and a
+// single config slice (the synchronous `.dfsnippet` flow — ExportSnippetSection, which also carries
+// the "Apply snippet" import affordance).
 
 import { useState } from "react";
-import { exportCollection } from "../../../api/transfers";
-import { Button } from "../../../components/Button";
+import { TabNav } from "../../../components/TabNav";
 import { theme } from "../../../theme";
-import { ExportProgress } from "./ExportProgress";
+import { ExportCollectionSection } from "./ExportCollectionSection";
+import { ExportSnippetSection } from "./ExportSnippetSection";
 
 interface ExportPanelProps {
   collectionId: string;
   collectionName: string;
 }
 
-export function ExportPanel({ collectionId, collectionName }: ExportPanelProps) {
-  const [transferId, setTransferId] = useState<string | null>(null);
-  const [starting, setStarting] = useState(false);
-  const [startError, setStartError] = useState<string | null>(null);
+type ExportScope = "collection" | "snippet";
 
-  const start = async () => {
-    setStarting(true);
-    setStartError(null);
-    try {
-      const accepted = await exportCollection(collectionId);
-      setTransferId(accepted.transfer_id);
-    } catch (e) {
-      setStartError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setStarting(false);
-    }
-  };
+const SCOPE_TABS: { key: ExportScope; label: string }[] = [
+  { key: "collection", label: "Whole collection" },
+  { key: "snippet", label: "Config snippet" },
+];
+
+export function ExportPanel({ collectionId, collectionName }: ExportPanelProps) {
+  const [scope, setScope] = useState<ExportScope>("collection");
 
   return (
     <div
@@ -42,21 +36,15 @@ export function ExportPanel({ collectionId, collectionName }: ExportPanelProps) 
     >
       <div>
         <div style={{ fontSize: theme.font.size.l, fontWeight: 700, color: theme.color.text }}>Export collection</div>
-        <div style={{ fontSize: theme.font.size.s, color: theme.color.dim, marginTop: 4 }}>
-          Bundles the schema, documents, IR and vectors into a portable{" "}
-          <span style={{ fontFamily: theme.font.mono }}>.dcexport</span> file you can import on another
-          DocForge server.
-        </div>
       </div>
 
-      {!transferId && (
-        <div>
-          <Button variant="secondary" disabled={starting} onClick={start}>{starting ? "starting…" : "Start export"}</Button>
-        </div>
-      )}
-      {startError && <div style={{ color: theme.color.error, fontSize: theme.font.size.s }}>{startError}</div>}
+      <TabNav tabs={SCOPE_TABS} active={scope} onSelect={setScope} navId="export-scope" ariaLabel="Export scope" role="group" />
 
-      {transferId && <ExportProgress transferId={transferId} collectionName={collectionName} />}
+      {scope === "collection" ? (
+        <ExportCollectionSection collectionId={collectionId} collectionName={collectionName} />
+      ) : (
+        <ExportSnippetSection collectionId={collectionId} collectionName={collectionName} />
+      )}
     </div>
   );
 }

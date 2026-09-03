@@ -32,14 +32,21 @@ from .collections import (
     UpdateCollectionRequest,
 )
 
+# ------------------- Corpus filter models ------------------- #
+from .corpus import DateRange, DocumentFilter, MetadataFilter, NumberRange, TextFilter
+
 # ------------------- Documents models ------------------- #
-from .documents import DocumentEnabledResponse, EnabledPatch, UploadAccepted
+from .documents import DocumentEnabledResponse, DocumentView, EnabledPatch, UploadAccepted
 
 # ------------------- Estimate models ------------------- #
 from .estimate import (
+    AssumptionOverrides,
     CollectionEstimateRequest,
     CostEstimate,
     EstimateAssumptions,
+    EstimateOverrides,
+    ModelRateOverride,
+    RateOverrides,
     StageEstimate,
     VolumeEstimate,
 )

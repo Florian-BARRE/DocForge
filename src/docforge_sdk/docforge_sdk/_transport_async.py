@@ -161,6 +161,28 @@ class AsyncTransport(_TransportBase):
         mime_type = response.headers.get("content-type", "application/octet-stream")
         return response.content, mime_type
 
+    async def get_text_typed(
+        self, path: str, params: dict[str, Any] | None = None
+    ) -> tuple[str, str]:
+        """
+        Fetch a raw TEXT body together with its server-declared media type.
+
+        Used by endpoints that render a document view (markdown/HTML) rather than a JSON body.
+
+        Args:
+            path (str): The API-relative path.
+            params (dict[str, Any] | None): Query parameters (e.g. ``download``); ``None`` values
+                are dropped.
+
+        Returns:
+            tuple[str, str]: The decoded text content and its ``Content-Type`` (a generic
+            ``text/plain`` fallback when the header is absent).
+        """
+        response = await self._send("GET", self._url(path), params=self._clean(params))
+        self._raise_for_status(response)
+        mime_type = response.headers.get("content-type", "text/plain")
+        return response.text, mime_type
+
     async def stream_get(self, path: str) -> AsyncIterator[bytes]:
         """
         Stream a GET response body in bounded chunks, never buffering it whole in memory.

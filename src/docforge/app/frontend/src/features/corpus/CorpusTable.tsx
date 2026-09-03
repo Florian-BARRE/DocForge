@@ -8,7 +8,7 @@
 
 import { flexRender, type Table } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { useRef, useState, type DragEvent } from "react";
+import { useEffect, useRef, useState, type DragEvent } from "react";
 import type { DocumentGridRow } from "../../api/corpus";
 import { LoadingState } from "../../components/LoadingState";
 import { theme } from "../../theme";
@@ -42,10 +42,21 @@ interface DragState {
 export function CorpusTable({ table, loading, columnFilters, onColumnFilterChange }: CorpusTableProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [drag, setDrag] = useState<DragState | null>(null);
+  const [containerWidth, setContainerWidth] = useState(0);
   const rows = table.getRowModel().rows;
   const visibleColumns = table.getVisibleLeafColumns();
   const columnCount = visibleColumns.length;
-  const tableWidth = Math.max(MIN_TABLE_WIDTH, table.getTotalSize());
+  // Track the scroll wrapper's own width so a narrower column set (e.g. after hiding columns via
+  // the "Columns" menu) can still stretch to fill it via `leftoverWidth` below, instead of
+  // collapsing to the MIN_TABLE_WIDTH floor and leaving dead space to its right.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver((entries) => setContainerWidth(entries[0].contentRect.width));
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+  const tableWidth = Math.max(MIN_TABLE_WIDTH, containerWidth, table.getTotalSize());
 
   // `table-layout: fixed` with an explicit `<table>` width wider than the sum of the `<colgroup>`
   // widths (the MIN_TABLE_WIDTH floor on a narrow/few-column collection, e.g. one with zero metadata

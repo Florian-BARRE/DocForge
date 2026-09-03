@@ -19,6 +19,7 @@ from shared_libs.services.db.postgresql.tables import Collection, MetadataField
 from shared_libs.services.db.qdrant import RESERVED_PAYLOAD_KEYS
 
 # ====== Local Project Imports ======
+from ...libs.estimate import EstimateOverrides
 from ...utils.search_blob_validation import SearchBlobValidator
 from .models import CollectionModel, FieldSpecModel
 
@@ -70,21 +71,36 @@ class CollectionHelpers:
             created_at=collection.created_at,
             pipeline=redact_blob_secrets(cls.public_pipeline(collection.pipeline)),
             search=redact_blob_secrets(collection.search),
-            fields=[
-                FieldSpecModel(
-                    field_name=row.field_name,
-                    field_type=row.field_type,
-                    required=row.required,
-                    filterable=row.filterable,
-                    lexical=row.lexical,
-                    semantic=row.semantic,
-                    enum_values=row.enum_values,
-                    origin=row.origin,
-                    scope=row.scope,
-                )
-                for row in fields
-            ],
+            fields=cls.to_field_specs(fields),
+            estimate_overrides=cls.__estimate_overrides(collection),
         )
+
+    @staticmethod
+    def to_field_specs(fields: list[MetadataField]) -> list[FieldSpecModel]:
+        """Map metadata field rows to their UI ``FieldSpecModel`` (shared by read + snippet export)."""
+        return [
+            FieldSpecModel(
+                field_name=row.field_name,
+                field_type=row.field_type,
+                required=row.required,
+                filterable=row.filterable,
+                lexical=row.lexical,
+                semantic=row.semantic,
+                enum_values=row.enum_values,
+                origin=row.origin,
+                scope=row.scope,
+            )
+            for row in fields
+        ]
+
+    @staticmethod
+    def __estimate_overrides(collection: Collection) -> EstimateOverrides | None:
+        """Validate the stored partial estimate overrides to the typed model (None when unset).
+
+        Rates carry no secret, so no masking is applied — the overrides round-trip verbatim.
+        """
+        stored = getattr(collection, "estimate_overrides", None)
+        return EstimateOverrides.model_validate(stored) if stored else None
 
     # -------------------- validation --------------------
     @staticmethod

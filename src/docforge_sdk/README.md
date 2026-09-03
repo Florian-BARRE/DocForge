@@ -164,16 +164,19 @@ are identical.
 | `list()` | `list[CollectionListItem]` | Every collection (schema + pipelines), each with its server-computed health summary. |
 | `get(collection_id)` | `CollectionModel` | One collection (schema + pipelines). |
 | `create(CreateCollectionRequest)` | `CollectionModel` | Create a collection (contract). |
-| `update(collection_id, UpdateCollectionRequest)` | `CollectionModel` | Patch name / formats / fields / pipelines. |
+| `update(collection_id, UpdateCollectionRequest)` | `CollectionModel` | Patch name / formats / fields / pipelines / cost-estimate overrides. |
 | `delete(collection_id)` | `None` | Delete a collection. |
 | `health(collection_id)` | `CollectionHealthResponse` | On-demand operational health — 5-state verdict, provider reachability sweep, index stats. No job enqueued, no spend. |
 | `storage(collection_id)` | `CollectionStorageResponse` | Material storage footprint per store (S3 exact, Postgres/Qdrant estimated) + per-document breakdown. |
+| `estimate(collection_id, scope="pending", document_ids=None, filter=None)` | `CostEstimate` | Pre-hoc cost + volume dry-run over the whole collection (`scope`), a selected subset (`document_ids`), or a corpus `filter`. No spend. Per-collection rate/assumption overrides apply. |
 
 ### `documents`
 | Method | Returns | Purpose |
 |---|---|---|
 | `upload(collection_id, file, metadata=None, filename=None)` | `UploadAccepted` | Admit a document; returns the ingestion `job_id`. `file` is a path, `bytes`, or a `Path`. |
 | `set_enabled(document_id, enabled)` | `DocumentEnabledResponse` | Reversibly hide/show a document from search. |
+| `get_markdown(document_id, download=False)` | `DocumentView` | The document rendered as Markdown from the canonical IR (a generated view). |
+| `get_html(document_id, download=False)` | `DocumentView` | The document rendered as HTML from the canonical IR (a generated view). |
 
 ### `search`
 | Method | Returns | Purpose |
@@ -205,6 +208,15 @@ are identical.
 | Method | Returns | Purpose |
 |---|---|---|
 | `get(content_hash)` | `BlobContent` | Fetch a content-addressed blob (bytes + media type). |
+
+### `snippets`
+Granular, config-only export/import of ONE collection slice — synchronous, secret-masked, versioned
+(saved as `*.dfsnippet`, distinct from the whole-collection `.dcexport` bundle).
+
+| Method | Returns | Purpose |
+|---|---|---|
+| `export(collection_id, kind)` | `CollectionSnippet` | Export the ingestion `pipeline`, the `search` graph, or the metadata `schema` as a portable snippet. |
+| `apply(collection_id, kind, snippet)` | `SnippetImportResult` | Apply a snippet of that kind onto an existing collection (healed/validated like a PATCH). |
 
 ### `auth`
 | Method | Returns | Purpose |

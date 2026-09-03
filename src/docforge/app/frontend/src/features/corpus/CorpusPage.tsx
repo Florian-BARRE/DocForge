@@ -18,6 +18,7 @@ import { theme } from "../../theme";
 import { BulkActionBar } from "./BulkActionBar";
 import { buildColumns } from "./columns/buildColumns";
 import { ColumnVisibilityMenu } from "./ColumnVisibilityMenu";
+import { CorpusEstimateAction } from "./CorpusEstimateAction";
 import { CorpusTable } from "./CorpusTable";
 import { buildDocumentFilter } from "./filterBuilder";
 import { Pager } from "./Pager";
@@ -146,6 +147,13 @@ export function CorpusPage({ collectionId, onNavigate }: CorpusPageProps) {
           onDone={bulkDone}
         />
         <span style={{ marginLeft: "auto" }} />
+        <CorpusEstimateAction
+          collectionId={collectionId}
+          filter={filter}
+          selector={selection.toSelector(filter)}
+          selectedCount={selection.count(query.total)}
+          totalCount={query.total}
+        />
         <ColumnVisibilityMenu
           table={table}
           onResetLayout={() => {
