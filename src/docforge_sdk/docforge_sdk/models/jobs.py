@@ -247,6 +247,32 @@ class CancelResult(BaseModel):
     detail: str = Field(description="A human-readable description of what happened.")
 
 
+class QueueDepth(BaseModel):
+    """Backlog counters — pending (queued, unclaimed) and running jobs, fleet-wide or per-collection."""
+
+    pending: int = Field(description="Jobs queued but not yet claimed by a worker.")
+    running: int = Field(description="Jobs a worker is currently executing.")
+
+
+class StageDurations(BaseModel):
+    """Average per-stage wall-clock for a collection — the basis for a running job's ETA."""
+
+    collection_id: str = Field(description="The collection the averages were computed over.")
+    stage_seconds: dict[str, float] = Field(
+        default_factory=dict, description="Stage id → average wall-clock seconds over DONE jobs."
+    )
+
+
+class CollectionCost(BaseModel):
+    """The collection's paid text-gen roll-up — tokens and USD summed over its documents' jobs."""
+
+    collection_id: str = Field(description="The collection totalled.")
+    total_prompt_tokens: int = Field(description="Sum of input tokens over the collection's jobs.")
+    total_completion_tokens: int = Field(description="Sum of output tokens over the jobs.")
+    cost_usd: float = Field(description="Sum of USD cost over the jobs.")
+    document_count: int = Field(description="Number of jobs (documents) in the roll-up.")
+
+
 __all__ = [
     "JobStatus",
     "JobPage",
@@ -255,4 +281,7 @@ __all__ = [
     "WorkerActivity",
     "WorkersLive",
     "CancelResult",
+    "QueueDepth",
+    "StageDurations",
+    "CollectionCost",
 ]

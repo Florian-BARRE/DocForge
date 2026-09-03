@@ -18,6 +18,7 @@ from .._requestspec import RequestSpec
 from ..models.collections import (
     BulkReingestAccepted,
     BulkReingestRequest,
+    CollectionContractSchemaResponse,
     CollectionListItem,
     CollectionModel,
     CreateCollectionRequest,
@@ -154,6 +155,10 @@ class _CollectionsSpecs(_ResourceMixin):
             f"{self._COLLECTIONS_PATH}/{collection_id}/estimate",
             json=request.model_dump(mode="json", exclude_none=True),
         )
+
+    def _contract_schema_spec(self) -> RequestSpec:
+        """A GET of the collection identity/limits contract's JSON Schema (discovery)."""
+        return RequestSpec("GET", f"{self._COLLECTIONS_PATH}/contract-schema")
 
 
 class AsyncCollections(AsyncResource, _CollectionsSpecs):
@@ -293,6 +298,12 @@ class AsyncCollections(AsyncResource, _CollectionsSpecs):
             self._estimate_spec(collection_id, request), CostEstimate
         )
 
+    async def contract_schema(self) -> CollectionContractSchemaResponse:
+        """The JSON Schema of the collection identity/limits contract (drives a discovery form)."""
+        return await self._transport.request(
+            self._contract_schema_spec(), CollectionContractSchemaResponse
+        )
+
 
 class SyncCollections(SyncResource, _CollectionsSpecs):
     """Synchronous collection management (list / get / create / update / delete)."""
@@ -422,6 +433,12 @@ class SyncCollections(SyncResource, _CollectionsSpecs):
         """
         request = CollectionEstimateRequest(scope=scope, document_ids=document_ids, filter=filter)
         return self._transport.request(self._estimate_spec(collection_id, request), CostEstimate)
+
+    def contract_schema(self) -> CollectionContractSchemaResponse:
+        """The JSON Schema of the collection identity/limits contract (drives a discovery form)."""
+        return self._transport.request(
+            self._contract_schema_spec(), CollectionContractSchemaResponse
+        )
 
 
 __all__ = ["AsyncCollections", "SyncCollections"]

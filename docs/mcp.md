@@ -143,7 +143,29 @@ multi-GB) — `get_export_download_ref` instead points the caller at the REST do
 | `get_transfer` | Poll a transfer's live status — progress, stage, counts, error, and (done) the artifact: bundle `size_bytes`/`expires_at` for an export, the new `collection_id`/`collection_name` for an import. |
 | `get_export_download_ref` | For a done export, returns `size_bytes`/`expires_at` and the REST `download_path` to `GET` directly (or via `docforge_sdk`'s streaming `transfers.download_export`) — never the bundle bytes themselves. |
 
-**Total: 44 tools** across 10 domains.
+
+### Corpus grid & bulk operations
+
+| Tool | Purpose |
+|---|---|
+| `query_documents` | One filtered/sorted/paginated page of a collection's documents + total match count (`collection_id`, `filter`, `sort`, `limit`, `offset`). Rows carry the catalogue fields + a `{field_name: value}` metadata map. |
+| `delete_documents` | Bulk-delete by selector (`{document_ids:[…]}` XOR `{filter:{…}, exclude_ids:[…]}`) — everywhere (PG + Qdrant + S3). |
+| `set_documents_enabled` | Bulk enable/disable searchability by selector (`enabled`). |
+| `reingest_documents` | Bulk re-run the full ingestion by selector (`force`), capped fan-out, one job handle per run. |
+
+### Jobs telemetry & introspection
+
+| Tool | Purpose |
+|---|---|
+| `get_collection_cost` | Paid text-gen roll-up (tokens + USD) for a collection. |
+| `get_queue_depth` | Backlog counters (pending/running) — fleet-wide (root) or per-collection. |
+| `get_stage_durations` | Average per-stage wall-clock for a collection (a running job's ETA basis). |
+| `reingest_document` | Re-run the full ingestion of a single document (`force`). |
+| `get_collection_contract_schema` | JSON Schema of the collection identity/limits contract (build a valid create/update). |
+| `whoami` | The calling token's own capabilities + collection scope — what it may do. |
+
+
+**Total: 54 tools** across 10 domains.
 
 ---
 

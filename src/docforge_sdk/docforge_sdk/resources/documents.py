@@ -67,6 +67,12 @@ class _DocumentsSpecs(_ResourceMixin):
             json=EnabledPatch(enabled=enabled).model_dump(mode="json"),
         )
 
+    def _reingest_spec(self, document_id: str, force: bool) -> RequestSpec:
+        """A POST re-running the full ingestion of one document (``force`` bypasses the doc cache)."""
+        return RequestSpec(
+            "POST", f"{self._DOCUMENTS_PATH}/{document_id}/reingest", params={"force": force}
+        )
+
     def _markdown_path(self, document_id: str) -> str:
         """
         Build the API-relative path to a document's on-the-fly markdown view.
@@ -130,6 +136,21 @@ class AsyncDocuments(AsyncResource, _DocumentsSpecs):
         """
         return await self._transport.request(
             self._set_enabled_spec(document_id, enabled), DocumentEnabledResponse
+        )
+
+    async def reingest(self, document_id: str, force: bool = False) -> UploadAccepted:
+        """
+        Re-run the full ingestion of a single document.
+
+        Args:
+            document_id (str): The document to re-ingest.
+            force (bool): Bypass the document cache and re-run every stage.
+
+        Returns:
+            UploadAccepted: The fresh ingestion job handle (poll it for status).
+        """
+        return await self._transport.request(
+            self._reingest_spec(document_id, force), UploadAccepted
         )
 
     async def get_markdown(self, document_id: str, download: bool = False) -> DocumentView:
@@ -206,6 +227,10 @@ class SyncDocuments(SyncResource, _DocumentsSpecs):
         return self._transport.request(
             self._set_enabled_spec(document_id, enabled), DocumentEnabledResponse
         )
+
+    def reingest(self, document_id: str, force: bool = False) -> UploadAccepted:
+        """Re-run the full ingestion of a single document (``force`` bypasses the doc cache)."""
+        return self._transport.request(self._reingest_spec(document_id, force), UploadAccepted)
 
     def get_markdown(self, document_id: str, download: bool = False) -> DocumentView:
         """

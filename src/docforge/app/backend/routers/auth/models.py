@@ -108,4 +108,29 @@ class KeyInfo(BaseModel):
     )
 
 
-__all__ = ["CreateKeyRequest", "RotateKeyRequest", "CreatedKey", "KeyInfo"]
+class WhoAmI(BaseModel):
+    """
+    The calling token's own access — what it may do, for self-introspection.
+
+    Lets a client (an MCP agent especially) discover its rights without trial-and-error: the coarse
+    action classes it holds and the collections it is scoped to. A 401 never reaches this model
+    (unauthenticated requests are rejected upstream), so ``authenticated`` is always true.
+
+    Attributes:
+        authenticated (bool): Always true for a resolved principal.
+        root (bool): Full, unscoped access — auth disabled, or a NULL-permissions (root) key.
+        capabilities (list[str]): Action classes granted (read / write / search / create / admin).
+        collections (list[str]): Collection scope — ``["*"]`` for all, else explicit UUID strings.
+    """
+
+    authenticated: bool = Field(description="Always true for a resolved principal.")
+    root: bool = Field(description="Full, unscoped access (auth off, or a NULL-permissions key).")
+    capabilities: list[str] = Field(
+        description="Action classes this token grants (read / write / search / create / admin)."
+    )
+    collections: list[str] = Field(
+        description="Collection scope: ['*'] for all, else explicit collection UUID strings."
+    )
+
+
+__all__ = ["CreateKeyRequest", "RotateKeyRequest", "CreatedKey", "KeyInfo", "WhoAmI"]

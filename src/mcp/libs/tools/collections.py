@@ -163,3 +163,8 @@ def register(mcp: FastMCP, sdk: AsyncClient) -> None:
         """
         result = await sdk.snippets.apply(collection_id, kind, CollectionSnippet(**snippet))
         return result.model_dump(mode="json")
+
+    @mcp.tool()
+    async def get_collection_contract_schema() -> Any:
+        """The JSON Schema of the collection identity/limits contract (build a valid create/update)."""
+        return (await sdk.collections.contract_schema()).model_dump(mode="json")

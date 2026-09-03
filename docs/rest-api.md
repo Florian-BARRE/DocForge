@@ -880,3 +880,24 @@ production.
 | `404` | Unknown collection / document / chunk / job / blob / pipeline key. |
 | `409` | Name clash (collection / key), rotating an already-revoked key, root not provisioned, a collection with no embed node on search, or an `Idempotency-Key` whose request is still in progress (§13). |
 | `500` | Unexpected server error (opaque). |
+
+## Corpus grid, bulk operations, telemetry & introspection
+
+These endpoints power the document grid, mass actions, job telemetry and token self-introspection. All are mirrored in the SDK (`client.corpus`, `client.jobs`, `client.collections`, `client.auth`) and the MCP server.
+
+### Document grid & bulk ops (`/collections/{id}/documents/*`)
+- `POST /collections/{id}/documents/query` → `DocumentQueryResponse` — one filtered/sorted/paginated page (`{filter, sort, pagination}`) + the total match count. Rows carry the catalogue fields + a `{field_name: value}` metadata map.
+- `POST /collections/{id}/documents/delete` → `BulkDeleteResponse` — bulk delete by `DocumentSelector` (`{document_ids:[…]}` XOR `{filter:{…}, exclude_ids:[…]}`); removes everywhere (PG + Qdrant + S3).
+- `POST /collections/{id}/documents/set-enabled?enabled=<bool>` → `BulkEnabledResponse` — bulk enable/disable searchability by selector.
+- `POST /collections/{id}/documents/reingest?force=<bool>` → `BulkReingestResponse` — bulk full re-ingest by selector (capped fan-out, one job handle per run).
+- `POST /documents/{id}/reingest?force=<bool>` → `UploadAccepted` — re-ingest a single document.
+
+### Job telemetry (`/jobs/*`)
+- `GET /jobs/cost?collection_id=` → `CollectionCost` — paid text-gen roll-up (tokens + USD).
+- `GET /jobs/queue[?collection_id=]` → `QueueDepth` — pending/running backlog (fleet-wide for a root token, else per-collection).
+- `GET /jobs/stage-durations?collection_id=` → `StageDurations` — average per-stage wall-clock (ETA basis).
+- `GET /jobs/{id}/stream` → Server-Sent Events live progress (SSE; not wrapped in the SDK — consume the stream directly).
+
+### Discovery & introspection
+- `GET /collections/contract-schema` → `CollectionContractSchemaResponse` — JSON Schema of the collection identity/limits contract (drives a discovery form).
+- `GET /auth/whoami` → `WhoAmI` — the **calling token's own** access: `capabilities` (read/write/search/create/admin) + collection `scope`. Requires only authentication, no specific capability — a client (an MCP agent especially) can discover what it may do without probing endpoints.

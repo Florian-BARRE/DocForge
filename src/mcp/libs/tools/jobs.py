@@ -60,3 +60,18 @@ def register(mcp: FastMCP, sdk: AsyncClient) -> None:
         """
         result = await sdk.jobs.cancel(job_id, force=force)
         return result.model_dump(mode="json")
+
+    @mcp.tool()
+    async def get_collection_cost(collection_id: str) -> Any:
+        """A collection's paid text-gen roll-up — tokens + USD summed over its documents' jobs."""
+        return (await sdk.jobs.cost(collection_id)).model_dump(mode="json")
+
+    @mcp.tool()
+    async def get_queue_depth(collection_id: str | None = None) -> Any:
+        """Backlog counters (pending/running) — fleet-wide (root token) or for one collection."""
+        return (await sdk.jobs.queue(collection_id)).model_dump(mode="json")
+
+    @mcp.tool()
+    async def get_stage_durations(collection_id: str) -> Any:
+        """Average per-stage wall-clock over a collection's done jobs (a running job's ETA basis)."""
+        return (await sdk.jobs.stage_durations(collection_id)).model_dump(mode="json")
