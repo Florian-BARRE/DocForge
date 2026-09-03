@@ -103,6 +103,20 @@ async def startup(ctx: dict[str, Any]) -> None:
     CONTEXT.worker_name = RUNTIME_CONFIG.WORKER_NAME or CONTEXT.worker_id
     CONTEXT.job_timeout_seconds = RUNTIME_CONFIG.WORKER_JOB_TIMEOUT_SECONDS
 
+    # 4b. Reclaim this worker's orphaned RUNNING jobs from a previous incarnation (hot-reload/crash):
+    #     a just-started process owns no in-flight task, so any RUNNING row still stamped with our
+    #     worker_id is dead — fail it now so the "stalled" pile-up clears instantly instead of lingering
+    #     orange until the reaper's stale window. Best-effort: a DB blip here must not block startup.
+    try:
+        reclaimed = await CONTEXT.database.jobs.reclaim_worker_jobs(CONTEXT.worker_id)
+        if reclaimed:
+            CONTEXT.logger.warning(
+                f"Startup reclaim: failed {len(reclaimed)} orphaned RUNNING job(s) left by a "
+                f"previous incarnation of worker '{CONTEXT.worker_id}'."
+            )
+    except Exception as exc:
+        CONTEXT.logger.warning(f"Startup job reclaim skipped (non-fatal): {exc}")
+
     # 5. Liveness heartbeat — refreshes worker_heartbeats on a timer so an idle-but-alive worker
     #    stays visible and a dead one is detectable fast (independent of the stall/reaper path).
     CONTEXT.heartbeat = HeartbeatWriter(

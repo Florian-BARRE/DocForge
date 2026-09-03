@@ -16,7 +16,7 @@ from ..models.explorer import (
     DocumentListItem,
     PageInfo,
 )
-from ..models.ir import DocumentIRModel
+from ..models.ir import DocumentIRModel, DocumentProvenance
 from ._base import AsyncResource, SyncResource, _ResourceMixin
 
 
@@ -74,6 +74,18 @@ class _ExplorerSpecs(_ResourceMixin):
             RequestSpec: A GET on the document's IR sub-resource.
         """
         return RequestSpec("GET", f"{self._DOCUMENTS_PATH}/{document_id}/ir")
+
+    def _get_provenance_spec(self, document_id: str) -> RequestSpec:
+        """
+        Build the request for a document's ingestion provenance (parser/model pipeline trace).
+
+        Args:
+            document_id (str): The document to describe.
+
+        Returns:
+            RequestSpec: A GET on the document's ``/provenance`` sub-resource.
+        """
+        return RequestSpec("GET", f"{self._DOCUMENTS_PATH}/{document_id}/provenance")
 
     def _get_chunks_spec(self, document_id: str) -> RequestSpec:
         """
@@ -184,6 +196,20 @@ class AsyncExplorer(AsyncResource, _ExplorerSpecs):
         """
         return await self._transport.request(self._get_ir_spec(document_id), DocumentIRModel)
 
+    async def get_provenance(self, document_id: str) -> DocumentProvenance:
+        """
+        Fetch a document's ingestion provenance — the parser/model pipeline that produced it.
+
+        Args:
+            document_id (str): The document to describe.
+
+        Returns:
+            DocumentProvenance: The pipeline version and per-stage trace (empty when the job expired).
+        """
+        return await self._transport.request(
+            self._get_provenance_spec(document_id), DocumentProvenance
+        )
+
     async def get_chunks(self, document_id: str) -> list[ChunkInfo]:
         """
         Fetch a document's retrieval chunks.
@@ -287,6 +313,18 @@ class SyncExplorer(SyncResource, _ExplorerSpecs):
             DocumentIRModel: The full IR payload.
         """
         return self._transport.request(self._get_ir_spec(document_id), DocumentIRModel)
+
+    def get_provenance(self, document_id: str) -> DocumentProvenance:
+        """
+        Fetch a document's ingestion provenance — the parser/model pipeline that produced it.
+
+        Args:
+            document_id (str): The document to describe.
+
+        Returns:
+            DocumentProvenance: The pipeline version and per-stage trace (empty when the job expired).
+        """
+        return self._transport.request(self._get_provenance_spec(document_id), DocumentProvenance)
 
     def get_chunks(self, document_id: str) -> list[ChunkInfo]:
         """

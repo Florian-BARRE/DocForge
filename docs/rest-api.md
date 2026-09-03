@@ -410,6 +410,7 @@ collection scope; an unknown id is `404`.
 | `GET` | `/api/v1/documents/{document_id}` | `read` | Full facts + resolved doc-level metadata |
 | `GET` | `/api/v1/documents/{document_id}/pages` | `read` | Pages, in order (geometry + render blob ref) |
 | `GET` | `/api/v1/documents/{document_id}/ir` | `read` | The full canonical IR (large) |
+| `GET` | `/api/v1/documents/{document_id}/provenance` | `read` | Ingestion provenance — the parser/model pipeline (per-stage trace) that produced the IR + chunks |
 | `GET` | `/api/v1/documents/{document_id}/chunks` | `read` | Chunks (enriched text, block ids, metadata) |
 | `GET` | `/api/v1/documents/{document_id}/markdown` | `read` | Markdown view, generated on the fly from the IR |
 | `GET` | `/api/v1/documents/{document_id}/html` | `read` | HTML view, generated on the fly from the IR |

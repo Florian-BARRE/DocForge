@@ -1,14 +1,16 @@
 // ====== Code Summary ======
-// Renders a page render image with forge-orange rectangles drawn around one or more chunk/hit block
-// locations. Boxes are positioned in PERCENT of the image box (bbox is normalised [0,1]), so they
-// track the image as it scales — no pixel maths, no resize listeners.
+// Renders a page render image with rectangles drawn around one or more chunk/hit block locations.
+// Boxes are positioned in PERCENT of the image box (bbox is normalised [0,1]), so they track the image
+// as it scales — no pixel maths, no resize listeners.
 //
-// The size constraints live on the IMAGE (not the wrapper): the image renders at the page aspect
-// ratio and fits within the caller's max box with NO letterboxing, and the wrapper shrink-wraps it.
-// A box's % is therefore always a % of the actual displayed image rect. (Putting the constraints on
-// the wrapper + object-fit:contain letterboxed the image inside a wrong-ratio box, so boxes drifted
-// off their blocks on pages whose ratio differed from the clamped box.) Degrades gracefully when the
-// page has no render (HTML pre-fix docs): shows a muted note instead of a broken image.
+// The size constraints live on the IMAGE (not the wrapper): the image renders at the page aspect ratio
+// and fits within the caller's max box with NO letterboxing. Degrades gracefully when the page has no
+// render (HTML pre-fix docs): shows a muted note instead of a broken image.
+//
+// Layout-view boxes: thin solid outline per block (type colour) with a small number tab ABOVE a corner
+// (never inside, never over the box's own text); chunk grouping boxes draw as a DASHED container in the
+// distinct chunk-outline colour, labelled "Chunk N" above the corner. The forge accent marks the active
+// one; the rest dim.
 
 import { BlobImage } from "./BlobImage";
 import { theme } from "../theme";
@@ -21,6 +23,21 @@ export interface OverlayBox {
    *  brand.md — orange marks the one thing being worked, never a uniform decoration). Defaults to
    *  `true` so existing single/uniform-box callers are unaffected. */
   primary?: boolean;
+  /** Per-box border colour (a theme token). When set it overrides the primary/muted styling — used
+   *  by the Layout view to colour every block's box by its type. Omit for the default behaviour. */
+  color?: string;
+  /** A short label drawn on a small tab ABOVE the box's corner (block number / "Chunk N"). */
+  label?: string;
+  /** Emphasise this box (thicker border + soft ring) — the Layout view sets it on the active block. */
+  active?: boolean;
+  /** `"group"` draws a DASHED container box (the chunk grouping in the Layout view). Default `"block"`. */
+  variant?: "block" | "group";
+  /** When set, the box becomes clickable (cursor + keyboard) and calls this on activation. */
+  onSelect?: () => void;
+  /** Accessible label for a clickable box (e.g. "Block 3, Heading"). */
+  selectLabel?: string;
+  /** Recede this box (low opacity, no label) — the Layout view dims everything outside the selection. */
+  dim?: boolean;
 }
 
 interface PageBoxOverlayProps {
@@ -29,7 +46,7 @@ interface PageBoxOverlayProps {
   height?: number | null;
   boxes: OverlayBox[];
   alt: string;
-  /** Applied to the wrapper — the caller constrains size here (e.g. maxWidth / maxHeight). */
+  /** Applied to the IMAGE — the caller constrains size here (e.g. maxWidth / maxHeight). */
   style?: React.CSSProperties;
 }
 
@@ -67,10 +84,6 @@ export function PageBoxOverlay({ renderBlobHash, width, height, boxes, alt, styl
       <BlobImage
         hash={renderBlobHash}
         alt={alt}
-        // Size constraints (max-width/height, usually vw/vh) come from the caller via `style` and are
-        // applied HERE so the image fits the max box at the page aspect ratio with no letterboxing;
-        // object-fit:fill maps the raster onto the page-ratio box exactly (a no-op when the render's
-        // raster ratio already equals the page ratio). The wrapper then shrink-wraps this exact rect.
         style={{ display: "block", width: "auto", height: "auto", aspectRatio, objectFit: "fill", borderRadius: theme.radius.m, ...style }}
       />
       {boxes.map((box, index) => {
@@ -80,6 +93,30 @@ export function PageBoxOverlay({ renderBlobHash, width, height, boxes, alt, styl
         const right = clamp01(x1);
         const bottom = clamp01(y1);
         const isPrimary = box.primary !== false;
+        const isGroup = box.variant === "group";
+        const isLayout = Boolean(box.color) || isGroup;
+        const dim = box.dim === true;
+        const stroke = box.color ?? (isPrimary ? theme.color.accent : theme.color.lineStrong);
+
+        // Thin solid block outline; DASHED chunk container; legacy primary(solid)/muted(dashed) untouched.
+        let border: string;
+        let background = "transparent";
+        let boxShadow = "none";
+        if (isGroup) {
+          // Outline only — the dashed chunk container never fills its background (it would tint the
+          // page content it encloses); the forge accent on its border is enough when active.
+          border = `${box.active ? 2 : 1.25}px dashed ${stroke}`;
+        } else if (box.color) {
+          border = `${box.active ? 2 : 1}px solid ${stroke}`;
+          if (box.active) {
+            background = theme.color.accentSoft;
+            boxShadow = `0 0 0 3px ${theme.color.accentSoft}`;
+          }
+        } else {
+          border = isPrimary ? `2px solid ${stroke}` : `1.5px dashed ${stroke}`;
+          if (isPrimary) boxShadow = `0 0 0 1px ${theme.color.accentSoft}`;
+        }
+
         return (
           <div
             key={index}
@@ -89,12 +126,55 @@ export function PageBoxOverlay({ renderBlobHash, width, height, boxes, alt, styl
               top: `${top * 100}%`,
               width: `${Math.max(0, right - left) * 100}%`,
               height: `${Math.max(0, bottom - top) * 100}%`,
-              border: isPrimary ? `2px solid ${theme.color.accent}` : `1.5px dashed ${theme.color.lineStrong}`,
-              borderRadius: theme.radius.s,
-              boxShadow: isPrimary ? `0 0 0 1px ${theme.color.accentSoft}` : "none",
-              pointerEvents: "none",
+              border,
+              borderRadius: isGroup ? theme.radius.m : theme.radius.s,
+              boxShadow,
+              background,
+              zIndex: isGroup ? 0 : box.active ? 2 : 1,
+              opacity: dim ? 0.22 : 1,
+              transition: "opacity .12s ease, border-color .12s ease",
+              pointerEvents: box.onSelect ? "auto" : "none",
+              cursor: box.onSelect ? "pointer" : "default",
             }}
-          />
+            {...(box.onSelect
+              ? {
+                  role: "button" as const,
+                  tabIndex: 0,
+                  "aria-label": box.selectLabel,
+                  onClick: box.onSelect,
+                  onKeyDown: (event: React.KeyboardEvent) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      box.onSelect?.();
+                    }
+                  },
+                }
+              : {})}
+          >
+            {box.label && !dim && (
+              <span
+                style={{
+                  position: "absolute",
+                  // The tab sits ABOVE a corner of the box (block → top-left, chunk → top-right), never
+                  // inside the box or over its own text.
+                  top: 0,
+                  transform: "translateY(-100%)",
+                  ...(isGroup ? { right: -1 } : { left: -1 }),
+                  fontFamily: theme.font.mono,
+                  fontSize: 9,
+                  lineHeight: 1.45,
+                  padding: "0 4px",
+                  color: theme.color.onAccent,
+                  background: stroke,
+                  borderRadius: isLayout ? `${theme.radius.s}px ${theme.radius.s}px 0 0` : theme.radius.s,
+                  whiteSpace: "nowrap",
+                  boxShadow: isLayout ? "0 1px 2px rgba(0,0,0,0.28)" : "none",
+                }}
+              >
+                {box.label}
+              </span>
+            )}
+          </div>
         );
       })}
     </div>

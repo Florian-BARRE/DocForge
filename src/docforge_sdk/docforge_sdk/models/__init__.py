@@ -95,7 +95,7 @@ from .health import (
 )
 
 # ------------------- IR models ------------------- #
-from .ir import DocumentIRModel, IRBlock, IREnrichment, IRFigure, IRTable
+from .ir import DocumentIRModel, DocumentProvenance, IRAttempt, IRBlock, IREnrichment, IRFigure, IRTable
 
 # ------------------- Jobs models ------------------- #
 from .jobs import (
@@ -225,8 +225,10 @@ __all__ = [
     "IRBlock",
     "IRTable",
     "IRFigure",
+    "IRAttempt",
     "IREnrichment",
     "DocumentIRModel",
+    "DocumentProvenance",
     # Search
     "SearchTarget",
     "SearchRequest",

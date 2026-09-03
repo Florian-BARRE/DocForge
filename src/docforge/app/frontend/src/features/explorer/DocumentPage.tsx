@@ -20,6 +20,7 @@ import { DocumentPageActions } from "./DocumentPageActions";
 import { DocumentStatusChip } from "./DocumentStatusChip";
 import { formatBytes, formatDateTime } from "./format";
 import { IRTab } from "./ir/IRTab";
+import { LayoutTab } from "./layout/LayoutTab";
 import { OverviewTab } from "./overview/OverviewTab";
 import { PagesTab } from "./pages/PagesTab";
 import { useDocumentTabs, type DocumentTabKey } from "./state/useDocumentTabs";
@@ -30,6 +31,7 @@ import { useDocumentTabs, type DocumentTabKey } from "./state/useDocumentTabs";
 const TABS: { key: DocumentTabKey; label: string }[] = [
   { key: "overview", label: "Summary" },
   { key: "pages", label: "Pages" },
+  { key: "layout", label: "Layout" },
   { key: "ir", label: "IR" },
   { key: "chunks", label: "Chunks" },
 ];
@@ -69,8 +71,9 @@ export function DocumentPage({ collectionId, documentId, onNavigate }: DocumentP
   if (!document) return <LoadingState label="loading document…" />;
 
   return (
-    <div className="df-rise" style={{ padding: theme.space.xl, overflowY: "auto", height: "100%", display: "flex", flexDirection: "column", maxWidth: 1200, margin: "0 auto", width: "100%" }}>
+    <div className="df-rise" style={{ padding: `${theme.space.m}px ${theme.space.xl}px ${theme.space.xl}px`, overflowY: "auto", height: "100%", display: "flex", flexDirection: "column", maxWidth: activeTab === "layout" ? 1560 : 1200, margin: "0 auto", width: "100%" }}>
       <PageHeader
+        compact
         eyebrow={<BackLink label="Documents" onClick={() => onNavigate({ name: "collection-documents", collectionId })} />}
         title={<span style={{ wordBreak: "break-word" }}>{document.filename}</span>}
         subtitle={
@@ -110,7 +113,7 @@ export function DocumentPage({ collectionId, documentId, onNavigate }: DocumentP
         role="tabpanel"
         id="document-tabpanel"
         aria-labelledby={tabButtonId("document-tabs", activeTab)}
-        style={{ marginTop: theme.space.l, flex: 1, minHeight: 0 }}
+        style={{ marginTop: theme.space.m, flex: 1, minHeight: 0 }}
       >
         {activeTab === "overview" && <OverviewTab document={document} />}
         {activeTab === "pages" &&
@@ -121,6 +124,21 @@ export function DocumentPage({ collectionId, documentId, onNavigate }: DocumentP
           ) : (
             <LoadingState label="loading pages…" />
           ))}
+        {activeTab === "layout" && (
+          <LayoutTab
+            ir={tabs.ir}
+            pages={tabs.pages}
+            chunks={tabs.chunks}
+            provenance={tabs.provenance}
+            error={tabs.irError ?? tabs.pagesError ?? tabs.chunksError}
+            onRetry={() => {
+              tabs.loadIr();
+              tabs.loadPages();
+              tabs.loadChunks();
+              tabs.loadProvenance();
+            }}
+          />
+        )}
         {activeTab === "ir" &&
           (tabs.irError ? (
             <ErrorState message={tabs.irError} onRetry={tabs.loadIr} />

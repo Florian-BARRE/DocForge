@@ -64,6 +64,19 @@ class JobApi:
         return await session.get(Job, job_id)
 
     @staticmethod
+    async def get_latest_for_document(
+        session: AsyncSession, document_id: uuid.UUID
+    ) -> Job | None:
+        """The most recent ingestion job for a document (its last run's provenance), or None."""
+        result = await session.execute(
+            select(Job)
+            .where(Job.document_id == document_id)
+            .order_by(Job.created_at.desc(), Job.id.desc())
+            .limit(1)
+        )
+        return result.scalars().first()
+
+    @staticmethod
     async def mark_running(
         session: AsyncSession,
         job_id: uuid.UUID,
@@ -574,6 +587,28 @@ class JobApi:
                 Job.updated_at < func.now() - timedelta(seconds=older_than_seconds),
             )
             .order_by(Job.updated_at.asc())
+        )
+        return list(result.scalars().all())
+
+    @staticmethod
+    async def list_running_for_worker(session: AsyncSession, worker_id: str) -> list[Job]:
+        """
+        Return the RUNNING jobs currently attributed to one worker id.
+
+        Called at that worker's STARTUP: this process has no in-flight tasks yet, so any RUNNING row
+        still stamped with its ``worker_id`` is a leftover from a previous incarnation (a hot-reload,
+        crash or hard kill that never marked the row terminal). Reclaiming these immediately clears
+        the orphaned "stalled" pile-up instead of waiting out the reaper's stale window.
+
+        Args:
+            session (AsyncSession): The active DB session.
+            worker_id (str): The stable id of the worker reclaiming its own orphans.
+
+        Returns:
+            list[Job]: The worker's leftover RUNNING jobs.
+        """
+        result = await session.execute(
+            select(Job).where(Job.status == JobStatus.RUNNING, Job.worker_id == worker_id)
         )
         return list(result.scalars().all())
 

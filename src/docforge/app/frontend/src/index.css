@@ -54,6 +54,18 @@
   --store-postgres: #974f35; --store-postgres-soft: rgba(151, 79, 53, 0.14);
   --store-qdrant: #6f7133;   --store-qdrant-soft: rgba(111, 113, 51, 0.14);
 
+  /* Chunk grouping outline in the Layout view — ONE distinct teal for every chunk's dashed container
+     box, deliberately outside the IR type palette (no plum/blue/green/amber/red/steel) and never grey,
+     so a chunk boundary can't be mistaken for a block; the forge accent overrides it when active. */
+  --chunk-outline: #0f8a86;
+
+  /* IR-TYPE palette for the Layout view — a harmonious warm-EARTH set (dark grey / light grey / red /
+     orange / yellow / brown / green), decoupled from the global STATUS tokens. Text = dark warm grey
+     (the neutral majority), furniture = light grey; the content types take the earthy hues. Forge
+     orange is NEVER used here — it stays the ACTIVE hero (the type "orange" is a deeper terracotta). */
+  --ir-heading: #e2553e; --ir-list: #c79200; --ir-table: #4e7a2f; --ir-figure: #c85f18;
+  --ir-formula: #8f2e22; --ir-caption: #8a5a2b; --ir-text: #4f4a42; --ir-chrome: #a79d8f;
+
   --shadow-1: 0 1px 2px rgba(31, 26, 15, 0.06);
   --shadow-2: 0 12px 30px -10px rgba(31, 26, 15, 0.16);
   --shadow-pop: 0 18px 46px -12px rgba(31, 26, 15, 0.22);
@@ -97,6 +109,14 @@
   --store-s3: #aea393;       --store-s3-soft: rgba(174, 163, 147, 0.16);
   --store-postgres: #c77c60; --store-postgres-soft: rgba(199, 124, 96, 0.18);
   --store-qdrant: #b0b356;   --store-qdrant-soft: rgba(176, 179, 86, 0.18);
+
+  /* Chunk grouping outline, stepped lighter for ink. */
+  --chunk-outline: #3fb8b0;
+
+  /* Warm-EARTH IR-TYPE palette, stepped lighter/luminous for ink (text becomes a LIGHT warm grey so
+     it reads on the ink ground). */
+  --ir-heading: #f07d63; --ir-list: #e6b229; --ir-table: #82b352; --ir-figure: #e07d3c;
+  --ir-formula: #cf6a5e; --ir-caption: #c08a55; --ir-text: #b0a897; --ir-chrome: #8f877a;
 
   --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.45);
   --shadow-2: 0 10px 30px -10px rgba(0, 0, 0, 0.6);

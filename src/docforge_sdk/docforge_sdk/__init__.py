@@ -76,7 +76,7 @@ from .models.explorer import (
 from .models.health import HealthStatus
 
 # ------------------- IR models ------------------- #
-from .models.ir import DocumentIRModel, IRBlock, IREnrichment, IRFigure, IRTable
+from .models.ir import DocumentIRModel, DocumentProvenance, IRAttempt, IRBlock, IREnrichment, IRFigure, IRTable
 
 # ------------------- Jobs models ------------------- #
 from .models.jobs import (
@@ -173,8 +173,10 @@ __all__ = [
     "IRBlock",
     "IRTable",
     "IRFigure",
+    "IRAttempt",
     "IREnrichment",
     "DocumentIRModel",
+    "DocumentProvenance",
     # Search
     "SearchTarget",
     "SearchRequest",
