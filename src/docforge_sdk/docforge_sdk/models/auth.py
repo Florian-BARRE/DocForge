@@ -127,4 +127,17 @@ class KeyInfo(BaseModel):
     )
 
 
-__all__ = ["CreateKeyRequest", "RotateKeyRequest", "CreatedKey", "KeyInfo"]
+class WhoAmI(BaseModel):
+    """The calling token's own access — capabilities + collection scope, for self-introspection."""
+
+    authenticated: bool = Field(description="Always true for a resolved principal.")
+    root: bool = Field(description="Full, unscoped access (auth off, or a NULL-permissions key).")
+    capabilities: list[str] = Field(
+        description="Action classes this token grants (read / write / search / create / admin)."
+    )
+    collections: list[str] = Field(
+        description="Collection scope: ['*'] for all, else explicit collection UUID strings."
+    )
+
+
+__all__ = ["CreateKeyRequest", "RotateKeyRequest", "CreatedKey", "KeyInfo", "WhoAmI"]

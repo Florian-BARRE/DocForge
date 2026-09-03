@@ -5,7 +5,16 @@
 
 # ====== Local Project Imports ======
 from .._requestspec import RequestSpec
-from ..models.jobs import CancelResult, JobPage, JobStatus, JobTrace, WorkersLive
+from ..models.jobs import (
+    CancelResult,
+    CollectionCost,
+    JobPage,
+    JobStatus,
+    JobTrace,
+    QueueDepth,
+    StageDurations,
+    WorkersLive,
+)
 from ._base import AsyncResource, SyncResource, _ResourceMixin
 
 
@@ -83,6 +92,23 @@ class _JobsSpecs(_ResourceMixin):
         """
         return RequestSpec("POST", f"{self._JOBS_PATH}/{job_id}/cancel", params={"force": force})
 
+    def _cost_spec(self, collection_id: str) -> RequestSpec:
+        """A GET of a collection's paid text-gen roll-up (tokens + USD)."""
+        return RequestSpec(
+            "GET", f"{self._JOBS_PATH}/cost", params={"collection_id": collection_id}
+        )
+
+    def _queue_spec(self, collection_id: str | None) -> RequestSpec:
+        """A GET of backlog counters (pending/running) — fleet-wide (root) or per-collection."""
+        params = {"collection_id": collection_id} if collection_id is not None else None
+        return RequestSpec("GET", f"{self._JOBS_PATH}/queue", params=params)
+
+    def _stage_durations_spec(self, collection_id: str) -> RequestSpec:
+        """A GET of a collection's average per-stage wall-clock (the ETA basis)."""
+        return RequestSpec(
+            "GET", f"{self._JOBS_PATH}/stage-durations", params={"collection_id": collection_id}
+        )
+
 
 class AsyncJobs(AsyncResource, _JobsSpecs):
     """Asynchronous ingestion-job monitoring."""
@@ -152,6 +178,20 @@ class AsyncJobs(AsyncResource, _JobsSpecs):
         """
         return await self._transport.request(self._cancel_spec(job_id, force), CancelResult)
 
+    async def cost(self, collection_id: str) -> CollectionCost:
+        """The collection's paid text-gen roll-up — tokens + USD summed over its documents' jobs."""
+        return await self._transport.request(self._cost_spec(collection_id), CollectionCost)
+
+    async def queue(self, collection_id: str | None = None) -> QueueDepth:
+        """Backlog counters (pending/running) — fleet-wide (root) or for one collection."""
+        return await self._transport.request(self._queue_spec(collection_id), QueueDepth)
+
+    async def stage_durations(self, collection_id: str) -> StageDurations:
+        """Average per-stage wall-clock over the collection's done jobs (a running job's ETA basis)."""
+        return await self._transport.request(
+            self._stage_durations_spec(collection_id), StageDurations
+        )
+
 
 class SyncJobs(SyncResource, _JobsSpecs):
     """Synchronous ingestion-job monitoring."""
@@ -220,6 +260,18 @@ class SyncJobs(SyncResource, _JobsSpecs):
             the outcome.
         """
         return self._transport.request(self._cancel_spec(job_id, force), CancelResult)
+
+    def cost(self, collection_id: str) -> CollectionCost:
+        """The collection's paid text-gen roll-up — tokens + USD summed over its documents' jobs."""
+        return self._transport.request(self._cost_spec(collection_id), CollectionCost)
+
+    def queue(self, collection_id: str | None = None) -> QueueDepth:
+        """Backlog counters (pending/running) — fleet-wide (root) or for one collection."""
+        return self._transport.request(self._queue_spec(collection_id), QueueDepth)
+
+    def stage_durations(self, collection_id: str) -> StageDurations:
+        """Average per-stage wall-clock over the collection's done jobs (a running job's ETA basis)."""
+        return self._transport.request(self._stage_durations_spec(collection_id), StageDurations)
 
 
 __all__ = ["AsyncJobs", "SyncJobs"]

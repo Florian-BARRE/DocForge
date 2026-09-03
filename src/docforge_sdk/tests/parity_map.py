@@ -10,16 +10,28 @@ from pydantic import BaseModel
 
 # ====== Local Project Imports ======
 from docforge_sdk.models.audit import AuditEntry, AuditPage
-from docforge_sdk.models.auth import CreatedKey, CreateKeyRequest, KeyInfo, RotateKeyRequest
+from docforge_sdk.models.auth import CreatedKey, CreateKeyRequest, KeyInfo, RotateKeyRequest, WhoAmI
 from docforge_sdk.models.collections import (
     BulkReingestAccepted,
     BulkReingestRequest,
+    CollectionContractSchemaResponse,
     CollectionListItem,
     CollectionModel,
     CreateCollectionRequest,
     FieldSpec,
     ReingestJobHandle,
     UpdateCollectionRequest,
+)
+from docforge_sdk.models.corpus import (
+    BulkDeleteResponse,
+    BulkEnabledResponse,
+    BulkReingestResponse,
+    DocumentGridRow,
+    DocumentQueryRequest,
+    DocumentQueryResponse,
+    DocumentSelector,
+    DocumentSort,
+    Pagination,
 )
 from docforge_sdk.models.documents import DocumentEnabledResponse, EnabledPatch, UploadAccepted
 from docforge_sdk.models.estimate import (
@@ -55,8 +67,13 @@ from docforge_sdk.models.jobs import (
     JobPage,
     JobStatus,
     JobTrace,
+    QueueDepth,
+    StageDurations,
     WorkerActivity,
     WorkersLive,
+)
+from docforge_sdk.models.jobs import (
+    CollectionCost as _CollectionCost,
 )
 from docforge_sdk.models.pipelines import (
     EditResponse,
@@ -89,6 +106,23 @@ MODELS: dict[str, type[BaseModel]] = {
     # Audit
     "AuditEntry": AuditEntry,
     "AuditPage": AuditPage,
+    # Corpus grid + bulk ops
+    "DocumentSort": DocumentSort,
+    "Pagination": Pagination,
+    "DocumentQueryRequest": DocumentQueryRequest,
+    "DocumentGridRow": DocumentGridRow,
+    "DocumentQueryResponse": DocumentQueryResponse,
+    "DocumentSelector": DocumentSelector,
+    "BulkDeleteResponse": BulkDeleteResponse,
+    "BulkEnabledResponse": BulkEnabledResponse,
+    "BulkReingestResponse": BulkReingestResponse,
+    # Jobs telemetry
+    "QueueDepth": QueueDepth,
+    "StageDurations": StageDurations,
+    "CollectionCost": _CollectionCost,
+    # Discovery + introspection
+    "CollectionContractSchemaResponse": CollectionContractSchemaResponse,
+    "WhoAmI": WhoAmI,
     # Auth
     "CreateKeyRequest": CreateKeyRequest,
     "RotateKeyRequest": RotateKeyRequest,

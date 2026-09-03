@@ -13,6 +13,8 @@ from pydantic import BaseModel, Field
 
 # ====== Local Project Imports ======
 from ._shared import DocumentStatus
+from .explorer import DocumentListItem
+from .reingest import ReingestJobHandle
 
 
 class TextFilter(BaseModel):
@@ -109,4 +111,105 @@ class DocumentFilter(BaseModel):
     )
 
 
-__all__ = ["TextFilter", "NumberRange", "DateRange", "MetadataFilter", "DocumentFilter"]
+class DocumentSort(BaseModel):
+    """One id-stabilised sort key: a base column or a metadata field name, plus a direction."""
+
+    field: str = Field(default="created_at", description="Base column or metadata field name.")
+    direction: Literal["asc", "desc"] = Field(default="desc", description="Sort direction.")
+
+
+class Pagination(BaseModel):
+    """Offset pagination — ``limit`` is clamped server-side to the configured page ceiling."""
+
+    limit: int = Field(default=50, ge=1, description="Page size (clamped to the server ceiling).")
+    offset: int = Field(default=0, ge=0, description="Rows to skip.")
+
+
+class DocumentQueryRequest(BaseModel):
+    """The full grid query — filter + sort + pagination (all optional)."""
+
+    filter: DocumentFilter | None = Field(
+        default=None, description="Per-column AND-combined filter."
+    )
+    sort: DocumentSort | None = Field(default=None, description="Single id-stabilised sort key.")
+    pagination: Pagination = Field(default_factory=Pagination, description="Offset pagination.")
+
+
+class DocumentGridRow(DocumentListItem):
+    """One grid row — the catalogue fields plus a compact document-metadata value map."""
+
+    metadata: dict[str, Any] = Field(
+        default_factory=dict, description="Document metadata as {field_name: value}."
+    )
+
+
+class DocumentQueryResponse(BaseModel):
+    """A page of grid rows plus the total match count and the pagination echo."""
+
+    total: int = Field(description="Total documents matching the filter.")
+    limit: int = Field(description="Applied page size (after the server ceiling clamp).")
+    offset: int = Field(description="Applied offset.")
+    rows: list[DocumentGridRow] = Field(description="The page of rows, in the requested order.")
+
+
+class DocumentSelector(BaseModel):
+    """The shared bulk-op target: an explicit id set XOR a filter (minus a few deselected ids)."""
+
+    document_ids: list[str] | None = Field(
+        default=None, description="Explicit target ids (id mode). Mutually exclusive with 'filter'."
+    )
+    filter: DocumentFilter | None = Field(
+        default=None,
+        description="Everything matching (filter mode); empty filter = whole collection.",
+    )
+    exclude_ids: list[str] = Field(
+        default_factory=list,
+        description="Ids to deselect from the filter result (filter mode only).",
+    )
+
+
+class BulkDeleteResponse(BaseModel):
+    """The outcome of a bulk delete — targeted vs actually removed."""
+
+    collection_id: str = Field(description="The target collection's UUID.")
+    matched: int = Field(description="Documents the selector resolved to.")
+    deleted: int = Field(description="Documents actually deleted (PG + Qdrant + S3).")
+
+
+class BulkEnabledResponse(BaseModel):
+    """The outcome of a bulk enable/disable — targeted vs actually changed."""
+
+    collection_id: str = Field(description="The target collection's UUID.")
+    enabled: bool = Field(description="The state applied to every target.")
+    matched: int = Field(description="Documents the selector resolved to.")
+    updated: int = Field(description="Documents whose state actually changed.")
+    reindex_implied: bool = Field(description="Always false — a toggle is a flag, not a re-index.")
+
+
+class BulkReingestResponse(BaseModel):
+    """The accepted bulk re-run — targeted vs enqueued, cap flag, and one handle per job."""
+
+    collection_id: str = Field(description="The target collection's UUID.")
+    matched: int = Field(description="Documents the selector resolved to.")
+    enqueued: int = Field(description="Jobs actually enqueued (<= the fan-out ceiling).")
+    capped: bool = Field(description="True when the match exceeded the per-call fan-out ceiling.")
+    max_fanout: int = Field(description="The per-call fan-out ceiling applied.")
+    jobs: list[ReingestJobHandle] = Field(description="One handle per enqueued run.")
+
+
+__all__ = [
+    "TextFilter",
+    "NumberRange",
+    "DateRange",
+    "MetadataFilter",
+    "DocumentFilter",
+    "DocumentSort",
+    "Pagination",
+    "DocumentQueryRequest",
+    "DocumentGridRow",
+    "DocumentQueryResponse",
+    "DocumentSelector",
+    "BulkDeleteResponse",
+    "BulkEnabledResponse",
+    "BulkReingestResponse",
+]

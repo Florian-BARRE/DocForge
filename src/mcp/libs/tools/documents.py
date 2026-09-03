@@ -50,3 +50,9 @@ def register(mcp: FastMCP, sdk: AsyncClient) -> None:
         """The document rendered as HTML, generated on the fly from the canonical IR."""
         view = await sdk.documents.get_html(document_id)
         return view.model_dump(mode="json")
+
+    @mcp.tool()
+    async def reingest_document(document_id: str, force: bool = False) -> Any:
+        """Re-run the full ingestion of a single document (force bypasses the doc cache)."""
+        accepted = await sdk.documents.reingest(document_id, force)
+        return accepted.model_dump(mode="json")

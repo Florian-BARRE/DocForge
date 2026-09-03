@@ -29,6 +29,9 @@ name: release-sdk
 on:
   push:
     tags:
+      # Unified lockstep release: a single `v*` tag ships the images (release-images.yml) AND the SDK
+      # at the same version. `sdk-v*` is kept as a legacy/SDK-only escape hatch.
+      - "v*"
       - "sdk-v*"
 
 jobs:
@@ -58,7 +61,9 @@ jobs:
         run: |
           set -euo pipefail
           pkg_version="$(grep -oP '__version__\s*=\s*"\K[^"]+' src/docforge_sdk/docforge_sdk/_version.py)"
+          # Accept either a unified `v*` tag or a legacy `sdk-v*` tag — strip whichever prefix.
           tag_version="${GITHUB_REF_NAME#sdk-v}"
+          tag_version="${tag_version#v}"
           echo "Package version: ${pkg_version}"
           echo "Tag version:     ${tag_version}"
           if [ "${pkg_version}" != "${tag_version}" ]; then
