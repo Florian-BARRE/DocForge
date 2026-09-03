@@ -8,6 +8,7 @@ from typing import Any, Literal
 
 # ====== Third-Party Library Imports ======
 from docforge_sdk import AsyncClient, CreateCollectionRequest, FieldSpec, UpdateCollectionRequest
+from docforge_sdk.models import CollectionSnippet, DocumentFilter
 from mcp.server.fastmcp import FastMCP
 
 
@@ -111,15 +112,54 @@ def register(mcp: FastMCP, sdk: AsyncClient) -> None:
 
     @mcp.tool()
     async def estimate_collection_cost(
-        collection_id: str, scope: Literal["pending", "all"] = "pending"
+        collection_id: str,
+        scope: Literal["pending", "all"] = "pending",
+        document_ids: list[str] | None = None,
+        filter: dict[str, Any] | None = None,
     ) -> Any:
         """
         Project a collection's ingestion cost and volume BEFORE spending (404 when unknown). This
-        is an ESTIMATE, not a quote: `scope` picks the documents it covers — `pending`
-        (uploaded-but-not-yet-ingested, the default preview target) or `all` (every document).
-        Returns the per-stage token/call/cost breakdown, projected material volume, totals, the
-        assumptions it rests on, and human-readable caveats. `total_cost_usd` is null when no stage
-        could be priced; `cost_complete` is false when any enabled paid stage had no known rate.
+        is an ESTIMATE, not a quote. `scope` picks the whole-collection target — `pending`
+        (uploaded-but-not-yet-ingested, the default preview) or `all` (every document). To scope a
+        SUBSET instead, pass `document_ids` (a specific selection) OR `filter` (the same shape as the
+        documents-grid filter) — either one overrides `scope`; they are mutually exclusive. Returns
+        the per-stage token/call/cost breakdown, projected material volume, totals, the assumptions
+        it rests on, and human-readable caveats. `total_cost_usd` is null when no stage could be
+        priced; `cost_complete` is false when any enabled paid stage had no known rate.
         """
-        estimate = await sdk.collections.estimate(collection_id, scope=scope)
+        estimate = await sdk.collections.estimate(
+            collection_id,
+            scope=scope,
+            document_ids=document_ids,
+            filter=DocumentFilter(**filter) if filter is not None else None,
+        )
         return estimate.model_dump(mode="json")
+
+    @mcp.tool()
+    async def export_collection_snippet(
+        collection_id: str, kind: Literal["pipeline", "search", "schema"]
+    ) -> Any:
+        """
+        Export one granular config facet as a portable, secret-masked `.dfsnippet` (config-only,
+        synchronous — contrast the async whole-collection `.dcexport`). `kind` selects the slice:
+        `pipeline` (the ingestion graph), `search` (the search graph), or `schema` (the metadata
+        fields). Returns the versioned snippet (kind, format_version, docforge_version, body).
+        """
+        snippet = await sdk.snippets.export(collection_id, kind)
+        return snippet.model_dump(mode="json")
+
+    @mcp.tool()
+    async def apply_collection_snippet(
+        collection_id: str,
+        kind: Literal["pipeline", "search", "schema"],
+        snippet: dict[str, Any],
+    ) -> Any:
+        """
+        Apply a `.dfsnippet` of the given `kind` onto an EXISTING collection (healed/validated like a
+        PATCH; 422 on a version/kind mismatch or an invalid graph/schema). `snippet` is the wrapper
+        returned by export_collection_snippet. Provider secrets from a DIFFERENT collection arrive
+        masked and must be re-entered before the graph can run. Returns {collection_id, kind,
+        needs_reindex}.
+        """
+        result = await sdk.snippets.apply(collection_id, kind, CollectionSnippet(**snippet))
+        return result.model_dump(mode="json")

@@ -38,3 +38,15 @@ def register(mcp: FastMCP, sdk: AsyncClient) -> None:
         """Toggle a document's searchability (reversible, no re-ingest)."""
         result = await sdk.documents.set_enabled(document_id, enabled)
         return result.model_dump(mode="json")
+
+    @mcp.tool()
+    async def get_document_markdown(document_id: str) -> Any:
+        """The document rendered as Markdown, generated on the fly from the canonical IR."""
+        view = await sdk.documents.get_markdown(document_id)
+        return view.model_dump(mode="json")
+
+    @mcp.tool()
+    async def get_document_html(document_id: str) -> Any:
+        """The document rendered as HTML, generated on the fly from the canonical IR."""
+        view = await sdk.documents.get_html(document_id)
+        return view.model_dump(mode="json")

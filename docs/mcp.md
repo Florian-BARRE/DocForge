@@ -143,7 +143,7 @@ multi-GB) — `get_export_download_ref` instead points the caller at the REST do
 | `get_transfer` | Poll a transfer's live status — progress, stage, counts, error, and (done) the artifact: bundle `size_bytes`/`expires_at` for an export, the new `collection_id`/`collection_name` for an import. |
 | `get_export_download_ref` | For a done export, returns `size_bytes`/`expires_at` and the REST `download_path` to `GET` directly (or via `docforge_sdk`'s streaming `transfers.download_export`) — never the bundle bytes themselves. |
 
-**Total: 43 tools** across 10 domains.
+**Total: 44 tools** across 10 domains.
 
 ---
 
