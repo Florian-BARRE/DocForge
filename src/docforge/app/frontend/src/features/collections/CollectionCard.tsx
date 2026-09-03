@@ -6,15 +6,21 @@
 // parent list so every card in the grid can also be sorted/filtered by it); doc count comes from a
 // cheap `documents/query` count. Both are fetched independently per card by the parent, so a slow
 // probe on one collection never blocks the rest of the grid — this component only renders what it's
-// handed, showing "…" while its own slice hasn't resolved yet.
+// handed, showing "…" while its own slice hasn't resolved yet. An overflow menu in the header row
+// carries the one discoverable per-card destructive action (delete) — its trigger/panel stop click
+// propagation so opening it never fires the card's own onClick (navigate to the collection).
 
 import type { ReactNode } from "react";
 import { useState } from "react";
 import type { Collection, CollectionHealth } from "../../api/collections";
 import { Chip, type ChipTone } from "../../components/Chip";
+import { OverflowMenu } from "../../components/OverflowMenu";
+import { OverflowMenuItem } from "../../components/OverflowMenuItem";
 import { theme as t } from "../../theme";
 import { lastIngestLabel, parserBadge, probeVerdict } from "./collectionHealth";
+import { DeleteCollectionDialog } from "./DeleteCollectionDialog";
 import { humanizeProviderLabel } from "./providerKindLabels";
+import { useDeleteCollection } from "./state/useDeleteCollection";
 
 interface CollectionCardProps {
   collection: Collection;
@@ -26,6 +32,8 @@ interface CollectionCardProps {
    *  at-rest identity mark shared by every card in the grid). */
   jobRunning: boolean;
   onClick: () => void;
+  /** Called after this card's collection is deleted, so the parent grid can refetch and drop it. */
+  onDeleted: () => void;
 }
 
 const MAX_FORMATS_SHOWN = 2;
@@ -78,12 +86,22 @@ function LastIngestValue({ label }: { label: string }) {
   );
 }
 
-export function CollectionCard({ collection, health, healthError, docCount, jobRunning, onClick }: CollectionCardProps) {
+export function CollectionCard({ collection, health, healthError, docCount, jobRunning, onClick, onDeleted }: CollectionCardProps) {
   const [hover, setHover] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const { deleting, error: deleteError, remove } = useDeleteCollection();
   const verdict = probeVerdict(health, healthError);
   const parser = parserBadge(health);
   const chunkCount = health?.search.index.vector_count;
   const lastIngest = lastIngestLabel(health, collection.created_at);
+
+  const handleConfirmDelete = async () => {
+    const ok = await remove({ id: collection.id, name: collection.name });
+    if (ok) {
+      setConfirmingDelete(false);
+      onDeleted();
+    }
+  };
 
   return (
     <div
@@ -130,6 +148,9 @@ export function CollectionCard({ collection, health, healthError, docCount, jobR
             <span style={{ color: t.color.dim, fontSize: t.font.size.s }} title={verdict.detail}>{verdict.label}</span>
           </div>
         </div>
+        <OverflowMenu label={`Actions for ${collection.name}`}>
+          <OverflowMenuItem tone="danger" onClick={() => setConfirmingDelete(true)}>Delete collection</OverflowMenuItem>
+        </OverflowMenu>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: t.space.m }}>
@@ -146,6 +167,16 @@ export function CollectionCard({ collection, health, healthError, docCount, jobR
         {parser && <Chip tone="info">{humanizeProviderLabel("parser", parser)}</Chip>}
         <Chip tone="neutral">{formatsSummary(collection.supported_formats)}</Chip>
       </div>
+
+      {confirmingDelete && (
+        <DeleteCollectionDialog
+          collectionName={collection.name}
+          pending={deleting}
+          error={deleteError}
+          onConfirm={handleConfirmDelete}
+          onCancel={() => setConfirmingDelete(false)}
+        />
+      )}
     </div>
   );
 }

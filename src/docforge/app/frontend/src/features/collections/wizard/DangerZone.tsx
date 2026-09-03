@@ -2,14 +2,16 @@
 // The collection's one destructive action — deletion — as its own clearly-marked block on the edit
 // wizard (the closest thing this app has to a "Settings" screen for an existing collection). Kept
 // out of the Metadata tab it used to live under so it reads as a deliberate settings action, not a
-// side-effect of editing the schema table.
+// side-effect of editing the schema table. This is one of THREE delete entry points now — the other
+// two (dashboard card overflow menu, collection detail header overflow menu) are more discoverable
+// but share this component's underlying request/toast path via `state/useDeleteCollection`; this
+// one keeps its own inline (non-modal) confirm since it already lives on a dedicated settings screen.
 
 import { useState } from "react";
-import { deleteCollection } from "../../../api/collections";
 import { Button } from "../../../components/Button";
-import { useToast } from "../../../shell/toast";
 import type { Navigate } from "../../../shell/view";
 import { theme } from "../../../theme";
+import { useDeleteCollection } from "../state/useDeleteCollection";
 
 interface DangerZoneProps {
   collectionId: string;
@@ -18,24 +20,12 @@ interface DangerZoneProps {
 }
 
 export function DangerZone({ collectionId, collectionName, onNavigate }: DangerZoneProps) {
-  const toast = useToast();
   const [confirming, setConfirming] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { deleting, error, remove } = useDeleteCollection();
 
   const handleDelete = async () => {
-    setDeleting(true);
-    setError(null);
-    try {
-      await deleteCollection(collectionId);
-      toast.success(`Collection “${collectionName}” deleted`);
-      onNavigate({ name: "collections" });
-    } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
-      setError(message);
-      toast.error(`Delete failed — ${message}`);
-      setDeleting(false);
-    }
+    const ok = await remove({ id: collectionId, name: collectionName });
+    if (ok) onNavigate({ name: "collections" });
   };
 
   return (

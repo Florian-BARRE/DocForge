@@ -87,6 +87,7 @@ export function CollectionsPage({ onNavigate }: CollectionsPageProps) {
                   docCount={docCount}
                   jobRunning={jobRunning}
                   onClick={() => onNavigate({ name: "collection", collectionId: collection.id })}
+                  onDeleted={load}
                 />
               ))}
             </div>
