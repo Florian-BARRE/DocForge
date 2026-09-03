@@ -112,7 +112,9 @@ def test_adapter_folds_enrichments_onto_figure(adapter, ir_bundle, enrich_enums)
     kind, status = enrich_enums
     figure_row = SimpleNamespace(block_id="f1", crop_blob_hash="abc", caption_block_id="c1")
     enrichments = [
-        SimpleNamespace(block_id="f1", kind=kind.OCR, status=status.OK, text="ocr words", data=None),
+        SimpleNamespace(
+            block_id="f1", kind=kind.OCR, status=status.OK, text="ocr words", data=None
+        ),
         SimpleNamespace(block_id="f1", kind=kind.VLM, status=status.OK, text="a chart", data=None),
         SimpleNamespace(
             block_id="f1",
@@ -293,9 +295,7 @@ def test_html_download_sets_attachment_filename(
     assert response.headers["content-disposition"] == 'attachment; filename="my-report.html"'
 
 
-def test_view_endpoints_unknown_document_is_404(
-    client, fastapi_app, monkeypatch
-) -> None:
+def test_view_endpoints_unknown_document_is_404(client, fastapi_app, monkeypatch) -> None:
     """An unknown document id is a 404 on both view endpoints (guarded before rendering)."""
     from backend.context import CONTEXT  # noqa: PLC0415
 

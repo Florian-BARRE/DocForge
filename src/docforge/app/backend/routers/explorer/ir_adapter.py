@@ -103,9 +103,7 @@ class IRBundleAdapter:
 
         # 2. Fill the table slot for TABLE blocks and the figure slot for FIGURE blocks.
         table_data = cls._table(table) if block_type == BlockType.TABLE and table else None
-        figure_data = (
-            cls._figure(figure, enrichments) if block_type == BlockType.FIGURE else None
-        )
+        figure_data = cls._figure(figure, enrichments) if block_type == BlockType.FIGURE else None
 
         # 3. Build the block, preserving reading order and the heading-tree links verbatim.
         return Block(

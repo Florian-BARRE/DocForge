@@ -37,7 +37,10 @@ def upgrade() -> None:
     op.add_column(
         "collection",
         sa.Column(
-            "estimate_overrides", postgresql.JSONB(astext_type=sa.Text()), nullable=True, server_default=None
+            "estimate_overrides",
+            postgresql.JSONB(astext_type=sa.Text()),
+            nullable=True,
+            server_default=None,
         ),
     )
 

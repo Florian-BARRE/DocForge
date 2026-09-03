@@ -35,7 +35,9 @@ class CollectionSnippet(BaseModel):
 
     kind: SnippetKind = Field(description="Which config slice this snippet carries.")
     format_version: int = Field(description="The snippet format version (gated on import).")
-    docforge_version: str = Field(description="Producing build version (provenance, informational).")
+    docforge_version: str = Field(
+        description="Producing build version (provenance, informational)."
+    )
     body: dict[str, Any] = Field(description="The slice payload (blob dict, or {'fields': [...]}).")
 
 

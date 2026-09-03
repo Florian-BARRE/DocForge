@@ -6,8 +6,11 @@
 # ====== Standard Library Imports ======
 # `list`/`dict` annotations must stay lazy: a `list(...)` method in this class shadows the builtin in
 # the class namespace, so eager annotation evaluation would break `list[str]` param hints (PEP 563).
+# For the same reason, param hints below use `typing.List` (unshadowed) rather than the bare builtin,
+# which the class-scoped `list` method otherwise resolves to under static analysis.
 from __future__ import annotations
 
+import builtins
 from typing import Literal
 
 # ====== Local Project Imports ======
@@ -267,7 +270,7 @@ class AsyncCollections(AsyncResource, _CollectionsSpecs):
         self,
         collection_id: str,
         scope: Literal["pending", "all"] = "pending",
-        document_ids: list[str] | None = None,
+        document_ids: builtins.list[str] | None = None,
         filter: DocumentFilter | None = None,
     ) -> CostEstimate:
         """
@@ -399,7 +402,7 @@ class SyncCollections(SyncResource, _CollectionsSpecs):
         self,
         collection_id: str,
         scope: Literal["pending", "all"] = "pending",
-        document_ids: list[str] | None = None,
+        document_ids: builtins.list[str] | None = None,
         filter: DocumentFilter | None = None,
     ) -> CostEstimate:
         """

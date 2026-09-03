@@ -33,14 +33,10 @@ def wired(fastapi_app, monkeypatch):
     """Patch the collection read + schema and the config-write seams the applier touches."""
     from backend.context import CONTEXT  # noqa: PLC0415 — deferred until app/ is on sys.path
 
-    monkeypatch.setattr(
-        CONTEXT.database.collections, "get", AsyncMock(return_value=_collection())
-    )
+    monkeypatch.setattr(CONTEXT.database.collections, "get", AsyncMock(return_value=_collection()))
     monkeypatch.setattr(CONTEXT.database.collections, "get_schema", AsyncMock(return_value=[]))
     monkeypatch.setattr(CONTEXT.database.collections, "update_config", AsyncMock())
-    monkeypatch.setattr(
-        CONTEXT.database.collections, "update_schema", AsyncMock(return_value=True)
-    )
+    monkeypatch.setattr(CONTEXT.database.collections, "update_schema", AsyncMock(return_value=True))
     monkeypatch.setattr(
         CONTEXT.database.collections, "reconcile_store", AsyncMock(return_value=set())
     )
@@ -85,9 +81,7 @@ def test_export_unknown_collection_is_404(client, fastapi_app, monkeypatch) -> N
 def test_apply_pipeline_snippet_roundtrips(client, wired) -> None:
     """Applying the collection's own pipeline snippet is a no-reindex no-op through update_config."""
     snippet = client.get(f"/api/v1/collections/{COLLECTION_ID}/snippets/pipeline").json()
-    response = client.post(
-        f"/api/v1/collections/{COLLECTION_ID}/snippets/pipeline", json=snippet
-    )
+    response = client.post(f"/api/v1/collections/{COLLECTION_ID}/snippets/pipeline", json=snippet)
     assert response.status_code == 200
     result = response.json()
     assert result["kind"] == "pipeline"
@@ -118,9 +112,7 @@ def test_apply_unsupported_version_is_422(client, wired) -> None:
         "docforge_version": "future",
         "body": {"nodes": []},
     }
-    response = client.post(
-        f"/api/v1/collections/{COLLECTION_ID}/snippets/pipeline", json=snippet
-    )
+    response = client.post(f"/api/v1/collections/{COLLECTION_ID}/snippets/pipeline", json=snippet)
     assert response.status_code == 422
 
 
@@ -132,7 +124,5 @@ def test_apply_kind_mismatch_is_422(client, wired) -> None:
         "docforge_version": "test",
         "body": {},
     }
-    response = client.post(
-        f"/api/v1/collections/{COLLECTION_ID}/snippets/pipeline", json=snippet
-    )
+    response = client.post(f"/api/v1/collections/{COLLECTION_ID}/snippets/pipeline", json=snippet)
     assert response.status_code == 422

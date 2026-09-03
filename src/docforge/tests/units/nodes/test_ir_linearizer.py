@@ -20,9 +20,7 @@ from shared_libs.public_models import (
 )
 
 
-def _blk(
-    bid, btype, order, text=None, level=None, table=None, figure=None, page=0
-) -> Block:
+def _blk(bid, btype, order, text=None, level=None, table=None, figure=None, page=0) -> Block:
     return Block(
         id=bid,
         block_type=btype,

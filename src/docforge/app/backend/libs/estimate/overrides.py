@@ -51,7 +51,9 @@ class AssumptionOverrides(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    tokens_per_page: float | None = Field(default=None, gt=0.0, description="Body-text tokens/page.")
+    tokens_per_page: float | None = Field(
+        default=None, gt=0.0, description="Body-text tokens/page."
+    )
     bytes_per_token: float | None = Field(
         default=None, gt=0.0, description="Bytes/token for text-native formats."
     )
