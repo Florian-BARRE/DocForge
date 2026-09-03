@@ -5,7 +5,9 @@
 // show each class → its enrichment branch. NO JSX, NO network — just readers, the method mapping, and the
 // routing display constant.
 
-export type EnrichMode = "classified" | "ocr_only";
+export type EnrichMode = "classified" | "uniform";
+/** In uniform mode, the single treatment every figure runs. */
+export type UniformTreatment = "ocr" | "vlm";
 /** The single human choice that stands in for the (classify_backend, use_heuristics) pair. */
 export type ClassifyMethod = "heuristics" | "vlm" | "vlm_heuristics";
 
@@ -37,7 +39,13 @@ export function readBool(v: unknown, fallback: boolean): boolean {
 }
 
 export function deriveMode(config: Record<string, unknown>): EnrichMode {
-  return readStr(config.figure_enrich_mode, "classified") === "ocr_only" ? "ocr_only" : "classified";
+  // "ocr_only" is the pre-0.12 name of "uniform" — treat it the same.
+  const mode = readStr(config.figure_enrich_mode, "classified");
+  return mode === "uniform" || mode === "ocr_only" ? "uniform" : "classified";
+}
+
+export function deriveTreatment(config: Record<string, unknown>): UniformTreatment {
+  return readStr(config.uniform_treatment, "ocr") === "vlm" ? "vlm" : "ocr";
 }
 
 export function deriveMethod(config: Record<string, unknown>): ClassifyMethod {

@@ -87,8 +87,10 @@ class StateReader:
                 state.classify_config = dict(classify.config)
                 state.chains = cls.__derive_chains(enrich_loop.body)
             else:
-                state.figure_enrich_mode = "ocr_only"
-                state.chains = cls.__derive_ocr_only_chain(enrich_loop.body)
+                treatment, chains = cls.__derive_uniform(enrich_loop.body)
+                state.figure_enrich_mode = "uniform"
+                state.uniform_treatment = treatment
+                state.chains = chains
             state.figure_concurrency = enrich_loop.max_concurrency
         return state
 
@@ -174,14 +176,31 @@ class StateReader:
         return chains
 
     @classmethod
-    def __derive_ocr_only_chain(cls, body: GroupNodeBlob) -> dict[str, ChainSpec]:
-        """Walk the single OCR chain out of an ocr_only body into the scanned_text_ocr slot."""
-        by_id = {n.id: n for n in body.nodes if isinstance(n, ActionNodeBlob) and n.family == "ocr"}
-        if not by_id:
-            return {}
-        head = ChainWalker.head(body.transitions, by_id, {"ocr"})
-        steps = ChainWalker.walk(body.transitions, by_id, head, {"ocr"})
-        return {"scanned_text_ocr": ChainSpec(family="ocr", steps=steps)} if steps else {}
+    def __derive_uniform(cls, body: GroupNodeBlob) -> tuple[str, dict[str, ChainSpec]]:
+        """Walk the single treatment chain out of a uniform body into its slot.
+
+        The treatment is told from the chain's family: a VLM chain (describe) reads back into the
+        ``figure_describe_vlm`` slot, an OCR chain (read text) into ``scanned_text_ocr``. VLM is
+        checked first so a describe body is never mis-read as ocr.
+
+        Returns:
+            tuple[str, dict[str, ChainSpec]]: The treatment (``ocr``/``vlm``) and the single-slot
+            chain map (empty when the body carries no provider chain).
+        """
+        for family, treatment, slot in (
+            ("vlm", "vlm", "figure_describe_vlm"),
+            ("ocr", "ocr", "scanned_text_ocr"),
+        ):
+            by_id = {
+                n.id: n for n in body.nodes if isinstance(n, ActionNodeBlob) and n.family == family
+            }
+            if not by_id:
+                continue
+            head = ChainWalker.head(body.transitions, by_id, {family})
+            steps = ChainWalker.walk(body.transitions, by_id, head, {family})
+            if steps:
+                return treatment, {slot: ChainSpec(family=family, steps=steps)}
+        return "ocr", {}
 
     @classmethod
     def __linear_chain(

@@ -1,7 +1,7 @@
 // ====== Code Summary ======
 // The bespoke config surface for the enrich stage's figure-classify node — replacing the flat SchemaForm
 // dump with a graph-native panel read top→bottom as a node contract: IN a figure crop → decide HOW figures
-// are handled (classify per type, or OCR every figure) → HOW to classify (local heuristics / vision model /
+// are handled (classify per type, or one treatment — OCR/VLM — for every figure) → HOW to classify (local heuristics / vision model /
 // vision + heuristics) → the editable rules → the classes→branches OUT contract → the VLM connection (only
 // when relevant). It edits the SAME flat config dict through the rail's per-field onChange; no new contract.
 
@@ -11,8 +11,8 @@ import { ClassRoutingChips } from "./ClassRoutingChips";
 import { ClassifyRulesTable } from "./ClassifyRulesTable";
 import { ClassifyVlmAdvanced } from "./ClassifyVlmAdvanced";
 import {
-  applyMethod, deriveMethod, deriveMode, heuristicsApply, usesVlm,
-  type ClassifyMethod, type EnrichMode,
+  applyMethod, deriveMethod, deriveMode, deriveTreatment, heuristicsApply, usesVlm,
+  type ClassifyMethod, type EnrichMode, type UniformTreatment,
 } from "./enrichClassifyModel";
 
 interface EnrichClassifyPanelProps {
@@ -30,6 +30,7 @@ const contractChipStyle: React.CSSProperties = {
 export function EnrichClassifyPanel({ config, onChange }: EnrichClassifyPanelProps) {
   const mode = deriveMode(config);
   const method = deriveMethod(config);
+  const treatment = deriveTreatment(config);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: theme.space.l }}>
@@ -46,21 +47,35 @@ export function EnrichClassifyPanel({ config, onChange }: EnrichClassifyPanelPro
         onChange={(v) => onChange("figure_enrich_mode", v)}
         options={[
           { value: "classified", label: "Classify, then enrich per type", description: "Sort each figure into a class, then OCR / describe it accordingly." },
-          { value: "ocr_only", label: "OCR every figure — no classification", description: "Skip classification entirely; run one OCR chain over every figure (fully local)." },
+          { value: "uniform", label: "One treatment for every figure", description: "Skip classification; run ONE treatment — read text or describe — over every figure." },
         ]}
       />
 
-      {mode === "ocr_only" ? (
-        <div
-          style={{
-            background: theme.color.surface2, border: `1px solid ${theme.color.line}`,
-            borderRadius: theme.radius.m, padding: theme.space.m, fontSize: theme.font.size.s,
-            color: theme.color.dim, lineHeight: 1.5,
-          }}
-        >
-          Every detected figure runs the <strong style={{ color: theme.color.text }}>OCR chain</strong> below — no
-          classification, no vision model. Edit that chain to pick the local reader(s).
-        </div>
+      {mode === "uniform" ? (
+        <>
+          <SegmentedControl<UniformTreatment>
+            legend="What does every figure get?"
+            value={treatment}
+            stack
+            onChange={(v) => onChange("uniform_treatment", v)}
+            options={[
+              { value: "ocr", label: "Read text (OCR)", description: "Run an OCR chain over every figure — fully local by default." },
+              { value: "vlm", label: "Describe with a vision model", description: "Send every figure to a vision model with a prompt you set (e.g. “describe this image”)." },
+            ]}
+          />
+          <div
+            style={{
+              background: theme.color.surface2, border: `1px solid ${theme.color.line}`,
+              borderRadius: theme.radius.m, padding: theme.space.m, fontSize: theme.font.size.s,
+              color: theme.color.dim, lineHeight: 1.5,
+            }}
+          >
+            Every detected figure runs the single{" "}
+            <strong style={{ color: theme.color.text }}>{treatment === "vlm" ? "vision-model" : "OCR"} chain</strong>{" "}
+            below — edit it{treatment === "vlm" ? " (endpoint, model and prompt)" : " (readers and escalation)"} in the
+            chain editor.
+          </div>
+        </>
       ) : (
         <>
           <SegmentedControl<ClassifyMethod>
