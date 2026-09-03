@@ -13,11 +13,15 @@ import { Button } from "../../components/Button";
 import { Chip } from "../../components/Chip";
 import { ErrorState } from "../../components/ErrorState";
 import { LoadingState } from "../../components/LoadingState";
+import { OverflowMenu } from "../../components/OverflowMenu";
+import { OverflowMenuItem } from "../../components/OverflowMenuItem";
 import { PageHeader } from "../../components/PageHeader";
 import { TabNav, tabButtonId, type TabItem } from "../../components/TabNav";
 import { useRovingTabIndex } from "../../components/useRovingTabIndex";
 import type { Navigate, View } from "../../shell/view";
 import { theme as t } from "../../theme";
+import { DeleteCollectionDialog } from "./DeleteCollectionDialog";
+import { useDeleteCollection } from "./state/useDeleteCollection";
 import { ExportPanel } from "./transfer/ExportPanel";
 import { UploadPanel } from "./UploadPanel";
 
@@ -152,6 +156,8 @@ export function CollectionShell({ collectionId, active, onNavigate, children }: 
   // Set by a nested page via `useHideHeaderUpload` (namely the empty-collection Overview hero) so
   // the header action never opens a second upload panel next to that page's own inline one.
   const [uploadActionHidden, setUploadActionHidden] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const { deleting, error: deleteError, remove } = useDeleteCollection();
 
   const hideUploadAction = useCallback((hide: boolean) => {
     setUploadActionHidden(hide);
@@ -176,6 +182,14 @@ export function CollectionShell({ collectionId, active, onNavigate, children }: 
 
   if (error) return <ErrorState message={error} onRetry={load} />;
   if (!collection) return <LoadingState label="loading collection…" />;
+
+  const handleConfirmDelete = async () => {
+    const ok = await remove({ id: collectionId, name: collection.name });
+    if (ok) {
+      setConfirmingDelete(false);
+      onNavigate({ name: "collections" });
+    }
+  };
 
   const section = SECTION_OF[active];
   const maxSizeMb = (collection.max_file_size_bytes / (1024 * 1024)).toFixed(1);
@@ -216,6 +230,9 @@ export function CollectionShell({ collectionId, active, onNavigate, children }: 
                   {showUpload ? "Cancel upload" : "Upload"}
                 </Button>
               )}
+              <OverflowMenu label={`More actions for ${collection.name}`}>
+                <OverflowMenuItem tone="danger" onClick={() => setConfirmingDelete(true)}>Delete collection</OverflowMenuItem>
+              </OverflowMenu>
             </>
           }
         />
@@ -277,6 +294,15 @@ export function CollectionShell({ collectionId, active, onNavigate, children }: 
           {children}
         </HideHeaderUploadContext.Provider>
       </div>
+      {confirmingDelete && (
+        <DeleteCollectionDialog
+          collectionName={collection.name}
+          pending={deleting}
+          error={deleteError}
+          onConfirm={handleConfirmDelete}
+          onCancel={() => setConfirmingDelete(false)}
+        />
+      )}
     </div>
   );
 }
