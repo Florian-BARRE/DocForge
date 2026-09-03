@@ -64,9 +64,7 @@ class JobApi:
         return await session.get(Job, job_id)
 
     @staticmethod
-    async def get_latest_for_document(
-        session: AsyncSession, document_id: uuid.UUID
-    ) -> Job | None:
+    async def get_latest_for_document(session: AsyncSession, document_id: uuid.UUID) -> Job | None:
         """The most recent ingestion job for a document (its last run's provenance), or None."""
         result = await session.execute(
             select(Job)

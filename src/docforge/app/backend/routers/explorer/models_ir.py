@@ -106,7 +106,9 @@ class DocumentProvenance(BaseModel):
     """A document's ingestion provenance — the parser/model pipeline that produced its IR + chunks."""
 
     document_id: str = Field(description="The document this provenance describes.")
-    pipeline_version: str = Field(description="The pipeline version the document was ingested with.")
+    pipeline_version: str = Field(
+        description="The pipeline version the document was ingested with."
+    )
     job_id: str | None = Field(
         default=None,
         description="The last ingestion job id — None when it has expired/been reaped (stages empty).",

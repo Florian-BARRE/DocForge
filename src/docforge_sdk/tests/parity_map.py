@@ -60,7 +60,15 @@ from docforge_sdk.models.health import (
     SearchHealth,
     SearchIndex,
 )
-from docforge_sdk.models.ir import DocumentIRModel, DocumentProvenance, IRAttempt, IRBlock, IREnrichment, IRFigure, IRTable
+from docforge_sdk.models.ir import (
+    DocumentIRModel,
+    DocumentProvenance,
+    IRAttempt,
+    IRBlock,
+    IREnrichment,
+    IRFigure,
+    IRTable,
+)
 from docforge_sdk.models.jobs import (
     CancelResult,
     JobEvent,
