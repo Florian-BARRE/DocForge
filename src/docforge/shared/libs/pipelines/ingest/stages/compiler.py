@@ -340,12 +340,14 @@ class StageCompiler(LoggerClass):
         if field is None:
             notices.append(f"stage '{stage}' has no editable config")
             return
-        # 3b. The enrich config additionally carries the topology selector — lift it onto the state
-        #     so the assembler picks the classifier-free ocr_only body when asked. The value stays in
-        #     classify_config too (it is a valid FigureClassifyConfig field) so classified mode
-        #     round-trips it through the classify node's own config.
+        # 3b. The enrich config additionally carries the topology selectors — lift them onto the
+        #     state so the assembler picks the classifier-free uniform body (and its ocr/vlm
+        #     treatment) when asked. The values stay in classify_config too (valid FigureClassifyConfig
+        #     fields) so classified mode round-trips them through the classify node's own config.
         if stage == StageKey.ENRICH:
-            state.figure_enrich_mode = config.get("figure_enrich_mode", "classified")
+            mode = config.get("figure_enrich_mode", "classified")
+            state.figure_enrich_mode = "uniform" if mode == "ocr_only" else mode
+            state.uniform_treatment = config.get("uniform_treatment", "ocr")
         setattr(state, field, dict(config))
 
     def __set_chain(

@@ -9,7 +9,7 @@
 from typing import Literal
 
 # ====== Third-Party Library Imports ======
-from pydantic import Field
+from pydantic import Field, field_validator
 
 # ====== Internal Project Imports ======
 from shared_libs.pipelines.nodes.openai_compat import OpenAICompatConfig
@@ -20,15 +20,32 @@ class FigureClassifyConfig(OpenAICompatConfig):
 
     # The per-figure enrich topology selector. It is NOT consumed by the classify node at run time —
     # it is read by the enrich assembler to pick the ForEach body: ``classified`` keeps the
-    # classify → per-class switch, ``ocr_only`` drops the classifier entirely and OCRs every figure
-    # locally. It is surfaced HERE so the enrich stage's schema-driven config form exposes the mode
-    # (the enrich stage config IS this node's config); in ``ocr_only`` no classify node exists, so the
-    # mode round-trips from the graph topology, not from this field.
-    figure_enrich_mode: Literal["classified", "ocr_only"] = Field(
+    # classify → per-class switch, ``uniform`` drops the classifier entirely and applies ONE
+    # treatment (see ``uniform_treatment``) to every figure. It is surfaced HERE so the enrich stage's
+    # schema-driven config form exposes the mode (the enrich stage config IS this node's config); in
+    # ``uniform`` no classify node exists, so the mode round-trips from the graph topology, not from
+    # this field. ``ocr_only`` is the pre-0.12 name of ``uniform`` and is still accepted on input.
+    figure_enrich_mode: Literal["classified", "uniform"] = Field(
         default="classified",
-        description="Enrich topology: 'classified' routes each figure by class; 'ocr_only' drops the "
-        "classifier and OCRs every figure locally.",
+        description="Enrich topology: 'classified' routes each figure by class; 'uniform' drops the "
+        "classifier and applies one treatment to every figure.",
     )
+    # In ``uniform`` mode, WHICH single treatment every figure runs: ``ocr`` reads the text with a
+    # (local-first) OCR chain; ``vlm`` describes the image with a vision model (a configurable prompt
+    # — e.g. "describe this image"). Ignored in ``classified`` mode. Like figure_enrich_mode it is an
+    # assembler knob surfaced on this config, not consumed by the classify node itself.
+    uniform_treatment: Literal["ocr", "vlm"] = Field(
+        default="ocr",
+        description="Uniform-mode treatment for every figure: 'ocr' reads text; 'vlm' describes the "
+        "image with a vision model (configurable prompt).",
+    )
+
+    @field_validator("figure_enrich_mode", mode="before")
+    @classmethod
+    def _accept_legacy_ocr_only(cls, value: object) -> object:
+        """Map the pre-0.12 ``ocr_only`` topology name onto its generalised successor ``uniform``."""
+        return "uniform" if value == "ocr_only" else value
+
     classify_backend: Literal["vlm", "local"] = Field(
         default="vlm",
         description="Backend for figures the heuristics cannot decide: 'vlm' asks the hosted vision "

@@ -29,12 +29,15 @@ class PipelineState(BaseModel):
         render_config (dict): The figure-render node's config.
         enrich_on (bool): Whether the per-figure enrichment stage is enabled.
         figure_enrich_mode (str): The enrich topology — ``classified`` classifies each figure then
-            routes it by class (the stock behaviour), ``ocr_only`` drops the classifier and OCRs
-            every figure locally. Derived from the graph on read (a body with no classifier is
-            ``ocr_only``); the assembler picks the ForEach body from it.
+            routes it by class (the stock behaviour), ``uniform`` drops the classifier and applies
+            one treatment to every figure. Derived from the graph on read (a body with no classifier
+            is ``uniform``); the assembler picks the ForEach body from it.
+        uniform_treatment (str): In ``uniform`` mode, the single treatment every figure runs —
+            ``ocr`` (read text) or ``vlm`` (describe the image with a vision model). Derived on read
+            from the single chain's family.
         classify_config (dict): The figure-classifier node's config.
-        chains (dict[str, ChainSpec]): The enrich chains, keyed by slot. In ``ocr_only`` mode only
-            the ``scanned_text_ocr`` slot is used (the single OCR chain every figure runs through).
+        chains (dict[str, ChainSpec]): The enrich chains, keyed by slot. In ``uniform`` mode only one
+            slot is used — ``scanned_text_ocr`` (ocr treatment) or ``figure_describe_vlm`` (vlm).
         figure_concurrency (int): How many figures the per-figure enrich loop treats in parallel.
             Raising it parallelises the paid VLM/OCR calls for image-heavy docs; the bounded
             transient-retry inside each provider absorbs the extra 429 pressure. Defaults to 4.
@@ -64,7 +67,8 @@ class PipelineState(BaseModel):
     render_on: bool = True
     render_config: dict = Field(default_factory=dict)
     enrich_on: bool = True
-    figure_enrich_mode: Literal["classified", "ocr_only"] = "classified"
+    figure_enrich_mode: Literal["classified", "uniform"] = "classified"
+    uniform_treatment: Literal["ocr", "vlm"] = "ocr"
     classify_config: dict = Field(default_factory=dict)
     chains: dict[str, ChainSpec] = Field(default_factory=dict)
     figure_concurrency: int = Field(default=4, ge=1)
