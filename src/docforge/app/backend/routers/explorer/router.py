@@ -16,6 +16,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from ...context import CONTEXT
 from ...libs.auth import AuthPrincipal, AuthzGuard, Capability, require
 from ...utils.error_handling import auto_handle_errors
+from ..jobs.models import JobEvent
 from .helpers import ExplorerHelpers
 from .models import (
     BulkChunkEnabledPatch,
@@ -27,7 +28,7 @@ from .models import (
     DocumentListItem,
     PageInfo,
 )
-from .models_ir import DocumentIRModel
+from .models_ir import DocumentIRModel, DocumentProvenance
 from .views import DocumentViewHelpers
 
 router = APIRouter(tags=["explorer"])
@@ -145,6 +146,42 @@ async def get_document_ir(
     await _require_document(document_id, principal)
     bundle = await CONTEXT.database.documents.get_ir(document_id)
     return ExplorerHelpers.ir(bundle)
+
+
+@router.get("/documents/{document_id}/provenance", response_model=DocumentProvenance)
+@auto_handle_errors
+async def get_document_provenance(
+    document_id: uuid.UUID,
+    principal: AuthPrincipal = Depends(require(Capability.READ)),
+) -> DocumentProvenance:
+    """
+    Return a document's ingestion provenance — the parser/model pipeline that produced its IR + chunks.
+
+    The provenance IS the last ingestion job's per-stage trace (which parser/model ran at each stage,
+    with timing and any token/cost). When that job has been reaped/expired, ``available`` is False and
+    ``stages`` is empty — the IR still stands, only its run timeline could not be recovered.
+
+    Returns:
+        DocumentProvenance: The pipeline version and the ordered stage trace; 404 when unknown.
+    """
+    # 1. Existence + scope guard, then the document's most recent ingestion job.
+    document = await _require_document(document_id, principal)
+    job = await CONTEXT.database.jobs.get_latest_for_document(document_id)
+
+    # 2. When a job survives, fold its stage-event rows into the ordered trace.
+    stages: list[JobEvent] = []
+    if job is not None:
+        events = await CONTEXT.database.jobs.list_events(job.id)
+        stages = [JobEvent.from_row(event) for event in events]
+
+    # 3. Assemble the provenance envelope (available=False when no job row remained).
+    return DocumentProvenance(
+        document_id=str(document_id),
+        pipeline_version=document.pipeline_version,
+        job_id=None if job is None else str(job.id),
+        available=job is not None,
+        stages=stages,
+    )
 
 
 @router.get("/documents/{document_id}/markdown", response_class=Response)

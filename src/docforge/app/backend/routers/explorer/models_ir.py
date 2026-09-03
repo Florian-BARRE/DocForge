@@ -13,6 +13,12 @@ from pydantic import BaseModel, Field
 # ====== Internal Project Imports ======
 from shared_libs.services.db.postgresql.tables import EnrichmentKind, EnrichmentStatus
 
+# ====== Local Project Imports ======
+# Reuse the jobs router's per-stage trace shape — a document's provenance IS its last ingestion
+# job's stage timeline (which parser/models ran, with timing + token/cost), so there is nothing new
+# to model, only a document-keyed way to read it.
+from ..jobs.models import JobEvent
+
 
 class IRBlock(BaseModel):
     """One RAW IR block — structure, position in reading order and native text."""
@@ -54,6 +60,18 @@ class IRFigure(BaseModel):
     )
 
 
+class IRAttempt(BaseModel):
+    """One model attempt within an enrichment's escalation chain (the model-chain trace)."""
+
+    position: int = Field(description="0-based order in the chain (0 = first model tried).")
+    capability: str = Field(description="The generic capability invoked (ocr / vlm / llm / …).")
+    provider_id: str = Field(description="Provider/node kind that ran (e.g. rapidocr, mistral).")
+    model: str = Field(description="The concrete model identifier the provider used.")
+    status: str = Field(description="ok / failed — whether this attempt produced the result.")
+    latency_ms: int | None = Field(default=None, description="Attempt wall-clock latency (ms).")
+    error: str | None = Field(default=None, description="Failure reason when this attempt failed.")
+
+
 class IREnrichment(BaseModel):
     """One enrichment applied to a block (OCR/VLM/classify/chart_to_data/table_summary)."""
 
@@ -67,6 +85,10 @@ class IREnrichment(BaseModel):
         default=None, description="Structured result (chart cells, classification)."
     )
     status: EnrichmentStatus = Field(description="ok / failed / skipped.")
+    attempts: list[IRAttempt] = Field(
+        default_factory=list,
+        description="The model-chain trace: every model tried, in order (including failures).",
+    )
 
 
 class DocumentIRModel(BaseModel):
@@ -80,10 +102,33 @@ class DocumentIRModel(BaseModel):
     )
 
 
+class DocumentProvenance(BaseModel):
+    """A document's ingestion provenance — the parser/model pipeline that produced its IR + chunks."""
+
+    document_id: str = Field(description="The document this provenance describes.")
+    pipeline_version: str = Field(
+        description="The pipeline version the document was ingested with."
+    )
+    job_id: str | None = Field(
+        default=None,
+        description="The last ingestion job id — None when it has expired/been reaped (stages empty).",
+    )
+    available: bool = Field(
+        description="False when no ingestion job survives (its stage timeline could not be recovered)."
+    )
+    stages: list[JobEvent] = Field(
+        default_factory=list,
+        description="The pipeline's per-stage trace in execution order: which node/parser/model ran, "
+        "its status, timing and any token/cost.",
+    )
+
+
 __all__ = [
     "IRBlock",
     "IRTable",
     "IRFigure",
+    "IRAttempt",
     "IREnrichment",
     "DocumentIRModel",
+    "DocumentProvenance",
 ]

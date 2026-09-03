@@ -7,14 +7,14 @@
 
 import { useEffect, useState } from "react";
 import {
-  getDocumentChunks, getDocumentIR, getDocumentPages,
-  type ChunkInfo, type DocumentIR, type PageInfo,
+  getDocumentChunks, getDocumentIR, getDocumentPages, getDocumentProvenance,
+  type ChunkInfo, type DocumentIR, type DocumentProvenance, type PageInfo,
 } from "../../../api/explorer";
 import type { OverlayBox } from "../../../components/PageBoxOverlay";
 import { useToast } from "../../../shell/toast";
 import { displayPage } from "../format";
 
-export type DocumentTabKey = "overview" | "pages" | "ir" | "chunks";
+export type DocumentTabKey = "overview" | "pages" | "layout" | "ir" | "chunks";
 
 export interface BoxLightboxState {
   renderBlobHash: string | null;
@@ -32,6 +32,8 @@ export function useDocumentTabs(documentId: string, activeTab: DocumentTabKey) {
   const [irError, setIrError] = useState<string | null>(null);
   const [chunks, setChunks] = useState<ChunkInfo[] | null>(null);
   const [chunksError, setChunksError] = useState<string | null>(null);
+  const [provenance, setProvenance] = useState<DocumentProvenance | null>(null);
+  const [provenanceError, setProvenanceError] = useState<string | null>(null);
   const [boxLightbox, setBoxLightbox] = useState<BoxLightboxState | null>(null);
 
   const loadPages = () => {
@@ -46,6 +48,10 @@ export function useDocumentTabs(documentId: string, activeTab: DocumentTabKey) {
     setChunksError(null);
     getDocumentChunks(documentId).then(setChunks).catch((e) => setChunksError(e instanceof Error ? e.message : String(e)));
   };
+  const loadProvenance = () => {
+    setProvenanceError(null);
+    getDocumentProvenance(documentId).then(setProvenance).catch((e) => setProvenanceError(e instanceof Error ? e.message : String(e)));
+  };
 
   // Fetch each tab's payload once, the first time it is activated — never all four upfront. The
   // chunks tab additionally warms pages + IR so a chunk can be located on its source page (the
@@ -53,6 +59,14 @@ export function useDocumentTabs(documentId: string, activeTab: DocumentTabKey) {
   useEffect(() => {
     if (activeTab === "pages" && pages === null && !pagesError) loadPages();
     if (activeTab === "ir" && ir === null && !irError) loadIr();
+    // The Layout tab joins pages + IR + chunks (page render + located blocks + their chunk grouping) —
+    // warm all three so the reading-order panel can show which chunk each block was folded into.
+    if (activeTab === "layout") {
+      if (pages === null && !pagesError) loadPages();
+      if (ir === null && !irError) loadIr();
+      if (chunks === null && !chunksError) loadChunks();
+      if (provenance === null && !provenanceError) loadProvenance();
+    }
     if (activeTab === "chunks") {
       if (chunks === null && !chunksError) loadChunks();
       if (pages === null && !pagesError) loadPages();
@@ -96,6 +110,7 @@ export function useDocumentTabs(documentId: string, activeTab: DocumentTabKey) {
     pages, pagesError, loadPages,
     ir, irError, loadIr,
     chunks, chunksError, loadChunks, handleChunkEnabledChanged,
+    provenance, provenanceError, loadProvenance,
     chunkLocator,
     boxLightbox, closeBoxLightbox: () => setBoxLightbox(null),
   };

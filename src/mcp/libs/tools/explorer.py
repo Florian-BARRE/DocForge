@@ -45,6 +45,12 @@ def register(mcp: FastMCP, sdk: AsyncClient) -> None:
         return ir.model_dump(mode="json")
 
     @mcp.tool()
+    async def get_document_provenance(document_id: str) -> Any:
+        """Return a document's ingestion provenance — the parser/model pipeline (per-stage trace) that produced its IR + chunks."""
+        provenance = await sdk.explorer.get_provenance(document_id)
+        return provenance.model_dump(mode="json")
+
+    @mcp.tool()
     async def get_document_chunks(document_id: str) -> Any:
         """Return a document's retrieval chunks — enriched text, composition and generated metadata."""
         chunks = await sdk.explorer.get_chunks(document_id)

@@ -58,6 +58,9 @@ class IRBundle:
     tables: list[BlockTable]
     figures: list[BlockFigure]
     enrichments: list[BlockEnrichment]
+    # The per-enrichment model-chain trace (one row per model tried, in order) — the "enriched by
+    # which model / OCR, and what escalated before it" provenance surfaced by the IR inspection view.
+    attempts: list[EnrichmentAttempt] = field(default_factory=list)
 
 
 @dataclass(slots=True)
