@@ -263,7 +263,10 @@ class SegmentBuilder:
                 # for image-heavy docs (the bounded transient retry absorbs the extra 429 pressure).
                 max_concurrency=state.figure_concurrency,
                 body=EnrichBodyBuilder.build(
-                    state.classify_config, state.chains, state.figure_enrich_mode
+                    state.classify_config,
+                    state.chains,
+                    state.figure_enrich_mode,
+                    state.uniform_treatment,
                 ),
             ),
             ActionNodeBlob(id="apply", family="enrich", kind="enrich_apply"),

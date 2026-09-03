@@ -4,9 +4,10 @@
 # figure class and each class routes to its chain: an OCR chain reads scanned text and closes on a
 # model-free figure_entry fed best-first (from_first), while a VLM chain describes visual figures and
 # closes on a model-free vlm_entry — each provider produces a SCORED entry the terminal projects onto
-# the uniform single-slot terminal, the decorative class routes to a zero-spend skip. In ``ocr_only``
-# there is NO classifier and NO switch: every figure runs the single local OCR chain and closes on a
-# figure_entry, with a fail-soft on_failure skip so an un-OCR'd figure still passes through. Between
+# the uniform single-slot terminal, the decorative class routes to a zero-spend skip. In ``uniform``
+# there is NO classifier and NO switch: every figure runs ONE treatment — an OCR chain (read text,
+# closing on figure_entry) or a VLM chain (describe the image, closing on vlm_entry) — with a fail-soft
+# on_failure skip so an un-enriched figure still passes through. Between
 # consecutive chain steps a score_below edge escalates on low quality and an on_failure edge falls
 # through — exactly the chain semantics the stage view exposes.
 
@@ -25,7 +26,7 @@ from shared_libs.public_models import FigureKind
 
 # ====== Local Project Imports ======
 from .spec import StageSpecs
-from .state import ChainSpec
+from .state import _VLM_ENDPOINT, ChainSpec
 
 
 class EnrichBodyBuilder:
@@ -34,10 +35,13 @@ class EnrichBodyBuilder:
     BODY_ID = "figure_path"
     CLASSIFY_ID = "classify"
     SKIP_ID = "entry"
-    # The fixed OCR chain slot every figure runs through in ocr_only mode (the single OCR chain).
-    OCR_ONLY_SLOT = "scanned_text_ocr"
-    OCR_ONLY_PREFIX = "figure_ocr"
-    OCR_ONLY_ENTRY_ID = "ocr_entry"
+    # The uniform-mode single-treatment slots: an OCR chain (read text) or a VLM chain (describe).
+    UNIFORM_OCR_SLOT = "scanned_text_ocr"
+    UNIFORM_VLM_SLOT = "figure_describe_vlm"
+    UNIFORM_PREFIX = "figure_uniform"
+    UNIFORM_ENTRY_ID = "uniform_entry"
+    # Default prompt when a fresh uniform-vlm chain has no user prompt yet (a plain describe).
+    DESCRIBE_PROMPT = "Describe this image precisely, for retrieval purposes."
 
     def __new__(cls, *args: object, **kwargs: object) -> None:
         raise TypeError("EnrichBodyBuilder is a static-only class and cannot be instantiated.")
@@ -48,6 +52,7 @@ class EnrichBodyBuilder:
         classify_config: dict,
         chains: dict[str, ChainSpec],
         mode: str = "classified",
+        uniform_treatment: str = "ocr",
     ) -> GroupNodeBlob:
         """
         Assemble the per-figure body for the selected enrich mode.
@@ -55,15 +60,18 @@ class EnrichBodyBuilder:
         Args:
             classify_config (dict): The figure classifier's config (classified mode only).
             chains (dict[str, ChainSpec]): The chains, keyed by branch slot.
-            mode (str): ``classified`` (classifier → per-class chains) or ``ocr_only`` (a single
-                local OCR chain every figure runs, no classifier, no switch).
+            mode (str): ``classified`` (classifier → per-class chains) or ``uniform`` (a single
+                treatment every figure runs, no classifier, no switch). ``ocr_only`` is the legacy
+                name of ``uniform`` and is accepted here.
+            uniform_treatment (str): In ``uniform`` mode, the single treatment — ``ocr`` (read text)
+                or ``vlm`` (describe the image with a vision model).
 
         Returns:
             GroupNodeBlob: The ForEach body group (id ``figure_path``).
         """
-        # 0. The classifier-free mode: OCR every figure locally, fail-soft to a skip terminal.
-        if mode == "ocr_only":
-            return cls.__build_ocr_only(chains)
+        # 0. The classifier-free mode: ONE treatment for every figure, fail-soft to a skip terminal.
+        if mode in ("uniform", "ocr_only"):
+            return cls.__build_uniform(chains, uniform_treatment)
         # 1. The classifier — the switch driver every figure enters through.
         nodes: list = [
             ActionNodeBlob(
@@ -116,51 +124,84 @@ class EnrichBodyBuilder:
         )
 
     @classmethod
-    def __build_ocr_only(cls, chains: dict[str, ChainSpec]) -> GroupNodeBlob:
+    def __build_uniform(cls, chains: dict[str, ChainSpec], treatment: str) -> GroupNodeBlob:
         """
-        Assemble the classifier-free body: every figure runs one local OCR chain, fail-soft to skip.
+        Assemble the classifier-free body: every figure runs ONE treatment, fail-soft to skip.
+
+        The treatment is a single chain — an OCR chain (``treatment='ocr'``, read text, closing on a
+        model-free ``figure_entry``) or a VLM chain (``treatment='vlm'``, describe the image with a
+        configurable prompt, closing on a model-free ``vlm_entry``). Either way a failed chain
+        fail-softs to a raw-figure skip so an un-enriched figure still passes through.
 
         Args:
-            chains (dict[str, ChainSpec]): The chains, keyed by slot — the ``scanned_text_ocr`` slot
-                is the OCR chain every figure runs (defaulting to a single local rapidocr step when
-                the slot is empty, so ocr_only is always full-local out of the box).
+            chains (dict[str, ChainSpec]): The chains, keyed by slot — ``scanned_text_ocr`` for the
+                ocr treatment, ``figure_describe_vlm`` for the vlm treatment. An empty slot defaults
+                to a single local rapidocr (ocr) or a single describe VLM step (vlm).
+            treatment (str): ``ocr`` (read text) or ``vlm`` (describe with a vision model).
 
         Returns:
             GroupNodeBlob: The ForEach body group (id ``figure_path``).
         """
-        # 1. The OCR chain every figure runs — reused from the scanned_text_ocr slot (rapidocr →
-        #    paddle/mistral escalation stays available), or a single local rapidocr by default.
-        chain = chains.get(cls.OCR_ONLY_SLOT)
+        # 1. Resolve the treatment into (slot, family, default step, terminal) — the ONE difference
+        #    between reading text and describing the image; the wiring below is identical for both.
+        if treatment == "vlm":
+            slot, family, output_field, terminal_kind, terminal_field = (
+                cls.UNIFORM_VLM_SLOT,
+                "vlm",
+                "entry",
+                "vlm_entry",
+                "entry",
+            )
+            # The endpoint stays the same opt-in placeholder the classified VLM branches ship with
+            # (the user wires a real vision endpoint when they choose the vlm treatment).
+            default_specs = [
+                ChainStepSpec(
+                    kind="openai_compatible",
+                    config={**_VLM_ENDPOINT, "system_prompt": cls.DESCRIBE_PROMPT},
+                )
+            ]
+        else:
+            slot, family, output_field, terminal_kind, terminal_field = (
+                cls.UNIFORM_OCR_SLOT,
+                "ocr",
+                "figure",
+                "figure_entry",
+                "figure",
+            )
+            default_specs = [ChainStepSpec(kind="rapidocr")]
+
+        # 2. The single chain every figure runs — from the slot (escalation preserved), or the default.
+        chain = chains.get(slot)
         if chain is not None and chain.steps:
             step_specs = [
                 ChainStepSpec(kind=s.kind, config=dict(s.config), score_below=s.score_below)
                 for s in chain.steps
             ]
         else:
-            step_specs = [ChainStepSpec(kind="rapidocr")]
+            step_specs = default_specs
         frag = ChainFragmentBuilder.build(
-            prefix=cls.OCR_ONLY_PREFIX,
-            family="ocr",
+            prefix=cls.UNIFORM_PREFIX,
+            family=family,
             steps=step_specs,
             step_inputs={"figure": FromGroupInput(field_name="figure")},
-            output_field="figure",
+            output_field=output_field,
             scored=True,
         )
         nodes: list = list(frag.nodes)
         transitions: list[Transition] = list(frag.transitions)
         bindings: dict[str, dict] = dict(frag.bindings)
 
-        # 2. Success terminal — a model-free figure_entry fed best-first by whichever OCR step ran.
-        nodes.append(ActionNodeBlob(id=cls.OCR_ONLY_ENTRY_ID, family="enrich", kind="figure_entry"))
+        # 3. Success terminal — a model-free entry fed best-first by whichever step ran.
+        nodes.append(ActionNodeBlob(id=cls.UNIFORM_ENTRY_ID, family="enrich", kind=terminal_kind))
         for step_id in frag.exits:
             transitions.append(
                 Transition(
-                    from_node_id=step_id, to_node_id=cls.OCR_ONLY_ENTRY_ID, condition=OnSuccess()
+                    from_node_id=step_id, to_node_id=cls.UNIFORM_ENTRY_ID, condition=OnSuccess()
                 )
             )
-        bindings[cls.OCR_ONLY_ENTRY_ID] = {"figure": frag.output}
+        bindings[cls.UNIFORM_ENTRY_ID] = {terminal_field: frag.output}
 
-        # 3. Fail-soft skip — the whole chain failed, so pass the RAW figure through un-OCR'd (its
+        # 4. Fail-soft skip — the whole chain failed, so pass the RAW figure through un-enriched (its
         #    binding reads the ForEach item, which always exists; the success terminal cannot serve
         #    here as its binding reads a step output that does not exist when every step failed).
         nodes.append(ActionNodeBlob(id=cls.SKIP_ID, family="enrich", kind="figure_entry"))

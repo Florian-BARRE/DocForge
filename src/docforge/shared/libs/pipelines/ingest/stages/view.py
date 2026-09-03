@@ -112,12 +112,13 @@ class StageViewer:
             steps = cls.__chain(state, key).steps
             return dict(steps[0].config) if steps else {}
         return {
-            # Surface the enrich topology selector on the stage config so the schema-driven form
-            # exposes it; the state value wins so it shows the current mode even in ocr_only, where
-            # there is no classify node and classify_config reads back empty.
+            # Surface the enrich topology selectors on the stage config so the schema-driven form
+            # exposes them; the state values win so they show the current mode/treatment even in
+            # uniform mode, where there is no classify node and classify_config reads back empty.
             StageKey.ENRICH: {
                 **state.classify_config,
                 "figure_enrich_mode": state.figure_enrich_mode,
+                "uniform_treatment": state.uniform_treatment,
             },
             StageKey.RENDER: state.render_config,
             StageKey.CHUNK: state.chunker_config,
