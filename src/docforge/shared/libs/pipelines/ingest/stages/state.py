@@ -7,6 +7,9 @@
 # module also holds the DEFAULT state — the stock pipeline every new collection opens on — from
 # which default_blob() is assembled, so the skeleton has exactly one definition.
 
+# ====== Standard Library Imports ======
+from typing import Literal
+
 # ====== Third-Party Library Imports ======
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -25,8 +28,13 @@ class PipelineState(BaseModel):
         render_on (bool): Whether the figure-render stage is enabled.
         render_config (dict): The figure-render node's config.
         enrich_on (bool): Whether the per-figure enrichment stage is enabled.
+        figure_enrich_mode (str): The enrich topology — ``classified`` classifies each figure then
+            routes it by class (the stock behaviour), ``ocr_only`` drops the classifier and OCRs
+            every figure locally. Derived from the graph on read (a body with no classifier is
+            ``ocr_only``); the assembler picks the ForEach body from it.
         classify_config (dict): The figure-classifier node's config.
-        chains (dict[str, ChainSpec]): The enrich chains, keyed by slot.
+        chains (dict[str, ChainSpec]): The enrich chains, keyed by slot. In ``ocr_only`` mode only
+            the ``scanned_text_ocr`` slot is used (the single OCR chain every figure runs through).
         figure_concurrency (int): How many figures the per-figure enrich loop treats in parallel.
             Raising it parallelises the paid VLM/OCR calls for image-heavy docs; the bounded
             transient-retry inside each provider absorbs the extra 429 pressure. Defaults to 4.
@@ -56,6 +64,7 @@ class PipelineState(BaseModel):
     render_on: bool = True
     render_config: dict = Field(default_factory=dict)
     enrich_on: bool = True
+    figure_enrich_mode: Literal["classified", "ocr_only"] = "classified"
     classify_config: dict = Field(default_factory=dict)
     chains: dict[str, ChainSpec] = Field(default_factory=dict)
     figure_concurrency: int = Field(default=4, ge=1)

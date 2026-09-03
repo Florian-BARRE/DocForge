@@ -1,12 +1,14 @@
 # ====== Code Summary ======
-# Builds the per-figure ForEach BODY of the enrich stage from the classifier config and the chain
-# specs — the one place the model-call topology lives. The classifier drives a when_equals switch
-# per figure class; each class routes to its chain: an OCR chain reads scanned text and closes on a
+# Builds the per-figure ForEach BODY of the enrich stage — the one place the model-call topology
+# lives. Two modes: in ``classified`` (the stock mode) the classifier drives a when_equals switch per
+# figure class and each class routes to its chain: an OCR chain reads scanned text and closes on a
 # model-free figure_entry fed best-first (from_first), while a VLM chain describes visual figures and
-# closes on a model-free vlm_entry — each provider produces a SCORED entry, the terminal projects it
-# onto the uniform single-slot terminal. Between consecutive steps a score_below edge escalates on
-# low quality and an on_failure edge falls through — exactly the chain semantics the stage view
-# exposes. The decorative class routes to a zero-spend skip.
+# closes on a model-free vlm_entry — each provider produces a SCORED entry the terminal projects onto
+# the uniform single-slot terminal, the decorative class routes to a zero-spend skip. In ``ocr_only``
+# there is NO classifier and NO switch: every figure runs the single local OCR chain and closes on a
+# figure_entry, with a fail-soft on_failure skip so an un-OCR'd figure still passes through. Between
+# consecutive chain steps a score_below edge escalates on low quality and an on_failure edge falls
+# through — exactly the chain semantics the stage view exposes.
 
 # ====== Internal Project Imports ======
 from shared_libs.pipelines.base import (
@@ -32,22 +34,36 @@ class EnrichBodyBuilder:
     BODY_ID = "figure_path"
     CLASSIFY_ID = "classify"
     SKIP_ID = "entry"
+    # The fixed OCR chain slot every figure runs through in ocr_only mode (the single OCR chain).
+    OCR_ONLY_SLOT = "scanned_text_ocr"
+    OCR_ONLY_PREFIX = "figure_ocr"
+    OCR_ONLY_ENTRY_ID = "ocr_entry"
 
     def __new__(cls, *args: object, **kwargs: object) -> None:
         raise TypeError("EnrichBodyBuilder is a static-only class and cannot be instantiated.")
 
     @classmethod
-    def build(cls, classify_config: dict, chains: dict[str, ChainSpec]) -> GroupNodeBlob:
+    def build(
+        cls,
+        classify_config: dict,
+        chains: dict[str, ChainSpec],
+        mode: str = "classified",
+    ) -> GroupNodeBlob:
         """
-        Assemble the per-figure body: classifier → per-class chains → uniform entry terminals.
+        Assemble the per-figure body for the selected enrich mode.
 
         Args:
-            classify_config (dict): The figure classifier's config.
+            classify_config (dict): The figure classifier's config (classified mode only).
             chains (dict[str, ChainSpec]): The chains, keyed by branch slot.
+            mode (str): ``classified`` (classifier → per-class chains) or ``ocr_only`` (a single
+                local OCR chain every figure runs, no classifier, no switch).
 
         Returns:
             GroupNodeBlob: The ForEach body group (id ``figure_path``).
         """
+        # 0. The classifier-free mode: OCR every figure locally, fail-soft to a skip terminal.
+        if mode == "ocr_only":
+            return cls.__build_ocr_only(chains)
         # 1. The classifier — the switch driver every figure enters through.
         nodes: list = [
             ActionNodeBlob(
@@ -94,6 +110,64 @@ class EnrichBodyBuilder:
         # 4. Build guard: every class the classifier can stamp MUST have an outgoing route, or the
         #    item would stall on 'classify' at run and fail the whole document. Reject at BUILD.
         cls.__assert_full_coverage(transitions)
+
+        return GroupNodeBlob(
+            id=cls.BODY_ID, nodes=nodes, transitions=transitions, bindings=bindings
+        )
+
+    @classmethod
+    def __build_ocr_only(cls, chains: dict[str, ChainSpec]) -> GroupNodeBlob:
+        """
+        Assemble the classifier-free body: every figure runs one local OCR chain, fail-soft to skip.
+
+        Args:
+            chains (dict[str, ChainSpec]): The chains, keyed by slot — the ``scanned_text_ocr`` slot
+                is the OCR chain every figure runs (defaulting to a single local rapidocr step when
+                the slot is empty, so ocr_only is always full-local out of the box).
+
+        Returns:
+            GroupNodeBlob: The ForEach body group (id ``figure_path``).
+        """
+        # 1. The OCR chain every figure runs — reused from the scanned_text_ocr slot (rapidocr →
+        #    paddle/mistral escalation stays available), or a single local rapidocr by default.
+        chain = chains.get(cls.OCR_ONLY_SLOT)
+        if chain is not None and chain.steps:
+            step_specs = [
+                ChainStepSpec(kind=s.kind, config=dict(s.config), score_below=s.score_below)
+                for s in chain.steps
+            ]
+        else:
+            step_specs = [ChainStepSpec(kind="rapidocr")]
+        frag = ChainFragmentBuilder.build(
+            prefix=cls.OCR_ONLY_PREFIX,
+            family="ocr",
+            steps=step_specs,
+            step_inputs={"figure": FromGroupInput(field_name="figure")},
+            output_field="figure",
+            scored=True,
+        )
+        nodes: list = list(frag.nodes)
+        transitions: list[Transition] = list(frag.transitions)
+        bindings: dict[str, dict] = dict(frag.bindings)
+
+        # 2. Success terminal — a model-free figure_entry fed best-first by whichever OCR step ran.
+        nodes.append(ActionNodeBlob(id=cls.OCR_ONLY_ENTRY_ID, family="enrich", kind="figure_entry"))
+        for step_id in frag.exits:
+            transitions.append(
+                Transition(
+                    from_node_id=step_id, to_node_id=cls.OCR_ONLY_ENTRY_ID, condition=OnSuccess()
+                )
+            )
+        bindings[cls.OCR_ONLY_ENTRY_ID] = {"figure": frag.output}
+
+        # 3. Fail-soft skip — the whole chain failed, so pass the RAW figure through un-OCR'd (its
+        #    binding reads the ForEach item, which always exists; the success terminal cannot serve
+        #    here as its binding reads a step output that does not exist when every step failed).
+        nodes.append(ActionNodeBlob(id=cls.SKIP_ID, family="enrich", kind="figure_entry"))
+        bindings[cls.SKIP_ID] = {"figure": FromGroupInput(field_name="figure")}
+        transitions.append(
+            Transition(from_node_id=frag.exits[-1], to_node_id=cls.SKIP_ID, condition=OnFailure())
+        )
 
         return GroupNodeBlob(
             id=cls.BODY_ID, nodes=nodes, transitions=transitions, bindings=bindings

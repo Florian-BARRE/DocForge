@@ -1,9 +1,10 @@
 # ====== Code Summary ======
 # The figure_classify node — the switch driver of the enrich ForEach body: it decides which of the
 # five FigureKind classes one figure belongs to. Cheap heuristics first (full-page crop →
-# scanned_text, tiny crop → decorative), then a vision model for everything else. Its output
-# exposes `kind` (what the WhenEquals branches route on) and the stamped figure the branches
-# consume; its `score` can gate an escalation.
+# scanned_text, tiny crop → decorative), then a configurable backend for everything else: the hosted
+# VLM (default) OR a fully-local, endpoint-free heuristic classifier (RapidOCR text density +
+# geometry). Its output exposes `kind` (what the WhenEquals branches route on) and the stamped figure
+# the branches consume; its `score` can gate an escalation regardless of the backend.
 
 # ====== Standard Library Imports ======
 import base64
@@ -15,6 +16,7 @@ from pydantic import Field
 
 # ====== Internal Project Imports ======
 from shared_libs.pipelines.base import ActionNode, NodeInput, ScoredOutput
+from shared_libs.pipelines.nodes.ocr.rapidocr import RapidOcrEngine
 from shared_libs.pipelines.nodes.openai_compat import OpenAICompatHelpers
 from shared_libs.pipelines.registry import NodeRegistry
 from shared_libs.public_models import FigureItem, FigureKind, figure_prompt_lines
@@ -22,6 +24,7 @@ from shared_libs.public_models import FigureItem, FigureKind, figure_prompt_line
 # ====== Local Project Imports ======
 from .config import FigureClassifyConfig
 from .helpers import FigureClassifyHelpers
+from .local import LocalFigureClassifierHelpers
 
 # The classification instruction: one word among the classes, nothing else. The per-class lines are
 # DERIVED from the single-source figure routing, so the prompt never drifts from FigureKind.
@@ -106,6 +109,38 @@ class FigureClassifyNode(ActionNode):
         )
         return str(answer.content)
 
+    async def _local_signal(self, image: bytes) -> tuple[str, float, float]:
+        """Read the crop's LOCAL text signal (overridable hook) → (text, confidence, coverage).
+
+        Runs the process-shared RapidOCR engine on the crop and measures how much of it confident
+        text covers — the fully-local, endpoint-free evidence the local backend classifies on. It is
+        the local counterpart of ``_ask_model``: overriding it lets tests inject a synthetic signal.
+        """
+        # 1. One local OCR pass — the raw readings carry the boxes coverage is measured from.
+        readings = await RapidOcrEngine.read(image)
+        text, confidence = RapidOcrEngine.to_text(readings)
+        # 2. Coverage needs the crop dimensions (read from the PNG header, no decoder).
+        dimensions = FigureClassifyHelpers.png_dimensions(image)
+        coverage = LocalFigureClassifierHelpers.coverage(readings, dimensions)
+        return text, confidence, coverage
+
+    async def __classify_uncertain(self, figure: FigureItem) -> tuple[str, float]:
+        """Classify a figure the heuristics could not decide, per the configured backend."""
+        config: FigureClassifyConfig = self.config
+        # 1. Local backend — fully offline: RapidOCR text density + best-effort visual statistics.
+        if config.classify_backend == "local":
+            text, confidence, coverage = await self._local_signal(figure.image)
+            return LocalFigureClassifierHelpers.decide(
+                text, confidence, coverage, figure.image, config
+            )
+        # 2. VLM backend — ask the vision model for one class word; an unusable answer degrades
+        #    LOUDLY in the score (photo is the safest routing: a generic description is never wrong).
+        answer = await self._ask_model(figure.image, _CLASSIFY_PROMPT)
+        parsed = FigureClassifyHelpers.parse_kind(answer)
+        if parsed is None:
+            self.logger.warning(f"Unusable classification for '{figure.block_id}': {answer!r}")
+        return (parsed or FigureKind.PHOTO.value), (1.0 if parsed is not None else _FALLBACK_SCORE)
+
     async def run(self, data: FigureClassifyConsumes) -> FigureClassifyProduces:
         """
         Classify the figure and stamp its kind.
@@ -122,17 +157,9 @@ class FigureClassifyNode(ActionNode):
         kind = self.__heuristic_kind(data.figure) if config.use_heuristics else None
         score = _HEURISTIC_SCORE
 
-        # 2. Everything else goes to the vision model; an unusable answer degrades LOUDLY in the
-        #    score (photo is the safest routing: a generic description is never wrong).
+        # 2. Everything else goes to the configured backend (hosted VLM or fully-local heuristic).
         if kind is None:
-            answer = await self._ask_model(data.figure.image, _CLASSIFY_PROMPT)
-            parsed = FigureClassifyHelpers.parse_kind(answer)
-            if parsed is None:
-                self.logger.warning(
-                    f"Unusable classification for '{data.figure.block_id}': {answer!r}"
-                )
-            kind = parsed or FigureKind.PHOTO.value
-            score = 1.0 if parsed is not None else _FALLBACK_SCORE
+            kind, score = await self.__classify_uncertain(data.figure)
 
         # 3. Stamp a COPY (items are shared across concurrent runs) and expose the routed kind.
         self.logger.debug(f"Figure '{data.figure.block_id}' classified as '{kind}' ({score:.2f})")

@@ -197,6 +197,13 @@ des transitions `WhenEquals` visibles, l'escalade OCR = un `ScoreBelow` par item
 > build** (garde), plus jamais silencieusement au runtime. La lecture OCR voyage sous `FigureItem.read_text`
 > (renommé depuis `context`, qui prêtait à confusion avec `Chunk.context`).
 
+> **Deux knobs full-local** (sur `FigureClassifyConfig`, rendus en dropdown par le SchemaForm du stage) :
+> `figure_enrich_mode` — `classified` (défaut, le graphe ci-dessous) · `ocr_only` : l'assembleur émet un
+> corps SANS classifieur ni `WhenEquals` — chaque figure passe par UNE chaîne OCR locale → `figure_entry`
+> (`OnFailure` fail-soft), zéro VLM. `classify_backend` — `vlm` (défaut) · `local` : la classification tourne
+> hors-ligne (heuristiques géométriques + densité de texte via `RapidOcrEngine`, modèle chargé 1×/process),
+> **aucun appel hosté**, même taxonomie/routing. Combinables ; défaut byte-identique à l'existant.
+
 ```mermaid
 flowchart TB
     classDef artefact fill:#eef4fb,stroke:#4a7ab5,stroke-width:1px
