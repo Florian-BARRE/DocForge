@@ -21,6 +21,7 @@ from shared_libs.services.db import (
 )
 
 # ====== Local Project Imports ======
+from ...libs.estimate import EstimateOverrides
 from ...libs.health import CollectionHealthSummary
 
 
@@ -70,6 +71,11 @@ class CollectionModel(BaseModel):
         description="The search pipeline graph blob ({} = use the stock default)."
     )
     fields: list[FieldSpecModel] = Field(default_factory=list, description="The metadata schema.")
+    estimate_overrides: EstimateOverrides | None = Field(
+        default=None,
+        description="Per-collection PARTIAL cost-estimate overrides (rates/assumptions); null = "
+        "use the global defaults.",
+    )
 
 
 class CollectionListItem(CollectionModel):
@@ -168,6 +174,11 @@ class UpdateCollectionRequest(BaseModel):
     search: dict[str, Any] | None = Field(
         default=None,
         description="New search pipeline graph blob ({} = stock default; validated before storage).",
+    )
+    estimate_overrides: EstimateOverrides | None = Field(
+        default=None,
+        description="Partial cost-estimate overrides. Omitted = leave unchanged; explicit null = "
+        "clear back to the global defaults; a value replaces the stored overrides.",
     )
     note: str | None = Field(default=None, description="Version note shown in the history.")
 

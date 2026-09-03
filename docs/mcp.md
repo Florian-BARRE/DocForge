@@ -69,6 +69,9 @@ vector space is fixed at creation), plus optional ingestion/search pipeline blob
 | `update_collection` | Patch identity/limits, the schema (diffed by `field_name` — omitted = removed), and/or the `pipeline`/`search` config blobs. Schema changes flip `needs_reindex`. |
 | `delete_collection` | Delete a collection (irreversible). |
 | `collection_storage_footprint` | Measure a collection's material footprint per store — S3 bytes exact (deduped), Postgres/Qdrant estimated — plus a per-document breakdown, heaviest first. |
+| `estimate_collection_cost` | Dry-run cost/volume projection before spending anything (`collection_id`, `scope="pending"`, `document_ids=None`, `filter=None`). Defaults to pending (not-yet-ingested) documents; pass `document_ids` to estimate a specific selection, or `filter` (same shape as the documents-grid filter) for a corpus slice — either one overrides `scope`. Per-stage token/page + dollar breakdown; unpriced models come back with a null cost, never fabricated. |
+| `export_collection_snippet` | Export one granular config facet (`collection_id`, `kind` ∈ `pipeline`\|`search`\|`schema`) as a portable `.dfsnippet` — secret-masked, config-only, synchronous (contrast with the async whole-collection `.dcexport`). |
+| `apply_collection_snippet` | Apply a `.dfsnippet` (`collection_id`, `kind`, `snippet`) onto this collection. Secrets from a different collection arrive masked and must be re-entered before the graph can run. |
 
 ### Documents (upload / admission)
 
@@ -86,6 +89,8 @@ vector space is fixed at creation), plus optional ingestion/search pipeline blob
 | `get_document_pages` | The document's pages in order — geometry, routing, render-blob reference. |
 | `get_document_ir` | The full canonical **IR** — blocks, tables, figures, enrichments (can be large). |
 | `get_document_chunks` | The retrieval chunks — enriched text, composition, generated metadata. |
+| `get_document_markdown` | The document rendered as Markdown, generated on the fly from the canonical IR. |
+| `get_document_html` | The document rendered as HTML, generated on the fly from the canonical IR. |
 | `delete_document` | Delete a document everywhere (Qdrant points, PG cascade, orphan-only blob purge). Irreversible. |
 | `set_chunk_enabled` | Toggle one chunk's searchability (reversible, no re-embed). |
 | `set_chunks_enabled` | Toggle several chunks to the same state in one call (multi-select). |
@@ -138,7 +143,7 @@ multi-GB) — `get_export_download_ref` instead points the caller at the REST do
 | `get_transfer` | Poll a transfer's live status — progress, stage, counts, error, and (done) the artifact: bundle `size_bytes`/`expires_at` for an export, the new `collection_id`/`collection_name` for an import. |
 | `get_export_download_ref` | For a done export, returns `size_bytes`/`expires_at` and the REST `download_path` to `GET` directly (or via `docforge_sdk`'s streaming `transfers.download_export`) — never the bundle bytes themselves. |
 
-**Total: 38 tools** across 10 domains.
+**Total: 43 tools** across 10 domains.
 
 ---
 

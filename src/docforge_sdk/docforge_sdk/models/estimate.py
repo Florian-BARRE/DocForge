@@ -1,29 +1,195 @@
 # ====== Code Summary ======
 # Request/response models for the collection cost-estimate endpoint, mirrored field-for-field from the
-# DocForge backend. The request (CollectionEstimateRequest) picks which documents to project over; the
-# response (CostEstimate) is the pure pre-hoc breakdown returned verbatim by the backend — its
-# assumptions (EstimateAssumptions), per-stage usage (StageEstimate) and projected material volume
-# (VolumeEstimate) are all surfaced so an estimate is never mistaken for an exact quote.
+# DocForge backend. The request (CollectionEstimateRequest) picks which documents to project over —
+# either a whole-collection scope, an explicit document-id subset, or a corpus filter subset (the SAME
+# shape the document grid uses); the response (CostEstimate) is the pure pre-hoc breakdown returned
+# verbatim by the backend — its assumptions (EstimateAssumptions), per-stage usage (StageEstimate) and
+# projected material volume (VolumeEstimate) are all surfaced so an estimate is never mistaken for an
+# exact quote. EstimateOverrides (+ its RateOverrides/ModelRateOverride/AssumptionOverrides parts)
+# mirror app/backend/libs/estimate/overrides.py — the PARTIAL, per-collection overlay a collection may
+# carry over the global estimator defaults; it round-trips on CollectionModel.estimate_overrides and
+# UpdateCollectionRequest.estimate_overrides.
 
 # ====== Standard Library Imports ======
 from typing import Literal
 
 # ====== Third-Party Library Imports ======
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
+
+# ====== Local Project Imports ======
+from .corpus import DocumentFilter
 
 
 class CollectionEstimateRequest(BaseModel):
     """
     Body of the estimate endpoint — which documents to project the cost over.
 
+    Three mutually-refining selectors, in precedence order: an explicit ``document_ids`` subset, a
+    corpus ``filter`` subset (the SAME shape the document grid uses), or — when neither is given —
+    the whole-collection ``scope``. ``document_ids`` and ``filter`` are mutually exclusive.
+
     Attributes:
-        scope (Literal): Which documents the estimate covers — ``pending`` (uploaded but not yet
-            ingested, the default preview target) or ``all`` (every document in the collection).
+        scope (Literal): Whole-collection selector when no subset is given — ``pending`` (uploaded
+            but not yet ingested, the default preview target) or ``all`` (every document).
+        document_ids (list[str] | None): Estimate over exactly these documents (must exist and belong
+            to the collection). Mutually exclusive with ``filter``.
+        filter (DocumentFilter | None): Estimate over the documents matching this corpus filter (the
+            document-grid filter shape). Mutually exclusive with ``document_ids``.
     """
 
     scope: Literal["pending", "all"] = Field(
         default="pending",
-        description="Documents to estimate over: 'pending' (not-yet-ingested) or 'all'.",
+        description="Whole-collection selector when no subset is given: 'pending' or 'all'.",
+    )
+    document_ids: list[str] | None = Field(
+        default=None,
+        description="Estimate over exactly these document ids (mutually exclusive with 'filter').",
+    )
+    filter: DocumentFilter | None = Field(
+        default=None,
+        description="Estimate over the documents matching this corpus filter (mutually exclusive "
+        "with 'document_ids').",
+    )
+
+    @model_validator(mode="after")
+    def _validate_selection(self) -> "CollectionEstimateRequest":
+        """Enforce the document_ids-XOR-filter contract and a non-empty explicit id list."""
+        # 1. Never both subset selectors at once — the target set would be ambiguous.
+        if self.document_ids is not None and self.filter is not None:
+            raise ValueError("Provide at most one of 'document_ids' or 'filter'.")
+        # 2. An explicit id list, when present, must select something.
+        if self.document_ids is not None and not self.document_ids:
+            raise ValueError("'document_ids' must be a non-empty list when provided.")
+        return self
+
+
+class ModelRateOverride(BaseModel):
+    """
+    One chat/LLM/VLM model's (input, output) price override, USD per 1M tokens.
+
+    Attributes:
+        input (float): Input/prompt price, USD per 1M tokens.
+        output (float): Output/completion price, USD per 1M tokens.
+    """
+
+    input: float = Field(ge=0.0, description="Input/prompt price, USD per 1M tokens.")
+    output: float = Field(ge=0.0, description="Output/completion price, USD per 1M tokens.")
+
+
+class RateOverrides(BaseModel):
+    """
+    Partial overrides of the three rate maps the estimator prices against (absent map = default).
+
+    Attributes:
+        models (dict[str, ModelRateOverride] | None): Chat model id → (input, output) USD/1M-token
+            override (merged over defaults).
+        embed (dict[str, float] | None): Embedding model id → USD/1M-token override.
+        ocr (dict[str, float] | None): OCR provider kind → USD/page override.
+    """
+
+    models: dict[str, ModelRateOverride] | None = Field(
+        default=None,
+        description="Chat model id -> (input, output) USD/1M-token override (merged over defaults).",
+    )
+    embed: dict[str, float] | None = Field(
+        default=None,
+        description="Embedding model id -> USD/1M-token override (merged over defaults).",
+    )
+    ocr: dict[str, float] | None = Field(
+        default=None,
+        description="OCR provider kind -> USD/page override (merged over defaults).",
+    )
+
+
+class AssumptionOverrides(BaseModel):
+    """
+    Partial overrides of the estimator's extrapolation assumptions (absent field = default).
+
+    Mirrors ``EstimateAssumptions`` field-for-field, but every field is optional so a caller overrides
+    only what it means to. ``target_chunk_tokens`` / ``chunk_overlap_ratio`` may be set here, but the
+    collection's ACTUAL chunker config still wins on top (the pipeline is authoritative for chunk
+    sizing).
+
+    Attributes:
+        tokens_per_page (float | None): Body-text tokens/page.
+        bytes_per_token (float | None): Bytes/token for text-native formats.
+        bytes_per_page (float | None): Bytes/page for binary docs without a known page count.
+        target_chunk_tokens (int | None): Chunk size (the pipeline's chunker config wins on top).
+        chunk_overlap_ratio (float | None): Overlap fraction (the chunker config wins on top).
+        images_per_page (float | None): Assumed figures/images per page (drives enrich volume).
+        scanned_page_ratio (float | None): Fraction of pages assumed to need paid OCR.
+        llm_prompt_overhead_tokens (float | None): Prompt tokens per LLM call beyond the chunk body.
+        llm_output_tokens (float | None): Completion tokens per contextualize LLM call.
+        metagen_doc_context_tokens (float | None): Prompt tokens fed per document-scope metagen call.
+        metagen_output_tokens_per_field (float | None): Completion tokens per generated field.
+        vlm_prompt_tokens_per_image (float | None): Prompt tokens per VLM call (image + instruction).
+        vlm_output_tokens (float | None): Completion tokens per VLM caption call.
+        embed_dense_dims (int | None): Dense vector dimensionality (for the storage estimate).
+    """
+
+    tokens_per_page: float | None = Field(
+        default=None, gt=0.0, description="Body-text tokens/page."
+    )
+    bytes_per_token: float | None = Field(
+        default=None, gt=0.0, description="Bytes/token for text-native formats."
+    )
+    bytes_per_page: float | None = Field(
+        default=None, gt=0.0, description="Bytes/page for binary docs without a known page count."
+    )
+    target_chunk_tokens: int | None = Field(
+        default=None, gt=0, description="Chunk size (the pipeline's chunker config wins on top)."
+    )
+    chunk_overlap_ratio: float | None = Field(
+        default=None, ge=0.0, description="Overlap fraction (the chunker config wins on top)."
+    )
+    images_per_page: float | None = Field(
+        default=None, ge=0.0, description="Assumed figures/images per page (drives enrich volume)."
+    )
+    scanned_page_ratio: float | None = Field(
+        default=None, ge=0.0, le=1.0, description="Fraction of pages assumed to need paid OCR."
+    )
+    llm_prompt_overhead_tokens: float | None = Field(
+        default=None, ge=0.0, description="Prompt tokens per LLM call beyond the chunk body."
+    )
+    llm_output_tokens: float | None = Field(
+        default=None, ge=0.0, description="Completion tokens per contextualize LLM call."
+    )
+    metagen_doc_context_tokens: float | None = Field(
+        default=None, ge=0.0, description="Prompt tokens fed per document-scope metagen call."
+    )
+    metagen_output_tokens_per_field: float | None = Field(
+        default=None, ge=0.0, description="Completion tokens per generated metadata field."
+    )
+    vlm_prompt_tokens_per_image: float | None = Field(
+        default=None, ge=0.0, description="Prompt tokens per VLM call (image + instruction)."
+    )
+    vlm_output_tokens: float | None = Field(
+        default=None, ge=0.0, description="Completion tokens per VLM caption call."
+    )
+    embed_dense_dims: int | None = Field(
+        default=None, gt=0, description="Dense vector dimensionality (for the storage estimate)."
+    )
+
+
+class EstimateOverrides(BaseModel):
+    """
+    A collection's PARTIAL override of the cost-estimate inputs — rates and/or assumptions.
+
+    Stored verbatim (as a partial dict) in ``collection.estimate_overrides`` and echoed on the
+    collection read. NULL / an absent subtree means "use the global default"; a provided value is
+    deep-merged over the default by the backend. No provider secrets are involved (rates only), so it
+    is neither masked nor restored on the round-trip.
+
+    Attributes:
+        rates (RateOverrides | None): Partial rate-map overrides (chat / embed / OCR).
+        assumptions (AssumptionOverrides | None): Partial extrapolation-assumption overrides.
+    """
+
+    rates: RateOverrides | None = Field(
+        default=None, description="Partial rate-map overrides (chat / embed / OCR)."
+    )
+    assumptions: AssumptionOverrides | None = Field(
+        default=None, description="Partial extrapolation-assumption overrides."
     )
 
 
@@ -195,6 +361,10 @@ class CostEstimate(BaseModel):
 
 __all__ = [
     "CollectionEstimateRequest",
+    "ModelRateOverride",
+    "RateOverrides",
+    "AssumptionOverrides",
+    "EstimateOverrides",
     "EstimateAssumptions",
     "StageEstimate",
     "VolumeEstimate",

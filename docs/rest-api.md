@@ -50,10 +50,11 @@ Everything is JSON in and JSON out, with two exceptions:
 | Jobs | `/api/v1/jobs` | §7 |
 | Blobs | `/api/v1/blobs/{hash}` | §8 |
 | Pipelines (design) | `/api/v1/pipelines` | §9 |
-| Cost estimate (dry-run) | `/api/v1/collections/{id}/estimate` | §10 |
-| Audit trail | `/api/v1/audit` | §11 |
-| Idempotency (request header) | `Idempotency-Key` on mutating routes | §12 |
-| Request correlation (response header) | `X-Request-Id` on every response | §13 |
+| Config snippets (granular export/import) | `/api/v1/collections/{id}/snippets/{kind}` | §10 |
+| Cost estimate (dry-run) | `/api/v1/collections/{id}/estimate` | §11 |
+| Audit trail | `/api/v1/audit` | §12 |
+| Idempotency (request header) | `Idempotency-Key` on mutating routes | §13 |
+| Request correlation (response header) | `X-Request-Id` on every response | §14 |
 
 ---
 
@@ -253,6 +254,53 @@ Both blobs are large and opaque; treat them as produced/edited via the pipeline 
 (§9) rather than hand-written. Reads strip an internal version stamp so the blob is clean to
 post back.
 
+### Estimate overrides
+
+`GET /api/v1/collections/{id}` returns `estimate_overrides` (nullable); `PATCH` accepts it to
+tune the cost-estimate rate model (§11) for that one collection. `null` means "use the global
+defaults" everywhere.
+
+`EstimateOverrides` is a partial, deep-merged patch over the global defaults — every field is
+optional and only the ones you set are overridden:
+
+```json
+{
+  "rates": {
+    "models": { "gpt-4o-mini": { "input": 0.15, "output": 0.60 } },
+    "embed": { "bge-m3": 0.0 },
+    "ocr": { "mistral": 1.0 }
+  },
+  "assumptions": {
+    "tokens_per_page": 500,
+    "bytes_per_token": 4,
+    "bytes_per_page": 2048,
+    "target_chunk_tokens": 400,
+    "chunk_overlap_ratio": 0.15,
+    "images_per_page": 0.3,
+    "scanned_page_ratio": 0.1,
+    "llm_prompt_overhead_tokens": 200,
+    "llm_output_tokens": 300,
+    "metagen_doc_context_tokens": 500,
+    "metagen_output_tokens_per_field": 50,
+    "vlm_prompt_tokens_per_image": 300,
+    "vlm_output_tokens": 200,
+    "embed_dense_dims": 1024
+  }
+}
+```
+
+- `rates` — dollar rates keyed by provider/model id, overriding the canonical pricing table:
+  `models` (per-1K-token input/output for LLM/metagen stages), `embed` (per-1K-token embed cost),
+  `ocr` (per-page OCR cost). Rates carry no secrets, only numbers. Local in-stack providers
+  (`bge_server`, RapidOCR, Paddle) always cost `0`; an unrecognized paid model with no rate (here
+  or in the canonical table) reports a **null** cost, never a fabricated number.
+- `assumptions` — the sizing knobs the estimator uses when it can't read exact numbers off a
+  document (page/token ratios, chunk sizing, image density, per-stage prompt/output token
+  overhead, embedding dimensionality).
+
+Both objects are optional and every leaf inside them is optional; an omitted leaf falls back to
+the global default for that value.
+
 ### Create a collection
 
 ```bash
@@ -363,6 +411,8 @@ collection scope; an unknown id is `404`.
 | `GET` | `/api/v1/documents/{document_id}/pages` | `read` | Pages, in order (geometry + render blob ref) |
 | `GET` | `/api/v1/documents/{document_id}/ir` | `read` | The full canonical IR (large) |
 | `GET` | `/api/v1/documents/{document_id}/chunks` | `read` | Chunks (enriched text, block ids, metadata) |
+| `GET` | `/api/v1/documents/{document_id}/markdown` | `read` | Markdown view, generated on the fly from the IR |
+| `GET` | `/api/v1/documents/{document_id}/html` | `read` | HTML view, generated on the fly from the IR |
 | `DELETE` | `/api/v1/documents/{document_id}` | `write` | Delete everywhere (`204`) |
 
 ```bash
@@ -386,6 +436,28 @@ via §8.
 
 > The IR payload (`/ir`) is the whole canonical document (blocks, tables, figures, enrichments)
 > and can be large — fetch it deliberately.
+
+### Document views (markdown / HTML)
+
+`GET /api/v1/documents/{document_id}/markdown` and `GET /api/v1/documents/{document_id}/html` —
+capability `read`. Both render the document's **canonical IR** into a view format on the fly (the
+IR is canonical; markdown/HTML are always generated, never stored sources — §"Non-negotiables").
+
+| Query param | Type | Default | Meaning |
+|---|---|---|---|
+| `download` | bool | `false` | Truthy → `Content-Disposition: attachment; filename="<stem>.md"` (or `.html`). Falsy → inline (renders in a browser tab). |
+
+```bash
+# Inline in a browser
+curl -s http://localhost:10040/api/v1/documents/d4c3.../markdown
+
+# Force a download with the right filename
+curl -s "http://localhost:10040/api/v1/documents/d4c3.../html?download=true" -O -J
+```
+
+Responses are `text/markdown` and `text/html` respectively. `404` when the document is unknown,
+`403` when it belongs to a collection outside the caller's scope, `422` on a malformed document
+UUID.
 
 ---
 
@@ -540,7 +612,75 @@ curl -s http://localhost:10040/api/v1/pipelines/ingest
 
 ---
 
-## 10. Cost estimate (dry-run)
+## 10. Config snippets (granular export/import)
+
+Where a `.dcexport` bundle (§"Transfers" in the MCP/SDK docs) moves a **whole** collection
+(schema, config, and data) asynchronously across servers, a **snippet** moves **just one config
+facet** — synchronously, config-only, no documents/vectors involved. Useful to copy a tuned
+pipeline graph or search config from one collection to another, or to version a schema
+independently of the data it describes.
+
+| Method | Path | Cap | Purpose |
+|---|---|---|---|
+| `GET` | `/api/v1/collections/{id}/snippets/{kind}` | `read` | Export one config facet as a `CollectionSnippet` |
+| `POST` | `/api/v1/collections/{id}/snippets/{kind}` | `write` | Apply a `CollectionSnippet` onto this collection |
+
+`{kind}` is one of `pipeline`, `search`, `schema`.
+
+### Export
+
+```bash
+curl -s http://localhost:10040/api/v1/collections/$CID/snippets/pipeline
+```
+
+Returns a `CollectionSnippet`:
+
+```json
+{
+  "kind": "pipeline",
+  "format_version": 1,
+  "docforge_version": "0.9.0",
+  "body": { "nodes": [ "..." ] }
+}
+```
+
+- `kind` — echoes the requested facet.
+- `format_version` — the snippet schema version (bumped only on a breaking snippet-shape change).
+- `docforge_version` — the exporting server's product version, checked on import.
+- `body` — for `pipeline`/`search`, the graph blob with any provider secrets **masked** (never
+  exported in the clear); for `schema`, `{"fields": [...]}` (the `fields[]` array, §3).
+
+Save the response as a `*.dfsnippet` file — deliberately a distinct extension from `.dcexport`,
+so the two artifact kinds are never confused.
+
+### Import
+
+```bash
+curl -sX POST http://localhost:10040/api/v1/collections/$CID/snippets/pipeline \
+  -H 'Content-Type: application/json' \
+  --data @tuned-pipeline.dfsnippet
+```
+
+Body is a `CollectionSnippet` (as produced by export). Response is a `SnippetImportResult`:
+
+```json
+{ "collection_id": "7f1c9d2e-...", "kind": "pipeline", "needs_reindex": false }
+```
+
+`needs_reindex` mirrors the collection-level flag (§3) — `true` when applying the snippet altered
+the searchable surface.
+
+Because provider secrets are masked at export, a `pipeline`/`search` snippet exported from one
+collection and applied to **another** arrives with masked secrets: **re-enter any base URL/API key
+placeholders** the imported graph references before it can run (mirrors the stored-blob-staleness
+auto-heal path — a masked secret is not a valid one).
+
+`404` when the collection is unknown. `422` on `format_version`/`kind` mismatch, or an invalid
+graph/schema body (the same structural checks as a direct `PATCH` to the collection, §3).
+
+---
+
+## 11. Cost estimate (dry-run)
 
 Before spending anything on ingestion, project the cost and volume of running a collection's
 pipeline over its documents. This is a **pre-hoc estimate** — no job is enqueued, nothing is spent,
@@ -561,30 +701,52 @@ The body is optional; when omitted, `scope` defaults to `pending`.
 - `scope` (`"pending"` \| `"all"`, default `"pending"`) — which documents to estimate over.
   `pending` covers uploaded-but-not-yet-ingested documents (the usual "what will this ingest cost?"
   preview); `all` covers every document in the collection (the cost of a full reingest).
+- `document_ids` (`list[string]`/null) — estimate over exactly these document ids instead (e.g. the
+  rows currently selected in the documents grid).
+- `filter` (`DocumentFilter`/null) — estimate over a corpus slice, using the **same filter shape**
+  as the documents-grid query (§5): status/format/metadata predicates rather than an explicit id
+  list.
+
+`document_ids` and `filter` are mutually exclusive (`422` if both are set). Whenever **either** is
+given, `scope` is ignored — the estimate runs over exactly the selected rows or the filtered
+corpus, not "pending"/"all". The response shape (`CostEstimate`) is identical across all three
+modes.
+
+```json
+{ "document_ids": ["d4c3...", "a1b2..."] }
+```
+
+```json
+{ "filter": { "status": ["failed"], "format": ["pdf"] } }
+```
 
 The response is a `CostEstimate`: a per-stage breakdown, the projected volume, the totals, plus the
-**assumptions** it rests on (chunk sizing taken from the collection's chunker config) and any
-caveats. A stage whose model has no known rate is reported with a **null cost** (its token/page
-volume is still shown) — never a fabricated number.
+**assumptions** it rests on (chunk sizing taken from the collection's chunker config, overridable
+per collection — §3 "Estimate overrides") and any caveats. A stage whose model has no known rate is
+reported with a **null cost** (its token/page volume is still shown) — never a fabricated number.
 
 ```bash
 curl -s -X POST http://localhost:10040/api/v1/collections/$CID/estimate \
   -H 'content-type: application/json' -d '{"scope":"all"}'
+
+# Estimate over a specific selection
+curl -s -X POST http://localhost:10040/api/v1/collections/$CID/estimate \
+  -H 'content-type: application/json' -d '{"document_ids":["d4c3...","a1b2..."]}'
 ```
 
 `404` when the collection is unknown; `422` when its stored pipeline blob is unreadable (mirrors
-the reingest error contract).
+the reingest error contract), or when both `document_ids` and `filter` are set.
 
 ---
 
-## 11. Audit trail
+## 12. Audit trail
 
 An append-only log of every **mutating** `/api/v1` request (`POST`/`PUT`/`PATCH`/`DELETE`). A
 middleware records exactly one row per routed mutating request **after** the response is sent
 (fail-safe — an audit write can never delay or fail the user's request); reads and non-API paths
 are never audited. Each row captures the actor, the low-cardinality route **template** (not the
 raw-id path), the final response status, the target resource (type + id parsed from the path), the
-client IP, and the request's correlation id (see §13).
+client IP, and the request's correlation id (see §14).
 
 | Method | Path | Cap | Returns |
 |---|---|---|---|
@@ -602,7 +764,7 @@ optional filters):
 | `actor_key_id` | Filter to one acting API key (UUID) |
 | `target_type` | Filter to one target type (e.g. `collection`) |
 | `target_id` | Filter to one target id (pair with `target_type`) |
-| `correlation_id` | Filter to one request's correlation id (see §13) |
+| `correlation_id` | Filter to one request's correlation id (see §14) |
 | `created_from` | Lower bound (**inclusive**) on `created_at` |
 | `created_to` | Upper bound (**exclusive**) on `created_at` |
 
@@ -619,7 +781,7 @@ The trail is gated by `AUDIT_ENABLED` (default `true`); with it off, no rows are
 
 ---
 
-## 12. Idempotency (`Idempotency-Key`)
+## 13. Idempotency (`Idempotency-Key`)
 
 Stripe-style safe retries on a small allow-list of mutating JSON endpoints. Send an
 `Idempotency-Key: <your-key>` request header on an eligible request; the first call runs once and
@@ -670,7 +832,7 @@ curl -s -X POST http://localhost:10040/api/v1/collections \
 
 ---
 
-## 13. Request correlation (`X-Request-Id`)
+## 14. Request correlation (`X-Request-Id`)
 
 Every response carries an `X-Request-Id` header — a per-request correlation id that also tags every
 log line emitted while handling the request (so a response id maps straight to its logs in
@@ -683,7 +845,7 @@ Loki/loguru). This is always on and needs no configuration.
   middleware wraps auth + rate-limiting).
 - **Client use** — log or surface the `X-Request-Id` from a response; quote it in a bug report to
   trace the exact request through the logs, or feed it to the audit trail's `correlation_id` filter
-  (§11) to pull the audit row for that request.
+  (§12) to pull the audit row for that request.
 
 ```bash
 curl -s -D - -o /dev/null http://localhost:10040/api/v1/collections | grep -i x-request-id
@@ -692,7 +854,7 @@ curl -s -D - -o /dev/null http://localhost:10040/api/v1/collections | grep -i x-
 
 ---
 
-## 14. Errors
+## 15. Errors
 
 FastAPI's standard error envelope is used throughout:
 
@@ -712,9 +874,9 @@ production.
 
 | Status | When |
 |---|---|
-| `400` / `422` | Validation failure — bad body, blank query, unknown metadata field, non-filterable filter, invalid search target, unmigratable/invalid pipeline blob, or an `Idempotency-Key` reused with a different body (§12). |
+| `400` / `422` | Validation failure — bad body, blank query, unknown metadata field, non-filterable filter, invalid search target, unmigratable/invalid pipeline blob, a config snippet with a version/kind mismatch or invalid graph/schema (§10), an estimate request with both `document_ids` and `filter` set (§11), or an `Idempotency-Key` reused with a different body (§13). |
 | `401` | Auth on and the bearer is missing/invalid/revoked/expired (carries `WWW-Authenticate: Bearer`). |
-| `403` | Authenticated but lacking the capability, not scoped to the target collection/resource, or a scoped key on the full-access audit trail (§11). |
+| `403` | Authenticated but lacking the capability, not scoped to the target collection/resource, or a scoped key on the full-access audit trail (§12). |
 | `404` | Unknown collection / document / chunk / job / blob / pipeline key. |
-| `409` | Name clash (collection / key), rotating an already-revoked key, root not provisioned, a collection with no embed node on search, or an `Idempotency-Key` whose request is still in progress (§12). |
+| `409` | Name clash (collection / key), rotating an already-revoked key, root not provisioned, a collection with no embed node on search, or an `Idempotency-Key` whose request is still in progress (§13). |
 | `500` | Unexpected server error (opaque). |

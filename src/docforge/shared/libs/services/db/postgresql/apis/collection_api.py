@@ -79,6 +79,20 @@ class CollectionApi:
             collection.needs_reindex = needs_reindex
 
     @staticmethod
+    async def set_estimate_overrides(
+        session: AsyncSession, collection_id: uuid.UUID, overrides: dict | None
+    ) -> None:
+        """Replace the collection's cost-estimate overrides (None clears them → global defaults).
+
+        Distinct from ``update`` (whose None means 'leave unchanged'): this ALWAYS writes, so a caller
+        can explicitly clear the overrides back to the defaults by passing None.
+        """
+        collection = await session.get(Collection, collection_id)
+        if collection is None:
+            return
+        collection.estimate_overrides = overrides
+
+    @staticmethod
     async def delete(session: AsyncSession, collection_id: uuid.UUID) -> bool:
         """Delete a collection (cascading its schema, documents, jobs); return whether it existed."""
         collection = await session.get(Collection, collection_id)

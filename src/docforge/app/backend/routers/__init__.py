@@ -25,6 +25,9 @@ from .jobs.router import router as jobs_router
 # -------------------- Transfers (collection export/import) ------------------- #
 from .transfers.router import router as transfers_router
 
+# -------------------- Snippets (granular collection-config export/import) ------------------- #
+from .snippets.router import router as snippets_router
+
 # -------------------- Pipelines (design surface) ------------------- #
 from .pipelines.router import router as pipelines_router
 
@@ -51,6 +54,7 @@ __all__ = [
     "blobs_router",
     "jobs_router",
     "transfers_router",
+    "snippets_router",
     "pipelines_router",
     "scalar_router",
     "health_router",

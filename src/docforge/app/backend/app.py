@@ -32,6 +32,7 @@ from .routers import (
     pipelines_router,
     scalar_router,
     search_router,
+    snippets_router,
     transfers_router,
 )
 
@@ -118,6 +119,9 @@ def create_app(
 
     # API v1 — collection export/import (async bundle transfer + status + download delivery).
     app.include_router(router=transfers_router, prefix="/api/v1")
+
+    # API v1 — granular collection-config snippets (synchronous export/apply of one config slice).
+    app.include_router(router=snippets_router, prefix="/api/v1")
 
     # API v1 — the document explorer (read surface) and the blob byte stream.
     app.include_router(router=explorer_router, prefix="/api/v1")

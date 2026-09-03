@@ -24,9 +24,12 @@ export interface NumberFieldProps {
    *  MEANING, not a technical detail, so it's always visible, never gated behind an "advanced"
    *  toggle. Omit for unitless numbers (counts, ratios). */
   suffix?: string;
+  /** Shown when the field is empty — e.g. the current server default, so an override editor can
+   *  hint what "leave blank" resolves to without inventing a committed value. */
+  placeholder?: string;
 }
 
-export function NumberField({ value, min, max, style, onChange, ariaLabel, suffix, id }: NumberFieldProps) {
+export function NumberField({ value, min, max, style, onChange, ariaLabel, suffix, id, placeholder }: NumberFieldProps) {
   const [draft, setDraft] = useState(value === undefined || value === null ? "" : String(value));
   const [focused, setFocused] = useState(false);
 
@@ -55,6 +58,7 @@ export function NumberField({ value, min, max, style, onChange, ariaLabel, suffi
       max={max}
       style={suffix ? { ...style, width: "100%" } : style}
       value={draft}
+      placeholder={placeholder}
       aria-label={ariaLabel}
       onChange={(e) => handleChange(e.target.value)}
       onFocus={() => setFocused(true)}

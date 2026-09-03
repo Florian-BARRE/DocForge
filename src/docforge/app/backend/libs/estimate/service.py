@@ -1,10 +1,13 @@
 # ====== Code Summary ======
-# CostEstimateService — the thin edge that turns a collection id into a pre-hoc cost/volume estimate.
-# It gathers the impure inputs (the collection's ACTUAL pipeline config healed to a PipelineState, its
-# contract's generated-field counts, and cheap per-document stats), then hands them to the PURE
-# estimator. The estimator does the arithmetic; this service only reads (no writes, no spend). An
-# unreadable stored blob raises BlobNormalizationError for the router to surface as a 422; an unknown
-# collection returns None for a 404.
+# CostEstimateService — the thin edge that turns a collection id + request into a pre-hoc cost/volume
+# estimate. It gathers the impure inputs (the collection's ACTUAL pipeline config healed to a
+# PipelineState, its contract's generated-field counts, its per-collection estimate overrides, and
+# cheap per-document stats over the requested scope/subset), then hands them to the PURE estimator.
+# The estimator does the arithmetic; this service only reads (no writes, no spend). It selects the
+# covered documents three ways — a whole-collection scope, an explicit id subset, or a corpus filter
+# (reusing the document-grid resolver) — and folds any per-collection overrides over the global rate
+# table + assumptions. An unreadable stored blob raises BlobNormalizationError (422); an unknown
+# collection returns None (404); a bad id/filter surfaces as ValueError (422).
 
 # ====== Standard Library Imports ======
 import uuid
@@ -13,21 +16,28 @@ import uuid
 from loggerplusplus import LoggerClass
 
 # ====== Internal Project Imports ======
+from config import RUNTIME_CONFIG
 from shared_libs.pipelines.build.blob import GroupNodeBlob
 from shared_libs.pipelines.ingest import BlobNormalizer
 from shared_libs.pipelines.ingest.estimate import (
     CostEstimate,
     CostEstimator,
     CostPlanExtractor,
-    EstimateAssumptions,
-    RateTable,
 )
 from shared_libs.pipelines.ingest.stages import StateReader
 from shared_libs.public_models import FieldOrigin, FieldScope
 from shared_libs.services.db import Database
-from shared_libs.services.db.postgresql.tables import DocumentStatus, MetadataField
+from shared_libs.services.db.postgresql.tables import (
+    Document,
+    DocumentStatus,
+    MetadataField,
+)
 
 # ====== Local Project Imports ======
+from ...libs.corpus import DocumentSelector, DocumentSelectorResolver
+from .merger import EstimateOverrideMerger
+from .models import CollectionEstimateRequest
+from .overrides import EstimateOverrides
 from .sampler import DocumentSampler
 
 
@@ -38,20 +48,26 @@ class CostEstimateService(LoggerClass):
         """Store the database façade — the only impure dependency (reads only)."""
         LoggerClass.__init__(self)
         self._database = database
+        # A filter/id subset matching MORE than this samples the first N rows and scales the estimate
+        # linearly (via the sampler's document_count seam) — so a 100k-doc estimate never fetches 100k.
+        self._sample_cap = RUNTIME_CONFIG.ESTIMATE_MAX_SAMPLE_DOCUMENTS
 
-    async def estimate(self, collection_id: uuid.UUID, scope: str) -> CostEstimate | None:
+    async def estimate(
+        self, collection_id: uuid.UUID, request: CollectionEstimateRequest
+    ) -> CostEstimate | None:
         """
-        Project the cost and volume of ingesting a collection's documents WITHOUT running anything.
+        Project the cost and volume of ingesting the requested documents WITHOUT running anything.
 
         Args:
             collection_id (uuid.UUID): The collection to estimate.
-            scope (str): ``pending`` (uploaded-but-not-ingested) or ``all`` documents.
+            request (CollectionEstimateRequest): Which documents to cover (scope / ids / filter).
 
         Returns:
             CostEstimate | None: The estimate, or None when the collection does not exist.
 
         Raises:
             BlobNormalizationError: The stored pipeline blob cannot be read (surfaced as 422).
+            ValueError: A bad document id or corpus filter (surfaced as 422).
         """
         # 1. Resolve the collection (None ⇒ 404 upstream).
         collection = await self._database.collections.get(collection_id)
@@ -67,16 +83,68 @@ class CostEstimateService(LoggerClass):
         schema = await self._database.collections.get_schema(collection_id)
         chunk_fields, document_fields = self.__count_generated_fields(schema)
 
-        # 4. Assemble the plan (which stages spend) and the assumptions (chunk sizing from config).
-        assumptions = self.__assumptions(state.chunker_config)
+        # 4. Fold the collection's partial overrides over the global rate table + assumptions; the
+        #    chunker config still wins for chunk sizing (inside merged_assumptions).
+        overrides = self.__overrides(collection)
+        assumptions = EstimateOverrideMerger.merged_assumptions(overrides, state.chunker_config)
+        rates = EstimateOverrideMerger.merged_rates(overrides)
         plan = CostPlanExtractor.extract(state, chunk_fields, document_fields)
 
-        # 5. Gather cheap per-document stats over the requested scope, then run the pure estimator.
+        # 5. Select + measure the covered documents, then run the pure estimator.
+        documents, document_count = await self.__select_documents(collection_id, request, schema)
+        stats = DocumentSampler.aggregate(documents, assumptions, document_count=document_count)
+        return CostEstimator.estimate(plan, stats, rates, assumptions)
+
+    @staticmethod
+    def __overrides(collection: object) -> EstimateOverrides | None:
+        """Validate the stored partial overrides to the typed model (None when unset)."""
+        stored = getattr(collection, "estimate_overrides", None)
+        return EstimateOverrides.model_validate(stored) if stored else None
+
+    async def __select_documents(
+        self,
+        collection_id: uuid.UUID,
+        request: CollectionEstimateRequest,
+        schema: list[MetadataField],
+    ) -> tuple[list[Document], int]:
+        """
+        Select the documents the estimate covers and how many it represents.
+
+        Returns:
+            tuple[list[Document], int]: the measured rows, and the TOTAL covered count. When the
+                total exceeds the sample cap only the first N rows are measured and the count drives
+                the estimator's linear scaling.
+        """
+        # 1. An explicit subset (ids or corpus filter) → reuse the shared corpus resolver (validates
+        #    existence + collection ownership + filter fields; raises ValueError → 422).
+        selector = self.__selector(request)
+        if selector is not None:
+            matched = await DocumentSelectorResolver(self._database).resolve(
+                collection_id, selector, schema
+            )
+            sample = matched[: self._sample_cap]
+            documents = await self._database.documents.get_by_ids(sample)
+            return documents, len(matched)
+
+        # 2. No subset → the whole collection, narrowed by scope (pending = not-yet-ingested).
         documents = await self._database.documents.list_for_collection(collection_id)
-        if scope == "pending":
+        if request.scope == "pending":
             documents = [d for d in documents if d.status == DocumentStatus.PENDING]
-        stats = DocumentSampler.aggregate(documents, assumptions)
-        return CostEstimator.estimate(plan, stats, RateTable.default(), assumptions)
+        return documents, len(documents)
+
+    @staticmethod
+    def __selector(request: CollectionEstimateRequest) -> DocumentSelector | None:
+        """Build the shared DocumentSelector for a subset request (None ⇒ whole-collection scope)."""
+        # 1. Explicit ids — a non-UUID string is a ValueError the router maps to 422.
+        if request.document_ids is not None:
+            return DocumentSelector(
+                document_ids=[uuid.UUID(value) for value in request.document_ids]
+            )
+        # 2. Corpus filter — the grid's exact filter shape, resolved to matching ids downstream.
+        if request.filter is not None:
+            return DocumentSelector(filter=request.filter)
+        # 3. Neither → no selector; the caller falls back to whole-collection scope.
+        return None
 
     @staticmethod
     def __count_generated_fields(schema: list[MetadataField]) -> tuple[int, int]:
@@ -90,17 +158,6 @@ class CostEstimateService(LoggerClass):
             if f.origin == FieldOrigin.GENERATED and f.scope == FieldScope.DOCUMENT
         )
         return chunk, document
-
-    @staticmethod
-    def __assumptions(chunker_config: dict) -> EstimateAssumptions:
-        """Build the assumptions, taking chunk sizing from the collection's chunker config."""
-        # target_tokens (structure_aware/semantic) or max_tokens (fixed_size); default 512.
-        target = int(chunker_config.get("target_tokens") or chunker_config.get("max_tokens") or 512)
-        overlap = int(chunker_config.get("overlap_tokens") or 0)
-        return EstimateAssumptions(
-            target_chunk_tokens=target,
-            chunk_overlap_ratio=(overlap / target if target else 0.0),
-        )
 
 
 __all__ = ["CostEstimateService"]

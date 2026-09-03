@@ -19,6 +19,7 @@ from .resources.health import AsyncHealth, SyncHealth
 from .resources.jobs import AsyncJobs, SyncJobs
 from .resources.pipelines import AsyncPipelines, SyncPipelines
 from .resources.search import AsyncSearch, SyncSearch
+from .resources.snippets import AsyncSnippets, SyncSnippets
 from .resources.transfers import AsyncTransfers, SyncTransfers
 
 
@@ -37,6 +38,7 @@ class AsyncClient:
         blobs (AsyncBlobs): Content-addressed blob fetch.
         pipelines (AsyncPipelines): Pipeline discovery + design.
         transfers (AsyncTransfers): Collection export/import.
+        snippets (AsyncSnippets): Granular collection-config snippet export/apply.
         audit (AsyncAudit): Root-only audit-trail reads.
     """
 
@@ -61,6 +63,7 @@ class AsyncClient:
         self.blobs = AsyncBlobs(self._transport)
         self.pipelines = AsyncPipelines(self._transport)
         self.transfers = AsyncTransfers(self._transport)
+        self.snippets = AsyncSnippets(self._transport)
 
     async def __aenter__(self) -> "AsyncClient":
         """Enter the async context, returning the client itself."""
@@ -95,6 +98,7 @@ class Client:
         blobs (SyncBlobs): Content-addressed blob fetch.
         pipelines (SyncPipelines): Pipeline discovery + design.
         transfers (SyncTransfers): Collection export/import.
+        snippets (SyncSnippets): Granular collection-config snippet export/apply.
         audit (SyncAudit): Root-only audit-trail reads.
     """
 
@@ -119,6 +123,7 @@ class Client:
         self.blobs = SyncBlobs(self._transport)
         self.pipelines = SyncPipelines(self._transport)
         self.transfers = SyncTransfers(self._transport)
+        self.snippets = SyncSnippets(self._transport)
 
     def __enter__(self) -> "Client":
         """Enter the context, returning the client itself."""

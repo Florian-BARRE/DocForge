@@ -2,6 +2,15 @@
 # Typed service locator for DocForge. All shared services are accessed via CONTEXT —
 # never imported directly in route files. Values are assigned in entrypoint.py at startup.
 
+# ====== Standard Library Imports ======
+# CONTEXT holds type annotations only (no runtime values), so its service-class imports are needed
+# purely for typing. Deferring annotation evaluation lets the backend-local service imports live under
+# TYPE_CHECKING — breaking the import cycle that arises when a service module (via the corpus filter
+# shape) transitively re-enters the `backend` package before this module has finished importing.
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 # ====== Third-Party Library Imports ======
 from loggerplusplus import LoggerPlusPlus
 
@@ -14,11 +23,12 @@ from shared_libs.pipelines.validation import GraphValidator
 from shared_libs.services.db import Database
 
 # ====== Local Project Imports ======
-from .libs.estimate import CostEstimateService
-from .libs.health import CollectionHealthService
-from .libs.metrics import MetricsService
-from .libs.search import SearchService
-from .utils.queue import QueueClient
+if TYPE_CHECKING:
+    from .libs.estimate import CostEstimateService
+    from .libs.health import CollectionHealthService
+    from .libs.metrics import MetricsService
+    from .libs.search import SearchService
+    from .utils.queue import QueueClient
 
 
 class CONTEXT:

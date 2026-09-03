@@ -1,6 +1,9 @@
 # ====== Code Summary ======
 # Request/response models for the documents resource, mirrored field-for-field from the DocForge
 # backend router models: the async-admission response and the searchability toggle contract.
+# DocumentView is an SDK-only wrapper (no matching OpenAPI schema): the markdown/html document-view
+# endpoints stream a raw text body with a Content-Type header rather than a JSON body, mirroring the
+# blobs resource's BlobContent wrapper.
 
 # ====== Third-Party Library Imports ======
 from pydantic import BaseModel, Field
@@ -46,4 +49,17 @@ class DocumentEnabledResponse(BaseModel):
     enabled: bool = Field(description="The new searchability state.")
 
 
-__all__ = ["UploadAccepted", "EnabledPatch", "DocumentEnabledResponse"]
+class DocumentView(BaseModel):
+    """
+    A rendered document view's raw text plus its server-declared media type.
+
+    Attributes:
+        content (str): The rendered view body (markdown or HTML), verbatim.
+        mime_type (str): The media type the server declared for the view.
+    """
+
+    content: str = Field(description="The rendered view body, verbatim.")
+    mime_type: str = Field(description="The media type the server declared for the view.")
+
+
+__all__ = ["UploadAccepted", "EnabledPatch", "DocumentEnabledResponse", "DocumentView"]
