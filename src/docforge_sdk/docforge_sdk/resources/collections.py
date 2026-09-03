@@ -4,6 +4,13 @@
 # surfaces whose bodies differ ONLY by ``await``.
 
 # ====== Standard Library Imports ======
+# `list`/`dict` annotations must stay lazy: a `list(...)` method in this class shadows the builtin in
+# the class namespace, so eager annotation evaluation would break `list[str]` param hints (PEP 563).
+# For the same reason, param hints below use `typing.List` (unshadowed) rather than the bare builtin,
+# which the class-scoped `list` method otherwise resolves to under static analysis.
+from __future__ import annotations
+
+import builtins
 from typing import Literal
 
 # ====== Local Project Imports ======
@@ -16,6 +23,7 @@ from ..models.collections import (
     CreateCollectionRequest,
     UpdateCollectionRequest,
 )
+from ..models.corpus import DocumentFilter
 from ..models.estimate import CollectionEstimateRequest, CostEstimate
 from ..models.health import CollectionHealthResponse
 from ..models.storage import CollectionStorageResponse
@@ -136,15 +144,15 @@ class _CollectionsSpecs(_ResourceMixin):
 
         Args:
             collection_id (str): The collection to estimate over.
-            request (CollectionEstimateRequest): The scope (pending documents or all).
+            request (CollectionEstimateRequest): The scope, or an explicit document-id/filter subset.
 
         Returns:
-            RequestSpec: A POST on the collection's ``/estimate`` route with the scope body.
+            RequestSpec: A POST on the collection's ``/estimate`` route with the selector body.
         """
         return RequestSpec(
             "POST",
             f"{self._COLLECTIONS_PATH}/{collection_id}/estimate",
-            json=request.model_dump(mode="json"),
+            json=request.model_dump(mode="json", exclude_none=True),
         )
 
 
@@ -259,22 +267,30 @@ class AsyncCollections(AsyncResource, _CollectionsSpecs):
         )
 
     async def estimate(
-        self, collection_id: str, scope: Literal["pending", "all"] = "pending"
+        self,
+        collection_id: str,
+        scope: Literal["pending", "all"] = "pending",
+        document_ids: builtins.list[str] | None = None,
+        filter: DocumentFilter | None = None,
     ) -> CostEstimate:
         """
         Project a collection's ingestion cost and volume before spending a cent.
 
         Args:
             collection_id (str): The collection to estimate over.
-            scope (str): Which documents to cover — ``pending`` (not-yet-ingested, the default) or
-                ``all`` (every document in the collection).
+            scope (str): Whole-collection selector used when neither subset below is given —
+                ``pending`` (not-yet-ingested, the default) or ``all`` (every document).
+            document_ids (list[str] | None): Estimate over exactly these document ids (mutually
+                exclusive with ``filter``; overrides ``scope`` when set).
+            filter (DocumentFilter | None): Estimate over the documents matching this corpus filter
+                (mutually exclusive with ``document_ids``; overrides ``scope`` when set).
 
         Returns:
             CostEstimate: The per-stage breakdown, projected volume, totals, assumptions and caveats.
         """
+        request = CollectionEstimateRequest(scope=scope, document_ids=document_ids, filter=filter)
         return await self._transport.request(
-            self._estimate_spec(collection_id, CollectionEstimateRequest(scope=scope)),
-            CostEstimate,
+            self._estimate_spec(collection_id, request), CostEstimate
         )
 
 
@@ -383,23 +399,29 @@ class SyncCollections(SyncResource, _CollectionsSpecs):
         )
 
     def estimate(
-        self, collection_id: str, scope: Literal["pending", "all"] = "pending"
+        self,
+        collection_id: str,
+        scope: Literal["pending", "all"] = "pending",
+        document_ids: builtins.list[str] | None = None,
+        filter: DocumentFilter | None = None,
     ) -> CostEstimate:
         """
         Project a collection's ingestion cost and volume before spending a cent.
 
         Args:
             collection_id (str): The collection to estimate over.
-            scope (str): Which documents to cover — ``pending`` (not-yet-ingested, the default) or
-                ``all`` (every document in the collection).
+            scope (str): Whole-collection selector used when neither subset below is given —
+                ``pending`` (not-yet-ingested, the default) or ``all`` (every document).
+            document_ids (list[str] | None): Estimate over exactly these document ids (mutually
+                exclusive with ``filter``; overrides ``scope`` when set).
+            filter (DocumentFilter | None): Estimate over the documents matching this corpus filter
+                (mutually exclusive with ``document_ids``; overrides ``scope`` when set).
 
         Returns:
             CostEstimate: The per-stage breakdown, projected volume, totals, assumptions and caveats.
         """
-        return self._transport.request(
-            self._estimate_spec(collection_id, CollectionEstimateRequest(scope=scope)),
-            CostEstimate,
-        )
+        request = CollectionEstimateRequest(scope=scope, document_ids=document_ids, filter=filter)
+        return self._transport.request(self._estimate_spec(collection_id, request), CostEstimate)
 
 
 __all__ = ["AsyncCollections", "SyncCollections"]

@@ -10,7 +10,7 @@ import uuid
 from collections import defaultdict
 
 # ====== Third-Party Library Imports ======
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 
 # ====== Local Project Imports ======
 from ...context import CONTEXT
@@ -28,6 +28,7 @@ from .models import (
     PageInfo,
 )
 from .models_ir import DocumentIRModel
+from .views import DocumentViewHelpers
 
 router = APIRouter(tags=["explorer"])
 
@@ -144,6 +145,60 @@ async def get_document_ir(
     await _require_document(document_id, principal)
     bundle = await CONTEXT.database.documents.get_ir(document_id)
     return ExplorerHelpers.ir(bundle)
+
+
+@router.get("/documents/{document_id}/markdown", response_class=Response)
+@auto_handle_errors
+async def get_document_markdown(
+    document_id: uuid.UUID,
+    download: bool = Query(
+        False, description="When true, return an attachment download instead of an inline view."
+    ),
+    principal: AuthPrincipal = Depends(require(Capability.READ)),
+) -> Response:
+    """
+    Render the document as an on-the-fly markdown VIEW generated from the canonical IR.
+
+    Args:
+        document_id (uuid.UUID): The document to render.
+        download (bool): Attach a ``Content-Disposition`` (``<stem>.md``) instead of rendering inline.
+
+    Returns:
+        Response: ``text/markdown; charset=utf-8``; 404 when the document is unknown.
+    """
+    # 1. Existence + scope guard, then the stored IR rows.
+    document = await _require_document(document_id, principal)
+    bundle = await CONTEXT.database.documents.get_ir(document_id)
+
+    # 2. Adapt the rows to a DocumentIR, linearize, and wrap (inline or attachment).
+    return DocumentViewHelpers.markdown(document, bundle, download)
+
+
+@router.get("/documents/{document_id}/html", response_class=Response)
+@auto_handle_errors
+async def get_document_html(
+    document_id: uuid.UUID,
+    download: bool = Query(
+        False, description="When true, return an attachment download instead of an inline view."
+    ),
+    principal: AuthPrincipal = Depends(require(Capability.READ)),
+) -> Response:
+    """
+    Render the document as an on-the-fly HTML VIEW generated from the canonical IR.
+
+    Args:
+        document_id (uuid.UUID): The document to render.
+        download (bool): Attach a ``Content-Disposition`` (``<stem>.html``) instead of rendering inline.
+
+    Returns:
+        Response: ``text/html; charset=utf-8``; 404 when the document is unknown.
+    """
+    # 1. Existence + scope guard, then the stored IR rows.
+    document = await _require_document(document_id, principal)
+    bundle = await CONTEXT.database.documents.get_ir(document_id)
+
+    # 2. Adapt the rows to a DocumentIR, linearize, and wrap (inline or attachment).
+    return DocumentViewHelpers.html(document, bundle, download)
 
 
 @router.get("/documents/{document_id}/chunks", response_model=list[ChunkInfo])

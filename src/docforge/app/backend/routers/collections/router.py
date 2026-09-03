@@ -202,17 +202,24 @@ async def estimate_collection(
     assumptions it rests on are echoed in the response; a stage whose model has no known rate is
     reported with a null cost (tokens still shown), never a fabricated number.
 
+    The covered documents default to the pending scope, but the body may target an explicit
+    ``document_ids`` subset or a corpus ``filter`` (the SAME filter shape the document grid uses).
+
     Returns:
         CostEstimate: The per-stage breakdown, projected volume, totals, assumptions and caveats
-        (404 when the collection is unknown; 422 when its stored pipeline blob is unreadable).
+        (404 when the collection is unknown; 422 when its stored pipeline blob is unreadable, or a
+        bad document id / corpus filter was supplied).
     """
     # 1. Default the body — the endpoint is callable with no payload (scope defaults to pending).
-    scope = (request or CollectionEstimateRequest()).scope
+    payload = request or CollectionEstimateRequest()
 
-    # 2. Run the estimate; an unreadable stored blob is a 422 (mirrors reingest), unknown a 404.
+    # 2. Run the estimate; an unreadable blob or a bad id/filter is a 422 (mirrors reingest), unknown
+    #    a 404. The ValueError path covers a non-UUID id, an unknown/foreign id, and a bad filter.
     try:
-        estimate = await CONTEXT.estimate_service.estimate(collection_id, scope)
+        estimate = await CONTEXT.estimate_service.estimate(collection_id, payload)
     except BlobNormalizationError as exc:
+        raise HTTPException(status_code=422, detail=f"Collection {collection_id}: {exc}")
+    except ValueError as exc:
         raise HTTPException(status_code=422, detail=f"Collection {collection_id}: {exc}")
     if estimate is None:
         raise HTTPException(status_code=404, detail=f"Collection {collection_id} not found.")
@@ -394,6 +401,17 @@ async def update_collection(
             search=healed_search,
             needs_reindex=reindex_from_embed,
             note=request.note,
+        )
+
+    # 7. Cost-estimate overrides — set/replace/clear. Presence in the payload (not just non-null)
+    #    drives the write, so an explicit null CLEARS the overrides back to the global defaults, while
+    #    omitting the key leaves the stored overrides untouched. No secrets are involved (rates only).
+    if "estimate_overrides" in request.model_fields_set:
+        await CONTEXT.database.collections.set_estimate_overrides(
+            collection_id,
+            request.estimate_overrides.model_dump(mode="json", exclude_none=True)
+            if request.estimate_overrides is not None
+            else None,
         )
 
     updated = await CONTEXT.database.collections.get(collection_id)

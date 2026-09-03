@@ -129,7 +129,13 @@ export function CollectionOverview({ collectionId, onNavigate }: Props) {
           </div>
 
           <div>
-            <CostEstimatePanel collectionId={collectionId} />
+            <CostEstimatePanel
+              collectionId={collectionId}
+              estimateOverrides={collection.estimate_overrides}
+              onOverridesSaved={(overrides) =>
+                setCollection((prev) => (prev ? { ...prev, estimate_overrides: overrides } : prev))
+              }
+            />
           </div>
         </>
       )}

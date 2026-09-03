@@ -1,18 +1,28 @@
 // ====== Code Summary ======
 // The document's own parse-time facts as a compact label/value grid — everything DocumentDetail
 // carries besides its metadata list and the fields already shown in the page header. Also exposes
-// the blob affordances: download the ORIGINAL file (source_hash) and view the canonical PDF
-// (pdf_blob_hash, now populated for HTML/MD too). Both go through the authenticated blobs route.
+// the blob affordances (download the ORIGINAL file, view the canonical PDF — content-hash routes)
+// plus the on-the-fly markdown/HTML VIEWS generated fresh from the IR on every request (NOT stored
+// blobs — see api/explorer.ts's documentViewUrl doc). All four go through authenticated fetches.
 
 import { useState } from "react";
 import { downloadBlob, openBlobInNewTab } from "../../../api/blobs";
-import type { DocumentDetail } from "../../../api/explorer";
+import {
+  documentViewFilename,
+  downloadDocumentView,
+  openDocumentViewInNewTab,
+  type DocumentDetail,
+  type DocumentViewFormat,
+} from "../../../api/explorer";
 import { HttpError } from "../../../api/http";
 import { Button } from "../../../components/Button";
 import { humanizeEnumOption } from "../../../components/schema-form/fieldLabels";
 import { useToast } from "../../../shell/toast";
 import { theme } from "../../../theme";
 import { formatDateTime } from "../format";
+
+const VIEW_LABEL: Record<DocumentViewFormat, string> = { markdown: "markdown", html: "HTML" };
+const VIEW_EXTENSION: Record<DocumentViewFormat, string> = { markdown: ".md", html: ".html" };
 
 /** Shortens a long machine value (a hash) to "lead…trail" — the full value stays available via the
  *  `title` tooltip. A no-op below the threshold, so short mono values (mime types, versions) render
@@ -39,9 +49,11 @@ function Fact({ label, value, mono, hint }: { label: string; value: string; mono
   );
 }
 
+type Busy = "original" | "pdf" | `${DocumentViewFormat}-view` | `${DocumentViewFormat}-download`;
+
 export function FactsGrid({ document }: { document: DocumentDetail }) {
   const toast = useToast();
-  const [busy, setBusy] = useState<"original" | "pdf" | null>(null);
+  const [busy, setBusy] = useState<Busy | null>(null);
 
   const errorMessage = (error: unknown) => (error instanceof HttpError ? error.message : String(error));
 
@@ -63,6 +75,28 @@ export function FactsGrid({ document }: { document: DocumentDetail }) {
       await openBlobInNewTab(document.pdf_blob_hash);
     } catch (error) {
       toast.error(`Could not open PDF — ${errorMessage(error)}`);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handleViewDocument = async (format: DocumentViewFormat) => {
+    setBusy(`${format}-view`);
+    try {
+      await openDocumentViewInNewTab(document.id, format);
+    } catch (error) {
+      toast.error(`Could not open the ${VIEW_LABEL[format]} view — ${errorMessage(error)}`);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handleDownloadDocument = async (format: DocumentViewFormat) => {
+    setBusy(`${format}-download`);
+    try {
+      await downloadDocumentView(document.id, format, documentViewFilename(document.filename, format));
+    } catch (error) {
+      toast.error(`Download failed — ${errorMessage(error)}`);
     } finally {
       setBusy(null);
     }
@@ -97,6 +131,18 @@ export function FactsGrid({ document }: { document: DocumentDetail }) {
             {busy === "pdf" ? "opening…" : "View PDF"}
           </Button>
         )}
+        <Button size="sm" disabled={busy !== null} onClick={() => handleViewDocument("markdown")}>
+          {busy === "markdown-view" ? "opening…" : "View markdown"}
+        </Button>
+        <Button size="sm" disabled={busy !== null} onClick={() => handleDownloadDocument("markdown")}>
+          {busy === "markdown-download" ? "preparing…" : `Download ${VIEW_EXTENSION.markdown}`}
+        </Button>
+        <Button size="sm" disabled={busy !== null} onClick={() => handleViewDocument("html")}>
+          {busy === "html-view" ? "opening…" : "View HTML"}
+        </Button>
+        <Button size="sm" disabled={busy !== null} onClick={() => handleDownloadDocument("html")}>
+          {busy === "html-download" ? "preparing…" : `Download ${VIEW_EXTENSION.html}`}
+        </Button>
       </div>
     </div>
   );

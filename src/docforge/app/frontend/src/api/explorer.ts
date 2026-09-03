@@ -4,7 +4,7 @@
 // models (see /openapi.json) — nothing invented.
 
 import type { FieldOrigin } from "./collections";
-import { apiFetch, jsonInit } from "./http";
+import { apiFetch, apiFetchBlob, jsonInit } from "./http";
 
 const DOCUMENTS_BASE = "/api/v1/documents";
 const COLLECTIONS_BASE = "/api/v1/collections";
@@ -218,4 +218,44 @@ export function setChunksEnabled(chunkIds: string[], enabled: boolean): Promise<
  *  `<img src>`/`<a href>`, which a browser navigation can't authenticate. See `components/BlobImage`. */
 export function blobUrl(hash: string): string {
   return `${BLOBS_BASE}/${hash}`;
+}
+
+// ====== On-the-fly markdown/HTML views (generated from the canonical IR, never a stored blob) ======
+// Mirrors GET /documents/{id}/markdown and /documents/{id}/html. Unlike blobUrl above, these are
+// NOT content-hash routes — the body is rendered fresh from the document's IR on every request.
+
+export type DocumentViewFormat = "markdown" | "html";
+
+function documentViewUrl(id: string, format: DocumentViewFormat, download: boolean): string {
+  return `${DOCUMENTS_BASE}/${id}/${format === "markdown" ? "markdown" : "html"}?download=${download}`;
+}
+
+/** The `<stem>.md`/`<stem>.html` filename the backend would attach — mirrored here so a caller can
+ *  name the client-side download (Content-Disposition on a `fetch()`-constructed blob is not
+ *  honoured by the browser; only a navigation respects it, so we must set it ourselves). */
+export function documentViewFilename(filename: string, format: DocumentViewFormat): string {
+  const stem = filename.replace(/\.[^./]+$/, "") || "document";
+  return `${stem}.${format === "markdown" ? "md" : "html"}`;
+}
+
+/** Fetch a document's markdown/HTML view (authenticated) and open it inline in a new tab — mirrors
+ *  `api/blobs.ts`'s `openBlobInNewTab`, generalized to a plain route instead of a content-hash one. */
+export async function openDocumentViewInNewTab(id: string, format: DocumentViewFormat): Promise<void> {
+  const blob = await apiFetchBlob(documentViewUrl(id, format, false));
+  const url = URL.createObjectURL(blob);
+  window.open(url, "_blank", "noopener");
+  window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
+/** Fetch a document's markdown/HTML view (authenticated) and trigger a browser download under `filename`. */
+export async function downloadDocumentView(id: string, format: DocumentViewFormat, filename: string): Promise<void> {
+  const blob = await apiFetchBlob(documentViewUrl(id, format, true));
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
 }

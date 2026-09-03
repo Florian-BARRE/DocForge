@@ -122,6 +122,13 @@ class CollectionsFacade(LoggerClass):
                 job_timeout_seconds=job_timeout_seconds,
             )
 
+    async def set_estimate_overrides(
+        self, collection_id: uuid.UUID, overrides: dict | None
+    ) -> None:
+        """Replace the collection's cost-estimate overrides (None clears them → global defaults)."""
+        async with self._postgres.session() as session:
+            await CollectionApi.set_estimate_overrides(session, collection_id, overrides)
+
     async def update_schema(self, collection_id: uuid.UUID, desired: list[MetadataField]) -> bool:
         """
         Evolve the metadata schema by DIFF — never a wholesale replace.

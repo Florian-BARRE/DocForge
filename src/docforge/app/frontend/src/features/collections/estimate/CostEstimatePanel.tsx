@@ -6,7 +6,7 @@
 // projected spend + volume of ingesting — read-only, triggers no job.
 
 import { useState } from "react";
-import { estimateCollectionCost, type CostEstimate, type EstimateScope } from "../../../api/collections";
+import { estimateCollectionCost, type CostEstimate, type EstimateOverrides, type EstimateScope } from "../../../api/collections";
 import { Button } from "../../../components/Button";
 import { ErrorState } from "../../../components/ErrorState";
 import { LoadingState } from "../../../components/LoadingState";
@@ -15,9 +15,16 @@ import { theme as t } from "../../../theme";
 import { CostEstimateCaveats } from "./CostEstimateCaveats";
 import { CostEstimateHeadline } from "./CostEstimateHeadline";
 import { CostEstimateStageTable } from "./CostEstimateStageTable";
+import { EstimateOverridesEditor } from "./EstimateOverridesEditor";
 
 interface CostEstimatePanelProps {
   collectionId: string;
+  /** The collection's stored per-collection cost-estimate overrides — surfaced in the editable
+   *  "Assumptions & rates" section below the result. */
+  estimateOverrides: EstimateOverrides | null;
+  /** Fired once the overrides editor persists a change, so the owning page's Collection state stays
+   *  in sync without a full reload. */
+  onOverridesSaved: (overrides: EstimateOverrides | null) => void;
 }
 
 const SCOPE_TABS: { key: EstimateScope; label: string }[] = [
@@ -25,7 +32,7 @@ const SCOPE_TABS: { key: EstimateScope; label: string }[] = [
   { key: "all", label: "Whole collection" },
 ];
 
-export function CostEstimatePanel({ collectionId }: CostEstimatePanelProps) {
+export function CostEstimatePanel({ collectionId, estimateOverrides, onOverridesSaved }: CostEstimatePanelProps) {
   const [scope, setScope] = useState<EstimateScope>("pending");
   const [estimate, setEstimate] = useState<CostEstimate | null>(null);
   const [loading, setLoading] = useState(false);
@@ -79,6 +86,15 @@ export function CostEstimatePanel({ collectionId }: CostEstimatePanelProps) {
             <CostEstimateCaveats estimate={estimate} />
           </div>
         )}
+        <div style={{ marginTop: t.space.l }}>
+          <EstimateOverridesEditor
+            collectionId={collectionId}
+            overrides={estimateOverrides}
+            stages={estimate?.stages ?? []}
+            assumptionPlaceholders={estimate?.assumptions ?? null}
+            onSaved={onOverridesSaved}
+          />
+        </div>
       </div>
     </div>
   );

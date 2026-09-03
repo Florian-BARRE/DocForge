@@ -32,14 +32,21 @@ from .collections import (
     UpdateCollectionRequest,
 )
 
+# ------------------- Corpus filter models ------------------- #
+from .corpus import DateRange, DocumentFilter, MetadataFilter, NumberRange, TextFilter
+
 # ------------------- Documents models ------------------- #
-from .documents import DocumentEnabledResponse, EnabledPatch, UploadAccepted
+from .documents import DocumentEnabledResponse, DocumentView, EnabledPatch, UploadAccepted
 
 # ------------------- Estimate models ------------------- #
 from .estimate import (
+    AssumptionOverrides,
     CollectionEstimateRequest,
     CostEstimate,
     EstimateAssumptions,
+    EstimateOverrides,
+    ModelRateOverride,
+    RateOverrides,
     StageEstimate,
     VolumeEstimate,
 )
@@ -99,6 +106,14 @@ from .pipelines import (
 # ------------------- Search models ------------------- #
 from .search import BlockLocation, SearchHit, SearchRequest, SearchResponse, SearchTarget
 
+# ------------------- Snippet models ------------------- #
+from .snippets import (
+    SNIPPET_FILE_EXTENSION,
+    CollectionSnippet,
+    SnippetImportResult,
+    SnippetKind,
+)
+
 # ------------------- Storage models ------------------- #
 from .storage import (
     CollectionStorageResponse,
@@ -155,12 +170,28 @@ __all__ = [
     "UploadAccepted",
     "EnabledPatch",
     "DocumentEnabledResponse",
+    "DocumentView",
+    # Snippets
+    "SNIPPET_FILE_EXTENSION",
+    "SnippetKind",
+    "CollectionSnippet",
+    "SnippetImportResult",
+    # Corpus filter
+    "DateRange",
+    "DocumentFilter",
+    "MetadataFilter",
+    "NumberRange",
+    "TextFilter",
     # Estimate
     "CollectionEstimateRequest",
     "EstimateAssumptions",
     "StageEstimate",
     "VolumeEstimate",
     "CostEstimate",
+    "EstimateOverrides",
+    "RateOverrides",
+    "AssumptionOverrides",
+    "ModelRateOverride",
     # Explorer
     "MetadataValue",
     "DocumentListItem",
