@@ -1,7 +1,12 @@
 # ====== Code Summary ======
 # Config of the figure_classify node: the cheap HEURISTICS (full-page crop → scanned_text, tiny
-# crop → decorative) and the VLM endpoint used for everything the heuristics cannot decide. The
-# classifier's kind drives the WhenEquals switch — its score can gate an escalation.
+# crop → decorative) and the backend used for everything the heuristics cannot decide — either a
+# hosted VLM (default) or a fully-local heuristic classifier (RapidOCR text density + geometry). The
+# classifier's kind drives the WhenEquals switch; its score can gate an escalation. This config also
+# carries ``figure_enrich_mode``, the enrich-stage topology selector the assembler reads (see below).
+
+# ====== Standard Library Imports ======
+from typing import Literal
 
 # ====== Third-Party Library Imports ======
 from pydantic import Field
@@ -11,8 +16,24 @@ from shared_libs.pipelines.nodes.openai_compat import OpenAICompatConfig
 
 
 class FigureClassifyConfig(OpenAICompatConfig):
-    """Heuristic thresholds + the classification model endpoint."""
+    """Heuristic thresholds + the classification backend (hosted VLM or fully-local)."""
 
+    # The per-figure enrich topology selector. It is NOT consumed by the classify node at run time —
+    # it is read by the enrich assembler to pick the ForEach body: ``classified`` keeps the
+    # classify → per-class switch, ``ocr_only`` drops the classifier entirely and OCRs every figure
+    # locally. It is surfaced HERE so the enrich stage's schema-driven config form exposes the mode
+    # (the enrich stage config IS this node's config); in ``ocr_only`` no classify node exists, so the
+    # mode round-trips from the graph topology, not from this field.
+    figure_enrich_mode: Literal["classified", "ocr_only"] = Field(
+        default="classified",
+        description="Enrich topology: 'classified' routes each figure by class; 'ocr_only' drops the "
+        "classifier and OCRs every figure locally.",
+    )
+    classify_backend: Literal["vlm", "local"] = Field(
+        default="vlm",
+        description="Backend for figures the heuristics cannot decide: 'vlm' asks the hosted vision "
+        "model; 'local' classifies fully locally (RapidOCR text density + geometry, no endpoint).",
+    )
     use_heuristics: bool = Field(
         default=True,
         description="Decide the obvious cases without spending a model call.",
@@ -28,7 +49,18 @@ class FigureClassifyConfig(OpenAICompatConfig):
         ge=1,
         description="Crops with a side smaller than this are decorative (logos, rules, bullets).",
     )
-    model: str = Field(description="Vision-capable model used to classify.")
+    # base_url / model are required by OpenAICompatConfig for the VLM backend, but the LOCAL backend
+    # needs no endpoint — relax them to optional defaults so a fully-local classify builds with no
+    # placeholder. An empty endpoint on the VLM backend is still surfaced at edit time (a placeholder
+    # notice) and fails at preflight, so relaxing the schema does not weaken the VLM contract.
+    base_url: str = Field(
+        default="",
+        description="Vision endpoint (VLM backend only; leave empty for the local backend).",
+    )
+    model: str = Field(
+        default="",
+        description="Vision model name (VLM backend only; leave empty for the local backend).",
+    )
     temperature: float = Field(default=0.0, ge=0.0, le=2.0, description="Sampling temperature.")
     max_tokens: int = Field(default=10, gt=0, description="Generation cap (one class word).")
 
