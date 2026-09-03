@@ -88,6 +88,7 @@ vector space is fixed at creation), plus optional ingestion/search pipeline blob
 | `get_document` | One document's full facts + resolved document-level metadata. |
 | `get_document_pages` | The document's pages in order — geometry, routing, render-blob reference. |
 | `get_document_ir` | The full canonical **IR** — blocks, tables, figures, enrichments (can be large). |
+| `get_document_provenance` | Ingestion provenance — the parser/model pipeline (per-stage trace) that produced the IR + chunks. |
 | `get_document_chunks` | The retrieval chunks — enriched text, composition, generated metadata. |
 | `get_document_markdown` | The document rendered as Markdown, generated on the fly from the canonical IR. |
 | `get_document_html` | The document rendered as HTML, generated on the fly from the canonical IR. |

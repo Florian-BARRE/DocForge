@@ -5,6 +5,7 @@
 
 import type { FieldOrigin } from "./collections";
 import { apiFetch, apiFetchBlob, jsonInit } from "./http";
+import type { JobEvent } from "./jobs";
 
 const DOCUMENTS_BASE = "/api/v1/documents";
 const COLLECTIONS_BASE = "/api/v1/collections";
@@ -112,6 +113,17 @@ export interface IRFigure {
   caption_block_id: string | null;
 }
 
+/** One model attempt within an enrichment's escalation chain (the model-chain trace). */
+export interface IRAttempt {
+  position: number;
+  capability: string;
+  provider_id: string;
+  model: string;
+  status: string;
+  latency_ms: number | null;
+  error: string | null;
+}
+
 /** One enrichment applied to a block (OCR/VLM/classify/chart_to_data/table_summary). */
 export interface IREnrichment {
   id: string;
@@ -120,6 +132,8 @@ export interface IREnrichment {
   text: string | null;
   data: unknown;
   status: EnrichmentStatus;
+  /** The model-chain trace: every model tried, in order (including failures before a success). */
+  attempts: IRAttempt[];
 }
 
 /** The full IR of a document — raw blocks, table/figure details and every enrichment. */
@@ -194,6 +208,22 @@ export function getDocumentPages(id: string): Promise<PageInfo[]> {
 
 export function getDocumentIR(id: string): Promise<DocumentIR> {
   return apiFetch(`${DOCUMENTS_BASE}/${id}/ir`);
+}
+
+/** A document's ingestion provenance — the parser/model pipeline that produced its IR + chunks. */
+export interface DocumentProvenance {
+  document_id: string;
+  pipeline_version: string;
+  /** The last ingestion job id — null when it has expired/been reaped (stages then empty). */
+  job_id: string | null;
+  /** False when no ingestion job survives (its stage timeline could not be recovered). */
+  available: boolean;
+  /** The per-stage trace in execution order: which node/parser/model ran, timing, token/cost. */
+  stages: JobEvent[];
+}
+
+export function getDocumentProvenance(id: string): Promise<DocumentProvenance> {
+  return apiFetch(`${DOCUMENTS_BASE}/${id}/provenance`);
 }
 
 export function getDocumentChunks(id: string): Promise<ChunkInfo[]> {

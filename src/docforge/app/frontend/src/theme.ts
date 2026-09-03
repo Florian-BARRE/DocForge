@@ -67,6 +67,23 @@ export const theme = {
       postgres: "var(--store-postgres)", postgresSoft: "var(--store-postgres-soft)",
       qdrant: "var(--store-qdrant)", qdrantSoft: "var(--store-qdrant-soft)",
     },
+
+    // The Layout view's chunk-grouping outline — one distinct teal for every chunk's dashed container
+    // box (never a block/IR type colour, never grey); the forge accent overrides it when active.
+    chunkOutline: "var(--chunk-outline)",
+
+    // Vivid IR-TYPE palette for the Layout view — punchy, warm-forward, decoupled from the global
+    // status tokens. Content types are saturated; furniture types (text/caption/chrome) stay quiet.
+    ir: {
+      heading: "var(--ir-heading)",
+      list: "var(--ir-list)",
+      table: "var(--ir-table)",
+      figure: "var(--ir-figure)",
+      formula: "var(--ir-formula)",
+      caption: "var(--ir-caption)",
+      text: "var(--ir-text)",
+      chrome: "var(--ir-chrome)",
+    },
   },
   radius: { s: 6, m: 10, l: 14, xl: 20, pill: 999 },
   space: { xs: 4, s: 8, m: 12, l: 16, xl: 24, xxl: 40 },

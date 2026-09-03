@@ -43,6 +43,11 @@ class JobsFacade(LoggerClass):
         async with self._postgres.session() as session:
             return await JobApi.get_with_names(session, job_id)
 
+    async def get_latest_for_document(self, document_id: uuid.UUID) -> Job | None:
+        """The most recent ingestion job for a document — its last run's stage provenance."""
+        async with self._postgres.session() as session:
+            return await JobApi.get_latest_for_document(session, document_id)
+
     async def list_for_collection(self, collection_id: uuid.UUID) -> list[Job]:
         """Return a collection's jobs, newest first."""
         async with self._postgres.session() as session:
@@ -335,6 +340,46 @@ class JobsFacade(LoggerClass):
         if reaped:
             self.logger.warning(f"Reaped {len(reaped)} stale job(s): {error}")
         return reaped
+
+    async def reclaim_worker_jobs(self, worker_id: str) -> list[uuid.UUID]:
+        """
+        Fail every RUNNING job still attributed to this worker id — called at the worker's STARTUP.
+
+        A freshly-started worker owns NO in-flight task, so any RUNNING row stamped with its
+        ``worker_id`` is a leftover from its previous incarnation (a hot-reload, crash or hard kill
+        that never marked the row terminal). Reclaiming them here clears the orphaned "stalled"
+        pile-up INSTANTLY on every (re)start — instead of leaving those rows orange until the reaper's
+        stale window elapses. Marks each job FAILED and its document FAILED (visibly re-ingestable)
+        through the same ``_terminate`` path a manual cancel-force uses. Independent of the reap flag:
+        this is startup hygiene, not the periodic reaper.
+
+        Args:
+            worker_id (str): The stable id of the worker reclaiming its own orphans.
+
+        Returns:
+            list[uuid.UUID]: The reclaimed job ids (empty when the worker had no leftovers).
+        """
+        error = (
+            "reclaimed at worker startup: the previous worker process did not mark this job "
+            "terminal (hot-reload/crash) — presumed orphaned, re-ingest to retry"
+        )
+        reclaimed: list[uuid.UUID] = []
+        async with self._postgres.session() as session:
+            for job in await JobApi.list_running_for_worker(session, worker_id):
+                await self._terminate(
+                    session,
+                    job.id,
+                    job_status=JobStatus.FAILED,
+                    doc_status=DocumentStatus.FAILED,
+                    reason=error,
+                )
+                reclaimed.append(job.id)
+        if reclaimed:
+            self.logger.warning(
+                f"Reclaimed {len(reclaimed)} orphaned RUNNING job(s) from worker {worker_id}'s "
+                f"previous incarnation at startup."
+            )
+        return reclaimed
 
 
 __all__ = ["JobsFacade"]

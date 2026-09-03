@@ -138,8 +138,8 @@ function SectionTab({ sectionKey, active, label, onClick, registerRef, onKeyDown
         background: active ? t.color.accentSoft : "transparent",
         color: active ? t.color.accentSafe : t.color.dim,
         border: `1px solid ${active ? t.color.accentLine : "transparent"}`,
-        borderRadius: t.radius.m, padding: "7px 16px",
-        fontSize: t.font.size.l, fontWeight: active ? 700 : 600, cursor: "pointer",
+        borderRadius: t.radius.m, padding: "4px 13px",
+        fontSize: t.font.size.m, fontWeight: active ? 700 : 600, cursor: "pointer",
         transition: "background .16s ease, color .16s ease, border-color .16s ease",
       }}
     >
@@ -203,8 +203,9 @@ export function CollectionShell({ collectionId, active, onNavigate, children }: 
 
   return (
     <div className="df-rise" style={{ height: "100%", display: "flex", flexDirection: "column", overflow: "hidden" }}>
-      <div style={{ padding: `${t.space.xl}px ${t.space.xl}px 0`, maxWidth: 1200, margin: "0 auto", width: "100%" }}>
+      <div style={{ padding: `${t.space.m}px ${t.space.xl}px 0`, maxWidth: 1200, margin: "0 auto", width: "100%" }}>
         <PageHeader
+          compact
           eyebrow={<BackLink label="Collections" onClick={() => onNavigate({ name: "collections" })} />}
           title={
             <span style={{ display: "inline-flex", alignItems: "center", gap: t.space.s }}>
@@ -260,7 +261,7 @@ export function CollectionShell({ collectionId, active, onNavigate, children }: 
           aria-label="Collection sections"
           style={{
             display: "flex", gap: t.space.xs,
-            marginBottom: SUBTABS[section].length > 1 ? t.space.m : 0,
+            marginBottom: SUBTABS[section].length > 1 ? t.space.s : 0,
             borderBottom: SUBTABS[section].length > 1 ? "none" : `1px solid ${t.color.line}`,
             paddingBottom: SUBTABS[section].length > 1 ? 0 : t.space.s,
           }}

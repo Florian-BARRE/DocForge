@@ -11,23 +11,26 @@ interface PageHeaderProps {
   subtitle?: ReactNode;
   eyebrow?: ReactNode;
   actions?: ReactNode;
+  /** A denser header for pages nested under a lot of chrome (collection + document views) — smaller
+   *  title and tighter margins so the actual content gets more vertical room. */
+  compact?: boolean;
 }
 
-export function PageHeader({ title, subtitle, eyebrow, actions }: PageHeaderProps) {
+export function PageHeader({ title, subtitle, eyebrow, actions, compact }: PageHeaderProps) {
   return (
-    <div style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-end", gap: t.space.l, marginBottom: t.space.xl }}>
+    <div style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-end", gap: t.space.l, marginBottom: compact ? t.space.m : t.space.xl }}>
       <div style={{ minWidth: 0 }}>
-        {eyebrow && <div style={{ marginBottom: t.space.s }}>{eyebrow}</div>}
+        {eyebrow && <div style={{ marginBottom: compact ? 2 : t.space.s }}>{eyebrow}</div>}
         <h1
           style={{
-            fontFamily: t.font.display, fontWeight: 700, fontSize: t.font.size.display,
+            fontFamily: t.font.display, fontWeight: 700, fontSize: compact ? t.font.size.xxl : t.font.size.display,
             letterSpacing: "-0.02em", color: t.color.text, lineHeight: 1.1,
           }}
         >
           {title}
         </h1>
         {subtitle && (
-          <div style={{ color: t.color.dim, fontSize: t.font.size.l, marginTop: 6 }}>{subtitle}</div>
+          <div style={{ color: t.color.dim, fontSize: compact ? t.font.size.m : t.font.size.l, marginTop: compact ? 3 : 6 }}>{subtitle}</div>
         )}
       </div>
       {actions && (

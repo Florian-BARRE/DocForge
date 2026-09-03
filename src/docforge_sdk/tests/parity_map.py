@@ -60,7 +60,15 @@ from docforge_sdk.models.health import (
     SearchHealth,
     SearchIndex,
 )
-from docforge_sdk.models.ir import DocumentIRModel, IRBlock, IREnrichment, IRFigure, IRTable
+from docforge_sdk.models.ir import (
+    DocumentIRModel,
+    DocumentProvenance,
+    IRAttempt,
+    IRBlock,
+    IREnrichment,
+    IRFigure,
+    IRTable,
+)
 from docforge_sdk.models.jobs import (
     CancelResult,
     JobEvent,
@@ -171,8 +179,10 @@ MODELS: dict[str, type[BaseModel]] = {
     "IRBlock": IRBlock,
     "IRTable": IRTable,
     "IRFigure": IRFigure,
+    "IRAttempt": IRAttempt,
     "IREnrichment": IREnrichment,
     "DocumentIRModel": DocumentIRModel,
+    "DocumentProvenance": DocumentProvenance,
     # Search
     "SearchTargetModel": SearchTarget,
     "SearchRequest": SearchRequest,

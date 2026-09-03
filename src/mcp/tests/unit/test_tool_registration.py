@@ -12,7 +12,7 @@ from libs.server import build_mcp
 
 # 54 = health(1) + auth(5) + collections(10) + documents(5) + explorer(8) + search(1)
 #    + jobs(8) + audit(1) + blobs(1) + pipelines(6) + transfers(4) + corpus(4)
-EXPECTED_TOOL_COUNT = 54
+EXPECTED_TOOL_COUNT = 55
 
 EXPECTED_TOOL_NAMES = {
     # health
@@ -49,6 +49,7 @@ EXPECTED_TOOL_NAMES = {
     "get_document",
     "get_document_pages",
     "get_document_ir",
+    "get_document_provenance",
     "get_document_chunks",
     "delete_document",
     "set_chunk_enabled",

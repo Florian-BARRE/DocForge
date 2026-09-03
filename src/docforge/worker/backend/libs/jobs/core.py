@@ -6,6 +6,7 @@
 # document and the job failed with the error in clear, then re-raises so arq accounts the attempt.
 
 # ====== Standard Library Imports ======
+import asyncio
 import hashlib
 import json
 import uuid
@@ -253,6 +254,30 @@ async def ingest_document(
         CONTEXT.logger.info(f"Ingestion cancelled for document {document_id}: {exc}")
         await database.jobs.force_terminate(job_uuid, reason=f"cancelled: {exc}")
         return
+
+    except asyncio.CancelledError:
+        # Cancellation is a BaseException, NOT an Exception — so the handler below would MISS it and
+        # leave the row RUNNING forever (the "stalled" orphan). This fires on arq's outer job_timeout,
+        # a worker SIGTERM/shutdown, or a hot-reload. Mark BOTH truths FAILED so the job is terminal +
+        # the document re-ingestable, then re-raise to let arq/asyncio finish the cancellation. Shield
+        # the terminal writes so they commit even though this task is being torn down (best-effort:
+        # the startup reclaim + reaper are the backstops for a hard kill that skips this entirely).
+        CONTEXT.logger.warning(f"Ingestion cancelled/timed out for document {document_id}")
+        try:
+            await asyncio.shield(database.ingestion.mark_failed(doc_uuid))
+            await asyncio.shield(
+                database.jobs.mark_failed(
+                    job_uuid,
+                    error="cancelled or timed out (worker shutdown / job budget) — re-ingest to retry",
+                    finished_at=datetime.now(UTC),
+                    error_type="CancelledError",
+                )
+            )
+        except Exception as terminal_exc:  # pragma: no cover - best-effort terminal write
+            CONTEXT.logger.warning(
+                f"Terminal write during cancel failed (backstops cover it): {terminal_exc}"
+            )
+        raise
 
     except Exception as exc:
         # Both truths flagged, the error in clear; re-raise so arq accounts the attempt. A run
