@@ -148,6 +148,10 @@ class StageCompiler(LoggerClass):
         Returns:
             str | None: The caveat to surface, or ``None`` when the node needs none.
         """
+        # 0. A fully-local classify backend needs no endpoint at all — never flag its empty base_url
+        #    (it classifies offline via RapidOCR, so there is nothing to preflight).
+        if isinstance(config, dict) and config.get("classify_backend") == "local":
+            return None
         # 1. A template placeholder endpoint/key — a stage shipping OFF carries these until opt-in.
         if any(marker in repr(config) for marker in cls._PLACEHOLDER_MARKERS):
             return (
@@ -336,6 +340,12 @@ class StageCompiler(LoggerClass):
         if field is None:
             notices.append(f"stage '{stage}' has no editable config")
             return
+        # 3b. The enrich config additionally carries the topology selector — lift it onto the state
+        #     so the assembler picks the classifier-free ocr_only body when asked. The value stays in
+        #     classify_config too (it is a valid FigureClassifyConfig field) so classified mode
+        #     round-trips it through the classify node's own config.
+        if stage == StageKey.ENRICH:
+            state.figure_enrich_mode = config.get("figure_enrich_mode", "classified")
         setattr(state, field, dict(config))
 
     def __set_chain(

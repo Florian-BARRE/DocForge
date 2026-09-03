@@ -77,13 +77,18 @@ class StateReader:
             embed_on=cls.__by_family(ordered, "embed") is not None,
             embed_chain=cls.__linear_chain(blob, ordered, "embed", "bge_server"),
         )
-        # Enrich internals — the classifier config, the per-class chains and the loop concurrency
-        # (read straight off the ForEach, so a blob omitting it round-trips to the stock 4).
+        # Enrich internals — the mode, the classifier config, the chains and the loop concurrency
+        # (read straight off the ForEach, so a blob omitting it round-trips to the stock 4). The mode
+        # is DERIVED from topology: a body with a classifier is classified, one without is ocr_only.
         if enrich_loop is not None:
             classify = cls.__body_classify(enrich_loop.body)
             if classify is not None:
+                state.figure_enrich_mode = "classified"
                 state.classify_config = dict(classify.config)
-            state.chains = cls.__derive_chains(enrich_loop.body)
+                state.chains = cls.__derive_chains(enrich_loop.body)
+            else:
+                state.figure_enrich_mode = "ocr_only"
+                state.chains = cls.__derive_ocr_only_chain(enrich_loop.body)
             state.figure_concurrency = enrich_loop.max_concurrency
         return state
 
@@ -96,19 +101,22 @@ class StateReader:
 
     @classmethod
     def __enrich_loop(cls, ordered: list[NodeBlob]) -> ForEachNodeBlob | None:
-        """The enrich per-figure loop — the only ForEach whose body carries a figure_classify.
+        """The enrich per-figure loop — the only ForEach whose body carries ``enrich``-family nodes.
 
-        Three ForEach loops now share the root (enrich + the two metagen scopes); a metagen body has
-        structgen/skip nodes and NO classifier, so the classifier presence disambiguates cleanly.
+        Three+ ForEach loops share the root (enrich + the two metagen scopes + any contextualize llm
+        loop). Detecting by the ``enrich`` family (figure_entry is always present, in both classified
+        AND ocr_only bodies) is what tells the enrich loop apart even when there is no classifier —
+        metagen/contextualize bodies never carry an enrich-family node.
         """
         return next(
-            (
-                n
-                for n in ordered
-                if isinstance(n, ForEachNodeBlob) and cls.__body_classify(n.body) is not None
-            ),
+            (n for n in ordered if isinstance(n, ForEachNodeBlob) and cls.__is_enrich_body(n.body)),
             None,
         )
+
+    @staticmethod
+    def __is_enrich_body(body: GroupNodeBlob) -> bool:
+        """Whether a ForEach body is the enrich loop's (carries at least one enrich-family node)."""
+        return any(isinstance(n, ActionNodeBlob) and n.family == "enrich" for n in body.nodes)
 
     @staticmethod
     def __config_of(node: ActionNodeBlob | None) -> dict:
@@ -164,6 +172,16 @@ class StateReader:
             if steps:
                 chains[branch.slot] = ChainSpec(family=head.family, steps=steps)
         return chains
+
+    @classmethod
+    def __derive_ocr_only_chain(cls, body: GroupNodeBlob) -> dict[str, ChainSpec]:
+        """Walk the single OCR chain out of an ocr_only body into the scanned_text_ocr slot."""
+        by_id = {n.id: n for n in body.nodes if isinstance(n, ActionNodeBlob) and n.family == "ocr"}
+        if not by_id:
+            return {}
+        head = ChainWalker.head(body.transitions, by_id, {"ocr"})
+        steps = ChainWalker.walk(body.transitions, by_id, head, {"ocr"})
+        return {"scanned_text_ocr": ChainSpec(family="ocr", steps=steps)} if steps else {}
 
     @classmethod
     def __linear_chain(
