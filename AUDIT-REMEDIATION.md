@@ -10,11 +10,13 @@
 
 - **2026-09-04 — V1 tranche 1 (backend authz)** : IDOR `PATCH /documents/{id}/enabled` + `POST /documents/{id}/reingest` fermés (chargement du document → `assert_collection_scope` avant toute mutation/dépense) ; `GET /collections` filtré par `scoped_collections` (plus de fuite de contrat inter-tenant). +3 tests de non-régression (scoped key → 403 / liste filtrée). `532 passed`.
 
+- **2026-09-04 — V1 tranche 2 (import .dcexport)** : écrasement S3 arbitraire fermé — l'import épingle désormais chaque blob à son `content_hash` (invariant content-addressed) au lieu de faire confiance au `s3_key` du bundle ; un `s3_key` falsifié pointant sur l'objet d'un autre tenant est ignoré + loggé. +1 test tamper. `26 passed`.
+
 ## Avancement
 
 | Vague | Total | Fait |
 |---|---|---|
-| V1 | 30 | 2 |
+| V1 | 30 | 3 |
 | V2 | 4 | 0 |
 | V3 | 1 | 0 |
 | V4 | 1 | 0 |
@@ -51,7 +53,7 @@
 
 ### Sécurité & authz
 
-- [ ] **🔴 HAUTE** · `security` — .dcexport import lets a bundle overwrite arbitrary S3 objects (attacker-controlled s3_key)  
+- [x] **🔴 HAUTE** · `security` — .dcexport import lets a bundle overwrite arbitrary S3 objects (attacker-controlled s3_key)  
   `src/docforge/worker/backend/libs/collection_transfer/restore/importer.py:195`
 - [ ] **🔴 HAUTE** · `security` — MCP HTTP tools read arbitrary files from the MCP container (file_path tool inputs)  
   `src/mcp/libs/tools/documents.py:25`
