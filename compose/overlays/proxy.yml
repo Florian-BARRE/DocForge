@@ -9,8 +9,11 @@
 # file — leave docforge_app on plain HTTP behind that proxy instead. See
 # docs/PROD-HARDENING.md's "Optional TLS reverse proxy" section for the full decision.
 # NOT baked into any scenario file (compose/prod-*.yml, compose/dev-*.yml) — it is an
-# opt-in add-on layered with an extra `-f`, same as overlays/telemetry.yml. Relative paths
-# below resolve relative to THIS file's own directory (compose/overlays/) — hence `../../`.
+# opt-in add-on layered with an extra `-f`, same as overlays/telemetry.yml. As a `-f`-stacked
+# add-on (NOT include:-ed), relative bind paths resolve from the PROJECT directory (the first `-f`
+# file's dir, i.e. compose/) — hence `../services/...`, exactly like overlays/telemetry.yml. (A
+# leading `../../` here would resolve OUTSIDE the repo and Docker would mount an empty auto-created
+# dir, silently starting Caddy with no config.)
 #
 # What this changes vs the base (CPU) prod file:
 #   - adds docforge_caddy: Caddy 2, auto-HTTPS (Let's Encrypt) for DOCFORGE_DOMAIN,
@@ -45,7 +48,7 @@ services:
       - "443:443"                # Public HTTPS (the only public entry point once this overlay is used)
       - "443:443/udp"             # HTTP/3 (QUIC)
     volumes:
-      - ../../services/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ../services/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       # Persists the ACME account + issued certs across recreations — without this, every
       # `up` re-runs the HTTP-01 challenge and can hit Let's Encrypt's rate limits.
       - docforge_caddy_data:/data
