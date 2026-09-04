@@ -40,6 +40,8 @@
 
 - **2026-09-04 — V3 tranche 1 (herméticité tests)** : la suite api unitaire écrivait une vraie ligne `audit_log` par requête mutante dans le Postgres dev (`AuditMiddleware` + `AUDIT_ENABLED` défaut True, `audit.record` non mocké) et fuyait des connexions asyncpg. Fixture autouse conftest étendue à `AUDIT_ENABLED=False` ; `test_audit.py` opte à nouveau via une autouse module (les tests d'enregistrement mockent `record`). 548 passed, warnings 35→3.
 
+- **2026-09-04 — V3 tranche 2 (release tag↔version)** : nouveau job `version-guard` dans `release-images.yml` (compare `${GITHUB_REF_NAME#v}` à `src/docforge/pyproject.toml` ; `images` dépend de `[gate, version-guard]`) — un mistag ne peut plus publier 8 images mensongères + `latest`. Commentaires périmés corrigés (release-images, ci.yml) + ligne release de CLAUDE.md (flux v* unifié). Double-run gate sur tag v* noté pour dédup. YAML validé.
+
 ## Avancement
 
 | Vague | Total | Fait |
@@ -174,7 +176,7 @@
 
 ### CI & release
 
-- [ ] **🔴 HAUTE** · `bug` — release-images has no tag-vs-version guard — a mistag publishes images at a wrong version and breaks lockstep  
+- [x] **🔴 HAUTE** · `bug` — release-images has no tag-vs-version guard — a mistag publishes images at a wrong version and breaks lockstep  
   `.github/workflows/release-images.yml:72`
 
 
@@ -384,7 +386,7 @@
 
 ### CI & release
 
-- [ ] **🟠 MOYENNE** · `divergence-doc` — CLAUDE.md release instructions contradict the workflows: 'Le SDK reste sur les tags sdk-v*' but release-sdk now fires on v* too  
+- [x] **🟠 MOYENNE** · `divergence-doc` — CLAUDE.md release instructions contradict the workflows: 'Le SDK reste sur les tags sdk-v*' but release-sdk now fires on v* too  
   `CLAUDE.md:44` _(aussi: deps-licenses)_
 - [ ] **🟠 MOYENNE** · `perf` — Every v* tag runs the full monorepo gate twice in parallel (release-images + release-sdk each call gate.yml)  
   `.github/workflows/release-sdk.yml:39`
