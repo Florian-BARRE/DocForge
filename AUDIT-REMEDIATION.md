@@ -52,6 +52,8 @@
 
 - **2026-09-04 — V4 tranche 3 (paddle coût OCR)** : `CostPlanExtractor.__enrich` utilisait une liste local-free hardcodée `('rapidocr','bge_server')` (sans `paddle`) → une chaîne OCR `[paddle → mistral]` était pricée à $0.00 (paddle vu comme payé, escalade Mistral cachée). Remplacé par le canonique `LOCAL_FREE_KINDS`. +1 test paddle→mistral. 12✓.
 
+- **2026-09-04 — V4 tranche 4 (validation overrides coût)** : `EstimateOverrides` acceptait des taux embed/ocr NÉGATIFS (valeurs de dict sans contrainte) et des assumptions INFINIES (`inf` passe `gt/ge`). Ajouté `NonNegativeRate` (ge=0) sur les valeurs embed/ocr + `allow_inf_nan=False` sur les 3 modèles. +6 tests (négatif/inf/nan rejetés, override valide accepté).
+
 ## Avancement
 
 | Vague | Total | Fait |
@@ -421,7 +423,7 @@
   `src/docforge/worker/backend/libs/jobs/usage.py:51`
 - [ ] **⚪ FAIBLE** · `design` — Meter undercounts on retries/failed paid attempts, and search-time LLM spend is metered nowhere  
   `src/docforge/shared/libs/pipelines/nodes/openai_compat/client.py:52`
-- [ ] **⚪ FAIBLE** · `bug` — Override validation gaps: negative embed/OCR rates and infinite assumption values are accepted  
+- [x] **⚪ FAIBLE** · `bug` — Override validation gaps: negative embed/OCR rates and infinite assumption values are accepted  
   `src/docforge/app/backend/libs/estimate/overrides.py:32`
 - [ ] **⚪ FAIBLE** · `consistency` — Per-collection rate overrides shape the estimate but never the meter — contradicting the 'priced from identical numbers' contract  
   `src/docforge/shared/libs/pipelines/ingest/estimate/rates.py:6`

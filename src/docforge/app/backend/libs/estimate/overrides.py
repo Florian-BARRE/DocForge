@@ -7,14 +7,22 @@
 # estimate_overrides JSONB) and the read/write API shape — the merger (merger.py) folds it over the
 # defaults; no arithmetic lives here.
 
+# ====== Standard Library Imports ======
+from typing import Annotated
+
 # ====== Third-Party Library Imports ======
 from pydantic import BaseModel, ConfigDict, Field
+
+# A non-negative price. Used for the embed/ocr rate-map VALUES, which are plain floats (a dict value
+# cannot carry its own Field), so without this a negative rate slipped through into the estimate.
+# ``allow_inf_nan=False`` on each model additionally rejects ``inf``/``nan`` (which pass ``ge``/``gt``).
+NonNegativeRate = Annotated[float, Field(ge=0.0)]
 
 
 class ModelRateOverride(BaseModel):
     """One chat/LLM/VLM model's (input, output) price override, USD per 1M tokens."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
 
     input: float = Field(ge=0.0, description="Input/prompt price, USD per 1M tokens.")
     output: float = Field(ge=0.0, description="Output/completion price, USD per 1M tokens.")
@@ -23,17 +31,17 @@ class ModelRateOverride(BaseModel):
 class RateOverrides(BaseModel):
     """Partial overrides of the three rate maps the estimator prices against (absent map = default)."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
 
     models: dict[str, ModelRateOverride] | None = Field(
         default=None,
         description="Chat model id → (input, output) USD/1M-token override (merged over defaults).",
     )
-    embed: dict[str, float] | None = Field(
+    embed: dict[str, NonNegativeRate] | None = Field(
         default=None,
         description="Embedding model id → USD/1M-token override (merged over defaults).",
     )
-    ocr: dict[str, float] | None = Field(
+    ocr: dict[str, NonNegativeRate] | None = Field(
         default=None,
         description="OCR provider kind → USD/page override (merged over defaults).",
     )
@@ -46,10 +54,11 @@ class AssumptionOverrides(BaseModel):
     Mirrors ``EstimateAssumptions`` field-for-field, but every field is optional so a caller overrides
     only what it means to. ``target_chunk_tokens`` / ``chunk_overlap_ratio`` may be set here, but the
     collection's ACTUAL chunker config still wins on top (the pipeline is authoritative for chunk
-    sizing) — see the merger.
+    sizing) — see the merger. ``allow_inf_nan=False`` rejects ``inf``/``nan`` (which otherwise pass the
+    ``gt``/``ge`` bounds and would poison the extrapolation).
     """
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
 
     tokens_per_page: float | None = Field(
         default=None, gt=0.0, description="Body-text tokens/page."
