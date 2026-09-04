@@ -84,6 +84,17 @@ class RUNTIME_CONFIG(EnvConfigLoader):
     WORKER_TRANSFER_GC_INTERVAL_MINUTES = env(
         "WORKER_TRANSFER_GC_INTERVAL_MINUTES", cast=int, default=15
     )
+    # Staleness horizon (seconds) for the stuck-TRANSFER reaper: a `collection_transfer` row RUNNING
+    # this long past its last write (updated_at) is marked FAILED — recovering a row a worker hard-kill
+    # or arq timeout left RUNNING forever (neither runs the task's except, so the row never turns
+    # terminal and its staged bundle never GCs). A transfer row has NO heartbeat and its engine
+    # progress callback only LOGS, so updated_at effectively freezes at the run's start; this horizon
+    # therefore MUST exceed arq's hard job_timeout ceiling (WORKER_JOB_TIMEOUT_MAX_SECONDS + GRACE) so
+    # a legitimately long transfer — which arq would kill first — is NEVER falsely reaped (validated
+    # below). Reuses WORKER_REAP_ENABLED as its master switch (the reaper family); default 3h.
+    WORKER_TRANSFER_REAP_STALE_SECONDS = env(
+        "WORKER_TRANSFER_REAP_STALE_SECONDS", cast=int, default=10800
+    )
 
     # ───── Audit-log retention ─────
     # How long an audit_log row is kept before the retention cron prunes it (DAYS). 0 = KEEP FOREVER
@@ -243,6 +254,20 @@ if RUNTIME_CONFIG.WORKER_JOB_TIMEOUT_SECONDS > RUNTIME_CONFIG.WORKER_JOB_TIMEOUT
         "WORKER_JOB_TIMEOUT_SECONDS must be <= WORKER_JOB_TIMEOUT_MAX_SECONDS "
         f"(got {RUNTIME_CONFIG.WORKER_JOB_TIMEOUT_SECONDS} > "
         f"{RUNTIME_CONFIG.WORKER_JOB_TIMEOUT_MAX_SECONDS})."
+    )
+
+# ─── The transfer-reap horizon must sit ABOVE arq's hard job_timeout ceiling, or a legitimately-long
+#     transfer (which arq kills first) could be falsely reaped mid-run — its updated_at freezes at the
+#     run's start, so the horizon must clear the longest run arq permits. ───
+_ARQ_JOB_CEILING = (
+    RUNTIME_CONFIG.WORKER_JOB_TIMEOUT_MAX_SECONDS + RUNTIME_CONFIG.WORKER_JOB_TIMEOUT_GRACE_SECONDS
+)
+if RUNTIME_CONFIG.WORKER_TRANSFER_REAP_STALE_SECONDS < _ARQ_JOB_CEILING:
+    raise ValueError(
+        "WORKER_TRANSFER_REAP_STALE_SECONDS must be >= the arq job_timeout ceiling "
+        "(WORKER_JOB_TIMEOUT_MAX_SECONDS + WORKER_JOB_TIMEOUT_GRACE_SECONDS) so a legitimately long "
+        f"transfer is never falsely reaped (got {RUNTIME_CONFIG.WORKER_TRANSFER_REAP_STALE_SECONDS} "
+        f"< {_ARQ_JOB_CEILING})."
     )
 
 # ─── Apply logging configuration AFTER class definition ───

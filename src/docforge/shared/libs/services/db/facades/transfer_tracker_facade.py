@@ -7,7 +7,7 @@
 
 # ====== Standard Library Imports ======
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 # ====== Internal Project Imports ======
@@ -129,6 +129,52 @@ class TransferTrackerFacade(LoggerClass):
                 error=error,
                 finished_at=finished_at,
             )
+
+    async def reap_stale(self, older_than_seconds: float) -> list[uuid.UUID]:
+        """
+        Fail every RUNNING transfer whose progress froze past the staleness horizon — orphan recovery.
+
+        A worker hard-killed (SIGKILL) or arq-timed-out mid-transfer never runs the task's ``except``
+        (SIGKILL leaves no chance; an arq timeout raises BaseException past ``except Exception``), so
+        its ``collection_transfer`` row stays RUNNING forever — the transfer GC never reclaims its
+        staged bundle (GC only sweeps terminal, expired rows) and the UI shows an eternal spinner. No
+        ingestion-job reaper covers this row (that one is document-scoped). This sibling sweep marks
+        each such row FAILED, which (a) makes it terminal + visible and (b) makes an IMPORT's staged
+        bundle GC-reclaimable via its admission ``expires_at``.
+
+        RESIDUAL (documented, not fixed here): an IMPORT hard-killed mid-restore may leave a
+        half-imported collection. The importer's own try/except rolls back on any IN-PROCESS failure,
+        but a SIGKILL fires no handler, AND the row does not carry the new collection's id until
+        mark_done — so the reaper has no id to roll back. It marks the row FAILED (the must-fix) and
+        the partial collection remains as an orphan the operator can delete. A clean 2-phase rollback
+        would need the importer to stamp the created id onto the row early; out of scope here.
+
+        Args:
+            older_than_seconds (float): The staleness horizon (see ``TransferApi.list_stale``); MUST
+                exceed arq's hard job_timeout ceiling so a healthy long transfer is never reaped.
+
+        Returns:
+            list[uuid.UUID]: The reaped transfer ids (empty when nothing was stale).
+        """
+        minutes = int(older_than_seconds // 60)
+        error = (
+            f"reaped: transfer stalled RUNNING for >{minutes}m beyond the reap horizon — "
+            f"presumed orphaned by a worker crash/hard-kill (no transfer runs this long)"
+        )
+        reaped: list[uuid.UUID] = []
+        async with self._postgres.session() as session:
+            for row in await TransferApi.list_stale(session, older_than_seconds):
+                await TransferApi.update(
+                    session,
+                    row.id,
+                    status=TransferStatus.FAILED,
+                    error=error,
+                    finished_at=datetime.now(UTC),
+                )
+                reaped.append(row.id)
+        if reaped:
+            self.logger.warning(f"Reaped {len(reaped)} stuck transfer(s): {error}")
+        return reaped
 
 
 __all__ = ["TransferTrackerFacade"]

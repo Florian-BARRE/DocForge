@@ -7,11 +7,11 @@
 
 # ====== Standard Library Imports ======
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 # ====== Third-Party Library Imports ======
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # ====== Internal Project Imports ======
@@ -52,6 +52,38 @@ class TransferApi:
                 CollectionTransfer.expires_at.is_not(None),
                 CollectionTransfer.expires_at < now,
             )
+        )
+        return list(result.scalars().all())
+
+    @staticmethod
+    async def list_stale(
+        session: AsyncSession, older_than_seconds: float
+    ) -> list[CollectionTransfer]:
+        """Return every RUNNING transfer whose ``updated_at`` froze past the staleness horizon.
+
+        A collection_transfer row has NO heartbeat, so ``updated_at`` (bumped on every lifecycle write:
+        mark_running, report_progress, mark_done/failed) is the only liveness signal. Between
+        mark_running and the terminal write the engine's progress callback only LOGS — it does not
+        write the row — so ``updated_at`` effectively freezes at the run's start for the whole run.
+        The caller therefore passes a horizon ABOVE arq's hard job_timeout ceiling: no transfer can
+        legitimately run that long (arq kills it first), so any RUNNING row older than the horizon is
+        genuinely orphaned (a hard kill or an arq timeout that raised BaseException past the task's
+        ``except``), never a healthy long run. Oldest first, so a backlog is cleared deterministically.
+
+        Args:
+            older_than_seconds (float): The staleness horizon; a RUNNING row untouched longer than
+                this is presumed orphaned.
+
+        Returns:
+            list[CollectionTransfer]: The stale RUNNING transfer rows (empty when none qualify).
+        """
+        result = await session.execute(
+            select(CollectionTransfer)
+            .where(
+                CollectionTransfer.status == TransferStatus.RUNNING,
+                CollectionTransfer.updated_at < func.now() - timedelta(seconds=older_than_seconds),
+            )
+            .order_by(CollectionTransfer.updated_at.asc())
         )
         return list(result.scalars().all())
 

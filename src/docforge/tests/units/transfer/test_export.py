@@ -5,7 +5,9 @@ dedup, and a manifest whose counts + checksums make the produced tree self-valid
 import json
 from types import SimpleNamespace
 
+import pytest
 from collection_transfer import BundleReader, CollectionExporter
+from collection_transfer.export import CollectionExportError
 from collection_transfer.paths import BundlePaths
 
 from .conftest import (
@@ -16,11 +18,39 @@ from .conftest import (
     ORIGINAL_HASH,
     PDF_HASH,
     FakeExportFacade,
+    make_blob_rows,
     make_point_record,
 )
 
 # A point whose id matches NO live chunk in the bundle — an orphan the importer would drop anyway.
 ORPHAN_POINT_ID = "99999999-9999-9999-9999-999999999999"
+
+
+class SnapshotDriftExportFacade(FakeExportFacade):
+    """A live re-query of blob hashes would EXPLODE — the exporter must derive them from the snapshot.
+
+    ``collect_blob_hashes`` is the OLD live re-query path; the snapshot-consistent exporter must never
+    call it (the blob set now comes from the document rows already written). A call here is a bug.
+    """
+
+    async def collect_blob_hashes(self, _collection_id):
+        raise AssertionError(
+            "collect_blob_hashes must not be called — blobs come from the snapshot"
+        )
+
+
+class MissingBlobRowExportFacade(FakeExportFacade):
+    """The PDF blob's REGISTRY ROW vanished (a concurrent delete raced the document pass)."""
+
+    async def get_blob_rows(self, _hashes):
+        return [make_blob_rows()[0]]  # only the ORIGINAL row survives; the PDF row is gone
+
+
+class MissingBlobBytesExportFacade(FakeExportFacade):
+    """The blob's S3 OBJECT vanished between the registry read and the byte stream."""
+
+    async def read_blob_bytes(self, s3_key):
+        raise FileNotFoundError(f"object {s3_key} not found")
 
 
 class OrphanPointExportFacade(FakeExportFacade):
@@ -108,3 +138,39 @@ async def test_produced_bundle_self_validates(export_facade, tmp_path) -> None:
     # Every checksum the exporter recorded must match what the reader recomputes.
     manifest = BundleReader(root).validate()
     assert manifest.counts.points == 1
+
+
+async def test_blob_set_is_derived_from_the_document_snapshot_not_a_live_requery(tmp_path) -> None:
+    # The exporter must NOT re-query the collection's blob hashes live (that could disagree with the
+    # documents already written); it derives them from the snapshot rows. The facade's live re-query
+    # raises if called, yet the export still emits exactly the snapshot-referenced blobs.
+    manifest, root = await _build(SnapshotDriftExportFacade(), tmp_path)
+    blob_files = {p.name for p in (root / BundlePaths.BLOB_DIR).iterdir()}
+    assert blob_files == {ORIGINAL_HASH, PDF_HASH}  # doc.source_hash + doc.pdf_blob_hash — no more
+    assert manifest.counts.blobs == 2
+
+
+async def test_export_aborts_loudly_when_a_referenced_blob_row_vanished(tmp_path) -> None:
+    exporter = CollectionExporter(
+        MissingBlobRowExportFacade(),
+        docforge_version="test",
+        created_at="2026-01-01T00:00:00+00:00",
+    )
+    with pytest.raises(CollectionExportError) as excinfo:
+        await exporter.build(COLLECTION_ID, tmp_path / "bundle")
+    message = str(excinfo.value)
+    # The error names the vanished blob AND the document that referenced it — never a silent drop.
+    assert PDF_HASH in message
+    assert "demo.pdf" in message  # the referencing document's filename (see make_document)
+
+
+async def test_export_aborts_loudly_when_a_referenced_blob_object_vanished(tmp_path) -> None:
+    exporter = CollectionExporter(
+        MissingBlobBytesExportFacade(),
+        docforge_version="test",
+        created_at="2026-01-01T00:00:00+00:00",
+    )
+    with pytest.raises(CollectionExportError) as excinfo:
+        await exporter.build(COLLECTION_ID, tmp_path / "bundle")
+    # A missing S3 object also aborts loudly, naming the referencing document — no corrupt bundle.
+    assert "demo.pdf" in str(excinfo.value)
