@@ -26,6 +26,8 @@
 
 - **2026-09-04 — V1 tranche 9 (creds postgres fresh-clone)** : les 3 sources alignées sur `docforge` — `postgres.env.example` (bootstrap DB), `.env.example` (DSN host-side), et le fallback compose `docforge:docforge` concordent → un clone propre boote sans erreur d'auth ; bloc `POSTGRES_DSN` commenté ajouté au `.env` racine (mécanisme d'override prod, absent avant) + avertissements change-me. Vérifié : 0 `change_me` résiduel.
 
+- **2026-09-04 — V1 tranche 10 (paddle body-cap)** : `/ocr` et `/layout-parsing` lisent le corps sous un plafond dur (`RequestBodyGuard.read_capped` : Content-Length > cap → 413 avant lecture, puis stream capé contre un length menteur/absent) ; knob `PADDLE_MAX_BODY_BYTES` (100 MiB) documenté. +5 tests guard + wiring adapté. Gate paddle : 32 tests, ruff+mypy clean.
+
 ## Avancement
 
 | Vague | Total | Fait |
@@ -115,7 +117,7 @@
 
 ### Serveurs modèles
 
-- [ ] **🟠 MOYENNE** · `security` — paddle_server buffers unbounded request bodies — no size cap on /ocr or /layout-parsing  
+- [x] **🟠 MOYENNE** · `security` — paddle_server buffers unbounded request bodies — no size cap on /ocr or /layout-parsing  
   `src/paddle_server/backend/routers/ocr/router.py:40`
 
 ### CI & release
