@@ -140,6 +140,11 @@ BLOB = {
                         "to_node_id": "vlm_photo",
                         "condition": {"kind": "when_equals", "field": "kind", "equals": "photo"},
                     },
+                    # Default (bare = OnSuccess): a successfully-classified NON-photo kind degrades to
+                    # the kept figure_entry, so the switch is exhaustive (WhenEquals(photo) takes
+                    # priority for a photo; this catches every other declared kind — without it an
+                    # unmatched successful value would silently end the group).
+                    {"from_node_id": "clf", "to_node_id": "fallback_clf"},
                     {"from_node_id": "vlm_photo", "to_node_id": "vp_entry"},
                     # FAIL-SOFT: a provider failure ROUTES to a degraded entry instead of failing the doc
                     {
