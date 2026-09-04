@@ -1,0 +1,71 @@
+# ============================================================================
+# Release ORCHESTRATOR — the single entrypoint for every release tag.
+#
+# Runs the reusable quality gate (gate.yml) EXACTLY ONCE per tag, then fans out to the two
+# publish paths that depend on it:
+#   - images  → release-images.yml (GHCR: app/mcp/worker/bge-server/paddle-server, cpu + gpu)
+#   - sdk     → release-sdk.yml    (PyPI: docforge-sdk, Trusted Publishing)
+#
+# Before this file existed, release-images.yml and release-sdk.yml each independently
+# `uses: ./gate.yml`, so a single `v*` tag ran the ENTIRE monorepo gate TWICE, concurrently —
+# wasted CI minutes for zero benefit (both runs check the exact same tree). Now both
+# release-images.yml and release-sdk.yml are `workflow_call`-only (no more standalone
+# `on: push: tags:`): they can only run as a fan-out FROM here, `needs: gate`, so a red gate still
+# blocks BOTH publishes — same guarantee as before, just without running the gate twice.
+#
+# TAG PATTERNS (mirrors the previous per-file triggers exactly):
+#   v1.2.3      → unified lockstep release: gate → images AND sdk (both published at 1.2.3).
+#   sdk-v1.2.3  → SDK-only escape hatch: gate → sdk ONLY (`images` is skipped via its `if:`).
+#
+# release-images.yml and release-sdk.yml keep their OWN filenames on purpose even though neither
+# triggers directly anymore: PyPI Trusted Publishing (release-sdk.yml's `publish` job) matches on
+# the filename of the reusable workflow that DEFINES the job, not the top-level caller — see
+# https://docs.pypi.org/trusted-publishers/using-a-publisher/ ("reusable workflows" note). Renaming
+# or inlining that job into this file would silently break the PyPI trusted publisher and require
+# reconfiguring it on PyPI's side. Keep them as separate `workflow_call` files for this reason.
+#
+# HOW TO RELEASE:
+#   git tag v1.2.3 && git push origin v1.2.3          # unified: images + SDK
+#   git tag sdk-v1.2.3 && git push origin sdk-v1.2.3  # SDK-only escape hatch
+# ============================================================================
+
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+      - "sdk-v*"
+
+# Declaring `permissions:` sets every UNLISTED scope to `none` for the WHOLE run, including every
+# nested reusable workflow called below — a called workflow's own `permissions:` can only NARROW
+# this, never widen it, so every scope any of them needs must be listed here too.
+permissions:
+  contents: read # actions/checkout in every nested job
+  packages: write # release-images.yml: GHCR push via GITHUB_TOKEN
+  id-token: write # release-sdk.yml: PyPI Trusted Publishing (OIDC)
+
+jobs:
+  # 1. Run the exact same gate that guards every merge — ONCE per tag. Both fan-out jobs below
+  #    `needs` it, so a red gate skips both publishes.
+  gate:
+    uses: ./.github/workflows/gate.yml
+
+  # 2. GHCR images — only for a unified `v*` tag. `sdk-v*` does NOT start with "v" (it starts with
+  #    "s"), so this condition already excludes the SDK-only escape hatch with no extra negation.
+  images:
+    if: startsWith(github.ref_name, 'v')
+    needs: gate
+    uses: ./.github/workflows/release-images.yml
+    permissions:
+      contents: read
+      packages: write
+
+  # 3. PyPI SDK publish — every release tag ships the SDK (unified `v*` AND `sdk-v*` both reach
+  #    this job; release-sdk.yml's own guard checks the tag against docforge_sdk/_version.py).
+  sdk:
+    needs: gate
+    uses: ./.github/workflows/release-sdk.yml
+    permissions:
+      contents: read
+      id-token: write
