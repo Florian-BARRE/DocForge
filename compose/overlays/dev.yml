@@ -26,7 +26,10 @@
 
 services:
   docforge_app:
-    # Build locally from source, overriding the prod GHCR image: pull in the base file.
+    # Own LOCAL dev tag (overrides base's GHCR `image:` via first-wins include: order) so a dev
+    # `--build` never occupies the prod image name — a later prod `up` on this host can't silently
+    # run the dev build. Build locally from source.
+    image: docforge-app:dev
     build:
       context: ../../src/docforge
       dockerfile: app/Dockerfile
@@ -45,6 +48,8 @@ services:
       --reload-dir /app/shared
 
   docforge_worker:
+    # Own LOCAL dev tag (see docforge_app) so the dev build never occupies the prod image name.
+    image: docforge-worker:dev
     # Build locally from source, overriding the prod GHCR image: pull in the base file.
     # CPU torch by default; the gpu override file flips TORCH_VARIANT to gpu.
     build:
@@ -79,6 +84,8 @@ services:
   #    mounts: no hot-reload command, so a rebuild (`--build`) picks up its source changes.
   #    (bge_server's build override lives on its own block below, alongside its port republish.) ──
   docforge_mcp:
+    # Own LOCAL dev tag (see docforge_app) so the dev build never occupies the prod image name.
+    image: docforge-mcp:dev
     build:
       context: ../../src          # sibling context: the mcp source is src/mcp, not under docforge
       dockerfile: mcp/Dockerfile
@@ -109,6 +116,9 @@ services:
       - "10045:3000"              # HTTP conversion API (host-side uv-run dev only)
 
   docforge_bge_server:
+    # Own LOCAL dev tag (see docforge_app) so the CPU dev build never occupies the prod image name.
+    # (In dev-gpu, gpu.yml's `image:` wins by include order; prod-gpu's pull_policy: always covers it.)
+    image: docforge-bge-server:dev
     # Build locally from source, overriding the prod GHCR image: pull in the base file.
     # CPU torch by default; the gpu override file flips TORCH_VARIANT to gpu.
     build:
@@ -120,6 +130,9 @@ services:
       - "10047:80"                # Operator access: http://localhost:10047/health
 
   docforge_paddle_server:
+    # Own LOCAL dev tag (see docforge_app) so the CPU dev build never occupies the prod image name.
+    # (In dev-gpu, gpu.yml's `image:` wins by include order; prod-gpu's pull_policy: always covers it.)
+    image: docforge-paddle-server:dev
     # Build locally from source, overriding the prod GHCR image: pull in the base file.
     # CPU paddlepaddle by default; the gpu override file flips TORCH_VARIANT to gpu.
     build:

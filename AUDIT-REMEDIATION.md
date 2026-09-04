@@ -70,6 +70,8 @@
 
 - **2026-09-04 — parity-guards OpenAPI (HAUTE)** : agent `mcp` dédié, relu. Les 3 guards n'itéraient que `MODELS` → un nouvel endpoint/schéma mergeait sans méthode SDK (gate vert). Ajouté : (1) `test_every_snapshot_schema_is_tracked` — tout schéma OpenAPI ∈ MODELS ∪ SKIPPED (les 80+ non suivis triés : mappés à de vrais modèles SDK validés, ou SKIPPED avec raison — StrEnums/routes `include_in_schema=False`) ; (2) `route_map` + `test_every_snapshot_route_is_tracked`/`test_no_stale_tracked_routes` (couverture de routes bidirectionnelle, exemption `/jobs/{id}/stream`). 0 dette TODO. **542 tests** (+123), ruff clean. **→ les 4 HAUTE restantes sont fermées.**
 
+- **2026-09-04 — V8 (dev builds retag prod images)** : un `--build` dev taguait les images aux noms GHCR de prod → un `up` prod ultérieur sur le même host pouvait tourner du code dev en silence. Deux correctifs complémentaires : (a) `dev.yml` tague `docforge-<svc>:dev` (les 5 services buildés — gagne via l'ordre include: en dev-cpu ; app/mcp aussi en dev-gpu) ; (b) `pull_policy: always` sur prod-cpu/prod-gpu (prod tire TOUJOURS de GHCR — couvre le résidu dev-gpu où l'image de gpu.yml gagne). Validé : dev-cpu→`:dev`, prod→GHCR+always, `config -q` OK sur les 4 scénarios.
+
 ## Avancement
 
 | Vague | Total | Fait |
@@ -300,7 +302,7 @@
 
 - [x] **🔴 HAUTE** · `bug` — proxy.yml Caddyfile bind mount resolves outside the repo — TLS add-on broken in every documented invocation  
   `compose/overlays/proxy.yml:48` _(aussi: telemetry-configs)_
-- [ ] **🟠 MOYENNE** · `design` — Dev builds retag the GHCR prod image names — a later prod `up` on the same host silently runs the dev-built image  
+- [x] **🟠 MOYENNE** · `design` — Dev builds retag the GHCR prod image names — a later prod `up` on the same host silently runs the dev-built image  
   `compose/overlays/dev.yml:30`
 - [ ] **🟠 MOYENNE** · `consistency` — Grafana admin password mechanism drift: Makefile exports a variable nothing consumes; root .env.example documents the retired mechanism  
   `Makefile:83`
