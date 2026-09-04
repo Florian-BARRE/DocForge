@@ -130,13 +130,17 @@ export function DocumentPage({ collectionId, documentId, onNavigate }: DocumentP
             pages={tabs.pages}
             chunks={tabs.chunks}
             provenance={tabs.provenance}
-            error={tabs.irError ?? tabs.pagesError ?? tabs.chunksError}
+            // Only IR/pages are load-bearing for the page↔block view — a chunks fetch failure
+            // degrades to a non-blocking notice (chunk grouping/provenance unavailable) rather
+            // than blanking the whole tab, per the tab's own degrade-without-chunks design.
+            error={tabs.irError ?? tabs.pagesError}
+            chunksError={tabs.chunksError}
             onRetry={() => {
               tabs.loadIr();
               tabs.loadPages();
-              tabs.loadChunks();
               tabs.loadProvenance();
             }}
+            onRetryChunks={tabs.loadChunks}
           />
         )}
         {activeTab === "ir" &&
