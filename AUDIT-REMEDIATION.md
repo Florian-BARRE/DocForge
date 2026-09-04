@@ -28,6 +28,8 @@
 
 - **2026-09-04 — V1 tranche 10 (paddle body-cap)** : `/ocr` et `/layout-parsing` lisent le corps sous un plafond dur (`RequestBodyGuard.read_capped` : Content-Length > cap → 413 avant lecture, puis stream capé contre un length menteur/absent) ; knob `PADDLE_MAX_BODY_BYTES` (100 MiB) documenté. +5 tests guard + wiring adapté. Gate paddle : 32 tests, ruff+mypy clean.
 
+- **2026-09-04 — V1 tranche 11 (SSRF egress allowlist)** : `ProviderEgressPolicy` (pur, allow-all par défaut, globs+CIDR) + knob `PROVIDER_EGRESS_ALLOWLIST` (app+worker, OFF par défaut) enforcé à 2 edges — le **health sweep** (un host non listé → `blocked`, jamais sondé : plus de scanner) et le **preflight worker** (refus avant la 1re dépense) ; couvre l'oracle ingest ET search. Runtime in-node : documenté honnêtement (repose sur preflight + egress réseau). Impl core par agent `pipeline` dédié, **finalisée par moi** (wiring worker jobs/core, +16 tests policy/sweep, doc PROD-HARDENING §7). 300 passed, ruff clean.
+
 ## Avancement
 
 | Vague | Total | Fait |
@@ -77,7 +79,7 @@
   `src/docforge/app/backend/routers/transfers/router.py:85` _(aussi: backend-api)_
 - [~] **🟠 MOYENNE** · `security` — Import resource exhaustion: decompression bomb + whole-corpus buffering in the worker  
   `src/docforge/worker/backend/libs/collection_transfer/bundle/archive.py:62`
-- [ ] **🟠 MOYENNE** · `security` — SSRF / internal-network oracle via per-collection provider base_url (unmitigated, unacknowledged)  
+- [x] **🟠 MOYENNE** · `security` — SSRF / internal-network oracle via per-collection provider base_url (unmitigated, unacknowledged)  
   `src/docforge/shared/libs/pipelines/nodes/openai_compat/preflight.py:92`
 - [ ] **⚪ FAIBLE** · `bug` — 500-instead-of-4xx and scope-gate edge cases (grouped)  
   `src/docforge/app/backend/routers/auth/whoami.py:40`
@@ -132,7 +134,7 @@
 
 ### Search & retrieval
 
-- [ ] **⚪ FAIBLE** · `security` — Search-side SSRF parity: per-collection base_urls + probe endpoints form an internal-network reachability oracle  
+- [x] **⚪ FAIBLE** · `security` — Search-side SSRF parity: per-collection base_urls + probe endpoints form an internal-network reachability oracle  
   `src/docforge/app/backend/routers/search/helpers.py:339`
 
 ### Télémétrie

@@ -15,7 +15,11 @@ from shared_libs.pipelines.base import (
 )
 from shared_libs.pipelines.build import GroupNodeBlob, PipelineBuilder
 from shared_libs.pipelines.engine import CacheHook, FlowEngine, ProgressCallback
-from shared_libs.pipelines.reachability import ProbeStatus, ReachabilitySweep
+from shared_libs.pipelines.reachability import (
+    ProbeStatus,
+    ProviderEgressPolicy,
+    ReachabilitySweep,
+)
 from shared_libs.pipelines.validation import GraphValidator
 from shared_libs.public_models import CollectionContract, RunBundle, SourceDocument
 
@@ -63,23 +67,28 @@ class PipelineRunner(LoggerClass):
         self._engine = FlowEngine(trace_payloads=False)
         self._sweep = ReachabilitySweep()
 
-    async def __preflight(self, group: Group) -> None:
+    async def __preflight(
+        self, group: Group, egress_policy: ProviderEgressPolicy | None
+    ) -> None:
         """
         Sweep every provider leaf's reachability BEFORE the first spend — fail fast if any is down.
 
         Delegates the walk + probing to the shared ReachabilitySweep (the same public seam the app's
         on-demand collection-health endpoint uses), then applies the worker's own policy: any leaf
-        whose endpoint is unreachable or whose credentials are rejected aborts the run before a
-        single byte is read or stored. Local leaves (no endpoint) come back ``skipped`` and pass.
+        whose endpoint is unreachable, whose credentials are rejected, or whose host is refused by the
+        egress allowlist (``blocked``, never probed) aborts the run before a single byte is read or
+        stored. Local leaves (no endpoint) come back ``skipped`` and pass.
 
         Args:
             group (Group): The built + validated pipeline graph.
+            egress_policy (ProviderEgressPolicy | None): The egress allowlist gate; a disallowed
+                base_url is refused here (``blocked``) before the network probe. None → probe all.
 
         Raises:
             PipelineRunError: One or more provider leaves failed preflight (named with their reason).
         """
         # 1. Structured per-leaf outcomes from the shared sweep (probes run concurrently, capped).
-        results = await self._sweep.sweep(group, _INGEST_SIDE)
+        results = await self._sweep.sweep(group, _INGEST_SIDE, egress_policy)
 
         # 2. The worker's policy: anything that is not ok/skipped aborts BEFORE spend, named.
         failures = [
@@ -102,6 +111,7 @@ class PipelineRunner(LoggerClass):
         progress_callback: ProgressCallback | None = None,
         preflight_enabled: bool = True,
         cache_hook: CacheHook | None = None,
+        egress_policy: ProviderEgressPolicy | None = None,
     ) -> tuple[RunBundle, NodeExecutionRecord]:
         """
         Execute one ingestion run end to end.
@@ -118,6 +128,10 @@ class PipelineRunner(LoggerClass):
             cache_hook (CacheHook | None): Optional per-run stage-cache seam. When provided, a
                 cacheable root stage may be served from / stored into the cache; None runs the
                 pipeline exactly as if no cache existed (a full recompute).
+            egress_policy (ProviderEgressPolicy | None): The provider egress allowlist gate applied
+                during preflight. When set (a non-empty allowlist) a node whose base_url host is not
+                allowed is refused BEFORE the first spend; None / empty allowlist → probe every
+                provider leaf as before (guard OFF).
 
         Returns:
             tuple[RunBundle, NodeExecutionRecord]: The delivery and the full execution trace.
@@ -138,7 +152,7 @@ class PipelineRunner(LoggerClass):
         # 2. Preflight reachability BEFORE any spend — a wrong/unreachable endpoint fails fast here,
         #    having read/stored nothing (the last honest gap the structural validator cannot cover).
         if preflight_enabled:
-            await self.__preflight(group)
+            await self.__preflight(group, egress_policy)
 
         # 3. A FRESH run input per job — the run MUTATES what it carries (the ir, by design).
         run_input = {"source": source, "contract": contract}

@@ -113,6 +113,23 @@ class RUNTIME_CONFIG(EnvConfigLoader):
         "RATE_LIMIT_TRUST_FORWARDED_FOR", cast=bool, default=True
     )
 
+    # ───── Provider egress allowlist (SSRF guard, OFF by default) ─────
+    # A per-collection provider base_url is operator/tenant-writable, so an unrestricted reachability
+    # probe (GET /collections/{id}/health) doubles as an authenticated host/port scanner of the
+    # internal Docker network, and a run's LLM/VLM/embed calls POST to the same arbitrary URL. This
+    # allowlist gates which destinations may be reached. EMPTY (the default) = allow-all (guard OFF,
+    # behaviour unchanged) — kept empty out-of-box so the in-stack hostname providers (bge_server,
+    # gotenberg, paddle_server) work without configuration. SET it (comma-separated host globs AND/OR
+    # IP/CIDR entries, e.g. "bge_server,gotenberg,paddle_server,*.trusted.example,10.0.0.0/8") to turn
+    # the guard ON: a base_url whose host is not listed is reported ``blocked`` by the health sweep
+    # (never probed) and REFUSED by the worker preflight before the first spend. Runtime in-node POSTs
+    # are NOT blocked per-call (nodes read no config, by design) — they rely on this same allowlist
+    # being enforced at preflight (which gates before spend) PLUS network-level egress control.
+    # Recommended for untrusted-tenant deployments. See docs/PROD-HARDENING.md.
+    PROVIDER_EGRESS_ALLOWLIST: str = env(
+        "PROVIDER_EGRESS_ALLOWLIST", required=False, default=""
+    )
+
     # ───── Idempotency (Idempotency-Key middleware, ON by default) ─────
     # ON out-of-box, but SAFE: the middleware only engages when a mutating request to an ELIGIBLE
     # small-JSON endpoint (create/update collection, reingest, export, create/rotate key) carries an

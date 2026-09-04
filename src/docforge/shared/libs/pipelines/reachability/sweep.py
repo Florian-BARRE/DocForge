@@ -25,6 +25,7 @@ from shared_libs.pipelines.nodes.openai_compat import (
 from shared_libs.pipelines.registry import NodeRegistry
 
 # ====== Local Project Imports ======
+from .egress_policy import ProviderEgressPolicy
 from .result import ProviderProbeResult
 from .status import ProbeStatus
 
@@ -65,11 +66,14 @@ class ReachabilitySweep(LoggerClass):
         budget = EndpointReachability.budget(timeout) if timeout else EndpointReachability.budget()
         return min(budget + _PROBE_MARGIN_SECONDS, _PROBE_CEILING_SECONDS)
 
-    async def __probe(self, node: ActionNode, side: str) -> ProviderProbeResult:
+    async def __probe(
+        self, node: ActionNode, side: str, policy: ProviderEgressPolicy | None
+    ) -> ProviderProbeResult:
         """
         Probe one action leaf, projecting its preflight() outcome onto a ProviderProbeResult.
 
-        Mapping: no preflight override → ``skipped`` (a local leaf, nothing to reach); a rejected
+        Mapping: no preflight override → ``skipped`` (a local leaf, nothing to reach); an endpoint
+        refused by the egress allowlist → ``blocked`` (refused WITHOUT any network probe); a rejected
         credential (EndpointAuthError) → ``auth_failed``; a transport failure or per-probe timeout
         (EndpointUnreachableError / TimeoutError) → ``unreachable``; any other preflight exception
         → ``unreachable`` (the endpoint is not usable before spend); success → ``ok``.
@@ -77,6 +81,9 @@ class ReachabilitySweep(LoggerClass):
         Args:
             node (ActionNode): The built action leaf to probe.
             side (str): Which pipeline it belongs to ('ingest' or 'search'), stamped on the result.
+            policy (ProviderEgressPolicy | None): The egress allowlist gate. When set and the node's
+                endpoint host is not allowed, the leaf is reported ``blocked`` and NEVER probed —
+                the guard that stops the sweep being a network scanner. None / empty → probe as usual.
 
         Returns:
             ProviderProbeResult: The structured outcome for this leaf.
@@ -96,7 +103,23 @@ class ReachabilitySweep(LoggerClass):
                 status=ProbeStatus.SKIPPED,
             )
 
-        # 2. Run the provider's own preflight under a short cap; time the round-trip either way.
+        # 2. Egress gate: a provider whose host is not on the operator's allowlist is REFUSED here,
+        #    before the network probe — so this seam can never be turned into a host/port scanner.
+        if policy is not None and not policy.is_allowed(endpoint):
+            return ProviderProbeResult(
+                node_id=node.id,
+                kind=node.KIND,
+                family=family,
+                side=side,
+                status=ProbeStatus.BLOCKED,
+                endpoint=endpoint,
+                detail=(
+                    f"endpoint host is not on the provider egress allowlist "
+                    f"(base_url={endpoint!r}) — refused without probing"
+                ),
+            )
+
+        # 3. Run the provider's own preflight under a short cap; time the round-trip either way.
         start = perf_counter()
         status, detail = ProbeStatus.OK, None
         try:
@@ -109,7 +132,7 @@ class ReachabilitySweep(LoggerClass):
             status, detail = ProbeStatus.UNREACHABLE, self.__detail(exc)
         latency_ms = int((perf_counter() - start) * 1000)
 
-        # 3. Assemble the structured record (detail only on a non-ok outcome).
+        # 4. Assemble the structured record (detail only on a non-ok outcome).
         return ProviderProbeResult(
             node_id=node.id,
             kind=node.KIND,
@@ -159,33 +182,45 @@ class ReachabilitySweep(LoggerClass):
                 leaves.append(child)
         return leaves
 
-    async def probe_nodes(self, nodes: list[ActionNode], side: str) -> list[ProviderProbeResult]:
+    async def probe_nodes(
+        self,
+        nodes: list[ActionNode],
+        side: str,
+        policy: ProviderEgressPolicy | None = None,
+    ) -> list[ProviderProbeResult]:
         """
         Probe a flat set of action leaves concurrently, one result per leaf.
 
         Args:
             nodes (list[ActionNode]): The action leaves to probe.
             side (str): Which pipeline they belong to ('ingest' or 'search'), stamped on results.
+            policy (ProviderEgressPolicy | None): The egress allowlist gate applied to each provider
+                leaf; a disallowed host is reported ``blocked`` and never probed. None → probe all.
 
         Returns:
             list[ProviderProbeResult]: One outcome per leaf, in the input order.
         """
         if not nodes:
             return []
-        return list(await asyncio.gather(*(self.__probe(node, side) for node in nodes)))
+        return list(await asyncio.gather(*(self.__probe(node, side, policy) for node in nodes)))
 
-    async def sweep(self, group: Group, side: str) -> list[ProviderProbeResult]:
+    async def sweep(
+        self, group: Group, side: str, policy: ProviderEgressPolicy | None = None
+    ) -> list[ProviderProbeResult]:
         """
         Sweep every action leaf of a built graph — provider leaves probed, local leaves skipped.
 
         Args:
             group (Group): The built + validated graph to sweep.
             side (str): Which pipeline it is ('ingest' or 'search'), stamped on every result.
+            policy (ProviderEgressPolicy | None): The egress allowlist gate; a leaf whose endpoint
+                host is not allowed comes back ``blocked`` (refused without a network probe). None →
+                probe every provider leaf as before.
 
         Returns:
             list[ProviderProbeResult]: One outcome per action leaf reachable from the graph.
         """
-        return await self.probe_nodes(self.collect_leaves(group), side)
+        return await self.probe_nodes(self.collect_leaves(group), side, policy)
 
 
 __all__ = ["ReachabilitySweep"]
