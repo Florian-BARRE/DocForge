@@ -66,6 +66,8 @@
 
 - **2026-09-04 — preflight + BlobNormalizer (2× HAUTE)** : agent `pipeline` dédié, relu + Part B finalisé/testé par moi. (A) `preflight()` ajouté à `ChunkerSemanticNode`, `FigureClassifyNode` (probe VLM, no-op sur `local`) et `BaseMetagenPrep` (endpoint défaut) → le sweep les sonde avant toute dépense ; commentaire config figure_classify corrigé. (B) `BlobNormalizer.normalize_reporting` détecte les nodes graph-level (edits `/edit`) que le heal ne round-trip pas ; le write boundary (`blob_helpers`) **refuse 422** avec message clair au lieu de perdre l'edit silencieusement — les blobs stock/stage healent sans drop (pas de faux positif). +2 tests. **Suite complète 1369 passed**.
 
+- **2026-09-04 — parity-guards OpenAPI (HAUTE)** : agent `mcp` dédié, relu. Les 3 guards n'itéraient que `MODELS` → un nouvel endpoint/schéma mergeait sans méthode SDK (gate vert). Ajouté : (1) `test_every_snapshot_schema_is_tracked` — tout schéma OpenAPI ∈ MODELS ∪ SKIPPED (les 80+ non suivis triés : mappés à de vrais modèles SDK validés, ou SKIPPED avec raison — StrEnums/routes `include_in_schema=False`) ; (2) `route_map` + `test_every_snapshot_route_is_tracked`/`test_no_stale_tracked_routes` (couverture de routes bidirectionnelle, exemption `/jobs/{id}/stream`). 0 dette TODO. **542 tests** (+123), ruff clean. **→ les 4 HAUTE restantes sont fermées.**
+
 ## Avancement
 
 | Vague | Total | Fait |
@@ -340,7 +342,7 @@
 
 ### SDK & MCP
 
-- [ ] **🔴 HAUTE** · `test-gap` — OpenAPI parity guards silently pass on additive drift — no completeness check over schemas or routes  
+- [x] **🔴 HAUTE** · `test-gap` — OpenAPI parity guards silently pass on additive drift — no completeness check over schemas or routes  
   `src/docforge_sdk/tests/check_schema_drift.py:89`
 - [ ] **🟠 MOYENNE** · `test-gap` — Async/sync lockstep guard and unit tests skip the three newest SDK resources (audit, corpus, snippets)  
   `src/docforge_sdk/tests/unit/test_resource_parity.py:25`
