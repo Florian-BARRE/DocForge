@@ -92,11 +92,14 @@ class RoutingRules:
         for node_id, transitions in outgoing.items():
             kinds = [t.condition.kind for t in transitions]
             for kind in set(kinds):
-                if kinds.count(kind) <= 1:
-                    continue
                 if kind == ConditionKind.WHEN_EQUALS:
+                    # Validate the switch on ANY number of WhenEquals edges (>= 1), not only 2+. Its
+                    # field/value-uniqueness checks are no-ops for a lone edge, but the closed-set
+                    # EXHAUSTIVENESS check is not: a single edge on a closed SWITCH_FIELDS field with
+                    # no OnSuccess/Always default silently truncates the group as SUCCESS on every
+                    # unmatched value at run time — exactly what this check exists to reject.
                     cls.__check_switch(location, node_id, children, transitions, collector)
-                else:
+                elif kinds.count(kind) > 1:
                     collector.record(
                         ValidationCode.AMBIGUOUS_ROUTING,
                         location,
