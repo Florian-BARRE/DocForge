@@ -181,6 +181,15 @@ class RUNTIME_CONFIG(EnvConfigLoader):
         "ESTIMATE_MAX_SAMPLE_DOCUMENTS", cast=int, default=2000
     )
 
+    # ───── Search (disabled-document exclusion bound) ─────
+    # A disabled document is hidden from search via a bounded ``must_not document_id in {...}`` clause.
+    # Past this many disabled documents in a collection that must_not would bloat EVERY query, so the
+    # facade FLIPS to a positive ``document_id in {enabled}`` inclusion (the smaller set) instead —
+    # correct and equivalent, sized by the enabled set on a mostly-archived collection.
+    SEARCH_MAX_DISABLED_DOC_EXCLUSIONS: int = env(
+        "SEARCH_MAX_DISABLED_DOC_EXCLUSIONS", cast=int, default=2000
+    )
+
     # ───── Jobs list (monitoring view) ─────
     # Hard ceiling for one GET /jobs page — the server clamps a larger requested ``limit`` down to
     # this (and defaults to it), so a heavily re-ingested collection with thousands of job rows can

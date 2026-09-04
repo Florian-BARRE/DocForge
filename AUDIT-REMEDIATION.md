@@ -8,6 +8,8 @@
 
 ## Journal
 
+- **2026-09-04 — Exclusion search bornée (475) + fix runtime latent** : la liste d'exclusion des docs désactivés (`must_not document_id in {disabled}`) était non bornée et ridait CHAQUE requête. Désormais bornée par `SEARCH_MAX_DISABLED_DOC_EXCLUSIONS` (2000) : sous le cap = must_not classique ; au-delà = **flip vers une inclusion positive `document_id in {enabled}`** (le set plus petit sur une collection majoritairement archivée), lu via `list_disabled_ids(limit=cap+1)` pour détecter le débordement sans charger tout. ⚠️ Le sous-agent avait référencé `DocumentApi.list_disabled_ids(limit=...)` (param inexistant) + `list_enabled_ids` (méthode inexistante) — bug runtime masqué par les tests serviceless qui mockent DocumentApi (le piège connu) ; **corrigé** (ajout du param + de la méthode) + test du flip past-cap. `1398 passed`. NB : les 3 autres findings de la vague (306 lectures bornées, 308 PATCH atomique, 473 toggle cross-store) NON faits par l'agent (scope trop large, épuisé en exploration) — restent `[ ]`, vagues dédiées à suivre.
+
 - **2026-09-04 — Vague frontend Layout tab (6 MOYENNE)** : (A) **erreur chunks blanchissait tout l'onglet Layout** — `chunksError` propagé à LayoutTab → degrade non-bloquant (page/IR rendus + notice « provenance chunk indisponible »), conforme au design degrade-without-chunks. (B) **brand <11px** — `fontSize 9` remplacé par token ≥11px ; grep 0-hex/0-sub-11px propre sur tout `layout/`. (C) **ETA jamais décrémentée** — le filtre testait `TERMINAL` (enum job-level `done/failed/cancelled`) contre `event.status` (enum node-level `success/failed/skipped/running`), donc un stage `success` n'était JAMAIS compté fini → ETA figée. Nouveau set `EVENT_FINISHED={success,failed,skipped}`. (D) **Layout eager** — recompute par-render mémoïsé + fetch gardé (plus de refetch total à chaque switch d'onglet) + chargement d'images de page allégé. (E) **caches par-document jamais reset** — quand `documentId` change sans remount, les caches (pages/ir/chunks/provenance/lightbox) montraient les données du document PRÉCÉDENT ; corrigé par le pattern React « reset-state-during-render » (garde `documentId !== cached` en render, pas un `useEffect` qui racerait l'effet d'activation d'onglet sur closure stale). (F) **Search Lab** — `queryDocuments(limit:1)` + `res.total>0` au lieu de tirer tout le corpus non-paginé pour un booléen. Gate conteneur vert : lint 0-err, tsc 0, vitest 2, build ✓. Aucune régression.
 
 - **2026-09-04 — Vague fiabilité transfert/import (3 MOYENNE)** : (497) **export non snapshot-consistent** — l'export re-query les hashes de blobs en LIVE après la passe documents ; un delete/reingest concurrent produisait un bundle qui échoue à l'import ou perd des données silencieusement. Désormais le set de blobs est dérivé des MÊMES lignes documents écrites (snapshot self-consistent), et un blob référencé disparu **abort bruyamment** (`CollectionExportError` nommant le document) — jamais de bundle silencieusement lossy. Choix snapshot+abort plutôt que tx repeatable-read (l'export lit sur N sessions courtes, pas de tx unique ; tenir une longue tx pinnerait PG). (499) **hard-kill → transfert RUNNING éternel** — nouveau cron `reap_stuck_transfers` (sibling du reaper de jobs, `WORKER_REAP_ENABLED`) : marque FAILED tout transfert RUNNING dont `updated_at` a gelé au-delà de `WORKER_TRANSFER_REAP_STALE_SECONDS` (défaut 10800s, validé au boot `>= job_timeout ceiling`) → row terminal + bundle stagé GC-reclaimable. **Pas de migration** (réutilise `updated_at`). Résidu documenté : un IMPORT SIGKILL mid-restore peut laisser une collection à moitié importée (orphan supprimable ; le row n'a pas l'id collection avant `mark_done`, donc pas de rollback propre — 2-phase hors scope). (501) **import bufferisait tous les blobs en RAM** (jusqu'à 5 GiB) — désormais streamé par budget-octets (64 MiB, un blob tient toujours) : flush batch → S3+registry → release, mémoire bornée à ~un batch (comme l'export). Guards decompression-bomb intacts. +tests (abort export si blob disparu row/objet ; reap stale→FAILED, fresh intact, no-op si disabled ; import flush >1× et pic < total). `1397 passed`, ruff clean.
@@ -101,7 +103,7 @@
 | V5 — Moteur & pipeline | 2 | 2 | 0 | 0 |
 | V6 — Frontend | 0 | 0 | 0 | 0 |
 | V7 — Documentation | 21 | 10 | 0 | 11 |
-| V8 — Outillage (.claude/tests/infra/télémétrie) | 188 | 39 | 3 | 146 |
+| V8 — Outillage (.claude/tests/infra/télémétrie) | 188 | 40 | 3 | 145 |
 | **Total** | **247** | **72** | **5** | **170** |
 
 
@@ -475,7 +477,7 @@
 
 - [ ] **🟠 MOYENNE** · `bug` — Bulk chunk toggle spanning collections is not atomic across the two stores  
   `src/docforge/shared/libs/services/db/facades/enablement_facade.py:117`
-- [ ] **🟠 MOYENNE** · `perf` — Disabled-document exclusion list is unbounded and rides every prefetch branch of every search  
+- [x] **🟠 MOYENNE** · `perf` — Disabled-document exclusion list is unbounded and rides every prefetch branch of every search  
   `src/docforge/shared/libs/services/db/facades/search_facade.py:86`
 - [x] **🟠 MOYENNE** · `bug` — Orphan-blob purge races a concurrent ingest sharing the same content hash  
   `src/docforge/shared/libs/services/db/postgresql/apis/blob_api.py:221`

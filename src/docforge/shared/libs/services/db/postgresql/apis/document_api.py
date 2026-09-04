@@ -212,16 +212,41 @@ class DocumentApi:
         return int(result.rowcount or 0)
 
     @staticmethod
-    async def list_disabled_ids(session: AsyncSession, collection_id: uuid.UUID) -> list[uuid.UUID]:
+    async def list_disabled_ids(
+        session: AsyncSession, collection_id: uuid.UUID, limit: int | None = None
+    ) -> list[uuid.UUID]:
         """
         Return the ids of a collection's DISABLED documents — the search exclusion set.
 
         Bounded by the document count of one collection (not chunks), so the resulting
         ``must_not document_id in {...}`` Qdrant clause stays a single cheap membership filter.
+
+        Args:
+            session (AsyncSession): The open read session.
+            collection_id (uuid.UUID): The collection to scope to.
+            limit (int | None): Optional row cap — the search facade reads ``cap + 1`` to detect an
+                over-cap exclusion set without loading it whole (then it flips to a positive filter).
+        """
+        statement = select(Document.id).where(
+            Document.collection_id == collection_id, Document.enabled.is_(False)
+        )
+        if limit is not None:
+            statement = statement.limit(limit)
+        result = await session.execute(statement)
+        return list(result.scalars().all())
+
+    @staticmethod
+    async def list_enabled_ids(session: AsyncSession, collection_id: uuid.UUID) -> list[uuid.UUID]:
+        """
+        Return the ids of a collection's ENABLED documents — the positive search-scope fallback.
+
+        Used only when the disabled set exceeds the exclusion cap: on a mostly-archived collection the
+        enabled set is the smaller one, so scoping search to ``document_id in {enabled}`` keeps the
+        per-query Qdrant filter bounded by it instead of by the huge disabled ``must_not``.
         """
         result = await session.execute(
             select(Document.id).where(
-                Document.collection_id == collection_id, Document.enabled.is_(False)
+                Document.collection_id == collection_id, Document.enabled.is_(True)
             )
         )
         return list(result.scalars().all())
