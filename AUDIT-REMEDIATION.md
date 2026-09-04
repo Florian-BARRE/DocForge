@@ -8,6 +8,8 @@
 
 ## Journal
 
+- **2026-09-04 — ultrareview cloud (3 findings traités)** : (1) **[réel]** `QueryEmbedderProbe.classify` (chemin 424 du routeur search) contournait l'egress allowlist — trou parallèle dans mon fix SSRF ; la policy y est désormais construite (`from RUNTIME_CONFIG`) et passée à `probe_nodes` (host non listé → `blocked`, jamais sondé). +1 test. (2) **[réel]** `set_document_enabled` renvoyait un 200 faux-positif sur race de delete (j'avais jeté le retour `existed` en ajoutant le scope check) — re-check + 404 restauré. (3) **[nit]** allowlist MIME dupliquée front/back → commentaires croisés « keep in sync ». Tests verts.
+
 - **2026-09-04 — V1 tranche 1 (backend authz)** : IDOR `PATCH /documents/{id}/enabled` + `POST /documents/{id}/reingest` fermés (chargement du document → `assert_collection_scope` avant toute mutation/dépense) ; `GET /collections` filtré par `scoped_collections` (plus de fuite de contrat inter-tenant). +3 tests de non-régression (scoped key → 403 / liste filtrée). `532 passed`.
 
 - **2026-09-04 — V1 tranche 2 (import .dcexport)** : écrasement S3 arbitraire fermé — l'import épingle désormais chaque blob à son `content_hash` (invariant content-addressed) au lieu de faire confiance au `s3_key` du bundle ; un `s3_key` falsifié pointant sur l'objet d'un autre tenant est ignoré + loggé. +1 test tamper. `26 passed`.

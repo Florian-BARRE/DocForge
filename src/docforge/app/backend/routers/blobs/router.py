@@ -18,6 +18,10 @@ router = APIRouter(prefix="/blobs", tags=["blobs"])
 # preview). Every other stored type — an uploaded HTML/SVG/text original above all — is served as an
 # attachment and sandboxed, so a direct navigation to it can never execute as a live same-origin
 # document on the app/UI origin (the stored-XSS -> token-theft vector).
+# KEEP IN SYNC with the frontend allowlist `INLINE_SAFE_TYPES` in
+# src/docforge/app/frontend/src/api/blobs.ts — the two enforce the same guard from opposite ends (the
+# frontend decides inline-vs-download; this sets attachment/nosniff/CSP for the rest), so a type
+# added/removed here MUST be mirrored there or the guard diverges.
 _INLINE_SAFE_MIME = frozenset(
     {
         "application/pdf",

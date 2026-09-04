@@ -10,6 +10,10 @@ import { apiFetchBlob } from "./http";
 // blob: document execute same-origin — so an uploaded text/html or image/svg+xml opened this way would
 // run with access to our stored API token (localStorage). Only these types are ever opened inline;
 // anything else (HTML, SVG, text, office docs, unknown) is downloaded instead of rendered.
+// KEEP IN SYNC with the backend allowlist `_INLINE_SAFE_MIME` in
+// src/docforge/app/backend/routers/blobs/router.py — the two enforce the same XSS guard from opposite
+// ends (this decides inline-vs-download in the UI; the backend sets attachment/nosniff/CSP for the
+// rest), so a type added/removed here MUST be mirrored there or the guard diverges.
 const INLINE_SAFE_TYPES = new Set([
   "application/pdf",
   "image/png",

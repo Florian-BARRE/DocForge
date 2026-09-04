@@ -10,8 +10,13 @@
 from loggerplusplus import LoggerClass
 
 # ====== Internal Project Imports ======
+from config import RUNTIME_CONFIG
 from shared_libs.pipelines.nodes.embed.blob import EmbedBlobResolver
-from shared_libs.pipelines.reachability import ProbeStatus, ReachabilitySweep
+from shared_libs.pipelines.reachability import (
+    ProbeStatus,
+    ProviderEgressPolicy,
+    ReachabilitySweep,
+)
 
 # The side stamped on the query-embedder probe (it encodes the search query, not an ingest doc).
 _SEARCH_SIDE = "search"
@@ -28,6 +33,10 @@ class QueryEmbedderProbe(LoggerClass):
     def __init__(self) -> None:
         LoggerClass.__init__(self)
         self._sweep = ReachabilitySweep()
+        # The SAME egress allowlist the collection-health sweep enforces. This READ-scoped classifier
+        # rebuilds an embedder from a caller-influenced ``base_url`` and probes it, so without the gate
+        # it is a parallel SSRF scanner of the internal network (empty allowlist = allow-all, OFF).
+        self._egress_policy = ProviderEgressPolicy.from_spec(RUNTIME_CONFIG.PROVIDER_EGRESS_ALLOWLIST)
 
     async def classify(self, pipeline_blob: dict) -> ProbeStatus:
         """
@@ -60,8 +69,9 @@ class QueryEmbedderProbe(LoggerClass):
             self.logger.warning(f"Query embedder rebuild failed: {type(exc).__name__}: {exc}")
             return ProbeStatus.UNREACHABLE
 
-        # 3. Probe the throwaway embedder under the sweep's bounded cap; its status IS the verdict.
-        results = await self._sweep.probe_nodes([embedder], _SEARCH_SIDE)
+        # 3. Probe the throwaway embedder under the sweep's bounded cap AND the egress allowlist (a
+        #    disallowed host is reported ``blocked``, never probed); its status IS the verdict.
+        results = await self._sweep.probe_nodes([embedder], _SEARCH_SIDE, self._egress_policy)
         return results[0].status if results else ProbeStatus.SKIPPED
 
 
