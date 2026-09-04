@@ -54,6 +54,8 @@
 
 - **2026-09-04 — V4 tranche 4 (validation overrides coût)** : `EstimateOverrides` acceptait des taux embed/ocr NÉGATIFS (valeurs de dict sans contrainte) et des assumptions INFINIES (`inf` passe `gt/ge`). Ajouté `NonNegativeRate` (ge=0) sur les valeurs embed/ocr + `allow_inf_nan=False` sur les 3 modèles. +6 tests (négatif/inf/nan rejetés, override valide accepté).
 
+- **2026-09-04 — V5 tranche 1 (exhaustivité switch single-edge)** : `__check_single_path` n'appelait `__check_switch` que pour `count>1` → un seul edge WhenEquals sur un champ SWITCH_FIELDS clos sans défaut échappait au contrôle et tronquait silencieusement le groupe au run. Corrigé : `__check_switch` sur ≥1 edge WhenEquals (AMBIGUOUS reste sur >1 pour les autres kinds). +1 test single-edge. 17✓, pas de faux positif sur les tests multi-edge.
+
 ## Avancement
 
 | Vague | Total | Fait |
@@ -580,7 +582,7 @@
 
 - [ ] **🟠 MOYENNE** · `design` — Bindings on unknown slot names are silently ignored by validator, resolver and editor alike  
   `src/docforge/shared/libs/pipelines/validation/rules/child.py:58`
-- [ ] **🟠 MOYENNE** · `bug` — Switch exhaustiveness check skipped when a node has only one WhenEquals edge  
+- [x] **🟠 MOYENNE** · `bug` — Switch exhaustiveness check skipped when a node has only one WhenEquals edge  
   `src/docforge/shared/libs/pipelines/validation/rules/routing.py:95`
 - [ ] **⚪ FAIBLE** · `consistency` — AutoWire types a foreach's items from its FIRST terminal only, diverging from the validator's uniformity rule  
   `src/docforge/shared/libs/pipelines/edit/wiring.py:122`
@@ -592,7 +594,7 @@
   `src/docforge/shared/libs/pipelines/base/node.py:196`
 - [ ] **⚪ FAIBLE** · `consistency` — Minor engine/runtime smells (grouped): spurious ScoreBelow warning on failures, stale FromFirst comment, list-content LLM answers  
   `src/docforge/shared/libs/pipelines/engine/navigation.py:87`
-- [ ] **⚪ FAIBLE** · `test-gap` — No test covers single-edge switch exhaustiveness or SetAfter on a convergence node  
+- [x] **⚪ FAIBLE** · `test-gap` — No test covers single-edge switch exhaustiveness or SetAfter on a convergence node  
   `src/docforge/tests/units/validation/test_validation_codes.py:1`
 - [ ] **⚪ FAIBLE** · `consistency` — RemoveNode heals bindings but leaves a sibling ForEach's 'over' pointing at the removed node  
   `src/docforge/shared/libs/pipelines/edit/editor.py:167`
