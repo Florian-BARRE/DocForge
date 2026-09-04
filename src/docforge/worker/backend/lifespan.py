@@ -16,7 +16,7 @@ from pyfiglet import Figlet
 
 # ====== Internal Project Imports ======
 from config import RUNTIME_CONFIG
-from shared_libs.observability import CorrelationContext
+from shared_libs.observability import ConfigDumpHelpers, CorrelationContext
 from shared_libs.services.db import Database
 from shared_libs.services.db.postgresql import PostgresClient
 from shared_libs.services.db.qdrant import QdrantClient
@@ -56,9 +56,12 @@ async def startup(ctx: dict[str, Any]) -> None:
     )
     CONTEXT.logger.info(banner)
 
-    # 2. Log the runtime configuration (secrets masked by configplusplus).
+    # 2. Log the runtime configuration. configplusplus masks values whose NAME looks like a secret;
+    #    ConfigDumpHelpers additionally redacts the ``user:pass@`` userinfo of URL/DSN values
+    #    (POSTGRES_DSN / REDIS_URL carry the password in the value under a name the heuristic misses),
+    #    so no credential reaches stdout or Loki.
     log_step(1, "Runtime configuration")
-    CONTEXT.logger.info(RUNTIME_CONFIG)
+    CONTEXT.logger.info(ConfigDumpHelpers.masked(RUNTIME_CONFIG))
 
     # 2b. Bound the thread pool the heavy CPU stages run on. The pipeline's blocking stages
     #     (docling/ocr/render/chunk) dispatch via asyncio.to_thread, i.e. the loop's DEFAULT

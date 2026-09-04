@@ -13,6 +13,9 @@ from typing import Any
 # ====== Third-Party Library Imports ======
 from pyfiglet import Figlet
 
+# ====== Internal Project Imports ======
+from shared_libs.observability import ConfigDumpHelpers
+
 # ====== Local Project Imports ======
 from .context import CONTEXT
 from .libs.auth import AuthBootstrap
@@ -48,9 +51,12 @@ def lifespan() -> Any:
             )
             CONTEXT.logger.info(banner)
 
-            # 2. Log the runtime configuration (secrets are masked by configplusplus).
+            # 2. Log the runtime configuration. configplusplus masks values whose NAME looks like a
+            #    secret; ConfigDumpHelpers additionally redacts the ``user:pass@`` userinfo of URL/DSN
+            #    values (POSTGRES_DSN / REDIS_URL carry the password in the value under a name the
+            #    heuristic misses), so no credential reaches stdout or Loki.
             log_step(1, "Runtime configuration")
-            CONTEXT.logger.info(CONTEXT.RUNTIME_CONFIG)
+            CONTEXT.logger.info(ConfigDumpHelpers.masked(CONTEXT.RUNTIME_CONFIG))
 
             # 3. The design-surface services (stateless — instantiated in entrypoint.py).
             log_step(2, "Pipeline design surface")

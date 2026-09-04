@@ -12,11 +12,13 @@
 
 - **2026-09-04 — V1 tranche 2 (import .dcexport)** : écrasement S3 arbitraire fermé — l'import épingle désormais chaque blob à son `content_hash` (invariant content-addressed) au lieu de faire confiance au `s3_key` du bundle ; un `s3_key` falsifié pointant sur l'objet d'un autre tenant est ignoré + loggé. +1 test tamper. `26 passed`.
 
+- **2026-09-04 — V1 tranche 3 (fuite creds au boot)** : `ConfigDumpHelpers.masked` (nouveau, `shared_libs.observability`) rédige le userinfo `://user:pass@` de toute URL/DSN au dump de démarrage — `POSTGRES_DSN`/`REDIS_URL` ne fuitent plus en clair (stdout + Loki) ; le masquage par nom de configplusplus est préservé. Câblé sur les 2 lifespans (app+worker). +5 tests. `verts`.
+
 ## Avancement
 
 | Vague | Total | Fait |
 |---|---|---|
-| V1 | 30 | 3 |
+| V1 | 30 | 4 |
 | V2 | 4 | 0 |
 | V3 | 1 | 0 |
 | V4 | 1 | 0 |
@@ -44,7 +46,7 @@
 
 ### Hygiène logs
 
-- [ ] **🔴 HAUTE** · `security` — Startup config dump prints POSTGRES_DSN / REDIS_URL unmasked — DB and Redis passwords land in clear in logs (and Loki)  
+- [x] **🔴 HAUTE** · `security` — Startup config dump prints POSTGRES_DSN / REDIS_URL unmasked — DB and Redis passwords land in clear in logs (and Loki)  
   `src/docforge/app/config/runtime_config.py:206`
 - [ ] **🟠 MOYENNE** · `security` — Log injection: user-controlled names/filenames logged raw with no sanitization, while the repo sanitizes correlation ids for exactly this reason  
   `src/docforge/app/backend/routers/documents/router.py:201`
