@@ -239,8 +239,10 @@ class DocumentsFacade(LoggerClass):
             await ArtifactCacheApi.delete_for_documents(session, [document_id])
             await DocumentApi.delete(session, document_id)
             await session.flush()
-            orphans = await BlobApi.find_unreferenced(session, candidates)
-            await BlobApi.delete_rows(session, orphans)
+            # Guarded purge: the reference test is re-evaluated INSIDE the DELETE (not at an earlier
+            # SELECT), so a hash a concurrent ingest re-referenced between the flush and the commit is
+            # kept — and only the rows actually removed come back for the S3 delete.
+            orphans = await BlobApi.delete_unreferenced(session, candidates)
         # 4. S3 last, AFTER the commit — a failed S3 delete only leaves harmless orphan objects.
         if orphans:
             async with self._s3.client() as s3:
@@ -305,8 +307,9 @@ class DocumentsFacade(LoggerClass):
             await ArtifactCacheApi.delete_for_documents(session, live_ids)
             deleted = await DocumentApi.delete_many(session, live_ids)
             await session.flush()
-            orphans = await BlobApi.find_unreferenced(session, candidates)
-            await BlobApi.delete_rows(session, orphans)
+            # Guarded purge (see ``delete``): the reference re-check lives in the DELETE, so a
+            # concurrently-ingested hash is never stranded; RETURNING gives the exact S3 delete set.
+            orphans = await BlobApi.delete_unreferenced(session, candidates)
 
         # 4. S3 last, AFTER the commit — a failed object delete only leaves harmless orphans.
         if orphans:

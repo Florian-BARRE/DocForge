@@ -102,7 +102,11 @@ class ArtifactCacheFacade(LoggerClass):
 
     # ── GC ────────────────────────────────────────────────────────────────────────────────────
     async def prune(
-        self, now: datetime, ttl: timedelta, max_bytes_per_collection: int
+        self,
+        now: datetime,
+        ttl: timedelta,
+        max_bytes_per_collection: int,
+        blob_grace: timedelta = timedelta(minutes=10),
     ) -> ArtifactCacheGcSummary:
         """
         Evict stale/over-cap cache rows (TTL + per-collection LRU size cap) and sweep freed S3 blobs.
@@ -113,6 +117,11 @@ class ArtifactCacheFacade(LoggerClass):
                 are evicted. A non-positive TTL disables the TTL pass (size cap still applies).
             max_bytes_per_collection (int): Per-collection byte ceiling; the least-recently-used rows
                 over it are evicted. A non-positive cap disables the size pass.
+            blob_grace (timedelta): The orphan sweep SKIPS stage-artifact blobs younger than this,
+                closing the TOCTOU with a concurrent ``store()`` — a just-put blob whose pointer row
+                is still in-flight is protected until the window passes, by which time its pointer has
+                committed and the ref-count test correctly keeps it. A truly-orphan young blob is
+                simply reclaimed on the next sweep once it ages out.
 
         Returns:
             ArtifactCacheGcSummary: Evicted pointer count + freed S3 blob count.
@@ -126,8 +135,9 @@ class ArtifactCacheFacade(LoggerClass):
                 await ArtifactCacheApi.delete_keys(session, list(evict_keys))
 
         # 2. Global orphan sweep: reclaim EVERY stage-artifact blob no pointer row references anymore
-        #    — whatever freed it (this eviction, a prior crash, a document delete). Ref-count safe.
-        freed_blobs = await self.__sweep_orphan_blobs()
+        #    — whatever freed it (this eviction, a prior crash, a document delete). Ref-count safe,
+        #    and grace-guarded so a concurrent store's just-put blob is never swept mid-flight.
+        freed_blobs = await self.__sweep_orphan_blobs(now - blob_grace)
         if evict_keys or freed_blobs:
             self.logger.info(
                 f"Artifact-cache GC evicted {len(evict_keys)} row(s), freed {freed_blobs} blob(s)"
@@ -137,6 +147,9 @@ class ArtifactCacheFacade(LoggerClass):
     async def drop_for_document(self, document_id: uuid.UUID) -> int:
         """
         Drop every cache row attributed to a deleted document, then sweep any blob it orphaned.
+
+        No grace window here (unlike the periodic ``prune``): this is a targeted cleanup of a KNOWN
+        deleted document, so its now-orphaned artifacts are reclaimed immediately.
 
         Args:
             document_id (uuid.UUID): The document being deleted.
@@ -150,7 +163,7 @@ class ArtifactCacheFacade(LoggerClass):
                 return 0
             await ArtifactCacheApi.delete_keys(session, [row.cache_key for row in rows])
             removed = len(rows)
-        await self.__sweep_orphan_blobs()
+        await self.__sweep_orphan_blobs(None)
         return removed
 
     async def __select_victims(
@@ -180,22 +193,34 @@ class ArtifactCacheFacade(LoggerClass):
                         evict_keys.add(row.cache_key)
         return evict_keys, set()
 
-    async def __sweep_orphan_blobs(self) -> int:
+    async def __sweep_orphan_blobs(self, grace_cutoff: datetime | None) -> int:
         """Delete every STAGE_ARTIFACT blob no cache pointer references anymore (S3 + registry row).
 
         A stage-artifact blob is referenced ONLY by artifact_cache rows (never by a document/page/
         figure column), so "no cache row points at this content_hash" is the complete orphan test —
         it safely reclaims blobs freed by eviction, a document delete, or a crashed store.
+
+        Grace-guarded against the store() TOCTOU when ``grace_cutoff`` is set: ``store()`` puts the S3
+        bytes and registers the blob row BEFORE inserting the cache pointer, so a blob just stored by a
+        concurrent run momentarily looks orphan (no pointer yet). Restricting the sweep to blobs OLDER
+        than ``grace_cutoff`` skips those in-flight rows; by the time a blob ages past the window its
+        pointer has committed (or it genuinely is orphan and gets reclaimed next sweep). Bytes-first
+        order is preserved. ``None`` disables the grace filter (the targeted document-delete cleanup,
+        which has no concurrent store to race).
+
+        Args:
+            grace_cutoff (datetime | None): When set, only blobs created strictly before it are swept.
         """
-        # 1. Find orphans: stage-artifact blobs whose content_hash is absent from artifact_cache.
+        # 1. Find orphans: (aged) stage-artifact blobs whose content_hash is absent from artifact_cache.
         referenced = select(ArtifactCache.content_hash)
+        conditions = [
+            Blob.kind == BlobKind.STAGE_ARTIFACT,
+            Blob.content_hash.notin_(referenced),
+        ]
+        if grace_cutoff is not None:
+            conditions.append(Blob.created_at < grace_cutoff)
         async with self._postgres.session() as session:
-            result = await session.execute(
-                select(Blob.content_hash).where(
-                    Blob.kind == BlobKind.STAGE_ARTIFACT,
-                    Blob.content_hash.notin_(referenced),
-                )
-            )
+            result = await session.execute(select(Blob.content_hash).where(*conditions))
             hashes = list(result.scalars().all())
         if not hashes:
             return 0

@@ -40,7 +40,7 @@ from shared_libs.services.db.s3 import S3Client, S3Object, S3ObjectApi
 
 # ====== Local Project Imports ======
 from .helpers import DatabaseHelpers
-from .payloads import IngestionPayload
+from .payloads import IngestionPayload, ReingestOutcome, ReingestResult
 
 
 class IngestionFacade(LoggerClass):
@@ -91,7 +91,7 @@ class IngestionFacade(LoggerClass):
                 await DocumentApi.replace_metadata(session, created.id, list(declared_metadata))
         return created, created_job
 
-    async def reingest(self, document_id: uuid.UUID) -> tuple[Document, Job] | None:
+    async def reingest(self, document_id: uuid.UUID) -> ReingestResult:
         """
         Re-enqueue ingestion for an EXISTING document — no re-upload needed.
 
@@ -103,21 +103,37 @@ class IngestionFacade(LoggerClass):
         the same document, reset to PENDING. The USER-declared metadata rows survive (never touched
         here).
 
+        CONCURRENCY GUARD: a document that already has a live (PENDING/RUNNING) job is REFUSED
+        (``ALREADY_ACTIVE``) rather than given a second job — two parallel runs of one document
+        interleave their Qdrant delete-by-document + upsert and strand the loser's points as live
+        orphans. The document row is locked ``FOR UPDATE`` for the admission so two concurrent
+        reingests serialise: the second blocks, then sees the first's fresh PENDING job and refuses.
+
         Args:
             document_id (uuid.UUID): The document to re-ingest.
 
         Returns:
-            tuple[Document, Job] | None: The document + the freshly-created job, or None when the
-                document does not exist.
+            ReingestResult: ADMITTED (+ document + fresh job) when a run was minted; NOT_FOUND for an
+                unknown id; ALREADY_ACTIVE (+ the blocking job id) when a run is already in flight.
         """
         async with self._postgres.session() as session:
-            document = await DocumentApi.get(session, document_id)
+            # 1. Lock the row so a concurrent reingest of the same document can't also pass step 2.
+            document = await DocumentApi.get_for_update(session, document_id)
             if document is None:
-                return None
+                return ReingestResult(outcome=ReingestOutcome.NOT_FOUND)
+            # 2. Refuse a duplicate run while one is already queued or executing.
+            active = await JobApi.get_active_for_document(session, document_id)
+            if active is not None:
+                return ReingestResult(
+                    outcome=ReingestOutcome.ALREADY_ACTIVE, active_job_id=active.id
+                )
+            # 3. Mint the fresh job and reset the document to PENDING (one transaction).
             job = Job(document_id=document.id, collection_id=document.collection_id)
             created_job = await JobApi.create(session, job)
             await DocumentApi.set_status(session, document_id, DocumentStatus.PENDING)
-        return document, created_job
+        return ReingestResult(
+            outcome=ReingestOutcome.ADMITTED, document=document, job=created_job
+        )
 
     async def store_blobs(self, objects: Sequence[S3Object], rows: Sequence[Blob]) -> None:
         """
@@ -141,11 +157,22 @@ class IngestionFacade(LoggerClass):
         Idempotent on re-ingest: the document's previous chunks and IR are purged first, then the
         fresh rows inserted, so re-running the same document never conflicts on primary keys.
 
+        Re-ingest also PURGES superseded blobs. Postgres and Qdrant are REPLACED here, but blobs are
+        content-addressed and only ever added (``store_blobs`` ran before this) — so a re-ingest whose
+        renders/crops/canonical-PDF differ byte-wise (a config or engine change) would leak the old
+        objects in S3 + the registry forever. So the set of blobs the document referenced BEFORE the
+        purge is snapshotted, and after the fresh rows land any of those now-unreferenced (re-checked
+        at delete time, so a hash still shared by another document is kept) is removed — mirroring the
+        document DELETE path. The original source bytes survive (still referenced by ``source_hash``).
+
         Args:
             document_id (uuid.UUID): The admitted document.
             payload (IngestionPayload): The run's rows + learned facts.
         """
         async with self._postgres.session() as session:
+            # 0. Snapshot the blobs the document references NOW — the supersede candidates, gathered
+            #    BEFORE the purge so the OLD renders/crops/canonical-PDF are captured.
+            superseded_candidates = await BlobApi.collect_hashes_for_document(session, document_id)
             # 1. The facts the pipeline learned about the document.
             await DocumentApi.update_facts(
                 session,
@@ -180,9 +207,19 @@ class IngestionFacade(LoggerClass):
             )
             # 4. The persisted truth is complete — unless a force-cancel raced in (guarded DONE).
             await DocumentApi.finalize_done(session, document_id)
+            # 5. Purge the blobs this run superseded: flush so the FRESH pages/figures/PDF hashes are
+            #    visible to the reference re-check, then delete only the old hashes nothing references
+            #    anymore (a byte-identical render re-used across runs, or the source, is kept).
+            await session.flush()
+            orphans = await BlobApi.delete_unreferenced(session, superseded_candidates)
+        # 6. S3 last, AFTER the commit — a failed object delete only leaves harmless orphan bytes.
+        if orphans:
+            async with self._s3.client() as s3:
+                await S3ObjectApi.delete_many(s3, self._s3.bucket, orphans)
         self.logger.info(
             f"Ingestion saved for document {document_id}: "
-            f"{len(payload.blocks)} blocks, {len(payload.chunks)} chunks"
+            f"{len(payload.blocks)} blocks, {len(payload.chunks)} chunks "
+            f"({len(orphans)} superseded blob(s) purged)"
         )
 
     async def mark_processing(self, document_id: uuid.UUID) -> None:
