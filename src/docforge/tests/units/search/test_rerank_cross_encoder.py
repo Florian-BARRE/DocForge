@@ -135,7 +135,8 @@ def test_rerank_re_scores_by_index_and_reorders(monkeypatch) -> None:
 
 
 def test_rerank_caps_at_top_n_and_drops_the_tail(monkeypatch) -> None:
-    """Only the top_n candidates by fusion score are hydrated, re-scored, and emitted."""
+    """Only the top candidates by fusion score are hydrated, re-scored, and emitted — when the
+    requested page (top_k) is within top_n, top_n is the effective cap and the tail is dropped."""
     port = _TextPort({"a": "ta", "b": "tb", "c": "tc"})
     node = RerankCrossEncoderNode(id="rerank", config=RerankCrossEncoderNode.Config(top_n=2))
     node.bind({COLLECTION_READ_CAPABILITY: port})
@@ -148,10 +149,10 @@ def test_rerank_caps_at_top_n_and_drops_the_tail(monkeypatch) -> None:
             candidates=[
                 Candidate(chunk_id="a", score=0.9, source="hybrid"),
                 Candidate(chunk_id="b", score=0.7, source="hybrid"),
-                Candidate(chunk_id="c", score=0.5, source="hybrid"),  # below top_n → dropped
+                Candidate(chunk_id="c", score=0.5, source="hybrid"),  # beyond top_n → dropped
             ]
         ),
-        spec=QuerySpec(text="q", top_k=3, candidate_k=3),
+        spec=QuerySpec(text="q", top_k=2, candidate_k=2),
     )
     out = _run_node(node, data)
 
@@ -162,6 +163,36 @@ def test_rerank_caps_at_top_n_and_drops_the_tail(monkeypatch) -> None:
     # 2. The emitted pool is exactly the re-scored top_n, best-first — the tail is gone.
     assert [c.chunk_id for c in out.candidates.candidates] == ["b", "a"]
     assert [c.score for c in out.candidates.candidates] == [0.8, 0.3]
+
+
+def test_rerank_judges_at_least_top_k_when_it_exceeds_top_n(monkeypatch) -> None:
+    """When the requested page (top_k, from the API limit up to 100) exceeds config.top_n, the node
+    must judge at least top_k candidates — otherwise a limit of 51-100 on a rerank-enabled collection
+    silently returned <= top_n (default 50) hits. Here top_n=2 but top_k=3, so all three are judged."""
+    port = _TextPort({"a": "ta", "b": "tb", "c": "tc"})
+    node = RerankCrossEncoderNode(id="rerank", config=RerankCrossEncoderNode.Config(top_n=2))
+    node.bind({COLLECTION_READ_CAPABILITY: port})
+
+    seen: dict = {}
+    _install_fake_client(monkeypatch, {0: 0.3, 1: 0.8, 2: 0.6}, seen)
+
+    data = RerankCrossEncoderNode.Consumes(
+        candidates=CandidateSet(
+            candidates=[
+                Candidate(chunk_id="a", score=0.9, source="hybrid"),
+                Candidate(chunk_id="b", score=0.7, source="hybrid"),
+                Candidate(chunk_id="c", score=0.5, source="hybrid"),
+            ]
+        ),
+        spec=QuerySpec(text="q", top_k=3, candidate_k=3),
+    )
+    out = _run_node(node, data)
+
+    # All three were judged (top_k=3 > top_n=2), so the requested page is fully fillable.
+    assert port.hydrated_ids == ["a", "b", "c"]
+    assert seen["texts"] == ["ta", "tb", "tc"]
+    # Re-ordered best-first by the cross-encoder score (b 0.8 > c 0.6 > a 0.3).
+    assert [c.chunk_id for c in out.candidates.candidates] == ["b", "c", "a"]
 
 
 def test_rerank_skips_vanished_rows_and_keeps_index_alignment(monkeypatch) -> None:

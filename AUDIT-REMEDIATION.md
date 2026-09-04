@@ -48,6 +48,8 @@
 
 - **2026-09-04 — V4 tranche 1 (crash rerank degrade)** : le chemin de dégradation du rerank renvoyait `score=judged[0].score` (score de FUSION, >1.0 en RRF 3+ branches / DBSF) → `ValidationError` sur `ScoredOutput(le=1)` DANS `run()` → 422 trompeur précisément quand le reranker est down. Clampé à `[0,1]` (`min(1.0, max(0.0, …))`). +1 test (fusion 1.8 → clamp 1.0, pas de crash). 12✓, ruff clean.
 
+- **2026-09-04 — V4 tranche 2 (troncation top_n)** : le nœud rerank ne jugeait que `config.top_n` (défaut 50) puis hydrate cappait à `top_k` → un `limit` 51-100 renvoyait silencieusement ≤50 hits sur une collection rerank-enabled. Le nœud juge désormais `max(top_n, top_k)`. +1 test (top_k>top_n juge tout) + test cap ajusté. Suite search 42✓.
+
 ## Avancement
 
 | Vague | Total | Fait |
@@ -654,7 +656,7 @@
   `src/docforge/app/backend/libs/search/service.py:59`
 - [ ] **🟠 MOYENNE** · `divergence-doc` — Typed search failure modes (424/503/504, score_kind, range filters) undocumented in rest-api.md  
   `docs/rest-api.md:876`
-- [ ] **🟠 MOYENNE** · `bug` — limit > top_n silently truncates rerank-enabled results to 50 hits  
+- [x] **🟠 MOYENNE** · `bug` — limit > top_n silently truncates rerank-enabled results to 50 hits  
   `src/docforge/shared/libs/pipelines/search/nodes/rerank/cross_encoder/config.py:37`
 - [ ] **⚪ FAIBLE** · `dead-code` — Minor smells: dead flags/language fields, stale docstrings, private embedder-hook access, unbounded disabled-doc must_not list  
   `src/docforge/shared/libs/public_models/search/query.py:56`

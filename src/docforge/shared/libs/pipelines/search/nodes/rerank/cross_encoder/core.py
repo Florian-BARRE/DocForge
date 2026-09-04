@@ -84,10 +84,14 @@ class RerankCrossEncoderNode(PortBackedNode):
         # Preserve any encode-degradation note across the rerank so delivery still surfaces it.
         degraded = data.candidates.degraded
 
-        # 1. Take the top_n candidates by incoming fusion score — the cheap cross-encoder pass.
+        # 1. Take the top candidates by incoming fusion score for the cross-encoder pass. Judge at
+        #    least the requested page (spec.top_k) even when it exceeds config.top_n: the node emits
+        #    only what it judged, and hydrate later cuts to top_k, so a top_k above top_n would
+        #    otherwise silently cap the result at top_n (a limit of 51-100 returning <=50 hits).
+        pool_size = max(config.top_n, data.spec.top_k)
         pool = sorted(
             data.candidates.candidates, key=lambda candidate: candidate.score, reverse=True
-        )[: config.top_n]
+        )[:pool_size]
         if not pool:
             return RerankCrossEncoderProduces(
                 candidates=CandidateSet(candidates=[], degraded=degraded), score=0.0
