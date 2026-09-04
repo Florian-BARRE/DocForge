@@ -260,8 +260,9 @@ limiter needs a custom `xcaddy` build, which is more machinery than a TLS-only f
 Enable the app's own rate limit in `services/docforge/.env`, then recreate `docforge_app`:
 - `RATE_LIMIT_ENABLED` (default `false`) — off out-of-box so nothing breaks; set `true` in prod.
 - `RATE_LIMIT_PER_MINUTE` (default `600`) — per-caller rolling-minute budget.
-- `RATE_LIMIT_TRUST_FORWARDED_FOR` (default `true`) — key IP-based limiting on the proxy-set
-  `X-Forwarded-For`; set `false` on a direct-exposed deployment where XFF is client-forgeable.
+- `RATE_LIMIT_TRUST_FORWARDED_FOR` (default `false`) — off out-of-box (no proxy → XFF is
+  client-forgeable, so the transport peer is keyed); set `true` only behind a proxy that overwrites
+  `X-Forwarded-For` (e.g. the Caddy overlay).
 
 When auth is on, the limiter keys by API-key identity (XFF is ignored); when auth is off, it keys by
 client IP. The high-frequency job-poll/SSE routes, `/health`, `/metrics`, docs and static assets are
