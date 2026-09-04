@@ -22,6 +22,8 @@
 
 - **2026-09-04 — V1 tranche 7 (decompression bomb)** : l'extraction d'un `.dcexport` borne désormais la taille décompressée (`ratio × taille_compressée`, knob `IMPORT_MAX_DECOMPRESSION_RATIO`=100) ET le nombre de membres (`IMPORT_MAX_MEMBERS`=500k) — un bundle à ratio >1000x est refusé en cours d'extraction avant de remplir le disque. +3 tests (bomb taille/membres refusée, extraction normale OK). Reste (`[~]`) : le buffering mémoire de tous les blobs à l'import (batching), slice dédié. `33 passed`.
 
+- **2026-09-04 — V1 tranche 8 (port Gotenberg)** : le publish `10045:3000` retiré de `compose/base.yml` (donc plus exposé en **prod** — Gotenberg = API de conversion non-auth, pivot SSRF) et déplacé dans `compose/overlays/dev.yml` (comme les stores) ; les collections l'atteignent via l'alias réseau `gotenberg:3000`. `docs/configuration.md` aligné. Validé : prod-cpu = 0× 10045, dev-cpu = publié, tous scénarios×add-ons `config -q` OK.
+
 ## Avancement
 
 | Vague | Total | Fait |
@@ -99,7 +101,7 @@
 
 - [ ] **🟠 MOYENNE** · `consistency` — Fresh-clone credential mismatch: base.yml's default POSTGRES_DSN (docforge:docforge) does not match the shipped postgres.env.example (change_me)  
   `compose/base.yml:43`
-- [ ] **🟠 MOYENNE** · `security` — Unauthenticated Gotenberg published on host port 10045 in every scenario including prod, contradicting docs/configuration.md's exposure claim  
+- [x] **🟠 MOYENNE** · `security` — Unauthenticated Gotenberg published on host port 10045 in every scenario including prod, contradicting docs/configuration.md's exposure claim  
   `compose/base.yml:272`
 
 ### Infra .claude

@@ -249,7 +249,9 @@ selects the `pp_structure` brick. See [architecture.md](architecture.md) and
 | Prometheus (optional telemetry add-on) | `10051` |
 | Loki (optional telemetry add-on) | `10052` |
 
-Production closes the data-plane ports (postgres/redis/qdrant/seaweedfs) — only the API (and optionally
-the MCP) are exposed. See [deployment.md](deployment.md). The telemetry ports are only published when
+Production closes the data-plane ports (postgres/redis/qdrant/seaweedfs) **and Gotenberg** — the latter
+is an unauthenticated conversion API and an SSRF pivot, so it is reached only via the in-network
+`gotenberg` alias and its `10045` host port is published solely by `compose/overlays/dev.yml`. Only the
+API (and optionally the MCP) are exposed in production. See [deployment.md](deployment.md). The telemetry ports are only published when
 `compose/overlays/telemetry.yml` is layered on top of a scenario — see
 [compose/README.md](../compose/README.md#the-telemetry-stack).
