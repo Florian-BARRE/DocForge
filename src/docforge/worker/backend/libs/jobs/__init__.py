@@ -8,6 +8,7 @@ from .reaper import reap_stuck_jobs
 # ---------------------- Collection transfer jobs ---------------------- #
 from .transfer import export_collection, import_collection
 from .transfer_gc import gc_expired_transfers
+from .transfer_reaper import reap_stuck_transfers
 
 # ---------------------- Audit retention ---------------------- #
 from .audit_gc import gc_audit_log
@@ -37,6 +38,7 @@ __all__ = [
     "export_collection",
     "import_collection",
     "gc_expired_transfers",
+    "reap_stuck_transfers",
     "gc_audit_log",
     "gc_idempotency_keys",
     "gc_artifact_cache",

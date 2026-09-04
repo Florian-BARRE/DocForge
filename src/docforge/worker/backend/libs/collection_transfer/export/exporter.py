@@ -3,9 +3,12 @@
 # source out of the store gateway: the collection contract + schema, then the documents one at a time
 # (each document's whole row set read in one session and fanned into the per-table JSONL sinks), then
 # the Qdrant points scrolled in bounded batches, then the deduped blob bytes (one file per unique
-# hash). It never buffers a whole table or all blobs in memory. It writes the manifest LAST, with the
-# accumulated per-file checksums and counts. Tar assembly + S3 upload are the task's job — this only
-# produces the on-disk tree, so a crash leaves an unpublished working dir, never a partial artifact.
+# hash). The blob set + the live chunk ids are derived FROM the same document snapshot the doc pass
+# wrote (not a second live query), so the bundle only references what it actually saw; a referenced
+# blob that vanished mid-export ABORTS loudly (a clear error naming the document) instead of producing
+# a silently-lossy bundle. It never buffers a whole table or all blobs in memory. It writes the
+# manifest LAST, with the accumulated per-file checksums and counts. Tar assembly + S3 upload are the
+# task's job — this only produces the on-disk tree, so a crash leaves an unpublished working dir.
 
 # ====== Standard Library Imports ======
 from __future__ import annotations
@@ -91,13 +94,17 @@ class CollectionExporter:
         writer.write_collection(await self._contract(collection))
         fields_written = self._write_schema(writer, schema)
 
-        # 2. The documents + their IR/chunks, streamed a document at a time. The live chunk ids are
-        #    collected here so the vector pass can drop orphan points (see step 3).
-        counts, live_chunk_ids = await self._write_documents(writer, collection_id)
+        # 2. The documents + their IR/chunks, streamed a document at a time. Two by-products of the
+        #    SAME snapshot are captured here so steps 3-4 stay self-consistent with the rows written:
+        #    the live chunk ids (so the vector pass drops orphan points) and the blob hashes those very
+        #    rows reference (so the blob pass exports exactly the blobs the bundle points at — never a
+        #    live re-query that could disagree with the documents already written).
+        counts, live_chunk_ids, blob_refs = await self._write_documents(writer, collection_id)
 
-        # 3. The vectors (scrolled, orphan points filtered) and the deduped blob bytes.
+        # 3. The vectors (scrolled, orphan points filtered) and the blob bytes referenced BY the
+        #    document snapshot (a missing referenced blob aborts the export loudly — never a silent drop).
         counts["points"] = await self._write_points(writer, collection_id, live_chunk_ids)
-        counts["blobs"] = await self._write_blobs(writer, collection_id)
+        counts["blobs"] = await self._write_blobs(writer, blob_refs)
         counts["metadata_fields"] = fields_written
 
         # 4. The manifest LAST, with every accumulated checksum + count.
@@ -153,26 +160,47 @@ class CollectionExporter:
 
     async def _write_documents(
         self, writer, collection_id: uuid.UUID
-    ) -> tuple[dict[str, int], set[str]]:
-        """Stream every document's row set into the sinks; return the counts + the live chunk ids."""
+    ) -> tuple[dict[str, int], set[str], dict[str, str]]:
+        """Stream every document's row set into the sinks.
+
+        Returns the manifest counts, the set of live chunk ids (for the orphan-point filter) and a
+        ``blob_hash → referencing-document label`` map derived from the SAME rows just written, so the
+        blob pass exports exactly what the bundle references (self-consistent snapshot) and can name
+        the offending document when a referenced blob has vanished.
+        """
         document_ids = await self._facade.list_document_ids(collection_id)
         total = len(document_ids)
         live_chunk_ids: set[str] = set()
+        blob_refs: dict[str, str] = {}
         with contextlib.ExitStack() as stack:
             sinks = {
                 key: stack.enter_context(writer.sink(path)) for key, path in _DOCUMENT_SINKS.items()
             }
             for index, document_id in enumerate(document_ids):
                 rows = await self._facade.read_document_export(document_id)
-                self._fan_out(sinks, rows, live_chunk_ids)
+                self._fan_out(sinks, rows, live_chunk_ids, blob_refs)
                 if total:
                     self._progress("documents", 5 + int(70 * (index + 1) / total))
             counts = {field: sinks[key].rows for key, field in _COUNTED_SINKS.items()}
-            return counts, live_chunk_ids
+            return counts, live_chunk_ids, blob_refs
 
     @staticmethod
-    def _fan_out(sinks: dict, rows, live_chunk_ids: set[str]) -> None:
-        """Serialize one document's rows into the sinks, recording every live chunk id emitted."""
+    def _fan_out(sinks: dict, rows, live_chunk_ids: set[str], blob_refs: dict[str, str]) -> None:
+        """Serialize one document's rows into the sinks, recording live chunk ids + referenced blobs."""
+        # Record every blob hash THESE rows reference (document source/pdf, page renders, figure crops),
+        # keyed to a human label so a later missing-blob abort can name the document. Mirrors exactly
+        # what BlobApi.collect_hashes_for_collection unions — but scoped to the snapshot being written.
+        label = rows.document.filename or str(rows.document.id)
+        for blob_hash in (rows.document.source_hash, rows.document.pdf_blob_hash):
+            if blob_hash:
+                blob_refs.setdefault(blob_hash, label)
+        for page in rows.pages:
+            if page.render_blob_hash:
+                blob_refs.setdefault(page.render_blob_hash, label)
+        for figure in rows.figures:
+            if figure.crop_blob_hash:
+                blob_refs.setdefault(figure.crop_blob_hash, label)
+
         sinks["documents"].write(RowSerializer.document(rows.document))
         for name, value, origin in rows.metadata:
             sinks["document_metadata"].write(
@@ -220,14 +248,37 @@ class CollectionExporter:
             self._progress("vectors", 85)
             return sink.rows
 
-    async def _write_blobs(self, writer, collection_id: uuid.UUID) -> int:
-        """Write the registry rows + the deduped bytes (one file per unique hash); return count."""
-        hashes = await self._facade.collect_blob_hashes(collection_id)
+    async def _write_blobs(self, writer, blob_refs: dict[str, str]) -> int:
+        """Write the registry rows + the deduped bytes for the SNAPSHOT-referenced hashes; return count.
+
+        The hash set comes from the document rows just written (``blob_refs``), NOT a fresh live query,
+        so the bundle only ever references blobs the doc pass actually saw. A referenced blob whose
+        registry row or S3 object has vanished (a concurrent delete/reingest) ABORTS the export with a
+        clear error naming the document — a corrupt, silently-lossy bundle is never produced.
+        """
+        hashes = list(blob_refs)
         blob_rows = await self._facade.get_blob_rows(hashes)
+        # A referenced hash with no registry row = a concurrent delete raced the doc pass. Fail loud.
+        present = {row.content_hash for row in blob_rows}
+        missing_rows = [blob_hash for blob_hash in hashes if blob_hash not in present]
+        if missing_rows:
+            blob_hash = missing_rows[0]
+            raise CollectionExportError(
+                f"blob {blob_hash} referenced by document '{blob_refs[blob_hash]}' has no registry "
+                f"row (a concurrent delete/reingest removed it mid-export) — aborting rather than "
+                f"writing a corrupt bundle"
+            )
         with writer.sink(BundlePaths.BLOBS) as sink:
             for row in blob_rows:
                 sink.write(RowSerializer.blob(row))
-                data = await self._facade.read_blob_bytes(row.s3_key)
+                try:
+                    data = await self._facade.read_blob_bytes(row.s3_key)
+                except Exception as exc:
+                    raise CollectionExportError(
+                        f"blob {row.content_hash} referenced by document "
+                        f"'{blob_refs.get(row.content_hash, row.content_hash)}' is missing from "
+                        f"object storage ({exc}) — aborting rather than writing a corrupt bundle"
+                    ) from exc
                 writer.write_blob(row.content_hash, data)
         self._progress("blobs", 98)
         return writer.blob_count
