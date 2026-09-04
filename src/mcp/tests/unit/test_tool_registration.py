@@ -10,9 +10,10 @@ from docforge_sdk import AsyncClient
 # ====== Internal Project Imports ======
 from libs.server import build_mcp
 
-# 54 = health(1) + auth(5) + collections(10) + documents(5) + explorer(8) + search(1)
+# 57 = health(1) + auth(5) + collections(12) + documents(5) + explorer(8) + search(1)
 #    + jobs(8) + audit(1) + blobs(1) + pipelines(6) + transfers(4) + corpus(4)
-EXPECTED_TOOL_COUNT = 55
+# collections went 10 -> 12 with collection_health + reingest_collection (finding 359, 2026-09).
+EXPECTED_TOOL_COUNT = 57
 
 EXPECTED_TOOL_NAMES = {
     # health
@@ -33,6 +34,8 @@ EXPECTED_TOOL_NAMES = {
     "export_collection_snippet",
     "apply_collection_snippet",
     "get_collection_contract_schema",
+    "collection_health",
+    "reingest_collection",
     # documents
     "upload_document",
     "set_document_enabled",

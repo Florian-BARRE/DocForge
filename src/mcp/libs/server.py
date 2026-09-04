@@ -16,6 +16,7 @@ from starlette.applications import Starlette
 
 # ====== Local Project Imports ======
 from .auth import BearerPassthroughMiddleware
+from .error_translation import ErrorTranslatingFastMCP
 from .path_guard import PathGuard
 from .tools import register_all
 
@@ -57,7 +58,9 @@ def build_mcp(sdk: AsyncClient, path_guard: PathGuard | None = None) -> FastMCP:
     #    the protection would silently stay localhost-only and reject every remote Host header. DNS
     #    rebinding is a browser-CSRF-style threat; this server's clients are programmatic, key-authed
     #    MCP clients (not browsers), so the Host/Origin check adds no value here.
-    mcp = FastMCP(
+    # 3. ErrorTranslatingFastMCP wraps every registered tool so a failed SDK call surfaces the
+    #    API's own error detail (not just an opaque status code) to the connected LLM.
+    mcp = ErrorTranslatingFastMCP(
         name="DocForge",
         instructions=_INSTRUCTIONS,
         transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False),
