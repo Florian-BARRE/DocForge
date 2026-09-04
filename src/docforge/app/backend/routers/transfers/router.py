@@ -82,7 +82,7 @@ async def export_collection(
 async def import_collection(
     file: UploadFile = File(..., description="The .dcexport bundle to import."),
     target_name: str | None = Form(None, description="Optional name for the new collection."),
-    principal: AuthPrincipal = Depends(require(Capability.WRITE)),
+    principal: AuthPrincipal = Depends(require(Capability.CREATE)),
 ) -> TransferAccepted:
     """
     Import a `.dcexport` bundle as a BRAND-NEW collection (asynchronous, no recompute).
