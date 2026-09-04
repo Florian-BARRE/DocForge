@@ -38,6 +38,8 @@
 
 - **2026-09-04 — V2 tranche 4 (reaper heartbeat + zombie retry, 2× HAUTE)** : agent `backend` dédié, relu ligne-à-ligne + retesté par moi. (1) `list_stale` outerjoin `worker_heartbeats` — un heartbeat FRAIS **veto** le reap (plus de kill d'un job long mais vivant) ; `worker_id` est PK → pas de dup au join. (2) `retry_jobs=False` (racine du zombie) + gardes défensives : dequeue-skip sur tout `JobStatus.terminal()`, `mark_running` clear `cancel_requested` + no-op sur terminal, `_terminate` garde d'ownership (`get_latest_for_document`) — plus d'écrasement d'état doc par un vieux job reapé. +5 tests. **628 passed**, ruff clean. Sans migration. À valider par `/code-review` avant merge (logique de recovery critique).
 
+- **2026-09-04 — V3 tranche 1 (herméticité tests)** : la suite api unitaire écrivait une vraie ligne `audit_log` par requête mutante dans le Postgres dev (`AuditMiddleware` + `AUDIT_ENABLED` défaut True, `audit.record` non mocké) et fuyait des connexions asyncpg. Fixture autouse conftest étendue à `AUDIT_ENABLED=False` ; `test_audit.py` opte à nouveau via une autouse module (les tests d'enregistrement mockent `record`). 548 passed, warnings 35→3.
+
 ## Avancement
 
 | Vague | Total | Fait |
@@ -350,7 +352,7 @@
 
 ### Tests
 
-- [ ] **🔴 HAUTE** · `bug` — Unit suite silently writes real rows into the live dev Postgres (audit middleware unmocked)  
+- [x] **🔴 HAUTE** · `bug` — Unit suite silently writes real rows into the live dev Postgres (audit middleware unmocked)  
   `src/docforge/tests/units/api/conftest.py:41`
 - [ ] **🟠 MOYENNE** · `divergence-doc` — CLAUDE.md documents `uv run mypy .` but mypy is neither installed nor runnable on this tree  
   `CLAUDE.md:48`

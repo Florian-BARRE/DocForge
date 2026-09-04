@@ -49,3 +49,10 @@ def _auth_off_by_default(fastapi_app, monkeypatch):
     from config import RUNTIME_CONFIG  # noqa: PLC0415 — deferred until app/ is on sys.path
 
     monkeypatch.setattr(RUNTIME_CONFIG, "AUTH_ENABLED", False)
+    # Keep the "all-mocked" unit run HERMETIC: AuditMiddleware records one audit_log row per mutating
+    # /api/v1 request via the UNMOCKED CONTEXT.database.audit.record, so with AUDIT_ENABLED at its
+    # default (True) every mutating route test wrote a real row into (and leaked a connection to) the
+    # dev Postgres whenever the stack happened to be up — invisibly (the write is swallowed when it is
+    # down). Off here regardless of the ambient .env; test_audit.py flips it back on with mocks to
+    # cover the audit path itself (its override runs after this and wins, reverting cleanly).
+    monkeypatch.setattr(RUNTIME_CONFIG, "AUDIT_ENABLED", False)

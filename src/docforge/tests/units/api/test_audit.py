@@ -23,6 +23,20 @@ KEY_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
 USER_ID = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
 
 
+@pytest.fixture(autouse=True)
+def _audit_on_for_this_module(fastapi_app, monkeypatch):
+    """This module IS the audit-path coverage, so it opts back INTO auditing.
+
+    The api-suite conftest forces AUDIT_ENABLED off for hermeticity (so ordinary route tests never
+    write a real audit row); the recording tests here mock ``audit.record`` and need the middleware
+    enabled to exercise it. Runs after the conftest fixture, so this override wins; the explicit
+    ``AUDIT_ENABLED=false`` passthrough test flips it back off in its own body.
+    """
+    from config import RUNTIME_CONFIG  # noqa: PLC0415 — deferred until app/ is on sys.path
+
+    monkeypatch.setattr(RUNTIME_CONFIG, "AUDIT_ENABLED", True)
+
+
 # ── shared fakes ────────────────────────────────────────────────────────────────────────────────
 
 
