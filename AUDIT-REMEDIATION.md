@@ -34,6 +34,8 @@
 
 - **2026-09-04 — V2 tranche 2 (batching Qdrant)** : `update_vectors` (sync méta post-hoc) envoyait TOUS les points en une requête → 400 sur un gros document (limite ~32 MB), cassant silencieusement la sync et abortant le backfill. Factorisé le batching par octets de `upsert` (`__batched_by_bytes` + `_to_point_vectors`) et appliqué à `update_vectors` ; `set_payload` chunké par count (`__MAX_PAYLOAD_OPS`=2000). +6 tests batching. Façades consommatrices vertes (21✓).
 
+- **2026-09-04 — V2 tranche 3 (fuite bundles d'import)** : la tâche d'import ne nettoyait que le workspace local — l'objet S3 stagé fuyait (le GC ne balaie que les exports). Suppression best-effort de l'objet stagé sur **succès** (après `mark_done` ; pas de retry arq possible sur un succès, contrairement à un échec). +1 assertion. Reste (`[~]`) : la fuite sur import échoué (retry-sensible) → extension du GC transfert (stamp `expires_at` + `list_expired` incluant IMPORT), slice dédié. 3✓.
+
 ## Avancement
 
 | Vague | Total | Fait |
@@ -151,7 +153,7 @@
 
 ### Données Postgres·Qdrant·S3
 
-- [ ] **🔴 HAUTE** · `bug` — Import staging bundles leak in S3 forever — GC sweeps exports only  
+- [~] **🔴 HAUTE** · `bug` — Import staging bundles leak in S3 forever — GC sweeps exports only  
   `src/docforge/shared/libs/services/db/postgresql/apis/transfer_api.py:47`
 - [x] **🔴 HAUTE** · `bug` — QdrantIndexApi.update_vectors sends all points in one request — breaks meta-vector sync for large documents  
   `src/docforge/shared/libs/services/db/qdrant/apis/index_api.py:93`
