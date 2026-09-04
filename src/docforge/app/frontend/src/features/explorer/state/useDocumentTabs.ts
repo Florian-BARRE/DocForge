@@ -36,6 +36,29 @@ export function useDocumentTabs(documentId: string, activeTab: DocumentTabKey) {
   const [provenanceError, setProvenanceError] = useState<string | null>(null);
   const [boxLightbox, setBoxLightbox] = useState<BoxLightboxState | null>(null);
 
+  // The page normally remounts on document navigation (see the module comment above), which would
+  // reset all state below for free — but the shell can also swap `documentId` on an already-mounted
+  // DocumentPage (no remount), and every cache above is keyed only by activation, not by document.
+  // Resetting via a plain `useEffect([documentId])` would race the tab-activation effect below: both
+  // fire in the same commit off the SAME (stale, pre-reset) closure, so the fetch effect's `pages ===
+  // null` guard would still see the previous document's data and skip loading the new one. Adjusting
+  // state directly during render (the documented React pattern for "reset on prop change") avoids
+  // that: React discards this render and re-runs synchronously with the cleared state, so every
+  // effect that runs after commit sees the new document's caches already empty.
+  const [cachedDocumentId, setCachedDocumentId] = useState(documentId);
+  if (documentId !== cachedDocumentId) {
+    setCachedDocumentId(documentId);
+    setPages(null);
+    setPagesError(null);
+    setIr(null);
+    setIrError(null);
+    setChunks(null);
+    setChunksError(null);
+    setProvenance(null);
+    setProvenanceError(null);
+    setBoxLightbox(null);
+  }
+
   const loadPages = () => {
     setPagesError(null);
     getDocumentPages(documentId).then(setPages).catch((e) => setPagesError(e instanceof Error ? e.message : String(e)));

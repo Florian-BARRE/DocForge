@@ -6,8 +6,8 @@
 
 import { useEffect, useState } from "react";
 import { getCollection, type Collection } from "../../api/collections";
-import { listDocuments } from "../../api/explorer";
 import { classifySearchError, search, type SearchErrorInfo, type SearchResponse } from "../../api/search";
+import { queryDocuments } from "../../api/corpus";
 import { ErrorState } from "../../components/ErrorState";
 import type { Navigate } from "../../shell/view";
 import { theme } from "../../theme";
@@ -43,9 +43,13 @@ export function SearchLabPage({ collectionId }: SearchLabPageProps) {
   }, [collectionId]);
 
   // Best-effort, same reasoning: only used to soften the "Search in" axis + explain a guaranteed
-  // empty result on a brand-new collection, never to block the query bar itself.
+  // empty result on a brand-new collection, never to block the query bar itself. A single-row page
+  // is enough to answer "has documents" — no need to pull the whole (possibly huge) corpus for a
+  // boolean; `total` alone tells us if the collection is non-empty.
   useEffect(() => {
-    listDocuments(collectionId).then((docs) => setHasDocuments(docs.length > 0)).catch(() => setHasDocuments(true));
+    queryDocuments(collectionId, { pagination: { limit: 1, offset: 0 } })
+      .then((res) => setHasDocuments(res.total > 0))
+      .catch(() => setHasDocuments(true));
   }, [collectionId]);
 
   const filterableFields = (collection?.fields ?? []).filter((f) => f.filterable);

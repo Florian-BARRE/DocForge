@@ -73,54 +73,62 @@ export function PageGroupRow({ pages, blocks, enrichmentsByBlock, chunkByBlockId
   // Nudge a block box outward so its border floats just OFF the glyphs instead of cutting through them.
   const padOut = (bb: number[], d = 0.005): number[] => [bb[0] - d, bb[1] - d, bb[2] + d, bb[3] + d];
 
-  // Build the overlay boxes for one page. COLOUR = IR TYPE (same hue as the block's card + its segment
-  // in the chunk — one colour means one thing everywhere); body Text stays neutral so a page isn't a
-  // rainbow, only the notable types pop. CHUNK GROUPING is a neutral rounded outline (badged Cn) — a
-  // spanning chunk draws it on both pages. The forge accent is reserved for the active one; everything
+  // Build the overlay boxes for every page in the row, once per relevant change (not on every
+  // render — a row can hold many blocks, and this used to re-filter/re-map all of them on every
+  // unrelated render). COLOUR = IR TYPE (same hue as the block's card + its segment in the chunk —
+  // one colour means one thing everywhere); body Text stays neutral so a page isn't a rainbow, only
+  // the notable types pop. CHUNK GROUPING is a neutral rounded outline (badged Cn) — a spanning
+  // chunk draws it on both pages. The forge accent is reserved for the active one; everything
   // outside the current selection dims. Per-block numbers show only when active (idle stays clean).
-  const boxesForPage = (pageNumber: number): OverlayBox[] => {
-    const pageBlocks = blocks.filter((b) => b.page === pageNumber);
+  const boxesByPage = useMemo(() => {
+    const map = new Map<number, OverlayBox[]>();
+    for (const page of pages) {
+      const pageNumber = page.page_number;
+      const pageBlocks = blocks.filter((b) => b.page === pageNumber);
 
-    const byChunk = new Map<string, { chunk: ChunkInfo; bboxes: number[][] }>();
-    for (const block of pageBlocks) {
-      const chunk = chunkByBlockId.get(block.id);
-      if (!chunk) continue;
-      const entry = byChunk.get(chunk.id) ?? { chunk, bboxes: [] };
-      entry.bboxes.push(block.bbox);
-      byChunk.set(chunk.id, entry);
+      const byChunk = new Map<string, { chunk: ChunkInfo; bboxes: number[][] }>();
+      for (const block of pageBlocks) {
+        const chunk = chunkByBlockId.get(block.id);
+        if (!chunk) continue;
+        const entry = byChunk.get(chunk.id) ?? { chunk, bboxes: [] };
+        entry.bboxes.push(block.bbox);
+        byChunk.set(chunk.id, entry);
+      }
+      const groupBoxes: OverlayBox[] = [...byChunk.values()].map(({ chunk, bboxes }) => {
+        const active = activeChunkId === chunk.id;
+        return {
+          bbox: unionBbox(bboxes, 0.012),
+          color: active ? theme.color.accent : theme.color.chunkOutline,
+          label: `Chunk ${chunk.chunk_index}`,
+          active,
+          dim: hasSelection && !active,
+          variant: "group" as const,
+          onSelect: () => selectChunk(chunk.id),
+          selectLabel: `Chunk ${chunk.chunk_index}`,
+        };
+      });
+
+      const blockBoxes: OverlayBox[] = pageBlocks.map((block) => {
+        const chunk = chunkByBlockId.get(block.id);
+        const active = selectedBlockId === block.id || (chunk != null && chunk.id === activeChunkId);
+        const index = indexByBlockId.get(block.id) ?? 0;
+        return {
+          bbox: padOut(block.bbox),
+          color: active ? theme.color.accent : blockStyle(block.block_type).color,
+          label: String(index + 1),
+          active,
+          dim: hasSelection && !active,
+          variant: "block" as const,
+          onSelect: () => selectBlock(block.id),
+          selectLabel: `Block ${index + 1}, ${blockStyle(block.block_type).label}`,
+        };
+      });
+
+      map.set(pageNumber, [...groupBoxes, ...blockBoxes]);
     }
-    const groupBoxes: OverlayBox[] = [...byChunk.values()].map(({ chunk, bboxes }) => {
-      const active = activeChunkId === chunk.id;
-      return {
-        bbox: unionBbox(bboxes, 0.012),
-        color: active ? theme.color.accent : theme.color.chunkOutline,
-        label: `Chunk ${chunk.chunk_index}`,
-        active,
-        dim: hasSelection && !active,
-        variant: "group" as const,
-        onSelect: () => selectChunk(chunk.id),
-        selectLabel: `Chunk ${chunk.chunk_index}`,
-      };
-    });
-
-    const blockBoxes: OverlayBox[] = pageBlocks.map((block) => {
-      const chunk = chunkByBlockId.get(block.id);
-      const active = selectedBlockId === block.id || (chunk != null && chunk.id === activeChunkId);
-      const index = indexByBlockId.get(block.id) ?? 0;
-      return {
-        bbox: padOut(block.bbox),
-        color: active ? theme.color.accent : blockStyle(block.block_type).color,
-        label: String(index + 1),
-        active,
-        dim: hasSelection && !active,
-        variant: "block" as const,
-        onSelect: () => selectBlock(block.id),
-        selectLabel: `Block ${index + 1}, ${blockStyle(block.block_type).label}`,
-      };
-    });
-
-    return [...groupBoxes, ...blockBoxes];
-  };
+    return map;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pages, blocks, chunkByBlockId, activeChunkId, selectedBlockId, hasSelection, indexByBlockId]);
 
   const maxPageHeight = pages.length > 1 ? `${Math.floor(80 / pages.length)}vh` : "82vh";
 
@@ -153,9 +161,12 @@ export function PageGroupRow({ pages, blocks, enrichmentsByBlock, chunkByBlockId
               renderBlobHash={page.render_blob_hash}
               width={page.width}
               height={page.height}
-              boxes={boxesForPage(page.page_number)}
+              boxes={boxesByPage.get(page.page_number) ?? []}
               alt={`Page ${displayPage(page.page_number)} layout`}
               style={{ maxWidth: "100%", maxHeight: maxPageHeight }}
+              // The Layout tab can render a whole document's pages at once — defer each page's
+              // fetch until it scrolls near view instead of firing one request per page up front.
+              lazy
             />
           </div>
         ))}

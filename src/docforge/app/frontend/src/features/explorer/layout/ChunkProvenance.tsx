@@ -52,7 +52,7 @@ export function ChunkProvenance({ chunkText, members, enrichmentsByBlock, strate
                     flex: "none",
                     fontStyle: "normal",
                     fontFamily: theme.font.mono,
-                    fontSize: 9,
+                    fontSize: theme.font.size.xs,
                     letterSpacing: "0.03em",
                     textTransform: "uppercase",
                     color: theme.color.mute,
@@ -91,7 +91,7 @@ export function ChunkProvenance({ chunkText, members, enrichmentsByBlock, strate
                 style={{
                   flex: "none",
                   fontFamily: theme.font.mono,
-                  fontSize: 9,
+                  fontSize: theme.font.size.xs,
                   fontWeight: theme.font.weight.semibold,
                   color: theme.color.onAccent,
                   background: hue,

@@ -32,10 +32,14 @@ interface LayoutTabProps {
   chunks: ChunkInfo[] | null;
   provenance: DocumentProvenance | null;
   error: string | null;
+  /** A chunks-only fetch failure — non-blocking: the page/IR view still renders, chunk grouping
+   *  and provenance are simply absent (mirrors the "chunks are optional context" comment below). */
+  chunksError: string | null;
   onRetry: () => void;
+  onRetryChunks: () => void;
 }
 
-export function LayoutTab({ ir, pages, chunks, provenance, error, onRetry }: LayoutTabProps) {
+export function LayoutTab({ ir, pages, chunks, provenance, error, chunksError, onRetry, onRetryChunks }: LayoutTabProps) {
   // Group enrichments by block once, and blocks by page (in reading order), so each PageLayoutRow
   // gets exactly its slice with no per-row scanning of the whole IR.
   const enrichmentsByBlock = useMemo(() => {
@@ -72,6 +76,10 @@ export function LayoutTab({ ir, pages, chunks, provenance, error, onRetry }: Lay
     return fallback ? [{ kind: fallback, status: "success" }] : [];
   }, [provenance]);
 
+  // Scrubber entries + row anchor ids, computed once per pageGroups change instead of twice per
+  // render (once for the scrubber, once per row for its own anchor id).
+  const pageGroupNavs = useMemo(() => pageGroups.map(pageGroupNav), [pageGroups]);
+
   if (error) return <ErrorState message={error} onRetry={onRetry} />;
   if (ir === null || pages === null) return <LoadingState label="loading layout…" />;
   if (pageGroups.length === 0) {
@@ -86,12 +94,45 @@ export function LayoutTab({ ir, pages, chunks, provenance, error, onRetry }: Lay
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: theme.space.l }}>
-      <PageScrubber entries={pageGroups.map(pageGroupNav)} />
+      {chunksError && (
+        <div
+          role="status"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: theme.space.s,
+            fontSize: theme.font.size.s,
+            color: theme.color.warnStrong,
+            background: theme.color.warnSoft,
+            border: `1px solid ${theme.color.warn}`,
+            borderRadius: theme.radius.m,
+            padding: `${theme.space.s}px ${theme.space.m}px`,
+          }}
+        >
+          <span>Chunk provenance is unavailable ({chunksError}) — showing pages and IR only.</span>
+          <button
+            type="button"
+            onClick={onRetryChunks}
+            style={{
+              fontSize: theme.font.size.xs,
+              color: theme.color.warnStrong,
+              background: "none",
+              border: "none",
+              textDecoration: "underline",
+              cursor: "pointer",
+              padding: 0,
+            }}
+          >
+            retry
+          </button>
+        </div>
+      )}
+      <PageScrubber entries={pageGroupNavs} />
       <BlockTypeLegend />
-      {pageGroups.map((group) => (
+      {pageGroups.map((group, index) => (
         <PageGroupRow
           key={group.pages[0].page_number}
-          rowId={pageGroupNav(group).id}
+          rowId={pageGroupNavs[index].id}
           pages={group.pages}
           blocks={group.blocks}
           enrichmentsByBlock={enrichmentsByBlock}

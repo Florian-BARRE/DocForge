@@ -10,6 +10,12 @@ import { getJob, getJobTrace, getStageDurations, streamJobEvents, type JobEvent,
 
 const POLL_MS = 2500;
 const TERMINAL = new Set(["done", "failed", "cancelled"]);
+// A per-stage trace EVENT's `status` mirrors the engine's NodeStatus ("success" | "failed" |
+// "skipped"; "running" while the stage is still open) — a DIFFERENT enum from the job-level
+// JobStatusValue above ("pending" | "running" | "done" | "failed" | "cancelled"). Reusing TERMINAL
+// against event.status only ever matched "failed", so a successfully-finished stage was never
+// counted as done and the ETA never shrank as the job progressed.
+const EVENT_FINISHED = new Set(["success", "failed", "skipped"]);
 // A running stage is flagged "running long" once its elapsed time crosses this multiple of the
 // collection's own average for that stage — well before the 600s hard `stalled` flag.
 const RUNNING_LONG_FACTOR = 2.5;
@@ -189,7 +195,7 @@ export function useJobDetail(jobId: string, collectionId: string) {
 
   // ETA: sum the collection-average durations of the stages this running job hasn't finished yet.
   const finishedStages = new Set(
-    timeline.filter((e) => TERMINAL.has(e.status) || e.status === "skipped").map((e) => e.stage),
+    timeline.filter((e) => EVENT_FINISHED.has(e.status)).map((e) => e.stage),
   );
   const etaSeconds = running
     ? Object.entries(stageSeconds)
