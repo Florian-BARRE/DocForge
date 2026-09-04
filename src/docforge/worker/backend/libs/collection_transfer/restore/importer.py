@@ -189,10 +189,24 @@ class CollectionImporterV1:
         objects, rows = [], []
         for data in self._reader.iter_rows(BundlePaths.BLOBS):
             blob = RowDeserializer.blob(data)
+
+            # Content-addressing invariant: a blob's storage key IS its content hash (see the upload
+            # and cache paths). NEVER trust the bundle's own s3_key — a tampered bundle can set it to
+            # a VICTIM object's key while carrying attacker bytes, and read_blob only verifies the
+            # content_hash, not the key, so the put would overwrite that victim object. Pin both the
+            # uploaded object key and the registered row to the content hash: an import can then only
+            # ever write to its own content address. A legitimate bundle already has them equal.
+            if blob.s3_key != blob.content_hash:
+                self.logger.warning(
+                    f"Bundle blob s3_key '{blob.s3_key}' != content_hash '{blob.content_hash}' — "
+                    f"pinning to the content hash (content-addressing invariant)."
+                )
+                blob.s3_key = blob.content_hash
+
             rows.append(blob)
             objects.append(
                 S3Object(
-                    key=blob.s3_key,
+                    key=blob.content_hash,
                     data=self._reader.read_blob(blob.content_hash),
                     content_type=blob.mime_type,
                 )
