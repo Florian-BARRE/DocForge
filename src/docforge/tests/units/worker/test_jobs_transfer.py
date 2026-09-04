@@ -93,6 +93,8 @@ async def test_import_collection_returns_new_collection_and_marks_done(jobs_tran
         archive_path.write_bytes(b"bundle-bytes")
 
     monkeypatch.setattr(jobs_transfer.S3ObjectApi, "download_to", AsyncMock(side_effect=_fake_download))
+    delete_staged = AsyncMock()
+    monkeypatch.setattr(jobs_transfer.S3ObjectApi, "delete", delete_staged)
     monkeypatch.setattr(jobs_transfer.BundleArchive, "unpack", staticmethod(lambda *a, **k: None))
     import_result = SimpleNamespace(
         collection_id=new_id, collection_name="DemoCollection (imported)", counts={"documents": 2}
@@ -105,6 +107,9 @@ async def test_import_collection_returns_new_collection_and_marks_done(jobs_tran
     assert result["collection_id"] == str(new_id)
     assert result["collection_name"] == "DemoCollection (imported)"
     tracker.mark_done.assert_awaited_once()
+    # The staged bundle is reclaimed on success so it does not leak in S3 (GC sweeps exports only).
+    delete_staged.assert_awaited_once()
+    assert delete_staged.await_args.args[2] == "col-exports/x.dcexport"
     # The new collection's NAME (not just its id) is stamped on the tracking row, so a polled
     # transfer surfaces the real name instead of a null the UI falls back to generic text for.
     done_kwargs = tracker.mark_done.await_args.kwargs

@@ -170,6 +170,17 @@ async def import_collection(
             collection_name=result.collection_name,
             counts=result.counts,
         )
+
+        # 3. The staged bundle is fully consumed — reclaim it so it does not leak in S3 forever (the
+        #    transfer GC sweeps only EXPORT artifacts). Best-effort: a failed cleanup must never fail
+        #    an import that already succeeded. Only done on success, where no arq retry can re-run and
+        #    need to re-download it (a failed import keeps its staging object for a possible retry).
+        try:
+            async with s3.client() as client:
+                await S3ObjectApi.delete(client, s3.bucket, s3_key)
+        except Exception as cleanup_exc:  # noqa: BLE001 — cleanup must not break a successful import
+            CONTEXT.logger.warning(f"Could not delete staged import bundle {s3_key}: {cleanup_exc}")
+
         CONTEXT.logger.info(
             f"Imported bundle {s3_key} → collection {result.collection_id} "
             f"('{result.collection_name}')"
