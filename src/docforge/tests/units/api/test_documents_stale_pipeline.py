@@ -148,8 +148,11 @@ def _install_format_context(monkeypatch, fastapi_app, supported_formats: list[st
         ),
     )
     queue = SimpleNamespace(enqueue_ingest=AsyncMock())
+    jobs = SimpleNamespace(mark_failed=AsyncMock())
     monkeypatch.setattr(
-        CONTEXT, "database", SimpleNamespace(collections=collections, ingestion=ingestion)
+        CONTEXT,
+        "database",
+        SimpleNamespace(collections=collections, ingestion=ingestion, jobs=jobs),
     )
     monkeypatch.setattr(CONTEXT, "queue", queue)
     return SimpleNamespace(ingestion=ingestion, queue=queue)

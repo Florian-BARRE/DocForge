@@ -8,6 +8,8 @@
 
 ## Journal
 
+- **2026-09-04 — Vague fiabilité cycle-de-vie data/blob (4 MOYENNE)** : (1) **garde reingest concurrent** — `IngestionFacade.reingest` verrouille la ligne document `FOR UPDATE` puis refuse (`ReingestOutcome.ALREADY_ACTIVE`) si un job PENDING/RUNNING existe déjà → route single = **409**, path bulk = skip ; deux runs parallèles n'interleavent plus leurs delete/upsert Qdrant (plus d'orphelins). (2) **purge blobs supersédés au reingest** — `save()` snapshote les hashes référencés AVANT le purge, flush, puis supprime ceux que plus rien ne référence (les renders/crops/PDF de l'ancien run ne fuitent plus en S3 ; source préservée). (3) **enqueue-or-mark-failed partagé** — nouveau `IngestEnqueuer` utilisé aux **3** sites (upload, reingest single, bulk) : un blip Redis marque le job FAILED (jamais un PENDING orphelin invisible du reaper) + 503 au caller. (4) **TOCTOU purge orphelins** — `find_unreferenced`+`delete_rows` remplacés par un unique `delete_unreferenced` (`DELETE … WHERE NOT EXISTS(ref) RETURNING`) : la ré-référence par un ingest concurrent est réévaluée dans le snapshot du DELETE, plus de suppression S3 sous un doc fraîchement ingéré. Value-object `ReingestResult`. +tests (409, purge/keep partagé, FAILED sur les 3 sites, delete race-safe). `1382 passed`, ruff clean. `config_version unique` (FAIBLE) reporté → vague migration.
+
 - **2026-09-04 — ultrareview cloud (3 findings traités)** : (1) **[réel]** `QueryEmbedderProbe.classify` (chemin 424 du routeur search) contournait l'egress allowlist — trou parallèle dans mon fix SSRF ; la policy y est désormais construite (`from RUNTIME_CONFIG`) et passée à `probe_nodes` (host non listé → `blocked`, jamais sondé). +1 test. (2) **[réel]** `set_document_enabled` renvoyait un 200 faux-positif sur race de delete (j'avais jeté le retour `existed` en ajoutant le scope check) — re-check + 404 restauré. (3) **[nit]** allowlist MIME dupliquée front/back → commentaires croisés « keep in sync ». Tests verts.
 
 - **2026-09-04 — V1 tranche 1 (backend authz)** : IDOR `PATCH /documents/{id}/enabled` + `POST /documents/{id}/reingest` fermés (chargement du document → `assert_collection_scope` avant toute mutation/dépense) ; `GET /collections` filtré par `scoped_collections` (plus de fuite de contrat inter-tenant). +3 tests de non-régression (scoped key → 403 / liste filtrée). `532 passed`.
@@ -83,7 +85,7 @@
 | V5 | 2 | 0 |
 | V6 | 0 | 0 |
 | V7 | 21 | 0 |
-| V8 | 188 | 0 |
+| V8 | 188 | 4 |
 
 
 ## V1 — Sécurité & authz (avant tout déploiement multi-tenant)  (30)
@@ -458,7 +460,7 @@
   `src/docforge/shared/libs/services/db/facades/enablement_facade.py:117`
 - [ ] **🟠 MOYENNE** · `perf` — Disabled-document exclusion list is unbounded and rides every prefetch branch of every search  
   `src/docforge/shared/libs/services/db/facades/search_facade.py:86`
-- [ ] **🟠 MOYENNE** · `bug` — Orphan-blob purge races a concurrent ingest sharing the same content hash  
+- [x] **🟠 MOYENNE** · `bug` — Orphan-blob purge races a concurrent ingest sharing the same content hash  
   `src/docforge/shared/libs/services/db/postgresql/apis/blob_api.py:221`
 - [ ] **⚪ FAIBLE** · `divergence-doc` — CLAUDE.md structure tree names a `migrations/` root that does not exist  
   `CLAUDE.md:115`
@@ -698,13 +700,13 @@
 
 ### Worker & jobs
 
-- [ ] **🟠 MOYENNE** · `consistency` — Enqueue-failure handling inconsistent: upload and single reingest can leave a forever-PENDING job no reaper covers  
+- [x] **🟠 MOYENNE** · `consistency` — Enqueue-failure handling inconsistent: upload and single reingest can leave a forever-PENDING job no reaper covers  
   `src/docforge/app/backend/routers/documents/router.py:200`
 - [ ] **🟠 MOYENNE** · `dead-code` — Enrichment attempt trace and entity mentions are never persisted — the tables, read APIs and export path are write-dead on ingest  
   `src/docforge/worker/backend/libs/jobs/core.py:188`
-- [ ] **🟠 MOYENNE** · `bug` — No guard against two concurrent runs of the same document — interleaved Qdrant delete/upsert can strand orphan points  
+- [x] **🟠 MOYENNE** · `bug` — No guard against two concurrent runs of the same document — interleaved Qdrant delete/upsert can strand orphan points  
   `src/docforge/app/backend/routers/documents/router.py:260`
-- [ ] **🟠 MOYENNE** · `perf` — Re-ingest leaks superseded blobs: save() replaces rows but never orphan-purges the previous run's S3 objects  
+- [x] **🟠 MOYENNE** · `perf` — Re-ingest leaks superseded blobs: save() replaces rows but never orphan-purges the previous run's S3 objects  
   `src/docforge/shared/libs/services/db/facades/ingestion_facade.py:161`
 - [ ] **⚪ FAIBLE** · `bug` — Job observability accuracy gaps: cut-stage usage lost from the cost meter, stale breadcrumb/counter on retried attempts, progress denominator counts never-run escalation roots  
   `src/docforge/worker/backend/libs/jobs/progress.py:149`

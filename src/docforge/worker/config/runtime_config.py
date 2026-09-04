@@ -130,6 +130,11 @@ class RUNTIME_CONFIG(EnvConfigLoader):
     CACHE_MAX_BYTES_PER_COLLECTION = env(
         "CACHE_MAX_BYTES_PER_COLLECTION", cast=int, default=5_000_000_000
     )
+    # Grace window (minutes) the orphan-blob sweep leaves before reclaiming a stage-artifact blob:
+    # blobs younger than this are skipped so a concurrent store() (bytes + row first, pointer after)
+    # is never swept mid-flight. Only needs to exceed the store's put→pointer-commit gap (ms); the
+    # generous default just makes the TOCTOU impossible in practice. A too-small value risks the race.
+    CACHE_BLOB_GRACE_MINUTES = env("CACHE_BLOB_GRACE_MINUTES", cast=int, default=10)
 
     # ───── Stores — client tuning ─────
     # Per-request Qdrant timeout. The qdrant-client default (5s) is too low for heavy vector upserts
