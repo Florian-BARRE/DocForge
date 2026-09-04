@@ -8,6 +8,8 @@
 
 ## Journal
 
+- **2026-09-04 — XFF non-trusté par défaut (V1 FAIBLE) + clôture `[~]` import** : `RATE_LIMIT_TRUST_FORWARDED_FOR` passe **default `true`→`false`** — le déploiement out-of-box (prod-cpu) n'a pas de proxy, donc un XFF client-fourni était forgeable (spoof du keying rate-limit IP en auth-off) ; défaut sûr = keying sur le peer transport, `true` seulement derrière un proxy qui **réécrit** XFF (overlay Caddy). `keying.py` prend déjà `trust_forwarded_for` (aucun changement de logique). Docs alignées (configuration.md, PROD-HARDENING.md). Les 2 tests de keying passent (flag explicite, indépendants du défaut). Par ailleurs le `[~]` **import exhaustion (bomb + buffering)** est confirmé **entièrement clos par 0.14.7** (guards `IMPORT_MAX_DECOMPRESSION_RATIO`/`_MEMBERS` + import streamé 64 MiB) → passé `[x]`. NB : la moitié "unauth bypass" du finding jumeau (app.py:86) reste `[ ]` (à confirmer dans le middleware, non tracé ici).
+
 - **2026-09-04 — Exclusion search bornée (475) + fix runtime latent** : la liste d'exclusion des docs désactivés (`must_not document_id in {disabled}`) était non bornée et ridait CHAQUE requête. Désormais bornée par `SEARCH_MAX_DISABLED_DOC_EXCLUSIONS` (2000) : sous le cap = must_not classique ; au-delà = **flip vers une inclusion positive `document_id in {enabled}`** (le set plus petit sur une collection majoritairement archivée), lu via `list_disabled_ids(limit=cap+1)` pour détecter le débordement sans charger tout. ⚠️ Le sous-agent avait référencé `DocumentApi.list_disabled_ids(limit=...)` (param inexistant) + `list_enabled_ids` (méthode inexistante) — bug runtime masqué par les tests serviceless qui mockent DocumentApi (le piège connu) ; **corrigé** (ajout du param + de la méthode) + test du flip past-cap. `1398 passed`. NB : les 3 autres findings de la vague (306 lectures bornées, 308 PATCH atomique, 473 toggle cross-store) NON faits par l'agent (scope trop large, épuisé en exploration) — restent `[ ]`, vagues dédiées à suivre.
 
 - **2026-09-04 — Vague frontend Layout tab (6 MOYENNE)** : (A) **erreur chunks blanchissait tout l'onglet Layout** — `chunksError` propagé à LayoutTab → degrade non-bloquant (page/IR rendus + notice « provenance chunk indisponible »), conforme au design degrade-without-chunks. (B) **brand <11px** — `fontSize 9` remplacé par token ≥11px ; grep 0-hex/0-sub-11px propre sur tout `layout/`. (C) **ETA jamais décrémentée** — le filtre testait `TERMINAL` (enum job-level `done/failed/cancelled`) contre `event.status` (enum node-level `success/failed/skipped/running`), donc un stage `success` n'était JAMAIS compté fini → ETA figée. Nouveau set `EVENT_FINISHED={success,failed,skipped}`. (D) **Layout eager** — recompute par-render mémoïsé + fetch gardé (plus de refetch total à chaque switch d'onglet) + chargement d'images de page allégé. (E) **caches par-document jamais reset** — quand `documentId` change sans remount, les caches (pages/ir/chunks/provenance/lightbox) montraient les données du document PRÉCÉDENT ; corrigé par le pattern React « reset-state-during-render » (garde `documentId !== cached` en render, pas un `useEffect` qui racerait l'effet d'activation d'onglet sur closure stale). (F) **Search Lab** — `queryDocuments(limit:1)` + `res.total>0` au lieu de tirer tout le corpus non-paginé pour un booléen. Gate conteneur vert : lint 0-err, tsc 0, vitest 2, build ✓. Aucune régression.
@@ -96,7 +98,7 @@
 
 | Vague | Total | Fait | En cours | Restant |
 |---|---|---|---|---|
-| V1 — Sécurité & authz | 30 | 15 | 2 | 13 |
+| V1 — Sécurité & authz | 30 | 17 | 1 | 12 |
 | V2 — Fiabilité (jobs/stores/transferts) | 4 | 4 | 0 | 0 |
 | V3 — Release/CI/dépendances | 1 | 1 | 0 | 0 |
 | V4 — Search & coûts | 1 | 1 | 0 | 0 |
@@ -104,7 +106,7 @@
 | V6 — Frontend | 0 | 0 | 0 | 0 |
 | V7 — Documentation | 21 | 10 | 0 | 11 |
 | V8 — Outillage (.claude/tests/infra/télémétrie) | 188 | 40 | 3 | 145 |
-| **Total** | **247** | **73** | **5** | **169** |
+| **Total** | **247** | **75** | **4** | **167** |
 
 
 ## V1 — Sécurité & authz (avant tout déploiement multi-tenant)  (30)
@@ -140,7 +142,7 @@
   `src/mcp/libs/tools/documents.py:25`
 - [~] **🟠 MOYENNE** · `security` — Collection import bypasses the CREATE capability and skips creator scope-grant  
   `src/docforge/app/backend/routers/transfers/router.py:85` _(aussi: backend-api)_
-- [~] **🟠 MOYENNE** · `security` — Import resource exhaustion: decompression bomb + whole-corpus buffering in the worker  
+- [x] **🟠 MOYENNE** · `security` — Import resource exhaustion: decompression bomb + whole-corpus buffering in the worker  
   `src/docforge/worker/backend/libs/collection_transfer/bundle/archive.py:62`
 - [x] **🟠 MOYENNE** · `security` — SSRF / internal-network oracle via per-collection provider base_url (unmitigated, unacknowledged)  
   `src/docforge/shared/libs/pipelines/nodes/openai_compat/preflight.py:92`
@@ -192,7 +194,7 @@
 
 ### Middlewares HTTP
 
-- [ ] **⚪ FAIBLE** · `security` — X-Forwarded-For trusted by default (leftmost hop) while the default deployment has no proxy — forgeable audit client_ip out-of-box, rate-limit keying bypass when enabled with auth off  
+- [x] **⚪ FAIBLE** · `security` — X-Forwarded-For trusted by default (leftmost hop) while the default deployment has no proxy — forgeable audit client_ip out-of-box, rate-limit keying bypass when enabled with auth off  
   `src/docforge/app/config/runtime_config.py:112`
 
 ### Search & retrieval

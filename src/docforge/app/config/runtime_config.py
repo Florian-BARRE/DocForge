@@ -105,12 +105,13 @@ class RUNTIME_CONFIG(EnvConfigLoader):
     # The per-caller budget (requests per rolling minute). Generous by default so a normal UI session
     # never trips it; lower it to harden a publicly-exposed deployment.
     RATE_LIMIT_PER_MINUTE: int = env("RATE_LIMIT_PER_MINUTE", cast=int, default=600)
-    # Trust the leftmost X-Forwarded-For hop for IP keying (auth-off mode). DocForge normally sits
-    # behind a reverse proxy that sets XFF, so ON by default — the proxy MUST overwrite (never append)
-    # a client-supplied XFF for this to be spoof-safe. Set false for a direct-exposure deployment
-    # where XFF would be client-forgeable; the transport peer address is then used instead.
+    # Trust the leftmost X-Forwarded-For hop for IP keying (auth-off mode). OFF by default: the
+    # out-of-box deployment (prod-cpu) has NO reverse proxy, so a client-supplied XFF would be
+    # forgeable — an attacker could spoof it to evade IP-based rate limiting. The safe default keys on
+    # the transport peer address. Turn it ON only when DocForge sits behind a proxy that OVERWRITES
+    # (never appends) XFF — e.g. the Caddy overlay (compose/overlays/proxy.yml).
     RATE_LIMIT_TRUST_FORWARDED_FOR: bool = env(
-        "RATE_LIMIT_TRUST_FORWARDED_FOR", cast=bool, default=True
+        "RATE_LIMIT_TRUST_FORWARDED_FOR", cast=bool, default=False
     )
 
     # ───── Provider egress allowlist (SSRF guard, OFF by default) ─────
