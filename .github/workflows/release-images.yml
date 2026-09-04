@@ -18,8 +18,10 @@
 #   ghcr.io/<owner>/docforge-bge-server:1.2.3-gpu :latest-gpu        (TORCH_VARIANT build-arg)
 #
 # HOW TO RELEASE:
-#   Tag a commit with `v<version>` (the PRODUCT/image release; the SDK's `sdk-v*` prefix is separate,
-#   so the two release lines never collide) and push it.
+#   Tag a commit with `v<version>` and push it. A `v*` tag is a UNIFIED LOCKSTEP release: it triggers
+#   BOTH this workflow (images) AND release-sdk.yml (PyPI) at the same version, so the tag must equal
+#   the tree's declared version (the version-guard job below enforces it, mirroring release-sdk). The
+#   `sdk-v*` prefix is the SDK-only escape hatch.
 #     git tag v1.2.3 && git push origin v1.2.3
 #
 # After every push, a `security-scan` job runs Trivy against what was just published — see that
@@ -43,9 +45,32 @@ jobs:
   gate:
     uses: ./.github/workflows/gate.yml
 
-  # 2. Build + push every image, ONLY after the gate is fully green.
+  # 1b. Fail fast if the pushed tag disagrees with the tree's declared version, BEFORE the build
+  #     matrix moves any mutable :latest tag. Without this a `git tag v0.14.0` on a tree still at
+  #     0.13.0 (the gate only checks the three version sources agree with EACH OTHER, not with the
+  #     tag) would publish all 8 images tagged 0.14.0 + latest while containing 0.13.0 code, then the
+  #     SDK release's own guard would fail — leaving GHCR and PyPI diverged with image tags that lie.
+  #     Mirrors release-sdk.yml's guard.
+  version-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Verify tag matches the declared version
+        run: |
+          set -euo pipefail
+          pkg_version="$(grep -oP '^version\s*=\s*"\K[^"]+' src/docforge/pyproject.toml)"
+          tag_version="${GITHUB_REF_NAME#v}"
+          echo "Declared version: ${pkg_version}"
+          echo "Tag version:      ${tag_version}"
+          if [ "${pkg_version}" != "${tag_version}" ]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} does not match src/docforge/pyproject.toml version ${pkg_version}"
+            exit 1
+          fi
+
+  # 2. Build + push every image, ONLY after the gate is fully green AND the tag matches the version.
   images:
-    needs: gate
+    needs: [gate, version-guard]
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
