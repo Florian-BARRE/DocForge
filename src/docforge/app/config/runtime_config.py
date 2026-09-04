@@ -126,9 +126,7 @@ class RUNTIME_CONFIG(EnvConfigLoader):
     # are NOT blocked per-call (nodes read no config, by design) — they rely on this same allowlist
     # being enforced at preflight (which gates before spend) PLUS network-level egress control.
     # Recommended for untrusted-tenant deployments. See docs/PROD-HARDENING.md.
-    PROVIDER_EGRESS_ALLOWLIST: str = env(
-        "PROVIDER_EGRESS_ALLOWLIST", required=False, default=""
-    )
+    PROVIDER_EGRESS_ALLOWLIST: str = env("PROVIDER_EGRESS_ALLOWLIST", required=False, default="")
 
     # ───── Idempotency (Idempotency-Key middleware, ON by default) ─────
     # ON out-of-box, but SAFE: the middleware only engages when a mutating request to an ELIGIBLE
@@ -245,6 +243,13 @@ class RUNTIME_CONFIG(EnvConfigLoader):
     IMPORT_MAX_BUNDLE_BYTES: int = env(
         "IMPORT_MAX_BUNDLE_BYTES", cast=int, default=5 * 1024 * 1024 * 1024
     )
+    # How long a STAGED import bundle (the S3 object created before the worker runs) is retained before
+    # the transfer GC may reclaim it (seconds). A successful import deletes its staged object as soon
+    # as it finishes; a FAILED or abandoned import would otherwise leak the object AND its tracking row
+    # forever (the GC only knew about exports). Stamping the import row's ``expires_at`` at admission
+    # lets the SAME transfer-GC sweep reclaim it. The worker downloads the bundle at the very start of
+    # the run, so this horizon never truncates an in-flight import. Default 86400 = 24 h.
+    IMPORT_STAGING_TTL_SECONDS: int = env("IMPORT_STAGING_TTL_SECONDS", cast=int, default=86400)
 
     # ───── Logging ─────
     LOGGING_CONSOLE_LEVEL = env("LOGGING_CONSOLE_LEVEL")

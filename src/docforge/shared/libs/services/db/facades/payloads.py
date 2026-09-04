@@ -113,4 +113,33 @@ class ReingestResult:
     active_job_id: uuid.UUID | None = None
 
 
-__all__ = ["IngestionPayload", "IRBundle", "ChunkToggle", "ReingestOutcome", "ReingestResult"]
+@dataclass(slots=True)
+class AdmissionResult:
+    """
+    The outcome of a document admission — a fresh admit, or an idempotent duplicate.
+
+    A concurrent upload of the same (collection, source_hash, pipeline_version) can slip between the
+    router's dedup pre-check and the insert; the loser hits the document UNIQUE constraint. Rather
+    than surface that race as a 500, ``admit`` resolves it to the already-admitted document so a
+    client retry stays idempotent — this result tells the two cases apart.
+
+    Attributes:
+        created (bool): True when this call inserted the document and minted its job; False when a
+            concurrent admission won the race and this call resolved to the incumbent document.
+        document (Document | None): The admitted (created=True) or incumbent (created=False) document.
+        job (Job | None): The freshly-minted ingestion job (created=True only; None on a duplicate).
+    """
+
+    created: bool
+    document: Document | None = None
+    job: Job | None = None
+
+
+__all__ = [
+    "IngestionPayload",
+    "IRBundle",
+    "ChunkToggle",
+    "ReingestOutcome",
+    "ReingestResult",
+    "AdmissionResult",
+]

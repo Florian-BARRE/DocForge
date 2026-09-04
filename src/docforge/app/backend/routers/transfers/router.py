@@ -7,7 +7,7 @@
 
 # ====== Standard Library Imports ======
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 # ====== Third-Party Library Imports ======
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
@@ -104,10 +104,15 @@ async def import_collection(
         file, staging_key, CONTEXT.database.transfer, RUNTIME_CONFIG.IMPORT_MAX_BUNDLE_BYTES
     )
 
-    # 2. Create the PENDING tracking row (kind=import, the staged bundle's key) BEFORE enqueue.
+    # 2. Create the PENDING tracking row (kind=import, the staged bundle's key) BEFORE enqueue. The
+    #    row is stamped with an ``expires_at`` reclaim horizon so a failed/abandoned import's staged
+    #    object AND its row are swept by the transfer GC (which otherwise only knew about exports); a
+    #    successful import deletes its staged object itself the instant it finishes, well before this.
+    expires_at = datetime.now(UTC) + timedelta(seconds=RUNTIME_CONFIG.IMPORT_STAGING_TTL_SECONDS)
     row = await CONTEXT.database.transfer_tracker.create(
         TransferKind.IMPORT,
         s3_key=staging_key,
+        expires_at=expires_at,
     )
 
     # 3. Hand over to the worker — IDS/SCALARS ONLY on the wire (no arq control kwarg).

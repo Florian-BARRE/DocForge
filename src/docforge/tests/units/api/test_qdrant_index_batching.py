@@ -33,7 +33,9 @@ class _FakeClient:
 
 
 def _big_point(pid: str) -> QdrantPoint:
-    return QdrantPoint(point_id=pid, payload={"document_id": "d"}, dense={"content_dense": [0.0] * _BIG_DENSE})
+    return QdrantPoint(
+        point_id=pid, payload={"document_id": "d"}, dense={"content_dense": [0.0] * _BIG_DENSE}
+    )
 
 
 def _small_point(pid: str, *, with_vectors: bool = True) -> QdrantPoint:
