@@ -2,15 +2,9 @@
 # Reusable QUALITY GATE — the single source of truth for "is this tree shippable".
 #
 # Called by:
-#   - ci.yml     (every branch push + PR)  → gate must be green to merge.
-#   - release.yml (a pushed v*/sdk-v* tag) → the release ORCHESTRATOR, which runs this gate
-#                                             EXACTLY ONCE per tag, then fans out to
-#                                             release-images.yml (GHCR) and/or release-sdk.yml
-#                                             (PyPI), each `needs:` that single gate run. Those
-#                                             two files no longer trigger on `push: tags`
-#                                             themselves (they're `workflow_call`-only) — see
-#                                             release.yml's header for why (used to double-run
-#                                             this whole gate per tag).
+#   - ci.yml         (every push + PR)         → gate must be green to merge.
+#   - release-sdk.yml (a pushed sdk-v* tag)     → publish `needs` this gate, so a
+#                                                 broken/incompatible tree can NEVER publish.
 #
 # It gates EVERY package in this monorepo — format + lint + type-check + full unit
 # suite — plus the frontend build and the SDK↔backend OpenAPI coherence check. Fully

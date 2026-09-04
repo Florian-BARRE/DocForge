@@ -8,6 +8,8 @@
 
 ## Journal
 
+- **2026-09-04 — 🔴 REVERT release restructure (0.14.5 a cassé la release) → 429/437 déférés** : le run `release.yml` de v0.14.5 a échoué sur DEUX bugs de mon restructure : (1) **SDK/PyPI** — `Invalid attestations ... release.yml@refs/tags/v0.14.5 does not match expected Trusted Publisher (release-sdk.yml)` : **PyPI Trusted Publishing ne supporte PAS les reusable workflows** (le commentaire de l'agent affirmait le contraire — faux) ; PyPI matche le workflow **top-level**, donc release-sdk.yml DOIT rester déclenchée directement sur le tag. (2) **promote-latest** — `repository name (Florian-BARRE/docforge-app) must be lowercase` (owner non minusculé dans `imagetools create`). Comme 429 (gate unique) exige de wrapper release-sdk.yml en reusable — incompatible PyPI — il est **non résoluble** sans reconfig PyPI côté compte user. Décision : **revert complet** des 5 workflows à l'état 0.14.4 connu-fonctionnel (release.yml supprimé ; release-images.yml + release-sdk.yml re-top-level, chacun gate). **429 + 437 re-ouverts/déférés** (437 était couplé au restructure). **435 conservé** (docs set_version/alignment, indépendant). Le gate + les 8 images de 0.14.5 étaient verts — seuls `:latest` (pas bougé, l'effet voulu de 437 par accident) et le SDK PyPI (pas publié) ont raté ; 0.14.6 rattrape. Voir mémoire `release-gate`.
+
 - **2026-09-04 — Vague durcissement release/CI (1 MOYENNE + 2 FAIBLE)** : (429) **gate joué 2× par tag** — release-images.yml et release-sdk.yml faisaient chacun `uses: gate.yml`, donc un tag `v*` relançait tout le gate monorepo deux fois en parallèle. Nouveau `release.yml` = **orchestrateur unique** sur `v*`/`sdk-v*` : `gate` une seule fois → fan-out `images` (si `startsWith(ref,'v')`) + `sdk`, tous deux `needs: gate` (un gate rouge bloque toujours les DEUX publish) ; les 2 anciens workflows passent en `workflow_call`-only (plus de trigger tag direct) — noms de fichiers conservés car le Trusted-Publishing PyPI matche le fichier de la reusable workflow. (437) **fenêtre de publication partielle** — `:latest` déplacé dans un job `promote-latest` séparé `needs: images` (tout le matrix) : un échec d'une image laisse `:latest` sur la release précédente au lieu de le bouger sur une publication incomplète. (435) **couverture versions** — set_version.sh + test_version_alignment.py documentent explicitement l'exclusion VOLONTAIRE de bge_server/paddle_server (sidecars à cadence propre) et du frontend package.json (`private:true`, jamais publié, lu par personne au build/runtime — inerte). Validé : 5 YAML parsent, set_version.sh `bash -n` OK, test alignement vert. ⚠️ La prochaine release (0.14.5) est la 1re à utiliser `release.yml` — à surveiller.
 
 - **2026-09-04 — Vague surface MCP/SDK (3 MOYENNE + 1 FAIBLE)** : (359) **surface MCP incomplète** — ajout des 2 tools manquants `collection_health` (sweep preflight zéro-dépense) + `reingest_collection` (bulk reingest collection-scope), wrappant des méthodes SDK existantes ; `docs/mcp.md` (2 lignes + compte 55→57) et le gate de compte (`EXPECTED_TOOL_COUNT`/`_NAMES`) alignés. (361) **erreurs API opaques** — nouveau `ErrorTranslatingFastMCP` qui enveloppe TOUS les tools (wrapper partagé, pas tool-par-tool) : un 4xx expose désormais le `detail` du body au LLM au lieu d'un code nu. (357) **guard lockstep aveugle** — `test_resource_parity` couvre enfin audit/corpus/snippets (une méthode ajoutée à un seul client casse le guard) + 3 nouveaux fichiers de tests unitaires (audit.list, corpus.query/bulk_reingest, snippets.export/apply — verbe+path+type sur async ET sync). (365) **cohérences** — `corpus` ajouté aux docstrings des 2 clients ; défaut `get_design` aligné `full=False` (async+sync) sur le défaut serveur/MCP (le SDK était l'outlier à `True`) ; aucun artefact dist 0.1.1 tracké (rien à purger). Gates locaux complets verts : mcp 48 (format+lint+mypy) · sdk 557 (+15, parity OpenAPI incluse). Corrigé 2 nits mypy/UP035 laissés par l'agent.
@@ -93,7 +95,7 @@
 | V5 | 2 | 0 |
 | V6 | 0 | 0 |
 | V7 | 21 | 0 |
-| V8 | 188 | 12 |
+| V8 | 188 | 10 |
 
 
 ## V1 — Sécurité & authz (avant tout déploiement multi-tenant)  (30)
@@ -428,7 +430,7 @@
 
 - [x] **🟠 MOYENNE** · `divergence-doc` — CLAUDE.md release instructions contradict the workflows: 'Le SDK reste sur les tags sdk-v*' but release-sdk now fires on v* too  
   `CLAUDE.md:44` _(aussi: deps-licenses)_
-- [x] **🟠 MOYENNE** · `perf` — Every v* tag runs the full monorepo gate twice in parallel (release-images + release-sdk each call gate.yml)  
+- [ ] **🟠 MOYENNE** · `perf` — Every v* tag runs the full monorepo gate twice in parallel (release-images + release-sdk each call gate.yml)  
   `.github/workflows/release-sdk.yml:39`
 - [ ] **⚪ FAIBLE** · `consistency` — Comment/doc drift bundle: 'fully serviceless' gate runs a Postgres service container; docs/architecture.md and the release-images header describe an older gate/publish matrix  
   `.github/workflows/gate.yml:11`
@@ -436,7 +438,7 @@
   `.github/workflows/ci.yml:12`
 - [x] **⚪ FAIBLE** · `test-gap` — Lockstep version test and set_version.sh cover only 3 of 6 version declarations — frontend package.json, bge_server, paddle_server are outside the loop  
   `src/docforge/tests/units/test_version_alignment.py:30`
-- [x] **⚪ FAIBLE** · `design` — Partial-release window: fail-fast:false image matrix + independent SDK publish can leave GHCR half-published with :latest moved  
+- [ ] **⚪ FAIBLE** · `design` — Partial-release window: fail-fast:false image matrix + independent SDK publish can leave GHCR half-published with :latest moved  
   `.github/workflows/release-images.yml:51`
 
 ### Coûts & estimation

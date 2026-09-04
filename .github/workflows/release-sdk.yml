@@ -1,14 +1,10 @@
 # ============================================================================
 # Release workflow for the `docforge-sdk` package (src/docforge_sdk).
 #
-# `workflow_call`-ONLY: this file has no `on: push: tags:` of its own — it is fanned out to by
-# release.yml (the release orchestrator), which runs the shared quality gate EXACTLY ONCE per tag
-# and then calls this file with `needs: gate`. So a tag on a broken or backend-incompatible tree
-# never reaches the publish step. Kept as its own file (not inlined into release.yml) ON PURPOSE:
-# PyPI Trusted Publishing matches on the filename of the reusable workflow that DEFINES the
-# publish job, not the top-level caller (PyPI explicitly documents this for reusable workflows —
-# https://docs.pypi.org/trusted-publishers/using-a-publisher/). Renaming or inlining this job
-# would silently break the existing trusted publisher config below.
+# NOTHING PUBLISHES UNLESS THE FULL QUALITY GATE IS GREEN. The `publish` job `needs` the reusable
+# `gate` (format + lint + type-check + every package's unit suite + frontend build + SDK↔backend
+# OpenAPI coherence) — the SAME gate that guards every merge. So a tag on a broken or
+# backend-incompatible tree runs the gate, fails, and never reaches the publish step.
 #
 # Publishing goes to PyPI via Trusted Publishing (OIDC) — NO API token is stored in the repo.
 #
@@ -22,21 +18,30 @@
 #        - Environment:      pypi
 #   3. Create a GitHub Environment named `pypi` on this repo.
 #
-# HOW TO RELEASE: see release.yml (the orchestrator). Both `v<version>` (unified lockstep) and
-# `sdk-v<version>` (SDK-only escape hatch) tags reach this file — the version MUST match
-# docforge_sdk/_version.py; the guard step below fails the run on mismatch.
+# HOW TO RELEASE:
+#   Tag a commit with `sdk-v<version>` (dedicated prefix so it never fires for other packages) and
+#   push it. The version MUST match docforge_sdk/_version.py; a guard step fails the run on mismatch.
 #     git tag sdk-v0.1.0 && git push origin sdk-v0.1.0
 # ============================================================================
 
 name: release-sdk
 
 on:
-  workflow_call:
+  push:
+    tags:
+      # Unified lockstep release: a single `v*` tag ships the images (release-images.yml) AND the SDK
+      # at the same version. `sdk-v*` is kept as a legacy/SDK-only escape hatch.
+      - "v*"
+      - "sdk-v*"
 
 jobs:
-  # 1. Build + publish. The gate itself already ran upstream, in release.yml, before this whole
-  #    file was even called — see this file's header for why it's still its own workflow_call file.
+  # 1. Run the exact same gate that guards every merge — the publish job depends on it.
+  gate:
+    uses: ./.github/workflows/gate.yml
+
+  # 2. Build + publish, ONLY after the gate is fully green.
   publish:
+    needs: gate
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
