@@ -64,6 +64,15 @@ class RUNTIME_CONFIG(EnvConfigLoader):
     EXPORT_BUNDLE_PREFIX = env("EXPORT_BUNDLE_PREFIX", default="collection-exports")
     # Bundle compression codec: "zstd" (default) or "none".
     EXPORT_COMPRESSION = env("EXPORT_COMPRESSION", default="zstd")
+    # Decompression-bomb guard on IMPORT: the extracted (uncompressed) bundle may be at most this
+    # multiple of the compressed `.dcexport` size on disk (which the upload already capped at
+    # IMPORT_MAX_BUNDLE_BYTES). A hostile bundle with a >1000x zstd ratio is refused mid-extraction
+    # before it can fill the worker's disk, rather than after. 100 is generous for real corpora
+    # (JSONL + already-compressed blobs rarely exceed ~10x) while still bounding the blast radius.
+    IMPORT_MAX_DECOMPRESSION_RATIO = env("IMPORT_MAX_DECOMPRESSION_RATIO", cast=int, default=100)
+    # Hard ceiling on the number of members (files) a bundle may contain — bounds inode/handle
+    # exhaustion from a bundle of millions of tiny entries independently of their total size.
+    IMPORT_MAX_MEMBERS = env("IMPORT_MAX_MEMBERS", cast=int, default=500_000)
     # How long an exported bundle object is retained before it may be garbage-collected (seconds).
     EXPORT_TTL_SECONDS = env("EXPORT_TTL_SECONDS", cast=int, default=604800)
     # Reclaim expired export bundles (the S3 object AND its `collection_transfer` row) on a cron —
