@@ -60,6 +60,8 @@
 
 - **2026-09-04 — V8 tranche 1 (proxy TLS cassé)** : `compose/overlays/proxy.yml` bindait `../../services/caddy/Caddyfile` — mais en add-on `-f` les chemins résolvent depuis le project dir (compose/), donc `../../` pointait HORS du repo → Docker montait un dossier vide, Caddy démarrait sans config (TLS mort dans toute invocation documentée). Corrigé en `../services/caddy/Caddyfile` (comme telemetry.yml) + en-tête. Validé : `docker compose config` résout `source: /…/docforge/services/caddy/Caddyfile` (présent).
 
+- **2026-09-04 — V8 tranche 2 (sweep .claude)** : ghost-tree `docforge-rework`→`docforge` sur 40 fichiers .md (agents + mémoires + commands + rules) ; 3 skills cassées réparées (`/dev` → `compose/dev-cpu.yml`, `/test` ruff-only, `/phase-status`) ; `orchestrator.md` (mention historique + PIPELINE.md path) ; `hooks.py` rotation qui **supprime** désormais (KEEP_ROTATED=2) + purge one-off **209 Mo → 13 Mo**. `.claude` **sauvegardé** dans `/home/dev-center/backups/` (le dé-tracker reverserait le commit délibéré 922c627 « public-repo cleanup » — décision de versioning laissée à l'utilisateur) ; inner `.gitignore` corrigé (mcp-memory.json). NB : `.claude` est gitignored → ces fixes ne sont pas dans le commit (seul le tracker l'est). Reste `[~]` : vocab S0–S6 des rpi, seeding du knowledge-graph.
+
 ## Avancement
 
 | Vague | Total | Fait |
@@ -309,23 +311,23 @@
 
 ### Infra .claude
 
-- [ ] **🔴 HAUTE** · `design` — .claude/ is gitignored and untracked — the entire agent infrastructure (750KB of memory, 10 agents, rules, hooks) exists in a single unversioned copy that was already silently lost once  
+- [~] **🔴 HAUTE** · `design` — .claude/ is gitignored and untracked — the entire agent infrastructure (750KB of memory, 10 agents, rules, hooks) exists in a single unversioned copy that was already silently lost once  
   `.gitignore:58`
-- [ ] **🔴 HAUTE** · `bug` — /dev, /test and /phase-status skills are hard-broken: nonexistent compose files, dirs and service names  
+- [x] **🔴 HAUTE** · `bug` — /dev, /test and /phase-status skills are hard-broken: nonexistent compose files, dirs and service names  
   `.claude/commands/dev.md:25`
-- [ ] **🔴 HAUTE** · `divergence-doc` — All 10 agent definitions target the ghost tree src/docforge-rework/ and call the live tree 'frozen legacy'  
+- [x] **🔴 HAUTE** · `divergence-doc` — All 10 agent definitions target the ghost tree src/docforge-rework/ and call the live tree 'frozen legacy'  
   `.claude/agents/pipeline.md:29`
-- [ ] **🔴 HAUTE** · `bug` — hooks.py log rotation never deletes: docstring promises 'only one rotated copy', code keeps all — 199MB and growing unbounded  
+- [x] **🔴 HAUTE** · `bug` — hooks.py log rotation never deletes: docstring promises 'only one rotated copy', code keeps all — 199MB and growing unbounded  
   `.claude/hooks/hooks.py:88`
-- [ ] **🟠 MOYENNE** · `divergence-doc` — Agent-memory rot: 26 files still teach rework-era paths, and 4+ memories document the ColBERT feature that no longer exists  
+- [x] **🟠 MOYENNE** · `divergence-doc` — Agent-memory rot: 26 files still teach rework-era paths, and 4+ memories document the ColBERT feature that no longer exists  
   `.claude/agent-memory/backend/colbert-named-vector.md:1`
-- [ ] **🟠 MOYENNE** · `divergence-doc` — The 3 rpi skill commands still describe the deleted S0→S6 static engine (engine.py DAG, provider Protocols, S2_ENRICH_ENABLED, phase table)  
+- [~] **🟠 MOYENNE** · `divergence-doc` — The 3 rpi skill commands still describe the deleted S0→S6 static engine (engine.py DAG, provider Protocols, S2_ENRICH_ENABLED, phase table)  
   `.claude/commands/rpi/research.md:22`
-- [ ] **🟠 MOYENNE** · `dead-code` — The knowledge graph orchestrator.md builds its whole long-term-memory protocol on does not exist — wrong path in the doc, and no file at the configured path either  
+- [~] **🟠 MOYENNE** · `dead-code` — The knowledge graph orchestrator.md builds its whole long-term-memory protocol on does not exist — wrong path in the doc, and no file at the configured path either  
   `.claude/rules/orchestrator.md:100`
 - [ ] **🟠 MOYENNE** · `divergence-doc` — architecture.md claims per-node preflight() 'reste à ajouter' — it shipped, is on by default, and is CLAUDE.md invariant 4  
   `.claude/rules/architecture.md:76`
-- [ ] **🟠 MOYENNE** · `consistency` — orchestrator.md contradicts itself and the tree: auto-improvement table routes pipeline updates to src/docforge-rework/PIPELINE.md  
+- [x] **🟠 MOYENNE** · `consistency` — orchestrator.md contradicts itself and the tree: auto-improvement table routes pipeline updates to src/docforge-rework/PIPELINE.md  
   `.claude/rules/orchestrator.md:76`
 - [ ] **⚪ FAIBLE** · `consistency` — Grouped low-severity smells across .claude/: decorative paths filter, deprecated utcnow, stale lock/pycache, misnamed memory file  
   `.claude/rules/brand.md:3`
