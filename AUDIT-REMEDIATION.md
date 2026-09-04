@@ -62,6 +62,8 @@
 
 - **2026-09-04 — V8 tranche 2 (sweep .claude)** : ghost-tree `docforge-rework`→`docforge` sur 40 fichiers .md (agents + mémoires + commands + rules) ; 3 skills cassées réparées (`/dev` → `compose/dev-cpu.yml`, `/test` ruff-only, `/phase-status`) ; `orchestrator.md` (mention historique + PIPELINE.md path) ; `hooks.py` rotation qui **supprime** désormais (KEEP_ROTATED=2) + purge one-off **209 Mo → 13 Mo**. `.claude` **sauvegardé** dans `/home/dev-center/backups/` (le dé-tracker reverserait le commit délibéré 922c627 « public-repo cleanup » — décision de versioning laissée à l'utilisateur) ; inner `.gitignore` corrigé (mcp-memory.json). NB : `.claude` est gitignored → ces fixes ne sont pas dans le commit (seul le tracker l'est). Reste `[~]` : vocab S0–S6 des rpi, seeding du knowledge-graph.
 
+- **2026-09-04 — bge keep-warm (HAUTE)** : `_keep_warm` appelait `bge_models.encode_*`/`compute_rerank` en thread SANS acquérir `_embed_lock`/`_rerank_lock` → forward pass concurrent avec un vrai batch sur les modèles torch partagés (thread-unsafe). Nouvelles méthodes engine `touch_dense/sparse/rerank` (shape « direct mais verrouillé », comme `embed_all`) acquérant les mêmes locks ; `_keep_warm` recâblé. +2 tests (sérialisation vs batch réel, indépendance rerank). Agent `bge-server` dédié, relu+revérifié : 29✓, ruff+mypy clean. Le warmup one-time (avant `yield`, pas de concurrence) laissé intact à raison.
+
 ## Avancement
 
 | Vague | Total | Fait |
@@ -353,7 +355,7 @@
 
 ### Serveurs modèles
 
-- [ ] **🔴 HAUTE** · `bug` — bge keep-warm task bypasses the engine locks and races real forward passes on the same model instances  
+- [x] **🔴 HAUTE** · `bug` — bge keep-warm task bypasses the engine locks and races real forward passes on the same model instances  
   `src/bge_server/backend/lifespan.py:49`
 - [ ] **🟠 MOYENNE** · `design` — /embed_all has no back-pressure: bypasses the bounded queues, can never return 503  
   `src/bge_server/libs/batching/engine.py:385`
