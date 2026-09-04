@@ -142,7 +142,17 @@ async def import_collection(
         async with s3.client() as client:
             await S3ObjectApi.download_to(client, s3.bucket, s3_key, archive_path)
         extract_dir.mkdir(parents=True, exist_ok=True)
-        BundleArchive.unpack(archive_path, extract_dir)
+        # Decompression-bomb guard: bound the extracted size to a multiple of the (already
+        # upload-capped) compressed size, and cap the member count — a hostile high-ratio bundle is
+        # refused mid-extraction instead of filling the worker's disk.
+        config = CONTEXT.RUNTIME_CONFIG
+        max_uncompressed = archive_path.stat().st_size * config.IMPORT_MAX_DECOMPRESSION_RATIO
+        BundleArchive.unpack(
+            archive_path,
+            extract_dir,
+            max_uncompressed_bytes=max_uncompressed,
+            max_members=config.IMPORT_MAX_MEMBERS,
+        )
         reader = BundleReader(extract_dir)
         manifest = reader.validate()
         await database.transfer_tracker.report_progress(tid, "restore", 10)

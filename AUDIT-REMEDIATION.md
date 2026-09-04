@@ -20,6 +20,8 @@
 
 - **2026-09-04 — V1 tranche 6 (MCP file_path, HAUTE)** : nouveau `PathGuard` (`src/mcp/libs/path_guard.py`) — sur le transport streamable-HTTP, `file_path` de `upload_document`/`import_collection` doit résoudre (symlinks suivis) DANS `MCP_UPLOAD_DIR` sinon refusé avant tout appel SDK ; défaut fail-closed (pas d'inbox → refusé). stdio inchangé. Knob `MCP_UPLOAD_DIR` documenté (docs/mcp.md). Impl par agent `mcp` dédié, finalisée+vérifiée : `42 passed`, ruff+mypy clean. **→ tous les 7 findings HAUTE de V1 sont fermés.**
 
+- **2026-09-04 — V1 tranche 7 (decompression bomb)** : l'extraction d'un `.dcexport` borne désormais la taille décompressée (`ratio × taille_compressée`, knob `IMPORT_MAX_DECOMPRESSION_RATIO`=100) ET le nombre de membres (`IMPORT_MAX_MEMBERS`=500k) — un bundle à ratio >1000x est refusé en cours d'extraction avant de remplir le disque. +3 tests (bomb taille/membres refusée, extraction normale OK). Reste (`[~]`) : le buffering mémoire de tous les blobs à l'import (batching), slice dédié. `33 passed`.
+
 ## Avancement
 
 | Vague | Total | Fait |
@@ -67,7 +69,7 @@
   `src/mcp/libs/tools/documents.py:25`
 - [~] **🟠 MOYENNE** · `security` — Collection import bypasses the CREATE capability and skips creator scope-grant  
   `src/docforge/app/backend/routers/transfers/router.py:85` _(aussi: backend-api)_
-- [ ] **🟠 MOYENNE** · `security` — Import resource exhaustion: decompression bomb + whole-corpus buffering in the worker  
+- [~] **🟠 MOYENNE** · `security` — Import resource exhaustion: decompression bomb + whole-corpus buffering in the worker  
   `src/docforge/worker/backend/libs/collection_transfer/bundle/archive.py:62`
 - [ ] **🟠 MOYENNE** · `security` — SSRF / internal-network oracle via per-collection provider base_url (unmitigated, unacknowledged)  
   `src/docforge/shared/libs/pipelines/nodes/openai_compat/preflight.py:92`

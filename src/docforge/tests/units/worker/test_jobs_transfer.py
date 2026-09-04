@@ -33,6 +33,8 @@ def _context(monkeypatch, jobs_transfer):
             EXPORT_COMPRESSION="none",
             EXPORT_BUNDLE_PREFIX="col-exports",
             EXPORT_TTL_SECONDS=3600,
+            IMPORT_MAX_DECOMPRESSION_RATIO=100,
+            IMPORT_MAX_MEMBERS=500_000,
         ),
         logger=SimpleNamespace(
             debug=lambda *a, **k: None, info=lambda *a, **k: None, exception=lambda *a, **k: None
@@ -84,7 +86,13 @@ async def test_import_collection_returns_new_collection_and_marks_done(jobs_tran
     manifest = SimpleNamespace(format_version=1)
     fake_reader = SimpleNamespace(validate=lambda: manifest)
     monkeypatch.setattr(jobs_transfer, "BundleReader", lambda _root: fake_reader)
-    monkeypatch.setattr(jobs_transfer.S3ObjectApi, "download_to", AsyncMock(return_value=None))
+
+    # download_to writes the bundle to the target path; the import task now stats it to derive the
+    # decompression-bomb ceiling, so the mock must actually create the file.
+    async def _fake_download(_client, _bucket, _key, archive_path):
+        archive_path.write_bytes(b"bundle-bytes")
+
+    monkeypatch.setattr(jobs_transfer.S3ObjectApi, "download_to", AsyncMock(side_effect=_fake_download))
     monkeypatch.setattr(jobs_transfer.BundleArchive, "unpack", staticmethod(lambda *a, **k: None))
     import_result = SimpleNamespace(
         collection_id=new_id, collection_name="DemoCollection (imported)", counts={"documents": 2}
