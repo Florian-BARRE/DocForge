@@ -50,6 +50,8 @@
 
 - **2026-09-04 — V4 tranche 2 (troncation top_n)** : le nœud rerank ne jugeait que `config.top_n` (défaut 50) puis hydrate cappait à `top_k` → un `limit` 51-100 renvoyait silencieusement ≤50 hits sur une collection rerank-enabled. Le nœud juge désormais `max(top_n, top_k)`. +1 test (top_k>top_n juge tout) + test cap ajusté. Suite search 42✓.
 
+- **2026-09-04 — V4 tranche 3 (paddle coût OCR)** : `CostPlanExtractor.__enrich` utilisait une liste local-free hardcodée `('rapidocr','bge_server')` (sans `paddle`) → une chaîne OCR `[paddle → mistral]` était pricée à $0.00 (paddle vu comme payé, escalade Mistral cachée). Remplacé par le canonique `LOCAL_FREE_KINDS`. +1 test paddle→mistral. 12✓.
+
 ## Avancement
 
 | Vague | Total | Fait |
@@ -411,7 +413,7 @@
 
 - [ ] **🟠 MOYENNE** · `test-gap` — No unit tests for the override merger, the override contract, or the sampling-cap seam  
   `src/docforge/app/backend/libs/estimate/merger.py:28`
-- [ ] **🟠 MOYENNE** · `bug` — OCR plan extractor's local-kind list omits 'paddle' — paddle-headed chain hides a paid Mistral escalation  
+- [x] **🟠 MOYENNE** · `bug` — OCR plan extractor's local-kind list omits 'paddle' — paddle-headed chain hides a paid Mistral escalation  
   `src/docforge/shared/libs/pipelines/ingest/estimate/plan.py:94`
 - [ ] **🟠 MOYENNE** · `design` — Per-figure paid OCR volume is modeled by scanned_page_ratio (default 0), not figure count — default estimate prices a paid per-figure OCR pipeline at $0.00 with cost_complete=True  
   `src/docforge/shared/libs/pipelines/ingest/estimate/estimator.py:201`
@@ -623,7 +625,7 @@
   `src/docforge/shared/libs/pipelines/ingest/stages/reader.py:179`
 - [ ] **🟠 MOYENNE** · `divergence-doc` — doc_meta contextualizer diverges from PIPELINE.md: single title anchor, not 'all declared metadata', different config surface  
   `src/docforge/shared/libs/pipelines/ingest/nodes/contextualize/doc_meta/core.py:19`
-- [ ] **⚪ FAIBLE** · `bug` — Cost estimate treats paddle as the paid OCR representative, hiding a hosted escalation tail  
+- [x] **⚪ FAIBLE** · `bug` — Cost estimate treats paddle as the paid OCR representative, hiding a hosted escalation tail  
   `src/docforge/shared/libs/pipelines/ingest/estimate/plan.py:93`
 - [ ] **⚪ FAIBLE** · `bug` — Degenerate heading-only document produces zero body chunks — all titles dropped  
   `src/docforge/shared/libs/pipelines/ingest/nodes/chunk/base/node.py:124`
