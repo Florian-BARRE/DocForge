@@ -4,7 +4,7 @@
 
 **247 points uniques** — 25 haute · 107 moyenne · 115 faible. Traités par vague, par ordre de sévérité. `[ ]` à faire · `[x]` fait · `[~]` en cours.
 
-> Branche : `fix/audit-remediation`. Les buckets de vague ci-dessous sont indicatifs (heuristiques) ; la séquence V1→V8 faisant autorité est celle du rapport. Chaque tranche est commitée + vérifiée (ruff + pytest units) avant de passer à la suivante.
+> Base : tout le travail des vagues ci-dessous est **mergé sur `main` et livré jusqu'à `0.14.8`** (chaque vague = un tag `v0.14.x` + Release GitHub). Les buckets de vague sont indicatifs (heuristiques) ; la séquence V1→V8 faisant autorité est celle du rapport. Chaque tranche est commitée + vérifiée (ruff + pytest units) avant la suivante. Un WIP inachevé (backend-atomicity + caps lectures) est parké hors-main sur `fix/audit-backend-atomicity`.
 
 ## Journal
 
@@ -90,16 +90,19 @@
 
 ## Avancement
 
-| Vague | Total | Fait |
-|---|---|---|
-| V1 | 30 | 7 (+1 partiel) |
-| V2 | 4 | 4 |
-| V3 | 1 | 0 |
-| V4 | 1 | 0 |
-| V5 | 2 | 0 |
-| V6 | 0 | 0 |
-| V7 | 21 | 0 |
-| V8 | 188 | 19 |
+> Compteurs recalculés + **tous les `[x]` vérifiés réellement intégrés sur `main` @ 0.14.8** (2026-09-04, vérif par signatures de code). Les 25 HAUTES sont **toutes** fermées et livrées (0.14.1→0.14.8).
+
+| Vague | Total | Fait | En cours | Restant |
+|---|---|---|---|---|
+| V1 — Sécurité & authz | 30 | 15 | 2 | 13 |
+| V2 — Fiabilité (jobs/stores/transferts) | 4 | 4 | 0 | 0 |
+| V3 — Release/CI/dépendances | 1 | 1 | 0 | 0 |
+| V4 — Search & coûts | 1 | 1 | 0 | 0 |
+| V5 — Moteur & pipeline | 2 | 2 | 0 | 0 |
+| V6 — Frontend | 0 | 0 | 0 | 0 |
+| V7 — Documentation | 21 | 10 | 0 | 11 |
+| V8 — Outillage (.claude/tests/infra/télémétrie) | 188 | 39 | 3 | 146 |
+| **Total** | **247** | **72** | **5** | **170** |
 
 
 ## V1 — Sécurité & authz (avant tout déploiement multi-tenant)  (30)
