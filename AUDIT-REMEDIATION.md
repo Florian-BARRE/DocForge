@@ -30,6 +30,8 @@
 
 - **2026-09-04 — V1 tranche 11 (SSRF egress allowlist)** : `ProviderEgressPolicy` (pur, allow-all par défaut, globs+CIDR) + knob `PROVIDER_EGRESS_ALLOWLIST` (app+worker, OFF par défaut) enforcé à 2 edges — le **health sweep** (un host non listé → `blocked`, jamais sondé : plus de scanner) et le **preflight worker** (refus avant la 1re dépense) ; couvre l'oracle ingest ET search. Runtime in-node : documenté honnêtement (repose sur preflight + egress réseau). Impl core par agent `pipeline` dédié, **finalisée par moi** (wiring worker jobs/core, +16 tests policy/sweep, doc PROD-HARDENING §7). 300 passed, ruff clean.
 
+- **2026-09-04 — V2 tranche 1 (SSE CANCELLED)** : le stream SSE d'un job fermait uniquement sur `{done,failed}` — un job CANCELLED (3e état terminal, non écrasable) faisait poller la DB à l'infini. `JobStatus.terminal()` (nouvelle méthode canonique sur l'enum) est désormais la seule source ; réutilisée par le stream ET le cancel-helper (dé-duplication d'un set qui avait dérivé). +1 test (cancelled ferme, timeout-gardé). 86✓.
+
 ## Avancement
 
 | Vague | Total | Fait |
@@ -241,7 +243,7 @@
 
 ### Backend API
 
-- [ ] **🔴 HAUTE** · `bug` — SSE job stream never closes for a CANCELLED job — polls the DB forever  
+- [x] **🔴 HAUTE** · `bug` — SSE job stream never closes for a CANCELLED job — polls the DB forever  
   `src/docforge/app/backend/routers/jobs/stream.py:19`
 - [ ] **🟠 MOYENNE** · `bug` — Check-then-insert races surface as 500: duplicate concurrent upload and duplicate collection name hit unique constraints uncaught  
   `src/docforge/app/backend/routers/documents/router.py:125`
