@@ -41,6 +41,7 @@ class AsyncClient:
         transfers (AsyncTransfers): Collection export/import.
         snippets (AsyncSnippets): Granular collection-config snippet export/apply.
         audit (AsyncAudit): Root-only audit-trail reads.
+        corpus (AsyncCorpus): Server-side document grid — query + bulk delete/enable/reingest.
     """
 
     def __init__(self, base_url: str, timeout: float = 30.0, api_token: str = "") -> None:
@@ -102,6 +103,7 @@ class Client:
         transfers (SyncTransfers): Collection export/import.
         snippets (SyncSnippets): Granular collection-config snippet export/apply.
         audit (SyncAudit): Root-only audit-trail reads.
+        corpus (SyncCorpus): Server-side document grid — query + bulk delete/enable/reingest.
     """
 
     def __init__(self, base_url: str, timeout: float = 30.0, api_token: str = "") -> None:

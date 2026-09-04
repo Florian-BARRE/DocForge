@@ -8,7 +8,7 @@ from typing import Any, Literal
 
 # ====== Third-Party Library Imports ======
 from docforge_sdk import AsyncClient, CreateCollectionRequest, FieldSpec, UpdateCollectionRequest
-from docforge_sdk.models import CollectionSnippet, DocumentFilter
+from docforge_sdk.models import BulkReingestRequest, CollectionSnippet, DocumentFilter
 from mcp.server.fastmcp import FastMCP
 
 
@@ -168,3 +168,29 @@ def register(mcp: FastMCP, sdk: AsyncClient) -> None:
     async def get_collection_contract_schema() -> Any:
         """The JSON Schema of the collection identity/limits contract (build a valid create/update)."""
         return (await sdk.collections.contract_schema()).model_dump(mode="json")
+
+    @mcp.tool()
+    async def collection_health(collection_id: str) -> Any:
+        """
+        Probe a collection's operational health on demand — a zero-spend provider reachability
+        sweep across the ingest AND search graphs, plus index/doc stats and a rolled-up verdict
+        (404 when unknown). No job is enqueued and nothing is billed; this is read-only diagnostics.
+        """
+        health = await sdk.collections.health(collection_id)
+        return health.model_dump(mode="json")
+
+    @mcp.tool()
+    async def reingest_collection(
+        collection_id: str, document_ids: list[str] | None = None, force: bool = False
+    ) -> Any:
+        """
+        Re-run the full pipeline over a collection's corpus — every document, or an explicit
+        `document_ids` subset (404 when the collection is unknown; 422 on a stale/broken pipeline
+        or a bad subset). Idempotent per document; original bytes are already stored, so this never
+        re-uploads. `force` bypasses the stage cache and recomputes every stage from scratch. A
+        match above the server's fan-out ceiling enqueues only the first N and reports
+        `capped=true` with the full `matched` count — poll each returned job handle for progress.
+        """
+        request = BulkReingestRequest(document_ids=document_ids, force=force)
+        accepted = await sdk.collections.reingest(collection_id, request)
+        return accepted.model_dump(mode="json")
