@@ -22,6 +22,7 @@ from .libs.jobs import (
     import_collection,
     ingest_document,
     reap_stuck_jobs,
+    reap_stuck_transfers,
     with_correlation,
 )
 from .lifespan import shutdown, startup
@@ -44,7 +45,13 @@ def create_worker_settings() -> type:
     # left by the previous (crashed/hot-reloaded) run is cleared immediately. Disabled -> no cron.
     reap_minutes = set(range(0, 60, max(1, RUNTIME_CONFIG.WORKER_REAP_INTERVAL_MINUTES)))
     reaper_crons = (
-        [cron(with_correlation(reap_stuck_jobs), minute=reap_minutes, run_at_startup=True)]
+        [
+            cron(with_correlation(reap_stuck_jobs), minute=reap_minutes, run_at_startup=True),
+            # Sibling sweep on the SAME cadence + switch: clears collection_transfer rows a worker
+            # crash/hard-kill left RUNNING forever (the ingestion-job reaper is document-scoped and
+            # does not cover them). Marks them FAILED → terminal + their staged bundle GC-reclaimable.
+            cron(with_correlation(reap_stuck_transfers), minute=reap_minutes, run_at_startup=True),
+        ]
         if RUNTIME_CONFIG.WORKER_REAP_ENABLED
         else []
     )
