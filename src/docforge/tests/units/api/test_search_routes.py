@@ -629,3 +629,30 @@ def test_search_no_embed_node_is_409(client, fastapi_app, monkeypatch) -> None:
         json={"query": "q"},
     )
     assert response.status_code == 409, response.text
+
+
+async def test_query_embedder_probe_blocks_a_disallowed_host(fastapi_app, monkeypatch) -> None:
+    """The 424-classifier probe rebuilds an embedder from a caller-influenced base_url, so it must
+    honour the egress allowlist too (the health sweep does). With the allowlist set to a host that is
+    NOT the embed node's, classify reports BLOCKED and never touches the network — a raising httpx
+    client proves no probe happened (a probe would classify UNREACHABLE, not BLOCKED)."""
+    import httpx
+
+    from backend.libs.search import QueryEmbedderProbe  # noqa: PLC0415
+    from config import RUNTIME_CONFIG  # noqa: PLC0415
+    from shared_libs.pipelines.reachability import ProbeStatus  # noqa: PLC0415
+
+    monkeypatch.setattr(RUNTIME_CONFIG, "PROVIDER_EGRESS_ALLOWLIST", "only-other-host")
+
+    class _Boom:
+        def __init__(self, *a: object, **k: object) -> None: ...
+        async def __aenter__(self) -> "_Boom":
+            return self
+        async def __aexit__(self, *e: object) -> None: ...
+        async def get(self, *a: object, **k: object) -> None:
+            raise AssertionError("a blocked host must never be probed")
+
+    monkeypatch.setattr(httpx, "AsyncClient", _Boom)
+
+    status = await QueryEmbedderProbe().classify(_pipeline_with_embed())
+    assert status is ProbeStatus.BLOCKED

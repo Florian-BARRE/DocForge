@@ -229,8 +229,12 @@ async def set_document_enabled(
         raise HTTPException(status_code=404, detail=f"Document {document_id} not found.")
     AuthzGuard.assert_collection_scope(principal, str(document.collection_id))
 
-    # 2. The facade flips documents.enabled.
-    await CONTEXT.database.enablement.set_document_enabled(document_id, patch.enabled)
+    # 2. The facade flips documents.enabled; False means the UPDATE matched no row — the document was
+    #    deleted in the race window between the scope pre-load and here (a concurrent delete / a
+    #    collection-transfer rollback), so surface the 404 rather than a false-positive 200.
+    existed = await CONTEXT.database.enablement.set_document_enabled(document_id, patch.enabled)
+    if not existed:
+        raise HTTPException(status_code=404, detail=f"Document {document_id} not found.")
 
     # 3. Echo the applied state.
     return DocumentEnabledResponse(document_id=str(document_id), enabled=patch.enabled)
