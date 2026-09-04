@@ -16,11 +16,13 @@
 
 - **2026-09-04 — V1 tranche 4 (XSS blob, HAUTE+MOYENNE)** : `openBlobInNewTab` n'ouvre inline que les types inertes (PDF/images) — HTML/SVG/texte → download, plus de rendu `blob:` same-origin ; `GET /blobs/{hash}` ajoute `nosniff` (tout blob) + `attachment`+`CSP sandbox` (types non inertes). +8 tests headers. **Validé E2E par agent dédié sur la stack live** (HTML→attachment+sandbox+nosniff ; PDF→inline+nosniff). tsc/lint verts.
 
+- **2026-09-04 — V1 tranche 5 (import → CREATE)** : `POST /collections/import` gaté sur `Capability.CREATE` (comme `POST /collections`) au lieu de `WRITE` — une clé WRITE-only ne peut plus escalader en création de collection via un import. +1 test de contrat du gate. Reste (tracké `[~]`) : le grant de scope au créateur (clé scoped CREATE) nécessite un threading queue→worker, slice dédié. `19 passed`.
+
 ## Avancement
 
 | Vague | Total | Fait |
 |---|---|---|
-| V1 | 30 | 6 |
+| V1 | 30 | 6 (+1 partiel) |
 | V2 | 4 | 0 |
 | V3 | 1 | 0 |
 | V4 | 1 | 0 |
@@ -61,7 +63,7 @@
   `src/docforge/worker/backend/libs/collection_transfer/restore/importer.py:195`
 - [ ] **🔴 HAUTE** · `security` — MCP HTTP tools read arbitrary files from the MCP container (file_path tool inputs)  
   `src/mcp/libs/tools/documents.py:25`
-- [ ] **🟠 MOYENNE** · `security` — Collection import bypasses the CREATE capability and skips creator scope-grant  
+- [~] **🟠 MOYENNE** · `security` — Collection import bypasses the CREATE capability and skips creator scope-grant  
   `src/docforge/app/backend/routers/transfers/router.py:85` _(aussi: backend-api)_
 - [ ] **🟠 MOYENNE** · `security` — Import resource exhaustion: decompression bomb + whole-corpus buffering in the worker  
   `src/docforge/worker/backend/libs/collection_transfer/bundle/archive.py:62`
