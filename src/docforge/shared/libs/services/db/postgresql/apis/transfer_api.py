@@ -15,7 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # ====== Internal Project Imports ======
-from ..tables import CollectionTransfer, TransferKind, TransferStatus
+from ..tables import CollectionTransfer, TransferStatus
 
 
 class TransferApi:
@@ -38,14 +38,16 @@ class TransferApi:
 
     @staticmethod
     async def list_expired(session: AsyncSession, now: datetime) -> list[CollectionTransfer]:
-        """Return every EXPORT transfer whose bundle has expired and still has an S3 object to reclaim.
+        """Return every transfer whose S3 object has expired and is still reclaimable — both kinds.
 
-        Only export rows carry a produced bundle; ``expires_at`` NULL means keep-forever (skipped),
-        and a row with no ``s3_key`` has nothing to delete. The GC caller drops the S3 object + the row.
+        Two kinds of object leak here: an EXPORT's produced bundle and an IMPORT's STAGED bundle. Both
+        carry an ``s3_key`` and get an ``expires_at`` stamp (export: at ``set_artifact``; import: at
+        admission); ``expires_at`` NULL means keep-forever (skipped), and a row with no ``s3_key`` has
+        nothing to delete. The GC caller drops the S3 object + the row. ``kind`` is NOT filtered — the
+        sweep is kind-agnostic so a failed/abandoned import is reclaimed exactly like an expired export.
         """
         result = await session.execute(
             select(CollectionTransfer).where(
-                CollectionTransfer.kind == TransferKind.EXPORT,
                 CollectionTransfer.s3_key.is_not(None),
                 CollectionTransfer.expires_at.is_not(None),
                 CollectionTransfer.expires_at < now,

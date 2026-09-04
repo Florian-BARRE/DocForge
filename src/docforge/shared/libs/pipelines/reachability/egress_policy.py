@@ -105,9 +105,7 @@ class ProviderEgressPolicy:
             return None
 
     @staticmethod
-    def __entry_matches(
-        entry: str, host: str, host_ip: ipaddress._BaseAddress | None
-    ) -> bool:
+    def __entry_matches(entry: str, host: str, host_ip: ipaddress._BaseAddress | None) -> bool:
         """Whether one allowlist entry admits the given host (as CIDR/IP or hostname glob)."""
         # 1. Try the entry as an IP network first: it only matches an IP-literal host inside it.
         try:

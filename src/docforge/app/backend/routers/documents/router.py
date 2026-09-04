@@ -195,7 +195,13 @@ async def upload_document(
         DocumentMetadata(field_id=field_ids[name], value=value, origin=FieldOrigin.USER)
         for name, value in declared.items()
     ]
-    created, job = await CONTEXT.database.ingestion.admit(document, Job(), rows)
+    admission = await CONTEXT.database.ingestion.admit(document, Job(), rows)
+    # A concurrent upload of the SAME content+config may have won the unique-constraint race between
+    # the dedup pre-check (step 5) and this insert. The façade resolved that to the already-admitted
+    # document, so return the SAME idempotent duplicate response the pre-check returns — never a 500.
+    if not admission.created:
+        return UploadAccepted(document_id=str(admission.document.id), job_id="", duplicate=True)
+    created, job = admission.document, admission.job
 
     # 9. Hand over to the worker — the queue message carries IDS ONLY. The worker reads the
     #    collection's per-collection budget itself and applies it as the engine's run timeout. A

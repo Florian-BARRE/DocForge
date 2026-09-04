@@ -321,7 +321,9 @@ def test_bulk_reingest_caps_fanout(client, monkeypatch) -> None:
                 get_by_ids=AsyncMock(return_value=docs),
             ),
             ingestion=SimpleNamespace(
-                reingest=AsyncMock(side_effect=[_admitted(docs[0], jobs[0]), _admitted(docs[1], jobs[1])])
+                reingest=AsyncMock(
+                    side_effect=[_admitted(docs[0], jobs[0]), _admitted(docs[1], jobs[1])]
+                )
             ),
             # The shared enqueue helper reads database.jobs (only touched on a queue failure).
             jobs=SimpleNamespace(mark_failed=AsyncMock()),

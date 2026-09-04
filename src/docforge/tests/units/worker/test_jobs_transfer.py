@@ -92,7 +92,9 @@ async def test_import_collection_returns_new_collection_and_marks_done(jobs_tran
     async def _fake_download(_client, _bucket, _key, archive_path):
         archive_path.write_bytes(b"bundle-bytes")
 
-    monkeypatch.setattr(jobs_transfer.S3ObjectApi, "download_to", AsyncMock(side_effect=_fake_download))
+    monkeypatch.setattr(
+        jobs_transfer.S3ObjectApi, "download_to", AsyncMock(side_effect=_fake_download)
+    )
     delete_staged = AsyncMock()
     monkeypatch.setattr(jobs_transfer.S3ObjectApi, "delete", delete_staged)
     monkeypatch.setattr(jobs_transfer.BundleArchive, "unpack", staticmethod(lambda *a, **k: None))

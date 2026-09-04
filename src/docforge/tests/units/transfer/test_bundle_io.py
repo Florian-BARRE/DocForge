@@ -100,7 +100,9 @@ def test_archive_pack_unpack_round_trip(tmp_path, compression) -> None:
 
 
 @pytest.mark.parametrize("compression", [COMPRESSION_NONE, COMPRESSION_ZSTD])
-def test_unpack_refuses_a_bundle_that_exceeds_the_uncompressed_ceiling(tmp_path, compression) -> None:
+def test_unpack_refuses_a_bundle_that_exceeds_the_uncompressed_ceiling(
+    tmp_path, compression
+) -> None:
     """Decompression-bomb guard: extraction aborts once the cumulative member size crosses the cap,
 
     so a high-ratio bundle can never fill the worker's disk. Checked for both codecs.

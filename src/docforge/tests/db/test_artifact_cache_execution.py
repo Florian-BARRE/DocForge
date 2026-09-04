@@ -253,15 +253,11 @@ async def test_prune_grace_window_protects_a_just_stored_orphan_blob(
         await s.commit()
 
     # 1. A wide grace window (1 day) skips the just-created blob — TTL/cap disabled, sweep only.
-    summary = await facade.prune(
-        datetime.now(UTC), timedelta(0), 0, blob_grace=timedelta(days=1)
-    )
+    summary = await facade.prune(datetime.now(UTC), timedelta(0), 0, blob_grace=timedelta(days=1))
     assert summary.freed_blobs == 0
     assert s3.objects != {}  # the young orphan survived the grace-guarded sweep
 
     # 2. Zero grace (cutoff = now) reclaims the aged-out orphan on the next sweep.
-    summary = await facade.prune(
-        datetime.now(UTC), timedelta(0), 0, blob_grace=timedelta(0)
-    )
+    summary = await facade.prune(datetime.now(UTC), timedelta(0), 0, blob_grace=timedelta(0))
     assert summary.freed_blobs == 1
     assert s3.objects == {}

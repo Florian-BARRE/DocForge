@@ -66,9 +66,7 @@ class QdrantIndexApi:
         return floats * QdrantIndexApi.__BYTES_PER_FLOAT + 512
 
     @staticmethod
-    def __batched_by_bytes(
-        points: Sequence[QdrantPoint], to_struct: Any
-    ) -> Any:
+    def __batched_by_bytes(points: Sequence[QdrantPoint], to_struct: Any) -> Any:
         """Yield byte-bounded batches of converted structs so no single request crosses the limit.
 
         ``to_struct`` maps a point to its qdrant struct (PointStruct or PointVectors); a None result
