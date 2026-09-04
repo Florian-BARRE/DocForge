@@ -42,6 +42,8 @@
 
 - **2026-09-04 — V3 tranche 2 (release tag↔version)** : nouveau job `version-guard` dans `release-images.yml` (compare `${GITHUB_REF_NAME#v}` à `src/docforge/pyproject.toml` ; `images` dépend de `[gate, version-guard]`) — un mistag ne peut plus publier 8 images mensongères + `latest`. Commentaires périmés corrigés (release-images, ci.yml) + ligne release de CLAUDE.md (flux v* unifié). Double-run gate sur tag v* noté pour dédup. YAML validé.
 
+- **2026-09-04 — V3 tranche 3 (deps sécurité docforge)** : `uv lock --upgrade-package` ciblé — pypdf 6.14.2→**6.17.0** (parse les uploads non fiables à l'intake, CVE-2026-82398), aiohttp 3.14.1→3.14.3, h2 4.3.0→4.4.1, setuptools 82.0.1→84.0.0. `uv sync` + suite complète **1348 passed**. (Note : les échecs `test_correlation_runner` vus en isolation passent en suite complète → problème d'isolation/ordre, pas un bug — V8.)
+
 ## Avancement
 
 | Vague | Total | Fait |
@@ -108,7 +110,7 @@
   `src/docforge/uv.lock:4661`
 - [ ] **🟠 MOYENNE** · `security` — Stale transitive pins with published security fixes across the docforge and mcp locks  
   `src/docforge/uv.lock:99`
-- [ ] **🟠 MOYENNE** · `security` — pypdf 6.14.2 carries 6 known advisories and parses untrusted uploads at intake  
+- [x] **🟠 MOYENNE** · `security` — pypdf 6.14.2 carries 6 known advisories and parses untrusted uploads at intake  
   `src/docforge/uv.lock:3528`
 - [ ] **⚪ FAIBLE** · `security` — mcp 1.28.0 in the MCP server lock has a known advisory fixed one patch away (1.28.1)  
   `src/mcp/uv.lock:514`
