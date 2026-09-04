@@ -8,6 +8,8 @@
 
 ## Journal
 
+- **2026-09-04 — Vague fiabilité transfert/import (3 MOYENNE)** : (497) **export non snapshot-consistent** — l'export re-query les hashes de blobs en LIVE après la passe documents ; un delete/reingest concurrent produisait un bundle qui échoue à l'import ou perd des données silencieusement. Désormais le set de blobs est dérivé des MÊMES lignes documents écrites (snapshot self-consistent), et un blob référencé disparu **abort bruyamment** (`CollectionExportError` nommant le document) — jamais de bundle silencieusement lossy. Choix snapshot+abort plutôt que tx repeatable-read (l'export lit sur N sessions courtes, pas de tx unique ; tenir une longue tx pinnerait PG). (499) **hard-kill → transfert RUNNING éternel** — nouveau cron `reap_stuck_transfers` (sibling du reaper de jobs, `WORKER_REAP_ENABLED`) : marque FAILED tout transfert RUNNING dont `updated_at` a gelé au-delà de `WORKER_TRANSFER_REAP_STALE_SECONDS` (défaut 10800s, validé au boot `>= job_timeout ceiling`) → row terminal + bundle stagé GC-reclaimable. **Pas de migration** (réutilise `updated_at`). Résidu documenté : un IMPORT SIGKILL mid-restore peut laisser une collection à moitié importée (orphan supprimable ; le row n'a pas l'id collection avant `mark_done`, donc pas de rollback propre — 2-phase hors scope). (501) **import bufferisait tous les blobs en RAM** (jusqu'à 5 GiB) — désormais streamé par budget-octets (64 MiB, un blob tient toujours) : flush batch → S3+registry → release, mémoire bornée à ~un batch (comme l'export). Guards decompression-bomb intacts. +tests (abort export si blob disparu row/objet ; reap stale→FAILED, fresh intact, no-op si disabled ; import flush >1× et pic < total). `1397 passed`, ruff clean.
+
 - **2026-09-04 — 🔴 REVERT release restructure (0.14.5 a cassé la release) → 429/437 déférés** : le run `release.yml` de v0.14.5 a échoué sur DEUX bugs de mon restructure : (1) **SDK/PyPI** — `Invalid attestations ... release.yml@refs/tags/v0.14.5 does not match expected Trusted Publisher (release-sdk.yml)` : **PyPI Trusted Publishing ne supporte PAS les reusable workflows** (le commentaire de l'agent affirmait le contraire — faux) ; PyPI matche le workflow **top-level**, donc release-sdk.yml DOIT rester déclenchée directement sur le tag. (2) **promote-latest** — `repository name (Florian-BARRE/docforge-app) must be lowercase` (owner non minusculé dans `imagetools create`). Comme 429 (gate unique) exige de wrapper release-sdk.yml en reusable — incompatible PyPI — il est **non résoluble** sans reconfig PyPI côté compte user. Décision : **revert complet** des 5 workflows à l'état 0.14.4 connu-fonctionnel (release.yml supprimé ; release-images.yml + release-sdk.yml re-top-level, chacun gate). **429 + 437 re-ouverts/déférés** (437 était couplé au restructure). **435 conservé** (docs set_version/alignment, indépendant). Le gate + les 8 images de 0.14.5 étaient verts — seuls `:latest` (pas bougé, l'effet voulu de 437 par accident) et le SDK PyPI (pas publié) ont raté ; 0.14.6 rattrape. Voir mémoire `release-gate`.
 
 - **2026-09-04 — Vague durcissement release/CI (1 MOYENNE + 2 FAIBLE)** : (429) **gate joué 2× par tag** — release-images.yml et release-sdk.yml faisaient chacun `uses: gate.yml`, donc un tag `v*` relançait tout le gate monorepo deux fois en parallèle. Nouveau `release.yml` = **orchestrateur unique** sur `v*`/`sdk-v*` : `gate` une seule fois → fan-out `images` (si `startsWith(ref,'v')`) + `sdk`, tous deux `needs: gate` (un gate rouge bloque toujours les DEUX publish) ; les 2 anciens workflows passent en `workflow_call`-only (plus de trigger tag direct) — noms de fichiers conservés car le Trusted-Publishing PyPI matche le fichier de la reusable workflow. (437) **fenêtre de publication partielle** — `:latest` déplacé dans un job `promote-latest` séparé `needs: images` (tout le matrix) : un échec d'une image laisse `:latest` sur la release précédente au lieu de le bouger sur une publication incomplète. (435) **couverture versions** — set_version.sh + test_version_alignment.py documentent explicitement l'exclusion VOLONTAIRE de bge_server/paddle_server (sidecars à cadence propre) et du frontend package.json (`private:true`, jamais publié, lu par personne au build/runtime — inerte). Validé : 5 YAML parsent, set_version.sh `bash -n` OK, test alignement vert. ⚠️ La prochaine release (0.14.5) est la 1re à utiliser `release.yml` — à surveiller.
@@ -95,7 +97,7 @@
 | V5 | 2 | 0 |
 | V6 | 0 | 0 |
 | V7 | 21 | 0 |
-| V8 | 188 | 10 |
+| V8 | 188 | 13 |
 
 
 ## V1 — Sécurité & authz (avant tout déploiement multi-tenant)  (30)
@@ -496,11 +498,11 @@
 
 ### Export/import
 
-- [ ] **🟠 MOYENNE** · `design` — Export is not snapshot-consistent: blob hashes and points are read from the live DB after the document pass, so a concurrent reingest/delete produces a bundle that fails at import or silently loses data  
+- [x] **🟠 MOYENNE** · `design` — Export is not snapshot-consistent: blob hashes and points are read from the live DB after the document pass, so a concurrent reingest/delete produces a bundle that fails at import or silently loses data  
   `src/docforge/worker/backend/libs/collection_transfer/export/exporter.py:225`
-- [ ] **🟠 MOYENNE** · `bug` — Hard worker kill mid-import leaves a permanent half-imported collection and a forever-RUNNING transfer row — no reaper covers collection_transfer  
+- [x] **🟠 MOYENNE** · `bug` — Hard worker kill mid-import leaves a permanent half-imported collection and a forever-RUNNING transfer row — no reaper covers collection_transfer  
   `src/docforge/worker/backend/libs/jobs/transfer.py:136`
-- [ ] **🟠 MOYENNE** · `perf` — Import buffers every blob's bytes in memory at once — up to IMPORT_MAX_BUNDLE_BYTES (5 GiB default) resident — while export streams one blob at a time  
+- [x] **🟠 MOYENNE** · `perf` — Import buffers every blob's bytes in memory at once — up to IMPORT_MAX_BUNDLE_BYTES (5 GiB default) resident — while export streams one blob at a time  
   `src/docforge/worker/backend/libs/collection_transfer/restore/importer.py:187`
 - [ ] **⚪ FAIBLE** · `consistency` — Dangling-reference handling is inconsistent: primary FKs fail loudly (KeyError) but parent/caption links, unknown metadata fields, and stale point payload document_id degrade silently  
   `src/docforge/worker/backend/libs/collection_transfer/restore/rows.py:132`

@@ -141,3 +141,69 @@ async def test_import_pins_blob_s3_key_to_content_hash_ignoring_a_tampered_key()
     # ...and the registered row's s3_key was rewritten to match — no dangling foreign pointer.
     assert [row.s3_key for row in facade.blob_rows] == [content_hash]
     assert victim_key not in {obj.key for obj in facade.blob_objects}
+
+
+async def test_import_streams_blobs_in_bounded_batches_never_the_whole_bundle() -> None:
+    """The blob restore must flush in bounded byte-budget batches — peak resident memory is one batch,
+    NOT the whole bundle. Several blobs whose total FAR exceeds the budget must trigger MULTIPLE
+    store_blobs flushes, each bounded by ~the budget (never a single all-blobs call).
+    """
+    import hashlib
+
+    from collection_transfer.paths import BundlePaths
+    from collection_transfer.restore import CollectionImporterV1
+
+    from .conftest import FakeImportFacade
+
+    blob_size = 100
+    budget = 150  # each batch may hold at most two 100-byte blobs before it flushes
+    blob_count = 5  # 500 bytes total — ~3.3x the budget, so it CANNOT ride in one buffer
+    payloads = {
+        hashlib.sha256(f"blob-{index}".encode()).hexdigest(): b"x" * blob_size
+        for index in range(blob_count)
+    }
+
+    class _FakeReader:
+        """Yields ``blob_count`` blob rows (s3_key already == content_hash) + their bytes."""
+
+        def iter_rows(self, path):
+            assert path == BundlePaths.BLOBS
+            for content_hash in payloads:
+                yield {
+                    "content_hash": content_hash,
+                    "s3_key": content_hash,
+                    "mime_type": "application/octet-stream",
+                    "size_bytes": blob_size,
+                    "kind": "original",
+                }
+
+        def read_blob(self, content_hash):
+            return payloads[content_hash]
+
+    class _RecordingImportFacade(FakeImportFacade):
+        """Records the byte size of every store_blobs flush so the test can bound peak buffering."""
+
+        def __init__(self) -> None:
+            super().__init__()
+            self.flush_byte_sizes: list[int] = []
+
+        async def store_blobs(self, objects, rows):
+            objects, rows = list(objects), list(rows)
+            self.flush_byte_sizes.append(sum(len(obj.data) for obj in objects))
+            await super().store_blobs(objects, rows)
+
+    facade = _RecordingImportFacade()
+    importer = CollectionImporterV1(facade, _FakeReader(), blob_batch_bytes=budget)
+
+    await importer._restore_blobs()
+
+    # Streamed, not one-shot: more than one flush, and no flush ever held the whole bundle.
+    assert len(facade.flush_byte_sizes) > 1
+    total_bytes = blob_size * blob_count
+    peak_buffered = max(facade.flush_byte_sizes)
+    assert peak_buffered < total_bytes  # never the whole bundle resident at once
+    assert peak_buffered <= budget + blob_size  # bounded by the budget + at most one in-flight blob
+    # Every blob still lands — the batching loses nothing.
+    assert len(facade.blob_objects) == blob_count
+    assert len(facade.blob_rows) == blob_count
+    assert sum(facade.flush_byte_sizes) == total_bytes

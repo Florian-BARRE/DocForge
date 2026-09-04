@@ -3,7 +3,9 @@
 # collection (fresh UUID; the name is renamed on collision, never an overwrite), builds a RemapContext
 # (fresh ids for every entity), then STAGES the restore in FK order — blobs first (documents/pages/
 # figures reference them), then the catalogue, metadata (field id remapped by name), pages, the IR,
-# the chunks, and finally the Qdrant vectors. Every id is REGENERATED and every foreign key rewritten
+# the chunks, and finally the Qdrant vectors. Blob bytes are STREAMED in a bounded byte-budget batch
+# (never the whole bundle resident at once), mirroring the exporter's one-blob-at-a-time shape. Every
+# id is REGENERATED and every foreign key rewritten
 # consistently, so a bundle restores anywhere — including back onto its origin server (id preservation
 # would collide on the global primary keys). The chunk's new UUID is reused as its Qdrant point id, so
 # chunk.id == point.id still holds. Any failure ROLLS BACK the whole new collection (Qdrant drop → PG
@@ -23,7 +25,7 @@ from loggerplusplus import loggerplusplus
 
 # ====== Internal Project Imports ======
 from shared_libs.services.db.facades import CollectionTransferFacade
-from shared_libs.services.db.postgresql.tables import Collection
+from shared_libs.services.db.postgresql.tables import Blob, Collection
 from shared_libs.services.db.qdrant import QdrantPoint, SparseVec
 from shared_libs.services.db.s3 import S3Object
 
@@ -62,6 +64,7 @@ class CollectionImporterV1:
         *,
         progress: ProgressFn | None = None,
         point_batch: int = 500,
+        blob_batch_bytes: int = 64 * 1024 * 1024,
     ) -> None:
         """
         Args:
@@ -69,11 +72,15 @@ class CollectionImporterV1:
             reader (BundleReader): The validated bundle reader (call ``validate`` first).
             progress (ProgressFn | None): Optional ``(stage, percent)`` callback.
             point_batch (int): How many points to accumulate before an upsert (bounds memory).
+            blob_batch_bytes (int): Byte budget for the blob restore — accumulate blob bytes only up
+                to this many, then flush to S3 and release. Bounds peak resident memory to roughly one
+                batch (mirroring the exporter's one-blob-at-a-time streaming), NOT the whole bundle.
         """
         self._facade = facade
         self._reader = reader
         self._progress = progress or (lambda _stage, _pct: None)
         self._point_batch = point_batch
+        self._blob_batch_bytes = blob_batch_bytes
 
     async def run(self, target_name: str | None = None) -> ImportResult:
         """
@@ -185,8 +192,18 @@ class CollectionImporterV1:
         self._progress("vectors", 98)
 
     async def _restore_blobs(self) -> None:
-        """Register the blob rows + upload their content-verified bytes (deduped, idempotent)."""
-        objects, rows = [], []
+        """Register the blob rows + upload their content-verified bytes, STREAMED in bounded batches.
+
+        The bundle can carry up to IMPORT_MAX_BUNDLE_BYTES of blob bytes; reading them all into memory
+        before a single store would make the whole bundle resident at once. Instead this accumulates
+        blob bytes only up to ``_blob_batch_bytes`` (one blob always fits, however large), flushes that
+        batch to S3 + the registry, releases it, and continues — so peak resident memory is bounded by
+        one batch, mirroring the exporter's one-blob-at-a-time streaming. Each ``store_blobs`` is
+        idempotent (dedup by content hash) and a partial-then-failed import is cleaned by the rollback.
+        """
+        objects: list[S3Object] = []
+        rows: list[Blob] = []
+        pending_bytes = 0
         for data in self._reader.iter_rows(BundlePaths.BLOBS):
             blob = RowDeserializer.blob(data)
 
@@ -203,15 +220,20 @@ class CollectionImporterV1:
                 )
                 blob.s3_key = blob.content_hash
 
+            content = self._reader.read_blob(blob.content_hash)
             rows.append(blob)
             objects.append(
-                S3Object(
-                    key=blob.content_hash,
-                    data=self._reader.read_blob(blob.content_hash),
-                    content_type=blob.mime_type,
-                )
+                S3Object(key=blob.content_hash, data=content, content_type=blob.mime_type)
             )
-        await self._facade.store_blobs(objects, rows)
+            pending_bytes += len(content)
+
+            # Flush once the byte budget is reached, then release the batch so it can be reclaimed.
+            if pending_bytes >= self._blob_batch_bytes:
+                await self._facade.store_blobs(objects, rows)
+                objects, rows, pending_bytes = [], [], 0
+
+        if objects:
+            await self._facade.store_blobs(objects, rows)
 
     async def _restore_table(
         self, path: str, ctx: RemapContext, deserialize: Callable[[dict, RemapContext], Any]
