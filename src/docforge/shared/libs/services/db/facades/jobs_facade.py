@@ -271,7 +271,15 @@ class JobsFacade(LoggerClass):
             session, job_id, status=job_status, reason=reason, finished_at=datetime.now(UTC)
         )
         if job is not None and job.document_id is not None:
-            await DocumentApi.set_status(session, job.document_id, doc_status)
+            # Ownership edge-guard: only mirror the terminal status onto the DOCUMENT when THIS job is
+            # still the document's most-recent run. A newer job (a reingest queued while this one
+            # wedged, since reingest always mints a fresh job row) OWNS the document state now — an old
+            # reaped/cancelled job must never clobber the newer run's terminal/processing state. The
+            # job row itself is always terminated (it genuinely is over); only the shared document
+            # write is gated. Mirrors ``DocumentApi.finalize_done``'s guard against a racing terminal.
+            latest = await JobApi.get_latest_for_document(session, job.document_id)
+            if latest is None or latest.id == job_id:
+                await DocumentApi.set_status(session, job.document_id, doc_status)
         return job
 
     async def force_terminate(self, job_id: uuid.UUID, reason: str) -> Job | None:
@@ -302,19 +310,26 @@ class JobsFacade(LoggerClass):
             self.logger.info(f"Force-terminated job {job_id} (CANCELLED): {reason}")
         return job
 
-    async def reap_stale(self, older_than_seconds: float) -> list[uuid.UUID]:
+    async def reap_stale(
+        self, older_than_seconds: float, heartbeat_stale_seconds: float
+    ) -> list[uuid.UUID]:
         """
-        Fail every RUNNING job whose progress froze past the threshold — orphaned-job recovery.
+        Fail every RUNNING job silent past the threshold WHOSE WORKER IS ALSO GONE — orphan recovery.
 
         A dev worker hot-reload (or a crash) drops the in-flight arq task, but the DB job row stays
         RUNNING forever and its document PROCESSING. This lists such wedged jobs and, for each, marks
         the job FAILED with an operator-clear reason AND flags its owning document FAILED (so the
         document is visibly re-ingestable) — through the SAME ``_terminate`` path a manual cancel-force
-        uses. Idempotent under concurrency: a row already reaped no longer matches ``status ==
-        RUNNING``, so a second pass — or a second worker — is a harmless no-op that finds nothing.
+        uses. Crucially, ``list_stale`` now vetoes any job whose worker heartbeat is still fresh, so a
+        HEALTHY job running one long silent stage on a live worker is never reaped — only jobs on a
+        dead/absent worker qualify. Idempotent under concurrency: a row already reaped no longer
+        matches ``status == RUNNING``, so a second pass — or a second worker — is a harmless no-op.
 
         Args:
-            older_than_seconds (float): A RUNNING job idle longer than this is reaped.
+            older_than_seconds (float): A RUNNING job silent (no row write) longer than this is a
+                candidate — but only if its worker is also gone.
+            heartbeat_stale_seconds (float): A worker heartbeat older than this (or absent) is
+                presumed dead; a fresher heartbeat vetoes the reap of that worker's jobs.
 
         Returns:
             list[uuid.UUID]: The reaped job ids (empty when nothing was stale).
@@ -328,7 +343,9 @@ class JobsFacade(LoggerClass):
         )
         reaped: list[uuid.UUID] = []
         async with self._postgres.session() as session:
-            for job in await JobApi.list_stale(session, older_than_seconds):
+            for job in await JobApi.list_stale(
+                session, older_than_seconds, heartbeat_stale_seconds
+            ):
                 await self._terminate(
                     session,
                     job.id,

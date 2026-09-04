@@ -13,7 +13,7 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 
 # ====== Third-Party Library Imports ======
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -82,9 +82,20 @@ class JobApi:
         attempt: int,
         started_at: datetime,
     ) -> None:
-        """Claim the job for a worker — retry-safe: clears the previous attempt's outcome."""
+        """
+        Claim the job for a worker — retry-safe: clears the previous attempt's outcome.
+
+        Guarded against resurrecting a terminal job: a zombie arq re-delivery of a job the reaper (or a
+        force-terminate) already marked FAILED/DONE/CANCELLED must NOT flip it back to RUNNING. The
+        worker's dequeue-skip guard already bails before this on any terminal status, so this is
+        defense-in-depth — no code path can un-finish a finished job. A fresh attempt also starts
+        UNFLAGGED: the reaper/force-terminate raise ``cancel_requested`` as a backstop stop signal, so
+        clearing it here stops that stale flag from spuriously cancelling a legitimately re-run job at
+        its first stage boundary.
+        """
         job = await session.get(Job, job_id)
-        if job is None:
+        # A terminal job is over for good — never re-open it (defense-in-depth behind the dequeue guard).
+        if job is None or job.status in JobStatus.terminal():
             return
         job.status = JobStatus.RUNNING
         job.worker_id = worker_id
@@ -95,6 +106,8 @@ class JobApi:
         job.finished_at = None
         job.current_stage = None
         job.progress = 0
+        # Clear the backstop cancel flag: a fresh attempt is not a cancellation target.
+        job.cancel_requested = False
 
     @staticmethod
     async def set_progress(
@@ -562,27 +575,54 @@ class JobApi:
         return {status: int(count) for status, count in result.all()}
 
     @staticmethod
-    async def list_stale(session: AsyncSession, older_than_seconds: float) -> list[Job]:
+    async def list_stale(
+        session: AsyncSession,
+        older_than_seconds: float,
+        heartbeat_stale_seconds: float,
+    ) -> list[Job]:
         """
-        Return RUNNING jobs whose ``updated_at`` froze past the threshold — the reap candidates.
+        Return RUNNING jobs that are BOTH silent past the threshold AND on a dead/absent worker.
 
-        The cutoff uses the DATABASE clock (``func.now()``) rather than Python's, so a clock skew
-        between a worker and Postgres can never mis-classify a live job as stale. ``updated_at``
-        bumps on every progress/stage write (TimestampedMixin ``onupdate``), so a frozen value is
-        exactly the orphaned/wedged signal. PENDING (queued, not yet started) rows are excluded.
+        ``updated_at`` only bumps on job-ROW writes (a root-stage START/END, a ForEach counter), so a
+        single long SILENT stage — a docling parse of a large scanned PDF, a slow conversion — writes
+        nothing between its START and END. A frozen ``updated_at`` therefore no longer proves a job is
+        wedged: a HEALTHY job whose one stage runs for >20 min looks identical to an orphaned one. The
+        ``worker_heartbeats`` table exists precisely to tell the two apart, so this joins the job to
+        its worker's heartbeat and lets a FRESH heartbeat VETO the reap — a job on a live worker is
+        never reaped for silence alone. Only a job whose worker's heartbeat is stale (crashed worker)
+        or absent (never registered / a RUNNING row with no ``worker_id``, which is only ever an
+        orphan since ``mark_running`` always stamps the id) is a genuine reap candidate.
+
+        Both cutoffs use the DATABASE clock (``func.now()``) rather than Python's, so a worker/DB
+        clock skew can never mis-classify a live job. PENDING (queued, not yet started) rows are
+        excluded. This heartbeat veto is why the fixed global ``older_than_seconds`` need not be scaled
+        to each collection's ``job_timeout_seconds``: a live worker vetoes the reap regardless of how
+        long its stage runs, and a genuinely-wedged-but-heartbeating worker is caught by arq's outer
+        ``job_timeout`` (max budget + grace), not by this silence sweep.
 
         Args:
             session (AsyncSession): The active DB session.
-            older_than_seconds (float): A RUNNING job idle longer than this is stale.
+            older_than_seconds (float): A RUNNING job silent (no row write) longer than this is a
+                candidate — but only if its worker is also gone.
+            heartbeat_stale_seconds (float): A worker whose heartbeat is older than this (or absent)
+                is presumed dead, so it cannot veto the reap of its jobs.
 
         Returns:
-            list[Job]: The stale RUNNING jobs, oldest ``updated_at`` first.
+            list[Job]: The stale RUNNING jobs on a dead/absent worker, oldest ``updated_at`` first.
         """
         result = await session.execute(
             select(Job)
+            .outerjoin(WorkerHeartbeat, WorkerHeartbeat.worker_id == Job.worker_id)
             .where(
                 Job.status == JobStatus.RUNNING,
                 Job.updated_at < func.now() - timedelta(seconds=older_than_seconds),
+                # Reap only when NO live worker vouches for the job: its heartbeat row is absent, or
+                # its heartbeat froze past the dead-worker cutoff. A fresh heartbeat here is the veto.
+                or_(
+                    WorkerHeartbeat.worker_id.is_(None),
+                    WorkerHeartbeat.last_seen
+                    < func.now() - timedelta(seconds=heartbeat_stale_seconds),
+                ),
             )
             .order_by(Job.updated_at.asc())
         )

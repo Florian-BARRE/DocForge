@@ -36,6 +36,8 @@
 
 - **2026-09-04 — V2 tranche 3 (fuite bundles d'import)** : la tâche d'import ne nettoyait que le workspace local — l'objet S3 stagé fuyait (le GC ne balaie que les exports). Suppression best-effort de l'objet stagé sur **succès** (après `mark_done` ; pas de retry arq possible sur un succès, contrairement à un échec). +1 assertion. Reste (`[~]`) : la fuite sur import échoué (retry-sensible) → extension du GC transfert (stamp `expires_at` + `list_expired` incluant IMPORT), slice dédié. 3✓.
 
+- **2026-09-04 — V2 tranche 4 (reaper heartbeat + zombie retry, 2× HAUTE)** : agent `backend` dédié, relu ligne-à-ligne + retesté par moi. (1) `list_stale` outerjoin `worker_heartbeats` — un heartbeat FRAIS **veto** le reap (plus de kill d'un job long mais vivant) ; `worker_id` est PK → pas de dup au join. (2) `retry_jobs=False` (racine du zombie) + gardes défensives : dequeue-skip sur tout `JobStatus.terminal()`, `mark_running` clear `cancel_requested` + no-op sur terminal, `_terminate` garde d'ownership (`get_latest_for_document`) — plus d'écrasement d'état doc par un vieux job reapé. +5 tests. **628 passed**, ruff clean. Sans migration. À valider par `/code-review` avant merge (logique de recovery critique).
+
 ## Avancement
 
 | Vague | Total | Fait |
@@ -160,9 +162,9 @@
 
 ### Worker & jobs
 
-- [ ] **🔴 HAUTE** · `bug` — Reaper can kill live long-running jobs: staleness keyed only on job.updated_at, worker heartbeat never consulted  
+- [x] **🔴 HAUTE** · `bug` — Reaper can kill live long-running jobs: staleness keyed only on job.updated_at, worker heartbeat never consulted  
   `src/docforge/shared/libs/services/db/postgresql/apis/job_api.py:570`
-- [ ] **🔴 HAUTE** · `bug` — Zombie arq retry of a reaped job spuriously cancels it and can clobber the document's terminal state  
+- [x] **🔴 HAUTE** · `bug` — Zombie arq retry of a reaped job spuriously cancels it and can clobber the document's terminal state  
   `src/docforge/shared/libs/services/db/postgresql/apis/job_api.py:74`
 
 

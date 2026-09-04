@@ -245,6 +245,27 @@ async def test_dequeue_skip_guard_bails_on_a_cancelled_job(jobs_core, monkeypatc
     database.jobs.mark_done.assert_not_awaited()
 
 
+async def test_dequeue_skip_guard_bails_on_a_reaped_failed_job(jobs_core, monkeypatch) -> None:
+    """A ZOMBIE arq re-delivery of a job the reaper already marked FAILED must NOT re-run (Finding 2):
+    the dequeue guard now skips EVERY terminal status, not just CANCELLED. Without this the fresh
+    attempt would claim the job, the reaper's leftover cancel_requested=True would spuriously cancel
+    it, and its document write could clobber a newer job's terminal state."""
+    from shared_libs.services.db.postgresql.tables import JobStatus  # noqa: PLC0415
+
+    database = _fake_database()
+    document_id, context = _wire(jobs_core, monkeypatch, database, points=[MagicMock()])
+    database.jobs.get = AsyncMock(return_value=SimpleNamespace(status=JobStatus.FAILED))
+
+    await jobs_core.ingest_document({}, str(document_id), str(uuid.uuid4()))
+
+    database.jobs.mark_running.assert_not_awaited()
+    database.ingestion.mark_processing.assert_not_awaited()
+    context.runner.run.assert_not_awaited()
+    # No terminal write at all: the already-FAILED job (and its document) is left exactly as it was.
+    database.jobs.mark_done.assert_not_awaited()
+    database.jobs.force_terminate.assert_not_awaited()
+
+
 async def test_cooperative_cancel_at_boundary_terminates_without_failing(
     jobs_core, monkeypatch
 ) -> None:
