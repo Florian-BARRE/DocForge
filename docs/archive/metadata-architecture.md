@@ -1,5 +1,11 @@
 # DocForge — Metadata & Storage Architecture
 
+> **ARCHIVED — describes the retired static S0–S6 engine.** This document predates the v2 graph
+> engine and no longer matches the live schema (collection/chunk columns, blake3 vs. sha256
+> content-addressing, and more have changed). Kept for historical reference only; do not treat it
+> as current. For the live model see `docs/architecture.md` and the actual table definitions under
+> `shared/libs/services/db/postgresql/tables/`.
+
 Complete reference for every field, table, blob and Qdrant vector in the system.
 Organized from coarsest (collection) to finest (block) granularity.
 

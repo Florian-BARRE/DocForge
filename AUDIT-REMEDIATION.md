@@ -56,6 +56,8 @@
 
 - **2026-09-04 — V5 tranche 1 (exhaustivité switch single-edge)** : `__check_single_path` n'appelait `__check_switch` que pour `count>1` → un seul edge WhenEquals sur un champ SWITCH_FIELDS clos sans défaut échappait au contrôle et tronquait silencieusement le groupe au run. Corrigé : `__check_switch` sur ≥1 edge WhenEquals (AMBIGUOUS reste sur >1 pour les autres kinds). +1 test single-edge. 17✓, pas de faux positif sur les tests multi-edge.
 
+- **2026-09-04 — V7 tranche 1 (passe docs, agent dédié)** : 12 divergences doc↔code fermées, relues+vérifiées par moi (ColBERT purgé partout : 0 occurrence ; `metadata-architecture.md` archivé + banner, retiré du README ; rest-api.md +8 endpoints + erreurs typées 424/503/504 + range filters + score_kind ; python-sdk.md 9→13 ressources + jobs.list/JobPage + CREATE ; mcp.md list_audit + compte 55 vérifié ; configuration.md familles idempotency/audit + BGE_M3_MAX_LENGTH 2048 + FASTAPI_APP_VERSION ; CONTRIBUTING 5e projet paddle). Aucun code touché, diffs chirurgicaux (138+/36-).
+
 ## Avancement
 
 | Vague | Total | Fait |
@@ -219,27 +221,27 @@
 
 ### Documentation
 
-- [ ] **🔴 HAUTE** · `divergence-doc` — metadata-architecture.md is a legacy-engine reference presented as current — schema, stages and hashes all wrong  
+- [x] **🔴 HAUTE** · `divergence-doc` — metadata-architecture.md is a legacy-engine reference presented as current — schema, stages and hashes all wrong  
   `docs/metadata-architecture.md:1`
-- [ ] **🔴 HAUTE** · `divergence-doc` — rest-api.md documents removed ColBERT params use_late_interaction / rescore_pool_size that now 422  
+- [x] **🔴 HAUTE** · `divergence-doc` — rest-api.md documents removed ColBERT params use_late_interaction / rescore_pool_size that now 422  
   `docs/rest-api.md:478` _(aussi: claude-infra, docs-freshness, search-runtime)_
 - [ ] **🟠 MOYENNE** · `divergence-doc` — PIPELINE.md (the self-declared living reference) omits the deliver family / bundle terminal entirely  
   `src/docforge/PIPELINE.md:61`
-- [ ] **🟠 MOYENNE** · `divergence-doc` — configuration.md misses the whole idempotency + audit env-var families  
+- [x] **🟠 MOYENNE** · `divergence-doc` — configuration.md misses the whole idempotency + audit env-var families  
   `docs/configuration.md:24`
-- [ ] **🟠 MOYENNE** · `divergence-doc` — configuration.md: BGE_M3_MAX_LENGTH default wrong (doc 8192, code 2048); several bge/paddle vars undocumented  
+- [x] **🟠 MOYENNE** · `divergence-doc` — configuration.md: BGE_M3_MAX_LENGTH default wrong (doc 8192, code 2048); several bge/paddle vars undocumented  
   `docs/configuration.md:181`
-- [ ] **🟠 MOYENNE** · `divergence-doc` — configuration.md: FASTAPI_APP_VERSION described as required with default 0.2.0 — actually optional, defaults from DOCFORGE_TAG  
+- [x] **🟠 MOYENNE** · `divergence-doc` — configuration.md: FASTAPI_APP_VERSION described as required with default 0.2.0 — actually optional, defaults from DOCFORGE_TAG  
   `docs/configuration.md:41`
-- [ ] **🟠 MOYENNE** · `divergence-doc` — mcp.md tool catalogue misses list_audit; tool totals stale (54 and 38 vs actual 55)  
+- [x] **🟠 MOYENNE** · `divergence-doc` — mcp.md tool catalogue misses list_audit; tool totals stale (54 and 38 vs actual 55)  
   `docs/mcp.md:168` _(aussi: sdk-mcp)_
-- [ ] **🟠 MOYENNE** · `divergence-doc` — python-sdk.md: jobs.list() return type wrong — returns JobPage, not list[JobStatus]  
+- [x] **🟠 MOYENNE** · `divergence-doc` — python-sdk.md: jobs.list() return type wrong — returns JobPage, not list[JobStatus]  
   `docs/python-sdk.md:338`
-- [ ] **🟠 MOYENNE** · `divergence-doc` — rest-api.md filters contract under-documented: range predicates (gte/gt/lte/lt) exist but are absent  
+- [x] **🟠 MOYENNE** · `divergence-doc` — rest-api.md filters contract under-documented: range predicates (gte/gt/lte/lt) exist but are absent  
   `docs/rest-api.md:476`
-- [ ] **🟠 MOYENNE** · `divergence-doc` — rest-api.md misses 8 live endpoints: collection health/storage/reingest, job cancel, and all 4 transfers routes  
+- [x] **🟠 MOYENNE** · `divergence-doc` — rest-api.md misses 8 live endpoints: collection health/storage/reingest, job cancel, and all 4 transfers routes  
   `docs/rest-api.md:41`
-- [ ] **⚪ FAIBLE** · `divergence-doc` — CONTRIBUTING.md: 'monorepo of four standalone uv projects' — paddle_server is a fifth, CI-gated package  
+- [x] **⚪ FAIBLE** · `divergence-doc` — CONTRIBUTING.md: 'monorepo of four standalone uv projects' — paddle_server is a fifth, CI-gated package  
   `CONTRIBUTING.md:3`
 - [ ] **⚪ FAIBLE** · `divergence-doc` — Ground-truth docs stale: CLAUDE.md family/node lists miss structgen+deliver; tests list incomplete; rules/architecture.md says preflight 'reste à ajouter' though shipped  
   `CLAUDE.md:1`
@@ -338,7 +340,7 @@
   `src/mcp/libs/tools/collections.py:24`
 - [ ] **🟠 MOYENNE** · `design` — MCP tools swallow the API error body — a 4xx surfaces to the LLM as an opaque status code  
   `src/mcp/libs/tools/search.py:50`
-- [ ] **🟠 MOYENNE** · `divergence-doc` — docs/python-sdk.md is four resources behind the SDK (transfers, corpus, snippets, audit all undocumented)  
+- [x] **🟠 MOYENNE** · `divergence-doc` — docs/python-sdk.md is four resources behind the SDK (transfers, corpus, snippets, audit all undocumented)  
   `docs/python-sdk.md:108` _(aussi: docs-freshness)_
 - [ ] **⚪ FAIBLE** · `consistency` — Minor SDK/MCP inconsistencies (grouped): client docstrings omit corpus, divergent get_pipeline_design default, stale 0.1.1 dist artifacts  
   `src/docforge_sdk/docforge_sdk/client.py:31`
@@ -660,7 +662,7 @@
   `src/docforge/shared/libs/pipelines/search/nodes/query/base.py:92`
 - [ ] **🟠 MOYENNE** · `divergence-doc` — Search blobs have no BlobNormalizer/auto-heal path — registry drift bricks stored search graphs  
   `src/docforge/app/backend/libs/search/service.py:59`
-- [ ] **🟠 MOYENNE** · `divergence-doc` — Typed search failure modes (424/503/504, score_kind, range filters) undocumented in rest-api.md  
+- [x] **🟠 MOYENNE** · `divergence-doc` — Typed search failure modes (424/503/504, score_kind, range filters) undocumented in rest-api.md  
   `docs/rest-api.md:876`
 - [x] **🟠 MOYENNE** · `bug` — limit > top_n silently truncates rerank-enabled results to 50 hits  
   `src/docforge/shared/libs/pipelines/search/nodes/rerank/cross_encoder/config.py:37`

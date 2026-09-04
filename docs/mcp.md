@@ -100,7 +100,7 @@ vector space is fixed at creation), plus optional ingestion/search pipeline blob
 
 | Tool | Purpose |
 |---|---|
-| `search_collection` | Hybrid semantic + keyword search (dense + sparse fusion, optional ColBERT late-interaction re-score). Supports `filters` on filterable fields, `search_in` targets (`content` or metadata fields, semantic/lexical axes), `use_late_interaction`, `rescore_pool_size`. Returns ranked hits. |
+| `search_collection` | Hybrid semantic + keyword search (dense + sparse fusion). Supports `filters` on filterable fields (scalar / any-of / range), `search_in` targets (`content` or metadata fields, semantic/lexical axes). Returns ranked hits. |
 
 ### Jobs
 
@@ -165,8 +165,14 @@ multi-GB) — `get_export_download_ref` instead points the caller at the REST do
 | `get_collection_contract_schema` | JSON Schema of the collection identity/limits contract (build a valid create/update). |
 | `whoami` | The calling token's own capabilities + collection scope — what it may do. |
 
+### Audit
 
-**Total: 54 tools** across 10 domains.
+| Tool | Purpose |
+|---|---|
+| `list_audit` | One keyset-paginated page of the audit trail, newest first — one row per mutating API action (who/what/target/outcome). Filter by actor (`actor_user_id`/`actor_key_id`), target (`target_type`+`target_id`), `correlation_id`, and an ISO-8601 time window (`created_from`/`created_to`); walk it with `cursor`. **ROOT / full-access keys only** (a collection-scoped key is rejected `403`). |
+
+
+**Total: 55 tools** across 13 sections.
 
 ---
 
@@ -293,7 +299,7 @@ Add an entry to your client's MCP config (`.mcp.json`-style):
 }
 ```
 
-The client launches the process and speaks MCP over stdio; the model can then call any of the 38
+The client launches the process and speaks MCP over stdio; the model can then call any of the 55
 tools. (Use an absolute path to `entrypoint.py` if your client does not run from the repo root, and
 run it through `uv`/the project venv so `docforge_sdk` and `mcp` are importable.)
 
