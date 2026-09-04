@@ -24,6 +24,8 @@
 
 - **2026-09-04 — V1 tranche 8 (port Gotenberg)** : le publish `10045:3000` retiré de `compose/base.yml` (donc plus exposé en **prod** — Gotenberg = API de conversion non-auth, pivot SSRF) et déplacé dans `compose/overlays/dev.yml` (comme les stores) ; les collections l'atteignent via l'alias réseau `gotenberg:3000`. `docs/configuration.md` aligné. Validé : prod-cpu = 0× 10045, dev-cpu = publié, tous scénarios×add-ons `config -q` OK.
 
+- **2026-09-04 — V1 tranche 9 (creds postgres fresh-clone)** : les 3 sources alignées sur `docforge` — `postgres.env.example` (bootstrap DB), `.env.example` (DSN host-side), et le fallback compose `docforge:docforge` concordent → un clone propre boote sans erreur d'auth ; bloc `POSTGRES_DSN` commenté ajouté au `.env` racine (mécanisme d'override prod, absent avant) + avertissements change-me. Vérifié : 0 `change_me` résiduel.
+
 ## Avancement
 
 | Vague | Total | Fait |
@@ -99,7 +101,7 @@
 
 ### Infra & compose
 
-- [ ] **🟠 MOYENNE** · `consistency` — Fresh-clone credential mismatch: base.yml's default POSTGRES_DSN (docforge:docforge) does not match the shipped postgres.env.example (change_me)  
+- [x] **🟠 MOYENNE** · `consistency` — Fresh-clone credential mismatch: base.yml's default POSTGRES_DSN (docforge:docforge) does not match the shipped postgres.env.example (change_me)  
   `compose/base.yml:43`
 - [x] **🟠 MOYENNE** · `security` — Unauthenticated Gotenberg published on host port 10045 in every scenario including prod, contradicting docs/configuration.md's exposure claim  
   `compose/base.yml:272`
