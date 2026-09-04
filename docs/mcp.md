@@ -72,6 +72,8 @@ vector space is fixed at creation), plus optional ingestion/search pipeline blob
 | `estimate_collection_cost` | Dry-run cost/volume projection before spending anything (`collection_id`, `scope="pending"`, `document_ids=None`, `filter=None`). Defaults to pending (not-yet-ingested) documents; pass `document_ids` to estimate a specific selection, or `filter` (same shape as the documents-grid filter) for a corpus slice — either one overrides `scope`. Per-stage token/page + dollar breakdown; unpriced models come back with a null cost, never fabricated. |
 | `export_collection_snippet` | Export one granular config facet (`collection_id`, `kind` ∈ `pipeline`\|`search`\|`schema`) as a portable `.dfsnippet` — secret-masked, config-only, synchronous (contrast with the async whole-collection `.dcexport`). |
 | `apply_collection_snippet` | Apply a `.dfsnippet` (`collection_id`, `kind`, `snippet`) onto this collection. Secrets from a different collection arrive masked and must be re-entered before the graph can run. |
+| `collection_health` | Zero-spend, on-demand provider-reachability sweep across the ingest AND search graphs, plus index/doc stats and a rolled-up verdict. No job enqueued, nothing billed. |
+| `reingest_collection` | Re-run the full pipeline over a collection's corpus (`collection_id`, optional `document_ids` subset, `force`) — the collection-scoped bulk reingest. Capped fan-out, one job handle per enqueued run. |
 
 ### Documents (upload / admission)
 
@@ -172,7 +174,7 @@ multi-GB) — `get_export_download_ref` instead points the caller at the REST do
 | `list_audit` | One keyset-paginated page of the audit trail, newest first — one row per mutating API action (who/what/target/outcome). Filter by actor (`actor_user_id`/`actor_key_id`), target (`target_type`+`target_id`), `correlation_id`, and an ISO-8601 time window (`created_from`/`created_to`); walk it with `cursor`. **ROOT / full-access keys only** (a collection-scoped key is rejected `403`). |
 
 
-**Total: 55 tools** across 13 sections.
+**Total: 57 tools** across 13 sections.
 
 ---
 
@@ -299,7 +301,7 @@ Add an entry to your client's MCP config (`.mcp.json`-style):
 }
 ```
 
-The client launches the process and speaks MCP over stdio; the model can then call any of the 55
+The client launches the process and speaks MCP over stdio; the model can then call any of the 57
 tools. (Use an absolute path to `entrypoint.py` if your client does not run from the repo root, and
 run it through `uv`/the project venv so `docforge_sdk` and `mcp` are importable.)
 
