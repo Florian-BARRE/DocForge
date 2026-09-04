@@ -23,3 +23,19 @@ name: docforge
 include:
   - overlays/gpu.yml
   - base.yml
+
+# Always pull the published GHCR image rather than reuse a same-named local one: a GPU dev `--build`
+# occupies the prod `-gpu` tag (gpu.yml's `image:` wins the dev-gpu include order over the dev `:dev`
+# tag), so without this a prod-gpu `up` could silently run stale dev code. pull_policy lives here (not
+# in base.yml / gpu.yml) so it never fights the dev overlays' `build:`.
+services:
+  docforge_app:
+    pull_policy: always
+  docforge_worker:
+    pull_policy: always
+  docforge_mcp:
+    pull_policy: always
+  docforge_bge_server:
+    pull_policy: always
+  docforge_paddle_server:
+    pull_policy: always

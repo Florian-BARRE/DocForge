@@ -13,13 +13,20 @@ from typing import Any
 from docforge_sdk import AsyncClient
 from mcp.server.fastmcp import FastMCP
 
+# ====== Local Project Imports ======
+from ..path_guard import PathGuard
 
-def register(mcp: FastMCP, sdk: AsyncClient) -> None:
+
+def register(mcp: FastMCP, sdk: AsyncClient, path_guard: PathGuard) -> None:
     """Register transfer (export/import) tools on the MCP server.
 
     Args:
         mcp (FastMCP): The MCP server instance.
         sdk (AsyncClient): The DocForge API client.
+        path_guard (PathGuard): Resolves/confines `file_path` before it reaches the SDK — a no-op
+            on stdio, but on streamable-HTTP it refuses any path outside the configured inbox (or
+            everything, if no inbox is configured) so a remote caller can never read an arbitrary
+            file off the MCP container's filesystem.
     """
 
     @mcp.tool()
@@ -36,11 +43,14 @@ def register(mcp: FastMCP, sdk: AsyncClient) -> None:
     async def import_collection(file_path: str, target_name: str | None = None) -> Any:
         """
         Import a `.dcexport` bundle as a brand-new collection (asynchronous, no recompute).
-        `file_path` is read from the MCP SERVER's own filesystem, NOT the caller's local disk —
-        for a remote MCP deployment the operator must stage the bundle there first (e.g. a shared
-        volume). Returns the transfer handle immediately (202) — poll get_transfer for progress.
+        `file_path` is read from the MCP SERVER's own filesystem, NOT the caller's local disk. On
+        stdio that is any local path; on streamable-HTTP the operator must stage the bundle inside
+        the configured upload inbox (MCP_UPLOAD_DIR) first (e.g. a shared volume) — a path outside
+        it, or no inbox configured at all, is refused. Returns the transfer handle immediately
+        (202) — poll get_transfer for progress.
         """
-        accepted = await sdk.transfers.import_collection(file_path, target_name=target_name)
+        resolved = path_guard.resolve(file_path)
+        accepted = await sdk.transfers.import_collection(resolved, target_name=target_name)
         return accepted.model_dump(mode="json")
 
     @mcp.tool()

@@ -84,10 +84,14 @@ class RerankCrossEncoderNode(PortBackedNode):
         # Preserve any encode-degradation note across the rerank so delivery still surfaces it.
         degraded = data.candidates.degraded
 
-        # 1. Take the top_n candidates by incoming fusion score — the cheap cross-encoder pass.
+        # 1. Take the top candidates by incoming fusion score for the cross-encoder pass. Judge at
+        #    least the requested page (spec.top_k) even when it exceeds config.top_n: the node emits
+        #    only what it judged, and hydrate later cuts to top_k, so a top_k above top_n would
+        #    otherwise silently cap the result at top_n (a limit of 51-100 returning <=50 hits).
+        pool_size = max(config.top_n, data.spec.top_k)
         pool = sorted(
             data.candidates.candidates, key=lambda candidate: candidate.score, reverse=True
-        )[: config.top_n]
+        )[:pool_size]
         if not pool:
             return RerankCrossEncoderProduces(
                 candidates=CandidateSet(candidates=[], degraded=degraded), score=0.0
@@ -121,9 +125,16 @@ class RerankCrossEncoderNode(PortBackedNode):
                 f"Rerank degraded ({type(exc).__name__}: {exc}) — returning fusion-order candidates"
             )
             notes = [note for note in (degraded, _RERANK_DEGRADED) if note]
+            # CLAMP the reported top score to [0, 1]: on degrade we hand back the incoming FUSION
+            # score, which is NOT on the cross-encoder scale and routinely exceeds 1.0 (RRF sums
+            # 1/(k+rank) per prefetch branch, so a 3+-branch multi-target search tops out at 1.5-2.0;
+            # DBSF exceeds 1.0 with two branches). ScoredOutput.score is Field(ge=0, le=1), so an
+            # unclamped value raises a ValidationError INSIDE run() — turning the degrade path
+            # (which fires exactly when the reranker is down/cold) into a misleading 422 instead of
+            # the un-reranked results it is meant to return.
             return RerankCrossEncoderProduces(
                 candidates=CandidateSet(candidates=judged, degraded="; ".join(notes)),
-                score=judged[0].score,
+                score=min(1.0, max(0.0, judged[0].score)),
             )
 
         # 4. Map each score onto its candidate by index; overwrite the score + provenance.

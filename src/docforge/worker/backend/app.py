@@ -109,6 +109,15 @@ def create_worker_settings() -> type:
         on_shutdown = shutdown
         redis_settings = RedisSettings.from_dsn(RUNTIME_CONFIG.REDIS_URL)
         max_jobs = RUNTIME_CONFIG.WORKER_CONCURRENCY
+        # No arq auto-retry. arq's default (retry_jobs=True / max_tries=5) re-delivers a job whose
+        # worker crashed or was SIGTERMed mid-run — but the stuck-job reaper + the startup reclaim
+        # ALREADY recover such orphans (they mark the job FAILED and its document re-ingestable), and
+        # a zombie re-delivery of a job the reaper has since marked terminal is exactly the
+        # spurious-cancel / document-clobber bug this closes at the root. Recovery here is explicit
+        # (reaper → visibly-failed → operator/bulk reingest), never a silent retry, so automatic
+        # retry is redundant AND harmful; the terminal dequeue-skip guard + mark_running's terminal
+        # guard remain as defense-in-depth for any manual re-enqueue.
+        retry_jobs = False
         # arq's UNIFORM worker-level cap = the HARD ceiling + grace, a backstop ABOVE the engine's
         # per-collection timeout (which fires first for any budget up to the ceiling, keeping the
         # engine authoritative). arq has no per-message timeout, so this one cap applies to every

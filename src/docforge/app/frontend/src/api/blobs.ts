@@ -6,9 +6,25 @@
 import { blobUrl } from "./explorer";
 import { apiFetchBlob } from "./http";
 
-/** Fetch a blob (authenticated) and trigger a browser download under `filename`. */
-export async function downloadBlob(hash: string, filename: string): Promise<void> {
-  const blob = await apiFetchBlob(blobUrl(hash));
+// Types that render INERTLY in a browser tab. A blob: URL inherits THIS origin and scripts inside a
+// blob: document execute same-origin — so an uploaded text/html or image/svg+xml opened this way would
+// run with access to our stored API token (localStorage). Only these types are ever opened inline;
+// anything else (HTML, SVG, text, office docs, unknown) is downloaded instead of rendered.
+// KEEP IN SYNC with the backend allowlist `_INLINE_SAFE_MIME` in
+// src/docforge/app/backend/routers/blobs/router.py — the two enforce the same XSS guard from opposite
+// ends (this decides inline-vs-download in the UI; the backend sets attachment/nosniff/CSP for the
+// rest), so a type added/removed here MUST be mirrored there or the guard diverges.
+const INLINE_SAFE_TYPES = new Set([
+  "application/pdf",
+  "image/png",
+  "image/jpeg",
+  "image/gif",
+  "image/webp",
+  "image/avif",
+]);
+
+/** Wrap a fetched blob in an object URL and trigger a browser download under `filename`. */
+function triggerDownload(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
@@ -19,9 +35,24 @@ export async function downloadBlob(hash: string, filename: string): Promise<void
   URL.revokeObjectURL(url);
 }
 
-/** Fetch a blob (authenticated) and open it inline in a new tab (e.g. the canonical PDF). */
-export async function openBlobInNewTab(hash: string): Promise<void> {
+/** Fetch a blob (authenticated) and trigger a browser download under `filename`. */
+export async function downloadBlob(hash: string, filename: string): Promise<void> {
   const blob = await apiFetchBlob(blobUrl(hash));
+  triggerDownload(blob, filename);
+}
+
+/**
+ * Fetch a blob (authenticated) and open it inline in a new tab — but ONLY for types that render
+ * inertly (PDF, raster images). An uploaded HTML/SVG/text original would execute same-origin from a
+ * blob: URL and could steal the API token, so any non-inline-safe type is downloaded instead of
+ * rendered. `downloadName` names that fallback download (defaults to the hash).
+ */
+export async function openBlobInNewTab(hash: string, downloadName?: string): Promise<void> {
+  const blob = await apiFetchBlob(blobUrl(hash));
+  if (!INLINE_SAFE_TYPES.has(blob.type)) {
+    triggerDownload(blob, downloadName ?? hash);
+    return;
+  }
   const url = URL.createObjectURL(blob);
   window.open(url, "_blank", "noopener");
   // The new tab holds its own reference; revoke ours later so the object URL isn't leaked forever.

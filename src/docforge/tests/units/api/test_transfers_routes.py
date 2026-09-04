@@ -2,7 +2,8 @@
 
 Covers the four routes' handler logic plus the two new queue-seam calls, all with the stores + queue
 mocked (no compose stack): export opens a PENDING row + enqueues ids-only + is 404 on an unknown
-collection + is cross-tenant 403; import stages the upload to a staging key + enqueues + needs WRITE;
+collection + is cross-tenant 403; import stages the upload to a staging key + enqueues + needs CREATE
+(it mints a brand-new collection, exactly like POST /collections);
 the poll route shapes a row's status; download streams a done export and is 404 otherwise. The enqueue
 seam is asserted to carry IDS/SCALARS ONLY — an arq control kwarg would crash the worker task.
 
@@ -147,6 +148,31 @@ async def test_export_scoped_key_foreign_is_403(fastapi_app) -> None:
 
 
 # ── POST /collections/import ────────────────────────────────────────────────────────────────────
+
+
+async def test_import_is_gated_on_create_capability_not_write(fastapi_app) -> None:
+    """Import mints a brand-new collection, so it is gated on CREATE (like POST /collections), not
+
+    WRITE — a WRITE-only scoped key can no longer escalate to collection creation by importing a
+    bundle. Exercises the exact gate the route declares: ``require(Capability.CREATE)``.
+    """
+    from fastapi import HTTPException  # noqa: PLC0415
+
+    from backend.libs.auth import Capability, require  # noqa: PLC0415
+
+    def _req(principal):
+        return SimpleNamespace(headers={}, path_params={}, state=SimpleNamespace(principal=principal))
+
+    gate = require(Capability.CREATE)
+
+    # A read+write scoped key (no create) is rejected — the escalation the fix closes.
+    with pytest.raises(HTTPException) as exc:
+        await gate(_req(_scoped(COLL_A)))
+    assert exc.value.status_code == 403
+
+    # A CREATE-capable key passes the gate.
+    creator = _principal(permissions={"capabilities": ["create"], "collections": ["*"]})
+    assert await gate(_req(creator)) is creator
 
 
 async def test_import_stages_upload_and_enqueues(fastapi_app, monkeypatch) -> None:

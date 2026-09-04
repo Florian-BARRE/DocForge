@@ -20,6 +20,7 @@ from shared_libs.pipelines.nodes.embed.bge_server import (
 )
 from shared_libs.pipelines.reachability import (
     ProbeStatus,
+    ProviderEgressPolicy,
     ReachabilitySweep,
     SearchReachabilitySweep,
 )
@@ -98,6 +99,34 @@ async def test_local_leaf_is_skipped() -> None:
     [result] = await ReachabilitySweep().probe_nodes([_local()], "ingest")
     assert result.status is ProbeStatus.SKIPPED
     assert result.latency_ms is None
+
+
+async def test_disallowed_host_is_blocked_without_probing(monkeypatch) -> None:
+    # If the leaf were probed this client would raise -> UNREACHABLE; a BLOCKED result proves the
+    # egress gate refused the host BEFORE any network call (the anti-scanner mitigation).
+    monkeypatch.setattr(
+        httpx, "AsyncClient", _fake_client(raises=httpx.ConnectError("must not be reached"))
+    )
+    policy = ProviderEgressPolicy.from_spec("only-this-other-host")  # does NOT list 'bge'
+    [result] = await ReachabilitySweep().probe_nodes([_provider()], "ingest", policy)
+    assert result.status is ProbeStatus.BLOCKED
+    assert result.detail
+    assert result.latency_ms is None  # never probed
+
+
+async def test_allowed_host_is_probed_normally(monkeypatch) -> None:
+    monkeypatch.setattr(httpx, "AsyncClient", _fake_client(status_code=200))
+    policy = ProviderEgressPolicy.from_spec("bge")  # the provider's base_url host
+    [result] = await ReachabilitySweep().probe_nodes([_provider()], "ingest", policy)
+    assert result.status is ProbeStatus.OK
+
+
+async def test_empty_policy_probes_as_before(monkeypatch) -> None:
+    # An empty allowlist (the default) is allow-all — the gate is transparent.
+    monkeypatch.setattr(httpx, "AsyncClient", _fake_client(status_code=200))
+    policy = ProviderEgressPolicy.from_spec("")
+    [result] = await ReachabilitySweep().probe_nodes([_provider()], "ingest", policy)
+    assert result.status is ProbeStatus.OK
 
 
 def test_collect_leaves_recurses_groups_and_foreach() -> None:

@@ -41,6 +41,21 @@ class JobStatus(StrEnum):
     # to widen the column (see the migration handoff), even though value_enum adds no CHECK constraint.
     CANCELLED = "cancelled"
 
+    @classmethod
+    def terminal(cls) -> frozenset["JobStatus"]:
+        """
+        The states after which a job never changes again — nothing more will land.
+
+        The single source of truth for "is this job over?": mark_done/mark_failed refuse to overwrite
+        CANCELLED, so all three (DONE, FAILED, CANCELLED) are absorbing. Consumers (the SSE stream's
+        stop condition, the cancel helper's already-terminal check) MUST derive from this rather than
+        hard-code a subset — a missing CANCELLED here made the job stream poll forever.
+
+        Returns:
+            frozenset[JobStatus]: DONE, FAILED and CANCELLED.
+        """
+        return frozenset({cls.DONE, cls.FAILED, cls.CANCELLED})
+
 
 class Job(Base, UUIDPrimaryKey, TimestampedMixin):
     """An async ingestion job for one document."""

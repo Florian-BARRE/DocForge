@@ -9,7 +9,11 @@
 from pydantic import Field
 
 # ====== Internal Project Imports ======
-from shared_libs.pipelines.nodes.openai_compat import OpenAICompatConfig, OpenAICompatHelpers
+from shared_libs.pipelines.nodes.openai_compat import (
+    EndpointReachability,
+    OpenAICompatConfig,
+    OpenAICompatHelpers,
+)
 from shared_libs.pipelines.registry import NodeRegistry
 
 # ====== Local Project Imports ======
@@ -50,6 +54,22 @@ class ChunkerSemanticNode(BaseChunkerNode):
     )
     Config = ChunkerSemanticConfig
     UNIQUE_IN_GRAPH = True
+
+    async def preflight(self) -> None:
+        """Verify the embeddings endpoint is reachable and its credentials accepted, before any spend.
+
+        The semantic chunker embeds every unit's context window through a hosted OpenAI-compatible
+        endpoint; a wrong/unreachable ``base_url`` would otherwise only surface mid-run, after the
+        parse and enrich stages already spent. Overriding this hook makes the reachability sweep
+        probe the node before the first spend.
+        """
+        config: ChunkerSemanticConfig = self.config
+        await EndpointReachability.check(
+            node_kind=self.KIND,
+            base_url=config.base_url,
+            api_key=config.api_key,
+            timeout_seconds=config.preflight_timeout_seconds,
+        )
 
     async def _embed(self, texts: list[str]) -> list[list[float]]:
         """Embed the context windows through the configured endpoint (overridable hook)."""

@@ -142,7 +142,17 @@ async def import_collection(
         async with s3.client() as client:
             await S3ObjectApi.download_to(client, s3.bucket, s3_key, archive_path)
         extract_dir.mkdir(parents=True, exist_ok=True)
-        BundleArchive.unpack(archive_path, extract_dir)
+        # Decompression-bomb guard: bound the extracted size to a multiple of the (already
+        # upload-capped) compressed size, and cap the member count — a hostile high-ratio bundle is
+        # refused mid-extraction instead of filling the worker's disk.
+        config = CONTEXT.RUNTIME_CONFIG
+        max_uncompressed = archive_path.stat().st_size * config.IMPORT_MAX_DECOMPRESSION_RATIO
+        BundleArchive.unpack(
+            archive_path,
+            extract_dir,
+            max_uncompressed_bytes=max_uncompressed,
+            max_members=config.IMPORT_MAX_MEMBERS,
+        )
         reader = BundleReader(extract_dir)
         manifest = reader.validate()
         await database.transfer_tracker.report_progress(tid, "restore", 10)
@@ -160,6 +170,17 @@ async def import_collection(
             collection_name=result.collection_name,
             counts=result.counts,
         )
+
+        # 3. The staged bundle is fully consumed — reclaim it so it does not leak in S3 forever (the
+        #    transfer GC sweeps only EXPORT artifacts). Best-effort: a failed cleanup must never fail
+        #    an import that already succeeded. Only done on success, where no arq retry can re-run and
+        #    need to re-download it (a failed import keeps its staging object for a possible retry).
+        try:
+            async with s3.client() as client:
+                await S3ObjectApi.delete(client, s3.bucket, s3_key)
+        except Exception as cleanup_exc:  # noqa: BLE001 — cleanup must not break a successful import
+            CONTEXT.logger.warning(f"Could not delete staged import bundle {s3_key}: {cleanup_exc}")
+
         CONTEXT.logger.info(
             f"Imported bundle {s3_key} → collection {result.collection_id} "
             f"('{result.collection_name}')"

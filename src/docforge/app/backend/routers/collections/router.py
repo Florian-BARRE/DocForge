@@ -46,22 +46,31 @@ router = APIRouter(prefix="/collections", tags=["collections"])
 @router.get(
     "",
     response_model=list[CollectionListItem],
-    dependencies=[Depends(require(Capability.READ))],
 )
 @auto_handle_errors
-async def list_collections() -> list[CollectionListItem]:
+async def list_collections(
+    principal: AuthPrincipal = Depends(require(Capability.READ)),
+) -> list[CollectionListItem]:
     """
-    Return every collection with its full schema AND a server-computed health summary.
+    Return every collection the caller may see, with its full schema AND a server-computed health
+    summary.
 
     The health summary is rolled up through the SAME path the detail probe (`GET /{id}/health`) uses,
     so a fleet card's verdict + doc/vector counts + last-ingest can never disagree with the
     collection's own overview — and the front no longer fans out N live probes per page load.
 
     Returns:
-        list[CollectionListItem]: All contracts (schema included) each with its health summary.
+        list[CollectionListItem]: The contracts the key is scoped to (schema included), each with its
+        health summary. A scoped key sees only its own collections — never the whole fleet.
     """
     # 1. Rows + their schemas (collection counts stay small — the N+1 is fine here).
     collections = await CONTEXT.database.collections.list_all()
+
+    # 1b. Scope filter — a fleet-wide read must not leak other tenants' contracts (base_urls, models,
+    #     schema fields, estimate rates). None = full access (root / auth-off / wildcard key).
+    allowed = AuthzGuard.scoped_collections(principal)
+    if allowed is not None:
+        collections = [c for c in collections if str(c.id) in allowed]
 
     # 2. Fresh, cheap counters for the WHOLE fleet — three BATCHED grouped queries, no N+1, no Qdrant.
     ids = [c.id for c in collections]

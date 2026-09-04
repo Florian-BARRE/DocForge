@@ -205,11 +205,12 @@ async def upload_document(
 @router.patch(
     "/{document_id}/enabled",
     response_model=DocumentEnabledResponse,
-    dependencies=[Depends(require(Capability.WRITE))],
 )
 @auto_handle_errors
 async def set_document_enabled(
-    document_id: uuid.UUID, patch: EnabledPatch
+    document_id: uuid.UUID,
+    patch: EnabledPatch,
+    principal: AuthPrincipal = Depends(require(Capability.WRITE)),
 ) -> DocumentEnabledResponse:
     """
     Toggle a document's searchability (reversible, no re-ingest) — a single Postgres flag.
@@ -220,12 +221,22 @@ async def set_document_enabled(
     Returns:
         DocumentEnabledResponse: The document id and its new state; 404 when the document is unknown.
     """
-    # 1. The facade flips documents.enabled; False means the id never existed.
+    # 1. The collection is not in the path, so the path-scope gate cannot see it — load the document
+    #    to resolve its collection and enforce the caller's scope (404 unknown, 403 foreign) BEFORE
+    #    mutating another tenant's searchability. Full-access keys no-op inside the guard.
+    document = await CONTEXT.database.documents.get(document_id)
+    if document is None:
+        raise HTTPException(status_code=404, detail=f"Document {document_id} not found.")
+    AuthzGuard.assert_collection_scope(principal, str(document.collection_id))
+
+    # 2. The facade flips documents.enabled; False means the UPDATE matched no row — the document was
+    #    deleted in the race window between the scope pre-load and here (a concurrent delete / a
+    #    collection-transfer rollback), so surface the 404 rather than a false-positive 200.
     existed = await CONTEXT.database.enablement.set_document_enabled(document_id, patch.enabled)
     if not existed:
         raise HTTPException(status_code=404, detail=f"Document {document_id} not found.")
 
-    # 2. Echo the applied state.
+    # 3. Echo the applied state.
     return DocumentEnabledResponse(document_id=str(document_id), enabled=patch.enabled)
 
 
@@ -233,7 +244,6 @@ async def set_document_enabled(
     "/{document_id}/reingest",
     response_model=UploadAccepted,
     status_code=202,
-    dependencies=[Depends(require(Capability.WRITE))],
 )
 @auto_handle_errors
 async def reingest_document(
@@ -243,6 +253,7 @@ async def reingest_document(
         description="Bypass the stage cache and recompute every stage from scratch (no cache "
         "read/write). Use to rebuild after a code change that did not bump a node's CACHE_VERSION.",
     ),
+    principal: AuthPrincipal = Depends(require(Capability.WRITE)),
 ) -> UploadAccepted:
     """
     Re-run ingestion on an existing document — no delete-and-re-upload.
@@ -256,12 +267,20 @@ async def reingest_document(
     Returns:
         UploadAccepted: The document id and the new ingestion job id (202); 404 when unknown.
     """
-    # 1. Create a fresh job on the existing document (reset to PENDING). None = unknown document.
+    # 1. The collection is not in the path — load the document to resolve its collection and enforce
+    #    the caller's scope BEFORE minting a paid job, so a scoped key cannot spend another tenant's
+    #    provider budget by id (404 unknown, 403 foreign; full-access keys no-op inside the guard).
+    document = await CONTEXT.database.documents.get(document_id)
+    if document is None:
+        raise HTTPException(status_code=404, detail=f"Document {document_id} not found.")
+    AuthzGuard.assert_collection_scope(principal, str(document.collection_id))
+
+    # 2. Create a fresh job on the existing document (reset to PENDING). None = unknown document.
     result = await CONTEXT.database.ingestion.reingest(document_id)
     if result is None:
         raise HTTPException(status_code=404, detail=f"Document {document_id} not found.")
 
-    # 2. Hand over to the worker — it refetches the original by source_hash and re-runs the pipeline,
+    # 3. Hand over to the worker — it refetches the original by source_hash and re-runs the pipeline,
     #    reading the collection's per-collection job budget itself for the engine's run timeout.
     document, job = result
     await CONTEXT.queue.enqueue_ingest(str(document.id), str(job.id), force=force)

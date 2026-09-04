@@ -52,6 +52,7 @@ Everything is JSON in and JSON out, with two exceptions:
 | Pipelines (design) | `/api/v1/pipelines` | §9 |
 | Config snippets (granular export/import) | `/api/v1/collections/{id}/snippets/{kind}` | §10 |
 | Cost estimate (dry-run) | `/api/v1/collections/{id}/estimate` | §11 |
+| Collection transfers (export/import bundles) | `/api/v1/collections/{id}/export`, `/api/v1/collections/import`, `/api/v1/transfers/{id}` | Corpus grid, bulk operations, telemetry & introspection |
 | Audit trail | `/api/v1/audit` | §12 |
 | Idempotency (request header) | `Idempotency-Key` on mutating routes | §13 |
 | Request correlation (response header) | `X-Request-Id` on every response | §14 |
@@ -217,6 +218,9 @@ later), so declare the **full** schema up front.
 | `POST` | `/api/v1/collections` | `create` | Create a collection (`201`); a scoped creator is auto-granted ownership of it |
 | `PATCH` | `/api/v1/collections/{id}` | `write` | Patch identity/limits/schema/config |
 | `DELETE` | `/api/v1/collections/{id}` | `write` | Delete a collection (`204`) |
+| `GET` | `/api/v1/collections/{id}/health` | `read` | Zero-spend provider preflight sweep + an overall verdict |
+| `GET` | `/api/v1/collections/{id}/storage` | `read` | Material footprint across all three stores (exact S3, estimated PG/Qdrant) |
+| `POST` | `/api/v1/collections/{id}/reingest` | `write` | Re-run the full pipeline over the whole collection (`202`) |
 
 ### The metadata FieldSpec
 
@@ -474,20 +478,25 @@ Hybrid retrieval over one collection. Runs **inline** in the request (sub-second
 |---|---|---|---|
 | `query` | string | — | Natural-language query (non-blank). Embedded with the collection's own embedder. |
 | `limit` | int (1–100) | `10` | Number of fused results. |
-| `filters` | object/null | `null` | Constraints on **filterable** fields: a scalar → equality, a list → any-of. |
+| `filters` | object/null | `null` | Constraints on **filterable** fields: a scalar → equality, a list → any-of, or a range mapping of `gte`/`gt`/`lte`/`lt` bounds → numeric or ISO-8601 datetime range (e.g. `{"published": {"gte": "2024-01-01", "lte": "2024-12-31"}}`). |
 | `search_in` | list/null | `null` | Fields × modalities to query. `null` → content on both semantic + lexical. |
-| `use_late_interaction` | bool/null | `null` | Opt into the ColBERT re-score. `null` → off. |
-| `rescore_pool_size` | int (1–1000)/null | `null` | Fused candidate pool the ColBERT stage re-scores. `null` → node/store default. |
 
 Each `search_in` entry is a **SearchTarget**: `{ "field": "content"|<metadata field>,
 "semantic": bool, "lexical": bool }`. `field` defaults to `"content"` (the chunk body).
 
-Gates (all `422`, before any spend): a filter naming a non-filterable field; a `search_in`
-target naming a vector the collection never indexed (or a selection with no modality).
-`404` when the collection is unknown; `409` when it has no embed node wired.
+Gates (all `422`, before any spend): a filter naming a non-filterable field; a malformed or
+misapplied range filter (a range on a non-range-typed field); a `search_in` target naming a vector
+the collection never indexed (or a selection with no modality). `404` when the collection is
+unknown; `409` when it has no embed node wired.
 
-If `use_late_interaction` is requested but the collection carries no ColBERT vectors, the search
-gracefully degrades to standard hybrid and notes it in `debug_info` (never a `500`).
+Runtime failures are surfaced as typed errors (each carries a machine-readable `{code, detail}`):
+
+| Status | `code` | Meaning |
+|---|---|---|
+| `504` | `search_timeout` | The search run blew its wall-clock cap. |
+| `424` | `embedder_unreachable` | The query embedder is a dead host / transport / drifted blob. |
+| `424` | `embedder_auth_failed` | The embedder endpoint rejected the credentials. |
+| `503` | `embedder_overloaded` | The embedder still answered its probe — the failure was transient; retry. |
 
 ### SearchResponse
 
@@ -504,12 +513,14 @@ gracefully degrades to standard hybrid and notes it in `debug_info` (never a `50
       "token_count": 148
     }
   ],
+  "score_kind": "rrf_fusion",
   "debug_info": null
 }
 ```
 
-`score` is the fused RRF score (higher is better). `debug_info` is `null` unless there is a
-non-fatal note (e.g. `late_interaction_skipped`).
+`score` is the fused RRF score (higher is better). `score_kind` (always present) names what the
+score represents — `rrf_fusion` (the default), `dbsf_fusion`, or `cross_encoder_rerank` (when a
+reranker is enabled). `debug_info` is `null` unless there is a non-fatal note.
 
 ### Example
 
@@ -531,7 +542,8 @@ curl -sX POST http://localhost:10040/api/v1/collections/7f1c9d2e-.../search \
 
 ## 7. Jobs
 
-Read-only ingestion status. The worker writes the rows; the API only serves them.
+Ingestion status, plus a cancel control. The worker writes the rows; the API serves them (and can
+request a cancellation).
 
 | Method | Path | Cap | Returns |
 |---|---|---|---|
@@ -539,6 +551,7 @@ Read-only ingestion status. The worker writes the rows; the API only serves them
 | `GET` | `/api/v1/jobs/{job_id}` | `read` | One job's live state (poll this) |
 | `GET` | `/api/v1/jobs/{job_id}/events` | `read` | Per-node execution trace, in order |
 | `GET` | `/api/v1/jobs/workers/live` | `read` | What every worker is doing right now |
+| `POST` | `/api/v1/jobs/{job_id}/cancel` | `write` | Request cancellation of a queued/running job (`CancelResult`) |
 
 > `collection_id` is a **required query param** on `GET /api/v1/jobs` (it also scopes the key).
 
@@ -879,7 +892,10 @@ production.
 | `401` | Auth on and the bearer is missing/invalid/revoked/expired (carries `WWW-Authenticate: Bearer`). |
 | `403` | Authenticated but lacking the capability, not scoped to the target collection/resource, or a scoped key on the full-access audit trail (§12). |
 | `404` | Unknown collection / document / chunk / job / blob / pipeline key. |
-| `409` | Name clash (collection / key), rotating an already-revoked key, root not provisioned, a collection with no embed node on search, or an `Idempotency-Key` whose request is still in progress (§13). |
+| `409` | Name clash (collection / key), rotating an already-revoked key, root not provisioned, a collection with no embed node on search, cancelling an already-terminal job (§7), or an `Idempotency-Key` whose request is still in progress (§13). |
+| `424` | Search only — the query embedder is a permanent config fault: `embedder_unreachable` or `embedder_auth_failed` (typed `{code, detail}`, §6). |
+| `503` | Search only — `embedder_overloaded`: the embedder answered its probe, so the failure was transient; retry (§6). |
+| `504` | Search only — `search_timeout`: the run blew its wall-clock cap (§6). |
 | `500` | Unexpected server error (opaque). |
 
 ## Corpus grid, bulk operations, telemetry & introspection
@@ -902,3 +918,10 @@ These endpoints power the document grid, mass actions, job telemetry and token s
 ### Discovery & introspection
 - `GET /collections/contract-schema` → `CollectionContractSchemaResponse` — JSON Schema of the collection identity/limits contract (drives a discovery form).
 - `GET /auth/whoami` → `WhoAmI` — the **calling token's own** access: `capabilities` (read/write/search/create/admin) + collection `scope`. Requires only authentication, no specific capability — a client (an MCP agent especially) can discover what it may do without probing endpoints.
+
+### Collection transfers (portable `.dcexport` bundles)
+A collection can be exported to a portable bundle and re-imported on another server (no recompute — ids are remapped on import). Both the export and the import run **asynchronously** (`202` → a transfer handle you poll).
+- `POST /collections/{id}/export` (cap `read`) → `TransferAccepted` (`202`) — start packaging the whole collection into a `.dcexport` bundle.
+- `POST /collections/import` (cap `create`) → `TransferAccepted` (`202`) — import an uploaded bundle as a new collection.
+- `GET /transfers/{id}` (cap `read`) → `TransferStatus` — poll a transfer's progress/state.
+- `GET /transfers/{id}/download` (cap `read`) — stream a finished export's bundle bytes (`404` when the transfer has no bundle or it has expired).

@@ -3,8 +3,11 @@
 # frontend build, SDK↔backend OpenAPI coherence) lives in the reusable gate.yml, shared verbatim
 # with the release workflow — so what merges and what publishes are held to the EXACT same bar.
 #
-# Note: `push: branches` matches branch pushes only, NOT tag pushes — a pushed sdk-v* tag is handled
-# by release-sdk.yml (which runs this same gate before publishing), so the gate never double-fires.
+# Note: `push: branches` matches branch pushes only, NOT tag pushes, so this CI never runs on a
+# release tag. A `v*`/`sdk-v*` tag is handled by the release workflows, which run this same gate
+# before publishing. (A unified `v*` tag does trigger release-images.yml AND release-sdk.yml, so the
+# shared gate runs twice for that tag — a known duplication tracked for de-duplication, harmless
+# beyond the extra minutes.)
 
 name: CI
 

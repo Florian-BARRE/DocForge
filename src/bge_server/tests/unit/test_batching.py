@@ -3,10 +3,13 @@
 # BgeModelsService is fully mocked — no torch, no FlagEmbedding, no GPU required.
 # Covers: batch-by-size, batch-by-wait, dense/sparse/colbert offset scatter, rerank per-request
 # re-indexing, QueueFullError on full queue, graceful stop resolving pending futures,
-# and batch-level error isolation.
+# batch-level error isolation, and the touch_* keep-warm call shapes' lock serialisation
+# (touch_dense must NOT run concurrently with a real batch holding embed_lock; touch_rerank,
+# on the independent rerank_lock, must NOT be blocked by one).
 
 # ====== Standard Library Imports ======
 import asyncio
+import threading
 from unittest.mock import MagicMock
 
 # ====== Third-Party Library Imports ======
@@ -443,3 +446,98 @@ async def test_batch_error_isolation() -> None:
 
     finally:
         await engine.stop()
+
+
+# ── Test: touch_dense (keep-warm shape) serialises against a real batch ─────
+
+
+@pytest.mark.asyncio
+async def test_touch_dense_serialises_against_real_batch() -> None:
+    """
+    Regression test for the keep-warm concurrency bug (0.14.0 audit): touch_dense is the call
+    shape the lifespan's keep-warm loop now uses instead of calling BgeModelsService.encode_dense
+    directly. It must acquire embed_lock, so its forward pass can NEVER start while a real dense
+    batch is mid-flight holding that same lock — proving the fix actually closes the race that
+    let a keep-warm tick run concurrently with real traffic on the shared embed_model instance.
+    """
+    call_order: list[str] = []
+    unblock = threading.Event()
+    call_count = {"n": 0}
+
+    def encode_dense_side_effect(texts: list[str], max_length: int) -> list[list[float]]:
+        call_count["n"] += 1
+        if call_count["n"] == 1:
+            # First call = the real batch: block until the test explicitly releases it.
+            call_order.append("batch_start")
+            assert unblock.wait(timeout=5.0), "test setup: unblock was never set"
+            call_order.append("batch_end")
+        else:
+            # Second call = touch_dense: must only ever be reached after the batch released
+            # embed_lock, i.e. after "batch_end" is already recorded.
+            call_order.append("touch")
+        return [[0.0] for _ in texts]
+
+    models = MagicMock()
+    models.encode_dense.side_effect = encode_dense_side_effect
+    engine = _make_engine(models, max_batch_size=100, max_wait_ms=0)
+    engine.start()
+
+    try:
+        # 1. Kick off a real dense batch — it will block inside encode_dense holding embed_lock.
+        batch_task = asyncio.create_task(engine.submit_embed_dense(["real"]))
+        await asyncio.sleep(0.05)
+        assert call_order == ["batch_start"], "real batch must be mid-flight before touch_dense starts"
+
+        # 2. Fire a keep-warm-style touch while the batch still holds embed_lock.
+        touch_task = asyncio.create_task(engine.touch_dense(max_length=128))
+        await asyncio.sleep(0.05)
+        assert not touch_task.done(), "touch_dense must block on embed_lock, not run concurrently"
+        assert call_order == ["batch_start"], "touch_dense's forward pass must not have started yet"
+
+        # 3. Release the batch — only now may touch_dense acquire the lock and proceed.
+        unblock.set()
+        await batch_task
+        await touch_task
+    finally:
+        await engine.stop()
+
+    assert call_order == ["batch_start", "batch_end", "touch"]
+
+
+# ── Test: touch_rerank (keep-warm shape) is independent of embed_lock ───────
+
+
+@pytest.mark.asyncio
+async def test_touch_rerank_not_blocked_by_dense_batch() -> None:
+    """
+    touch_rerank uses rerank_lock, which is independent from embed_lock, so it must NOT be
+    head-of-line-blocked behind a real dense batch — the keep-warm fix must serialise each
+    touch_* call against its OWN lock domain only, not accidentally couple rerank keep-warm
+    to embed traffic.
+    """
+    unblock = threading.Event()
+
+    def blocking_encode_dense(texts: list[str], max_length: int) -> list[list[float]]:
+        assert unblock.wait(timeout=5.0), "test setup: unblock was never set"
+        return [[0.0] for _ in texts]
+
+    models = MagicMock()
+    models.encode_dense.side_effect = blocking_encode_dense
+    models.compute_rerank_scores_flat.return_value = [0.5]
+    engine = _make_engine(models, max_batch_size=100, max_wait_ms=0)
+    engine.start()
+
+    try:
+        batch_task = asyncio.create_task(engine.submit_embed_dense(["real"]))
+        await asyncio.sleep(0.05)
+
+        # touch_rerank must complete promptly even while the dense batch is blocked mid-flight,
+        # since it does not compete for embed_lock.
+        await asyncio.wait_for(engine.touch_rerank(), timeout=2.0)
+
+        unblock.set()
+        await batch_task
+    finally:
+        await engine.stop()
+
+    models.compute_rerank_scores_flat.assert_called_once()

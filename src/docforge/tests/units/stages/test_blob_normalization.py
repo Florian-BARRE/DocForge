@@ -231,3 +231,29 @@ def test_blob_with_unregistered_kind_raises_clear_error_not_silent_drop() -> Non
     }
     with pytest.raises(BlobNormalizationError, match="chunk"):
         BlobNormalizer.normalize(blob)
+
+
+# --------------------------------------------------------------------------- graph-level heal loss
+
+
+def test_graph_level_added_node_is_reported_as_dropped() -> None:
+    """A node added to the GRAPH via the headless /edit surface (a registered kind the stage reader
+    does not round-trip) is silently discarded by the heal — normalize_reporting surfaces it so the
+    collection write boundary can REFUSE the save instead of losing the customisation. The stock
+    graph itself reports nothing dropped (the safety property every round-trip test above exercises)."""
+    blob = IngestAssembler.assemble(default_state()).model_dump(mode="json")
+
+    # Baseline: the stock, unedited graph heals with nothing dropped (no false positive).
+    _, baseline_dropped = BlobNormalizer.normalize_reporting(blob)
+    assert baseline_dropped == set()
+
+    # Inject a graph-level node not reachable from the stage surface. Clone a REAL leaf node (so the
+    # node-blob shape parses under extra="forbid") and give it a fresh id — the stand-in for an
+    # add_node /edit: it is a registered kind the stage reader never round-trips, so heal drops it.
+    edited = copy.deepcopy(blob)
+    leaf = next(n for n in edited["nodes"] if "nodes" not in n and "body" not in n)
+    orphan = copy.deepcopy(leaf)
+    orphan["id"] = "graph_edit_orphan"
+    edited["nodes"].append(orphan)
+    _, dropped = BlobNormalizer.normalize_reporting(edited)
+    assert "graph_edit_orphan" in dropped

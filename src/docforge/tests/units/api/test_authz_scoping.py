@@ -421,3 +421,97 @@ async def test_set_chunk_enabled_scoped_key_foreign_is_403(fastapi_app, monkeypa
     assert exc.value.status_code == 403
     # The toggle never fires for a chunk in a collection the key does not own.
     enablement.set_chunks_enabled.assert_not_called()
+
+
+# ── documents-router IDOR closures (enable/disable + reingest carry no collection in the path) ────
+
+
+async def test_set_document_enabled_scoped_key_foreign_is_403(fastapi_app, monkeypatch) -> None:
+    from backend.context import CONTEXT  # noqa: PLC0415
+    from backend.routers.documents.models import EnabledPatch  # noqa: PLC0415
+    from backend.routers.documents.router import set_document_enabled  # noqa: PLC0415
+
+    documents = SimpleNamespace(
+        get=AsyncMock(return_value=SimpleNamespace(collection_id=uuid.UUID(COLL_B)))
+    )
+    enablement = SimpleNamespace(set_document_enabled=AsyncMock(return_value=True))
+    monkeypatch.setattr(
+        CONTEXT, "database", SimpleNamespace(documents=documents, enablement=enablement)
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        await set_document_enabled(
+            document_id=uuid.uuid4(), patch=EnabledPatch(enabled=False), principal=_scoped(COLL_A)
+        )
+
+    assert exc.value.status_code == 403
+    # The searchability flip never fires for a document in a collection the key does not own.
+    enablement.set_document_enabled.assert_not_called()
+
+
+async def test_reingest_document_scoped_key_foreign_is_403(fastapi_app, monkeypatch) -> None:
+    from backend.context import CONTEXT  # noqa: PLC0415
+    from backend.routers.documents.router import reingest_document  # noqa: PLC0415
+
+    documents = SimpleNamespace(
+        get=AsyncMock(return_value=SimpleNamespace(collection_id=uuid.UUID(COLL_B)))
+    )
+    ingestion = SimpleNamespace(reingest=AsyncMock())
+    monkeypatch.setattr(
+        CONTEXT, "database", SimpleNamespace(documents=documents, ingestion=ingestion)
+    )
+    monkeypatch.setattr(CONTEXT, "queue", SimpleNamespace(enqueue_ingest=AsyncMock()))
+
+    with pytest.raises(HTTPException) as exc:
+        await reingest_document(document_id=uuid.uuid4(), force=False, principal=_scoped(COLL_A))
+
+    assert exc.value.status_code == 403
+    # No paid job is minted or enqueued for another tenant's document.
+    ingestion.reingest.assert_not_called()
+    CONTEXT.queue.enqueue_ingest.assert_not_called()
+
+
+async def test_list_collections_scoped_key_sees_only_its_own(fastapi_app, monkeypatch) -> None:
+    import importlib  # noqa: PLC0415
+
+    from backend.context import CONTEXT  # noqa: PLC0415
+    from backend.routers.collections.router import list_collections  # noqa: PLC0415
+
+    collections_router = importlib.import_module("backend.routers.collections.router")
+
+    coll_a = SimpleNamespace(id=uuid.UUID(COLL_A))
+    coll_b = SimpleNamespace(id=uuid.UUID(COLL_B))
+    collections = SimpleNamespace(
+        list_all=AsyncMock(return_value=[coll_a, coll_b]),
+        get_schema=AsyncMock(return_value=[]),
+    )
+    documents = SimpleNamespace(
+        count_by_collections=AsyncMock(return_value={}),
+        count_chunks_by_collections=AsyncMock(return_value={}),
+    )
+    jobs = SimpleNamespace(last_successful_ingest_at_by_collections=AsyncMock(return_value={}))
+    monkeypatch.setattr(
+        CONTEXT,
+        "database",
+        SimpleNamespace(collections=collections, documents=documents, jobs=jobs),
+    )
+    monkeypatch.setattr(
+        CONTEXT,
+        "health_service",
+        SimpleNamespace(summarize_structural=lambda cols, **_: {c.id: None for c in cols}),
+    )
+    # Bypass the Pydantic model construction — the assertion is purely about the scope filter.
+    monkeypatch.setattr(
+        collections_router.CollectionHelpers,
+        "to_model",
+        staticmethod(lambda c, schema: SimpleNamespace(model_dump=lambda: {"id": str(c.id)})),
+    )
+    monkeypatch.setattr(
+        collections_router, "CollectionListItem", lambda **kw: kw.get("id")
+    )
+
+    result = await list_collections(principal=_scoped(COLL_A))
+
+    # Only collection A survives the scope filter; B's contract never leaves the server.
+    assert result == [str(coll_a.id)]
+    collections.get_schema.assert_awaited_once_with(coll_a.id)

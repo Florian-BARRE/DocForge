@@ -33,10 +33,16 @@ async def _keep_warm(interval_seconds: int, max_length: int) -> None:
     """
     Periodically touch every model so its weights stay resident (never paged out).
 
-    Runs a tiny forward pass per inference path every ``interval_seconds``. The calls go DIRECTLY
-    to the model service (not the batching engine) so a keep-warm tick never competes for the
-    op-queue with real traffic; each tick is best-effort so a transient failure only skips one
-    round. Cancelled at shutdown.
+    Runs a tiny forward pass per inference path every ``interval_seconds``, through the
+    batching engine's ``touch_dense``/``touch_sparse``/``touch_rerank`` methods. Those acquire
+    the SAME embed_lock/rerank_lock a real dense/sparse/colbert/rerank batch would hold, so a
+    keep-warm tick can NEVER run concurrently with real traffic on the shared embed_model /
+    reranker instances — calling the model service directly (bypassing both the engine's
+    queues AND its locks) would let a keep-warm tick's forward pass race a real batch's forward
+    pass on that shared torch/tokenizer state, which is thread-unsafe. The engine methods still
+    bypass the four BatchQueueWorker queues, so a keep-warm tick never competes for queue
+    CAPACITY with real traffic — only for the lock, exactly like any other caller. Each tick is
+    best-effort so a transient failure only skips one round. Cancelled at shutdown.
 
     Args:
         interval_seconds (int): Seconds between keep-warm rounds (caller guarantees > 0).
@@ -45,16 +51,10 @@ async def _keep_warm(interval_seconds: int, max_length: int) -> None:
     while True:
         await asyncio.sleep(interval_seconds)
         try:
-            # to_thread: the forward passes are synchronous/CPU-bound — keep the event loop free.
-            await asyncio.to_thread(
-                CONTEXT.bge_models.encode_dense, ["warm"], max_length=max_length
-            )
-            await asyncio.to_thread(
-                CONTEXT.bge_models.encode_sparse, ["warm"], max_length=max_length
-            )
-            await asyncio.to_thread(
-                CONTEXT.bge_models.compute_rerank_scores_flat, [["warm", "warm"]]
-            )
+            engine = CONTEXT.batching_engine
+            await engine.touch_dense(max_length)
+            await engine.touch_sparse(max_length)
+            await engine.touch_rerank()
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # noqa: BLE001 — a keep-warm miss must never crash the task

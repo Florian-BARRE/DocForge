@@ -92,16 +92,32 @@ class CollectionBlobHelpers:
         Raises:
             HTTPException: 422 when the blob cannot be migrated or fails structural validation.
         """
-        # 1. Auto-heal to the current-engine topology (a stale/unrecognisable blob is a clear 422).
+        # 1. Auto-heal to the current-engine topology (a stale/unrecognisable blob is a clear 422),
+        #    reporting any input node the heal could not round-trip.
         try:
-            canonical = BlobNormalizer.normalize(blob)
+            canonical, dropped = BlobNormalizer.normalize_reporting(blob)
         except BlobNormalizationError as exc:
             raise HTTPException(status_code=422, detail=f"Pipeline blob cannot be migrated: {exc}")
 
-        # 2. Structural validation runs on the healed, stamp-free shape (the builder forbids extras).
+        # 2. A graph-level edit the stage layer cannot round-trip would be SILENTLY discarded by the
+        #    heal (the stored blob is reduced to its stage surface). Refuse the save loudly instead of
+        #    losing the customisation without a word — the exact silent-loss this heal must not do.
+        if dropped:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "graph-level edits are not preservable on collections — the pipeline stored on a "
+                    "collection is reduced to its stage-level surface, so the graph node(s) "
+                    f"{sorted(dropped)} added through the headless /edit API would be dropped on "
+                    "save. Re-express the change through the stage API, or run the customised graph "
+                    "headlessly instead of persisting it on the collection."
+                ),
+            )
+
+        # 3. Structural validation runs on the healed, stamp-free shape (the builder forbids extras).
         PipelineBlobValidator.validate(canonical)
 
-        # 3. Persist the stamped canonical form so future reads fast-path.
+        # 4. Persist the stamped canonical form so future reads fast-path.
         return BlobNormalizer.stamp(canonical)
 
     # -------------------- embed vector space --------------------

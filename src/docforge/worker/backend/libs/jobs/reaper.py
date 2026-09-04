@@ -31,8 +31,12 @@ async def reap_stuck_jobs(ctx: dict[str, Any]) -> list[str]:
     # but a direct/scheduled call must still be a no-op rather than reaping behind the flag.
     if not config.WORKER_REAP_ENABLED:
         return []
+    # The reap is vetoed by a FRESH worker heartbeat: a job silent past WORKER_REAP_STALE_SECONDS on a
+    # LIVE worker (a long silent stage) is left alone; only a job whose worker heartbeat is stale past
+    # WORKER_PRUNE_STALE_SECONDS (or absent) — a genuinely dead worker — is reaped. Same cutoff the
+    # heartbeat prune below uses, so "dead enough to prune" and "dead enough to reap its jobs" agree.
     reaped: list[uuid.UUID] = await CONTEXT.database.jobs.reap_stale(
-        config.WORKER_REAP_STALE_SECONDS
+        config.WORKER_REAP_STALE_SECONDS, config.WORKER_PRUNE_STALE_SECONDS
     )
     if reaped:
         minutes = config.WORKER_REAP_STALE_SECONDS // 60

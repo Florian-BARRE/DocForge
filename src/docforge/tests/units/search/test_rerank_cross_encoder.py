@@ -135,7 +135,8 @@ def test_rerank_re_scores_by_index_and_reorders(monkeypatch) -> None:
 
 
 def test_rerank_caps_at_top_n_and_drops_the_tail(monkeypatch) -> None:
-    """Only the top_n candidates by fusion score are hydrated, re-scored, and emitted."""
+    """Only the top candidates by fusion score are hydrated, re-scored, and emitted — when the
+    requested page (top_k) is within top_n, top_n is the effective cap and the tail is dropped."""
     port = _TextPort({"a": "ta", "b": "tb", "c": "tc"})
     node = RerankCrossEncoderNode(id="rerank", config=RerankCrossEncoderNode.Config(top_n=2))
     node.bind({COLLECTION_READ_CAPABILITY: port})
@@ -148,10 +149,10 @@ def test_rerank_caps_at_top_n_and_drops_the_tail(monkeypatch) -> None:
             candidates=[
                 Candidate(chunk_id="a", score=0.9, source="hybrid"),
                 Candidate(chunk_id="b", score=0.7, source="hybrid"),
-                Candidate(chunk_id="c", score=0.5, source="hybrid"),  # below top_n → dropped
+                Candidate(chunk_id="c", score=0.5, source="hybrid"),  # beyond top_n → dropped
             ]
         ),
-        spec=QuerySpec(text="q", top_k=3, candidate_k=3),
+        spec=QuerySpec(text="q", top_k=2, candidate_k=2),
     )
     out = _run_node(node, data)
 
@@ -162,6 +163,36 @@ def test_rerank_caps_at_top_n_and_drops_the_tail(monkeypatch) -> None:
     # 2. The emitted pool is exactly the re-scored top_n, best-first — the tail is gone.
     assert [c.chunk_id for c in out.candidates.candidates] == ["b", "a"]
     assert [c.score for c in out.candidates.candidates] == [0.8, 0.3]
+
+
+def test_rerank_judges_at_least_top_k_when_it_exceeds_top_n(monkeypatch) -> None:
+    """When the requested page (top_k, from the API limit up to 100) exceeds config.top_n, the node
+    must judge at least top_k candidates — otherwise a limit of 51-100 on a rerank-enabled collection
+    silently returned <= top_n (default 50) hits. Here top_n=2 but top_k=3, so all three are judged."""
+    port = _TextPort({"a": "ta", "b": "tb", "c": "tc"})
+    node = RerankCrossEncoderNode(id="rerank", config=RerankCrossEncoderNode.Config(top_n=2))
+    node.bind({COLLECTION_READ_CAPABILITY: port})
+
+    seen: dict = {}
+    _install_fake_client(monkeypatch, {0: 0.3, 1: 0.8, 2: 0.6}, seen)
+
+    data = RerankCrossEncoderNode.Consumes(
+        candidates=CandidateSet(
+            candidates=[
+                Candidate(chunk_id="a", score=0.9, source="hybrid"),
+                Candidate(chunk_id="b", score=0.7, source="hybrid"),
+                Candidate(chunk_id="c", score=0.5, source="hybrid"),
+            ]
+        ),
+        spec=QuerySpec(text="q", top_k=3, candidate_k=3),
+    )
+    out = _run_node(node, data)
+
+    # All three were judged (top_k=3 > top_n=2), so the requested page is fully fillable.
+    assert port.hydrated_ids == ["a", "b", "c"]
+    assert seen["texts"] == ["ta", "tb", "tc"]
+    # Re-ordered best-first by the cross-encoder score (b 0.8 > c 0.6 > a 0.3).
+    assert [c.chunk_id for c in out.candidates.candidates] == ["b", "c", "a"]
 
 
 def test_rerank_skips_vanished_rows_and_keeps_index_alignment(monkeypatch) -> None:
@@ -257,6 +288,36 @@ def test_rerank_degrades_to_fusion_order_on_timeout(monkeypatch) -> None:
     # 2. The degrade note is surfaced; the aggregate is the top fusion score (a sane ScoreBelow gate).
     assert out.candidates.degraded == "rerank skipped — reranker busy, fusion-order results"
     assert out.score == 0.9
+
+
+def test_rerank_degrade_clamps_a_fusion_score_above_one(monkeypatch) -> None:
+    """On degrade the aggregate is the incoming FUSION score, which is NOT on the cross-encoder scale
+    and routinely exceeds 1.0 (RRF over 3+ prefetch branches → 1.5-2.0; DBSF > 1.0 with two). Since
+    ScoredOutput.score is Field(le=1), an unclamped value would raise a ValidationError inside run()
+    — turning the degrade path into a misleading 422 exactly when the reranker is down. It must clamp
+    to 1.0 and still return the un-reranked candidates."""
+    port = _TextPort({"a": "text a", "b": "text b"})
+    node = RerankCrossEncoderNode(id="rerank", config=RerankCrossEncoderNode.Config())
+    node.bind({COLLECTION_READ_CAPABILITY: port})
+    _install_rerank_raiser(monkeypatch, TimeoutError())
+
+    data = RerankCrossEncoderNode.Consumes(
+        candidates=CandidateSet(
+            candidates=[
+                Candidate(chunk_id="a", score=1.8, source="hybrid"),  # RRF over 3+ branches
+                Candidate(chunk_id="b", score=1.2, source="hybrid"),
+            ]
+        ),
+        spec=QuerySpec(text="q", top_k=2, candidate_k=2),
+    )
+    out = _run_node(node, data)  # must NOT raise a ValidationError
+
+    # The candidates ride through un-reranked (raw fusion scores preserved on each candidate)...
+    assert [c.chunk_id for c in out.candidates.candidates] == ["a", "b"]
+    assert [c.score for c in out.candidates.candidates] == [1.8, 1.2]
+    # ...but the NODE-LEVEL aggregate score is clamped into the [0, 1] ScoredOutput range.
+    assert out.score == 1.0
+    assert out.candidates.degraded
 
 
 def test_rerank_degrades_to_fusion_order_on_provider_error(monkeypatch) -> None:

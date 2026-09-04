@@ -1,6 +1,6 @@
 # Contributing to DocForge
 
-Thanks for your interest! This is a monorepo of four standalone [uv](https://docs.astral.sh/uv/)
+Thanks for your interest! This is a monorepo of five standalone [uv](https://docs.astral.sh/uv/)
 projects, each with its own `pyproject.toml` / `uv.lock` and its own quality gate:
 
 | Package | What it is | Gate |
@@ -9,6 +9,7 @@ projects, each with its own `pyproject.toml` / `uv.lock` and its own quality gat
 | `src/docforge_sdk` | The published typed client (`docforge-sdk` on PyPI) | ruff format · ruff · mypy --strict · pytest |
 | `src/mcp` | The MCP server (thin `docforge-sdk` client) | ruff format · ruff · mypy · pytest |
 | `src/bge_server` | Local BGE-M3 embed/rerank host | ruff format · ruff · mypy · pytest |
+| `src/paddle_server` | Optional PP-StructureV3 layout-parsing sidecar (PaddleX host) | ruff format · ruff · mypy · pytest |
 
 ## Prerequisites
 
@@ -20,7 +21,7 @@ projects, each with its own `pyproject.toml` / `uv.lock` and its own quality gat
 Each package is self-contained — `cd` into it and use uv:
 
 ```bash
-cd src/docforge_sdk          # (or docforge / mcp / bge_server)
+cd src/docforge_sdk          # (or docforge / mcp / bge_server / paddle_server)
 uv sync --frozen             # install locked deps
 uv run ruff format .         # auto-format
 uv run ruff check .          # lint

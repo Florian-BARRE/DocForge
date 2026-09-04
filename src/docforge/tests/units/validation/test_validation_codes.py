@@ -321,6 +321,23 @@ def test_switch_not_exhaustive_without_default_fires(validator) -> None:
     assert "switch_not_exhaustive" in _codes(validator, graph)
 
 
+def test_switch_not_exhaustive_with_a_single_edge_fires(validator) -> None:
+    """A LONE WhenEquals edge on a closed switch field with no default is still non-exhaustive:
+    at run time every unmatched value silently ends the group as SUCCESS. Before the fix the
+    exhaustiveness check was skipped entirely for a single WhenEquals edge, so this passed."""
+    graph = Group(
+        id="sw",
+        children=[Switch(id="s", config=Cfg()), _p("a")],
+        bindings={"s": {}, "a": {}},
+        transitions=[
+            Transition(
+                from_node_id="s", to_node_id="a", condition=WhenEquals(field="kind", equals="a")
+            ),
+        ],
+    )
+    assert "switch_not_exhaustive" in _codes(validator, graph)
+
+
 def test_switch_with_default_edge_is_valid(validator) -> None:
     """A partial switch WITH a default (bare OnSuccess) edge routes unmatched values → no issue."""
     graph = Group(
