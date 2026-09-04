@@ -9,16 +9,17 @@
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime
 
 # ====== Third-Party Library Imports ======
 from loggerplusplus import LoggerClass
 
 # ====== Internal Project Imports ======
 from shared_libs.services.db import Database
+from shared_libs.services.db.facades import ReingestOutcome
 from shared_libs.services.db.postgresql.tables import Collection, Document
 
 # ====== Local Project Imports ======
+from ...utils.ingest_enqueuer import IngestEnqueuer
 from ...utils.queue import QueueClient
 from .models import ReingestJobHandle
 
@@ -123,22 +124,26 @@ class BulkReingestService(LoggerClass):
         handles: list[ReingestJobHandle] = []
         for document in documents:
             result = await self._database.ingestion.reingest(document.id)
-            if result is None:
+            if result.outcome is ReingestOutcome.NOT_FOUND:
                 # The document vanished between resolution and admission (a concurrent delete) —
                 # skip it rather than fail the whole batch; the caller sees it absent from handles.
                 self.logger.warning(f"Skipped {document.id}: gone before re-ingest admission")
                 continue
-            _document, job = result
-            try:
-                await self._queue.enqueue_ingest(str(document.id), str(job.id), force=force)
-            except Exception as exc:
-                # The job is already committed PENDING but never made it onto the queue (e.g. a Redis
-                # blip). The reaper only collects RUNNING jobs, so mark it FAILED here rather than
-                # leaving an orphan PENDING — and keep fanning out so one blip doesn't sink the batch.
-                self.logger.error(f"Enqueue failed for {document.id} (job {job.id}): {exc}")
-                await self._database.jobs.mark_failed(
-                    job.id, f"Enqueue failed: {exc}", datetime.now(UTC)
+            if result.outcome is ReingestOutcome.ALREADY_ACTIVE:
+                # A run is already queued/executing for this document — skip rather than mint a second
+                # concurrent job (two parallel runs strand orphan Qdrant points). Absent from handles.
+                self.logger.warning(
+                    f"Skipped {document.id}: an ingestion job ({result.active_job_id}) is already "
+                    f"active — not re-ingesting concurrently"
                 )
+                continue
+            job = result.job
+            # Shared enqueue-or-mark-failed: a Redis blip marks THIS job FAILED (never an orphan
+            # PENDING) and we keep fanning out so one blip doesn't sink the whole batch.
+            enqueued = await IngestEnqueuer.enqueue(
+                self._queue, self._database.jobs, str(document.id), str(job.id), force=force
+            )
+            if not enqueued:
                 continue
             handles.append(ReingestJobHandle(document_id=str(document.id), job_id=str(job.id)))
 

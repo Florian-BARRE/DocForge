@@ -9,7 +9,14 @@ import uuid
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
+from shared_libs.services.db.facades import ReingestOutcome, ReingestResult
+
 COLLECTION_ID = uuid.uuid4()
+
+
+def _admitted(document, job) -> ReingestResult:
+    """A reingest admission that minted a fresh job (the happy path)."""
+    return ReingestResult(outcome=ReingestOutcome.ADMITTED, document=document, job=job)
 
 
 # -------------------- selector shape (serviceless 422) --------------------
@@ -271,8 +278,10 @@ def test_bulk_reingest_filter_fans_out(client, monkeypatch) -> None:
                 get_by_ids=AsyncMock(return_value=docs),
             ),
             ingestion=SimpleNamespace(
-                reingest=AsyncMock(side_effect=[(docs[i], jobs[i]) for i in range(3)])
+                reingest=AsyncMock(side_effect=[_admitted(docs[i], jobs[i]) for i in range(3)])
             ),
+            # The shared enqueue helper reads database.jobs (only touched on a queue failure).
+            jobs=SimpleNamespace(mark_failed=AsyncMock()),
         ),
     )
     monkeypatch.setattr(CONTEXT.queue, "enqueue_ingest", enqueue)
@@ -312,8 +321,10 @@ def test_bulk_reingest_caps_fanout(client, monkeypatch) -> None:
                 get_by_ids=AsyncMock(return_value=docs),
             ),
             ingestion=SimpleNamespace(
-                reingest=AsyncMock(side_effect=[(docs[0], jobs[0]), (docs[1], jobs[1])])
+                reingest=AsyncMock(side_effect=[_admitted(docs[0], jobs[0]), _admitted(docs[1], jobs[1])])
             ),
+            # The shared enqueue helper reads database.jobs (only touched on a queue failure).
+            jobs=SimpleNamespace(mark_failed=AsyncMock()),
         ),
     )
     monkeypatch.setattr(CONTEXT.queue, "enqueue_ingest", enqueue)

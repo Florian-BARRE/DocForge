@@ -1,6 +1,6 @@
 # ---------------------- Shared conventions & payloads ---------------------- #
 from .helpers import DatabaseHelpers
-from .payloads import ChunkToggle, IngestionPayload, IRBundle
+from .payloads import ChunkToggle, IngestionPayload, IRBundle, ReingestOutcome, ReingestResult
 from .transfer_payloads import DocumentExportRows
 from .idempotency_payloads import IdempotencyBegin, IdempotencyRecord
 from .storage_footprint_payloads import (
@@ -34,6 +34,8 @@ __all__ = [
     "ChunkToggle",
     "IngestionPayload",
     "IRBundle",
+    "ReingestOutcome",
+    "ReingestResult",
     "DocumentExportRows",
     "IdempotencyBegin",
     "IdempotencyRecord",

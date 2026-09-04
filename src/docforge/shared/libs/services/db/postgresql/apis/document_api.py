@@ -47,6 +47,18 @@ class DocumentApi:
         return await session.get(Document, document_id)
 
     @staticmethod
+    async def get_for_update(session: AsyncSession, document_id: uuid.UUID) -> Document | None:
+        """
+        Fetch a document by id, locking its row ``FOR UPDATE`` — or None.
+
+        Serialises concurrent reingest admissions of the SAME document: the second admission blocks
+        on the row lock until the first commits, then sees its freshly-minted PENDING job and refuses
+        (rather than both passing the active-job check and minting two parallel runs). A lightweight
+        single-row lock, held only for the admission transaction.
+        """
+        return await session.get(Document, document_id, with_for_update=True)
+
+    @staticmethod
     async def get_by_ids(
         session: AsyncSession, document_ids: Sequence[uuid.UUID]
     ) -> list[Document]:

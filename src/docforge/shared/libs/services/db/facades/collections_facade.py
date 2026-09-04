@@ -292,8 +292,9 @@ class CollectionsFacade(LoggerClass):
             candidates = await BlobApi.collect_hashes_for_collection(session, collection_id)
             await CollectionApi.delete(session, collection_id)
             await session.flush()
-            orphans = await BlobApi.find_unreferenced(session, candidates)
-            await BlobApi.delete_rows(session, orphans)
+            # Guarded purge: the reference re-check lives in the DELETE, so a hash a concurrent ingest
+            # re-referenced between the flush and the commit is kept; RETURNING gives the S3 delete set.
+            orphans = await BlobApi.delete_unreferenced(session, candidates)
         # 3. S3 last, AFTER the commit — a failed S3 delete only leaves harmless orphan objects.
         if orphans:
             async with self._s3.client() as s3:

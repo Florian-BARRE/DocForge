@@ -235,3 +235,33 @@ async def test_drop_for_document_removes_rows_and_sweeps_its_orphan_blob(
     assert removed == 1
     assert (await facade.lookup("k1")) is None
     assert s3.objects == {}  # the orphaned blob was swept
+
+
+async def test_prune_grace_window_protects_a_just_stored_orphan_blob(
+    client: PostgresClient,
+) -> None:
+    """The orphan sweep must SKIP a stage-artifact blob younger than the grace window — a concurrent
+    store() puts bytes + blob row BEFORE its pointer, so a grace-less sweep could reclaim it mid-flight
+    (Finding 4b). Here the blob is registered but its pointer is deleted (looks orphan); a wide grace
+    keeps it, a zero grace reclaims it."""
+    s3 = _FakeS3Client()
+    facade = ArtifactCacheFacade(client, s3)
+    # Store, then drop only the POINTER so the freshly-created blob looks orphan (created_at ≈ now).
+    await facade.store(_row("k1", content_hash="c" * 64, size=5), b"hi")
+    async with client.session() as s:
+        await s.execute(delete(ArtifactCache).where(ArtifactCache.cache_key == "k1"))
+        await s.commit()
+
+    # 1. A wide grace window (1 day) skips the just-created blob — TTL/cap disabled, sweep only.
+    summary = await facade.prune(
+        datetime.now(UTC), timedelta(0), 0, blob_grace=timedelta(days=1)
+    )
+    assert summary.freed_blobs == 0
+    assert s3.objects != {}  # the young orphan survived the grace-guarded sweep
+
+    # 2. Zero grace (cutoff = now) reclaims the aged-out orphan on the next sweep.
+    summary = await facade.prune(
+        datetime.now(UTC), timedelta(0), 0, blob_grace=timedelta(0)
+    )
+    assert summary.freed_blobs == 1
+    assert s3.objects == {}

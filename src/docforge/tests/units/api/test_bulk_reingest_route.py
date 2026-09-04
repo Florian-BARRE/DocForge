@@ -9,7 +9,13 @@ import uuid
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
+from shared_libs.services.db.facades import ReingestOutcome, ReingestResult
+
 COLLECTION_ID = uuid.uuid4()
+
+
+def _admitted(document, job) -> ReingestResult:
+    return ReingestResult(outcome=ReingestOutcome.ADMITTED, document=document, job=job)
 
 
 def _patch_pipeline_validation(monkeypatch) -> None:
@@ -53,7 +59,7 @@ def test_bulk_reingest_all_documents_fans_out(client, monkeypatch) -> None:
     monkeypatch.setattr(
         CONTEXT.database.ingestion,
         "reingest",
-        AsyncMock(side_effect=[(docs[i], jobs[i]) for i in range(3)]),
+        AsyncMock(side_effect=[_admitted(docs[i], jobs[i]) for i in range(3)]),
     )
     monkeypatch.setattr(CONTEXT.queue, "enqueue_ingest", enqueue)
 
@@ -81,7 +87,9 @@ def test_bulk_reingest_explicit_subset_is_validated(client, monkeypatch) -> None
     # Id-mode selector: the resolver validates existence + ownership (get_by_ids), then the capped
     # fan-out fetches the kept documents (get_by_ids again) — the same mock serves both reads.
     monkeypatch.setattr(CONTEXT.database.documents, "get_by_ids", AsyncMock(return_value=[doc]))
-    monkeypatch.setattr(CONTEXT.database.ingestion, "reingest", AsyncMock(return_value=(doc, job)))
+    monkeypatch.setattr(
+        CONTEXT.database.ingestion, "reingest", AsyncMock(return_value=_admitted(doc, job))
+    )
     monkeypatch.setattr(CONTEXT.queue, "enqueue_ingest", enqueue)
 
     response = client.post(
@@ -180,7 +188,7 @@ def test_bulk_reingest_enqueue_failure_marks_job_failed_and_continues(client, mo
     monkeypatch.setattr(
         CONTEXT.database.ingestion,
         "reingest",
-        AsyncMock(side_effect=[(docs[0], jobs[0]), (docs[1], jobs[1])]),
+        AsyncMock(side_effect=[_admitted(docs[0], jobs[0]), _admitted(docs[1], jobs[1])]),
     )
     monkeypatch.setattr(CONTEXT.database.jobs, "mark_failed", mark_failed)
     # First enqueue blows up (Redis blip), second succeeds — batch must survive.
@@ -196,3 +204,42 @@ def test_bulk_reingest_enqueue_failure_marks_job_failed_and_continues(client, mo
     assert response.json()["count"] == 1  # only the second doc yielded a handle
     mark_failed.assert_awaited_once()
     assert mark_failed.await_args.args[0] == jobs[0].id
+
+
+def test_bulk_reingest_skips_documents_with_an_active_job(client, monkeypatch) -> None:
+    """A document already running is SKIPPED (not given a 2nd concurrent job); the batch continues."""
+    from backend.context import CONTEXT
+
+    _patch_pipeline_validation(monkeypatch)
+    docs = [SimpleNamespace(id=uuid.uuid4(), collection_id=COLLECTION_ID) for _ in range(2)]
+    job = SimpleNamespace(id=uuid.uuid4())
+    enqueue = AsyncMock()
+    monkeypatch.setattr(CONTEXT.database.collections, "get", AsyncMock(return_value=_collection()))
+    monkeypatch.setattr(CONTEXT.database.collections, "get_schema", AsyncMock(return_value=[]))
+    monkeypatch.setattr(
+        CONTEXT.database.documents,
+        "resolve_query_ids",
+        AsyncMock(return_value=[d.id for d in docs]),
+    )
+    monkeypatch.setattr(CONTEXT.database.documents, "get_by_ids", AsyncMock(return_value=docs))
+    # First doc already has a live job (skip-with-reason), second is admitted.
+    monkeypatch.setattr(
+        CONTEXT.database.ingestion,
+        "reingest",
+        AsyncMock(
+            side_effect=[
+                ReingestResult(
+                    outcome=ReingestOutcome.ALREADY_ACTIVE, active_job_id=uuid.uuid4()
+                ),
+                _admitted(docs[1], job),
+            ]
+        ),
+    )
+    monkeypatch.setattr(CONTEXT.queue, "enqueue_ingest", enqueue)
+
+    response = client.post(f"/api/v1/collections/{COLLECTION_ID}/reingest", json={})
+
+    assert response.status_code == 202, response.text
+    body = response.json()
+    assert body["matched"] == 2 and body["enqueued"] == 1  # the active doc was skipped
+    enqueue.assert_awaited_once()  # only the idle document was enqueued

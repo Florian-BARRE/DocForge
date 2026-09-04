@@ -33,6 +33,7 @@ async def gc_artifact_cache(ctx: dict[str, Any]) -> int:
         datetime.now(UTC),
         timedelta(days=config.CACHE_TTL_DAYS),
         config.CACHE_MAX_BYTES_PER_COLLECTION,
+        blob_grace=timedelta(minutes=config.CACHE_BLOB_GRACE_MINUTES),
     )
     if summary.evicted_rows or summary.freed_blobs:
         CONTEXT.logger.info(

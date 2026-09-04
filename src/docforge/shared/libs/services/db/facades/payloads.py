@@ -7,6 +7,7 @@
 # ====== Standard Library Imports ======
 import uuid
 from dataclasses import dataclass, field
+from enum import StrEnum
 
 # ====== Internal Project Imports ======
 from shared_libs.services.db.postgresql.tables import (
@@ -17,9 +18,11 @@ from shared_libs.services.db.postgresql.tables import (
     Chunk,
     ChunkBlock,
     ChunkMetadata,
+    Document,
     DocumentMetadata,
     EnrichmentAttempt,
     EntityMention,
+    Job,
     Page,
     SourceKind,
 )
@@ -80,4 +83,34 @@ class ChunkToggle:
     reindex_required: bool
 
 
-__all__ = ["IngestionPayload", "IRBundle", "ChunkToggle"]
+class ReingestOutcome(StrEnum):
+    """Why a reingest admission did — or did not — mint a fresh ingestion job."""
+
+    # A fresh job was minted (the document was idle) — enqueue it.
+    ADMITTED = "admitted"
+    # The document id does not exist — a 404 (single) / silent skip (bulk).
+    NOT_FOUND = "not_found"
+    # The document already has a live (PENDING/RUNNING) job — refuse rather than run two concurrent
+    # runs of one document (they strand orphan Qdrant points). A 409 (single) / skip-with-reason (bulk).
+    ALREADY_ACTIVE = "already_active"
+
+
+@dataclass(slots=True)
+class ReingestResult:
+    """
+    The outcome of a reingest admission — a fresh job, an unknown id, or a refused duplicate run.
+
+    Attributes:
+        outcome (ReingestOutcome): Which of the three admission cases occurred.
+        document (Document | None): The re-admitted document (ADMITTED only).
+        job (Job | None): The freshly-minted job (ADMITTED only).
+        active_job_id (uuid.UUID | None): The already-live job that blocked admission (ALREADY_ACTIVE).
+    """
+
+    outcome: ReingestOutcome
+    document: Document | None = None
+    job: Job | None = None
+    active_job_id: uuid.UUID | None = None
+
+
+__all__ = ["IngestionPayload", "IRBundle", "ChunkToggle", "ReingestOutcome", "ReingestResult"]
