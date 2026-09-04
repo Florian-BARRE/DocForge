@@ -27,18 +27,37 @@ class QdrantIndexApi:
 
     @staticmethod
     def _to_struct(point: QdrantPoint) -> models.PointStruct:
-        """Convert a clean QdrantPoint into a qdrant-client PointStruct."""
+        """Convert a clean QdrantPoint into a qdrant-client PointStruct (id + vectors + payload)."""
+        return models.PointStruct(
+            id=point.point_id, vector=QdrantIndexApi.__vector_of(point), payload=point.payload
+        )
+
+    @staticmethod
+    def _to_point_vectors(point: QdrantPoint) -> models.PointVectors | None:
+        """Convert a QdrantPoint into a vectors-only update struct, or None when it has no vectors.
+
+        A point with no vectors at all would emit an empty (invalid) named-vector update, so it is
+        skipped by returning None.
+        """
+        vector = QdrantIndexApi.__vector_of(point)
+        return models.PointVectors(id=point.point_id, vector=vector) if vector else None
+
+    @staticmethod
+    def __vector_of(point: QdrantPoint) -> dict[str, Any]:
+        """Build the qdrant named-vector mapping (dense + sparse) shared by both struct builders."""
         vector: dict[str, Any] = dict(point.dense)
-        for name, sparse in point.sparse.items():
-            vector[name] = models.SparseVector(indices=sparse.indices, values=sparse.values)
-        return models.PointStruct(id=point.point_id, vector=vector, payload=point.payload)
+        for vec_name, sparse in point.sparse.items():
+            vector[vec_name] = models.SparseVector(indices=sparse.indices, values=sparse.values)
+        return vector
 
     # Qdrant rejects any request whose body exceeds its `max_request_size` (32 MB default) with an
-    # immediate 400 + connection reset, so a whole-document upsert can cross the limit. We flush by
+    # immediate 400 + connection reset, so a whole-document write can cross the limit. We flush by
     # ESTIMATED payload bytes (full-precision floats serialize at ~22 bytes each), keeping every
-    # request well under the limit.
+    # request well under the limit. __MAX_PAYLOAD_OPS bounds the metadata-patch path by op count
+    # (per-op payloads are tiny, but a collection-wide field can patch tens of thousands of points).
     __MAX_UPSERT_BYTES = 16_000_000
     __BYTES_PER_FLOAT = 22
+    __MAX_PAYLOAD_OPS = 2_000
 
     @staticmethod
     def __point_bytes(point: QdrantPoint) -> int:
@@ -47,23 +66,35 @@ class QdrantIndexApi:
         return floats * QdrantIndexApi.__BYTES_PER_FLOAT + 512
 
     @staticmethod
+    def __batched_by_bytes(
+        points: Sequence[QdrantPoint], to_struct: Any
+    ) -> Any:
+        """Yield byte-bounded batches of converted structs so no single request crosses the limit.
+
+        ``to_struct`` maps a point to its qdrant struct (PointStruct or PointVectors); a None result
+        skips the point (and its bytes) — used by the vectors-only path for a point with no vectors.
+        """
+        batch: list[Any] = []
+        batch_bytes = 0
+        for point in points:
+            struct = to_struct(point)
+            if struct is None:
+                continue
+            size = QdrantIndexApi.__point_bytes(point)
+            if batch and batch_bytes + size > QdrantIndexApi.__MAX_UPSERT_BYTES:
+                yield batch
+                batch, batch_bytes = [], 0
+            batch.append(struct)
+            batch_bytes += size
+        if batch:
+            yield batch
+
+    @staticmethod
     async def upsert(client: AsyncQdrantClient, name: str, points: Sequence[QdrantPoint]) -> None:
         """Upsert points (id = chunk id) — a matching id overwrites in place. Re-ingest mints NEW
         chunk ids, so its idempotency comes from the facade's prior delete-by-document, not here."""
-        if not points:
-            return
-        # 1. Pack points into byte-bounded batches so no single request exceeds Qdrant's limit.
-        batch: list[models.PointStruct] = []
-        batch_bytes = 0
-        for point in points:
-            size = QdrantIndexApi.__point_bytes(point)
-            if batch and batch_bytes + size > QdrantIndexApi.__MAX_UPSERT_BYTES:
-                await client.upsert(collection_name=name, points=batch)
-                batch, batch_bytes = [], 0
-            batch.append(QdrantIndexApi._to_struct(point))
-            batch_bytes += size
-        # 2. Flush the final batch (always at least one point).
-        if batch:
+        # Byte-bounded batches so no single request exceeds Qdrant's limit (empty input → no batch).
+        for batch in QdrantIndexApi.__batched_by_bytes(points, QdrantIndexApi._to_struct):
             await client.upsert(collection_name=name, points=batch)
 
     @staticmethod
@@ -79,15 +110,19 @@ class QdrantIndexApi:
             payloads (Mapping[str, dict]): point id → the payload keys to set/overwrite (merged
                 into the existing payload; other keys are untouched).
         """
-        # One batched request — a collection-wide generated field patches thousands of points.
+        # A collection-wide generated field patches every point — chunk the operations so one giant
+        # batch_update_points request can't cross Qdrant's body limit on a large collection.
         operations = [
             models.SetPayloadOperation(
                 set_payload=models.SetPayload(payload=payload, points=[point_id])
             )
             for point_id, payload in payloads.items()
         ]
-        if operations:
-            await client.batch_update_points(collection_name=name, update_operations=operations)
+        cap = QdrantIndexApi.__MAX_PAYLOAD_OPS
+        for start in range(0, len(operations), cap):
+            await client.batch_update_points(
+                collection_name=name, update_operations=operations[start : start + cap]
+            )
 
     @staticmethod
     async def update_vectors(
@@ -99,17 +134,13 @@ class QdrantIndexApi:
 
         The named vector must exist in the collection schema (declare the generated field before
         the first indexing); adding a NEW named vector to an existing collection needs a reindex.
+
+        Batched by estimated bytes exactly like ``upsert``: a whole large document's meta vectors in
+        one request would cross Qdrant's body limit and 400, silently breaking the meta-vector sync
+        at ingest time and aborting the backfill loop mid-collection.
         """
-        structs: list[models.PointVectors] = []
-        for point in points:
-            vector: dict[str, Any] = dict(point.dense)
-            for vec_name, sparse in point.sparse.items():
-                vector[vec_name] = models.SparseVector(indices=sparse.indices, values=sparse.values)
-            # A point with no vectors at all would emit an empty (invalid) update — skip it.
-            if vector:
-                structs.append(models.PointVectors(id=point.point_id, vector=vector))
-        if structs:
-            await client.update_vectors(collection_name=name, points=structs)
+        for batch in QdrantIndexApi.__batched_by_bytes(points, QdrantIndexApi._to_point_vectors):
+            await client.update_vectors(collection_name=name, points=batch)
 
     @staticmethod
     async def delete_by_document(

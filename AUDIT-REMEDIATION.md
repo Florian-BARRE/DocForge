@@ -32,6 +32,8 @@
 
 - **2026-09-04 — V2 tranche 1 (SSE CANCELLED)** : le stream SSE d'un job fermait uniquement sur `{done,failed}` — un job CANCELLED (3e état terminal, non écrasable) faisait poller la DB à l'infini. `JobStatus.terminal()` (nouvelle méthode canonique sur l'enum) est désormais la seule source ; réutilisée par le stream ET le cancel-helper (dé-duplication d'un set qui avait dérivé). +1 test (cancelled ferme, timeout-gardé). 86✓.
 
+- **2026-09-04 — V2 tranche 2 (batching Qdrant)** : `update_vectors` (sync méta post-hoc) envoyait TOUS les points en une requête → 400 sur un gros document (limite ~32 MB), cassant silencieusement la sync et abortant le backfill. Factorisé le batching par octets de `upsert` (`__batched_by_bytes` + `_to_point_vectors`) et appliqué à `update_vectors` ; `set_payload` chunké par count (`__MAX_PAYLOAD_OPS`=2000). +6 tests batching. Façades consommatrices vertes (21✓).
+
 ## Avancement
 
 | Vague | Total | Fait |
@@ -151,7 +153,7 @@
 
 - [ ] **🔴 HAUTE** · `bug` — Import staging bundles leak in S3 forever — GC sweeps exports only  
   `src/docforge/shared/libs/services/db/postgresql/apis/transfer_api.py:47`
-- [ ] **🔴 HAUTE** · `bug` — QdrantIndexApi.update_vectors sends all points in one request — breaks meta-vector sync for large documents  
+- [x] **🔴 HAUTE** · `bug` — QdrantIndexApi.update_vectors sends all points in one request — breaks meta-vector sync for large documents  
   `src/docforge/shared/libs/services/db/qdrant/apis/index_api.py:93`
 
 ### Worker & jobs
