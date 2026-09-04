@@ -104,7 +104,7 @@
 | V6 — Frontend | 0 | 0 | 0 | 0 |
 | V7 — Documentation | 21 | 10 | 0 | 11 |
 | V8 — Outillage (.claude/tests/infra/télémétrie) | 188 | 40 | 3 | 145 |
-| **Total** | **247** | **72** | **5** | **170** |
+| **Total** | **247** | **73** | **5** | **169** |
 
 
 ## V1 — Sécurité & authz (avant tout déploiement multi-tenant)  (30)
