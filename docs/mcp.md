@@ -185,6 +185,7 @@ The server dispatches on `MCP_TRANSPORT` (`src/mcp/entrypoint.py`).
 | `MCP_HOST` | `0.0.0.0` | Bind address for the HTTP transport. |
 | `MCP_PORT` | `9000` | Internal HTTP listen port. |
 | `MCP_HTTP_PATH` | `/mcp` | URL path the streamable-HTTP endpoint is served on. |
+| `MCP_UPLOAD_DIR` | *(unset)* | **HTTP-only upload inbox.** The one local directory `upload_document`/`import_collection`'s `file_path` may resolve into over `streamable-http` (resolved path, symlinks followed, must stay inside it). Unset (default) refuses both tools outright over HTTP — there is no "read anything the container can see" fallback. Ignored on stdio, where `file_path` is any local path as before. See [Access control](#access-control). |
 
 > There is no `MCP_AUTH_TOKEN` (removed) and no MCP-level auth gate of its own. The MCP is a pure
 > pass-through: it forwards each caller's own DocForge API key, so one token gives the same rights
@@ -211,6 +212,14 @@ first place. This distinction matters: **MCP port `10048` IS published in produc
 clients reach DocForge), so an unauthenticated request reaching it must be rejected, not silently
 served with a privileged local token.
 
+**`file_path` tools (`upload_document`, `import_collection`) are confined the same way.** Over
+`streamable-http`, any caller holding a valid DocForge API key could otherwise make the MCP
+container read an arbitrary file its OS user can see (e.g. `/proc/1/environ`) and exfiltrate it by
+uploading it into their own collection. `PathGuard` (`src/mcp/libs/path_guard.py`) closes this: on
+HTTP the resolved, symlink-followed path MUST stay inside `MCP_UPLOAD_DIR`, or the call is refused
+before the SDK is ever invoked — with no inbox configured (the default), both tools are refused
+outright. Stdio is unaffected: `file_path` there is still any local path the caller names.
+
 Operational checklist for a networked (streamable-http) deployment:
 - Front the port with TLS (reverse proxy) — the caller's DocForge API key rides in the
   `Authorization` header on every call.
@@ -218,6 +227,9 @@ Operational checklist for a networked (streamable-http) deployment:
 - Set `DOCFORGE_API_TOKEN` (the stdio fallback) to a **non-root, narrowly-scoped** key, or leave it
   empty — it is not read on the request path in HTTP mode, but an unused root token sitting in the
   service's env is still a needless blast-radius increase if ever misconfigured or reused elsewhere.
+- If `upload_document`/`import_collection` are needed over HTTP, set `MCP_UPLOAD_DIR` to a dedicated
+  staging directory (e.g. a shared volume) and mount it read-only where possible; otherwise leave it
+  unset so those two tools stay refused.
 
 See also [PROD-HARDENING.md](PROD-HARDENING.md) for the full go-live checklist.
 

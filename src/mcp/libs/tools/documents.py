@@ -11,13 +11,20 @@ from typing import Any
 from docforge_sdk import AsyncClient
 from mcp.server.fastmcp import FastMCP
 
+# ====== Local Project Imports ======
+from ..path_guard import PathGuard
 
-def register(mcp: FastMCP, sdk: AsyncClient) -> None:
+
+def register(mcp: FastMCP, sdk: AsyncClient, path_guard: PathGuard) -> None:
     """Register document tools on the MCP server.
 
     Args:
         mcp (FastMCP): The MCP server instance.
         sdk (AsyncClient): The DocForge API client.
+        path_guard (PathGuard): Resolves/confines `file_path` before it reaches the SDK — a no-op
+            on stdio, but on streamable-HTTP it refuses any path outside the configured inbox (or
+            everything, if no inbox is configured) so a remote caller can never read an arbitrary
+            file off the MCP container's filesystem.
     """
 
     @mcp.tool()
@@ -26,11 +33,13 @@ def register(mcp: FastMCP, sdk: AsyncClient) -> None:
     ) -> Any:
         """
         Upload a local file into a collection and enqueue its ingestion (async — poll
-        get_job(job_id) or get_document(document_id) for status). `file_path` must be an
-        absolute path readable by the MCP server. `metadata` is validated against the
-        collection's declared schema (unknown field names are rejected).
+        get_job(job_id) or get_document(document_id) for status). On stdio, `file_path` must be an
+        absolute path readable by the MCP server; on streamable-HTTP it must resolve inside the
+        operator-configured upload inbox (MCP_UPLOAD_DIR), or the call is refused. `metadata` is
+        validated against the collection's declared schema (unknown field names are rejected).
         """
-        accepted = await sdk.documents.upload(collection_id, file_path, metadata=metadata)
+        resolved = path_guard.resolve(file_path)
+        accepted = await sdk.documents.upload(collection_id, resolved, metadata=metadata)
         return accepted.model_dump(mode="json")
 
     @mcp.tool()

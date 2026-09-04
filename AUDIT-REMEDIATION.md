@@ -18,11 +18,13 @@
 
 - **2026-09-04 — V1 tranche 5 (import → CREATE)** : `POST /collections/import` gaté sur `Capability.CREATE` (comme `POST /collections`) au lieu de `WRITE` — une clé WRITE-only ne peut plus escalader en création de collection via un import. +1 test de contrat du gate. Reste (tracké `[~]`) : le grant de scope au créateur (clé scoped CREATE) nécessite un threading queue→worker, slice dédié. `19 passed`.
 
+- **2026-09-04 — V1 tranche 6 (MCP file_path, HAUTE)** : nouveau `PathGuard` (`src/mcp/libs/path_guard.py`) — sur le transport streamable-HTTP, `file_path` de `upload_document`/`import_collection` doit résoudre (symlinks suivis) DANS `MCP_UPLOAD_DIR` sinon refusé avant tout appel SDK ; défaut fail-closed (pas d'inbox → refusé). stdio inchangé. Knob `MCP_UPLOAD_DIR` documenté (docs/mcp.md). Impl par agent `mcp` dédié, finalisée+vérifiée : `42 passed`, ruff+mypy clean. **→ tous les 7 findings HAUTE de V1 sont fermés.**
+
 ## Avancement
 
 | Vague | Total | Fait |
 |---|---|---|
-| V1 | 30 | 6 (+1 partiel) |
+| V1 | 30 | 7 (+1 partiel) |
 | V2 | 4 | 0 |
 | V3 | 1 | 0 |
 | V4 | 1 | 0 |
@@ -61,7 +63,7 @@
 
 - [x] **🔴 HAUTE** · `security` — .dcexport import lets a bundle overwrite arbitrary S3 objects (attacker-controlled s3_key)  
   `src/docforge/worker/backend/libs/collection_transfer/restore/importer.py:195`
-- [ ] **🔴 HAUTE** · `security` — MCP HTTP tools read arbitrary files from the MCP container (file_path tool inputs)  
+- [x] **🔴 HAUTE** · `security` — MCP HTTP tools read arbitrary files from the MCP container (file_path tool inputs)  
   `src/mcp/libs/tools/documents.py:25`
 - [~] **🟠 MOYENNE** · `security` — Collection import bypasses the CREATE capability and skips creator scope-grant  
   `src/docforge/app/backend/routers/transfers/router.py:85` _(aussi: backend-api)_
