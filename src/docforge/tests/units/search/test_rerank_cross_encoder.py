@@ -259,6 +259,36 @@ def test_rerank_degrades_to_fusion_order_on_timeout(monkeypatch) -> None:
     assert out.score == 0.9
 
 
+def test_rerank_degrade_clamps_a_fusion_score_above_one(monkeypatch) -> None:
+    """On degrade the aggregate is the incoming FUSION score, which is NOT on the cross-encoder scale
+    and routinely exceeds 1.0 (RRF over 3+ prefetch branches → 1.5-2.0; DBSF > 1.0 with two). Since
+    ScoredOutput.score is Field(le=1), an unclamped value would raise a ValidationError inside run()
+    — turning the degrade path into a misleading 422 exactly when the reranker is down. It must clamp
+    to 1.0 and still return the un-reranked candidates."""
+    port = _TextPort({"a": "text a", "b": "text b"})
+    node = RerankCrossEncoderNode(id="rerank", config=RerankCrossEncoderNode.Config())
+    node.bind({COLLECTION_READ_CAPABILITY: port})
+    _install_rerank_raiser(monkeypatch, TimeoutError())
+
+    data = RerankCrossEncoderNode.Consumes(
+        candidates=CandidateSet(
+            candidates=[
+                Candidate(chunk_id="a", score=1.8, source="hybrid"),  # RRF over 3+ branches
+                Candidate(chunk_id="b", score=1.2, source="hybrid"),
+            ]
+        ),
+        spec=QuerySpec(text="q", top_k=2, candidate_k=2),
+    )
+    out = _run_node(node, data)  # must NOT raise a ValidationError
+
+    # The candidates ride through un-reranked (raw fusion scores preserved on each candidate)...
+    assert [c.chunk_id for c in out.candidates.candidates] == ["a", "b"]
+    assert [c.score for c in out.candidates.candidates] == [1.8, 1.2]
+    # ...but the NODE-LEVEL aggregate score is clamped into the [0, 1] ScoredOutput range.
+    assert out.score == 1.0
+    assert out.candidates.degraded
+
+
 def test_rerank_degrades_to_fusion_order_on_provider_error(monkeypatch) -> None:
     """A generic provider error degrades the same way — fusion-order fallback, never a raise."""
     port = _TextPort({"a": "text a", "b": "text b"})

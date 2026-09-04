@@ -46,6 +46,8 @@
 
 - **2026-09-04 — V3 tranche 4 (deps sécurité mcp)** : lock mcp — cryptography 49.0.0→**50.0.1** (PYSEC-2026-3552), setuptools→84.0.0, et mcp 1.28.0→**1.29.1** en contraignant `mcp>=1.28.1,<2` dans pyproject (un `--upgrade-package mcp` sautait sinon en 2.1.1, cassant l'API FastMCP — pin `<2` défensif). Gate mcp : 42 tests, ruff+mypy clean.
 
+- **2026-09-04 — V4 tranche 1 (crash rerank degrade)** : le chemin de dégradation du rerank renvoyait `score=judged[0].score` (score de FUSION, >1.0 en RRF 3+ branches / DBSF) → `ValidationError` sur `ScoredOutput(le=1)` DANS `run()` → 422 trompeur précisément quand le reranker est down. Clampé à `[0,1]` (`min(1.0, max(0.0, …))`). +1 test (fusion 1.8 → clamp 1.0, pas de crash). 12✓, ruff clean.
+
 ## Avancement
 
 | Vague | Total | Fait |
@@ -188,7 +190,7 @@
 
 ### Search & retrieval
 
-- [ ] **🔴 HAUTE** · `bug` — Rerank degrade path crashes on fusion scores > 1.0 (ScoredOutput le=1), defeating the degradation it exists for  
+- [x] **🔴 HAUTE** · `bug` — Rerank degrade path crashes on fusion scores > 1.0 (ScoredOutput le=1), defeating the degradation it exists for  
   `src/docforge/shared/libs/pipelines/search/nodes/rerank/cross_encoder/core.py:126`
 
 
