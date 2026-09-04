@@ -36,14 +36,22 @@ class TransferTrackerFacade(LoggerClass):
         collection_id: uuid.UUID | None = None,
         collection_name: str | None = None,
         s3_key: str | None = None,
+        expires_at: datetime | None = None,
     ) -> CollectionTransfer:
-        """Insert a PENDING transfer row (the router does this before enqueue) and return it."""
+        """
+        Insert a PENDING transfer row (the router does this before enqueue) and return it.
+
+        ``expires_at`` is stamped at admission for an IMPORT (its staged bundle's reclaim horizon, so
+        a failed/abandoned import is swept by the transfer GC like an expired export); an EXPORT stamps
+        it later, at ``set_artifact``, once its bundle exists.
+        """
         row = CollectionTransfer(
             kind=kind,
             status=TransferStatus.PENDING,
             collection_id=collection_id,
             collection_name=collection_name,
             s3_key=s3_key,
+            expires_at=expires_at,
         )
         async with self._postgres.session() as session:
             return await TransferApi.create(session, row)

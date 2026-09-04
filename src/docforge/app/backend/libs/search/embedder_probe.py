@@ -36,7 +36,9 @@ class QueryEmbedderProbe(LoggerClass):
         # The SAME egress allowlist the collection-health sweep enforces. This READ-scoped classifier
         # rebuilds an embedder from a caller-influenced ``base_url`` and probes it, so without the gate
         # it is a parallel SSRF scanner of the internal network (empty allowlist = allow-all, OFF).
-        self._egress_policy = ProviderEgressPolicy.from_spec(RUNTIME_CONFIG.PROVIDER_EGRESS_ALLOWLIST)
+        self._egress_policy = ProviderEgressPolicy.from_spec(
+            RUNTIME_CONFIG.PROVIDER_EGRESS_ALLOWLIST
+        )
 
     async def classify(self, pipeline_blob: dict) -> ProbeStatus:
         """

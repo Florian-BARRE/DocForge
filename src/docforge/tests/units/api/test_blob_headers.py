@@ -26,7 +26,9 @@ async def _get_blob(monkeypatch, *, mime: str):
 
 
 @pytest.mark.parametrize("mime", ["text/html", "image/svg+xml", "text/plain", "application/zip"])
-async def test_unsafe_types_are_forced_download_and_sandboxed(fastapi_app, monkeypatch, mime) -> None:
+async def test_unsafe_types_are_forced_download_and_sandboxed(
+    fastapi_app, monkeypatch, mime
+) -> None:
     response = await _get_blob(monkeypatch, mime=mime)
 
     assert response.headers["content-disposition"] == "attachment"

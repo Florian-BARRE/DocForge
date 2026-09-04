@@ -648,6 +648,7 @@ async def test_query_embedder_probe_blocks_a_disallowed_host(fastapi_app, monkey
         def __init__(self, *a: object, **k: object) -> None: ...
         async def __aenter__(self) -> "_Boom":
             return self
+
         async def __aexit__(self, *e: object) -> None: ...
         async def get(self, *a: object, **k: object) -> None:
             raise AssertionError("a blocked host must never be probed")

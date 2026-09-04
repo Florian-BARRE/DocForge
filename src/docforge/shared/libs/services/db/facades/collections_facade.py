@@ -10,6 +10,7 @@ import uuid
 
 # ====== Internal Project Imports ======
 from loggerplusplus import LoggerClass
+from sqlalchemy.exc import IntegrityError
 
 from shared_libs.services.db.postgresql import PostgresClient
 from shared_libs.services.db.postgresql.apis import BlobApi, CollectionApi
@@ -20,6 +21,23 @@ from shared_libs.services.db.s3 import S3Client, S3ObjectApi
 # ====== Local Project Imports ======
 from .helpers import DatabaseHelpers
 
+# The collection-name UNIQUE constraint two concurrent creates race on. Name is stable via the schema
+# naming convention (uq_<table>_<column>) → the ``unique=True`` on ``collection.name``. asyncpg carries
+# the violated constraint name on its native error, nested as the SQLAlchemy wrapper's ``__cause__``.
+_NAME_UNIQUE_CONSTRAINT = "uq_collection_name"
+
+
+class DuplicateCollectionNameError(Exception):
+    """Raised when a create loses the collection-name UNIQUE race — the router maps it to a 409."""
+
+    def __init__(self, name: str) -> None:
+        """
+        Args:
+            name (str): The already-taken collection name.
+        """
+        super().__init__(f"Collection '{name}' already exists.")
+        self.name = name
+
 
 class CollectionsFacade(LoggerClass):
     """Collection lifecycle — create (fail-fast), read, update-config (+snapshot), delete."""
@@ -29,6 +47,26 @@ class CollectionsFacade(LoggerClass):
         self._postgres = postgres
         self._qdrant = qdrant
         self._s3 = s3
+
+    @staticmethod
+    def _is_duplicate_name(error: IntegrityError) -> bool:
+        """
+        Decide whether an IntegrityError is the collection-name UNIQUE violation (a lost create race).
+
+        Args:
+            error (IntegrityError): The error raised by the contract INSERT's flush.
+
+        Returns:
+            bool: True only when the violated constraint is ``uq_collection_name``.
+        """
+        # 1. Walk the driver error and its __cause__ (the asyncpg native error carrying constraint_name)
+        #    and match the name guard — so an unrelated integrity failure still surfaces as a real error.
+        orig = getattr(error, "orig", None)
+        candidates = (orig, getattr(orig, "__cause__", None))
+        return any(
+            getattr(candidate, "constraint_name", None) == _NAME_UNIQUE_CONSTRAINT
+            for candidate in candidates
+        )
 
     async def create(self, collection: Collection, fields: list[MetadataField]) -> Collection:
         """
@@ -44,12 +82,21 @@ class CollectionsFacade(LoggerClass):
 
         Raises:
             ValueError: If two searchable fields collide on a vector slug (fail-fast, C4 guard).
+            DuplicateCollectionNameError: If two creates race on the same name and this one loses the
+                UNIQUE constraint (the router maps it to a clean 409, never a 500).
         """
         # 1. Fail fast before anything is written.
         DatabaseHelpers.validate_vector_slugs(fields)
-        # 2. Contract + schema + the version-1 snapshot, in one transaction.
+        # 2. Contract + schema + the version-1 snapshot, in one transaction. The name-clash pre-check
+        #    lives in the router, but a concurrent create can still slip in between it and this insert —
+        #    catch that UNIQUE violation and re-raise it as the domain error the router turns into a 409.
         async with self._postgres.session() as session:
-            created = await CollectionApi.create(session, collection)
+            try:
+                created = await CollectionApi.create(session, collection)
+            except IntegrityError as error:
+                if not self._is_duplicate_name(error):
+                    raise
+                raise DuplicateCollectionNameError(collection.name) from error
             for field in fields:
                 field.collection_id = created.id
             await CollectionApi.replace_schema(session, created.id, fields)
@@ -303,4 +350,4 @@ class CollectionsFacade(LoggerClass):
         return True
 
 
-__all__ = ["CollectionsFacade"]
+__all__ = ["CollectionsFacade", "DuplicateCollectionNameError"]

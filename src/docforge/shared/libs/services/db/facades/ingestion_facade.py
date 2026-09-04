@@ -13,6 +13,7 @@ from collections.abc import Sequence
 
 # ====== Internal Project Imports ======
 from loggerplusplus import LoggerClass
+from sqlalchemy.exc import IntegrityError
 
 from shared_libs.services.db.postgresql import PostgresClient
 from shared_libs.services.db.postgresql.apis import (
@@ -40,7 +41,15 @@ from shared_libs.services.db.s3 import S3Client, S3Object, S3ObjectApi
 
 # ====== Local Project Imports ======
 from .helpers import DatabaseHelpers
-from .payloads import IngestionPayload, ReingestOutcome, ReingestResult
+from .payloads import AdmissionResult, IngestionPayload, ReingestOutcome, ReingestResult
+
+# The document UNIQUE constraint a concurrent duplicate upload violates. Its name is stable via the
+# schema naming convention (uq_<table>_<first-column>) → ``UniqueConstraint(collection_id, source_hash,
+# pipeline_version)`` on ``document``. asyncpg exposes the violated constraint name on its native
+# error, which under SQLAlchemy's adapter is the wrapper's ``__cause__`` (``error.orig`` itself carries
+# none), so both hops are inspected. Matching the name tells a lost admission race apart from any other
+# integrity failure (which must still surface as a real error).
+_DOCUMENT_UNIQUE_CONSTRAINT = "uq_document_collection_id"
 
 
 class IngestionFacade(LoggerClass):
@@ -51,6 +60,27 @@ class IngestionFacade(LoggerClass):
         self._postgres = postgres
         self._qdrant = qdrant
         self._s3 = s3
+
+    @staticmethod
+    def _is_duplicate_document(error: IntegrityError) -> bool:
+        """
+        Decide whether an IntegrityError is the document UNIQUE-guard violation (a lost admission race).
+
+        Args:
+            error (IntegrityError): The error raised by the admission INSERT's flush.
+
+        Returns:
+            bool: True only when the violated constraint is ``uq_document_collection_id``.
+        """
+        # 1. Walk the driver error and its __cause__ (the asyncpg native error carrying constraint_name)
+        #    and match the document guard's name — precise, so an unrelated integrity failure is never
+        #    treated as a benign duplicate.
+        orig = getattr(error, "orig", None)
+        candidates = (orig, getattr(orig, "__cause__", None))
+        return any(
+            getattr(candidate, "constraint_name", None) == _DOCUMENT_UNIQUE_CONSTRAINT
+            for candidate in candidates
+        )
 
     async def find_duplicate(
         self, collection_id: uuid.UUID, source_hash: str, pipeline_version: str
@@ -64,12 +94,17 @@ class IngestionFacade(LoggerClass):
         document: Document,
         job: Job,
         declared_metadata: Sequence[DocumentMetadata] = (),
-    ) -> tuple[Document, Job]:
+    ) -> AdmissionResult:
         """
         Register the document (PENDING), its ingestion job and its DECLARED metadata — one tx.
 
         The declared (user-origin) metadata is part of the admission: the worker reads it back
         to rebuild the pipeline's run input, so a half-admitted document must never exist.
+
+        CONCURRENCY: two uploads of the same (collection, source_hash, pipeline_version) can both pass
+        the router's dedup pre-check, then race here — the loser violates the document UNIQUE
+        constraint. That is caught and resolved idempotently to the already-admitted document (no job),
+        so a client retry never sees a 500. Any OTHER integrity failure is re-raised as a real error.
 
         Args:
             document (Document): The document row to create (status PENDING).
@@ -78,10 +113,29 @@ class IngestionFacade(LoggerClass):
                 (document_id filled here).
 
         Returns:
-            tuple[Document, Job]: The created rows, ids assigned.
+            AdmissionResult: ``created=True`` + the fresh document/job when this call won the insert;
+                ``created=False`` + the incumbent document (no job) on a lost duplicate race.
         """
+        # 1. Capture the dedup identity BEFORE the insert — after a failed flush + rollback the ORM
+        #    object's attributes may be expired, so the incumbent re-query reads plain locals.
+        collection_id = document.collection_id
+        source_hash = document.source_hash
+        pipeline_version = document.pipeline_version
         async with self._postgres.session() as session:
-            created = await DocumentApi.create(session, document)
+            # 2. Insert the document; a UNIQUE violation is a concurrent duplicate admission.
+            try:
+                created = await DocumentApi.create(session, document)
+            except IntegrityError as error:
+                # 3. Re-raise anything that is NOT our duplicate guard — a real, unexpected failure.
+                if not self._is_duplicate_document(error):
+                    raise
+                # 4. Lost the race: reset the aborted transaction, then return the incumbent document.
+                await session.rollback()
+                existing = await DocumentApi.find(
+                    session, collection_id, source_hash, pipeline_version
+                )
+                return AdmissionResult(created=False, document=existing)
+            # 5. Won the insert — mint the job and persist the declared metadata in the same tx.
             job.document_id = created.id
             job.collection_id = created.collection_id
             created_job = await JobApi.create(session, job)
@@ -89,7 +143,7 @@ class IngestionFacade(LoggerClass):
                 for row in declared_metadata:
                     row.document_id = created.id
                 await DocumentApi.replace_metadata(session, created.id, list(declared_metadata))
-        return created, created_job
+        return AdmissionResult(created=True, document=created, job=created_job)
 
     async def reingest(self, document_id: uuid.UUID) -> ReingestResult:
         """
@@ -131,9 +185,7 @@ class IngestionFacade(LoggerClass):
             job = Job(document_id=document.id, collection_id=document.collection_id)
             created_job = await JobApi.create(session, job)
             await DocumentApi.set_status(session, document_id, DocumentStatus.PENDING)
-        return ReingestResult(
-            outcome=ReingestOutcome.ADMITTED, document=document, job=created_job
-        )
+        return ReingestResult(outcome=ReingestOutcome.ADMITTED, document=document, job=created_job)
 
     async def store_blobs(self, objects: Sequence[S3Object], rows: Sequence[Blob]) -> None:
         """

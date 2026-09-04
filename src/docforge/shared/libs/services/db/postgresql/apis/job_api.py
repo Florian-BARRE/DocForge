@@ -75,9 +75,7 @@ class JobApi:
         return result.scalars().first()
 
     @staticmethod
-    async def get_active_for_document(
-        session: AsyncSession, document_id: uuid.UUID
-    ) -> Job | None:
+    async def get_active_for_document(session: AsyncSession, document_id: uuid.UUID) -> Job | None:
         """
         Return the document's live (PENDING or RUNNING) ingestion job — newest first — or None.
 

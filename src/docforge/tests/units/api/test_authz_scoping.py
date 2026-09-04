@@ -506,9 +506,7 @@ async def test_list_collections_scoped_key_sees_only_its_own(fastapi_app, monkey
         "to_model",
         staticmethod(lambda c, schema: SimpleNamespace(model_dump=lambda: {"id": str(c.id)})),
     )
-    monkeypatch.setattr(
-        collections_router, "CollectionListItem", lambda **kw: kw.get("id")
-    )
+    monkeypatch.setattr(collections_router, "CollectionListItem", lambda **kw: kw.get("id"))
 
     result = await list_collections(principal=_scoped(COLL_A))
 
