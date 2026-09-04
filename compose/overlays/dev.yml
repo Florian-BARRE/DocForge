@@ -101,6 +101,13 @@ services:
     ports:
       - "10044:8333"              # S3 API (local dev + operator inspection)
 
+  # Gotenberg's host port is dev-only (prod reaches it via the in-network `gotenberg` alias). Host-side
+  # uv-run dev needs it published to convert local files; prod must NOT expose this unauthenticated
+  # conversion API on the host (SSRF pivot into docforge_net) — see the base.yml gotenberg comment.
+  docforge_gotenberg:
+    ports:
+      - "10045:3000"              # HTTP conversion API (host-side uv-run dev only)
+
   docforge_bge_server:
     # Build locally from source, overriding the prod GHCR image: pull in the base file.
     # CPU torch by default; the gpu override file flips TORCH_VARIANT to gpu.
