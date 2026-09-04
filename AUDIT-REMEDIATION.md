@@ -64,6 +64,8 @@
 
 - **2026-09-04 — bge keep-warm (HAUTE)** : `_keep_warm` appelait `bge_models.encode_*`/`compute_rerank` en thread SANS acquérir `_embed_lock`/`_rerank_lock` → forward pass concurrent avec un vrai batch sur les modèles torch partagés (thread-unsafe). Nouvelles méthodes engine `touch_dense/sparse/rerank` (shape « direct mais verrouillé », comme `embed_all`) acquérant les mêmes locks ; `_keep_warm` recâblé. +2 tests (sérialisation vs batch réel, indépendance rerank). Agent `bge-server` dédié, relu+revérifié : 29✓, ruff+mypy clean. Le warmup one-time (avant `yield`, pas de concurrence) laissé intact à raison.
 
+- **2026-09-04 — preflight + BlobNormalizer (2× HAUTE)** : agent `pipeline` dédié, relu + Part B finalisé/testé par moi. (A) `preflight()` ajouté à `ChunkerSemanticNode`, `FigureClassifyNode` (probe VLM, no-op sur `local`) et `BaseMetagenPrep` (endpoint défaut) → le sweep les sonde avant toute dépense ; commentaire config figure_classify corrigé. (B) `BlobNormalizer.normalize_reporting` détecte les nodes graph-level (edits `/edit`) que le heal ne round-trip pas ; le write boundary (`blob_helpers`) **refuse 422** avec message clair au lieu de perdre l'edit silencieusement — les blobs stock/stage healent sans drop (pas de faux positif). +2 tests. **Suite complète 1369 passed**.
+
 ## Avancement
 
 | Vague | Total | Fait |
@@ -214,12 +216,12 @@
 
 ### IR & modèles
 
-- [ ] **🔴 HAUTE** · `design` — BlobNormalizer heal silently discards graph-level customisations from the documented /edit surface  
+- [x] **🔴 HAUTE** · `design` — BlobNormalizer heal silently discards graph-level customisations from the documented /edit surface  
   `src/docforge/shared/libs/pipelines/ingest/stages/normalizer.py:104`
 
 ### Pipeline ingest
 
-- [ ] **🔴 HAUTE** · `bug` — Preflight coverage gaps: figure_classify (VLM), semantic chunker, metagen default endpoint — with a config comment falsely claiming preflight coverage  
+- [x] **🔴 HAUTE** · `bug` — Preflight coverage gaps: figure_classify (VLM), semantic chunker, metagen default endpoint — with a config comment falsely claiming preflight coverage  
   `src/docforge/shared/libs/pipelines/ingest/nodes/enrich/figure_classify/core.py:56`
 
 
