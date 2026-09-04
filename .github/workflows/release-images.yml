@@ -1,10 +1,10 @@
 # ============================================================================
 # Release workflow for the DocForge DOCKER IMAGES → GitHub Container Registry (GHCR).
 #
-# NOTHING PUBLISHES UNLESS THE FULL QUALITY GATE IS GREEN. The `images` job `needs` the reusable
-# `gate` (format + lint + type-check + every package's unit suite + frontend build + SDK↔backend
-# OpenAPI coherence) — the SAME gate that guards every merge and the SDK release. So a tag on a
-# broken tree runs the gate, fails, and never builds or pushes a single image.
+# `workflow_call`-ONLY: this file has no `on: push: tags:` of its own — it is fanned out to by
+# release.yml (the release orchestrator), which runs the shared quality gate EXACTLY ONCE per tag
+# and then calls this file with `needs: gate`. So a tag on a broken tree never reaches here at all.
+# Kept as its own file (not inlined into release.yml) on purpose — see release.yml's header.
 #
 # Pushing goes to GHCR via the built-in GITHUB_TOKEN (packages: write) — NO stored secret.
 #
@@ -16,13 +16,17 @@
 #   ghcr.io/<owner>/docforge-worker:1.2.3-gpu     :latest-gpu        (TORCH_VARIANT build-arg)
 #   ghcr.io/<owner>/docforge-bge-server:1.2.3-cpu :latest-cpu
 #   ghcr.io/<owner>/docforge-bge-server:1.2.3-gpu :latest-gpu        (TORCH_VARIANT build-arg)
+#   ghcr.io/<owner>/docforge-paddle-server:1.2.3-cpu :latest-cpu
+#   ghcr.io/<owner>/docforge-paddle-server:1.2.3-gpu :latest-gpu
 #
-# HOW TO RELEASE:
-#   Tag a commit with `v<version>` and push it. A `v*` tag is a UNIFIED LOCKSTEP release: it triggers
-#   BOTH this workflow (images) AND release-sdk.yml (PyPI) at the same version, so the tag must equal
-#   the tree's declared version (the version-guard job below enforces it, mirroring release-sdk). The
-#   `sdk-v*` prefix is the SDK-only escape hatch.
-#     git tag v1.2.3 && git push origin v1.2.3
+# `:latest<suffix>` is moved ONLY by the `promote-latest` job, which `needs: images` (the whole
+# matrix, `fail-fast: false`) — so a single image failing to build/push leaves ALL `:latest<suffix>`
+# tags pointing at the previous good release, never a half-updated set. The immutable `<version>`
+# tags are still pushed per-leg by the matrix regardless (so a partial failure is diagnosable and
+# re-runnable), only the mutable "this is the current release" pointer waits for full green. See
+# that job's own comment for the residual window this does NOT close.
+#
+# HOW TO RELEASE: see release.yml (the orchestrator) — `git tag v1.2.3 && git push origin v1.2.3`.
 #
 # After every push, a `security-scan` job runs Trivy against what was just published — see that
 # job's own header comment for what it covers and why it's non-blocking.
@@ -31,9 +35,7 @@
 name: release-images
 
 on:
-  push:
-    tags:
-      - "v*"
+  workflow_call:
 
 # Declaring `permissions:` sets every UNLISTED scope to `none`, so both are required here:
 permissions:
@@ -41,11 +43,7 @@ permissions:
   packages: write # GHCR push via the built-in GITHUB_TOKEN
 
 jobs:
-  # 1. Run the exact same gate that guards every merge — the images job depends on it.
-  gate:
-    uses: ./.github/workflows/gate.yml
-
-  # 1b. Fail fast if the pushed tag disagrees with the tree's declared version, BEFORE the build
+  # 1. Fail fast if the pushed tag disagrees with the tree's declared version, BEFORE the build
   #     matrix moves any mutable :latest tag. Without this a `git tag v0.14.0` on a tree still at
   #     0.13.0 (the gate only checks the three version sources agree with EACH OTHER, not with the
   #     tag) would publish all 8 images tagged 0.14.0 + latest while containing 0.13.0 code, then the
@@ -68,9 +66,10 @@ jobs:
             exit 1
           fi
 
-  # 2. Build + push every image, ONLY after the gate is fully green AND the tag matches the version.
+  # 2. Build + push every image, ONLY after the tag matches the version (the gate itself already
+  #    ran upstream, in release.yml, before this whole file was even called).
   images:
-    needs: [gate, version-guard]
+    needs: version-guard
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -111,11 +110,12 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/${{ github.repository_owner }}/docforge-${{ matrix.name }}
-          # Build the tag list by hand (rather than relying on the flavor `suffix`/`onlatest`
-          # interplay) so the result is unambiguous: exactly `<version><suffix>` and `latest<suffix>`.
+          # ONLY the immutable version tag here — `latest<suffix>` is intentionally NOT pushed by
+          # this step. It's moved by the `promote-latest` job below, once the WHOLE matrix is
+          # green, so a single image failing never leaves `latest<suffix>` half-updated. See
+          # `promote-latest`'s comment.
           tags: |
             type=raw,value=${{ env.VERSION }}${{ matrix.suffix }}
-            type=raw,value=latest${{ matrix.suffix }}
 
       - name: Free up runner disk (GPU only)
         # The CUDA images (~8.5 GB) + their build layers overflow the ~14 GB free on a stock
@@ -149,7 +149,63 @@ jobs:
           cache-from: ${{ matrix.torch != 'gpu' && format('type=gha,scope={0}{1}', matrix.name, matrix.suffix) || '' }}
           cache-to: ${{ matrix.torch != 'gpu' && format('type=gha,mode=max,scope={0}{1}', matrix.name, matrix.suffix) || '' }}
 
-  # 3. Non-blocking vulnerability scan of what was just published (after push, so it scans the
+  # 3. Move `latest<suffix>` to the version just published — ONLY once EVERY leg of the `images`
+  #    matrix above has succeeded. `needs: images` with the matrix's `fail-fast: false` means: if
+  #    any single leg fails, the `images` job's overall conclusion is failure, so this job is
+  #    skipped entirely and every `latest<suffix>` tag is left exactly where the previous good
+  #    release put it — no half-updated "latest" set. `docker buildx imagetools create` does a
+  #    registry-side manifest copy (no rebuild, no pull/push of layers), so this is fast and cheap.
+  #    RESIDUAL WINDOW (not closed by this job, and not worth closing here — see the finding this
+  #    fixes): a crash mid-way THROUGH this job's own matrix could still leave some `latest<suffix>`
+  #    tags moved and others not, if some legs of this small metadata-only job finish before a
+  #    later one fails. That window is far smaller (a manifest copy, not a multi-GB image build)
+  #    and re-running this job alone (after the underlying cause is fixed) is a safe, idempotent fix
+  #    — an actual atomic multi-tag transaction is not something GHCR offers, so this is the
+  #    intentionally-simple stopping point.
+  promote-latest:
+    name: promote latest${{ matrix.suffix }} (${{ matrix.name }})
+    needs: images
+    runs-on: ubuntu-latest
+    strategy:
+      # `false` so one image's registry hiccup doesn't block promoting the rest — each leg is an
+      # independent, idempotent manifest copy (safe to re-run individually if it fails).
+      fail-fast: false
+      matrix:
+        # Mirrors the `images` matrix's `name`/`suffix` pairs exactly (kept as a literal second
+        # copy — GitHub Actions has no clean way to share a matrix definition across jobs).
+        include:
+          - { name: app,           suffix: "" }
+          - { name: mcp,           suffix: "" }
+          - { name: worker,        suffix: "-cpu" }
+          - { name: worker,        suffix: "-gpu" }
+          - { name: bge-server,    suffix: "-cpu" }
+          - { name: bge-server,    suffix: "-gpu" }
+          - { name: paddle-server, suffix: "-cpu" }
+          - { name: paddle-server, suffix: "-gpu" }
+    steps:
+      - name: Derive image version from the tag
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+
+      - name: Set up Buildx
+        # `docker buildx imagetools` needs a builder instance even though it never builds anything.
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Move latest${{ matrix.suffix }} → ${{ env.VERSION }}${{ matrix.suffix }} (registry-side manifest copy)
+        run: |
+          set -euo pipefail
+          image="ghcr.io/${{ github.repository_owner }}/docforge-${{ matrix.name }}"
+          docker buildx imagetools create \
+            --tag "${image}:latest${{ matrix.suffix }}" \
+            "${image}:${{ env.VERSION }}${{ matrix.suffix }}"
+
+  # 4. Non-blocking vulnerability scan of what was just published (after push, so it scans the
   #    real pushed artifact, not a throwaway local build). A full IMAGE scan is only cheap for the
   #    two small, single-variant images (app/mcp — no torch, always built, no GPU sibling); the
   #    other three (worker/bge-server/paddle-server) ship huge CUDA -gpu variants (and their -cpu
