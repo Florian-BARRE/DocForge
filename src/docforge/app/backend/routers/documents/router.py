@@ -20,6 +20,7 @@ from shared_libs.pipelines.ingest import (
     FormatProbeHelpers,
 )
 from shared_libs.public_models import FieldOrigin
+from shared_libs.services.db.facades import ReingestOutcome
 from shared_libs.services.db.postgresql.tables import (
     Blob,
     BlobKind,
@@ -35,6 +36,7 @@ from shared_libs.services.db.s3 import S3Object
 from ...context import CONTEXT
 from ...libs.auth import AuthPrincipal, AuthzGuard, Capability, require
 from ...utils.error_handling import auto_handle_errors
+from ...utils.ingest_enqueuer import IngestEnqueuer
 from ...utils.pipeline_validation import PipelineBlobValidator
 from ...utils.upload_reader import UploadReader
 from .helpers import DocumentAdmissionHelpers
@@ -196,8 +198,20 @@ async def upload_document(
     created, job = await CONTEXT.database.ingestion.admit(document, Job(), rows)
 
     # 9. Hand over to the worker — the queue message carries IDS ONLY. The worker reads the
-    #    collection's per-collection budget itself and applies it as the engine's run timeout.
-    await CONTEXT.queue.enqueue_ingest(str(created.id), str(job.id))
+    #    collection's per-collection budget itself and applies it as the engine's run timeout. A
+    #    queue failure marks the just-committed job FAILED (never an orphan PENDING the reaper cannot
+    #    see) and surfaces as a 503 so the caller knows the run was not queued — re-ingest to retry.
+    enqueued = await IngestEnqueuer.enqueue(
+        CONTEXT.queue, CONTEXT.database.jobs, str(created.id), str(job.id)
+    )
+    if not enqueued:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                f"Document {created.id} was admitted but its ingestion could not be queued; the "
+                f"job is marked failed. Re-ingest the document once the queue is reachable."
+            ),
+        )
     CONTEXT.logger.info(f"Admitted '{filename}' as {created.id} (job {job.id})")
     return UploadAccepted(document_id=str(created.id), job_id=str(job.id))
 
@@ -275,15 +289,36 @@ async def reingest_document(
         raise HTTPException(status_code=404, detail=f"Document {document_id} not found.")
     AuthzGuard.assert_collection_scope(principal, str(document.collection_id))
 
-    # 2. Create a fresh job on the existing document (reset to PENDING). None = unknown document.
+    # 2. Admit a fresh run. NOT_FOUND = unknown document (404); ALREADY_ACTIVE = a run is already
+    #    queued/executing (409) — minting a second concurrent job would interleave the two runs'
+    #    Qdrant delete-by-document + upsert and strand orphan points, so refuse rather than duplicate.
     result = await CONTEXT.database.ingestion.reingest(document_id)
-    if result is None:
+    if result.outcome is ReingestOutcome.NOT_FOUND:
         raise HTTPException(status_code=404, detail=f"Document {document_id} not found.")
+    if result.outcome is ReingestOutcome.ALREADY_ACTIVE:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Document {document_id} already has an active ingestion job "
+                f"({result.active_job_id}); wait for it to finish or cancel it before re-ingesting."
+            ),
+        )
 
     # 3. Hand over to the worker — it refetches the original by source_hash and re-runs the pipeline,
-    #    reading the collection's per-collection job budget itself for the engine's run timeout.
-    document, job = result
-    await CONTEXT.queue.enqueue_ingest(str(document.id), str(job.id), force=force)
+    #    reading the collection's per-collection job budget itself for the engine's run timeout. A
+    #    queue failure marks the fresh job FAILED (never an orphan PENDING) and surfaces as a 503.
+    document, job = result.document, result.job
+    enqueued = await IngestEnqueuer.enqueue(
+        CONTEXT.queue, CONTEXT.database.jobs, str(document.id), str(job.id), force=force
+    )
+    if not enqueued:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                f"Re-ingestion of document {document.id} could not be queued; the job is marked "
+                f"failed. Retry once the queue is reachable."
+            ),
+        )
     CONTEXT.logger.info(f"Re-ingest enqueued for {document.id} (job {job.id}, force={force})")
     return UploadAccepted(document_id=str(document.id), job_id=str(job.id))
 

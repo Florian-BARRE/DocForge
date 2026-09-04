@@ -75,6 +75,37 @@ class JobApi:
         return result.scalars().first()
 
     @staticmethod
+    async def get_active_for_document(
+        session: AsyncSession, document_id: uuid.UUID
+    ) -> Job | None:
+        """
+        Return the document's live (PENDING or RUNNING) ingestion job — newest first — or None.
+
+        The guard the reingest admission consults so a document whose run is already queued or
+        executing never mints a SECOND concurrent job: two parallel runs of one document interleave
+        their Qdrant delete-by-document + upsert (each remints chunk ids) and strand the loser's
+        points as live orphans while Postgres keeps only the winner's chunks. Only the non-terminal
+        statuses count — DONE/FAILED/CANCELLED are over, so a terminal-only history reads as idle.
+
+        Args:
+            session (AsyncSession): The active DB session.
+            document_id (uuid.UUID): The document whose in-flight run is probed.
+
+        Returns:
+            Job | None: The live job (PENDING/RUNNING), or None when the document is idle.
+        """
+        result = await session.execute(
+            select(Job)
+            .where(
+                Job.document_id == document_id,
+                Job.status.in_([JobStatus.PENDING, JobStatus.RUNNING]),
+            )
+            .order_by(Job.created_at.desc(), Job.id.desc())
+            .limit(1)
+        )
+        return result.scalars().first()
+
+    @staticmethod
     async def mark_running(
         session: AsyncSession,
         job_id: uuid.UUID,
