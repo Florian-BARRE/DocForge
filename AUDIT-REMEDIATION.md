@@ -8,6 +8,8 @@
 
 ## Journal
 
+- **2026-09-04 — Vague surface MCP/SDK (3 MOYENNE + 1 FAIBLE)** : (359) **surface MCP incomplète** — ajout des 2 tools manquants `collection_health` (sweep preflight zéro-dépense) + `reingest_collection` (bulk reingest collection-scope), wrappant des méthodes SDK existantes ; `docs/mcp.md` (2 lignes + compte 55→57) et le gate de compte (`EXPECTED_TOOL_COUNT`/`_NAMES`) alignés. (361) **erreurs API opaques** — nouveau `ErrorTranslatingFastMCP` qui enveloppe TOUS les tools (wrapper partagé, pas tool-par-tool) : un 4xx expose désormais le `detail` du body au LLM au lieu d'un code nu. (357) **guard lockstep aveugle** — `test_resource_parity` couvre enfin audit/corpus/snippets (une méthode ajoutée à un seul client casse le guard) + 3 nouveaux fichiers de tests unitaires (audit.list, corpus.query/bulk_reingest, snippets.export/apply — verbe+path+type sur async ET sync). (365) **cohérences** — `corpus` ajouté aux docstrings des 2 clients ; défaut `get_design` aligné `full=False` (async+sync) sur le défaut serveur/MCP (le SDK était l'outlier à `True`) ; aucun artefact dist 0.1.1 tracké (rien à purger). Gates locaux complets verts : mcp 48 (format+lint+mypy) · sdk 557 (+15, parity OpenAPI incluse). Corrigé 2 nits mypy/UP035 laissés par l'agent.
+
 - **2026-09-04 — 🔴 Gate CI rouge depuis 0.14.1 → images/SDK JAMAIS publiées (fix release)** : le job `gate / docforge` lance `ruff format --check` (séparé de `ruff check` que je vérifiais en local) ; 20 fichiers docforge + 1 bge_server accumulés depuis les vagues HIGH « would reformat » → gate rouge → `release-images`/`release-sdk` (`needs: [gate]`) skippés pour **v0.14.1 ET v0.14.2** (rien de publié). `ruff format .` passé sur docforge + bge_server ; **gate complet rejoué en local sur les 4 projets** (docforge format+lint+1388 · bge_server format+lint+mypy+29 · sdk format+lint+mypy+542 dont parity OpenAPI · mcp format+lint+mypy+42) avant tag. Le piège était déjà en mémoire `release-gate` (item 3) — erreur d'exécution, pas de connaissance : désormais gate complet local obligatoire avant tout tag.
 
 - **2026-09-04 — Vague robustesse store/admission (1 HAUTE-partiel clôturée + 1 MOYENNE)** : (A) **fuite bundles import échoués** (clôt le `[~]` HAUTE) — le GC transfert ne balayait que les EXPORT ; `list_expired` rendu kind-agnostic + la route import stampe un `expires_at` (`IMPORT_STAGING_TTL_SECONDS`=24 h) à l'admission → un import échoué/abandonné est reclamé (objet S3 + row) comme un export expiré. **Pas de migration** (`expires_at` déjà sur `CollectionTransfer`). (B) **races check-then-insert → 500** — deux fenêtres UNIQUE : upload concurrent du même `(collection, source_hash, version)` → `IngestionFacade.admit` attrape l'IntegrityError ciblée (`uq_document_collection_id`), rollback + re-query l'incumbent, renvoie la **réponse duplicate idempotente** (value-object `AdmissionResult`) au lieu d'un 500 ; nom de collection dupliqué concurrent → `DuplicateCollectionNameError` (match `uq_collection_name`) → **409** (comme le pré-check), plus de 500 driver. Noms de contrainte vérifiés contre la migration ; tout autre IntegrityError re-levé. +tests (GC balaie un import expiré ; upload concurrent = duplicate pas 500 ; nom dupliqué = 409). `1388 passed`.
@@ -89,7 +91,7 @@
 | V5 | 2 | 0 |
 | V6 | 0 | 0 |
 | V7 | 21 | 0 |
-| V8 | 188 | 5 |
+| V8 | 188 | 9 |
 
 
 ## V1 — Sécurité & authz (avant tout déploiement multi-tenant)  (30)
@@ -354,15 +356,15 @@
 
 - [x] **🔴 HAUTE** · `test-gap` — OpenAPI parity guards silently pass on additive drift — no completeness check over schemas or routes  
   `src/docforge_sdk/tests/check_schema_drift.py:89`
-- [ ] **🟠 MOYENNE** · `test-gap` — Async/sync lockstep guard and unit tests skip the three newest SDK resources (audit, corpus, snippets)  
+- [x] **🟠 MOYENNE** · `test-gap` — Async/sync lockstep guard and unit tests skip the three newest SDK resources (audit, corpus, snippets)  
   `src/docforge_sdk/tests/unit/test_resource_parity.py:25`
-- [ ] **🟠 MOYENNE** · `divergence-doc` — MCP tool surface is not the promised 'full REST surface': collection health probe and collection-level bulk reingest have no tool  
+- [x] **🟠 MOYENNE** · `divergence-doc` — MCP tool surface is not the promised 'full REST surface': collection health probe and collection-level bulk reingest have no tool  
   `src/mcp/libs/tools/collections.py:24`
-- [ ] **🟠 MOYENNE** · `design` — MCP tools swallow the API error body — a 4xx surfaces to the LLM as an opaque status code  
+- [x] **🟠 MOYENNE** · `design` — MCP tools swallow the API error body — a 4xx surfaces to the LLM as an opaque status code  
   `src/mcp/libs/tools/search.py:50`
 - [x] **🟠 MOYENNE** · `divergence-doc` — docs/python-sdk.md is four resources behind the SDK (transfers, corpus, snippets, audit all undocumented)  
   `docs/python-sdk.md:108` _(aussi: docs-freshness)_
-- [ ] **⚪ FAIBLE** · `consistency` — Minor SDK/MCP inconsistencies (grouped): client docstrings omit corpus, divergent get_pipeline_design default, stale 0.1.1 dist artifacts  
+- [x] **⚪ FAIBLE** · `consistency` — Minor SDK/MCP inconsistencies (grouped): client docstrings omit corpus, divergent get_pipeline_design default, stale 0.1.1 dist artifacts  
   `src/docforge_sdk/docforge_sdk/client.py:31`
 - [ ] **⚪ FAIBLE** · `design` — ScopedSdkProvider eviction is FIFO-not-LRU and closes evicted clients via an unreferenced fire-and-forget task  
   `src/mcp/libs/scoped_sdk.py:127`

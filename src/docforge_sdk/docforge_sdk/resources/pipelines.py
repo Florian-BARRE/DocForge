@@ -126,13 +126,14 @@ class AsyncPipelines(AsyncResource, _PipelinesSpecs):
         """
         return await self._transport.request(self._list_surfaces_spec(), PipelineIndexResponse)
 
-    async def get_design(self, key: str, full: bool = True) -> PipelineDesignResponse:
+    async def get_design(self, key: str, full: bool = False) -> PipelineDesignResponse:
         """
         Open a pipeline's design payload (palette + blob + issues).
 
         Args:
             key (str): The pipeline key (e.g. ``"ingest"``).
-            full (bool): Include the advanced palette blocks.
+            full (bool): Include the advanced palette blocks. Defaults to False (the lean palette),
+                matching the server's ``?full`` default.
 
         Returns:
             PipelineDesignResponse: The design payload.
@@ -214,13 +215,14 @@ class SyncPipelines(SyncResource, _PipelinesSpecs):
         """
         return self._transport.request(self._list_surfaces_spec(), PipelineIndexResponse)
 
-    def get_design(self, key: str, full: bool = True) -> PipelineDesignResponse:
+    def get_design(self, key: str, full: bool = False) -> PipelineDesignResponse:
         """
         Open a pipeline's design payload (palette + blob + issues).
 
         Args:
             key (str): The pipeline key (e.g. ``"ingest"``).
-            full (bool): Include the advanced palette blocks.
+            full (bool): Include the advanced palette blocks. Defaults to False (the lean palette),
+                matching the server's ``?full`` default.
 
         Returns:
             PipelineDesignResponse: The design payload.

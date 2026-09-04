@@ -10,15 +10,18 @@ import inspect
 import pytest
 
 # ====== Local Project Imports ======
+from docforge_sdk.resources.audit import AsyncAudit, SyncAudit
 from docforge_sdk.resources.auth import AsyncAuth, SyncAuth
 from docforge_sdk.resources.blobs import AsyncBlobs, SyncBlobs
 from docforge_sdk.resources.collections import AsyncCollections, SyncCollections
+from docforge_sdk.resources.corpus import AsyncCorpus, SyncCorpus
 from docforge_sdk.resources.documents import AsyncDocuments, SyncDocuments
 from docforge_sdk.resources.explorer import AsyncExplorer, SyncExplorer
 from docforge_sdk.resources.health import AsyncHealth, SyncHealth
 from docforge_sdk.resources.jobs import AsyncJobs, SyncJobs
 from docforge_sdk.resources.pipelines import AsyncPipelines, SyncPipelines
 from docforge_sdk.resources.search import AsyncSearch, SyncSearch
+from docforge_sdk.resources.snippets import AsyncSnippets, SyncSnippets
 from docforge_sdk.resources.transfers import AsyncTransfers, SyncTransfers
 
 # Every (async, sync) resource pair that must stay in lockstep.
@@ -33,6 +36,9 @@ _PAIRS: list[tuple[type, type]] = [
     (AsyncBlobs, SyncBlobs),
     (AsyncPipelines, SyncPipelines),
     (AsyncTransfers, SyncTransfers),
+    (AsyncAudit, SyncAudit),
+    (AsyncCorpus, SyncCorpus),
+    (AsyncSnippets, SyncSnippets),
 ]
 
 
