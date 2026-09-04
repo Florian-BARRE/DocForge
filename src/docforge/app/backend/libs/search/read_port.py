@@ -16,6 +16,7 @@ import uuid
 from loggerplusplus import LoggerClass
 
 # ====== Internal Project Imports ======
+from config import RUNTIME_CONFIG
 from shared_libs.pipelines.search import CollectionReadPort
 from shared_libs.public_models.search import Candidate, EncodedQuery, Hit, SearchTarget
 from shared_libs.services.db import Database
@@ -88,6 +89,7 @@ class CollectionReadPortImpl(CollectionReadPort, LoggerClass):
             conditions=build_match_conditions(filters),
             limit=limit,
             fusion=fusion,
+            max_disabled_exclusions=RUNTIME_CONFIG.SEARCH_MAX_DISABLED_DOC_EXCLUSIONS,
         )
 
         # 3. Build lean candidates straight from the pairs — the pool is hydrated exactly once, by

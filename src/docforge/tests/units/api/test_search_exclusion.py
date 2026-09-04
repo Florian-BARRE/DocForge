@@ -76,3 +76,38 @@ async def test_hybrid_has_no_exclusion_when_no_disabled_docs(monkeypatch) -> Non
     kwargs = hybrid.await_args.kwargs
     assert list(kwargs["conditions"]) == []
     assert kwargs["exclusions"] == [Match(field="enabled", value=False)]
+
+
+async def test_hybrid_flips_to_positive_inclusion_past_the_exclusion_cap(monkeypatch) -> None:
+    """More disabled docs than the cap → the must_not FLIPS to a positive document_id inclusion.
+
+    On a mostly-archived collection the disabled ``must_not`` would bloat every query, so past the cap
+    the facade scopes to ``document_id in {enabled}`` (the smaller set) — a positive must, and NO
+    disabled must_not. Proves the bound actually changes the filter shape, not just its size.
+    """
+    # 1. Space exists; capture hybrid().
+    qdrant = MagicMock()
+    qdrant.raw.collection_exists = AsyncMock(return_value=True)
+    hybrid = AsyncMock(return_value=[])
+    monkeypatch.setattr(sf_module.QdrantSearchApi, "hybrid", hybrid)
+
+    # 2. Three disabled docs but a cap of two → over-cap; the enabled set is the fallback scope.
+    disabled = [uuid.uuid4() for _ in range(3)]
+    enabled_id = uuid.uuid4()
+    monkeypatch.setattr(
+        sf_module.DocumentApi, "list_disabled_ids", AsyncMock(return_value=disabled)
+    )
+    monkeypatch.setattr(
+        sf_module.DocumentApi, "list_enabled_ids", AsyncMock(return_value=[enabled_id])
+    )
+    facade = SearchFacade(_postgres_yielding(MagicMock()), qdrant)
+
+    await facade.hybrid_ids(
+        uuid.uuid4(), dense={VectorNames.CONTENT_DENSE: [0.1]}, max_disabled_exclusions=2
+    )
+
+    # 3. Positive enabled inclusion in the MUST list; the disabled must_not is GONE (only the
+    #    enabled==false chunk guard remains as an exclusion).
+    kwargs = hybrid.await_args.kwargs
+    assert MatchAny(field="document_id", values=[str(enabled_id)]) in kwargs["conditions"]
+    assert kwargs["exclusions"] == [Match(field="enabled", value=False)]
