@@ -16,6 +16,7 @@ from shared_libs.pipelines.base import Group
 from shared_libs.pipelines.nodes.embed.blob import EmbedBlobResolver
 
 # ====== Local Project Imports ======
+from .egress_policy import ProviderEgressPolicy
 from .result import ProviderProbeResult
 from .status import ProbeStatus
 from .sweep import ReachabilitySweep
@@ -37,7 +38,12 @@ class SearchReachabilitySweep(LoggerClass):
         LoggerClass.__init__(self)
         self._sweep = ReachabilitySweep()
 
-    async def sweep(self, pipeline_blob: dict, search_graph: Group) -> list[ProviderProbeResult]:
+    async def sweep(
+        self,
+        pipeline_blob: dict,
+        search_graph: Group,
+        policy: ProviderEgressPolicy | None = None,
+    ) -> list[ProviderProbeResult]:
         """
         Probe the search graph's providers: the query embedder + provider-hosted search leaves.
 
@@ -47,6 +53,8 @@ class SearchReachabilitySweep(LoggerClass):
             search_graph (Group): The built + validated search graph — its provider-hosted leaves
                 (the reranker) are probed; local leaves (retrieve/hydrate/fuse/normalize/encode)
                 carry no endpoint and are skipped.
+            policy (ProviderEgressPolicy | None): The egress allowlist gate forwarded to the shared
+                probe — a query embedder / reranker whose host is not allowed comes back ``blocked``.
 
         Returns:
             list[ProviderProbeResult]: The query embedder outcome (when the collection has an embed
@@ -71,7 +79,7 @@ class SearchReachabilitySweep(LoggerClass):
         )
 
         # 3. Probe the composed provider set concurrently, all stamped side="search".
-        results = await self._sweep.probe_nodes(nodes, _SEARCH_SIDE)
+        results = await self._sweep.probe_nodes(nodes, _SEARCH_SIDE, policy)
 
         # 4. Surface an EXPLICIT "no reranker" entry when the graph has none, so a consumer asking
         #    "is the reranker up?" gets "n/a — none configured" instead of silent absence.

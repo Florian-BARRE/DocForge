@@ -58,6 +58,7 @@ def _fake_context(database: SimpleNamespace) -> SimpleNamespace:
             WORKER_PREFLIGHT_ENABLED=True,
             WORKER_JOB_TIMEOUT_MAX_SECONDS=7200.0,
             WORKER_CACHE_ENABLED=True,
+            PROVIDER_EGRESS_ALLOWLIST="",
         ),
         logger=MagicMock(),
     )

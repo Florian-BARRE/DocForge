@@ -26,6 +26,7 @@ from shared_libs.pipelines.ingest import (
     BlobNormalizer,
     IngestPipeline,
 )
+from shared_libs.pipelines.reachability import ProviderEgressPolicy
 from shared_libs.public_models import CollectionContract, MetadataFieldSpec, SourceDocument
 from shared_libs.services.db.postgresql.tables import JobStatus, MetadataField
 from shared_libs.services.db.s3 import S3ObjectApi
@@ -193,6 +194,9 @@ async def ingest_document(
             timeout_seconds=run_budget,
             progress_callback=guarded_progress,
             preflight_enabled=CONTEXT.RUNTIME_CONFIG.WORKER_PREFLIGHT_ENABLED,
+            egress_policy=ProviderEgressPolicy.from_spec(
+                CONTEXT.RUNTIME_CONFIG.PROVIDER_EGRESS_ALLOWLIST
+            ),
             cache_hook=cache_hook,
         )
         if cache_hook is not None and cache_hook.report:
