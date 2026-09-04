@@ -58,6 +58,8 @@
 
 - **2026-09-04 — V7 tranche 1 (passe docs, agent dédié)** : 12 divergences doc↔code fermées, relues+vérifiées par moi (ColBERT purgé partout : 0 occurrence ; `metadata-architecture.md` archivé + banner, retiré du README ; rest-api.md +8 endpoints + erreurs typées 424/503/504 + range filters + score_kind ; python-sdk.md 9→13 ressources + jobs.list/JobPage + CREATE ; mcp.md list_audit + compte 55 vérifié ; configuration.md familles idempotency/audit + BGE_M3_MAX_LENGTH 2048 + FASTAPI_APP_VERSION ; CONTRIBUTING 5e projet paddle). Aucun code touché, diffs chirurgicaux (138+/36-).
 
+- **2026-09-04 — V8 tranche 1 (proxy TLS cassé)** : `compose/overlays/proxy.yml` bindait `../../services/caddy/Caddyfile` — mais en add-on `-f` les chemins résolvent depuis le project dir (compose/), donc `../../` pointait HORS du repo → Docker montait un dossier vide, Caddy démarrait sans config (TLS mort dans toute invocation documentée). Corrigé en `../services/caddy/Caddyfile` (comme telemetry.yml) + en-tête. Validé : `docker compose config` résout `source: /…/docforge/services/caddy/Caddyfile` (présent).
+
 ## Avancement
 
 | Vague | Total | Fait |
@@ -286,7 +288,7 @@
 
 ### Infra & compose
 
-- [ ] **🔴 HAUTE** · `bug` — proxy.yml Caddyfile bind mount resolves outside the repo — TLS add-on broken in every documented invocation  
+- [x] **🔴 HAUTE** · `bug` — proxy.yml Caddyfile bind mount resolves outside the repo — TLS add-on broken in every documented invocation  
   `compose/overlays/proxy.yml:48` _(aussi: telemetry-configs)_
 - [ ] **🟠 MOYENNE** · `design` — Dev builds retag the GHCR prod image names — a later prod `up` on the same host silently runs the dev-built image  
   `compose/overlays/dev.yml:30`
