@@ -14,11 +14,13 @@
 
 - **2026-09-04 — V1 tranche 3 (fuite creds au boot)** : `ConfigDumpHelpers.masked` (nouveau, `shared_libs.observability`) rédige le userinfo `://user:pass@` de toute URL/DSN au dump de démarrage — `POSTGRES_DSN`/`REDIS_URL` ne fuitent plus en clair (stdout + Loki) ; le masquage par nom de configplusplus est préservé. Câblé sur les 2 lifespans (app+worker). +5 tests. `verts`.
 
+- **2026-09-04 — V1 tranche 4 (XSS blob, HAUTE+MOYENNE)** : `openBlobInNewTab` n'ouvre inline que les types inertes (PDF/images) — HTML/SVG/texte → download, plus de rendu `blob:` same-origin ; `GET /blobs/{hash}` ajoute `nosniff` (tout blob) + `attachment`+`CSP sandbox` (types non inertes). +8 tests headers. **Validé E2E par agent dédié sur la stack live** (HTML→attachment+sandbox+nosniff ; PDF→inline+nosniff). tsc/lint verts.
+
 ## Avancement
 
 | Vague | Total | Fait |
 |---|---|---|
-| V1 | 30 | 4 |
+| V1 | 30 | 6 |
 | V2 | 4 | 0 |
 | V3 | 1 | 0 |
 | V4 | 1 | 0 |
@@ -36,12 +38,12 @@
   `src/docforge/app/backend/routers/documents/router.py:205` _(aussi: security)_
 - [x] **🔴 HAUTE** · `security` — GET /collections returns every tenant's full contract to any READ key (no scope filter)  
   `src/docforge/app/backend/routers/collections/router.py:52` _(aussi: security)_
-- [ ] **🟠 MOYENNE** · `security` — GET /blobs/{hash} serves uploaded HTML inline on the app/UI origin — stored XSS vector  
+- [x] **🟠 MOYENNE** · `security` — GET /blobs/{hash} serves uploaded HTML inline on the app/UI origin — stored XSS vector  
   `src/docforge/app/backend/routers/blobs/router.py:45`
 
 ### Frontend
 
-- [ ] **🔴 HAUTE** · `security` — "View original" opens untrusted uploaded files same-origin via blob: URL — stored XSS can steal the API token  
+- [x] **🔴 HAUTE** · `security` — "View original" opens untrusted uploaded files same-origin via blob: URL — stored XSS can steal the API token  
   `src/docforge/app/frontend/src/api/blobs.ts:23`
 
 ### Hygiène logs
