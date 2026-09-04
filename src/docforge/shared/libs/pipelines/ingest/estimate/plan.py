@@ -10,6 +10,7 @@ from dataclasses import dataclass
 
 # ====== Local Project Imports ======
 from ..stages.state import PipelineState
+from .rates import LOCAL_FREE_KINDS
 
 
 @dataclass(frozen=True, slots=True)
@@ -91,7 +92,10 @@ class CostPlanExtractor:
             if head is None:
                 head = spec.steps[0]
             for step in spec.steps:
-                if step.kind not in ("rapidocr", "bge_server"):
+                # Skip LOCAL (free) providers to find the first genuinely paid step. Use the canonical
+                # LOCAL_FREE_KINDS (bge_server, rapidocr, paddle) — a hardcoded subset that omitted
+                # paddle priced a [paddle -> mistral] OCR escalation at $0.00, hiding the Mistral cost.
+                if step.kind not in LOCAL_FREE_KINDS:
                     return ProviderRef(family, step.kind, cls.__head_model(step.config))
         if head is None:
             return None
