@@ -36,6 +36,11 @@ class _StubOcrService:
 
 def _client() -> TestClient:
     """A TestClient over a bare app with only the OCR router (no lifespan → no real build)."""
+    from config_loader import PaddleServerConfig  # noqa: PLC0415
+
+    # The route now reads CONTEXT.CONFIG.PADDLE_MAX_BODY_BYTES for its body-size cap; the lifespan
+    # that normally injects it never runs here, so wire the real config in.
+    CONTEXT.CONFIG = PaddleServerConfig  # type: ignore[assignment]
     app = FastAPI()
     app.include_router(ocr_router)
     return TestClient(app)
