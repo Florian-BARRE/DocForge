@@ -16,6 +16,7 @@ from config import RUNTIME_CONFIG
 from shared_libs.pipelines.blob_secrets import restore_blob_secrets
 from shared_libs.pipelines.ingest import BlobNormalizationError, BlobNormalizer
 from shared_libs.pipelines.ingest.estimate import CostEstimate
+from shared_libs.services.db.facades import DuplicateCollectionNameError
 from shared_libs.services.db.postgresql.tables import Collection
 
 # ====== Local Project Imports ======
@@ -269,7 +270,10 @@ async def create_collection(
     if await CONTEXT.database.collections.get_by_name(request.name) is not None:
         raise HTTPException(status_code=409, detail=f"Collection '{request.name}' already exists.")
 
-    # 3. Create contract + schema in one transaction (slug collisions → explicit 422).
+    # 3. Create contract + schema in one transaction (slug collisions → explicit 422). A concurrent
+    #    create can slip between the step-2 name pre-check and this insert; the façade turns that
+    #    UNIQUE-constraint race into DuplicateCollectionNameError → the SAME 409 the pre-check returns
+    #    (never a raw 500 from the driver error).
     rows = CollectionHelpers.to_field_rows(request.fields)
     try:
         created = await CONTEXT.database.collections.create(
@@ -283,6 +287,8 @@ async def create_collection(
             ),
             rows,
         )
+    except DuplicateCollectionNameError:
+        raise HTTPException(status_code=409, detail=f"Collection '{request.name}' already exists.")
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
 

@@ -8,6 +8,10 @@
 
 ## Journal
 
+- **2026-09-04 — 🔴 Gate CI rouge depuis 0.14.1 → images/SDK JAMAIS publiées (fix release)** : le job `gate / docforge` lance `ruff format --check` (séparé de `ruff check` que je vérifiais en local) ; 20 fichiers docforge + 1 bge_server accumulés depuis les vagues HIGH « would reformat » → gate rouge → `release-images`/`release-sdk` (`needs: [gate]`) skippés pour **v0.14.1 ET v0.14.2** (rien de publié). `ruff format .` passé sur docforge + bge_server ; **gate complet rejoué en local sur les 4 projets** (docforge format+lint+1388 · bge_server format+lint+mypy+29 · sdk format+lint+mypy+542 dont parity OpenAPI · mcp format+lint+mypy+42) avant tag. Le piège était déjà en mémoire `release-gate` (item 3) — erreur d'exécution, pas de connaissance : désormais gate complet local obligatoire avant tout tag.
+
+- **2026-09-04 — Vague robustesse store/admission (1 HAUTE-partiel clôturée + 1 MOYENNE)** : (A) **fuite bundles import échoués** (clôt le `[~]` HAUTE) — le GC transfert ne balayait que les EXPORT ; `list_expired` rendu kind-agnostic + la route import stampe un `expires_at` (`IMPORT_STAGING_TTL_SECONDS`=24 h) à l'admission → un import échoué/abandonné est reclamé (objet S3 + row) comme un export expiré. **Pas de migration** (`expires_at` déjà sur `CollectionTransfer`). (B) **races check-then-insert → 500** — deux fenêtres UNIQUE : upload concurrent du même `(collection, source_hash, version)` → `IngestionFacade.admit` attrape l'IntegrityError ciblée (`uq_document_collection_id`), rollback + re-query l'incumbent, renvoie la **réponse duplicate idempotente** (value-object `AdmissionResult`) au lieu d'un 500 ; nom de collection dupliqué concurrent → `DuplicateCollectionNameError` (match `uq_collection_name`) → **409** (comme le pré-check), plus de 500 driver. Noms de contrainte vérifiés contre la migration ; tout autre IntegrityError re-levé. +tests (GC balaie un import expiré ; upload concurrent = duplicate pas 500 ; nom dupliqué = 409). `1388 passed`.
+
 - **2026-09-04 — Vague fiabilité cycle-de-vie data/blob (4 MOYENNE)** : (1) **garde reingest concurrent** — `IngestionFacade.reingest` verrouille la ligne document `FOR UPDATE` puis refuse (`ReingestOutcome.ALREADY_ACTIVE`) si un job PENDING/RUNNING existe déjà → route single = **409**, path bulk = skip ; deux runs parallèles n'interleavent plus leurs delete/upsert Qdrant (plus d'orphelins). (2) **purge blobs supersédés au reingest** — `save()` snapshote les hashes référencés AVANT le purge, flush, puis supprime ceux que plus rien ne référence (les renders/crops/PDF de l'ancien run ne fuitent plus en S3 ; source préservée). (3) **enqueue-or-mark-failed partagé** — nouveau `IngestEnqueuer` utilisé aux **3** sites (upload, reingest single, bulk) : un blip Redis marque le job FAILED (jamais un PENDING orphelin invisible du reaper) + 503 au caller. (4) **TOCTOU purge orphelins** — `find_unreferenced`+`delete_rows` remplacés par un unique `delete_unreferenced` (`DELETE … WHERE NOT EXISTS(ref) RETURNING`) : la ré-référence par un ingest concurrent est réévaluée dans le snapshot du DELETE, plus de suppression S3 sous un doc fraîchement ingéré. Value-object `ReingestResult`. +tests (409, purge/keep partagé, FAILED sur les 3 sites, delete race-safe). `1382 passed`, ruff clean. `config_version unique` (FAIBLE) reporté → vague migration.
 
 - **2026-09-04 — ultrareview cloud (3 findings traités)** : (1) **[réel]** `QueryEmbedderProbe.classify` (chemin 424 du routeur search) contournait l'egress allowlist — trou parallèle dans mon fix SSRF ; la policy y est désormais construite (`from RUNTIME_CONFIG`) et passée à `probe_nodes` (host non listé → `blocked`, jamais sondé). +1 test. (2) **[réel]** `set_document_enabled` renvoyait un 200 faux-positif sur race de delete (j'avais jeté le retour `existed` en ajoutant le scope check) — re-check + 404 restauré. (3) **[nit]** allowlist MIME dupliquée front/back → commentaires croisés « keep in sync ». Tests verts.
@@ -79,13 +83,13 @@
 | Vague | Total | Fait |
 |---|---|---|
 | V1 | 30 | 7 (+1 partiel) |
-| V2 | 4 | 0 |
+| V2 | 4 | 4 |
 | V3 | 1 | 0 |
 | V4 | 1 | 0 |
 | V5 | 2 | 0 |
 | V6 | 0 | 0 |
 | V7 | 21 | 0 |
-| V8 | 188 | 4 |
+| V8 | 188 | 5 |
 
 
 ## V1 — Sécurité & authz (avant tout déploiement multi-tenant)  (30)
@@ -191,7 +195,7 @@
 
 ### Données Postgres·Qdrant·S3
 
-- [~] **🔴 HAUTE** · `bug` — Import staging bundles leak in S3 forever — GC sweeps exports only  
+- [x] **🔴 HAUTE** · `bug` — Import staging bundles leak in S3 forever — GC sweeps exports only  
   `src/docforge/shared/libs/services/db/postgresql/apis/transfer_api.py:47`
 - [x] **🔴 HAUTE** · `bug` — QdrantIndexApi.update_vectors sends all points in one request — breaks meta-vector sync for large documents  
   `src/docforge/shared/libs/services/db/qdrant/apis/index_api.py:93`
@@ -287,7 +291,7 @@
 
 - [x] **🔴 HAUTE** · `bug` — SSE job stream never closes for a CANCELLED job — polls the DB forever  
   `src/docforge/app/backend/routers/jobs/stream.py:19`
-- [ ] **🟠 MOYENNE** · `bug` — Check-then-insert races surface as 500: duplicate concurrent upload and duplicate collection name hit unique constraints uncaught  
+- [x] **🟠 MOYENNE** · `bug` — Check-then-insert races surface as 500: duplicate concurrent upload and duplicate collection name hit unique constraints uncaught  
   `src/docforge/app/backend/routers/documents/router.py:125`
 - [ ] **🟠 MOYENNE** · `perf` — Unbounded whole-collection reads: estimate default scope, explorer document list, and bulk delete have no cap  
   `src/docforge/app/backend/libs/estimate/service.py:130` _(aussi: money-math)_

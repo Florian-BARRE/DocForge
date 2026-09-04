@@ -161,7 +161,9 @@ async def test_import_is_gated_on_create_capability_not_write(fastapi_app) -> No
     from backend.libs.auth import Capability, require  # noqa: PLC0415
 
     def _req(principal):
-        return SimpleNamespace(headers={}, path_params={}, state=SimpleNamespace(principal=principal))
+        return SimpleNamespace(
+            headers={}, path_params={}, state=SimpleNamespace(principal=principal)
+        )
 
     gate = require(Capability.CREATE)
 

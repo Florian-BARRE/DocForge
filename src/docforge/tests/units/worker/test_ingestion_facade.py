@@ -6,12 +6,28 @@ proves its ACTUAL ordering + derivation contracts. Postgres/Qdrant/S3 fully mock
 
 import uuid
 from contextlib import asynccontextmanager
+from types import SimpleNamespace
 from unittest.mock import ANY, AsyncMock, MagicMock
 
+import pytest
+from sqlalchemy.exc import IntegrityError
+
 from shared_libs.public_models import FieldType
-from shared_libs.services.db.facades import IngestionFacade, IngestionPayload, ReingestOutcome
+from shared_libs.services.db.facades import (
+    AdmissionResult,
+    IngestionFacade,
+    IngestionPayload,
+    ReingestOutcome,
+)
 from shared_libs.services.db.facades import ingestion_facade as facade_module
 from shared_libs.services.db.qdrant import PayloadType, QdrantPoint
+
+
+def _integrity_error(constraint_name: str) -> IntegrityError:
+    """An IntegrityError whose nested asyncpg cause carries ``constraint_name`` (the real shape)."""
+    cause = SimpleNamespace(constraint_name=constraint_name)
+    orig = SimpleNamespace(__cause__=cause)
+    return IntegrityError("INSERT ...", {}, orig)
 
 
 def _postgres_yielding(session: MagicMock) -> MagicMock:
@@ -362,9 +378,7 @@ async def test_reingest_refuses_a_document_that_already_has_an_active_job(monkey
 async def test_reingest_unknown_document_is_not_found_and_skips_the_active_probe(
     monkeypatch,
 ) -> None:
-    monkeypatch.setattr(
-        facade_module.DocumentApi, "get_for_update", AsyncMock(return_value=None)
-    )
+    monkeypatch.setattr(facade_module.DocumentApi, "get_for_update", AsyncMock(return_value=None))
     get_active = AsyncMock()
     monkeypatch.setattr(facade_module.JobApi, "get_active_for_document", get_active)
 
@@ -373,3 +387,87 @@ async def test_reingest_unknown_document_is_not_found_and_skips_the_active_probe
 
     assert result.outcome is ReingestOutcome.NOT_FOUND
     get_active.assert_not_awaited()  # an unknown id short-circuits before the active-job probe
+
+
+# --------------------------------------------------------------------------- #
+# admit — concurrent duplicate-upload race (check-then-insert → idempotent, not 500)
+# --------------------------------------------------------------------------- #
+
+
+async def test_admit_returns_created_when_the_insert_wins(monkeypatch) -> None:
+    """The uncontended path: the document + job are inserted and returned as a fresh admission."""
+    coll_id = uuid.uuid4()
+    document = SimpleNamespace(
+        id=uuid.uuid4(), collection_id=coll_id, source_hash="sha", pipeline_version="v1"
+    )
+    created = MagicMock(id=uuid.uuid4(), collection_id=coll_id)
+    job = MagicMock(id=uuid.uuid4())
+    monkeypatch.setattr(facade_module.DocumentApi, "create", AsyncMock(return_value=created))
+    monkeypatch.setattr(facade_module.JobApi, "create", AsyncMock(return_value=job))
+    find = AsyncMock()
+    monkeypatch.setattr(facade_module.DocumentApi, "find", find)
+
+    facade = IngestionFacade(_postgres_yielding(MagicMock()), MagicMock(), MagicMock())
+    result = await facade.admit(document, MagicMock())
+
+    assert isinstance(result, AdmissionResult)
+    assert result.created is True
+    assert result.document is created and result.job is job
+    find.assert_not_awaited()  # no incumbent lookup on the happy path
+
+
+async def test_admit_resolves_duplicate_race_to_the_incumbent_document(monkeypatch) -> None:
+    """A concurrent upload of the same (collection, source_hash, version) won the insert; this loser
+    hits the document UNIQUE constraint. It must resolve idempotently to the already-admitted
+    document (created=False, no job) — the router turns that into the SAME duplicate response the
+    dedup pre-check returns, never a 500."""
+    coll_id = uuid.uuid4()
+    document = SimpleNamespace(
+        id=uuid.uuid4(), collection_id=coll_id, source_hash="sha", pipeline_version="v1"
+    )
+    incumbent = MagicMock(id=uuid.uuid4())
+    session = MagicMock()
+    session.rollback = AsyncMock()
+    monkeypatch.setattr(
+        facade_module.DocumentApi,
+        "create",
+        AsyncMock(side_effect=_integrity_error("uq_document_collection_id")),
+    )
+    find = AsyncMock(return_value=incumbent)
+    monkeypatch.setattr(facade_module.DocumentApi, "find", find)
+    job_create = AsyncMock()
+    monkeypatch.setattr(facade_module.JobApi, "create", job_create)
+
+    facade = IngestionFacade(_postgres_yielding(session), MagicMock(), MagicMock())
+    result = await facade.admit(document, MagicMock())
+
+    # The lost race is a clean idempotent duplicate — the incumbent, no job, and the aborted tx reset.
+    assert result.created is False
+    assert result.document is incumbent and result.job is None
+    session.rollback.assert_awaited_once()
+    find.assert_awaited_once_with(ANY, coll_id, "sha", "v1")
+    job_create.assert_not_awaited()  # no job is minted for a duplicate
+
+
+async def test_admit_reraises_an_unrelated_integrity_error(monkeypatch) -> None:
+    """Only the document UNIQUE guard is swallowed — any OTHER integrity failure (e.g. a foreign-key
+    violation) is a real, unexpected error and must still surface, never be masked as a duplicate."""
+    coll_id = uuid.uuid4()
+    document = SimpleNamespace(
+        id=uuid.uuid4(), collection_id=coll_id, source_hash="sha", pipeline_version="v1"
+    )
+    session = MagicMock()
+    session.rollback = AsyncMock()
+    monkeypatch.setattr(
+        facade_module.DocumentApi,
+        "create",
+        AsyncMock(side_effect=_integrity_error("fk_job_document_id_document")),
+    )
+    find = AsyncMock()
+    monkeypatch.setattr(facade_module.DocumentApi, "find", find)
+
+    facade = IngestionFacade(_postgres_yielding(session), MagicMock(), MagicMock())
+    with pytest.raises(IntegrityError):
+        await facade.admit(document, MagicMock())
+
+    find.assert_not_awaited()  # an unrelated failure is not treated as a benign duplicate

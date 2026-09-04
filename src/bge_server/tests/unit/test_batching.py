@@ -486,7 +486,9 @@ async def test_touch_dense_serialises_against_real_batch() -> None:
         # 1. Kick off a real dense batch — it will block inside encode_dense holding embed_lock.
         batch_task = asyncio.create_task(engine.submit_embed_dense(["real"]))
         await asyncio.sleep(0.05)
-        assert call_order == ["batch_start"], "real batch must be mid-flight before touch_dense starts"
+        assert call_order == ["batch_start"], (
+            "real batch must be mid-flight before touch_dense starts"
+        )
 
         # 2. Fire a keep-warm-style touch while the batch still holds embed_lock.
         touch_task = asyncio.create_task(engine.touch_dense(max_length=128))

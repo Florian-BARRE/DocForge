@@ -1,6 +1,13 @@
 # ---------------------- Shared conventions & payloads ---------------------- #
 from .helpers import DatabaseHelpers
-from .payloads import ChunkToggle, IngestionPayload, IRBundle, ReingestOutcome, ReingestResult
+from .payloads import (
+    AdmissionResult,
+    ChunkToggle,
+    IngestionPayload,
+    IRBundle,
+    ReingestOutcome,
+    ReingestResult,
+)
 from .transfer_payloads import DocumentExportRows
 from .idempotency_payloads import IdempotencyBegin, IdempotencyRecord
 from .storage_footprint_payloads import (
@@ -12,7 +19,7 @@ from .storage_footprint_payloads import (
 )
 
 # ---------------------- Domain façades ---------------------- #
-from .collections_facade import CollectionsFacade
+from .collections_facade import CollectionsFacade, DuplicateCollectionNameError
 from .documents_facade import DocumentsFacade
 from .enablement_facade import EnablementFacade
 from .filter_sync_facade import FilterSyncFacade
@@ -31,6 +38,7 @@ from .idempotency_facade import IdempotencyFacade
 # ------------------- Public API ------------------- #
 __all__ = [
     "DatabaseHelpers",
+    "AdmissionResult",
     "ChunkToggle",
     "IngestionPayload",
     "IRBundle",
@@ -45,6 +53,7 @@ __all__ = [
     "PostgresFootprint",
     "QdrantFootprint",
     "CollectionsFacade",
+    "DuplicateCollectionNameError",
     "DocumentsFacade",
     "EnablementFacade",
     "FilterSyncFacade",

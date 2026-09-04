@@ -228,9 +228,7 @@ def test_bulk_reingest_skips_documents_with_an_active_job(client, monkeypatch) -
         "reingest",
         AsyncMock(
             side_effect=[
-                ReingestResult(
-                    outcome=ReingestOutcome.ALREADY_ACTIVE, active_job_id=uuid.uuid4()
-                ),
+                ReingestResult(outcome=ReingestOutcome.ALREADY_ACTIVE, active_job_id=uuid.uuid4()),
                 _admitted(docs[1], job),
             ]
         ),

@@ -67,9 +67,7 @@ class PipelineRunner(LoggerClass):
         self._engine = FlowEngine(trace_payloads=False)
         self._sweep = ReachabilitySweep()
 
-    async def __preflight(
-        self, group: Group, egress_policy: ProviderEgressPolicy | None
-    ) -> None:
+    async def __preflight(self, group: Group, egress_policy: ProviderEgressPolicy | None) -> None:
         """
         Sweep every provider leaf's reachability BEFORE the first spend — fail fast if any is down.
 

@@ -129,6 +129,7 @@ def _install_format_context(monkeypatch, fastapi_app, supported_formats: list[st
     """Patch CONTEXT with a healthy collection accepting ``supported_formats`` + spend spies."""
     from backend.context import CONTEXT  # noqa: PLC0415
     from shared_libs.pipelines.ingest import IngestPipeline  # noqa: PLC0415
+    from shared_libs.services.db.facades import AdmissionResult  # noqa: PLC0415
 
     collection = SimpleNamespace(
         pipeline=IngestPipeline.default_blob().model_dump(mode="json"),
@@ -144,7 +145,11 @@ def _install_format_context(monkeypatch, fastapi_app, supported_formats: list[st
         find_duplicate=AsyncMock(return_value=None),
         store_blobs=AsyncMock(),
         admit=AsyncMock(
-            return_value=(SimpleNamespace(id=uuid.uuid4()), SimpleNamespace(id=uuid.uuid4()))
+            return_value=AdmissionResult(
+                created=True,
+                document=SimpleNamespace(id=uuid.uuid4()),
+                job=SimpleNamespace(id=uuid.uuid4()),
+            )
         ),
     )
     queue = SimpleNamespace(enqueue_ingest=AsyncMock())
@@ -211,3 +216,55 @@ def test_upload_with_supported_format_still_accepts_202(client, fastapi_app, mon
     assert response.status_code == 202, response.text
     spies.ingestion.store_blobs.assert_called_once()
     spies.queue.enqueue_ingest.assert_called_once()
+
+
+def test_upload_concurrent_duplicate_admission_is_idempotent_not_500(
+    client, fastapi_app, monkeypatch
+) -> None:
+    """Two uploads of the same content+config race past the dedup pre-check (find_duplicate misses
+    for both); the loser hits the document UNIQUE constraint at admit. The façade resolves it to the
+    incumbent document (AdmissionResult.created=False), so the endpoint returns the SAME idempotent
+    duplicate response — 202 + duplicate=True + empty job — never a 500, and no second job is queued."""
+    from backend.context import CONTEXT  # noqa: PLC0415
+    from shared_libs.pipelines.ingest import IngestPipeline  # noqa: PLC0415
+    from shared_libs.services.db.facades import AdmissionResult  # noqa: PLC0415
+
+    existing_id = uuid.uuid4()
+    collection = SimpleNamespace(
+        pipeline=IngestPipeline.default_blob().model_dump(mode="json"),
+        max_file_size_bytes=5_000_000,
+        job_timeout_seconds=None,
+        supported_formats=["pdf"],
+    )
+    collections = SimpleNamespace(
+        get=AsyncMock(return_value=collection),
+        get_schema=AsyncMock(return_value=[]),
+    )
+    ingestion = SimpleNamespace(
+        find_duplicate=AsyncMock(return_value=None),  # pre-check misses → the handler reaches admit
+        store_blobs=AsyncMock(),
+        admit=AsyncMock(
+            return_value=AdmissionResult(
+                created=False, document=SimpleNamespace(id=existing_id), job=None
+            )
+        ),
+    )
+    queue = SimpleNamespace(enqueue_ingest=AsyncMock())
+    monkeypatch.setattr(
+        CONTEXT, "database", SimpleNamespace(collections=collections, ingestion=ingestion)
+    )
+    monkeypatch.setattr(CONTEXT, "queue", queue)
+
+    response = client.post(
+        "/api/v1/documents",
+        data={"collection_id": str(uuid.uuid4()), "metadata": "{}"},
+        files={"file": ("doc.pdf", b"%PDF-1.4 hello world", "application/pdf")},
+    )
+
+    # The losing admission is the SAME idempotent duplicate the pre-check returns — never a 500.
+    assert response.status_code == 202, response.text
+    body = response.json()
+    assert body["duplicate"] is True
+    assert body["document_id"] == str(existing_id)
+    assert body["job_id"] == ""
+    queue.enqueue_ingest.assert_not_called()  # the loser never queues a second run

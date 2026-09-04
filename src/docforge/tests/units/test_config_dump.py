@@ -18,16 +18,16 @@ class _FakeConfig:
 
 def test_masks_postgres_dsn_password() -> None:
     out = ConfigDumpHelpers.masked(
-        _FakeConfig("POSTGRES_DSN=postgresql+asyncpg://docforge:s3cr3t@docforge_postgres:5432/docforge")
+        _FakeConfig(
+            "POSTGRES_DSN=postgresql+asyncpg://docforge:s3cr3t@docforge_postgres:5432/docforge"
+        )
     )
     assert "s3cr3t" not in out
     assert "postgresql+asyncpg://***@docforge_postgres:5432/docforge" in out
 
 
 def test_masks_redis_url_password_including_userless_form() -> None:
-    out = ConfigDumpHelpers.masked(
-        _FakeConfig("REDIS_URL=redis://:redispw@docforge_redis:6379/0")
-    )
+    out = ConfigDumpHelpers.masked(_FakeConfig("REDIS_URL=redis://:redispw@docforge_redis:6379/0"))
     assert "redispw" not in out
     assert "redis://***@docforge_redis:6379/0" in out
 

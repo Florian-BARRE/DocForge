@@ -25,9 +25,7 @@ from .models import HealthVerdict, SearchOperational
 # The probe outcomes that mean a provider is unusable right now (a real reachability/credential
 # failure, OR an endpoint refused by the egress allowlist). ``ok`` is healthy; ``skipped``/
 # ``not_configured`` mean there was nothing to reach.
-_DOWN_STATUSES = frozenset(
-    {ProbeStatus.UNREACHABLE, ProbeStatus.AUTH_FAILED, ProbeStatus.BLOCKED}
-)
+_DOWN_STATUSES = frozenset({ProbeStatus.UNREACHABLE, ProbeStatus.AUTH_FAILED, ProbeStatus.BLOCKED})
 
 # The reranker is the one non-critical provider: search still returns (un-re-ranked) results without
 # it, so a down reranker DEGRADES rather than takes the collection DOWN.
