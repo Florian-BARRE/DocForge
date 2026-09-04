@@ -46,3 +46,19 @@ def test_required_fields_match_api(name: str) -> None:
 def test_skipped_models_have_a_reason(name: str) -> None:
     # Documents WHY a model is exempt from the API-parity diff so the exemption is explicit, not silent.
     assert _SKIPPED[name]
+
+
+def test_every_snapshot_schema_is_tracked() -> None:
+    """
+    Every OpenAPI component schema must be either mirrored (MODELS) or exempted (SKIPPED).
+
+    Closes the "additive drift" gap: the two parametrized tests above only ever walk MODELS, so a
+    brand-new backend schema (from a new endpoint or a new nested type) would never be visited and the
+    gate would stay green with zero SDK coverage. This is the completeness check that catches it.
+    """
+    tracked = set(_MODELS) | set(_SKIPPED)
+    untracked = set(_schemas()) - tracked
+    assert not untracked, (
+        "untracked OpenAPI schemas — add an SDK model to MODELS, or an exemption with a reason to "
+        f"SKIPPED, in tests/parity_map.py: {sorted(untracked)}"
+    )
