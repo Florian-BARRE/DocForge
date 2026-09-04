@@ -44,6 +44,8 @@
 
 - **2026-09-04 — V3 tranche 3 (deps sécurité docforge)** : `uv lock --upgrade-package` ciblé — pypdf 6.14.2→**6.17.0** (parse les uploads non fiables à l'intake, CVE-2026-82398), aiohttp 3.14.1→3.14.3, h2 4.3.0→4.4.1, setuptools 82.0.1→84.0.0. `uv sync` + suite complète **1348 passed**. (Note : les échecs `test_correlation_runner` vus en isolation passent en suite complète → problème d'isolation/ordre, pas un bug — V8.)
 
+- **2026-09-04 — V3 tranche 4 (deps sécurité mcp)** : lock mcp — cryptography 49.0.0→**50.0.1** (PYSEC-2026-3552), setuptools→84.0.0, et mcp 1.28.0→**1.29.1** en contraignant `mcp>=1.28.1,<2` dans pyproject (un `--upgrade-package mcp` sautait sinon en 2.1.1, cassant l'API FastMCP — pin `<2` défensif). Gate mcp : 42 tests, ruff+mypy clean.
+
 ## Avancement
 
 | Vague | Total | Fait |
@@ -108,11 +110,11 @@
 
 - [ ] **🟠 MOYENNE** · `security` — GPU images ship torch 2.6.0 (cu124 index is EOL) while CPU ships 2.12.1/2.13.0; CPU worker torch also below the PYSEC-2025-194 fix  
   `src/docforge/uv.lock:4661`
-- [ ] **🟠 MOYENNE** · `security` — Stale transitive pins with published security fixes across the docforge and mcp locks  
+- [x] **🟠 MOYENNE** · `security` — Stale transitive pins with published security fixes across the docforge and mcp locks  
   `src/docforge/uv.lock:99`
 - [x] **🟠 MOYENNE** · `security` — pypdf 6.14.2 carries 6 known advisories and parses untrusted uploads at intake  
   `src/docforge/uv.lock:3528`
-- [ ] **⚪ FAIBLE** · `security` — mcp 1.28.0 in the MCP server lock has a known advisory fixed one patch away (1.28.1)  
+- [x] **⚪ FAIBLE** · `security` — mcp 1.28.0 in the MCP server lock has a known advisory fixed one patch away (1.28.1)  
   `src/mcp/uv.lock:514`
 - [ ] **⚪ FAIBLE** · `security` — transformers<5 pins freeze both ML services on a line whose security fixes are 5.x-only  
   `src/docforge/pyproject.toml:95`
