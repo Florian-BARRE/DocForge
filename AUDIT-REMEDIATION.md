@@ -8,6 +8,8 @@
 
 ## Journal
 
+- **2026-09-04 — Vague frontend Layout tab (6 MOYENNE)** : (A) **erreur chunks blanchissait tout l'onglet Layout** — `chunksError` propagé à LayoutTab → degrade non-bloquant (page/IR rendus + notice « provenance chunk indisponible »), conforme au design degrade-without-chunks. (B) **brand <11px** — `fontSize 9` remplacé par token ≥11px ; grep 0-hex/0-sub-11px propre sur tout `layout/`. (C) **ETA jamais décrémentée** — le filtre testait `TERMINAL` (enum job-level `done/failed/cancelled`) contre `event.status` (enum node-level `success/failed/skipped/running`), donc un stage `success` n'était JAMAIS compté fini → ETA figée. Nouveau set `EVENT_FINISHED={success,failed,skipped}`. (D) **Layout eager** — recompute par-render mémoïsé + fetch gardé (plus de refetch total à chaque switch d'onglet) + chargement d'images de page allégé. (E) **caches par-document jamais reset** — quand `documentId` change sans remount, les caches (pages/ir/chunks/provenance/lightbox) montraient les données du document PRÉCÉDENT ; corrigé par le pattern React « reset-state-during-render » (garde `documentId !== cached` en render, pas un `useEffect` qui racerait l'effet d'activation d'onglet sur closure stale). (F) **Search Lab** — `queryDocuments(limit:1)` + `res.total>0` au lieu de tirer tout le corpus non-paginé pour un booléen. Gate conteneur vert : lint 0-err, tsc 0, vitest 2, build ✓. Aucune régression.
+
 - **2026-09-04 — Vague fiabilité transfert/import (3 MOYENNE)** : (497) **export non snapshot-consistent** — l'export re-query les hashes de blobs en LIVE après la passe documents ; un delete/reingest concurrent produisait un bundle qui échoue à l'import ou perd des données silencieusement. Désormais le set de blobs est dérivé des MÊMES lignes documents écrites (snapshot self-consistent), et un blob référencé disparu **abort bruyamment** (`CollectionExportError` nommant le document) — jamais de bundle silencieusement lossy. Choix snapshot+abort plutôt que tx repeatable-read (l'export lit sur N sessions courtes, pas de tx unique ; tenir une longue tx pinnerait PG). (499) **hard-kill → transfert RUNNING éternel** — nouveau cron `reap_stuck_transfers` (sibling du reaper de jobs, `WORKER_REAP_ENABLED`) : marque FAILED tout transfert RUNNING dont `updated_at` a gelé au-delà de `WORKER_TRANSFER_REAP_STALE_SECONDS` (défaut 10800s, validé au boot `>= job_timeout ceiling`) → row terminal + bundle stagé GC-reclaimable. **Pas de migration** (réutilise `updated_at`). Résidu documenté : un IMPORT SIGKILL mid-restore peut laisser une collection à moitié importée (orphan supprimable ; le row n'a pas l'id collection avant `mark_done`, donc pas de rollback propre — 2-phase hors scope). (501) **import bufferisait tous les blobs en RAM** (jusqu'à 5 GiB) — désormais streamé par budget-octets (64 MiB, un blob tient toujours) : flush batch → S3+registry → release, mémoire bornée à ~un batch (comme l'export). Guards decompression-bomb intacts. +tests (abort export si blob disparu row/objet ; reap stale→FAILED, fresh intact, no-op si disabled ; import flush >1× et pic < total). `1397 passed`, ruff clean.
 
 - **2026-09-04 — 🔴 REVERT release restructure (0.14.5 a cassé la release) → 429/437 déférés** : le run `release.yml` de v0.14.5 a échoué sur DEUX bugs de mon restructure : (1) **SDK/PyPI** — `Invalid attestations ... release.yml@refs/tags/v0.14.5 does not match expected Trusted Publisher (release-sdk.yml)` : **PyPI Trusted Publishing ne supporte PAS les reusable workflows** (le commentaire de l'agent affirmait le contraire — faux) ; PyPI matche le workflow **top-level**, donc release-sdk.yml DOIT rester déclenchée directement sur le tag. (2) **promote-latest** — `repository name (Florian-BARRE/docforge-app) must be lowercase` (owner non minusculé dans `imagetools create`). Comme 429 (gate unique) exige de wrapper release-sdk.yml en reusable — incompatible PyPI — il est **non résoluble** sans reconfig PyPI côté compte user. Décision : **revert complet** des 5 workflows à l'état 0.14.4 connu-fonctionnel (release.yml supprimé ; release-images.yml + release-sdk.yml re-top-level, chacun gate). **429 + 437 re-ouverts/déférés** (437 était couplé au restructure). **435 conservé** (docs set_version/alignment, indépendant). Le gate + les 8 images de 0.14.5 étaient verts — seuls `:latest` (pas bougé, l'effet voulu de 437 par accident) et le SDK PyPI (pas publié) ont raté ; 0.14.6 rattrape. Voir mémoire `release-gate`.
@@ -97,7 +99,7 @@
 | V5 | 2 | 0 |
 | V6 | 0 | 0 |
 | V7 | 21 | 0 |
-| V8 | 188 | 13 |
+| V8 | 188 | 19 |
 
 
 ## V1 — Sécurité & authz (avant tout déploiement multi-tenant)  (30)
@@ -517,21 +519,21 @@
 
 ### Frontend
 
-- [ ] **🟠 MOYENNE** · `bug` — A chunks-fetch error blanks the entire Layout tab, contradicting its own degrade-without-chunks design  
+- [x] **🟠 MOYENNE** · `bug` — A chunks-fetch error blanks the entire Layout tab, contradicting its own degrade-without-chunks design  
   `src/docforge/app/frontend/src/features/explorer/DocumentPage.tsx:133` _(aussi: new-batch)_
-- [ ] **🟠 MOYENNE** · `divergence-doc` — Brand rule "Nothing below 11px" violated: hardcoded fontSize 9 in the new Layout components  
+- [x] **🟠 MOYENNE** · `divergence-doc` — Brand rule "Nothing below 11px" violated: hardcoded fontSize 9 in the new Layout components  
   `src/docforge/app/frontend/src/features/explorer/layout/ChunkProvenance.tsx:55` _(aussi: new-batch)_
-- [ ] **🟠 MOYENNE** · `bug` — Job-detail ETA never subtracts completed stages (job-status set tested against event statuses)  
+- [x] **🟠 MOYENNE** · `bug` — Job-detail ETA never subtracts completed stages (job-status set tested against event statuses)  
   `src/docforge/app/frontend/src/features/monitoring/state/useJobDetail.ts:191`
-- [ ] **🟠 MOYENNE** · `perf` — Layout tab loads and renders the whole document eagerly — N simultaneous page-image fetches, refetched on every tab switch, plus unmemoized per-render recomputation  
+- [x] **🟠 MOYENNE** · `perf` — Layout tab loads and renders the whole document eagerly — N simultaneous page-image fetches, refetched on every tab switch, plus unmemoized per-render recomputation  
   `src/docforge/app/frontend/src/features/explorer/layout/LayoutTab.tsx:91` _(aussi: new-batch)_
 - [ ] **🟠 MOYENNE** · `test-gap` — No tests anywhere in the batch: pure grouping/segmentation helpers, LayoutTab smoke, /provenance endpoint, startup reclaim and the CancelledError terminal path are all untested  
   `src/docforge/app/frontend/src/features/explorer/layout/chunkGrouping.ts:47` _(aussi: frontend, tests-audit)_
-- [ ] **🟠 MOYENNE** · `bug` — Per-document tab caches never reset when documentId changes without a remount — wrong document's data shown  
+- [x] **🟠 MOYENNE** · `bug` — Per-document tab caches never reset when documentId changes without a remount — wrong document's data shown  
   `src/docforge/app/frontend/src/features/explorer/state/useDocumentTabs.ts:59`
 - [ ] **🟠 MOYENNE** · `bug` — Provenance returns the latest job even when it failed, so it can describe a run that did NOT produce the displayed IR  
   `src/docforge/shared/libs/services/db/postgresql/apis/job_api.py:67` _(aussi: backend-api)_
-- [ ] **🟠 MOYENNE** · `perf` — Search Lab fetches the entire unpaginated document list just to learn "has documents"  
+- [x] **🟠 MOYENNE** · `perf` — Search Lab fetches the entire unpaginated document list just to learn "has documents"  
   `src/docforge/app/frontend/src/features/search/SearchLabPage.tsx:48`
 - [ ] **🟠 MOYENNE** · `design` — Search Lab filter builder cannot express the documented any-of and range filter forms  
   `src/docforge/app/frontend/src/features/search/SearchFilterBuilder.tsx:115`

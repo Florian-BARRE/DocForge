@@ -48,13 +48,15 @@ interface PageBoxOverlayProps {
   alt: string;
   /** Applied to the IMAGE — the caller constrains size here (e.g. maxWidth / maxHeight). */
   style?: React.CSSProperties;
+  /** Passed through to `BlobImage` — defer the fetch until scrolled near view. See its own doc. */
+  lazy?: boolean;
 }
 
 function clamp01(value: number): number {
   return Math.max(0, Math.min(1, value));
 }
 
-export function PageBoxOverlay({ renderBlobHash, width, height, boxes, alt, style }: PageBoxOverlayProps) {
+export function PageBoxOverlay({ renderBlobHash, width, height, boxes, alt, style, lazy }: PageBoxOverlayProps) {
   if (!renderBlobHash) {
     return (
       <div
@@ -84,6 +86,7 @@ export function PageBoxOverlay({ renderBlobHash, width, height, boxes, alt, styl
       <BlobImage
         hash={renderBlobHash}
         alt={alt}
+        lazy={lazy}
         style={{ display: "block", width: "auto", height: "auto", aspectRatio, objectFit: "fill", borderRadius: theme.radius.m, ...style }}
       />
       {boxes.map((box, index) => {
@@ -161,7 +164,7 @@ export function PageBoxOverlay({ renderBlobHash, width, height, boxes, alt, styl
                   transform: "translateY(-100%)",
                   ...(isGroup ? { right: -1 } : { left: -1 }),
                   fontFamily: theme.font.mono,
-                  fontSize: 9,
+                  fontSize: theme.font.size.xs,
                   lineHeight: 1.45,
                   padding: "0 4px",
                   color: theme.color.onAccent,
