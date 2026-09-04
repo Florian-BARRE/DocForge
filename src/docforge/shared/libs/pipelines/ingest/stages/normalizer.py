@@ -86,14 +86,48 @@ class BlobNormalizer:
         Raises:
             BlobNormalizationError: The blob cannot be read back into a PipelineState.
         """
+        healed, _dropped = cls.normalize_reporting(blob)
+        return healed
+
+    @classmethod
+    def normalize_reporting(cls, blob: Mapping[str, Any]) -> tuple[dict[str, Any], set[str]]:
+        """
+        Heal a blob AND report the input node ids the heal could not round-trip.
+
+        The heal reduces a blob to the stage-level surface the StateReader captures and re-emits it
+        from that truth. The reader captures ONLY the stage surface (providers, chains, stack, loops,
+        configs), so a node the input carried that the reader does not round-trip DISAPPEARS from the
+        healed blob. That is exactly a GRAPH-LEVEL customisation made through the headless ``/edit``
+        surface with a REGISTERED kind (``add_node`` / ``insert_fragment``): its kind passes
+        ``__assert_kinds_registered`` (which only guards kinds the registry no longer knows), yet the
+        stage reader never sees it. Returning the dropped ids lets a write boundary REFUSE the save
+        instead of silently discarding the customisation — while legitimate re-wiring (bindings and
+        transitions the assembler regenerates) and additive migrations (new structural nodes the heal
+        ADDS) never appear as a drop, so the normal heal path is untouched.
+
+        Args:
+            blob (Mapping): The stored/posted pipeline blob (possibly carrying a version stamp).
+
+        Returns:
+            tuple[dict, set[str]]: The current-engine blob (stamp stripped) and the set of input
+            node ids the heal dropped (empty on the fast path or when nothing was dropped).
+
+        Raises:
+            BlobNormalizationError: The blob cannot be read back into a PipelineState.
+        """
         # 1. Fast path — a blob stamped with the current version is already current-shaped: strip
-        #    the reserved key (the pure builder forbids extras) and hand it back untouched.
+        #    the reserved key (the pure builder forbids extras) and hand it back untouched. Nothing
+        #    is healed, so nothing can be dropped.
         clean = {key: value for key, value in blob.items() if key != cls.STAMP_KEY}
         if blob.get(cls.STAMP_KEY) == ENGINE_BLOB_VERSION:
-            return clean
+            return clean, set()
 
-        # 2. Heal — round-trip through the stage-level truth to the current engine's topology.
-        return cls.__heal(clean)
+        # 2. Heal — round-trip through the stage-level truth to the current engine's topology, then
+        #    diff the node-id sets: an input node absent from the healed blob is a customisation the
+        #    stage reader could not round-trip (only DROPS count — additive migration ADDS nodes).
+        healed = cls.__heal(clean)
+        dropped = cls.__node_ids(clean) - cls.__node_ids(healed)
+        return healed, dropped
 
     @classmethod
     def stamp(cls, blob: Mapping[str, Any]) -> dict[str, Any]:
@@ -135,6 +169,40 @@ class BlobNormalizer:
                 f"re-save it from the pipeline default to repair (cause: {exc})"
             ) from exc
         return healed.model_dump(mode="json")
+
+    @classmethod
+    def __node_ids(cls, blob: Mapping[str, Any]) -> set[str]:
+        """
+        Collect every CHILD node id in a blob, recursing nested groups and ForEach bodies.
+
+        The root container's own id is excluded (only the graph's contents are compared), so a
+        differing root id between the input and its healed form never registers as a drop. Walks the
+        raw dict rather than the parsed model so it is cheap and shape-tolerant (both a group's
+        ``nodes`` and a ForEach's ``body.nodes`` carry children).
+
+        Args:
+            blob (Mapping): A blob (or sub-blob) dict whose child node ids are collected.
+
+        Returns:
+            set[str]: Every child node id reachable from this blob, at any nesting depth.
+        """
+        ids: set[str] = set()
+
+        def walk(nodes: list[Any]) -> None:
+            for node in nodes:
+                if not isinstance(node, Mapping):
+                    continue
+                node_id = node.get("id")
+                if node_id is not None:
+                    ids.add(node_id)
+                # A nested group exposes its children under ``nodes``; a ForEach under ``body.nodes``.
+                walk(node.get("nodes") or [])
+                body = node.get("body")
+                if isinstance(body, Mapping):
+                    walk(body.get("nodes") or [])
+
+        walk(list(blob.get("nodes") or []))
+        return ids
 
     @classmethod
     def __assert_kinds_registered(cls, group: GroupNodeBlob) -> None:

@@ -69,7 +69,9 @@ class FigureClassifyConfig(OpenAICompatConfig):
     # base_url / model are required by OpenAICompatConfig for the VLM backend, but the LOCAL backend
     # needs no endpoint — relax them to optional defaults so a fully-local classify builds with no
     # placeholder. An empty endpoint on the VLM backend is still surfaced at edit time (a placeholder
-    # notice) and fails at preflight, so relaxing the schema does not weaken the VLM contract.
+    # notice) and fails at preflight (the node's ``preflight`` probes ``base_url`` on the VLM backend,
+    # so the reachability sweep catches an unreachable endpoint before any spend), so relaxing the
+    # schema does not weaken the VLM contract.
     base_url: str = Field(
         default="",
         description="Vision endpoint (VLM backend only; leave empty for the local backend).",
