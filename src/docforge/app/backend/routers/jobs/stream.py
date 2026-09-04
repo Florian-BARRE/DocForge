@@ -12,11 +12,11 @@ import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import Any
 
+# ====== Internal Project Imports ======
+from shared_libs.services.db.postgresql.tables import JobStatus as JobStatusEnum
+
 # ====== Local Project Imports ======
 from .models import JobEvent, JobStatus
-
-# The job states after which nothing more will land — the stream closes on reaching one.
-_TERMINAL = {"done", "failed"}
 
 
 def _frame(kind: str, payload: dict[str, Any]) -> str:
@@ -72,8 +72,10 @@ async def stream_job_events(
             yield _frame("status", snapshot)
             last_snapshot = snapshot
 
-        # 4. Terminal → the final status is already out; close the stream.
-        if job.status.value in _TERMINAL:
+        # 4. Terminal → the final status is already out; close the stream. CANCELLED is terminal too
+        #    (mark_done/mark_failed refuse to overwrite it), so a cancelled job must end the loop —
+        #    the canonical set lives on the enum so this can never drift to a subset again.
+        if job.status.value in JobStatusEnum.terminal():
             return
         await sleep(poll_interval)
 
