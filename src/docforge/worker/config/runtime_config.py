@@ -64,6 +64,15 @@ class RUNTIME_CONFIG(EnvConfigLoader):
     EXPORT_BUNDLE_PREFIX = env("EXPORT_BUNDLE_PREFIX", default="collection-exports")
     # Bundle compression codec: "zstd" (default) or "none".
     EXPORT_COMPRESSION = env("EXPORT_COMPRESSION", default="zstd")
+    # Decompression-bomb guard on IMPORT: the extracted (uncompressed) bundle may be at most this
+    # multiple of the compressed `.dcexport` size on disk (which the upload already capped at
+    # IMPORT_MAX_BUNDLE_BYTES). A hostile bundle with a >1000x zstd ratio is refused mid-extraction
+    # before it can fill the worker's disk, rather than after. 100 is generous for real corpora
+    # (JSONL + already-compressed blobs rarely exceed ~10x) while still bounding the blast radius.
+    IMPORT_MAX_DECOMPRESSION_RATIO = env("IMPORT_MAX_DECOMPRESSION_RATIO", cast=int, default=100)
+    # Hard ceiling on the number of members (files) a bundle may contain — bounds inode/handle
+    # exhaustion from a bundle of millions of tiny entries independently of their total size.
+    IMPORT_MAX_MEMBERS = env("IMPORT_MAX_MEMBERS", cast=int, default=500_000)
     # How long an exported bundle object is retained before it may be garbage-collected (seconds).
     EXPORT_TTL_SECONDS = env("EXPORT_TTL_SECONDS", cast=int, default=604800)
     # Reclaim expired export bundles (the S3 object AND its `collection_transfer` row) on a cron —
@@ -159,6 +168,17 @@ class RUNTIME_CONFIG(EnvConfigLoader):
     # opts in is preflighted BEFORE its first spend — a wrong/placeholder endpoint fails fast having
     # stored nothing. Set to False only to skip reachability checks entirely. See PROD-HARDENING.md.
     WORKER_PREFLIGHT_ENABLED = env("WORKER_PREFLIGHT_ENABLED", cast=bool, default=True)
+    # Provider egress allowlist (SSRF guard, OFF by default) — MUST mirror the app's identically-named
+    # knob (both sides read the same value in a shared deployment). A per-collection provider base_url
+    # is operator/tenant-writable; unguarded, the preflight sweep + the run's LLM/VLM/embed POSTs reach
+    # any host on the internal Docker network. EMPTY (the default) = allow-all (guard OFF, behaviour
+    # unchanged) so the in-stack hostname providers (bge_server, gotenberg, paddle_server) work out of
+    # the box. SET it (comma-separated host globs AND/OR IP/CIDR, e.g.
+    # "bge_server,gotenberg,paddle_server,10.0.0.0/8") to turn the guard ON: a base_url whose host is
+    # not listed is REFUSED at preflight before the first spend (surfaced as a named preflight failure).
+    # Runtime in-node POSTs are gated by preflight (which runs before spend) + network-level egress
+    # control, NOT per-call inside the pure nodes. See docs/PROD-HARDENING.md.
+    PROVIDER_EGRESS_ALLOWLIST = env("PROVIDER_EGRESS_ALLOWLIST", required=False, default="")
 
     # ───── Stuck-job reaper ─────
     # A dev worker hot-reload (or a crash) drops the in-flight arq task, but the DB job row stays

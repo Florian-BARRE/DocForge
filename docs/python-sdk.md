@@ -107,9 +107,10 @@ a narrow `SEARCH`-only key scoped to the resulting collection for your app.
 
 ## 4. Resource reference
 
-The client wires nine resource groups onto itself: `auth`, `health`, `collections`, `documents`,
-`explorer`, `search`, `jobs`, `blobs`, `pipelines`. Import any typed model straight from the package
-root (`from docforge_sdk import SearchRequest, FieldSpec, ...`).
+The client wires thirteen resource groups onto itself: `auth`, `health`, `collections`, `documents`,
+`explorer`, `search`, `jobs`, `blobs`, `pipelines`, `transfers`, `corpus`, `snippets`, `audit`.
+Import any typed model straight from the package root
+(`from docforge_sdk import SearchRequest, FieldSpec, ...`).
 
 ### `health` — liveness
 
@@ -131,6 +132,11 @@ assert status.status == "ok"
 | `collections.create(request)` | `CollectionModel` | Create a collection from a `CreateCollectionRequest`. |
 | `collections.update(collection_id, request)` | `CollectionModel` | Patch a collection with an `UpdateCollectionRequest` (only set fields are sent). |
 | `collections.delete(collection_id)` | `None` | Delete a collection. |
+| `collections.health(collection_id)` | `CollectionHealthResponse` | Zero-spend provider preflight sweep + an overall verdict. |
+| `collections.storage(collection_id)` | `CollectionStorageResponse` | Material footprint across all three stores (exact S3, estimated PG/Qdrant). |
+| `collections.reingest(collection_id, force=False)` | `BulkReingestAccepted` | Re-run the full pipeline over the whole collection (async). |
+| `collections.estimate(...)` | `CostEstimate` | Dry-run cost estimate for a (subset of a) collection — no spend. |
+| `collections.contract_schema()` | `CollectionContractSchemaResponse` | JSON Schema of the collection identity/limits contract (drives a discovery form). |
 
 A collection is a *contract*: its metadata schema (`fields`) and vector space are fixed at creation.
 Each `FieldSpec` declares one metadata field and how it is indexed:
@@ -208,6 +214,9 @@ client.collections.update(
 |---|---|---|
 | `documents.upload(collection_id, file, metadata=None, filename=None)` | `UploadAccepted` | Upload a file (path, `Path` or raw `bytes`) for asynchronous ingestion. |
 | `documents.set_enabled(document_id, enabled)` | `DocumentEnabledResponse` | Toggle a document's searchability (hides/reveals all its chunks). |
+| `documents.reingest(document_id, force=False)` | `UploadAccepted` | Re-run the full pipeline over one document (async). |
+| `documents.get_markdown(document_id, download=False)` | `DocumentView` | The document rendered as Markdown (a generated view of the IR). |
+| `documents.get_html(document_id, download=False)` | `DocumentView` | The document rendered as HTML (a generated view of the IR). |
 
 Upload is asynchronous: the call returns immediately with a `document_id` and a `job_id` you poll
 via the [`jobs`](#jobs--ingestion-monitoring) resource. `UploadAccepted.duplicate` is `True` when the
@@ -253,6 +262,7 @@ server-side (required fields must be present, enum values must be allowed, etc.)
 | `explorer.get_document(document_id)` | `DocumentDetail` | One document's full facts + resolved document-level metadata. |
 | `explorer.get_pages(document_id)` | `list[PageInfo]` | A document's pages (geometry, routing, render blob refs). |
 | `explorer.get_ir(document_id)` | `DocumentIRModel` | The full canonical IR (blocks, tables, figures, enrichments). |
+| `explorer.get_provenance(document_id)` | `DocumentProvenance` | The document's ingestion trace — how each chunk maps back to its IR/source (the Layout view's data). |
 | `explorer.get_chunks(document_id)` | `list[ChunkInfo]` | A document's retrieval chunks. |
 | `explorer.delete_document(document_id)` | `None` | Delete a document and everything derived from it. |
 | `explorer.set_chunk_enabled(chunk_id, enabled)` | `ChunkEnabledResult` | Toggle one chunk's searchability. |
@@ -293,11 +303,9 @@ A `SearchRequest` carries the query and its knobs:
 - `query` (str, required)
 - `limit` (int, default `10`, 1–100) — number of fused results
 - `filters` (`dict | None`) — exact / any-of constraints on **filterable** metadata fields
-  (`{field: value}` or `{field: [values]}`)
+  (`{field: value}`, `{field: [values]}`, or a range mapping `{field: {gte, gt, lte, lt}}`)
 - `search_in` (`list[SearchTarget] | None`) — which fields × modalities to query;
   `None` → `content` on both semantic and lexical (the default)
-- `use_late_interaction` (`bool | None`) — opt into the ColBERT re-score; `None` → off
-- `rescore_pool_size` (`int | None`, 1–1000) — candidate-pool size the ColBERT stage re-scores
 
 Each `SearchTarget` names one field and its modalities:
 
@@ -319,7 +327,6 @@ with Client("http://localhost:10040", api_token="df_root_...") as client:
                 SearchTarget(field="content", semantic=True, lexical=True),
                 SearchTarget(field="summary", semantic=True),
             ],
-            use_late_interaction=True,
         ),
     )
     print(response.query)
@@ -335,10 +342,14 @@ Each `SearchHit` exposes `chunk_id`, `document_id`, `score` (fused RRF score, hi
 
 | Method | Returns | Description |
 |---|---|---|
-| `jobs.list(collection_id)` | `list[JobStatus]` | List a collection's jobs, newest first. |
+| `jobs.list(collection_id, limit=None, offset=None)` | `JobPage` | One bounded page of a collection's jobs, newest first (`.jobs` + `.total`/`.limit`/`.offset`). |
 | `jobs.get(job_id)` | `JobStatus` | Fetch one job's live status. |
 | `jobs.get_events(job_id)` | `JobTrace` | The job's per-node execution trace, in run order. |
 | `jobs.live_workers()` | `WorkersLive` | Everything running right now, grouped by worker. |
+| `jobs.cancel(job_id, force=False)` | `CancelResult` | Cancel a queued/running job (cooperative, or `force` for a wedged one). |
+| `jobs.cost(collection_id)` | `CollectionCost` | Paid text-gen roll-up for the collection (tokens + USD). |
+| `jobs.queue(collection_id=None)` | `QueueDepth` | Pending/running backlog (fleet-wide for a root token, else per-collection). |
+| `jobs.stage_durations(collection_id)` | `StageDurations` | Average per-stage wall-clock (the ETA basis). |
 
 `JobStatus` exposes `status` (`queued` / `running` / `done` / `failed`), `progress` (0–100),
 `current_stage`, `error` (set only when failed), `attempt`, `started_at`, `finished_at`. A
@@ -381,10 +392,11 @@ if detail.pdf_blob_hash:
 | `auth.list_keys()` | `list[KeyInfo]` | List keys — metadata only, never a secret. |
 | `auth.rotate_key(key_id, name=..., permissions=..., expires_at=...)` | `CreatedKey` | Issue a fresh secret (optionally re-scoped) and revoke the old key. |
 | `auth.revoke_key(key_id)` | `None` | Soft-revoke a key (idempotent). |
+| `auth.whoami()` | `WhoAmI` | The **calling token's own** access — its `capabilities` + collection `scope` (auth only, no capability required). |
 
 Scope a key with `KeyPermissions` (or pass `None` / omit for a full-access root key):
 
-- `capabilities` (`list[Capability]`: `READ` / `WRITE` / `SEARCH` / `ADMIN`)
+- `capabilities` (`list[Capability]`: `READ` / `WRITE` / `SEARCH` / `CREATE` / `ADMIN`)
 - `collections` (`list[str]`: `["*"]` for every collection, else explicit collection UUIDs)
 
 ```python
@@ -448,6 +460,46 @@ design = client.pipelines.get_design("ingest", full=True)
 report = client.pipelines.inspect("ingest", design.blob)
 print(report.valid, report.issues, report.build_error)
 ```
+
+### `corpus` — document grid + bulk operations
+
+The server-side document grid: one filtered/sorted/paginated page, plus mass actions that address
+documents by a `DocumentSelector` (`{document_ids: [...]}` XOR `{filter: {...}, exclude_ids: [...]}`).
+
+| Method | Returns | Description |
+|---|---|---|
+| `corpus.query(collection_id, request)` | `DocumentQueryResponse` | One filtered/sorted/paginated page + the total match count. |
+| `corpus.bulk_delete(collection_id, selector)` | `BulkDeleteResponse` | Delete the selected documents everywhere (PG + Qdrant + S3). |
+| `corpus.bulk_set_enabled(collection_id, selector, enabled)` | `BulkEnabledResponse` | Bulk enable/disable searchability by selector. |
+| `corpus.bulk_reingest(collection_id, selector, force=False)` | `BulkReingestResponse` | Bulk full re-ingest by selector (capped fan-out, one job handle). |
+
+### `snippets` — granular config export/import
+
+Export or apply a single config slice (`pipeline`, `search` or `schema`) as a portable
+`.dfsnippet` — a surgical alternative to a full collection transfer.
+
+| Method | Returns | Description |
+|---|---|---|
+| `snippets.export(collection_id, kind)` | `CollectionSnippet` | Export one config slice (`SnippetKind`: `pipeline` / `search` / `schema`). |
+| `snippets.apply(collection_id, kind, snippet)` | `SnippetImportResult` | Apply a snippet (kind must match the body); reports whether a reindex is now required. |
+
+### `transfers` — collection export/import
+
+Package a whole collection into a portable `.dcexport` bundle and re-import it on another server
+(no recompute — ids are remapped on import). Both directions run asynchronously (poll the handle).
+
+| Method | Returns | Description |
+|---|---|---|
+| `transfers.export_collection(collection_id)` | `TransferAccepted` | Start packaging the collection into a bundle. |
+| `transfers.import_collection(...)` | `TransferAccepted` | Import an uploaded bundle as a new collection. |
+| `transfers.get_transfer(transfer_id)` | `TransferStatus` | Poll a transfer's progress/state. |
+| `transfers.download_export(transfer_id)` | `Iterator[bytes]` | Stream a finished export's bundle bytes. |
+
+### `audit` — audit trail
+
+| Method | Returns | Description |
+|---|---|---|
+| `audit.list(limit=None, cursor=None, ...)` | `AuditPage` | One cursor-paginated page of audit entries (`.entries` + `.next_cursor`), filterable by actor / target / correlation id / time window. Full-access keys only. |
 
 ---
 

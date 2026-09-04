@@ -99,6 +99,51 @@ def test_archive_pack_unpack_round_trip(tmp_path, compression) -> None:
     assert manifest.counts.documents == 2
 
 
+@pytest.mark.parametrize("compression", [COMPRESSION_NONE, COMPRESSION_ZSTD])
+def test_unpack_refuses_a_bundle_that_exceeds_the_uncompressed_ceiling(tmp_path, compression) -> None:
+    """Decompression-bomb guard: extraction aborts once the cumulative member size crosses the cap,
+
+    so a high-ratio bundle can never fill the worker's disk. Checked for both codecs.
+    """
+    root = tmp_path / "bundle"
+    _write_minimal_bundle(root, compression=compression)
+    archive = tmp_path / "out.dcexport"
+    BundleArchive.pack(root, archive, compression)
+    extracted = tmp_path / "extracted"
+    extracted.mkdir()
+
+    with pytest.raises(ValueError, match="size ceiling"):
+        BundleArchive.unpack(archive, extracted, max_uncompressed_bytes=10)
+
+
+def test_unpack_refuses_a_bundle_with_too_many_members(tmp_path) -> None:
+    """The member-count ceiling bounds inode/handle exhaustion independently of total size."""
+    root = tmp_path / "bundle"
+    _write_minimal_bundle(root)
+    archive = tmp_path / "out.dcexport"
+    BundleArchive.pack(root, archive, COMPRESSION_NONE)
+    extracted = tmp_path / "extracted"
+    extracted.mkdir()
+
+    with pytest.raises(ValueError, match="member-count ceiling"):
+        BundleArchive.unpack(archive, extracted, max_members=1)
+
+
+def test_unpack_allows_a_normal_bundle_under_generous_caps(tmp_path) -> None:
+    """A legitimate bundle extracts cleanly when the caps are set the way the import task sets them."""
+    root = tmp_path / "bundle"
+    _write_minimal_bundle(root)
+    archive = tmp_path / "out.dcexport"
+    BundleArchive.pack(root, archive, COMPRESSION_NONE)
+    extracted = tmp_path / "extracted"
+    extracted.mkdir()
+
+    # Same shape the worker uses: a multiple of the compressed size + a high member cap.
+    cap = archive.stat().st_size * 100
+    BundleArchive.unpack(archive, extracted, max_uncompressed_bytes=cap, max_members=500_000)
+    assert BundleReader(extracted).validate().counts.documents == 2
+
+
 def test_reader_rejects_unsupported_format_version(tmp_path) -> None:
     root = tmp_path / "bundle"
     _write_minimal_bundle(root)

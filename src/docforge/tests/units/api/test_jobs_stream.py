@@ -128,6 +128,27 @@ def test_generator_pushes_events_and_stops_at_terminal() -> None:
     assert payloads[-1]["kind"] == "status" and payloads[-1]["status"] == "done"
 
 
+def test_generator_closes_on_a_cancelled_job() -> None:
+    """CANCELLED is terminal (mark_done/mark_failed refuse to overwrite it), so a cancelled job must
+    close the stream — before the fix _TERMINAL omitted 'cancelled' and the generator polled forever.
+    Guarded by a timeout so a regression fails fast instead of hanging the suite."""
+    from backend.routers.jobs.stream import stream_job_events
+
+    jobs = _FakeJobs(
+        jobs=[_job("running", 40, "chunk"), _job("cancelled", 40, "chunk")],
+        events=[[_event("chunk", "success")], [_event("chunk", "success")]],
+    )
+
+    async def _run() -> list[str]:
+        return await asyncio.wait_for(
+            _drain(stream_job_events(jobs, "job", poll_interval=0, sleep=_noop_sleep)), timeout=5
+        )
+
+    payloads = _payloads(asyncio.run(_run()))
+    # The final frame is the cancelled status and the generator returned (no infinite poll).
+    assert payloads[-1]["kind"] == "status" and payloads[-1]["status"] == "cancelled"
+
+
 def test_generator_closes_on_a_vanished_job() -> None:
     """A job deleted mid-stream (get → None) emits a 'gone' status frame and closes cleanly."""
     from backend.routers.jobs.stream import stream_job_events

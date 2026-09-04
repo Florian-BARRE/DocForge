@@ -26,6 +26,7 @@ from shared_libs.pipelines.ingest import (
     BlobNormalizer,
     IngestPipeline,
 )
+from shared_libs.pipelines.reachability import ProviderEgressPolicy
 from shared_libs.public_models import CollectionContract, MetadataFieldSpec, SourceDocument
 from shared_libs.services.db.postgresql.tables import JobStatus, MetadataField
 from shared_libs.services.db.s3 import S3ObjectApi
@@ -107,12 +108,20 @@ async def ingest_document(
     database, s3, runner = CONTEXT.database, CONTEXT.s3, CONTEXT.runner
     doc_uuid, job_uuid = uuid.UUID(document_id), uuid.UUID(job_id)
 
-    # Dequeue-skip guard: a job cancelled while still queued was marked CANCELLED in the DB (its arq
-    # task id was never captured, so it could not be pulled from the queue). Bail before any work —
-    # the document is already terminal (CANCELLED) and must not be resurrected to PROCESSING.
+    # Dequeue-skip guard: bail before any work on a job that is ALREADY TERMINAL. Two ways a terminal
+    # job reaches the queue — a job cancelled while still queued (marked CANCELLED, its arq task id
+    # never captured so it could not be dropped from the queue), and a ZOMBIE arq re-delivery of a job
+    # the reaper already marked FAILED (a crashed/SIGTERMed worker's job re-queued by arq). Either way
+    # the job is over and its document owns a terminal (or a newer job's) state: re-running it would
+    # spuriously fire the cancel guard (the reaper leaves cancel_requested=True) and clobber the
+    # document. Skip EVERY terminal status (JobStatus.terminal() — the canonical DONE/FAILED/CANCELLED
+    # set), not just CANCELLED, so no zombie retry ever resurrects a finished job.
     existing = await database.jobs.get(job_uuid)
-    if existing is not None and existing.status == JobStatus.CANCELLED:
-        CONTEXT.logger.info(f"Skipping cancelled job {job_id} (document {document_id}) at dequeue")
+    if existing is not None and existing.status in JobStatus.terminal():
+        CONTEXT.logger.info(
+            f"Skipping already-terminal job {job_id} (status={existing.status.value}, "
+            f"document {document_id}) at dequeue"
+        )
         return
 
     # arq's job_try is the attempt counter (1 on first run, increments on retries).
@@ -193,6 +202,9 @@ async def ingest_document(
             timeout_seconds=run_budget,
             progress_callback=guarded_progress,
             preflight_enabled=CONTEXT.RUNTIME_CONFIG.WORKER_PREFLIGHT_ENABLED,
+            egress_policy=ProviderEgressPolicy.from_spec(
+                CONTEXT.RUNTIME_CONFIG.PROVIDER_EGRESS_ALLOWLIST
+            ),
             cache_hook=cache_hook,
         )
         if cache_hook is not None and cache_hook.report:

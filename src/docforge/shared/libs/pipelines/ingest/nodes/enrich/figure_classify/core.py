@@ -17,7 +17,7 @@ from pydantic import Field
 # ====== Internal Project Imports ======
 from shared_libs.pipelines.base import ActionNode, NodeInput, ScoredOutput
 from shared_libs.pipelines.nodes.ocr.rapidocr import RapidOcrEngine
-from shared_libs.pipelines.nodes.openai_compat import OpenAICompatHelpers
+from shared_libs.pipelines.nodes.openai_compat import EndpointReachability, OpenAICompatHelpers
 from shared_libs.pipelines.registry import NodeRegistry
 from shared_libs.public_models import FigureItem, FigureKind, figure_prompt_lines
 
@@ -70,6 +70,27 @@ class FigureClassifyNode(ActionNode):
     Produces = FigureClassifyProduces
     # The switch driver: the UI offers one when_equals branch per class, ready-made.
     SWITCH_FIELDS = {"kind": [kind.value for kind in FigureKind]}
+
+    async def preflight(self) -> None:
+        """Verify the vision endpoint is reachable before any spend — VLM backend only.
+
+        The ``local`` backend makes NO network call (RapidOCR + geometry, endpoint-free), so its
+        preflight is a deliberate no-op. Only the ``vlm`` backend reaches a hosted endpoint, so only
+        it is probed; an empty/unreachable ``base_url`` on the VLM backend fails HERE, before the
+        first classification spends (the reachability sweep picks this node up because it overrides
+        the no-op ``ActionNode.preflight``).
+        """
+        config: FigureClassifyConfig = self.config
+        # 1. Local backend has no endpoint to reach — nothing to probe.
+        if config.classify_backend == "local":
+            return
+        # 2. VLM backend — probe the vision endpoint with the dedicated preflight budget.
+        await EndpointReachability.check(
+            node_kind=self.KIND,
+            base_url=config.base_url,
+            api_key=config.api_key,
+            timeout_seconds=config.preflight_timeout_seconds,
+        )
 
     def __heuristic_kind(self, figure: FigureItem) -> str | None:
         """The geometric fast paths — None when no heuristic applies."""

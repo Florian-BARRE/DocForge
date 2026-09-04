@@ -3,6 +3,7 @@ document toggle is a single PG flag; chunk toggles echo the recomputed effective
 reindex flag; unknown ids are a 404 (single) or listed in ``not_found`` (bulk). No live stack."""
 
 import uuid
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 from shared_libs.services.db.facades import ChunkToggle
@@ -23,6 +24,10 @@ def test_document_toggle_flips_and_echoes(client, monkeypatch) -> None:
     from backend.context import CONTEXT
 
     set_enabled = AsyncMock(return_value=True)
+    # The route loads the document first to enforce the caller's collection scope (auth-off = root,
+    # so the guard no-ops; the load must still resolve).
+    document = SimpleNamespace(id=uuid.UUID(DOC_ID), collection_id=uuid.uuid4())
+    monkeypatch.setattr(CONTEXT.database.documents, "get", AsyncMock(return_value=document))
     monkeypatch.setattr(CONTEXT.database.enablement, "set_document_enabled", set_enabled)
 
     response = client.patch(f"/api/v1/documents/{DOC_ID}/enabled", json={"enabled": False})
@@ -33,9 +38,10 @@ def test_document_toggle_flips_and_echoes(client, monkeypatch) -> None:
 
 
 def test_document_toggle_unknown_is_404(client, monkeypatch) -> None:
-    """An unknown document id is an explicit 404."""
+    """An unknown document id is an explicit 404 (surfaced by the scope-guard document load)."""
     from backend.context import CONTEXT
 
+    monkeypatch.setattr(CONTEXT.database.documents, "get", AsyncMock(return_value=None))
     monkeypatch.setattr(
         CONTEXT.database.enablement, "set_document_enabled", AsyncMock(return_value=False)
     )

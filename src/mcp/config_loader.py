@@ -74,6 +74,17 @@ class McpConfig(EnvConfigLoader):
     # URL path the streamable-http endpoint is served on.
     MCP_HTTP_PATH: str = env("MCP_HTTP_PATH", default="/mcp")
 
+    # ───── Path-based tool confinement (HTTP transport only, see libs/path_guard.py) ─────
+    # The ONLY local directory the `file_path` argument of upload_document/import_collection may
+    # resolve into when serving a streamable-HTTP request. Unset (default) means those tools are
+    # REFUSED outright over HTTP -- there is no anonymous "read anything the container can see"
+    # fallback. Ignored on stdio: a local caller already has shell access to whatever it names
+    # there, so no confinement applies and this knob is never consulted.
+    _mcp_upload_dir_raw: str = env("MCP_UPLOAD_DIR", required=False, default="")
+    MCP_UPLOAD_DIR: pathlib.Path | None = (
+        pathlib.Path(_mcp_upload_dir_raw) if _mcp_upload_dir_raw else None
+    )
+
 
 # ─── Apply logging configuration AFTER class definition ───
 # In stdio mode, stdout is the MCP protocol channel — logs MUST go to stderr to avoid

@@ -163,7 +163,7 @@ export function FactsGrid({ document }: { document: DocumentDetail }) {
             label="Original file"
             hint={`The uploaded ${document.format.toUpperCase()}, byte-for-byte`}
             busy={busy}
-            onView={() => run("original-view", () => openBlobInNewTab(document.source_hash), "Could not open the file")}
+            onView={() => run("original-view", () => openBlobInNewTab(document.source_hash, document.filename), "Could not open the file")}
             onDownload={() => run("original-download", () => downloadBlob(document.source_hash, document.filename), "Download failed")}
           />
           {document.pdf_blob_hash && (

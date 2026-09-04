@@ -38,7 +38,7 @@ at their `localhost` values here (they're used when running the app straight fro
 | Variable | Default | Notes |
 |---|---|---|
 | `FASTAPI_APP_NAME` | `DocForge` | Required (no default in config). |
-| `FASTAPI_APP_VERSION` | `0.2.0` | Required (no default in config). Surfaced in OpenAPI docs + `/health`. |
+| `FASTAPI_APP_VERSION` | *(inherits `DOCFORGE_TAG`, else `unknown`)* | Optional — defaults to the deployment's pinned image tag (`DOCFORGE_TAG`, the same var compose uses), so the running version matches the image that ships. An explicit value still wins. Surfaced in OpenAPI docs + `/health`. |
 | `FASTAPI_DEBUG_MODE` | `false` | **Must be `false` in prod** — `true` leaks full tracebacks to clients. |
 | `FASTAPI_CORS_ALLOWED_ORIGINS` | `http://localhost:10046,http://localhost:10040` | Comma-separated. |
 
@@ -103,6 +103,16 @@ at their `localhost` values here (they're used when running the app straight fro
 | `CORPUS_MAX_REINGEST_FANOUT` | `1000` | Per-call cap on a bulk re-ingest fan-out: a selector matching more enqueues only the first N (deterministic order) and reports `capped=true` + total `matched`. |
 | `JOBS_MAX_PAGE_SIZE` | `500` | Hard ceiling for one `GET /jobs` page (also the default); a larger requested `limit` is clamped down to this. |
 
+### Idempotency & audit (app-only)
+
+| Variable | Default | Notes |
+|---|---|---|
+| `IDEMPOTENCY_ENABLED` | `true` | Master switch for `Idempotency-Key` replay protection on mutating routes. Off → the header is ignored. |
+| `IDEMPOTENCY_TTL_HOURS` | `24` | How long a stored idempotency record (and its cached response) is honoured before it expires and the key may be reused. |
+| `IDEMPOTENCY_MAX_BODY_BYTES` | `262144` (256 KiB) | Request bodies larger than this are not fingerprinted for idempotency (the route runs without replay protection). |
+| `AUDIT_ENABLED` | `true` | Master switch for the audit trail: records one row per mutating API action. Off → nothing is written and `GET /audit` returns empty. |
+| `AUDIT_MAX_PAGE_SIZE` | `200` | Hard ceiling for one `GET /audit` page (also the default); a larger requested `limit` is clamped down to this. |
+
 ### Worker
 
 | Variable | Default | Notes |
@@ -155,6 +165,16 @@ blob whose last pointer was removed.
 | `WORKER_TRANSFER_GC_ENABLED` | `true` | Reclaim expired export bundles (S3 object + `collection_transfer` row) on a cron. Set `false` to skip the sweep (cron not registered). |
 | `WORKER_TRANSFER_GC_INTERVAL_MINUTES` | `15` | Transfer-GC cron cadence (runs on every Nth minute of the hour; also once at startup). |
 
+### Audit & idempotency GC (worker)
+
+| Variable | Default | Notes |
+|---|---|---|
+| `AUDIT_RETENTION_DAYS` | `0` | Age (days) past which an audit row is swept. `0` (default) disables retention entirely — the sweep becomes a no-op and audit rows are kept forever. |
+| `WORKER_AUDIT_GC_ENABLED` | `true` | Master switch for the audit-retention sweep cron. On by default but a no-op unless `AUDIT_RETENTION_DAYS > 0`. Set `false` to skip it (cron not registered). |
+| `WORKER_AUDIT_GC_INTERVAL_MINUTES` | `60` | Audit-GC cron cadence (runs on every Nth minute of the hour; also once at startup). |
+| `WORKER_IDEMPOTENCY_GC_ENABLED` | `true` | Reclaim expired idempotency records (each stamped `now + IDEMPOTENCY_TTL_HOURS`) on a cron. Set `false` to skip the sweep (cron not registered). |
+| `WORKER_IDEMPOTENCY_GC_INTERVAL_MINUTES` | `60` | Idempotency-GC cron cadence (runs on every Nth minute of the hour; also once at startup). |
+
 ### `postgres.env` and `s3_config.json`
 
 `postgres.env` holds `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` for the Postgres container —
@@ -178,9 +198,11 @@ All variables have safe defaults; the service starts with no `.env` at all.
 | `BGE_M3_REVISION` / `BGE_RERANKER_REVISION` | *(pinned SHAs)* | Pin each model to an exact HF commit (supply-chain control) via `snapshot_download`. Set empty to float on `main`. |
 | `BGE_DEVICE` | `auto` | `auto` (GPU if present, else CPU) \| `cuda` (require GPU, fail loud) \| `cpu`. |
 | `BGE_FP16` | `false` | Gated to CUDA — forced off on CPU with a warning. |
-| `BGE_M3_MAX_LENGTH` | `8192` | Max token length for encode. |
+| `BGE_M3_MAX_LENGTH` | `2048` | Max token length for encode. |
 | `BGE_MAX_BATCH_SIZE` | `32` | Dynamic-batching: max units per model call. |
 | `BGE_MAX_WAIT_MS` | `10` | Batch-formation window (ms); `0` = dispatch immediately. |
+| `BGE_MAX_QUEUE_SIZE` | `256` | Max pending items in the per-op bounded queue. When full, `submit()` raises `QueueFullError` → HTTP 503 with `Retry-After: 1`. Raise on high-traffic servers; lower for tighter back-pressure. Must be `>= 1`. |
+| `BGE_KEEPWARM_SECONDS` | `45` | Keep-warm interval (s): a background task runs a tiny forward pass on every model so weights stay resident and callers never pay a 30–50 s cold page-in. `0` disables it. Must be `>= 0`. |
 | `BGE_TORCH_NUM_THREADS` | `0` | `0` = auto, derived from the container's cgroup CPU quota. |
 | `LOGGING_*` | see file | Same logging knobs as above. |
 
@@ -221,12 +243,14 @@ selects the `pp_structure` brick. See [architecture.md](architecture.md) and
 |---|---|---|
 | `PADDLE_PDX_CACHE_HOME` | `/models` | Directory PaddleX caches every downloaded inference model under (`official_models/` subdir). Mounted as a named volume so weights persist. |
 | `PADDLE_PDX_MODEL_SOURCE` | `huggingface` | Model hoster: `huggingface` \| `bos` \| `aistudio` \| `modelscope`. |
+| `PADDLE_OCR_LANG` | `en` | OCR recognition language passed to the PaddleX pipeline (e.g. `en`, `ch`). |
 | `PADDLE_USE_TABLE_RECOGNITION` | `true` | Optional table-recognition sub-pipeline. |
 | `PADDLE_USE_FORMULA_RECOGNITION` | `false` | Optional formula-recognition sub-pipeline. |
 | `PADDLE_USE_SEAL_RECOGNITION` | `false` | Optional seal-recognition sub-pipeline. |
 | `PADDLE_USE_DOC_ORIENTATION_CLASSIFY` | `false` | Optional document-orientation classification. |
 | `PADDLE_USE_DOC_UNWARPING` | `false` | Kept off (mapper provenance contract); exposed only so a deployment can flip it back on deliberately. |
 | `PADDLE_LOCK_WAIT_TIMEOUT_SECONDS` | `290` | Max seconds a `/layout-parsing` request waits for the shared predict lock before the router returns HTTP 503 (PaddlePaddle inference is not thread-safe). Must be `> 0`. |
+| `PADDLE_MAX_BODY_BYTES` | `104857600` | Hard ceiling (bytes, default 100 MiB) on the request body `/ocr` and `/layout-parsing` will buffer. An oversized upload is refused HTTP 413 (before/while reading) instead of OOMing the container. |
 | `LOGGING_*` | see file | Same five logging knobs as above (all default: `INFO`/`DEBUG`/`true`/`false`/`ShortFormat`). |
 
 ---
@@ -249,7 +273,9 @@ selects the `pp_structure` brick. See [architecture.md](architecture.md) and
 | Prometheus (optional telemetry add-on) | `10051` |
 | Loki (optional telemetry add-on) | `10052` |
 
-Production closes the data-plane ports (postgres/redis/qdrant/seaweedfs) — only the API (and optionally
-the MCP) are exposed. See [deployment.md](deployment.md). The telemetry ports are only published when
+Production closes the data-plane ports (postgres/redis/qdrant/seaweedfs) **and Gotenberg** — the latter
+is an unauthenticated conversion API and an SSRF pivot, so it is reached only via the in-network
+`gotenberg` alias and its `10045` host port is published solely by `compose/overlays/dev.yml`. Only the
+API (and optionally the MCP) are exposed in production. See [deployment.md](deployment.md). The telemetry ports are only published when
 `compose/overlays/telemetry.yml` is layered on top of a scenario — see
 [compose/README.md](../compose/README.md#the-telemetry-stack).

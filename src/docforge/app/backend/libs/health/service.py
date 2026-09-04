@@ -20,6 +20,7 @@ from loggerplusplus import LoggerClass
 from shared_libs.pipelines.build import PipelineBuilder
 from shared_libs.pipelines.ingest import IngestPipeline
 from shared_libs.pipelines.reachability import (
+    ProviderEgressPolicy,
     ProviderProbeResult,
     ReachabilitySweep,
     SearchReachabilitySweep,
@@ -45,13 +46,21 @@ class CollectionHealthService(LoggerClass):
     """Composes a collection's operational-health snapshot from build + reachability + index reads."""
 
     def __init__(
-        self, database: Database, builder: PipelineBuilder, validator: GraphValidator
+        self,
+        database: Database,
+        builder: PipelineBuilder,
+        validator: GraphValidator,
+        egress_policy: ProviderEgressPolicy | None = None,
     ) -> None:
         """
         Args:
             database (Database): The shared data facade (collections, jobs, vector count).
             builder (PipelineBuilder): The shared graph builder (reused, stateless).
             validator (GraphValidator): The shared structural validator (reused, stateless).
+            egress_policy (ProviderEgressPolicy | None): The provider egress allowlist gate. When
+                set (a non-empty allowlist) a provider whose base_url host is not allowed is reported
+                ``blocked`` and NEVER probed — so this READ endpoint cannot be used as a network
+                scanner of the internal Docker network. None / empty allowlist → probe as before.
         """
         LoggerClass.__init__(self)
         self._database = database
@@ -59,12 +68,15 @@ class CollectionHealthService(LoggerClass):
         self._validator = validator
         self._ingest_sweep = ReachabilitySweep()
         self._search_sweep = SearchReachabilitySweep()
+        self._egress_policy = egress_policy
 
     async def __sweep_ingest(self, ingest: GraphBuildOutcome) -> list[ProviderProbeResult]:
         """Sweep the ingest graph's provider leaves (empty when the graph did not build)."""
         if ingest.group is None:
             return []
-        return await self._ingest_sweep.sweep(ingest.group, side="ingest")
+        return await self._ingest_sweep.sweep(
+            ingest.group, side="ingest", policy=self._egress_policy
+        )
 
     async def __sweep_search(
         self, pipeline_blob: dict, search: GraphBuildOutcome
@@ -79,7 +91,9 @@ class CollectionHealthService(LoggerClass):
         if search.group is None:
             return []
         try:
-            return await self._search_sweep.sweep(pipeline_blob, search.group)
+            return await self._search_sweep.sweep(
+                pipeline_blob, search.group, policy=self._egress_policy
+            )
         except Exception as exc:  # noqa: BLE001 — a bad embed blob must not crash the probe.
             self.logger.warning(f"Search reachability sweep failed: {type(exc).__name__}: {exc}")
             return []

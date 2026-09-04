@@ -46,7 +46,8 @@ class JobCancellationHelpers:
     def __new__(cls, *args: object, **kwargs: object) -> None:
         raise TypeError("JobCancellationHelpers is a static-only class and cannot be instantiated.")
 
-    _TERMINAL = frozenset({JobStatusEnum.DONE, JobStatusEnum.FAILED, JobStatusEnum.CANCELLED})
+    # The canonical terminal set lives on the enum so every consumer (here + the SSE stream) agrees.
+    _TERMINAL = JobStatusEnum.terminal()
 
     @classmethod
     def decide(cls, status: JobStatusEnum, force: bool) -> CancelAction:

@@ -72,6 +72,14 @@ class PaddleServerConfig(EnvConfigLoader):
     # PaddleX itself reads the env var directly (paddlex.utils.flags.MODEL_SOURCE).
     PADDLE_PDX_MODEL_SOURCE: str = env("PADDLE_PDX_MODEL_SOURCE", default="huggingface")
 
+    # ───── Request limits ─────
+    # Hard ceiling (BYTES) on a request body the /ocr and /layout-parsing routes will buffer. Both
+    # read the whole body into memory (the body IS the image/PDF), so without a cap a multi-GB upload
+    # OOMs this container (whose memory ceiling exists for model spikes, not attacker payloads). A
+    # declared Content-Length over the cap is rejected 413 before a byte is read; the streamed read is
+    # capped too, so a lying/absent length can't bypass it. 100 MiB is generous for real scans/PDFs.
+    PADDLE_MAX_BODY_BYTES: int = env("PADDLE_MAX_BODY_BYTES", cast=int, default=104_857_600)
+
     # ───── PP-StructureV3 sub-pipeline toggles (lean default) ─────
     # Mandatory sub-pipelines (layout detection + general OCR) are always on — PaddleX has no
     # toggle for them. These four are the OPTIONAL sub-pipelines; env-driven so the same image

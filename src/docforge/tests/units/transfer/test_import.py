@@ -97,3 +97,47 @@ async def test_import_rolls_back_the_new_collection_on_failure(export_facade, tm
     # The half-built collection was deleted; a pre-existing collection would never be touched.
     assert facade.created is not None
     assert facade.rolled_back == [facade.created.id]
+
+
+async def test_import_pins_blob_s3_key_to_content_hash_ignoring_a_tampered_key() -> None:
+    """A tampered bundle s3_key (pointing at a victim object) is ignored — the upload and the
+
+    registered row are both pinned to the content hash, so an import can only ever write its own
+    content address (closes the arbitrary-S3-overwrite vector).
+    """
+    from collection_transfer.paths import BundlePaths
+    from collection_transfer.restore import CollectionImporterV1
+
+    from .conftest import FakeImportFacade
+
+    attacker_bytes = b"attacker-controlled bytes"
+    content_hash = "aaaa1111"  # stands in for sha256(attacker_bytes)
+    victim_key = "victim0000"  # another tenant's object the attacker aimed to overwrite
+
+    class _FakeReader:
+        """Yields ONE blob row whose s3_key != content_hash, plus its bytes."""
+
+        def iter_rows(self, path):
+            assert path == BundlePaths.BLOBS
+            yield {
+                "content_hash": content_hash,
+                "s3_key": victim_key,  # the tamper: a foreign key
+                "mime_type": "application/octet-stream",
+                "size_bytes": len(attacker_bytes),
+                "kind": "original",
+            }
+
+        def read_blob(self, requested_hash):
+            assert requested_hash == content_hash
+            return attacker_bytes
+
+    facade = FakeImportFacade()
+    importer = CollectionImporterV1(facade, _FakeReader())
+
+    await importer._restore_blobs()
+
+    # The uploaded object is keyed by the content hash, NOT the tampered victim key.
+    assert [obj.key for obj in facade.blob_objects] == [content_hash]
+    # ...and the registered row's s3_key was rewritten to match — no dangling foreign pointer.
+    assert [row.s3_key for row in facade.blob_rows] == [content_hash]
+    assert victim_key not in {obj.key for obj in facade.blob_objects}

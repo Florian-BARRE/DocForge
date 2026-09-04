@@ -269,8 +269,11 @@ services:
     # Large office documents convert in ~20-25s warm but exceed the default 30s deadline
     # cold (LibreOffice spin-up) — raise the API timeout so borderline files never 503.
     command: ["gotenberg", "--api-timeout=180s"]
-    ports:
-      - "10045:3000"              # HTTP conversion API (collection configs point here)
+    # NOT published on the host: Gotenberg is an UNAUTHENTICATED LibreOffice+Chromium conversion API
+    # whose Chromium routes fetch caller-supplied URLs — a published host port is an SSRF pivot into
+    # docforge_net (e.g. Qdrant's REST API). The containerized pipeline reaches it via the in-network
+    # `gotenberg` alias (base_url http://gotenberg:3000), so no host port is needed in any scenario.
+    # Host-side uv-run dev republishes 10045 via compose/overlays/dev.yml, like the data-plane stores.
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
       interval: 10s

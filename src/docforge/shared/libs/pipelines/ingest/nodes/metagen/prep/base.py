@@ -9,6 +9,7 @@
 # half of the very same node), overriding nothing that touches an endpoint.
 
 # ====== Internal Project Imports ======
+from shared_libs.pipelines.nodes.openai_compat import EndpointReachability
 from shared_libs.public_models import GenerationField, GenerationRequest
 
 # ====== Local Project Imports ======
@@ -23,6 +24,28 @@ class BaseMetagenPrep(BaseMetagenNode):
     enriched text). The heavy target resolution and document-view helpers are inherited from
     BaseMetagenNode; this base only turns resolved targets into request artefacts (no model call).
     """
+
+    async def preflight(self) -> None:
+        """Verify the metagen default endpoint is reachable before any spend.
+
+        The structured-output call itself lives on the downstream structgen chain, but the DEFAULT
+        endpoint every request inherits lives on THIS prep's config — so a wrong/unreachable default
+        ``base_url`` would only surface at metagen time, after the earlier stages spent. The prep is
+        the metagen ladder's provider anchor, so probing its default endpoint here is what makes the
+        reachability sweep catch it (the structgen chain head carries an empty override and inherits
+        the request's endpoint at run time, which no preflight can see). A config whose default
+        endpoint is empty (every field bound to its own per-target override) has nothing to probe
+        here and is skipped, matching the structgen head's own empty-override guard.
+        """
+        config: MetagenPrepConfig = self.config
+        if not config.base_url:
+            return
+        await EndpointReachability.check(
+            node_kind=self.KIND,
+            base_url=config.base_url,
+            api_key=config.api_key,
+            timeout_seconds=config.preflight_timeout_seconds,
+        )
 
     def _build_requests(
         self, text: str, chunk_id: str | None, targets: list[ResolvedTarget], id_prefix: str

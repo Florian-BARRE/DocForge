@@ -16,6 +16,7 @@ from starlette.applications import Starlette
 
 # ====== Local Project Imports ======
 from .auth import BearerPassthroughMiddleware
+from .path_guard import PathGuard
 from .tools import register_all
 
 if TYPE_CHECKING:
@@ -31,17 +32,25 @@ _INSTRUCTIONS = (
 )
 
 
-def build_mcp(sdk: AsyncClient) -> FastMCP:
+def build_mcp(sdk: AsyncClient, path_guard: PathGuard | None = None) -> FastMCP:
     """
     Build the FastMCP server with every DocForge tool registered.
 
     Args:
         sdk (AsyncClient): The DocForge API client injected into every tool.
+        path_guard (PathGuard | None): Confines `file_path` tool arguments (upload_document,
+            import_collection). entrypoint.py always passes one built from McpConfig, wired to the
+            selected transport. Left unset here (e.g. by a test building a bare server), the guard
+            defaults to the FAIL-CLOSED, HTTP-confined stance with no inbox configured — every
+            path-based tool call is refused rather than silently allowed.
 
     Returns:
         FastMCP: The configured MCP server (transport-agnostic).
     """
-    # 1. Create the server with DNS-rebinding protection explicitly OFF. FastMCP auto-enables it
+    # 1. Fail closed if no guard was supplied — never default to an unrestricted local file read.
+    guard = path_guard if path_guard is not None else PathGuard(confine=True, inbox_dir=None)
+
+    # 2. Create the server with DNS-rebinding protection explicitly OFF. FastMCP auto-enables it
     #    (host restricted to 127.0.0.1/localhost/::1) whenever transport_security is left unset AND
     #    the default host "127.0.0.1" is in effect AT CONSTRUCTION TIME — but build_http_app() only
     #    overrides mcp.settings.host to "0.0.0.0" AFTER this call, so without this explicit override
@@ -53,7 +62,7 @@ def build_mcp(sdk: AsyncClient) -> FastMCP:
         instructions=_INSTRUCTIONS,
         transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False),
     )
-    register_all(mcp, sdk)
+    register_all(mcp, sdk, guard)
     return mcp
 
 

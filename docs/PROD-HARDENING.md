@@ -191,6 +191,28 @@ structural validator can't cover). It is **on by default** (`WORKER_PREFLIGHT_EN
 - Set `WORKER_PREFLIGHT_ENABLED=false` (+ recreate the worker) only to skip reachability checks
   entirely — e.g. to defer a not-yet-configured provider to run-time failure instead of preflight.
 
+### Provider egress allowlist (SSRF, optional — OFF by default)
+
+A provider `base_url` is **per-collection and writable by any WRITE-scoped key**. Two consequences on
+an untrusted-tenant deployment: the READ-scoped `GET /collections/{id}/health` sweep, which reports each
+endpoint's reachability, doubles as an authenticated **port/host scanner** of the internal Docker
+network; and at run time the llm/vlm/ocr/embed nodes POST to that URL. `PROVIDER_EGRESS_ALLOWLIST`
+(empty = **OFF, the default** — behaviour unchanged, so the in-stack `gotenberg`/`bge_server`/
+`paddle_server` hostnames keep working) is a comma-separated allowlist of host globs and/or IP/CIDR
+entries. When set, it is enforced at two edges:
+
+- **The health sweep** — an endpoint whose host is not allowed is reported `blocked` and **never
+  probed**, so the endpoint stops being a scanner.
+- **Worker preflight** — a disallowed provider is refused before the first spend, so an enabled but
+  off-allowlist provider fails the job fast with a clear per-node message.
+
+Honest scope: the **runtime** in-node POSTs (during a run) are NOT blocked per-call — pipeline nodes
+read no config by design. They rely on the allowlist being enforced at preflight (which gates before
+any spend) **plus** network-level egress control (a firewall / egress proxy on the worker). For a
+multi-tenant deployment where tenants supply their own `base_url`, set both `PROVIDER_EGRESS_ALLOWLIST`
+(to the endpoints you actually use) **and** a network egress policy; a single-tenant/trusted-operator
+deployment can leave it OFF. Set the **same value** on the app and the worker.
+
 ## 8. Optional TLS reverse proxy
 
 DocForge does **not** terminate TLS by default — the prod compose publishes the API in plain

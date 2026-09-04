@@ -20,6 +20,7 @@ from shared_libs.observability import CorrelationContext
 from shared_libs.pipelines.build import PipelineBuilder
 from shared_libs.pipelines.edit import GraphEditor
 from shared_libs.pipelines.ingest.stages import StageCompiler
+from shared_libs.pipelines.reachability import ProviderEgressPolicy
 from shared_libs.pipelines.validation import GraphValidator
 from shared_libs.services.db import Database
 from shared_libs.services.db.postgresql import PostgresClient
@@ -75,8 +76,13 @@ def _build_app() -> FastAPI:
 
     # 3c. Collection health — on-demand, zero-spend build + reachability probe (no job, no write).
     #     Reuses the shared builder/validator so "does it build?" is answered exactly as a real run.
+    #     The egress allowlist (OFF by default) gates the READ-scoped sweep: a base_url whose host is
+    #     not allowed is reported ``blocked`` instead of probed, so this endpoint cannot scan the net.
     CONTEXT.health_service = CollectionHealthService(
-        CONTEXT.database, CONTEXT.pipeline_builder, CONTEXT.graph_validator
+        CONTEXT.database,
+        CONTEXT.pipeline_builder,
+        CONTEXT.graph_validator,
+        egress_policy=ProviderEgressPolicy.from_spec(RUNTIME_CONFIG.PROVIDER_EGRESS_ALLOWLIST),
     )
 
     # 3c-bis. Pre-hoc cost estimate — on-demand token/$/volume preview of an ingestion (no job, no

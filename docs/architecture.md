@@ -214,9 +214,8 @@ Search is **hybrid** and runs inline in the request as its own pure graph (`enco
 
 - **Dense + sparse fusion** — Qdrant stores named dense and sparse (BM25-style) vectors; both are
   queried and their results fused.
-- **Optional ColBERT late-interaction rerank** — opt in per query (`use_late_interaction`); it
-  degrades gracefully to standard hybrid when the collection carries no ColBERT vectors. A
-  cross-encoder rerank (BGE-reranker) is also available via `bge_server`.
+- **Optional cross-encoder rerank** — a BGE-reranker (cross-encoder) re-scores the fused candidates
+  when enabled, served by `bge_server`.
 - **Per-field metadata surfaces** — every metadata field carries three orthogonal flags that drive
   everything: **`filterable`** (→ Qdrant payload, exact / any-of filter), **`semantic`** (→ named
   dense vector `meta_<slug>_dense`), **`lexical`** (→ sparse vector `meta_<slug>_bm25`).
@@ -224,8 +223,7 @@ Search is **hybrid** and runs inline in the request as its own pure graph (`enco
   plus a backfill repair job — never failing a persisted ingestion, and never re-embedding content).
 - **Search targets** — a `SearchTarget` (`{field, semantic, lexical}`) picks *which* named vectors to
   query (chunk `content` and/or metadata fields, up to metadata-only). Naming a non-indexed vector is
-  a fail-fast `422`. See [`docs/metadata-architecture.md`](metadata-architecture.md) for the full
-  metadata model.
+  a fail-fast `422`.
 
 ---
 

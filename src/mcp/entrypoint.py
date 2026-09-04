@@ -19,6 +19,7 @@ from loggerplusplus import loggerplusplus
 
 # ====== Internal Project Imports ======
 from config_loader import McpConfig  # MUST be first — registers sys.path + configures logging
+from libs.path_guard import PathGuard
 from libs.scoped_sdk import ScopedSdk, ScopedSdkProvider
 from libs.server import build_http_app, build_mcp
 
@@ -42,9 +43,16 @@ def main() -> None:
     # 2. Inject the scoped proxy wherever an AsyncClient is expected — every tool file keeps its
     #    original `sdk: AsyncClient` signature; only this cast site knows it's actually the proxy.
     sdk = cast(AsyncClient, ScopedSdk(provider))
-    mcp = build_mcp(sdk)
+    # 3. Build the transport-aware path guard for upload_document/import_collection (see
+    #    libs/path_guard.py): stdio stays unconfined (local, single-trusted-user caller); HTTP is
+    #    confined to MCP_UPLOAD_DIR (unset -> those tools are refused outright over the network).
+    path_guard = PathGuard(
+        confine=McpConfig.MCP_TRANSPORT != "stdio",
+        inbox_dir=McpConfig.MCP_UPLOAD_DIR,
+    )
+    mcp = build_mcp(sdk, path_guard)
 
-    # 3. stdio transport — local protocol over stdin/stdout (no network, contextvar never set)
+    # 4. stdio transport — local protocol over stdin/stdout (no network, contextvar never set)
     if McpConfig.MCP_TRANSPORT == "stdio":
         logger.info(f"Starting DocForge MCP server (stdio) -> {McpConfig.DOCFORGE_API_URL}")
         try:
@@ -53,7 +61,7 @@ def main() -> None:
             asyncio.run(provider.aclose())
         return
 
-    # 4. Serve the streamable-HTTP app — auth is fully delegated to DocForge (see build_http_app);
+    # 5. Serve the streamable-HTTP app — auth is fully delegated to DocForge (see build_http_app);
     #    the caller's own DocForge API key must be presented on every request. Plain HTTP works;
     #    front with TLS on an untrusted network since the key travels in the Authorization header.
     app = build_http_app(mcp, McpConfig)

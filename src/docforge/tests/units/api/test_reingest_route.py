@@ -28,6 +28,8 @@ def test_reingest_creates_a_job_and_enqueues_it(client, monkeypatch) -> None:
     enqueue = AsyncMock()
     # The route loads the collection for its per-collection job budget; None = inherit the global.
     collection = SimpleNamespace(id=document.collection_id, job_timeout_seconds=None)
+    # The route loads the document first to enforce the caller's collection scope (auth-off = root).
+    monkeypatch.setattr(CONTEXT.database.documents, "get", AsyncMock(return_value=document))
     monkeypatch.setattr(CONTEXT.database.ingestion, "reingest", reingest)
     monkeypatch.setattr(CONTEXT.database.collections, "get", AsyncMock(return_value=collection))
     monkeypatch.setattr(CONTEXT.queue, "enqueue_ingest", enqueue)
@@ -52,6 +54,7 @@ def test_reingest_enqueue_is_ids_only_even_with_a_budget(client, monkeypatch) ->
     job = SimpleNamespace(id=JOB_ID)
     collection = SimpleNamespace(id=document.collection_id, job_timeout_seconds=120.0)
     enqueue = AsyncMock()
+    monkeypatch.setattr(CONTEXT.database.documents, "get", AsyncMock(return_value=document))
     monkeypatch.setattr(
         CONTEXT.database.ingestion, "reingest", AsyncMock(return_value=(document, job))
     )
@@ -71,6 +74,8 @@ def test_reingest_unknown_document_is_404_and_enqueues_nothing(client, monkeypat
 
     reingest = AsyncMock(return_value=None)
     enqueue = AsyncMock()
+    # Unknown id is now surfaced by the scope-guard document load, before reingest is ever called.
+    monkeypatch.setattr(CONTEXT.database.documents, "get", AsyncMock(return_value=None))
     monkeypatch.setattr(CONTEXT.database.ingestion, "reingest", reingest)
     monkeypatch.setattr(CONTEXT.queue, "enqueue_ingest", enqueue)
 
@@ -78,3 +83,4 @@ def test_reingest_unknown_document_is_404_and_enqueues_nothing(client, monkeypat
 
     assert response.status_code == 404, response.text
     enqueue.assert_not_awaited()
+    reingest.assert_not_awaited()

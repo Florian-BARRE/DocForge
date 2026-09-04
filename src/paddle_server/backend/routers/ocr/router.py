@@ -13,6 +13,7 @@ from loggerplusplus import loggerplusplus
 # ====== Internal Project Imports ======
 from backend.context import CONTEXT
 from backend.libs.utils.error_handling import auto_handle_errors
+from backend.libs.utils.request_limits import RequestBodyGuard
 
 # ====== Local Project Imports ======
 from .models import OcrResponse
@@ -36,8 +37,9 @@ async def ocr(request: Request) -> OcrResponse:
     Returns:
         OcrResponse: `{text, confidence}` — see models.py.
     """
-    # 1. Read the raw body — no pydantic model, the request IS the image.
-    image_bytes = await request.body()
+    # 1. Read the raw body under a hard size cap — no pydantic model, the request IS the image.
+    #    An oversized upload is refused 413 (before/while buffering) instead of OOMing the container.
+    image_bytes = await RequestBodyGuard.read_capped(request, CONTEXT.CONFIG.PADDLE_MAX_BODY_BYTES)
     logger.debug(f"POST /ocr: {len(image_bytes)} bytes")
 
     if not image_bytes:

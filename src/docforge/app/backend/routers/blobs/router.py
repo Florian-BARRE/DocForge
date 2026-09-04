@@ -14,6 +14,25 @@ from ...utils.error_handling import auto_handle_errors
 
 router = APIRouter(prefix="/blobs", tags=["blobs"])
 
+# Media types that render INERTLY inline (page renders + figure crops as <img>, the canonical PDF
+# preview). Every other stored type — an uploaded HTML/SVG/text original above all — is served as an
+# attachment and sandboxed, so a direct navigation to it can never execute as a live same-origin
+# document on the app/UI origin (the stored-XSS -> token-theft vector).
+# KEEP IN SYNC with the frontend allowlist `INLINE_SAFE_TYPES` in
+# src/docforge/app/frontend/src/api/blobs.ts — the two enforce the same guard from opposite ends (the
+# frontend decides inline-vs-download; this sets attachment/nosniff/CSP for the rest), so a type
+# added/removed here MUST be mirrored there or the guard diverges.
+_INLINE_SAFE_MIME = frozenset(
+    {
+        "application/pdf",
+        "image/png",
+        "image/jpeg",
+        "image/gif",
+        "image/webp",
+        "image/avif",
+    }
+)
+
 
 @router.get("/{content_hash}", response_class=Response)
 @auto_handle_errors
@@ -40,9 +59,16 @@ async def get_blob(
     if result is None:
         raise HTTPException(status_code=404, detail=f"Blob {content_hash} not found.")
 
-    # 3. Stream the bytes verbatim with the registered media type — never a guessed one.
+    # 3. Stream the bytes verbatim with the registered media type — never a guessed one. Always
+    #    forbid MIME sniffing; for anything that is not an inert inline type (i.e. an uploaded
+    #    HTML/SVG/text/office original), force a download and sandbox it so a browser can never
+    #    render it as a live same-origin document that could read this origin's token.
     data, mime_type = result
-    return Response(content=data, media_type=mime_type)
+    headers = {"X-Content-Type-Options": "nosniff"}
+    if mime_type not in _INLINE_SAFE_MIME:
+        headers["Content-Disposition"] = "attachment"
+        headers["Content-Security-Policy"] = "sandbox"
+    return Response(content=data, media_type=mime_type, headers=headers)
 
 
 __all__ = ["router"]

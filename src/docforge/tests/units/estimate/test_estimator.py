@@ -195,3 +195,17 @@ class TestPlanExtraction:
         # The OCR chain escalates rapidocr → mistral: the paid step is the one that must be costed.
         assert plan.enrich_ocr is not None and plan.enrich_ocr.kind == "mistral"
         assert plan.metagen_document is not None
+
+    def test_paddle_head_is_free_so_the_paid_ocr_escalation_is_costed(self) -> None:
+        """A [paddle → mistral] OCR chain must cost the MISTRAL step: paddle is a LOCAL (free) kind.
+        A hardcoded local list in plan.py omitted paddle, so it was treated as the paid step and the
+        real Mistral escalation was priced at $0.00 — the canonical LOCAL_FREE_KINDS fixes it."""
+        state = default_state()
+        state.enrich_on = True
+        ocr = next(spec for spec in state.chains.values() if spec.family == "ocr")
+        ocr.steps[0].kind = "paddle"  # swap the local head rapidocr → paddle
+
+        plan = CostPlanExtractor.extract(state, 0, 0)
+
+        assert plan.enrich_ocr is not None
+        assert plan.enrich_ocr.kind == "mistral"  # NOT paddle (which would price $0)

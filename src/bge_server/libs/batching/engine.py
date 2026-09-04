@@ -7,6 +7,9 @@
 # flatten the batch, run the model call under the relevant lock via asyncio.to_thread, and scatter
 # results back to each item's future. Rerank scatter re-numbers indices 0..n-1 per request.
 # Per-item error isolation: batch failures set the exception on every future in the batch.
+# embed_all and the touch_* methods are the two "direct" call shapes: they skip the four
+# BatchQueueWorker queues entirely but still acquire embed_lock/rerank_lock, so they remain
+# mutually exclusive with every batched call on the same shared model instance.
 
 # ====== Standard Library Imports ======
 import asyncio
@@ -40,8 +43,13 @@ class BatchingEngine(LoggerClass):
           two concurrent forward passes (embed-family + rerank) — see
           BgeModelsService._max_concurrency — to bound thread-pool oversubscription now that
           both locks can be held at once.
-    - submit_* coroutines are the only public interface: create Future -> enqueue item ->
+    - submit_* coroutines are the primary public interface: create Future -> enqueue item ->
       await Future. QueueFullError propagates to the caller unchanged.
+    - embed_all and touch_* are the "direct" call shapes: they bypass the four
+      BatchQueueWorker queues (no Future/batch formation) but still acquire embed_lock /
+      rerank_lock, so they stay mutually exclusive with every submit_*-driven batch. Any
+      caller that reaches the shared embed_model/reranker MUST go through one of these two
+      shapes — never call BgeModelsService directly without holding the matching lock.
 
     Error isolation:
     - _process_* methods wrap the lock+to_thread+scatter in try/except. On any failure,
@@ -384,6 +392,46 @@ class BatchingEngine(LoggerClass):
         """
         async with self._embed_lock:
             return await asyncio.to_thread(self._models.encode_dense_sparse, texts, max_length)
+
+    async def touch_dense(self, max_length: int) -> None:
+        """
+        Run a single-item dense forward pass under embed_lock, bypassing the batch queues.
+
+        Exists for keep-warm callers: a tiny forward pass on the shared embed_model that still
+        acquires the SAME embed_lock a real dense/sparse/colbert batch (or embed_all) would
+        hold, so it can never run concurrently with one of them on the shared torch/tokenizer
+        state — that overlap is exactly the thread-safety hazard embed_lock exists to prevent.
+        Skips the four BatchQueueWorker queues entirely, so it never competes for queue
+        CAPACITY with real traffic (only for the lock, like any other caller).
+
+        Args:
+            max_length (int): Tokenizer max length forwarded to encode_dense.
+        """
+        async with self._embed_lock:
+            await asyncio.to_thread(self._models.encode_dense, ["warm"], max_length)
+
+    async def touch_sparse(self, max_length: int) -> None:
+        """
+        Run a single-item sparse forward pass under embed_lock, bypassing the batch queues.
+
+        See touch_dense for the full locking rationale — sparse shares the same embed_model
+        instance as dense/colbert, so it is guarded by the same embed_lock.
+
+        Args:
+            max_length (int): Tokenizer max length forwarded to encode_sparse.
+        """
+        async with self._embed_lock:
+            await asyncio.to_thread(self._models.encode_sparse, ["warm"], max_length)
+
+    async def touch_rerank(self) -> None:
+        """
+        Run a single-pair rerank forward pass under rerank_lock, bypassing the batch queue.
+
+        See touch_dense for the locking rationale; rerank uses its own independent
+        rerank_lock/FlagReranker instance, so it is guarded separately from embed_lock.
+        """
+        async with self._rerank_lock:
+            await asyncio.to_thread(self._models.compute_rerank_scores_flat, [["warm", "warm"]])
 
     async def submit_rerank(self, query: str, texts: list[str]) -> list[dict[str, int | float]]:
         """
