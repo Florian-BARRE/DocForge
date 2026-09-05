@@ -5,9 +5,83 @@ rename, and the whole-collection rollback on a mid-restore failure."""
 
 import pytest
 from collection_transfer import BundleReader, CollectionExporter
+from collection_transfer.manifest import CollectionContractModel
 from collection_transfer.restore import CollectionImportError, CollectionImporterV1
 
+from shared_libs.pipelines.ingest import IngestPipeline
+from shared_libs.pipelines.search import SearchPipeline
+
 from .conftest import BLOCK_ID, CHUNK_ID, COLLECTION_ID, DENSE_DIM, DOC_ID, FakeImportFacade
+
+
+def _contract(*, pipeline: dict, search: dict) -> CollectionContractModel:
+    """A minimal collection contract carrying the graph blobs the import-time validator checks."""
+    return CollectionContractModel(
+        name="c",
+        supported_formats=["pdf"],
+        max_file_size_bytes=1024,
+        pipeline=pipeline,
+        search=search,
+    )
+
+
+# A blob naming a node kind the registry does not know — a BuildError at build time.
+_UNBUILDABLE = {
+    "id": "g",
+    "nodes": [{"id": "n", "family": "parser", "kind": "does_not_exist", "config": {}}],
+    "transitions": [],
+    "bindings": {},
+}
+
+
+def test_import_validation_rejects_malformed_pipeline_blob() -> None:
+    """A malformed/unbuildable pipeline blob aborts the import LOUDLY, naming the pipeline blob."""
+    importer = CollectionImporterV1(FakeImportFacade(), object())
+
+    with pytest.raises(CollectionImportError) as exc:
+        importer._validate_contract_blobs(_contract(pipeline=_UNBUILDABLE, search={}))
+
+    assert "pipeline blob" in str(exc.value)
+
+
+def test_import_validation_rejects_malformed_search_blob() -> None:
+    """A non-empty malformed search blob aborts the import LOUDLY, naming the search blob (the
+    pipeline being valid, so the failure is unambiguously attributed to search)."""
+    valid_pipeline = IngestPipeline.light_blob().model_dump(mode="json")
+    importer = CollectionImporterV1(FakeImportFacade(), object())
+
+    with pytest.raises(CollectionImportError) as exc:
+        importer._validate_contract_blobs(_contract(pipeline=valid_pipeline, search=_UNBUILDABLE))
+
+    assert "search blob" in str(exc.value)
+
+
+def test_import_validation_rejects_non_search_topology() -> None:
+    """A structurally-valid graph that is NOT a search pipeline (no SearchResult terminal) is
+    rejected — the shared terminal contract runs on import exactly as at the app write boundary."""
+    valid_pipeline = IngestPipeline.light_blob().model_dump(mode="json")
+    non_search = SearchPipeline.default_blob().model_dump(mode="json")
+    non_search["nodes"] = [n for n in non_search["nodes"] if n["id"] != "deliver"]
+    non_search["transitions"] = [
+        t for t in non_search["transitions"] if t["to_node_id"] != "deliver"
+    ]
+    non_search["bindings"] = {k: v for k, v in non_search["bindings"].items() if k != "deliver"}
+    importer = CollectionImporterV1(FakeImportFacade(), object())
+
+    with pytest.raises(CollectionImportError) as exc:
+        importer._validate_contract_blobs(_contract(pipeline=valid_pipeline, search=non_search))
+
+    assert "search blob" in str(exc.value)
+    assert "not a valid search pipeline" in str(exc.value)
+
+
+def test_import_validation_accepts_valid_pipeline_and_empty_search() -> None:
+    """A valid pipeline with the empty ``{}`` search default (the stock search) validates cleanly."""
+    valid_pipeline = IngestPipeline.light_blob().model_dump(mode="json")
+    importer = CollectionImporterV1(FakeImportFacade(), object())
+
+    # No raise — the empty search sentinel is left untouched (uses the built-in search pipeline).
+    importer._validate_contract_blobs(_contract(pipeline=valid_pipeline, search={}))
 
 
 async def _bundle(export_facade, tmp_path) -> BundleReader:

@@ -36,6 +36,33 @@ def _log_progress(stage: str, percent: int) -> None:
     CONTEXT.logger.debug(f"transfer progress: {stage} {percent}%")
 
 
+async def _grant_imported_collection(granting_key_id: str, collection_id: uuid.UUID) -> None:
+    """
+    Grant the creating key ownership of the just-imported collection (best-effort).
+
+    Delegates to the shared auth façade (which no-ops on a wildcard / full-access key); a failure is
+    swallowed with a warning because the collection already exists and the transfer is already DONE —
+    aborting here would fail an otherwise-successful import over a repairable scope issue.
+
+    Args:
+        granting_key_id (str): The creating key's id (UUID as string).
+        collection_id (uuid.UUID): The imported collection's new id.
+    """
+    try:
+        granted = await CONTEXT.database.auth.grant_collection_to_key(
+            uuid.UUID(granting_key_id), str(collection_id)
+        )
+        if granted:
+            CONTEXT.logger.info(
+                f"Granted imported collection {collection_id} to key {granting_key_id}"
+            )
+    except Exception as grant_exc:  # noqa: BLE001 — a grant failure must not fail a done import
+        CONTEXT.logger.warning(
+            f"Could not grant imported collection {collection_id} to key {granting_key_id}: "
+            f"{grant_exc}"
+        )
+
+
 async def export_collection(
     ctx: dict[str, Any], collection_id: str, transfer_id: str
 ) -> dict[str, Any]:
@@ -117,7 +144,11 @@ async def export_collection(
 
 
 async def import_collection(
-    ctx: dict[str, Any], s3_key: str, transfer_id: str, target_name: str | None = None
+    ctx: dict[str, Any],
+    s3_key: str,
+    transfer_id: str,
+    target_name: str | None = None,
+    granting_key_id: str | None = None,
 ) -> dict[str, Any]:
     """
     Import a `.dcexport` bundle from S3 as a BRAND-NEW collection (no recompute, id-preserving).
@@ -127,6 +158,9 @@ async def import_collection(
         s3_key (str): The bundle object's key in S3.
         transfer_id (str): The pre-created ``collection_transfer`` row driving status.
         target_name (str | None): Optional name for the new collection (collision → renamed).
+        granting_key_id (str | None): The creating key's id (UUID as string) to grant ownership of
+            the imported collection, or None for a full-access / keyless caller. Applied once the
+            collection exists (best-effort) so a list-scoped CREATE key can reach what it imported.
 
     Returns:
         dict: ``{collection_id, collection_name, counts}`` — also stamped on the tracking row.
@@ -171,7 +205,14 @@ async def import_collection(
             counts=result.counts,
         )
 
-        # 3. The staged bundle is fully consumed — reclaim it so it does not leak in S3 forever (the
+        # 3. Grant the creating key ownership of the imported collection (list-scoped CREATE keys;
+        #    the façade no-ops on a wildcard / full-access key). Best-effort AFTER the transfer is
+        #    DONE: the collection already exists, so a grant failure must NOT fail an otherwise
+        #    successful import — it is logged and root can repair the scope.
+        if granting_key_id is not None:
+            await _grant_imported_collection(granting_key_id, result.collection_id)
+
+        # 4. The staged bundle is fully consumed — reclaim it so it does not leak in S3 forever (the
         #    transfer GC sweeps only EXPORT artifacts). Best-effort: a failed cleanup must never fail
         #    an import that already succeeded. Only done on success, where no arq retry can re-run and
         #    need to re-download it (a failed import keeps its staging object for a possible retry).

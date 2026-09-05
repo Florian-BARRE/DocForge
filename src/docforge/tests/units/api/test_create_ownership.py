@@ -1,9 +1,12 @@
-"""Auto-ownership on collection creation: a scoped key holding CREATE that creates a collection has
-the new id appended to its own `collections` scope (so it can then manage what it created), while a
-full-access key and a wildcard-scoped key are left untouched.
+"""Auto-ownership on collection creation: `CollectionStoreSync.grant_creator_scope` now delegates the
+read → append-if-list-scoped-and-absent → persist logic to the store façade's
+`grant_collection_to_key` (shared with the async import path). This test pins the APP-SIDE contract:
+a full-access / keyless principal short-circuits (no façade call); any permissioned key delegates the
+decision to the façade with `(key.id, collection_id)`. The wildcard / duplicate NO-OP itself lives in
+the façade now and is covered in `test_auth_grant_facade.py`.
 
-Exercises `backend.routers.collections.router._grant_creator_scope` directly with an explicit
-principal + a mocked auth facade — no store, no HTTP.
+Exercises `CollectionStoreSync.grant_creator_scope` directly with an explicit principal + a mocked
+auth facade — no store, no HTTP.
 """
 
 import uuid
@@ -25,50 +28,44 @@ def _principal(*, permissions):
 def _mock_auth(monkeypatch):
     from backend.context import CONTEXT  # noqa: PLC0415
 
-    update = AsyncMock()
+    grant = AsyncMock(return_value=True)
     monkeypatch.setattr(
-        CONTEXT, "database", SimpleNamespace(auth=SimpleNamespace(update_key_permissions=update))
+        CONTEXT, "database", SimpleNamespace(auth=SimpleNamespace(grant_collection_to_key=grant))
     )
-    return update
+    return grant
 
 
-async def test_scoped_create_appends_new_collection_to_scope(fastapi_app, monkeypatch) -> None:
+async def test_scoped_create_delegates_grant_to_facade(fastapi_app, monkeypatch) -> None:
     from backend.routers.collections.store_sync import CollectionStoreSync  # noqa: PLC0415
 
-    update = _mock_auth(monkeypatch)
+    grant = _mock_auth(monkeypatch)
     principal = _principal(
         permissions={"capabilities": ["read", "write", "create"], "collections": []}
     )
 
     await CollectionStoreSync.grant_creator_scope(principal, NEW_ID)
 
-    update.assert_awaited_once()
-    key_id, permissions = update.await_args.args
-    assert key_id == principal.key.id
-    assert NEW_ID in permissions["collections"]
+    # The app-side guard passes (permissioned key) → the append decision is delegated to the façade.
+    grant.assert_awaited_once_with(principal.key.id, NEW_ID)
 
 
 async def test_full_access_key_is_not_extended(fastapi_app, monkeypatch) -> None:
     from backend.routers.collections.store_sync import CollectionStoreSync  # noqa: PLC0415
 
-    update = _mock_auth(monkeypatch)
+    grant = _mock_auth(monkeypatch)
     await CollectionStoreSync.grant_creator_scope(_principal(permissions=None), NEW_ID)
-    update.assert_not_awaited()
+    # A NULL-permission (full-access) key short-circuits app-side — the façade is never called.
+    grant.assert_not_awaited()
 
 
-async def test_wildcard_scope_is_not_extended(fastapi_app, monkeypatch) -> None:
+async def test_wildcard_key_still_delegates_to_facade(fastapi_app, monkeypatch) -> None:
     from backend.routers.collections.store_sync import CollectionStoreSync  # noqa: PLC0415
 
-    update = _mock_auth(monkeypatch)
+    grant = _mock_auth(monkeypatch)
     principal = _principal(permissions={"capabilities": ["create"], "collections": ["*"]})
+
     await CollectionStoreSync.grant_creator_scope(principal, NEW_ID)
-    update.assert_not_awaited()
 
-
-async def test_already_scoped_collection_is_not_duplicated(fastapi_app, monkeypatch) -> None:
-    from backend.routers.collections.store_sync import CollectionStoreSync  # noqa: PLC0415
-
-    update = _mock_auth(monkeypatch)
-    principal = _principal(permissions={"capabilities": ["create"], "collections": [NEW_ID]})
-    await CollectionStoreSync.grant_creator_scope(principal, NEW_ID)
-    update.assert_not_awaited()
+    # A wildcard scope is permissioned (not NULL), so the app still delegates; the actual no-op on a
+    # wildcard scope is the façade's responsibility (see test_auth_grant_facade.py).
+    grant.assert_awaited_once_with(principal.key.id, NEW_ID)

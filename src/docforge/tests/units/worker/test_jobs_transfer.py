@@ -25,8 +25,9 @@ def _context(monkeypatch, jobs_transfer):
     async def _client():
         yield object()
 
+    auth = SimpleNamespace(grant_collection_to_key=AsyncMock(return_value=True))
     context = SimpleNamespace(
-        database=SimpleNamespace(transfer=object(), transfer_tracker=tracker),
+        database=SimpleNamespace(transfer=object(), transfer_tracker=tracker, auth=auth),
         s3=SimpleNamespace(bucket="bucket", client=_client),
         RUNTIME_CONFIG=SimpleNamespace(
             DOCFORGE_VERSION="test",
@@ -37,7 +38,10 @@ def _context(monkeypatch, jobs_transfer):
             IMPORT_MAX_MEMBERS=500_000,
         ),
         logger=SimpleNamespace(
-            debug=lambda *a, **k: None, info=lambda *a, **k: None, exception=lambda *a, **k: None
+            debug=lambda *a, **k: None,
+            info=lambda *a, **k: None,
+            warning=lambda *a, **k: None,
+            exception=lambda *a, **k: None,
         ),
     )
     monkeypatch.setattr(jobs_transfer, "CONTEXT", context)
@@ -118,3 +122,76 @@ async def test_import_collection_returns_new_collection_and_marks_done(jobs_tran
     assert done_kwargs["collection_id"] == new_id
     assert done_kwargs["collection_name"] == "DemoCollection (imported)"
     tracker.mark_failed.assert_not_awaited()
+
+
+def _patch_import_engine(jobs_transfer, monkeypatch, new_id):
+    """Stub the download/unpack/reader/importer chain so import_collection reaches its grant step."""
+    monkeypatch.setattr(
+        jobs_transfer,
+        "BundleReader",
+        lambda _root: SimpleNamespace(validate=lambda: SimpleNamespace(format_version=1)),
+    )
+
+    async def _fake_download(_client, _bucket, _key, archive_path):
+        archive_path.write_bytes(b"bundle-bytes")
+
+    monkeypatch.setattr(
+        jobs_transfer.S3ObjectApi, "download_to", AsyncMock(side_effect=_fake_download)
+    )
+    monkeypatch.setattr(jobs_transfer.S3ObjectApi, "delete", AsyncMock())
+    monkeypatch.setattr(jobs_transfer.BundleArchive, "unpack", staticmethod(lambda *a, **k: None))
+    import_result = SimpleNamespace(
+        collection_id=new_id, collection_name="Imported", counts={"documents": 1}
+    )
+    monkeypatch.setattr(
+        jobs_transfer,
+        "get_importer",
+        lambda *a, **k: SimpleNamespace(run=AsyncMock(return_value=import_result)),
+    )
+
+
+async def test_import_grants_ownership_when_key_provided(jobs_transfer, monkeypatch):
+    context, tracker = _context(monkeypatch, jobs_transfer)
+    new_id = uuid.uuid4()
+    _patch_import_engine(jobs_transfer, monkeypatch, new_id)
+    key_id = str(uuid.uuid4())
+
+    await jobs_transfer.import_collection(
+        {}, "col-exports/x.dcexport", str(uuid.uuid4()), None, key_id
+    )
+
+    # The creating key is granted ownership of the imported collection (id as string).
+    context.database.auth.grant_collection_to_key.assert_awaited_once_with(
+        uuid.UUID(key_id), str(new_id)
+    )
+    tracker.mark_done.assert_awaited_once()
+    tracker.mark_failed.assert_not_awaited()
+
+
+async def test_import_grant_failure_does_not_fail_a_done_import(jobs_transfer, monkeypatch):
+    context, tracker = _context(monkeypatch, jobs_transfer)
+    new_id = uuid.uuid4()
+    _patch_import_engine(jobs_transfer, monkeypatch, new_id)
+    # The ownership grant blows up — a best-effort step that must NOT fail a DONE import.
+    context.database.auth.grant_collection_to_key = AsyncMock(side_effect=RuntimeError("boom"))
+
+    result = await jobs_transfer.import_collection(
+        {}, "col-exports/x.dcexport", str(uuid.uuid4()), None, str(uuid.uuid4())
+    )
+
+    # The import still succeeded: the row is DONE, never FAILED, and the result surfaces the id.
+    assert result["collection_id"] == str(new_id)
+    tracker.mark_done.assert_awaited_once()
+    tracker.mark_failed.assert_not_awaited()
+
+
+async def test_import_without_key_skips_grant(jobs_transfer, monkeypatch):
+    context, tracker = _context(monkeypatch, jobs_transfer)
+    _patch_import_engine(jobs_transfer, monkeypatch, uuid.uuid4())
+
+    await jobs_transfer.import_collection(
+        {}, "col-exports/x.dcexport", str(uuid.uuid4()), None, None
+    )
+
+    # A full-access / keyless caller threads no key id → no grant attempted.
+    context.database.auth.grant_collection_to_key.assert_not_awaited()
