@@ -25,7 +25,7 @@
 | Ink | `#14161a` | primary text / dark ground |
 | Press ink | `#1b1d22` | raised surface in dark mode |
 | Steel | `#3d454f` | secondary text / meta |
-| Muted | `#8a8378` | labels, timestamps (warm grey) |
+| Muted | `#6e6960` | labels, timestamps (warm grey, darkened for AA 4.5:1) |
 | Muted (dark) | `#8b939d` | labels on ink |
 
 ### Forge ramp (the working ink) — OKLCH-even steps
@@ -41,7 +41,7 @@
 | Running | `#ef5b1e` | `#ef7a45` |
 | Done | `#2f7d4f` | `#4bb67e` |
 | Error | `#c8402c` | `#f06a52` |
-| Pending / warning | `#8a8378` | `#8b939d` |
+| Pending / warning | `#6e6960` | `#8b939d` |
 | Skipped | `#b0a99c` (dashed dot) | `#5a6068` (dashed dot) |
 | Stale | `#f4a63b` | `#f4a63b` |
 

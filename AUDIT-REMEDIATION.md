@@ -8,6 +8,8 @@
 
 ## Journal
 
+- **2026-09-05 — Vague V7 (documentation, 11 items — pas de release : docs non packagées)** : passe doc↔code, agent dédié, **claims re-vérifiés contre le code**. Ground truth relu depuis `NodeRegistry` (familles + kinds). Fixes (tracked) : PIPELINE.md (deliver/bundle ajoutés à l'arbre + phrase familles ; statuts stale corrigés — block-id remap shippé, caveat item-index à jour, arbre +granite_docling/pp_structure/vlm_entry, nodes +structgen) ; README (+release-images.yml) ; rest-api.md (SearchHit/JobStatus/JobPage pagination alignés sur les response models) ; architecture.md (13 ressources SDK, gate frontend eslint+tsc+vitest+build, note rename supprimée) ; brand.md (`--text-mute` = `#6e6960` réel, pas `#8a8378`) ; deployment-resources.md (flag stale ~10/8 GB retiré — getting-started dit déjà ~20 GB/12-16 GB) ; getting-started.md (port range 10040–10052 + ligne paddle 10049 ; field-types 6→**11** depuis l'enum `FieldType`). **Déjà OK** (finding stale) : python-sdk.md liste déjà CREATE. **Local-only (gitignored, hors commit)** : CLAUDE.md familles+tests (comme `.claude`) — noté, appliqué localement. Aucun code/test/compose/.github touché. **→ V7 : 21/21 (0 restant).** NB : pas de tag/release — les docs ne sont pas packagées dans les images/SDK, un rebuild d'images identiques serait du gaspillage ; commit docs sur main.
+
 - **2026-09-05 — Vague D / 0.14.14 (V1 deps ML : 1 MOYENNE + 1 FAIBLE)** : (torch) **GPU cu124 EOL → cu128** (décision utilisateur) — l'index wheel `pytorch-cu124` était figé (aucun torch >2.6 n'y sort), gelant les images GPU. Index renommé `pytorch-cu128` (URL `whl/cu128`) dans `docforge` + `bge_server` (sources + [[tool.uv.index]] + commentaires) ; `uv lock` re-résout **torch 2.6.0+cu124 → 2.11.0+cu128** (torchvision 0.26.0+cu128) sur les deux projets, chaîne nvidia-cu12 alignée 12.8. CPU **inchangé** (2.12.1+cpu / 2.13.0+cpu). Refs de version mises à jour dans worker/Dockerfile, bge Dockerfile + README. **⚠️ Non validable sur cette VM (pas de GPU) — ships unvalidated on GPU hardware jusqu'à un déploiement GPU testé** (caveat assumé par l'utilisateur). (transformers) **pin `<5`** — le re-lock a déjà tiré la **dernière 4.x (4.57.6)** sur les deux (capture les fixes de la ligne 4.x) ; le plafond `<5` reste un **WONTFIX justifié+documenté** (FlagEmbedding/FlagReranker exige l'API tokenizer 4.x supprimée en 5.x — commentaire pyproject déjà en place) : les fixes 5.x-only ne sont pas prenables tant que FlagEmbedding ne supporte pas transformers 5. Validé : `uv lock --locked` OK (0 drift) × 2, docforge 1425 passed + ruff clean, bge 29 passed + ruff clean ; 0 ref cu124/2.6.0 hors locks. **→ V1 : 2 `[ ]` restants, tous deux `.claude/` gitignorés (hook-log secrets + settings bypassPermissions) — hors release versionnée.**
 
 - **2026-09-05 — Vague C / 0.14.13 (V1 durcissement FAIBLE : 5 items, 2 agents ||)** : (1) **bypass rate-limit auth-failure** (app.py:86 — moitié XFF déjà close en 0.14.10) — le limiteur proper est INNER du gate auth, donc un 401 court-circuite avant lui : un flood mauvais-credentials n'était jamais throttlé. `RateLimitEngine` extrait (`ratelimit/engine.py`, `allow()` fail-open + `reject()` 429+Retry-After, réutilisé par les 2 gates) ; `AuthMiddleware.__reject_auth_failure` throttle le chemin d'échec par IP (`authfail:<ip>`, honore `RATE_LIMIT_TRUST_FORWARDED_FOR`) → 429 au-delà du budget, sinon le 401 opaque verbatim. Option (b) choisie (garder l'ordre) car le keying per-key exige le principal injecté par Auth ; cycle d'import `auth→ratelimit` cassé via `TYPE_CHECKING` dans `keying.py`. **Exemption job-poll/SSE volontairement NON appliquée** sur ce chemin (un échec-auth n'est jamais un poll légitime). OFF par défaut. **Revu par `code-reviewer` : APPROVED** (6 checks passés ; 2 INFO tradeoffs bornés derrière 2 flags off-by-default) → note runbook ajoutée (PROD-HARDENING §9). (2) **workflow least-privilege** (ci.yml:20) — `permissions:` explicites : floor `contents: read` sur ci/gate/release-* ; `packages: write` scoped au seul job `images`, `id-token: write` au seul job `publish` (PyPI OIDC) ; `gate.yml` capé `contents: read` (intersection caller∩callee → ne peut plus hériter `packages: write`). 9 actions **pinnées au SHA** dans release-images/release-sdk (SHA↔tag **vérifiés par moi** via `gh api`, dont la déréférence du tag annoté pypi-publish → commit exact ; zéro changement de version). Topologie 2-workflows intacte (PyPI trusted-publishing lie le nom de fichier). Trivy = table→artefact (pas de SARIF → pas de `security-events`), job non-bloquant. (3) **overlay télémétrie** (telemetry.yml:84) — ports grafana/prometheus/loki bindés `${TELEMETRY_BIND_ADDR:-127.0.0.1}` (loopback par défaut au lieu de `0.0.0.0`) + knob/commentaires ; creds Grafana déjà via env-file `change_me`. `config -q` OK sur prod-cpu/gpu×télémétrie(±proxy). (4+5) **whoami scope-gate résidu** (whoami.py:40) + **hardening smells groupés** (blobs/router.py:45) — **déjà clos** (vérifié par l'agent) : blob headers nosniff/attachment/CSP-sandbox + 403 (pas 404) sur blob étranger, redaction export via `redact_blob_secrets`, whoami dégrade en 403 ; seul résidu = "MCP client cache", **hors scope backend** → suivi sous l'item V8 `scoped_sdk.py`. +tests rate-limit (5). **1425 passed**, ruff clean × 4 projets. **→ V1 : 4 `[ ]` restants (torch cu128 → Vague D ; transformers<5 ; 2× .claude gitignored).**
@@ -112,9 +114,9 @@
 | V4 — Search & coûts | 1 | 1 | 0 | 0 |
 | V5 — Moteur & pipeline | 2 | 2 | 0 | 0 |
 | V6 — Frontend | 0 | 0 | 0 | 0 |
-| V7 — Documentation | 21 | 10 | 0 | 11 |
+| V7 — Documentation | 21 | 21 | 0 | 0 |
 | V8 — Outillage (.claude/tests/infra/télémétrie) | 188 | 41 | 3 | 144 |
-| **Total** | **247** | **88** | **3** | **156** |
+| **Total** | **247** | **99** | **3** | **145** |
 
 
 ## V1 — Sécurité & authz (avant tout déploiement multi-tenant)  (30)
@@ -270,7 +272,7 @@
   `docs/metadata-architecture.md:1`
 - [x] **🔴 HAUTE** · `divergence-doc` — rest-api.md documents removed ColBERT params use_late_interaction / rescore_pool_size that now 422  
   `docs/rest-api.md:478` _(aussi: claude-infra, docs-freshness, search-runtime)_
-- [ ] **🟠 MOYENNE** · `divergence-doc` — PIPELINE.md (the self-declared living reference) omits the deliver family / bundle terminal entirely  
+- [x] **🟠 MOYENNE** · `divergence-doc` — PIPELINE.md (the self-declared living reference) omits the deliver family / bundle terminal entirely  
   `src/docforge/PIPELINE.md:61`
 - [x] **🟠 MOYENNE** · `divergence-doc` — configuration.md misses the whole idempotency + audit env-var families  
   `docs/configuration.md:24`
@@ -288,25 +290,25 @@
   `docs/rest-api.md:41`
 - [x] **⚪ FAIBLE** · `divergence-doc` — CONTRIBUTING.md: 'monorepo of four standalone uv projects' — paddle_server is a fifth, CI-gated package  
   `CONTRIBUTING.md:3`
-- [ ] **⚪ FAIBLE** · `divergence-doc` — Ground-truth docs stale: CLAUDE.md family/node lists miss structgen+deliver; tests list incomplete; rules/architecture.md says preflight 'reste à ajouter' though shipped  
+- [x] **⚪ FAIBLE** · `divergence-doc` — Ground-truth docs stale: CLAUDE.md family/node lists miss structgen+deliver; tests list incomplete; rules/architecture.md says preflight 'reste à ajouter' though shipped  
   `CLAUDE.md:1`
-- [ ] **⚪ FAIBLE** · `divergence-doc` — PIPELINE.md stale statuses: block-id remap marked pending though shipped; item-index-in-progress-events caveat outdated; tree misses vlm_entry/parser kinds; nodes list misses structgen  
+- [x] **⚪ FAIBLE** · `divergence-doc` — PIPELINE.md stale statuses: block-id remap marked pending though shipped; item-index-in-progress-events caveat outdated; tree misses vlm_entry/parser kinds; nodes list misses structgen  
   `src/docforge/PIPELINE.md:485`
-- [ ] **⚪ FAIBLE** · `divergence-doc` — README.md workflows note omits release-images.yml  
+- [x] **⚪ FAIBLE** · `divergence-doc` — README.md workflows note omits release-images.yml  
   `README.md:169`
-- [ ] **⚪ FAIBLE** · `divergence-doc` — Response payloads richer than documented: SearchHit, JobStatus and jobs list pagination under-described in rest-api.md  
+- [x] **⚪ FAIBLE** · `divergence-doc` — Response payloads richer than documented: SearchHit, JobStatus and jobs list pagination under-described in rest-api.md  
   `docs/rest-api.md:493`
-- [ ] **⚪ FAIBLE** · `divergence-doc` — architecture.md grouped staleness: SDK resource list, frontend gate steps, self-referential rename note  
+- [x] **⚪ FAIBLE** · `divergence-doc` — architecture.md grouped staleness: SDK resource list, frontend gate steps, self-referential rename note  
   `docs/architecture.md:75`
-- [ ] **⚪ FAIBLE** · `divergence-doc` — brand.md muted/pending hex #8a8378 diverges from the implemented tokens  
+- [x] **⚪ FAIBLE** · `divergence-doc` — brand.md muted/pending hex #8a8378 diverges from the implemented tokens  
   `docs/brand.md:28`
-- [ ] **⚪ FAIBLE** · `divergence-doc` — deployment-resources.md still flags getting-started.md's '~10 GB / 8 GB' claim as needing a fix that already landed  
+- [x] **⚪ FAIBLE** · `divergence-doc` — deployment-resources.md still flags getting-started.md's '~10 GB / 8 GB' claim as needing a fix that already landed  
   `docs/deployment-resources.md:39`
-- [ ] **⚪ FAIBLE** · `consistency` — getting-started.md port-range claims inconsistent: '10040–10048' vs published 10049 and troubleshooting's 10040–10052  
+- [x] **⚪ FAIBLE** · `consistency` — getting-started.md port-range claims inconsistent: '10040–10048' vs published 10049 and troubleshooting's 10040–10052  
   `docs/getting-started.md:19`
-- [ ] **⚪ FAIBLE** · `divergence-doc` — getting-started.md: field-type list names 6 of 11 types  
+- [x] **⚪ FAIBLE** · `divergence-doc` — getting-started.md: field-type list names 6 of 11 types  
   `docs/getting-started.md:182`
-- [ ] **⚪ FAIBLE** · `consistency` — python-sdk.md auth section drops the CREATE capability from the KeyPermissions bullet  
+- [x] **⚪ FAIBLE** · `consistency` — python-sdk.md auth section drops the CREATE capability from the KeyPermissions bullet  
   `docs/python-sdk.md:387`
 
 

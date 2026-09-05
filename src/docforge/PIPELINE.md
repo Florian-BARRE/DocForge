@@ -45,21 +45,23 @@ flowchart LR
 
 **Principes** : pipeline **pure** (les nodes = Config + Consumes → Produces, zéro DB/S3) · le **worker** persiste aux bords via la façade `Database` · le contrat de collection arrive en **run input** · un node = interchangeable dans sa **famille** (choix UI).
 
-**Organisation du code** : `pipelines/nodes/` = **uniquement les capacités génériques** (llm · ocr · vlm · **embed** · openai_compat (la factory partagée) — réutilisables par toute pipeline) · `pipelines/ingest/` = **LA pipeline d'ingestion** : `nodes/` **groupés par GRANDE ÉTAPE** + **`pipeline.py` → `IngestPipeline`**, la classe-lien qui déclare ses familles et porte le **describe** (`IngestPipeline.palette()`) qui peuplera l'UI.
+**Organisation du code** : `pipelines/nodes/` = **uniquement les capacités génériques** (llm · ocr · vlm · **embed** · structgen · openai_compat (la factory partagée) — réutilisables par toute pipeline) · `pipelines/ingest/` = **LA pipeline d'ingestion** : `nodes/` **groupés par GRANDE ÉTAPE** + **`pipeline.py` → `IngestPipeline`**, la classe-lien qui déclare ses familles et porte le **describe** (`IngestPipeline.palette()`) qui peuplera l'UI.
 
 ```
 pipelines/ingest/nodes/
 ├── intake/         admission · format_probe · pdf_probe · content_address · converter/gotenberg
-├── parse/          parser/docling · figure_render
-├── enrich/         figure_extract · figure_classify · figure_entry · enrich_apply
+├── parse/          parser/docling · parser/granite_docling · parser/pp_structure · figure_render
+├── enrich/         figure_extract · figure_classify · figure_entry · vlm_entry · enrich_apply
 ├── chunk/          base · structure_aware · fixed_size · semantic (à plat — l'étape EST la famille)
 ├── contextualize/  base(helpers·enums) · breadcrumb · doc_meta · sliding · llm(=prep) · llm_apply* · keep_raw*
-└── metagen/        base · prep(chunk·document) · apply(chunk·document) · skip*
+├── metagen/        base · prep(chunk·document) · apply(chunk·document) · skip*
+└── deliver/        bundle (le terminal : assemble la sortie du run que le worker persiste)
 ```
 *(`*` = nodes internes de câblage, `SELECTABLE=False` — cachés du picker de méthodes de la palette.)*
 
 Les **familles** (palette UI) suivent les étapes — chaque nom est UNIQUE et sans ambiguïté : `intake` ·
-`converter` · `parser` · `render` (figure_render) · `enrich` · `chunker` · `contextualize` · `metagen` — plus les capacités
+`converter` · `parser` · `render` (figure_render) · `enrich` · `chunker` · `contextualize` · `metagen` ·
+`deliver` (bundle — le terminal qui assemble la sortie du run) — plus les capacités
 génériques `embed` · `ocr` · `vlm` · `llm` · `structgen`. Convention kinds : jamais de redondance famille+kind (`(ocr, mistral)` comme
 `(llm, mistral)` ; `(contextualize, llm)` — pas de suffixes `_ocr`/`_context`).
 
@@ -463,7 +465,7 @@ vive, `'<100 numbers>'` dans la trace**.
 
 - **Transitions** (contrôle) : `OnSuccess` (défaut) · `OnFailure` (recovery/escalade) · `ScoreBelow(threshold)` (escalade qualité) · **`WhenEquals(field, equals)`** (le switch — routage par valeur, ex. par classe de figure) · `Always`. **Priorité** : `ScoreBelow > WhenEquals > OnSuccess/OnFailure > Always` (la qualité escalade avant de router).
 - **Bindings** (données) : `FromRunInput(field)` · `FromNode(node_id, field)` (n'importe quel amont) · `FromGroupInput(field)` · **`FromFirst(candidates)`** (la jointure de convergence : après un embranchement `ScoreBelow`/`OnFailure`, le slot lit le PREMIER candidat qui a réellement produit — chaque candidat validé comme un `FromNode`). Slots typés : classe d'artefact nue **ou `list[Classe]`**.
-- **`ForEach`** (le sous-graphe par item) : `over` (un champ `list[T]` amont) · `item_field` (l'item exposé au corps) · `max_concurrency` · **contrat de collection** : tous les terminaux du corps produisent le MÊME **Artifact** à slot unique (les scalaires type `str` sont refusés) → le ForEach produit `items: list[T]` (ordre préservé, 1 record d'exécution par item `body[i]`, échec d'item = échec bruyant). L'escalade (`ScoreBelow`) et le switch (`WhenEquals` — avec **default** possible via une arête `OnSuccess`) fonctionnent PAR ITEM dans le corps. *(Re-audit adversarial passé : 3 crash-paths corrigés ; suivi v1 : les événements de progress ne portent pas encore l'index d'item.)*
+- **`ForEach`** (le sous-graphe par item) : `over` (un champ `list[T]` amont) · `item_field` (l'item exposé au corps) · `max_concurrency` · **contrat de collection** : tous les terminaux du corps produisent le MÊME **Artifact** à slot unique (les scalaires type `str` sont refusés) → le ForEach produit `items: list[T]` (ordre préservé, 1 record d'exécution par item `body[i]`, échec d'item = échec bruyant). L'escalade (`ScoreBelow`) et le switch (`WhenEquals` — avec **default** possible via une arête `OnSuccess`) fonctionnent PAR ITEM dans le corps. *(Re-audit adversarial passé : 3 crash-paths corrigés ; la progress porte désormais l'index d'item — compteur live `items_done`/`items_total` sur la racine fan-out et `failed_item_index` sur l'échec.)*
 - **Configs** : chaque node = une `NodeConfig` (`extra="forbid"` → un typo dans le blob **fait échouer le build**, jamais ignoré). Tout node **RÉSEAU** hérite la surface partagée `TimeoutConfig` (`timeout_seconds`, `preflight_timeout_seconds`) — et `TimeoutRetryConfig` (+ `max_retries`, `retry_backoff_seconds`) pour ceux qui retentent — chaque famille ne re-déclarant que le DÉFAUT dont elle a besoin ; **par collection dans le blob**. Un budget wall-clock de tout le job d'ingest est porté par le champ collection **`job_timeout_seconds`** (nullable ; NULL = défaut worker `WORKER_JOB_TIMEOUT_SECONDS`, migration `b1c7e9a4d2f8`) ; plusieurs cadences worker sont passées en env `RUNTIME_CONFIG` (grâce, timeout Qdrant, heartbeat, health-check, intervalle du reaper, poll SSE app-side).
 - **`UNIQUE_IN_GRAPH`** (le flag de multiplicité, exposé par `describe()` et rejeté par le validateur en
   doublon — `duplicate_unique_node`) : **True** quand une 2e instance du kind est une erreur de câblage —
@@ -482,7 +484,7 @@ vive, `'<100 numbers>'` dans la trace**.
 | 1 | ~~`is_scanned` (global ou par page)~~ **CLOS** : flag supprimé de l'ingest — la vérité se décide à la maille **bloc IR** (enrich, heuristiques + modèles) ; `pdf_probe` = faits système uniquement (pages, lisibilité) ; `source_kind`/`page.is_scanned` (DB) dérivés de la classification enrich à la persistance | ✅ décidé |
 | 2 | ~~Routage scan → OCR~~ **TRANCHÉ** : `do_ocr=false` toujours ; docling = structure seule ; l'**enrich** classifie (`SCANNED_TEXT`/logo/photo/chart) et OCRise/décrit avec les chaînes puissantes (voir §3) | ✅ décidé |
 | 3 | ~~`figure_render`~~ **PLACÉ** (décision) : fin de l'étape **parse** (famille `parse`) — l'IR sort « ultra complet », chaque figure porte son crop ; l'enrich ne prépare rien, il décide. **`MarkdownSerializer`** reste 🅿️ garé (vue backend, placement à discuter avec le backend) | ✅ / 🅿️ |
-| 4 | **Worker (noté, critique)** : remapper les ids de blocs sur l'UUID du document à la persistance (sinon collision de PK entre collections/versions) | 🔶 phase worker |
+| 4 | ~~**Worker** : remapper les ids de blocs sur l'UUID du document à la persistance (sinon collision de PK entre collections/versions)~~ **FAIT** : le block-id remap vit dans `worker/backend/libs/persistence/translator.py` (`__block_id`, id préfixé par le document) | ✅ fait |
 
 ---
 
