@@ -1,17 +1,35 @@
 """CollectionImporterV1: the restore is the exporter in reverse — a real bundle is produced by the
-exporter, then imported through a recording fake gateway to prove the id-remap (metadata int id
-re-linked by field NAME), the PRESERVED chunk id (== Qdrant point id) and block id, the collision
-rename, and the whole-collection rollback on a mid-restore failure."""
+exporter, then imported through a recording fake gateway to prove the id-REMAP (every id regenerated,
+metadata int id re-linked by field NAME, the chunk id kept == its Qdrant point id THROUGH the remap,
+the block id re-namespaced onto the new doc), the collision rename, the manifest-count reconciliation,
+consistent dangling-reference handling, and the whole-collection rollback on a mid-restore failure."""
+
+import json
+import uuid
+from types import SimpleNamespace
 
 import pytest
 from collection_transfer import BundleReader, CollectionExporter
 from collection_transfer.manifest import CollectionContractModel
-from collection_transfer.restore import CollectionImportError, CollectionImporterV1
+from collection_transfer.restore import (
+    CollectionImportError,
+    CollectionImporterV1,
+    RemapContext,
+    RowDeserializer,
+)
 
 from shared_libs.pipelines.ingest import IngestPipeline
 from shared_libs.pipelines.search import SearchPipeline
 
-from .conftest import BLOCK_ID, CHUNK_ID, COLLECTION_ID, DENSE_DIM, DOC_ID, FakeImportFacade
+from .conftest import (
+    BLOCK_ID,
+    CHUNK_ID,
+    COLLECTION_ID,
+    DENSE_DIM,
+    DOC_ID,
+    FakeExportFacade,
+    FakeImportFacade,
+)
 
 
 def _contract(*, pipeline: dict, search: dict) -> CollectionContractModel:
@@ -281,3 +299,262 @@ async def test_import_streams_blobs_in_bounded_batches_never_the_whole_bundle() 
     assert len(facade.blob_objects) == blob_count
     assert len(facade.blob_rows) == blob_count
     assert sum(facade.flush_byte_sizes) == total_bytes
+
+
+# ─────────────────────── Item 1 — manifest count reconciliation ───────────────────────
+
+
+def _drop_manifest_file_entry(bundle_dir, rel_path: str) -> None:
+    """Delete a data file AND drop its manifest.files entry — so validate() no longer checksums it,
+    it streams as empty, yet manifest.counts still claims its rows (the silent-empty-success bug)."""
+    manifest_path = bundle_dir / "manifest.json"
+    data = json.loads(manifest_path.read_text("utf-8"))
+    data["files"] = [entry for entry in data["files"] if entry["path"] != rel_path]
+    manifest_path.write_text(json.dumps(data), encoding="utf-8")
+    (bundle_dir / rel_path).unlink()
+
+
+async def test_import_fails_when_manifest_declares_a_missing_data_file(
+    export_facade, tmp_path
+) -> None:
+    """A bundle whose manifest declares points it no longer carries must FAIL loudly at
+    reconciliation (naming the domain) and roll back — never a false success with phantom counts."""
+    exporter = CollectionExporter(
+        export_facade, docforge_version="test", created_at="2026-01-01T00:00:00+00:00"
+    )
+    await exporter.build(COLLECTION_ID, tmp_path / "bundle")
+    # points.jsonl vanishes from the checked files but counts.points still says 1.
+    _drop_manifest_file_entry(tmp_path / "bundle", "qdrant/points.jsonl")
+    reader = BundleReader(tmp_path / "bundle")
+    reader.validate()  # passes: the dropped file is no longer listed, so it is never checksummed
+    facade = FakeImportFacade()
+
+    with pytest.raises(CollectionImportError) as exc:
+        await CollectionImporterV1(facade, reader).run()
+
+    assert "reconciliation failed" in str(exc.value)
+    assert "points" in str(exc.value)
+    # The half-built collection was rolled back — no phantom-count success left behind.
+    assert facade.created is not None
+    assert facade.rolled_back == [facade.created.id]
+
+
+# ─────────────────────── Item 2 — consistent dangling-reference handling ───────────────────────
+
+
+def _block_data(block_id: str, document_id: str, *, parent_id: str | None) -> dict:
+    """A minimal ir_blocks bundle row for the pure deserializer tests."""
+    return {
+        "id": block_id,
+        "document_id": document_id,
+        "block_type": "text",
+        "page": 0,
+        "bbox": [0.0, 0.0, 1.0, 1.0],
+        "reading_order": 0,
+        "column_index": 0,
+        "parent_id": parent_id,
+        "level": None,
+        "text": "x",
+        "is_boilerplate": False,
+        "language": "en",
+        "confidence": None,
+    }
+
+
+def _ctx_with_one_doc() -> tuple[RemapContext, str, uuid.UUID]:
+    """A RemapContext mapping the fixture document to a fresh uuid (blocks left to the caller)."""
+    old_doc = str(DOC_ID)
+    new_doc = uuid.uuid4()
+    ctx = RemapContext(field_ids={})
+    ctx.documents = {old_doc: new_doc}
+    return ctx, old_doc, new_doc
+
+
+def test_deserialize_remaps_parent_child_block_chain_consistently() -> None:
+    """A parent→child block chain: the child's parent_id resolves to the parent's REMAPPED id, and
+    both re-namespace onto the new document id (the deep-chain case the happy path never exercised)."""
+    ctx, old_doc, new_doc = _ctx_with_one_doc()
+    parent_old = f"{old_doc}:#/texts/0"
+    child_old = f"{old_doc}:#/texts/1"
+    ctx.blocks = {
+        parent_old: ctx.remap_block_id(parent_old, old_doc),
+        child_old: ctx.remap_block_id(child_old, old_doc),
+    }
+
+    parent = RowDeserializer.block(_block_data(parent_old, old_doc, parent_id=None), ctx)
+    child = RowDeserializer.block(_block_data(child_old, old_doc, parent_id=parent_old), ctx)
+
+    assert parent.parent_id is None
+    assert child.parent_id == parent.id
+    assert parent.id.startswith(f"{new_doc}:") and child.id.startswith(f"{new_doc}:")
+
+
+def test_deserialize_drops_dangling_block_parent(monkeypatch) -> None:
+    """A block whose parent is absent from the bundle degrades to a NULL parent (recoverable) AND
+    logs a warning naming the id — never a silent drop, never a loud fail."""
+    ctx, old_doc, _new = _ctx_with_one_doc()
+    child_old = f"{old_doc}:#/texts/1"
+    ctx.blocks = {child_old: ctx.remap_block_id(child_old, old_doc)}  # parent NOT mapped
+    warnings: list[str] = []
+    monkeypatch.setattr(
+        RowDeserializer, "logger", SimpleNamespace(warning=lambda msg: warnings.append(msg))
+    )
+
+    block = RowDeserializer.block(
+        _block_data(child_old, old_doc, parent_id=f"{old_doc}:#/texts/0"), ctx
+    )
+
+    assert block.parent_id is None  # dropped, not a KeyError, not a stale foreign id
+    assert warnings and "block parent" in warnings[0]
+
+
+def test_deserialize_drops_dangling_figure_caption(monkeypatch) -> None:
+    """A figure caption pointing at an absent block degrades to NULL + a logged warning."""
+    ctx, old_doc, _new = _ctx_with_one_doc()
+    fig_block_old = f"{old_doc}:#/pictures/0"
+    ctx.blocks = {fig_block_old: ctx.remap_block_id(fig_block_old, old_doc)}  # caption NOT mapped
+    warnings: list[str] = []
+    monkeypatch.setattr(
+        RowDeserializer, "logger", SimpleNamespace(warning=lambda msg: warnings.append(msg))
+    )
+
+    figure = RowDeserializer.block_figure(
+        {
+            "block_id": fig_block_old,
+            "crop_blob_hash": None,
+            "caption_block_id": f"{old_doc}:#/texts/9",
+        },
+        ctx,
+    )
+
+    assert figure.caption_block_id is None
+    assert warnings and "figure caption" in warnings[0]
+
+
+def test_deserialize_skips_unknown_metadata_field(monkeypatch) -> None:
+    """A metadata value whose field is absent from the restored schema is SKIPPED (None) + logged —
+    both scopes behave identically (the consistency the item asks for)."""
+    ctx, old_doc, _new = _ctx_with_one_doc()
+    ctx.field_ids = {"author": 100}  # 'topic' deliberately absent
+    ctx.chunks = {str(CHUNK_ID): uuid.uuid4()}
+    warnings: list[str] = []
+    monkeypatch.setattr(
+        RowDeserializer, "logger", SimpleNamespace(warning=lambda msg: warnings.append(msg))
+    )
+
+    doc_meta = RowDeserializer.document_metadata(
+        {"document_id": old_doc, "field_name": "topic", "value": "x", "origin": "user"}, ctx
+    )
+    chunk_meta = RowDeserializer.chunk_metadata(
+        {"chunk_id": str(CHUNK_ID), "field_name": "topic", "value": "x", "origin": "generated"}, ctx
+    )
+
+    assert doc_meta is None and chunk_meta is None
+    assert len(warnings) == 2
+    assert all("topic" in message for message in warnings)
+
+
+def test_to_point_drops_stale_document_id(monkeypatch) -> None:
+    """A point whose payload document_id resolves to no restored document has that stale key DROPPED
+    (not kept as a wrong foreign id) + a logged warning, while the point itself is still restored."""
+    ctx = RemapContext(field_ids={})
+    ctx.documents = {}  # the referenced doc is NOT in the bundle
+    ctx.chunks = {str(CHUNK_ID): uuid.uuid4()}
+    warnings: list[str] = []
+    monkeypatch.setattr(
+        CollectionImporterV1, "logger", SimpleNamespace(warning=lambda msg: warnings.append(msg))
+    )
+    record = {
+        "id": str(CHUNK_ID),
+        "vectors": {"content_dense": [0.1, 0.2, 0.3, 0.4]},
+        "payload": {"document_id": str(DOC_ID), "enabled": True},
+    }
+
+    point = CollectionImporterV1._to_point(record, ctx)
+
+    assert point is not None
+    assert "document_id" not in point.payload  # dropped, not left stale
+    assert point.payload["enabled"] is True  # the rest of the payload survives
+    assert warnings and "document_id" in warnings[0]
+
+
+# ─────────────────────── Item 4 — config_versions history is explicitly not restored ───────────────────────
+
+
+class _HistoryExportFacade(FakeExportFacade):
+    """A source collection carrying a redacted config-version history in collection.json."""
+
+    async def list_config_versions(self, _collection_id):
+        return [
+            SimpleNamespace(version=1, config={}, note="creation", created_at=None),
+            SimpleNamespace(version=2, config={}, note="tuned", created_at=None),
+        ]
+
+
+async def test_import_does_not_restore_config_version_history(tmp_path, monkeypatch) -> None:
+    """DECISION: restoring historical version rows needs a store-facade write outside the transfer
+    engine's scope, so the history is dropped ON PURPOSE. The import still succeeds (history is not
+    required) and the drop is announced explicitly rather than silently."""
+    reader = await _bundle(_HistoryExportFacade(), tmp_path)
+    assert len(reader.read_collection().config_versions) == 2  # the bundle DID carry the history
+    facade = FakeImportFacade()
+    infos: list[str] = []
+    monkeypatch.setattr(
+        CollectionImporterV1, "logger", SimpleNamespace(info=lambda msg: infos.append(msg))
+    )
+
+    result = await CollectionImporterV1(facade, reader).run()
+
+    # The import succeeded despite the carried history (it is not restored, not required).
+    assert result.collection_id == facade.created.id
+    # ...and the discard was announced, not silent.
+    assert any("config history" in message for message in infos)
+
+
+# ─────────────────────── Item 5 — zero-point + double-import ───────────────────────
+
+
+class _NoPointExportFacade(FakeExportFacade):
+    """A source collection with rows but NO vectors (never embedded / all points removed)."""
+
+    async def scroll_points(self, _collection_id, _batch_size=256):
+        return
+        yield  # pragma: no cover — makes this an (empty) async generator
+
+
+async def test_import_restores_a_zero_point_document(tmp_path) -> None:
+    """A document with zero vectors imports cleanly: the vector space is never ensured, no point is
+    upserted, and the manifest reconciliation (points 0 == 0) still passes."""
+    reader = await _bundle(_NoPointExportFacade(), tmp_path)
+    facade = FakeImportFacade()
+
+    result = await CollectionImporterV1(facade, reader).run()
+
+    assert facade.restored["Document"][0].collection_id == result.collection_id
+    assert facade.points == []
+    assert (
+        facade.ensured_dense_dim is None
+    )  # no vector space created when there is nothing to upsert
+    assert result.counts["points"] == 0
+    assert result.counts["documents"] == 1
+
+
+async def test_import_double_import_yields_independent_collections(export_facade, tmp_path) -> None:
+    """Importing the SAME bundle twice produces two INDEPENDENT collections: fresh collection ids and
+    fresh entity ids each time, so nothing collides (the id-remap is per-import, not shared)."""
+    reader = await _bundle(export_facade, tmp_path)
+    facade_a = FakeImportFacade()
+    facade_b = FakeImportFacade()
+
+    result_a = await CollectionImporterV1(facade_a, reader).run()
+    result_b = await CollectionImporterV1(facade_b, reader).run()
+
+    assert result_a.collection_id != result_b.collection_id
+    doc_a = facade_a.restored["Document"][0]
+    doc_b = facade_b.restored["Document"][0]
+    chunk_a = facade_a.restored["Chunk"][0]
+    chunk_b = facade_b.restored["Chunk"][0]
+    # Independent remap: the two imports share no id, and neither reuses the source ids.
+    assert doc_a.id != doc_b.id and chunk_a.id != chunk_b.id
+    assert doc_a.id != DOC_ID and doc_b.id != DOC_ID
+    assert chunk_a.id != CHUNK_ID and chunk_b.id != CHUNK_ID

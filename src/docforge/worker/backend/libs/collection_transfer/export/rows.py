@@ -1,10 +1,13 @@
 # ====== Code Summary ======
 # RowSerializer — turns one ORM row (or a Qdrant record) into the plain JSON-able dict a bundle
 # JSONL line carries. Every globally-unique id (document/chunk/page/block/enrichment/entity UUID and
-# the string block id) is preserved VERBATIM so import restores them unchanged (the chunk id must
-# equal its Qdrant point id). The autoincrement metadata field id is deliberately NOT emitted:
-# metadata rows travel keyed by field NAME (resolved upstream) so the bundle survives the target
-# server re-assigning integer keys. Qdrant vectors are split dense (list) vs sparse ({indices,values}).
+# the string block id) is emitted AS-IS into the bundle purely as a stable JOIN KEY between the
+# bundle's files — the IMPORT then REGENERATES every id and rewrites all foreign keys (see
+# restore/remap.py + restore/rows.py), so nothing is "preserved" onto the restored collection. The
+# ids only need to be internally consistent within the bundle (e.g. the chunk id here becomes the
+# Qdrant point id, and the importer remaps both together). The autoincrement metadata field id is
+# deliberately NOT emitted: metadata rows travel keyed by field NAME (resolved upstream) so the
+# bundle survives the target re-assigning integer keys. Qdrant vectors split dense (list) vs sparse.
 
 # ====== Standard Library Imports ======
 from __future__ import annotations
@@ -41,7 +44,7 @@ def _dt(value: Any) -> str | None:
 
 
 class RowSerializer:
-    """Static per-table ORM-row → bundle-dict serialization (ids preserved, enums as values)."""
+    """Static per-table ORM-row → bundle-dict serialization (ids emitted as join keys, remapped on import)."""
 
     def __new__(cls, *args: object, **kwargs: object) -> None:
         raise TypeError("RowSerializer is a static-only class and cannot be instantiated.")
@@ -63,7 +66,7 @@ class RowSerializer:
 
     @staticmethod
     def document(row: Document) -> dict[str, Any]:
-        """The catalogue record — id + all facts preserved verbatim."""
+        """The catalogue record — id emitted as a bundle join key (remapped on import)."""
         return {
             "id": str(row.id),
             "source_hash": row.source_hash,
@@ -97,7 +100,7 @@ class RowSerializer:
 
     @staticmethod
     def page(row: Page) -> dict[str, Any]:
-        """A page row — id preserved."""
+        """A page row — id emitted as a bundle join key (remapped on import)."""
         return {
             "id": str(row.id),
             "document_id": str(row.document_id),
@@ -111,7 +114,7 @@ class RowSerializer:
 
     @staticmethod
     def block(row: Block) -> dict[str, Any]:
-        """An IR block — the string id (globally unique) preserved."""
+        """An IR block — string id emitted as a bundle join key (re-namespaced onto the new doc on import)."""
         return {
             "id": row.id,
             "document_id": str(row.document_id),
@@ -151,7 +154,7 @@ class RowSerializer:
 
     @staticmethod
     def block_enrichment(row: BlockEnrichment) -> dict[str, Any]:
-        """An enrichment row — id preserved (attempts reference it)."""
+        """An enrichment row — id emitted as a bundle join key (attempts reference it; remapped on import)."""
         return {
             "id": str(row.id),
             "block_id": row.block_id,
@@ -178,7 +181,7 @@ class RowSerializer:
 
     @staticmethod
     def chunk(row: Chunk) -> dict[str, Any]:
-        """A chunk — its id (== its Qdrant point id) preserved verbatim."""
+        """A chunk — id emitted as a bundle join key (== its Qdrant point id; both remapped on import)."""
         return {
             "id": str(row.id),
             "document_id": str(row.document_id),
@@ -217,7 +220,7 @@ class RowSerializer:
 
     @staticmethod
     def entity_mention(row: EntityMention) -> dict[str, Any]:
-        """A named entity found in a chunk — id preserved."""
+        """A named entity found in a chunk — id emitted as a bundle join key (remapped on import)."""
         return {
             "id": str(row.id),
             "chunk_id": str(row.chunk_id),

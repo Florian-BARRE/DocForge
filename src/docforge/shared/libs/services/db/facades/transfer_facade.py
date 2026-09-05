@@ -49,7 +49,7 @@ from .transfer_payloads import DocumentExportRows
 
 
 class CollectionTransferFacade(LoggerClass):
-    """The store gateway for collection export (streamed reads) and import (id-preserving writes)."""
+    """The store gateway for collection export (streamed reads) and import (id-remapping writes)."""
 
     def __init__(self, postgres: PostgresClient, qdrant: QdrantClient, s3: S3Client) -> None:
         LoggerClass.__init__(self)

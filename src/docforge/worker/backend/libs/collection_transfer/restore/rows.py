@@ -5,6 +5,14 @@
 # points.jsonl), so chunk.id == point.id still holds — now on the NEW ids. Enum strings are coerced
 # back to their domain StrEnum, and metadata rows re-link to the freshly-minted autoincrement field
 # id by field NAME. Blob rows are content-addressed (sha256) and pass through unremapped.
+#
+# Dangling-reference policy (uniform + honest, never a silent wrong value):
+#   * PRIMARY foreign keys (a row's own owner: block/chunk/page.document_id, chunk_block ends, …) are
+#     required — a missing target means a structurally corrupt bundle, so they FAIL LOUD (KeyError).
+#   * OPTIONAL structural links (block/chunk parent_id, figure caption_block_id) are recoverable: a
+#     dangling target is LOGGED (warning, naming the id) and DROPPED to NULL — the import proceeds.
+#   * An UNKNOWN metadata field (no matching field in the restored schema) is LOGGED and the value is
+#     SKIPPED (returns None). The stale point-payload document_id is handled the same way in the importer.
 
 # ====== Standard Library Imports ======
 from __future__ import annotations
@@ -12,6 +20,9 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 from typing import Any
+
+# ====== Third-Party Library Imports ======
+from loggerplusplus import loggerplusplus
 
 # ====== Internal Project Imports ======
 from shared_libs.public_models import FieldOrigin, FieldScope, FieldType
@@ -50,8 +61,36 @@ def _dt(value: str | None) -> datetime | None:
 class RowDeserializer:
     """Static per-table bundle-dict → ORM-row deserialization (ids remapped via RemapContext)."""
 
+    logger = loggerplusplus.bind(identifier="RowDeserializer")
+
     def __new__(cls, *args: object, **kwargs: object) -> None:
         raise TypeError("RowDeserializer is a static-only class and cannot be instantiated.")
+
+    @classmethod
+    def _optional_ref(cls, old_id: Any, mapping: dict[str, Any], *, label: str) -> Any | None:
+        """
+        Remap an OPTIONAL self-link (block/chunk parent, figure caption), logging + dropping danglers.
+
+        Args:
+            old_id (Any): The referenced source id, or None/empty when there is no link.
+            mapping (dict[str, Any]): The relevant old→new id map (``ctx.blocks`` or ``ctx.chunks``).
+            label (str): A human label for the link kind (used in the warning).
+
+        Returns:
+            Any | None: The remapped id, or None when absent or dangling (dropped to NULL).
+        """
+        # 1. No link at all — nothing to remap.
+        if not old_id:
+            return None
+
+        # 2. A present-but-unknown target is a recoverable dangling link: log it and drop to NULL.
+        new_id = mapping.get(old_id)
+        if new_id is None:
+            cls.logger.warning(
+                f"Dangling {label} reference '{old_id}' in bundle (no such row restored) — "
+                f"dropping the link to NULL; import proceeds."
+            )
+        return new_id
 
     @staticmethod
     def metadata_field(data: dict[str, Any]) -> MetadataField:
@@ -91,11 +130,15 @@ class RowDeserializer:
             created_at=_dt(data.get("created_at")),
         )
 
-    @staticmethod
-    def document_metadata(data: dict[str, Any], ctx: RemapContext) -> DocumentMetadata | None:
-        """A document-scope value — document + field id remapped, or dropped if the field vanished."""
+    @classmethod
+    def document_metadata(cls, data: dict[str, Any], ctx: RemapContext) -> DocumentMetadata | None:
+        """A document-scope value — document + field id remapped, or logged+dropped if unknown."""
         field_id = ctx.field_ids.get(data["field_name"])
         if field_id is None:
+            cls.logger.warning(
+                f"Unknown document metadata field '{data['field_name']}' in bundle (no matching "
+                f"field in the restored schema) — skipping the value; import proceeds."
+            )
             return None
         return DocumentMetadata(
             document_id=ctx.documents[data["document_id"]],
@@ -118,9 +161,9 @@ class RowDeserializer:
             render_blob_hash=data["render_blob_hash"],
         )
 
-    @staticmethod
-    def block(data: dict[str, Any], ctx: RemapContext) -> Block:
-        """An IR block — re-namespaced string id, document + parent remapped."""
+    @classmethod
+    def block(cls, data: dict[str, Any], ctx: RemapContext) -> Block:
+        """An IR block — re-namespaced string id, document + (optional) parent remapped."""
         return Block(
             id=ctx.blocks[data["id"]],
             document_id=ctx.documents[data["document_id"]],
@@ -129,7 +172,7 @@ class RowDeserializer:
             bbox=list(data["bbox"]),
             reading_order=data["reading_order"],
             column_index=data["column_index"],
-            parent_id=ctx.blocks.get(data["parent_id"]) if data["parent_id"] else None,
+            parent_id=cls._optional_ref(data["parent_id"], ctx.blocks, label="block parent"),
             level=data["level"],
             text=data["text"],
             is_boilerplate=data["is_boilerplate"],
@@ -149,14 +192,15 @@ class RowDeserializer:
             linearized_md=data["linearized_md"],
         )
 
-    @staticmethod
-    def block_figure(data: dict[str, Any], ctx: RemapContext) -> BlockFigure:
-        """A figure detail row — block + caption block remapped (crop hash unchanged)."""
-        caption = data["caption_block_id"]
+    @classmethod
+    def block_figure(cls, data: dict[str, Any], ctx: RemapContext) -> BlockFigure:
+        """A figure detail row — block + (optional) caption block remapped (crop hash unchanged)."""
         return BlockFigure(
             block_id=ctx.blocks[data["block_id"]],
             crop_blob_hash=data["crop_blob_hash"],
-            caption_block_id=ctx.blocks.get(caption) if caption else None,
+            caption_block_id=cls._optional_ref(
+                data["caption_block_id"], ctx.blocks, label="figure caption"
+            ),
         )
 
     @staticmethod
@@ -186,17 +230,16 @@ class RowDeserializer:
             latency_ms=data["latency_ms"],
         )
 
-    @staticmethod
-    def chunk(data: dict[str, Any], ctx: RemapContext) -> Chunk:
-        """A chunk — fresh id (reused as its Qdrant point id), document + parent remapped."""
-        parent = data["parent_id"]
+    @classmethod
+    def chunk(cls, data: dict[str, Any], ctx: RemapContext) -> Chunk:
+        """A chunk — fresh id (reused as its Qdrant point id), document + (optional) parent remapped."""
         return Chunk(
             id=ctx.chunks[data["id"]],
             document_id=ctx.documents[data["document_id"]],
             config_hash=data["config_hash"],
             chunk_index=data["chunk_index"],
             strategy=data["strategy"],
-            parent_id=ctx.chunks.get(parent) if parent else None,
+            parent_id=cls._optional_ref(data["parent_id"], ctx.chunks, label="chunk parent"),
             text=data["text"],
             token_count=data["token_count"],
             heading_path=data["heading_path"],
@@ -216,11 +259,15 @@ class RowDeserializer:
             position=data["position"],
         )
 
-    @staticmethod
-    def chunk_metadata(data: dict[str, Any], ctx: RemapContext) -> ChunkMetadata | None:
-        """A chunk-scope value — chunk + field id remapped, or dropped if the field vanished."""
+    @classmethod
+    def chunk_metadata(cls, data: dict[str, Any], ctx: RemapContext) -> ChunkMetadata | None:
+        """A chunk-scope value — chunk + field id remapped, or logged+dropped if the field is unknown."""
         field_id = ctx.field_ids.get(data["field_name"])
         if field_id is None:
+            cls.logger.warning(
+                f"Unknown chunk metadata field '{data['field_name']}' in bundle (no matching field "
+                f"in the restored schema) — skipping the value; import proceeds."
+            )
             return None
         return ChunkMetadata(
             chunk_id=ctx.chunks[data["chunk_id"]],
