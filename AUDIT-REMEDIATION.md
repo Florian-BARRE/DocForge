@@ -8,6 +8,8 @@
 
 ## Journal
 
+- **2026-09-05 — Vague Q / 0.14.27 (V8 dead-code, 3 supprimés + 1 skip justifié)** : suppression **prouvée-morte** (grep exhaustif app/worker/tests/dynamique avant toute suppression). (1) `ArtifactCacheFacade.drop_for_document` + `ArtifactCacheApi.referenced_hashes` (+ `list_for_document` qui n'était appelé QUE par drop) + son unique test db-tier — le delete réel utilise `delete_for_documents`, le sweep orphelins un subquery inline. (2) **classe `PipelineCatalog` entière** (+ export) — 0 caller ; le vrai palette path = `PipelineRegistry`→`IngestPipeline/SearchPipeline.palette()` scopant `deliver` via `FAMILY_KINDS` (PipelineCatalog.palette appelait `from_family` sans kinds = le leak cross-pipeline que l'audit signalait). (3) `scripts/update_imports.py` (`git rm`) — one-off mort ciblant le layout legacy supprimé, absent de pyproject/Makefile/CI. **(4) `chunk_overlap_ratio` override — SKIP justifié** : pas un branch mort propre — le champ est dans le contrat public `AssumptionOverrides` (OpenAPI+SDK), son sibling `target_chunk_tokens` est vivant, et le retirer changerait l'OpenAPI ; reste `[ ]` (le finding conflate override inerte et champ de contrat vivant). Gate : **1539 passed**, ruff clean, 0 changement OpenAPI/SDK, 0 référence pendante. **→ V8 : 116/188.**
+
 - **2026-09-05 — Vague P / 0.14.26 (V8 translator/persistence 4 + migrations 2, 2 agents || disjoints)** : **translator (pipeline)** — (1) **CLASSIFY fabriqué** : `FigureEnrichment.kind` défaute `PHOTO` (placeholder parse-time) → une row CLASSIFY success était écrite pour CHAQUE figure ; désormais écrite **seulement si un classifier a tourné** (`kind != PHOTO` OU un slot aval ocr/description/data rempli) ; un vrai PHOTO sans aval est droppé (plancher honnête, pas fabriqué). (2) **is_scanned/source_kind** dérivés du signal réel (figure classée `SCANNED_TEXT` → page scanned ; agrégat none/all/some → DIGITAL_BORN/SCANNED/MIXED) ; **simhash** laissé NULL + documenté (aucun node ne le calcule). (3) docs raw-chunk-text réconciliées (seul l'enrichi est stocké, le brut non récupérable). (4) **point id uuid5 déterministe** `uuid5(ns, "document_id:chunk_index")` (au lieu d'uuid4 par run) → réingestion idempotente (mêmes ids → upsert propre ; delete-by-document tourne toujours) ; docstring chunk.py réconciliée ; **pas de migration** (les anciens points gardent uuid4 jusqu'à réingestion). **migrations (migration-engineer)** — (5) **config_version unique (collection_id, version)** : migration `d1a7c4f8b2e6` (down=a1e4c7b9f206, **chaîne single-head vérifiée par moi**) qui **dé-duplique d'abord** (ROW_NUMBER renumber gap-free) PUIS ajoute la contrainte (sinon échec sur data live) ; minting concurrency-safe via `get_for_update` (FOR UPDATE, pas retry-on-IntegrityError car dans la tx `apply_update`) ; downgrade drop la contrainte. (6) **index GIN/fonctionnel invisibles à autogenerate** : GIN déclaré au modèle (`postgresql_using=gin`, round-trip), index fonctionnel exclu par nom via hook `include_object` dans env.py. Gate 4 projets : docforge **1539 passed** (+16 total waves), sdk 557 + drift OK (0 changement OpenAPI), mcp 48, ruff clean. Résidus signalés (hors scope) : commentaires ingestion_facade (delete-by-document désormais défensif sous ids déterministes) + documents/router source_kind "provisional". **→ V8 : 113/188.**
 
 - **2026-09-05 — Vague O / 0.14.25 (V8 search robustesse, 2 MOYENNE — scope strict)** : (1) **blob search sans auto-heal** — nouveau `SearchBlobNormalizer` (heal read-side niveau-config, miroir du heal ingest : walk graphe + groupes + ForEach, re-valide chaque config node contre son `Config` courant, strip les clés `extra_forbidden` de drift, raise sur autre faute) câblé dans `SearchService.__resolve_blob` (branche stored seulement ; `{}`=no-op ; deep-copy, topologie préservée) → une dérive de registry ne brique plus un graphe search stocké (heal au read, complémentaire du fail-fast au write). (2a) **rewrite/HyDE invisibles au health/preflight** — `BaseQueryLlmConfig` étend `TimeoutConfig` + `BaseQueryLlmNode.preflight` sonde l'endpoint → le sweep existant les ramasse (via `probes_endpoint`), zéro changement au sweep. (2b) **degrade silencieux** — flag `query_degraded` stampé sur la dégradation (fail-soft préservé : un échec rewrite ne fait jamais échouer la search) qui remonte la chaîne encode→retrieve→hydrate→`SearchResult.debug["degraded"]`→`debug_info` existant (**0 changement OpenAPI/SDK** — canal debug_info existant). +17 tests (normalizer ×8, résolution stored/heal, sweep query-provider, degrade flag + e2e). Gate : docforge **1531 passed** (+17), drift OK (96 schémas trackés), ruff clean. **→ V8 : 107/188.**
@@ -145,8 +147,8 @@
 | V5 — Moteur & pipeline | 2 | 2 | 0 | 0 |
 | V6 — Frontend | 0 | 0 | 0 | 0 |
 | V7 — Documentation | 21 | 21 | 0 | 0 |
-| V8 — Outillage (.claude/tests/infra/télémétrie) | 188 | 113 | 3 | 72 |
-| **Total** | **247** | **171** | **3** | **73** |
+| V8 — Outillage (.claude/tests/infra/télémétrie) | 188 | 116 | 3 | 69 |
+| **Total** | **247** | **174** | **3** | **70** |
 
 
 ## V1 — Sécurité & authz (avant tout déploiement multi-tenant)  (30)
@@ -404,7 +406,7 @@
   `.claude/rules/orchestrator.md:76`
 - [ ] **⚪ FAIBLE** · `consistency` — Grouped low-severity smells across .claude/: decorative paths filter, deprecated utcnow, stale lock/pycache, misnamed memory file  
   `.claude/rules/brand.md:3`
-- [ ] **⚪ FAIBLE** · `dead-code` — scripts/update_imports.py is a dead one-off targeting the deleted legacy layout, still tracked with no caller  
+- [x] **⚪ FAIBLE** · `dead-code` — scripts/update_imports.py is a dead one-off targeting the deleted legacy layout, still tracked with no caller  
   `scripts/update_imports.py:15`
 
 ### SDK & MCP
@@ -474,7 +476,7 @@
   `CLAUDE.md:106`
 - [ ] **⚪ FAIBLE** · `consistency` — Grouped low-severity smells across the discovery/edit surface  
   `src/docforge/shared/libs/pipelines/registry.py:218`
-- [ ] **⚪ FAIBLE** · `dead-code` — PipelineCatalog.palette() is dead code (and would leak cross-pipeline kinds if used)  
+- [x] **⚪ FAIBLE** · `dead-code` — PipelineCatalog.palette() is dead code (and would leak cross-pipeline kinds if used)  
   `src/docforge/shared/libs/pipelines/introspection/catalog.py:95`
 
 ### CI & release
@@ -525,7 +527,7 @@
   `src/docforge/shared/libs/services/db/postgresql/apis/blob_api.py:221`
 - [ ] **⚪ FAIBLE** · `divergence-doc` — CLAUDE.md structure tree names a `migrations/` root that does not exist  
   `CLAUDE.md:115`
-- [ ] **⚪ FAIBLE** · `dead-code` — Dead data-layer code: ArtifactCacheFacade.drop_for_document and ArtifactCacheApi.referenced_hashes have no production caller  
+- [x] **⚪ FAIBLE** · `dead-code` — Dead data-layer code: ArtifactCacheFacade.drop_for_document and ArtifactCacheApi.referenced_hashes have no production caller  
   `src/docforge/shared/libs/services/db/facades/artifact_cache_facade.py:137`
 - [ ] **⚪ FAIBLE** · `consistency` — Grouped low-severity naming inconsistencies in tables/indexes/constraints  
   `src/docforge/shared/libs/services/db/postgresql/tables/observability/worker_heartbeat.py:20`

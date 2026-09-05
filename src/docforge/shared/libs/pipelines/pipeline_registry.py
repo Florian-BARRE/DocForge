@@ -5,9 +5,8 @@
 # router can iterate this registry instead of hardcoding one ingest surface. Importing this module
 # imports both facades, which registers their node families.
 #
-# NOTE: named PipelineRegistry (not PipelineCatalog) to avoid colliding with the existing
-# introspection.PipelineCatalog, which is the palette builder over the node registry — a different
-# concern (node kinds, not pipeline kinds).
+# NOTE: this maps pipeline KINDS (ingest, search) to their facades — a different concern from the
+# introspection catalogue, which builds the palette of node kinds within a single pipeline.
 
 # ====== Standard Library Imports ======
 from dataclasses import dataclass
