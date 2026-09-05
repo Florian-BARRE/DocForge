@@ -148,6 +148,12 @@ class JobApi:
         UNFLAGGED: the reaper/force-terminate raise ``cancel_requested`` as a backstop stop signal, so
         clearing it here stops that stale flag from spuriously cancelling a legitimately re-run job at
         its first stage boundary.
+
+        A fresh attempt also wipes the PREVIOUS attempt's OBSERVABILITY residue — the structured
+        failure breadcrumb (failed node id/kind/item + error type) and the fan-out item counter — so a
+        re-run that succeeds never carries a stale failed-node trace or an old items-done/total from a
+        prior failed attempt. This completes the reset above (which cleared only the free-text error +
+        finish state); the breadcrumb/counter columns were the missing pieces.
         """
         job = await session.get(Job, job_id)
         # A terminal job is over for good — never re-open it (defense-in-depth behind the dequeue guard).
@@ -164,6 +170,16 @@ class JobApi:
         job.progress = 0
         # Clear the backstop cancel flag: a fresh attempt is not a cancellation target.
         job.cancel_requested = False
+        # Clear the previous attempt's structured failure breadcrumb: a job that failed at a node and
+        # is re-run must not keep pointing at that node once it succeeds.
+        job.failed_node_id = None
+        job.failed_node_kind = None
+        job.failed_item_index = None
+        job.error_type = None
+        # Clear the fan-out counter too: a stale items-done/total from a prior attempt would otherwise
+        # linger on the row until the run happened to enter a foreach stage.
+        job.items_done = None
+        job.items_total = None
 
     @staticmethod
     async def set_progress(

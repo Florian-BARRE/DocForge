@@ -35,6 +35,7 @@ from shared_libs.services.db.s3 import S3ObjectApi
 # ====== Local Project Imports ======
 from .cancellation import CancellationGuard, JobCancelledError
 from .progress import JobProgressRecorder
+from .stage_plan import StagePlanHelpers
 
 
 def _resolve_run_budget(
@@ -169,13 +170,14 @@ async def ingest_document(
             ) from exc
 
         # 2. Live progress: the recorder keeps the job row current (START = stage running
-        #    now, END = percentage + one trace row) — root nodes only.
-        root_ids = (
-            [node.get("id", "") for node in blob.get("nodes", [])]
-            if isinstance(blob, dict)
-            else [node.id for node in blob.nodes]
-        )
-        on_progress = JobProgressRecorder(job_uuid, root_ids)
+        #    now, END = percentage + one trace row) — root nodes only. BlobNormalizer.normalize
+        #    always returns a plain dict, so the top-level ids read straight off ``nodes``. The
+        #    denominator is the PLANNED (happy-path) subset — escalation/fallback stages that run
+        #    only on a bad outcome are excluded so the percentage is not understated by never-run
+        #    nodes; ``_roots`` stays every top-level id so a step that DOES run is still traced.
+        root_ids = [node.get("id", "") for node in blob.get("nodes", [])]
+        planned_ids = StagePlanHelpers.planned_stage_ids(blob)
+        on_progress = JobProgressRecorder(job_uuid, root_ids, planned_ids)
         # Cooperative cancel: the guard wraps the recorder and re-reads the job's cancel flag at each
         # root-stage boundary, raising JobCancelledError to stop the run between nodes when requested.
         guarded_progress = CancellationGuard(job_uuid, root_ids, on_progress)

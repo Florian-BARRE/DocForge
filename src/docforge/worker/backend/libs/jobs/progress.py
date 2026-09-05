@@ -31,16 +31,28 @@ from .usage import StageUsageSummer
 class JobProgressRecorder(LoggerClass):
     """One instance per run — the engine's progress callback, writing the job's live state."""
 
-    def __init__(self, job_id: uuid.UUID, root_node_ids: list[str]) -> None:
+    def __init__(
+        self,
+        job_id: uuid.UUID,
+        root_node_ids: list[str],
+        planned_stage_ids: list[str] | None = None,
+    ) -> None:
         """
         Args:
             job_id (uuid.UUID): The job row to keep live.
-            root_node_ids (list[str]): The blob's top-level node ids — the traced stages.
+            root_node_ids (list[str]): EVERY top-level node id — the stages that may be TRACED. Kept
+                whole (escalation/fallback steps included) so a step that does run still opens and
+                closes its stage row.
+            planned_stage_ids (list[str] | None): The top-level stages a successful run actually
+                walks — the progress DENOMINATOR. Excludes escalation/fallback steps that run only on
+                a bad outcome, so the percentage is not understated by never-run nodes. Defaults to
+                ``root_node_ids`` (every stage) when not supplied.
         """
         LoggerClass.__init__(self)
         self._job_id = job_id
         self._roots = set(root_node_ids)
-        self._total = max(1, len(root_node_ids))
+        denominator = planned_stage_ids if planned_stage_ids is not None else root_node_ids
+        self._total = max(1, len(denominator))
         self._done = 0
         self._started: dict[str, datetime] = {}
         # The stage-event row opened at the current root stage's START, finalized at its END.
