@@ -7,7 +7,7 @@ dependencies = [
     # MCP server SDK — streamable_http_app() requires >= 1.8.0. Pinned >= 1.28.1 (clears the 1.28.0
     # WebSocket-transport advisory PYSEC-2026-3483, not on this server's http/stdio path) and < 2 so
     # a routine lock refresh can't jump to the 2.x line, which changes the FastMCP API this server uses.
-    "mcp>=1.28.1,<2",
+    "mcp>=2.1.1,<3",
     # Typed async+sync DocForge REST API client — brings httpx transitively.
     "docforge-sdk",
     # ASGI server + framework for the streamable-HTTP transport and the auth middleware.
