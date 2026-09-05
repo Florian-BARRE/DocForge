@@ -82,7 +82,7 @@ The Dockerfile supports two mutually exclusive torch variants selected at build 
 | Variant | Torch version | nvidia-* libs | Approximate image size | CUDA available |
 |---|---|---|---|---|
 | `cpu` (default) | 2.12.1+cpu | none | ~2 GB | no |
-| `gpu` | 2.6.0+cu124 | yes (cu12-*) | ~9.5 GB | yes (with --gpus) |
+| `gpu` | 2.11.0+cu128 | yes (cu12-*) | ~9.5 GB | yes (with --gpus) |
 
 ```bash
 # CPU variant (default) — used by docker compose build, no flags needed:
@@ -91,7 +91,7 @@ docker compose build bge_server
 # Or equivalently with explicit arg:
 docker build -f src/bge_server/Dockerfile -t docforge-bge-server:latest src
 
-# GPU variant (opt-in) — CUDA 12.4, compatible with RTX 40xx (Ada, compute 8.9):
+# GPU variant (opt-in) — CUDA 12.8, compatible with RTX 40xx (Ada, compute 8.9):
 docker build --build-arg TORCH_VARIANT=gpu \
   -f src/bge_server/Dockerfile -t docforge-bge-server:gpu src
 

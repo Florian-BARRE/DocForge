@@ -26,7 +26,7 @@ ENV UV_PROJECT_ENVIRONMENT=/opt/venv
 # only rebuild when pyproject.toml or uv.lock changes.
 COPY pyproject.toml uv.lock ./
 
-# Torch wheel variant: cpu (default, ~200 MB) or gpu (CUDA 12.4, multi-GiB).
+# Torch wheel variant: cpu (default, ~200 MB) or gpu (CUDA 12.8, multi-GiB).
 # CPU keeps the image small enough for a CPU dev VM; docling runs fine on CPU torch.
 #   GPU: docker build --build-arg TORCH_VARIANT=gpu ...  (+ NVIDIA Container Toolkit on the host)
 ARG TORCH_VARIANT=cpu

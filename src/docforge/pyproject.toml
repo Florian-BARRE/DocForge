@@ -5,7 +5,7 @@
 # structure grows, never speculatively.
 [project]
 name = "docforge"
-version = "0.14.13"
+version = "0.14.14"
 description = "DocForge clean-slate rewrite — minimal foundation"
 requires-python = ">=3.12"
 dependencies = [
@@ -58,14 +58,14 @@ conflicts = [
 
 [tool.uv.sources]
 # Route torch to the correct wheel index per active extra. pytorch-cpu = ~200 MB CPU-only wheel
-# (no nvidia-* payload); pytorch-cu124 = CUDA 12.4 wheels for a GPU host.
+# (no nvidia-* payload); pytorch-cu128 = CUDA 12.8 wheels for a GPU host.
 torch = [
     { index = "pytorch-cpu", extra = "cpu" },
-    { index = "pytorch-cu124", extra = "gpu" },
+    { index = "pytorch-cu128", extra = "gpu" },
 ]
 torchvision = [
     { index = "pytorch-cpu", extra = "cpu" },
-    { index = "pytorch-cu124", extra = "gpu" },
+    { index = "pytorch-cu128", extra = "gpu" },
 ]
 
 [[tool.uv.index]]
@@ -74,8 +74,8 @@ url = "https://download.pytorch.org/whl/cpu"
 explicit = true
 
 [[tool.uv.index]]
-name = "pytorch-cu124"
-url = "https://download.pytorch.org/whl/cu124"
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
 explicit = true
 
 [dependency-groups]

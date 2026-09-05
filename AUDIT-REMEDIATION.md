@@ -8,6 +8,8 @@
 
 ## Journal
 
+- **2026-09-05 — Vague D / 0.14.14 (V1 deps ML : 1 MOYENNE + 1 FAIBLE)** : (torch) **GPU cu124 EOL → cu128** (décision utilisateur) — l'index wheel `pytorch-cu124` était figé (aucun torch >2.6 n'y sort), gelant les images GPU. Index renommé `pytorch-cu128` (URL `whl/cu128`) dans `docforge` + `bge_server` (sources + [[tool.uv.index]] + commentaires) ; `uv lock` re-résout **torch 2.6.0+cu124 → 2.11.0+cu128** (torchvision 0.26.0+cu128) sur les deux projets, chaîne nvidia-cu12 alignée 12.8. CPU **inchangé** (2.12.1+cpu / 2.13.0+cpu). Refs de version mises à jour dans worker/Dockerfile, bge Dockerfile + README. **⚠️ Non validable sur cette VM (pas de GPU) — ships unvalidated on GPU hardware jusqu'à un déploiement GPU testé** (caveat assumé par l'utilisateur). (transformers) **pin `<5`** — le re-lock a déjà tiré la **dernière 4.x (4.57.6)** sur les deux (capture les fixes de la ligne 4.x) ; le plafond `<5` reste un **WONTFIX justifié+documenté** (FlagEmbedding/FlagReranker exige l'API tokenizer 4.x supprimée en 5.x — commentaire pyproject déjà en place) : les fixes 5.x-only ne sont pas prenables tant que FlagEmbedding ne supporte pas transformers 5. Validé : `uv lock --locked` OK (0 drift) × 2, docforge 1425 passed + ruff clean, bge 29 passed + ruff clean ; 0 ref cu124/2.6.0 hors locks. **→ V1 : 2 `[ ]` restants, tous deux `.claude/` gitignorés (hook-log secrets + settings bypassPermissions) — hors release versionnée.**
+
 - **2026-09-05 — Vague C / 0.14.13 (V1 durcissement FAIBLE : 5 items, 2 agents ||)** : (1) **bypass rate-limit auth-failure** (app.py:86 — moitié XFF déjà close en 0.14.10) — le limiteur proper est INNER du gate auth, donc un 401 court-circuite avant lui : un flood mauvais-credentials n'était jamais throttlé. `RateLimitEngine` extrait (`ratelimit/engine.py`, `allow()` fail-open + `reject()` 429+Retry-After, réutilisé par les 2 gates) ; `AuthMiddleware.__reject_auth_failure` throttle le chemin d'échec par IP (`authfail:<ip>`, honore `RATE_LIMIT_TRUST_FORWARDED_FOR`) → 429 au-delà du budget, sinon le 401 opaque verbatim. Option (b) choisie (garder l'ordre) car le keying per-key exige le principal injecté par Auth ; cycle d'import `auth→ratelimit` cassé via `TYPE_CHECKING` dans `keying.py`. **Exemption job-poll/SSE volontairement NON appliquée** sur ce chemin (un échec-auth n'est jamais un poll légitime). OFF par défaut. **Revu par `code-reviewer` : APPROVED** (6 checks passés ; 2 INFO tradeoffs bornés derrière 2 flags off-by-default) → note runbook ajoutée (PROD-HARDENING §9). (2) **workflow least-privilege** (ci.yml:20) — `permissions:` explicites : floor `contents: read` sur ci/gate/release-* ; `packages: write` scoped au seul job `images`, `id-token: write` au seul job `publish` (PyPI OIDC) ; `gate.yml` capé `contents: read` (intersection caller∩callee → ne peut plus hériter `packages: write`). 9 actions **pinnées au SHA** dans release-images/release-sdk (SHA↔tag **vérifiés par moi** via `gh api`, dont la déréférence du tag annoté pypi-publish → commit exact ; zéro changement de version). Topologie 2-workflows intacte (PyPI trusted-publishing lie le nom de fichier). Trivy = table→artefact (pas de SARIF → pas de `security-events`), job non-bloquant. (3) **overlay télémétrie** (telemetry.yml:84) — ports grafana/prometheus/loki bindés `${TELEMETRY_BIND_ADDR:-127.0.0.1}` (loopback par défaut au lieu de `0.0.0.0`) + knob/commentaires ; creds Grafana déjà via env-file `change_me`. `config -q` OK sur prod-cpu/gpu×télémétrie(±proxy). (4+5) **whoami scope-gate résidu** (whoami.py:40) + **hardening smells groupés** (blobs/router.py:45) — **déjà clos** (vérifié par l'agent) : blob headers nosniff/attachment/CSP-sandbox + 403 (pas 404) sur blob étranger, redaction export via `redact_blob_secrets`, whoami dégrade en 403 ; seul résidu = "MCP client cache", **hors scope backend** → suivi sous l'item V8 `scoped_sdk.py`. +tests rate-limit (5). **1425 passed**, ruff clean × 4 projets. **→ V1 : 4 `[ ]` restants (torch cu128 → Vague D ; transformers<5 ; 2× .claude gitignored).**
 
 - **2026-09-05 — Vague B / 0.14.12 (V1 import : 1 MOYENNE + 1 FAIBLE, clôt les 2 derniers `[~]`/import de V1)** : (B1) **scope-grant créateur à l'import** (clôt le `[~]` — le gate CREATE était déjà là) — un import crée la collection dans le WORKER, or `grant_creator_scope` (app-side) a besoin du `principal.key`. La logique d'append est extraite dans la façade store `AuthFacade.grant_collection_to_key(key_id, collection_id) -> bool` (lit la clé → no-op sur wildcard/duplicate/NULL-perms/absente → append+persist ; opère sur le JSONB brut, **aucun import du modèle app**) ; `grant_creator_scope` y délègue (ne garde que le guard principal-level app-side). Le `key_id` créateur est threadé `import router → enqueue_import(...,granting_key_id) → tâche worker` (ids/scalaires only) et appliqué **après `mark_done`** en best-effort (`_grant_imported_collection` : swallow+warn — la collection existe déjà, un échec de grant ne doit pas rater un import DONE ; root répare le scope). None pour un caller full-access/keyless. (B2) **validation fail-fast des blobs importés** — l'importer copiait `pipeline`/`search` verbatim (seul write path sans validation). Extrait un socle **worker-safe** dans `shared_libs.pipelines.validation` : `SearchResultContract` (contrat terminal SearchResult, lu sur les faces `Produces` statiques, zéro exécution) + `BlobStructureValidator` (build + `GraphValidator` [+ terminal pour search] → `BlobValidationError`). L'importer appelle `_validate_contract_blobs(contract)` **AVANT** `create_collection` → `CollectionImportError` nommant le blob fautif (pipeline vs search) ; `{}` search = défaut stock, laissé tel quel. Dedup app **behavior-preserving** : `search_blob_validation.py` délègue son check terminal à `SearchResultContract` (~50 lignes dupliquées retirées, messages/codes 422 inchangés — `test_collections_search_blob.py` passe sans modif). +tests B1 (façade append/no-op ×4 ; worker grant/skip/swallow ×3) + B2 (pipeline/search/topology malformés rejetés ×3, bundle valide + search `{}` OK) ; conftest transfer porte un `IngestPipeline.light_blob()` valide. Agent `backend` dédié, **vérifié par moi** (imports importer + gate rejoué). **1420 passed**, ruff check+format clean. **→ V1 : 0 `[~]`, 9 `[ ]` restants (tous FAIBLE/MOYENNE non-import).**
@@ -104,7 +106,7 @@
 
 | Vague | Total | Fait | En cours | Restant |
 |---|---|---|---|---|
-| V1 — Sécurité & authz | 30 | 26 | 0 | 4 |
+| V1 — Sécurité & authz | 30 | 28 | 0 | 2 |
 | V2 — Fiabilité (jobs/stores/transferts) | 4 | 4 | 0 | 0 |
 | V3 — Release/CI/dépendances | 1 | 1 | 0 | 0 |
 | V4 — Search & coûts | 1 | 1 | 0 | 0 |
@@ -112,7 +114,7 @@
 | V6 — Frontend | 0 | 0 | 0 | 0 |
 | V7 — Documentation | 21 | 10 | 0 | 11 |
 | V8 — Outillage (.claude/tests/infra/télémétrie) | 188 | 41 | 3 | 144 |
-| **Total** | **247** | **85** | **3** | **159** |
+| **Total** | **247** | **87** | **3** | **157** |
 
 
 ## V1 — Sécurité & authz (avant tout déploiement multi-tenant)  (30)
@@ -163,7 +165,7 @@
 
 ### Dépendances & licences
 
-- [ ] **🟠 MOYENNE** · `security` — GPU images ship torch 2.6.0 (cu124 index is EOL) while CPU ships 2.12.1/2.13.0; CPU worker torch also below the PYSEC-2025-194 fix  
+- [x] **🟠 MOYENNE** · `security` — GPU images ship torch 2.6.0 (cu124 index is EOL) while CPU ships 2.12.1/2.13.0; CPU worker torch also below the PYSEC-2025-194 fix  
   `src/docforge/uv.lock:4661`
 - [x] **🟠 MOYENNE** · `security` — Stale transitive pins with published security fixes across the docforge and mcp locks  
   `src/docforge/uv.lock:99`
@@ -171,7 +173,7 @@
   `src/docforge/uv.lock:3528`
 - [x] **⚪ FAIBLE** · `security` — mcp 1.28.0 in the MCP server lock has a known advisory fixed one patch away (1.28.1)  
   `src/mcp/uv.lock:514`
-- [ ] **⚪ FAIBLE** · `security` — transformers<5 pins freeze both ML services on a line whose security fixes are 5.x-only  
+- [x] **⚪ FAIBLE** · `security` — transformers<5 pins freeze both ML services on a line whose security fixes are 5.x-only  
   `src/docforge/pyproject.toml:95`
 
 ### Infra & compose

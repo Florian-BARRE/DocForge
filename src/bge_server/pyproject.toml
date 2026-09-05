@@ -34,7 +34,7 @@ dependencies = [
 # ── Torch variant extras ──────────────────────────────────────────────────────────────────────
 # Exactly ONE of these extras must be selected at install time:
 #   cpu  → CPU-only torch (~200 MB wheel, no nvidia-* libs).  Target image size: ~2 GB.
-#   gpu  → CUDA 12.4 torch (~2 GB wheel + nvidia-* runtime). Target image size: ~8.5 GB.
+#   gpu  → CUDA 12.8 torch (~2 GB wheel + nvidia-* runtime). Target image size: ~8.5 GB.
 #
 # The two extras are declared as CONFLICTING in [tool.uv] below so uv enforces mutual exclusivity
 # at lock time. The Dockerfile selects the active extra via ARG TORCH_VARIANT (default: cpu).
@@ -70,10 +70,10 @@ conflicts = [
 [tool.uv.sources]
 # Route torch to the correct wheel index depending on the active extra.
 # pytorch-cpu: CPU-only wheels (~200 MB), no CUDA runtime payload.
-# pytorch-cu124: CUDA 12.4 wheels, compatible with Ada (RTX 40xx, compute 8.9) and later.
+# pytorch-cu128: CUDA 12.8 wheels, compatible with Ada (RTX 40xx, compute 8.9) and later.
 torch = [
     { index = "pytorch-cpu", extra = "cpu" },
-    { index = "pytorch-cu124", extra = "gpu" },
+    { index = "pytorch-cu128", extra = "gpu" },
 ]
 
 [[tool.uv.index]]
@@ -83,10 +83,10 @@ url = "https://download.pytorch.org/whl/cpu"
 explicit = true
 
 [[tool.uv.index]]
-# CUDA 12.4 torch wheels — RTX 40xx (compute 8.9), RTX 30xx (compute 8.6), and later.
+# CUDA 12.8 torch wheels — RTX 40xx (compute 8.9), RTX 30xx (compute 8.6), and later.
 # Also compatible with the default PyPI cu13x torch that was validated on the RTX 4050.
-name = "pytorch-cu124"
-url = "https://download.pytorch.org/whl/cu124"
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
 explicit = true
 
 [tool.ruff]
