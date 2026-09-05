@@ -8,6 +8,8 @@
 
 ## Journal
 
+- **2026-09-05 — Vague R / 0.14.28 (V8 observabilité jobs/worker, 3 FAIBLE)** : (1) **breadcrumb d'échec non nettoyé au retry** — `mark_running` clear désormais `failed_node_id/kind/item_index/error_type` (+ counter) sur une nouvelle tentative. Caveat honnête : le chemin même-row FAILED→RUNNING→DONE est **actuellement inatteignable** (`retry_jobs=False` + new-row-per-reingest) → c'est de la **complétude defense-in-depth** de l'idiome de reset existant, pas un bug live. (2) **dénominateur de progression** comptait les racines d'escalade jamais exécutées → nouveau `StagePlanHelpers.planned_stage_ids` (BFS depuis l'entrée unique, exclut `score_below`/`on_failure`) sert de `_total` ; les `_roots` restent tous les ids (une escalade qui TOURNE est tracée) ; reset counter/breadcrumb par tentative. Sous-item "cut-stage usage cost meter" **skippé** (cluster cost déféré). (3) smells worker : branche blob non-dict morte **retirée** (BlobNormalizer.normalize renvoie toujours un dict) ; **ordre d'import entrypoint worker corrigé** (`config`/RUNTIME_CONFIG AVANT `backend` — idiome `_ = RUNTIME_CONFIG` qui empêche isort de re-flotter, contrat de bootstrap sys.path+alias) ; "relevance score dropped" **non trouvé** en scope worker (0 hit `score` — le seul drop est `_record`, trace intentionnelle sous `trace_payloads=False`), rien à corriger. +13 tests (stage_plan ×7, progress, job-lifecycle reset ×3). Gate : **1552 passed** (+13), ruff clean, 0 changement OpenAPI/SDK. **→ V8 : 119/188.**
+
 - **2026-09-05 — Vague Q / 0.14.27 (V8 dead-code, 3 supprimés + 1 skip justifié)** : suppression **prouvée-morte** (grep exhaustif app/worker/tests/dynamique avant toute suppression). (1) `ArtifactCacheFacade.drop_for_document` + `ArtifactCacheApi.referenced_hashes` (+ `list_for_document` qui n'était appelé QUE par drop) + son unique test db-tier — le delete réel utilise `delete_for_documents`, le sweep orphelins un subquery inline. (2) **classe `PipelineCatalog` entière** (+ export) — 0 caller ; le vrai palette path = `PipelineRegistry`→`IngestPipeline/SearchPipeline.palette()` scopant `deliver` via `FAMILY_KINDS` (PipelineCatalog.palette appelait `from_family` sans kinds = le leak cross-pipeline que l'audit signalait). (3) `scripts/update_imports.py` (`git rm`) — one-off mort ciblant le layout legacy supprimé, absent de pyproject/Makefile/CI. **(4) `chunk_overlap_ratio` override — SKIP justifié** : pas un branch mort propre — le champ est dans le contrat public `AssumptionOverrides` (OpenAPI+SDK), son sibling `target_chunk_tokens` est vivant, et le retirer changerait l'OpenAPI ; reste `[ ]` (le finding conflate override inerte et champ de contrat vivant). Gate : **1539 passed**, ruff clean, 0 changement OpenAPI/SDK, 0 référence pendante. **→ V8 : 116/188.**
 
 - **2026-09-05 — Vague P / 0.14.26 (V8 translator/persistence 4 + migrations 2, 2 agents || disjoints)** : **translator (pipeline)** — (1) **CLASSIFY fabriqué** : `FigureEnrichment.kind` défaute `PHOTO` (placeholder parse-time) → une row CLASSIFY success était écrite pour CHAQUE figure ; désormais écrite **seulement si un classifier a tourné** (`kind != PHOTO` OU un slot aval ocr/description/data rempli) ; un vrai PHOTO sans aval est droppé (plancher honnête, pas fabriqué). (2) **is_scanned/source_kind** dérivés du signal réel (figure classée `SCANNED_TEXT` → page scanned ; agrégat none/all/some → DIGITAL_BORN/SCANNED/MIXED) ; **simhash** laissé NULL + documenté (aucun node ne le calcule). (3) docs raw-chunk-text réconciliées (seul l'enrichi est stocké, le brut non récupérable). (4) **point id uuid5 déterministe** `uuid5(ns, "document_id:chunk_index")` (au lieu d'uuid4 par run) → réingestion idempotente (mêmes ids → upsert propre ; delete-by-document tourne toujours) ; docstring chunk.py réconciliée ; **pas de migration** (les anciens points gardent uuid4 jusqu'à réingestion). **migrations (migration-engineer)** — (5) **config_version unique (collection_id, version)** : migration `d1a7c4f8b2e6` (down=a1e4c7b9f206, **chaîne single-head vérifiée par moi**) qui **dé-duplique d'abord** (ROW_NUMBER renumber gap-free) PUIS ajoute la contrainte (sinon échec sur data live) ; minting concurrency-safe via `get_for_update` (FOR UPDATE, pas retry-on-IntegrityError car dans la tx `apply_update`) ; downgrade drop la contrainte. (6) **index GIN/fonctionnel invisibles à autogenerate** : GIN déclaré au modèle (`postgresql_using=gin`, round-trip), index fonctionnel exclu par nom via hook `include_object` dans env.py. Gate 4 projets : docforge **1539 passed** (+16 total waves), sdk 557 + drift OK (0 changement OpenAPI), mcp 48, ruff clean. Résidus signalés (hors scope) : commentaires ingestion_facade (delete-by-document désormais défensif sous ids déterministes) + documents/router source_kind "provisional". **→ V8 : 113/188.**
@@ -147,8 +149,8 @@
 | V5 — Moteur & pipeline | 2 | 2 | 0 | 0 |
 | V6 — Frontend | 0 | 0 | 0 | 0 |
 | V7 — Documentation | 21 | 21 | 0 | 0 |
-| V8 — Outillage (.claude/tests/infra/télémétrie) | 188 | 116 | 3 | 69 |
-| **Total** | **247** | **174** | **3** | **70** |
+| V8 — Outillage (.claude/tests/infra/télémétrie) | 188 | 119 | 3 | 66 |
+| **Total** | **247** | **177** | **3** | **67** |
 
 
 ## V1 — Sécurité & authz (avant tout déploiement multi-tenant)  (30)
@@ -535,7 +537,7 @@
   `src/docforge/shared/libs/services/db/facades/meta_vector_sync_facade.py:104`
 - [x] **⚪ FAIBLE** · `design` — Migration-only functional/GIN indexes are invisible to autogenerate and at risk of a proposed DROP  
   `src/docforge/shared/libs/services/db/postgresql/tables/documents/document_metadata.py:30`
-- [ ] **⚪ FAIBLE** · `bug` — Retry does not clear the structured failure breadcrumb — DONE jobs keep failed_node_id from a prior attempt  
+- [x] **⚪ FAIBLE** · `bug` — Retry does not clear the structured failure breadcrumb — DONE jobs keep failed_node_id from a prior attempt  
   `src/docforge/shared/libs/services/db/postgresql/apis/job_api.py:74`
 - [x] **⚪ FAIBLE** · `bug` — config_version has no unique (collection_id, version) — concurrent config updates mint duplicate versions  
   `src/docforge/shared/libs/services/db/facades/collections_facade.py:265`
@@ -771,9 +773,9 @@
   `src/docforge/app/backend/routers/documents/router.py:260`
 - [x] **🟠 MOYENNE** · `perf` — Re-ingest leaks superseded blobs: save() replaces rows but never orphan-purges the previous run's S3 objects  
   `src/docforge/shared/libs/services/db/facades/ingestion_facade.py:161`
-- [ ] **⚪ FAIBLE** · `bug` — Job observability accuracy gaps: cut-stage usage lost from the cost meter, stale breadcrumb/counter on retried attempts, progress denominator counts never-run escalation roots  
+- [x] **⚪ FAIBLE** · `bug` — Job observability accuracy gaps: cut-stage usage lost from the cost meter, stale breadcrumb/counter on retried attempts, progress denominator counts never-run escalation roots  
   `src/docforge/worker/backend/libs/jobs/progress.py:149`
-- [ ] **⚪ FAIBLE** · `dead-code` — Minor smells: dead non-dict blob branch, worker entrypoint imports backend before config, relevance score dropped  
+- [x] **⚪ FAIBLE** · `dead-code` — Minor smells: dead non-dict blob branch, worker entrypoint imports backend before config, relevance score dropped  
   `src/docforge/worker/backend/libs/jobs/core.py:163`
 - [ ] **⚪ FAIBLE** · `divergence-doc` — architecture.md claims the per-collection budget rides arq `_job_timeout` at enqueue — arq has no such kwarg and the code deliberately does otherwise  
   `.claude/rules/architecture.md:37` _(aussi: test-bodies)_
