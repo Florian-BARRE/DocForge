@@ -37,6 +37,13 @@ class StateReader:
 
     logger = loggerplusplus.bind(identifier="StateReader")
 
+    # The two enrich slots whose key DIFFERS between the two topology modes for a VLM treatment:
+    # uniform reads its single describe chain from figure_describe_vlm, classified reads its visual
+    # branches from photo_vlm / chart_vlm / diagram_vlm. An OCR treatment shares one slot
+    # (scanned_text_ocr) across both modes, so only the VLM slots need bridging on read.
+    _UNIFORM_VLM_SLOT = "figure_describe_vlm"
+    _UNIFORM_OCR_SLOT = "scanned_text_ocr"
+
     def __new__(cls, *args: object, **kwargs: object) -> None:
         raise TypeError("StateReader is a static-only class and cannot be instantiated.")
 
@@ -173,7 +180,28 @@ class StateReader:
             steps = ChainWalker.walk(body.transitions, by_id, head, _MODEL_FAMILIES)
             if steps:
                 chains[branch.slot] = ChainSpec(family=head.family, steps=steps)
+        # Bridge classified -> uniform: a switch BACK to uniform reads the single VLM chain from
+        # figure_describe_vlm, which no classified branch produces. Mirror the first classified VLM
+        # branch onto that slot so the switch keeps a real chain instead of silently falling to the
+        # stock describe default. The classified assembler ignores the extra slot and the classified
+        # view lists only the per-branch slots, so it stays invisible until the mode actually flips.
+        cls.__mirror_uniform_vlm_slot(chains)
         return chains
+
+    @classmethod
+    def __mirror_uniform_vlm_slot(cls, chains: dict[str, ChainSpec]) -> None:
+        """Copy the first classified VLM branch onto the uniform VLM slot when it is absent.
+
+        Collapsing several distinct per-class VLM chains onto uniform's single slot is inherently
+        lossy (the model holds one uniform chain), so the FIRST visual branch in routing order is
+        the canonical carry-over — a documented choice, never a silent drop to the default.
+        """
+        if cls._UNIFORM_VLM_SLOT in chains:
+            return
+        for branch in StageSpecs.FIGURE_BRANCHES:
+            if branch.family == "vlm" and branch.slot in chains:
+                chains[cls._UNIFORM_VLM_SLOT] = chains[branch.slot].model_copy(deep=True)
+                return
 
     @classmethod
     def __derive_uniform(cls, body: GroupNodeBlob) -> tuple[str, dict[str, ChainSpec]]:
@@ -188,8 +216,8 @@ class StateReader:
             chain map (empty when the body carries no provider chain).
         """
         for family, treatment, slot in (
-            ("vlm", "vlm", "figure_describe_vlm"),
-            ("ocr", "ocr", "scanned_text_ocr"),
+            ("vlm", "vlm", cls._UNIFORM_VLM_SLOT),
+            ("ocr", "ocr", cls._UNIFORM_OCR_SLOT),
         ):
             by_id = {
                 n.id: n for n in body.nodes if isinstance(n, ActionNodeBlob) and n.family == family
@@ -199,8 +227,29 @@ class StateReader:
             head = ChainWalker.head(body.transitions, by_id, {family})
             steps = ChainWalker.walk(body.transitions, by_id, head, {family})
             if steps:
-                return treatment, {slot: ChainSpec(family=family, steps=steps)}
+                chain = ChainSpec(family=family, steps=steps)
+                return treatment, cls.__spread_uniform_chain(treatment, slot, chain)
         return "ocr", {}
+
+    @classmethod
+    def __spread_uniform_chain(
+        cls, treatment: str, uniform_slot: str, chain: ChainSpec
+    ) -> dict[str, ChainSpec]:
+        """Mirror the single uniform chain onto every slot a later mode switch will read.
+
+        A uniform body carries ONE chain under its uniform slot, but switching to CLASSIFIED reads
+        the per-class branch slots instead. For a VLM treatment those slots differ from the uniform
+        one, so the chain is mirrored onto every classified VLM branch — without this, switching
+        uniform(vlm) -> classified routes every visual class to the zero-spend skip, silently
+        dropping the user's VLM chain. An OCR treatment already shares its slot with the classified
+        OCR branch, so no mirroring is needed.
+        """
+        slots: dict[str, ChainSpec] = {uniform_slot: chain}
+        if treatment == "vlm":
+            for branch in StageSpecs.FIGURE_BRANCHES:
+                if branch.family == "vlm":
+                    slots[branch.slot] = chain.model_copy(deep=True)
+        return slots
 
     @classmethod
     def __linear_chain(

@@ -195,7 +195,19 @@ class GraphEditor(LoggerClass):
         """Replace a node's single incoming transition; from_node_id=None detaches it entirely."""
         container = self.__container(blob, op.container)
         self.__node(container, op.node_id)
-        previous = next((t for t in container.transitions if t.to_node_id == op.node_id), None)
+        incoming = [t for t in container.transitions if t.to_node_id == op.node_id]
+        # SetAfter repositions a node by REPLACING its single incoming edge. A convergence node has
+        # several incoming edges (e.g. a FromFirst join after a branch), so "the" edge to replace is
+        # ambiguous — silently dropping the others would leave a valid-but-wrong graph. Refuse it and
+        # point the caller at the precise-edge operations instead.
+        if len(incoming) > 1:
+            sources = ", ".join(sorted(t.from_node_id for t in incoming))
+            raise EditError(
+                f"cannot set_after on convergence node '{op.node_id}': it has {len(incoming)} "
+                f"incoming edges ({sources}); re-point a specific edge with set_condition or "
+                f"remove_node instead"
+            )
+        previous = incoming[0] if incoming else None
         container.transitions = [t for t in container.transitions if t.to_node_id != op.node_id]
         if op.from_node_id is None:
             return

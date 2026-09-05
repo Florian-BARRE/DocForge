@@ -26,6 +26,8 @@ class ValidationCode(StrEnum):
             ``str`` are not collectable).
         UNKNOWN_NODE: A transition or binding references a node absent from the group.
         MISSING_BINDING: An action node's CONSUMES slot has no binding.
+        UNKNOWN_SLOT: A binding targets an input slot the action node does not declare (a wiring
+            typo the resolver would otherwise silently ignore, as it reads only declared slots).
         BINDING_NOT_UPSTREAM: A FromNode binding points at a node that is not upstream.
         UNKNOWN_FIELD: A FromNode binding reads an output field the producer does not have.
         TYPE_MISMATCH: A producer field's type is incompatible with the consuming slot's type.
@@ -41,6 +43,7 @@ class ValidationCode(StrEnum):
     FOREACH_INVALID_BODY = "foreach_invalid_body"
     UNKNOWN_NODE = "unknown_node"
     MISSING_BINDING = "missing_binding"
+    UNKNOWN_SLOT = "unknown_slot"
     BINDING_NOT_UPSTREAM = "binding_not_upstream"
     UNKNOWN_FIELD = "unknown_field"
     TYPE_MISMATCH = "type_mismatch"

@@ -63,7 +63,7 @@ class FragmentRemap:
             GroupNodeBlob: The remapped group (its own id is left for the caller to discard/set).
         """
         return GroupNodeBlob(
-            id=group.id,
+            id=mapping.get(group.id, group.id),
             nodes=[cls.__remap_node(node, mapping) for node in group.nodes],
             transitions=[
                 Transition(
@@ -90,6 +90,10 @@ class FragmentRemap:
             for node in nodes:
                 ids.append(node.id)
                 if isinstance(node, ForEachNodeBlob):
+                    # The ForEach body group carries its OWN id (e.g. ``loop_body``): scan and remap
+                    # it too, so it reserves a collision-free id and can never clash with a target
+                    # (or sibling-fragment) id the disambiguation never saw.
+                    ids.append(node.body.id)
                     walk(node.body.nodes)
                 elif isinstance(node, GroupNodeBlob):
                     walk(node.nodes)

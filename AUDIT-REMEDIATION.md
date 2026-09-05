@@ -8,6 +8,8 @@
 
 ## Journal
 
+- **2026-09-05 — Vague N / 0.14.24 (V8 moteur graphe/edit, 2 MOYENNE + 2 FAIBLE bugs — scope strict tenu)** : (1) **uniform→classified drop chaînes VLM** (reader.py) — les 2 modes keyent le VLM sous des slots différents (`figure_describe_vlm` vs `photo/chart/diagram_vlm`) → un aller-retour perdait les chaînes silencieusement ; `__spread_uniform_chain`/`__mirror_uniform_vlm_slot` mirrorent la chaîne aux 2 lectures → round-trip **préserve** (le seul cas lossy N→1 garde la 1re branche, jamais un drop silencieux ; un notice N→1 vivrait dans le compiler, hors scope). (2) **binding slot inconnu ignoré** — nouveau `ValidationCode.UNKNOWN_SLOT` : un binding vers un slot absent d'un **ActionNode** (`Consumes`) est désormais une **issue de validation** (fail-fast), plus un no-op silencieux ; les group-children (input dict dynamique) intacts ; défaut/light/all-provider valident toujours `[]`. (3) **SetAfter nuke tous les edges entrants** d'un nœud de convergence → **refuse** (`EditError` nommant le nœud + sources) au lieu de produire un graphe valide-mais-faux ; 0/1-entrant inchangé. (4) **ids body-group ForEach hors scans d'unicité** — `all_node_ids`+`__fragment_ids`+`remap` incluent `node.body.id` → plus de collision de mint/remap avec un id de corps ForEach. **⚠️ OpenAPI** : item 2 ajoute `unknown_slot` à l'enum `ValidationCode` (exposé via `ValidationIssue` dans les response models pipelines) — **snapshot régénéré par moi** (`dump_openapi.py`, diff = uniquement l'ajout de l'enum, 0 autre drift) ; `check_schema_drift` CI-style **vert** (96 schémas trackés, 170/57 accountés) ; SDK modélise ValidationCode en `str` → aucun modèle SDK à changer. +9 tests. Gate 4 projets : docforge **1514 passed** (+9), sdk 557 + drift, mcp 48, ruff clean. **→ V8 : 105/188.**
+
 - **2026-09-05 — Vague M / 0.14.23 (V8 IR read-path crashes, 2 bugs — scope strict, 1 shot)** : (1) **filename non-latin-1 crash** (views.py md/HTML download) — le header `Content-Disposition` (latin-1) plantait sur un nom accentué/CJK ; nouveau `_content_disposition` : ASCII pur → `filename="…"` (contrat inchangé), sinon fallback ASCII + **RFC 5987 `filename*=UTF-8''<pct>`** (toujours latin-1-safe) ; strip quotes/CRLF en bonus (anti-injection header). (2) **enum stocké inconnu crash** — `BlockType(row.block_type)` et `ChunkRole(chunk.role)` (VARCHAR en base) 500-aient tout le read sur une valeur hors-enum (forward-compat/legacy) ; désormais `try/except ValueError` → block inconnu dégrade en `PARAGRAPH` (texte rendu), role inconnu → disabled (override explicite court-circuite toujours), + warning. +5 tests (filename accents/CJK, block/role inconnus ne 500 pas). Gate : **1505 passed** (+5), ruff clean, 0 changement OpenAPI/SDK. **→ V8 : 101/188.**
 
 - **2026-09-05 — Vague L / 0.14.22 (V8 export/import robustesse, 5 FAIBLE — scope strict tenu)** : (1) **counts jamais réconciliés** — `_restore` renvoie les counts RÉELS par domaine ; `_reconcile_counts` (dans le rollback guard) lève `CollectionImportError` si un fichier data déclaré au manifest est absent / un count ne matche pas → plus de faux succès avec counts fantômes ; `ImportResult.counts` = counts réels. (2) **dangling refs incohérents** — `_optional_ref` : parent block / caption figure / parent chunk dangling → **log + drop NULL** ; champ metadata inconnu → **log + skip** ; `document_id` de payload stale → log + drop la clé (plus de foreign id faux) ; les FK primaires **fail loud** (KeyError) à dessein. (3) **commentaires "preserved verbatim" faux** — l'import REMAP tous les ids ; corrigé dans `export/rows.py` (7 emplacements) + conftest/test docstrings + **`transfer_facade.py:52`** ("id-preserving"→"id-remapping", fait par moi hors-scope agent). (4) **config_versions discarded** — décision : **discard explicite documenté** (restaurer l'historique = INSERT store-facade hors scope transfer) → log INFO nommant le nombre de versions non portées + commentaire. (5) **couverture remap** — +9 tests (chaîne parent/enfant, doc zéro-point, double-import → collections indépendantes, fichier manquant, dangling caption/parent, champ meta inconnu). Gate : **1499 passed** (+9), ruff clean, 0 changement OpenAPI/SDK. **→ V8 : 99/188.**
@@ -139,8 +141,8 @@
 | V5 — Moteur & pipeline | 2 | 2 | 0 | 0 |
 | V6 — Frontend | 0 | 0 | 0 | 0 |
 | V7 — Documentation | 21 | 21 | 0 | 0 |
-| V8 — Outillage (.claude/tests/infra/télémétrie) | 188 | 101 | 3 | 84 |
-| **Total** | **247** | **159** | **3** | **85** |
+| V8 — Outillage (.claude/tests/infra/télémétrie) | 188 | 105 | 3 | 80 |
+| **Total** | **247** | **163** | **3** | **81** |
 
 
 ## V1 — Sécurité & authz (avant tout déploiement multi-tenant)  (30)
@@ -653,7 +655,7 @@
 
 ### Moteur graphe
 
-- [ ] **🟠 MOYENNE** · `design` — Bindings on unknown slot names are silently ignored by validator, resolver and editor alike  
+- [x] **🟠 MOYENNE** · `design` — Bindings on unknown slot names are silently ignored by validator, resolver and editor alike  
   `src/docforge/shared/libs/pipelines/validation/rules/child.py:58`
 - [x] **🟠 MOYENNE** · `bug` — Switch exhaustiveness check skipped when a node has only one WhenEquals edge  
   `src/docforge/shared/libs/pipelines/validation/rules/routing.py:95`
@@ -661,7 +663,7 @@
   `src/docforge/shared/libs/pipelines/edit/wiring.py:122`
 - [ ] **⚪ FAIBLE** · `design` — Engine escape hatches crash execute() without a FAILED record, contradicting its own record-not-crash contract  
   `src/docforge/shared/libs/pipelines/engine/core.py:421`
-- [ ] **⚪ FAIBLE** · `bug` — ForEach body-group ids are excluded from the id-uniqueness scans (mint, fragment remap)  
+- [x] **⚪ FAIBLE** · `bug` — ForEach body-group ids are excluded from the id-uniqueness scans (mint, fragment remap)  
   `src/docforge/shared/libs/pipelines/edit/topology.py:78`
 - [ ] **⚪ FAIBLE** · `divergence-doc` — IoSlot.required is never derived from the field's optionality — describe() reports every slot required  
   `src/docforge/shared/libs/pipelines/base/node.py:196`
@@ -673,7 +675,7 @@
   `src/docforge/shared/libs/pipelines/edit/editor.py:167`
 - [ ] **⚪ FAIBLE** · `consistency` — Retry-count semantics drift across the retry implementations (grouped lows)  
   `src/docforge/shared/libs/pipelines/nodes/embed/base/node.py:129`
-- [ ] **⚪ FAIBLE** · `bug` — SetAfter silently deletes ALL incoming edges of a convergence node, producing a valid-but-wrong graph  
+- [x] **⚪ FAIBLE** · `bug` — SetAfter silently deletes ALL incoming edges of a convergence node, producing a valid-but-wrong graph  
   `src/docforge/shared/libs/pipelines/edit/editor.py:199` _(aussi: pipelines-api)_
 
 ### Pipeline ingest
@@ -698,7 +700,7 @@
   `src/docforge/shared/libs/pipelines/nodes/vlm/openai_compatible/core.py:66`
 - [x] **🟠 MOYENNE** · `perf` — Unbounded rowspan/colspan expansion in the PP-Structure table flattener can hang/OOM the worker  
   `src/docforge/shared/libs/pipelines/ingest/nodes/parse/parser/pp_structure/table.py:123`
-- [ ] **🟠 MOYENNE** · `design` — Uniform→classified round-trip silently drops the per-class VLM chains (classes route to zero-spend skip without a notice)  
+- [x] **🟠 MOYENNE** · `design` — Uniform→classified round-trip silently drops the per-class VLM chains (classes route to zero-spend skip without a notice)  
   `src/docforge/shared/libs/pipelines/ingest/stages/reader.py:179`
 - [x] **🟠 MOYENNE** · `divergence-doc` — doc_meta contextualizer diverges from PIPELINE.md: single title anchor, not 'all declared metadata', different config surface  
   `src/docforge/shared/libs/pipelines/ingest/nodes/contextualize/doc_meta/core.py:19`
