@@ -5,8 +5,10 @@
 # in-progress guard row (the UNIQUE constraint is the concurrency guard), (3a) if it WON the insert,
 # runs the handler once, buffers the response, and — only for a definitive (< 500) outcome — caches it
 # so retries replay it (a 5xx/exception drops the row so a retry re-runs), (3b) if the row already
-# existed, replays the cached response (same key+body → 200 + ``Idempotency-Replayed: true``), or
-# rejects a body mismatch (422) or an in-flight duplicate (409). Everything else is a transparent
+# existed, replays the cached response (same key+body → the ORIGINAL cached status + body + content-type
+# + an ``Idempotency-Replayed: true`` marker), or rejects a body mismatch (422) or an in-flight
+# duplicate (409). NOTE: the replay restores the status, body and content-type only — other headers the
+# handler set are NOT persisted today, so they are absent on a replay. Everything else is a transparent
 # passthrough. It is wired INNER to Auth+RateLimit (needs the principal; replays still cost budget) and
 # OUTER to Audit (a replay does no new work → it is NOT re-audited; the operation was audited on its
 # one real execution).
@@ -28,6 +30,7 @@ from shared_libs.services.db.postgresql.tables import IdempotencyState
 
 # ====== Local Project Imports ======
 from ...context import CONTEXT
+from ..metrics import SCOPE_ROUTE_TEMPLATE
 from .actor import IdempotencyActorScope
 from .eligibility import IdempotencyEligibility
 from .request_buffer import IdempotencyRequestBuffer
@@ -87,6 +90,12 @@ class IdempotencyMiddleware:
         if template is None:
             await self.app(scope, receive, send)
             return
+
+        # 3b. Hand the resolved template to the OUTER metrics middleware via the shared scope, so a
+        #     replay/reject that short-circuits BEFORE routing is still attributed to its real endpoint
+        #     (the router never sets scope["route"] on a short-circuit). Harmless on the execute path,
+        #     where the router sets the real route and the metrics middleware prefers it.
+        scope[SCOPE_ROUTE_TEMPLATE] = template
 
         # 4. Buffer the body to fingerprint it (and to re-feed the handler). An over-cap body skips
         #    idempotency entirely — the already-read + remaining bytes stream through, never buffered.
@@ -351,7 +360,10 @@ class IdempotencyMiddleware:
             )
             return
 
-        # 3. Completed with the SAME body → replay the cached response verbatim + the replay marker.
+        # 3. Completed with the SAME body → replay the cached outcome: the ORIGINAL status, body and
+        #    content-type, plus the replay marker. Only those three fields are persisted, so other
+        #    headers the original handler set are NOT restored (a known fidelity limit — see the
+        #    module docstring); the status, body and content-type are byte-exact.
         response = Response(
             content=record.response_body or b"",
             status_code=record.response_status or 200,

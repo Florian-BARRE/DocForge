@@ -296,6 +296,46 @@ async def test_middleware_records_final_status_on_4xx(fastapi_app, monkeypatch) 
     assert record.await_args.kwargs["status_code"] == 404
 
 
+async def test_middleware_records_on_unhandled_exception(fastapi_app, monkeypatch) -> None:
+    """A 500-class escape (an unhandled exception leaving the handler) STILL records a row.
+
+    The record is written in a `finally`, so even when the downstream raises before any
+    response-start, an audit row lands with the default 500 status; the exception then propagates
+    untouched (auditing never swallows the failure).
+    """
+    from backend.context import CONTEXT  # noqa: PLC0415
+    from backend.libs.audit import AuditMiddleware  # noqa: PLC0415
+
+    record = AsyncMock()
+    monkeypatch.setattr(CONTEXT, "database", SimpleNamespace(audit=SimpleNamespace(record=record)))
+
+    scope = {
+        "type": "http",
+        "method": "POST",
+        "path": f"/api/v1/collections/{COLL}",
+        "headers": [],
+        "client": ("203.0.113.7", 5555),
+        "state": {"principal": _full()},
+        "route": SimpleNamespace(path="/api/v1/collections/{collection_id}"),
+    }
+
+    async def _boom(scope, receive, send) -> None:
+        raise RuntimeError("handler exploded")
+
+    async def _send(message) -> None:
+        return None
+
+    async def _receive() -> dict:
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    with pytest.raises(RuntimeError):
+        await AuditMiddleware(_boom)(scope, _receive, _send)
+
+    # The exception propagated, AND a row was still recorded with the default 500 status.
+    record.assert_awaited_once()
+    assert record.await_args.kwargs["status_code"] == 500
+
+
 async def test_middleware_skips_reads(fastapi_app, monkeypatch) -> None:
     """A GET is never recorded (transparent passthrough)."""
     from backend.context import CONTEXT  # noqa: PLC0415

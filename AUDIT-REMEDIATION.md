@@ -8,6 +8,8 @@
 
 ## Journal
 
+- **2026-09-05 — Vague T / 0.14.30 (V8 middlewares HTTP fidélité, 3 FAIBLE groupés — scope strict)** : (1) **audit** — (a) pré/post-réponse **déjà OK vérifié** (row écrite après le run avec le vrai status) ; (b) une exception non gérée (500-class) **laisse désormais une row** (`try/finally` autour de `self.app`, `_record` en finally fail-safe, exception re-levée intacte) ; (c) auditer 401/429 = **non-goal documenté** (nécessiterait de sortir l'audit des gates → app.py hors scope + perte d'attribution acteur + spam junk-path). (2) **metrics** — short-circuits (replay/reject idempotency, 401/429) n'atterrissent plus tous sur `__unmatched__` : clé partagée `SCOPE_ROUTE_TEMPLATE` (idempotency stashe le template résolu) → route réelle ; 401/429 sans template → label distinct `__gate_rejected__` ; SSE **exclu de l'histogramme de latence** (compté mais pas timé). Reporté : le walk de la route-table FastAPI n'est pas fiable (routing opaque) → non tenté. (3) **idempotency** — commentaires drifted corrigés (replay restaure status+body+content-type+marker, pas "200"/"verbatim") ; **résidu honnête** : la fidélité complète des headers au replay exige une colonne `response_headers` (migration + façade, hors scope `app/backend/libs`) — reporté, non forcé. +8 tests. Gate : **1561 passed** (+9), ruff clean, 0 changement OpenAPI/SDK. NB nouvel import inter-lib `idempotency→metrics` (vers la lib observability bas-niveau, sens acceptable). **→ V8 : 129/188.**
+
 - **2026-09-05 — Vague S / 0.14.29 (V8 frontend layout-batch, 7 FAIBLE)** : (1+2) **PageScrubber** — rebind du listener quand le conteneur scroll change (callback ref) + drag tactile (pointer events) ; offsets de page cachés (calcul once/resize) au lieu de O(pages) lectures DOM par tick. (3) **collapse responsive** — wrapper `overflow-x:auto` autour du layout IrChunkGraph large (476px fixe) → scroll interne, jamais le body. (4) **SchemaField** — masking **implémenté** (input password + toggle reveal pour les champs au nom secret via `isSecretFieldName`, hooks avant tout return conditionnel) plutôt que juste corriger le commentaire. (5) smells groupés — rgba hardcodé → token, erreur de page-load **dégrade en toast** (au lieu de nuker l'état d'erreur de la page déjà chargée), pages vides non droppées, displayPage non bypassé. (6) **one-offs supprimés** (git rm) — 5 scripts QA jetables (a11y-check/debug-menu-click/gf-dropdown/grafana-shot/mobile-overflow-check) + 3 PNG trackés ; le harness Playwright documenté conservé ; les PNG root-owned restants sont du junk local **non-tracké** (dir gitignored), hors repo. (7) commentaires stale ("lane" fantôme, etc.). Gate conteneur : lint **0 err**, tsc clean, vitest **5**, build ✓. **→ V8 : 126/188.** Reste `IrChunkGraph.tsx:1` (>200 lignes / structure) non fait.
 
 - **2026-09-05 — Vague R / 0.14.28 (V8 observabilité jobs/worker, 3 FAIBLE)** : (1) **breadcrumb d'échec non nettoyé au retry** — `mark_running` clear désormais `failed_node_id/kind/item_index/error_type` (+ counter) sur une nouvelle tentative. Caveat honnête : le chemin même-row FAILED→RUNNING→DONE est **actuellement inatteignable** (`retry_jobs=False` + new-row-per-reingest) → c'est de la **complétude defense-in-depth** de l'idiome de reset existant, pas un bug live. (2) **dénominateur de progression** comptait les racines d'escalade jamais exécutées → nouveau `StagePlanHelpers.planned_stage_ids` (BFS depuis l'entrée unique, exclut `score_below`/`on_failure`) sert de `_total` ; les `_roots` restent tous les ids (une escalade qui TOURNE est tracée) ; reset counter/breadcrumb par tentative. Sous-item "cut-stage usage cost meter" **skippé** (cluster cost déféré). (3) smells worker : branche blob non-dict morte **retirée** (BlobNormalizer.normalize renvoie toujours un dict) ; **ordre d'import entrypoint worker corrigé** (`config`/RUNTIME_CONFIG AVANT `backend` — idiome `_ = RUNTIME_CONFIG` qui empêche isort de re-flotter, contrat de bootstrap sys.path+alias) ; "relevance score dropped" **non trouvé** en scope worker (0 hit `score` — le seul drop est `_record`, trace intentionnelle sous `trace_payloads=False`), rien à corriger. +13 tests (stage_plan ×7, progress, job-lifecycle reset ×3). Gate : **1552 passed** (+13), ruff clean, 0 changement OpenAPI/SDK. **→ V8 : 119/188.**
@@ -151,8 +153,8 @@
 | V5 — Moteur & pipeline | 2 | 2 | 0 | 0 |
 | V6 — Frontend | 0 | 0 | 0 | 0 |
 | V7 — Documentation | 21 | 21 | 0 | 0 |
-| V8 — Outillage (.claude/tests/infra/télémétrie) | 188 | 126 | 3 | 59 |
-| **Total** | **247** | **184** | **3** | **60** |
+| V8 — Outillage (.claude/tests/infra/télémétrie) | 188 | 129 | 3 | 56 |
+| **Total** | **247** | **187** | **3** | **57** |
 
 
 ## V1 — Sécurité & authz (avant tout déploiement multi-tenant)  (30)
@@ -656,11 +658,11 @@
   `src/docforge/app/backend/libs/idempotency/response_buffer.py:25`
 - [x] **🟠 MOYENNE** · `divergence-doc` — POST-shaped read endpoints (search, corpus query, estimate) are audited — docs promise 'reads are never audited', and the trail keeps rows forever by default  
   `src/docforge/app/backend/libs/audit/helpers.py:49`
-- [ ] **⚪ FAIBLE** · `design` — Audit trail gaps grouped: keyed requests are audited BEFORE the client gets the response; unhandled non-HTTPException escapes skip the audit row; 401/429 attempts leave no trail  
+- [x] **⚪ FAIBLE** · `design` — Audit trail gaps grouped: keyed requests are audited BEFORE the client gets the response; unhandled non-HTTPException escapes skip the audit row; 401/429 attempts leave no trail  
   `src/docforge/app/backend/libs/audit/middleware.py:79`
-- [ ] **⚪ FAIBLE** · `consistency` — Metrics blind spots grouped: idempotency replays/rejections and gate short-circuits all collapse into path=__unmatched__; SSE streams skew the latency histogram  
+- [x] **⚪ FAIBLE** · `consistency` — Metrics blind spots grouped: idempotency replays/rejections and gate short-circuits all collapse into path=__unmatched__; SSE streams skew the latency histogram  
   `src/docforge/app/backend/libs/metrics/http_middleware.py:94`
-- [ ] **⚪ FAIBLE** · `consistency` — Replay fidelity + doc drift grouped: replayed responses lose all original headers except content-type; two config/code-summary comments misstate behavior  
+- [x] **⚪ FAIBLE** · `consistency` — Replay fidelity + doc drift grouped: replayed responses lose all original headers except content-type; two config/code-summary comments misstate behavior  
   `src/docforge/app/backend/libs/idempotency/middleware.py:225`
 
 ### Moteur graphe
