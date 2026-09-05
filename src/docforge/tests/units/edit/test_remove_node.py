@@ -1,8 +1,11 @@
 """RemoveNode: bridging a single-in/single-out chain, purging dangling references."""
 
+import pytest
+
 from shared_libs.pipelines.base import FromNode, FromRunInput, Transition
 from shared_libs.pipelines.build import ActionNodeBlob, GroupNodeBlob
-from shared_libs.pipelines.edit import RemoveNode
+from shared_libs.pipelines.build.blob import ForEachNodeBlob
+from shared_libs.pipelines.edit import EditError, RemoveNode
 
 from .conftest import issues_of
 
@@ -45,3 +48,26 @@ def test_remove_node_purging_a_required_slot_surfaces_missing_binding(
     assert "probe" not in lost.bindings.get("a", {})
     issues = issues_of(builder, validator, lost)
     assert any(i.code == "missing_binding" and "probe" in i.message for i in issues)
+
+
+def test_remove_node_a_sibling_foreach_iterates_over_is_refused(editor) -> None:
+    """A ForEach's ``over`` is a required binding __purge_references cannot heal — so removing the
+    node it iterates over is REFUSED (mirroring set_after), never left as a dangling ``over``."""
+    blob = GroupNodeBlob(
+        id="root",
+        nodes=[
+            ActionNodeBlob(id="seed", family="intake", kind="format_probe"),
+            ForEachNodeBlob(
+                id="loop",
+                over=FromNode(node_id="seed", field_name="probe"),
+                item_field="item",
+                body=GroupNodeBlob(
+                    id="loop_body",
+                    nodes=[ActionNodeBlob(id="inner", family="enrich", kind="figure_entry")],
+                ),
+            ),
+        ],
+        transitions=[Transition(from_node_id="seed", to_node_id="loop")],
+    )
+    with pytest.raises(EditError, match="loop"):
+        editor.apply(blob, [RemoveNode(node_id="seed")])

@@ -8,6 +8,8 @@
 
 ## Journal
 
+- **2026-09-05 — Vague U / 0.14.31 (V8 edit+search correctness, 3 FAIBLE — scope strict)** : (1) **AutoWire ForEach items** — typait depuis le PREMIER terminal seulement ; réécrit pour miroir la règle d'uniformité du validator (`ForEach.item_type()`) : tous les terminaux mêmes type sinon `None` (l'auto-wire devient un sous-ensemble de ce que le validator accepte ; un corps divergent → pas d'auto-wire + `FOREACH_INVALID_BODY`). (2) **RemoveNode `over` dangling** — retirer un nœud qu'un ForEach sibling itère **refuse** désormais (`EditError` nommant le loop) car `over` est un champ requis non-healable (mirroir du précédent set_after ; pas de graphe valide-mais-faux). (3) **score_kind rerank dégradé** — un rerank dégradé (fallback fusion) reportait quand même `cross_encoder_rerank` ; `score_kind` prend un flag `rerank_degraded` (détecté via le marqueur rerank-spécifique `_RERANK_DEGRADED` dans `debug["degraded"]`, PAS n'importe quel degrade) → label fusion correct ; commentaire "hydrated exactly once" stale corrigé (le pool livré est hydraté une fois ; le rerank lit séparément le top_n). +6 tests. Gate : **1567 passed** (+6), ruff clean, **0 changement OpenAPI** (score_kind = champ str existant, seule la valeur retournée sur le chemin degrade change). Obs : la règle d'uniformité ForEach vit maintenant en 3 endroits (item_type/validation/autowire) — candidat refacto futur. **→ V8 : 132/188.**
+
 - **2026-09-05 — Vague T / 0.14.30 (V8 middlewares HTTP fidélité, 3 FAIBLE groupés — scope strict)** : (1) **audit** — (a) pré/post-réponse **déjà OK vérifié** (row écrite après le run avec le vrai status) ; (b) une exception non gérée (500-class) **laisse désormais une row** (`try/finally` autour de `self.app`, `_record` en finally fail-safe, exception re-levée intacte) ; (c) auditer 401/429 = **non-goal documenté** (nécessiterait de sortir l'audit des gates → app.py hors scope + perte d'attribution acteur + spam junk-path). (2) **metrics** — short-circuits (replay/reject idempotency, 401/429) n'atterrissent plus tous sur `__unmatched__` : clé partagée `SCOPE_ROUTE_TEMPLATE` (idempotency stashe le template résolu) → route réelle ; 401/429 sans template → label distinct `__gate_rejected__` ; SSE **exclu de l'histogramme de latence** (compté mais pas timé). Reporté : le walk de la route-table FastAPI n'est pas fiable (routing opaque) → non tenté. (3) **idempotency** — commentaires drifted corrigés (replay restaure status+body+content-type+marker, pas "200"/"verbatim") ; **résidu honnête** : la fidélité complète des headers au replay exige une colonne `response_headers` (migration + façade, hors scope `app/backend/libs`) — reporté, non forcé. +8 tests. Gate : **1561 passed** (+9), ruff clean, 0 changement OpenAPI/SDK. NB nouvel import inter-lib `idempotency→metrics` (vers la lib observability bas-niveau, sens acceptable). **→ V8 : 129/188.**
 
 - **2026-09-05 — Vague S / 0.14.29 (V8 frontend layout-batch, 7 FAIBLE)** : (1+2) **PageScrubber** — rebind du listener quand le conteneur scroll change (callback ref) + drag tactile (pointer events) ; offsets de page cachés (calcul once/resize) au lieu de O(pages) lectures DOM par tick. (3) **collapse responsive** — wrapper `overflow-x:auto` autour du layout IrChunkGraph large (476px fixe) → scroll interne, jamais le body. (4) **SchemaField** — masking **implémenté** (input password + toggle reveal pour les champs au nom secret via `isSecretFieldName`, hooks avant tout return conditionnel) plutôt que juste corriger le commentaire. (5) smells groupés — rgba hardcodé → token, erreur de page-load **dégrade en toast** (au lieu de nuker l'état d'erreur de la page déjà chargée), pages vides non droppées, displayPage non bypassé. (6) **one-offs supprimés** (git rm) — 5 scripts QA jetables (a11y-check/debug-menu-click/gf-dropdown/grafana-shot/mobile-overflow-check) + 3 PNG trackés ; le harness Playwright documenté conservé ; les PNG root-owned restants sont du junk local **non-tracké** (dir gitignored), hors repo. (7) commentaires stale ("lane" fantôme, etc.). Gate conteneur : lint **0 err**, tsc clean, vitest **5**, build ✓. **→ V8 : 126/188.** Reste `IrChunkGraph.tsx:1` (>200 lignes / structure) non fait.
@@ -153,8 +155,8 @@
 | V5 — Moteur & pipeline | 2 | 2 | 0 | 0 |
 | V6 — Frontend | 0 | 0 | 0 | 0 |
 | V7 — Documentation | 21 | 21 | 0 | 0 |
-| V8 — Outillage (.claude/tests/infra/télémétrie) | 188 | 129 | 3 | 56 |
-| **Total** | **247** | **187** | **3** | **57** |
+| V8 — Outillage (.claude/tests/infra/télémétrie) | 188 | 132 | 3 | 53 |
+| **Total** | **247** | **190** | **3** | **54** |
 
 
 ## V1 — Sécurité & authz (avant tout déploiement multi-tenant)  (30)
@@ -671,7 +673,7 @@
   `src/docforge/shared/libs/pipelines/validation/rules/child.py:58`
 - [x] **🟠 MOYENNE** · `bug` — Switch exhaustiveness check skipped when a node has only one WhenEquals edge  
   `src/docforge/shared/libs/pipelines/validation/rules/routing.py:95`
-- [ ] **⚪ FAIBLE** · `consistency` — AutoWire types a foreach's items from its FIRST terminal only, diverging from the validator's uniformity rule  
+- [x] **⚪ FAIBLE** · `consistency` — AutoWire types a foreach's items from its FIRST terminal only, diverging from the validator's uniformity rule  
   `src/docforge/shared/libs/pipelines/edit/wiring.py:122`
 - [ ] **⚪ FAIBLE** · `design` — Engine escape hatches crash execute() without a FAILED record, contradicting its own record-not-crash contract  
   `src/docforge/shared/libs/pipelines/engine/core.py:421`
@@ -683,7 +685,7 @@
   `src/docforge/shared/libs/pipelines/engine/navigation.py:87`
 - [x] **⚪ FAIBLE** · `test-gap` — No test covers single-edge switch exhaustiveness or SetAfter on a convergence node  
   `src/docforge/tests/units/validation/test_validation_codes.py:1`
-- [ ] **⚪ FAIBLE** · `consistency` — RemoveNode heals bindings but leaves a sibling ForEach's 'over' pointing at the removed node  
+- [x] **⚪ FAIBLE** · `consistency` — RemoveNode heals bindings but leaves a sibling ForEach's 'over' pointing at the removed node  
   `src/docforge/shared/libs/pipelines/edit/editor.py:167`
 - [ ] **⚪ FAIBLE** · `consistency` — Retry-count semantics drift across the retry implementations (grouped lows)  
   `src/docforge/shared/libs/pipelines/nodes/embed/base/node.py:129`
@@ -753,7 +755,7 @@
   `src/docforge/shared/libs/pipelines/search/nodes/rerank/cross_encoder/config.py:37`
 - [ ] **⚪ FAIBLE** · `dead-code` — Minor smells: dead flags/language fields, stale docstrings, private embedder-hook access, unbounded disabled-doc must_not list  
   `src/docforge/shared/libs/public_models/search/query.py:56`
-- [ ] **⚪ FAIBLE** · `consistency` — score_kind mislabels degraded reranks; read port's "hydrated exactly once" claim is stale on the rerank path  
+- [x] **⚪ FAIBLE** · `consistency` — score_kind mislabels degraded reranks; read port's "hydrated exactly once" claim is stale on the rerank path  
   `src/docforge/app/backend/routers/search/helpers.py:56`
 
 ### Télémétrie

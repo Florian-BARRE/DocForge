@@ -208,3 +208,44 @@ def test_score_kind_cross_encoder_when_rerank_present(fastapi_app) -> None:
         ]
     }
     assert SearchHelpers.score_kind(blob) == "cross_encoder_rerank"
+
+
+def _rerank_blob(fusion: str = "rrf") -> dict:
+    """A rerank topology over a retrieve node using ``fusion`` (the score when rerank degrades)."""
+    return {
+        "nodes": [
+            {"family": "retrieve", "kind": "hybrid", "config": {"fusion": fusion}},
+            {"family": "rerank", "kind": "cross_encoder", "config": {}},
+        ]
+    }
+
+
+def test_score_kind_real_rerank_is_cross_encoder(fastapi_app) -> None:
+    from backend.routers.search.helpers import SearchHelpers  # noqa: PLC0415
+
+    # A rerank that truly ran (not degraded) delivers a cross-encoder score.
+    assert SearchHelpers.score_kind(_rerank_blob(), rerank_degraded=False) == "cross_encoder_rerank"
+
+
+def test_score_kind_degraded_rerank_steps_back_to_fusion(fastapi_app) -> None:
+    from backend.routers.search.helpers import SearchHelpers  # noqa: PLC0415
+
+    # A DEGRADED rerank hands back the fusion-order pool, so the delivered score is the fusion
+    # score — the label must reflect the actual source, not the topology's rerank node.
+    assert SearchHelpers.score_kind(_rerank_blob("rrf"), rerank_degraded=True) == "rrf_fusion"
+    assert SearchHelpers.score_kind(_rerank_blob("dbsf"), rerank_degraded=True) == "dbsf_fusion"
+
+
+def test_rerank_degraded_detects_only_the_rerank_marker(fastapi_app) -> None:
+    from backend.routers.search.helpers import SearchHelpers  # noqa: PLC0415
+    from shared_libs.pipelines.search.nodes.rerank.cross_encoder.core import (  # noqa: PLC0415
+        _RERANK_DEGRADED,
+    )
+
+    # The rerank marker (alone or joined with an encode note) reads as degraded; an encode-only
+    # degradation (after which the rerank still ran) and a healthy run do not.
+    assert SearchHelpers.rerank_degraded({"degraded": _RERANK_DEGRADED}) is True
+    assert SearchHelpers.rerank_degraded({"degraded": f"dense axis dropped; {_RERANK_DEGRADED}"})
+    assert SearchHelpers.rerank_degraded({"degraded": "dense axis dropped"}) is False
+    assert SearchHelpers.rerank_degraded({}) is False
+    assert SearchHelpers.rerank_degraded(None) is False
