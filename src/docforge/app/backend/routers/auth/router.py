@@ -18,6 +18,7 @@ from shared_libs.services.db.postgresql.tables import ApiKey
 # ====== Local Project Imports ======
 from ...context import CONTEXT
 from ...libs.auth import AuthKeys, Capability, require
+from ...libs.logsafe import LogSafeHelpers
 from ...utils.error_handling import auto_handle_errors
 from .models import CreatedKey, CreateKeyRequest, KeyInfo, RotateKeyRequest
 
@@ -125,7 +126,9 @@ async def create_key(payload: CreateKeyRequest) -> CreatedKey:
             expires_at=payload.expires_at,
         )
     )
-    CONTEXT.logger.info(f"API key '{payload.name}' created (prefix={prefix})")
+    CONTEXT.logger.info(
+        f"API key '{LogSafeHelpers.sanitize(payload.name)}' created (prefix={prefix})"
+    )
 
     # 4. Return the plaintext ONCE — it is never stored and cannot be shown again.
     return CreatedKey(
