@@ -15,7 +15,7 @@
 #   at /opt/venv, selecting the correct torch wheel variant via TORCH_VARIANT.
 # - TORCH_VARIANT=cpu  (default) installs torch 2.13.0+cpu (~200 MB) — no nvidia-* libs.
 #   Target runtime image size: ~2 GB.
-# - TORCH_VARIANT=gpu installs torch 2.6.0+cu124 (~2 GB) + all nvidia-cu12-* runtime libs.
+# - TORCH_VARIANT=gpu installs torch 2.11.0+cu128 (~2 GB) + all nvidia-cu12-* runtime libs.
 #   Target runtime image size: ~8.5 GB. Requires NVIDIA Container Toolkit on the host.
 # - Isolating dependency installation from application code means code-only changes do
 #   NOT invalidate this slow dependency layer.
@@ -28,7 +28,7 @@ FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim AS py-build
 #   docker build --build-arg TORCH_VARIANT=gpu -f src/bge_server/Dockerfile \
 #                -t docforge-bge-server:gpu src
 # The two values map to pyproject.toml [project.optional-dependencies] extras (cpu / gpu),
-# which steer uv to the correct torch wheel index (pytorch-cpu / pytorch-cu124). They are
+# which steer uv to the correct torch wheel index (pytorch-cpu / pytorch-cu128). They are
 # declared as conflicting extras so uv rejects any attempt to install both simultaneously.
 ARG TORCH_VARIANT=cpu
 
