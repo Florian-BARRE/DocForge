@@ -39,6 +39,7 @@ class DocumentSelectorResolver(LoggerClass):
         collection_id: uuid.UUID,
         selector: DocumentSelector,
         schema: Sequence[MetadataField],
+        limit: int | None = None,
     ) -> list[uuid.UUID]:
         """
         Resolve the selector to a list of target document ids scoped to the collection.
@@ -47,20 +48,26 @@ class DocumentSelectorResolver(LoggerClass):
             collection_id (uuid.UUID): The collection every target must belong to.
             selector (DocumentSelector): The id-mode or filter-mode target set (validated shape).
             schema (Sequence[MetadataField]): The collection schema (for a filter-mode selector).
+            limit (int | None): Cap the ids returned (None = every match). A destructive bulk op
+                passes ``cap + 1`` so the caller can detect that more remain and signal it, rather
+                than materialising an unbounded id set in memory.
 
         Returns:
-            list[uuid.UUID]: The concrete target ids (may be empty when a filter matches nothing).
+            list[uuid.UUID]: The concrete target ids (may be empty when a filter matches nothing);
+                at most ``limit`` when set.
 
         Raises:
             ValueError: In id mode, when an id is unknown or belongs to another collection; in filter
                 mode, when a metadata field/operator is invalid (surfaced from the mapper).
         """
-        # 1. Id mode — validate existence + collection ownership, never mutate across tenants.
+        # 1. Id mode — validate existence + collection ownership, never mutate across tenants. The
+        #    explicit set is already bounded by the request body, so a limit only slices it.
         if selector.document_ids is not None:
-            return await self._resolve_ids(collection_id, selector.document_ids)
+            ids = await self._resolve_ids(collection_id, selector.document_ids)
+            return ids if limit is None else ids[:limit]
 
         # 2. Filter mode — every matching id minus the deselected few (the mapper validates fields).
-        return await self._resolve_filter(collection_id, selector, schema)
+        return await self._resolve_filter(collection_id, selector, schema, limit)
 
     async def _resolve_ids(
         self, collection_id: uuid.UUID, wanted: Sequence[uuid.UUID]
@@ -83,11 +90,13 @@ class DocumentSelectorResolver(LoggerClass):
         collection_id: uuid.UUID,
         selector: DocumentSelector,
         schema: Sequence[MetadataField],
+        limit: int | None = None,
     ) -> list[uuid.UUID]:
-        """Resolve a filter to every matching id in the collection minus the deselected ids."""
-        # 1. Build + validate the query spec (filter only — order is irrelevant for a set).
+        """Resolve a filter to the matching ids in the collection minus the deselected ids."""
+        # 1. Build + validate the query spec (filter only). A ``limit`` bounds the DB projection so a
+        #    huge match never loads every id; the order is id-stable for convergent re-runs.
         spec = CorpusMapper.to_spec(selector.filter, None, schema)
-        matched = await self._database.documents.resolve_query_ids(collection_id, spec)
+        matched = await self._database.documents.resolve_query_ids(collection_id, spec, limit)
         # 2. Drop the deselected ids (the UI's select-all-minus-N).
         excluded = set(selector.exclude_ids)
         return [document_id for document_id in matched if document_id not in excluded]

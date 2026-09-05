@@ -8,6 +8,8 @@
 
 ## Journal
 
+- **2026-09-05 — Vague H / 0.14.18 (V8 backend data-layer, 2 MOYENNE ; atomicité 2/3 déférée)** : (item 4) **provenance renvoyait le dernier job même FAILED** — un job échoué/running postérieur masquait le run qui a réellement produit l'IR affichée. Nouveau `JobApi.get_latest_successful_for_document` (status==DONE, plus récent) + façade + routeur explorer/provenance ; None si aucun run DONE (surface = indisponible). +test (un FAILED tardif ne masque pas le run réussi). (item 1) **lectures whole-collection non bornées** — l'estimate default scope charge tout puis slice ; désormais borné **à la requête** via le knob existant `ESTIMATE_MAX_SAMPLE_DOCUMENTS` (`limit=cap` + slice ceinture-bretelles). Bulk DELETE : nouveau knob `CORPUS_MAX_DELETE_SELECTION` (10000) — au-delà, supprime les N premiers (ordre déterministe) et renvoie **`capped=true` + `max_selection`** (champ additif, re-run pour le reste ; SDK model + snapshot OpenAPI mis à jour, parité verte). Explorer document list borné. Gate 4 projets : docforge **1428 passed**, sdk **557** (parité OpenAPI incl.) + format corrigé (1 fichier laissé par l'agent), mcp 48, ruff clean. **Déféré (wave dédiée)** : update_collection atomique (PATCH multi-commit) + toggle chunk cross-store atomique — items durs (transaction unifiée / convergence PG↔Qdrant), à faire avec code-review. **→ V8 : 63/188.**
+
 - **2026-09-05 — Vague G / 0.14.17 (V8 frontend bugs, 5 items — 3 MOYENNE + 2 FAIBLE)** : (1) **WorkersPanel + JobsPage polling mort après 1 échec** — le `.catch` ne reprogrammait pas le timer → un blip figeait le panneau à vie ; désormais l'erreur est surfacée MAIS le `setTimeout(load)` est reprogrammé dans le catch → recovery auto au prochain succès. (2) **stage-rail loading éternel sur échec discovery** — `listPipelineDesigns().then(...)` avait un `try/catch` INTÉRIEUR seulement (l'échec de la discovery elle-même = rejection non gérée + spinner infini) ; toute la chaîne (discovery + design + view) passe dans un seul `try/catch` d'une IIFE async → `loadError` + `retryLoad` (reloadKey) exposés, StageRailPage câble le retry. (3) **Search Lab filtres any-of/range** — le builder ne produisait qu'égalité ; refactor (`FilterValueControl.tsx` + `filterValue.ts` purs) pour construire `in` (any-of) + `gte/gt/lte/lt` (range) à la forme wire réelle (models search vérifiés) ; SearchFilterBuilder -73 lignes. (4) **union-find `buildPageGroups`** (agent+**moi**) — `find()` bouclait à l'infini sur une clé non-seedée (`undefined ?? n` re-yield la même non-racine) → `find` rendu TOTAL (seed-on-demand) ; union chaînée sur pages consécutives (couvre >2 pages transitivement) ; +3 tests vitest (chunk multi-pages groupé, clé non-seedée ne hang pas). (5) **contamination parse-chain "mistral"** (moi) — `PARSERS.has(node_kind)` matchait un `(ocr, mistral)`/`(llm, …)` (kind partagé entre familles) ; gate ajouté sur `stage.stage === "parse"` (l'OCR crop-reader tourne en ENRICH, le LLM en contextualize/metagen) → plus de faux parser. Gate conteneur : **lint 0 err**, tsc clean, **vitest 5** (dont chunkGrouping 3), build ✓. **→ V8 : 61/188.**
 
 - **2026-09-05 — Vague F / 0.14.16 (V8 paddle_server, 4 items — clôt les serveurs modèles)** : (1) **bytes image/PDF invalides → 500 leak** (ocr + layout-parsing router) — nouveau `libs/validation.py` (`InvalidInputError` + `InputValidator.verify_image` Pillow / `verify_pdf` pypdfium2, deps AVX-free, import différé) validé **avant** le lock/l'inférence dans les services → routers renvoient **422** (message propre, fixe) pour un input client cassé, 500 réservé aux vraies fautes. (2) **`PADDLE_USE_DOC_UNWARPING` mort** → **retiré** (jamais lu ; les pipelines hardcodent `False` par contrat provenance bbox — un override serait un mensonge) + NOTE explicative ; refs stale nettoyées (`docs/configuration.md`, `services/paddle_server/.env{,.example}`). (3) **SIGILL no-AVX non gardé** — `CpuFeatures.supports_avx()` (lecture `/proc/cpuinfo` cachée, dégrade "présent" si non-probable) checké **en premier** dans `/health` → **503 unhealthy** avec raison sur CPU sans AVX (le conteneur n'annonce plus une readiness qu'il ne peut tenir ; aucune inférence lancée dans le healthcheck). (4) **`PADDLE_PIN_INFO` mort** → export retiré + docstring corrigée (le bloc engine reporte la version paddleocr **installée**, plus fiable qu'un pin déclaré). Gate paddle : format+lint+mypy clean, **51 passed** (+17). Vérifié par moi (gate rejoué + nettoyage refs). **→ V8 : 56/188 ; serveurs modèles (bge+paddle) 100%.**
@@ -121,8 +123,8 @@
 | V5 — Moteur & pipeline | 2 | 2 | 0 | 0 |
 | V6 — Frontend | 0 | 0 | 0 | 0 |
 | V7 — Documentation | 21 | 21 | 0 | 0 |
-| V8 — Outillage (.claude/tests/infra/télémétrie) | 188 | 61 | 3 | 124 |
-| **Total** | **247** | **119** | **3** | **125** |
+| V8 — Outillage (.claude/tests/infra/télémétrie) | 188 | 63 | 3 | 122 |
+| **Total** | **247** | **121** | **3** | **123** |
 
 
 ## V1 — Sécurité & authz (avant tout déploiement multi-tenant)  (30)
@@ -326,7 +328,7 @@
   `src/docforge/app/backend/routers/jobs/stream.py:19`
 - [x] **🟠 MOYENNE** · `bug` — Check-then-insert races surface as 500: duplicate concurrent upload and duplicate collection name hit unique constraints uncaught  
   `src/docforge/app/backend/routers/documents/router.py:125`
-- [ ] **🟠 MOYENNE** · `perf` — Unbounded whole-collection reads: estimate default scope, explorer document list, and bulk delete have no cap  
+- [x] **🟠 MOYENNE** · `perf` — Unbounded whole-collection reads: estimate default scope, explorer document list, and bulk delete have no cap  
   `src/docforge/app/backend/libs/estimate/service.py:130` _(aussi: money-math)_
 - [ ] **🟠 MOYENNE** · `design` — update_collection applies contract, schema, blob and override writes as separate commits — a mid-sequence failure leaves a half-applied PATCH  
   `src/docforge/app/backend/routers/collections/router.py:348`
@@ -554,7 +556,7 @@
   `src/docforge/app/frontend/src/features/explorer/layout/chunkGrouping.ts:47` _(aussi: frontend, tests-audit)_
 - [x] **🟠 MOYENNE** · `bug` — Per-document tab caches never reset when documentId changes without a remount — wrong document's data shown  
   `src/docforge/app/frontend/src/features/explorer/state/useDocumentTabs.ts:59`
-- [ ] **🟠 MOYENNE** · `bug` — Provenance returns the latest job even when it failed, so it can describe a run that did NOT produce the displayed IR  
+- [x] **🟠 MOYENNE** · `bug` — Provenance returns the latest job even when it failed, so it can describe a run that did NOT produce the displayed IR  
   `src/docforge/shared/libs/services/db/postgresql/apis/job_api.py:67` _(aussi: backend-api)_
 - [x] **🟠 MOYENNE** · `perf` — Search Lab fetches the entire unpaginated document list just to learn "has documents"  
   `src/docforge/app/frontend/src/features/search/SearchLabPage.tsx:48`

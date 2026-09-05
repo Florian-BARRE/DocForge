@@ -78,11 +78,21 @@ class DocumentSelector(BaseModel):
 
 
 class BulkDeleteResponse(BaseModel):
-    """The outcome of a bulk delete — how many were targeted vs actually removed."""
+    """The outcome of a bulk delete — how many were targeted vs actually removed (+ the cap signal)."""
 
     collection_id: str = Field(description="The target collection's UUID.")
-    matched: int = Field(description="Documents the selector resolved to.")
+    matched: int = Field(
+        description="Documents this call targeted (<= the per-call selection cap)."
+    )
     deleted: int = Field(description="Documents actually deleted everywhere (PG + Qdrant + S3).")
+    capped: bool = Field(
+        default=False,
+        description="True when the match exceeded the per-call selection cap — more remain; re-run "
+        "the same selector to delete them (delete is convergent).",
+    )
+    max_selection: int = Field(
+        default=0, description="The per-call selection cap that was applied."
+    )
 
 
 class BulkEnabledResponse(BaseModel):

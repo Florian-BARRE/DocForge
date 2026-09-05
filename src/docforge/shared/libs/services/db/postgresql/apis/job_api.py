@@ -75,6 +75,33 @@ class JobApi:
         return result.scalars().first()
 
     @staticmethod
+    async def get_latest_successful_for_document(
+        session: AsyncSession, document_id: uuid.UUID
+    ) -> Job | None:
+        """
+        The most recent DONE job for a document — the run that produced its CURRENT persisted IR.
+
+        Provenance must describe the run that actually yielded the IR/chunks on display, so a later
+        FAILED (or still-running) job must never shadow the successful run behind it: reading the plain
+        latest job would attribute the displayed IR to a run that produced nothing. A document whose
+        only runs failed has no provenance to show — returns None (the surface reports it unavailable).
+
+        Args:
+            session (AsyncSession): The active DB session.
+            document_id (uuid.UUID): The document whose last successful run is queried.
+
+        Returns:
+            Job | None: The latest DONE job, or None when the document has never completed a run.
+        """
+        result = await session.execute(
+            select(Job)
+            .where(Job.document_id == document_id, Job.status == JobStatus.DONE)
+            .order_by(Job.created_at.desc(), Job.id.desc())
+            .limit(1)
+        )
+        return result.scalars().first()
+
+    @staticmethod
     async def get_active_for_document(session: AsyncSession, document_id: uuid.UUID) -> Job | None:
         """
         Return the document's live (PENDING or RUNNING) ingestion job — newest first — or None.
