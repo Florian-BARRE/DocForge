@@ -150,25 +150,64 @@ class BlobNormalizer:
 
     @classmethod
     def __heal(cls, clean: dict[str, Any]) -> dict[str, Any]:
-        """Round-trip a stamp-free blob through PipelineState back to the current topology."""
+        """
+        Round-trip a stamp-free blob through PipelineState back to the current topology.
+
+        Only genuine DRIFT is converted to a BlobNormalizationError (the caller's clean 422 /
+        "re-save from default" path): a stored blob whose SHAPE no longer fits the current node-blob
+        models (a pydantic ``ValidationError``), or that references a (family, kind) the engine has
+        since REMOVED (a registry miss, raised named by ``__assert_kinds_registered``). An exception
+        escaping the reader/assembler themselves is NOT drift — it is an engine REGRESSION (our own
+        bug): a ``TypeError``/``AttributeError``/``KeyError`` there means a refactor broke the heal
+        path, not that the user's stored blob is bad. Swallowing it as a blob-reset 422 would tell the
+        operator to "re-save your pipeline" while masking the real fault, so such an exception is
+        logged as an engine error and re-raised UNCHANGED — surfacing honestly (a 500 at the router,
+        a FAILED job at the worker) instead of being disguised as bad user data.
+        """
+        # 1. Shape drift — the stored blob no longer fits the current node-blob models.
         try:
             group_blob = GroupNodeBlob.model_validate(clean)
-            # Detect a node whose (family, kind) the current engine no longer knows BEFORE the
-            # reader runs — the reader tolerates unknown nodes and would SILENTLY drop them, healing
-            # to a different pipeline. A removed kind genuinely cannot be migrated: fail loud + named.
-            cls.__assert_kinds_registered(group_blob)
+        except ValidationError as exc:
+            raise cls.__drift_error(exc) from exc
+        # 2. Removed-kind drift — a (family, kind) the current engine no longer registers. Checked
+        #    BEFORE the reader runs (the reader tolerates unknown nodes and would SILENTLY drop them,
+        #    healing to a different pipeline); it raises a NAMED BlobNormalizationError itself.
+        cls.__assert_kinds_registered(group_blob)
+        # 3. Heal. An exception from the reader/assembler is an engine regression, never blob drift:
+        #    log it as such and let it surface as a genuine engine error, not a blob-reset 422.
+        try:
             state = StateReader.read(group_blob)
             healed = IngestAssembler.assemble(state)
-        except (ValidationError, ValueError, KeyError, TypeError, AttributeError) as exc:
-            cls.logger.error(
-                f"Stored pipeline blob cannot be migrated to the current engine: {exc}"
+        except Exception as exc:
+            cls.logger.exception(
+                f"Engine regression while healing a stored pipeline blob (NOT a stale-blob drift — "
+                f"must not be disguised as a blob reset): {exc}"
             )
-            raise BlobNormalizationError(
-                "stored ingestion pipeline could not be migrated to the current engine "
-                "(malformed, or it references something the current engine no longer knows) — "
-                f"re-save it from the pipeline default to repair (cause: {exc})"
-            ) from exc
+            raise
         return healed.model_dump(mode="json")
+
+    @classmethod
+    def __drift_error(cls, exc: Exception) -> "BlobNormalizationError":
+        """Build (and log) the operator-facing drift error for a malformed/stale stored blob."""
+        cls.logger.error(f"Stored pipeline blob cannot be migrated to the current engine: {exc}")
+        return BlobNormalizationError(
+            "stored ingestion pipeline could not be migrated to the current engine "
+            "(malformed, or it references something the current engine no longer knows) — "
+            f"re-save it from the pipeline default to repair (cause: {exc})"
+        )
+
+    @classmethod
+    def __removed_kind_error(cls, family: str, kind: str) -> "BlobNormalizationError":
+        """Build (and log) the drift error for a (family, kind) the engine no longer registers."""
+        cls.logger.error(
+            f"Stored pipeline blob references a removed kind '{family}/{kind}' the current engine "
+            f"no longer knows"
+        )
+        return BlobNormalizationError(
+            "stored ingestion pipeline could not be migrated to the current engine "
+            f"(it references '{family}/{kind}', which the current engine no longer knows) — "
+            "re-save it from the pipeline default to repair"
+        )
 
     @classmethod
     def __node_ids(cls, blob: Mapping[str, Any]) -> set[str]:
@@ -213,13 +252,17 @@ class BlobNormalizer:
             group (GroupNodeBlob): The (sub-)graph to walk — nested groups + ForEach bodies included.
 
         Raises:
-            KeyError: Naming the first node whose kind the engine no longer registers (caught by
-                ``__heal`` and re-raised as a clear BlobNormalizationError).
+            BlobNormalizationError: Naming the first node whose (family, kind) the engine no longer
+                registers — a genuine drift signal, raised directly (not left to bubble as a raw
+                ``KeyError`` for a broad catch to swallow, which would also mask an unrelated bug).
         """
         # 1. Walk children: an action is checked against the registry; a group/foreach recurses.
         for node in group.nodes:
             if isinstance(node, ActionNodeBlob):
-                NodeRegistry.get(node.family, node.kind)  # raises KeyError if the kind is gone
+                try:
+                    NodeRegistry.get(node.family, node.kind)
+                except KeyError as exc:
+                    raise cls.__removed_kind_error(node.family, node.kind) from exc
             elif isinstance(node, ForEachNodeBlob):
                 cls.__assert_kinds_registered(node.body)
             elif isinstance(node, GroupNodeBlob):

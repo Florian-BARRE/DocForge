@@ -257,3 +257,43 @@ def test_graph_level_added_node_is_reported_as_dropped() -> None:
     edited["nodes"].append(orphan)
     _, dropped = BlobNormalizer.normalize_reporting(edited)
     assert "graph_edit_orphan" in dropped
+
+
+# ------------------------------------------------- drift heals, engine bug surfaces (audit FAIBLE)
+
+
+def test_genuine_drift_still_heals_cleanly() -> None:
+    """A stale stored FIELD (an engine change that dropped a leaf) still auto-heals to the current
+    topology — the narrowed catch must not regress the everyday drift-repair path."""
+    blob = IngestAssembler.assemble(default_state()).model_dump(mode="json")
+    stale = copy.deepcopy(blob)
+    stale["nodes"] = [node for node in stale["nodes"] if node.get("id") != "bundle"]
+
+    healed = BlobNormalizer.normalize(stale)
+
+    assert healed == blob  # the missing structural node was re-emitted, no error raised
+
+
+def test_engine_bug_in_the_reader_is_not_disguised_as_a_blob_reset(monkeypatch) -> None:
+    """An UNEXPECTED engine error escaping the reader/assembler (our own regression) must surface as
+    itself — NOT be swallowed into a BlobNormalizationError telling the operator to "reset your
+    pipeline", which would mask the real fault. The blob here is a perfectly valid stock blob; the
+    fault is injected into StateReader.read to stand in for a refactor that broke the heal path."""
+    from shared_libs.pipelines.ingest.stages import normalizer as normalizer_module
+
+    blob = IngestAssembler.assemble(default_state()).model_dump(mode="json")
+    # Force it off the fast path so __heal actually runs the reader.
+    stale = copy.deepcopy(blob)
+    stale[BlobNormalizer.STAMP_KEY] = 0
+
+    class _InjectedEngineBug(AttributeError):
+        """Stand-in for an engine regression (e.g. a refactor removed an attribute the reader reads)."""
+
+    def _boom(_group):
+        raise _InjectedEngineBug("simulated engine regression in StateReader.read")
+
+    monkeypatch.setattr(normalizer_module.StateReader, "read", staticmethod(_boom))
+
+    # The engine bug surfaces UNCHANGED — never disguised as a blob-reset BlobNormalizationError.
+    with pytest.raises(_InjectedEngineBug, match="simulated engine regression"):
+        BlobNormalizer.normalize(stale)

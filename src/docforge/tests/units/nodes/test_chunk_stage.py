@@ -490,6 +490,67 @@ async def test_semantic_cuts_at_the_topic_shift() -> None:
     assert chunks[1].block_ids == ["b1"]
 
 
+class CountingSemantic(ChunkerSemanticNode):
+    """A semantic chunker that RECORDS every _embed call's batch size — the batching regression spy."""
+
+    KIND = "test_chunk_stage_counting_semantic"
+    NAME = "C"
+    SUMMARY = "t"
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.embed_calls: list[int] = []
+
+    async def _embed(self, texts: list[str]) -> list[list[float]]:
+        # Record the batch size of each call; return a distinct vector per text (content irrelevant).
+        self.embed_calls.append(len(texts))
+        return [[1.0, 0.0] if "cat" in t.lower() else [0.0, 1.0] for t in texts]
+
+
+async def test_semantic_embeds_all_windows_in_one_batched_call_not_one_per_window() -> None:
+    """The semantic chunker must hand ALL context windows to the embedder in a SINGLE _embed call
+    (batched), never one call per window. A regression to per-window embedding would turn one request
+    into N — this asserts exactly one _embed call carrying every window (== the sentence-unit count).
+    """
+    # A multi-sentence document → several sentence units → several context windows in one document.
+    ir = DocumentIR(
+        doc_id="batch",
+        source_hash="h",
+        n_pages=1,
+        blocks=[
+            _blk(
+                "a1",
+                BlockType.PARAGRAPH,
+                0,
+                text="Cats purr. Cats sleep a lot. A cat hunts mice at night.",
+            ),
+            _blk(
+                "b1",
+                BlockType.PARAGRAPH,
+                1,
+                text="Markets fell today. Inflation rose sharply. Bonds dropped fast.",
+            ),
+        ],
+    )
+    node = CountingSemantic(
+        id="c",
+        config=ChunkerSemanticConfig(
+            base_url="http://fake",
+            model="fake",
+            buffer_size=1,
+            breakpoint_percentile=80.0,
+            min_tokens=0,
+            max_tokens=500,
+        ),
+    )
+    await node.run(ChunkerConsumes(ir=ir))
+
+    # Exactly ONE embedding call for the whole document's windows — never one per window.
+    assert len(node.embed_calls) == 1, node.embed_calls
+    # That single call carried MORE than one window (proving it was a real batch, not a lone unit).
+    assert node.embed_calls[0] > 1
+
+
 def test_family_registration_and_describe_expose_the_ui_contract() -> None:
     kinds = NodeRegistry.kinds("chunker")
     assert {"structure_aware", "fixed_size", "semantic"} <= set(kinds)

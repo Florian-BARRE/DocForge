@@ -8,6 +8,8 @@
 
 ## Journal
 
+- **2026-09-06 — Vague AD / 0.14.39 (V8 3 FAIBLE substantiels — vérifiés un par un)** : (1) **reclaim startup sur hostname** — VÉRIFIÉ réel (`worker_id = gethostname()`, pas de `container_name` → nouveau hostname au recreate → reclaim matche rien). Décision **B (contrat narrowé)**, PAS clé stable : une clé partagée laisserait un replica au démarrage reclamer les jobs RUNNING d'un sibling VIVANT (`--scale`) — la clé own-hostname est la seule sûre, couvre le restart même-conteneur (dev hot-reload) ; le crash/recreate est le job du **reaper heartbeat** par construction. Docstrings/contrat corrigés (plus d'overclaim). (2) **`BlobNormalizer.__heal` catch trop large** — VÉRIFIÉ (catchait ValidationError+ValueError+KeyError+TypeError+AttributeError → une régression moteur devenait un 422 "re-save your pipeline"). Narrowé à `ValidationError` (drift) + removed-kind nommé ; les exceptions reader/assembler re-levées (plus déguisées). (3) **semantic chunker unbatched** — VÉRIFIÉ **ne se reproduit PAS** : `_embed(windows)` est appelé UNE fois, langchain `aembed_documents` batche par chunk_size → finding stale ; **guard de régression ajouté** (pas de fake fix). +6 tests. Gate : **1632 passed** (+6), ruff clean, 0 changement OpenAPI. **→ V8 : 147 fait.**
+
 - **2026-09-06 — Vague AC (infra-config + couverture tests, pas de release) — 2 MOYENNE faits + 1 `[~]`** : (1) **ENGINE_BLOB_VERSION golden lock** — un golden figeait déjà la shape du blob, mais rien ne liait un changement de shape à un bump de version ; nouveau test `test_default_blob_shape_change_forces_engine_version_bump` + fixture `{engine_blob_version, blob_sha256}` → un changement de shape avec version stale **ÉCHOUE** avec "MUST bump ENGINE_BLOB_VERSION" (vérifié qu'il se déclenche). (2) **tests layout batch** — vérifié que la plupart sont déjà couverts (chunkGrouping/chunkAssembly/`/provenance`/CancelledError) ; ajouté le vrai manque : `LayoutTab.test.tsx` (5 render smoke : error/loading/empty/loaded/chunks-error, garde les 5 useMemo au-dessus des returns conditionnels). Résidu : startup-reclaim (`reclaim_worker_jobs`) sans test — relève d'un test facade/db, hors scope layout. (3) **[~] Dependabot images** — recherche du mécanisme réel : l'ecosystem `docker` ne scanne que les Dockerfiles (déjà couverts ×5), et `docker-compose` ne matche que le glob `(docker-)?compose(.\w+)?.ya?ml` — or les fichiers du repo sont nommés `base.yml`/`prod-cpu.yml`/overlays… (non matchés). Entrées `docker-compose` ajoutées (effectives dès un renommage) + **limitation documentée** dans le header ; la vraie couverture des ~11 pins compose exige de renommer les fichiers (touche compose/+Makefile+README, hors scope) → `[~]`. Gate : docforge **1626 passed**, frontend 14, ruff clean, dependabot.yml parse. Pas de tag (config+tests, non packagés).
 
 - **2026-09-05 — Vague AB / 0.14.38 (V8 2 MOYENNE : Layout segmentation + palette scoping, 2 agents || disjoints)** : (1) **Layout `segmentChunkText` mal-attribution** — (a) une TABLE : le texte réellement embarqué par le chunker est une grille markdown rendue serveur-side (`__markdown_grid` depuis `IRTable.cells`), jamais `block.text` → nouveau `renderTableMarkdown()` (miroir cell-for-cell du backend) mappe la grille au bloc TABLE, plus de glue non-attribuée ; (b) un heading porté dont le titre duplique la 1re ligne du passage suivant était droppé par le chunker mais son id voyageait quand même → `duplicatesNextMember()` skippe ce heading (miroir du drop chunker), plus de vol de span au paragraphe. `tablesByBlock` threadé dans la chaîne de composants. +4 tests vitest ; gate conteneur vert (lint 0-err, tsc, 9 tests, build). (2) **palette scoping non enforced** — `/edit`+les guards write-time acceptaient TOUT kind du `NodeRegistry` global (un kind search dans un graphe ingest buildait+se sauvait). Nouveau `PaletteScopeValidator` : allowed-set = par famille buildée, `FAMILY_KINDS[famille]` si scopée (deliver→bundle/hits) sinon tous les kinds de la famille (inclut le wiring non-selectable prep/apply/skip/keep_raw → superset strict du picker) ; `KIND_NOT_IN_PALETTE` émis par nœud étranger. Câblé aux 3 seams write (ingest/search validators + `BlobStructureValidator` pour l'import worker, façades importées lazy pour éviter le cycle) ; GraphEditor laissé (la validation au write couvre ses sorties). Nouveau ValidationCode → snapshot OpenAPI régénéré (additif, drift OK). +14 tests. Gate 4 projets : docforge **1625 passed**, sdk 557+drift, mcp 48, ruff clean. **→ V8 : 142 fait.**
@@ -171,8 +173,8 @@
 | V5 — Moteur & pipeline | 2 | 2 | 0 | 0 |
 | V6 — Frontend | 0 | 0 | 0 | 0 |
 | V7 — Documentation | 21 | 21 | 0 | 0 |
-| V8 — Outillage (.claude/tests/infra/télémétrie) | 188 | 144 | 5 | 39 |
-| **Total** | **247** | **202** | **5** | **40** |
+| V8 — Outillage (.claude/tests/infra/télémétrie) | 188 | 147 | 5 | 36 |
+| **Total** | **247** | **205** | **5** | **37** |
 
 
 ## V1 — Sécurité & authz (avant tout déploiement multi-tenant)  (30)
@@ -640,7 +642,7 @@
   `src/docforge/app/frontend/src/features/search-pipeline/SearchQueryCard.tsx:16`
 - [x] **⚪ FAIBLE** · `consistency` — Stale/contradictory comments across the batch: phantom "lane" palette, wrong palette description, outdated tab counts, and a bbox description that contradicts the wire format  
   `src/docforge/app/frontend/src/features/explorer/layout/PageGroupRow.tsx:5`
-- [ ] **⚪ FAIBLE** · `divergence-doc` — Startup job reclaim keys on the container hostname, which changes on every container recreate — the crash/hard-kill cases it claims to cover never match  
+- [x] **⚪ FAIBLE** · `divergence-doc` — Startup job reclaim keys on the container hostname, which changes on every container recreate — the crash/hard-kill cases it claims to cover never match  
   `src/docforge/shared/libs/services/db/facades/jobs_facade.py:344`
 - [x] **⚪ FAIBLE** · `bug` — Union-find in buildPageGroups: only the leading page is unioned, and find() infinite-loops on an unseeded key  
   `src/docforge/app/frontend/src/features/explorer/layout/chunkGrouping.ts:50`
@@ -659,7 +661,7 @@
   `src/docforge/worker/backend/libs/persistence/translator.py:7`
 - [x] **🟠 MOYENNE** · `bug` — Translator fabricates a successful CLASSIFY enrichment row for every figure even when no classifier ran  
   `src/docforge/worker/backend/libs/persistence/translator.py:143`
-- [ ] **⚪ FAIBLE** · `design` — BlobNormalizer.__heal catches AttributeError/TypeError/KeyError broadly, converting engine regressions into 'reset your pipeline' 422s  
+- [x] **⚪ FAIBLE** · `design` — BlobNormalizer.__heal catches AttributeError/TypeError/KeyError broadly, converting engine regressions into 'reset your pipeline' 422s  
   `src/docforge/shared/libs/pipelines/ingest/stages/normalizer.py:128`
 - [x] **⚪ FAIBLE** · `consistency` — Caption folding rules diverge between the chunker projection and the generated md/html views  
   `src/docforge/shared/libs/pipelines/ingest/linearize/base.py:80`
@@ -746,7 +748,7 @@
   `src/docforge/shared/libs/pipelines/ingest/nodes/chunk/fixed_size/core.py:73`
 - [x] **⚪ FAIBLE** · `divergence-doc` — PIPELINE.md inventory drift (grouped): missing paddle OCR, deliver/, vlm_entry, parser bricks in tree, structgen, UNIQUE list, read_text naming, chunker defaults/knobs, /embed_all; architecture.md still says preflight 'reste à ajouter'  
   `src/docforge/PIPELINE.md:51`
-- [ ] **⚪ FAIBLE** · `perf` — Semantic chunker fires one unbatched-by-us embedding call over every context window  
+- [x] **⚪ FAIBLE** · `perf` — Semantic chunker fires one unbatched-by-us embedding call over every context window  
   `src/docforge/shared/libs/pipelines/ingest/nodes/chunk/semantic/core.py:118`
 - [ ] **⚪ FAIBLE** · `consistency` — Stale/false in-code comments and style nits (grouped)  
   `src/docforge/shared/libs/pipelines/ingest/pipeline.py:112`
