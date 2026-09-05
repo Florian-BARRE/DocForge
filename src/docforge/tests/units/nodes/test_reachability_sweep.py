@@ -24,6 +24,8 @@ from shared_libs.pipelines.reachability import (
     ReachabilitySweep,
     SearchReachabilitySweep,
 )
+from shared_libs.pipelines.search.nodes.query.rewrite.config import QueryRewriteConfig
+from shared_libs.pipelines.search.nodes.query.rewrite.core import QueryRewriteNode
 from shared_libs.pipelines.search.nodes.rerank.cross_encoder.config import (
     RerankCrossEncoderConfig,
 )
@@ -161,6 +163,45 @@ async def test_search_sweep_probes_embedder_and_reranker(monkeypatch) -> None:
     # The query embedder (from the pipeline blob) + the reranker — the local leaf is left out.
     assert {(r.family, r.node_id) for r in results} == {("embed", "embed"), ("rerank", "rerank")}
     assert all(r.side == "search" and r.status is ProbeStatus.OK for r in results)
+
+
+def test_query_transform_node_probes_an_endpoint() -> None:
+    """A query-transform node (rewrite/HyDE) now overrides preflight() — so the sweep probes it.
+
+    Before the fix it inherited the no-op ActionNode.preflight and was silently skipped, leaving a
+    configured-but-down rewrite/HyDE endpoint invisible to a health check.
+    """
+    node = QueryRewriteNode(id="rewrite", config=QueryRewriteConfig(base_url="http://llm:8000/v1"))
+    assert ReachabilitySweep.probes_endpoint(node) is True
+
+
+async def test_search_sweep_reports_unreachable_query_provider(monkeypatch) -> None:
+    """An unreachable rewrite/HyDE endpoint surfaces in the search sweep as an UNREACHABLE result."""
+    monkeypatch.setattr(httpx, "AsyncClient", _fake_client(raises=httpx.ConnectError("refused")))
+    rewrite = QueryRewriteNode(
+        id="rewrite", config=QueryRewriteConfig(base_url="http://llm:8000/v1")
+    )
+    search_graph = Group(id="search", children=[rewrite])
+
+    results = await SearchReachabilitySweep().sweep(_pipeline_blob_with_embedder(), search_graph)
+
+    query_result = next(r for r in results if r.family == "query")
+    assert query_result.node_id == "rewrite"
+    assert query_result.status is ProbeStatus.UNREACHABLE
+    assert query_result.side == "search"
+
+
+async def test_search_sweep_query_provider_ok_when_reachable(monkeypatch) -> None:
+    """A reachable rewrite endpoint comes back ok — the provider is covered like any ingest leaf."""
+    monkeypatch.setattr(httpx, "AsyncClient", _fake_client(status_code=200))
+    rewrite = QueryRewriteNode(
+        id="rewrite", config=QueryRewriteConfig(base_url="http://llm:8000/v1")
+    )
+    results = await SearchReachabilitySweep().sweep(
+        _pipeline_blob_with_embedder(), Group(id="search", children=[rewrite])
+    )
+    query_result = next(r for r in results if r.family == "query")
+    assert query_result.status is ProbeStatus.OK
 
 
 async def test_search_sweep_without_embedder_returns_only_providers() -> None:

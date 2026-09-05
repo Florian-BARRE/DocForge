@@ -18,8 +18,12 @@ from abc import abstractmethod
 from pydantic import Field
 
 # ====== Internal Project Imports ======
-from shared_libs.pipelines.base import ActionNode, NodeConfig, NodeInput, NodeOutput, NodeUsage
-from shared_libs.pipelines.nodes.openai_compat import OpenAICompatConfig, OpenAICompatHelpers
+from shared_libs.pipelines.base import ActionNode, NodeInput, NodeOutput, NodeUsage, TimeoutConfig
+from shared_libs.pipelines.nodes.openai_compat import (
+    EndpointReachability,
+    OpenAICompatConfig,
+    OpenAICompatHelpers,
+)
 from shared_libs.public_models.search import QuerySpec
 
 # Provider-hosted defaults: the node is OFF by default (never in the stock blob), so these only fill
@@ -27,9 +31,18 @@ from shared_libs.public_models.search import QuerySpec
 _DEFAULT_BASE_URL = "https://api.openai.com/v1"
 _DEFAULT_MODEL = "gpt-4o-mini"
 
+# The reserved QuerySpec.flags key a degraded query transform stamps its notice under. It rides the
+# spec downstream to the encode node, which folds it into EncodedQuery.degraded → SearchResult.debug
+# so a caller SEES that the provider degraded and the raw query was used (never a silent fallback).
+QUERY_DEGRADED_FLAG = "query_degraded"
 
-class BaseQueryLlmConfig(NodeConfig):
-    """Provider endpoint + generation knobs shared by the query-understanding LLM methods."""
+
+class BaseQueryLlmConfig(TimeoutConfig):
+    """Provider endpoint + generation knobs shared by the query-understanding LLM methods.
+
+    Mixes in ``TimeoutConfig`` for the shared network-timeout surface — notably
+    ``preflight_timeout_seconds``, the budget for the pre-spend reachability probe the
+    collection-health / preflight sweep runs against the provider endpoint (see ``preflight``)."""
 
     base_url: str = Field(
         default=_DEFAULT_BASE_URL,
@@ -74,6 +87,43 @@ class BaseQueryLlmNode(ActionNode):
     Produces = QueryLlmProduces
     UNIQUE_IN_GRAPH = True
 
+    async def preflight(self) -> None:
+        """Verify the query-LLM endpoint is reachable and its credentials accepted, before any spend.
+
+        Gives the search-side query providers (rewrite / HyDE) the SAME reachability coverage the
+        ingest providers have: the collection-health / preflight sweep probes only leaves that
+        OVERRIDE this hook, so without it a configured-but-unreachable rewrite/HyDE endpoint stayed
+        invisible to a health check (its failure only ever surfaced as a silent run-time degrade).
+        Reads ``self.config`` only, so the app's on-demand sweep can call it with no run wiring.
+        """
+        config: BaseQueryLlmConfig = self.config
+        await EndpointReachability.check(
+            node_kind=self.KIND,
+            base_url=config.base_url,
+            api_key=config.api_key,
+            timeout_seconds=config.preflight_timeout_seconds,
+        )
+
+    def __with_degrade_flag(self, spec: QuerySpec) -> QuerySpec:
+        """
+        Copy the spec with a degrade notice merged into its flags (idempotent, additive).
+
+        The notice names THIS transform's kind so a caller sees exactly which query provider degraded.
+        A pre-existing notice (a second query transform degraded upstream) is preserved by appending,
+        so no degrade signal is ever overwritten.
+
+        Args:
+            spec (QuerySpec): The original query returned unchanged on degrade.
+
+        Returns:
+            QuerySpec: The same query with ``flags[QUERY_DEGRADED_FLAG]`` carrying the notice.
+        """
+        # 1. Compose this transform's notice and merge it with any note an upstream transform left.
+        note = f"query {self.KIND} unavailable — provider degraded, raw query used"
+        existing = spec.flags.get(QUERY_DEGRADED_FLAG)
+        merged = f"{existing}; {note}" if existing else note
+        return spec.model_copy(update={"flags": {**spec.flags, QUERY_DEGRADED_FLAG: merged}})
+
     async def run(self, data: QueryLlmConsumes) -> QueryLlmProduces:
         """
         Make one bounded chat call and fold its answer into the spec, degrading to the original.
@@ -107,7 +157,9 @@ class BaseQueryLlmNode(ActionNode):
                 f"Query '{self.KIND}' degraded ({type(exc).__name__}: {exc}) — using the "
                 "original query un-transformed"
             )
-            return self.Produces(spec=data.spec)
+            # Return the ORIGINAL query, but stamp a degrade notice into its flags so the fallback is
+            # VISIBLE downstream (encode folds it into SearchResult.debug) rather than silent.
+            return self.Produces(spec=self.__with_degrade_flag(data.spec))
 
         # Fold the answer back into the spec (each method decides how; empty answer → original spec).
         output = self.Produces(spec=self._fold(data.spec, str(getattr(answer, "content", ""))))
@@ -145,4 +197,10 @@ class BaseQueryLlmNode(ActionNode):
         ...
 
 
-__all__ = ["BaseQueryLlmConfig", "QueryLlmConsumes", "QueryLlmProduces", "BaseQueryLlmNode"]
+__all__ = [
+    "BaseQueryLlmConfig",
+    "QueryLlmConsumes",
+    "QueryLlmProduces",
+    "BaseQueryLlmNode",
+    "QUERY_DEGRADED_FLAG",
+]

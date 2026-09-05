@@ -40,11 +40,76 @@ def test_non_graph_value_resolves_to_stock_default(fastapi_app) -> None:
     assert service._SearchService__resolve_blob({"foo": "bar"}).get("nodes")
 
 
-def test_stored_graph_is_run_verbatim(fastapi_app) -> None:
-    """A stored blob carrying a 'nodes' list is the collection's OWN topology — returned as-is."""
+def test_stored_graph_is_healed_but_topology_preserved(fastapi_app) -> None:
+    """A stored 'nodes' graph is the collection's OWN topology — healed (a fresh dict), not mutated.
+
+    The heal never touches the caller's stored dict (it deep-copies) and, when no config drift is
+    present, is byte-identical to the input — the collection's own topology runs unchanged.
+    """
     service = _service(fastapi_app)
     stored = {"id": "custom", "nodes": [{"id": "n", "family": "query", "kind": "normalize"}]}
-    assert service._SearchService__resolve_blob(stored) is stored
+
+    resolved = service._SearchService__resolve_blob(stored)
+
+    assert resolved == stored  # same graph
+    assert resolved is not stored  # but a fresh dict — the stored value is never mutated in place
+
+
+def test_stored_graph_with_stale_config_field_self_heals(fastapi_app) -> None:
+    """Registry drift (a config field the current model no longer knows) auto-heals at read.
+
+    A stale extra key would brick the extra='forbid' build at run time; the read-side heal strips it
+    so the collection's own search resolves+builds instead of bricking (the ingest-normalizer parity).
+    """
+    from shared_libs.pipelines.build import PipelineBuilder  # noqa: PLC0415
+    from shared_libs.pipelines.search import SearchPipeline  # noqa: PLC0415
+    from shared_libs.pipelines.validation import GraphValidator  # noqa: PLC0415
+
+    service = _service(fastapi_app)
+    stored = SearchPipeline.default_blob().model_dump(mode="json")
+    normalize_node = next(node for node in stored["nodes"] if node["id"] == "normalize")
+    normalize_node.setdefault("config", {})["removed_legacy_knob"] = 123  # « the drift
+
+    resolved = service._SearchService__resolve_blob(stored)
+
+    # 1. The stale field is gone from the healed blob.
+    healed_normalize = next(node for node in resolved["nodes"] if node["id"] == "normalize")
+    assert "removed_legacy_knob" not in healed_normalize.get("config", {})
+    # 2. And the healed blob now builds + validates clean (it would have bricked un-healed).
+    assert GraphValidator().validate(PipelineBuilder().build(resolved)) == []
+
+
+def test_stored_graph_with_unhealable_config_raises_search_run_error(fastapi_app) -> None:
+    """A config broken beyond stale-field drift (a bad TYPE) is a genuinely invalid stored graph.
+
+    It cannot be auto-healed, so resolution raises SearchRunError — the router maps that to the same
+    422 as an unbuildable blob (re-save the search blob), never a silent mangle or a 500.
+    """
+    import pytest  # noqa: PLC0415
+
+    from backend.libs.search.service import SearchRunError  # noqa: PLC0415
+    from shared_libs.pipelines.search import SearchPipeline  # noqa: PLC0415
+
+    service = _service(fastapi_app)
+    stored = SearchPipeline.default_blob().model_dump(mode="json")
+    encode_node = next(node for node in stored["nodes"] if node["id"] == "encode")
+    encode_node.setdefault("config", {})["axis_timeout_seconds"] = "not-a-number"  # « bad type
+
+    with pytest.raises(SearchRunError):
+        service._SearchService__resolve_blob(stored)
+
+
+def test_stored_graph_with_unknown_kind_raises_search_run_error(fastapi_app) -> None:
+    """A node naming a kind the registry no longer knows cannot be migrated — a clear SearchRunError."""
+    import pytest  # noqa: PLC0415
+
+    from backend.libs.search.service import SearchRunError  # noqa: PLC0415
+
+    service = _service(fastapi_app)
+    stored = {"id": "custom", "nodes": [{"id": "n", "family": "query", "kind": "gone_kind"}]}
+
+    with pytest.raises(SearchRunError):
+        service._SearchService__resolve_blob(stored)
 
 
 def test_default_run_timeout_is_thirty_seconds(fastapi_app) -> None:

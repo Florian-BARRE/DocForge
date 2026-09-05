@@ -8,6 +8,8 @@
 
 ## Journal
 
+- **2026-09-05 — Vague O / 0.14.25 (V8 search robustesse, 2 MOYENNE — scope strict)** : (1) **blob search sans auto-heal** — nouveau `SearchBlobNormalizer` (heal read-side niveau-config, miroir du heal ingest : walk graphe + groupes + ForEach, re-valide chaque config node contre son `Config` courant, strip les clés `extra_forbidden` de drift, raise sur autre faute) câblé dans `SearchService.__resolve_blob` (branche stored seulement ; `{}`=no-op ; deep-copy, topologie préservée) → une dérive de registry ne brique plus un graphe search stocké (heal au read, complémentaire du fail-fast au write). (2a) **rewrite/HyDE invisibles au health/preflight** — `BaseQueryLlmConfig` étend `TimeoutConfig` + `BaseQueryLlmNode.preflight` sonde l'endpoint → le sweep existant les ramasse (via `probes_endpoint`), zéro changement au sweep. (2b) **degrade silencieux** — flag `query_degraded` stampé sur la dégradation (fail-soft préservé : un échec rewrite ne fait jamais échouer la search) qui remonte la chaîne encode→retrieve→hydrate→`SearchResult.debug["degraded"]`→`debug_info` existant (**0 changement OpenAPI/SDK** — canal debug_info existant). +17 tests (normalizer ×8, résolution stored/heal, sweep query-provider, degrade flag + e2e). Gate : docforge **1531 passed** (+17), drift OK (96 schémas trackés), ruff clean. **→ V8 : 107/188.**
+
 - **2026-09-05 — Vague N / 0.14.24 (V8 moteur graphe/edit, 2 MOYENNE + 2 FAIBLE bugs — scope strict tenu)** : (1) **uniform→classified drop chaînes VLM** (reader.py) — les 2 modes keyent le VLM sous des slots différents (`figure_describe_vlm` vs `photo/chart/diagram_vlm`) → un aller-retour perdait les chaînes silencieusement ; `__spread_uniform_chain`/`__mirror_uniform_vlm_slot` mirrorent la chaîne aux 2 lectures → round-trip **préserve** (le seul cas lossy N→1 garde la 1re branche, jamais un drop silencieux ; un notice N→1 vivrait dans le compiler, hors scope). (2) **binding slot inconnu ignoré** — nouveau `ValidationCode.UNKNOWN_SLOT` : un binding vers un slot absent d'un **ActionNode** (`Consumes`) est désormais une **issue de validation** (fail-fast), plus un no-op silencieux ; les group-children (input dict dynamique) intacts ; défaut/light/all-provider valident toujours `[]`. (3) **SetAfter nuke tous les edges entrants** d'un nœud de convergence → **refuse** (`EditError` nommant le nœud + sources) au lieu de produire un graphe valide-mais-faux ; 0/1-entrant inchangé. (4) **ids body-group ForEach hors scans d'unicité** — `all_node_ids`+`__fragment_ids`+`remap` incluent `node.body.id` → plus de collision de mint/remap avec un id de corps ForEach. **⚠️ OpenAPI** : item 2 ajoute `unknown_slot` à l'enum `ValidationCode` (exposé via `ValidationIssue` dans les response models pipelines) — **snapshot régénéré par moi** (`dump_openapi.py`, diff = uniquement l'ajout de l'enum, 0 autre drift) ; `check_schema_drift` CI-style **vert** (96 schémas trackés, 170/57 accountés) ; SDK modélise ValidationCode en `str` → aucun modèle SDK à changer. +9 tests. Gate 4 projets : docforge **1514 passed** (+9), sdk 557 + drift, mcp 48, ruff clean. **→ V8 : 105/188.**
 
 - **2026-09-05 — Vague M / 0.14.23 (V8 IR read-path crashes, 2 bugs — scope strict, 1 shot)** : (1) **filename non-latin-1 crash** (views.py md/HTML download) — le header `Content-Disposition` (latin-1) plantait sur un nom accentué/CJK ; nouveau `_content_disposition` : ASCII pur → `filename="…"` (contrat inchangé), sinon fallback ASCII + **RFC 5987 `filename*=UTF-8''<pct>`** (toujours latin-1-safe) ; strip quotes/CRLF en bonus (anti-injection header). (2) **enum stocké inconnu crash** — `BlockType(row.block_type)` et `ChunkRole(chunk.role)` (VARCHAR en base) 500-aient tout le read sur une valeur hors-enum (forward-compat/legacy) ; désormais `try/except ValueError` → block inconnu dégrade en `PARAGRAPH` (texte rendu), role inconnu → disabled (override explicite court-circuite toujours), + warning. +5 tests (filename accents/CJK, block/role inconnus ne 500 pas). Gate : **1505 passed** (+5), ruff clean, 0 changement OpenAPI/SDK. **→ V8 : 101/188.**
@@ -141,8 +143,8 @@
 | V5 — Moteur & pipeline | 2 | 2 | 0 | 0 |
 | V6 — Frontend | 0 | 0 | 0 | 0 |
 | V7 — Documentation | 21 | 21 | 0 | 0 |
-| V8 — Outillage (.claude/tests/infra/télémétrie) | 188 | 105 | 3 | 80 |
-| **Total** | **247** | **163** | **3** | **81** |
+| V8 — Outillage (.claude/tests/infra/télémétrie) | 188 | 107 | 3 | 78 |
+| **Total** | **247** | **165** | **3** | **79** |
 
 
 ## V1 — Sécurité & authz (avant tout déploiement multi-tenant)  (30)
@@ -731,9 +733,9 @@
 
 - [x] **🟠 MOYENNE** · `divergence-doc` — PIPELINE.md claims search does not query chunk-scope semantic field vectors — the read side is wired  
   `src/docforge/PIPELINE.md:427`
-- [ ] **🟠 MOYENNE** · `design` — Rewrite/HyDE provider endpoints invisible to health/preflight, and their degrade is invisible to callers  
+- [x] **🟠 MOYENNE** · `design` — Rewrite/HyDE provider endpoints invisible to health/preflight, and their degrade is invisible to callers  
   `src/docforge/shared/libs/pipelines/search/nodes/query/base.py:92`
-- [ ] **🟠 MOYENNE** · `divergence-doc` — Search blobs have no BlobNormalizer/auto-heal path — registry drift bricks stored search graphs  
+- [x] **🟠 MOYENNE** · `divergence-doc` — Search blobs have no BlobNormalizer/auto-heal path — registry drift bricks stored search graphs  
   `src/docforge/app/backend/libs/search/service.py:59`
 - [x] **🟠 MOYENNE** · `divergence-doc` — Typed search failure modes (424/503/504, score_kind, range filters) undocumented in rest-api.md  
   `docs/rest-api.md:876`

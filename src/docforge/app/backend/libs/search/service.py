@@ -15,7 +15,11 @@ from typing import Any
 from loggerplusplus import LoggerClass
 
 # ====== Internal Project Imports ======
-from shared_libs.pipelines.search import SearchPipeline
+from shared_libs.pipelines.search import (
+    SearchBlobNormalizationError,
+    SearchBlobNormalizer,
+    SearchPipeline,
+)
 from shared_libs.public_models.search import (
     QueryFilters,
     RawQuery,
@@ -28,7 +32,7 @@ from shared_libs.services.db import Database
 # ====== Local Project Imports ======
 from .contract import SearchContractBuilder
 from .read_port import CollectionReadPortImpl
-from .runner import SearchRunner
+from .runner import SearchRunError, SearchRunner
 
 # Default wall-clock cap for an inline search run when the caller does not configure one — search is
 # sub-second; this only guards a stuck provider. Deployments override it via SEARCH_RUN_TIMEOUT_SECONDS.
@@ -66,16 +70,31 @@ class SearchService(LoggerClass):
         search — use the product's stock topology". This is the seam that makes search as
         configurable as ingestion.
 
+        A stored graph is AUTO-HEALED at read via the SearchBlobNormalizer (the search analog of the
+        ingest BlobNormalizer): registry drift — a config field renamed/removed since the blob was
+        saved — is reconciled to the current node models so a stale stored search self-heals at read
+        instead of bricking the run. This is the READ-side complement to the write-time fail-fast
+        validation; a heal that cannot reconcile the blob is a genuinely invalid stored graph,
+        surfaced as a SearchRunError (the router maps it to the same 422 as an unbuildable blob).
+
         Args:
             stored (dict): The raw ``collection.search`` value.
 
         Returns:
             dict: The blob to run, always in plain-dict form (the runner accepts either form).
+
+        Raises:
+            SearchRunError: The stored graph cannot be reconciled to the current engine (re-save it).
         """
-        # 1. A stored graph (has "nodes") is the collection's OWN configured search — run it.
+        # 1. A stored graph (has "nodes") is the collection's OWN configured search — heal it to the
+        #    current registry, then run it. An unreconcilable blob is an invalid stored graph.
         if stored.get("nodes"):
-            return stored
-        # 2. Empty / sentinel → the stock default, serialised to the same plain-dict form.
+            try:
+                return SearchBlobNormalizer.normalize(stored)
+            except SearchBlobNormalizationError as exc:
+                raise SearchRunError(str(exc)) from exc
+        # 2. Empty / sentinel → the stock default, serialised to the same plain-dict form (the
+        #    default is freshly built from the current engine, so it needs no heal).
         return SearchPipeline.default_blob().model_dump(mode="json")
 
     async def search(
