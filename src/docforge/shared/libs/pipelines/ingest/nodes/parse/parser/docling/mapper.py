@@ -31,13 +31,20 @@ class DoclingIRMapper:
 
     logger = loggerplusplus.bind(identifier="DoclingIRMapper")
 
-    # Full-page provenance for page-less formats (html/md): they carry no bbox/page, but a block is
-    # placed by its reading order, so a whole-page box on page 0 keeps them in the IR (nothing to
-    # crop or overlay for these formats anyway).
-    _PAGELESS_PROVENANCE = Provenance(page=0, bbox=(0.0, 0.0, 1.0, 1.0))
-
     def __new__(cls, *args: object, **kwargs: object) -> None:
         raise TypeError("DoclingIRMapper is a static-only class and cannot be instantiated.")
+
+    @staticmethod
+    def _pageless_provenance() -> Provenance:
+        """
+        Build a fresh full-page provenance for a page-less format (html/md).
+
+        These formats carry no bbox/page, but a block is placed by its reading order, so a whole-page
+        box on page 0 keeps them in the IR (nothing to crop or overlay for these formats anyway). A
+        FRESH instance per block is mandatory: Provenance is a mutable model, and sharing one instance
+        across every page-less block would alias them (a later mutation would bleed into all of them).
+        """
+        return Provenance(page=0, bbox=(0.0, 0.0, 1.0, 1.0))
 
     @classmethod
     def __map_item(
@@ -59,7 +66,7 @@ class DoclingIRMapper:
         if provenance is None:
             if not page_less:
                 return None
-            provenance = cls._PAGELESS_PROVENANCE
+            provenance = cls._pageless_provenance()
 
         # 3. Namespace the block id by doc_id: Docling's self_ref (e.g. "#/texts/0") is only unique
         #    within a document, so doc_id + self_ref stays globally unique and stable.

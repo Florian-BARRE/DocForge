@@ -8,6 +8,8 @@
 
 ## Journal
 
+- **2026-09-05 — Vague Z / 0.14.36 (V8 smells substantiels IR/moteur, 3 findings groupés)** : (1) **Provenance mutable partagée** — le vrai bug était dans `docling/mapper.py` (constante classe `_PAGELESS_PROVENANCE` assignée à CHAQUE bloc page-less html/md → aliasing latent car `Provenance` est mutable Pydantic) ; remplacée par une factory fresh-per-bloc. Les refs de l'audit (models_ir, pp_structure) étaient **périmées/déjà safe** (vérifié : fresh-per-bloc). +test d'indépendance. (2) **magic string `header_footer`** — le vrai (translator.py:175 `== "header_footer"`) → `== BlockType.HEADER_FOOTER` (fait par **moi**, +import) ; ailleurs déjà l'enum. (3) **warning ScoreBelow parasite** — ne se déclenche plus que sur `SUCCESS` (plus de bruit sur chaque échec où le score est légitimement absent). (4) **caption folding divergent** — chunker vs vues md/html foldaient différemment (le chunker fig+table avant/après, le linearizer figure-après seulement) → règle unique extraite `ChunkerHelpers.attach_captions` (texte de chunk **byte-identique**) consommée par les deux ; `_emit_table` fold la caption (md italique / html `<caption>`). +tests (caption ×3, ScoreBelow ×2, Provenance ×1). Gate : **1604 passed** (+6), ruff clean, 0 changement OpenAPI. Résidus cosmétiques notés (stale FromFirst comment, list-content answers). **→ V8 : 139 fait.**
+
 - **2026-09-05 — Vague Y / 0.14.35 (V8 cost estimate/retry, 1 MOYENNE fait + 1 FAIBLE partiel)** : (finding MOYENNE **fait**) **volume OCR per-figure** — `estimator.__enrich_ocr` pricait par `scanned_page_ratio` (défaut 0) alors que l'OCR enrich tourne **par figure** (ForEach sur crops) → une pipeline OCR payante per-figure estimait $0.00 cost_complete=True ; désormais `ocr_units = images + pages*scanned_page_ratio` (per-figure via `images_per_page` défaut 0.5, overridable, + per-page scan inchangé), renvoie None si 0 unit (stage omis, pas $0 trompeur) ; miroir de `__enrich_vlm`. (finding FAIBLE **partiel [~]**) **undercount retry/failed** — nouveau `UsageAccumulator` (callback langchain qui folde l'usage de CHAQUE attempt, y compris facturé-puis-échoué) + `chat(usage_sink=)` opt-in ; **câblé dans le node VLM** (seul à posséder une boucle retry propre — crée 1 acc local avant la boucle, stampe `acc.usage` = somme) → l'undercount VLM est corrigé. LLM (délègue les retries au SDK, single ainvoke) + query (single degrading call) laissés (reportés single-shot). **Résidu structurel documenté** : le LLM search-time (rewrite/HyDE) n'a **aucun sink de coût** (search tourne inline, pas dans le meter worker) — ajouter un sink toucherait runner+router+response model (hors passe cost propre) → finding `[~]`. +tests (estimator ×3, accumulator ×6, vlm accumulation ×3). Gate : **1598 passed**, drift OK, ruff clean, 0 changement OpenAPI. **→ V8 : 136 fait / 4 en cours.**
 
 - **2026-09-05 — Vague X / 0.14.34 (V8 cost meter — moitié OCR per-page ; finding meter CLÔTURÉ)** : la 2e moitié (mismatch de shape : OCR facture par PAGE, `NodeUsage` est token-shaped). Fix additif minimal : `NodeUsage.pages: int = 0` (optionnel, défaut 0 → embed/LLM/VLM/structgen inchangés, sérialisation OK) ; le node OCR mistral stampe `NodeUsage(model=kind, prompt_tokens=0, completion_tokens=0, pages=N)` (rapidocr/paddle locaux restent gratuits) ; `price_ocr_pages(kind, pages)` (via `OCR_PAGE_PRICING`) ; le meter price les pages (`usage.pages>0` → page-cost dans `cost_usd`, 0 token, tuple de retour inchangé). **9 fichiers** (4 src + 2 tests + io.py docstring + __init__ export + pricing), **0 fichier interdit**, **0 changement OpenAPI** (`NodeUsage` absent des response models — drift check vert, 96 schémas). +6 tests. Gate : **1586 passed** (+6), ruff clean. **→ finding "meter counts only LLM/VLM/structgen" CLÔTURÉ (embed 0.14.33 + OCR 0.14.34).** Reste du cluster cost (rate-overrides meter, retry/failed undercount, search-time LLM, per-figure OCR volume estimator) toujours ouvert. **→ V8 : 135 fait / 3 en cours.**
@@ -163,8 +165,8 @@
 | V5 — Moteur & pipeline | 2 | 2 | 0 | 0 |
 | V6 — Frontend | 0 | 0 | 0 | 0 |
 | V7 — Documentation | 21 | 21 | 0 | 0 |
-| V8 — Outillage (.claude/tests/infra/télémétrie) | 188 | 136 | 4 | 48 |
-| **Total** | **247** | **194** | **4** | **49** |
+| V8 — Outillage (.claude/tests/infra/télémétrie) | 188 | 139 | 4 | 45 |
+| **Total** | **247** | **197** | **4** | **46** |
 
 
 ## V1 — Sécurité & authz (avant tout déploiement multi-tenant)  (30)
@@ -653,9 +655,9 @@
   `src/docforge/worker/backend/libs/persistence/translator.py:143`
 - [ ] **⚪ FAIBLE** · `design` — BlobNormalizer.__heal catches AttributeError/TypeError/KeyError broadly, converting engine regressions into 'reset your pipeline' 422s  
   `src/docforge/shared/libs/pipelines/ingest/stages/normalizer.py:128`
-- [ ] **⚪ FAIBLE** · `consistency` — Caption folding rules diverge between the chunker projection and the generated md/html views  
+- [x] **⚪ FAIBLE** · `consistency` — Caption folding rules diverge between the chunker projection and the generated md/html views  
   `src/docforge/shared/libs/pipelines/ingest/linearize/base.py:80`
-- [ ] **⚪ FAIBLE** · `consistency` — Low-severity smells: undocumented bbox semantics in the IR API model, magic 'header_footer' string, header-less markdown tables, shared mutable pageless Provenance  
+- [x] **⚪ FAIBLE** · `consistency` — Low-severity smells: undocumented bbox semantics in the IR API model, magic 'header_footer' string, header-less markdown tables, shared mutable pageless Provenance  
   `src/docforge/app/backend/routers/explorer/models_ir.py:23`
 - [x] **⚪ FAIBLE** · `bug` — Read paths crash on unknown stored block_type/role values (forward-compat gap the VARCHAR design explicitly invites)  
   `src/docforge/app/backend/routers/explorer/ir_adapter.py:104`
@@ -689,7 +691,7 @@
   `src/docforge/shared/libs/pipelines/edit/topology.py:78`
 - [ ] **⚪ FAIBLE** · `divergence-doc` — IoSlot.required is never derived from the field's optionality — describe() reports every slot required  
   `src/docforge/shared/libs/pipelines/base/node.py:196`
-- [ ] **⚪ FAIBLE** · `consistency` — Minor engine/runtime smells (grouped): spurious ScoreBelow warning on failures, stale FromFirst comment, list-content LLM answers  
+- [x] **⚪ FAIBLE** · `consistency` — Minor engine/runtime smells (grouped): spurious ScoreBelow warning on failures, stale FromFirst comment, list-content LLM answers  
   `src/docforge/shared/libs/pipelines/engine/navigation.py:87`
 - [x] **⚪ FAIBLE** · `test-gap` — No test covers single-edge switch exhaustiveness or SetAfter on a convergence node  
   `src/docforge/tests/units/validation/test_validation_codes.py:1`

@@ -101,3 +101,54 @@ def test_non_finite_coordinates_map_to_finite_values() -> None:
     prov = DoclingParseHelpers.extract_provenance(item, doc)
     assert prov is not None
     _assert_finite_unit(prov.bbox)
+
+
+# -------------------- page-less provenance independence --------------------
+class _FakeLabel:
+    """A stand-in for docling 2.x's DocItemLabel enum (carries a ``value``)."""
+
+    def __init__(self, value: str):
+        self.value = value
+
+
+class _FakePagelessItem:
+    """A page-less item (html/md): a label + text + self_ref, but no ``prov`` (no bbox)."""
+
+    def __init__(self, ref: str, text: str):
+        self.self_ref = ref
+        self.label = _FakeLabel("text")
+        self.text = text
+        self.prov: list = []
+
+
+class _FakePagelessDoc:
+    """A page-less DoclingDocument: num_pages() == 0, items with no provenance."""
+
+    def __init__(self, items: list) -> None:
+        self._items = items
+
+    def num_pages(self) -> int:
+        return 0
+
+    def iterate_items(self):
+        for item in self._items:
+            yield item, 0
+
+
+def test_pageless_blocks_get_independent_provenance() -> None:
+    """Every page-less block gets its OWN Provenance — the synthetic full-page one is never shared,
+    so mutating one block's provenance can never bleed into another (the aliasing bug this guards)."""
+    from shared_libs.pipelines.ingest.nodes.parse.parser.docling.mapper import DoclingIRMapper
+
+    doc = _FakePagelessDoc(
+        [_FakePagelessItem("#/texts/0", "Alpha"), _FakePagelessItem("#/texts/1", "Beta")]
+    )
+    ir = DoclingIRMapper.map_document(doc, doc_id="d", source_hash="h")
+
+    assert len(ir.blocks) == 2
+    first, second = ir.blocks[0].provenance, ir.blocks[1].provenance
+    # Distinct instances, not one aliased object.
+    assert first is not second
+    # Mutating one leaves the other untouched.
+    first.char_span = (0, 5)
+    assert second.char_span is None

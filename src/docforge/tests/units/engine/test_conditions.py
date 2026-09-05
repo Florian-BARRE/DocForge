@@ -11,6 +11,7 @@ from shared_libs.pipelines.base import (
     NodeConfig,
     NodeInput,
     NodeOutput,
+    NodeStatus,
     OnFailure,
     OnSuccess,
     ScoreBelow,
@@ -18,6 +19,7 @@ from shared_libs.pipelines.base import (
     Transition,
     WhenEquals,
 )
+from shared_libs.pipelines.engine.navigation import GraphNavigator
 from shared_libs.public_models import Artifact
 
 
@@ -168,6 +170,42 @@ def test_when_equals_condition_round_trips_through_json() -> None:
     again = Transition.model_validate(transition.model_dump(mode="json"))
     assert isinstance(again.condition, WhenEquals)
     assert again.condition.equals == "chart"
+
+
+# ── ScoreBelow warning is scoped to a genuine wiring mismatch, never a failure path ──
+class _RecordingLogger:
+    """A minimal stand-in for the navigator's bound logger — records warning messages only."""
+
+    def __init__(self, sink: list[str]) -> None:
+        self._sink = sink
+
+    def warning(self, message: str) -> None:
+        self._sink.append(message)
+
+
+def test_score_below_on_failure_emits_no_warning(monkeypatch) -> None:
+    """A FAILED node has no score, so a ScoreBelow edge simply does not apply — and logs no noise."""
+    warnings: list[str] = []
+    monkeypatch.setattr(GraphNavigator, "logger", _RecordingLogger(warnings))
+    group = _build("photo", score=0.2, with_escalation=True)
+    clf = group.children[0]
+    result = GraphNavigator.next(group, clf, NodeStatus.FAILED, None)
+    assert result is None
+    assert warnings == []
+
+
+def test_score_below_on_success_without_score_warns(monkeypatch) -> None:
+    """A SUCCESS whose output is not scored under a ScoreBelow edge IS a wiring mismatch → warn."""
+    warnings: list[str] = []
+    monkeypatch.setattr(GraphNavigator, "logger", _RecordingLogger(warnings))
+    src = Path("src", NodeConfig(), "X")
+    group = _switch_group(
+        src,
+        [Transition(from_node_id="src", to_node_id="dst", condition=ScoreBelow(threshold=0.5))],
+    )
+    result = GraphNavigator.next(group, src, NodeStatus.SUCCESS, TagOut(tag=Tag()))
+    assert result is None
+    assert any("ScoreBelow" in message for message in warnings)
 
 
 # ── the full documented priority chain: ScoreBelow > WhenEquals > OnSuccess/OnFailure > Always ──

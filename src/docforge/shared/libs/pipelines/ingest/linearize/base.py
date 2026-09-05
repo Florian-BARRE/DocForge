@@ -16,6 +16,9 @@ from loggerplusplus import LoggerClass
 # ====== Internal Project Imports ======
 from shared_libs.public_models import Block, BlockType, DocumentIR, FigureEnrichment, TableData
 
+# ====== Local Project Imports ======
+from ..nodes.chunk.base.helpers import ChunkerHelpers
+
 
 class BaseIRLinearizer(ABC, LoggerClass):
     """
@@ -43,14 +46,21 @@ class BaseIRLinearizer(ABC, LoggerClass):
         Returns:
             str: The rendered view (empty string when the document has no renderable block).
         """
-        # 1. Reading-order blocks, minus detected header/footer boilerplate (excluded from the view).
+        # 1. Fold captions with the SHARED chunker rule (before/after adjacency, figure AND table),
+        #    so the view attaches a caption to the exact same unit the chunk projection does.
+        ordered = sorted(ir.blocks, key=lambda item: item.reading_order)
+        captions = ChunkerHelpers.attach_captions(ordered)
+        consumed_captions = {caption.id for caption in captions.values()}
+
+        # 2. Reading-order blocks, minus header/footer boilerplate (excluded from the view) and the
+        #    caption blocks already folded into their owning figure/table unit.
         blocks = [
             block
-            for block in sorted(ir.blocks, key=lambda item: item.reading_order)
-            if block.block_type != BlockType.HEADER_FOOTER
+            for block in ordered
+            if block.block_type != BlockType.HEADER_FOOTER and block.id not in consumed_captions
         ]
 
-        # 2. Walk with an explicit cursor so list items and figure captions can be folded ahead.
+        # 3. Walk with an explicit cursor so consecutive list items fold into a single list.
         segments: list[str] = []
         index = 0
         total = len(blocks)
@@ -61,13 +71,19 @@ class BaseIRLinearizer(ABC, LoggerClass):
                 segments.append(self._emit_list(items))
                 continue
             if block.block_type == BlockType.FIGURE:
-                caption, index = self.__fold_caption(blocks, index)
-                segments.append(self._emit_figure(block.figure, caption, block.text))
+                segments.append(
+                    self._emit_figure(block.figure, self.__caption_of(block, captions), block.text)
+                )
+                index += 1
+                continue
+            if block.block_type == BlockType.TABLE:
+                segments.append(self.__emit_table_unit(block, captions))
+                index += 1
                 continue
             segments.append(self.__emit_block(block))
             index += 1
 
-        # 3. Join non-empty segments — an emitter returns "" for a unit that carries no content.
+        # 4. Join non-empty segments — an emitter returns "" for a unit that carries no content.
         return self._block_separator.join(segment for segment in segments if segment)
 
     def __collect_list_items(self, blocks: list[Block], start: int) -> tuple[list[str], int]:
@@ -79,21 +95,28 @@ class BaseIRLinearizer(ABC, LoggerClass):
             index += 1
         return items, index
 
-    def __fold_caption(self, blocks: list[Block], start: int) -> tuple[str | None, int]:
-        """Consume a FIGURE's immediately-following CAPTION block as the figure caption, if present."""
-        next_index = start + 1
-        if next_index < len(blocks) and blocks[next_index].block_type == BlockType.CAPTION:
-            return (blocks[next_index].text or "").strip() or None, next_index + 1
-        return None, next_index
+    @staticmethod
+    def __caption_of(block: Block, captions: dict[str, Block]) -> str | None:
+        """Return the folded caption text for a figure/table unit, if one was attached to it."""
+        caption_block = captions.get(block.id)
+        if caption_block is None or not caption_block.text:
+            return None
+        return caption_block.text.strip() or None
+
+    def __emit_table_unit(self, block: Block, captions: dict[str, Block]) -> str:
+        """Emit a TABLE with its folded caption; keep a claimed caption even if the grid is empty."""
+        caption = self.__caption_of(block, captions)
+        if block.table is not None:
+            return self._emit_table(block.table, caption)
+        # No grid to render, but a caption may have been folded into this unit — never drop it.
+        return self._emit_caption(caption) if caption else ""
 
     def __emit_block(self, block: Block) -> str:
-        """Dispatch a single (non list-item, non figure) block to its emit hook."""
+        """Dispatch a single (non list-item, non figure, non table) block to its emit hook."""
         block_type = block.block_type
         text = block.text or ""
         if block_type == BlockType.HEADING:
             return self._emit_heading(text.strip(), block.level or 1)
-        if block_type == BlockType.TABLE:
-            return self._emit_table(block.table) if block.table else ""
         if block_type == BlockType.CAPTION:
             return self._emit_caption(text.strip())
         if block_type == BlockType.CODE:
@@ -117,8 +140,8 @@ class BaseIRLinearizer(ABC, LoggerClass):
         """Render a bullet list from its item texts."""
 
     @abstractmethod
-    def _emit_table(self, table: TableData) -> str:
-        """Render a structured table."""
+    def _emit_table(self, table: TableData, caption: str | None) -> str:
+        """Render a structured table, folding in its adjacent caption when one was attached."""
 
     @abstractmethod
     def _emit_figure(

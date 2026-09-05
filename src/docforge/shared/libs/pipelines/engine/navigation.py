@@ -84,7 +84,13 @@ class GraphNavigator:
         if isinstance(condition, ScoreBelow):
             # Only a ScoredOutput can be score-gated; a plain output cannot fire this edge.
             if not isinstance(output, ScoredOutput):
-                cls.logger.warning(f"ScoreBelow transition skipped: output is not a ScoredOutput")
+                # A FAILED node legitimately has no score, so this edge simply does not apply — no
+                # warning. Warn ONLY on a SUCCESS that produced a non-scored output: that is a real
+                # wiring mismatch (the build validator requires a ScoreBelow producer to be scored).
+                if status == NodeStatus.SUCCESS:
+                    cls.logger.warning(
+                        f"ScoreBelow transition skipped: output is not a ScoredOutput"
+                    )
                 return False
             return output.score < condition.threshold
         if isinstance(condition, WhenEquals):

@@ -12,7 +12,7 @@ from typing import Any
 from loggerplusplus import loggerplusplus
 
 # ====== Internal Project Imports ======
-from shared_libs.public_models import FigureEnrichment, TableData
+from shared_libs.public_models import Block, BlockType, FigureEnrichment, TableData
 
 # Sentence boundary: end punctuation followed by whitespace and an uppercase/digit start.
 _SENTENCE_BOUNDARY = re.compile(r"(?<=[.!?])\s+(?=[A-Z0-9À-Ü])")
@@ -153,6 +153,40 @@ class ChunkerHelpers:
         """
         sentences = [part.strip() for part in _SENTENCE_BOUNDARY.split(text)]
         return [sentence for sentence in sentences if sentence] or [text.strip()]
+
+    @staticmethod
+    def attach_captions(blocks: list[Block]) -> dict[str, Block]:
+        """
+        Map each FIGURE/TABLE block id to its adjacent CAPTION block — the ONE caption-folding rule.
+
+        Parsers (docling included) emit captions as SEPARATE CAPTION blocks, but the composition rule
+        wants the caption INSIDE its figure/table unit. Adjacency in reading order decides ownership:
+        the unit right AFTER the caption first, else the one right BEFORE. Each unit claims at most
+        one caption. This is the single source of truth shared by the chunker projection and the
+        on-the-fly markdown/HTML views, so the two can never fold captions differently.
+
+        Args:
+            blocks (list[Block]): The document's blocks in reading order.
+
+        Returns:
+            dict[str, Block]: FIGURE/TABLE block id → the CAPTION block folded into it.
+        """
+        # 1. For every non-empty CAPTION block, claim the adjacent unit after it, else before it.
+        attached: dict[str, Block] = {}
+        for index, block in enumerate(blocks):
+            if block.block_type != BlockType.CAPTION or not (block.text and block.text.strip()):
+                continue
+            for neighbor_index in (index + 1, index - 1):
+                if not 0 <= neighbor_index < len(blocks):
+                    continue
+                neighbor = blocks[neighbor_index]
+                if (
+                    neighbor.block_type in (BlockType.FIGURE, BlockType.TABLE)
+                    and neighbor.id not in attached
+                ):
+                    attached[neighbor.id] = block
+                    break
+        return attached
 
     @staticmethod
     def render_table(table: TableData) -> str:
