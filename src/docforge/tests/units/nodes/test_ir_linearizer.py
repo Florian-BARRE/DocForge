@@ -138,6 +138,58 @@ def test_linearize_html_escapes_text() -> None:
     assert "<td>&lt;b&gt;x&lt;/b&gt;</td>" in html
 
 
+# -------------------- caption folding parity with the chunker --------------------
+def test_caption_before_figure_is_folded_like_the_chunker() -> None:
+    """A caption PRECEDING its figure folds into the figure (shared rule), not left as a stray block."""
+    ir = DocumentIR(
+        doc_id="d",
+        source_hash="h",
+        blocks=[
+            _blk("cap", BlockType.CAPTION, 0, text="Figure 1: revenue"),
+            _blk("f1", BlockType.FIGURE, 1, figure=FigureEnrichment(description="A chart.")),
+        ],
+    )
+    md = MarkdownLinearizer().render(ir)
+    # The caption rides inside the figure's italic header, adjacent to its description.
+    assert "*Figure 1: revenue*" in md
+    assert "A chart." in md
+    # It is folded exactly once, never re-emitted as a standalone caption below the figure.
+    assert md.count("Figure 1: revenue") == 1
+
+
+def test_table_caption_is_folded_into_the_table_unit() -> None:
+    """A caption adjacent to a TABLE folds into the table unit (matches the chunker), both views."""
+    table = TableData(cells=[["A", "B"], ["1", "2"]], n_rows=2, n_cols=2, has_header=True)
+    ir = DocumentIR(
+        doc_id="d",
+        source_hash="h",
+        blocks=[
+            _blk("t1", BlockType.TABLE, 0, table=table),
+            _blk("cap", BlockType.CAPTION, 1, text="Table 1: totals"),
+        ],
+    )
+    md = MarkdownLinearizer().render(ir)
+    assert "*Table 1: totals*" in md and "| A | B |" in md
+    html = HtmlLinearizer().render(ir)
+    # The caption becomes the table's semantic <caption>, spliced as its first child.
+    assert "<table><caption>Table 1: totals</caption>" in html
+
+
+def test_linearizer_and_chunker_fold_the_same_caption_owner() -> None:
+    """The view and the chunk projection resolve caption ownership through the ONE shared rule."""
+    from shared_libs.pipelines.ingest.nodes.chunk.base.helpers import ChunkerHelpers
+
+    blocks = [
+        _blk("cap", BlockType.CAPTION, 0, text="Figure 1"),
+        _blk("f1", BlockType.FIGURE, 1, figure=FigureEnrichment(description="x")),
+        _blk("t1", BlockType.TABLE, 2, table=TableData(cells=[["a"]], n_rows=1, n_cols=1)),
+    ]
+    attached = ChunkerHelpers.attach_captions(blocks)
+    # The caption is owned by the FIGURE that follows it (after-first rule), not the later table.
+    assert set(attached) == {"f1"}
+    assert attached["f1"].id == "cap"
+
+
 # -------------------- facade --------------------
 def test_ir_linearizer_facade_delegates() -> None:
     linearizer = IRLinearizer()

@@ -33,9 +33,12 @@ class MarkdownLinearizer(BaseIRLinearizer):
         lines = [f"- {item}" for item in items if item]
         return "\n".join(lines)
 
-    def _emit_table(self, table: TableData) -> str:
-        """Render a table via the shared markdown grid (single source of truth)."""
-        return ChunkerHelpers.render_table(table)
+    def _emit_table(self, table: TableData, caption: str | None) -> str:
+        """Render a table via the shared markdown grid, its folded caption in italics above."""
+        rendered = ChunkerHelpers.render_table(table)
+        if caption:
+            return f"*{caption}*\n{rendered}" if rendered else f"*{caption}*"
+        return rendered
 
     def _emit_figure(
         self, figure: FigureEnrichment | None, caption: str | None, native_text: str | None

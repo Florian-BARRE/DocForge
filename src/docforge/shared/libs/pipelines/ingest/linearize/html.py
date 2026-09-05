@@ -37,9 +37,17 @@ class HtmlLinearizer(BaseIRLinearizer):
         cells = [f"<li>{escape(item)}</li>" for item in items if item]
         return f"<ul>{''.join(cells)}</ul>" if cells else ""
 
-    def _emit_table(self, table: TableData) -> str:
-        """Render a structured, escaped HTML table (thead when a header row is flagged)."""
-        return self.__html_table(table.cells, table.has_header)
+    def _emit_table(self, table: TableData, caption: str | None) -> str:
+        """Render a structured, escaped HTML table, folding in its adjacent caption as a <caption>."""
+        grid = self.__html_table(table.cells, table.has_header)
+        if not caption:
+            return grid
+        cap = f"<caption>{escape(caption)}</caption>"
+        # Splice the <caption> in as the table's first child (its only valid position); a degenerate
+        # grid with no columns still surfaces the caption as an emphasized paragraph.
+        if grid.startswith("<table>"):
+            return grid.replace("<table>", f"<table>{cap}", 1)
+        return f"<p><em>{escape(caption)}</em></p>"
 
     def _emit_figure(
         self, figure: FigureEnrichment | None, caption: str | None, native_text: str | None

@@ -22,6 +22,7 @@ from loggerplusplus import loggerplusplus
 
 # ====== Internal Project Imports ======
 from shared_libs.public_models import (
+    BlockType,
     FieldOrigin,
     FigureEnrichment,
     FigureKind,
@@ -172,7 +173,7 @@ class RunTranslator:
                     else None,
                     level=block.level,
                     text=block.text,
-                    is_boilerplate=block.block_type.value == "header_footer",
+                    is_boilerplate=block.block_type == BlockType.HEADER_FOOTER,
                     language=block.language,
                     confidence=None,
                 )

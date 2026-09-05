@@ -124,31 +124,6 @@ class PassageProjector:
         return texts, ids
 
     @staticmethod
-    def __attach_captions(blocks: list[Block]) -> dict[str, Block]:
-        """
-        Map each FIGURE/TABLE block id to its adjacent CAPTION block.
-
-        Parsers (docling included) emit captions as SEPARATE CAPTION blocks; the composition
-        rule wants the caption INSIDE its figure/table unit. Adjacency in reading order decides
-        ownership: the unit right after the caption first, else the one right before.
-        """
-        attached: dict[str, Block] = {}
-        for index, block in enumerate(blocks):
-            if block.block_type != BlockType.CAPTION or not (block.text and block.text.strip()):
-                continue
-            for neighbor_index in (index + 1, index - 1):
-                if not 0 <= neighbor_index < len(blocks):
-                    continue
-                neighbor = blocks[neighbor_index]
-                if (
-                    neighbor.block_type in (BlockType.FIGURE, BlockType.TABLE)
-                    and neighbor.id not in attached
-                ):
-                    attached[neighbor.id] = block
-                    break
-        return attached
-
-    @staticmethod
     def __repeated_texts(blocks: list[Block], config: BaseChunkerConfig) -> frozenset[str]:
         """
         Build the set of normalized texts that recur across enough DISTINCT pages to be boilerplate.
@@ -322,7 +297,7 @@ class PassageProjector:
         #    the cross-page repetition set precomputed once for the boilerplate role.
         blocks = sorted(ir.blocks, key=lambda block: block.reading_order)
         by_id = {block.id: block for block in blocks}
-        captions = cls.__attach_captions(blocks)
+        captions = ChunkerHelpers.attach_captions(blocks)
         consumed_captions = {caption.id for caption in captions.values()}
         boilerplate_texts = cls.__repeated_texts(blocks, config)
         web_chrome_ids = cls.__web_chrome_ids(blocks, config)
