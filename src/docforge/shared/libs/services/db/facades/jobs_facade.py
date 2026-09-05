@@ -365,25 +365,41 @@ class JobsFacade(LoggerClass):
 
     async def reclaim_worker_jobs(self, worker_id: str) -> list[uuid.UUID]:
         """
-        Fail every RUNNING job still attributed to this worker id — called at the worker's STARTUP.
+        Fail this worker id's own leftover RUNNING jobs — SAME-HOSTNAME restart hygiene only.
 
-        A freshly-started worker owns NO in-flight task, so any RUNNING row stamped with its
-        ``worker_id`` is a leftover from its previous incarnation (a hot-reload, crash or hard kill
-        that never marked the row terminal). Reclaiming them here clears the orphaned "stalled"
-        pile-up INSTANTLY on every (re)start — instead of leaving those rows orange until the reaper's
-        stale window elapses. Marks each job FAILED and its document FAILED (visibly re-ingestable)
-        through the same ``_terminate`` path a manual cancel-force uses. Independent of the reap flag:
-        this is startup hygiene, not the periodic reaper.
+        Called at the worker's STARTUP: a freshly-started process owns NO in-flight task, so any
+        RUNNING row still stamped with ITS ``worker_id`` is a leftover from its previous incarnation
+        that never marked the row terminal. Marks each such job FAILED and its document FAILED
+        (visibly re-ingestable) through the same ``_terminate`` path a manual cancel-force uses.
+        Independent of the reap flag — this is startup hygiene, not the periodic reaper.
+
+        SCOPE — what this can and cannot do. ``worker_id`` is the container hostname
+        (``socket.gethostname()``), which is stable ONLY across a same-container process restart: a
+        dev hot-reload (watchfiles respawns the Python process in place) or an in-container respawn
+        keeps the hostname, so this reclaims that incarnation's own orphans INSTANTLY instead of
+        waiting out the reaper's stale window. It matches ONLY the caller's own id on purpose — a
+        shared/stable key would make a starting replica reclaim a live SIBLING's RUNNING jobs, so the
+        own-id key is the only safe one in a scaled fleet.
+
+        It therefore does NOT cover a crash/hard-kill that brings up a NEW container: Docker assigns a
+        fresh hostname on recreate, so the orphaned rows carry the OLD id and this matches nothing —
+        returning empty is CORRECT there, not a miss. That cross-recreate case is the heartbeat
+        REAPER's job (``reap_stale``): once the dead worker's heartbeat ages past the stale cutoff,
+        its RUNNING jobs lose the heartbeat veto and are failed. The two paths are complementary —
+        reclaim for same-host restarts, the reaper for gone-container crashes.
 
         Args:
-            worker_id (str): The stable id of the worker reclaiming its own orphans.
+            worker_id (str): The (per-container-lifetime) hostname of the worker reclaiming its OWN
+                orphans — never a sibling's.
 
         Returns:
-            list[uuid.UUID]: The reclaimed job ids (empty when the worker had no leftovers).
+            list[uuid.UUID]: The reclaimed job ids (empty when this id had no leftovers — the normal
+            case after a container RECREATE, where the reaper handles recovery instead).
         """
         error = (
             "reclaimed at worker startup: the previous worker process did not mark this job "
-            "terminal (hot-reload/crash) — presumed orphaned, re-ingest to retry"
+            "terminal (same-container restart, e.g. a dev hot-reload) — presumed orphaned, "
+            "re-ingest to retry"
         )
         reclaimed: list[uuid.UUID] = []
         async with self._postgres.session() as session:

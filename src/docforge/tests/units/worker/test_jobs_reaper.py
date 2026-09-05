@@ -347,3 +347,106 @@ async def test_mark_running_refuses_to_resurrect_a_terminal_job() -> None:
         assert job.status == terminal
         assert job.worker_id == "dead-worker"
         assert job.cancel_requested is True
+
+
+# --------------------------------------------------------------------------- #
+# reclaim_worker_jobs — startup hygiene, SAME-HOSTNAME restart ONLY
+# --------------------------------------------------------------------------- #
+#
+# ``worker_id`` is the container hostname (``socket.gethostname()``), which is stable ONLY within a
+# container's lifetime. Reclaim therefore recovers a same-container restart's own orphans (a dev
+# hot-reload / in-place respawn keeps the hostname) but is a deliberate NO-OP after a crash/recreate
+# that mints a fresh hostname — those orphans carry the OLD id, and the heartbeat reaper (reap_stale)
+# is what recovers them. These tests lock that real, narrowed contract.
+
+
+async def test_list_running_for_worker_matches_only_that_exact_worker_id() -> None:
+    """The reclaim predicate is scoped to EXACTLY the caller's id (RUNNING + worker_id = :id).
+
+    Proving the ``worker_id = :id`` equality on the compiled SQL is what guarantees the two contract
+    properties: a starting replica never touches a SIBLING's live rows, AND a post-recreate worker
+    (new hostname) matches NONE of the old incarnation's orphans — leaving those to the reaper.
+    """
+    captured: dict[str, object] = {}
+
+    class _CapturingSession:
+        async def execute(self, statement):
+            captured["statement"] = statement
+            result = MagicMock()
+            result.scalars.return_value.all.return_value = []
+            return result
+
+    from shared_libs.services.db.postgresql.apis import JobApi  # noqa: PLC0415
+
+    await JobApi.list_running_for_worker(_CapturingSession(), "docforge-worker-abc123")
+
+    sql = str(
+        captured["statement"].compile(
+            dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}
+        )
+    ).lower()
+    # RUNNING-only, and keyed on an EXACT worker_id equality (never a broad/shared match).
+    assert "status" in sql and "running" in sql
+    assert "job.worker_id = 'docforge-worker-abc123'" in sql
+
+
+async def test_reclaim_fails_each_own_orphan_and_its_document(monkeypatch) -> None:
+    """A same-hostname restart: every RUNNING row still stamped with THIS id is failed + its doc."""
+    orphans = [
+        SimpleNamespace(id=uuid.uuid4(), document_id=uuid.uuid4()),
+        SimpleNamespace(id=uuid.uuid4(), document_id=uuid.uuid4()),
+    ]
+    doc_by_job = {job.id: job.document_id for job in orphans}
+    monkeypatch.setattr(
+        facade_module.JobApi, "list_running_for_worker", AsyncMock(return_value=orphans)
+    )
+    mark_terminal = AsyncMock(
+        side_effect=lambda session, job_id, **kw: SimpleNamespace(
+            id=job_id, document_id=doc_by_job[job_id]
+        )
+    )
+    get_latest = AsyncMock(
+        side_effect=lambda session, document_id: SimpleNamespace(
+            id=next(job.id for job in orphans if job.document_id == document_id)
+        )
+    )
+    set_status = AsyncMock()
+    monkeypatch.setattr(facade_module.JobApi, "mark_terminal", mark_terminal)
+    monkeypatch.setattr(facade_module.JobApi, "get_latest_for_document", get_latest)
+    monkeypatch.setattr(facade_module.DocumentApi, "set_status", set_status)
+
+    facade = JobsFacade(_postgres_yielding(MagicMock()))
+    reclaimed = await facade.reclaim_worker_jobs("docforge-worker-abc123")
+
+    # Every own orphan is returned, marked terminal FAILED, and its document flagged FAILED.
+    assert reclaimed == [orphans[0].id, orphans[1].id]
+    assert mark_terminal.await_count == 2
+    for call in mark_terminal.await_args_list:
+        assert call.kwargs["status"] == JobStatus.FAILED
+    # The reason reads like startup reclaim (a same-container restart), never a "cancelled:" prefix.
+    reason = mark_terminal.await_args_list[0].kwargs["reason"]
+    assert reason.startswith("reclaimed at worker startup")
+    assert not reason.lower().startswith("cancelled")
+    assert set_status.await_count == 2
+    for call in set_status.await_args_list:
+        assert call.args[2] == DocumentStatus.FAILED
+
+
+async def test_reclaim_is_a_noop_after_a_container_recreate(monkeypatch) -> None:
+    """A crash/recreate mints a NEW hostname, so the OLD incarnation's orphans (stamped with the old
+    id) match nothing under the new id — reclaim is a clean no-op. This is CORRECT, not a miss: the
+    heartbeat reaper recovers cross-recreate orphans once the dead worker's heartbeat ages out."""
+    # The new incarnation's id finds no rows (its predicate is worker_id = <new id>; the orphans
+    # carry <old id>), exactly what the real query returns after a recreate.
+    monkeypatch.setattr(facade_module.JobApi, "list_running_for_worker", AsyncMock(return_value=[]))
+    mark_terminal = AsyncMock()
+    set_status = AsyncMock()
+    monkeypatch.setattr(facade_module.JobApi, "mark_terminal", mark_terminal)
+    monkeypatch.setattr(facade_module.DocumentApi, "set_status", set_status)
+
+    facade = JobsFacade(_postgres_yielding(MagicMock()))
+    reclaimed = await facade.reclaim_worker_jobs("docforge-worker-NEW-hostname")
+
+    assert reclaimed == []
+    mark_terminal.assert_not_awaited()
+    set_status.assert_not_awaited()

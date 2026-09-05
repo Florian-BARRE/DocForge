@@ -703,19 +703,26 @@ class JobApi:
     @staticmethod
     async def list_running_for_worker(session: AsyncSession, worker_id: str) -> list[Job]:
         """
-        Return the RUNNING jobs currently attributed to one worker id.
+        Return the RUNNING jobs stamped with EXACTLY this worker id — its own leftovers only.
 
-        Called at that worker's STARTUP: this process has no in-flight tasks yet, so any RUNNING row
-        still stamped with its ``worker_id`` is a leftover from a previous incarnation (a hot-reload,
-        crash or hard kill that never marked the row terminal). Reclaiming these immediately clears
-        the orphaned "stalled" pile-up instead of waiting out the reaper's stale window.
+        Called at that worker's STARTUP: the process has no in-flight tasks yet, so any RUNNING row
+        still carrying its ``worker_id`` is a leftover from its previous incarnation that never marked
+        the row terminal. The ``worker_id == worker_id`` filter is deliberately exact: it matches ONLY
+        the caller's own rows, never a sibling replica's live jobs.
+
+        Because ``worker_id`` is the container hostname (stable only within a container's lifetime),
+        this covers a SAME-CONTAINER restart (a dev hot-reload / in-place respawn) — where the id is
+        preserved — but NOT a crash/recreate that mints a new hostname: those orphans carry the OLD
+        id and this returns nothing, leaving them to the heartbeat reaper (``list_stale``). See
+        ``JobsFacade.reclaim_worker_jobs`` for the full contract.
 
         Args:
             session (AsyncSession): The active DB session.
-            worker_id (str): The stable id of the worker reclaiming its own orphans.
+            worker_id (str): The (per-container-lifetime) hostname of the worker reclaiming its own
+                orphans.
 
         Returns:
-            list[Job]: The worker's leftover RUNNING jobs.
+            list[Job]: This worker id's leftover RUNNING jobs (empty after a container recreate).
         """
         result = await session.execute(
             select(Job).where(Job.status == JobStatus.RUNNING, Job.worker_id == worker_id)
