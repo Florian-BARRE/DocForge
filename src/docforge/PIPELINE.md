@@ -95,10 +95,10 @@ flowchart TB
         FUT1["(futur : libreoffice direct, …)"]:::choice
     end
 
-    PDFP["<b>pdf_probe</b> (intake)<br/>─────────────<br/>faits système du PDF : nb de pages<br/>chiffré/corrompu → erreur claire<br/>⚙️ (aucune config)"]:::node
+    PDFP["<b>pdf_probe</b> (intake)<br/>─────────────<br/>faits système du PDF : nb de pages<br/>chiffré/corrompu → erreur claire<br/>plafond d'admission par pages<br/>⚙️ max_pages=2000 (0 = pas de plafond)"]:::node
     CAD["<b>content_address</b> (intake)<br/>─────────────<br/>sha256 des bytes ORIGINAUX<br/>assemble la sortie de l'étape<br/>⚙️ (aucune config)"]:::node
 
-    OUT["🟦 IntakeResult<br/><i>source_hash · pdf_content · page_count</i>"]:::artefact
+    OUT["🟦 IntakeResult<br/><i>source_hash · source_format · source_content · pdf_content · preview_pdf · page_count</i>"]:::artefact
 
     SRC -.->|"source"| PROBE
     SRC -.->|"source"| ADMIT
@@ -112,6 +112,7 @@ flowchart TB
     GOT -.->|"pdf : PdfView"| PDFP
     PDFP -->|"OnSuccess"| CAD
     ADMIT -.->|"source"| CAD
+    PROBE -.->|"source_probe : SourceProbe"| CAD
     GOT -.->|"pdf : PdfView"| CAD
     PDFP -.->|"probe : PdfProbe"| CAD
     CAD -.->|"ingest"| OUT
@@ -126,10 +127,10 @@ flowchart TB
 | **format_probe** | — | `source : SourceDocument` ← run | `probe : SourceProbe` |
 | **admission** | `unknown_field_policy` = reject\|ignore | `source` ← run · `probe : SourceProbe` ← format_probe · `contract : CollectionContract` ← run | `source : SourceDocument` (méta nettoyées) |
 | **convert / gotenberg** | `base_url` (requis) · `timeout_seconds`=120 | `source` ← admission · `probe` ← format_probe | `pdf : PdfView` (None si inconvertible → dégradation) |
-| **pdf_probe** | — | `pdf : PdfView` ← convert | `probe : PdfProbe` (page_count) |
-| **content_address** | — | `source` ← admission · `pdf` ← convert · `probe` ← pdf_probe | `ingest : IntakeResult` |
+| **pdf_probe** | `max_pages`=2000 (0 = pas de plafond) | `pdf : PdfView` ← convert | `probe : PdfProbe` (page_count) — un PDF au-delà de `max_pages` est rejeté ICI, avant parse/OCR |
+| **content_address** | — | `source` ← admission · `source_probe : SourceProbe` ← format_probe · `pdf` ← convert · `probe` ← pdf_probe | `ingest : IntakeResult` |
 
-**Cas d'échec (le run s'arrête, message précis)** : format détecté non accepté (extension spoofée incluse) · fichier vide · taille dépassée · champ requis manquant · champ inconnu (si reject) · type/enum invalide · champ generated/system fourni · PDF chiffré ou corrompu.
+**Cas d'échec (le run s'arrête, message précis)** : format détecté non accepté (extension spoofée incluse) · fichier vide · taille dépassée · champ requis manquant · champ inconnu (si reject) · type/enum invalide · champ generated/system fourni · PDF chiffré ou corrompu · PDF au-delà de `max_pages` (plafond d'admission avant parse/OCR).
 
 **Formats détectés** : pdf · docx/xlsx/pptx · doc/xls/ppt (OLE2) · odt/ods/odp · rtf · html · csv · md · txt · png/jpeg.
 
@@ -150,7 +151,7 @@ flowchart TB
     IN["🟦 IntakeResult (← étape 1)"]:::artefact
 
     subgraph PARS["🔀 CHOIX / ESCALADE — famille parser"]
-        DOC["<b>docling</b> ✅ (défaut)<br/>─────────────<br/>convert off-thread · cache modèles process-wide<br/>mapper → IR (blocs, tables, figures, bbox,<br/>arbre de titres) · score qualité<br/>⚙️ do_ocr=false · do_table_structure=true"]:::choice
+        DOC["<b>docling</b> ✅ (défaut)<br/>─────────────<br/>convert off-thread · cache modèles process-wide<br/>mapper → IR (blocs, tables, figures, bbox,<br/>arbre de titres) · score qualité<br/>⚙️ do_ocr=true · do_table_structure=true"]:::choice
         GRA["<b>granite_docling</b> ✅<br/>─────────────<br/>pipeline VLM Docling IN-WORKER (DocTags, 258M)<br/>réutilise le même DoclingIRMapper + score<br/>⚙️ revision épinglée · force_backend_text=false · max_new_tokens=4096"]:::choice
         PPS["<b>pp_structure</b> ✅<br/>─────────────<br/>PP-StructureV3 en RÉSEAU → sidecar paddle_server<br/>(POST /layout-parsing) · mapper HTML → IR<br/>⚙️ base_url · use_table_recognition=true · timeout_seconds=300"]:::choice
         DOC -. "ScoreBelow(seuil) → escalade" .-> GRA
@@ -170,20 +171,24 @@ flowchart TB
 
 | Node | Config | Consomme | Produit |
 |---|---|---|---|
-| **parser / docling** | `do_ocr`=false · `do_table_structure`=true | `source : IntakeResult` ← étape 1 | `ir : DocumentIR` + `score` (part des blocs avec contenu : texte **ou** table ; figures = non → signal scan) |
+| **parser / docling** | `do_ocr`=true · `do_table_structure`=true | `source : IntakeResult` ← étape 1 | `ir : DocumentIR` + `score` (part des blocs avec contenu : texte **ou** table ; figures = non → signal scan) |
 | **parser / granite_docling** | `revision` (épinglée) · `force_backend_text`=false · `max_new_tokens`=4096 | `source : IntakeResult` ← étape 1 | `ir : DocumentIR` + `score` (VLM DocTags in-worker — MÊME mapper/score que docling, GPU en pratique) |
 | **parser / pp_structure** | `base_url` (requis) · `api_key` · `use_table_recognition`=true · `use_formula/seal/orientation/unwarping`=false · `timeout_seconds`=300 (+ hérite `TimeoutRetryConfig` : `max_retries`, `retry_backoff_seconds`, `preflight_timeout_seconds`) | `source : IntakeResult` ← étape 1 | `ir : DocumentIR` + `score` (POST /layout-parsing au sidecar `paddle_server` — parser RÉSEAU) |
 | **parse / figure_render** | `scale`=2.0 · `render_pages`=true | `ingest : IntakeResult` ← étape 1 · `ir : DocumentIR` ← parser | `ir : DocumentIR` **complété** (crops embarqués) · `pages : PageRenders` |
 
 **Contrat de la famille** (`BaseParserNode`) : tout parseur consomme `{source: IntakeResult}` et produit `{ir, score}` ; pas de PDF → IR vide + score 0 (dégradation) ; l'escalade se câble dans le graphe par `ScoreBelow(threshold)` — rien à changer au moteur.
 
-**Doctrine scans (décidée)** : `do_ocr=false` **toujours** — docling fournit la STRUCTURE ; une page scannée sort
-comme figure pleine page (docling ne sait pas dire « texte scanné »). La décision se prend à la **maille la plus
-fine — le bloc IR** : l'**enrich** détermine par heuristiques + modèles ce qu'est chaque zone non-texte
-(`SCANNED_TEXT` / logo / photo / chart) puis OCRise/décrit avec les providers puissants (chaîne + escalade +
-trace). **Aucun flag scan en amont** (supprimé — il faisait double emploi à une maille moins fine) ; les faits
-catalogue `document.source_kind` et `page.is_scanned` (DB) seront **dérivés de la classification enrich** à la
-persistance. ⚠️ Sur un scan, un score de parse bas est NORMAL — ne pas configurer d'escalade de parseurs dessus.
+**Doctrine scans (persona-hardening — OCR-default)** : `do_ocr=true` **par défaut** — c'est l'OCR *interne* de
+docling (local, in-stack, aucune API externe), qui ne s'applique qu'aux régions bitmap sans couche texte : un
+PDF/HTML digital-born (déjà porteur de texte) reste intouché, un scan ou une photo rend du texte cherchable
+out-of-box (sans lui une page image perdrait SILENCIEUSEMENT tout son texte). Désactivable (`do_ocr=false`) sur un
+corpus purement text-only. Ceci est **orthogonal à l'enrich** : docling fournit la STRUCTURE + le texte des zones
+bitmap, tandis que la décision fine « qu'est cette zone non-texte » (`SCANNED_TEXT` / logo / photo / chart) se
+prend toujours à la **maille du bloc IR** dans l'**enrich** (heuristiques + modèles, chaîne + escalade + trace),
+qui décrit/relit les figures avec les providers puissants. **Aucun flag scan en amont** (supprimé — il faisait
+double emploi à une maille moins fine) ; les faits catalogue `document.source_kind` et `page.is_scanned` (DB) sont
+**dérivés de la classification enrich** à la persistance. ⚠️ Sur un scan, un score de parse bas peut rester NORMAL
+— ne pas configurer aveuglément d'escalade de parseurs dessus.
 
 ---
 
@@ -221,10 +226,11 @@ flowchart TB
         CLF["<b>figure_classify</b> (enrich)<br/>heuristiques (pleine page → scanned_text,<br/>minuscule → decorative) puis modèle VLM<br/>⚙️ use_heuristics · full_page_ratio=0.85 · min_side_px=48<br/>· base_url · model · temperature"]:::node
         OC["<b>ocr local</b> (ocr/rapidocr)"]:::choice
         OR["<b>ocr robuste</b> (ocr/mistral)"]:::choice
-        VS["<b>vlm scanned</b><br/>⚙️ prompt complément de scan"]:::choice
         VP["<b>vlm photo</b><br/>⚙️ prompt caption"]:::choice
         VC["<b>vlm chart</b><br/>⚙️ prompt lecture + extract_table"]:::choice
         VD["<b>vlm diagram</b><br/>⚙️ prompt réécriture cherchable"]:::choice
+        OCE["<b>figure_entry</b> (enrich)<br/>terminal OCR sans modèle<br/>read_text porté (pas de complément VLM)"]:::node
+        VE["<b>vlm_entry</b> (enrich)<br/>terminal des branches VLM"]:::node
         SK["<b>figure_entry</b> (enrich)<br/>skip explicite — zéro dépense"]:::node
 
         CLF -->|"kind == scanned_text"| OC
@@ -233,8 +239,11 @@ flowchart TB
         CLF -->|"kind == diagram"| VD
         CLF -->|"kind == decorative"| SK
         OC -->|"ScoreBelow(0.5)"| OR
-        OC -->|"OnSuccess"| VS
-        OR -->|"OnSuccess"| VS
+        OC -->|"OnSuccess"| OCE
+        OR -->|"OnSuccess"| OCE
+        VP -->|"OnSuccess"| VE
+        VC -->|"OnSuccess"| VE
+        VD -->|"OnSuccess"| VE
     end
 
     APP["<b>enrich_apply</b> (enrich)<br/>replie les entries dans l'IR<br/>(kind · ocr_text · description · data_table)"]:::node
@@ -244,8 +253,11 @@ flowchart TB
     FE -.->|"items : list[EnrichmentEntry]"| APP -.-> OUT3
 ```
 
-> **Lecture** : `vlm_scan.figure` ← **FromFirst**([ocr_robuste, ocr_local]) — le VLM reçoit la lecture de celui
-> qui a RÉELLEMENT tourné. Les 5 terminaux du corps produisent tous `EnrichmentEntry` (contrat de collection).
+> **Lecture** : la branche `scanned_text` est **OCR-seule** — l'OCR local escalade en OCR robuste (`ScoreBelow`),
+> puis se referme sur un `figure_entry` sans modèle dont le slot lit **FromFirst**([ocr_robuste, ocr_local]) : le
+> terminal reçoit la lecture de celui qui a RÉELLEMENT tourné (il n'y a **pas** de complément VLM après l'OCR). Les
+> branches visuelles (photo/chart/diagram) sont des chaînes VLM se refermant sur `vlm_entry`. Tous les terminaux du
+> corps produisent le même `EnrichmentEntry` (contrat de collection).
 
 ### Les nodes (famille `enrich`, dédiés — dans `pipelines/ingest/nodes/`)
 
@@ -260,8 +272,9 @@ flowchart TB
 
 | Famille | Node | Config | Contrat |
 |---|---|---|---|
-| `ocr` | **rapidocr** ✅ | — (local, modèles embarqués) | `{figure}` → `{figure(context rempli), score=confiance réelle}` (**testé : 0.97 sur vraie image**) — l'escalade = transition `ScoreBelow` |
+| `ocr` | **rapidocr** ✅ | — (local, modèles embarqués) | `{figure}` → `{figure(read_text rempli), score=confiance réelle}` (**testé : 0.97 sur vraie image**) — l'escalade = transition `ScoreBelow` |
 | `ocr` | **mistral** ✅ | `base_url` · `api_key` · `model` · `timeout_seconds` | idem — queue robuste (API /ocr, data-url) |
+| `ocr` | **paddle** ✅ | `base_url` · `api_key` · `timeout_seconds` | idem — OCR d'un crop via le sidecar in-stack `paddle_server` (PaddleOCR det+rec) |
 | `vlm` | **openai_compatible** ✅ | `base_url` · `api_key` · `model` · **`system_prompt`** · `max_tokens` · `temperature` · **`extract_table`** · `timeout_seconds` | `{figure}` → `{entry}` — **ferme la branche** (description + table parsée + ocr_text/kind portés) |
 
 **Prouvé e2e via blob** (6 figures, les 5 classes) : heuristiques (3 appels modèle économisés sur 6),
@@ -286,18 +299,23 @@ breadcrumb, préfixe LLM…). **Un seul contrat pour toutes les méthodes** : `{
 
 ### Le socle commun (`chunker/base/`) — la projection + les RÈGLES DE COMPOSITION
 Quelle que soit la méthode, l'IR est d'abord projeté en **passages** ordonnés, règles appliquées UNE fois :
-- **Figure + sens = UNE unité ATOMIQUE**, rendue avec des **marqueurs explicites** pour que le contenu dérivé
-  d'image ne se confonde jamais avec de la prose native dans le texte du chunk :
-  `[Image: <kind>] <caption> <texte natif>`, puis la **description VLM** sur sa ligne, le **texte OCR** sous
-  `[OCR]`, et la grille `chart_to_data` sous `[Data]` (table markdown, 1re ligne = en-tête). Le **bloc CAPTION
-  adjacent** est replié dans l'unité (les parseurs l'émettent séparé — block_ids inclus) ; parties vides
-  ignorées ; insécable (`figures_atomic`) — une figure vide (decorative, marqueur seul) n'apporte rien ;
+- **Figure + sens = UNE unité ATOMIQUE**, rendue de sorte que le contenu dérivé d'image ne se confonde jamais avec
+  de la prose native dans le texte du chunk : la **caption + le texte natif** en tête (prose réelle, verbatim),
+  puis la **description VLM** sur sa ligne, le **texte OCR** sous `[OCR]`, et la grille `chart_to_data` sous
+  `[Data]` (table markdown, 1re ligne = en-tête). ⚠️ **Aucun marqueur `[Image: <kind>]` n'est émis** (choix
+  délibéré : il ne porte aucun texte cherchable et ferait matcher une requête « photo »/« chart » nue sur un chunk
+  vide de réponse). Le **bloc CAPTION adjacent** est replié dans l'unité (les parseurs l'émettent séparé —
+  block_ids inclus) ; parties vides ignorées ; insécable (`figures_atomic`) — une figure sans contenu enrichi
+  (decorative, ou crop seul enrich-off) n'apporte RIEN (rendue à `None`, jamais un placeholder) ;
 - **Table → markdown**, atomique (`tables_atomic`), caption adjacente repliée aussi — jamais coupée en deux ;
 - **mobilier structurel classé par `role`, gardé mais désactivé** (jamais droppé — inspectable/réactivable, non
   embeddé) : `header_footer` (type de bloc IR), `toc` (titre = match exact de l'allow-list), et **`boilerplate` =
   répétition inter-pages** (un pré-pass mappe le texte normalisé de chaque bloc à ses pages **distinctes** ;
   au-delà de `boilerplate_min_pages`, défaut 3 → BOILERPLATE ; `detect_repeated_boilerplate` on/off par collection).
-  Ces passages partent en chunks-mobilier séparés (`role_default_enabled` → `enabled=false`), **retirés du texte body** ;
+  Le **chrome web** (barres de navigation/menus, widgets de recherche, placeholders « no results » déversés d'une
+  page HTML) est lui aussi rangé en BOILERPLATE — conservateur, seul le chrome évident est rétrogradé, jamais de la
+  vraie prose (`detect_web_chrome` on/off par collection, défaut on). Ces passages partent en chunks-mobilier
+  séparés (`role_default_enabled` → `enabled=false`), **retirés du texte body** ;
 - un **heading orphelin** (titre sans corps propre) n'est jamais un chunk isolé : replié en breadcrumb dans la
   section suivante (ou la précédente s'il est en fin) ;
 - `heading_path` + identité de section calculés (l'arbre de titres du parse ; **garde
@@ -315,7 +333,7 @@ Quelle que soit la méthode, l'IR est d'abord projeté en **passages** ordonnés
 
 | Kind | Config propre | Principe |
 |---|---|---|
-| **structure_aware** ✅ | `target_tokens`=512 · `max_tokens`=1024 · `min_tokens`=64 · `overlap_tokens`=0 · `hard_section_boundaries`=true | Empaquette LE LONG de l'arbre : frontière de section = coupe dure pour toute section ≥ `min_tokens`, **MAIS** les sections consécutives **< `min_tokens`** sont **fusionnées à travers les frontières** jusqu'à `min(target, max)` (fin de la sur-fragmentation ; une grosse section n'absorbe jamais et n'est jamais absorbée). Le `heading_path` d'un chunk fusionné = **préfixe commun** des sections coalescées (`[]` si non liées, l'ancêtre partagé sinon). Overlap optionnel (coupes de taille uniquement) |
+| **structure_aware** ✅ | `target_tokens`=512 · `max_tokens`=1024 · `min_tokens`=64 · `overlap_tokens`=64 · `hard_section_boundaries`=true | Empaquette LE LONG de l'arbre : frontière de section = coupe dure pour toute section ≥ `min_tokens`, **MAIS** les sections consécutives **< `min_tokens`** sont **fusionnées à travers les frontières** jusqu'à `min(target, max)` (fin de la sur-fragmentation ; une grosse section n'absorbe jamais et n'est jamais absorbée). Le `heading_path` d'un chunk fusionné = **préfixe commun** des sections coalescées (`[]` si non liées, l'ancêtre partagé sinon). Overlap optionnel (coupes de taille uniquement) |
 | **fixed_size** ✅ | `chunk_tokens`=512 · `overlap_tokens`=64 (< chunk, validé) | La classique : fenêtres de N tokens, aveugle à la structure, queue répétée en overlap |
 | **semantic** ✅ | `base_url` · `api_key` · `model` · `buffer_size`=1 · `breakpoint_percentile`=90 · `min_tokens` · `max_tokens` · `timeout_seconds` | **Embedding-windows** : phrases → fenêtres de contexte embeddées (endpoint openai-compat : bge_server, OpenAI…) → coupe là où la distance cosinus SAUTE (percentile) = au changement de sujet ; bornes de taille ensuite |
 
@@ -338,10 +356,10 @@ dans le graphe**, et l'ordre de câblage = l'ordre d'accumulation des préfixes 
 
 | Kind | Ajoute | Coût | Config |
 |---|---|---|---|
-| **doc_meta** ✅ | les métadonnées déclarées du document (`titre: X · auteur: Y`) — consomme aussi `source` (run) | zéro | `fields` (vide = toutes) · `line_template` · `joiner` |
+| **doc_meta** ✅ | UNE ancre document, identique pour tous les chunks : le titre déclaré (`title_field`), sinon (repli gratuit, déterministe) le PREMIER titre de niveau 1 du document — consomme `source` (run, titre déclaré) ET `ir` (repli titre) | zéro | `title_field`=title · `fallback_to_heading`=true |
 | **breadcrumb** ✅ | le fil d'Ariane rendu depuis `heading_path` (`Section: A > B`) — chunk hors section : rien | zéro | `template` · `separator=" > "` · `max_depth` (0 = tout) |
 | **sliding** ✅ | la fin du chunk précédent / le début du suivant (continuité aux frontières, borné en MOTS) | zéro | `prev_words=40` · `next_words=0` · templates |
-| **llm** ✅ | **le contextual retrieval d'Anthropic** : le modèle lit une vue du document + le chunk et écrit 1-2 phrases situantes | 1 appel/chunk | `base_url` · `api_key` · `model` · `system_prompt` · `max_tokens=120` · `temperature=0` · **`document_scope`** · `window_chunks` · `max_document_words` · `max_concurrency` · **`on_error`** |
+| **llm** ✅ | **le contextual retrieval d'Anthropic** : le modèle lit une vue du document + le chunk et écrit 1-2 phrases situantes | 1 appel/chunk | `system_prompt` · **`document_scope`** · `window_chunks=2` · `max_document_words=4000` · `max_concurrency=4` · **`on_error`** — l'endpoint + les paramètres de génération (`base_url`/`api_key`/`model`/`max_tokens`/`temperature`) ont migré (P6) hors de la config méthode : ils vivent sur les **steps de la chaîne llm** que le corps du ForEach exécute |
 
 **Les règles du `document_scope`** (la vue est construite **depuis les chunks eux-mêmes** — aucune consommation
 d'IR, la face reste uniforme) : `full` = tout le document (tronqué à `max_document_words`, depuis le début) ·
@@ -419,15 +437,18 @@ Le texte embeddé est l'**`enriched_text`** (toute la raison d'être du contextu
 
 | Kind | Protocole | Produit |
 |---|---|---|
-| **bge_server** ✅ | notre serveur custom (BGE-M3) : `/embed` + `/embed_sparse` | dense **+ sparse** — le défaut du produit · `UNIQUE_IN_GRAPH=True` |
+| **bge_server** ✅ | notre serveur custom (BGE-M3, TEI-compat) : `/embed_all` (dense+sparse en UNE passe) avec repli `/embed` + `/embed_sparse` sur un serveur plus ancien (404) | dense **+ sparse** — le défaut du produit · `UNIQUE_IN_GRAPH=True` |
 | **openai_compatible** ✅ | `/v1/embeddings` via la factory | dense seul (le protocole n'a pas de sparse — axe sauté proprement, loggé) |
 
 **Config commune** : `model` (provenance, stocké avec les vecteurs) · `batch_size=32` · `embed_sparse=true` ·
 **`embed_semantic_fields=false`** (défaut) — quand activé, les champs chunk-scope `semantic=True` du contrat
 sont embeddés en **vecteurs nommés par champ** (`fields["keywords"]` — seulement les chunks qui portent une
-valeur ; une liste se rend en texte joint). ⚠️ **OFF par défaut** : l'ingest écrivait ces vecteurs mais le
-**search ne les interroge pas encore** — on payait embedding + stockage pour du non-lu. À réactiver quand le
-read-side sémantique sera câblé (feature). Doc-scope sémantique : hors v1 (les points Qdrant sont des chunks).
+valeur ; une liste se rend en texte joint). Le **read-side EST câblé** : un `SearchTarget{field, semantic}` sur un
+champ métadonnée résout vers `meta_<slug>_dense` (via `TargetVectorResolver`, à côté du read port) et le retrieve
+l'interroge. ⚠️ **OFF par défaut** malgré tout, par pur **coût** : les cibles de recherche par défaut sont
+content-only (`default_content_targets`), donc sans requête métadonnée explicite on paierait embedding + stockage
+pour des vecteurs non interrogés. À activer quand une collection exploite la recherche sémantique par champ.
+Doc-scope sémantique : hors v1 (les points Qdrant sont des chunks).
 
 **Échec = fatal** (pas de dégradation ici : un chunk sans vecteur est ininde­xable).
 
@@ -448,9 +469,9 @@ vive, `'<100 numbers>'` dans la trace**.
 | `SourceDocument` | filename · content (bytes) · declared_meta | run input → probe, admit, convert, content_address |
 | `CollectionContract` | collection_id · name · supported_formats · max_file_size_bytes · fields[] (name, type, required, filterable/lexical/semantic, origin, scope) | run input → admit (+ metagen/embed plus tard) |
 | `SourceProbe` | format · mime_type · file_size | format_probe → admission, convert |
-| `PdfView` | content (bytes \| None) | convert → pdf_probe, content_address |
+| `PdfView` | content (bytes \| None) · preview_content (bytes \| None, PDF de visu seul) | convert → pdf_probe, content_address |
 | `PdfProbe` | page_count | pdf_probe → content_address |
-| `IntakeResult` | source_hash · pdf_content · page_count | content_address → **parser, figure_render** |
+| `IntakeResult` | source_hash · source_format · source_content (bytes originaux — parse natif html/md) · pdf_content (vue PDF consommée par le parseur ; None si natif/inconvertible) · preview_pdf (PDF de VISU seul, jamais parsé — pour html/md rendus nativement) · page_count | content_address → **parser, figure_render** |
 | `DocumentIR` | doc_id · source_hash · title · n_pages · language · blocks[] (figures avec `crop: bytes` après figure_render) | parser → figure_render → **enrich, chunk** (+ vues backend) |
 | `PageRenders` | pages[] (png, dimensions) | figure_render → worker (blobs `page.render_blob_hash`) |
 | `FigureItem` | block_id · image (bytes) · page_coverage · kind · read_text | l'item du ForEach enrich — enrichi en copies au fil du corps (classify estampille `kind`, l'OCR remplit `read_text`) |
@@ -469,8 +490,10 @@ vive, `'<100 numbers>'` dans la trace**.
 - **Configs** : chaque node = une `NodeConfig` (`extra="forbid"` → un typo dans le blob **fait échouer le build**, jamais ignoré). Tout node **RÉSEAU** hérite la surface partagée `TimeoutConfig` (`timeout_seconds`, `preflight_timeout_seconds`) — et `TimeoutRetryConfig` (+ `max_retries`, `retry_backoff_seconds`) pour ceux qui retentent — chaque famille ne re-déclarant que le DÉFAUT dont elle a besoin ; **par collection dans le blob**. Un budget wall-clock de tout le job d'ingest est porté par le champ collection **`job_timeout_seconds`** (nullable ; NULL = défaut worker `WORKER_JOB_TIMEOUT_SECONDS`, migration `b1c7e9a4d2f8`) ; plusieurs cadences worker sont passées en env `RUNTIME_CONFIG` (grâce, timeout Qdrant, heartbeat, health-check, intervalle du reaper, poll SSE app-side).
 - **`UNIQUE_IN_GRAPH`** (le flag de multiplicité, exposé par `describe()` et rejeté par le validateur en
   doublon — `duplicate_unique_node`) : **True** quand une 2e instance du kind est une erreur de câblage —
-  logique d'étape et structurel (les 4 nodes intake · gotenberg · docling · figure_render · figure_extract ·
-  enrich_apply · les 3 chunkers · breadcrumb · doc_meta · sliding). **False** (défaut) quand la répétition est
+  logique d'étape et structurel (les 4 nodes intake · gotenberg · les 3 parseurs docling · granite_docling ·
+  pp_structure — chacun unique par kind, mais empilables en escalade car kinds DIFFÉRENTS · figure_render ·
+  figure_extract · enrich_apply · les 3 chunkers · breadcrumb · doc_meta · sliding · deliver/bundle · les 2
+  embedders bge_server · openai_compatible). **False** (défaut) quand la répétition est
   légitime : providers en escalade du MÊME kind avec configs différentes (ocr/vlm/llm), terminaux multi-branches
   (figure_entry ×2 dans le fail-soft), classify en escalade, contextualize/llm multi-passes.
 - **Validation à la création** (avant toute dépense) : entrée unique · pas de cycle · pas de fan-out ambigu · bindings amont + types compatibles · ScoreBelow ⇒ producteur scoré · unicité des nodes single-use.
@@ -482,7 +505,7 @@ vive, `'<100 numbers>'` dans la trace**.
 | # | Sujet | État |
 |---|---|---|
 | 1 | ~~`is_scanned` (global ou par page)~~ **CLOS** : flag supprimé de l'ingest — la vérité se décide à la maille **bloc IR** (enrich, heuristiques + modèles) ; `pdf_probe` = faits système uniquement (pages, lisibilité) ; `source_kind`/`page.is_scanned` (DB) dérivés de la classification enrich à la persistance | ✅ décidé |
-| 2 | ~~Routage scan → OCR~~ **TRANCHÉ** : `do_ocr=false` toujours ; docling = structure seule ; l'**enrich** classifie (`SCANNED_TEXT`/logo/photo/chart) et OCRise/décrit avec les chaînes puissantes (voir §3) | ✅ décidé |
+| 2 | ~~Routage scan → OCR~~ **TRANCHÉ (révisé persona-hardening)** : `do_ocr=true` par défaut (OCR interne docling, local, régions bitmap seules ; désactivable sur un corpus text-only) pour le texte des zones scannées ; l'**enrich** classifie en plus (`SCANNED_TEXT`/logo/photo/chart) et OCRise/décrit les figures avec les chaînes puissantes (voir §3) | ✅ décidé |
 | 3 | ~~`figure_render`~~ **PLACÉ** (décision) : fin de l'étape **parse** (famille `parse`) — l'IR sort « ultra complet », chaque figure porte son crop ; l'enrich ne prépare rien, il décide. **`MarkdownSerializer`** reste 🅿️ garé (vue backend, placement à discuter avec le backend) | ✅ / 🅿️ |
 | 4 | ~~**Worker** : remapper les ids de blocs sur l'UUID du document à la persistance (sinon collision de PK entre collections/versions)~~ **FAIT** : le block-id remap vit dans `worker/backend/libs/persistence/translator.py` (`__block_id`, id préfixé par le document) | ✅ fait |
 
