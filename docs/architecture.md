@@ -72,12 +72,12 @@ docker-compose.yml     # thin root default: include: [compose/prod-cpu.yml]
 holds the pure graph engine, the public IR models, and the `Database` façade over the data stores.
 `app/` is the FastAPI backend (routers for pipelines, collections, documents, explorer, jobs, blobs)
 plus the React frontend. `worker/` is the arq worker that executes the ingestion pipeline and
-translates its IR output into database writes. (The `docforge` folder name is a historical
-artefact — renaming it to `docforge` is a deferred cosmetic task.)
+translates its IR output into database writes.
 
 **`docforge_sdk`** — the published, typed client (`docforge-sdk`). It mirrors the REST surface as
 resource objects (`collections`, `documents`, `explorer`, `search`, `jobs`, `blobs`, `pipelines`,
-`auth`, `health`) with Pydantic request/response models, in both sync and async flavors. It is held
+`transfers`, `snippets`, `corpus`, `audit`, `auth`, `health`) with Pydantic request/response models,
+in both sync and async flavors. It is held
 to the backend's OpenAPI contract by a CI coherence gate, so it can never drift from the API it
 wraps.
 
@@ -239,7 +239,8 @@ The gate covers **every package**:
 - **`docforge`** — ruff format + lint + the mocked unit suite.
 - **`docforge_sdk`** and **`mcp`** — ruff format + lint + **mypy** + unit tests.
 - **`bge_server`** — ruff format + lint + mypy + tests (CPU-only torch wheel).
-- **frontend** — `tsc --noEmit` + Vite build.
+- **frontend** — ESLint (`react-hooks/rules-of-hooks` is an error) + `tsc --noEmit` + vitest render
+  smoke tests + Vite build.
 - **`sdk-parity`** — an **SDK↔backend OpenAPI coherence gate**: it dumps the backend's current
   OpenAPI (serviceless) and fails red if the `docforge-sdk` models or committed snapshot drift from
   it. SDK/backend drift can never merge — nor publish.

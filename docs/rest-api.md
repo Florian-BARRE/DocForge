@@ -507,10 +507,20 @@ Runtime failures are surfaced as typed errors (each carries a machine-readable `
     {
       "chunk_id": "c1...",
       "document_id": "d4c3...",
+      "filename": "msa-acme-2025.pdf",
+      "document_title": "Master Services Agreement",
+      "heading_path": ["Article 7 — Termination"],
+      "metadata": {"client": "ACME", "year": 2025},
       "score": 0.0731,
       "text": "Either party may terminate ...",
       "chunk_index": 12,
-      "token_count": 148
+      "token_count": 148,
+      "block_ids": ["b41", "b42"],
+      "page": 6,
+      "bbox": [0.12, 0.34, 0.88, 0.41],
+      "block_locations": [
+        {"page": 6, "bbox": [0.12, 0.34, 0.88, 0.41]}
+      ]
     }
   ],
   "score_kind": "rrf_fusion",
@@ -518,9 +528,18 @@ Runtime failures are surfaced as typed errors (each carries a machine-readable `
 }
 ```
 
-`score` is the fused RRF score (higher is better). `score_kind` (always present) names what the
-score represents — `rrf_fusion` (the default), `dbsf_fusion`, or `cross_encoder_rerank` (when a
-reranker is enabled). `debug_info` is `null` unless there is a non-fatal note.
+A hit self-cites so a UI needs no follow-up `GET /documents/{id}`: `filename` and `document_title`
+(the human identity — `document_title` is `null` when no title was parsed/generated), `heading_path`
+(the chunk's section ancestry, top-down; empty under no section), and `metadata` (the document's
+filterable fields). `block_ids` are the IR blocks the chunk was assembled from; `page` + `bbox`
+locate the chunk's primary (leading) block and `block_locations` gives every source block's
+`{page, bbox}` — all bboxes are `[x0, y0, x1, y1]` **normalised to [0, 1]** (multiply by the page
+image size to draw), and `page`/`bbox` are `null` (and `block_locations` empty) for an unlocated
+chunk (e.g. a page-less document). `score` is the fused RRF score (higher is better). `score_kind`
+(always present) names what the score represents — `rrf_fusion` (the default), `dbsf_fusion`, or
+`cross_encoder_rerank` (when a reranker is enabled). It is rank-based, comparable only **within** one
+response — a round `1.0000` on a tiny/single-doc corpus is normal, not a bug. `debug_info` is `null`
+unless there is a non-fatal note.
 
 ### Example
 
@@ -547,7 +566,7 @@ request a cancellation).
 
 | Method | Path | Cap | Returns |
 |---|---|---|---|
-| `GET` | `/api/v1/jobs?collection_id={id}` | `read` | A collection's jobs, newest first |
+| `GET` | `/api/v1/jobs?collection_id={id}` | `read` | A collection's jobs, newest first — a paginated `JobPage` |
 | `GET` | `/api/v1/jobs/{job_id}` | `read` | One job's live state (poll this) |
 | `GET` | `/api/v1/jobs/{job_id}/events` | `read` | Per-node execution trace, in order |
 | `GET` | `/api/v1/jobs/workers/live` | `read` | What every worker is doing right now |
@@ -555,9 +574,21 @@ request a cancellation).
 
 > `collection_id` is a **required query param** on `GET /api/v1/jobs` (it also scopes the key).
 
+`GET /api/v1/jobs` is **paginated** (a collection can hold thousands of job rows): the optional
+`limit` (clamped down to the server's `JOBS_MAX_PAGE_SIZE`, its default) and `offset` query params
+page the list, and the response is a `JobPage` — `{ total, limit, offset, jobs }` where `total` is
+the full match count (drives the pager), `limit`/`offset` echo the applied values, and `jobs` is the
+page (newest first).
+
 A `JobStatus` carries `job_id, document_id, collection_id, status` (`queued`/`running`/`done`/
-`failed`), `progress` (0–100), `current_stage`, `error` (verbatim, only when failed), `attempt`,
-`started_at`, `finished_at`.
+`failed`/`cancelled`), `progress` (0–100), `current_stage`, `error` (verbatim, only when failed),
+`attempt`, `started_at`, `finished_at`, and `updated_at` (last progress write — freezes on a wedge).
+It also joins display labels (`document_filename`, `document_title`, `collection_name`, each `null`
+if the row is gone), a `cancel_requested` flag and a `stalled` flag (a RUNNING job idle past the
+stall threshold — an early wedge warning), the paid-generation roll-up (`total_prompt_tokens`,
+`total_completion_tokens`, `cost_usd`), the live fan-out counter (`items_done`/`items_total`, `null`
+outside a fan-out stage), and — only on a failed job — a failure breadcrumb (`failed_node_id`,
+`failed_node_kind`, `failed_item_index`, `error_type`).
 
 ### Poll an ingestion to completion
 

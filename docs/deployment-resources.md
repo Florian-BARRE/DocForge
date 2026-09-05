@@ -36,12 +36,9 @@ minimal set (app + postgres + redis + qdrant + seaweedfs + gotenberg + mcp) idle
 survivable for light/no-concurrent-ingestion use but leaves no headroom; 12–16 GB is the
 realistic-peak-plus-headroom number for actual document ingestion traffic.
 
-**Reconciling the old "~10 GB disk / ~8 GB RAM" claim in `getting-started.md`:** that number
-predates `paddle_server` and the current `bge_server`/`worker` ceilings (5g each, up from
-smaller values). It is now optimistic on both counts — disk is closer to **18–20 GB** once the
-BGE-M3 first-boot download is counted (see §4), and 8 GB RAM is a bare floor, not a comfortable
-number. `getting-started.md` should be revisited to match this doc (flagged, not changed here per
-scope — this pass only refreshes `deployment-resources.md`).
+**Consistency with `getting-started.md`:** that guide now states **~20 GB disk / 12–16 GB RAM**
+(with 8 GB called out as a bare floor for light use), matching this doc — the older "~10 GB / ~8 GB"
+figures (which predated `paddle_server` and the current 5g `bge_server`/`worker` ceilings) are gone.
 
 ---
 

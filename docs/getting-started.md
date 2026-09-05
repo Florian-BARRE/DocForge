@@ -16,7 +16,8 @@ web UI and via `curl`. Every command here is verified against the repository.
   light use but leaves no headroom). No GPU is needed out of the box. The first boot downloads the
   BGE-M3 embedder + reranker from Hugging Face (~6.4–6.9 GB), so give it a few minutes. Full sizing
   (and what each parser/OCR/embed choice costs) → **[deployment-resources.md](deployment-resources.md)**.
-- Open ports in the `10040–10048` range (the stack publishes its dev ports there).
+- Open ports in the `10040–10052` range (the stack publishes its dev ports there; the stock CPU
+  stack uses `10040–10049`, and the optional telemetry overlay adds `10050–10052`).
 - **GPU is optional and deferred** — the default images build with CPU-only PyTorch. GPU is an
   opt-in scenario (`compose/dev-gpu.yml`) and is not needed to complete this guide.
 
@@ -91,6 +92,7 @@ docker compose -f compose/dev-cpu.yml \
 | Gotenberg (office→PDF) | `localhost:10045` |
 | bge_server (embed/rerank) | `localhost:10047` |
 | MCP server (streamable-http) | `localhost:10048` |
+| paddle_server (PP-StructureV3, OFF by default) | `localhost:10049` |
 
 ### Check health
 
@@ -179,7 +181,9 @@ COLLECTION_ID=$(curl -s http://localhost:10040/api/v1/collections \
 echo "$COLLECTION_ID"
 ```
 
-> Field types are `string · integer · float · bool · keyword_list · datetime`. Metadata fields
+> Field types are `string · integer · float · bool · datetime · enum` (a string constrained to the
+> field's `enum_values`) · `text` (long free text) · `keyword_list` · `integer_list` · `float_list` ·
+> `text_list` (the list types match any element). Metadata fields
 > declared here are **fixed at creation** for the vector space — plan the schema up front.
 
 #### 5.2 Upload a document
