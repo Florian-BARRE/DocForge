@@ -3,8 +3,13 @@
 # IngestionFacade persists (payload rows, content-addressed S3 objects + blob registry rows,
 # Qdrant points). TWO ID REMAPS live here and nowhere else: pipeline block ids are parser-scoped
 # strings that WOULD collide across documents → prefixed with the document UUID; pipeline chunk
-# ids are ordinal strings → minted as real UUIDs (the Qdrant point ids). Chunk text is stored
-# ENRICHED (the raw text is re-derivable by stripping the context prefix — decided design).
+# ids are ordinal strings → mapped to DETERMINISTIC UUID v5 point ids derived from
+# (document_id, chunk_index), so a re-ingest of the same chunk upserts the SAME Qdrant point.
+# Chunk text is stored ENRICHED ONLY (the embedded form: the accumulated context prefix over the
+# assembled block content, figures already contributing their OCR/VLM text). The RAW,
+# pre-enrichment chunk text is NOT stored and NOT reliably recoverable — stripping the context
+# prefix yields the enriched assembly (which already folds in figure OCR/VLM text), and re-joining
+# block.text via chunk_block loses the figure contributions and the chunker's exact assembly.
 
 # ====== Standard Library Imports ======
 import hashlib
@@ -18,6 +23,9 @@ from loggerplusplus import loggerplusplus
 # ====== Internal Project Imports ======
 from shared_libs.public_models import (
     FieldOrigin,
+    FigureEnrichment,
+    FigureKind,
+    PageRender,
     RunBundle,
     first_heading,
     role_default_enabled,
@@ -38,6 +46,7 @@ from shared_libs.services.db.postgresql.tables import (
     EnrichmentStatus,
     MetadataField,
     Page,
+    SourceKind,
 )
 from shared_libs.services.db.qdrant import QdrantPoint
 from shared_libs.services.db.qdrant.vectors import (
@@ -48,6 +57,11 @@ from shared_libs.services.db.qdrant.vectors import (
     VectorNames,
 )
 from shared_libs.services.db.s3 import S3Object
+
+# The fixed namespace the deterministic chunk point ids (UUID v5) are minted under. A constant,
+# private namespace keeps the (document_id, chunk_index) → point-id mapping stable across runs and
+# processes without ever colliding with UUIDs minted for other purposes.
+_POINT_ID_NAMESPACE = uuid.UUID("6f1e3d0a-8b2c-5e47-9a1f-2c7d4e6b8a90")
 
 
 @dataclass(slots=True)
@@ -75,6 +89,51 @@ class RunTranslator:
     def __block_id(document_id: uuid.UUID, pipeline_id: str) -> str:
         """THE block-id remap: parser-scoped ids collide across documents — prefix with the doc."""
         return f"{document_id}:{pipeline_id}"
+
+    @staticmethod
+    def __chunk_point_id(document_id: uuid.UUID, chunk_index: int) -> uuid.UUID:
+        """THE chunk-id remap: a deterministic UUID v5 point id keyed on (document, chunk index).
+
+        Deterministic (not random) so re-ingesting the same chunk mints the SAME Qdrant point id and
+        the upsert overwrites in place — re-ingest is idempotent instead of orphaning the prior run's
+        points.
+        """
+        return uuid.uuid5(_POINT_ID_NAMESPACE, f"{document_id}:{chunk_index}")
+
+    @staticmethod
+    def __scanned_pages(bundle: RunBundle) -> set[int]:
+        """The 0-indexed pages carrying a scanned-text region, from the enrich classification.
+
+        PIPELINE.md decides scan-ness at the IR-block grain: a figure classified SCANNED_TEXT is a
+        scanned region (text rendered as an image). A page holding one is a scanned page. This is the
+        only scan signal the run surfaces — a page docling OCR'd into native-looking text blocks
+        carries none, so it reads as not-scanned (the honest floor: under-report, never fabricate).
+        """
+        return {
+            block.provenance.page
+            for block in bundle.ir.figure_blocks
+            if block.figure is not None and block.figure.kind == FigureKind.SCANNED_TEXT
+        }
+
+    @staticmethod
+    def __source_kind(page_renders: list[PageRender], scanned_pages: set[int]) -> SourceKind | None:
+        """Aggregate the per-page scan signal into the document's acquisition kind.
+
+        Returns None when there are no rendered pages to reason about, so the facade leaves the
+        admission-time provisional value untouched instead of asserting a kind the run cannot support.
+        A rendered page counts as scanned when it is in ``scanned_pages``.
+        """
+        # 1. No pages to reason about — do not overwrite the provisional admission value.
+        if not page_renders:
+            return None
+        # 2. Count how many rendered pages carry a scanned-text region.
+        scanned_count = sum(1 for render in page_renders if render.page_number in scanned_pages)
+        # 3. All / none / some → SCANNED / DIGITAL_BORN / MIXED.
+        if scanned_count == 0:
+            return SourceKind.DIGITAL_BORN
+        if scanned_count == len(page_renders):
+            return SourceKind.SCANNED
+        return SourceKind.MIXED
 
     @classmethod
     def __register_blob(cls, out: TranslatedRun, data: bytes, kind: BlobKind, mime: str) -> str:
@@ -138,25 +197,66 @@ class RunTranslator:
                 out.payload.block_figures.append(
                     BlockFigure(block_id=block_id, crop_blob_hash=crop_hash, caption_block_id=None)
                 )
-                # One enrichment row per filled slot — the figure's meaning, queryable.
-                slots = (
-                    (EnrichmentKind.CLASSIFY, block.figure.kind.value, None),
-                    (EnrichmentKind.OCR, block.figure.ocr_text, None),
-                    (EnrichmentKind.VLM, block.figure.description, None),
-                    (EnrichmentKind.CHART_TO_DATA, None, block.figure.data_table),
+                cls.__append_figure_enrichments(out, block_id, block.figure)
+
+    @staticmethod
+    def __figure_was_classified(figure: FigureEnrichment) -> bool:
+        """Whether a classifier genuinely ran on this figure (never assume from the placeholder).
+
+        ``FigureEnrichment.kind`` defaults to PHOTO as a parse-time PLACEHOLDER, so a filled ``kind``
+        alone does NOT prove classification happened — a figure the enrich stage never touched still
+        reads as PHOTO. A classify result is only provable when the figure carries evidence of
+        having gone through enrich: a non-placeholder ``kind`` (the classifier stamped something
+        other than the default), or any downstream enrichment slot (OCR/VLM/chart-to-data all run
+        AFTER classify, so their presence implies it ran). Absent any evidence, no CLASSIFY row is
+        written rather than fabricating a "photo" classification that never happened.
+        """
+        return (
+            figure.kind != FigureKind.PHOTO
+            or figure.ocr_text is not None
+            or figure.description is not None
+            or figure.data_table is not None
+        )
+
+    @classmethod
+    def __append_figure_enrichments(
+        cls, out: TranslatedRun, block_id: str, figure: FigureEnrichment
+    ) -> None:
+        """One BlockEnrichment row per enrichment a figure genuinely received.
+
+        CLASSIFY is emitted ONLY when a classifier provably ran (see ``__figure_was_classified``);
+        OCR/VLM/CHART_TO_DATA rows are emitted only for a filled slot — so a row is never fabricated
+        for an enrichment that did not happen.
+        """
+        # 1. The classification row — honest: written only when a classifier genuinely ran.
+        if cls.__figure_was_classified(figure):
+            out.payload.enrichments.append(
+                BlockEnrichment(
+                    block_id=block_id,
+                    kind=EnrichmentKind.CLASSIFY,
+                    text=figure.kind.value,
+                    data=None,
+                    status=EnrichmentStatus.OK,
                 )
-                for kind, text, data in slots:
-                    if text is None and data is None:
-                        continue
-                    out.payload.enrichments.append(
-                        BlockEnrichment(
-                            block_id=block_id,
-                            kind=kind,
-                            text=text,
-                            data=data,
-                            status=EnrichmentStatus.OK,
-                        )
-                    )
+            )
+        # 2. One row per filled meaning slot — the figure's OCR text, description and chart data.
+        slots = (
+            (EnrichmentKind.OCR, figure.ocr_text, None),
+            (EnrichmentKind.VLM, figure.description, None),
+            (EnrichmentKind.CHART_TO_DATA, None, figure.data_table),
+        )
+        for kind, text, data in slots:
+            if text is None and data is None:
+                continue
+            out.payload.enrichments.append(
+                BlockEnrichment(
+                    block_id=block_id,
+                    kind=kind,
+                    text=text,
+                    data=data,
+                    status=EnrichmentStatus.OK,
+                )
+            )
 
     @classmethod
     def __translate_chunks(
@@ -171,15 +271,25 @@ class RunTranslator:
         """The chunk side: UUIDs minted (THE chunk remap), composition, metadata, points."""
         field_ids = {spec.field_name: spec.id for spec in schema}
         filterable = {spec.field_name for spec in schema if spec.filterable}
+        # THE chunk remap: pipeline chunk ids are per-run ordinal strings → deterministic UUID v5
+        # point ids keyed on (document_id, chunk_index). Re-ingesting the same chunk yields the SAME
+        # point id, so the Qdrant upsert overwrites in place (the delete-by-document in the facade
+        # still clears chunks a re-ingest dropped). chunk_index is the stable retrieval-unit identity
+        # within a document; block ids are deliberately NOT in the key (parser-scoped, they can shift
+        # between runs and would needlessly churn point ids), and document_id is already globally
+        # unique so the collection id adds nothing.
         chunk_uuids: dict[str, uuid.UUID] = {
-            chunk.chunk_id: uuid.uuid4() for chunk in bundle.chunks
+            chunk.chunk_id: cls.__chunk_point_id(document_id, chunk.ordinal)
+            for chunk in bundle.chunks
         }
         # Index chunks by id once (was a linear `next(... )` scan per embedding item → O(chunks²)).
         chunk_by_id = {chunk.chunk_id: chunk for chunk in bundle.chunks}
 
         for chunk in bundle.chunks:
             chunk_uuid = chunk_uuids[chunk.chunk_id]
-            # Stored ENRICHED (decided design) — the raw text is re-derivable from the context.
+            # Stored ENRICHED ONLY (the embedded form: context prefix + assembled block content,
+            # figures already folded in). The raw pre-enrichment chunk text is NOT stored and NOT
+            # reliably recoverable from this row (see the module docstring).
             out.payload.chunks.append(
                 Chunk(
                     id=chunk_uuid,
@@ -306,6 +416,10 @@ class RunTranslator:
             )
 
         # 2. Pages + their renders (absent render stage → no page rows, nothing else changes).
+        #    is_scanned/source_kind are DERIVED from the enrich classification (PIPELINE.md: no scan
+        #    flag upstream — scan-ness is decided at the IR-block grain by enrich). A page carrying a
+        #    figure classified SCANNED_TEXT is a scanned page; source_kind aggregates that per page.
+        scanned_pages = cls.__scanned_pages(bundle)
         for render in page_renders:
             render_hash = cls.__register_blob(out, render.image, BlobKind.PAGE_RENDER, "image/png")
             out.payload.pages.append(
@@ -314,11 +428,17 @@ class RunTranslator:
                     page_number=render.page_number,
                     width=float(render.width),
                     height=float(render.height),
-                    is_scanned=False,
+                    is_scanned=render.page_number in scanned_pages,
                     language=None,
                     render_blob_hash=render_hash,
                 )
             )
+        # The acquisition-routing fact, derived from the per-page scan signal above (None when there
+        # are no rendered pages to reason about → the admission-time provisional value is left as-is).
+        out.payload.source_kind = cls.__source_kind(page_renders, scanned_pages)
+        # simhash (document + chunk near-dup signature) is left NULL: no ingestion node computes one,
+        # so the run carries no signal — honestly defaulted rather than hardcoded, until a near-dup
+        # stage lands and writes it here.
 
         # 3. Document-scope generated metadata (field ids resolved from the schema).
         field_ids = {spec.field_name: spec.id for spec in schema}

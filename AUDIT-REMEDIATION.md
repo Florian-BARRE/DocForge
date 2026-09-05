@@ -8,6 +8,8 @@
 
 ## Journal
 
+- **2026-09-05 — Vague P / 0.14.26 (V8 translator/persistence 4 + migrations 2, 2 agents || disjoints)** : **translator (pipeline)** — (1) **CLASSIFY fabriqué** : `FigureEnrichment.kind` défaute `PHOTO` (placeholder parse-time) → une row CLASSIFY success était écrite pour CHAQUE figure ; désormais écrite **seulement si un classifier a tourné** (`kind != PHOTO` OU un slot aval ocr/description/data rempli) ; un vrai PHOTO sans aval est droppé (plancher honnête, pas fabriqué). (2) **is_scanned/source_kind** dérivés du signal réel (figure classée `SCANNED_TEXT` → page scanned ; agrégat none/all/some → DIGITAL_BORN/SCANNED/MIXED) ; **simhash** laissé NULL + documenté (aucun node ne le calcule). (3) docs raw-chunk-text réconciliées (seul l'enrichi est stocké, le brut non récupérable). (4) **point id uuid5 déterministe** `uuid5(ns, "document_id:chunk_index")` (au lieu d'uuid4 par run) → réingestion idempotente (mêmes ids → upsert propre ; delete-by-document tourne toujours) ; docstring chunk.py réconciliée ; **pas de migration** (les anciens points gardent uuid4 jusqu'à réingestion). **migrations (migration-engineer)** — (5) **config_version unique (collection_id, version)** : migration `d1a7c4f8b2e6` (down=a1e4c7b9f206, **chaîne single-head vérifiée par moi**) qui **dé-duplique d'abord** (ROW_NUMBER renumber gap-free) PUIS ajoute la contrainte (sinon échec sur data live) ; minting concurrency-safe via `get_for_update` (FOR UPDATE, pas retry-on-IntegrityError car dans la tx `apply_update`) ; downgrade drop la contrainte. (6) **index GIN/fonctionnel invisibles à autogenerate** : GIN déclaré au modèle (`postgresql_using=gin`, round-trip), index fonctionnel exclu par nom via hook `include_object` dans env.py. Gate 4 projets : docforge **1539 passed** (+16 total waves), sdk 557 + drift OK (0 changement OpenAPI), mcp 48, ruff clean. Résidus signalés (hors scope) : commentaires ingestion_facade (delete-by-document désormais défensif sous ids déterministes) + documents/router source_kind "provisional". **→ V8 : 113/188.**
+
 - **2026-09-05 — Vague O / 0.14.25 (V8 search robustesse, 2 MOYENNE — scope strict)** : (1) **blob search sans auto-heal** — nouveau `SearchBlobNormalizer` (heal read-side niveau-config, miroir du heal ingest : walk graphe + groupes + ForEach, re-valide chaque config node contre son `Config` courant, strip les clés `extra_forbidden` de drift, raise sur autre faute) câblé dans `SearchService.__resolve_blob` (branche stored seulement ; `{}`=no-op ; deep-copy, topologie préservée) → une dérive de registry ne brique plus un graphe search stocké (heal au read, complémentaire du fail-fast au write). (2a) **rewrite/HyDE invisibles au health/preflight** — `BaseQueryLlmConfig` étend `TimeoutConfig` + `BaseQueryLlmNode.preflight` sonde l'endpoint → le sweep existant les ramasse (via `probes_endpoint`), zéro changement au sweep. (2b) **degrade silencieux** — flag `query_degraded` stampé sur la dégradation (fail-soft préservé : un échec rewrite ne fait jamais échouer la search) qui remonte la chaîne encode→retrieve→hydrate→`SearchResult.debug["degraded"]`→`debug_info` existant (**0 changement OpenAPI/SDK** — canal debug_info existant). +17 tests (normalizer ×8, résolution stored/heal, sweep query-provider, degrade flag + e2e). Gate : docforge **1531 passed** (+17), drift OK (96 schémas trackés), ruff clean. **→ V8 : 107/188.**
 
 - **2026-09-05 — Vague N / 0.14.24 (V8 moteur graphe/edit, 2 MOYENNE + 2 FAIBLE bugs — scope strict tenu)** : (1) **uniform→classified drop chaînes VLM** (reader.py) — les 2 modes keyent le VLM sous des slots différents (`figure_describe_vlm` vs `photo/chart/diagram_vlm`) → un aller-retour perdait les chaînes silencieusement ; `__spread_uniform_chain`/`__mirror_uniform_vlm_slot` mirrorent la chaîne aux 2 lectures → round-trip **préserve** (le seul cas lossy N→1 garde la 1re branche, jamais un drop silencieux ; un notice N→1 vivrait dans le compiler, hors scope). (2) **binding slot inconnu ignoré** — nouveau `ValidationCode.UNKNOWN_SLOT` : un binding vers un slot absent d'un **ActionNode** (`Consumes`) est désormais une **issue de validation** (fail-fast), plus un no-op silencieux ; les group-children (input dict dynamique) intacts ; défaut/light/all-provider valident toujours `[]`. (3) **SetAfter nuke tous les edges entrants** d'un nœud de convergence → **refuse** (`EditError` nommant le nœud + sources) au lieu de produire un graphe valide-mais-faux ; 0/1-entrant inchangé. (4) **ids body-group ForEach hors scans d'unicité** — `all_node_ids`+`__fragment_ids`+`remap` incluent `node.body.id` → plus de collision de mint/remap avec un id de corps ForEach. **⚠️ OpenAPI** : item 2 ajoute `unknown_slot` à l'enum `ValidationCode` (exposé via `ValidationIssue` dans les response models pipelines) — **snapshot régénéré par moi** (`dump_openapi.py`, diff = uniquement l'ajout de l'enum, 0 autre drift) ; `check_schema_drift` CI-style **vert** (96 schémas trackés, 170/57 accountés) ; SDK modélise ValidationCode en `str` → aucun modèle SDK à changer. +9 tests. Gate 4 projets : docforge **1514 passed** (+9), sdk 557 + drift, mcp 48, ruff clean. **→ V8 : 105/188.**
@@ -143,8 +145,8 @@
 | V5 — Moteur & pipeline | 2 | 2 | 0 | 0 |
 | V6 — Frontend | 0 | 0 | 0 | 0 |
 | V7 — Documentation | 21 | 21 | 0 | 0 |
-| V8 — Outillage (.claude/tests/infra/télémétrie) | 188 | 107 | 3 | 78 |
-| **Total** | **247** | **165** | **3** | **79** |
+| V8 — Outillage (.claude/tests/infra/télémétrie) | 188 | 113 | 3 | 72 |
+| **Total** | **247** | **171** | **3** | **73** |
 
 
 ## V1 — Sécurité & authz (avant tout déploiement multi-tenant)  (30)
@@ -529,11 +531,11 @@
   `src/docforge/shared/libs/services/db/postgresql/tables/observability/worker_heartbeat.py:20`
 - [ ] **⚪ FAIBLE** · `consistency` — Grouped minor smells: stale docstrings, unbatched/sequential store calls, unbounded legacy listing, protected-member coupling  
   `src/docforge/shared/libs/services/db/facades/meta_vector_sync_facade.py:104`
-- [ ] **⚪ FAIBLE** · `design` — Migration-only functional/GIN indexes are invisible to autogenerate and at risk of a proposed DROP  
+- [x] **⚪ FAIBLE** · `design` — Migration-only functional/GIN indexes are invisible to autogenerate and at risk of a proposed DROP  
   `src/docforge/shared/libs/services/db/postgresql/tables/documents/document_metadata.py:30`
 - [ ] **⚪ FAIBLE** · `bug` — Retry does not clear the structured failure breadcrumb — DONE jobs keep failed_node_id from a prior attempt  
   `src/docforge/shared/libs/services/db/postgresql/apis/job_api.py:74`
-- [ ] **⚪ FAIBLE** · `bug` — config_version has no unique (collection_id, version) — concurrent config updates mint duplicate versions  
+- [x] **⚪ FAIBLE** · `bug` — config_version has no unique (collection_id, version) — concurrent config updates mint duplicate versions  
   `src/docforge/shared/libs/services/db/facades/collections_facade.py:265`
 
 ### Dépendances & licences
@@ -619,7 +621,7 @@
 
 ### IR & modèles
 
-- [ ] **🟠 MOYENNE** · `divergence-doc` — Chunk table docstring promises deterministic UUID v5 point ids; translator mints random uuid4 per run  
+- [x] **🟠 MOYENNE** · `divergence-doc` — Chunk table docstring promises deterministic UUID v5 point ids; translator mints random uuid4 per run  
   `src/docforge/shared/libs/services/db/postgresql/tables/chunks/chunk.py:28` _(aussi: db-layer)_
 - [ ] **🟠 MOYENNE** · `dead-code` — Dead IR/DB fields surfaced to the API as meaningful data, and an enrichment-trace promise never fulfilled  
   `src/docforge/app/backend/routers/explorer/models_ir.py:25`
@@ -627,9 +629,9 @@
   `src/docforge/shared/libs/pipelines/ingest/stages/normalizer.py:36`
 - [x] **🟠 MOYENNE** · `bug` — Non-latin-1 document filename crashes the markdown/HTML download endpoints  
   `src/docforge/app/backend/routers/explorer/views.py:96`
-- [ ] **🟠 MOYENNE** · `consistency` — Three contradictory stories about raw chunk text; the raw text is in fact not recoverable  
+- [x] **🟠 MOYENNE** · `consistency` — Three contradictory stories about raw chunk text; the raw text is in fact not recoverable  
   `src/docforge/worker/backend/libs/persistence/translator.py:7`
-- [ ] **🟠 MOYENNE** · `bug` — Translator fabricates a successful CLASSIFY enrichment row for every figure even when no classifier ran  
+- [x] **🟠 MOYENNE** · `bug` — Translator fabricates a successful CLASSIFY enrichment row for every figure even when no classifier ran  
   `src/docforge/worker/backend/libs/persistence/translator.py:143`
 - [ ] **⚪ FAIBLE** · `design` — BlobNormalizer.__heal catches AttributeError/TypeError/KeyError broadly, converting engine regressions into 'reset your pipeline' 422s  
   `src/docforge/shared/libs/pipelines/ingest/stages/normalizer.py:128`
@@ -773,7 +775,7 @@
   `src/docforge/worker/backend/libs/jobs/core.py:163`
 - [ ] **⚪ FAIBLE** · `divergence-doc` — architecture.md claims the per-collection budget rides arq `_job_timeout` at enqueue — arq has no such kwarg and the code deliberately does otherwise  
   `.claude/rules/architecture.md:37` _(aussi: test-bodies)_
-- [ ] **⚪ FAIBLE** · `divergence-doc` — page.is_scanned hardcoded False and source_kind/simhash never written by a run, vs PIPELINE.md's decided derivation-at-persistence  
+- [x] **⚪ FAIBLE** · `divergence-doc` — page.is_scanned hardcoded False and source_kind/simhash never written by a run, vs PIPELINE.md's decided derivation-at-persistence  
   `src/docforge/worker/backend/libs/persistence/translator.py:317`
 
 ### Hygiène logs

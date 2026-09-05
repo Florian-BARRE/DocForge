@@ -32,7 +32,7 @@ from shared_libs.public_models import (
     RunBundle,
     SparseVector,
 )
-from shared_libs.services.db.postgresql.tables import BlobKind, MetadataField
+from shared_libs.services.db.postgresql.tables import BlobKind, MetadataField, SourceKind
 
 DOC = uuid.uuid4()
 CROP = b"png-crop-bytes"
@@ -278,6 +278,135 @@ def test_html_preview_pdf_is_exposed_as_the_viewable_pdf_and_page_count_from_ren
     # 2. page_count falls back to the rendered-page count when the intake count is 0.
     assert out.payload.page_count == 2
     assert len(out.payload.pages) == 2
+
+
+def _figure_bundle(figure: FigureEnrichment, *, page: int = 0) -> RunBundle:
+    """A minimal bundle with a single FIGURE block carrying the given enrichment slot."""
+    return RunBundle(
+        ingest=IntakeResult(source_hash="h", pdf_content=None, page_count=1),
+        ir=DocumentIR(
+            doc_id="d",
+            source_hash="h",
+            n_pages=1,
+            blocks=[
+                Block(
+                    id="f0",
+                    block_type=BlockType.FIGURE,
+                    reading_order=0,
+                    provenance=Provenance(page=page, bbox=(0, 0, 1, 1)),
+                    figure=figure,
+                )
+            ],
+        ),
+        pages=PageRenders(pages=[]),
+        chunks=[],
+    )
+
+
+def _classify_kinds(out) -> list[str]:
+    return [r.kind.value for r in out.payload.enrichments if r.kind.value == "classify"]
+
+
+def test_no_classify_row_fabricated_when_no_classifier_ran() -> None:
+    """A figure left at its parse-time placeholder (kind=PHOTO, no OCR/VLM/chart) must NOT get a
+    fabricated CLASSIFY row — the IR must not report a classification that never happened."""
+    bundle = _figure_bundle(FigureEnrichment(kind=FigureKind.PHOTO, crop=CROP))
+    out = RunTranslator.translate(DOC, bundle, schema=[], strategy="s", config_hash="c")
+    assert _classify_kinds(out) == []
+    assert out.payload.enrichments == []  # no OCR/VLM/chart either — nothing ran
+
+
+def test_real_photo_classification_with_a_vlm_result_persists_a_classify_row() -> None:
+    """A genuine PHOTO classification (evidenced by a downstream VLM description) still writes a
+    CLASSIFY row — the placeholder value is only suppressed when NOTHING enriched the figure."""
+    bundle = _figure_bundle(
+        FigureEnrichment(kind=FigureKind.PHOTO, crop=CROP, description="A cat on a mat.")
+    )
+    out = RunTranslator.translate(DOC, bundle, schema=[], strategy="s", config_hash="c")
+    classify = [r for r in out.payload.enrichments if r.kind.value == "classify"]
+    assert [r.text for r in classify] == ["photo"]
+
+
+def test_non_placeholder_kind_alone_persists_a_classify_row() -> None:
+    """A decorative skip (no OCR/VLM, but a non-placeholder kind) is a real classifier decision → a
+    CLASSIFY row, even though no meaning slot is filled."""
+    bundle = _figure_bundle(FigureEnrichment(kind=FigureKind.DECORATIVE, crop=CROP))
+    out = RunTranslator.translate(DOC, bundle, schema=[], strategy="s", config_hash="c")
+    classify = [r for r in out.payload.enrichments if r.kind.value == "classify"]
+    assert [r.text for r in classify] == ["decorative"]
+
+
+def test_page_is_scanned_and_source_kind_derived_from_scanned_text_figures() -> None:
+    """is_scanned and source_kind are DERIVED from the enrich classification: a page holding a
+    SCANNED_TEXT figure is scanned; a document with some (not all) scanned pages is MIXED."""
+    bundle = RunBundle(
+        ingest=IntakeResult(source_hash="h", pdf_content=None, page_count=2),
+        ir=DocumentIR(
+            doc_id="d",
+            source_hash="h",
+            n_pages=2,
+            blocks=[
+                Block(
+                    id="f0",
+                    block_type=BlockType.FIGURE,
+                    reading_order=0,
+                    provenance=Provenance(page=0, bbox=(0, 0, 1, 1)),
+                    figure=FigureEnrichment(kind=FigureKind.SCANNED_TEXT, crop=CROP),
+                )
+            ],
+        ),
+        pages=PageRenders(
+            pages=[
+                PageRender(page_number=0, image=b"pg0", width=1, height=1),
+                PageRender(page_number=1, image=b"pg1", width=1, height=1),
+            ]
+        ),
+        chunks=[],
+    )
+    out = RunTranslator.translate(uuid.uuid4(), bundle, schema=[], strategy="s", config_hash="c")
+    by_page = {p.page_number: p.is_scanned for p in out.payload.pages}
+    assert by_page == {0: True, 1: False}
+    assert out.payload.source_kind == SourceKind.MIXED
+
+
+def test_source_kind_digital_born_when_no_scanned_pages_and_none_without_renders() -> None:
+    """No scanned figure → DIGITAL_BORN; no rendered pages at all → None (leave the admission-time
+    provisional value untouched rather than assert a kind the run cannot support)."""
+    digital = RunBundle(
+        ingest=IntakeResult(source_hash="h", pdf_content=None, page_count=1),
+        ir=DocumentIR(doc_id="d", source_hash="h", n_pages=1, blocks=[]),
+        pages=PageRenders(pages=[PageRender(page_number=0, image=b"pg0", width=1, height=1)]),
+        chunks=[],
+    )
+    out = RunTranslator.translate(uuid.uuid4(), digital, schema=[], strategy="s", config_hash="c")
+    assert out.payload.pages[0].is_scanned is False
+    assert out.payload.source_kind == SourceKind.DIGITAL_BORN
+
+    no_renders = RunBundle(
+        ingest=IntakeResult(source_hash="h", pdf_content=None, page_count=0),
+        ir=DocumentIR(doc_id="d", source_hash="h", n_pages=0, blocks=[]),
+        pages=PageRenders(pages=[]),
+        chunks=[],
+    )
+    out2 = RunTranslator.translate(
+        uuid.uuid4(), no_renders, schema=[], strategy="s", config_hash="c"
+    )
+    assert out2.payload.source_kind is None
+
+
+def test_point_id_is_deterministic_across_runs_and_scoped_to_the_document() -> None:
+    """Deterministic UUID v5 point ids: the same (document, chunk) yields the SAME id across two
+    runs (idempotent upsert), while a different document yields a different id."""
+    run_a = RunTranslator.translate(DOC, _bundle(), _schema(), strategy="s", config_hash="cfg1")
+    # A second run of the same document — even under a different config — must remint the same id.
+    run_b = RunTranslator.translate(DOC, _bundle(), _schema(), strategy="s", config_hash="cfg2")
+    other_doc = RunTranslator.translate(
+        uuid.uuid4(), _bundle(), _schema(), strategy="s", config_hash="cfg1"
+    )
+    id_a = run_a.payload.chunks[0].id
+    assert id_a == run_b.payload.chunks[0].id
+    assert run_a.points[0].point_id == str(id_a) == run_b.points[0].point_id
+    assert other_doc.payload.chunks[0].id != id_a
 
 
 def test_identical_artefact_bytes_are_deduplicated_into_one_blob_row() -> None:

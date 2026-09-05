@@ -346,7 +346,14 @@ class CollectionsFacade(LoggerClass):
         The transactional core shared by ``update_config`` (own session) and ``apply_update`` (the
         whole PATCH in one session). Never opens or commits — it only stages the writes.
         """
-        # 1. Apply the patch.
+        # 1. Lock the collection row FIRST: concurrent config PATCHes on the same collection serialize
+        #    here, so the version counter can't be read-then-bumped by two transactions at once (which
+        #    would mint a duplicate (collection_id, version)). The lock is held until the transaction
+        #    ends; uq_config_version_collection_id is the DB backstop behind it.
+        collection = await CollectionApi.get_for_update(session, collection_id)
+        if collection is None:
+            return
+        # 2. Apply the patch on the locked row.
         await CollectionApi.update(
             session,
             collection_id,
@@ -354,10 +361,7 @@ class CollectionsFacade(LoggerClass):
             search=search,
             needs_reindex=needs_reindex,
         )
-        collection = await CollectionApi.get(session, collection_id)
-        if collection is None:
-            return
-        # 2. Snapshot the NEW state (append-only history). Only the max version number is needed —
+        # 3. Snapshot the NEW state (append-only history). Only the max version number is needed —
         #    fetch it as a scalar, not the whole {pipeline, search} snapshot history.
         next_version = await CollectionApi.max_config_version(session, collection_id) + 1
         await CollectionApi.add_config_version(
