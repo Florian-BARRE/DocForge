@@ -225,12 +225,25 @@ class ExplorerHelpers:
         return role_default_enabled(ChunkRole(chunk.role))
 
     @staticmethod
-    def chunk_toggle(outcome: ChunkToggle) -> ChunkEnabledResult:
-        """Map a facade toggle outcome to its response model (effective state + reindex flag)."""
+    def chunk_toggle(
+        outcome: ChunkToggle,
+        *,
+        search_sync_pending: bool = False,
+        search_sync_error: str | None = None,
+    ) -> ChunkEnabledResult:
+        """
+        Map a facade toggle outcome to its response model (effective state + reindex flag).
+
+        The search-store sync signal is passed only by the single-chunk route (where this result is
+        the whole response); a bulk response carries it at the request level, so its nested per-chunk
+        results keep the defaults.
+        """
         return ChunkEnabledResult(
             chunk_id=str(outcome.chunk_id),
             enabled=outcome.enabled,
             reindex_required=outcome.reindex_required,
+            search_sync_pending=search_sync_pending,
+            search_sync_error=search_sync_error,
         )
 
 

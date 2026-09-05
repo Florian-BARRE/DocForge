@@ -16,6 +16,8 @@ no store is touched.
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
+from shared_libs.services.db.facades import CollectionUpdateResult
+
 VLM_KEY = "sk-proj-VLMSECRETLEAK1234"
 OCR_KEY = "mistral-OCRSECRETKEY-xyz9"
 RERANK_KEY = "sk-RERANKSECRET-qwer"
@@ -272,13 +274,15 @@ def test_patch_round_trip_of_masked_pipeline_keeps_the_stored_key(client, monkey
     stored_blob = BlobNormalizer.normalize(stored_blob)
     fake = _fake_collection(stored_blob, {})
 
-    update_config = AsyncMock()
+    apply_update = AsyncMock(
+        return_value=CollectionUpdateResult(schema_applied=False, schema_reindex_required=False)
+    )
     _mock_db(
         monkeypatch,
         get=AsyncMock(return_value=fake),
         get_by_name=AsyncMock(return_value=None),
         get_schema=AsyncMock(return_value=[]),
-        update_config=update_config,
+        apply_update=apply_update,
     )
 
     # The client PATCHes back exactly what it read: the MASKED blob.
@@ -287,9 +291,10 @@ def test_patch_round_trip_of_masked_pipeline_keeps_the_stored_key(client, monkey
     response = client.patch(f"/api/v1/collections/{fake.id}", json={"pipeline": masked_blob})
     assert response.status_code == 200, response.text
 
-    # The persisted pipeline restored the real key — the mask was never written.
-    update_config.assert_awaited_once()
-    persisted = update_config.await_args.kwargs["pipeline"]
+    # The persisted pipeline restored the real key — the mask was never written. The atomic PATCH
+    # carries every part in a single CollectionUpdateSpec (positional arg 1).
+    apply_update.assert_awaited_once()
+    persisted = apply_update.await_args.args[1].pipeline
     embed = next(n for n in persisted["nodes"] if n.get("family") == "embed")
     assert embed["config"]["api_key"] == "sk-EMBEDSECRET-9999"
 

@@ -11,6 +11,7 @@ import uuid
 # ====== Internal Project Imports ======
 from loggerplusplus import LoggerClass
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared_libs.services.db.postgresql import PostgresClient
 from shared_libs.services.db.postgresql.apis import BlobApi, CollectionApi
@@ -20,6 +21,7 @@ from shared_libs.services.db.s3 import S3Client, S3ObjectApi
 
 # ====== Local Project Imports ======
 from .helpers import DatabaseHelpers
+from .payloads import CollectionUpdateResult, CollectionUpdateSpec
 
 # The collection-name UNIQUE constraint two concurrent creates race on. Name is stable via the schema
 # naming convention (uq_<table>_<column>) → the ``unique=True`` on ``collection.name``. asyncpg carries
@@ -199,47 +201,70 @@ class CollectionsFacade(LoggerClass):
         # 1. Fail fast before anything is written.
         DatabaseHelpers.validate_vector_slugs(desired)
 
+        # 2. Apply the diff in its own transaction (the standalone path — the snippet applier).
         async with self._postgres.session() as session:
-            current = await CollectionApi.get_schema(session, collection_id)
-            current_by_name = {row.field_name: row for row in current}
-            desired_by_name = {row.field_name: row for row in desired}
-
-            # 2. The searchable surface before/after — membership drives the reindex flag.
-            def searchable(rows: dict[str, MetadataField]) -> set[tuple]:
-                return {
-                    (r.field_name, r.field_type, r.semantic, r.lexical, r.filterable)
-                    for r in rows.values()
-                    if r.semantic or r.lexical or r.filterable
-                }
-
-            reindex_needed = searchable(current_by_name) != searchable(desired_by_name)
-
-            # 3. Update in place / insert new / delete removed (values cascade — explicit).
-            for name, wanted in desired_by_name.items():
-                row = current_by_name.get(name)
-                if row is None:
-                    wanted.collection_id = collection_id
-                    session.add(wanted)
-                    continue
-                row.field_type = wanted.field_type
-                row.required = wanted.required
-                row.filterable = wanted.filterable
-                row.lexical = wanted.lexical
-                row.semantic = wanted.semantic
-                row.enum_values = wanted.enum_values
-                row.origin = wanted.origin
-                row.scope = wanted.scope
-            for name, row in current_by_name.items():
-                if name not in desired_by_name:
-                    await session.delete(row)
-
-            # 4. A changed searchable surface invalidates the vector space.
-            if reindex_needed:
-                await CollectionApi.update(session, collection_id, needs_reindex=True)
+            reindex_needed = await self._apply_schema_diff(session, collection_id, desired)
         self.logger.info(
             f"Schema updated for {collection_id} "
             f"({len(desired)} fields, reindex_needed={reindex_needed})"
         )
+        return reindex_needed
+
+    @staticmethod
+    async def _apply_schema_diff(
+        session: AsyncSession, collection_id: uuid.UUID, desired: list[MetadataField]
+    ) -> bool:
+        """
+        Diff-update the metadata schema INSIDE a caller-supplied session (never a wholesale replace).
+
+        The transactional core shared by ``update_schema`` (own session) and ``apply_update`` (one
+        session threaded through the whole PATCH). The caller MUST have already validated vector slugs
+        (fail-fast, before any write). Never opens or commits a session — it only stages the writes.
+
+        Args:
+            session (AsyncSession): The unit of work the whole PATCH shares.
+            collection_id (uuid.UUID): The collection.
+            desired (list[MetadataField]): The target schema (collection_id filled here).
+
+        Returns:
+            bool: True when the SEARCHABLE surface changed (a reindex is due) — the caller flags it.
+        """
+        current = await CollectionApi.get_schema(session, collection_id)
+        current_by_name = {row.field_name: row for row in current}
+        desired_by_name = {row.field_name: row for row in desired}
+
+        # 1. The searchable surface before/after — membership drives the reindex flag.
+        def searchable(rows: dict[str, MetadataField]) -> set[tuple]:
+            return {
+                (r.field_name, r.field_type, r.semantic, r.lexical, r.filterable)
+                for r in rows.values()
+                if r.semantic or r.lexical or r.filterable
+            }
+
+        reindex_needed = searchable(current_by_name) != searchable(desired_by_name)
+
+        # 2. Update in place / insert new / delete removed (values cascade — explicit).
+        for name, wanted in desired_by_name.items():
+            row = current_by_name.get(name)
+            if row is None:
+                wanted.collection_id = collection_id
+                session.add(wanted)
+                continue
+            row.field_type = wanted.field_type
+            row.required = wanted.required
+            row.filterable = wanted.filterable
+            row.lexical = wanted.lexical
+            row.semantic = wanted.semantic
+            row.enum_values = wanted.enum_values
+            row.origin = wanted.origin
+            row.scope = wanted.scope
+        for name, row in current_by_name.items():
+            if name not in desired_by_name:
+                await session.delete(row)
+
+        # 3. A changed searchable surface invalidates the vector space.
+        if reindex_needed:
+            await CollectionApi.update(session, collection_id, needs_reindex=True)
         return reindex_needed
 
     async def reconcile_store(self, collection_id: uuid.UUID) -> set[str]:
@@ -296,29 +321,135 @@ class CollectionsFacade(LoggerClass):
     ) -> None:
         """Patch the collection's config blobs and append the immutable snapshot."""
         async with self._postgres.session() as session:
-            # 1. Apply the patch.
-            await CollectionApi.update(
+            await self._apply_config(
                 session,
                 collection_id,
                 pipeline=pipeline,
                 search=search,
                 needs_reindex=needs_reindex,
+                note=note,
             )
-            collection = await CollectionApi.get(session, collection_id)
-            if collection is None:
-                return
-            # 2. Snapshot the NEW state (append-only history). Only the max version number is needed —
-            #    fetch it as a scalar, not the whole {pipeline, search} snapshot history.
-            next_version = await CollectionApi.max_config_version(session, collection_id) + 1
-            await CollectionApi.add_config_version(
-                session,
-                ConfigVersion(
-                    collection_id=collection_id,
-                    version=next_version,
-                    config={"pipeline": collection.pipeline, "search": collection.search},
-                    note=note,
-                ),
-            )
+
+    @staticmethod
+    async def _apply_config(
+        session: AsyncSession,
+        collection_id: uuid.UUID,
+        *,
+        pipeline: dict | None = None,
+        search: dict | None = None,
+        needs_reindex: bool | None = None,
+        note: str | None = None,
+    ) -> None:
+        """
+        Patch the config blobs + append the snapshot INSIDE a caller-supplied session.
+
+        The transactional core shared by ``update_config`` (own session) and ``apply_update`` (the
+        whole PATCH in one session). Never opens or commits — it only stages the writes.
+        """
+        # 1. Apply the patch.
+        await CollectionApi.update(
+            session,
+            collection_id,
+            pipeline=pipeline,
+            search=search,
+            needs_reindex=needs_reindex,
+        )
+        collection = await CollectionApi.get(session, collection_id)
+        if collection is None:
+            return
+        # 2. Snapshot the NEW state (append-only history). Only the max version number is needed —
+        #    fetch it as a scalar, not the whole {pipeline, search} snapshot history.
+        next_version = await CollectionApi.max_config_version(session, collection_id) + 1
+        await CollectionApi.add_config_version(
+            session,
+            ConfigVersion(
+                collection_id=collection_id,
+                version=next_version,
+                config={"pipeline": collection.pipeline, "search": collection.search},
+                note=note,
+            ),
+        )
+
+    async def apply_update(
+        self, collection_id: uuid.UUID, spec: CollectionUpdateSpec
+    ) -> CollectionUpdateResult:
+        """
+        Apply every PART of a collection PATCH in ONE Postgres transaction (all-or-nothing).
+
+        Identity/limits, the metadata-schema diff, the config blobs (+ snapshot) and the cost-estimate
+        overrides are staged on a SINGLE session and committed together: a failure partway through
+        rolls the WHOLE patch back, so a collection is never left half-updated (e.g. contract changed
+        but schema not). The Qdrant reconcile + backfill are deliberately NOT folded in — they are
+        non-transactional and best-effort, so the caller runs them AFTER this commit.
+
+        Args:
+            collection_id (uuid.UUID): The collection being patched.
+            spec (CollectionUpdateSpec): The parts to apply (each gated by its own marker).
+
+        Returns:
+            CollectionUpdateResult: Whether the schema-diff ran and whether a reindex is due.
+
+        Raises:
+            ValueError: On a vector-slug collision in the desired schema (fail-fast, before any write).
+        """
+        # 1. Fail fast on schema vector-slug collisions BEFORE opening the write transaction, so a
+        #    bad schema 422s without touching the DB at all (nothing to roll back).
+        if spec.schema_fields is not None:
+            DatabaseHelpers.validate_vector_slugs(spec.schema_fields)
+
+        schema_reindex = False
+        # A rename to an already-taken name slips past the router's pre-check on a concurrent race and
+        # violates uq_collection_name at commit — map it to the same domain 409 as create (never a 500).
+        try:
+            async with self._postgres.session() as session:
+                # 2. Identity/limits (only when the caller marked them touched).
+                if spec.contract_touched:
+                    await CollectionApi.update(
+                        session,
+                        collection_id,
+                        name=spec.name,
+                        supported_formats=spec.supported_formats,
+                        max_file_size_bytes=spec.max_file_size_bytes,
+                        job_timeout_seconds=spec.job_timeout_seconds,
+                    )
+
+                # 3. Metadata schema by DIFF (may flip needs_reindex=True on the shared row).
+                if spec.schema_fields is not None:
+                    schema_reindex = await self._apply_schema_diff(
+                        session, collection_id, spec.schema_fields
+                    )
+
+                # 4. Config blobs + immutable snapshot (needs_reindex from an embed-space change; None
+                #    leaves a True a schema change may already have set on the same row).
+                if spec.config_touched:
+                    await self._apply_config(
+                        session,
+                        collection_id,
+                        pipeline=spec.pipeline,
+                        search=spec.search,
+                        needs_reindex=spec.embed_reindex,
+                        note=spec.note,
+                    )
+
+                # 5. Cost-estimate overrides (apply=True writes even a clearing None).
+                if spec.apply_overrides:
+                    await CollectionApi.set_estimate_overrides(
+                        session, collection_id, spec.estimate_overrides
+                    )
+        except IntegrityError as error:
+            if spec.contract_touched and spec.name is not None and self._is_duplicate_name(error):
+                raise DuplicateCollectionNameError(spec.name) from error
+            raise
+
+        self.logger.info(
+            f"Collection {collection_id} patched atomically "
+            f"(contract={spec.contract_touched}, schema={spec.schema_fields is not None}, "
+            f"config={spec.config_touched}, overrides={spec.apply_overrides})"
+        )
+        return CollectionUpdateResult(
+            schema_applied=spec.schema_fields is not None,
+            schema_reindex_required=schema_reindex,
+        )
 
     async def delete(self, collection_id: uuid.UUID) -> bool:
         """

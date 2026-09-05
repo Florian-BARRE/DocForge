@@ -335,12 +335,17 @@ async def set_chunk_enabled(
     await _assert_chunk_scope([chunk_id], principal)
 
     # 2. The facade toggles the (single) chunk; an empty result means the id never existed.
-    outcomes = await CONTEXT.database.enablement.set_chunks_enabled([chunk_id], patch.enabled)
-    if not outcomes:
+    result = await CONTEXT.database.enablement.set_chunks_enabled([chunk_id], patch.enabled)
+    if not result.outcomes:
         raise HTTPException(status_code=404, detail=f"Chunk {chunk_id} not found.")
 
-    # 3. Shape the single outcome.
-    return ExplorerHelpers.chunk_toggle(outcomes[0])
+    # 3. Shape the single outcome, carrying the Postgres-committed-but-Qdrant-pending signal (Postgres
+    #    is the truth; a pending Qdrant sync heals on a re-run/backfill — never reported as a clean OK).
+    return ExplorerHelpers.chunk_toggle(
+        result.outcomes[0],
+        search_sync_pending=result.search_sync_pending,
+        search_sync_error=result.search_sync_error,
+    )
 
 
 @router.patch("/chunks/enabled", response_model=BulkChunkEnabledResponse)
@@ -362,16 +367,19 @@ async def set_chunks_enabled(
     await _assert_chunk_scope(patch.chunk_ids, principal)
 
     # 2. Toggle all requested chunks in one facade call.
-    outcomes = await CONTEXT.database.enablement.set_chunks_enabled(patch.chunk_ids, patch.enabled)
+    result = await CONTEXT.database.enablement.set_chunks_enabled(patch.chunk_ids, patch.enabled)
 
     # 3. The ids that resolved to no chunk (requested minus returned).
-    found = {outcome.chunk_id for outcome in outcomes}
+    found = {outcome.chunk_id for outcome in result.outcomes}
     not_found = [str(chunk_id) for chunk_id in patch.chunk_ids if chunk_id not in found]
 
-    # 4. Shape the per-chunk outcomes and the gap.
+    # 4. Shape the per-chunk outcomes and the gap, plus the request-level search-store sync signal
+    #    (Postgres committed; a pending Qdrant sync heals on a re-run/backfill — never a false OK).
     return BulkChunkEnabledResponse(
-        results=[ExplorerHelpers.chunk_toggle(outcome) for outcome in outcomes],
+        results=[ExplorerHelpers.chunk_toggle(outcome) for outcome in result.outcomes],
         not_found=not_found,
+        search_sync_pending=result.search_sync_pending,
+        search_sync_error=result.search_sync_error,
     )
 
 

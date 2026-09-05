@@ -24,7 +24,7 @@ from shared_libs.services.db.qdrant import ENABLED_KEY, QdrantClient, QdrantInde
 
 # ====== Local Project Imports ======
 from .helpers import DatabaseHelpers
-from .payloads import ChunkToggle
+from .payloads import ChunkToggle, ChunkToggleResult
 
 
 class EnablementFacade(LoggerClass):
@@ -82,9 +82,9 @@ class EnablementFacade(LoggerClass):
     # -------------------- chunks --------------------
     async def set_chunks_enabled(
         self, chunk_ids: Sequence[uuid.UUID], enabled: bool
-    ) -> list[ChunkToggle]:
+    ) -> ChunkToggleResult:
         """
-        Toggle chunks' searchability — set the override, flip the payload of embedded ones.
+        Toggle chunks' searchability — CONVERGENT across Postgres (truth) and Qdrant (derived).
 
         For each known chunk: write ``enabled_override`` in Postgres, recompute the effective state
         (``override ?? role_default_enabled(role)``) and, if the chunk has a Qdrant point, flip that
@@ -92,35 +92,62 @@ class EnablementFacade(LoggerClass):
         re-embed). A chunk that was never embedded has no point: enabling it cannot make it
         searchable here, so it is reported with ``reindex_required=True`` for a later on-demand embed.
 
+        The two stores cannot be committed atomically (no 2-phase commit across Postgres + Qdrant), so
+        this is CONVERGENT rather than falsely-atomic:
+
+        1. Postgres — the SOURCE OF TRUTH — commits FIRST (the override is durable before Qdrant).
+        2. The Qdrant payload flip then runs off that committed truth. It is idempotent (a pure
+           ``set_payload`` merge of the ``enabled`` key), so a re-run — or the collection
+           backfill/reconcile that reads the same Postgres truth — HEALS any divergence.
+        3. If the Qdrant flip fails AFTER the Postgres commit, the result carries
+           ``search_sync_pending=True`` (never a false full-success): Postgres reflects the toggle,
+           but the search store is stale until reconciled.
+
+        Residual (honest): Postgres is authoritative; Qdrant is EVENTUALLY consistent. A crash between
+        the commit and the Qdrant flip, or a reported ``search_sync_pending``, leaves the search store
+        briefly stale — re-running this toggle or the collection backfill converges the two stores.
+
         Args:
             chunk_ids (Sequence[uuid.UUID]): The chunks to toggle.
             enabled (bool): The desired state to store as the per-chunk override.
 
         Returns:
-            list[ChunkToggle]: One outcome per KNOWN chunk (unknown ids are omitted — the router
-            maps the gap to a 404 for the single-chunk route).
+            ChunkToggleResult: One outcome per KNOWN chunk (unknown ids omitted — the router maps the
+            gap to a 404 for the single-chunk route), plus the search-store sync signal.
         """
+        # 1. Commit the override in Postgres FIRST — the source of truth must be durable before the
+        #    derived store is touched. Unknown ids simply drop out (reported as absent upstream).
         async with self._postgres.session() as session:
-            # 1. Load the chunks; unknown ids simply drop out (reported as absent upstream).
             chunks = await ChunkApi.get_by_ids(session, chunk_ids)
             if not chunks:
-                return []
+                return ChunkToggleResult(outcomes=[])
 
-            # 2. Resolve each chunk's Qdrant collection through its document (the point's home).
+            # Resolve each chunk's Qdrant collection through its document (the point's home), then
+            # apply the override + gather the point payload flips per Qdrant collection.
             collection_by_document = await self._collections_by_document(session, chunks)
-
-            # 3. Apply the override + gather the point payload flips per Qdrant collection.
             outcomes, payloads_by_collection = self._apply_overrides(
                 chunks, enabled, collection_by_document
             )
+        # Postgres is committed here (the session exited cleanly).
 
-            # 4. Flip the embedded points' payload INSIDE the transaction — a Qdrant failure rolls
-            #    the Postgres overrides back, keeping the two stores consistent on the common path.
+        # 2. Reconcile the DERIVED search store off the committed truth. Idempotent set_payload, so a
+        #    re-run or the collection backfill heals a divergence. A failure here CANNOT roll Postgres
+        #    back (two stores) — surface it as PENDING instead of a false success or a swallowed error.
+        try:
             for name, payloads in payloads_by_collection.items():
                 await QdrantIndexApi.set_payload(self._qdrant.raw, name, payloads)
+        except Exception as exc:
+            self.logger.error(
+                f"Chunk toggle: Postgres committed enabled={enabled} for {len(outcomes)} chunk(s) "
+                f"but the Qdrant payload sync failed ({exc}); search store is stale until a re-run "
+                f"or backfill reconciles it"
+            )
+            return ChunkToggleResult(
+                outcomes=outcomes, search_sync_pending=True, search_sync_error=str(exc)
+            )
 
         self.logger.info(f"Toggled {len(outcomes)} chunk(s) enabled={enabled}")
-        return outcomes
+        return ChunkToggleResult(outcomes=outcomes)
 
     # -------------------- internals --------------------
     @staticmethod

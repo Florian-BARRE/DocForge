@@ -6,7 +6,7 @@ import uuid
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
-from shared_libs.services.db.facades import ChunkToggle
+from shared_libs.services.db.facades import ChunkToggle, ChunkToggleResult
 
 DOC_ID = "44444444-4444-4444-4444-444444444444"
 
@@ -55,7 +55,9 @@ def test_chunk_toggle_echoes_effective_and_reindex(client, monkeypatch) -> None:
 
     chunk_id = uuid.uuid4()
     toggle = AsyncMock(
-        return_value=[ChunkToggle(chunk_id=chunk_id, enabled=True, reindex_required=False)]
+        return_value=ChunkToggleResult(
+            outcomes=[ChunkToggle(chunk_id=chunk_id, enabled=True, reindex_required=False)]
+        )
     )
     monkeypatch.setattr(CONTEXT.database.enablement, "set_chunks_enabled", toggle)
 
@@ -66,6 +68,8 @@ def test_chunk_toggle_echoes_effective_and_reindex(client, monkeypatch) -> None:
         "chunk_id": str(chunk_id),
         "enabled": True,
         "reindex_required": False,
+        "search_sync_pending": False,
+        "search_sync_error": None,
     }
     # The single route delegates as a one-element bulk call.
     assert toggle.await_args.args[0] == [chunk_id]
@@ -77,7 +81,9 @@ def test_chunk_toggle_never_embedded_reports_reindex(client, monkeypatch) -> Non
 
     chunk_id = uuid.uuid4()
     toggle = AsyncMock(
-        return_value=[ChunkToggle(chunk_id=chunk_id, enabled=True, reindex_required=True)]
+        return_value=ChunkToggleResult(
+            outcomes=[ChunkToggle(chunk_id=chunk_id, enabled=True, reindex_required=True)]
+        )
     )
     monkeypatch.setattr(CONTEXT.database.enablement, "set_chunks_enabled", toggle)
 
@@ -92,7 +98,9 @@ def test_chunk_toggle_unknown_is_404(client, monkeypatch) -> None:
     from backend.context import CONTEXT
 
     monkeypatch.setattr(
-        CONTEXT.database.enablement, "set_chunks_enabled", AsyncMock(return_value=[])
+        CONTEXT.database.enablement,
+        "set_chunks_enabled",
+        AsyncMock(return_value=ChunkToggleResult(outcomes=[])),
     )
     response = client.patch(f"/api/v1/chunks/{uuid.uuid4()}/enabled", json={"enabled": False})
     assert response.status_code == 404, response.text
@@ -105,7 +113,9 @@ def test_bulk_chunk_toggle_reports_results_and_not_found(client, monkeypatch) ->
     known = uuid.uuid4()
     missing = uuid.uuid4()
     toggle = AsyncMock(
-        return_value=[ChunkToggle(chunk_id=known, enabled=False, reindex_required=False)]
+        return_value=ChunkToggleResult(
+            outcomes=[ChunkToggle(chunk_id=known, enabled=False, reindex_required=False)]
+        )
     )
     monkeypatch.setattr(CONTEXT.database.enablement, "set_chunks_enabled", toggle)
 
@@ -117,7 +127,42 @@ def test_bulk_chunk_toggle_reports_results_and_not_found(client, monkeypatch) ->
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["results"] == [
-        {"chunk_id": str(known), "enabled": False, "reindex_required": False}
+        {
+            "chunk_id": str(known),
+            "enabled": False,
+            "reindex_required": False,
+            "search_sync_pending": False,
+            "search_sync_error": None,
+        }
     ]
     assert body["not_found"] == [str(missing)]
+    assert body["search_sync_pending"] is False
+    assert body["search_sync_error"] is None
     assert toggle.await_args.args[0] == [known, missing]
+
+
+def test_bulk_chunk_toggle_surfaces_qdrant_pending(client, monkeypatch) -> None:
+    """When Postgres committed but the Qdrant sync failed, the batch response is honest, not a
+    false full-success: search_sync_pending=True + the error, with the committed per-chunk state."""
+    from backend.context import CONTEXT
+
+    known = uuid.uuid4()
+    toggle = AsyncMock(
+        return_value=ChunkToggleResult(
+            outcomes=[ChunkToggle(chunk_id=known, enabled=False, reindex_required=False)],
+            search_sync_pending=True,
+            search_sync_error="qdrant unreachable",
+        )
+    )
+    monkeypatch.setattr(CONTEXT.database.enablement, "set_chunks_enabled", toggle)
+
+    response = client.patch(
+        "/api/v1/chunks/enabled", json={"chunk_ids": [str(known)], "enabled": False}
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["search_sync_pending"] is True
+    assert body["search_sync_error"] == "qdrant unreachable"
+    # The Postgres truth still surfaces per chunk (the toggle IS committed).
+    assert body["results"][0]["enabled"] is False
