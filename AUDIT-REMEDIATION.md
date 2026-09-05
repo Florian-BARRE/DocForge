@@ -8,6 +8,8 @@
 
 ## Journal
 
+- **2026-09-05 — Vague J / 0.14.20 (V8 middlewares HTTP, 3 MOYENNE)** : (1) **idempotency in-progress wedge** — un original CRASHÉ avant d'écrire sa réponse laissait la clé en `in_progress` → 409 pendant TTL+GC (~25h). Nouveau knob `IDEMPOTENCY_INPROGRESS_TTL_SECONDS` (300s) + `_is_stale_in_progress` : une entrée in_progress dont l'horloge de départ précède la fenêtre est **réclamée** (le retry ré-exécute) ; un in-flight frais conflicte toujours (409). (2) **cache réponse idempotency non borné** — `IDEMPOTENCY_MAX_BODY_BYTES` n'était appliqué qu'au corps de REQUÊTE ; désormais la réponse au-delà du cap **n'est pas cachée** (l'op tourne normalement, pas de replay pour cette réponse oversize ; jamais de corps tronqué servi ni de bytes non bornés stockés). (3) **POST-reads audités + rétention infinie** — le contrat "les reads ne sont jamais audités" n'était tenu que par VERBE HTTP ; nouveau `AuditReadExclusion` (allow-list de TEMPLATES de routes POST pure-lecture : search, documents/query, estimate, pipelines inspect/edit/stages view+apply) — **par template, pas par capability** (export = READ-cap mais crée un job → reste audité, délibérément absent). Rétention : `AUDIT_RETENTION_DAYS` (0 = keep-forever, défaut inchangé) + cron arq `WORKER_AUDIT_GC_ENABLED` (enregistré seulement si retention>0, prune par `created_at`, **pas de migration**). Gate : docforge **1454 passed** (+19), ruff clean (1 fichier reformaté laissé par l'agent, corrigé) ; aucun changement OpenAPI/SDK. **→ V8 : 68/188.**
+
 - **2026-09-05 — Vague I / 0.14.19 (V8 write-atomicité, 2 MOYENNE — code-reviewed)** : (A) **PATCH collection atomique** — le PATCH appliquait contract/schema/blob/override en commits SÉPARÉS (échec en cours = collection à moitié patchée). Nouveau `CollectionsFacade.apply_update(id, CollectionUpdateSpec) -> CollectionUpdateResult` : toutes les parties DB sur UNE session, commit unique (rollback total sur échec) ; diff schema extrait en `_apply_schema_diff(session,...)` (compose dans la tx partagée, chemin standalone inchangé) ; le reconcile/backfill Qdrant reste APRÈS le commit (non-transactionnel, best-effort). +fix parité race rename→**409** (`DuplicateCollectionNameError` mappé dans apply_update ET le routeur, comme create). (B) **toggle chunk cross-store convergent** — PG (source de vérité) commit d'ABORD, puis sync Qdrant idempotent ; échec Qdrant post-commit → **signal partial-failure** (`search_sync_pending`+`search_sync_error`, champ additif surfacé au routeur, jamais un faux 200) que le backfill/reconcile guérit. **`code-reviewer` : APPROVED WITH SUGGESTIONS** — atomicité A prouvée sur UNE session (les parties appellent `CollectionApi.*(session,...)`, pas les wrappers façade qui ouvriraient une 2e tx), B prouvé PG-first + idempotent + contrat additif ; A-1 (race rename 500→409) **appliqué + testé**. Suggestions `-m db` read-back (persistance) notées en follow-up (hors gate serviceless). Gate 4 projets : docforge **1435 passed**, sdk **557** (parité, champ additif), mcp 48, ruff clean. **→ V8 : 65/188 ; backend data-layer atomicité 100%.**
 
 - **2026-09-05 — Vague H / 0.14.18 (V8 backend data-layer, 2 MOYENNE ; atomicité 2/3 déférée)** : (item 4) **provenance renvoyait le dernier job même FAILED** — un job échoué/running postérieur masquait le run qui a réellement produit l'IR affichée. Nouveau `JobApi.get_latest_successful_for_document` (status==DONE, plus récent) + façade + routeur explorer/provenance ; None si aucun run DONE (surface = indisponible). +test (un FAILED tardif ne masque pas le run réussi). (item 1) **lectures whole-collection non bornées** — l'estimate default scope charge tout puis slice ; désormais borné **à la requête** via le knob existant `ESTIMATE_MAX_SAMPLE_DOCUMENTS` (`limit=cap` + slice ceinture-bretelles). Bulk DELETE : nouveau knob `CORPUS_MAX_DELETE_SELECTION` (10000) — au-delà, supprime les N premiers (ordre déterministe) et renvoie **`capped=true` + `max_selection`** (champ additif, re-run pour le reste ; SDK model + snapshot OpenAPI mis à jour, parité verte). Explorer document list borné. Gate 4 projets : docforge **1428 passed**, sdk **557** (parité OpenAPI incl.) + format corrigé (1 fichier laissé par l'agent), mcp 48, ruff clean. **Déféré (wave dédiée)** : update_collection atomique (PATCH multi-commit) + toggle chunk cross-store atomique — items durs (transaction unifiée / convergence PG↔Qdrant), à faire avec code-review. **→ V8 : 63/188.**
@@ -125,8 +127,8 @@
 | V5 — Moteur & pipeline | 2 | 2 | 0 | 0 |
 | V6 — Frontend | 0 | 0 | 0 | 0 |
 | V7 — Documentation | 21 | 21 | 0 | 0 |
-| V8 — Outillage (.claude/tests/infra/télémétrie) | 188 | 65 | 3 | 120 |
-| **Total** | **247** | **123** | **3** | **121** |
+| V8 — Outillage (.claude/tests/infra/télémétrie) | 188 | 68 | 3 | 117 |
+| **Total** | **247** | **126** | **3** | **118** |
 
 
 ## V1 — Sécurité & authz (avant tout déploiement multi-tenant)  (30)
@@ -624,11 +626,11 @@
 
 ### Middlewares HTTP
 
-- [ ] **🟠 MOYENNE** · `design` — A crashed original execution wedges its Idempotency-Key with 409s for up to TTL+GC (~25h) — staleness never checked on the in-progress path  
+- [x] **🟠 MOYENNE** · `design` — A crashed original execution wedges its Idempotency-Key with 409s for up to TTL+GC (~25h) — staleness never checked on the in-progress path  
   `src/docforge/app/backend/libs/idempotency/middleware.py:211`
-- [ ] **🟠 MOYENNE** · `bug` — Idempotency response cache is unbounded — IDEMPOTENCY_MAX_BODY_BYTES enforced on the request only, contradicting its own config doc  
+- [x] **🟠 MOYENNE** · `bug` — Idempotency response cache is unbounded — IDEMPOTENCY_MAX_BODY_BYTES enforced on the request only, contradicting its own config doc  
   `src/docforge/app/backend/libs/idempotency/response_buffer.py:25`
-- [ ] **🟠 MOYENNE** · `divergence-doc` — POST-shaped read endpoints (search, corpus query, estimate) are audited — docs promise 'reads are never audited', and the trail keeps rows forever by default  
+- [x] **🟠 MOYENNE** · `divergence-doc` — POST-shaped read endpoints (search, corpus query, estimate) are audited — docs promise 'reads are never audited', and the trail keeps rows forever by default  
   `src/docforge/app/backend/libs/audit/helpers.py:49`
 - [ ] **⚪ FAIBLE** · `design` — Audit trail gaps grouped: keyed requests are audited BEFORE the client gets the response; unhandled non-HTTPException escapes skip the audit row; 401/429 attempts leave no trail  
   `src/docforge/app/backend/libs/audit/middleware.py:79`

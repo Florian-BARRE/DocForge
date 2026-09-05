@@ -158,6 +158,49 @@ class IdempotencyFacade(LoggerClass):
                 completed_at=completed_at,
             )
 
+    async def reclaim_stale(
+        self,
+        *,
+        actor_scope: str,
+        method: str,
+        path: str,
+        idempotency_key: str,
+        request_fingerprint: str,
+        expires_at: datetime,
+        claimed_at: datetime,
+        stale_before: datetime,
+    ) -> bool:
+        """
+        Atomically re-claim a STALE in-progress record (crashed owner) onto the retrying request.
+
+        Args:
+            actor_scope (str): The resolved actor identity.
+            method (str): The request's HTTP method.
+            path (str): The eligible route TEMPLATE.
+            idempotency_key (str): The client-supplied key.
+            request_fingerprint (str): sha256 hex of the reclaiming request's body.
+            expires_at (datetime): The fresh TTL horizon for the reclaimed record.
+            claimed_at (datetime): The reclaim instant — the record's new in-progress start clock.
+            stale_before (datetime): Only a record whose ``created_at`` predates this is reclaimable.
+
+        Returns:
+            bool: True only when THIS call won the atomic claim (the middleware then runs the handler);
+                False when the record was NOT stale, already gone, or a concurrent retry won the race.
+        """
+        # 1. One committed conditional UPDATE — the API owns the mutual-exclusion semantics.
+        async with self._postgres.session() as session:
+            return await IdempotencyApi.reclaim_stale(
+                session,
+                actor_scope=actor_scope,
+                method=method,
+                path=path,
+                idempotency_key=idempotency_key,
+                request_fingerprint=request_fingerprint,
+                expires_at=expires_at,
+                claimed_at=claimed_at,
+                stale_before=stale_before,
+            )
+
     async def delete(
         self,
         *,

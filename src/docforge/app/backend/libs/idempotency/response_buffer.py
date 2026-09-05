@@ -18,9 +18,11 @@ class IdempotencyResponseBuffer:
 
     def __init__(self) -> None:
         """Initialise an empty buffer (no response captured yet)."""
-        # 1. The captured start message (status + headers) and the ordered body chunks.
+        # 1. The captured start message (status + headers), the ordered body chunks, and a running
+        #    byte tally so the middleware can decide (without re-summing) whether the body is cacheable.
         self._start: Message | None = None
         self._body_chunks: list[bytes] = []
+        self._size: int = 0
 
     async def send(self, message: Message) -> None:
         """
@@ -29,11 +31,27 @@ class IdempotencyResponseBuffer:
         Args:
             message (Message): An ASGI response message (``http.response.start`` or ``.body``).
         """
-        # 1. Remember the start line (status + headers) and accumulate body bytes in order.
+        # 1. Remember the start line (status + headers) and accumulate body bytes (+ size) in order.
         if message["type"] == "http.response.start":
             self._start = message
         elif message["type"] == "http.response.body":
-            self._body_chunks.append(message.get("body", b""))
+            chunk = message.get("body", b"")
+            self._body_chunks.append(chunk)
+            self._size += len(chunk)
+
+    def exceeds(self, limit: int) -> bool:
+        """
+        Report whether the captured response body exceeds a byte cap (too large to cache).
+
+        Args:
+            limit (int): The maximum cacheable response-body size in bytes.
+
+        Returns:
+            bool: True when the accumulated body is larger than ``limit`` (must NOT be cached — it is
+                still flushed to the client verbatim, only the idempotent replay is skipped).
+        """
+        # 1. Compare the running tally — never re-materialise the joined body just to size it.
+        return self._size > limit
 
     @property
     def status(self) -> int | None:

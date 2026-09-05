@@ -142,11 +142,22 @@ class RUNTIME_CONFIG(EnvConfigLoader):
     # it. 24h matches the Stripe convention — long enough for a client's retry storm, short enough to
     # keep the table small.
     IDEMPOTENCY_TTL_HOURS: int = env("IDEMPOTENCY_TTL_HOURS", cast=int, default=24)
-    # Hard cap (BYTES) on a request body the middleware will BUFFER to fingerprint + a response it will
-    # buffer to cache. Eligible endpoints take small JSON, so 256 KiB is ample; a rare eligible request
-    # whose body somehow exceeds this SKIPS idempotency (logged) and streams straight through rather
-    # than risk an out-of-memory buffer. The large multipart uploads (document + import bundle) are
-    # excluded from the eligible set outright, so this cap only ever guards a pathological JSON body.
+    # How long an IN-PROGRESS guard may sit before a retry is allowed to reclaim it (SECONDS). If the
+    # original execution crashes (process killed) BEFORE caching a response, its in-progress row would
+    # otherwise wedge every retry with a 409 until the full TTL above (+ GC) elapses. Past this
+    # (much shorter) window a retry atomically re-claims the record and re-runs; a genuinely in-flight
+    # request within the window still conflicts (409). Keep it comfortably above the slowest legitimate
+    # eligible handler (all are fast: create/patch a collection, a 202 reingest/export trigger).
+    IDEMPOTENCY_INPROGRESS_TTL_SECONDS: int = env(
+        "IDEMPOTENCY_INPROGRESS_TTL_SECONDS", cast=int, default=300
+    )
+    # Hard cap (BYTES) applied SYMMETRICALLY to the request body the middleware will BUFFER to
+    # fingerprint AND to the response body it will cache for replay. Eligible endpoints take + return
+    # small JSON, so 256 KiB is ample; a rare eligible request whose body exceeds this SKIPS idempotency
+    # (logged) and streams straight through rather than risk an out-of-memory buffer, and a response
+    # over this cap is served normally but NOT cached (the guard row is dropped so a retry re-executes)
+    # rather than bloating the store with unbounded bytes. The large multipart uploads (document +
+    # import bundle) are excluded from the eligible set outright, so this only ever guards small JSON.
     IDEMPOTENCY_MAX_BODY_BYTES: int = env(
         "IDEMPOTENCY_MAX_BODY_BYTES", cast=int, default=256 * 1024
     )

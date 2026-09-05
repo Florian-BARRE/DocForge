@@ -147,6 +147,70 @@ class IdempotencyApi:
         await session.execute(statement)
 
     @staticmethod
+    async def reclaim_stale(
+        session: AsyncSession,
+        *,
+        actor_scope: str,
+        method: str,
+        path: str,
+        idempotency_key: str,
+        request_fingerprint: str,
+        expires_at: datetime,
+        claimed_at: datetime,
+        stale_before: datetime,
+    ) -> bool:
+        """
+        Atomically re-claim a STALE in-progress record so a retry can re-run its handler.
+
+        A record is stale when its original owner crashed BEFORE caching a response: it stays
+        ``in_progress`` and its ``created_at`` (the in-progress start clock) is older than
+        ``stale_before``. This CONDITIONAL UPDATE resets that record onto THIS request — restarting
+        the clock (``created_at = claimed_at``), taking over the fingerprint + TTL, and clearing any
+        stale cached response. The clock reset is what makes the claim mutually exclusive: two
+        concurrent reclaimers race on the same row, the first bumps ``created_at`` past
+        ``stale_before`` so the second's ``created_at < stale_before`` predicate no longer matches —
+        exactly one wins (rowcount == 1), the loser re-reads and 409s / replays normally.
+
+        Args:
+            session (AsyncSession): The active session.
+            actor_scope (str): The resolved actor identity.
+            method (str): The request's HTTP method.
+            path (str): The eligible route TEMPLATE.
+            idempotency_key (str): The client-supplied key.
+            request_fingerprint (str): sha256 hex of the reclaiming request's body (the new owner's).
+            expires_at (datetime): The fresh TTL horizon for the reclaimed record.
+            claimed_at (datetime): The reclaim instant — becomes the record's new start clock.
+            stale_before (datetime): Only a record whose ``created_at`` predates this is reclaimable.
+
+        Returns:
+            bool: True only when THIS call won the atomic claim (exactly one row updated).
+        """
+        # 1. Conditional UPDATE guarded by (still in_progress AND older than the stale cutoff); the
+        #    created_at reset both restarts the staleness clock and serialises concurrent reclaimers.
+        statement = (
+            update(IdempotencyKey)
+            .where(
+                IdempotencyKey.actor_scope == actor_scope,
+                IdempotencyKey.method == method,
+                IdempotencyKey.path == path,
+                IdempotencyKey.idempotency_key == idempotency_key,
+                IdempotencyKey.state == IdempotencyState.in_progress,
+                IdempotencyKey.created_at < stale_before,
+            )
+            .values(
+                request_fingerprint=request_fingerprint,
+                expires_at=expires_at,
+                created_at=claimed_at,
+                response_status=None,
+                response_body=None,
+                response_media_type=None,
+                completed_at=None,
+            )
+        )
+        result = await session.execute(statement)
+        return (result.rowcount or 0) == 1
+
+    @staticmethod
     async def delete(
         session: AsyncSession,
         *,

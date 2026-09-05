@@ -12,6 +12,7 @@ from dataclasses import dataclass
 
 # ====== Local Project Imports ======
 from ..auth import AuthPrincipal
+from .read_exclusion import AuditReadExclusion
 
 # Only these verbs mutate state and are therefore audited; reads (GET/HEAD/OPTIONS) are skipped.
 _MUTATING_METHODS: frozenset[str] = frozenset({"POST", "PUT", "PATCH", "DELETE"})
@@ -55,13 +56,19 @@ class AuditHelpers:
             path (str): The request path (``scope["path"]``).
 
         Returns:
-            bool: True only for a mutating verb on the ``/api/v1`` surface.
+            bool: True only for a mutating request on the ``/api/v1`` surface — a read verb, a
+                non-API path, or a POST-shaped READ endpoint (search / query / estimate / pipeline
+                design) all return False (reads are never audited, whatever their verb).
         """
-        # 1. Reads never mutate → never audited.
+        # 1. Read verbs never mutate → never audited.
         if method not in _MUTATING_METHODS:
             return False
         # 2. Only the API surface carries auditable actions.
-        return path.startswith(_API_PREFIX)
+        if not path.startswith(_API_PREFIX):
+            return False
+        # 3. A handful of genuinely read-only endpoints are exposed over POST (they need a JSON body):
+        #    honour the "reads are never audited" contract by excluding them explicitly.
+        return not AuditReadExclusion.is_read(path)
 
     @staticmethod
     def actor(principal: AuthPrincipal | None) -> AuditActor:
