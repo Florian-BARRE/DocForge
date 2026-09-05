@@ -8,6 +8,8 @@
 
 ## Journal
 
+- **2026-09-05 — Vague V8-docs (PIPELINE.md ↔ code, 8 items — pas de release)** : passe de vérité pipeline, agent `pipeline`, **tous les claims re-vérifiés contre le code** (PIPELINE.md était le côté stale ; les config.py/core.py nommés étaient exacts → seul PIPELINE.md édité). (1) chunk : `overlap_tokens` défaut **64** (pas 0), `detect_web_chrome` documenté, marqueur `[Image:]` **non émis** (figure vide → None). (2) contextualize/llm : table config purgée des champs endpoint migrés en P6 (base_url/api_key/model/max_tokens/temperature → chaîne). (3) enrich : nœud "vlm scanned" **inexistant** supprimé du mermaid, `scanned_text`=OCR-only, terminal `figure_entry` FromFirst ; seuils **vérifiés identiques** (pas de fix). (4) intake : `pdf_probe max_pages`=2000, `IntakeResult` +source_format/source_content/preview_pdf, slot `source_probe`, canal html/md natif. (5) scan doctrine : `do_ocr` défaut **True** (OCR-default persona), doc "false toujours" corrigée. (6) doc_meta : **une** ancre titre (title_field/fallback_to_heading), pas "all metadata". (7) search : le read-side métadonnées **EST câblé** (`SearchTarget`→`meta_<slug>_dense` via TargetVectorResolver) ; `embed_semantic_fields=false` = défaut **coût**, pas un trou. (8) inventaire : +`(ocr,paddle)`, `read_text` naming, `/embed_all`, UNIQUE list (+granite/pp_structure/deliver/embedders) ; `deliver`/`vlm_entry`/`structgen`/parser bricks **déjà présents** (pas de drift). **0 CODE FINDING** (tout était drift doc). **→ V8 : 76/188.** Pas de tag (docs non packagées).
+
 - **2026-09-05 — Vague J / 0.14.20 (V8 middlewares HTTP, 3 MOYENNE)** : (1) **idempotency in-progress wedge** — un original CRASHÉ avant d'écrire sa réponse laissait la clé en `in_progress` → 409 pendant TTL+GC (~25h). Nouveau knob `IDEMPOTENCY_INPROGRESS_TTL_SECONDS` (300s) + `_is_stale_in_progress` : une entrée in_progress dont l'horloge de départ précède la fenêtre est **réclamée** (le retry ré-exécute) ; un in-flight frais conflicte toujours (409). (2) **cache réponse idempotency non borné** — `IDEMPOTENCY_MAX_BODY_BYTES` n'était appliqué qu'au corps de REQUÊTE ; désormais la réponse au-delà du cap **n'est pas cachée** (l'op tourne normalement, pas de replay pour cette réponse oversize ; jamais de corps tronqué servi ni de bytes non bornés stockés). (3) **POST-reads audités + rétention infinie** — le contrat "les reads ne sont jamais audités" n'était tenu que par VERBE HTTP ; nouveau `AuditReadExclusion` (allow-list de TEMPLATES de routes POST pure-lecture : search, documents/query, estimate, pipelines inspect/edit/stages view+apply) — **par template, pas par capability** (export = READ-cap mais crée un job → reste audité, délibérément absent). Rétention : `AUDIT_RETENTION_DAYS` (0 = keep-forever, défaut inchangé) + cron arq `WORKER_AUDIT_GC_ENABLED` (enregistré seulement si retention>0, prune par `created_at`, **pas de migration**). Gate : docforge **1454 passed** (+19), ruff clean (1 fichier reformaté laissé par l'agent, corrigé) ; aucun changement OpenAPI/SDK. **→ V8 : 68/188.**
 
 - **2026-09-05 — Vague I / 0.14.19 (V8 write-atomicité, 2 MOYENNE — code-reviewed)** : (A) **PATCH collection atomique** — le PATCH appliquait contract/schema/blob/override en commits SÉPARÉS (échec en cours = collection à moitié patchée). Nouveau `CollectionsFacade.apply_update(id, CollectionUpdateSpec) -> CollectionUpdateResult` : toutes les parties DB sur UNE session, commit unique (rollback total sur échec) ; diff schema extrait en `_apply_schema_diff(session,...)` (compose dans la tx partagée, chemin standalone inchangé) ; le reconcile/backfill Qdrant reste APRÈS le commit (non-transactionnel, best-effort). +fix parité race rename→**409** (`DuplicateCollectionNameError` mappé dans apply_update ET le routeur, comme create). (B) **toggle chunk cross-store convergent** — PG (source de vérité) commit d'ABORD, puis sync Qdrant idempotent ; échec Qdrant post-commit → **signal partial-failure** (`search_sync_pending`+`search_sync_error`, champ additif surfacé au routeur, jamais un faux 200) que le backfill/reconcile guérit. **`code-reviewer` : APPROVED WITH SUGGESTIONS** — atomicité A prouvée sur UNE session (les parties appellent `CollectionApi.*(session,...)`, pas les wrappers façade qui ouvriraient une 2e tx), B prouvé PG-first + idempotent + contrat additif ; A-1 (race rename 500→409) **appliqué + testé**. Suggestions `-m db` read-back (persistance) notées en follow-up (hors gate serviceless). Gate 4 projets : docforge **1435 passed**, sdk **557** (parité, champ additif), mcp 48, ruff clean. **→ V8 : 65/188 ; backend data-layer atomicité 100%.**
@@ -127,8 +129,8 @@
 | V5 — Moteur & pipeline | 2 | 2 | 0 | 0 |
 | V6 — Frontend | 0 | 0 | 0 | 0 |
 | V7 — Documentation | 21 | 21 | 0 | 0 |
-| V8 — Outillage (.claude/tests/infra/télémétrie) | 188 | 68 | 3 | 117 |
-| **Total** | **247** | **126** | **3** | **118** |
+| V8 — Outillage (.claude/tests/infra/télémétrie) | 188 | 76 | 3 | 109 |
+| **Total** | **247** | **134** | **3** | **110** |
 
 
 ## V1 — Sécurité & authz (avant tout déploiement multi-tenant)  (30)
@@ -672,15 +674,15 @@
   `src/docforge/shared/libs/pipelines/ingest/nodes/parse/parser/docling/helpers.py:96`
 - [ ] **🟠 MOYENNE** · `design` — Layout view mis-attributes table content and carried-heading ids in segmentChunkText  
   `src/docforge/app/frontend/src/features/explorer/layout/chunkAssembly.ts:37`
-- [ ] **🟠 MOYENNE** · `divergence-doc` — PIPELINE.md chunk section stale on three points vs shipped code  
+- [x] **🟠 MOYENNE** · `divergence-doc` — PIPELINE.md chunk section stale on three points vs shipped code  
   `src/docforge/PIPELINE.md:289`
-- [ ] **🟠 MOYENNE** · `divergence-doc` — PIPELINE.md contextualize/llm config table lists endpoint fields the method config no longer has (P6 externalization not reflected in the table)  
+- [x] **🟠 MOYENNE** · `divergence-doc` — PIPELINE.md contextualize/llm config table lists endpoint fields the method config no longer has (P6 externalization not reflected in the table)  
   `src/docforge/shared/libs/pipelines/ingest/nodes/contextualize/llm/config.py:18`
-- [ ] **🟠 MOYENNE** · `divergence-doc` — PIPELINE.md enrich topology stale: 'vlm scanned' complement node does not exist; scanned_text is OCR-only; thresholds differ  
+- [x] **🟠 MOYENNE** · `divergence-doc` — PIPELINE.md enrich topology stale: 'vlm scanned' complement node does not exist; scanned_text is OCR-only; thresholds differ  
   `src/docforge/PIPELINE.md:222`
-- [ ] **🟠 MOYENNE** · `divergence-doc` — PIPELINE.md intake stage stale: pdf_probe max_pages ceiling, IntakeResult extra fields, source_probe slot, html/md preview channel  
+- [x] **🟠 MOYENNE** · `divergence-doc` — PIPELINE.md intake stage stale: pdf_probe max_pages ceiling, IntakeResult extra fields, source_probe slot, html/md preview channel  
   `src/docforge/shared/libs/pipelines/ingest/nodes/intake/pdf_probe/core.py:26`
-- [ ] **🟠 MOYENNE** · `divergence-doc` — PIPELINE.md scan doctrine contradicts code: do_ocr defaults to True, doc mandates 'do_ocr=false toujours'  
+- [x] **🟠 MOYENNE** · `divergence-doc` — PIPELINE.md scan doctrine contradicts code: do_ocr defaults to True, doc mandates 'do_ocr=false toujours'  
   `src/docforge/shared/libs/pipelines/ingest/nodes/parse/parser/docling/config.py:20`
 - [ ] **🟠 MOYENNE** · `bug` — Retry stacking: VLM and embed openai_compatible leave the SDK client at its default 2 retries under their own hand-loops  
   `src/docforge/shared/libs/pipelines/nodes/vlm/openai_compatible/core.py:66`
@@ -688,7 +690,7 @@
   `src/docforge/shared/libs/pipelines/ingest/nodes/parse/parser/pp_structure/table.py:123`
 - [ ] **🟠 MOYENNE** · `design` — Uniform→classified round-trip silently drops the per-class VLM chains (classes route to zero-spend skip without a notice)  
   `src/docforge/shared/libs/pipelines/ingest/stages/reader.py:179`
-- [ ] **🟠 MOYENNE** · `divergence-doc` — doc_meta contextualizer diverges from PIPELINE.md: single title anchor, not 'all declared metadata', different config surface  
+- [x] **🟠 MOYENNE** · `divergence-doc` — doc_meta contextualizer diverges from PIPELINE.md: single title anchor, not 'all declared metadata', different config surface  
   `src/docforge/shared/libs/pipelines/ingest/nodes/contextualize/doc_meta/core.py:19`
 - [x] **⚪ FAIBLE** · `bug` — Cost estimate treats paddle as the paid OCR representative, hiding a hosted escalation tail  
   `src/docforge/shared/libs/pipelines/ingest/estimate/plan.py:93`
@@ -700,7 +702,7 @@
   `src/docforge/shared/libs/pipelines/ingest/nodes/parse/parser/base/language.py:265`
 - [ ] **⚪ FAIBLE** · `consistency` — Overlap semantics soft spots: cap overshoot, missing validator, 'same section only' claim  
   `src/docforge/shared/libs/pipelines/ingest/nodes/chunk/fixed_size/core.py:73`
-- [ ] **⚪ FAIBLE** · `divergence-doc` — PIPELINE.md inventory drift (grouped): missing paddle OCR, deliver/, vlm_entry, parser bricks in tree, structgen, UNIQUE list, read_text naming, chunker defaults/knobs, /embed_all; architecture.md still says preflight 'reste à ajouter'  
+- [x] **⚪ FAIBLE** · `divergence-doc` — PIPELINE.md inventory drift (grouped): missing paddle OCR, deliver/, vlm_entry, parser bricks in tree, structgen, UNIQUE list, read_text naming, chunker defaults/knobs, /embed_all; architecture.md still says preflight 'reste à ajouter'  
   `src/docforge/PIPELINE.md:51`
 - [ ] **⚪ FAIBLE** · `perf` — Semantic chunker fires one unbatched-by-us embedding call over every context window  
   `src/docforge/shared/libs/pipelines/ingest/nodes/chunk/semantic/core.py:118`
@@ -715,7 +717,7 @@
 
 ### Search & retrieval
 
-- [ ] **🟠 MOYENNE** · `divergence-doc` — PIPELINE.md claims search does not query chunk-scope semantic field vectors — the read side is wired  
+- [x] **🟠 MOYENNE** · `divergence-doc` — PIPELINE.md claims search does not query chunk-scope semantic field vectors — the read side is wired  
   `src/docforge/PIPELINE.md:427`
 - [ ] **🟠 MOYENNE** · `design` — Rewrite/HyDE provider endpoints invisible to health/preflight, and their degrade is invisible to callers  
   `src/docforge/shared/libs/pipelines/search/nodes/query/base.py:92`
