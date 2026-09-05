@@ -6,7 +6,8 @@
 # auth-disabled principal reports full, unscoped access.
 
 # ====== Third-Party Library Imports ======
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import ValidationError
 
 # ====== Internal Project Imports ======
 from ...libs.auth import AuthPrincipal, Capability
@@ -36,8 +37,13 @@ async def whoami(principal: AuthPrincipal = Depends(authenticate)) -> WhoAmI:
             capabilities=[capability.value for capability in Capability],
             collections=["*"],
         )
-    # 2. A scoped key: report exactly the capabilities + collections it was granted.
-    permissions = KeyPermissions.model_validate(principal.key.permissions)
+    # 2. A scoped key: report exactly the capabilities + collections it was granted. A malformed
+    #    (corrupt/legacy) permissions blob must DEGRADE like the authz gate — a clean 403 "grants
+    #    nothing", never a 500 from an unhandled ValidationError.
+    try:
+        permissions = KeyPermissions.model_validate(principal.key.permissions)
+    except ValidationError:
+        raise HTTPException(status_code=403, detail="API key has malformed permissions.")
     return WhoAmI(
         authenticated=True,
         root=False,

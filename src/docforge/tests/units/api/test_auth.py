@@ -745,3 +745,39 @@ async def test_middleware_short_circuits_401_before_downstream(fastapi_app, monk
 
     assert recorder.status == 401
     assert called["downstream"] is False
+
+
+# ── whoami self-introspection (GET /auth/whoami) ────────────────────────────────────────────────
+
+
+async def test_whoami_reports_full_access_for_a_root_principal(fastapi_app) -> None:
+    from backend.libs.auth import Capability  # noqa: PLC0415
+    from backend.routers.auth.whoami import whoami  # noqa: PLC0415
+
+    # A null-permissions / auth-off principal is full-access: every capability, wildcard scope.
+    result = await whoami(principal=_principal(permissions=None))
+    assert result.root is True
+    assert result.collections == ["*"]
+    assert set(result.capabilities) == {c.value for c in Capability}
+
+
+async def test_whoami_reports_a_scoped_keys_grants(fastapi_app) -> None:
+    from backend.routers.auth.whoami import whoami  # noqa: PLC0415
+
+    collection_id = "11111111-1111-1111-1111-111111111111"
+    result = await whoami(
+        principal=_principal(permissions={"capabilities": ["read"], "collections": [collection_id]})
+    )
+    assert result.root is False
+    assert result.capabilities == ["read"]
+    assert result.collections == [collection_id]
+
+
+async def test_whoami_degrades_to_403_on_a_malformed_permissions_blob(fastapi_app) -> None:
+    from backend.routers.auth.whoami import whoami  # noqa: PLC0415
+
+    # A corrupt/legacy blob (extra='forbid' rejects the unknown field) must DEGRADE like the authz
+    # gate — a clean 403, never an unhandled ValidationError surfaced as a 500 by auto_handle_errors.
+    with pytest.raises(HTTPException) as excinfo:
+        await whoami(principal=_principal(permissions={"garbage_field": True}))
+    assert excinfo.value.status_code == 403

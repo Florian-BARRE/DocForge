@@ -48,3 +48,20 @@ def test_redacts_only_userinfo_not_the_path() -> None:
     """Only the authority credentials are dropped — scheme, host, port and path survive."""
     out = ConfigDumpHelpers.masked(_FakeConfig("DSN=scheme://u:p@host:5432/db?opt=1"))
     assert out == "DSN=scheme://***@host:5432/db?opt=1"
+
+
+def test_redact_text_scrubs_userinfo_in_a_free_text_message() -> None:
+    """A provider exception message embedding credentials is scrubbed while the rest survives."""
+    out = ConfigDumpHelpers.redact_text(
+        "EndpointUnreachableError: cannot reach https://u:secret@host/path (timeout)"
+    )
+    assert "secret" not in out
+    assert "https://***@host/path" in out
+    assert out.startswith("EndpointUnreachableError:")
+    assert out.endswith("(timeout)")
+
+
+def test_redact_text_preserves_a_credential_free_message() -> None:
+    """A message with no embedded userinfo is returned verbatim (full diagnostic value)."""
+    message = "ConnectionError: cannot reach http://bge_server:8000/health"
+    assert ConfigDumpHelpers.redact_text(message) == message

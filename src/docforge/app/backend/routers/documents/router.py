@@ -35,6 +35,7 @@ from shared_libs.services.db.s3 import S3Object
 # ====== Local Project Imports ======
 from ...context import CONTEXT
 from ...libs.auth import AuthPrincipal, AuthzGuard, Capability, require
+from ...libs.logsafe import LogSafeHelpers
 from ...utils.error_handling import auto_handle_errors
 from ...utils.ingest_enqueuer import IngestEnqueuer
 from ...utils.pipeline_validation import PipelineBlobValidator
@@ -218,7 +219,9 @@ async def upload_document(
                 f"job is marked failed. Re-ingest the document once the queue is reachable."
             ),
         )
-    CONTEXT.logger.info(f"Admitted '{filename}' as {created.id} (job {job.id})")
+    CONTEXT.logger.info(
+        f"Admitted '{LogSafeHelpers.sanitize(filename)}' as {created.id} (job {job.id})"
+    )
     return UploadAccepted(document_id=str(created.id), job_id=str(job.id))
 
 

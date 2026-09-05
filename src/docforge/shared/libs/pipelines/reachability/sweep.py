@@ -16,6 +16,7 @@ from time import perf_counter
 from loggerplusplus import LoggerClass
 
 # ====== Internal Project Imports ======
+from shared_libs.observability import ConfigDumpHelpers
 from shared_libs.pipelines.base import ActionNode, ForEach, Group
 from shared_libs.pipelines.nodes.openai_compat import (
     EndpointAuthError,
@@ -51,8 +52,13 @@ class ReachabilitySweep(LoggerClass):
 
     @staticmethod
     def __detail(exc: Exception) -> str:
-        """Format an exception into a compact, human-readable probe detail."""
-        return f"{type(exc).__name__}: {exc}"
+        """Format an exception into a compact, human-readable probe detail.
+
+        Any ``scheme://user:pass@host`` userinfo the exception echoes (a credential-bearing
+        ``base_url`` surfaced in an auth/transport failure) is redacted before the detail is
+        serialised onto the probe result — the rest of the message is preserved for diagnostics.
+        """
+        return ConfigDumpHelpers.redact_text(f"{type(exc).__name__}: {exc}")
 
     @staticmethod
     def __probe_cap(node: ActionNode) -> float:
@@ -89,9 +95,12 @@ class ReachabilitySweep(LoggerClass):
             ProviderProbeResult: The structured outcome for this leaf.
         """
         family = NodeRegistry.family_of(type(node))
-        # The provider's base URL is secret-free (the api_key is a separate config field) — surface
-        # it so a health dashboard can name WHICH endpoint each stage points at.
-        endpoint = getattr(node.config, "base_url", None)
+        # The provider's base URL is normally secret-free (the api_key is a separate config field) —
+        # surface it so a health dashboard can name WHICH endpoint each stage points at. Still redact
+        # any ``scheme://user:pass@host`` userinfo an operator may have embedded in it, so a
+        # credential-bearing base_url never leaks through the endpoint field or the blocked detail.
+        raw_endpoint = getattr(node.config, "base_url", None)
+        endpoint = ConfigDumpHelpers.redact_text(raw_endpoint) if raw_endpoint else raw_endpoint
 
         # 1. A leaf with no preflight override has no endpoint to reach — nothing to probe.
         if not self.probes_endpoint(node):
@@ -104,8 +113,10 @@ class ReachabilitySweep(LoggerClass):
             )
 
         # 2. Egress gate: a provider whose host is not on the operator's allowlist is REFUSED here,
-        #    before the network probe — so this seam can never be turned into a host/port scanner.
-        if policy is not None and not policy.is_allowed(endpoint):
+        #    before the network probe — so this seam can never be turned into a host/port scanner. The
+        #    allowlist matches on the RAW url (host parsing needs the intact authority); only the
+        #    surfaced ``endpoint`` is the redacted form.
+        if policy is not None and not policy.is_allowed(raw_endpoint):
             return ProviderProbeResult(
                 node_id=node.id,
                 kind=node.KIND,

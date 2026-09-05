@@ -19,6 +19,7 @@ from runner.cache import StageCacheHook
 
 # ====== Internal Project Imports (worker) ======
 from backend.context import CONTEXT
+from shared_libs.observability import ConfigDumpHelpers
 
 # ====== Internal Project Imports ======
 from shared_libs.pipelines.ingest import (
@@ -298,9 +299,12 @@ async def ingest_document(
         CONTEXT.logger.exception(f"Ingestion failed for document {document_id}: {exc}")
         breadcrumb = getattr(exc, "breadcrumb", None)
         await database.ingestion.mark_failed(doc_uuid)
+        # Redact any ``scheme://user:pass@host`` userinfo a provider exception may echo (a
+        # credential-bearing base_url surfaced in a transport/auth error) before it is persisted on
+        # the job row — the message is otherwise preserved verbatim for diagnostics.
         await database.jobs.mark_failed(
             job_uuid,
-            error=f"{type(exc).__name__}: {exc}",
+            error=ConfigDumpHelpers.redact_text(f"{type(exc).__name__}: {exc}"),
             finished_at=datetime.now(UTC),
             failed_node_id=breadcrumb.node_id if breadcrumb else None,
             failed_node_kind=breadcrumb.node_kind if breadcrumb else None,

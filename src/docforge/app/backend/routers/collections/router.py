@@ -25,6 +25,7 @@ from ...libs.auth import AuthPrincipal, AuthzGuard, Capability, require
 from ...libs.corpus import DocumentFilter, DocumentSelector, DocumentSelectorResolver
 from ...libs.estimate import CollectionEstimateRequest
 from ...libs.health import CollectionHealthResponse
+from ...libs.logsafe import LogSafeHelpers
 from ...libs.reingest import BulkReingestAccepted, BulkReingestRequest, BulkReingestService
 from ...utils.error_handling import auto_handle_errors
 from ...utils.pipeline_validation import PipelineBlobValidator
@@ -296,7 +297,9 @@ async def create_collection(
     #    it by appending the id to its own scope (root / wildcard keys already cover everything).
     await CollectionStoreSync.grant_creator_scope(principal, str(created.id))
 
-    CONTEXT.logger.info(f"Collection '{request.name}' created ({len(rows)} fields)")
+    CONTEXT.logger.info(
+        f"Collection '{LogSafeHelpers.sanitize(request.name)}' created ({len(rows)} fields)"
+    )
     return CollectionHelpers.to_model(
         created, await CONTEXT.database.collections.get_schema(created.id)
     )
