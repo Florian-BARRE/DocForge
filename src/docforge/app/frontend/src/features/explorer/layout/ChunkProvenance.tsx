@@ -5,7 +5,7 @@
 // makes "which IR became which part of the chunk, and what was added" literally visible, colour-
 // consistent with the page boxes + IR cards. Details of the added parts live in the provenance column.
 
-import type { IREnrichment } from "../../../api/explorer";
+import type { IREnrichment, IRTable } from "../../../api/explorer";
 import { theme } from "../../../theme";
 import { blockStyle } from "./blockColors";
 import { segmentChunkText, type ChunkMember } from "./chunkAssembly";
@@ -14,14 +14,15 @@ interface ChunkProvenanceProps {
   chunkText: string;
   members: ChunkMember[];
   enrichmentsByBlock: Map<string, IREnrichment[]>;
+  tablesByBlock: Map<string, IRTable>;
   strategy: string;
   tokenCount: number;
   /** The selected block's reading-order index — its segment is emphasised. */
   selectedBlockIndex: number | null;
 }
 
-export function ChunkProvenance({ chunkText, members, enrichmentsByBlock, strategy, tokenCount, selectedBlockIndex }: ChunkProvenanceProps) {
-  const segments = segmentChunkText(chunkText, members, enrichmentsByBlock);
+export function ChunkProvenance({ chunkText, members, enrichmentsByBlock, tablesByBlock, strategy, tokenCount, selectedBlockIndex }: ChunkProvenanceProps) {
+  const segments = segmentChunkText(chunkText, members, enrichmentsByBlock, tablesByBlock);
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: theme.space.s }}>
       <div style={{ display: "flex", alignItems: "baseline", gap: theme.space.xs, flexWrap: "wrap" }}>

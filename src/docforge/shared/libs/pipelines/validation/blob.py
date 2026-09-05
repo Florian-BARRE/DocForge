@@ -16,6 +16,7 @@ from shared_libs.pipelines.build import BuildError, PipelineBuilder
 
 # ====== Local Project Imports ======
 from .issues import ValidationIssue
+from .palette import PaletteScopeValidator
 from .search_contract import SearchResultContract
 from .validator import GraphValidator
 
@@ -88,18 +89,41 @@ class BlobStructureValidator(LoggerClass):
             raise BlobValidationError(f"failed structural validation ({summary})", issues)
         return group
 
+    def __enforce_palette(self, group, allowed_kinds: dict[str, set[str]]) -> None:
+        """
+        Reject any node whose (family, kind) is outside a pipeline's palette.
+
+        Args:
+            group: The built, structurally-valid graph to scope-check.
+            allowed_kinds (dict[str, set[str]]): The target pipeline's family → allowed kinds map.
+
+        Raises:
+            BlobValidationError: When any node is foreign to the pipeline's palette.
+        """
+        # 1. A structurally valid graph can still be wired from a FOREIGN kind — reject it here.
+        issues = PaletteScopeValidator.validate(group, allowed_kinds)
+        if issues:
+            summary = "; ".join(f"{issue.location}: {issue.message}" for issue in issues)
+            raise BlobValidationError(f"uses kinds outside the palette ({summary})", issues)
+
     def validate_ingest(self, blob: dict) -> None:
         """
-        Structurally validate an INGEST pipeline blob (build + graph validation).
+        Structurally validate an INGEST pipeline blob (build + graph validation + palette scope).
 
         Args:
             blob (dict): The stored ingest pipeline configuration.
 
         Raises:
-            BlobValidationError: When the blob cannot be built or fails structural validation.
+            BlobValidationError: When the blob cannot be built, fails structural validation, or
+                contains a kind foreign to the ingestion pipeline's palette.
         """
-        # 1. Build + structural validation is the whole ingest contract.
-        self.__build_and_validate(blob)
+        # 1. Build + structural validation, then reject any kind foreign to the ingestion palette.
+        #    The facade is imported lazily: importing IngestPipeline at module load would cycle
+        #    (facade -> validation package -> this module) and eagerly register the whole node graph.
+        from shared_libs.pipelines.ingest import IngestPipeline
+
+        group = self.__build_and_validate(blob)
+        self.__enforce_palette(group, IngestPipeline.allowed_kinds())
 
     def validate_search(self, blob: dict) -> None:
         """
@@ -109,13 +133,20 @@ class BlobStructureValidator(LoggerClass):
             blob (dict): The stored search graph configuration.
 
         Raises:
-            BlobValidationError: When the blob cannot be built, fails structural validation, or does
-                not terminate on a ``deliver/hits`` node producing a SearchResult.
+            BlobValidationError: When the blob cannot be built, fails structural validation,
+                contains a kind foreign to the search palette, or does not terminate on a
+                ``deliver/hits`` node producing a SearchResult.
         """
-        # 1. Structural validation first (build + graph validator).
+        # 1. Structural validation first (build + graph validator). The facade is imported lazily
+        #    to avoid a module-load import cycle (see validate_ingest).
+        from shared_libs.pipelines.search import SearchPipeline
+
         group = self.__build_and_validate(blob)
 
-        # 2. Terminal contract — a non-search graph is rejected here, mirroring the runner's assert.
+        # 2. Reject any kind that does not belong to the SEARCH pipeline's palette.
+        self.__enforce_palette(group, SearchPipeline.allowed_kinds())
+
+        # 3. Terminal contract — a non-search graph is rejected here, mirroring the runner's assert.
         if not SearchResultContract.terminates_on_search_result(group):
             raise BlobValidationError(
                 "is not a valid search pipeline — it must end on a deliver/hits node producing "

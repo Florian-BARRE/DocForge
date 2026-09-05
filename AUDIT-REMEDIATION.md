@@ -8,6 +8,8 @@
 
 ## Journal
 
+- **2026-09-05 — Vague AB / 0.14.38 (V8 2 MOYENNE : Layout segmentation + palette scoping, 2 agents || disjoints)** : (1) **Layout `segmentChunkText` mal-attribution** — (a) une TABLE : le texte réellement embarqué par le chunker est une grille markdown rendue serveur-side (`__markdown_grid` depuis `IRTable.cells`), jamais `block.text` → nouveau `renderTableMarkdown()` (miroir cell-for-cell du backend) mappe la grille au bloc TABLE, plus de glue non-attribuée ; (b) un heading porté dont le titre duplique la 1re ligne du passage suivant était droppé par le chunker mais son id voyageait quand même → `duplicatesNextMember()` skippe ce heading (miroir du drop chunker), plus de vol de span au paragraphe. `tablesByBlock` threadé dans la chaîne de composants. +4 tests vitest ; gate conteneur vert (lint 0-err, tsc, 9 tests, build). (2) **palette scoping non enforced** — `/edit`+les guards write-time acceptaient TOUT kind du `NodeRegistry` global (un kind search dans un graphe ingest buildait+se sauvait). Nouveau `PaletteScopeValidator` : allowed-set = par famille buildée, `FAMILY_KINDS[famille]` si scopée (deliver→bundle/hits) sinon tous les kinds de la famille (inclut le wiring non-selectable prep/apply/skip/keep_raw → superset strict du picker) ; `KIND_NOT_IN_PALETTE` émis par nœud étranger. Câblé aux 3 seams write (ingest/search validators + `BlobStructureValidator` pour l'import worker, façades importées lazy pour éviter le cycle) ; GraphEditor laissé (la validation au write couvre ses sorties). Nouveau ValidationCode → snapshot OpenAPI régénéré (additif, drift OK). +14 tests. Gate 4 projets : docforge **1625 passed**, sdk 557+drift, mcp 48, ruff clean. **→ V8 : 142 fait.**
+
 - **2026-09-05 — Vague AA / 0.14.37 (V8 data-layer perf/consistency, 1 groupé)** : (1) **calls unbatchés** — verdict split : le write Qdrant est DÉJÀ batché (finding stale, verrouillé par test) ; le vrai smell était l'embedding **par champ** (N forward passes) → batché **par axe** (1 dense + 1 sparse au lieu de N) ; extrait `MetaVectorSyncHelpers.plan_meta_axes`. (2) **listing legacy non borné** — `backfill_collection_meta_vectors` chargeait toute la collection en RAM → **boucle paginée** (page 500) ; même fix au sibling `FilterSyncFacade`. (3) **protected-member coupling** (`embedder._embed_dense/_sparse`) — **reporté** : contrat cross-package établi (le node search encode l'utilise aussi) ; un fix propre exige des accessors sur `BaseEmbedderNode` (scope pipeline interdit). (4) docstrings rafraîchies. Best-effort/idempotence préservés. +7 tests. Gate : **1611 passed** (+7), ruff clean, 0 changement OpenAPI. **→ V8 : 140 fait.**
 
 - **2026-09-05 — Vague Z / 0.14.36 (V8 smells substantiels IR/moteur, 3 findings groupés)** : (1) **Provenance mutable partagée** — le vrai bug était dans `docling/mapper.py` (constante classe `_PAGELESS_PROVENANCE` assignée à CHAQUE bloc page-less html/md → aliasing latent car `Provenance` est mutable Pydantic) ; remplacée par une factory fresh-per-bloc. Les refs de l'audit (models_ir, pp_structure) étaient **périmées/déjà safe** (vérifié : fresh-per-bloc). +test d'indépendance. (2) **magic string `header_footer`** — le vrai (translator.py:175 `== "header_footer"`) → `== BlockType.HEADER_FOOTER` (fait par **moi**, +import) ; ailleurs déjà l'enum. (3) **warning ScoreBelow parasite** — ne se déclenche plus que sur `SUCCESS` (plus de bruit sur chaque échec où le score est légitimement absent). (4) **caption folding divergent** — chunker vs vues md/html foldaient différemment (le chunker fig+table avant/après, le linearizer figure-après seulement) → règle unique extraite `ChunkerHelpers.attach_captions` (texte de chunk **byte-identique**) consommée par les deux ; `_emit_table` fold la caption (md italique / html `<caption>`). +tests (caption ×3, ScoreBelow ×2, Provenance ×1). Gate : **1604 passed** (+6), ruff clean, 0 changement OpenAPI. Résidus cosmétiques notés (stale FromFirst comment, list-content answers). **→ V8 : 139 fait.**
@@ -167,8 +169,8 @@
 | V5 — Moteur & pipeline | 2 | 2 | 0 | 0 |
 | V6 — Frontend | 0 | 0 | 0 | 0 |
 | V7 — Documentation | 21 | 21 | 0 | 0 |
-| V8 — Outillage (.claude/tests/infra/télémétrie) | 188 | 140 | 4 | 44 |
-| **Total** | **247** | **198** | **4** | **45** |
+| V8 — Outillage (.claude/tests/infra/télémétrie) | 188 | 142 | 4 | 42 |
+| **Total** | **247** | **200** | **4** | **43** |
 
 
 ## V1 — Sécurité & authz (avant tout déploiement multi-tenant)  (30)
@@ -490,7 +492,7 @@
 
 ### API pipelines
 
-- [ ] **🟠 MOYENNE** · `design` — Palette scoping (FAMILY_KINDS / FAMILIES / SELECTABLE) is advisory only — /edit accepts any registered kind and the write-time guard is pipeline-agnostic  
+- [x] **🟠 MOYENNE** · `design` — Palette scoping (FAMILY_KINDS / FAMILIES / SELECTABLE) is advisory only — /edit accepts any registered kind and the write-time guard is pipeline-agnostic  
   `src/docforge/shared/libs/pipelines/edit/editor.py:74`
 - [ ] **⚪ FAIBLE** · `divergence-doc` — CLAUDE.md families list is stale vs the registered palette  
   `CLAUDE.md:106`
@@ -710,7 +712,7 @@
   `src/docforge/shared/libs/pipelines/ingest/stages/enrich_body.py:297`
 - [x] **🟠 MOYENNE** · `bug` — Docling bbox normalization neither clamps to [0,1] nor guards the page-size fallback — violates the Provenance contract pp_structure honors  
   `src/docforge/shared/libs/pipelines/ingest/nodes/parse/parser/docling/helpers.py:96`
-- [ ] **🟠 MOYENNE** · `design` — Layout view mis-attributes table content and carried-heading ids in segmentChunkText  
+- [x] **🟠 MOYENNE** · `design` — Layout view mis-attributes table content and carried-heading ids in segmentChunkText  
   `src/docforge/app/frontend/src/features/explorer/layout/chunkAssembly.ts:37`
 - [x] **🟠 MOYENNE** · `divergence-doc` — PIPELINE.md chunk section stale on three points vs shipped code  
   `src/docforge/PIPELINE.md:289`

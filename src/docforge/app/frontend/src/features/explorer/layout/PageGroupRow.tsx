@@ -11,7 +11,7 @@
 
 import { useMemo, useState } from "react";
 
-import type { ChunkInfo, IRBlock, IREnrichment, PageInfo } from "../../../api/explorer";
+import type { ChunkInfo, IRBlock, IREnrichment, IRTable, PageInfo } from "../../../api/explorer";
 import { PageBoxOverlay, type OverlayBox } from "../../../components/PageBoxOverlay";
 import { theme } from "../../../theme";
 import { displayPage } from "../format";
@@ -23,6 +23,7 @@ interface PageGroupRowProps {
   pages: PageInfo[];
   blocks: IRBlock[];
   enrichmentsByBlock: Map<string, IREnrichment[]>;
+  tablesByBlock: Map<string, IRTable>;
   chunkByBlockId: Map<string, ChunkInfo>;
   /** The parser chain that produced the IR (with fallback outcomes) — extraction provenance per block. */
   parseChain: { kind: string; status: string }[];
@@ -32,7 +33,7 @@ interface PageGroupRowProps {
 
 type Selection = { kind: "block" | "chunk"; id: string };
 
-export function PageGroupRow({ pages, blocks, enrichmentsByBlock, chunkByBlockId, parseChain, rowId }: PageGroupRowProps) {
+export function PageGroupRow({ pages, blocks, enrichmentsByBlock, tablesByBlock, chunkByBlockId, parseChain, rowId }: PageGroupRowProps) {
   const [selected, setSelected] = useState<Selection | null>(null);
 
   const selectBlock = (id: string) =>
@@ -180,6 +181,7 @@ export function PageGroupRow({ pages, blocks, enrichmentsByBlock, chunkByBlockId
         blocks={blocks}
         chunks={chunksInRow}
         enrichmentsByBlock={enrichmentsByBlock}
+        tablesByBlock={tablesByBlock}
         chunkByBlockId={chunkByBlockId}
         selectedBlockId={selectedBlockId}
         activeChunkId={activeChunkId}
