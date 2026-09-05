@@ -24,11 +24,16 @@ class RunContext:
         cache_hook (CacheHook | None): The worker-provided stage-cache seam. When present, the engine
             consults it at a cacheable root node's boundary (a HIT skips the node). None (the default)
             makes the engine run exactly as if no cache existed — no behaviour change whatsoever.
+        callback_error (BaseException | None): Set by the engine when the progress callback itself
+            raised (caller-owned control flow — e.g. the worker's cooperative-cancel guard aborting
+            at a stage boundary). ``execute``'s record-not-crash net re-raises this UNCHANGED instead
+            of converting it into a recorded FAILED run, so the caller's abort semantics stay intact.
     """
 
     run_input: dict[str, Any]
     progress_callback: ProgressCallback | None = None
     cache_hook: CacheHook | None = None
+    callback_error: BaseException | None = None
 
 
 __all__ = ["RunContext"]

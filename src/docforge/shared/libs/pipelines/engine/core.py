@@ -33,6 +33,7 @@ from shared_libs.pipelines.base import (
 # ====== Local Project Imports ======
 from .cache import CacheHook
 from .context import RunContext
+from .errors import EngineInvariantError
 from .navigation import GraphNavigator
 from .progress import ProgressCallback, ProgressEvent, ProgressPhase
 from .resolver import InputResolver, ResolutionError
@@ -320,18 +321,30 @@ class FlowEngine(LoggerClass):
         record: NodeExecutionRecord | None = None,
         total_items: int | None = None,
     ) -> None:
-        """Fire the run's progress callback for a node event, if one is registered."""
+        """Fire the run's progress callback for a node event, if one is registered.
+
+        The progress callback is CALLER-OWNED control flow: the worker wraps it with a cooperative-
+        cancel guard that RAISES at a stage boundary to abort the run. Such an exception must reach
+        the caller UNCHANGED (so it can mark the job CANCELLED, not FAILED) — it is never a node
+        failure. Record which exception came from the callback so ``execute``'s record-not-crash net
+        re-raises it rather than converting it into a FAILED record. (``asyncio.CancelledError`` is a
+        BaseException and already bypasses that net; only an ``Exception``-typed abort needs marking.)
+        """
         if context.progress_callback is None:
             return
-        await context.progress_callback(
-            ProgressEvent(
-                phase=phase,
-                node_id=node.id,
-                kind=node.KIND,
-                record=record,
-                total_items=total_items,
+        try:
+            await context.progress_callback(
+                ProgressEvent(
+                    phase=phase,
+                    node_id=node.id,
+                    kind=node.KIND,
+                    record=record,
+                    total_items=total_items,
+                )
             )
-        )
+        except Exception as exc:
+            context.callback_error = exc
+            raise
 
     async def __dispatch(
         self,
@@ -370,7 +383,13 @@ class FlowEngine(LoggerClass):
                     error=ErrorInfo(error_type="ResolutionError", message=str(exc)),
                 )
             return await self._run_group(node, context, group_input=sub_group_input)
-        raise TypeError(f"Unsupported node type in group '{group.id}': {type(node).__name__}")
+        # A node that is neither an action, a foreach, nor a sub-group can only enter the graph
+        # through a code/build bug (the engine's own type system is violated) — never a data or
+        # config failure. Raise the engine-invariant marker so execute() surfaces it LOUDLY rather
+        # than masking a broken build as a recorded node failure.
+        raise EngineInvariantError(
+            f"unsupported node type in group '{group.id}': {type(node).__name__}"
+        )
 
     async def __run_child(
         self,
@@ -511,6 +530,33 @@ class FlowEngine(LoggerClass):
                 duration_ms=(perf_counter() - started) * 1000,
                 error=ErrorInfo(
                     error_type="TimeoutError", message=f"pipeline exceeded {timeout_seconds}s"
+                ),
+            )
+        except EngineInvariantError:
+            # A genuinely-unrecoverable violation of the engine's OWN construction invariants (a
+            # graph node whose type the engine does not support) — a code/build bug, not a run
+            # failure. Surface it LOUDLY rather than masking it as a recorded FAILED run.
+            self.logger.error(f"Pipeline '{group.id}' hit an engine-invariant violation")
+            raise
+        except Exception as exc:
+            # Record-not-crash contract, honoured UNIFORMLY: any OTHER escape — a structural raise
+            # the validator should have caught (a cycle, a bad entry count, a dangling transition
+            # target) OR an unexpected internal engine error — becomes a FAILED record so the caller
+            # (the runner) sees the documented recorded-failure, never a raw crash. The lone
+            # exception is a progress callback that raised: that is caller-owned control flow (the
+            # worker's cooperative-cancel guard), so it propagates UNCHANGED — the run's CANCELLED
+            # semantics stay intact. (asyncio.CancelledError is a BaseException and bypasses this net
+            # entirely, so a worker shutdown/timeout still tears the task down as before.)
+            if context.callback_error is not None and context.callback_error is exc:
+                raise
+            self.logger.exception(f"Pipeline '{group.id}' crashed; recording a FAILED run: {exc}")
+            return None, NodeExecutionRecord(
+                node_id=group.id,
+                kind=group.KIND,
+                status=NodeStatus.FAILED,
+                duration_ms=(perf_counter() - started) * 1000,
+                error=ErrorInfo(
+                    error_type=type(exc).__name__, message=str(exc), traceback=format_exc()
                 ),
             )
 

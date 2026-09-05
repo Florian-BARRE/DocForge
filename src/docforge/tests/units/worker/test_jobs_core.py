@@ -266,6 +266,70 @@ async def test_dequeue_skip_guard_bails_on_a_reaped_failed_job(jobs_core, monkey
     database.jobs.force_terminate.assert_not_awaited()
 
 
+async def test_hard_cancel_writes_both_terminal_rows(jobs_core, monkeypatch) -> None:
+    """A hard cancel (asyncio.CancelledError from arq job_timeout / SIGTERM / hot-reload) marks BOTH
+    truths FAILED (job terminal, document re-ingestable) and re-raises so asyncio finishes the
+    teardown — the baseline the second-cancel test below hardens."""
+    import asyncio  # noqa: PLC0415
+
+    import pytest  # noqa: PLC0415
+
+    database = _fake_database()
+    document_id, context = _wire(jobs_core, monkeypatch, database, points=[MagicMock()])
+    context.runner.run = AsyncMock(side_effect=asyncio.CancelledError())
+
+    with pytest.raises(asyncio.CancelledError):
+        await jobs_core.ingest_document({}, str(document_id), str(uuid.uuid4()))
+
+    database.ingestion.mark_failed.assert_awaited_once_with(document_id)
+    database.jobs.mark_failed.assert_awaited_once()
+    assert database.jobs.mark_failed.await_args.kwargs["error_type"] == "CancelledError"
+    database.jobs.mark_done.assert_not_awaited()
+    database.jobs.force_terminate.assert_not_awaited()
+
+
+async def test_second_cancel_racing_the_terminal_write_still_reaches_terminal(
+    jobs_core, monkeypatch
+) -> None:
+    """Finding 2: a SECOND cancellation racing the terminal write must NOT skip it. The document
+    write is blocked so a second cancel lands mid-shield; the shielded write is driven to completion
+    (both truths committed) and the cancellation is only then propagated. Without the fix the second
+    cancel abandoned the shield await, leaving the JOB row non-terminal (a stalled orphan)."""
+    import asyncio  # noqa: PLC0415
+
+    import pytest  # noqa: PLC0415
+
+    database = _fake_database()
+    document_id, context = _wire(jobs_core, monkeypatch, database, points=[MagicMock()])
+    context.runner.run = AsyncMock(side_effect=asyncio.CancelledError())
+
+    # Block the document terminal write so a second cancellation can land WHILE it is in flight.
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def _blocking_doc_write(_doc) -> None:
+        started.set()
+        await release.wait()
+
+    database.ingestion.mark_failed = AsyncMock(side_effect=_blocking_doc_write)
+
+    task = asyncio.ensure_future(jobs_core.ingest_document({}, str(document_id), str(uuid.uuid4())))
+    await started.wait()  # now suspended inside the shielded terminal write
+    task.cancel()  # SECOND cancellation, racing the shielded write
+    await asyncio.sleep(0)  # deliver the cancel to the shield await
+    release.set()  # let the shielded write complete
+
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    # Both terminal truths committed despite the racing second cancel — the JOB row is terminal.
+    database.ingestion.mark_failed.assert_awaited_once_with(document_id)
+    database.jobs.mark_failed.assert_awaited_once()
+    assert database.jobs.mark_failed.await_args.kwargs["error_type"] == "CancelledError"
+    database.jobs.force_terminate.assert_not_awaited()
+    database.jobs.mark_done.assert_not_awaited()
+
+
 async def test_cooperative_cancel_at_boundary_terminates_without_failing(
     jobs_core, monkeypatch
 ) -> None:

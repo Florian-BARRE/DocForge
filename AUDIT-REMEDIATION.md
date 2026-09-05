@@ -8,6 +8,8 @@
 
 ## Journal
 
+- **2026-09-05 — Vague V / 0.14.32 (V8 correctness exécution moteur/worker, 2 FAIBLE — load-bearing vérifié)** : (1) **execute() record-not-crash** — le moteur ne catchait que `TimeoutError` ; toute autre échappatoire (cycle guard, entry count, transition dangling, node non supporté, erreur interne) bubblait en crash brut au lieu du FAILED record documenté. Nouveau `EngineInvariantError` (violation du type-system moteur = seul raise loud sanctionné) ; `execute()` re-raise l'invariant PUIS un filet `except Exception` renvoie un `NodeExecutionRecord` FAILED. **Carve-out cancel** : le callback progress est du contrôle-caller (le `CancellationGuard` du worker lève `JobCancelledError`, une Exception) — `__emit` capture via `RunContext.callback_error` et re-raise pour que le filet ne l'avale pas (cancel coopératif préservé). (2) **écriture terminale hard-cancel** — l'ancien double `await shield` sous `except Exception` pouvait skipper la 2e écriture (job non-terminal) sur un 2e CancelledError, et `except Exception` ne catche pas CancelledError (BaseException). Nouveau `_commit_terminal_cancel_write` : les DEUX écritures dans UN coroutine shieldé, drive-to-completion absorbant les cancels répétés, CancelledError géré explicitement ; état terminal FAILED (re-ingestable, sémantique existante). +5 tests, **load-bearing prouvé** (source stashée → tests échouent). Gate : **1572 passed** (+5), ruff clean, 0 changement OpenAPI/SDK. **→ V8 : 134/188.**
+
 - **2026-09-05 — Vague U / 0.14.31 (V8 edit+search correctness, 3 FAIBLE — scope strict)** : (1) **AutoWire ForEach items** — typait depuis le PREMIER terminal seulement ; réécrit pour miroir la règle d'uniformité du validator (`ForEach.item_type()`) : tous les terminaux mêmes type sinon `None` (l'auto-wire devient un sous-ensemble de ce que le validator accepte ; un corps divergent → pas d'auto-wire + `FOREACH_INVALID_BODY`). (2) **RemoveNode `over` dangling** — retirer un nœud qu'un ForEach sibling itère **refuse** désormais (`EditError` nommant le loop) car `over` est un champ requis non-healable (mirroir du précédent set_after ; pas de graphe valide-mais-faux). (3) **score_kind rerank dégradé** — un rerank dégradé (fallback fusion) reportait quand même `cross_encoder_rerank` ; `score_kind` prend un flag `rerank_degraded` (détecté via le marqueur rerank-spécifique `_RERANK_DEGRADED` dans `debug["degraded"]`, PAS n'importe quel degrade) → label fusion correct ; commentaire "hydrated exactly once" stale corrigé (le pool livré est hydraté une fois ; le rerank lit séparément le top_n). +6 tests. Gate : **1567 passed** (+6), ruff clean, **0 changement OpenAPI** (score_kind = champ str existant, seule la valeur retournée sur le chemin degrade change). Obs : la règle d'uniformité ForEach vit maintenant en 3 endroits (item_type/validation/autowire) — candidat refacto futur. **→ V8 : 132/188.**
 
 - **2026-09-05 — Vague T / 0.14.30 (V8 middlewares HTTP fidélité, 3 FAIBLE groupés — scope strict)** : (1) **audit** — (a) pré/post-réponse **déjà OK vérifié** (row écrite après le run avec le vrai status) ; (b) une exception non gérée (500-class) **laisse désormais une row** (`try/finally` autour de `self.app`, `_record` en finally fail-safe, exception re-levée intacte) ; (c) auditer 401/429 = **non-goal documenté** (nécessiterait de sortir l'audit des gates → app.py hors scope + perte d'attribution acteur + spam junk-path). (2) **metrics** — short-circuits (replay/reject idempotency, 401/429) n'atterrissent plus tous sur `__unmatched__` : clé partagée `SCOPE_ROUTE_TEMPLATE` (idempotency stashe le template résolu) → route réelle ; 401/429 sans template → label distinct `__gate_rejected__` ; SSE **exclu de l'histogramme de latence** (compté mais pas timé). Reporté : le walk de la route-table FastAPI n'est pas fiable (routing opaque) → non tenté. (3) **idempotency** — commentaires drifted corrigés (replay restaure status+body+content-type+marker, pas "200"/"verbatim") ; **résidu honnête** : la fidélité complète des headers au replay exige une colonne `response_headers` (migration + façade, hors scope `app/backend/libs`) — reporté, non forcé. +8 tests. Gate : **1561 passed** (+9), ruff clean, 0 changement OpenAPI/SDK. NB nouvel import inter-lib `idempotency→metrics` (vers la lib observability bas-niveau, sens acceptable). **→ V8 : 129/188.**
@@ -155,8 +157,8 @@
 | V5 — Moteur & pipeline | 2 | 2 | 0 | 0 |
 | V6 — Frontend | 0 | 0 | 0 | 0 |
 | V7 — Documentation | 21 | 21 | 0 | 0 |
-| V8 — Outillage (.claude/tests/infra/télémétrie) | 188 | 132 | 3 | 53 |
-| **Total** | **247** | **190** | **3** | **54** |
+| V8 — Outillage (.claude/tests/infra/télémétrie) | 188 | 134 | 3 | 51 |
+| **Total** | **247** | **192** | **3** | **52** |
 
 
 ## V1 — Sécurité & authz (avant tout déploiement multi-tenant)  (30)
@@ -598,7 +600,7 @@
   `src/docforge/app/frontend/src/features/stage-rail/state/useStageRailPage.ts:52`
 - [x] **🟠 MOYENNE** · `bug` — WorkersPanel and JobsPage stop polling permanently after one failed fetch  
   `src/docforge/app/frontend/src/features/monitoring/WorkersPanel.tsx:32`
-- [ ] **⚪ FAIBLE** · `design` — CancelledError terminal writes: a second cancellation mid-shield skips the job write, and Exception doesn't catch it  
+- [x] **⚪ FAIBLE** · `design` — CancelledError terminal writes: a second cancellation mid-shield skips the job write, and Exception doesn't catch it  
   `src/docforge/worker/backend/libs/jobs/core.py:258`
 - [x] **⚪ FAIBLE** · `dead-code` — Committed one-off Playwright scripts and QA screenshot binaries under frontend scripts/  
   `src/docforge/app/frontend/scripts/a11y-check.mjs:1` _(aussi: new-batch)_
@@ -675,7 +677,7 @@
   `src/docforge/shared/libs/pipelines/validation/rules/routing.py:95`
 - [x] **⚪ FAIBLE** · `consistency` — AutoWire types a foreach's items from its FIRST terminal only, diverging from the validator's uniformity rule  
   `src/docforge/shared/libs/pipelines/edit/wiring.py:122`
-- [ ] **⚪ FAIBLE** · `design` — Engine escape hatches crash execute() without a FAILED record, contradicting its own record-not-crash contract  
+- [x] **⚪ FAIBLE** · `design` — Engine escape hatches crash execute() without a FAILED record, contradicting its own record-not-crash contract  
   `src/docforge/shared/libs/pipelines/engine/core.py:421`
 - [x] **⚪ FAIBLE** · `bug` — ForEach body-group ids are excluded from the id-uniqueness scans (mint, fragment remap)  
   `src/docforge/shared/libs/pipelines/edit/topology.py:78`

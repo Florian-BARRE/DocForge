@@ -9,14 +9,17 @@ import asyncio
 import pytest
 
 from shared_libs.pipelines.base import (
+    AbstractNode,
     ErrorPolicy,
     FromGroupInput,
     FromNode,
     Group,
+    NodeType,
     OnSuccess,
     ScoreBelow,
     Transition,
 )
+from shared_libs.pipelines.engine import EngineInvariantError
 
 from .conftest import Cfg, Consumer, Failer, Producer, Scorer, Slow
 
@@ -115,3 +118,56 @@ def test_run_timeout_fails_the_group_loudly(engine) -> None:
     assert output is None
     assert record.status.value == "failed"
     assert record.error is not None
+
+
+def test_structural_escape_hatch_is_recorded_not_crashed(engine) -> None:
+    """A structural escape hatch (here a group with no single entry) is RECORDED as a FAILED run —
+    execute() honours its record-not-crash contract uniformly instead of bubbling a raw crash to
+    the caller. Two unwired producers give two entry nodes → GraphNavigator.entry raises, which the
+    engine now converts into a FAILED record rather than letting it escape."""
+    group = Group(
+        id="two-entries",
+        children=[Producer(id="a", config=Cfg()), Producer(id="b", config=Cfg())],
+        transitions=[],
+    )
+    output, record = asyncio.run(engine.execute(group, {}))
+    assert output is None
+    assert record.status.value == "failed"
+    assert record.error is not None
+
+
+def test_unsupported_node_type_raises_engine_invariant(engine) -> None:
+    """A node that is neither an action, a foreach, nor a sub-group can only enter the graph through
+    a code/build bug: the engine surfaces it LOUDLY as EngineInvariantError (the sanctioned
+    'may still raise' path), never masking a broken build as a recorded node failure."""
+
+    class _Alien(AbstractNode):
+        KIND = "test_engine_alien"
+        NODE_TYPE = NodeType.ACTION
+        NAME = "Alien"
+        SUMMARY = "s"
+
+        @classmethod
+        def describe(cls):  # pragma: no cover - never described, only dispatched
+            raise NotImplementedError
+
+    group = Group(id="alien", children=[_Alien(id="x")])
+    with pytest.raises(EngineInvariantError):
+        asyncio.run(engine.execute(group, {}))
+
+
+def test_progress_callback_exception_propagates_unrecorded(engine) -> None:
+    """A progress callback that RAISES is caller-owned control flow (e.g. the worker's cooperative-
+    cancel guard aborting at a stage boundary): its exception propagates out of execute() UNCHANGED,
+    never swallowed into a recorded FAILED run — otherwise a cooperative cancel would be
+    mis-reported as a plain failure and the worker could not mark the job CANCELLED."""
+
+    class _Abort(Exception):
+        pass
+
+    async def callback(event) -> None:
+        raise _Abort("cancel-like abort at a stage boundary")
+
+    group = Group(id="cb", children=[Producer(id="a", config=Cfg())])
+    with pytest.raises(_Abort):
+        asyncio.run(engine.execute(group, {}, progress_callback=callback))

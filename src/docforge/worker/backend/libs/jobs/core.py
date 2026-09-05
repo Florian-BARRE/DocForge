@@ -71,6 +71,70 @@ def _resolve_run_budget(
     return budget
 
 
+async def _commit_terminal_cancel_write(
+    database: Any, doc_uuid: uuid.UUID, job_uuid: uuid.UUID, logger: Any
+) -> None:
+    """Commit BOTH terminal truths (document + job FAILED) for a hard-cancelled run, guaranteed.
+
+    A hard cancel (arq's outer job_timeout, a worker SIGTERM/shutdown, a hot-reload) tears the task
+    down with ``asyncio.CancelledError``. The terminal write must still commit so the job is
+    terminal and the document re-ingestable — otherwise the row is left RUNNING forever (a stalled
+    orphan). Two hazards are handled here:
+
+    1. A SECOND cancellation racing the write. ``asyncio.shield`` stops the FIRST cancellation from
+       killing the write, but a second cancellation raised while awaiting the shield abandons the
+       await — the shielded task keeps running unobserved, so a naive ``await asyncio.shield(...)``
+       can skip the write entirely. The write is therefore driven to completion here: repeated
+       cancellations of OUR wait are absorbed and the same shielded task is re-awaited until it is
+       truly done.
+    2. ``CancelledError`` is a BaseException, so a bare ``except Exception`` would MISS it. It is
+       handled explicitly (the ``except asyncio.CancelledError`` inside the loop).
+
+    Best-effort by contract: the startup reclaim + reaper are the backstops for a hard kill that
+    skips this path entirely, so a genuine write error is logged, never raised.
+
+    Args:
+        database (Any): The worker's Database facade (jobs + ingestion facades).
+        doc_uuid (uuid.UUID): The document to mark FAILED (re-ingestable).
+        job_uuid (uuid.UUID): The job to mark FAILED (terminal).
+        logger (Any): The worker logger (a write error is logged, never raised).
+    """
+
+    async def _writes() -> None:
+        # 1. Both truths in one shielded unit so a second cancel cannot land BETWEEN them (which is
+        #    exactly how the old two-await form left the JOB row non-terminal).
+        await database.ingestion.mark_failed(doc_uuid)
+        await database.jobs.mark_failed(
+            job_uuid,
+            error="cancelled or timed out (worker shutdown / job budget) — re-ingest to retry",
+            finished_at=datetime.now(UTC),
+            error_type="CancelledError",
+        )
+
+    # 2. Drive the shielded write to completion, absorbing repeated cancellations of our own wait.
+    task = asyncio.ensure_future(_writes())
+    while not task.done():
+        try:
+            await asyncio.shield(task)
+        except asyncio.CancelledError:
+            # OUR wait was cancelled again (a second cancel); the shielded write keeps running —
+            # re-await it. Only stop if the task itself was somehow cancelled (it is shielded, so
+            # this cannot happen in practice, but the guard keeps the loop honest).
+            if task.cancelled():  # pragma: no cover - the write is shielded, never cancelled
+                return
+            continue
+        except Exception:
+            # The write itself raised; the task is now done — fall through to report it below.
+            break
+
+    # 3. Report a genuine write failure (best-effort). A cancellation of the write itself cannot
+    #    happen (it is shielded), so ``task.exception()`` is safe to read once done.
+    if not task.cancelled() and task.exception() is not None:  # pragma: no cover - best-effort
+        logger.warning(
+            f"Terminal write during cancel failed (backstops cover it): {task.exception()}"
+        )
+
+
 def _contract_from_rows(collection: Any, schema: list[MetadataField]) -> CollectionContract:
     """Build the pipeline's run-input contract from the collection + field rows."""
     return CollectionContract(
@@ -278,20 +342,10 @@ async def ingest_document(
         # the terminal writes so they commit even though this task is being torn down (best-effort:
         # the startup reclaim + reaper are the backstops for a hard kill that skips this entirely).
         CONTEXT.logger.warning(f"Ingestion cancelled/timed out for document {document_id}")
-        try:
-            await asyncio.shield(database.ingestion.mark_failed(doc_uuid))
-            await asyncio.shield(
-                database.jobs.mark_failed(
-                    job_uuid,
-                    error="cancelled or timed out (worker shutdown / job budget) — re-ingest to retry",
-                    finished_at=datetime.now(UTC),
-                    error_type="CancelledError",
-                )
-            )
-        except Exception as terminal_exc:  # pragma: no cover - best-effort terminal write
-            CONTEXT.logger.warning(
-                f"Terminal write during cancel failed (backstops cover it): {terminal_exc}"
-            )
+        # Guaranteed terminal write: survives a SECOND cancellation racing the write and handles
+        # CancelledError explicitly (it is a BaseException, missed by `except Exception`). Only the
+        # cancellation is finally propagated (bare `raise`) once the row is terminal.
+        await _commit_terminal_cancel_write(database, doc_uuid, job_uuid, CONTEXT.logger)
         raise
 
     except Exception as exc:
