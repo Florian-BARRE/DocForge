@@ -1,18 +1,24 @@
-"""Token-usage capture on paid text-gen nodes: an LLM/VLM whose model returns an AIMessage with
+"""Token-usage capture on paid nodes: an LLM/VLM whose model returns an AIMessage with
 ``usage_metadata`` stamps the usage (model + tokens) onto the returned output (which the engine
-lifts onto the record); a provider that OMITS usage (``usage_metadata=None``) leaves it None with no
-crash; and structgen's ``include_raw=True`` rebuild returns the parsed value UNCHANGED while still
-capturing usage from the raw message.
+lifts onto the record); a paid embed node folds each embeddings response's ``usage.prompt_tokens``
+into the output (``completion_tokens`` 0); a provider that OMITS usage leaves it None with no crash;
+and structgen's ``include_raw=True`` rebuild returns the parsed value UNCHANGED while still capturing
+usage from the raw message.
 
-The model call is faked (no endpoint). Usage rides on the output via the ``_usage`` private attr —
-proving the engine-facing seam without running the engine.
+The model/endpoint call is faked (no endpoint). Usage rides on the output via the ``_usage`` private
+attr — proving the engine-facing seam without running the engine.
 """
 
+import uuid
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 from langchain_core.messages import AIMessage
 
+from shared_libs.pipelines.nodes.embed.base import EmbedConsumes
+from shared_libs.pipelines.nodes.embed.openai_compatible import core as embed_core
+from shared_libs.pipelines.nodes.embed.openai_compatible.core import EmbedOpenAICompatibleNode
 from shared_libs.pipelines.nodes.llm.base import BaseLlmChatConfig, BaseLlmChatNode
 from shared_libs.pipelines.nodes.llm.base.io import LlmChatConsumes
 from shared_libs.pipelines.nodes.structgen.base import StructGenConfig, StructGenConsumes
@@ -24,6 +30,8 @@ from shared_libs.pipelines.nodes.vlm.base import VlmConsumes
 from shared_libs.pipelines.nodes.vlm.openai_compatible import core as vlm_core
 from shared_libs.pipelines.nodes.vlm.openai_compatible.core import VlmOpenAICompatibleNode
 from shared_libs.public_models import (
+    Chunk,
+    CollectionContract,
     FieldOrigin,
     FieldScope,
     FieldType,
@@ -117,6 +125,72 @@ async def test_vlm_without_usage_metadata_stays_none(monkeypatch) -> None:
     node = _vlm(monkeypatch, AIMessage(content="a chart", usage_metadata=None))
     out = await node.run(VlmConsumes(figure=FigureItem(block_id="f", image=b"png", read_text="")))
 
+    assert out._usage is None
+
+
+# --------------------------------------------------------------------------- #
+# embed — a paid endpoint folds its response usage (input tokens only) onto the output
+# --------------------------------------------------------------------------- #
+
+_EMBED_CONTRACT = CollectionContract(
+    collection_id=uuid.uuid4(),
+    name="c",
+    supported_formats=["pdf"],
+    max_file_size_bytes=1,
+    fields=[],
+)
+_EMBED_CHUNKS = [
+    Chunk(chunk_id="d#c0", ordinal=0, text="Cats purr."),
+    Chunk(chunk_id="d#c1", ordinal=1, text="Dogs bark."),
+]
+
+
+def _fake_embeddings_client(usage: object) -> MagicMock:
+    """An OpenAIEmbeddings stand-in whose ``async_client.create`` returns one vector per input.
+
+    The response mirrors an OpenAI-compatible embeddings payload: ``data`` (index + embedding) and a
+    single ``usage`` object carrying ``prompt_tokens`` for the whole batch.
+    """
+
+    async def _create(input: list[str], model: str, **_: object) -> SimpleNamespace:  # noqa: A002
+        data = [SimpleNamespace(index=i, embedding=[float(i)]) for i in range(len(input))]
+        return SimpleNamespace(data=data, usage=usage)
+
+    client = MagicMock()
+    client.async_client = SimpleNamespace(create=_create)
+    return client
+
+
+def _embed_node(monkeypatch, usage: object) -> EmbedOpenAICompatibleNode:
+    monkeypatch.setattr(
+        embed_core.OpenAICompatHelpers,
+        "embeddings",
+        lambda *a, **k: _fake_embeddings_client(usage),
+    )
+    return EmbedOpenAICompatibleNode(
+        id="embed",
+        config=embed_core.EmbedOpenAICompatibleConfig(
+            base_url="http://x", api_key="k", model="text-embedding-3-small"
+        ),
+    )
+
+
+async def test_embed_captures_input_tokens_as_usage(monkeypatch) -> None:
+    node = _embed_node(monkeypatch, SimpleNamespace(prompt_tokens=42, total_tokens=42))
+    out = await node.run(EmbedConsumes(chunks=_EMBED_CHUNKS, contract=_EMBED_CONTRACT))
+
+    assert len(out.embeddings.items) == 2
+    assert out._usage is not None
+    assert out._usage.model == "text-embedding-3-small"
+    # An embedding call bills input tokens only — completion is 0.
+    assert (out._usage.prompt_tokens, out._usage.completion_tokens) == (42, 0)
+
+
+async def test_embed_without_usage_stays_none(monkeypatch) -> None:
+    node = _embed_node(monkeypatch, None)  # endpoint omitted usage
+    out = await node.run(EmbedConsumes(chunks=_EMBED_CHUNKS, contract=_EMBED_CONTRACT))
+
+    assert len(out.embeddings.items) == 2  # still emits vectors — a usage miss never fails the node
     assert out._usage is None
 
 

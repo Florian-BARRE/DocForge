@@ -8,6 +8,8 @@
 
 ## Journal
 
+- **2026-09-05 — Vague W / 0.14.33 (V8 cost meter — moitié EMBED payé ; le cluster cost déféré redémarre PROPREMENT)** : ré-attaque du cluster cost (qui avait sprawlé/reverté) en fix **node-local** minimal après design read-only. Constat clé : le meter `StageUsageSummer` est DÉJÀ générique (somme `record.usage` de tout leaf, price via `price_usd`) — le trou n'est pas le meter mais que les nodes embed/OCR payés ne stampent pas `output._usage`. **EMBED (fait)** : le node embed openai_compatible appelle désormais le SDK OpenAI brut (`async_client.create`, LangChain `aembed_documents` jette le bloc usage) en re-triant `.data` par index (fidélité vecteurs), stampe `NodeUsage(model, prompt_tokens=Σinput, completion_tokens=0)` défensivement ; le node bge_server local reste gratuit. `price_usd` consulte `EMBED_PRICING` (fallback input-rate quand hors MODEL_PRICING) — unifie meter↔estimator. **6 fichiers exactement** (3 src + 3 tests), **0 fichier interdit** (execution.py/NodeUsage/engine/usage.py/estimate/rates intacts — embed rentre dans la shape token existante), 0 changement OpenAPI. +8 tests. Gate : **1580 passed** (+8), ruff clean. **Reste la moitié OCR** (per-page, mismatch de shape token → wave dédiée) → finding gardé `[~]`. **→ V8 : 134 fait / 4 en cours.**
+
 - **2026-09-05 — Vague V / 0.14.32 (V8 correctness exécution moteur/worker, 2 FAIBLE — load-bearing vérifié)** : (1) **execute() record-not-crash** — le moteur ne catchait que `TimeoutError` ; toute autre échappatoire (cycle guard, entry count, transition dangling, node non supporté, erreur interne) bubblait en crash brut au lieu du FAILED record documenté. Nouveau `EngineInvariantError` (violation du type-system moteur = seul raise loud sanctionné) ; `execute()` re-raise l'invariant PUIS un filet `except Exception` renvoie un `NodeExecutionRecord` FAILED. **Carve-out cancel** : le callback progress est du contrôle-caller (le `CancellationGuard` du worker lève `JobCancelledError`, une Exception) — `__emit` capture via `RunContext.callback_error` et re-raise pour que le filet ne l'avale pas (cancel coopératif préservé). (2) **écriture terminale hard-cancel** — l'ancien double `await shield` sous `except Exception` pouvait skipper la 2e écriture (job non-terminal) sur un 2e CancelledError, et `except Exception` ne catche pas CancelledError (BaseException). Nouveau `_commit_terminal_cancel_write` : les DEUX écritures dans UN coroutine shieldé, drive-to-completion absorbant les cancels répétés, CancelledError géré explicitement ; état terminal FAILED (re-ingestable, sémantique existante). +5 tests, **load-bearing prouvé** (source stashée → tests échouent). Gate : **1572 passed** (+5), ruff clean, 0 changement OpenAPI/SDK. **→ V8 : 134/188.**
 
 - **2026-09-05 — Vague U / 0.14.31 (V8 edit+search correctness, 3 FAIBLE — scope strict)** : (1) **AutoWire ForEach items** — typait depuis le PREMIER terminal seulement ; réécrit pour miroir la règle d'uniformité du validator (`ForEach.item_type()`) : tous les terminaux mêmes type sinon `None` (l'auto-wire devient un sous-ensemble de ce que le validator accepte ; un corps divergent → pas d'auto-wire + `FOREACH_INVALID_BODY`). (2) **RemoveNode `over` dangling** — retirer un nœud qu'un ForEach sibling itère **refuse** désormais (`EditError` nommant le loop) car `over` est un champ requis non-healable (mirroir du précédent set_after ; pas de graphe valide-mais-faux). (3) **score_kind rerank dégradé** — un rerank dégradé (fallback fusion) reportait quand même `cross_encoder_rerank` ; `score_kind` prend un flag `rerank_degraded` (détecté via le marqueur rerank-spécifique `_RERANK_DEGRADED` dans `debug["degraded"]`, PAS n'importe quel degrade) → label fusion correct ; commentaire "hydrated exactly once" stale corrigé (le pool livré est hydraté une fois ; le rerank lit séparément le top_n). +6 tests. Gate : **1567 passed** (+6), ruff clean, **0 changement OpenAPI** (score_kind = champ str existant, seule la valeur retournée sur le chemin degrade change). Obs : la règle d'uniformité ForEach vit maintenant en 3 endroits (item_type/validation/autowire) — candidat refacto futur. **→ V8 : 132/188.**
@@ -157,8 +159,8 @@
 | V5 — Moteur & pipeline | 2 | 2 | 0 | 0 |
 | V6 — Frontend | 0 | 0 | 0 | 0 |
 | V7 — Documentation | 21 | 21 | 0 | 0 |
-| V8 — Outillage (.claude/tests/infra/télémétrie) | 188 | 134 | 3 | 51 |
-| **Total** | **247** | **192** | **3** | **52** |
+| V8 — Outillage (.claude/tests/infra/télémétrie) | 188 | 134 | 4 | 50 |
+| **Total** | **247** | **192** | **4** | **51** |
 
 
 ## V1 — Sécurité & authz (avant tout déploiement multi-tenant)  (30)
@@ -512,7 +514,7 @@
   `src/docforge/shared/libs/pipelines/ingest/estimate/plan.py:94`
 - [ ] **🟠 MOYENNE** · `design` — Per-figure paid OCR volume is modeled by scanned_page_ratio (default 0), not figure count — default estimate prices a paid per-figure OCR pipeline at $0.00 with cost_complete=True  
   `src/docforge/shared/libs/pipelines/ingest/estimate/estimator.py:201`
-- [ ] **🟠 MOYENNE** · `divergence-doc` — Post-hoc $ meter counts only LLM/VLM/structgen — paid embed and paid OCR spend is never metered, while the estimate prices both  
+- [~] **🟠 MOYENNE** · `divergence-doc` — Post-hoc $ meter counts only LLM/VLM/structgen — paid embed and paid OCR spend is never metered, while the estimate prices both  
   `src/docforge/worker/backend/libs/jobs/usage.py:51`
 - [ ] **⚪ FAIBLE** · `design` — Meter undercounts on retries/failed paid attempts, and search-time LLM spend is metered nowhere  
   `src/docforge/shared/libs/pipelines/nodes/openai_compat/client.py:52`
