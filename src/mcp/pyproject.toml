@@ -1,6 +1,6 @@
 [project]
 name = "docforge-mcp"
-version = "0.14.24"
+version = "0.14.25"
 description = "DocForge MCP server — exposes the full DocForge REST API as MCP tools (pure HTTP client)"
 requires-python = ">=3.12"
 dependencies = [

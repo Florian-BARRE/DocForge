@@ -113,6 +113,38 @@ def test_rewrite_empty_answer_keeps_original(monkeypatch) -> None:
     assert out.spec.text == "orig query"
 
 
+def test_provider_failure_stamps_a_visible_degrade_flag(monkeypatch) -> None:
+    """A provider failure degrades to the raw query AND stamps a degrade notice into spec.flags.
+
+    The notice rides downstream (encode folds it into SearchResult.debug) so the fallback is VISIBLE
+    to the caller instead of a silent swap to the un-transformed query.
+    """
+    from shared_libs.pipelines.search.nodes.query.base import QUERY_DEGRADED_FLAG  # noqa: PLC0415
+
+    _install_model(monkeypatch, _FakeModel(exc=TimeoutError()))
+    node = QueryRewriteNode(id="rewrite", config=QueryRewriteNode.Config())
+
+    out = _run(node, _spec())
+
+    # 1. The pre-existing flag survives (additive) and the degrade notice is present + names the kind.
+    assert out.spec.flags["boost"] is True
+    assert "rewrite" in out.spec.flags[QUERY_DEGRADED_FLAG]
+    assert "raw query used" in out.spec.flags[QUERY_DEGRADED_FLAG]
+
+
+def test_successful_rewrite_stamps_no_degrade_flag(monkeypatch) -> None:
+    """A healthy rewrite leaves flags untouched — the degrade notice appears ONLY on degrade."""
+    from shared_libs.pipelines.search.nodes.query.base import QUERY_DEGRADED_FLAG  # noqa: PLC0415
+
+    _install_model(monkeypatch, _FakeModel(_FakeAnswer("better query")))
+    node = QueryRewriteNode(id="rewrite", config=QueryRewriteNode.Config())
+
+    out = _run(node, _spec())
+
+    assert QUERY_DEGRADED_FLAG not in out.spec.flags
+    assert out.spec.flags == {"boost": True}
+
+
 # ---------------------- Blob wiring tests ---------------------- #
 def test_rewrite_blob_builds_and_validates_clean() -> None:
     """The rewrite blob builds and passes the graph validator with ZERO issues."""

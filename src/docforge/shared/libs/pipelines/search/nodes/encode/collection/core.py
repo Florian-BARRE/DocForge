@@ -16,6 +16,7 @@ from pydantic import Field
 from shared_libs.pipelines.base import ActionNode, NodeConfig, NodeInput, NodeOutput
 from shared_libs.pipelines.nodes.embed.blob import EmbedBlobResolver
 from shared_libs.pipelines.registry import NodeRegistry
+from shared_libs.pipelines.search.nodes.query.base import QUERY_DEGRADED_FLAG
 from shared_libs.public_models.search import EncodedQuery, QuerySpec, SearchContract
 
 # The notes stamped on a degraded EncodedQuery — one per unavailable axis. They ride into
@@ -110,6 +111,13 @@ class EncodeCollectionNode(ActionNode):
         text = data.spec.text
         timeout = self.config.axis_timeout_seconds
         notes: list[str] = []
+
+        # 0. Carry through a degrade notice a query transform (rewrite/HyDE) left in the spec flags:
+        #    the provider was down and the raw query was used. Folding it into the notes here is what
+        #    makes that upstream fallback VISIBLE in SearchResult.debug rather than silent.
+        query_degraded = data.spec.flags.get(QUERY_DEGRADED_FLAG)
+        if query_degraded:
+            notes.append(str(query_degraded))
 
         # 1. Dense — always attempted (a query without a dense vector loses its semantic axis). The
         #    embed call is bounded by a PER-AXIS timeout (asyncio.wait_for) well below the run's

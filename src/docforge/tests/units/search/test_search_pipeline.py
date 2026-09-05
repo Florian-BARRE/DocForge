@@ -537,6 +537,40 @@ def test_encode_axis_timeout_has_safe_default_and_is_backward_compatible() -> No
     assert GraphValidator().validate(PipelineBuilder().build(blob)) == []
 
 
+def test_degraded_query_rewrite_surfaces_a_notice_to_the_caller(monkeypatch) -> None:
+    """A rewrite whose provider is DOWN degrades to the raw query AND surfaces a visible notice.
+
+    Proves the end-to-end chain: the query transform stamps a degrade flag on the spec → encode
+    folds it into EncodedQuery.degraded → retrieve → hydrate → DeliverHits exposes it in
+    SearchResult.debug['degraded']. The search never fails (fail-soft), the caller just SEES it ran
+    on the un-transformed query.
+    """
+
+    class _RaisingModel:
+        async def ainvoke(self, messages: object) -> object:
+            raise TimeoutError("rewrite provider down")
+
+    monkeypatch.setattr(
+        "shared_libs.pipelines.search.nodes.query.base.OpenAICompatHelpers.chat",
+        lambda *args, **kwargs: _RaisingModel(),
+    )
+
+    group = PipelineBuilder().build(SearchPipeline.rewrite_blob())
+    port = MockCollectionReadPort()
+    _bind_read_port(group, port)
+
+    output, record = asyncio.run(FlowEngine().execute(group, _fake_run_input()))
+
+    # 1. The run SUCCEEDED (a degraded rewrite must never fail the search) and delivered hits.
+    assert record.status.value == "success", record
+    result: SearchResult = output.result
+    assert [hit.chunk_id for hit in result.hits] == ["c1", "c2", "c3"]
+    # 2. The fallback is VISIBLE: the notice rode the chain into SearchResult.debug['degraded'].
+    assert "degraded" in result.debug
+    assert "rewrite" in result.debug["degraded"]
+    assert "raw query used" in result.debug["degraded"]
+
+
 @pytest.mark.parametrize("kind", ["understand", "llm", "rrf", "mmr"])
 def test_placeholder_bodies_raise(kind: str) -> None:
     """A placeholder never runs — its body raises NotImplementedError if ever invoked."""
