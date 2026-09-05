@@ -62,7 +62,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 #   and cached in a named volume (HF_HOME=/models) so they persist across container
 #   restarts and never need re-downloading.
 ###############################################################################
-FROM python:3.12-slim-bookworm AS runtime
+FROM python:3.14-slim-bookworm AS runtime
 
 # Runtime best practices:
 # - PYTHONDONTWRITEBYTECODE: suppresses .pyc file creation inside the container.
