@@ -8,6 +8,8 @@
 
 ## Journal
 
+- **2026-09-05 — Vague B / 0.14.12 (V1 import : 1 MOYENNE + 1 FAIBLE, clôt les 2 derniers `[~]`/import de V1)** : (B1) **scope-grant créateur à l'import** (clôt le `[~]` — le gate CREATE était déjà là) — un import crée la collection dans le WORKER, or `grant_creator_scope` (app-side) a besoin du `principal.key`. La logique d'append est extraite dans la façade store `AuthFacade.grant_collection_to_key(key_id, collection_id) -> bool` (lit la clé → no-op sur wildcard/duplicate/NULL-perms/absente → append+persist ; opère sur le JSONB brut, **aucun import du modèle app**) ; `grant_creator_scope` y délègue (ne garde que le guard principal-level app-side). Le `key_id` créateur est threadé `import router → enqueue_import(...,granting_key_id) → tâche worker` (ids/scalaires only) et appliqué **après `mark_done`** en best-effort (`_grant_imported_collection` : swallow+warn — la collection existe déjà, un échec de grant ne doit pas rater un import DONE ; root répare le scope). None pour un caller full-access/keyless. (B2) **validation fail-fast des blobs importés** — l'importer copiait `pipeline`/`search` verbatim (seul write path sans validation). Extrait un socle **worker-safe** dans `shared_libs.pipelines.validation` : `SearchResultContract` (contrat terminal SearchResult, lu sur les faces `Produces` statiques, zéro exécution) + `BlobStructureValidator` (build + `GraphValidator` [+ terminal pour search] → `BlobValidationError`). L'importer appelle `_validate_contract_blobs(contract)` **AVANT** `create_collection` → `CollectionImportError` nommant le blob fautif (pipeline vs search) ; `{}` search = défaut stock, laissé tel quel. Dedup app **behavior-preserving** : `search_blob_validation.py` délègue son check terminal à `SearchResultContract` (~50 lignes dupliquées retirées, messages/codes 422 inchangés — `test_collections_search_blob.py` passe sans modif). +tests B1 (façade append/no-op ×4 ; worker grant/skip/swallow ×3) + B2 (pipeline/search/topology malformés rejetés ×3, bundle valide + search `{}` OK) ; conftest transfer porte un `IngestPipeline.light_blob()` valide. Agent `backend` dédié, **vérifié par moi** (imports importer + gate rejoué). **1420 passed**, ruff check+format clean. **→ V1 : 0 `[~]`, 9 `[ ]` restants (tous FAIBLE/MOYENNE non-import).**
+
 - **2026-09-05 — Vague A / 0.14.11 (V1 hygiène log/error : 1 MOYENNE + 2 FAIBLE)** : trois findings du chemin log/erreur où une chaîne non fiable atteignait un log ou une surface d'erreur. (1) **Log injection** (documents/router.py:201) — nouveau `LogSafeHelpers.sanitize` (`app/backend/libs/logsafe/`) : strip C0/C1 (CR/LF/tab → anti log-splitting), collapse whitespace, cap 256, placeholder `<empty>` ; câblé sur les noms/filenames user-controlled loggés (upload filename, collection name, api-key name). Miroir de `RequestIdHelpers._sanitise` mais pour du free-text. (2) **Redaction exceptions provider** (worker jobs/core.py:299 + health sweep) — `ConfigDumpHelpers.redact_text` (extrait le redactor userinfo `scheme://user:pass@` déjà utilisé par `masked`, exposé en public) appliqué à `job.error` avant persistance ET au `ReachabilitySweep.__detail`/champ `endpoint` (base_url redacté à la surface, l'allowlist matche toujours sur le RAW url intact) : un base_url credential-bearing ne fuit plus dans job.error/health/preflight ; message par ailleurs préservé (valeur diagnostique). (3) **whoami 500→403** (whoami.py) — un blob permissions malformé dégrade désormais en `403 "API key has malformed permissions."` **identique** au gate authz (`AuthzGuard.__parse`), plus de `ValidationError` non gérée transformée en 500 par `auto_handle_errors`. +tests : `test_logsafe.py` (5, sous api/ car dépend du fixture `fastapi_app`), `test_config_dump.py` (+2 redact_text), `test_auth.py` (+3 whoami : root full-access, scoped grants, malformed→403 — l'endpoint avait 0 test, clôt aussi ce test-gap V8). **1408 passed**, ruff check+format clean. NB : le finding V1 groupé `whoami.py:40` (500-instead-of-4xx + scope-gate edge cases) a sa moitié 500 close ici ; le résidu scope-gate reste `[ ]`.
 
 - **2026-09-04 — XFF non-trusté par défaut (V1 FAIBLE) + clôture `[~]` import** : `RATE_LIMIT_TRUST_FORWARDED_FOR` passe **default `true`→`false`** — le déploiement out-of-box (prod-cpu) n'a pas de proxy, donc un XFF client-fourni était forgeable (spoof du keying rate-limit IP en auth-off) ; défaut sûr = keying sur le peer transport, `true` seulement derrière un proxy qui **réécrit** XFF (overlay Caddy). `keying.py` prend déjà `trust_forwarded_for` (aucun changement de logique). Docs alignées (configuration.md, PROD-HARDENING.md). Les 2 tests de keying passent (flag explicite, indépendants du défaut). Par ailleurs le `[~]` **import exhaustion (bomb + buffering)** est confirmé **entièrement clos par 0.14.7** (guards `IMPORT_MAX_DECOMPRESSION_RATIO`/`_MEMBERS` + import streamé 64 MiB) → passé `[x]`. NB : la moitié "unauth bypass" du finding jumeau (app.py:86) reste `[ ]` (à confirmer dans le middleware, non tracé ici).
@@ -100,7 +102,7 @@
 
 | Vague | Total | Fait | En cours | Restant |
 |---|---|---|---|---|
-| V1 — Sécurité & authz | 30 | 19 | 1 | 10 |
+| V1 — Sécurité & authz | 30 | 21 | 0 | 9 |
 | V2 — Fiabilité (jobs/stores/transferts) | 4 | 4 | 0 | 0 |
 | V3 — Release/CI/dépendances | 1 | 1 | 0 | 0 |
 | V4 — Search & coûts | 1 | 1 | 0 | 0 |
@@ -108,7 +110,7 @@
 | V6 — Frontend | 0 | 0 | 0 | 0 |
 | V7 — Documentation | 21 | 10 | 0 | 11 |
 | V8 — Outillage (.claude/tests/infra/télémétrie) | 188 | 41 | 3 | 144 |
-| **Total** | **247** | **78** | **4** | **164** |
+| **Total** | **247** | **80** | **3** | **164** |
 
 
 ## V1 — Sécurité & authz (avant tout déploiement multi-tenant)  (30)
@@ -142,7 +144,7 @@
   `src/docforge/worker/backend/libs/collection_transfer/restore/importer.py:195`
 - [x] **🔴 HAUTE** · `security` — MCP HTTP tools read arbitrary files from the MCP container (file_path tool inputs)  
   `src/mcp/libs/tools/documents.py:25`
-- [~] **🟠 MOYENNE** · `security` — Collection import bypasses the CREATE capability and skips creator scope-grant  
+- [x] **🟠 MOYENNE** · `security` — Collection import bypasses the CREATE capability and skips creator scope-grant  
   `src/docforge/app/backend/routers/transfers/router.py:85` _(aussi: backend-api)_
 - [x] **🟠 MOYENNE** · `security` — Import resource exhaustion: decompression bomb + whole-corpus buffering in the worker  
   `src/docforge/worker/backend/libs/collection_transfer/bundle/archive.py:62`
@@ -152,7 +154,7 @@
   `src/docforge/app/backend/routers/auth/whoami.py:40`
 - [ ] **⚪ FAIBLE** · `design` — Hardening smells (grouped): blob/HTML response headers, MCP client cache, redaction export list  
   `src/docforge/app/backend/routers/blobs/router.py:45`
-- [ ] **⚪ FAIBLE** · `divergence-doc` — Imported pipeline/search blobs are stored without the fail-fast validation every other write path enforces  
+- [x] **⚪ FAIBLE** · `divergence-doc` — Imported pipeline/search blobs are stored without the fail-fast validation every other write path enforces  
   `src/docforge/worker/backend/libs/collection_transfer/restore/importer.py:147`
 - [ ] **⚪ FAIBLE** · `security` — Unauthenticated requests bypass the rate limiter; XFF trusted by default  
   `src/docforge/app/backend/app.py:86`

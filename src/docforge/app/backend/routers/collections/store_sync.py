@@ -12,7 +12,7 @@ from loggerplusplus import loggerplusplus
 
 # ====== Local Project Imports ======
 from ...context import CONTEXT
-from ...libs.auth import AuthPrincipal, KeyPermissions
+from ...libs.auth import AuthPrincipal
 
 
 class CollectionStoreSync:
@@ -35,17 +35,14 @@ class CollectionStoreSync:
             principal (AuthPrincipal): The authenticated creator.
             collection_id (str): The new collection's id to bring into the key's scope.
         """
-        # 1. Full-access / keyless / permission-less principals need no scoping.
+        # 1. Full-access / keyless / permission-less principals need no scoping (app-side guard).
         key = principal.key
         if principal.is_full_access or key is None or key.permissions is None:
             return
 
-        # 2. A wildcard-scoped key already covers everything; only a list-scoped key gains the id.
-        scope = KeyPermissions.model_validate(key.permissions)
-        if "*" in scope.collections or collection_id in scope.collections:
-            return
-        scope.collections.append(collection_id)
-        await CONTEXT.database.auth.update_key_permissions(key.id, scope.model_dump(mode="json"))
+        # 2. Delegate the read → append-if-list-scoped-and-absent → persist logic to the store
+        #    façade (shared with the async import path); it no-ops on a wildcard scope or a duplicate.
+        await CONTEXT.database.auth.grant_collection_to_key(key.id, collection_id)
 
     @classmethod
     async def reconcile_and_backfill(cls, collection_id: uuid.UUID) -> None:

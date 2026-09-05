@@ -204,10 +204,36 @@ async def test_import_stages_upload_and_enqueues(fastapi_app, monkeypatch) -> No
     staged_key = stage_upload.await_args.args[1]
     assert staged_key.startswith("collection-imports/")
     tracker.create.assert_awaited_once()
-    # Enqueue carries the staged key + row id + the normalized target name — scalars only.
-    enqueue.assert_awaited_once_with(staged_key, str(row.id), "Imported Copy")
+    # Enqueue carries the staged key + row id + the normalized target name + the granting key id —
+    # scalars only. A full-access caller needs no ownership grant, so the key id is None.
+    enqueue.assert_awaited_once_with(staged_key, str(row.id), "Imported Copy", None)
     _, kwargs = enqueue.await_args
     assert kwargs == {}
+
+
+async def test_import_threads_scoped_key_id_for_ownership_grant(fastapi_app, monkeypatch) -> None:
+    """A list-scoped CREATE key's id is threaded to the worker so it can be granted ownership of the
+    imported collection once it exists (otherwise it could create-by-import but never reach it)."""
+    from backend.context import CONTEXT  # noqa: PLC0415
+    from backend.routers.transfers.helpers import TransferHelpers  # noqa: PLC0415
+    from backend.routers.transfers.router import import_collection  # noqa: PLC0415
+
+    row = _transfer_row(kind="import", collection_id=None, status="pending", s3_key=None)
+    tracker = SimpleNamespace(create=AsyncMock(return_value=row))
+    enqueue = AsyncMock()
+    monkeypatch.setattr(
+        CONTEXT, "database", SimpleNamespace(transfer_tracker=tracker, transfer=SimpleNamespace())
+    )
+    monkeypatch.setattr(CONTEXT.queue, "enqueue_import", enqueue)
+    monkeypatch.setattr(TransferHelpers, "stage_upload", AsyncMock(return_value=1))
+
+    creator = _principal(permissions={"capabilities": ["create"], "collections": []})
+    creator.key.id = uuid.uuid4()
+    upload = SimpleNamespace(read=AsyncMock(side_effect=[b""]), filename="b.dcexport")
+    await import_collection(file=upload, target_name=None, principal=creator)
+
+    # The creating key's id (as a string) rides last on the wire; the worker grants it ownership.
+    assert enqueue.await_args.args[3] == str(creator.key.id)
 
 
 async def test_import_blank_target_name_normalizes_to_none(fastapi_app, monkeypatch) -> None:
@@ -233,6 +259,8 @@ async def test_import_blank_target_name_normalizes_to_none(fastapi_app, monkeypa
 
     # A blank multipart field means "no target name" → None on the wire.
     assert enqueue.await_args.args[2] is None
+    # A full-access caller needs no ownership grant → no key id threaded.
+    assert enqueue.await_args.args[3] is None
 
 
 def test_import_requires_write_capability(fastapi_app) -> None:
@@ -448,20 +476,22 @@ async def test_enqueue_export_is_ids_only(fastapi_app) -> None:
 async def test_enqueue_import_is_scalars_only(fastapi_app) -> None:
     client, pool = _queue_with_fake_pool(fastapi_app)
 
-    await client.enqueue_import("collection-imports/x.dcexport", "transfer-1", "Copy")
+    await client.enqueue_import("collection-imports/x.dcexport", "transfer-1", "Copy", "key-1")
 
+    # The staged key + row id + target name + granting key id ride as positional scalars; no control
+    # kwarg leaks onto the wire (arq would stuff an unknown kwarg into the task args and crash it).
     pool.enqueue_job.assert_awaited_once_with(
-        "import_collection", "collection-imports/x.dcexport", "transfer-1", "Copy"
+        "import_collection", "collection-imports/x.dcexport", "transfer-1", "Copy", "key-1"
     )
     _, kwargs = pool.enqueue_job.await_args
     assert kwargs == {}
 
 
-async def test_enqueue_import_carries_none_target_name(fastapi_app) -> None:
+async def test_enqueue_import_carries_none_target_name_and_key(fastapi_app) -> None:
     client, pool = _queue_with_fake_pool(fastapi_app)
 
-    await client.enqueue_import("collection-imports/x.dcexport", "transfer-1", None)
+    await client.enqueue_import("collection-imports/x.dcexport", "transfer-1", None, None)
 
     pool.enqueue_job.assert_awaited_once_with(
-        "import_collection", "collection-imports/x.dcexport", "transfer-1", None
+        "import_collection", "collection-imports/x.dcexport", "transfer-1", None, None
     )

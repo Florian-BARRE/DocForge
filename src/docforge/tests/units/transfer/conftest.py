@@ -14,6 +14,7 @@ from types import SimpleNamespace
 import pytest
 
 # ====== Internal Project Imports ======
+from shared_libs.pipelines.ingest import IngestPipeline
 from shared_libs.public_models import FieldOrigin, FieldScope, FieldType
 from shared_libs.services.db.facades import DocumentExportRows
 from shared_libs.services.db.postgresql.tables import (
@@ -47,13 +48,19 @@ DENSE_DIM = 4
 
 
 def make_collection() -> Collection:
-    """A minimal source collection row."""
+    """A minimal source collection row carrying a REAL, buildable pipeline blob.
+
+    The importer now fail-fast validates the bundle's stored graph blobs before any write (exactly
+    like every other write boundary), so the fixture must carry a graph that builds + passes the
+    structural validator — the stock light ingest pipeline. The search blob stays ``{}`` (the valid
+    stock default: "use the built-in search pipeline").
+    """
     collection = Collection(
         name="DemoCollection",
         supported_formats=["pdf"],
         max_file_size_bytes=1024,
         needs_reindex=False,
-        pipeline={"nodes": []},
+        pipeline=IngestPipeline.light_blob().model_dump(mode="json"),
         search={},
     )
     collection.id = COLLECTION_ID

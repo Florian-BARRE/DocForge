@@ -115,9 +115,19 @@ async def import_collection(
         expires_at=expires_at,
     )
 
-    # 3. Hand over to the worker — IDS/SCALARS ONLY on the wire (no arq control kwarg).
+    # 3. Resolve the creating key's id so the worker can grant it ownership of the imported
+    #    collection (list-scoped CREATE keys only). None for a full-access / keyless caller — those
+    #    need no scoping; a wildcard-scoped key is threaded but the grant no-ops store-side.
+    granting_key_id = (
+        None if principal.is_full_access or principal.key is None else str(principal.key.id)
+    )
+
+    # 4. Hand over to the worker — IDS/SCALARS ONLY on the wire (no arq control kwarg).
     await CONTEXT.queue.enqueue_import(
-        staging_key, str(row.id), TransferHelpers.optional_form(target_name)
+        staging_key,
+        str(row.id),
+        TransferHelpers.optional_form(target_name),
+        granting_key_id,
     )
     CONTEXT.logger.info(f"Import opened from {staging_key} (transfer {row.id})")
     return TransferAccepted(transfer_id=str(row.id), kind=str(row.kind), status=str(row.status))

@@ -105,7 +105,13 @@ class QueueClient(LoggerClass):
         )
         self.logger.info(f"Enqueued export for collection {collection_id} (transfer {transfer_id})")
 
-    async def enqueue_import(self, s3_key: str, transfer_id: str, target_name: str | None) -> None:
+    async def enqueue_import(
+        self,
+        s3_key: str,
+        transfer_id: str,
+        target_name: str | None,
+        granting_key_id: str | None,
+    ) -> None:
         """
         Enqueue one collection IMPORT — the message carries IDS/SCALARS ONLY (retry-safe, light).
 
@@ -117,10 +123,19 @@ class QueueClient(LoggerClass):
             s3_key (str): The staged bundle's object key in S3.
             transfer_id (str): The pre-created tracking row's id (UUID as string).
             target_name (str | None): Optional name for the new collection (collision → renamed).
+            granting_key_id (str | None): The creating key's id (UUID as string) to grant ownership
+                of the imported collection, or None for a full-access / keyless caller. Threaded so a
+                list-scoped CREATE key gains access to the collection it created by importing — the
+                grant happens worker-side, once the collection's id exists.
         """
         pool = await self.__get_pool()
         await pool.enqueue_job(
-            "import_collection", s3_key, transfer_id, target_name, **self.__correlation_kwargs()
+            "import_collection",
+            s3_key,
+            transfer_id,
+            target_name,
+            granting_key_id,
+            **self.__correlation_kwargs(),
         )
         self.logger.info(f"Enqueued import from {s3_key} (transfer {transfer_id})")
 

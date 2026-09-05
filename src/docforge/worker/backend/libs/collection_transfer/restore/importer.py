@@ -24,6 +24,7 @@ from typing import Any
 from loggerplusplus import loggerplusplus
 
 # ====== Internal Project Imports ======
+from shared_libs.pipelines.validation import BlobStructureValidator, BlobValidationError
 from shared_libs.services.db.facades import CollectionTransferFacade
 from shared_libs.services.db.postgresql.tables import Blob, Collection
 from shared_libs.services.db.qdrant import QdrantPoint, SparseVec
@@ -65,6 +66,7 @@ class CollectionImporterV1:
         progress: ProgressFn | None = None,
         point_batch: int = 500,
         blob_batch_bytes: int = 64 * 1024 * 1024,
+        blob_validator: BlobStructureValidator | None = None,
     ) -> None:
         """
         Args:
@@ -75,12 +77,16 @@ class CollectionImporterV1:
             blob_batch_bytes (int): Byte budget for the blob restore — accumulate blob bytes only up
                 to this many, then flush to S3 and release. Bounds peak resident memory to roughly one
                 batch (mirroring the exporter's one-blob-at-a-time streaming), NOT the whole bundle.
+            blob_validator (BlobStructureValidator | None): The structural graph-blob validator run
+                on the bundle's stored pipeline/search blobs BEFORE any write (a fresh one when
+                omitted) — the same fail-fast every other write path enforces.
         """
         self._facade = facade
         self._reader = reader
         self._progress = progress or (lambda _stage, _pct: None)
         self._point_batch = point_batch
         self._blob_batch_bytes = blob_batch_bytes
+        self._blob_validator = blob_validator or BlobStructureValidator()
 
     async def run(self, target_name: str | None = None) -> ImportResult:
         """
@@ -95,6 +101,11 @@ class CollectionImporterV1:
         """
         manifest = self._reader.manifest
         contract = self._reader.read_collection()
+
+        # Fail-fast BEFORE any write: a malformed/hostile bundle's graph blobs must be rejected here,
+        # exactly like every other write boundary, never stored verbatim to brick the new collection.
+        self._validate_contract_blobs(contract)
+
         name = await self._resolve_name(target_name or contract.name)
 
         # Everything from the collection create onward runs under ONE rollback guard: a failure at any
@@ -130,6 +141,35 @@ class CollectionImporterV1:
         counts = manifest.counts.model_dump()
         self.logger.info(f"Imported bundle into new collection {created.id} ('{name}')")
         return ImportResult(collection_id=created.id, collection_name=name, counts=counts)
+
+    def _validate_contract_blobs(self, contract: CollectionContractModel) -> None:
+        """
+        Structurally validate the bundle's stored pipeline + search graph blobs BEFORE persisting.
+
+        Mirrors the app's write-boundary fail-fast (build + graph validation, plus the SearchResult
+        terminal contract for search) so an import cannot store a graph the normal create/update path
+        would reject. The failure NAMES which blob is broken and why. An empty ``{}`` search blob is
+        the stock default ("use the built-in search pipeline") and is left untouched.
+
+        Args:
+            contract (CollectionContractModel): The bundle's collection contract (pipeline + search).
+
+        Raises:
+            CollectionImportError: When the pipeline blob, or a non-empty search blob, is invalid.
+        """
+        # 1. The ingest pipeline blob must build + pass structural validation.
+        try:
+            self._blob_validator.validate_ingest(contract.pipeline)
+        except BlobValidationError as exc:
+            raise CollectionImportError(f"bundle pipeline blob {exc}") from exc
+
+        # 2. The search blob: {} means "use the stock default" (valid, nothing stored); any other
+        #    value must be a genuine search graph (structure + SearchResult terminal).
+        if contract.search:
+            try:
+                self._blob_validator.validate_search(contract.search)
+            except BlobValidationError as exc:
+                raise CollectionImportError(f"bundle search blob {exc}") from exc
 
     async def _resolve_name(self, desired: str) -> str:
         """Return ``desired`` if free, else append an ' (imported[ N])' suffix until it is unique."""
