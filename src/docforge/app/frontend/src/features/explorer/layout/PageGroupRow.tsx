@@ -1,9 +1,9 @@
 // ====== Code Summary ======
 // One ROW of the Layout view — usually a single page, but when a chunk spans a page boundary the two
 // (or more) pages it bridges share a row so the transition is inspected whole. Read LEFT → RIGHT:
-//   • LEFT   — every page render in the row, stacked, each block boxed/numbered/coloured by IR type
-//     with a solid lane-coloured outline per chunk (the spanning chunk's outline appears on BOTH pages,
-//     showing it continue across). Every box is clickable.
+//   • LEFT   — every page render in the row, stacked, each block boxed/numbered/coloured by IR type,
+//     with a dashed chunk-outline-coloured container box per chunk (the spanning chunk's outline
+//     appears on BOTH pages, showing it continue across). Every box is clickable.
 //   • MIDDLE — every IR block in ONE continuous reading-order list across the row's pages, with a page
 //     divider at each boundary, so a spanning chunk's blocks stay adjacent.
 //   • RIGHT  — each chunk in full, centred on its member blocks, tied by an organic flow ribbon.
@@ -55,7 +55,7 @@ export function PageGroupRow({ pages, blocks, enrichmentsByBlock, chunkByBlockId
     return map;
   }, [blocks]);
 
-  // The chunks present in this row, in first-appearance order (the right column + lane colours).
+  // The chunks present in this row, in first-appearance order (drives the right column).
   const chunksInRow = useMemo(() => {
     const seen = new Set<string>();
     const ordered: ChunkInfo[] = [];

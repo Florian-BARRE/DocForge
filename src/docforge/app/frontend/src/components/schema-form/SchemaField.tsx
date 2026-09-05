@@ -3,13 +3,13 @@
 // number → numeric input, string → text (masked when the name smells like a secret) — with its
 // full contract made visible: type (+ bounds / enum values), required flag, default, description.
 
-import { useId } from "react";
+import { useId, useState } from "react";
 import type { JsonSchema, JsonSchemaProperty } from "../../api/types";
 import { Switch } from "../Switch";
 import { TagsInput } from "../TagsInput";
 import { theme } from "../../theme";
 
-import { humanizeEnumOption, humanizeFieldHelp, humanizeFieldLabel, humanizeFieldUnit } from "./fieldLabels";
+import { humanizeEnumOption, humanizeFieldHelp, humanizeFieldLabel, humanizeFieldUnit, isSecretFieldName } from "./fieldLabels";
 import { JsonField } from "./JsonField";
 import { NumberField } from "./NumberField";
 
@@ -83,9 +83,11 @@ interface SchemaFieldProps {
 }
 
 export function SchemaField({ name, prop, schema, value, required = false, onChange, advanced = false }: SchemaFieldProps) {
-  // Hook first, before any control-shape branching below — a stable id to pair the visible
-  // <label> with whichever control this property resolves to.
+  // Hooks first, before any control-shape branching below — a stable id to pair the visible
+  // <label> with whichever control this property resolves to, and the reveal toggle for a
+  // secret-looking field (unused, harmlessly, by every other control shape).
   const controlId = useId();
+  const [revealed, setRevealed] = useState(false);
 
   const resolved = deref(prop, schema);
   const current = value === undefined ? resolved.default : value;
@@ -144,19 +146,53 @@ export function SchemaField({ name, prop, schema, value, required = false, onCha
       />
     );
   } else {
-    // A plain single-line input for ordinary short strings (names, endpoints); a resizable
-    // textarea only for values that are actually multi-line or read as prose (prompts/templates) —
-    // see `isSingleLineString`.
+    // A plain single-line input for ordinary short strings (names, endpoints) — masked as a
+    // password field when the name smells like a credential (api_key, token, …), with a show/hide
+    // toggle since a masked field with a typo is otherwise unrecoverable; a resizable textarea only
+    // for values that are actually multi-line or read as prose (prompts/templates) — see
+    // `isSingleLineString`.
     const text = String(current ?? "");
+    const secret = isSecretFieldName(name);
     control = isSingleLineString(text, resolved.description) ? (
-      <input
-        id={controlId}
-        aria-required={ariaRequired}
-        type="text"
-        style={inputStyle}
-        value={text}
-        onChange={(e) => onChange(e.target.value)}
-      />
+      secret ? (
+        <div style={{ display: "flex", gap: theme.space.xs }}>
+          <input
+            id={controlId}
+            aria-required={ariaRequired}
+            type={revealed ? "text" : "password"}
+            autoComplete="off"
+            style={{ ...inputStyle, flex: 1 }}
+            value={text}
+            onChange={(e) => onChange(e.target.value)}
+          />
+          <button
+            type="button"
+            onClick={() => setRevealed((prev) => !prev)}
+            aria-label={revealed ? "Hide value" : "Show value"}
+            style={{
+              flex: "none",
+              background: "none",
+              border: `1px solid ${theme.color.lineStrong}`,
+              borderRadius: theme.radius.m,
+              color: theme.color.dim,
+              fontSize: theme.font.size.xs,
+              padding: `0 ${theme.space.s}px`,
+              cursor: "pointer",
+            }}
+          >
+            {revealed ? "Hide" : "Show"}
+          </button>
+        </div>
+      ) : (
+        <input
+          id={controlId}
+          aria-required={ariaRequired}
+          type="text"
+          style={inputStyle}
+          value={text}
+          onChange={(e) => onChange(e.target.value)}
+        />
+      )
     ) : (
       <textarea
         id={controlId}
