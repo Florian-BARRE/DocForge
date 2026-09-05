@@ -188,3 +188,29 @@ async def test_backfill_aggregates_only_patched_documents(monkeypatch) -> None:
     # 1. Only the document with a filterable value counted; its 3 indexed chunks patched.
     assert documents_synced == 1
     assert points_patched == 3
+
+
+async def test_backfill_pages_through_documents(monkeypatch) -> None:
+    """The backfill reads the collection in bounded pages (limit + advancing offset), stopping on a
+    short page — it never loads the whole collection into memory."""
+    collection_id = uuid.uuid4()
+    doc1, doc2, doc3 = (MagicMock(id=uuid.uuid4()) for _ in range(3))
+    list_for_collection = AsyncMock(side_effect=[[doc1, doc2], [doc3]])
+    monkeypatch.setattr(fsf_module.DocumentApi, "list_for_collection", list_for_collection)
+
+    facade = FilterSyncFacade(_postgres_yielding(MagicMock()), MagicMock())
+    facade._FilterSyncFacade__BACKFILL_PAGE_SIZE = 2  # shrink the page for a two-page walk
+    facade.sync_document_filter_payloads = AsyncMock(return_value=4)
+
+    documents_synced, points_patched = await facade.backfill_collection_filter_payloads(
+        collection_id
+    )
+
+    # 1. Every document across both pages was synced and aggregated.
+    assert documents_synced == 3
+    assert points_patched == 12
+    # 2. Two bounded reads with an advancing offset — never a single unbounded list.
+    assert list_for_collection.await_count == 2
+    first, second = list_for_collection.await_args_list
+    assert first.kwargs == {"limit": 2, "offset": 0}
+    assert second.kwargs == {"limit": 2, "offset": 2}

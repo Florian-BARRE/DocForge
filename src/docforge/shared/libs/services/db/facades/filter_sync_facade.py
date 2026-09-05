@@ -35,6 +35,10 @@ class FilterSyncFacade(LoggerClass):
         self._postgres = postgres
         self._qdrant = qdrant
 
+    # A large collection's backfill pages through its documents rather than loading every row at
+    # once: each page is processed then dropped, bounding memory to one page regardless of size.
+    __BACKFILL_PAGE_SIZE = 500
+
     async def sync_document_filter_payloads(self, document_id: uuid.UUID) -> int:
         """
         Write a document's filterable metadata (BOTH scopes) onto its chunk points.
@@ -98,18 +102,28 @@ class FilterSyncFacade(LoggerClass):
         Returns:
             tuple[int, int]: (documents that received a payload, total points patched).
         """
-        # 1. Every document of the collection gets the same per-document sync.
-        async with self._postgres.session() as session:
-            documents = await DocumentApi.list_for_collection(session, collection_id)
-
-        # 2. Accumulate what was actually patched (documents with metadata AND indexed chunks).
+        # 1. Page through the collection's documents so a huge collection never loads whole into
+        #    memory: each page is fetched, processed, then dropped. The per-document sync is
+        #    idempotent, so a document that shifts pages under a concurrent insert is at worst
+        #    re-synced (same payload), never corrupted.
         documents_synced = 0
         points_patched = 0
-        for document in documents:
-            patched = await self.sync_document_filter_payloads(document.id)
-            if patched:
-                documents_synced += 1
-                points_patched += patched
+        offset = 0
+        while True:
+            async with self._postgres.session() as session:
+                page = await DocumentApi.list_for_collection(
+                    session, collection_id, limit=self.__BACKFILL_PAGE_SIZE, offset=offset
+                )
+            # 2. Accumulate what was actually patched (documents with metadata AND indexed chunks).
+            for document in page:
+                patched = await self.sync_document_filter_payloads(document.id)
+                if patched:
+                    documents_synced += 1
+                    points_patched += patched
+            # 3. A short page is the last one — stop before an empty round-trip.
+            if len(page) < self.__BACKFILL_PAGE_SIZE:
+                break
+            offset += self.__BACKFILL_PAGE_SIZE
 
         self.logger.info(
             f"Backfilled filter payloads on collection {collection_id}: "
