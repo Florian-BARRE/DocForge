@@ -17,6 +17,15 @@ name: gate
 on:
   workflow_call:
 
+# Explicit least-privilege floor. Critically, this ALSO caps what the gate can inherit when called
+# from a release workflow: a reusable workflow's effective GITHUB_TOKEN permissions are the most
+# restrictive intersection of the caller's and the callee's own `permissions:` block, so declaring
+# `contents: read` here means the gate can NEVER end up holding release-images.yml's `packages: write`
+# (or release-sdk.yml's `id-token: write`), even though those workflows call it. No job below needs
+# anything beyond checkout.
+permissions:
+  contents: read
+
 jobs:
   docforge:
     # The v2 graph engine + app/worker. No mypy dev dep here by design (ruff is the enforced

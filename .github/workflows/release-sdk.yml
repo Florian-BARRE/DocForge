@@ -34,6 +34,11 @@ on:
       - "v*"
       - "sdk-v*"
 
+# Workflow-level floor is read-only; `id-token: write` for PyPI Trusted Publishing is granted ONLY
+# on the `publish` job below, never workflow-wide.
+permissions:
+  contents: read
+
 jobs:
   # 1. Run the exact same gate that guards every merge — the publish job depends on it.
   gate:
@@ -50,10 +55,10 @@ jobs:
       id-token: write # PyPI Trusted Publishing (OIDC token minting)
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
 
       - name: Verify tag matches the package version
         # Fail fast if the pushed tag disagrees with _version.py, so a mistagged release can never
@@ -76,6 +81,6 @@ jobs:
         working-directory: src/docforge_sdk
 
       - name: Publish to PyPI (Trusted Publishing)
-        uses: pypa/gh-action-pypi-publish@release/v1
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
         with:
           packages-dir: src/docforge_sdk/dist
