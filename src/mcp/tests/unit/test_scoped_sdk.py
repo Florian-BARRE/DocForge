@@ -117,10 +117,10 @@ async def test_aclose_closes_the_fallback_and_every_cached_client() -> None:
     assert cast(_FakeAsyncClient, cached).closed
 
 
-async def test_cache_evicts_the_oldest_entry_beyond_the_bound(
+async def test_cache_evicts_the_least_recently_used_entry_beyond_the_bound(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Beyond the cache bound, the oldest per-token client is evicted rather than kept forever."""
+    """Beyond the cache bound, the least-recently-used per-token client is evicted."""
     monkeypatch.setattr(scoped_sdk_module, "_MAX_CACHED_CLIENTS", 2)
     provider = ScopedSdkProvider(
         "http://api", timeout=5.0, fallback_token="fallback-tok", require_bearer=False
@@ -133,7 +133,106 @@ async def test_cache_evicts_the_oldest_entry_beyond_the_bound(
         finally:
             incoming_docforge_token.reset(reset)
 
-    assert set(provider._by_token) == {"t2", "t3"}, "t1 must have been evicted first (FIFO)"
+    assert set(provider._by_token) == {"t2", "t3"}, "t1 must have been evicted (never re-touched)"
 
-    # Let the fire-and-forget eviction close() task (scheduled via asyncio.create_task) run.
-    await asyncio.sleep(0)
+    # Let the tracked eviction close() task run to completion.
+    await asyncio.gather(*provider._pending_closes)
+
+
+async def test_cache_touching_the_oldest_entry_saves_it_from_eviction(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A cache hit on the oldest entry marks it most-recently-used, so a DIFFERENT entry is
+    evicted next — this is what distinguishes LRU from FIFO."""
+    monkeypatch.setattr(scoped_sdk_module, "_MAX_CACHED_CLIENTS", 2)
+    provider = ScopedSdkProvider(
+        "http://api", timeout=5.0, fallback_token="fallback-tok", require_bearer=False
+    )
+
+    for token in ("t1", "t2"):
+        reset = incoming_docforge_token.set(token)
+        try:
+            provider.current
+        finally:
+            incoming_docforge_token.reset(reset)
+
+    # Touch t1 again (a cache hit) before introducing a third, distinct token: this must move
+    # t1 to the most-recently-used end, so a FIFO implementation (which would evict t1) and an
+    # LRU implementation (which evicts t2) disagree here.
+    for token in ("t1", "t3"):
+        reset = incoming_docforge_token.set(token)
+        try:
+            provider.current
+        finally:
+            incoming_docforge_token.reset(reset)
+
+    assert set(provider._by_token) == {
+        "t1",
+        "t3",
+    }, "t2 must be evicted, not t1, since t1 was re-touched before t3 was added"
+
+    await asyncio.gather(*provider._pending_closes)
+
+
+async def test_cache_eviction_closes_the_evicted_client_via_a_tracked_task(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The evicted client's close() is awaited via a task held in `_pending_closes`, not an
+    unreferenced fire-and-forget task, and it actually completes."""
+    monkeypatch.setattr(scoped_sdk_module, "_MAX_CACHED_CLIENTS", 1)
+    provider = ScopedSdkProvider(
+        "http://api", timeout=5.0, fallback_token="fallback-tok", require_bearer=False
+    )
+
+    reset = incoming_docforge_token.set("t1")
+    try:
+        evicted = provider.current
+    finally:
+        incoming_docforge_token.reset(reset)
+
+    reset = incoming_docforge_token.set("t2")
+    try:
+        provider.current
+    finally:
+        incoming_docforge_token.reset(reset)
+
+    assert provider._pending_closes, "the eviction close task must be tracked, not fire-and-forget"
+    await asyncio.gather(*provider._pending_closes)
+
+    assert cast(_FakeAsyncClient, evicted).closed
+    assert not provider._pending_closes, "the done-callback must remove the task once finished"
+
+
+async def test_cache_eviction_close_error_is_logged_and_swallowed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A close() failure on an evicted client is logged, not raised into the caller's request
+    path, and does not leave the task dangling."""
+
+    class _FailingAsyncClient(_FakeAsyncClient):
+        async def aclose(self) -> None:
+            raise RuntimeError("boom")
+
+    monkeypatch.setattr(scoped_sdk_module, "AsyncClient", _FailingAsyncClient)
+    monkeypatch.setattr(scoped_sdk_module, "_MAX_CACHED_CLIENTS", 1)
+    provider = ScopedSdkProvider(
+        "http://api", timeout=5.0, fallback_token="fallback-tok", require_bearer=False
+    )
+
+    for token in ("t1", "t2"):
+        reset = incoming_docforge_token.set(token)
+        try:
+            provider.current
+        finally:
+            incoming_docforge_token.reset(reset)
+
+    (pending_task,) = tuple(provider._pending_closes)
+    logged_errors: list[str] = []
+    monkeypatch.setattr(provider.logger, "error", lambda msg: logged_errors.append(msg))
+
+    # Awaiting a task's own reference does not re-raise past its done-callback; the callback
+    # already ran (or runs here) without propagating into this test.
+    await asyncio.gather(pending_task, return_exceptions=True)
+
+    assert logged_errors, "the close failure must be logged"
+    assert not provider._pending_closes, "the task must be removed from tracking even on failure"

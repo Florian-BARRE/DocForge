@@ -8,6 +8,8 @@
 
 ## Journal
 
+- **2026-09-06 — Vague AE / 0.14.40 (V8 2 FAIBLE design, 2 agents || disjoints)** : (1) **ScopedSdkProvider eviction** (mcp) — `dict`→`OrderedDict` : hit `move_to_end` + éviction `popitem(last=False)` = vrai LRU (plus FIFO) ; le close du client évincé n'est plus fire-and-forget non-référencé — task tenue dans `_pending_closes` + done-callback qui log l'erreur, awaité au teardown. +4 tests (LRU discriminateur, close tracké, erreur loggée). (2) **`IoSlot.required`** (base) — `describe()` ne dérivait jamais `required` de l'optionalité → tout slot reporté required. Nouveau `SlotTypes.is_optional` + `required = field_info.is_required() and not is_optional` : `X | None`/défauté → False, mandatory → True ; type-label/list-ness inchangés. Drift **confirmé sans changement de schéma** (IoSlot shape byte-identique, seule la valeur runtime change). +7 tests. Gate : docforge **1639 passed** (+7), mcp **51** (+4), drift OK, ruff clean. **→ V8 : 149 fait.**
+
 - **2026-09-06 — Vague AD / 0.14.39 (V8 3 FAIBLE substantiels — vérifiés un par un)** : (1) **reclaim startup sur hostname** — VÉRIFIÉ réel (`worker_id = gethostname()`, pas de `container_name` → nouveau hostname au recreate → reclaim matche rien). Décision **B (contrat narrowé)**, PAS clé stable : une clé partagée laisserait un replica au démarrage reclamer les jobs RUNNING d'un sibling VIVANT (`--scale`) — la clé own-hostname est la seule sûre, couvre le restart même-conteneur (dev hot-reload) ; le crash/recreate est le job du **reaper heartbeat** par construction. Docstrings/contrat corrigés (plus d'overclaim). (2) **`BlobNormalizer.__heal` catch trop large** — VÉRIFIÉ (catchait ValidationError+ValueError+KeyError+TypeError+AttributeError → une régression moteur devenait un 422 "re-save your pipeline"). Narrowé à `ValidationError` (drift) + removed-kind nommé ; les exceptions reader/assembler re-levées (plus déguisées). (3) **semantic chunker unbatched** — VÉRIFIÉ **ne se reproduit PAS** : `_embed(windows)` est appelé UNE fois, langchain `aembed_documents` batche par chunk_size → finding stale ; **guard de régression ajouté** (pas de fake fix). +6 tests. Gate : **1632 passed** (+6), ruff clean, 0 changement OpenAPI. **→ V8 : 147 fait.**
 
 - **2026-09-06 — Vague AC (infra-config + couverture tests, pas de release) — 2 MOYENNE faits + 1 `[~]`** : (1) **ENGINE_BLOB_VERSION golden lock** — un golden figeait déjà la shape du blob, mais rien ne liait un changement de shape à un bump de version ; nouveau test `test_default_blob_shape_change_forces_engine_version_bump` + fixture `{engine_blob_version, blob_sha256}` → un changement de shape avec version stale **ÉCHOUE** avec "MUST bump ENGINE_BLOB_VERSION" (vérifié qu'il se déclenche). (2) **tests layout batch** — vérifié que la plupart sont déjà couverts (chunkGrouping/chunkAssembly/`/provenance`/CancelledError) ; ajouté le vrai manque : `LayoutTab.test.tsx` (5 render smoke : error/loading/empty/loaded/chunks-error, garde les 5 useMemo au-dessus des returns conditionnels). Résidu : startup-reclaim (`reclaim_worker_jobs`) sans test — relève d'un test facade/db, hors scope layout. (3) **[~] Dependabot images** — recherche du mécanisme réel : l'ecosystem `docker` ne scanne que les Dockerfiles (déjà couverts ×5), et `docker-compose` ne matche que le glob `(docker-)?compose(.\w+)?.ya?ml` — or les fichiers du repo sont nommés `base.yml`/`prod-cpu.yml`/overlays… (non matchés). Entrées `docker-compose` ajoutées (effectives dès un renommage) + **limitation documentée** dans le header ; la vraie couverture des ~11 pins compose exige de renommer les fichiers (touche compose/+Makefile+README, hors scope) → `[~]`. Gate : docforge **1626 passed**, frontend 14, ruff clean, dependabot.yml parse. Pas de tag (config+tests, non packagés).
@@ -173,8 +175,8 @@
 | V5 — Moteur & pipeline | 2 | 2 | 0 | 0 |
 | V6 — Frontend | 0 | 0 | 0 | 0 |
 | V7 — Documentation | 21 | 21 | 0 | 0 |
-| V8 — Outillage (.claude/tests/infra/télémétrie) | 188 | 147 | 5 | 36 |
-| **Total** | **247** | **205** | **5** | **37** |
+| V8 — Outillage (.claude/tests/infra/télémétrie) | 188 | 149 | 5 | 34 |
+| **Total** | **247** | **207** | **5** | **35** |
 
 
 ## V1 — Sécurité & authz (avant tout déploiement multi-tenant)  (30)
@@ -449,7 +451,7 @@
   `docs/python-sdk.md:108` _(aussi: docs-freshness)_
 - [x] **⚪ FAIBLE** · `consistency` — Minor SDK/MCP inconsistencies (grouped): client docstrings omit corpus, divergent get_pipeline_design default, stale 0.1.1 dist artifacts  
   `src/docforge_sdk/docforge_sdk/client.py:31`
-- [ ] **⚪ FAIBLE** · `design` — ScopedSdkProvider eviction is FIFO-not-LRU and closes evicted clients via an unreferenced fire-and-forget task  
+- [x] **⚪ FAIBLE** · `design` — ScopedSdkProvider eviction is FIFO-not-LRU and closes evicted clients via an unreferenced fire-and-forget task  
   `src/mcp/libs/scoped_sdk.py:127`
 
 ### Serveurs modèles
@@ -697,7 +699,7 @@
   `src/docforge/shared/libs/pipelines/engine/core.py:421`
 - [x] **⚪ FAIBLE** · `bug` — ForEach body-group ids are excluded from the id-uniqueness scans (mint, fragment remap)  
   `src/docforge/shared/libs/pipelines/edit/topology.py:78`
-- [ ] **⚪ FAIBLE** · `divergence-doc` — IoSlot.required is never derived from the field's optionality — describe() reports every slot required  
+- [x] **⚪ FAIBLE** · `divergence-doc` — IoSlot.required is never derived from the field's optionality — describe() reports every slot required  
   `src/docforge/shared/libs/pipelines/base/node.py:196`
 - [x] **⚪ FAIBLE** · `consistency` — Minor engine/runtime smells (grouped): spurious ScoreBelow warning on failures, stale FromFirst comment, list-content LLM answers  
   `src/docforge/shared/libs/pipelines/engine/navigation.py:87`
