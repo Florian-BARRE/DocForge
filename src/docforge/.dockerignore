@@ -1,0 +1,39 @@
+# Build context exclusions for the app/worker Dockerfiles, built with src/docforge/ as their
+# context (see app/Dockerfile's and worker/Dockerfile's own "Build note" headers, and
+# compose/overlays/dev.yml's `build.context: ../../src/docforge`). Anything matched here is
+# NEVER sent to the daemon. Note this is a SEPARATE file from ../.dockerignore (which only
+# covers the sibling `src` context used by mcp/bge_server/paddle_server) — Docker only reads
+# .dockerignore from the build context root, and app/worker's context root is this directory,
+# not its parent.
+
+# ── Local Python virtualenv — host-side `uv sync` state, never needed in the image (the
+#    Dockerfile builds its OWN venv via `uv sync` in the py-build stage) and would otherwise
+#    ship ~400 MB of host-built, host-arch wheels into every build. ──
+**/.venv
+**/venv
+
+# ── Frontend dev artefacts — the app image builds its own dist/ in the ui-build stage; a
+#    host-side node_modules stub or stale dist/ (from local `npm run dev`/`npm run build`)
+#    must never leak in. node_modules can also contain symlinks BuildKit rejects. ──
+**/node_modules
+**/dist
+**/.vite
+
+# ── Python build/runtime/test artefacts ──────────────────────────────────────────────────
+**/__pycache__
+**/*.pyc
+**/*.pyo
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+**/.coverage
+
+# ── Editor / OS ───────────────────────────────────────────────────────────────────────────
+**/.idea
+**/.vscode
+**/.DS_Store
+**/Thumbs.db
+
+# ── Logs / local data ─────────────────────────────────────────────────────────────────────
+**/logs
+**/*.log

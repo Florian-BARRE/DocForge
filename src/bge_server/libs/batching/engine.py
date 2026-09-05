@@ -5,11 +5,15 @@
 # rerank is not serialized behind embed calls). Public submit_* coroutines create a Future, wrap
 # it in the appropriate BatchItem, enqueue it, and await the result. Protected _process_* methods
 # flatten the batch, run the model call under the relevant lock via asyncio.to_thread, and scatter
-# results back to each item's future. Rerank scatter re-numbers indices 0..n-1 per request.
+# results back to each item's future. Rerank scatter re-numbers indices 0..n-1 per request and
+# sorts results score-descending to match TEI's /rerank response order.
 # Per-item error isolation: batch failures set the exception on every future in the batch.
-# embed_all and the touch_* methods are the two "direct" call shapes: they skip the four
+# embed_all and the touch_* methods are the "direct" call shapes: they skip the four
 # BatchQueueWorker queues entirely but still acquire embed_lock/rerank_lock, so they remain
-# mutually exclusive with every batched call on the same shared model instance.
+# mutually exclusive with every batched call on the same shared model instance. embed_all has no
+# per-op queue of its own, so it enforces its OWN bounded admission (an in-flight counter capped
+# at max_queue_size) and raises QueueFullError past that cap -- the same back-pressure contract
+# the four queued paths give the router, just enforced differently since there is no queue to fill.
 
 # ====== Standard Library Imports ======
 import asyncio
@@ -19,7 +23,7 @@ from typing import TYPE_CHECKING
 from loggerplusplus import LoggerClass
 
 # ====== Local Project Imports ======
-from .models import BatchItem, EmbedItem, RerankItem
+from .models import BatchItem, EmbedItem, QueueFullError, RerankItem
 
 if TYPE_CHECKING:
     from libs.bge_models.service import BgeModelsService
@@ -50,6 +54,8 @@ class BatchingEngine(LoggerClass):
       rerank_lock, so they stay mutually exclusive with every submit_*-driven batch. Any
       caller that reaches the shared embed_model/reranker MUST go through one of these two
       shapes — never call BgeModelsService directly without holding the matching lock.
+      embed_all additionally enforces its own bounded admission (see embed_all's docstring)
+      since it has no BatchQueueWorker queue to provide that back-pressure for it.
 
     Error isolation:
     - _process_* methods wrap the lock+to_thread+scatter in try/except. On any failure,
@@ -70,7 +76,7 @@ class BatchingEngine(LoggerClass):
                 the engine is started.
             max_length (int): Max token length forwarded to encode_dense / encode_sparse /
                 encode_colbert. Comes from BGE_M3_MAX_LENGTH config.
-            max_batch_size (int): Maximum total cost (units) per batch across all three workers.
+            max_batch_size (int): Maximum total cost (units) per batch across all four workers.
             max_wait_ms (int): Batch formation window in milliseconds.
             max_queue_size (int): Per-worker bounded queue capacity.
         """
@@ -85,6 +91,15 @@ class BatchingEngine(LoggerClass):
         # rerank_lock — the reranker is a separate FlagReranker instance with no shared state
         # with embed_model, so it gets its own lock instead of queuing behind embed calls.
         self._rerank_lock = asyncio.Lock()
+
+        # embed_all bypasses the four BatchQueueWorker queues entirely (see embed_all's
+        # docstring), so it has no bounded queue to reject excess callers with. This in-flight
+        # counter reproduces that same back-pressure contract: once max_queue_size embed_all
+        # calls are already admitted (waiting on embed_lock or running the forward pass), any
+        # further call is rejected immediately with QueueFullError instead of piling up
+        # unboundedly behind the lock — the same admission ceiling the queued paths get for free.
+        self._embed_all_max_inflight = max_queue_size
+        self._embed_all_inflight = 0
 
         # Import here to avoid circular imports at module level; BatchQueueWorker only needs
         # the models attribute at process time, not at construction.
@@ -231,7 +246,10 @@ class BatchingEngine(LoggerClass):
         Flatten all (query, text) pairs, score in one model call, scatter per-request results.
 
         Each request's results are re-indexed 0..n-1 (not global offsets) so the TEI contract
-        is honoured: the DocForge bge_reranker provider expects local indices.
+        is honoured: the DocForge bge_reranker provider expects local indices. Results are also
+        sorted score-descending per request, matching TEI's own /rerank response order (the
+        DocForge client maps scores back onto candidates by ``index`` and does not depend on
+        response order, so this ordering is purely a TEI-parity concern, not a correctness one).
 
         Args:
             batch (list[BatchItem]): Batch of RerankItem instances from the rerank worker.
@@ -254,11 +272,16 @@ class BatchingEngine(LoggerClass):
                     self._models.compute_rerank_scores_flat, flat_pairs
                 )
 
-            # 3. Scatter scores back; re-number indices 0..n-1 per request (not global)
+            # 3. Scatter scores back; re-number indices 0..n-1 per request (not global), then
+            #    sort score-descending to match TEI's own /rerank response order.
             offset = 0
             for item, size in zip(items, sizes):
                 scores = flat_scores[offset : offset + size]
-                result = [{"index": i, "score": float(s)} for i, s in enumerate(scores)]
+                result = sorted(
+                    ({"index": i, "score": float(s)} for i, s in enumerate(scores)),
+                    key=lambda r: r["score"],
+                    reverse=True,
+                )
                 if not item.future.done():
                     item.future.set_result(result)
                 offset += size
@@ -381,6 +404,13 @@ class BatchingEngine(LoggerClass):
         offloaded with ``asyncio.to_thread`` exactly like ``_process_dense``, keeping the event
         loop free during the (seconds-long) forward pass.
 
+        Back-pressure: this path has no BatchQueueWorker queue, so admission is bounded by an
+        in-flight counter instead — capped at the same ``max_queue_size`` the four queued paths
+        use. Once that many embed_all calls are already admitted (queued on embed_lock or mid
+        forward-pass), further calls raise QueueFullError immediately rather than accumulating
+        unboundedly while every caller waits its turn on embed_lock. This mirrors, rather than
+        skips, the back-pressure contract the queued paths give the router for free.
+
         Args:
             texts (list[str]): Texts to embed. Must be non-empty (caller's responsibility).
             max_length (int): Maximum token length for truncation.
@@ -389,9 +419,21 @@ class BatchingEngine(LoggerClass):
             tuple[list[list[float]], list[list[dict]]]: A ``(dense, sparse)`` pair whose two
                 sub-shapes are identical to submitting the same texts to the dense and sparse
                 paths separately.
+
+        Raises:
+            QueueFullError: When ``max_queue_size`` embed_all calls are already admitted.
         """
-        async with self._embed_lock:
-            return await asyncio.to_thread(self._models.encode_dense_sparse, texts, max_length)
+        if self._embed_all_inflight >= self._embed_all_max_inflight:
+            raise QueueFullError(
+                f"[embed_all] {self._embed_all_max_inflight} requests already in flight — "
+                f"server overloaded"
+            )
+        self._embed_all_inflight += 1
+        try:
+            async with self._embed_lock:
+                return await asyncio.to_thread(self._models.encode_dense_sparse, texts, max_length)
+        finally:
+            self._embed_all_inflight -= 1
 
     async def touch_dense(self, max_length: int) -> None:
         """

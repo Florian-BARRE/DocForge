@@ -60,6 +60,12 @@ services:
       interval: 15s
       timeout: 5s
       retries: 5
+    deploy:
+      resources:
+        # Scraping one app target + its own TSDB — generous headroom without letting a
+        # runaway cardinality spike take down the whole overlay.
+        limits:
+          memory: 512m
     restart: unless-stopped
     networks:
       - docforge_net
@@ -80,6 +86,12 @@ services:
       interval: 15s
       timeout: 5s
       retries: 5
+    deploy:
+      resources:
+        # Log storage/index for the whole stack's container output — bounded so a log flood
+        # can't starve the app/worker containers sharing the host.
+        limits:
+          memory: 1g
     restart: unless-stopped
     networks:
       - docforge_net
@@ -96,8 +108,21 @@ services:
       # Read-only: needed for docker_sd_configs container discovery (name/label relabeling) —
       # promtail never starts/stops/inspects-with-write anything through this socket.
       - /var/run/docker.sock:/var/run/docker.sock:ro
+    # /ready on promtail's own HTTP server (services/telemetry/promtail-config.yml's
+    # server.http_listen_port) — same busybox wget the prometheus/loki probes above use.
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9080/ready || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
     depends_on:
-      - loki
+      loki:
+        condition: service_healthy
+    deploy:
+      resources:
+        # Tails Docker container logs and forwards to loki — no local storage, light footprint.
+        limits:
+          memory: 256m
     restart: unless-stopped
     networks:
       - docforge_net
@@ -121,9 +146,21 @@ services:
       # Loopback-only by default too, in spite of grafana's own login gate — defense in depth
       # against the shipped `change_me_grafana_admin` placeholder never getting changed.
       - "${TELEMETRY_BIND_ADDR:-127.0.0.1}:10050:3000" # Grafana UI: http://localhost:10050 (user: admin)
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
     depends_on:
-      - prometheus
-      - loki
+      prometheus:
+        condition: service_healthy
+      loki:
+        condition: service_healthy
+    deploy:
+      resources:
+        # UI + provisioning engine only — no scrape/ingest load of its own.
+        limits:
+          memory: 512m
     restart: unless-stopped
     networks:
       - docforge_net

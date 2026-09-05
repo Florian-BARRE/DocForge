@@ -1,11 +1,20 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# DocForge — GPU overlay. Never used standalone — included by prod-gpu.yml / dev-gpu.yml,
-# or layered manually on top of a base/dev combo:
-#   docker compose -f compose/base.yml -f compose/overlays/gpu.yml --profile full up -d
+# DocForge — GPU overlay. Never used standalone — always pulled in via `include:` by
+# compose/prod-gpu.yml / compose/dev-gpu.yml (the ready-made scenario files — USE THOSE, run
+# from the repo root):
+#   docker compose -f compose/prod-gpu.yml --profile full up -d
+#   docker compose -f compose/dev-gpu.yml  --profile full up -d --build
+#
+# Do NOT hand-assemble this file with a plain `-f compose/base.yml -f compose/overlays/gpu.yml`:
+# `-f` resolves every file's relative paths against the FIRST `-f` file's own directory
+# (compose/), not this file's directory (compose/overlays/) — the explicit `../../src/...`
+# `build.context` paths below (needed for the dev-gpu combo, see below) would then resolve
+# OUTSIDE the repo. This file's paths only resolve correctly when Compose reads it via
+# `include:`, which resolves each included file's relative paths against ITS OWN directory
+# first, before merging.
 #
 # WHEN TO USE THIS FILE: any scenario that must run worker/bge_server/paddle_server on a
-# GPU. Prefer the ready-made scenario files (compose/prod-gpu.yml, compose/dev-gpu.yml)
-# over hand-assembling -f flags.
+# GPU, via the ready-made scenario files above.
 #
 # What this changes vs the base (CPU) file:
 #   - worker + bge_server + paddle_server pull the -gpu image tags (CUDA wheel baked in)

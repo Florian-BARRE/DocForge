@@ -28,9 +28,10 @@ class CONTEXT:
     bge_models: BgeModelsService
 
     # ── Dynamic batching engine ───────────────────────────────────────────────────
-    # Owns three BatchQueueWorkers (dense / sparse / rerank) plus a shared asyncio.Lock
-    # that serialises all model calls. Routes submit to the engine rather than calling
-    # the model service directly — the engine handles batching, lock, to_thread, and scatter.
+    # Owns four BatchQueueWorkers (dense / sparse / colbert / rerank) plus TWO asyncio.Locks:
+    # embed_lock (dense/sparse/colbert, which share one embed_model instance) and rerank_lock
+    # (the separate FlagReranker instance). Routes submit to the engine rather than calling
+    # the model service directly — the engine handles batching, locking, to_thread, and scatter.
     # Created and started in lifespan.py after models are loaded. Stopped in the finally
     # block before models are unloaded.
     batching_engine: BatchingEngine

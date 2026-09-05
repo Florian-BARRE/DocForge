@@ -18,6 +18,7 @@ from fastapi.testclient import TestClient
 from backend.context import CONTEXT
 from backend.routers import inference_router
 from config_loader import BgeServerConfig
+from libs.batching import QueueFullError
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -89,3 +90,21 @@ def test_embed_all_empty_input(client: TestClient) -> None:
     assert resp.status_code == 200
     assert resp.json() == {"dense": [], "sparse": []}
     cast(AsyncMock, CONTEXT.batching_engine.embed_all).assert_not_awaited()
+
+
+# ── Test: /embed_all back-pressure maps QueueFullError to HTTP 503 ────────────
+
+
+def test_embed_all_queue_full_returns_503(client: TestClient) -> None:
+    """
+    POST /embed_all translates the engine's QueueFullError (in-flight admission cap) into
+    HTTP 503 + Retry-After: 1, exactly like the four queued routes.
+    """
+    cast(MagicMock, CONTEXT.batching_engine).embed_all = AsyncMock(
+        side_effect=QueueFullError("overloaded")
+    )
+
+    resp = client.post("/embed_all", json={"inputs": ["t1"]})
+
+    assert resp.status_code == 503
+    assert resp.headers["Retry-After"] == "1"

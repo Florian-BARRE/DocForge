@@ -109,10 +109,12 @@ def lifespan() -> Any:
             CONTEXT.bge_models.load()
 
             # 4. Build and start the dynamic-batching engine.
-            # The engine owns three per-op workers (dense / sparse / rerank) plus a single
-            # shared asyncio.Lock that serialises all model calls across workers. Workers
-            # are started here (creates asyncio tasks) — must be inside the lifespan so the
-            # tasks bind to the correct asyncio event loop (hot-reload safety).
+            # The engine owns four per-op workers (dense / sparse / colbert / rerank) plus TWO
+            # locks: embed_lock (dense/sparse/colbert, one shared embed_model instance) and
+            # rerank_lock (the separate FlagReranker instance) — see BatchingEngine's class
+            # docstring for the full rationale. Workers are started here (creates asyncio
+            # tasks) — must be inside the lifespan so the tasks bind to the correct asyncio
+            # event loop (hot-reload safety).
             _log_step(3, "Starting batching engine")
             CONTEXT.batching_engine = BatchingEngine(
                 models=CONTEXT.bge_models,
