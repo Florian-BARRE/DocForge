@@ -1,5 +1,5 @@
 # ---------------------- Catalogue (palette) ---------------------- #
-from .catalog import FamilyCatalog, Palette, PipelineCatalog
+from .catalog import FamilyCatalog, Palette
 
 # ---------------------- Mechanics (graph-structure vocabulary) ---------------------- #
 from .mechanics import GraphMechanics, MechanicCard, MechanicsDescription
@@ -14,7 +14,6 @@ from .explorer import ExploredNode, PipelineExplorer
 __all__ = [
     "FamilyCatalog",
     "Palette",
-    "PipelineCatalog",
     "GraphMechanics",
     "MechanicCard",
     "MechanicsDescription",

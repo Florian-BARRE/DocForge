@@ -3,7 +3,7 @@
 # ``cache_key`` (the PK); a HIT bumps hit_count + last_hit_at in place (upsert-on-hit); a store is an
 # idempotent INSERT (on_conflict_do_nothing, so two concurrent runs computing the same key race
 # harmlessly). The rest are the GC read paths: TTL/LRU candidate selection (by coalesce(last_hit_at,
-# created_at)), per-collection size accounting, and the ref-count check the orphan S3 sweep needs.
+# created_at)) and per-collection size accounting.
 
 # ====== Standard Library Imports ======
 import uuid
@@ -89,28 +89,6 @@ class ArtifactCacheApi:
             .order_by(recency.asc())
         )
         return list(result.scalars().all())
-
-    @staticmethod
-    async def list_for_document(
-        session: AsyncSession, document_id: uuid.UUID
-    ) -> list[ArtifactCache]:
-        """Every cache row attributed to a document (dropped when the document is deleted)."""
-        result = await session.execute(
-            select(ArtifactCache).where(ArtifactCache.document_id == document_id)
-        )
-        return list(result.scalars().all())
-
-    @staticmethod
-    async def referenced_hashes(session: AsyncSession, content_hashes: Sequence[str]) -> set[str]:
-        """Which of these content hashes ANY surviving cache row still points at (orphan filter)."""
-        if not content_hashes:
-            return set()
-        result = await session.execute(
-            select(ArtifactCache.content_hash)
-            .where(ArtifactCache.content_hash.in_(list(content_hashes)))
-            .distinct()
-        )
-        return set(result.scalars().all())
 
     @staticmethod
     async def delete_keys(session: AsyncSession, cache_keys: Sequence[str]) -> None:

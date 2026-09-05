@@ -7,7 +7,6 @@
 # eviction, pointer rows first, S3 objects only once proven unreferenced.
 
 # ====== Standard Library Imports ======
-import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
@@ -143,28 +142,6 @@ class ArtifactCacheFacade(LoggerClass):
                 f"Artifact-cache GC evicted {len(evict_keys)} row(s), freed {freed_blobs} blob(s)"
             )
         return ArtifactCacheGcSummary(evicted_rows=len(evict_keys), freed_blobs=freed_blobs)
-
-    async def drop_for_document(self, document_id: uuid.UUID) -> int:
-        """
-        Drop every cache row attributed to a deleted document, then sweep any blob it orphaned.
-
-        No grace window here (unlike the periodic ``prune``): this is a targeted cleanup of a KNOWN
-        deleted document, so its now-orphaned artifacts are reclaimed immediately.
-
-        Args:
-            document_id (uuid.UUID): The document being deleted.
-
-        Returns:
-            int: The number of cache pointer rows removed.
-        """
-        async with self._postgres.session() as session:
-            rows = await ArtifactCacheApi.list_for_document(session, document_id)
-            if not rows:
-                return 0
-            await ArtifactCacheApi.delete_keys(session, [row.cache_key for row in rows])
-            removed = len(rows)
-        await self.__sweep_orphan_blobs(None)
-        return removed
 
     async def __select_victims(
         self, session, now: datetime, ttl: timedelta, max_bytes_per_collection: int

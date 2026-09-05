@@ -92,23 +92,4 @@ class Palette(BaseModel):
     artefacts: dict[str, ArtefactCard] | None = None
 
 
-class PipelineCatalog:
-    """Static builder of the UI palette from the node registry."""
-
-    def __new__(cls, *args: object, **kwargs: object) -> None:
-        raise TypeError("PipelineCatalog is a static-only class and cannot be instantiated.")
-
-    @classmethod
-    def palette(cls) -> Palette:
-        """
-        Build the palette of every registered node, grouped by family.
-
-        Returns:
-            Palette: The available building blocks (each with its config schema and I/O).
-        """
-        return Palette(
-            families=[FamilyCatalog.from_family(family) for family in NodeRegistry.families()]
-        )
-
-
-__all__ = ["FamilyCatalog", "Palette", "PipelineCatalog"]
+__all__ = ["FamilyCatalog", "Palette"]

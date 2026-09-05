@@ -222,21 +222,6 @@ async def test_prune_size_cap_evicts_least_recently_used_first(client: PostgresC
     assert (await facade.lookup("mid")) is not None and (await facade.lookup("new")) is not None
 
 
-async def test_drop_for_document_removes_rows_and_sweeps_its_orphan_blob(
-    client: PostgresClient,
-) -> None:
-    s3 = _FakeS3Client()
-    facade = ArtifactCacheFacade(client, s3)
-    doc = uuid.uuid4()
-    await facade.store(_row("k1", content_hash="c" * 64, size=5, document=doc), b"hi")
-
-    removed = await facade.drop_for_document(doc)
-
-    assert removed == 1
-    assert (await facade.lookup("k1")) is None
-    assert s3.objects == {}  # the orphaned blob was swept
-
-
 async def test_prune_grace_window_protects_a_just_stored_orphan_blob(
     client: PostgresClient,
 ) -> None:

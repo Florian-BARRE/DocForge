@@ -5,7 +5,7 @@
 # structure grows, never speculatively.
 [project]
 name = "docforge"
-version = "0.14.26"
+version = "0.14.27"
 description = "DocForge clean-slate rewrite — minimal foundation"
 requires-python = ">=3.12"
 dependencies = [
