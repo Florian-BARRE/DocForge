@@ -8,6 +8,8 @@
 
 ## Journal
 
+- **2026-09-06 — Vague AC (infra-config + couverture tests, pas de release) — 2 MOYENNE faits + 1 `[~]`** : (1) **ENGINE_BLOB_VERSION golden lock** — un golden figeait déjà la shape du blob, mais rien ne liait un changement de shape à un bump de version ; nouveau test `test_default_blob_shape_change_forces_engine_version_bump` + fixture `{engine_blob_version, blob_sha256}` → un changement de shape avec version stale **ÉCHOUE** avec "MUST bump ENGINE_BLOB_VERSION" (vérifié qu'il se déclenche). (2) **tests layout batch** — vérifié que la plupart sont déjà couverts (chunkGrouping/chunkAssembly/`/provenance`/CancelledError) ; ajouté le vrai manque : `LayoutTab.test.tsx` (5 render smoke : error/loading/empty/loaded/chunks-error, garde les 5 useMemo au-dessus des returns conditionnels). Résidu : startup-reclaim (`reclaim_worker_jobs`) sans test — relève d'un test facade/db, hors scope layout. (3) **[~] Dependabot images** — recherche du mécanisme réel : l'ecosystem `docker` ne scanne que les Dockerfiles (déjà couverts ×5), et `docker-compose` ne matche que le glob `(docker-)?compose(.\w+)?.ya?ml` — or les fichiers du repo sont nommés `base.yml`/`prod-cpu.yml`/overlays… (non matchés). Entrées `docker-compose` ajoutées (effectives dès un renommage) + **limitation documentée** dans le header ; la vraie couverture des ~11 pins compose exige de renommer les fichiers (touche compose/+Makefile+README, hors scope) → `[~]`. Gate : docforge **1626 passed**, frontend 14, ruff clean, dependabot.yml parse. Pas de tag (config+tests, non packagés).
+
 - **2026-09-05 — Vague AB / 0.14.38 (V8 2 MOYENNE : Layout segmentation + palette scoping, 2 agents || disjoints)** : (1) **Layout `segmentChunkText` mal-attribution** — (a) une TABLE : le texte réellement embarqué par le chunker est une grille markdown rendue serveur-side (`__markdown_grid` depuis `IRTable.cells`), jamais `block.text` → nouveau `renderTableMarkdown()` (miroir cell-for-cell du backend) mappe la grille au bloc TABLE, plus de glue non-attribuée ; (b) un heading porté dont le titre duplique la 1re ligne du passage suivant était droppé par le chunker mais son id voyageait quand même → `duplicatesNextMember()` skippe ce heading (miroir du drop chunker), plus de vol de span au paragraphe. `tablesByBlock` threadé dans la chaîne de composants. +4 tests vitest ; gate conteneur vert (lint 0-err, tsc, 9 tests, build). (2) **palette scoping non enforced** — `/edit`+les guards write-time acceptaient TOUT kind du `NodeRegistry` global (un kind search dans un graphe ingest buildait+se sauvait). Nouveau `PaletteScopeValidator` : allowed-set = par famille buildée, `FAMILY_KINDS[famille]` si scopée (deliver→bundle/hits) sinon tous les kinds de la famille (inclut le wiring non-selectable prep/apply/skip/keep_raw → superset strict du picker) ; `KIND_NOT_IN_PALETTE` émis par nœud étranger. Câblé aux 3 seams write (ingest/search validators + `BlobStructureValidator` pour l'import worker, façades importées lazy pour éviter le cycle) ; GraphEditor laissé (la validation au write couvre ses sorties). Nouveau ValidationCode → snapshot OpenAPI régénéré (additif, drift OK). +14 tests. Gate 4 projets : docforge **1625 passed**, sdk 557+drift, mcp 48, ruff clean. **→ V8 : 142 fait.**
 
 - **2026-09-05 — Vague AA / 0.14.37 (V8 data-layer perf/consistency, 1 groupé)** : (1) **calls unbatchés** — verdict split : le write Qdrant est DÉJÀ batché (finding stale, verrouillé par test) ; le vrai smell était l'embedding **par champ** (N forward passes) → batché **par axe** (1 dense + 1 sparse au lieu de N) ; extrait `MetaVectorSyncHelpers.plan_meta_axes`. (2) **listing legacy non borné** — `backfill_collection_meta_vectors` chargeait toute la collection en RAM → **boucle paginée** (page 500) ; même fix au sibling `FilterSyncFacade`. (3) **protected-member coupling** (`embedder._embed_dense/_sparse`) — **reporté** : contrat cross-package établi (le node search encode l'utilise aussi) ; un fix propre exige des accessors sur `BaseEmbedderNode` (scope pipeline interdit). (4) docstrings rafraîchies. Best-effort/idempotence préservés. +7 tests. Gate : **1611 passed** (+7), ruff clean, 0 changement OpenAPI. **→ V8 : 140 fait.**
@@ -169,8 +171,8 @@
 | V5 — Moteur & pipeline | 2 | 2 | 0 | 0 |
 | V6 — Frontend | 0 | 0 | 0 | 0 |
 | V7 — Documentation | 21 | 21 | 0 | 0 |
-| V8 — Outillage (.claude/tests/infra/télémétrie) | 188 | 142 | 4 | 42 |
-| **Total** | **247** | **200** | **4** | **43** |
+| V8 — Outillage (.claude/tests/infra/télémétrie) | 188 | 144 | 5 | 39 |
+| **Total** | **247** | **202** | **5** | **40** |
 
 
 ## V1 — Sécurité & authz (avant tout déploiement multi-tenant)  (30)
@@ -564,7 +566,7 @@
 
 ### Dépendances & licences
 
-- [ ] **🟠 MOYENNE** · `design` — Dependabot has no coverage for the ~14 container images pinned in compose files  
+- [~] **🟠 MOYENNE** · `design` — Dependabot has no coverage for the ~14 container images pinned in compose files  
   `.github/dependabot.yml:85`
 - [ ] **⚪ FAIBLE** · `consistency` — Licensing/version metadata nits: no license field in 4 pyprojects, no LICENSE in images, off-lockstep service versions, stale MinerU/Marker doc line  
   `src/docforge/pyproject.toml:6`
@@ -598,7 +600,7 @@
   `src/docforge/app/frontend/src/features/monitoring/state/useJobDetail.ts:191`
 - [x] **🟠 MOYENNE** · `perf` — Layout tab loads and renders the whole document eagerly — N simultaneous page-image fetches, refetched on every tab switch, plus unmemoized per-render recomputation  
   `src/docforge/app/frontend/src/features/explorer/layout/LayoutTab.tsx:91` _(aussi: new-batch)_
-- [ ] **🟠 MOYENNE** · `test-gap` — No tests anywhere in the batch: pure grouping/segmentation helpers, LayoutTab smoke, /provenance endpoint, startup reclaim and the CancelledError terminal path are all untested  
+- [x] **🟠 MOYENNE** · `test-gap` — No tests anywhere in the batch: pure grouping/segmentation helpers, LayoutTab smoke, /provenance endpoint, startup reclaim and the CancelledError terminal path are all untested  
   `src/docforge/app/frontend/src/features/explorer/layout/chunkGrouping.ts:47` _(aussi: frontend, tests-audit)_
 - [x] **🟠 MOYENNE** · `bug` — Per-document tab caches never reset when documentId changes without a remount — wrong document's data shown  
   `src/docforge/app/frontend/src/features/explorer/state/useDocumentTabs.ts:59`
@@ -649,7 +651,7 @@
   `src/docforge/shared/libs/services/db/postgresql/tables/chunks/chunk.py:28` _(aussi: db-layer)_
 - [ ] **🟠 MOYENNE** · `dead-code` — Dead IR/DB fields surfaced to the API as meaningful data, and an enrichment-trace promise never fulfilled  
   `src/docforge/app/backend/routers/explorer/models_ir.py:25`
-- [ ] **🟠 MOYENNE** · `test-gap` — ENGINE_BLOB_VERSION bump is purely manual and already missed once; golden-blob test does not force it  
+- [x] **🟠 MOYENNE** · `test-gap` — ENGINE_BLOB_VERSION bump is purely manual and already missed once; golden-blob test does not force it  
   `src/docforge/shared/libs/pipelines/ingest/stages/normalizer.py:36`
 - [x] **🟠 MOYENNE** · `bug` — Non-latin-1 document filename crashes the markdown/HTML download endpoints  
   `src/docforge/app/backend/routers/explorer/views.py:96`
