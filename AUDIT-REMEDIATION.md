@@ -8,6 +8,8 @@
 
 ## Journal
 
+- **2026-09-05 — Vague K / 0.14.21 (V8 pipeline-ingest bugs 7 + télémétrie 4, 2 agents ||)** : **pipeline (7)** — (1) **classified fail-soft** : chaîne VLM/OCR KO après un classify OK ajoutait un terminal `figure_entry` qui relit la figure stampée → **kind + read_text conservés** (contrat PIPELINE.md), plus de reset au raw. (2) **docling bbox** : clamp `[0,1]` + garde page-size (dim 0/None/négative → fallback 1.0, non-fini → 0.0) via `_clamp_unit` ; ⚠️ l'agent avait laissé un **`NameError: page_size` non défini** (lignes de fetch supprimées) — **corrigé par moi** (restauré `page_obj`/`page_size`), le test réel de l'agent l'avait attrapé. (3) **retry stacking** : `openai_compat` client `max_retries=0` quand non-pinné → seule la boucle du node retry (VLM+embed n'empilent plus 3×2) ; un caller sans boucle (llm/structgen) peut pinner. (4) **pp_structure rowspan/colspan** : expansion bornée (cap cellules) → plus de hang/OOM sur table pathologique. (5) **doc heading-only** → ≥1 chunk (plus de doc vide non indexé). (6) gotenberg `_preview` utilise NetworkRetry. (7) web-chrome ne démote plus un HEADING doc "Menu"/"Search". **télémétrie (4)** — (1) **panels "errors & warnings" ratait WARNING** : root cause `\bwarn\b` ne matche jamais `WARNING` (pas de frontière n→i) → `warn\w*` (vérifié contre le format loggerplusplus + chaîne unescape RE2), fixé logs + overview. (2) **Loki retention** : compactor `retention_enabled` + `retention_period 168h` (Loki 2.9.8/tsdb/v13, dir sous le volume existant). (3) smells dashboards audités (même bug regex dupliqué corrigé). (4) description telemetry.yml → 5 dashboards réels. Gate : docforge **1467 passed** (+13), ruff clean (3 fichiers reformatés laissés par l'agent, corrigés) ; télémétrie `config -q` + JSON/YAML parse OK. **→ V8 : 87/188.** Reste `reader.py:179` (uniform→classified round-trip) non fait.
+
 - **2026-09-05 — Vague V8-docs (PIPELINE.md ↔ code, 8 items — pas de release)** : passe de vérité pipeline, agent `pipeline`, **tous les claims re-vérifiés contre le code** (PIPELINE.md était le côté stale ; les config.py/core.py nommés étaient exacts → seul PIPELINE.md édité). (1) chunk : `overlap_tokens` défaut **64** (pas 0), `detect_web_chrome` documenté, marqueur `[Image:]` **non émis** (figure vide → None). (2) contextualize/llm : table config purgée des champs endpoint migrés en P6 (base_url/api_key/model/max_tokens/temperature → chaîne). (3) enrich : nœud "vlm scanned" **inexistant** supprimé du mermaid, `scanned_text`=OCR-only, terminal `figure_entry` FromFirst ; seuils **vérifiés identiques** (pas de fix). (4) intake : `pdf_probe max_pages`=2000, `IntakeResult` +source_format/source_content/preview_pdf, slot `source_probe`, canal html/md natif. (5) scan doctrine : `do_ocr` défaut **True** (OCR-default persona), doc "false toujours" corrigée. (6) doc_meta : **une** ancre titre (title_field/fallback_to_heading), pas "all metadata". (7) search : le read-side métadonnées **EST câblé** (`SearchTarget`→`meta_<slug>_dense` via TargetVectorResolver) ; `embed_semantic_fields=false` = défaut **coût**, pas un trou. (8) inventaire : +`(ocr,paddle)`, `read_text` naming, `/embed_all`, UNIQUE list (+granite/pp_structure/deliver/embedders) ; `deliver`/`vlm_entry`/`structgen`/parser bricks **déjà présents** (pas de drift). **0 CODE FINDING** (tout était drift doc). **→ V8 : 76/188.** Pas de tag (docs non packagées).
 
 - **2026-09-05 — Vague J / 0.14.20 (V8 middlewares HTTP, 3 MOYENNE)** : (1) **idempotency in-progress wedge** — un original CRASHÉ avant d'écrire sa réponse laissait la clé en `in_progress` → 409 pendant TTL+GC (~25h). Nouveau knob `IDEMPOTENCY_INPROGRESS_TTL_SECONDS` (300s) + `_is_stale_in_progress` : une entrée in_progress dont l'horloge de départ précède la fenêtre est **réclamée** (le retry ré-exécute) ; un in-flight frais conflicte toujours (409). (2) **cache réponse idempotency non borné** — `IDEMPOTENCY_MAX_BODY_BYTES` n'était appliqué qu'au corps de REQUÊTE ; désormais la réponse au-delà du cap **n'est pas cachée** (l'op tourne normalement, pas de replay pour cette réponse oversize ; jamais de corps tronqué servi ni de bytes non bornés stockés). (3) **POST-reads audités + rétention infinie** — le contrat "les reads ne sont jamais audités" n'était tenu que par VERBE HTTP ; nouveau `AuditReadExclusion` (allow-list de TEMPLATES de routes POST pure-lecture : search, documents/query, estimate, pipelines inspect/edit/stages view+apply) — **par template, pas par capability** (export = READ-cap mais crée un job → reste audité, délibérément absent). Rétention : `AUDIT_RETENTION_DAYS` (0 = keep-forever, défaut inchangé) + cron arq `WORKER_AUDIT_GC_ENABLED` (enregistré seulement si retention>0, prune par `created_at`, **pas de migration**). Gate : docforge **1454 passed** (+19), ruff clean (1 fichier reformaté laissé par l'agent, corrigé) ; aucun changement OpenAPI/SDK. **→ V8 : 68/188.**
@@ -129,8 +131,8 @@
 | V5 — Moteur & pipeline | 2 | 2 | 0 | 0 |
 | V6 — Frontend | 0 | 0 | 0 | 0 |
 | V7 — Documentation | 21 | 21 | 0 | 0 |
-| V8 — Outillage (.claude/tests/infra/télémétrie) | 188 | 76 | 3 | 109 |
-| **Total** | **247** | **134** | **3** | **110** |
+| V8 — Outillage (.claude/tests/infra/télémétrie) | 188 | 87 | 3 | 98 |
+| **Total** | **247** | **145** | **3** | **99** |
 
 
 ## V1 — Sécurité & authz (avant tout déploiement multi-tenant)  (30)
@@ -668,9 +670,9 @@
 
 ### Pipeline ingest
 
-- [ ] **🟠 MOYENNE** · `bug` — Classified-mode fail-soft drops the stamped kind and OCR read — PIPELINE.md promises 'VLM KO → kind conservé'  
+- [x] **🟠 MOYENNE** · `bug` — Classified-mode fail-soft drops the stamped kind and OCR read — PIPELINE.md promises 'VLM KO → kind conservé'  
   `src/docforge/shared/libs/pipelines/ingest/stages/enrich_body.py:297`
-- [ ] **🟠 MOYENNE** · `bug` — Docling bbox normalization neither clamps to [0,1] nor guards the page-size fallback — violates the Provenance contract pp_structure honors  
+- [x] **🟠 MOYENNE** · `bug` — Docling bbox normalization neither clamps to [0,1] nor guards the page-size fallback — violates the Provenance contract pp_structure honors  
   `src/docforge/shared/libs/pipelines/ingest/nodes/parse/parser/docling/helpers.py:96`
 - [ ] **🟠 MOYENNE** · `design` — Layout view mis-attributes table content and carried-heading ids in segmentChunkText  
   `src/docforge/app/frontend/src/features/explorer/layout/chunkAssembly.ts:37`
@@ -684,9 +686,9 @@
   `src/docforge/shared/libs/pipelines/ingest/nodes/intake/pdf_probe/core.py:26`
 - [x] **🟠 MOYENNE** · `divergence-doc` — PIPELINE.md scan doctrine contradicts code: do_ocr defaults to True, doc mandates 'do_ocr=false toujours'  
   `src/docforge/shared/libs/pipelines/ingest/nodes/parse/parser/docling/config.py:20`
-- [ ] **🟠 MOYENNE** · `bug` — Retry stacking: VLM and embed openai_compatible leave the SDK client at its default 2 retries under their own hand-loops  
+- [x] **🟠 MOYENNE** · `bug` — Retry stacking: VLM and embed openai_compatible leave the SDK client at its default 2 retries under their own hand-loops  
   `src/docforge/shared/libs/pipelines/nodes/vlm/openai_compatible/core.py:66`
-- [ ] **🟠 MOYENNE** · `perf` — Unbounded rowspan/colspan expansion in the PP-Structure table flattener can hang/OOM the worker  
+- [x] **🟠 MOYENNE** · `perf` — Unbounded rowspan/colspan expansion in the PP-Structure table flattener can hang/OOM the worker  
   `src/docforge/shared/libs/pipelines/ingest/nodes/parse/parser/pp_structure/table.py:123`
 - [ ] **🟠 MOYENNE** · `design` — Uniform→classified round-trip silently drops the per-class VLM chains (classes route to zero-spend skip without a notice)  
   `src/docforge/shared/libs/pipelines/ingest/stages/reader.py:179`
@@ -694,9 +696,9 @@
   `src/docforge/shared/libs/pipelines/ingest/nodes/contextualize/doc_meta/core.py:19`
 - [x] **⚪ FAIBLE** · `bug` — Cost estimate treats paddle as the paid OCR representative, hiding a hosted escalation tail  
   `src/docforge/shared/libs/pipelines/ingest/estimate/plan.py:93`
-- [ ] **⚪ FAIBLE** · `bug` — Degenerate heading-only document produces zero body chunks — all titles dropped  
+- [x] **⚪ FAIBLE** · `bug` — Degenerate heading-only document produces zero body chunks — all titles dropped  
   `src/docforge/shared/libs/pipelines/ingest/nodes/chunk/base/node.py:124`
-- [ ] **⚪ FAIBLE** · `consistency` — Gotenberg _preview bypasses the shared NetworkRetry that _convert uses  
+- [x] **⚪ FAIBLE** · `consistency` — Gotenberg _preview bypasses the shared NetworkRetry that _convert uses  
   `src/docforge/shared/libs/pipelines/ingest/nodes/intake/converter/gotenberg/core.py:157`
 - [ ] **⚪ FAIBLE** · `consistency` — Language detection: per-document, cheap; minor tie/window/regex quirks  
   `src/docforge/shared/libs/pipelines/ingest/nodes/parse/parser/base/language.py:265`
@@ -710,7 +712,7 @@
   `src/docforge/shared/libs/pipelines/ingest/pipeline.py:112`
 - [ ] **⚪ FAIBLE** · `consistency` — Table flattening edge-case smells (header heuristic, nested tables, span double-booking, unclosed cells)  
   `src/docforge/shared/libs/pipelines/ingest/nodes/parse/parser/pp_structure/table.py:164`
-- [ ] **⚪ FAIBLE** · `bug` — Web-chrome per-block signal can demote a document HEADING titled 'Menu'/'Search'  
+- [x] **⚪ FAIBLE** · `bug` — Web-chrome per-block signal can demote a document HEADING titled 'Menu'/'Search'  
   `src/docforge/shared/libs/pipelines/ingest/nodes/chunk/base/passages.py:225`
 - [ ] **⚪ FAIBLE** · `consistency` — pp_structure mapper robustness: sidecar-supplied ids, inconsistent defaults, shared mutable pageless Provenance  
   `src/docforge/shared/libs/pipelines/ingest/nodes/parse/parser/pp_structure/mapper.py:119`
@@ -734,13 +736,13 @@
 
 ### Télémétrie
 
-- [ ] **🟠 MOYENNE** · `bug` — 'Errors & warnings' LogQL panels miss all WARNING-level app/worker logs  
+- [x] **🟠 MOYENNE** · `bug` — 'Errors & warnings' LogQL panels miss all WARNING-level app/worker logs  
   `services/telemetry/grafana/dashboards/docforge-logs.json:63`
-- [ ] **🟠 MOYENNE** · `perf` — Loki has no retention configured — unbounded log growth on a 23GB VM  
+- [x] **🟠 MOYENNE** · `perf` — Loki has no retention configured — unbounded log growth on a 23GB VM  
   `services/telemetry/loki-config.yml:6`
-- [ ] **⚪ FAIBLE** · `consistency` — Grouped low-severity smells in dashboards and promtail/loki configs  
+- [x] **⚪ FAIBLE** · `consistency` — Grouped low-severity smells in dashboards and promtail/loki configs  
   `services/telemetry/grafana/dashboards/docforge-overview.json:201`
-- [ ] **⚪ FAIBLE** · `divergence-doc` — Stale dashboard descriptions: 'one starter dashboard' / wrong overview title  
+- [x] **⚪ FAIBLE** · `divergence-doc` — Stale dashboard descriptions: 'one starter dashboard' / wrong overview title  
   `compose/overlays/telemetry.yml:23`
 
 ### Worker & jobs

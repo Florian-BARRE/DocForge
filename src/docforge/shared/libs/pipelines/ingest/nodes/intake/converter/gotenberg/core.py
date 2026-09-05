@@ -154,16 +154,27 @@ class ConverterGotenbergNode(BaseConverterNode):
             route = "/forms/chromium/convert/html"
             files = [("files", ("index.html", source.content, "text/html"))]
 
-        async with httpx.AsyncClient(
-            base_url=config.base_url, timeout=config.timeout_seconds
-        ) as client:
-            response = await client.post(route, files=files)
-            response.raise_for_status()
+        # POST under the SAME shared bounded retry as _convert — a transient Chromium-route blip must
+        # not lose the view-only preview any more than it may lose the parser PDF.
+        async def _post() -> bytes:
+            async with httpx.AsyncClient(
+                base_url=config.base_url, timeout=config.timeout_seconds
+            ) as client:
+                response = await client.post(route, files=files)
+                response.raise_for_status()
+            return response.content
+
+        content = await NetworkRetry.run(
+            _post,
+            max_retries=config.max_retries,
+            retry_backoff_seconds=config.retry_backoff_seconds,
+            label=f"converter '{self.KIND}' preview",
+        )
         self.logger.debug(
             f"Gotenberg preview-rendered '{source.filename}' ({probe.format}) → "
-            f"{len(response.content)} bytes (view-only, not parsed)"
+            f"{len(content)} bytes (view-only, not parsed)"
         )
-        return response.content
+        return content
 
 
 __all__ = ["ConverterGotenbergNode"]

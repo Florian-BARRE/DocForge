@@ -35,6 +35,11 @@ class EnrichBodyBuilder:
     BODY_ID = "figure_path"
     CLASSIFY_ID = "classify"
     SKIP_ID = "entry"
+    # The classified-branch fail-soft terminal: a whole chain (VLM/OCR) failed AFTER a successful
+    # classify, so the figure must pass through carrying the kind the classifier already stamped (and
+    # any OCR read text it accumulated), NOT the raw ForEach item. Distinct from SKIP_ID, which also
+    # serves the classifier's OWN failure — where no classified figure exists to read from.
+    FAILSOFT_ID = "failsoft"
     # The uniform-mode single-treatment slots: an OCR chain (read text) or a VLM chain (describe).
     UNIFORM_OCR_SLOT = "scanned_text_ocr"
     UNIFORM_VLM_SLOT = "figure_describe_vlm"
@@ -87,6 +92,7 @@ class EnrichBodyBuilder:
         }
 
         # 2. One branch per figure class — a real chain, or a route to the skip when empty.
+        has_chain_branch = False
         for branch in StageSpecs.FIGURE_BRANCHES:
             chain = chains.get(branch.slot)
             if chain is None or not chain.steps:
@@ -95,6 +101,7 @@ class EnrichBodyBuilder:
             cls.__append_branch(
                 branch.slot, branch.figure_kind, chain, nodes, transitions, bindings
             )
+            has_chain_branch = True
 
         # 3. The decorative / fallback terminal — a visible, zero-spend skip every decorative class
         #    routes to (no chain, no model call).
@@ -114,6 +121,17 @@ class EnrichBodyBuilder:
         transitions.append(
             Transition(from_node_id=cls.CLASSIFY_ID, to_node_id=cls.SKIP_ID, condition=OnFailure())
         )
+
+        # 3c. The classified-branch fail-soft terminal — added only when a real chain branch exists
+        #     (its sole incoming edges are those branches' tail on_failure). It reads the CLASSIFIER's
+        #     stamped figure, so a figure whose whole chain failed keeps its classified kind and any
+        #     OCR read text, instead of being reset to the raw item (PIPELINE.md: "VLM KO → kind
+        #     conservé").
+        if has_chain_branch:
+            nodes.append(ActionNodeBlob(id=cls.FAILSOFT_ID, family="enrich", kind="figure_entry"))
+            bindings[cls.FAILSOFT_ID] = {
+                "figure": FromNode(node_id=cls.CLASSIFY_ID, field_name="figure")
+            }
 
         # 4. Build guard: every class the classifier can stamp MUST have an outgoing route, or the
         #    item would stall on 'classify' at run and fail the whole document. Reject at BUILD.
@@ -290,13 +308,14 @@ class EnrichBodyBuilder:
             cls.__close_vlm(slot, frag, nodes, transitions, bindings)
 
         # 4. Fail-soft: if the WHOLE chain fails (its most-robust step included, so no intra-chain
-        #    fall-through is left), the figure must NOT sink the document. Route the tail's failure
-        #    to the model-free skip terminal — the figure passes through un-enriched. The chain's own
-        #    terminal cannot serve here: its binding reads the step output, which does not exist when
-        #    every step failed.
+        #    fall-through is left), the figure must NOT sink the document. Route the tail's failure to
+        #    the classified fail-soft terminal — the figure passes through un-enriched but KEEPS the
+        #    kind the classifier stamped (and any OCR read text), reading the classifier's figure. The
+        #    chain's own terminal cannot serve here: its binding reads the step output, which does not
+        #    exist when every step failed.
         tail_id = frag.exits[-1]
         transitions.append(
-            Transition(from_node_id=tail_id, to_node_id=cls.SKIP_ID, condition=OnFailure())
+            Transition(from_node_id=tail_id, to_node_id=cls.FAILSOFT_ID, condition=OnFailure())
         )
 
     @classmethod
