@@ -45,6 +45,23 @@ class SlotTypes:
         return None, False
 
     @classmethod
+    def is_optional(cls, annotation: object) -> bool:
+        """
+        Whether a slot annotation is an optional (``X | None``) shape.
+
+        Args:
+            annotation (object): The field annotation of an I/O model.
+
+        Returns:
+            bool: True when the annotation is a ``X | None`` union — i.e. ``None`` is an
+            accepted value for the slot, so the slot is not mandatory regardless of whether
+            the field also declares a default.
+        """
+        if get_origin(annotation) not in (UnionType, Union):
+            return False
+        return type(None) in get_args(annotation)
+
+    @classmethod
     def label(cls, annotation: object) -> str:
         """The UI/describe label of a slot annotation ('Doc' or 'list[Doc]')."""
         element, is_list = cls.element(annotation)

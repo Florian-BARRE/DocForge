@@ -4,7 +4,11 @@
 # created lazily and cached, so the httpx connection pool is reused across calls sharing a token —
 # but never mutated/shared ACROSS tokens (that would race under concurrent HTTP requests from
 # different callers: a header mutated on a shared client can be overwritten mid-flight by another
-# in-flight request).
+# in-flight request). The cache is bounded and evicts LEAST-RECENTLY-USED (an `OrderedDict`, moved
+# to the end on every hit) rather than oldest-inserted, so a hot token's client survives a burst of
+# distinct cold tokens. Evicted clients are closed via a tracked background task (held in
+# `_pending_closes` with a logging done-callback) instead of an unreferenced fire-and-forget task,
+# so the close always runs to completion and a close failure is observed, not swallowed by the GC.
 #
 # The fallback client (built from the env DOCFORGE_API_TOKEN) is ONLY resolved for the stdio
 # transport (`require_bearer=False`) — the local, single-caller, no-network case where there is no
@@ -23,6 +27,7 @@ from __future__ import annotations
 
 # ====== Standard Library Imports ======
 import asyncio
+from collections import OrderedDict
 from typing import Any
 
 # ====== Third-Party Library Imports ======
@@ -32,9 +37,9 @@ from loggerplusplus import LoggerClass
 # ====== Local Project Imports ======
 from .token_context import incoming_docforge_token
 
-# Bound above this, the oldest cached per-token client is evicted (and closed) so a stream of
-# distinct/garbage bearer tokens (e.g. an attacker probing the endpoint) cannot grow the cache
-# unbounded. Comfortably above any realistic number of concurrent DocForge API keys in use.
+# Bound above this, the least-recently-used cached per-token client is evicted (and closed) so a
+# stream of distinct/garbage bearer tokens (e.g. an attacker probing the endpoint) cannot grow the
+# cache unbounded. Comfortably above any realistic number of concurrent DocForge API keys in use.
 _MAX_CACHED_CLIENTS = 64
 
 
@@ -73,7 +78,12 @@ class ScopedSdkProvider(LoggerClass):
         self._timeout = timeout
         self._require_bearer = require_bearer
         self._fallback_client = AsyncClient(base_url, timeout=timeout, api_token=fallback_token)
-        self._by_token: dict[str, AsyncClient] = {}
+        # Insertion order = recency order: moved to the end on every cache hit, so the front is
+        # always the least-recently-used entry (see `_client_for_token`).
+        self._by_token: OrderedDict[str, AsyncClient] = OrderedDict()
+        # Strong references to in-flight eviction close() tasks, so they cannot be garbage
+        # collected mid-close; each is removed from this set by its own done-callback.
+        self._pending_closes: set[asyncio.Task[None]] = set()
 
     @property
     def current(self) -> AsyncClient:
@@ -101,10 +111,12 @@ class ScopedSdkProvider(LoggerClass):
         return self._fallback_client
 
     async def aclose(self) -> None:
-        """Close the fallback client and every cached per-token client."""
+        """Close the fallback client, every cached per-token client, and any pending eviction."""
         await self._fallback_client.aclose()
         for client in self._by_token.values():
             await client.aclose()
+        if self._pending_closes:
+            await asyncio.gather(*self._pending_closes, return_exceptions=True)
 
     def _client_for_token(self, token: str) -> AsyncClient:
         """
@@ -116,26 +128,49 @@ class ScopedSdkProvider(LoggerClass):
         Returns:
             AsyncClient: The cached (or newly built) client scoped to that token.
         """
-        # 1. Reuse the pooled client when this token has already been seen.
+        # 1. Reuse the pooled client when this token has already been seen, marking it
+        #    most-recently-used so it survives the next eviction.
         client = self._by_token.get(token)
         if client is not None:
+            self._by_token.move_to_end(token)
             return client
 
-        # 2. First time this token is used — evict the oldest entry once the cache is full so it
-        #    cannot grow unbounded, then build and cache a dedicated client for it.
+        # 2. First time this token is used — evict the least-recently-used entry once the cache
+        #    is full so it cannot grow unbounded, then build and cache a dedicated client for it.
         if len(self._by_token) >= _MAX_CACHED_CLIENTS:
-            oldest_token, oldest_client = next(iter(self._by_token.items()))
-            del self._by_token[oldest_token]
+            _, lru_client = self._by_token.popitem(last=False)
             self.logger.warning(
                 f"Evicting cached SDK client (cache size hit {_MAX_CACHED_CLIENTS})"
             )
-            # Best-effort async close in the background — this method is a sync cache lookup, but
-            # it always runs inside a tool's running event loop, so a fire-and-forget task is safe.
-            asyncio.create_task(oldest_client.aclose())
+            self._schedule_close(lru_client)
 
         client = AsyncClient(self._base_url, timeout=self._timeout, api_token=token)
         self._by_token[token] = client
         return client
+
+    def _schedule_close(self, client: AsyncClient) -> None:
+        """
+        Close an evicted client in the background without ever losing track of the task.
+
+        This method is a sync cache lookup, but it always runs inside a tool's running event
+        loop, so scheduling a task is safe. Unlike a bare ``asyncio.create_task(...)`` whose
+        return value is discarded, the task is held in ``_pending_closes`` (so it cannot be
+        garbage-collected before completion) and its done-callback logs any exception raised by
+        ``aclose()`` instead of leaving it unobserved, then removes the task from the set.
+
+        Args:
+            client (AsyncClient): The evicted client to close.
+        """
+        task = asyncio.create_task(client.aclose())
+        self._pending_closes.add(task)
+
+        def _on_done(finished: asyncio.Task[None]) -> None:
+            self._pending_closes.discard(finished)
+            error = finished.exception() if not finished.cancelled() else None
+            if error is not None:
+                self.logger.error(f"Failed to close evicted SDK client: {error!r}")
+
+        task.add_done_callback(_on_done)
 
 
 class ScopedSdk:

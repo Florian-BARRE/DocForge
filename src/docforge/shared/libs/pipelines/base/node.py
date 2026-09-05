@@ -193,21 +193,23 @@ class ActionNode(AbstractNode, ABC):
         """
         from .slots import SlotTypes  # local import — slots.py must stay dependency-free
 
-        consumes = [
-            IoSlot(
+        def _slot(name: str, field_info: Any) -> IoSlot:
+            # A slot is required only when the field is genuinely mandatory: no default AND
+            # not an optional (``X | None``) shape. An optional annotation accepts None, so the
+            # slot need not be satisfied even if the field itself carries no explicit default.
+            required = field_info.is_required() and not SlotTypes.is_optional(field_info.annotation)
+            return IoSlot(
                 name=name,
                 artefact_type=SlotTypes.label(field_info.annotation),
+                required=required,
                 description=field_info.description,
             )
-            for name, field_info in cls.Consumes.model_fields.items()
+
+        consumes = [
+            _slot(name, field_info) for name, field_info in cls.Consumes.model_fields.items()
         ]
         produces = [
-            IoSlot(
-                name=name,
-                artefact_type=SlotTypes.label(field_info.annotation),
-                description=field_info.description,
-            )
-            for name, field_info in cls.Produces.model_fields.items()
+            _slot(name, field_info) for name, field_info in cls.Produces.model_fields.items()
         ]
         return NodeDescription(
             kind=cls.KIND,
