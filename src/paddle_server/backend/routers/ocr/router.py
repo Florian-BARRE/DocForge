@@ -14,6 +14,7 @@ from loggerplusplus import loggerplusplus
 from backend.context import CONTEXT
 from backend.libs.utils.error_handling import auto_handle_errors
 from backend.libs.utils.request_limits import RequestBodyGuard
+from libs.validation import InvalidInputError
 
 # ====== Local Project Imports ======
 from .models import OcrResponse
@@ -45,9 +46,14 @@ async def ocr(request: Request) -> OcrResponse:
     if not image_bytes:
         raise HTTPException(status_code=422, detail={"error": "empty request body"})
 
-    # 2. Delegate to the OCR service; a lock-wait timeout means the service is saturated.
+    # 2. Delegate to the OCR service; classify its two expected failures distinctly from a genuine
+    #    server fault (which `@auto_handle_errors` still turns into a non-leaky 500):
+    #      - an undecodable image is a CLIENT error -> 422 with a clean message;
+    #      - a lock-wait timeout means the service is saturated -> 503 with Retry-After.
     try:
         result = await CONTEXT.paddleocr.read_image(image_bytes)
+    except InvalidInputError as exc:
+        raise HTTPException(status_code=422, detail={"error": str(exc)})
     except TimeoutError:
         raise HTTPException(
             status_code=503,

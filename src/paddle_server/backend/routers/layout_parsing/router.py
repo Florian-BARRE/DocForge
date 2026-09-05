@@ -15,6 +15,7 @@ from loggerplusplus import loggerplusplus
 from backend.context import CONTEXT
 from backend.libs.utils.error_handling import auto_handle_errors
 from backend.libs.utils.request_limits import RequestBodyGuard
+from libs.validation import InvalidInputError
 
 # ====== Local Project Imports ======
 from .models import LayoutParsingResponse
@@ -57,7 +58,10 @@ async def layout_parsing(
     if not pdf_bytes:
         raise HTTPException(status_code=422, detail={"error": "empty request body"})
 
-    # 2. Delegate to the pipeline service; a lock-wait timeout means the service is saturated.
+    # 2. Delegate to the pipeline service; classify its two expected failures distinctly from a
+    #    genuine server fault (which `@auto_handle_errors` still turns into a non-leaky 500):
+    #      - an undecodable PDF is a CLIENT error -> 422 with a clean message;
+    #      - a lock-wait timeout means the service is saturated -> 503 with Retry-After.
     try:
         result = await CONTEXT.ppstructure.parse_pdf(
             pdf_bytes,
@@ -66,6 +70,8 @@ async def layout_parsing(
             use_seal_recognition=use_seal_recognition,
             use_doc_orientation_classify=use_doc_orientation_classify,
         )
+    except InvalidInputError as exc:
+        raise HTTPException(status_code=422, detail={"error": str(exc)})
     except TimeoutError:
         raise HTTPException(
             status_code=503,

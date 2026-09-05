@@ -1,9 +1,10 @@
 # ====== Code Summary ======
-# Pinned dependency versions for the PP-StructureV3 stack — a supply-chain / reproducibility
-# reference, NOT enforced at runtime (the actual pins live in pyproject.toml / uv.lock; this
-# module only documents them for the /health + /layout-parsing "engine" block so a caller can
-# see exactly what produced a given response). Update in lockstep with pyproject.toml whenever
-# the pins change.
+# Documentation-only record of the pinned PP-StructureV3 stack versions — the single place the
+# normalizers cross-reference ("see revision.py") for WHY the pins are exact. It is NOT consumed at
+# runtime and NOT re-exported from the package: the actual pins are enforced by pyproject.toml /
+# uv.lock, and the /layout-parsing "engine" block reports the ACTUALLY-installed paddleocr version
+# (PpStructureService._paddleocr_version), which is more truthful than a hand-maintained constant
+# that could silently drift from what is installed. Keep this dict in lockstep with pyproject.toml.
 #
 # WHY pinned exact (not floating): the `parsing_res_list` schema drifted between PaddleOCR
 # release/3.0 (nested `{layout_bbox, "{label}": content}`) and >=3.1 (flat `{block_label,
