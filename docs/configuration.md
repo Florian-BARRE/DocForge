@@ -248,7 +248,6 @@ selects the `pp_structure` brick. See [architecture.md](architecture.md) and
 | `PADDLE_USE_FORMULA_RECOGNITION` | `false` | Optional formula-recognition sub-pipeline. |
 | `PADDLE_USE_SEAL_RECOGNITION` | `false` | Optional seal-recognition sub-pipeline. |
 | `PADDLE_USE_DOC_ORIENTATION_CLASSIFY` | `false` | Optional document-orientation classification. |
-| `PADDLE_USE_DOC_UNWARPING` | `false` | Kept off (mapper provenance contract); exposed only so a deployment can flip it back on deliberately. |
 | `PADDLE_LOCK_WAIT_TIMEOUT_SECONDS` | `290` | Max seconds a `/layout-parsing` request waits for the shared predict lock before the router returns HTTP 503 (PaddlePaddle inference is not thread-safe). Must be `> 0`. |
 | `PADDLE_MAX_BODY_BYTES` | `104857600` | Hard ceiling (bytes, default 100 MiB) on the request body `/ocr` and `/layout-parsing` will buffer. An oversized upload is refused HTTP 413 (before/while reading) instead of OOMing the container. |
 | `LOGGING_*` | see file | Same five logging knobs as above (all default: `INFO`/`DEBUG`/`true`/`false`/`ShortFormat`). |

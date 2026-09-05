@@ -96,10 +96,11 @@ class PaddleServerConfig(EnvConfigLoader):
     PADDLE_USE_DOC_ORIENTATION_CLASSIFY: bool = env(
         "PADDLE_USE_DOC_ORIENTATION_CLASSIFY", cast=bool, default="false"
     )
-    # Kept OFF always (not just default) per the mapper's provenance contract — see
-    # libs/ppstructure/service.py. Exposed as an env var only so a deployment can flip it back on
-    # deliberately; the request-level knob in the API schema is documented as always False.
-    PADDLE_USE_DOC_UNWARPING: bool = env("PADDLE_USE_DOC_UNWARPING", cast=bool, default="false")
+    # NOTE: there is deliberately NO PADDLE_USE_DOC_UNWARPING knob. Doc-unwarping is forced OFF
+    # unconditionally in both pipelines (see libs/ppstructure/service.py) because the mapper's
+    # bbox provenance contract assumes the layout-detection image is the raw rendered page, not a
+    # geometrically unwarped one. An env override here would be a lie — it could not be honored
+    # without breaking that invariant — so it is not offered.
 
     # ───── PaddleOCR (OCR-only pipeline) ─────
     # The OCR-only capability runs a SEPARATE PaddleOCR (text detection + recognition) instance,

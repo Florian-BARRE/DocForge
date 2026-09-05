@@ -21,6 +21,9 @@ from typing import TYPE_CHECKING, Any
 # ====== Third-Party Library Imports ======
 from loggerplusplus import LoggerClass
 
+# ====== Internal Project Imports ======
+from libs.validation import InputValidator
+
 # ====== Local Project Imports ======
 from .normalizer import PpStructureResponseNormalizer
 
@@ -161,10 +164,15 @@ class PpStructureService(LoggerClass):
 
         Raises:
             RuntimeError: If `build()` has not been called yet.
+            InvalidInputError: If the body is not a decodable PDF (a client error -> HTTP 422).
             TimeoutError: If the predict lock cannot be acquired within the configured timeout.
         """
         if self._pipeline is None:
             raise RuntimeError(f"PpStructureService.build() has not been called yet.")
+
+        # Reject an undecodable PDF as a client error BEFORE taking the lock or spending
+        # inference — surfaces as HTTP 422, not a raw PaddleX exception leaked at HTTP 500.
+        InputValidator.verify_pdf(pdf_bytes)
 
         # 1. Bounded wait on the shared lock — an unbounded wait would let requests pile up
         # forever behind one slow predict() call; a timeout surfaces as a clear 503 instead.

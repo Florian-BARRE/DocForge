@@ -21,14 +21,23 @@ class _StubOcrService:
     """A no-paddle stand-in for PaddleOcrService — build/unload are no-ops, read_image is canned."""
 
     def __init__(
-        self, *, reading: dict[str, Any] | None = None, raise_timeout: bool = False
+        self,
+        *,
+        reading: dict[str, Any] | None = None,
+        raise_timeout: bool = False,
+        raise_invalid: bool = False,
     ) -> None:
         self.ready = True
         self._reading = reading or {"text": "FACTURE 1500", "confidence": 0.91}
         self._raise_timeout = raise_timeout
+        self._raise_invalid = raise_invalid
 
     async def read_image(self, image_bytes: bytes) -> dict[str, Any]:
-        """Return the canned reading, or raise TimeoutError to simulate a saturated predict lock."""
+        """Return the canned reading, or raise to simulate a bad image / a saturated predict lock."""
+        if self._raise_invalid:
+            from libs.validation import InvalidInputError  # noqa: PLC0415
+
+            raise InvalidInputError("request body is not a decodable image")
         if self._raise_timeout:
             raise TimeoutError("busy")
         return self._reading
@@ -66,3 +75,12 @@ def test_ocr_route_returns_503_on_lock_timeout() -> None:
     response = _client().post("/ocr", content=b"png")
     assert response.status_code == 503
     assert response.headers.get("Retry-After") == "5"
+
+
+def test_ocr_route_returns_422_on_undecodable_image() -> None:
+    # A malformed image is a client error: the service raises InvalidInputError and the router maps
+    # it to 422 with a clean message — NOT a 500 leaking a raw PaddleX exception string.
+    CONTEXT.paddleocr = _StubOcrService(raise_invalid=True)  # type: ignore[assignment]
+    response = _client().post("/ocr", content=b"not-an-image")
+    assert response.status_code == 422
+    assert response.json()["detail"]["error"] == "request body is not a decodable image"

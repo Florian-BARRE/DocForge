@@ -8,6 +8,8 @@
 
 ## Journal
 
+- **2026-09-05 — Vague F / 0.14.16 (V8 paddle_server, 4 items — clôt les serveurs modèles)** : (1) **bytes image/PDF invalides → 500 leak** (ocr + layout-parsing router) — nouveau `libs/validation.py` (`InvalidInputError` + `InputValidator.verify_image` Pillow / `verify_pdf` pypdfium2, deps AVX-free, import différé) validé **avant** le lock/l'inférence dans les services → routers renvoient **422** (message propre, fixe) pour un input client cassé, 500 réservé aux vraies fautes. (2) **`PADDLE_USE_DOC_UNWARPING` mort** → **retiré** (jamais lu ; les pipelines hardcodent `False` par contrat provenance bbox — un override serait un mensonge) + NOTE explicative ; refs stale nettoyées (`docs/configuration.md`, `services/paddle_server/.env{,.example}`). (3) **SIGILL no-AVX non gardé** — `CpuFeatures.supports_avx()` (lecture `/proc/cpuinfo` cachée, dégrade "présent" si non-probable) checké **en premier** dans `/health` → **503 unhealthy** avec raison sur CPU sans AVX (le conteneur n'annonce plus une readiness qu'il ne peut tenir ; aucune inférence lancée dans le healthcheck). (4) **`PADDLE_PIN_INFO` mort** → export retiré + docstring corrigée (le bloc engine reporte la version paddleocr **installée**, plus fiable qu'un pin déclaré). Gate paddle : format+lint+mypy clean, **51 passed** (+17). Vérifié par moi (gate rejoué + nettoyage refs). **→ V8 : 56/188 ; serveurs modèles (bge+paddle) 100%.**
+
 - **2026-09-05 — Vague E / 0.14.15 (V8 infra + bge_server, 11 items, 2 agents ||)** : **infra/compose (7)** — (1) **healthcheck `docforge_app`** : `GET /health` (public, hors `/api/v1`, zéro I/O) via `python -c urllib` (pas de curl dans l'image slim) ; `docforge_mcp` + `docforge_caddy` passent `depends_on: service_healthy` sur l'app. (2) **`.dockerignore` manquant** : `src/docforge/.dockerignore` créé (le contexte app/worker est `src/docforge/`, PAS `src/` — Docker ne lit `.dockerignore` qu'à la racine du contexte) → exclut `.venv` (~400 Mo), `node_modules`, `dist`, `.vite`, caches ; **safe** car l'image app build son propre `dist/` in-container (stage `ui-build` `npm ci`+`npm run build`, vérifié). (3) **Grafana pw drift** : export mort `GRAFANA_ADMIN_PASSWORD` retiré du Makefile + bloc `.env.example` racine réécrit vers `services/telemetry/.env` (mécanisme réel `env_file`). (4) **compose/README** : faux dir `compose/telemetry/` → `services/telemetry/` + règle path proxy/telemetry (`-f`, résolue depuis project dir) corrigée. (5) **headers dev.yml/gpu.yml** : exemples `-f` manuels (paths hors-repo) → pointent les fichiers-scénario ; claim "last-include wins" → FIRST-wins. (6) **robustesse** : `docforge_app` attend seaweedfs healthy ; healthchecks promtail/grafana + `deploy.resources.limits` sur les 4 services télémétrie + depends_on service_healthy. (7) **commentaires legacy** purgés (base.yml). Validé : `config -q` sur les 16 combos (4 scénarios × {none,proxy,telemetry,both}). **bge_server (4)** — (1) **`/embed_all` back-pressure** : compteur in-flight capé dans `BatchingEngine` → `QueueFullError` → **503 + Retry-After** au routeur (comme les 4 routes queued), plus d'OOM possible. (2) **thread-budget** : réconcilié avec le moteur 2-locks (embed+rerank = 2 forward passes concurrents) — doc/code cohérents. (3) **`/rerank` tri score-descendant** (parité TEI) — le client docforge `bge_reranker` remappe par `index` (vérifié), donc sûr. (4) **cluster doc/commentaires stale** (worker/engine/context/lifespan : "3 workers/1 lock" → "4 workers/2 locks"). Gate bge : format+lint+mypy clean, **33 passed** (+4). Reste V8 model-servers : les 4 items **paddle** (wave dédiée). **→ V8 : 52/188.**
 
 - **2026-09-05 — Vague V7 (documentation, 11 items — pas de release : docs non packagées)** : passe doc↔code, agent dédié, **claims re-vérifiés contre le code**. Ground truth relu depuis `NodeRegistry` (familles + kinds). Fixes (tracked) : PIPELINE.md (deliver/bundle ajoutés à l'arbre + phrase familles ; statuts stale corrigés — block-id remap shippé, caveat item-index à jour, arbre +granite_docling/pp_structure/vlm_entry, nodes +structgen) ; README (+release-images.yml) ; rest-api.md (SearchHit/JobStatus/JobPage pagination alignés sur les response models) ; architecture.md (13 ressources SDK, gate frontend eslint+tsc+vitest+build, note rename supprimée) ; brand.md (`--text-mute` = `#6e6960` réel, pas `#8a8378`) ; deployment-resources.md (flag stale ~10/8 GB retiré — getting-started dit déjà ~20 GB/12-16 GB) ; getting-started.md (port range 10040–10052 + ligne paddle 10049 ; field-types 6→**11** depuis l'enum `FieldType`). **Déjà OK** (finding stale) : python-sdk.md liste déjà CREATE. **Local-only (gitignored, hors commit)** : CLAUDE.md familles+tests (comme `.claude`) — noté, appliqué localement. Aucun code/test/compose/.github touché. **→ V7 : 21/21 (0 restant).** NB : pas de tag/release — les docs ne sont pas packagées dans les images/SDK, un rebuild d'images identiques serait du gaspillage ; commit docs sur main.
@@ -117,8 +119,8 @@
 | V5 — Moteur & pipeline | 2 | 2 | 0 | 0 |
 | V6 — Frontend | 0 | 0 | 0 | 0 |
 | V7 — Documentation | 21 | 21 | 0 | 0 |
-| V8 — Outillage (.claude/tests/infra/télémétrie) | 188 | 52 | 3 | 133 |
-| **Total** | **247** | **110** | **3** | **134** |
+| V8 — Outillage (.claude/tests/infra/télémétrie) | 188 | 56 | 3 | 129 |
+| **Total** | **247** | **114** | **3** | **130** |
 
 
 ## V1 — Sécurité & authz (avant tout déploiement multi-tenant)  (30)
@@ -402,19 +404,19 @@
   `src/bge_server/backend/lifespan.py:49`
 - [x] **🟠 MOYENNE** · `design` — /embed_all has no back-pressure: bypasses the bounded queues, can never return 503  
   `src/bge_server/libs/batching/engine.py:385`
-- [ ] **🟠 MOYENNE** · `design` — Bad image bytes on /ocr surface as HTTP 500 with raw exception text — client errors indistinguishable from server faults  
+- [x] **🟠 MOYENNE** · `design` — Bad image bytes on /ocr surface as HTTP 500 with raw exception text — client errors indistinguishable from server faults  
   `src/paddle_server/backend/routers/ocr/router.py:47`
-- [ ] **🟠 MOYENNE** · `dead-code` — PADDLE_USE_DOC_UNWARPING env var is dead — its comment promises operators an override that silently does nothing  
+- [x] **🟠 MOYENNE** · `dead-code` — PADDLE_USE_DOC_UNWARPING env var is dead — its comment promises operators an override that silently does nothing  
   `src/paddle_server/config_loader.py:94`
 - [x] **🟠 MOYENNE** · `consistency` — Thread-budget derivation assumes 1 concurrent model call while the two-lock engine allows 2 — engine docstring and service code contradict each other  
   `src/bge_server/libs/bge_models/service.py:87`
-- [ ] **🟠 MOYENNE** · `divergence-doc` — no-AVX SIGILL constraint is documented in docs/ but completely unguarded in paddle_server — container reports healthy, then dies on first inference  
+- [x] **🟠 MOYENNE** · `divergence-doc` — no-AVX SIGILL constraint is documented in docs/ but completely unguarded in paddle_server — container reports healthy, then dies on first inference  
   `src/paddle_server/backend/routers/health/router.py:46`
 - [x] **⚪ FAIBLE** · `consistency` — /rerank claims to mirror TEI but returns input order where TEI returns score-descending order  
   `src/bge_server/backend/routers/inference/router.py:220`
 - [x] **⚪ FAIBLE** · `consistency` — bge_server stale doc/comment cluster: retired single-lock design, wrong worker count, phantom constructor args, dead port reference  
   `src/bge_server/libs/batching/worker.py:31`
-- [ ] **⚪ FAIBLE** · `dead-code` — paddle_server PADDLE_PIN_INFO is exported but never used — its docstring claims it feeds /health and the engine block  
+- [x] **⚪ FAIBLE** · `dead-code` — paddle_server PADDLE_PIN_INFO is exported but never used — its docstring claims it feeds /health and the engine block  
   `src/paddle_server/libs/ppstructure/revision.py:14`
 
 ### Tests
