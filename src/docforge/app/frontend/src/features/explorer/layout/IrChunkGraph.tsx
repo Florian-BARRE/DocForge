@@ -12,7 +12,7 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
-import type { ChunkInfo, IRBlock, IREnrichment } from "../../../api/explorer";
+import type { ChunkInfo, IRBlock, IREnrichment, IRTable } from "../../../api/explorer";
 import { theme } from "../../../theme";
 import { displayPage } from "../format";
 import { blockStyle } from "./blockColors";
@@ -41,6 +41,7 @@ interface IrChunkGraphProps {
   blocks: IRBlock[];
   chunks: ChunkInfo[];
   enrichmentsByBlock: Map<string, IREnrichment[]>;
+  tablesByBlock: Map<string, IRTable>;
   chunkByBlockId: Map<string, ChunkInfo>;
   selectedBlockId: string | null;
   activeChunkId: string | null;
@@ -53,6 +54,7 @@ export function IrChunkGraph({
   blocks,
   chunks,
   enrichmentsByBlock,
+  tablesByBlock,
   chunkByBlockId,
   selectedBlockId,
   activeChunkId,
@@ -260,6 +262,7 @@ export function IrChunkGraph({
                   chunk={chunk}
                   members={members}
                   enrichmentsByBlock={enrichmentsByBlock}
+                  tablesByBlock={tablesByBlock}
                   selected={activeChunkId === chunk.id}
                   selectedBlockIndex={selBlockIndex}
                   onSelect={() => onSelectChunk(chunk.id)}

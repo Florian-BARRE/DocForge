@@ -7,7 +7,7 @@
 
 import { useMemo } from "react";
 
-import type { ChunkInfo, DocumentIR, DocumentProvenance, IREnrichment, PageInfo } from "../../../api/explorer";
+import type { ChunkInfo, DocumentIR, DocumentProvenance, IREnrichment, IRTable, PageInfo } from "../../../api/explorer";
 import { EmptyState } from "../../../components/EmptyState";
 import { ErrorState } from "../../../components/ErrorState";
 import { LoadingState } from "../../../components/LoadingState";
@@ -55,6 +55,14 @@ export function LayoutTab({ ir, pages, chunks, provenance, error, chunksError, o
   // Chunks are optional context (the panel groups by them but still renders without them) — an empty
   // map when chunks failed or are still loading, so a chunks hiccup never blocks the layout.
   const chunkByBlockId = useMemo(() => buildChunkByBlockId(chunks ?? []), [chunks]);
+
+  // Table blocks keyed by id — the Chunk column's provenance segmentation re-renders each table's
+  // markdown grid (the chunker's actual embedded text) to attribute it to its TABLE block, not glue.
+  const tablesByBlock = useMemo(() => {
+    const map = new Map<string, IRTable>();
+    for (const table of ir?.tables ?? []) map.set(table.block_id, table);
+    return map;
+  }, [ir]);
 
   // Pages joined by a chunk that spans them become ONE row (so a cross-page chunk is inspected whole,
   // both pages visible at once); un-bridged pages stay solo.
@@ -140,6 +148,7 @@ export function LayoutTab({ ir, pages, chunks, provenance, error, chunksError, o
           pages={group.pages}
           blocks={group.blocks}
           enrichmentsByBlock={enrichmentsByBlock}
+          tablesByBlock={tablesByBlock}
           chunkByBlockId={chunkByBlockId}
           parseChain={parseChain}
         />

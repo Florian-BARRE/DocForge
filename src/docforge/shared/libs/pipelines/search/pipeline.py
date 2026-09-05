@@ -16,6 +16,7 @@ from shared_libs.pipelines.introspection import (
     Palette,
 )
 from shared_libs.pipelines.registry import NodeRegistry
+from shared_libs.pipelines.validation import PaletteScopeValidator
 
 
 class SearchPipeline:
@@ -95,6 +96,22 @@ class SearchPipeline:
             mechanics=GraphMechanics.describe(),
             artefacts=ArtefactCatalog.describe(),
         )
+
+    @classmethod
+    def allowed_kinds(cls) -> dict[str, set[str]]:
+        """
+        The (family → kinds) map a valid built search graph may use — the palette scope.
+
+        Resolved from ``FAMILIES`` (the families search is built from) and ``FAMILY_KINDS`` (the
+        per-family scoping for the shared ``deliver`` family → ``hits``). Admits the future
+        ``SELECTABLE=False`` placeholder kinds registered under search families, so a valid graph is
+        never rejected for a legitimately registered kind. Fed to ``PaletteScopeValidator`` at the
+        write boundary.
+
+        Returns:
+            dict[str, set[str]]: Family → the set of kinds a search graph may contain.
+        """
+        return PaletteScopeValidator.resolve(cls.FAMILIES, cls.FAMILY_KINDS)
 
     @classmethod
     def default_blob(cls) -> GroupNodeBlob:

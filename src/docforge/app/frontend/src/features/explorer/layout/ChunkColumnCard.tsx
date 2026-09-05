@@ -8,7 +8,7 @@
 
 import { useState } from "react";
 
-import type { IREnrichment } from "../../../api/explorer";
+import type { IREnrichment, IRTable } from "../../../api/explorer";
 import type { ChunkInfo } from "../../../api/explorer";
 import { theme } from "../../../theme";
 import { ChunkGroupHeader } from "./ChunkGroupHeader";
@@ -19,6 +19,7 @@ interface ChunkColumnCardProps {
   chunk: ChunkInfo;
   members: ChunkMember[];
   enrichmentsByBlock: Map<string, IREnrichment[]>;
+  tablesByBlock: Map<string, IRTable>;
   selected: boolean;
   selectedBlockIndex: number | null;
   onSelect: () => void;
@@ -67,7 +68,7 @@ function ProvenancePanel({ items }: { items: ProvenanceItem[] }) {
   );
 }
 
-export function ChunkColumnCard({ chunk, members, enrichmentsByBlock, selected, selectedBlockIndex, onSelect }: ChunkColumnCardProps) {
+export function ChunkColumnCard({ chunk, members, enrichmentsByBlock, tablesByBlock, selected, selectedBlockIndex, onSelect }: ChunkColumnCardProps) {
   const [hovered, setHovered] = useState(false);
   const edge = selected ? theme.color.accent : hovered ? theme.color.accentLine : theme.color.lineStrong;
   const provItems = chunkProvenance(chunk, members, enrichmentsByBlock);
@@ -106,6 +107,7 @@ export function ChunkColumnCard({ chunk, members, enrichmentsByBlock, selected, 
         chunkText={chunk.text}
         members={members}
         enrichmentsByBlock={enrichmentsByBlock}
+        tablesByBlock={tablesByBlock}
         strategy={chunk.strategy}
         tokenCount={chunk.token_count}
         selectedBlockIndex={selectedBlockIndex}

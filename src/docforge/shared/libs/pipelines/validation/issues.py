@@ -34,6 +34,10 @@ class ValidationCode(StrEnum):
         SCORE_BELOW_NOT_SCORED: A ScoreBelow edge starts from a node whose output is not scored.
         DUPLICATE_UNIQUE_NODE: A node declared UNIQUE_IN_GRAPH appears more than once in the
             whole graph (nested groups included).
+        KIND_NOT_IN_PALETTE: A node's (family, kind) does not belong to the target pipeline's
+            palette — a search kind used in an ingest graph, an ingest kind in a search graph, or
+            a kind whose family is not one of the pipeline's own. Rejected at the write boundary
+            before any spend, rather than building a valid-but-wrong graph that fails at run.
     """
 
     NO_SINGLE_ENTRY = "no_single_entry"
@@ -50,6 +54,7 @@ class ValidationCode(StrEnum):
     SCORE_BELOW_NOT_SCORED = "score_below_not_scored"
     DUPLICATE_UNIQUE_NODE = "duplicate_unique_node"
     SWITCH_NOT_EXHAUSTIVE = "switch_not_exhaustive"
+    KIND_NOT_IN_PALETTE = "kind_not_in_palette"
 
 
 class ValidationIssue(BaseModel):

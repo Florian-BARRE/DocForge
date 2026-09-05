@@ -17,6 +17,7 @@ from shared_libs.pipelines.introspection import (
     Palette,
 )
 from shared_libs.pipelines.registry import NodeRegistry
+from shared_libs.pipelines.validation import PaletteScopeValidator
 
 # ====== Local Project Imports ======
 from .stages import IngestAssembler, default_state, light_state
@@ -103,6 +104,21 @@ class IngestPipeline:
             mechanics=GraphMechanics.describe(),
             artefacts=ArtefactCatalog.describe(),
         )
+
+    @classmethod
+    def allowed_kinds(cls) -> dict[str, set[str]]:
+        """
+        The (family → kinds) map a valid built ingestion graph may use — the palette scope.
+
+        Resolved from ``FAMILIES`` (the families ingestion is built from) and ``FAMILY_KINDS`` (the
+        per-family scoping for shared families). It deliberately admits the ``SELECTABLE=False``
+        internal wiring kinds a stage builder emits, so a valid built graph is never rejected for
+        its own scaffolding. Fed to ``PaletteScopeValidator`` at the write boundary.
+
+        Returns:
+            dict[str, set[str]]: Family → the set of kinds an ingestion graph may contain.
+        """
+        return PaletteScopeValidator.resolve(cls.FAMILIES, cls.FAMILY_KINDS)
 
     @classmethod
     def default_blob(cls) -> GroupNodeBlob:

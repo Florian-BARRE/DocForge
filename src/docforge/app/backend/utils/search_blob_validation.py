@@ -13,10 +13,10 @@ from fastapi import HTTPException
 from loggerplusplus import loggerplusplus
 
 # ====== Internal Project Imports ======
+from shared_libs.pipelines.search import SearchPipeline
 from shared_libs.pipelines.validation import SearchResultContract
 
 # ====== Local Project Imports ======
-from ..context import CONTEXT
 from .pipeline_validation import PipelineBlobValidator
 
 
@@ -24,12 +24,13 @@ class SearchBlobValidator:
     """
     Static validator for a stored search graph blob (structural + terminal contract → 422).
 
-    Composes the shared structural ``PipelineBlobValidator`` (build + graph validation) with the
-    shared ``SearchResultContract`` terminal check that mirrors the inline runner's runtime assert:
-    the built graph must terminate on a node whose ``Produces`` face yields a ``SearchResult``. A
-    structurally valid but non-search graph (an ingest topology, or a search graph with its
-    ``deliver/hits`` terminal removed) is therefore rejected at the WRITE boundary — never stored to
-    500 on every query.
+    Composes the shared structural core of ``PipelineBlobValidator`` (build + graph validation) with
+    the SEARCH palette scope (only kinds the search pipeline is built from) and the shared
+    ``SearchResultContract`` terminal check that mirrors the inline runner's runtime assert: the
+    built graph must terminate on a node whose ``Produces`` face yields a ``SearchResult``. A
+    structurally valid but non-search graph (an ingest topology, an ingest kind smuggled in, or a
+    search graph with its ``deliver/hits`` terminal removed) is therefore rejected at the WRITE
+    boundary — never stored to 500 on every query.
     """
 
     logger = loggerplusplus.bind(identifier="SearchBlobValidator")
@@ -47,15 +48,19 @@ class SearchBlobValidator:
 
         Raises:
             HTTPException: 422 when the blob cannot be built or fails structural validation
-                (delegated to ``PipelineBlobValidator``), or when the built graph does not
-                terminate on a ``deliver/hits`` node producing a SearchResult.
+                (delegated to ``PipelineBlobValidator``), contains a kind foreign to the search
+                palette, or does not terminate on a ``deliver/hits`` node producing a SearchResult.
         """
-        # 1. Structural validation first — build + graph validator (shared chokepoint, raises 422).
-        PipelineBlobValidator.validate(blob)
+        # 1. Structural validation first — build + graph validator (shared core, raises 422). The
+        #    pipeline-agnostic core is used (NOT PipelineBlobValidator.validate, which would apply
+        #    the INGEST scope) so the search-specific scope can be enforced next on the same graph.
+        group = PipelineBlobValidator.build_and_check_structure(blob)
 
-        # 2. Re-build the now-known-valid graph and assert its TERMINAL contract (the runner's
-        #    runtime assert, checked at build time so a non-search graph fails at the write edge).
-        group = CONTEXT.pipeline_builder.build(blob)
+        # 2. Reject any kind that does not belong to the SEARCH pipeline's palette.
+        PipelineBlobValidator.enforce_palette(group, SearchPipeline.allowed_kinds())
+
+        # 3. Assert the TERMINAL contract (the runner's runtime assert, checked at build time so a
+        #    non-search graph fails at the write edge).
         if not SearchResultContract.terminates_on_search_result(group):
             raise HTTPException(
                 status_code=422,
