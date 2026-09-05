@@ -7,6 +7,9 @@ from .context import RunContext
 # ---------------------- Cache seam ---------------------- #
 from .cache import CacheHook, ENGINE_CACHE_EPOCH
 
+# ---------------------- Errors ---------------------- #
+from .errors import EngineInvariantError
+
 # ---------------------- Input resolution ---------------------- #
 from .resolver import InputResolver, ResolutionError
 
@@ -19,6 +22,7 @@ __all__ = [
     "RunContext",
     "CacheHook",
     "ENGINE_CACHE_EPOCH",
+    "EngineInvariantError",
     "InputResolver",
     "ResolutionError",
     "ProgressPhase",
