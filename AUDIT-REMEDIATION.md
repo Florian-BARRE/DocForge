@@ -106,7 +106,7 @@
 
 | Vague | Total | Fait | En cours | Restant |
 |---|---|---|---|---|
-| V1 — Sécurité & authz | 30 | 28 | 0 | 2 |
+| V1 — Sécurité & authz | 30 | 29 | 0 | 1 |
 | V2 — Fiabilité (jobs/stores/transferts) | 4 | 4 | 0 | 0 |
 | V3 — Release/CI/dépendances | 1 | 1 | 0 | 0 |
 | V4 — Search & coûts | 1 | 1 | 0 | 0 |
@@ -114,7 +114,7 @@
 | V6 — Frontend | 0 | 0 | 0 | 0 |
 | V7 — Documentation | 21 | 10 | 0 | 11 |
 | V8 — Outillage (.claude/tests/infra/télémétrie) | 188 | 41 | 3 | 144 |
-| **Total** | **247** | **87** | **3** | **157** |
+| **Total** | **247** | **88** | **3** | **156** |
 
 
 ## V1 — Sécurité & authz (avant tout déploiement multi-tenant)  (30)
@@ -185,8 +185,8 @@
 
 ### Infra .claude
 
-- [ ] **🟠 MOYENNE** · `security` — hook logs retain secrets in plaintext with unbounded retention (full tool_input/tool_response of every call)  
-  `.claude/hooks/hooks.py:117`
+- [x] **🟠 MOYENNE** · `security` — hook logs retain secrets in plaintext with unbounded retention (full tool_input/tool_response of every call)  
+  `.claude/hooks/hooks.py:117` _(local .claude, gitignored — hors release ; rétention déjà bornée V8 tranche 2, redaction ajoutée 2026-09-05)_
 - [ ] **⚪ FAIBLE** · `security` — settings.json runs every session in bypassPermissions with a blanket allow list  
   `.claude/settings.json:9`
 
