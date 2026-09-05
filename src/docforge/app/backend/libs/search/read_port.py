@@ -4,10 +4,11 @@
 # data facades: a retrieve/hydrate node never imports a store. hybrid_search delegates to the LEAN
 # SearchFacade.hybrid_ids, which bakes in the disabled-chunk / disabled-document exclusion
 # (search_facade.py) and returns (chunk_id, score) pairs WITHOUT hydration — so the unbypassable
-# exclusion comes for free, no composed graph can fetch a disabled point, and the candidate pool is
-# hydrated exactly once (by the hydrate node, on the cut top_k). hydrate delegates to the documents
-# facade's bulk chunk read. Constructed
-# per-request, scoped to one collection; carries no cross-request state.
+# exclusion comes for free, no composed graph can fetch a disabled point, and the DELIVERED pool is
+# hydrated once (by the hydrate node, on the cut top_k). A rerank node, when present, additionally
+# reads ONLY the passage text of its top_n through this same port to score them — a separate scoped
+# read, not a re-hydration of the delivered pool. hydrate delegates to the documents facade's bulk
+# chunk read. Constructed per-request, scoped to one collection; carries no cross-request state.
 
 # ====== Standard Library Imports ======
 import uuid
@@ -56,7 +57,8 @@ class CollectionReadPortImpl(CollectionReadPort, LoggerClass):
         The disabled-chunk / disabled-document exclusion is enforced inside SearchFacade.hybrid_ids,
         so it can never be bypassed here whatever the graph wiring. Retrieval stays lean here: the
         facade returns (chunk_id, score) pairs with NO Postgres hydration — the hydrate node fetches
-        the rich fields for the cut top_k only, so the candidate pool is never hydrated twice.
+        the rich fields for the cut top_k only, so the DELIVERED pool is hydrated once (a rerank
+        node, when present, separately reads only its top_n passage text to score them).
 
         Args:
             encoded (EncodedQuery): The query's vectors (dense always; sparse when present).
@@ -92,8 +94,9 @@ class CollectionReadPortImpl(CollectionReadPort, LoggerClass):
             max_disabled_exclusions=RUNTIME_CONFIG.SEARCH_MAX_DISABLED_DOC_EXCLUSIONS,
         )
 
-        # 3. Build lean candidates straight from the pairs — the pool is hydrated exactly once, by
-        #    the hydrate node on the cut top_k. Provenance is the retrieval branch.
+        # 3. Build lean candidates straight from the pairs — the DELIVERED pool is hydrated once, by
+        #    the hydrate node on the cut top_k (a rerank node, if wired, separately reads only its
+        #    top_n passage text to score them). Provenance is the retrieval branch.
         candidates = [
             Candidate(chunk_id=chunk_id, score=score, source=_RETRIEVAL_SOURCE)
             for chunk_id, score in scored

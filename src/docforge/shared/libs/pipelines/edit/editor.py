@@ -138,6 +138,26 @@ class GraphEditor(LoggerClass):
         """Drop a node, bridge a single-in/single-out chain, purge every dangling reference."""
         container = self.__container(blob, op.container)
         self.__node(container, op.node_id)
+
+        # 0. A sibling ForEach's 'over' is a REQUIRED binding on the loop (not a slot in
+        #    container.bindings), so __purge_references cannot unbind it the way it heals other
+        #    data bindings — and there is no source to bridge it to (the control chain is not the
+        #    data source). Removing its source would leave the loop iterating over a node that no
+        #    longer exists — a broken graph — so refuse the removal, mirroring set_after's refusal
+        #    to leave a valid-but-wrong graph, and point the caller at set_loop_prop.
+        orphaned = sorted(
+            node.id
+            for node in container.nodes
+            if isinstance(node, ForEachNodeBlob)
+            and isinstance(node.over, FromNode)
+            and node.over.node_id == op.node_id
+        )
+        if orphaned:
+            raise EditError(
+                f"cannot remove '{op.node_id}': foreach {', '.join(orphaned)} iterate(s) over it "
+                f"(its 'over' is a required binding); re-point the loop with set_loop_prop first"
+            )
+
         incoming = [t for t in container.transitions if t.to_node_id == op.node_id]
         outgoing = [t for t in container.transitions if t.from_node_id == op.node_id]
 

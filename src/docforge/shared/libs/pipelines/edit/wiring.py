@@ -27,6 +27,7 @@ from shared_libs.pipelines.build.blob import (
     NodeBlob,
 )
 from shared_libs.pipelines.registry import NodeRegistry
+from shared_libs.public_models import Artifact
 
 
 class AutoWire:
@@ -116,26 +117,49 @@ class AutoWire:
 
     @classmethod
     def __foreach_item_element(cls, loop: ForEachNodeBlob) -> type | None:
-        """The artefact class each item collects into — the body terminal's single output type."""
-        # 1. The body terminal: a non-foreach node with no outgoing transition (mirror bodyItemType).
+        """The uniform artefact class each item collects into — mirrors ``ForEach.item_type()``.
+
+        The validator types a ForEach's ``items`` from the collection contract: EVERY body terminal
+        must be an action producing the SAME single Artifact-class slot. Reading only the FIRST
+        terminal (as this once did) would auto-wire a body whose terminals DISAGREE to that first
+        type — a binding the validator then rejects. So this walks every terminal and returns the
+        type only when they agree, else None: no auto-wire, and the validator reports the invalid
+        body (FOREACH_INVALID_BODY) rather than the two silently diverging.
+        """
+        # 1. The body terminals: children with no outgoing transition (mirror GraphTopology.exits).
         body = loop.body
         froms = {transition.from_node_id for transition in body.transitions}
-        terminal = next(
-            (n for n in body.nodes if n.id not in froms and not isinstance(n, ForEachNodeBlob)),
-            None,
-        )
+        terminals = [node for node in body.nodes if node.id not in froms]
+        if not terminals:
+            return None
+        # 2. Every terminal must be a registered action producing exactly one Artifact-class scalar.
+        element_types: set[type] = set()
+        for terminal in terminals:
+            element = cls.__terminal_item_element(terminal)
+            if element is None:
+                return None
+            element_types.add(element)
+        # 3. Uniformity: one artefact class across every terminal (else the validator rejects it).
+        return element_types.pop() if len(element_types) == 1 else None
+
+    @classmethod
+    def __terminal_item_element(cls, terminal: NodeBlob) -> type | None:
+        """A single body-terminal's collectable Artifact type, or None if it breaks the contract."""
+        # 1. Only a registered action node is a collectable terminal (a group/foreach never is).
         if not isinstance(terminal, ActionNodeBlob):
             return None
-        # 2. It must be a registered action producing exactly one scalar artefact slot.
         try:
             node_class = NodeRegistry.get(terminal.family, terminal.kind)
         except KeyError:
             return None
+        # 2. Exactly one Artifact-class scalar slot — scalars/lists are not collectable into items.
         if not issubclass(node_class, ActionNode) or len(node_class.Produces.model_fields) != 1:
             return None
         annotation = next(iter(node_class.Produces.model_fields.values())).annotation
         element, is_list = SlotTypes.element(annotation)
-        return element if element is not None and not is_list else None
+        if element is None or is_list or not issubclass(element, Artifact):
+            return None
+        return element
 
 
 __all__ = ["AutoWire"]
