@@ -6,6 +6,7 @@
 # (only a real parse needs it).
 
 # ====== Standard Library Imports ======
+import math
 from typing import Any
 
 # ====== Third-Party Library Imports ======
@@ -70,6 +71,19 @@ class DoclingParseHelpers:
         return 1 if raw_level is None else int(raw_level) + 1
 
     @staticmethod
+    def _clamp_unit(value: float) -> float:
+        """Clamp a normalized coordinate into [0, 1], mapping any non-finite value to 0.0.
+
+        A degenerate page size (missing/zero dimension falls back to 1.0) or a stray bbox coordinate
+        can push a normalized value out of [0, 1] or to inf/NaN; the IR Provenance bbox contract is a
+        unit square, so this collapses any such value to a finite in-range one (the pp_structure
+        parser already honors this; docling now matches it).
+        """
+        if not math.isfinite(value):
+            return 0.0
+        return min(1.0, max(0.0, value))
+
+    @staticmethod
     def extract_provenance(item: Any, docling_doc: Any) -> Provenance | None:
         """
         Extract the page index and a normalized top-left bbox from a Docling item.
@@ -93,10 +107,15 @@ class DoclingParseHelpers:
             page_idx = max(0, page_no - 1)  # 0-indexed for the IR
             bbox = prov_entry.bbox
 
-            page_obj = (docling_doc.pages or {}).get(page_no)
+            # Guard the page-size fallback: a missing OR non-positive page dimension would otherwise
+            # divide by 0/None (a crash) or a negative (a flipped bbox), so it degrades to 1.0 — the
+            # coords then normalize to raw values that the [0, 1] clamp below collapses cleanly.
+            page_obj = (getattr(docling_doc, "pages", None) or {}).get(page_no)
             page_size = getattr(page_obj, "size", None) if page_obj else None
-            page_w = (getattr(page_size, "width", None) or 1.0) or 1.0
-            page_h = (getattr(page_size, "height", None) or 1.0) or 1.0
+            raw_w = getattr(page_size, "width", None)
+            raw_h = getattr(page_size, "height", None)
+            page_w = raw_w if isinstance(raw_w, (int, float)) and raw_w > 0 else 1.0
+            page_h = raw_h if isinstance(raw_h, (int, float)) and raw_h > 0 else 1.0
 
             # Convert a bottom-left origin to top-left so downstream cropping uses the right region.
             origin = getattr(bbox, "coord_origin", None)
@@ -107,10 +126,11 @@ class DoclingParseHelpers:
             else:
                 top_screen, bottom_screen = top, bottom
 
-            x0 = (bbox.l or 0.0) / page_w
-            x1 = (bbox.r or page_w) / page_w
-            y0 = top_screen / page_h
-            y1 = bottom_screen / page_h
+            # Normalize then clamp to the [0, 1] unit-square Provenance contract (finite, in range).
+            x0 = DoclingParseHelpers._clamp_unit((bbox.l or 0.0) / page_w)
+            x1 = DoclingParseHelpers._clamp_unit((bbox.r or page_w) / page_w)
+            y0 = DoclingParseHelpers._clamp_unit(top_screen / page_h)
+            y1 = DoclingParseHelpers._clamp_unit(bottom_screen / page_h)
             x0, x1 = min(x0, x1), max(x0, x1)
             y0, y1 = min(y0, y1), max(y0, y1)
             return Provenance(page=page_idx, bbox=(x0, y0, x1, y1))

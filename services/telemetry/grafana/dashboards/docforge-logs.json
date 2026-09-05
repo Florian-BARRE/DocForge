@@ -60,7 +60,7 @@
       "gridPos": { "h": 9, "w": 24, "x": 0, "y": 10 },
       "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "bars", "fillOpacity": 60, "lineWidth": 0 }, "color": { "mode": "fixed", "fixedColor": "#c8402c" } }, "overrides": [] },
       "targets": [
-        { "refId": "A", "expr": "sum(count_over_time({compose_service=~\"docforge_.+\"} |~ \"(?i)\\\\b(error|exception|traceback|critical|warn)\\\\b\" !~ \"j_failed=0\" [1m]))", "legendFormat": "errors & warnings" }
+        { "refId": "A", "expr": "sum(count_over_time({compose_service=~\"docforge_.+\"} |~ \"(?i)\\\\b(error|exception|traceback|critical|warn\\\\w*)\\\\b\" !~ \"j_failed=0\" [1m]))", "legendFormat": "errors & warnings" }
       ]
     },
     {
@@ -115,7 +115,7 @@
         "sortOrder": "Descending"
       },
       "targets": [
-        { "refId": "A", "expr": "{compose_service=~\"docforge_.+\"} |~ \"(?i)\\\\b(error|exception|traceback|critical|warn)\\\\b\" !~ \"j_failed=0\"" }
+        { "refId": "A", "expr": "{compose_service=~\"docforge_.+\"} |~ \"(?i)\\\\b(error|exception|traceback|critical|warn\\\\w*)\\\\b\" !~ \"j_failed=0\"" }
       ]
     },
     {

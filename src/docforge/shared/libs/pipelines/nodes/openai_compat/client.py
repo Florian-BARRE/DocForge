@@ -41,15 +41,18 @@ class OpenAICompatHelpers:
             seed (int | None): Sampling seed forwarded when set (None = the provider's default,
                 i.e. unpinned) — lets a consumer opt into reproducible outputs.
             max_retries (int | None): Bounded transient-retry count handed to the openai SDK client
-                (the SDK owns the exponential backoff schedule). None keeps the client's own default
-                — used by consumers that own a retry loop (VLM) so the SDK layer is not doubled.
+                (the SDK owns the exponential backoff schedule). None means "the caller does not pin
+                it" and DISABLES the SDK's own retries (max_retries=0): the openai SDK ships a silent
+                default of 2 retries, so a consumer that runs its OWN retry loop (VLM/embed) and does
+                not pin here would otherwise stack two layers (e.g. 3×3 calls on an outage). Pinning a
+                value lets a consumer with no own loop (llm/structgen/classify) delegate retries here.
 
         Returns:
             ChatOpenAI: The ready-to-invoke client.
         """
-        # Forward max_retries only when the caller pins it, so a consumer with its OWN retry loop
-        # (VLM) keeps the client at its default and does not stack two retry layers.
-        retries = {} if max_retries is None else {"max_retries": max_retries}
+        # None means unpinned → 0: kill the SDK's built-in retries so the node's own loop is the ONLY
+        # retry layer. A caller that pins a value delegates retries to the SDK on purpose.
+        retries = {"max_retries": 0 if max_retries is None else max_retries}
         return ChatOpenAI(
             base_url=config.base_url,
             api_key=config.api_key or _EMPTY_KEY_PLACEHOLDER,
@@ -69,14 +72,17 @@ class OpenAICompatHelpers:
         Args:
             config (OpenAICompatConfig): The endpoint (base_url / api_key / model / timeout).
             max_retries (int | None): Bounded transient-retry count handed to the openai SDK client.
-                None keeps the client's own default — used by the embed node, which owns a retry +
-                batch-split loop, so the SDK layer is not doubled.
+                None means "the caller does not pin it" and DISABLES the SDK's own retries
+                (max_retries=0): the embed node owns a retry + batch-split loop, so leaving the SDK at
+                its silent default of 2 would stack two retry layers. Pinning a value delegates
+                retries to the SDK for a consumer with no own loop.
 
         Returns:
             OpenAIEmbeddings: The ready-to-call client (ctx-length check off — local endpoints
             handle their own limits).
         """
-        retries = {} if max_retries is None else {"max_retries": max_retries}
+        # None means unpinned → 0: the node's own loop is the sole retry layer (see ``chat``).
+        retries = {"max_retries": 0 if max_retries is None else max_retries}
         return OpenAIEmbeddings(
             base_url=config.base_url,
             api_key=config.api_key or _EMPTY_KEY_PLACEHOLDER,

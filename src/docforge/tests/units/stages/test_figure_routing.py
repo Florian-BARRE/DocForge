@@ -69,10 +69,13 @@ def test_default_enrich_body_routes_every_classifier_kind(compiler) -> None:
     assert routed == {kind.value for kind in FigureKind}
 
 
-def test_every_chain_tail_fails_soft_to_the_skip_terminal(compiler, builder, validator) -> None:
+def test_every_chain_tail_fails_soft_to_the_classified_terminal(
+    compiler, builder, validator
+) -> None:
     """A figure whose WHOLE enrichment chain fails must pass through un-enriched, not sink the
     document: every chain's most-robust step (its tail — the one with no intra-chain on_failure
-    fall-through left) carries an on_failure edge to the model-free skip terminal ('entry')."""
+    fall-through left) carries an on_failure edge to the classified fail-soft terminal, which reads
+    the CLASSIFIER's figure so the stamped kind (and any OCR read) survives the failure."""
     default, _ = compiler.apply(IngestPipeline.default_blob(), EnableStage(stage="enrich"))
     body = _enrich_body(default)
 
@@ -85,10 +88,17 @@ def test_every_chain_tail_fails_soft_to_the_skip_terminal(compiler, builder, val
 
     for tail in tails:
         assert any(
-            t.from_node_id == tail and t.to_node_id == EnrichBodyBuilder.SKIP_ID for t in on_failure
-        ), f"chain tail '{tail}' has no fail-soft edge to the skip terminal"
+            t.from_node_id == tail and t.to_node_id == EnrichBodyBuilder.FAILSOFT_ID
+            for t in on_failure
+        ), f"chain tail '{tail}' has no fail-soft edge to the classified fail-soft terminal"
 
-    # The classifier is itself a VLM call — its failure must also fall through to the skip terminal.
+    # The classified fail-soft terminal reads the classifier's stamped figure (kind preserved), NOT
+    # the raw ForEach item — that is the whole point of PIPELINE.md's "VLM KO → kind conservé".
+    failsoft_binding = body.bindings[EnrichBodyBuilder.FAILSOFT_ID]["figure"]
+    assert failsoft_binding.node_id == EnrichBodyBuilder.CLASSIFY_ID
+
+    # The classifier is itself a VLM call — its OWN failure must still fall through to the skip
+    # terminal (raw item), since a failed classify produced no figure to read the kind from.
     assert any(
         t.from_node_id == EnrichBodyBuilder.CLASSIFY_ID
         and t.to_node_id == EnrichBodyBuilder.SKIP_ID

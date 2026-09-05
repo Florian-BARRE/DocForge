@@ -258,6 +258,32 @@ def test_html_to_table_degrades_on_empty_or_malformed() -> None:
     assert PpStructureTableFlattener.html_to_table("just some text, no table") is None
 
 
+def test_html_to_table_caps_a_pathological_single_cell_span() -> None:
+    """A single cell whose rowspan×colspan alone blows the ceiling is skipped instantly (returns
+    None), never materialized — a malicious/broken sidecar table must not OOM/hang the worker."""
+    huge = 10**9
+    html = f"<table><tr><td rowspan='{huge}' colspan='{huge}'>x</td></tr></table>"
+    # The per-cell product guard bails BEFORE the expansion loop, so this returns fast (no billion-
+    # iteration hang) — a plain assert on None is enough; the CI wall-clock proves the bound.
+    assert PpStructureTableFlattener.html_to_table(html) is None
+
+
+def test_html_to_table_caps_cumulative_span_growth() -> None:
+    """Many moderate rowspans that together exceed the cell cap are skipped too (cumulative guard)."""
+    over = PpStructureTableFlattener.MAX_TABLE_CELLS + 1
+    html = f"<table><tr><td rowspan='{over}'>x</td><td>y</td></tr></table>"
+    assert PpStructureTableFlattener.html_to_table(html) is None
+
+
+def test_html_to_table_allows_a_large_but_bounded_table() -> None:
+    """A big-but-legit table (well under the cap) still flattens — the guard never trips on real
+    tables, only pathological ones."""
+    rows = "".join("<tr><td>a</td><td>b</td><td>c</td></tr>" for _ in range(50))
+    table = PpStructureTableFlattener.html_to_table(f"<table>{rows}</table>")
+    assert table is not None
+    assert (table.n_rows, table.n_cols) == (50, 3)
+
+
 # ==================== node — registration + brick shape ====================
 
 

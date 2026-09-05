@@ -222,8 +222,11 @@ class PassageProjector:
             run.clear()
 
         for block in blocks:
-            # 1. Per-block chrome is demoted regardless of its neighbours.
-            if WebChromeClassifier.is_chrome(block.text):
+            # 1. Per-block chrome is demoted regardless of its neighbours — but NEVER a real heading:
+            #    a genuine document section titled "Menu" or "Search" is structural content, not web
+            #    chrome, and must survive (the run signal already excludes headings for the same
+            #    reason). Only non-heading blocks can be per-block chrome.
+            if block.block_type != BlockType.HEADING and WebChromeClassifier.is_chrome(block.text):
                 chrome.add(block.id)
             # 2. Grow / break the consecutive-label run.
             if block.block_type in run_candidate_types and WebChromeClassifier.is_menu_label(

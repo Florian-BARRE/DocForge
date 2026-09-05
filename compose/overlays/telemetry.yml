@@ -20,9 +20,11 @@
 #   - loki + promtail: promtail tails every container's Docker json-file log (via
 #     docker_sd_configs against the read-only docker.sock + /var/lib/docker/containers
 #     mounts) and ships it to loki.
-#   - grafana: provisioned with both datasources + one starter dashboard
-#     (services/telemetry/grafana/dashboards/docforge-overview.json) — request rate, p95
-#     latency, error rate, arq queue depth, job counts, live workers.
+#   - grafana: provisioned with both datasources + five dashboards
+#     (services/telemetry/grafana/dashboards/*.json) — docforge-overview (Control Tower: request
+#     rate, p95 latency, error rate, arq queue depth, job counts, live workers), docforge-api
+#     (HTTP golden signals + per-route breakdown), docforge-jobs (queue/worker detail),
+#     docforge-runtime (process memory/CPU/GC), docforge-logs (Loki volume + live tail).
 #
 # Grafana admin login: services/telemetry/.env (GF_SECURITY_ADMIN_USER / GF_SECURITY_ADMIN_PASSWORD,
 # injected via env_file — the discoverable per-service config home). Copy .env.example → .env and

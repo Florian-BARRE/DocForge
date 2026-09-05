@@ -123,6 +123,11 @@ class BaseChunkerNode(ActionNode):
         #    owned block ids as provenance on the last kept passage (else both are dropped).
         if pending is not None and kept:
             kept[-1] = self.__append_heading(kept[-1], pending)
+        elif pending is not None:
+            # A degenerate all-headings, no-body document: there is no neighbour to fold into, so the
+            # accumulated heading text becomes a chunk of its own — else the whole document would
+            # project to zero chunks and index nothing.
+            kept.append(pending)
         if carried_ids and kept:
             kept[-1] = self.__carry_ids(kept[-1], carried_ids)
         return kept

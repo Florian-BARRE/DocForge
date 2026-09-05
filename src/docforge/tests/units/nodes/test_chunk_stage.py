@@ -1053,6 +1053,34 @@ async def test_fix3_trailing_orphan_heading_merges_backward() -> None:
     assert "p1" in merged.block_ids and "tail" in merged.block_ids  # folded backward
 
 
+async def test_heading_only_document_still_yields_a_chunk() -> None:
+    # A degenerate document that is ALL headings and NO body prose (a bare outline, a broken parse):
+    # every heading is an orphan with no neighbour to fold into, so the old code dropped them all and
+    # indexed NOTHING. The document must still produce at least one chunk carrying the heading text.
+    ir = DocumentIR(
+        doc_id="allheadings",
+        source_hash="h",
+        n_pages=1,
+        blocks=[
+            _blk("h1", BlockType.HEADING, 0, text="First heading", level=1),
+            _blk("h2", BlockType.HEADING, 1, text="Second heading", level=1),
+            _blk("h3", BlockType.HEADING, 2, text="Third heading", level=1),
+        ],
+    )
+    node = ChunkerStructureAwareNode(
+        id="c", config=ChunkerStructureAwareConfig(target_tokens=256, max_tokens=512, min_tokens=0)
+    )
+    chunks = (await node.run(ChunkerConsumes(ir=ir))).chunks
+    assert chunks, "a heading-only document must still index at least the heading content"
+    joined = "\n".join(c.text for c in chunks)
+    assert "First heading" in joined
+    assert "Second heading" in joined
+    assert "Third heading" in joined
+    # The headings' block ids all survive as provenance — nothing was silently dropped.
+    all_blocks = {bid for c in chunks for bid in c.block_ids}
+    assert {"h1", "h2", "h3"} <= all_blocks
+
+
 # ============================ web-page chrome (nav/menu/search) demotion ============================
 
 # A real web page dumped as HTML drags in its navigation bar and search widget as ordinary text
@@ -1153,6 +1181,28 @@ def test_web_chrome_detection_is_conservative_about_real_prose() -> None:
     assert all(p.role is ChunkRole.BODY for p in passages), [
         (p.block_ids[0], p.role) for p in passages
     ]
+
+
+def test_web_chrome_never_demotes_a_real_heading_named_menu_or_search() -> None:
+    # A genuine document HEADING whose title happens to be "Menu" or "Search" is a real section, not
+    # web chrome — the per-block chrome signal (which flags those exact phrases) must NOT fire on a
+    # HEADING, exactly as the run signal already excludes headings. Their bodies stay BODY too.
+    ir = DocumentIR(
+        doc_id="headingchrome",
+        source_hash="h",
+        n_pages=1,
+        blocks=[
+            _blk("hs", BlockType.HEADING, 0, text="Search", level=1),  # a real "Search" section
+            _blk("ps", BlockType.PARAGRAPH, 1, text=_REAL_PROSE, parent="hs"),
+            _blk("hm", BlockType.HEADING, 2, text="Menu", level=1),  # a real "Menu" section
+            _blk("pm", BlockType.PARAGRAPH, 3, text=_REAL_PROSE, parent="hm"),
+        ],
+    )
+    by_block = {p.block_ids[0]: p for p in PassageProjector.project(ir, BaseChunkerConfig())}
+    assert by_block["hs"].role is ChunkRole.BODY  # a real heading titled "Search" survives
+    assert by_block["hm"].role is ChunkRole.BODY  # ... and one titled "Menu"
+    assert by_block["ps"].role is ChunkRole.BODY
+    assert by_block["pm"].role is ChunkRole.BODY
 
 
 def test_web_chrome_detection_can_be_switched_off() -> None:

@@ -37,5 +37,21 @@ schema_config:
         prefix: index_
         period: 24h
 
+# Compactor also owns retention enforcement for the tsdb/filesystem combo above (no separate
+# retention component in single-binary Loki). working_directory sits under the same /loki
+# path_prefix as chunks/rules — i.e. the `loki_data` named volume (see the overlay) — so its
+# marker/delete-request state persists across container recreations same as the chunks do.
+compactor:
+  working_directory: /loki/compactor
+  delete_request_store: filesystem
+  retention_enabled: true
+
+limits_config:
+  # Operator-tunable retention window — how long logs live before the compactor deletes them.
+  # 168h (7 days) is a sane default for this 23 GB VM; raise/lower per how much Loki disk you
+  # can spare (unbounded before this change). Loki enforces per-stream retention_period overrides
+  # via `overrides:` if a specific service ever needs longer/shorter retention than the default.
+  retention_period: 168h
+
 ruler:
   alertmanager_url: http://localhost:9093

@@ -89,21 +89,28 @@ class PpStructureTableFlattener:
 
     logger = loggerplusplus.bind(identifier="PpStructureTableFlattener")
 
+    # Hard ceiling on the MATERIALIZED grid area (rows × cols). PP-StructureV3 tables come from a
+    # sidecar and their rowspan/colspan are untrusted: a malicious/broken cell (e.g. rowspan=1e9)
+    # would otherwise expand into an unbounded matrix and hang/OOM the worker. A real page table is
+    # orders of magnitude below this, so exceeding it means the table is pathological → skip it.
+    MAX_TABLE_CELLS = 200_000
+
     def __new__(cls, *args: object, **kwargs: object) -> None:
         raise TypeError(
             "PpStructureTableFlattener is a static-only class and cannot be instantiated."
         )
 
-    @staticmethod
-    def _place(rows: list[list[_SpanCell]]) -> list[list[str]]:
+    @classmethod
+    def _place(cls, rows: list[list[_SpanCell]]) -> list[list[str]] | None:
         """Place every cell into the next free slots of a dense matrix, expanding row/col spans.
 
         Args:
             rows (list[list[_SpanCell]]): Parsed rows of pre-expansion cells.
 
         Returns:
-            list[list[str]]: A ragged matrix; the top-left covered cell holds the text, spanned
-                cells are blank, and not-yet-filled slots are ``None`` placeholders.
+            list[list[str]] | None: A ragged matrix (top-left covered cell holds the text, spanned
+                cells blank, not-yet-filled slots ``None``), or None when the span expansion would
+                exceed ``MAX_TABLE_CELLS`` — a pathological table is skipped, never materialized.
         """
         matrix: list[list[str | None]] = []
 
@@ -120,9 +127,24 @@ class PpStructureTableFlattener:
             for cell in row:
                 while col < len(matrix[row_idx]) and matrix[row_idx][col] is not None:
                     col += 1
+                # A single cell whose span alone blows the ceiling is pathological — bail BEFORE the
+                # expansion loop even starts (else a rowspan=1e9 cell iterates a billion times).
+                if cell.rowspan * cell.colspan > cls.MAX_TABLE_CELLS:
+                    cls.logger.warning(
+                        f"PP-Structure table cell span {cell.rowspan}x{cell.colspan} exceeds the "
+                        f"{cls.MAX_TABLE_CELLS}-cell cap — skipping the table"
+                    )
+                    return None
                 for delta_row in range(cell.rowspan):
                     for delta_col in range(cell.colspan):
                         target_row, target_col = row_idx + delta_row, col + delta_col
+                        # Cumulative bounding-box area guard — many moderate spans can also add up.
+                        if (target_row + 1) * (target_col + 1) > cls.MAX_TABLE_CELLS:
+                            cls.logger.warning(
+                                f"PP-Structure table grid exceeds the {cls.MAX_TABLE_CELLS}-cell "
+                                "cap — skipping the table"
+                            )
+                            return None
                         ensure(target_row, target_col)
                         top_left = delta_row == 0 and delta_col == 0
                         matrix[target_row][target_col] = cell.text if top_left else ""

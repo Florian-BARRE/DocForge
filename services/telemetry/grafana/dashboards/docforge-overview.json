@@ -198,7 +198,7 @@
       ] } }, "overrides": [] },
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" },
       "targets": [
-        { "refId": "A", "expr": "sum(count_over_time({compose_service=~\"docforge_.+\"} |~ \"(?i)\\\\b(error|exception|traceback|critical|warn)\\\\b\" !~ \"j_failed=0\" [5m]))", "instant": true }
+        { "refId": "A", "expr": "sum(count_over_time({compose_service=~\"docforge_.+\"} |~ \"(?i)\\\\b(error|exception|traceback|critical|warn\\\\w*)\\\\b\" !~ \"j_failed=0\" [5m]))", "instant": true }
       ]
     },
     {
