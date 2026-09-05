@@ -99,7 +99,7 @@ class IRBundleAdapter:
     ) -> Block:
         """Map one raw block row (plus its detail/enrichment rows) to a canonical Block."""
         # 1. Resolve the semantic type once — it decides which content slot is filled.
-        block_type = BlockType(row.block_type)
+        block_type = cls._block_type(row)
 
         # 2. Fill the table slot for TABLE blocks and the figure slot for FIGURE blocks.
         table_data = cls._table(table) if block_type == BlockType.TABLE and table else None
@@ -118,6 +118,25 @@ class IRBundleAdapter:
             figure=figure_data,
             language=row.language,
         )
+
+    @classmethod
+    def _block_type(cls, row: BlockRow) -> BlockType:
+        """
+        Map the VARCHAR-stored block_type to its enum, degrading unknown values to PARAGRAPH.
+
+        The column is a plain string, so a forward-compat value written by a newer version (or a
+        legacy value dropped from the enum) must not crash the whole document read. An unrecognized
+        type falls back to PARAGRAPH: the block still renders its text verbatim (its type-specific
+        table/figure slot is simply left empty), which is the least-surprising degraded view.
+        """
+        # 1. Coerce to a known BlockType; an unknown stored value degrades to a plain paragraph.
+        try:
+            return BlockType(row.block_type)
+        except ValueError:
+            cls.logger.warning(
+                f"Unknown block_type '{row.block_type}' on block {row.id}; rendering as paragraph"
+            )
+            return BlockType.PARAGRAPH
 
     @staticmethod
     def _table(table: BlockTable) -> TableData:

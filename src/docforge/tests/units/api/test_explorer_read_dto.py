@@ -83,6 +83,19 @@ def test_override_wins_over_role_default(helpers) -> None:
     assert info.enabled is True
 
 
+def test_unknown_role_without_override_degrades_to_disabled(helpers) -> None:
+    """An unknown stored role (forward-compat/legacy) must not 500 — it degrades to disabled."""
+    info = helpers.chunk(_chunk(role="quantum_role"), [], [], page=None)
+    assert info.role == "quantum_role"
+    assert info.enabled is False
+
+
+def test_unknown_role_still_honours_explicit_override(helpers) -> None:
+    """An explicit override wins even when the stored role is unrecognized (no enum coercion path)."""
+    info = helpers.chunk(_chunk(role="quantum_role", enabled_override=True), [], [], page=None)
+    assert info.enabled is True
+
+
 def test_chunk_surfaces_heading_path_and_resolved_page(helpers) -> None:
     """The chunk DTO carries the section breadcrumb + the primary block's page (search-hit parity)."""
     info = helpers.chunk(_chunk(heading_path=["Intro", "Scope"]), ["b1", "b2"], [], page=4)

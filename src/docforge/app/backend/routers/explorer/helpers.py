@@ -214,15 +214,24 @@ class ExplorerHelpers:
             page=page,
         )
 
-    @staticmethod
-    def _effective_enabled(chunk: Chunk) -> bool:
+    @classmethod
+    def _effective_enabled(cls, chunk: Chunk) -> bool:
         """Resolve a chunk's effective searchability: the user override wins, else the role default."""
         # 1. An explicit user override always wins over the structural default.
         if chunk.enabled_override is not None:
             return chunk.enabled_override
 
-        # 2. No override — defer to the single role -> default-enabled policy.
-        return role_default_enabled(ChunkRole(chunk.role))
+        # 2. No override — defer to the single role -> default-enabled policy. The role column is a
+        #    plain VARCHAR, so an unknown forward-compat/legacy value must degrade (treated as a
+        #    non-body role: disabled by default) rather than 500 the whole chunk read.
+        try:
+            role = ChunkRole(chunk.role)
+        except ValueError:
+            cls.logger.warning(
+                f"Unknown chunk role '{chunk.role}' on chunk {chunk.id}; defaulting to disabled"
+            )
+            return False
+        return role_default_enabled(role)
 
     @staticmethod
     def chunk_toggle(
