@@ -39,7 +39,13 @@ export function JobsPage({ collectionId, onNavigate }: JobsPageProps) {
           setError(null);
           if (data.some(isActive)) timer = window.setTimeout(load, POLL_MS);
         })
-        .catch((e) => { if (!cancelled) setError(e instanceof Error ? e.message : String(e)); });
+        .catch((e) => {
+          if (cancelled) return;
+          // A transient poll failure surfaces the error but must NOT kill the interval — whether
+          // the batch has settled is unknown until the next successful fetch says so.
+          setError(e instanceof Error ? e.message : String(e));
+          timer = window.setTimeout(load, POLL_MS);
+        });
     };
     load();
 

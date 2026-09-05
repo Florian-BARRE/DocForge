@@ -24,7 +24,7 @@ export type StageRailPageProps = UseStageRailPageProps;
 export function StageRailPage(props: StageRailPageProps) {
   const rail = useStageRailPage(props);
 
-  if (rail.loadError) return <ErrorState message={rail.loadError} />;
+  if (rail.loadError) return <ErrorState message={rail.loadError} onRetry={rail.retryLoad} />;
   if (!rail.palette || !rail.stages) return <LoadingState label="loading pipeline stages…" />;
   const { palette, stages } = rail;
 
