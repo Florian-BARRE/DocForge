@@ -3,7 +3,7 @@
 # without a session — SQLAlchemy models are plain attribute holders) and two in-memory fake gateways
 # standing in for CollectionTransferFacade. FakeExportFacade feeds the exporter a one-document
 # collection (with a blob referenced twice, to exercise dedup); FakeImportFacade records every
-# restore call so a test can assert the id-remap, the preserved chunk/point identity, and rollback.
+# restore call so a test can assert the id-remap, the chunk==point identity kept THROUGH it, and rollback.
 
 # ====== Standard Library Imports ======
 import hashlib
@@ -34,7 +34,7 @@ from shared_libs.services.db.postgresql.tables import (
     SourceKind,
 )
 
-# Deterministic ids so tests can assert identity is PRESERVED end to end.
+# Deterministic SOURCE ids so tests can assert the import REMAPS them (new != old) consistently.
 COLLECTION_ID = uuid.UUID("0c534a78-6dcc-4ab6-869a-94717be1815c")
 DOC_ID = uuid.UUID("11111111-1111-1111-1111-111111111111")
 CHUNK_ID = uuid.UUID("22222222-2222-2222-2222-222222222222")

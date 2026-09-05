@@ -32,7 +32,7 @@ from shared_libs.services.db.s3 import S3Object
 
 # ====== Local Project Imports ======
 from ..bundle import BundleReader
-from ..manifest import CollectionContractModel, is_supported_version
+from ..manifest import CollectionContractModel, TransferCounts, is_supported_version
 from ..paths import BundlePaths
 from .remap import RemapBuilder, RemapContext
 from .rows import RowDeserializer
@@ -123,12 +123,32 @@ class CollectionImporterV1:
             )
             self._progress("collection", 5)
 
+            # The bundle's collection.json can carry a (redacted) config-version history, but the
+            # import DELIBERATELY does NOT restore it: create_collection already minted the new
+            # collection's own fresh v1 'creation' snapshot, and inserting historical version rows
+            # would need a store-facade write this transfer engine intentionally does not own (strict
+            # export/import scope). Make the drop EXPLICIT rather than a silent loss.
+            if contract.config_versions:
+                self.logger.info(
+                    f"Bundle carries {len(contract.config_versions)} historical config version(s); "
+                    f"import does NOT restore config history — the new collection starts at its "
+                    f"fresh v1 'creation' snapshot (restoring historical rows is out of the transfer "
+                    f"engine's scope)."
+                )
+
             # 2. Build the id-remap plan (fresh ids for every entity) from the created schema + bundle.
             field_ids = await self._facade.field_id_map(created.id)
             ctx = RemapBuilder.build(self._reader, field_ids)
 
-            # 3. Staged restore.
-            await self._restore(created.id, ctx, manifest.dense_dim)
+            # 3. Staged restore, capturing what was ACTUALLY restored (not what the manifest claims).
+            restored = await self._restore(created.id, ctx, manifest.dense_dim)
+            restored["metadata_fields"] = len(fields)
+
+            # 4. Reconcile the manifest's DECLARED counts against the rows truly restored. A data file
+            #    silently absent from the bundle (not listed in manifest.files, so the reader never
+            #    checksums it) streams as an empty table while the manifest still claims a non-zero
+            #    count — fail loudly here instead of reporting a false success with phantom counts.
+            self._reconcile_counts(manifest.counts, restored)
         except Exception as exc:
             if created is not None:
                 self.logger.exception(
@@ -138,9 +158,8 @@ class CollectionImporterV1:
             raise CollectionImportError(f"import failed and was rolled back: {exc}") from exc
 
         self._progress("done", 100)
-        counts = manifest.counts.model_dump()
         self.logger.info(f"Imported bundle into new collection {created.id} ('{name}')")
-        return ImportResult(collection_id=created.id, collection_name=name, counts=counts)
+        return ImportResult(collection_id=created.id, collection_name=name, counts=restored)
 
     def _validate_contract_blobs(self, contract: CollectionContractModel) -> None:
         """
@@ -195,43 +214,87 @@ class CollectionImporterV1:
             search=contract.search,
         )
 
-    async def _restore(self, collection_id: uuid.UUID, ctx: RemapContext, dense_dim: int) -> None:
-        """Stage the whole restore in FK order (blobs first, vectors last), remapping every id."""
+    async def _restore(
+        self, collection_id: uuid.UUID, ctx: RemapContext, dense_dim: int
+    ) -> dict[str, int]:
+        """Stage the whole restore in FK order (blobs first, vectors last), remapping every id.
+
+        Returns the count of rows/objects actually restored per manifest-tracked domain, so the
+        caller can reconcile them against the manifest's declared counts (a missing data file leaves
+        a zero here that must not be papered over by the manifest's claim).
+        """
+        counts: dict[str, int] = {}
+
         # 1. Blobs BEFORE any row that references them (document/page/figure blob FKs are not deferred).
-        await self._restore_blobs()
+        counts["blobs"] = await self._restore_blobs()
         self._progress("blobs", 20)
 
         # 2. The catalogue + document-scope metadata + pages.
-        await self._restore_table(
+        counts["documents"] = await self._restore_table(
             BundlePaths.DOCUMENTS, ctx, lambda d, c: RowDeserializer.document(d, collection_id, c)
         )
         await self._restore_metadata(BundlePaths.DOCUMENT_METADATA, ctx, chunk_scope=False)
-        await self._restore_table(BundlePaths.PAGES, ctx, RowDeserializer.page)
+        counts["pages"] = await self._restore_table(BundlePaths.PAGES, ctx, RowDeserializer.page)
         self._progress("documents", 40)
 
         # 3. The IR — blocks, then their details, then enrichments + attempts (each a full-table tx).
-        await self._restore_table(BundlePaths.IR_BLOCKS, ctx, RowDeserializer.block)
+        counts["blocks"] = await self._restore_table(
+            BundlePaths.IR_BLOCKS, ctx, RowDeserializer.block
+        )
         await self._restore_table(BundlePaths.IR_TABLES, ctx, RowDeserializer.block_table)
         await self._restore_table(BundlePaths.IR_FIGURES, ctx, RowDeserializer.block_figure)
-        await self._restore_table(BundlePaths.IR_ENRICHMENTS, ctx, RowDeserializer.block_enrichment)
+        counts["enrichments"] = await self._restore_table(
+            BundlePaths.IR_ENRICHMENTS, ctx, RowDeserializer.block_enrichment
+        )
         await self._restore_table(
             BundlePaths.IR_ENRICHMENT_ATTEMPTS, ctx, RowDeserializer.enrichment_attempt
         )
         self._progress("ir", 60)
 
         # 4. The chunks, their composition, generated metadata, entities.
-        await self._restore_table(BundlePaths.CHUNKS, ctx, RowDeserializer.chunk)
+        counts["chunks"] = await self._restore_table(BundlePaths.CHUNKS, ctx, RowDeserializer.chunk)
         await self._restore_table(BundlePaths.CHUNK_BLOCKS, ctx, RowDeserializer.chunk_block)
         await self._restore_metadata(BundlePaths.CHUNK_METADATA, ctx, chunk_scope=True)
-        await self._restore_table(BundlePaths.ENTITY_MENTIONS, ctx, RowDeserializer.entity_mention)
+        counts["entity_mentions"] = await self._restore_table(
+            BundlePaths.ENTITY_MENTIONS, ctx, RowDeserializer.entity_mention
+        )
         self._progress("chunks", 80)
 
         # 5. The vectors — the point id is the chunk's NEW id (kept == chunk.id), and its payload
         #    document_id is remapped too, so search resolves back to the restored rows.
-        await self._restore_points(collection_id, ctx, dense_dim)
+        counts["points"] = await self._restore_points(collection_id, ctx, dense_dim)
         self._progress("vectors", 98)
+        return counts
 
-    async def _restore_blobs(self) -> None:
+    @staticmethod
+    def _reconcile_counts(declared: TransferCounts, restored: dict[str, int]) -> None:
+        """
+        Fail the import if the manifest's declared counts diverge from what was truly restored.
+
+        Args:
+            declared (TransferCounts): The manifest's per-domain claim.
+            restored (dict[str, int]): The rows/objects actually restored per domain.
+
+        Raises:
+            CollectionImportError: When any declared count differs from the restored count (a data
+                file absent from the bundle, or a partial restore) — named per offending domain.
+        """
+        # 1. Diff every manifest-tracked domain against the actual restore.
+        expected = declared.model_dump()
+        discrepancies = [
+            f"{domain} (manifest {expected[domain]} != restored {restored.get(domain, 0)})"
+            for domain in expected
+            if expected[domain] != restored.get(domain, 0)
+        ]
+
+        # 2. Any mismatch is a broken/incomplete bundle — refuse it loudly (the caller rolls back).
+        if discrepancies:
+            raise CollectionImportError(
+                "manifest count reconciliation failed — a declared data file was missing or a "
+                f"restored count diverged: {', '.join(discrepancies)}"
+            )
+
+    async def _restore_blobs(self) -> int:
         """Register the blob rows + upload their content-verified bytes, STREAMED in bounded batches.
 
         The bundle can carry up to IMPORT_MAX_BUNDLE_BYTES of blob bytes; reading them all into memory
@@ -240,10 +303,14 @@ class CollectionImporterV1:
         batch to S3 + the registry, releases it, and continues — so peak resident memory is bounded by
         one batch, mirroring the exporter's one-blob-at-a-time streaming. Each ``store_blobs`` is
         idempotent (dedup by content hash) and a partial-then-failed import is cleaned by the rollback.
+
+        Returns:
+            int: How many blob registry rows were restored (for the manifest reconciliation).
         """
         objects: list[S3Object] = []
         rows: list[Blob] = []
         pending_bytes = 0
+        restored = 0
         for data in self._reader.iter_rows(BundlePaths.BLOBS):
             blob = RowDeserializer.blob(data)
 
@@ -266,6 +333,7 @@ class CollectionImporterV1:
                 S3Object(key=blob.content_hash, data=content, content_type=blob.mime_type)
             )
             pending_bytes += len(content)
+            restored += 1
 
             # Flush once the byte budget is reached, then release the batch so it can be reclaimed.
             if pending_bytes >= self._blob_batch_bytes:
@@ -274,13 +342,15 @@ class CollectionImporterV1:
 
         if objects:
             await self._facade.store_blobs(objects, rows)
+        return restored
 
     async def _restore_table(
         self, path: str, ctx: RemapContext, deserialize: Callable[[dict, RemapContext], Any]
-    ) -> None:
-        """Stream one table file, deserialize+remap every row, and insert it in ONE transaction."""
+    ) -> int:
+        """Stream one table file, deserialize+remap every row, insert it in ONE tx; return the count."""
         rows = [deserialize(data, ctx) for data in self._reader.iter_rows(path)]
         await self._facade.restore_rows(rows)
+        return len(rows)
 
     async def _restore_metadata(self, path: str, ctx: RemapContext, *, chunk_scope: bool) -> None:
         """Restore metadata rows, remapping the owner id + field_name → new field id (dropping unknown)."""
@@ -297,10 +367,11 @@ class CollectionImporterV1:
 
     async def _restore_points(
         self, collection_id: uuid.UUID, ctx: RemapContext, dense_dim: int
-    ) -> None:
-        """Ensure the vector space and upsert every point under its REMAPPED id, in bounded batches."""
+    ) -> int:
+        """Ensure the vector space and upsert every point under its REMAPPED id; return the count."""
         batch: list[QdrantPoint] = []
         ensured = False
+        restored = 0
         for record in self._reader.iter_rows(BundlePaths.POINTS):
             point = self._to_point(record, ctx)
             if point is None:
@@ -309,18 +380,24 @@ class CollectionImporterV1:
                 await self._facade.ensure_vector_space(collection_id, dense_dim)
                 ensured = True
             batch.append(point)
+            restored += 1
             if len(batch) >= self._point_batch:
                 await self._facade.upsert_points(collection_id, batch)
                 batch = []
         if batch:
             await self._facade.upsert_points(collection_id, batch)
+        return restored
 
-    @staticmethod
-    def _to_point(record: dict[str, Any], ctx: RemapContext) -> QdrantPoint | None:
+    @classmethod
+    def _to_point(cls, record: dict[str, Any], ctx: RemapContext) -> QdrantPoint | None:
         """
         Rebuild a QdrantPoint under REMAPPED ids: point id = the chunk's new UUID (so it still equals
         chunk.id), and the payload document_id is remapped too. A point whose chunk is unknown (an
         orphan not in the chunk map) is skipped. Dense (list) vs sparse ({...}) vectors are split.
+
+        A payload ``document_id`` that resolves to no restored document is a STALE reference: rather
+        than restore a wrong foreign id, the key is DROPPED from the payload (logged) so search never
+        resolves a point to a document that isn't there.
         """
         new_chunk_id = ctx.chunks.get(record["id"])
         if new_chunk_id is None:
@@ -334,8 +411,17 @@ class CollectionImporterV1:
                 dense[name] = list(vector)
         payload = dict(record.get("payload") or {})
         old_document_id = payload.get("document_id")
-        if old_document_id in ctx.documents:
-            payload["document_id"] = str(ctx.documents[old_document_id])
+        if old_document_id is not None:
+            new_document_id = ctx.documents.get(old_document_id)
+            if new_document_id is None:
+                cls.logger.warning(
+                    f"Point {record['id']} payload references unknown document_id "
+                    f"'{old_document_id}' — dropping the stale reference (no such restored document) "
+                    f"rather than keeping a wrong foreign id."
+                )
+                payload.pop("document_id", None)
+            else:
+                payload["document_id"] = str(new_document_id)
         return QdrantPoint(point_id=str(new_chunk_id), payload=payload, dense=dense, sparse=sparse)
 
 
