@@ -7,12 +7,18 @@
 # ====== Standard Library Imports ======
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 # ====== Third-Party Library Imports ======
 from loggerplusplus import loggerplusplus
 from starlette.types import Scope
 
 # ====== Local Project Imports ======
-from ..auth import AuthPrincipal
+# Imported for typing only — a RUNTIME import here would make ``ratelimit`` depend on ``auth`` at load
+# time, and ``auth.middleware`` now imports back into ``ratelimit`` (the failure-path throttle). The
+# ``from __future__ import annotations`` above keeps the annotation a string, so this stays cycle-free.
+if TYPE_CHECKING:
+    from ..auth import AuthPrincipal
 
 
 class RateLimitKeyResolver:

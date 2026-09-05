@@ -75,7 +75,10 @@ def create_app(
 
     # 3. Rate limiter (added → inner of Auth, outer of Idempotency). It runs AFTER AuthMiddleware has
     #    resolved the principal, so it can key by the caller's API key when auth is on (else by client
-    #    IP). OFF by default → transparent. Only /api/v1/* (minus the job-poll/SSE subtree) is limited.
+    #    IP) — which REQUIRES it to sit inner of Auth (the principal is injected there). OFF by default
+    #    → transparent. Only /api/v1/* (minus the job-poll/SSE subtree) is limited. Being inner of Auth,
+    #    it never sees a request that FAILED auth (a 401 short-circuits above it); that credential-flood
+    #    path is throttled instead by the Auth gate itself, keyed by client IP (see step 4).
     app.add_middleware(RateLimitMiddleware)
 
     # 4. The global authN gate — a PURE ASGI middleware that runs BEFORE FastAPI parses the request
@@ -83,6 +86,9 @@ def create_app(
     #    gates every /api/v1/* path and injects the principal for the per-endpoint `require` authZ gate
     #    AND for the rate limiter's identity keying AND for the audit actor. With AUTH_ENABLED=false it
     #    stays transparent (synthetic root). Scalar + /openapi.json + /metrics stay public (outside /api/v1).
+    #    It ALSO throttles failed-auth traffic by client IP (when the limiter is enabled): the inner
+    #    RateLimitMiddleware can't see a 401 that short-circuits here, so keying by IP on this path is
+    #    what closes the auth-bruteforce / 401-DoS bypass.
     app.add_middleware(AuthMiddleware)
 
     # 5. Correlation id (added here → OUTER to Auth + RateLimit, INNER to HttpMetrics). It must be

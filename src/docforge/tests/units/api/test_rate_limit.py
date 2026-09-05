@@ -1,8 +1,12 @@
 # ====== Code Summary ======
 # Unit coverage for the in-app rate limiter: the pure exemption policy + bucket keying (identity vs
-# IP, X-Forwarded-For), plus end-to-end middleware behaviour through the real app (disabled → never
-# limits; enabled → 429 after N; the exempt job subtree → never limited). Auth is off for the suite,
-# so the integration path exercises IP keying; identity keying is covered by the pure keying test.
+# IP, X-Forwarded-For), the reusable RateLimitEngine (budget + fail-open), plus end-to-end middleware
+# behaviour through the real app (disabled → never limits; enabled → 429 after N; the exempt job
+# subtree → never limited). It also covers the AuthMiddleware failure-path throttle that closes the
+# credential-flood / 401-DoS bypass: with auth ON + limiter ON, unauthenticated floods are throttled
+# by IP (401 → 429) and per-IP independent; limiter OFF stays a transparent 401 passthrough. Auth is
+# off for the base suite, so the plain integration path exercises IP keying; identity keying is
+# covered by the pure keying test.
 
 # ====== Standard Library Imports ======
 import uuid
@@ -76,6 +80,41 @@ def test_keying_ignores_forwarded_for_when_untrusted() -> None:
 
     scope = _scope(headers=[(b"x-forwarded-for", b"203.0.113.7")], client=("10.0.0.2", 9))
     assert RateLimitKeyResolver.resolve(scope, None, trust_forwarded_for=False) == "ip:10.0.0.2"
+
+
+# ─────────────────────────── Pure: the reusable engine ───────────────────────────
+async def test_engine_allows_up_to_budget_then_denies(fastapi_app, monkeypatch) -> None:
+    """The engine allows exactly RATE_LIMIT_PER_MINUTE hits per key, then denies the next."""
+    from backend.libs.ratelimit import RateLimitEngine  # noqa: PLC0415
+    from config import RUNTIME_CONFIG  # noqa: PLC0415
+
+    monkeypatch.setattr(RUNTIME_CONFIG, "RATE_LIMIT_PER_MINUTE", 2)
+    engine = RateLimitEngine()
+
+    # 1. Two hits are within budget; the third is over.
+    assert await engine.allow("k:probe") is True
+    assert await engine.allow("k:probe") is True
+    assert await engine.allow("k:probe") is False
+
+
+async def test_engine_fails_open_on_storage_error(fastapi_app, monkeypatch) -> None:
+    """A limiter storage error makes the engine FAIL OPEN (allow), never raise (no self-DoS)."""
+    from limits.aio.strategies import MovingWindowRateLimiter  # noqa: PLC0415
+
+    from backend.libs.ratelimit import RateLimitEngine  # noqa: PLC0415
+    from config import RUNTIME_CONFIG  # noqa: PLC0415
+
+    monkeypatch.setattr(RUNTIME_CONFIG, "RATE_LIMIT_PER_MINUTE", 1)
+
+    async def _boom(*args, **kwargs):
+        raise RuntimeError("rate-limit storage down")
+
+    monkeypatch.setattr(MovingWindowRateLimiter, "hit", _boom)
+    engine = RateLimitEngine()
+
+    # Even past the budget, a broken store allows the request through rather than raising.
+    assert await engine.allow("k:probe") is True
+    assert await engine.allow("k:probe") is True
 
 
 # ─────────────────────────── Integration: middleware ───────────────────────────
@@ -160,3 +199,62 @@ def test_distinct_ips_have_independent_budgets(client, monkeypatch) -> None:
     # Caller B still has its full budget.
     b = {"X-Forwarded-For": "203.0.113.52"}
     assert client.get("/api/v1/pipelines", headers=b).status_code != 429
+
+
+# ─────────────── Integration: failed-auth throttling (the credential-flood bypass) ───────────────
+def test_failed_auth_flood_throttled_by_ip_when_enabled(client, monkeypatch) -> None:
+    """With auth ON + limiter ON, a bad-credential flood is throttled by IP (401s become 429s)."""
+    from config import RUNTIME_CONFIG  # noqa: PLC0415
+
+    # Auth ON so a missing bearer yields 401; limiter ON with a tiny budget; XFF trusted for IP keying.
+    monkeypatch.setattr(RUNTIME_CONFIG, "AUTH_ENABLED", True)
+    monkeypatch.setattr(RUNTIME_CONFIG, "RATE_LIMIT_ENABLED", True)
+    monkeypatch.setattr(RUNTIME_CONFIG, "RATE_LIMIT_PER_MINUTE", 2)
+    monkeypatch.setattr(RUNTIME_CONFIG, "RATE_LIMIT_TRUST_FORWARDED_FOR", True)
+    # A unique client IP isolates this test's failure window from the shared in-process store. No
+    # Authorization header → authN fails BEFORE any DB call (missing-bearer path), so no store needed.
+    headers = {"X-Forwarded-For": "203.0.113.61"}
+
+    first = client.get("/api/v1/pipelines", headers=headers)
+    second = client.get("/api/v1/pipelines", headers=headers)
+    third = client.get("/api/v1/pipelines", headers=headers)
+
+    # The first two failed attempts are ordinary 401s; the third is throttled with a 429 + Retry-After.
+    assert first.status_code == 401
+    assert second.status_code == 401
+    assert third.status_code == 429
+    assert int(third.headers["Retry-After"]) >= 1
+
+
+def test_failed_auth_not_throttled_when_limiter_off(client, monkeypatch) -> None:
+    """Limiter OFF (default) → failed-auth requests stay plain 401s, never 429 (passthrough preserved)."""
+    from config import RUNTIME_CONFIG  # noqa: PLC0415
+
+    monkeypatch.setattr(RUNTIME_CONFIG, "AUTH_ENABLED", True)
+    monkeypatch.setattr(RUNTIME_CONFIG, "RATE_LIMIT_ENABLED", False)
+    monkeypatch.setattr(RUNTIME_CONFIG, "RATE_LIMIT_TRUST_FORWARDED_FOR", True)
+    headers = {"X-Forwarded-For": "203.0.113.62"}
+
+    # Well past any budget, every unauthenticated request is a plain 401 — the limiter is transparent.
+    for _ in range(5):
+        response = client.get("/api/v1/pipelines", headers=headers)
+        assert response.status_code == 401
+
+
+def test_failed_auth_flood_distinct_ips_independent(client, monkeypatch) -> None:
+    """One IP's credential flood being throttled must not throttle another IP's first bad attempt."""
+    from config import RUNTIME_CONFIG  # noqa: PLC0415
+
+    monkeypatch.setattr(RUNTIME_CONFIG, "AUTH_ENABLED", True)
+    monkeypatch.setattr(RUNTIME_CONFIG, "RATE_LIMIT_ENABLED", True)
+    monkeypatch.setattr(RUNTIME_CONFIG, "RATE_LIMIT_PER_MINUTE", 1)
+    monkeypatch.setattr(RUNTIME_CONFIG, "RATE_LIMIT_TRUST_FORWARDED_FOR", True)
+
+    # Exhaust attacker A's failure budget (one allowed, then throttled).
+    a = {"X-Forwarded-For": "203.0.113.71"}
+    assert client.get("/api/v1/pipelines", headers=a).status_code == 401
+    assert client.get("/api/v1/pipelines", headers=a).status_code == 429
+
+    # A different IP B still has its own full failure budget.
+    b = {"X-Forwarded-For": "203.0.113.72"}
+    assert client.get("/api/v1/pipelines", headers=b).status_code == 401

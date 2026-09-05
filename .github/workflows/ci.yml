@@ -16,6 +16,11 @@ on:
     branches: ["**"]
   pull_request:
 
+# Least-privilege floor: this workflow only ever calls the reusable gate, which itself only needs
+# to check out the repo. No job here needs anything beyond that.
+permissions:
+  contents: read
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true

@@ -35,10 +35,11 @@ on:
     tags:
       - "v*"
 
-# Declaring `permissions:` sets every UNLISTED scope to `none`, so both are required here:
+# Workflow-level floor is read-only: `packages: write` is granted ONLY on the `images` job below
+# (the one that actually pushes to GHCR), not workflow-wide — so `gate` and `version-guard` never
+# hold it, and gate.yml's own `contents: read` declaration caps it there too even if they did.
 permissions:
-  contents: read # actions/checkout must read the (private) repo
-  packages: write # GHCR push via the built-in GITHUB_TOKEN
+  contents: read
 
 jobs:
   # 1. Run the exact same gate that guards every merge — the images job depends on it.
@@ -55,7 +56,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: Verify tag matches the declared version
         run: |
           set -euo pipefail
@@ -72,6 +73,11 @@ jobs:
   images:
     needs: [gate, version-guard]
     runs-on: ubuntu-latest
+    # Elevated scopes live HERE, not at the workflow level: contents:read for checkout,
+    # packages:write for the GHCR push — no other job in this workflow gets either.
+    permissions:
+      contents: read
+      packages: write
     strategy:
       fail-fast: false
       matrix:
@@ -89,7 +95,7 @@ jobs:
           - { name: paddle-server, context: src,       file: src/paddle_server/Dockerfile,        torch: gpu,   suffix: "-gpu" }
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Derive image version from the tag
         # Strip the leading `v` so tag `v1.2.3` → version `1.2.3` (mirrors release-sdk.yml's
@@ -97,10 +103,10 @@ jobs:
         run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
 
       - name: Set up Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
 
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -108,7 +114,7 @@ jobs:
 
       - name: Compute image tags + labels
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
         with:
           images: ghcr.io/${{ github.repository_owner }}/docforge-${{ matrix.name }}
           # Build the tag list by hand (rather than relying on the flavor `suffix`/`onlatest`
@@ -131,7 +137,7 @@ jobs:
           df -h /
 
       - name: Build + push
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
           context: ${{ matrix.context }}
           file: ${{ matrix.file }}
@@ -172,20 +178,20 @@ jobs:
       packages: read # pull the just-pushed app/mcp images from GHCR for scanning
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Derive image version from the tag
         run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
 
       - name: Log in to GHCR (pull for scanning)
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Scan app image (HIGH/CRITICAL)
-        uses: aquasecurity/trivy-action@v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         continue-on-error: true
         with:
           image-ref: ghcr.io/${{ github.repository_owner }}/docforge-app:${{ env.VERSION }}
@@ -195,7 +201,7 @@ jobs:
           output: trivy-app.txt
 
       - name: Scan mcp image (HIGH/CRITICAL)
-        uses: aquasecurity/trivy-action@v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         continue-on-error: true
         with:
           image-ref: ghcr.io/${{ github.repository_owner }}/docforge-mcp:${{ env.VERSION }}
@@ -205,7 +211,7 @@ jobs:
           output: trivy-mcp.txt
 
       - name: Scan docforge deps — filesystem (covers app + worker, one shared uv.lock)
-        uses: aquasecurity/trivy-action@v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         continue-on-error: true
         with:
           scan-type: fs
@@ -216,7 +222,7 @@ jobs:
           output: trivy-docforge-deps.txt
 
       - name: Scan bge_server deps — filesystem
-        uses: aquasecurity/trivy-action@v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         continue-on-error: true
         with:
           scan-type: fs
@@ -227,7 +233,7 @@ jobs:
           output: trivy-bge-server-deps.txt
 
       - name: Scan paddle_server deps — filesystem
-        uses: aquasecurity/trivy-action@v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         continue-on-error: true
         with:
           scan-type: fs
@@ -252,7 +258,7 @@ jobs:
 
       - name: Upload scan reports as a build artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: trivy-reports
           path: trivy-*.txt

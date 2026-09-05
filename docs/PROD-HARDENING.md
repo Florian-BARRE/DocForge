@@ -264,9 +264,21 @@ Enable the app's own rate limit in `services/docforge/.env`, then recreate `docf
   client-forgeable, so the transport peer is keyed); set `true` only behind a proxy that overwrites
   `X-Forwarded-For` (e.g. the Caddy overlay).
 
+Failed-auth traffic is throttled too (when the limiter is on): a request that fails authentication
+short-circuits at the auth gate before the limiter proper, so the gate itself throttles those attempts
+by client IP (keyed `authfail:<ip>`, honouring `RATE_LIMIT_TRUST_FORWARDED_FOR`) to close the
+credential-flood / 401-DoS bypass. Two consequences of the IP keying to be aware of: with
+`RATE_LIMIT_TRUST_FORWARDED_FOR=true` a hostile client rotating spoofed `X-Forwarded-For` values
+spreads its attempts across per-IP buckets (bounded to distinct values seen within one rolling
+minute) — only enable that flag behind a proxy that **overwrites** XFF; and behind an untrusted proxy
+(the default) all failed-auth attempts share the proxy's single bucket, so one attacker can push other
+clients' already-failing attempts from 401 to 429 (no practical impact — they were failing regardless).
+
 When auth is on, the limiter keys by API-key identity (XFF is ignored); when auth is off, it keys by
 client IP. The high-frequency job-poll/SSE routes, `/health`, `/metrics`, docs and static assets are
-exempt, so the UI is never throttled. It keys on `X-Forwarded-For`, so:
+exempt, so the UI is never throttled (the failed-auth throttle above deliberately does **not** apply
+that exemption — a request without valid credentials is never a legitimate poll). It keys on
+`X-Forwarded-For`, so:
 - **Behind `compose/overlays/proxy.yml`:** already correct out of the box — Caddy authoritatively
   sets that header (see [§8](#8-optional-tls-reverse-proxy)).
 - **Behind your own TLS-terminating proxy/LB:** you must configure it to forward

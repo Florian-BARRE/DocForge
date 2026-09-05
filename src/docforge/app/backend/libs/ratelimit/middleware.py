@@ -7,26 +7,16 @@
 # the rolling-window reset. The moving-window counter is in-process (per app worker) — adequate for the
 # single-process app; point the `limits` storage at Redis to share one budget across replicas.
 
-# ====== Standard Library Imports ======
-import math
-import time
-
 # ====== Third-Party Library Imports ======
-from fastapi.responses import JSONResponse
-from limits import RateLimitItemPerMinute
-from limits.aio.storage import MemoryStorage
-from limits.aio.strategies import MovingWindowRateLimiter
-from loggerplusplus import loggerplusplus
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 # ====== Internal Project Imports ======
 from config import RUNTIME_CONFIG
 
 # ====== Local Project Imports ======
+from .engine import RateLimitEngine
 from .exemptions import RateLimitExemptions
 from .keying import RateLimitKeyResolver
-
-logger = loggerplusplus.bind(identifier="RateLimit")
 
 
 class RateLimitMiddleware:
@@ -39,9 +29,9 @@ class RateLimitMiddleware:
         Args:
             app (ASGIApp): The next ASGI application in the stack.
         """
-        # 1. Hold the wrapped app; the limiter's window state lives in an in-process store.
+        # 1. Hold the wrapped app; the shared engine owns the in-process window store.
         self.app = app
-        self._limiter = MovingWindowRateLimiter(MemoryStorage())
+        self._engine = RateLimitEngine()
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         """
@@ -68,54 +58,13 @@ class RateLimitMiddleware:
             scope, principal, RUNTIME_CONFIG.RATE_LIMIT_TRUST_FORWARDED_FOR
         )
 
-        # 4. Consume one hit from the caller's rolling per-minute window. FAIL OPEN: a storage error
-        #    (e.g. a Redis outage once the store is externalised) must never take down legit traffic —
-        #    the limiter is an abuse mitigation, not a correctness gate, so on its own failure we log
-        #    and allow rather than 500 every request (a self-DoS).
-        item = RateLimitItemPerMinute(RUNTIME_CONFIG.RATE_LIMIT_PER_MINUTE)
-        try:
-            allowed = await self._limiter.hit(item, key)
-        except Exception:
-            logger.warning(f"Rate limiter unavailable; failing open for this request (key={key})")
-            allowed = True
-        if allowed:
+        # 4. Consume one hit from the caller's rolling per-minute window (fail-open on a store error).
+        if await self._engine.allow(key):
             await self.app(scope, receive, send)
             return
 
         # 5. Over budget → 429 with a Retry-After (whole seconds until the window frees a slot).
-        await self._reject(scope, receive, send, item, key)
-
-    async def _reject(
-        self, scope: Scope, receive: Receive, send: Send, item: RateLimitItemPerMinute, key: str
-    ) -> None:
-        """
-        Send a 429 response carrying a Retry-After derived from the rolling-window reset instant.
-
-        Args:
-            scope (Scope): The ASGI connection scope.
-            receive (Receive): The ASGI receive channel.
-            send (Send): The ASGI send channel.
-            item (RateLimitItemPerMinute): The limit that was breached (source of the window stats).
-            key (str): The caller's bucket key.
-        """
-        # 1. The window reset instant tells the caller how long to back off (>= 1s). If the stats read
-        #    itself errors, fall back to a whole-minute back-off rather than 500 (still a valid 429).
-        try:
-            reset_time, _ = await self._limiter.get_window_stats(item, key)
-            retry_after = max(1, math.ceil(reset_time - time.time()))
-        except Exception:
-            logger.warning(
-                f"Rate limiter window-stats unavailable; using default Retry-After (key={key})"
-            )
-            retry_after = 60
-
-        # 2. A JSON 429 mirroring the shape the auth middleware returns (a `detail` body).
-        response = JSONResponse(
-            {"detail": "Rate limit exceeded. Please retry later."},
-            status_code=429,
-            headers={"Retry-After": str(retry_after)},
-        )
-        await response(scope, receive, send)
+        await self._engine.reject(scope, receive, send, key)
 
 
 __all__ = ["RateLimitMiddleware"]

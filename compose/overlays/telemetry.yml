@@ -26,10 +26,22 @@
 #
 # Grafana admin login: services/telemetry/.env (GF_SECURITY_ADMIN_USER / GF_SECURITY_ADMIN_PASSWORD,
 # injected via env_file — the discoverable per-service config home). Copy .env.example → .env and
-# CHANGE the password before exposing Grafana beyond localhost/an operator VPN.
+# CHANGE the password before exposing Grafana beyond localhost/an operator VPN. No plaintext
+# secret ships in this file or in git — the tracked .env.example only carries a `change_me_*`
+# placeholder, and the real `.env` is gitignored.
 #
 # Ports (VM firewall range 10000-11000; 10040-10049 already used by the core stack — see
 # compose/README.md's port table): grafana 10050, prometheus 10051, loki 10052.
+#
+# SECURITY: prometheus and loki ship NO authentication of their own (unlike grafana, which at
+# least gates on the admin login above) — anyone who can reach the port can read every scraped
+# metric or shipped container log line. All three host ports below default-bind to
+# 127.0.0.1 (loopback-only), matching this file's own long-standing advice ("keep the telemetry
+# stack off any public interface") that the previous unbound `"host:container"` mappings didn't
+# actually enforce. Override via `TELEMETRY_BIND_ADDR` (project-root .env) ONLY if you understand
+# the exposure — e.g. `TELEMETRY_BIND_ADDR=0.0.0.0` on a host already firewalled at the network
+# layer — and prefer routing through `compose/overlays/proxy.yml` or an SSH/VPN tunnel instead of
+# widening the bind address.
 # ─────────────────────────────────────────────────────────────────────────────
 
 services:
@@ -41,7 +53,8 @@ services:
       - ../services/telemetry/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - docforge_prometheus_data:/prometheus
     ports:
-      - "10051:9090"              # Operator access: http://localhost:10051
+      # Loopback-only by default — prometheus has no auth of its own. See header comment.
+      - "${TELEMETRY_BIND_ADDR:-127.0.0.1}:10051:9090" # Operator access: http://localhost:10051
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:9090/-/healthy || exit 1"]
       interval: 15s
@@ -60,7 +73,8 @@ services:
       - ../services/telemetry/loki-config.yml:/etc/loki/loki-config.yml:ro
       - docforge_loki_data:/loki
     ports:
-      - "10052:3100"              # Operator access / ad-hoc LogQL queries: http://localhost:10052
+      # Loopback-only by default — loki has no auth of its own and holds every container's logs.
+      - "${TELEMETRY_BIND_ADDR:-127.0.0.1}:10052:3100" # Operator access / ad-hoc LogQL queries: http://localhost:10052
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:3100/ready || exit 1"]
       interval: 15s
@@ -104,7 +118,9 @@ services:
       - ../services/telemetry/grafana/dashboards:/etc/grafana/dashboards:ro
       - docforge_grafana_data:/var/lib/grafana
     ports:
-      - "10050:3000"              # Grafana UI: http://localhost:10050 (user: admin)
+      # Loopback-only by default too, in spite of grafana's own login gate — defense in depth
+      # against the shipped `change_me_grafana_admin` placeholder never getting changed.
+      - "${TELEMETRY_BIND_ADDR:-127.0.0.1}:10050:3000" # Grafana UI: http://localhost:10050 (user: admin)
     depends_on:
       - prometheus
       - loki
