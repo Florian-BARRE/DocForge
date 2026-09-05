@@ -92,6 +92,18 @@ export function humanizeFieldUnit(name: string): string | undefined {
   return UNIT_SUFFIX_PATTERNS.find(([pattern]) => pattern.test(name))?.[1];
 }
 
+// A field whose wire name smells like a credential — masked as `type="password"` in SchemaField so
+// it isn't shoulder-surfable on screen. Purely a rendering choice (same input, same value/onChange
+// wiring): it does not imply the backend redacts or round-trips the value specially, unlike the
+// search pipeline's own `__redacted__` convention (see SearchQueryCard) which is a distinct,
+// backend-driven behaviour this generic schema-form does not have.
+const SECRET_NAME_RE = /(secret|api[_-]?key|password|token)/i;
+
+/** Whether a wire field name should render as a masked (`type="password"`) control. */
+export function isSecretFieldName(name: string): boolean {
+  return SECRET_NAME_RE.test(name);
+}
+
 /** The label a `SchemaField` should render for a wire field name. */
 export function humanizeFieldLabel(name: string): string {
   return FIELD_COPY[name]?.label ?? autoHumanizeLabel(name);

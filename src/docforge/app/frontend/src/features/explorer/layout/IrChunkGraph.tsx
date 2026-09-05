@@ -14,6 +14,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import type { ChunkInfo, IRBlock, IREnrichment } from "../../../api/explorer";
 import { theme } from "../../../theme";
+import { displayPage } from "../format";
 import { blockStyle } from "./blockColors";
 import { ChunkColumnCard } from "./ChunkColumnCard";
 import type { ChunkMember } from "./chunkAssembly";
@@ -171,97 +172,102 @@ export function IrChunkGraph({
   // Draw inactive bands first so an active chunk's coloured ribbon always sits on top.
   const orderedBands = placement ? [...placement.bands].sort((a, b) => Number(a.active) - Number(b.active)) : [];
 
+  // The two columns reserve a fixed width (CHUNK_WIDTH + CONNECTOR) that can exceed a narrow
+  // viewport — this wrapper scrolls HORIZONTALLY WITHIN ITSELF when that happens, rather than
+  // overflowing into the page body (which must never scroll sideways).
   return (
-    <div ref={containerRef} style={{ position: "relative", minHeight: placement?.height ?? undefined }}>
-      <svg
-        style={{ position: "absolute", inset: 0, width: "100%", height: placement?.height ?? 0, pointerEvents: "none", overflow: "visible", zIndex: 0 }}
-        aria-hidden="true"
-      >
-        {orderedBands.map((band) => (
-          <path
-            key={band.key}
-            d={band.path}
-            fill={band.color}
-            stroke={band.color}
-            strokeWidth={0.5}
-            style={{
-              fillOpacity: band.active ? 0.5 : 0.13,
-              strokeOpacity: band.active ? 0.55 : 0.14,
-              transition: "fill-opacity .15s ease, stroke-opacity .15s ease",
-            }}
-          />
-        ))}
-      </svg>
+    <div style={{ overflowX: "auto" }}>
+      <div ref={containerRef} style={{ position: "relative", minWidth: CONNECTOR + CHUNK_WIDTH + 240, minHeight: placement?.height ?? undefined }}>
+        <svg
+          style={{ position: "absolute", inset: 0, width: "100%", height: placement?.height ?? 0, pointerEvents: "none", overflow: "visible", zIndex: 0 }}
+          aria-hidden="true"
+        >
+          {orderedBands.map((band) => (
+            <path
+              key={band.key}
+              d={band.path}
+              fill={band.color}
+              stroke={band.color}
+              strokeWidth={0.5}
+              style={{
+                fillOpacity: band.active ? 0.5 : 0.13,
+                strokeOpacity: band.active ? 0.55 : 0.14,
+                transition: "fill-opacity .15s ease, stroke-opacity .15s ease",
+              }}
+            />
+          ))}
+        </svg>
 
-      {/* MIDDLE — every IR block in reading order (type-coloured spine + extraction provenance). */}
-      <div ref={midColRef} style={{ position: "relative", zIndex: 1, marginRight: CONNECTOR + CHUNK_WIDTH, display: "flex", flexDirection: "column", gap: theme.space.xs }}>
-        <div style={{ fontSize: theme.font.size.xs, fontWeight: theme.font.weight.semibold, color: theme.color.dim, textTransform: "uppercase", letterSpacing: "0.04em" }}>
-          IR blocks
-        </div>
-        {blocks.map((block, index) => {
-          const chunk = chunkByBlockId.get(block.id) ?? null;
-          const selected = selectedBlockId === block.id;
-          const related = !selected && chunk != null && chunk.id === activeChunkId;
-          const prev = blocks[index - 1];
-          const showDivider = prev && prev.page !== block.page;
-          return (
-            <div key={block.id} style={{ display: "flex", flexDirection: "column", gap: theme.space.xs }}>
-              {showDivider && (
-                <div style={{ display: "flex", alignItems: "center", gap: theme.space.s, margin: `${theme.space.xs}px 0` }} aria-hidden="true">
-                  <div style={{ flex: 1, height: 1, background: theme.color.line }} />
-                  <span style={{ fontFamily: theme.font.mono, fontSize: theme.font.size.xs, color: theme.color.mute, whiteSpace: "nowrap" }}>
-                    page {prev.page + 1} → {block.page + 1}
-                  </span>
-                  <div style={{ flex: 1, height: 1, background: theme.color.line }} />
+        {/* MIDDLE — every IR block in reading order (type-coloured spine + extraction provenance). */}
+        <div ref={midColRef} style={{ position: "relative", zIndex: 1, marginRight: CONNECTOR + CHUNK_WIDTH, display: "flex", flexDirection: "column", gap: theme.space.xs }}>
+          <div style={{ fontSize: theme.font.size.xs, fontWeight: theme.font.weight.semibold, color: theme.color.dim, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+            IR blocks
+          </div>
+          {blocks.map((block, index) => {
+            const chunk = chunkByBlockId.get(block.id) ?? null;
+            const selected = selectedBlockId === block.id;
+            const related = !selected && chunk != null && chunk.id === activeChunkId;
+            const prev = blocks[index - 1];
+            const showDivider = prev && prev.page !== block.page;
+            return (
+              <div key={block.id} style={{ display: "flex", flexDirection: "column", gap: theme.space.xs }}>
+                {showDivider && (
+                  <div style={{ display: "flex", alignItems: "center", gap: theme.space.s, margin: `${theme.space.xs}px 0` }} aria-hidden="true">
+                    <div style={{ flex: 1, height: 1, background: theme.color.line }} />
+                    <span style={{ fontFamily: theme.font.mono, fontSize: theme.font.size.xs, color: theme.color.mute, whiteSpace: "nowrap" }}>
+                      page {displayPage(prev.page)} → {displayPage(block.page)}
+                    </span>
+                    <div style={{ flex: 1, height: 1, background: theme.color.line }} />
+                  </div>
+                )}
+                <div
+                  ref={(el) => {
+                    if (el) irRefs.current.set(block.id, el);
+                    else irRefs.current.delete(block.id);
+                  }}
+                >
+                  <ReadingOrderEntry
+                    block={block}
+                    index={index}
+                    enrichments={enrichmentsByBlock.get(block.id) ?? []}
+                    selected={selected}
+                    related={related}
+                    parseChain={parseChain}
+                    onSelect={() => onSelectBlock(block.id)}
+                  />
                 </div>
-              )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* CHUNKS — centred on their members; each card carries its full provenance. */}
+        <div ref={chunkColRef} style={{ position: "absolute", top: 0, right: 0, width: CHUNK_WIDTH, zIndex: 1 }}>
+          {chunks.map((chunk) => {
+            const members = membersByChunk.get(chunk.id) ?? [];
+            const selBlockIndex =
+              selectedBlockId != null ? members.find((m) => m.block.id === selectedBlockId)?.index ?? null : null;
+            return (
               <div
+                key={chunk.id}
                 ref={(el) => {
-                  if (el) irRefs.current.set(block.id, el);
-                  else irRefs.current.delete(block.id);
+                  if (el) chunkRefs.current.set(chunk.id, el);
+                  else chunkRefs.current.delete(chunk.id);
                 }}
+                style={{ position: "absolute", top: placement?.tops[chunk.id] ?? 0, left: 0, right: 0, opacity: placement ? 1 : 0, transition: "top .18s ease, opacity .18s ease" }}
               >
-                <ReadingOrderEntry
-                  block={block}
-                  index={index}
-                  enrichments={enrichmentsByBlock.get(block.id) ?? []}
-                  selected={selected}
-                  related={related}
-                  parseChain={parseChain}
-                  onSelect={() => onSelectBlock(block.id)}
+                <ChunkColumnCard
+                  chunk={chunk}
+                  members={members}
+                  enrichmentsByBlock={enrichmentsByBlock}
+                  selected={activeChunkId === chunk.id}
+                  selectedBlockIndex={selBlockIndex}
+                  onSelect={() => onSelectChunk(chunk.id)}
                 />
               </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* CHUNKS — centred on their members; each card carries its full provenance. */}
-      <div ref={chunkColRef} style={{ position: "absolute", top: 0, right: 0, width: CHUNK_WIDTH, zIndex: 1 }}>
-        {chunks.map((chunk) => {
-          const members = membersByChunk.get(chunk.id) ?? [];
-          const selBlockIndex =
-            selectedBlockId != null ? members.find((m) => m.block.id === selectedBlockId)?.index ?? null : null;
-          return (
-            <div
-              key={chunk.id}
-              ref={(el) => {
-                if (el) chunkRefs.current.set(chunk.id, el);
-                else chunkRefs.current.delete(chunk.id);
-              }}
-              style={{ position: "absolute", top: placement?.tops[chunk.id] ?? 0, left: 0, right: 0, opacity: placement ? 1 : 0, transition: "top .18s ease, opacity .18s ease" }}
-            >
-              <ChunkColumnCard
-                chunk={chunk}
-                members={members}
-                enrichmentsByBlock={enrichmentsByBlock}
-                selected={activeChunkId === chunk.id}
-                selectedBlockIndex={selBlockIndex}
-                onSelect={() => onSelectChunk(chunk.id)}
-              />
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
     </div>
   );

@@ -92,7 +92,6 @@ export function DocumentPage({ collectionId, documentId, onNavigate }: DocumentP
             enabled={document.enabled}
             onEnabledChanged={handleDocumentEnabledChanged}
             onNavigate={onNavigate}
-            onError={setError}
           />
         }
       />

@@ -171,7 +171,7 @@ export function PageBoxOverlay({ renderBlobHash, width, height, boxes, alt, styl
                   background: stroke,
                   borderRadius: isLayout ? `${theme.radius.s}px ${theme.radius.s}px 0 0` : theme.radius.s,
                   whiteSpace: "nowrap",
-                  boxShadow: isLayout ? "0 1px 2px rgba(0,0,0,0.28)" : "none",
+                  boxShadow: isLayout ? theme.shadow.sm : "none",
                 }}
               >
                 {box.label}

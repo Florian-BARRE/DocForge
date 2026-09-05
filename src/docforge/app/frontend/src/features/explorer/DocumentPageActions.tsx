@@ -19,12 +19,10 @@ interface DocumentPageActionsProps {
   enabled: boolean;
   onEnabledChanged: (enabled: boolean) => void;
   onNavigate: Navigate;
-  /** Bubbles a delete/re-ingest failure up to the page's own error state. */
-  onError: (message: string) => void;
 }
 
 export function DocumentPageActions({
-  documentId, collectionId, enabled, onEnabledChanged, onNavigate, onError,
+  documentId, collectionId, enabled, onEnabledChanged, onNavigate,
 }: DocumentPageActionsProps) {
   const toast = useToast();
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -37,7 +35,9 @@ export function DocumentPageActions({
       await deleteDocument(documentId);
       onNavigate({ name: "collection-documents", collectionId });
     } catch (e) {
-      onError(e instanceof Error ? e.message : String(e));
+      // A toast, not the page's own error state — the document is already loaded and every tab is
+      // still perfectly usable; this action merely failed and should not blank the whole page.
+      toast.error(e instanceof Error ? e.message : String(e));
       setDeleting(false);
     }
   };
@@ -51,7 +51,7 @@ export function DocumentPageActions({
       toast.success("Re-ingest started");
       onNavigate({ name: "job", collectionId, jobId: job_id });
     } catch (e) {
-      onError(e instanceof Error ? e.message : String(e));
+      toast.error(e instanceof Error ? e.message : String(e));
       setReingesting(false);
     }
   };

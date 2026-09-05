@@ -8,6 +8,8 @@
 
 ## Journal
 
+- **2026-09-05 — Vague S / 0.14.29 (V8 frontend layout-batch, 7 FAIBLE)** : (1+2) **PageScrubber** — rebind du listener quand le conteneur scroll change (callback ref) + drag tactile (pointer events) ; offsets de page cachés (calcul once/resize) au lieu de O(pages) lectures DOM par tick. (3) **collapse responsive** — wrapper `overflow-x:auto` autour du layout IrChunkGraph large (476px fixe) → scroll interne, jamais le body. (4) **SchemaField** — masking **implémenté** (input password + toggle reveal pour les champs au nom secret via `isSecretFieldName`, hooks avant tout return conditionnel) plutôt que juste corriger le commentaire. (5) smells groupés — rgba hardcodé → token, erreur de page-load **dégrade en toast** (au lieu de nuker l'état d'erreur de la page déjà chargée), pages vides non droppées, displayPage non bypassé. (6) **one-offs supprimés** (git rm) — 5 scripts QA jetables (a11y-check/debug-menu-click/gf-dropdown/grafana-shot/mobile-overflow-check) + 3 PNG trackés ; le harness Playwright documenté conservé ; les PNG root-owned restants sont du junk local **non-tracké** (dir gitignored), hors repo. (7) commentaires stale ("lane" fantôme, etc.). Gate conteneur : lint **0 err**, tsc clean, vitest **5**, build ✓. **→ V8 : 126/188.** Reste `IrChunkGraph.tsx:1` (>200 lignes / structure) non fait.
+
 - **2026-09-05 — Vague R / 0.14.28 (V8 observabilité jobs/worker, 3 FAIBLE)** : (1) **breadcrumb d'échec non nettoyé au retry** — `mark_running` clear désormais `failed_node_id/kind/item_index/error_type` (+ counter) sur une nouvelle tentative. Caveat honnête : le chemin même-row FAILED→RUNNING→DONE est **actuellement inatteignable** (`retry_jobs=False` + new-row-per-reingest) → c'est de la **complétude defense-in-depth** de l'idiome de reset existant, pas un bug live. (2) **dénominateur de progression** comptait les racines d'escalade jamais exécutées → nouveau `StagePlanHelpers.planned_stage_ids` (BFS depuis l'entrée unique, exclut `score_below`/`on_failure`) sert de `_total` ; les `_roots` restent tous les ids (une escalade qui TOURNE est tracée) ; reset counter/breadcrumb par tentative. Sous-item "cut-stage usage cost meter" **skippé** (cluster cost déféré). (3) smells worker : branche blob non-dict morte **retirée** (BlobNormalizer.normalize renvoie toujours un dict) ; **ordre d'import entrypoint worker corrigé** (`config`/RUNTIME_CONFIG AVANT `backend` — idiome `_ = RUNTIME_CONFIG` qui empêche isort de re-flotter, contrat de bootstrap sys.path+alias) ; "relevance score dropped" **non trouvé** en scope worker (0 hit `score` — le seul drop est `_record`, trace intentionnelle sous `trace_payloads=False`), rien à corriger. +13 tests (stage_plan ×7, progress, job-lifecycle reset ×3). Gate : **1552 passed** (+13), ruff clean, 0 changement OpenAPI/SDK. **→ V8 : 119/188.**
 
 - **2026-09-05 — Vague Q / 0.14.27 (V8 dead-code, 3 supprimés + 1 skip justifié)** : suppression **prouvée-morte** (grep exhaustif app/worker/tests/dynamique avant toute suppression). (1) `ArtifactCacheFacade.drop_for_document` + `ArtifactCacheApi.referenced_hashes` (+ `list_for_document` qui n'était appelé QUE par drop) + son unique test db-tier — le delete réel utilise `delete_for_documents`, le sweep orphelins un subquery inline. (2) **classe `PipelineCatalog` entière** (+ export) — 0 caller ; le vrai palette path = `PipelineRegistry`→`IngestPipeline/SearchPipeline.palette()` scopant `deliver` via `FAMILY_KINDS` (PipelineCatalog.palette appelait `from_family` sans kinds = le leak cross-pipeline que l'audit signalait). (3) `scripts/update_imports.py` (`git rm`) — one-off mort ciblant le layout legacy supprimé, absent de pyproject/Makefile/CI. **(4) `chunk_overlap_ratio` override — SKIP justifié** : pas un branch mort propre — le champ est dans le contrat public `AssumptionOverrides` (OpenAPI+SDK), son sibling `target_chunk_tokens` est vivant, et le retirer changerait l'OpenAPI ; reste `[ ]` (le finding conflate override inerte et champ de contrat vivant). Gate : **1539 passed**, ruff clean, 0 changement OpenAPI/SDK, 0 référence pendante. **→ V8 : 116/188.**
@@ -149,8 +151,8 @@
 | V5 — Moteur & pipeline | 2 | 2 | 0 | 0 |
 | V6 — Frontend | 0 | 0 | 0 | 0 |
 | V7 — Documentation | 21 | 21 | 0 | 0 |
-| V8 — Outillage (.claude/tests/infra/télémétrie) | 188 | 119 | 3 | 66 |
-| **Total** | **247** | **177** | **3** | **67** |
+| V8 — Outillage (.claude/tests/infra/télémétrie) | 188 | 126 | 3 | 59 |
+| **Total** | **247** | **184** | **3** | **60** |
 
 
 ## V1 — Sécurité & authz (avant tout déploiement multi-tenant)  (30)
@@ -594,7 +596,7 @@
   `src/docforge/app/frontend/src/features/monitoring/WorkersPanel.tsx:32`
 - [ ] **⚪ FAIBLE** · `design` — CancelledError terminal writes: a second cancellation mid-shield skips the job write, and Exception doesn't catch it  
   `src/docforge/worker/backend/libs/jobs/core.py:258`
-- [ ] **⚪ FAIBLE** · `dead-code` — Committed one-off Playwright scripts and QA screenshot binaries under frontend scripts/  
+- [x] **⚪ FAIBLE** · `dead-code` — Committed one-off Playwright scripts and QA screenshot binaries under frontend scripts/  
   `src/docforge/app/frontend/scripts/a11y-check.mjs:1` _(aussi: new-batch)_
 - [ ] **⚪ FAIBLE** · `design` — File-size and structure rule signals in the new code  
   `src/docforge/app/frontend/src/features/explorer/layout/IrChunkGraph.tsx:1`
@@ -602,21 +604,21 @@
   `src/docforge/app/frontend/src/features/corpus/CorpusPage.tsx:64`
 - [x] **⚪ FAIBLE** · `bug` — Layout parse-chain contaminated: "mistral" in the PARSERS set matches the OCR and LLM node kinds  
   `src/docforge/app/frontend/src/features/explorer/layout/LayoutTab.tsx:66`
-- [ ] **⚪ FAIBLE** · `consistency` — Low-severity smells in the Layout batch (grouped): hardcoded rgba shadow, bypassed displayPage, unreachable-degenerate unionBbox, dropped empty pages, page-load action error nukes the document page, >200-line files  
+- [x] **⚪ FAIBLE** · `consistency` — Low-severity smells in the Layout batch (grouped): hardcoded rgba shadow, bypassed displayPage, unreachable-degenerate unionBbox, dropped empty pages, page-load action error nukes the document page, >200-line files  
   `src/docforge/app/frontend/src/components/PageBoxOverlay.tsx:171`
-- [ ] **⚪ FAIBLE** · `bug` — PageScrubber binds its scroll container once and never rebinds; touch drag not handled  
+- [x] **⚪ FAIBLE** · `bug` — PageScrubber binds its scroll container once and never rebinds; touch drag not handled  
   `src/docforge/app/frontend/src/features/explorer/layout/PageScrubber.tsx:52`
-- [ ] **⚪ FAIBLE** · `perf` — PageScrubber scroll handler does O(pages) DOM reads on every scroll event  
+- [x] **⚪ FAIBLE** · `perf` — PageScrubber scroll handler does O(pages) DOM reads on every scroll event  
   `src/docforge/app/frontend/src/features/explorer/layout/PageScrubber.tsx:56`
 - [ ] **⚪ FAIBLE** · `design` — Parser-chain rendering conflates skipped/running with failed, and the parser-kind list is a hand-maintained hardcode  
   `src/docforge/app/frontend/src/features/explorer/layout/LayoutTab.tsx:66`
-- [ ] **⚪ FAIBLE** · `design` — Responsive collapse: fixed 476px reserved for the chunk column + connector with no horizontal scroll fallback  
+- [x] **⚪ FAIBLE** · `design` — Responsive collapse: fixed 476px reserved for the chunk column + connector with no horizontal scroll fallback  
   `src/docforge/app/frontend/src/features/explorer/layout/IrChunkGraph.tsx:197`
-- [ ] **⚪ FAIBLE** · `divergence-doc` — SchemaField header comment promises secret masking that the code does not implement  
+- [x] **⚪ FAIBLE** · `divergence-doc` — SchemaField header comment promises secret masking that the code does not implement  
   `src/docforge/app/frontend/src/components/schema-form/SchemaField.tsx:3`
 - [ ] **⚪ FAIBLE** · `consistency` — SearchQueryCard duplicates backend config defaults as display literals  
   `src/docforge/app/frontend/src/features/search-pipeline/SearchQueryCard.tsx:16`
-- [ ] **⚪ FAIBLE** · `consistency` — Stale/contradictory comments across the batch: phantom "lane" palette, wrong palette description, outdated tab counts, and a bbox description that contradicts the wire format  
+- [x] **⚪ FAIBLE** · `consistency` — Stale/contradictory comments across the batch: phantom "lane" palette, wrong palette description, outdated tab counts, and a bbox description that contradicts the wire format  
   `src/docforge/app/frontend/src/features/explorer/layout/PageGroupRow.tsx:5`
 - [ ] **⚪ FAIBLE** · `divergence-doc` — Startup job reclaim keys on the container hostname, which changes on every container recreate — the crash/hard-kill cases it claims to cover never match  
   `src/docforge/shared/libs/services/db/facades/jobs_facade.py:344`
