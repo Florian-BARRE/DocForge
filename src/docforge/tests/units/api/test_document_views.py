@@ -295,6 +295,81 @@ def test_html_download_sets_attachment_filename(
     assert response.headers["content-disposition"] == 'attachment; filename="my-report.html"'
 
 
+def test_adapter_unknown_block_type_degrades_to_paragraph(adapter, ir_bundle) -> None:
+    """An unknown stored block_type (forward-compat/legacy) renders as a paragraph, never crashes."""
+    from shared_libs.public_models import BlockType  # noqa: PLC0415
+
+    bundle = ir_bundle(
+        blocks=[
+            _block(block_id="x", block_type="hologram", reading_order=0, text="future block"),
+        ],
+        tables=[],
+        figures=[],
+        enrichments=[],
+    )
+
+    ir = adapter.to_document_ir(_document(), bundle)
+
+    assert ir.blocks[0].block_type is BlockType.PARAGRAPH
+    assert ir.blocks[0].text == "future block"
+
+
+def test_unknown_block_type_does_not_500_the_view(
+    client, fastapi_app, ir_bundle, monkeypatch
+) -> None:
+    """A document holding an unrecognized block_type still renders its markdown view (no 500)."""
+    document = _document()
+    bundle = ir_bundle(
+        blocks=[_block(block_id="x", block_type="hologram", reading_order=0, text="future block")],
+        tables=[],
+        figures=[],
+        enrichments=[],
+    )
+    _mock_database(monkeypatch, document, bundle)
+
+    response = client.get(f"/api/v1/documents/{document.id}/markdown")
+
+    assert response.status_code == 200, response.text
+    assert "future block" in response.text
+
+
+def _non_latin1_document(filename: str) -> SimpleNamespace:
+    """A document row whose filename is not latin-1 encodable (accents / CJK)."""
+    document = _document()
+    document.filename = filename
+    return document
+
+
+@pytest.mark.parametrize(
+    "filename, expected_ascii, expected_encoded",
+    [
+        ("rapport été 2026.pdf", "rapport t 2026.md", "rapport%20%C3%A9t%C3%A9%202026.md"),
+        ("文档.pdf", "document.md", "%E6%96%87%E6%A1%A3.md"),
+    ],
+)
+def test_download_non_latin1_filename_uses_rfc5987(
+    client, fastapi_app, ir_bundle, monkeypatch, filename, expected_ascii, expected_encoded
+) -> None:
+    """A non-latin-1 filename downloads with an ASCII fallback + RFC 5987 filename*, no crash."""
+    document = _non_latin1_document(filename)
+    bundle = ir_bundle(
+        blocks=[_block(block_id="h", block_type="heading", reading_order=0, text="Hi", level=1)],
+        tables=[],
+        figures=[],
+        enrichments=[],
+    )
+    _mock_database(monkeypatch, document, bundle)
+
+    response = client.get(f"/api/v1/documents/{document.id}/markdown?download=1")
+
+    assert response.status_code == 200, response.text
+    disposition = response.headers["content-disposition"]
+    # The whole header must be latin-1 encodable (the crash the fix prevents).
+    disposition.encode("latin-1")
+    assert f'filename="{expected_ascii}"' in disposition
+    assert f"filename*=UTF-8''{expected_encoded}" in disposition
+
+
 def test_view_endpoints_unknown_document_is_404(client, fastapi_app, monkeypatch) -> None:
     """An unknown document id is a 404 on both view endpoints (guarded before rendering)."""
     from backend.context import CONTEXT  # noqa: PLC0415

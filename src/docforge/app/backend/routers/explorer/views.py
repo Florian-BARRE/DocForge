@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import pathlib
+from urllib.parse import quote
 
 # ====== Third-Party Library Imports ======
 from fastapi import Response
@@ -87,13 +88,48 @@ class DocumentViewHelpers:
         headers: dict[str, str] = {}
 
         # 2. For a download, name the file after the source stem so "report.pdf" -> "report.md".
-        #    Strip quotes/newlines so a hostile filename can't corrupt the Content-Disposition param.
         if download:
-            raw_stem = pathlib.Path(filename or "document").stem
-            stem = "".join(c for c in raw_stem if c not in '"\r\n') or "document"
-            headers["Content-Disposition"] = f'attachment; filename="{stem}.{extension}"'
+            headers["Content-Disposition"] = DocumentViewHelpers._content_disposition(
+                filename, extension
+            )
 
         return Response(content=body, media_type=media_type, headers=headers)
+
+    @staticmethod
+    def _content_disposition(filename: str, extension: str) -> str:
+        """
+        Build an RFC 6266 ``Content-Disposition`` value safe for non-latin-1 filenames.
+
+        HTTP header values are latin-1; a filename with accents or CJK characters would crash when
+        the header is encoded. A pure-ASCII name uses the plain ``filename=`` parameter; anything
+        else emits an ASCII-sanitized ``filename=`` fallback for legacy clients plus an RFC 5987
+        ``filename*`` carrying the full UTF-8 name percent-encoded (the form modern browsers prefer).
+
+        Args:
+            filename (str): The source document filename (supplies the download stem).
+            extension (str): The generated view extension (``md`` or ``html``).
+
+        Returns:
+            str: A ``Content-Disposition`` header value that never raises on latin-1 encoding.
+        """
+        # 1. Derive the download stem, stripping quotes/newlines that could corrupt the parameter.
+        raw_stem = pathlib.Path(filename or "document").stem
+        stem = "".join(c for c in raw_stem if c not in '"\r\n') or "document"
+        full_name = f"{stem}.{extension}"
+
+        # 2. A pure-ASCII name needs only the plain filename= parameter (latin-1 safe as-is).
+        try:
+            full_name.encode("ascii")
+        except UnicodeEncodeError:
+            pass
+        else:
+            return f'attachment; filename="{full_name}"'
+
+        # 3. Non-ASCII: ASCII fallback for legacy clients + RFC 5987 filename* with the full name.
+        ascii_stem = stem.encode("ascii", "ignore").decode("ascii").strip() or "document"
+        ascii_name = f"{ascii_stem}.{extension}"
+        encoded = quote(full_name, safe="")
+        return f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{encoded}"
 
 
 __all__ = ["DocumentViewHelpers"]

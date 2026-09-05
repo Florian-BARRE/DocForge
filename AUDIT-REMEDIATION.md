@@ -8,6 +8,8 @@
 
 ## Journal
 
+- **2026-09-05 — Vague M / 0.14.23 (V8 IR read-path crashes, 2 bugs — scope strict, 1 shot)** : (1) **filename non-latin-1 crash** (views.py md/HTML download) — le header `Content-Disposition` (latin-1) plantait sur un nom accentué/CJK ; nouveau `_content_disposition` : ASCII pur → `filename="…"` (contrat inchangé), sinon fallback ASCII + **RFC 5987 `filename*=UTF-8''<pct>`** (toujours latin-1-safe) ; strip quotes/CRLF en bonus (anti-injection header). (2) **enum stocké inconnu crash** — `BlockType(row.block_type)` et `ChunkRole(chunk.role)` (VARCHAR en base) 500-aient tout le read sur une valeur hors-enum (forward-compat/legacy) ; désormais `try/except ValueError` → block inconnu dégrade en `PARAGRAPH` (texte rendu), role inconnu → disabled (override explicite court-circuite toujours), + warning. +5 tests (filename accents/CJK, block/role inconnus ne 500 pas). Gate : **1505 passed** (+5), ruff clean, 0 changement OpenAPI/SDK. **→ V8 : 101/188.**
+
 - **2026-09-05 — Vague L / 0.14.22 (V8 export/import robustesse, 5 FAIBLE — scope strict tenu)** : (1) **counts jamais réconciliés** — `_restore` renvoie les counts RÉELS par domaine ; `_reconcile_counts` (dans le rollback guard) lève `CollectionImportError` si un fichier data déclaré au manifest est absent / un count ne matche pas → plus de faux succès avec counts fantômes ; `ImportResult.counts` = counts réels. (2) **dangling refs incohérents** — `_optional_ref` : parent block / caption figure / parent chunk dangling → **log + drop NULL** ; champ metadata inconnu → **log + skip** ; `document_id` de payload stale → log + drop la clé (plus de foreign id faux) ; les FK primaires **fail loud** (KeyError) à dessein. (3) **commentaires "preserved verbatim" faux** — l'import REMAP tous les ids ; corrigé dans `export/rows.py` (7 emplacements) + conftest/test docstrings + **`transfer_facade.py:52`** ("id-preserving"→"id-remapping", fait par moi hors-scope agent). (4) **config_versions discarded** — décision : **discard explicite documenté** (restaurer l'historique = INSERT store-facade hors scope transfer) → log INFO nommant le nombre de versions non portées + commentaire. (5) **couverture remap** — +9 tests (chaîne parent/enfant, doc zéro-point, double-import → collections indépendantes, fichier manquant, dangling caption/parent, champ meta inconnu). Gate : **1499 passed** (+9), ruff clean, 0 changement OpenAPI/SDK. **→ V8 : 99/188.**
 
 - **⚠️ Vague cost/metering (2026-09-05) — REVERTÉE** : la vague accuracy du $ meter (embed/OCR payés + estimator per-figure) a **débordé** (18 fichiers, jusqu'à `base/execution.py` moteur + node base classes embed/ocr) et cassé `test_jobs_core` (9 échecs, `collection.estimate_overrides` absent des fixtures). **Revert complet** (tree revenu vert 1490). Cause : un metering embed/OCR fidèle exige un **stampage d'usage niveau-node** (d'où les node base classes) → cluster **entangé, pas un quick win**. **Déféré** : nécessite une passe de design dédiée (stampage usage node + meter + alignement estimator). Items cost/estimation restent `[ ]`.
@@ -137,8 +139,8 @@
 | V5 — Moteur & pipeline | 2 | 2 | 0 | 0 |
 | V6 — Frontend | 0 | 0 | 0 | 0 |
 | V7 — Documentation | 21 | 21 | 0 | 0 |
-| V8 — Outillage (.claude/tests/infra/télémétrie) | 188 | 99 | 3 | 86 |
-| **Total** | **247** | **157** | **3** | **87** |
+| V8 — Outillage (.claude/tests/infra/télémétrie) | 188 | 101 | 3 | 84 |
+| **Total** | **247** | **159** | **3** | **85** |
 
 
 ## V1 — Sécurité & authz (avant tout déploiement multi-tenant)  (30)
@@ -619,7 +621,7 @@
   `src/docforge/app/backend/routers/explorer/models_ir.py:25`
 - [ ] **🟠 MOYENNE** · `test-gap` — ENGINE_BLOB_VERSION bump is purely manual and already missed once; golden-blob test does not force it  
   `src/docforge/shared/libs/pipelines/ingest/stages/normalizer.py:36`
-- [ ] **🟠 MOYENNE** · `bug` — Non-latin-1 document filename crashes the markdown/HTML download endpoints  
+- [x] **🟠 MOYENNE** · `bug` — Non-latin-1 document filename crashes the markdown/HTML download endpoints  
   `src/docforge/app/backend/routers/explorer/views.py:96`
 - [ ] **🟠 MOYENNE** · `consistency` — Three contradictory stories about raw chunk text; the raw text is in fact not recoverable  
   `src/docforge/worker/backend/libs/persistence/translator.py:7`
@@ -631,7 +633,7 @@
   `src/docforge/shared/libs/pipelines/ingest/linearize/base.py:80`
 - [ ] **⚪ FAIBLE** · `consistency` — Low-severity smells: undocumented bbox semantics in the IR API model, magic 'header_footer' string, header-less markdown tables, shared mutable pageless Provenance  
   `src/docforge/app/backend/routers/explorer/models_ir.py:23`
-- [ ] **⚪ FAIBLE** · `bug` — Read paths crash on unknown stored block_type/role values (forward-compat gap the VARCHAR design explicitly invites)  
+- [x] **⚪ FAIBLE** · `bug` — Read paths crash on unknown stored block_type/role values (forward-compat gap the VARCHAR design explicitly invites)  
   `src/docforge/app/backend/routers/explorer/ir_adapter.py:104`
 
 ### Middlewares HTTP
