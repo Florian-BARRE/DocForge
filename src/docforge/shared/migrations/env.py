@@ -40,6 +40,33 @@ from shared_libs.services.db.postgresql.tables.base import Base  # noqa: E402
 # The one metadata Alembic diffs against the live schema.
 target_metadata = Base.metadata
 
+# Hand-managed indexes that autogenerate must not touch. ``ix_docmeta_field_value_text`` is a FUNCTIONAL
+# index on ``(field_id, (value #>> '{}'))`` (migration c3e9a1f7d2b4): an expression key does not
+# round-trip reliably through reflection, so autogenerate would churn it as a spurious drop+recreate.
+# It lives migration-only and is hidden here. Its plain-column GIN and btree siblings ARE declared on
+# the DocumentMetadata model (they compare reliably), so they are not listed here.
+_AUTOGEN_IGNORED_INDEXES = frozenset({"ix_docmeta_field_value_text"})
+
+
+def _include_object(
+    obj: object, name: str | None, type_: str, reflected: bool, compare_to: object
+) -> bool:
+    """Keep hand-managed expression indexes out of autogenerate (they can't be compared reliably).
+
+    Args:
+        obj (object): The schema object being considered.
+        name (str | None): Its name.
+        type_ (str): The object kind ("table", "column", "index", ...).
+        reflected (bool): Whether it came from the live database.
+        compare_to (object): The counterpart it is being diffed against, if any.
+
+    Returns:
+        bool: False to exclude the object from autogenerate, True to include it.
+    """
+    if type_ == "index" and name in _AUTOGEN_IGNORED_INDEXES:
+        return False
+    return True
+
 
 def _async_database_url() -> str:
     """The asyncpg driver URL used by the live (online) migration path."""
@@ -75,6 +102,7 @@ def _do_run_migrations(connection: Connection) -> None:
         target_metadata=target_metadata,
         compare_type=True,
         compare_server_default=True,
+        include_object=_include_object,
     )
     with context.begin_transaction():
         context.run_migrations()

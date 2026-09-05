@@ -35,6 +35,27 @@ class CollectionApi:
         return await session.get(Collection, collection_id)
 
     @staticmethod
+    async def get_for_update(session: AsyncSession, collection_id: uuid.UUID) -> Collection | None:
+        """Fetch a collection by id under a ``FOR UPDATE`` row lock, or None.
+
+        Serializes concurrent config-version minting: a second transaction that tries to lock the same
+        collection blocks until the first commits, so the ``max(version) + 1`` read-modify-write can't
+        interleave into a duplicate (collection_id, version). The lock is held until the caller's
+        transaction ends.
+
+        Args:
+            session (AsyncSession): The unit of work the lock is scoped to.
+            collection_id (uuid.UUID): The collection whose row is locked.
+
+        Returns:
+            Collection | None: The locked row, or None when the collection does not exist.
+        """
+        result = await session.execute(
+            select(Collection).where(Collection.id == collection_id).with_for_update()
+        )
+        return result.scalar_one_or_none()
+
+    @staticmethod
     async def get_by_name(session: AsyncSession, name: str) -> Collection | None:
         """Fetch a collection by its unique name, or None."""
         result = await session.execute(select(Collection).where(Collection.name == name))

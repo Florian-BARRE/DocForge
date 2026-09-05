@@ -99,9 +99,10 @@ async def test_all_parts_commit_in_one_transaction(monkeypatch) -> None:
     set_overrides = AsyncMock()
     monkeypatch.setattr(cf_module.CollectionApi, "update", update)
     monkeypatch.setattr(cf_module.CollectionApi, "get_schema", AsyncMock(return_value=[]))
+    # The config snapshot locks the collection row FOR UPDATE before minting the next version.
     monkeypatch.setattr(
         cf_module.CollectionApi,
-        "get",
+        "get_for_update",
         AsyncMock(return_value=SimpleNamespace(pipeline={"p": 1}, search={})),
     )
     monkeypatch.setattr(cf_module.CollectionApi, "max_config_version", AsyncMock(return_value=3))

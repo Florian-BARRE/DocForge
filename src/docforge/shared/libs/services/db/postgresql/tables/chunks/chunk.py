@@ -1,9 +1,12 @@
 # ====== Code Summary ======
-# The `chunk` table — the retrieval unit. Its `id` IS the Qdrant point id (a deterministic UUID v5),
-# so a search hit maps back here by primary key. It stores the ENRICHED form only — `text` is what
-# gets embedded (breadcrumb + assembled block content, with figures contributing their VLM/OCR text
-# and the LLM contextual prefix). The RAW chunk is NOT stored: it is recomputed from `chunk_block` →
-# `block.text`, so nothing is duplicated. Hierarchical chunking uses `parent_id` (self-reference).
+# The `chunk` table — the retrieval unit. Its `id` IS the Qdrant point id (a deterministic UUID v5
+# minted by the worker's RunTranslator from (document_id, chunk_index)), so a search hit maps back
+# here by primary key AND a re-ingest of the same chunk upserts the SAME point (idempotent). It
+# stores the ENRICHED (embedded) form only — `text` is the LLM contextual prefix over the assembled
+# block content, with figures contributing their VLM/OCR text. The RAW, pre-enrichment chunk text is
+# NOT stored and NOT reliably recoverable: stripping the prefix yields the enriched assembly (already
+# folding in figure OCR/VLM text), and re-joining `block.text` via `chunk_block` loses the figure
+# contributions and the chunker's exact assembly. Hierarchical chunking uses `parent_id`.
 
 # ====== Standard Library Imports ======
 import uuid
@@ -23,8 +26,8 @@ class Chunk(Base, TimestampedMixin):
     __tablename__ = "chunk"
     __table_args__ = (Index("ix_chunk_document_config", "document_id", "config_hash"),)
 
-    # App-set UUID v5 (document + block ids + config) — stable, so re-ingest overwrites the same
-    # Qdrant point. No server default: the chunker always supplies it.
+    # Deterministic UUID v5 keyed on (document_id, chunk_index) — stable across runs, so re-ingest
+    # overwrites the same Qdrant point. No server default: the RunTranslator always supplies it.
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True)
     document_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("document.id", ondelete="CASCADE"), nullable=False, index=True

@@ -24,14 +24,20 @@ class DocumentMetadata(Base):
     """One metadata value of a document (document-scope)."""
 
     __tablename__ = "document_metadata"
-    # Field-leading composite backing the grid's correlated EXISTS + scalar sort subquery (created by
-    # migration c3e9a1f7d2b4). Its two siblings from that migration are intentionally NOT declared
-    # here: the functional index ``ix_docmeta_field_value_text`` on
-    # ``(field_id, (value #>> '{}'))`` and the GIN index ``ix_docmeta_value_gin`` on
-    # ``value`` both compare unreliably under ``--autogenerate``, so they live migration-only.
+    # Read-path indexes created by migration c3e9a1f7d2b4, declared here so ``--autogenerate`` sees
+    # them and never proposes a spurious DROP:
+    #  - ``ix_docmeta_field_document``: field-leading composite for the grid's correlated EXISTS +
+    #    scalar sort subquery.
+    #  - ``ix_docmeta_value_gin``: GIN on the raw JSONB ``value`` for list-field containment (has_any).
+    #    A plain-column GIN round-trips reliably through autogenerate (``postgresql_using`` matches).
+    # The third sibling from that migration — the FUNCTIONAL index ``ix_docmeta_field_value_text`` on
+    # ``(field_id, (value #>> '{}'))`` — is NOT declared here: an expression key does not compare
+    # reliably under autogenerate (it would churn as drop+recreate). It stays migration-only and is
+    # excluded from autogenerate by name in ``shared/migrations/env.py`` (_AUTOGEN_IGNORED_INDEXES).
     __table_args__ = (
         UniqueConstraint("document_id", "field_id"),
         Index("ix_docmeta_field_document", "field_id", "document_id"),
+        Index("ix_docmeta_value_gin", "value", postgresql_using="gin"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
