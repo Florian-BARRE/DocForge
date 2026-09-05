@@ -10,6 +10,7 @@ import pytest
 from shared_libs.pipelines.build import PipelineBuilder
 from shared_libs.pipelines.engine import FlowEngine
 from shared_libs.pipelines.ingest.nodes.enrich.figure_classify import FigureClassifyNode
+from shared_libs.pipelines.nodes.openai_compat import UsageAccumulator
 from shared_libs.pipelines.nodes.vlm.base import BaseVlmConfig, BaseVlmNode
 from shared_libs.pipelines.registry import NodeRegistry
 from shared_libs.pipelines.validation import GraphValidator
@@ -42,7 +43,13 @@ class FlakyVlm(BaseVlmNode):
     SUMMARY = "test"
     Config = BaseVlmConfig
 
-    async def _describe(self, image: bytes, context: str, system_prompt: str) -> tuple[str, float]:
+    async def _describe(
+        self,
+        image: bytes,
+        context: str,
+        system_prompt: str,
+        usage_sink: UsageAccumulator | None = None,
+    ) -> tuple[str, float]:
         if b"VLM-BOOM" in image:
             raise RuntimeError("vision endpoint 503")
         return "a nice photo", 1.0

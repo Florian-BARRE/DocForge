@@ -68,7 +68,7 @@ class CostEstimator:
             cls.__metagen_document(plan, stats.document_count, assumptions, rates),
         )
         cls.__add(stages, cls.__enrich_vlm(plan, images, assumptions, rates))
-        cls.__add(stages, cls.__enrich_ocr(plan, pages, assumptions, rates))
+        cls.__add(stages, cls.__enrich_ocr(plan, pages, images, assumptions, rates))
 
         # 4. Roll up totals + volume, and surface the accuracy caveats.
         volume = cls.__volume(plan, int(round(pages)), chunks, assumptions)
@@ -192,28 +192,42 @@ class CostEstimator:
 
     @classmethod
     def __enrich_ocr(
-        cls, plan: CostPlan, pages: float, a: EstimateAssumptions, rates: RateTable
+        cls, plan: CostPlan, pages: float, images: float, a: EstimateAssumptions, rates: RateTable
     ) -> StageEstimate | None:
-        """Paid OCR escalation: priced per (assumed-scanned) page; local rapidocr costs 0."""
+        """Paid OCR: the enrich ocr family reads ONE figure crop per call, so volume is figure-driven.
+
+        The enrich OCR node runs per FIGURE (a ForEach over the page's figure crops), not per page:
+        each hosted-OCR call bills one crop (~one page). So the paid-OCR volume is the estimated
+        FIGURE COUNT (``images``, default non-zero) plus any whole-page scans a per-page assumption
+        adds on top (``scanned_page_ratio``, escalation-only, 0 by default). Driving it by
+        ``scanned_page_ratio`` alone left a genuinely paid per-figure OCR pipeline priced at $0.00
+        with cost_complete=True — the figure term is what makes the default estimate non-zero. Both
+        drivers stay overridable via the assumptions; local rapidocr/paddle cost 0.
+        """
         ref = plan.enrich_ocr
         if ref is None:
             return None
-        ocr_pages = pages * a.scanned_page_ratio
+        # 1. Per-FIGURE crops + any per-PAGE whole-page scans; skip a genuinely empty (no-spend) stage.
+        ocr_units = images + pages * a.scanned_page_ratio
+        if ocr_units <= 0:
+            return None
+        # 2. Price the units against the OCR page rate (a crop bills as one page); local kinds are free.
         if ref.kind in LOCAL_FREE_KINDS:
             cost: float | None = 0.0
             rate_known = True
         else:
-            cost = rates.ocr_cost(ref.kind, ocr_pages)
+            cost = rates.ocr_cost(ref.kind, ocr_units)
             rate_known = cost is not None
+        billed = int(round(ocr_units))
         return StageEstimate(
             stage="enrich_ocr",
             family="ocr",
             provider=ref.kind,
             model=None,
-            calls=int(round(ocr_pages)),
+            calls=billed,
             prompt_tokens=0,
             completion_tokens=0,
-            pages=int(round(ocr_pages)),
+            pages=billed,
             cost_usd=cost,
             rate_known=rate_known,
         )

@@ -170,6 +170,50 @@ class TestScaling:
         assert any("scaled linearly" in c for c in est.caveats)
 
 
+class TestEnrichOcr:
+    """The enrich OCR family reads ONE figure crop per call, so its volume is figure-driven."""
+
+    def test_paid_per_figure_ocr_is_nonzero_by_default(self) -> None:
+        """A paid per-figure OCR pipeline must NOT price to $0.00 with cost_complete=True by default.
+
+        The enrich OCR runs once per figure; with the DEFAULT figure assumption (0.5 images/page and
+        NO scanned-page opt-in) a 100-page sample yields 50 crops. Before the fix the volume was
+        driven by scanned_page_ratio (default 0), so the paid Mistral OCR showed $0.00 — falsely
+        complete for a genuinely paid pipeline."""
+        plan = _empty_plan(enrich_ocr=ProviderRef("ocr", "mistral", None))
+        # Genuine defaults for the figure/scan drivers (only chunk sizing is pinned for determinism).
+        est = CostEstimator.estimate(
+            plan, _stats(), RateTable.default(), EstimateAssumptions(target_chunk_tokens=500)
+        )
+        ocr = next(s for s in est.stages if s.stage == "enrich_ocr")
+        assert ocr.calls == 50  # pages(100) * images_per_page(0.5)
+        assert ocr.pages == 50
+        assert ocr.rate_known is True
+        assert ocr.cost_usd == pytest.approx(50 * 0.001)  # OCR_PAGE_PRICING["mistral"]
+        assert est.total_cost_usd is not None and est.total_cost_usd > 0.0
+        assert est.cost_complete is True
+
+    def test_per_page_scan_ocr_is_unchanged(self) -> None:
+        """A per-PAGE scan assumption (no figures) still prices exactly pages * scanned_page_ratio."""
+        plan = _empty_plan(enrich_ocr=ProviderRef("ocr", "mistral", None))
+        est = CostEstimator.estimate(
+            plan,
+            _stats(),
+            RateTable.default(),
+            _assumptions(images_per_page=0.0, scanned_page_ratio=0.2),
+        )
+        ocr = next(s for s in est.stages if s.stage == "enrich_ocr")
+        assert ocr.calls == 20  # pages(100) * scanned_page_ratio(0.2), no figures
+        assert ocr.pages == 20
+        assert ocr.cost_usd == pytest.approx(20 * 0.001)
+
+    def test_no_figures_and_no_scans_skips_the_ocr_stage(self) -> None:
+        """With neither figures nor scanned pages there is no OCR spend, so the stage is omitted."""
+        plan = _empty_plan(enrich_ocr=ProviderRef("ocr", "mistral", None))
+        est = CostEstimator.estimate(plan, _stats(), RateTable.default(), _assumptions())
+        assert all(s.stage != "enrich_ocr" for s in est.stages)
+
+
 class TestPlanExtraction:
     """The extractor reads the canonical PipelineStates the studio ships."""
 
