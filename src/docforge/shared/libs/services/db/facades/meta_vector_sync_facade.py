@@ -5,9 +5,12 @@
 # value is uniform, so the SAME meta vector rides on all the document's chunk points. Mirrors
 # FilterSyncFacade but writes VECTORS (update_vectors) instead of payload scalars: it rebuilds the
 # collection's OWN embedder from its ingestion blob and embeds only the short metadata VALUES — never
-# the content. Idempotent, non-destructive (content vectors untouched), a clean no-op when the
-# document has no indexed chunk or no semantic/lexical value. The write-side hook and the
-# collection-wide backfill both go through the SAME per-document sync.
+# the content. The values are embedded in ONE batched pass per axis (dense / sparse) and written in a
+# SINGLE batched update_vectors call, so the sync is a bounded handful of round-trips regardless of
+# field or chunk count. Idempotent, non-destructive (content vectors untouched), a clean no-op when
+# the document has no indexed chunk or no semantic/lexical value. The write-side hook and the
+# collection-wide backfill both go through the SAME per-document sync; the backfill pages through the
+# collection's documents so a large collection never loads whole into memory.
 
 # ====== Standard Library Imports ======
 import uuid
@@ -26,7 +29,6 @@ from shared_libs.services.db.qdrant import (
     QdrantIndexApi,
     QdrantPoint,
     SparseVec,
-    VectorNames,
 )
 
 # ====== Local Project Imports ======
@@ -47,6 +49,10 @@ class MetaVectorSyncFacade(LoggerClass):
         self._postgres = postgres
         self._qdrant = qdrant
 
+    # A large collection's backfill pages through its documents rather than loading every row at
+    # once: each page is processed then dropped, bounding memory to one page regardless of size.
+    __BACKFILL_PAGE_SIZE = 500
+
     async def __build_meta_vectors(
         self,
         embedder: BaseEmbedderNode,
@@ -54,104 +60,53 @@ class MetaVectorSyncFacade(LoggerClass):
         declared_dense: set[str],
         declared_sparse: set[str],
     ) -> tuple[dict[str, list[float]], dict[str, SparseVec]]:
-        """Embed each field's value into its DECLARED named vector (dense semantic / sparse lexical)."""
-        dense: dict[str, list[float]] = {}
-        sparse: dict[str, SparseVec] = {}
-        for field_name, value, semantic, lexical in rows:
-            # 1. Empty values carry no vector (mirrors the embed node's skip).
-            text = MetaVectorSyncHelpers.render_value(value)
-            if text is None:
-                continue
-            # 2. A field that is BOTH semantic AND lexical earns the single forward pass when the
-            #    embedder exposes a combined route; when it can't apply, the per-axis calls below run.
-            if (
-                semantic
-                and lexical
-                and await self.__add_combined(
-                    embedder, field_name, text, declared_dense, declared_sparse, dense, sparse
-                )
-            ):
-                continue
-            # 3. Semantic → the dense meta vector, only when the collection declares it.
-            if semantic:
-                await self.__add_dense(embedder, field_name, text, declared_dense, dense)
-            # 4. Lexical → the sparse meta vector, only when both the collection AND the embedder
-            #    carry the axis (a dense-only embedder simply skips it, loudly).
-            if lexical:
-                await self.__add_sparse(embedder, field_name, text, declared_sparse, sparse)
+        """Embed the document's metadata values into their named vectors — ONE batched pass per axis.
+
+        A document carries only a handful of short metadata values, so both axes are embedded in a
+        single batched call each rather than one forward pass per field — the vectors are identical
+        whichever route a provider uses, so per-axis batching is a strict win over a per-field
+        combined route (N field round-trips collapse to at most two).
+        """
+        # 1. Plan (pure) which declared named vector each value feeds — dense and/or sparse buckets.
+        dense_fields, sparse_fields = MetaVectorSyncHelpers.plan_meta_axes(
+            rows, declared_dense, declared_sparse
+        )
+        # 2. One batched forward pass per axis, mapped back to its named vectors.
+        dense = await self.__embed_dense_axis(embedder, dense_fields)
+        sparse = await self.__embed_sparse_axis(embedder, sparse_fields)
         return dense, sparse
 
-    async def __add_combined(
-        self,
-        embedder: BaseEmbedderNode,
-        field_name: str,
-        text: str,
-        declared_dense: set[str],
-        declared_sparse: set[str],
-        dense: dict[str, list[float]],
-        sparse: dict[str, SparseVec],
-    ) -> bool:
-        """Embed a both-axes field in one pass; False (→ separate per-axis calls) when it can't apply.
+    async def __embed_dense_axis(
+        self, embedder: BaseEmbedderNode, fields: list[tuple[str, str]]
+    ) -> dict[str, list[float]]:
+        """Embed every semantic value into its dense meta vector in ONE batched forward pass."""
+        if not fields:
+            return {}
+        names = [name for name, _ in fields]
+        vectors = await embedder._embed_dense([text for _, text in fields])
+        return dict(zip(names, vectors, strict=True))
 
-        Only attempts the combined route when BOTH named vectors are declared; a provider without the
-        combined route returns None and the caller falls back to the per-axis calls, which keep their
-        own declared-guards and warnings.
+    async def __embed_sparse_axis(
+        self, embedder: BaseEmbedderNode, fields: list[tuple[str, str]]
+    ) -> dict[str, SparseVec]:
+        """Embed every lexical value into its sparse meta vector in ONE batched pass.
+
+        A dense-only embedder has no sparse axis and returns None for the whole batch; the lexical
+        vectors are then skipped loudly rather than failing this best-effort repair hook.
         """
-        dense_name = VectorNames.field_dense(field_name)
-        sparse_name = VectorNames.field_sparse(field_name)
-        if dense_name not in declared_dense or sparse_name not in declared_sparse:
-            return False
-        combined = await embedder._embed_dense_sparse([text])
-        if not combined:
-            return False
-        dense_vectors, sparse_vectors = combined
-        if not sparse_vectors:
-            return False
-        dense[dense_name] = dense_vectors[0]
-        sparse[sparse_name] = SparseVec(
-            indices=sparse_vectors[0].indices, values=sparse_vectors[0].values
-        )
-        return True
-
-    async def __add_dense(
-        self,
-        embedder: BaseEmbedderNode,
-        field_name: str,
-        text: str,
-        declared_dense: set[str],
-        dense: dict[str, list[float]],
-    ) -> None:
-        """Embed a semantic field's value into its dense meta vector (declared-guarded)."""
-        vector_name = VectorNames.field_dense(field_name)
-        if vector_name not in declared_dense:
-            self.logger.warning(
-                f"Dense meta vector '{vector_name}' not declared on collection — skipped"
-            )
-            return
-        dense[vector_name] = (await embedder._embed_dense([text]))[0]
-
-    async def __add_sparse(
-        self,
-        embedder: BaseEmbedderNode,
-        field_name: str,
-        text: str,
-        declared_sparse: set[str],
-        sparse: dict[str, SparseVec],
-    ) -> None:
-        """Embed a lexical field's value into its sparse meta vector (declared + axis guarded)."""
-        vector_name = VectorNames.field_sparse(field_name)
-        if vector_name not in declared_sparse:
-            self.logger.warning(
-                f"Sparse meta vector '{vector_name}' not declared on collection — skipped"
-            )
-            return
-        vectors = await embedder._embed_sparse([text])
+        if not fields:
+            return {}
+        names = [name for name, _ in fields]
+        vectors = await embedder._embed_sparse([text for _, text in fields])
         if not vectors:
             self.logger.warning(
-                f"Embedder has no sparse axis — lexical vector '{vector_name}' skipped"
+                f"Embedder has no sparse axis — {len(fields)} lexical meta vector(s) skipped"
             )
-            return
-        sparse[vector_name] = SparseVec(indices=vectors[0].indices, values=vectors[0].values)
+            return {}
+        return {
+            name: SparseVec(indices=vector.indices, values=vector.values)
+            for name, vector in zip(names, vectors, strict=True)
+        }
 
     async def sync_document_meta_vectors(self, document_id: uuid.UUID) -> int:
         """
@@ -235,18 +190,28 @@ class MetaVectorSyncFacade(LoggerClass):
         Returns:
             tuple[int, int]: (documents that received meta vectors, total points patched).
         """
-        # 1. Every document of the collection gets the same per-document sync.
-        async with self._postgres.session() as session:
-            documents = await DocumentApi.list_for_collection(session, collection_id)
-
-        # 2. Accumulate what was actually patched (documents with values AND indexed chunks).
+        # 1. Page through the collection's documents so a huge collection never loads whole into
+        #    memory: each page is fetched, processed, then dropped. The per-document sync is
+        #    idempotent, so a document that shifts pages under a concurrent insert is at worst
+        #    re-synced (same vectors), never corrupted.
         documents_synced = 0
         points_patched = 0
-        for document in documents:
-            patched = await self.sync_document_meta_vectors(document.id)
-            if patched:
-                documents_synced += 1
-                points_patched += patched
+        offset = 0
+        while True:
+            async with self._postgres.session() as session:
+                page = await DocumentApi.list_for_collection(
+                    session, collection_id, limit=self.__BACKFILL_PAGE_SIZE, offset=offset
+                )
+            # 2. Accumulate what was actually patched (documents with values AND indexed chunks).
+            for document in page:
+                patched = await self.sync_document_meta_vectors(document.id)
+                if patched:
+                    documents_synced += 1
+                    points_patched += patched
+            # 3. A short page is the last one — stop before an empty round-trip.
+            if len(page) < self.__BACKFILL_PAGE_SIZE:
+                break
+            offset += self.__BACKFILL_PAGE_SIZE
 
         self.logger.info(
             f"Backfilled meta vectors on collection {collection_id}: "

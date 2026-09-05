@@ -8,6 +8,8 @@
 
 ## Journal
 
+- **2026-09-05 — Vague AA / 0.14.37 (V8 data-layer perf/consistency, 1 groupé)** : (1) **calls unbatchés** — verdict split : le write Qdrant est DÉJÀ batché (finding stale, verrouillé par test) ; le vrai smell était l'embedding **par champ** (N forward passes) → batché **par axe** (1 dense + 1 sparse au lieu de N) ; extrait `MetaVectorSyncHelpers.plan_meta_axes`. (2) **listing legacy non borné** — `backfill_collection_meta_vectors` chargeait toute la collection en RAM → **boucle paginée** (page 500) ; même fix au sibling `FilterSyncFacade`. (3) **protected-member coupling** (`embedder._embed_dense/_sparse`) — **reporté** : contrat cross-package établi (le node search encode l'utilise aussi) ; un fix propre exige des accessors sur `BaseEmbedderNode` (scope pipeline interdit). (4) docstrings rafraîchies. Best-effort/idempotence préservés. +7 tests. Gate : **1611 passed** (+7), ruff clean, 0 changement OpenAPI. **→ V8 : 140 fait.**
+
 - **2026-09-05 — Vague Z / 0.14.36 (V8 smells substantiels IR/moteur, 3 findings groupés)** : (1) **Provenance mutable partagée** — le vrai bug était dans `docling/mapper.py` (constante classe `_PAGELESS_PROVENANCE` assignée à CHAQUE bloc page-less html/md → aliasing latent car `Provenance` est mutable Pydantic) ; remplacée par une factory fresh-per-bloc. Les refs de l'audit (models_ir, pp_structure) étaient **périmées/déjà safe** (vérifié : fresh-per-bloc). +test d'indépendance. (2) **magic string `header_footer`** — le vrai (translator.py:175 `== "header_footer"`) → `== BlockType.HEADER_FOOTER` (fait par **moi**, +import) ; ailleurs déjà l'enum. (3) **warning ScoreBelow parasite** — ne se déclenche plus que sur `SUCCESS` (plus de bruit sur chaque échec où le score est légitimement absent). (4) **caption folding divergent** — chunker vs vues md/html foldaient différemment (le chunker fig+table avant/après, le linearizer figure-après seulement) → règle unique extraite `ChunkerHelpers.attach_captions` (texte de chunk **byte-identique**) consommée par les deux ; `_emit_table` fold la caption (md italique / html `<caption>`). +tests (caption ×3, ScoreBelow ×2, Provenance ×1). Gate : **1604 passed** (+6), ruff clean, 0 changement OpenAPI. Résidus cosmétiques notés (stale FromFirst comment, list-content answers). **→ V8 : 139 fait.**
 
 - **2026-09-05 — Vague Y / 0.14.35 (V8 cost estimate/retry, 1 MOYENNE fait + 1 FAIBLE partiel)** : (finding MOYENNE **fait**) **volume OCR per-figure** — `estimator.__enrich_ocr` pricait par `scanned_page_ratio` (défaut 0) alors que l'OCR enrich tourne **par figure** (ForEach sur crops) → une pipeline OCR payante per-figure estimait $0.00 cost_complete=True ; désormais `ocr_units = images + pages*scanned_page_ratio` (per-figure via `images_per_page` défaut 0.5, overridable, + per-page scan inchangé), renvoie None si 0 unit (stage omis, pas $0 trompeur) ; miroir de `__enrich_vlm`. (finding FAIBLE **partiel [~]**) **undercount retry/failed** — nouveau `UsageAccumulator` (callback langchain qui folde l'usage de CHAQUE attempt, y compris facturé-puis-échoué) + `chat(usage_sink=)` opt-in ; **câblé dans le node VLM** (seul à posséder une boucle retry propre — crée 1 acc local avant la boucle, stampe `acc.usage` = somme) → l'undercount VLM est corrigé. LLM (délègue les retries au SDK, single ainvoke) + query (single degrading call) laissés (reportés single-shot). **Résidu structurel documenté** : le LLM search-time (rewrite/HyDE) n'a **aucun sink de coût** (search tourne inline, pas dans le meter worker) — ajouter un sink toucherait runner+router+response model (hors passe cost propre) → finding `[~]`. +tests (estimator ×3, accumulator ×6, vlm accumulation ×3). Gate : **1598 passed**, drift OK, ruff clean, 0 changement OpenAPI. **→ V8 : 136 fait / 4 en cours.**
@@ -165,8 +167,8 @@
 | V5 — Moteur & pipeline | 2 | 2 | 0 | 0 |
 | V6 — Frontend | 0 | 0 | 0 | 0 |
 | V7 — Documentation | 21 | 21 | 0 | 0 |
-| V8 — Outillage (.claude/tests/infra/télémétrie) | 188 | 139 | 4 | 45 |
-| **Total** | **247** | **197** | **4** | **46** |
+| V8 — Outillage (.claude/tests/infra/télémétrie) | 188 | 140 | 4 | 44 |
+| **Total** | **247** | **198** | **4** | **45** |
 
 
 ## V1 — Sécurité & authz (avant tout déploiement multi-tenant)  (30)
@@ -549,7 +551,7 @@
   `src/docforge/shared/libs/services/db/facades/artifact_cache_facade.py:137`
 - [ ] **⚪ FAIBLE** · `consistency` — Grouped low-severity naming inconsistencies in tables/indexes/constraints  
   `src/docforge/shared/libs/services/db/postgresql/tables/observability/worker_heartbeat.py:20`
-- [ ] **⚪ FAIBLE** · `consistency` — Grouped minor smells: stale docstrings, unbatched/sequential store calls, unbounded legacy listing, protected-member coupling  
+- [x] **⚪ FAIBLE** · `consistency` — Grouped minor smells: stale docstrings, unbatched/sequential store calls, unbounded legacy listing, protected-member coupling  
   `src/docforge/shared/libs/services/db/facades/meta_vector_sync_facade.py:104`
 - [x] **⚪ FAIBLE** · `design` — Migration-only functional/GIN indexes are invisible to autogenerate and at risk of a proposed DROP  
   `src/docforge/shared/libs/services/db/postgresql/tables/documents/document_metadata.py:30`
