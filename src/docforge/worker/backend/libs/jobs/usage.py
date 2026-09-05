@@ -9,7 +9,7 @@ from loggerplusplus import loggerplusplus
 
 # ====== Internal Project Imports ======
 from shared_libs.pipelines.base import NodeExecutionRecord
-from shared_libs.pipelines.nodes.openai_compat import price_usd
+from shared_libs.pipelines.nodes.openai_compat import price_ocr_pages, price_usd
 
 
 class StageUsageSummer:
@@ -43,12 +43,19 @@ class StageUsageSummer:
         usage_count = 0
 
         # 1. Price THIS node's own paid call (a leaf action stamps ``usage``; wrappers leave it None).
+        #    Two billing shapes coexist: token-billed calls (LLM/VLM/structgen/embed) price against
+        #    ``price_usd``, while a per-page OCR call (``usage.pages`` set, no tokens) prices against
+        #    ``price_ocr_pages`` — its cost folds into the same total, contributing 0 tokens.
         if record.usage is not None:
             usage = record.usage
             prompt += usage.prompt_tokens
             completion += usage.completion_tokens
             usage_count += 1
-            leaf_cost = price_usd(usage.model, usage.prompt_tokens, usage.completion_tokens)
+            leaf_cost = (
+                price_ocr_pages(usage.model, usage.pages)
+                if usage.pages > 0
+                else price_usd(usage.model, usage.prompt_tokens, usage.completion_tokens)
+            )
             if leaf_cost is not None:
                 cost += leaf_cost
                 priced = True

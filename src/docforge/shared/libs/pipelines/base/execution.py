@@ -45,20 +45,26 @@ class ErrorInfo(BaseModel):
 
 class NodeUsage(BaseModel):
     """
-    Token accounting for a single PAID text-generation call (LLM / VLM / structgen).
+    Billed accounting for a single PAID node call (LLM / VLM / structgen / embed / OCR).
 
-    A non-LLM node leaves this ``None`` on its record. Attached per-leaf so a stage that fans out
-    (a VLM foreach over figures) can be totalled — and priced per model — from the execution tree.
+    A free/local node leaves this ``None`` on its record. Attached per-leaf so a stage that fans out
+    (a VLM or OCR foreach over figures) can be totalled — and priced per model — from the execution
+    tree. Most providers bill by TOKEN (``prompt_tokens`` / ``completion_tokens``); hosted OCR bills
+    by PAGE instead (``pages``), so the two accounting shapes coexist on one record — a token-billed
+    call leaves ``pages`` at 0, a page-billed OCR call leaves both token counts at 0.
 
     Attributes:
-        model (str): The model id the call requested — the key into the pricing table.
-        prompt_tokens (int): Input tokens billed for the call.
-        completion_tokens (int): Output tokens billed for the call.
+        model (str): The model or provider-kind the call requested — the key into a pricing table.
+        prompt_tokens (int): Input tokens billed for the call (0 for a page-billed OCR call).
+        completion_tokens (int): Output tokens billed for the call (0 for embed and OCR).
+        pages (int): Pages billed for a per-page OCR call (0 for every token-billed call). Optional
+            and defaulted to 0 so token-billed usage (LLM / VLM / structgen / embed) is unaffected.
     """
 
     model: str
     prompt_tokens: int
     completion_tokens: int
+    pages: int = 0
 
     @classmethod
     def from_usage_metadata(cls, usage_metadata: object, model: str) -> "NodeUsage | None":
@@ -101,8 +107,8 @@ class NodeExecutionRecord(BaseModel):
         resolved_input (dict | None): The input the node consumed, serialised.
         output (dict | None): The output the node produced, serialised.
         error (ErrorInfo | None): Error details when the node failed.
-        usage (NodeUsage | None): Token accounting for a paid text-gen leaf; None for every other
-            node (groups, foreach wrappers, and non-LLM leaves).
+        usage (NodeUsage | None): Billed accounting (tokens or pages) for a paid leaf; None for
+            every other node (groups, foreach wrappers, and free/local leaves).
         children (list[NodeExecutionRecord]): Child records when the node is a group.
     """
 
