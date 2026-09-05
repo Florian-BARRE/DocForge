@@ -14,9 +14,12 @@ compose/
     proxy.yml                 # OPTIONAL — Caddy TLS front door (add-on, not baked into scenarios)
     telemetry.yml              # OPTIONAL — Prometheus + Loki + Promtail + Grafana (add-on)
   dev-cpu.yml   dev-gpu.yml   prod-cpu.yml   prod-gpu.yml   # ready-made scenario files
-  telemetry/                 # config for the telemetry overlay (prometheus.yml, loki/promtail
-                              # configs, grafana provisioning + starter dashboard)
   README.md                  # this file
+
+services/telemetry/          # config for the telemetry overlay (prometheus.yml, loki/promtail
+                              # configs, grafana provisioning + starter dashboard) — a SIBLING of
+                              # compose/ at the repo root, not a subdirectory of it (same home as
+                              # services/caddy, services/docforge, etc.)
 ```
 
 The repo-root `docker-compose.yml` is a thin `include: [compose/prod-cpu.yml]` — a bare
@@ -89,16 +92,23 @@ before exposing Grafana beyond localhost/an operator VPN. Open Grafana at
 
 ## The `../` path note
 
-Every relative path inside a file under `compose/` resolves **relative to that file's own
-directory** — this is `include:`'s documented behavior (each included file is resolved on its
-own before merging), unlike a bare `-f` stack where paths resolve relative to the *first* `-f`
-file. Concretely:
+This splits along the SAME line as the merge-order gotcha below: `include:`-ed files
+(`base.yml`, `overlays/dev.yml`, `overlays/gpu.yml`) resolve their relative paths **relative to
+that file's own directory**, while `-f`-layered add-ons (`overlays/proxy.yml`,
+`overlays/telemetry.yml`) resolve relative to the **project directory** — the first `-f` file's
+own dir, i.e. `compose/` in every scenario file's invocation. Concretely:
 
-- `base.yml` lives in `compose/` → its paths use `../` (e.g. `../services/docforge/.env`).
-- `overlays/dev.yml` / `overlays/gpu.yml` / `overlays/proxy.yml` / `overlays/telemetry.yml` live
-  one level deeper, in `compose/overlays/` → their paths use `../../` for anything under the repo
-  root (`../../src/docforge`, `../../services/caddy/Caddyfile`) and `../telemetry/...` for the
-  telemetry configs (`services/telemetry/`, a sibling of `overlays/`).
+- `base.yml` lives in `compose/`, `include:`-ed → its paths use `../` (e.g.
+  `../services/docforge/.env`).
+- `overlays/dev.yml` / `overlays/gpu.yml` live one level deeper, in `compose/overlays/`, and are
+  also `include:`-ed → their paths use `../../` for anything under the repo root
+  (`../../src/docforge`, `../../services/caddy/Caddyfile`).
+- `overlays/proxy.yml` / `overlays/telemetry.yml` also live in `compose/overlays/`, but are
+  **never `include:`-ed** — always layered with a plain `-f` on top of an already-assembled
+  scenario file — so despite living in the same directory as dev.yml/gpu.yml, their paths
+  resolve like `base.yml`'s: a single `../` from `compose/` (e.g.
+  `../services/telemetry/prometheus.yml`, `../services/caddy/Caddyfile`), NOT `../../`. See each
+  file's own header comment for the explicit reasoning.
 
 Validated with `docker compose -f <file> config` — it prints every resolved absolute path; that's
 the check to re-run after touching any path in this tree.

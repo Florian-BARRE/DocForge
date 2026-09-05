@@ -62,9 +62,13 @@ class BgeModelsService(LoggerClass):
             device_policy (str): BGE_DEVICE policy — "auto", "cuda", or "cpu".
             fp16_requested (bool): BGE_FP16 from config. Gated: only applied on CUDA devices.
             torch_num_threads (int): Intra-op thread cap for torch (BGE_TORCH_NUM_THREADS).
-                0 means "auto" — derived inside load() as ceil(cpu_budget / 1) since the
-                batching engine serialises model calls via a single asyncio.Lock (the engine
-                is the concurrency gate now; the service no longer needs a concurrency hint).
+                0 means "auto" — derived inside load() as ceil(cpu_budget / 2). The batching
+                engine (libs/batching/engine.py) holds TWO independent locks — embed_lock
+                (dense/sparse/colbert) and rerank_lock (the separate FlagReranker instance) —
+                so up to two model forward passes can legitimately run at once (one per lock).
+                Dividing the cpu_budget by 2 keeps the combined intra-op thread usage of both
+                concurrent calls within the real core budget instead of each one alone claiming
+                the full budget and doubling it under load.
                 cpu_budget comes from CpuBudgetResolver — the cgroup v2 CFS quota when the
                 process runs under one, else the scheduler affinity/cpu_count fallback.
                 Stored here; applied at the start of load() before any torch model call.
@@ -82,9 +86,11 @@ class BgeModelsService(LoggerClass):
         self._torch_num_threads = torch_num_threads
         self._embed_revision = embed_revision
         self._rerank_revision = rerank_revision
-        # The batching engine's model_lock ensures at most one model call runs at a time,
-        # so the effective concurrency for thread-count auto-derivation is always 1.
-        self._max_concurrency = 1
+        # The batching engine holds TWO independent locks (embed_lock + rerank_lock — see
+        # libs/batching/engine.py), so up to two model forward passes can run concurrently:
+        # one on embed_model (dense/sparse/colbert) and one on the separate reranker instance.
+        # Thread-count auto-derivation must budget for that real max concurrency, not for 1.
+        self._max_concurrency = 2
 
         # Set by load() after device resolution; None until the service is started.
         self._resolved_device: str | None = None
@@ -185,9 +191,11 @@ class BgeModelsService(LoggerClass):
         from FlagEmbedding import BGEM3FlagModel, FlagReranker  # noqa: PLC0415
 
         # 3. Cap torch intra-op threads to prevent CPU oversubscription.
-        # The batching engine's model_lock serialises model calls (one at a time), so the single
-        # in-flight call may use all cores (_max_concurrency is 1 → no division). The explicit
-        # BGE_TORCH_NUM_THREADS override exists for hosts that want a tighter cap (e.g. shared CPU).
+        # The batching engine holds TWO independent locks (embed_lock + rerank_lock), so up to
+        # two forward passes can be in flight at once (_max_concurrency = 2) — the thread budget
+        # is split between them so their combined usage stays within cpu_budget instead of each
+        # one alone claiming the full core count. The explicit BGE_TORCH_NUM_THREADS override
+        # exists for hosts that want a tighter (or looser) cap (e.g. shared CPU).
         # Only relevant on CPU; on CUDA this has no meaningful effect but is harmless.
         # Auto-derivation (BGE_TORCH_NUM_THREADS=0) uses the cgroup v2 CFS quota when the process
         # is running under one — os.cpu_count() reports the HOST's cores, not the container's
@@ -466,8 +474,12 @@ class BgeModelsService(LoggerClass):
         """
         Score each candidate text against the query and return TEI-shaped results.
 
-        Scores are sigmoid-normalized to [0, 1] for stable threshold comparison. Results are
-        returned in INPUT order — the DocForge ``bge_reranker`` provider re-sorts by index.
+        Not used by the batching engine (which calls ``compute_rerank_scores_flat`` and does its
+        own per-request scatter/sort — see ``BatchingEngine._process_rerank``); kept as a
+        single-request convenience wrapper. Scores are sigmoid-normalized to [0, 1] for stable
+        threshold comparison. Results are returned in INPUT order, unlike the batching engine's
+        /rerank path (which sorts score-descending for TEI parity) — order is irrelevant here
+        since the DocForge ``bge_reranker`` provider maps results back by ``index``.
 
         Args:
             query (str): The search query.

@@ -80,7 +80,7 @@ config-check-all:
 	for scenario in prod-cpu prod-gpu dev-cpu dev-gpu; do \
 		for addons in "" "-f $(PROXY)" "-f $(TELEMETRY)" "-f $(PROXY) -f $(TELEMETRY)"; do \
 			echo "== $$scenario $$addons =="; \
-			GRAFANA_ADMIN_PASSWORD=check DOCFORGE_DOMAIN=example.com DOCFORGE_ACME_EMAIL=ops@example.com \
+			DOCFORGE_DOMAIN=example.com DOCFORGE_ACME_EMAIL=ops@example.com \
 			$(COMPOSE) -f $(SCENARIO_DIR)/$$scenario.yml $$addons $(PROFILE) config -q && echo OK; \
 		done; \
 	done

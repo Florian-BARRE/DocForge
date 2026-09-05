@@ -107,7 +107,7 @@ To use the GPU image at runtime, three things are required:
 
 ## docker compose service
 
-Already wired in `docker-compose.yml` as the `bge_server` service (port 10026, volume `bge_models`).
+Already wired in `docker-compose.yml` as the `bge_server` service (internal port 80, volume `bge_models`).
 Default build produces the CPU variant (~2 GB).
 
 ## Wire a DocForge collection

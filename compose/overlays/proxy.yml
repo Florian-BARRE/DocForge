@@ -55,7 +55,7 @@ services:
       - docforge_caddy_config:/config
     depends_on:
       docforge_app:
-        condition: service_started
+        condition: service_healthy
     restart: unless-stopped
     networks:
       - docforge_net

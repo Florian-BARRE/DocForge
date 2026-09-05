@@ -1,15 +1,29 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# DocForge — development overlay. Never used standalone — included by dev-cpu.yml /
-# dev-gpu.yml, or layered manually on top of the base file:
-#   docker compose -f compose/base.yml -f compose/overlays/dev.yml --profile full up -d --build
-#   GPU dev: also layer compose/overlays/gpu.yml LAST (last-file/last-include wins, so it
-#            must follow this overlay to override TORCH_VARIANT=cpu → gpu + grant the device).
+# DocForge — development overlay. Never used standalone — always pulled in via `include:` by
+# compose/dev-cpu.yml / compose/dev-gpu.yml (the ready-made scenario files — USE THOSE, run from
+# the repo root):
+#   docker compose -f compose/dev-cpu.yml --profile full up -d --build
+#   docker compose -f compose/dev-gpu.yml --profile full up -d --build
 #
-# WHEN TO USE THIS FILE: local development with hot reload / source mounts. Prefer the
-# ready-made scenario files (compose/dev-cpu.yml, compose/dev-gpu.yml) over hand-assembling
-# -f flags. Relative paths in this file resolve relative to THIS file's own directory
-# (compose/overlays/), per Compose's `include:` semantics — hence the `../../` prefix on
-# every host path (context/volumes), one level deeper than base.yml's `../`.
+# Do NOT hand-assemble this file with a plain `-f compose/base.yml -f compose/overlays/dev.yml`:
+# `-f` resolves every file's relative paths against the FIRST `-f` file's own directory
+# (compose/), not this file's directory (compose/overlays/) — the `../../` paths below would
+# then resolve OUTSIDE the repo entirely (Docker silently mounts an empty auto-created dir).
+# This file's paths only resolve correctly when Compose reads it via `include:`, which resolves
+# each included file's relative paths against ITS OWN directory first, before merging — see
+# compose/dev-cpu.yml's/compose/dev-gpu.yml's own `include:` list and compose/README.md's
+# "include: merge-order gotcha" section.
+#
+# GPU dev (compose/dev-gpu.yml): compose/overlays/gpu.yml must be listed BEFORE this file in
+# the scenario's `include:` list to win (TORCH_VARIANT=cpu → gpu + grant the device) — verified
+# on this repo's Compose v5.1.1, `include:`'s conflict resolution is FIRST-listed-file-wins for
+# any leaf two included files both set, the OPPOSITE of `-f`'s last-wins. See
+# compose/overlays/gpu.yml's header comment for the full reproduction and reasoning.
+#
+# WHEN TO USE THIS FILE: local development with hot reload / source mounts, via the ready-made
+# scenario files above. Relative paths in this file resolve relative to THIS file's own
+# directory (compose/overlays/), per Compose's `include:` semantics — hence the `../../` prefix
+# on every host path (context/volumes), one level deeper than base.yml's `../`.
 #
 # What this changes vs production:
 #   - app/worker/mcp/bge_server BUILD locally from source (each `build:` here overrides the

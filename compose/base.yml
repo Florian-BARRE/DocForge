@@ -12,8 +12,8 @@
 # this file (e.g. the seaweedfs s3_config.json mount) resolve relative to THIS file's
 # own directory (compose/), per Compose's `include:` semantics — hence the `../` prefix.
 #
-# Distinct container names, volumes, network and host-port range 10040-10049 so this
-# stack can run side by side with the legacy one.
+# Distinct container names, volumes, network and host-port range 10040-10049 (see
+# docs/configuration.md's port table).
 # ─────────────────────────────────────────────────────────────────────────────
 
 name: docforge
@@ -54,6 +54,18 @@ services:
         condition: service_healthy
       docforge_redis:
         condition: service_healthy
+      docforge_seaweedfs:
+        condition: service_healthy
+    # /health is public (outside /api/v1, no store I/O — see app/backend/routers/health/router.py),
+    # so this probes pure process liveness. The runtime image has no curl (python:3.12-slim-bookworm
+    # base, no apt install), so use stdlib urllib like docforge_bge_server/docforge_paddle_server's
+    # probes. Short start_period: the app does no heavy model load at boot (unlike bge/paddle/worker).
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health', timeout=5).status == 200 else 1)"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
     deploy:
       resources:
         limits:
@@ -290,7 +302,7 @@ services:
         aliases:
           - gotenberg             # so a collection's default base_url http://gotenberg:3000 resolves
 
-  # ── BGE model host — the SAME image as the legacy stack (embed BGE-M3 + rerank) ──
+  # ── BGE model host — self-managed model server (embed BGE-M3 + rerank) ──
   # Profiled `full` + `bge`: the two models pin ~3.5 GiB resident, so a plain `up` (stores only, for
   # local `uv` dev that doesn't exercise embeddings) no longer pays that idle tax on the shared VM.
   #   Full containerised stack:  --profile full   (includes bge)
@@ -353,7 +365,7 @@ services:
       - "10048:9000"              # MCP streamable-http endpoint at /mcp (firewall: 10000-11000)
     depends_on:
       docforge_app:
-        condition: service_started
+        condition: service_healthy
     deploy:
       resources:
         limits:

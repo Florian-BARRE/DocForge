@@ -262,7 +262,8 @@ async def test_colbert_scatter_offsets() -> None:
 async def test_rerank_per_request_reindexing() -> None:
     """
     Two concurrent rerank requests are batched into one flat score list. Each request
-    receives indices 0..n-1 LOCAL to that request (not global offsets).
+    receives indices 0..n-1 LOCAL to that request (not global offsets), sorted
+    score-descending (TEI parity).
     """
     # Request A: 3 candidates; Request B: 2 candidates
     # Flat scores: [0.9, 0.5, 0.7, 0.3, 0.8]
@@ -280,13 +281,40 @@ async def test_rerank_per_request_reindexing() -> None:
     finally:
         await engine.stop()
 
-    # Both requests: indices must be 0-based per request, not global
-    assert [r["index"] for r in ra] == [0, 1, 2]
-    assert [r["index"] for r in rb] == [0, 1]
+    # Both requests: indices must be 0-based per request, not global — but the request A/B
+    # scores here are already descending in local-index order, so re-verify with a case that
+    # forces an actual reorder below (test_rerank_sorted_score_descending).
+    assert {r["index"] for r in ra} == {0, 1, 2}
+    assert {r["index"] for r in rb} == {0, 1}
 
-    # Scores correctly assigned from the flat list
-    assert [r["score"] for r in ra] == [0.9, 0.5, 0.7]
-    assert [r["score"] for r in rb] == [0.3, 0.8]
+    # Scores correctly assigned by index, regardless of result order
+    score_by_index_a = {r["index"]: r["score"] for r in ra}
+    score_by_index_b = {r["index"]: r["score"] for r in rb}
+    assert score_by_index_a == {0: 0.9, 1: 0.5, 2: 0.7}
+    assert score_by_index_b == {0: 0.3, 1: 0.8}
+
+
+@pytest.mark.asyncio
+async def test_rerank_sorted_score_descending() -> None:
+    """
+    /rerank results are sorted score-descending per request (matching TEI's own response
+    order), not returned in input-index order.
+    """
+    # Ascending-index scores, deliberately NOT already sorted: index 0 has the lowest score.
+    flat_scores = [0.1, 0.9, 0.5]
+
+    models = _make_mock_models(flat_scores=flat_scores)
+    engine = _make_engine(models, max_batch_size=100, max_wait_ms=0)
+    engine.start()
+
+    try:
+        result = await engine.submit_rerank("query", ["low", "high", "mid"])
+    finally:
+        await engine.stop()
+
+    # Best score first: index 1 (0.9), then index 2 (0.5), then index 0 (0.1)
+    assert [r["index"] for r in result] == [1, 2, 0]
+    assert [r["score"] for r in result] == [0.9, 0.5, 0.1]
 
 
 # ── Test: QueueFullError when queue is full ───────────────────────────────────
@@ -409,6 +437,68 @@ async def test_embed_all_combined_path() -> None:
     models.encode_sparse.assert_not_called()
     assert result_dense == dense
     assert result_sparse == sparse
+
+
+# ── Test: embed_all back-pressure (in-flight admission cap) ──────────────────
+
+
+@pytest.mark.asyncio
+async def test_embed_all_raises_queue_full_when_inflight_cap_reached() -> None:
+    """
+    embed_all has no BatchQueueWorker queue, so back-pressure is enforced via an in-flight
+    counter capped at max_queue_size. With max_queue_size=1, a second concurrent embed_all
+    call must raise QueueFullError immediately instead of piling up behind embed_lock.
+    """
+    block_event = threading.Event()
+    release_event = threading.Event()
+
+    def blocking_encode_dense_sparse(texts, max_length):
+        # Signal that the first call has entered the model, then block until released.
+        block_event.set()
+        assert release_event.wait(timeout=5.0), "test setup: release_event was never set"
+        return ([[0.0] for _ in texts], [[] for _ in texts])
+
+    models = MagicMock()
+    models.encode_dense_sparse.side_effect = blocking_encode_dense_sparse
+    engine = _make_engine(models, max_batch_size=100, max_wait_ms=0, max_queue_size=1)
+    engine.start()
+
+    try:
+        # First call occupies the single in-flight admission slot.
+        first_task = asyncio.create_task(engine.embed_all(["t1"], max_length=128))
+        await asyncio.get_running_loop().run_in_executor(None, block_event.wait, 5.0)
+
+        # Second call must be rejected immediately — no slot available.
+        with pytest.raises(QueueFullError):
+            await engine.embed_all(["t2"], max_length=128)
+
+        release_event.set()
+        await first_task
+    finally:
+        await engine.stop()
+
+
+@pytest.mark.asyncio
+async def test_embed_all_admits_again_after_completion() -> None:
+    """
+    Once an embed_all call completes, its in-flight slot is freed and a subsequent call
+    is admitted normally (the cap is a rolling admission limit, not a one-shot circuit breaker).
+    """
+    dense: list[list[float]] = [[1.0]]
+    sparse: list[list[dict]] = [[]]
+    models = MagicMock()
+    models.encode_dense_sparse.return_value = (dense, sparse)
+    engine = _make_engine(models, max_batch_size=100, max_wait_ms=0, max_queue_size=1)
+    engine.start()
+
+    try:
+        result1 = await engine.embed_all(["t1"], max_length=128)
+        result2 = await engine.embed_all(["t2"], max_length=128)
+    finally:
+        await engine.stop()
+
+    assert result1 == (dense, sparse)
+    assert result2 == (dense, sparse)
 
 
 # ── Test: batch error isolation ───────────────────────────────────────────────

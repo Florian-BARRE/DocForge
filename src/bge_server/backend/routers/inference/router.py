@@ -136,7 +136,10 @@ async def embed_all(req: EmbedRequest) -> EmbedAllResponse:
     Unlike the batched dense/sparse queues, this path calls the model directly (no cross-request
     coalescing) but is still serialised on the shared embed lock, so it never overlaps a dense or
     sparse batch on the shared model instance. Request-size ceilings are enforced by EmbedRequest
-    (HTTP 422), exactly as for /embed and /embed_sparse.
+    (HTTP 422), exactly as for /embed and /embed_sparse. Back-pressure: this route has no
+    BatchQueueWorker queue of its own, so the engine bounds its admission with an in-flight
+    counter instead (see BatchingEngine.embed_all) and raises QueueFullError past that cap --
+    translated to HTTP 503 + Retry-After: 1 here, exactly like the four queued routes.
 
     Args:
         req (EmbedRequest): Request body with texts to embed.
@@ -156,10 +159,18 @@ async def embed_all(req: EmbedRequest) -> EmbedAllResponse:
 
     # 4. One combined forward pass through the engine (serialised on the shared embed lock).
     #    max_length matches the value the engine's dense/sparse workers use (from the same config),
-    #    so the returned vectors are identical to the two separate routes.
-    dense, sparse_raw = await CONTEXT.batching_engine.embed_all(
-        texts, max_length=CONTEXT.CONFIG.BGE_M3_MAX_LENGTH
-    )
+    #    so the returned vectors are identical to the two separate routes. Translate the engine's
+    #    in-flight-cap back-pressure the same way the four queued routes translate QueueFullError.
+    try:
+        dense, sparse_raw = await CONTEXT.batching_engine.embed_all(
+            texts, max_length=CONTEXT.CONFIG.BGE_M3_MAX_LENGTH
+        )
+    except QueueFullError:
+        raise HTTPException(
+            status_code=503,
+            detail={"error": "server overloaded — try again shortly"},
+            headers={"Retry-After": "1"},
+        )
 
     # 5. Wrap each sparse dict into the typed SparseToken model (matching /embed_sparse), pinning
     #    each field to its declared type (the engine types weights as int | float).
@@ -218,8 +229,10 @@ async def rerank(req: RerankRequest) -> list[RerankResult]:
     Cross-encoder rerank -- mirrors TEI's POST /rerank.
 
     Scores each candidate text against the query using BGE-reranker-v2-m3. Scores are
-    sigmoid-normalized to [0, 1]. Results are returned in INPUT order -- the DocForge
-    ``bge_reranker`` provider re-sorts by index.
+    sigmoid-normalized to [0, 1]. Results are returned score-descending, matching TEI's own
+    /rerank response order. The DocForge ``bge_reranker`` provider maps each result back onto
+    its candidate by ``index`` and does not depend on response order, so this ordering is a
+    TEI-parity concern, not a correctness one.
 
     Concurrency: requests are submitted to the batching engine's rerank queue.
 
@@ -227,7 +240,8 @@ async def rerank(req: RerankRequest) -> list[RerankResult]:
         req (RerankRequest): Request body with query and candidate texts.
 
     Returns:
-        list[RerankResult]: One ``{"index": i, "score": s}`` per candidate text.
+        list[RerankResult]: One ``{"index": i, "score": s}`` per candidate text, sorted
+            score-descending (best match first).
     """
     # 1. Log batch size at DEBUG — never log query text or candidate contents
     logger.debug(f"POST /rerank: {len(req.texts)} candidates")

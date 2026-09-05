@@ -23,15 +23,18 @@ class BatchQueueWorker(LoggerClass):
     """
     Generic micro-batcher for one inference operation (dense / sparse / rerank).
 
-    One worker is created per operation type. The worker runs a single asyncio background
-    task (_run) that forms batches from the queue and calls the injected process_fn. Each
-    submitted item carries a cost; batches accumulate until the cost budget is met or the
-    wait window elapses.
+    One worker is created per operation type (dense / sparse / colbert / rerank — four total).
+    The worker runs a single asyncio background task (_run) that forms batches from the queue
+    and calls the injected process_fn. Each submitted item carries a cost; batches accumulate
+    until the cost budget is met or the wait window elapses.
 
-    Concurrency note: the model_lock passed at construction is shared across all three workers.
-    Dense and sparse both use the same embed_model instance; concurrent forward passes on shared
-    torch state are unsafe. The lock serialises all model calls at the engine level regardless
-    of which worker initiates them.
+    Concurrency note: this class takes NO lock at construction — locking is owned entirely by
+    BatchingEngine, not by the worker. The engine's process_fn closures (``_process_dense`` etc.)
+    acquire the relevant lock themselves before calling the model: dense/sparse/colbert share
+    ``embed_lock`` (same ``embed_model`` instance, concurrent forward passes on shared torch state
+    are unsafe), while rerank uses its own independent ``rerank_lock`` (a separate FlagReranker
+    instance with no shared state). See BatchingEngine's class docstring for the full two-lock
+    rationale.
     """
 
     def __init__(
