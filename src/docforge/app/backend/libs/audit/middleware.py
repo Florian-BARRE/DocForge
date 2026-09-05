@@ -4,12 +4,22 @@
 # zero overhead. It is wired INNER to Auth (so it reads the principal the authN gate injected into
 # scope["state"] for the actor) AND INNER to RateLimit (so a throttled 429 never spams the trail, and
 # every audited request has actually been routed → the `path` column is a real low-cardinality route
-# TEMPLATE, not a raw-id path). It still records the final status of every routed 4xx/5xx (403/404/
-# 422/500), captured by peeking the response-start message like the metrics middleware does.
+# TEMPLATE, not a raw-id path). It records the final status of every routed outcome — 2xx/4xx/5xx —
+# captured by peeking the response-start message like the metrics middleware does.
 #
-# FAIL-SAFE: the row is written AFTER the response has been sent downstream, and any failure of that
-# write is caught, logged and swallowed — audit availability can never fail, delay, or change the
-# user's request outcome. Gated by AUDIT_ENABLED (default true); off → transparent passthrough.
+# NON-GOAL — gate short-circuits are deliberately NOT audited: a 401 (failed auth) and a 429 (throttle)
+# each short-circuit ABOVE this middleware, so no row is written for them. This is intentional, not a
+# gap. Auditing them would require moving the trail OUTSIDE the auth gate, which (a) loses the actor
+# attribution the row is built around (no principal exists before the authN gate runs) and (b) lets an
+# unauthenticated caller mint unbounded high-cardinality rows via junk paths. Failed-auth / throttle
+# telemetry is an authN/rate-limit concern (surfaced via the metrics series), not the mutation trail.
+#
+# FAIL-SAFE: the row is written in a `finally` AFTER the response has left downstream — so even an
+# UNHANDLED exception escaping the handler (a 500-class escape the app's error handling did not convert)
+# still records a row (status 500 by default, since no response-start was seen) before that exception
+# propagates untouched. Any failure of the write itself is caught, logged and swallowed — audit
+# availability can never fail, delay, or change the user's request outcome. Gated by AUDIT_ENABLED
+# (default true); off → transparent passthrough.
 
 # ====== Standard Library Imports ======
 from __future__ import annotations
@@ -75,11 +85,15 @@ class AuditMiddleware:
             await send(message)
 
         # 3. Run the request to completion FIRST — the response reaches the client before we record,
-        #    so audit work never adds latency to (nor can it fail) the user's request.
-        await self.app(scope, receive, _send)
-
-        # 4. Record after the fact, fully fail-safe: any error is logged and swallowed.
-        await self._record(scope, status_holder["code"])
+        #    so audit work never adds latency to (nor can it fail) the user's request. The record is
+        #    written in a `finally` so an UNHANDLED exception escaping the handler (a 500-class escape)
+        #    still leaves a row: `status_holder` keeps its default 500 when no response-start was seen.
+        #    The original exception then re-raises untouched — auditing never swallows a failure.
+        try:
+            await self.app(scope, receive, _send)
+        finally:
+            # 4. Record after the fact, fully fail-safe: any error is logged and swallowed.
+            await self._record(scope, status_holder["code"])
 
     async def _record(self, scope: Scope, status_code: int) -> None:
         """

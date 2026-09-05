@@ -154,6 +154,56 @@ def _body_of(sent: list[dict]) -> bytes:
     return b"".join(m.get("body", b"") for m in sent if m["type"] == "http.response.body")
 
 
+# ── metrics attribution: the eligible request stashes its template on the shared scope ────────────
+
+
+async def test_eligible_request_stashes_route_template_for_metrics(
+    fastapi_app, monkeypatch
+) -> None:
+    """An eligible keyed request stamps its route TEMPLATE on the scope for the outer metrics
+    middleware, so a replay/reject that short-circuits before routing is still attributed correctly."""
+    from backend.context import CONTEXT  # noqa: PLC0415
+    from backend.libs.idempotency import IdempotencyMiddleware  # noqa: PLC0415
+    from backend.libs.metrics import SCOPE_ROUTE_TEMPLATE  # noqa: PLC0415
+    from shared_libs.services.db.postgresql.tables import IdempotencyState  # noqa: PLC0415
+
+    cached = _record(
+        state=IdempotencyState.completed,
+        fingerprint=_fingerprint(_BODY),
+        status=201,
+        body=b"{}",
+        media_type="application/json",
+    )
+    idempotency = SimpleNamespace(
+        begin=AsyncMock(return_value=_begin(created=False, record=cached)),
+        complete=AsyncMock(),
+        delete=AsyncMock(),
+    )
+    monkeypatch.setattr(CONTEXT, "database", SimpleNamespace(idempotency=idempotency))
+
+    scope = {
+        "type": "http",
+        "method": "POST",
+        "path": "/api/v1/collections",
+        "headers": [(b"idempotency-key", _KEY.encode())],
+        "client": ("203.0.113.7", 5555),
+        "state": {"principal": _full()},
+    }
+
+    async def _downstream(scope, receive, send) -> None:  # pragma: no cover - replay never routes
+        raise AssertionError("handler must not run on a replay")
+
+    async def _send(message) -> None:
+        return None
+
+    async def _receive() -> dict:
+        return {"type": "http.request", "body": _BODY, "more_body": False}
+
+    await IdempotencyMiddleware(_downstream)(scope, _receive, _send)
+
+    assert scope[SCOPE_ROUTE_TEMPLATE] == "/api/v1/collections"
+
+
 # ── eligibility matcher (pure) ────────────────────────────────────────────────────────────────
 
 
@@ -328,6 +378,39 @@ async def test_replay_reproduces_a_cached_4xx_verbatim(fastapi_app, monkeypatch)
     assert _body_of(sent) == b'{"detail":"not found"}'
     assert _headers_of(sent).get(b"idempotency-replayed") == b"true"
     idempotency.complete.assert_not_awaited()
+
+
+async def test_replay_restores_status_body_content_type_and_marker(
+    fastapi_app, monkeypatch
+) -> None:
+    """The replay restores exactly the persisted fidelity: status + body + content-type + the marker.
+
+    Other headers the original handler set are NOT persisted today (a known limit documented on the
+    middleware), so the replayed response carries only these fields — this pins that contract so a
+    future header-fidelity change is a conscious, tested edit.
+    """
+    from shared_libs.services.db.postgresql.tables import IdempotencyState  # noqa: PLC0415
+
+    cached = _record(
+        state=IdempotencyState.completed,
+        fingerprint=_fingerprint(_BODY),
+        status=201,
+        body=b'{"cached":true}',
+        media_type="application/json",
+    )
+    idempotency = SimpleNamespace(
+        begin=AsyncMock(return_value=_begin(created=False, record=cached)),
+        complete=AsyncMock(),
+        delete=AsyncMock(),
+    )
+
+    sent, _state = await _drive(monkeypatch=monkeypatch, idempotency=idempotency)
+
+    headers = _headers_of(sent)
+    assert _status_of(sent) == 201
+    assert _body_of(sent) == b'{"cached":true}'
+    assert headers.get(b"content-type") == b"application/json"
+    assert headers.get(b"idempotency-replayed") == b"true"
 
 
 async def test_same_key_different_body_is_422(fastapi_app, monkeypatch) -> None:

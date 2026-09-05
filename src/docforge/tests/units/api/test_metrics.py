@@ -4,6 +4,9 @@
 # METRICS_ENABLED is false. Infra sources are stubbed so the scrape is deterministic and serviceless
 # (no Redis/Postgres contact), which also asserts the gauges carry the refreshed values.
 
+# ====== Standard Library Imports ======
+from types import SimpleNamespace
+
 # ====== Third-Party Library Imports ======
 import pytest
 
@@ -88,3 +91,106 @@ def test_metrics_excluded_from_openapi(client) -> None:
     """/metrics is registered with include_in_schema=False, so it never enters the OpenAPI doc."""
     schema = client.get("/openapi.json").json()
     assert "/metrics" not in schema.get("paths", {})
+
+
+# ── short-circuit route attribution (gate 401/429 + idempotency replay/reject) ─────────────────────
+
+
+def test_route_template_prefers_matched_route(fastapi_app) -> None:
+    """A normally-routed request labels by the route TEMPLATE the router stashed on the scope."""
+    from backend.libs.metrics.http_middleware import HttpMetricsMiddleware  # noqa: PLC0415
+
+    scope = {"type": "http", "route": SimpleNamespace(path="/api/v1/collections/{collection_id}")}
+    assert (
+        HttpMetricsMiddleware._route_template(scope, 200) == "/api/v1/collections/{collection_id}"
+    )
+
+
+def test_route_template_uses_stashed_template_on_short_circuit(fastapi_app) -> None:
+    """An idempotency replay/reject short-circuits before routing but stashes its real template.
+
+    This is what stops idempotency replays/rejections collapsing into __unmatched__.
+    """
+    from backend.libs.metrics.http_middleware import (  # noqa: PLC0415
+        SCOPE_ROUTE_TEMPLATE,
+        HttpMetricsMiddleware,
+    )
+
+    scope = {"type": "http", SCOPE_ROUTE_TEMPLATE: "/api/v1/collections"}
+    # Even a 409 reject (no scope['route']) attributes to the real endpoint via the stash.
+    assert HttpMetricsMiddleware._route_template(scope, 409) == "/api/v1/collections"
+
+
+def test_route_template_gate_rejection_gets_distinct_label(fastapi_app) -> None:
+    """A 401/429 gate short-circuit (no route, no stash) gets its own bucket, distinct from a 404."""
+    from backend.libs.metrics.http_middleware import HttpMetricsMiddleware  # noqa: PLC0415
+
+    assert HttpMetricsMiddleware._route_template({"type": "http"}, 401) == "__gate_rejected__"
+    assert HttpMetricsMiddleware._route_template({"type": "http"}, 429) == "__gate_rejected__"
+
+
+def test_route_template_genuine_404_stays_unmatched(fastapi_app) -> None:
+    """A genuine no-match (no route, no stash, a 404 status) collapses to the __unmatched__ sentinel."""
+    from backend.libs.metrics.http_middleware import HttpMetricsMiddleware  # noqa: PLC0415
+
+    assert HttpMetricsMiddleware._route_template({"type": "http"}, 404) == "__unmatched__"
+
+
+# ── SSE streams are counted but excluded from the latency histogram ────────────────────────────────
+
+
+async def _drive_metrics(*, content_type: bytes, template: str) -> None:
+    """Run HttpMetricsMiddleware over a stub downstream sending one response with ``content_type``."""
+    from backend.libs.metrics.http_middleware import HttpMetricsMiddleware  # noqa: PLC0415
+
+    async def _downstream(scope, receive, send) -> None:
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 200,
+                "headers": [(b"content-type", content_type)],
+            }
+        )
+        await send({"type": "http.response.body", "body": b"data: hi\n\n", "more_body": False})
+
+    async def _send(message) -> None:
+        return None
+
+    async def _receive() -> dict:
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    scope = {
+        "type": "http",
+        "method": "GET",
+        "path": "/probe",
+        "route": SimpleNamespace(path=template),
+    }
+    await HttpMetricsMiddleware(_downstream)(scope, _receive, _send)
+
+
+async def test_sse_stream_is_counted_but_not_timed(fastapi_app) -> None:
+    """A text/event-stream response is counted in the request counter but NOT observed in latency."""
+    from prometheus_client import REGISTRY  # noqa: PLC0415
+
+    template = "__sse_probe__"
+    labels = {"method": "GET", "path": template}
+    await _drive_metrics(content_type=b"text/event-stream; charset=utf-8", template=template)
+
+    # Counted in the request counter (status 200)...
+    assert (
+        REGISTRY.get_sample_value("docforge_http_requests_total", {**labels, "status": "200"})
+        == 1.0
+    )
+    # ...but its duration was NOT observed → the histogram label set was never even created.
+    assert REGISTRY.get_sample_value("docforge_http_request_duration_seconds_count", labels) is None
+
+
+async def test_non_stream_response_is_timed(fastapi_app) -> None:
+    """The counterpart: a normal JSON response IS observed in the latency histogram."""
+    from prometheus_client import REGISTRY  # noqa: PLC0415
+
+    template = "__json_probe__"
+    labels = {"method": "GET", "path": template}
+    await _drive_metrics(content_type=b"application/json", template=template)
+
+    assert REGISTRY.get_sample_value("docforge_http_request_duration_seconds_count", labels) == 1.0
