@@ -11,7 +11,7 @@ dependencies = [
     # Typed async+sync DocForge REST API client — brings httpx transitively.
     "docforge-sdk",
     # ASGI server + framework for the streamable-HTTP transport and the auth middleware.
-    "uvicorn[standard]>=0.32.0",
+    "uvicorn[standard]>=0.52.4",
     "starlette>=0.40.0",
     # Config & logging (internal libraries) — same sources as the main docforge app.
     "loggerplusplus>=1.0.0",
