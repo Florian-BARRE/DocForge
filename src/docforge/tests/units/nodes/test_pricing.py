@@ -3,7 +3,15 @@ prices to None (so the UI shows tokens but a "—" cost, never a fabricated numb
 on a known model is exactly 0.0. A paid embedding model (input tokens only) prices against
 EMBED_PRICING at its single input rate."""
 
-from shared_libs.pipelines.nodes.openai_compat import EMBED_PRICING, MODEL_PRICING, price_usd
+import pytest
+
+from shared_libs.pipelines.nodes.openai_compat import (
+    EMBED_PRICING,
+    MODEL_PRICING,
+    OCR_PAGE_PRICING,
+    price_ocr_pages,
+    price_usd,
+)
 
 
 def test_known_model_computes_input_plus_output() -> None:
@@ -38,3 +46,17 @@ def test_every_seeded_embed_model_prices() -> None:
 
 def test_unknown_embed_model_is_none() -> None:
     assert price_usd("local-embed-model", 5000, 0) is None
+
+
+def test_ocr_pages_known_kind_prices_per_page() -> None:
+    # mistral = 0.001 USD / page; per-page billing, not per token.
+    assert price_ocr_pages("mistral", 10) == pytest.approx(10 * OCR_PAGE_PRICING["mistral"])
+
+
+def test_ocr_pages_zero_on_known_kind_is_zero() -> None:
+    assert price_ocr_pages("mistral", 0) == 0.0
+
+
+def test_ocr_pages_unknown_kind_is_none() -> None:
+    # A free/local kind (rapidocr, paddle) is not in the table → "—", never a fabricated cost.
+    assert price_ocr_pages("rapidocr", 5) is None

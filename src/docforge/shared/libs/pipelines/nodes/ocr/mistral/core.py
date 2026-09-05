@@ -11,6 +11,7 @@ import base64
 import httpx
 
 # ====== Internal Project Imports ======
+from shared_libs.pipelines.base import NodeUsage
 from shared_libs.pipelines.nodes.openai_compat import EndpointReachability
 from shared_libs.pipelines.nodes.retry import NetworkRetry
 from shared_libs.pipelines.registry import NodeRegistry
@@ -55,9 +56,11 @@ class OcrMistralNode(BaseOcrNode):
                 "image_url": f"data:image/png;base64,{encoded}",
             },
         }
+        page_count = 0
 
         async def _post() -> str:
             """POST and join the pages' markdown — the retryable network operation."""
+            nonlocal page_count
             async with httpx.AsyncClient(
                 base_url=config.base_url, timeout=config.timeout_seconds
             ) as client:
@@ -68,6 +71,8 @@ class OcrMistralNode(BaseOcrNode):
                 )
                 response.raise_for_status()
             pages = response.json().get("pages", [])
+            # Mistral bills per PAGE — record how many the API actually returned for the crop.
+            page_count = len(pages)
             return "\n\n".join(page.get("markdown", "") for page in pages).strip()
 
         # 2. Run under the shared bounded retry; a non-transient error re-raises at once.
@@ -78,7 +83,16 @@ class OcrMistralNode(BaseOcrNode):
             label=f"ocr '{self.KIND}'",
         )
 
-        # 3. No confidence from the API — non-empty text = accepted.
+        # 3. Stash per-page usage for the post-hoc meter to price (Mistral is the only PAID OCR kind).
+        #    Defensive: no page count reported → no usage rather than a fabricated one; the base node
+        #    lifts this onto the output with no await between (race-free under a per-figure ForEach).
+        self._last_usage = (
+            NodeUsage(model=self.KIND, prompt_tokens=0, completion_tokens=0, pages=page_count)
+            if page_count > 0
+            else None
+        )
+
+        # 4. No confidence from the API — non-empty text = accepted.
         return text, 1.0 if text else 0.0
 
 

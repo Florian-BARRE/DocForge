@@ -137,6 +137,46 @@ def test_sum_usage_unknown_embed_model_tokens_no_cost(usage_module) -> None:
     assert cost is None  # tokens shown, cost "—"
 
 
+def _ocr_leaf(kind: str, pages: int) -> NodeExecutionRecord:
+    """A paid per-page OCR leaf: pages billed, no tokens (OCR is priced per page, not per token)."""
+    return NodeExecutionRecord(
+        node_id="ocr",
+        kind="ocr",
+        status=NodeStatus.SUCCESS,
+        duration_ms=1.0,
+        usage=NodeUsage(model=kind, prompt_tokens=0, completion_tokens=0, pages=pages),
+    )
+
+
+def _free_ocr_leaf() -> NodeExecutionRecord:
+    """A local/free OCR leaf (rapidocr/paddle): stamps NO usage, contributes nothing to the meter."""
+    return NodeExecutionRecord(
+        node_id="ocr", kind="ocr", status=NodeStatus.SUCCESS, duration_ms=1.0, usage=None
+    )
+
+
+def test_sum_usage_prices_paid_ocr_leaf_per_page_zero_tokens(usage_module) -> None:
+    # mistral = 0.001 USD / page; 3 pages → cost = 3 × rate, and OCR contributes 0 tokens.
+    record = _group([_ocr_leaf("mistral", 3)])
+    prompt, completion, cost, count = usage_module.StageUsageSummer.summarize(record)
+
+    assert (prompt, completion, count) == (0, 0, 1)
+    assert cost == pytest.approx(3 * 0.001)
+
+
+def test_sum_usage_free_ocr_leaf_contributes_nothing(usage_module) -> None:
+    record = _group([_free_ocr_leaf()])
+    assert usage_module.StageUsageSummer.summarize(record) == (0, 0, None, 0)
+
+
+def test_sum_usage_unknown_ocr_kind_pages_no_cost(usage_module) -> None:
+    record = _group([_ocr_leaf("some-local-ocr", 5)])
+    prompt, completion, cost, count = usage_module.StageUsageSummer.summarize(record)
+
+    assert (prompt, completion, count) == (0, 0, 1)  # pages carry no tokens
+    assert cost is None  # unknown kind → "—", never fabricated
+
+
 # --------------------------------------------------------------------------- #
 # recorder END — persists tokens/cost + folds into the job aggregate
 # --------------------------------------------------------------------------- #

@@ -49,9 +49,10 @@ class NodeOutput(BaseModel):
     Subclasses declare one field per emitted artefact, typed with a shared artefact model. A
     downstream node binds to one of these fields by name via ``FromNode``.
 
-    ``_usage`` is a NON-field private attribute (never serialised, never a slot): a paid text-gen
-    node stamps its per-call token usage onto the output it returns, and the engine lifts it onto
-    the execution record. Being a PrivateAttr keeps it out of ``model_fields`` — so the ForEach
+    ``_usage`` is a NON-field private attribute (never serialised, never a slot): a paid node stamps
+    its per-call billed usage (tokens for text-gen/embed, pages for hosted OCR) onto the output it
+    returns, and the engine lifts it onto the execution record. Being a PrivateAttr keeps it out of
+    ``model_fields`` — so the ForEach
     single-slot terminal contract (``len(model_fields) == 1``) is untouched — and out of the record
     payload dump. Carrying it on the RETURNED output (a fresh instance per run) rather than on the
     node makes it race-free under a ForEach that runs one node instance concurrently over items.
