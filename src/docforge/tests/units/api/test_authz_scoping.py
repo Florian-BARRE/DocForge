@@ -513,3 +513,68 @@ async def test_list_collections_scoped_key_sees_only_its_own(fastapi_app, monkey
     # Only collection A survives the scope filter; B's contract never leaves the server.
     assert result == [str(coll_a.id)]
     collections.get_schema.assert_awaited_once_with(coll_a.id)
+
+
+# ── full-route authz sweep ─────────────────────────────────────────────────────────────────────
+#
+# The one deliberately-public /api/v1 route: it authenticates (a valid bearer is still required)
+# but demands no specific capability, by design — a search-only key must still be able to ask
+# "what am I" without probing endpoints and collecting 403s.
+_CAPABILITY_EXEMPT_ROUTES = {("GET", "/api/v1/auth/whoami")}
+
+
+def _dependency_qualnames(dependant) -> list[str]:
+    """Flatten a FastAPI ``Dependant``'s dependency tree into every dependency callable's qualname."""
+    names: list[str] = []
+    for sub in dependant.dependencies:
+        names.append(sub.call.__qualname__)
+        names.extend(_dependency_qualnames(sub))
+    return names
+
+
+def test_every_api_v1_route_is_capability_gated(fastapi_app) -> None:
+    """No `/api/v1` route may be reachable without a `require(Capability.X)` dependency.
+
+    FastAPI's router resolves prefixes/dependencies lazily (`_IncludedRouter` +
+    `fastapi.routing.iter_route_contexts`) — plain `app.routes` yields unresolved include-wrapper
+    objects, not the effective path/dependant, so the sweep must go through the same helper
+    `get_openapi` itself uses to flatten the route table. `/auth/whoami` is the one documented
+    exception (see `_CAPABILITY_EXEMPT_ROUTES`); every other `/api/v1` route must carry
+    `require(...)`'s `_authorize` dependency somewhere in its dependency tree.
+    """
+    from fastapi import routing  # noqa: PLC0415
+
+    unguarded: list[str] = []
+    checked = 0
+    for ctx in routing.iter_route_contexts(fastapi_app.routes):
+        if not isinstance(ctx.original_route, routing.APIRoute):
+            continue
+        path = ctx.path
+        if not path or not path.startswith("/api/v1"):
+            continue
+        for method in sorted((ctx.methods or ()) - {"HEAD", "OPTIONS"}):
+            checked += 1
+            if (method, path) in _CAPABILITY_EXEMPT_ROUTES:
+                continue
+            names = _dependency_qualnames(ctx.dependant)
+            if not any(name.endswith("require.<locals>._authorize") for name in names):
+                unguarded.append(f"{method} {path}")
+
+    # A sanity floor so a broken enumeration (e.g. a future FastAPI upgrade changing the lazy
+    # routing internals) fails loudly as "found too few routes", not as a silent false-green.
+    assert checked > 50, "route sweep found suspiciously few /api/v1 routes — enumeration broke"
+    assert unguarded == [], f"routes with no capability gate: {unguarded}"
+
+
+def test_whoami_route_is_authenticated_but_capability_free(fastapi_app) -> None:
+    """The one capability-exempt route is exempt from CAPABILITY, never from authentication."""
+    from fastapi import routing  # noqa: PLC0415
+
+    for ctx in routing.iter_route_contexts(fastapi_app.routes):
+        if isinstance(ctx.original_route, routing.APIRoute) and ctx.path == "/api/v1/auth/whoami":
+            names = _dependency_qualnames(ctx.dependant)
+            assert any(name == "authenticate" for name in names)
+            assert not any(name.endswith("require.<locals>._authorize") for name in names)
+            return
+
+    pytest.fail("GET /api/v1/auth/whoami not found in the route table")

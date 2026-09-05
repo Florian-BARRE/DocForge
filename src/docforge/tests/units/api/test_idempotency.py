@@ -299,6 +299,37 @@ async def test_replay_same_key_and_body(fastapi_app, monkeypatch) -> None:
     idempotency.complete.assert_not_awaited()
 
 
+async def test_replay_reproduces_a_cached_4xx_verbatim(fastapi_app, monkeypatch) -> None:
+    """A cached 4xx (e.g. the handler itself 404'd) replays with its ORIGINAL status, not a 200.
+
+    `_replay_or_reject` builds the replay Response from `record.response_status`, defaulting to
+    200 only when it is falsy — so this pins that a genuinely-cached 4xx status survives the
+    default and reaches the client unchanged.
+    """
+    from shared_libs.services.db.postgresql.tables import IdempotencyState  # noqa: PLC0415
+
+    cached = _record(
+        state=IdempotencyState.completed,
+        fingerprint=_fingerprint(_BODY),
+        status=404,
+        body=b'{"detail":"not found"}',
+        media_type="application/json",
+    )
+    idempotency = SimpleNamespace(
+        begin=AsyncMock(return_value=_begin(created=False, record=cached)),
+        complete=AsyncMock(),
+        delete=AsyncMock(),
+    )
+
+    sent, state = await _drive(monkeypatch=monkeypatch, idempotency=idempotency)
+
+    assert state["handler_called"] is False
+    assert _status_of(sent) == 404
+    assert _body_of(sent) == b'{"detail":"not found"}'
+    assert _headers_of(sent).get(b"idempotency-replayed") == b"true"
+    idempotency.complete.assert_not_awaited()
+
+
 async def test_same_key_different_body_is_422(fastapi_app, monkeypatch) -> None:
     """A completed record whose fingerprint differs → key reused with a different body → 422."""
     from shared_libs.services.db.postgresql.tables import IdempotencyState  # noqa: PLC0415
@@ -444,6 +475,41 @@ async def test_lost_reclaim_race_falls_back_to_replay(fastapi_app, monkeypatch) 
     assert _status_of(sent) == 201
     assert _body_of(sent) == b'{"cached":true}'
     assert _headers_of(sent).get(b"idempotency-replayed") == b"true"
+
+
+# ── middleware: a 4xx from the handler IS a definitive (cacheable) outcome ─────────────────────
+
+
+async def test_4xx_from_the_handler_is_cached_not_dropped(fastapi_app, monkeypatch) -> None:
+    """A 4xx (e.g. a validation 422 from the wrapped route) is DEFINITIVE, not transient — the
+    cache floor is 500, so it is completed (cached) exactly like a 2xx, never dropped like a 5xx."""
+    from shared_libs.services.db.postgresql.tables import IdempotencyState  # noqa: PLC0415
+
+    idempotency = SimpleNamespace(
+        begin=AsyncMock(
+            return_value=_begin(
+                created=True,
+                record=_record(state=IdempotencyState.in_progress, fingerprint=_fingerprint(_BODY)),
+            )
+        ),
+        complete=AsyncMock(),
+        delete=AsyncMock(),
+    )
+
+    sent, state = await _drive(
+        monkeypatch=monkeypatch,
+        idempotency=idempotency,
+        downstream_status=422,
+        downstream_body=b'{"detail":"bad request"}',
+    )
+
+    assert state["handler_called"] is True
+    assert _status_of(sent) == 422
+    idempotency.delete.assert_not_awaited()
+    idempotency.complete.assert_awaited_once()
+    kwargs = idempotency.complete.await_args.kwargs
+    assert kwargs["response_status"] == 422
+    assert kwargs["response_body"] == b'{"detail":"bad request"}'
 
 
 # ── middleware: not cached on failure ───────────────────────────────────────────────────────────

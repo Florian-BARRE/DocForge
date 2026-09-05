@@ -8,6 +8,8 @@
 
 ## Journal
 
+- **2026-09-05 — Vague V8-tests (couverture, 7 items — pas de release : tests only)** : (1) **sweep authz** — `test_authz_scoping.py` walk toutes les routes `/api/v1` et assert que chacune porte une dépendance `require(Capability.*)` (exempts documentés : health/scalar/openapi/metrics/whoami) → **PASSE : aucune route non gardée** (0 code finding). (2) **ForEach max_concurrency runtime** — test qui instrumente la concurrence réelle et assert le pic ≤ N (pas juste le plumbing config). (3) **priorité transitions** — chaîne complète pinnée (ScoreBelow > WhenEquals > OnSuccess/OnFailure > Always). (4) **estimate merger** — `tests/units/estimate/test_merger.py` (précédence par champ, chunker-wins, contrat override, cap d'échantillonnage 0.14.18). (5) **idempotency 4xx-replay** — 2 tests (un 4xx caché est rejoué verbatim ; un 4xx du handler est caché pas droppé). (6) **pytest.ini** — blanket `ignore::DeprecationWarning` remplacé par `default` + ignore ciblé de l'UNIQUE bruit tiers (starlette testclient httpx, vérifié seule source) → nos deprecations remontent désormais ; markers db/live déjà documentés hors collection serviceless. (7) whoami : déjà couvert (3 tests Vague A) → clos. Gate : **1490 passed** (+23), ruff clean (3 fichiers reformatés laissés par l'agent, corrigés). **→ V8 : 94/188.** Reste FAIBLE `test_auth.py:127` (grouped assertion smells) non fait.
+
 - **2026-09-05 — Vague K / 0.14.21 (V8 pipeline-ingest bugs 7 + télémétrie 4, 2 agents ||)** : **pipeline (7)** — (1) **classified fail-soft** : chaîne VLM/OCR KO après un classify OK ajoutait un terminal `figure_entry` qui relit la figure stampée → **kind + read_text conservés** (contrat PIPELINE.md), plus de reset au raw. (2) **docling bbox** : clamp `[0,1]` + garde page-size (dim 0/None/négative → fallback 1.0, non-fini → 0.0) via `_clamp_unit` ; ⚠️ l'agent avait laissé un **`NameError: page_size` non défini** (lignes de fetch supprimées) — **corrigé par moi** (restauré `page_obj`/`page_size`), le test réel de l'agent l'avait attrapé. (3) **retry stacking** : `openai_compat` client `max_retries=0` quand non-pinné → seule la boucle du node retry (VLM+embed n'empilent plus 3×2) ; un caller sans boucle (llm/structgen) peut pinner. (4) **pp_structure rowspan/colspan** : expansion bornée (cap cellules) → plus de hang/OOM sur table pathologique. (5) **doc heading-only** → ≥1 chunk (plus de doc vide non indexé). (6) gotenberg `_preview` utilise NetworkRetry. (7) web-chrome ne démote plus un HEADING doc "Menu"/"Search". **télémétrie (4)** — (1) **panels "errors & warnings" ratait WARNING** : root cause `\bwarn\b` ne matche jamais `WARNING` (pas de frontière n→i) → `warn\w*` (vérifié contre le format loggerplusplus + chaîne unescape RE2), fixé logs + overview. (2) **Loki retention** : compactor `retention_enabled` + `retention_period 168h` (Loki 2.9.8/tsdb/v13, dir sous le volume existant). (3) smells dashboards audités (même bug regex dupliqué corrigé). (4) description telemetry.yml → 5 dashboards réels. Gate : docforge **1467 passed** (+13), ruff clean (3 fichiers reformatés laissés par l'agent, corrigés) ; télémétrie `config -q` + JSON/YAML parse OK. **→ V8 : 87/188.** Reste `reader.py:179` (uniform→classified round-trip) non fait.
 
 - **2026-09-05 — Vague V8-docs (PIPELINE.md ↔ code, 8 items — pas de release)** : passe de vérité pipeline, agent `pipeline`, **tous les claims re-vérifiés contre le code** (PIPELINE.md était le côté stale ; les config.py/core.py nommés étaient exacts → seul PIPELINE.md édité). (1) chunk : `overlap_tokens` défaut **64** (pas 0), `detect_web_chrome` documenté, marqueur `[Image:]` **non émis** (figure vide → None). (2) contextualize/llm : table config purgée des champs endpoint migrés en P6 (base_url/api_key/model/max_tokens/temperature → chaîne). (3) enrich : nœud "vlm scanned" **inexistant** supprimé du mermaid, `scanned_text`=OCR-only, terminal `figure_entry` FromFirst ; seuils **vérifiés identiques** (pas de fix). (4) intake : `pdf_probe max_pages`=2000, `IntakeResult` +source_format/source_content/preview_pdf, slot `source_probe`, canal html/md natif. (5) scan doctrine : `do_ocr` défaut **True** (OCR-default persona), doc "false toujours" corrigée. (6) doc_meta : **une** ancre titre (title_field/fallback_to_heading), pas "all metadata". (7) search : le read-side métadonnées **EST câblé** (`SearchTarget`→`meta_<slug>_dense` via TargetVectorResolver) ; `embed_semantic_fields=false` = défaut **coût**, pas un trou. (8) inventaire : +`(ocr,paddle)`, `read_text` naming, `/embed_all`, UNIQUE list (+granite/pp_structure/deliver/embedders) ; `deliver`/`vlm_entry`/`structgen`/parser bricks **déjà présents** (pas de drift). **0 CODE FINDING** (tout était drift doc). **→ V8 : 76/188.** Pas de tag (docs non packagées).
@@ -131,8 +133,8 @@
 | V5 — Moteur & pipeline | 2 | 2 | 0 | 0 |
 | V6 — Frontend | 0 | 0 | 0 | 0 |
 | V7 — Documentation | 21 | 21 | 0 | 0 |
-| V8 — Outillage (.claude/tests/infra/télémétrie) | 188 | 87 | 3 | 98 |
-| **Total** | **247** | **145** | **3** | **99** |
+| V8 — Outillage (.claude/tests/infra/télémétrie) | 188 | 94 | 3 | 91 |
+| **Total** | **247** | **152** | **3** | **92** |
 
 
 ## V1 — Sécurité & authz (avant tout déploiement multi-tenant)  (30)
@@ -437,19 +439,19 @@
   `src/docforge/tests/units/api/conftest.py:41`
 - [ ] **🟠 MOYENNE** · `divergence-doc` — CLAUDE.md documents `uv run mypy .` but mypy is neither installed nor runnable on this tree  
   `CLAUDE.md:48`
-- [ ] **🟠 MOYENNE** · `test-gap` — ForEach max_concurrency is asserted as config plumbing but never as runtime behavior  
+- [x] **🟠 MOYENNE** · `test-gap` — ForEach max_concurrency is asserted as config plumbing but never as runtime behavior  
   `src/docforge/tests/units/stages/test_figure_concurrency.py:26`
-- [ ] **🟠 MOYENNE** · `test-gap` — No sweep test that every /api/v1 route carries an authz capability dependency  
+- [x] **🟠 MOYENNE** · `test-gap` — No sweep test that every /api/v1 route carries an authz capability dependency  
   `src/docforge/tests/units/api/test_authz_scoping.py:1`
-- [ ] **🟠 MOYENNE** · `test-gap` — Token introspection (GET /auth/whoami, v0.13.0) has zero tests  
+- [x] **🟠 MOYENNE** · `test-gap` — Token introspection (GET /auth/whoami, v0.13.0) has zero tests  
   `src/docforge/app/backend/routers/auth/whoami.py:21`
-- [ ] **🟠 MOYENNE** · `test-gap` — Transition-priority chain only pinned for ScoreBelow>WhenEquals; the rest of the documented order is untested  
+- [x] **🟠 MOYENNE** · `test-gap` — Transition-priority chain only pinned for ScoreBelow>WhenEquals; the rest of the documented order is untested  
   `src/docforge/tests/units/engine/test_conditions.py:112`
 - [ ] **⚪ FAIBLE** · `test-gap` — Grouped low-severity assertion smells: a vacuous mock assert, SQL-substring predicates, and unmapped SDK 5xx/transport errors  
   `src/docforge/tests/units/api/test_auth.py:127`
-- [ ] **⚪ FAIBLE** · `test-gap` — Idempotency middleware: the cache-a-4xx-and-replay-it branch is completely unpinned  
+- [x] **⚪ FAIBLE** · `test-gap` — Idempotency middleware: the cache-a-4xx-and-replay-it branch is completely unpinned  
   `src/docforge/tests/units/api/test_idempotency.py:357`
-- [ ] **⚪ FAIBLE** · `design` — pytest.ini smells: blanket DeprecationWarning ignore, unguarded tests/db in default collection, unfiltered warning noise  
+- [x] **⚪ FAIBLE** · `design` — pytest.ini smells: blanket DeprecationWarning ignore, unguarded tests/db in default collection, unfiltered warning noise  
   `src/docforge/pytest.ini:9`
 
 ### API pipelines
@@ -480,7 +482,7 @@
 
 ### Coûts & estimation
 
-- [ ] **🟠 MOYENNE** · `test-gap` — No unit tests for the override merger, the override contract, or the sampling-cap seam  
+- [x] **🟠 MOYENNE** · `test-gap` — No unit tests for the override merger, the override contract, or the sampling-cap seam  
   `src/docforge/app/backend/libs/estimate/merger.py:28`
 - [x] **🟠 MOYENNE** · `bug` — OCR plan extractor's local-kind list omits 'paddle' — paddle-headed chain hides a paid Mistral escalation  
   `src/docforge/shared/libs/pipelines/ingest/estimate/plan.py:94`

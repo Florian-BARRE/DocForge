@@ -6,10 +6,13 @@ import pytest
 
 from shared_libs.pipelines.base import (
     ActionNode,
+    Always,
     Group,
     NodeConfig,
     NodeInput,
     NodeOutput,
+    OnFailure,
+    OnSuccess,
     ScoreBelow,
     ScoredOutput,
     Transition,
@@ -65,6 +68,18 @@ class Path(ActionNode):
 
     async def run(self, data: Empty) -> TagOut:
         return TagOut(tag=Tag(value=self._label))
+
+
+class Failer(ActionNode):
+    KIND = "test_cond_failer"
+    NAME = "F"
+    SUMMARY = "s"
+    Config = NodeConfig
+    Consumes = Empty
+    Produces = TagOut
+
+    async def run(self, data: Empty) -> TagOut:
+        raise RuntimeError("boom")
 
 
 def _build(kind: str, score: float = 1.0, with_escalation: bool = False) -> Group:
@@ -153,3 +168,102 @@ def test_when_equals_condition_round_trips_through_json() -> None:
     again = Transition.model_validate(transition.model_dump(mode="json"))
     assert isinstance(again.condition, WhenEquals)
     assert again.condition.equals == "chart"
+
+
+# ── the full documented priority chain: ScoreBelow > WhenEquals > OnSuccess/OnFailure > Always ──
+#
+# `test_score_below_priority_beats_when_equals` above pins the top pair; the rest of the chain is
+# pinned here — every remaining (higher, lower) pair, each built so BOTH edges are eligible on the
+# same outcome (GraphNavigator.next must pick the higher-ranked one, never fall through to it).
+
+
+def _switch_group(source: ActionNode, edges: list[Transition]) -> Group:
+    """A 2+-node group: one source feeding N candidate targets, wired by the given transitions."""
+    targets = {t.to_node_id for t in edges}
+    children = [source, *(Path(node_id, NodeConfig(), node_id) for node_id in targets)]
+    return Group(id="g", children=children, transitions=edges, bindings={})
+
+
+def test_score_below_beats_on_success(engine) -> None:
+    """A bad score escalates even against a plain OnSuccess edge (not just WhenEquals)."""
+    group = _switch_group(
+        Classifier("clf", NodeConfig(), kind="photo", score=0.2),
+        [
+            Transition(
+                from_node_id="clf", to_node_id="RESCUE", condition=ScoreBelow(threshold=0.5)
+            ),
+            Transition(from_node_id="clf", to_node_id="ON-SUCCESS", condition=OnSuccess()),
+        ],
+    )
+    output, _ = asyncio.run(engine.execute(group, {}))
+    assert output.tag.value == "RESCUE"
+
+
+def test_score_below_beats_always(engine) -> None:
+    group = _switch_group(
+        Classifier("clf", NodeConfig(), kind="photo", score=0.2),
+        [
+            Transition(
+                from_node_id="clf", to_node_id="RESCUE", condition=ScoreBelow(threshold=0.5)
+            ),
+            Transition(from_node_id="clf", to_node_id="ALWAYS", condition=Always()),
+        ],
+    )
+    output, _ = asyncio.run(engine.execute(group, {}))
+    assert output.tag.value == "RESCUE"
+
+
+def test_when_equals_beats_on_success(engine) -> None:
+    group = _switch_group(
+        Classifier("clf", NodeConfig(), kind="photo", score=1.0),
+        [
+            Transition(
+                from_node_id="clf",
+                to_node_id="PHOTO",
+                condition=WhenEquals(field="kind", equals="photo"),
+            ),
+            Transition(from_node_id="clf", to_node_id="ON-SUCCESS", condition=OnSuccess()),
+        ],
+    )
+    output, _ = asyncio.run(engine.execute(group, {}))
+    assert output.tag.value == "PHOTO"
+
+
+def test_when_equals_beats_always(engine) -> None:
+    group = _switch_group(
+        Classifier("clf", NodeConfig(), kind="photo", score=1.0),
+        [
+            Transition(
+                from_node_id="clf",
+                to_node_id="PHOTO",
+                condition=WhenEquals(field="kind", equals="photo"),
+            ),
+            Transition(from_node_id="clf", to_node_id="ALWAYS", condition=Always()),
+        ],
+    )
+    output, _ = asyncio.run(engine.execute(group, {}))
+    assert output.tag.value == "PHOTO"
+
+
+def test_on_success_beats_always(engine) -> None:
+    group = _switch_group(
+        Classifier("clf", NodeConfig(), kind="unmatched", score=1.0),
+        [
+            Transition(from_node_id="clf", to_node_id="ON-SUCCESS", condition=OnSuccess()),
+            Transition(from_node_id="clf", to_node_id="ALWAYS", condition=Always()),
+        ],
+    )
+    output, _ = asyncio.run(engine.execute(group, {}))
+    assert output.tag.value == "ON-SUCCESS"
+
+
+def test_on_failure_beats_always(engine) -> None:
+    group = _switch_group(
+        Failer("clf", NodeConfig()),
+        [
+            Transition(from_node_id="clf", to_node_id="ON-FAILURE", condition=OnFailure()),
+            Transition(from_node_id="clf", to_node_id="ALWAYS", condition=Always()),
+        ],
+    )
+    output, _ = asyncio.run(engine.execute(group, {}))
+    assert output.tag.value == "ON-FAILURE"

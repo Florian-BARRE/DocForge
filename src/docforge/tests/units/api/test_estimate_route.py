@@ -122,6 +122,49 @@ def test_estimate_scope_is_bounded_and_scaled_to_true_count(
     assert list_for_collection.await_args.kwargs["limit"] > 0
 
 
+def test_estimate_explicit_ids_subset_is_capped_and_scaled(
+    client, fastapi_app, monkeypatch
+) -> None:
+    """The ``document_ids`` subset path bounds its sample too (not just the whole-collection scope).
+
+    ``DocumentSelectorResolver.resolve`` returns every matching id (unbounded); the SERVICE itself
+    slices the first ``ESTIMATE_MAX_SAMPLE_DOCUMENTS`` before ever calling ``get_by_ids`` — so a
+    10-id subset request measures only the capped sample yet still scales to the full 10.
+    """
+    from backend.context import CONTEXT  # noqa: PLC0415
+    from backend.libs.corpus import DocumentSelectorResolver  # noqa: PLC0415
+
+    # The cap is read from RUNTIME_CONFIG once, at CONTEXT.estimate_service CONSTRUCTION time (app
+    # boot) — patching RUNTIME_CONFIG after boot would not reach the already-captured instance
+    # attribute, so the seam under test is patched directly instead.
+    monkeypatch.setattr(CONTEXT.estimate_service, "_sample_cap", 2)
+    monkeypatch.setattr(
+        CONTEXT.database.collections,
+        "get",
+        AsyncMock(return_value=SimpleNamespace(pipeline=_default_pipeline_blob())),
+    )
+    monkeypatch.setattr(CONTEXT.database.collections, "get_schema", AsyncMock(return_value=[]))
+
+    all_ids = [uuid.uuid4() for _ in range(10)]
+    monkeypatch.setattr(DocumentSelectorResolver, "resolve", AsyncMock(return_value=all_ids))
+    get_by_ids = AsyncMock(return_value=[_pending_doc(1_000_000, 20), _pending_doc(500_000, 10)])
+    monkeypatch.setattr(CONTEXT.database.documents, "get_by_ids", get_by_ids)
+
+    response = client.post(
+        f"/api/v1/collections/{COLLECTION_ID}/estimate",
+        json={"document_ids": [str(i) for i in all_ids]},
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    # Scaled from the 2-row sample to the true 10-id match count — never just the sample size.
+    assert body["document_count"] == 10
+    assert body["volume"]["pages"] == 150  # (20 + 10) pages * (10 / 2) scaling
+    # Only the capped FIRST slice of matched ids is ever measured.
+    (measured_ids,), _ = get_by_ids.await_args
+    assert measured_ids == all_ids[:2]
+
+
 def test_estimate_unknown_collection_is_404(client, fastapi_app, monkeypatch) -> None:
     """An unknown collection is a 404, mirroring the other collection reads."""
     from backend.context import CONTEXT  # noqa: PLC0415
