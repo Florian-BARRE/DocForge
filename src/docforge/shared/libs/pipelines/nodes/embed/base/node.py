@@ -19,7 +19,7 @@ from typing import TypeVar
 import httpx
 
 # ====== Internal Project Imports ======
-from shared_libs.pipelines.base import ActionNode
+from shared_libs.pipelines.base import ActionNode, NodeUsage
 from shared_libs.public_models import (
     Chunk,
     ChunkEmbeddings,
@@ -48,6 +48,12 @@ class BaseEmbedderNode(ActionNode):
 
     Consumes = EmbedConsumes
     Produces = EmbedProduces
+
+    # Running paid-call token usage for THIS run, stamped onto the output by ``run``. A hosted
+    # embedder folds each embeddings response's input tokens in via its provider hook; a local/free
+    # embedder (bge_server) never touches it, so it stays None and the output stays free. Reset at the
+    # top of every ``run`` so a prior run's total can never leak onto a later free/empty one.
+    _last_usage: NodeUsage | None = None
 
     @staticmethod
     def _has_searchable_content(text: str) -> bool:
@@ -265,6 +271,9 @@ class BaseEmbedderNode(ActionNode):
             EmbedProduces: One ChunkVectors per ENABLED chunk, chunk_id-linked, in chunk order.
         """
         config: BaseEmbedConfig = self.config
+        # 0. Reset the per-run usage accumulator: a paid provider hook folds its input tokens into it
+        #    below, and the final output is stamped with it — a local/free embedder leaves it None.
+        self._last_usage = None
         # 1. THE single policy: embed only role-default-enabled chunks (body); skip the furniture.
         #    Then drop content-free chunks (bare figure placeholders): like the role-disabled ones
         #    they still flow to persistence via the chunk artefact, but they get NO vector — so a
@@ -276,7 +285,9 @@ class BaseEmbedderNode(ActionNode):
             and self._has_searchable_content(chunk.enriched_text)
         ]
         if not enabled:
-            return EmbedProduces(embeddings=ChunkEmbeddings(model=config.model))
+            empty = EmbedProduces(embeddings=ChunkEmbeddings(model=config.model))
+            empty._usage = self._last_usage  # None here — no provider hook ran
+            return empty
 
         # 2. The main pair: the ENRICHED text of every enabled chunk, batched.
         texts = [chunk.enriched_text for chunk in enabled]
@@ -309,9 +320,13 @@ class BaseEmbedderNode(ActionNode):
             f"(dense dim {len(dense[0])}, sparse: {sparse_vectors is not None}, "
             f"semantic fields: {sorted(field_vectors)})"
         )
-        return EmbedProduces(
+        output = EmbedProduces(
             embeddings=ChunkEmbeddings(model=config.model, dimension=len(dense[0]), items=items)
         )
+        # The paid-call token usage the provider hook folded in rides on the output for the engine to
+        # lift onto the record (None for a local/free embedder — it never touched the accumulator).
+        output._usage = self._last_usage
+        return output
 
 
 __all__ = ["BaseEmbedderNode"]

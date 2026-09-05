@@ -97,6 +97,46 @@ def test_sum_usage_no_usage_is_empty(usage_module) -> None:
     assert usage_module.StageUsageSummer.summarize(record) == (0, 0, None, 0)
 
 
+def _embed_leaf(model: str, prompt: int) -> NodeExecutionRecord:
+    """A paid embed leaf: input tokens only (completion is always 0 for an embedding call)."""
+    return NodeExecutionRecord(
+        node_id="embed",
+        kind="embed",
+        status=NodeStatus.SUCCESS,
+        duration_ms=1.0,
+        usage=NodeUsage(model=model, prompt_tokens=prompt, completion_tokens=0),
+    )
+
+
+def _free_leaf() -> NodeExecutionRecord:
+    """A local/free embed leaf: it stamps NO usage, so it contributes nothing to the meter."""
+    return NodeExecutionRecord(
+        node_id="embed", kind="embed", status=NodeStatus.SUCCESS, duration_ms=1.0, usage=None
+    )
+
+
+def test_sum_usage_prices_paid_embed_leaf(usage_module) -> None:
+    # text-embedding-3-small = 0.02 USD / 1M input tokens; embeddings have no completion side.
+    record = _group([_embed_leaf("text-embedding-3-small", 1_000_000)])
+    prompt, completion, cost, count = usage_module.StageUsageSummer.summarize(record)
+
+    assert (prompt, completion, count) == (1_000_000, 0, 1)
+    assert cost == pytest.approx(0.02)
+
+
+def test_sum_usage_free_embed_leaf_contributes_nothing(usage_module) -> None:
+    record = _group([_free_leaf()])
+    assert usage_module.StageUsageSummer.summarize(record) == (0, 0, None, 0)
+
+
+def test_sum_usage_unknown_embed_model_tokens_no_cost(usage_module) -> None:
+    record = _group([_embed_leaf("local-embed-model", 4_000)])
+    prompt, completion, cost, count = usage_module.StageUsageSummer.summarize(record)
+
+    assert (prompt, completion, count) == (4_000, 0, 1)
+    assert cost is None  # tokens shown, cost "—"
+
+
 # --------------------------------------------------------------------------- #
 # recorder END — persists tokens/cost + folds into the job aggregate
 # --------------------------------------------------------------------------- #
