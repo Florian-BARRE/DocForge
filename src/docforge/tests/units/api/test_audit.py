@@ -176,6 +176,53 @@ def test_is_auditable_skips_non_api(fastapi_app) -> None:
     assert AuditHelpers.is_auditable("POST", "/metrics") is False
 
 
+@pytest.mark.parametrize(
+    "path",
+    [
+        f"/api/v1/collections/{COLL}/search",
+        f"/api/v1/collections/{COLL}/documents/query",
+        f"/api/v1/collections/{COLL}/estimate",
+        "/api/v1/pipelines/ingest/inspect",
+        "/api/v1/pipelines/ingest/edit",
+        "/api/v1/pipelines/ingest/stages/view",
+        "/api/v1/pipelines/ingest/stages/apply",
+    ],
+)
+def test_is_auditable_skips_post_shaped_reads(fastapi_app, path) -> None:
+    """A read exposed over POST (search / query / estimate / pipeline design) is NOT audited."""
+    from backend.libs.audit import AuditHelpers  # noqa: PLC0415
+
+    assert AuditHelpers.is_auditable("POST", path) is False
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        f"/api/v1/collections/{COLL}/export",  # READ-capability but CREATES a job → still audited
+        "/api/v1/collections/import",
+        f"/api/v1/collections/{COLL}/reingest",
+        f"/api/v1/collections/{COLL}/documents/reingest",
+        "/api/v1/collections",
+    ],
+)
+def test_is_auditable_still_audits_mutations(fastapi_app, path) -> None:
+    """State-changing POSTs (including READ-capability export/import) stay audited."""
+    from backend.libs.audit import AuditHelpers  # noqa: PLC0415
+
+    assert AuditHelpers.is_auditable("POST", path) is True
+
+
+def test_read_exclusion_matcher_is_precise(fastapi_app) -> None:
+    """The exclusion matcher flags the read templates and leaves near-miss mutations alone."""
+    from backend.libs.audit import AuditReadExclusion  # noqa: PLC0415
+
+    assert AuditReadExclusion.is_read(f"/api/v1/collections/{COLL}/search") is True
+    assert AuditReadExclusion.is_read(f"/api/v1/collections/{COLL}/documents/query") is True
+    # Not a read endpoint → not excluded.
+    assert AuditReadExclusion.is_read(f"/api/v1/collections/{COLL}/export") is False
+    assert AuditReadExclusion.is_read(f"/api/v1/collections/{COLL}/documents/reingest") is False
+
+
 def test_actor_from_key_prefers_key_name(fastapi_app) -> None:
     from backend.libs.audit import AuditHelpers  # noqa: PLC0415
 
@@ -257,6 +304,20 @@ async def test_middleware_skips_reads(fastapi_app, monkeypatch) -> None:
     monkeypatch.setattr(CONTEXT, "database", SimpleNamespace(audit=SimpleNamespace(record=record)))
 
     await _drive_middleware({"method": "GET", "state": {"principal": _full()}})
+
+    record.assert_not_awaited()
+
+
+async def test_middleware_skips_post_shaped_read(fastapi_app, monkeypatch) -> None:
+    """A POST search (a read over POST) is never recorded — the trail stays reads-free."""
+    from backend.context import CONTEXT  # noqa: PLC0415
+
+    record = AsyncMock()
+    monkeypatch.setattr(CONTEXT, "database", SimpleNamespace(audit=SimpleNamespace(record=record)))
+
+    await _drive_middleware(
+        {"path": f"/api/v1/collections/{COLL}/search", "state": {"principal": _full()}}
+    )
 
     record.assert_not_awaited()
 

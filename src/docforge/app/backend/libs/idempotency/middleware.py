@@ -143,8 +143,126 @@ class IdempotencyMiddleware:
             await self._execute(scope, receive, send, actor_scope, template, key)
             return
 
-        # 3. The row already existed — replay the cached response or reject the duplicate.
-        await self._replay_or_reject(scope, receive, send, begin.record, fingerprint)
+        # 3. The row already existed. A STALE in-progress guard (its owner crashed before caching a
+        #    response) is atomically reclaimed so this retry re-runs instead of wedging on 409 until
+        #    the TTL/GC; a genuinely in-flight (fresh) one still conflicts below.
+        record = begin.record
+        if self._is_stale_in_progress(record):
+            reclaimed = await self._reclaim(
+                scope, receive, send, actor_scope, template, key, fingerprint
+            )
+            if reclaimed:
+                return
+            # Lost the reclaim race (a concurrent retry claimed it, or it just completed) → re-read
+            # the current incumbent so the normal path can replay a completion or 409 an in-flight one.
+            record = await self._safe_get(actor_scope, scope["method"], template, key)
+
+        # 4. Replay the cached response or reject the duplicate (409 in-progress / 422 body reuse).
+        await self._replay_or_reject(scope, receive, send, record, fingerprint)
+
+    def _is_stale_in_progress(self, record: IdempotencyRecord | None) -> bool:
+        """
+        Decide whether an existing record is a reclaimable stale in-progress guard.
+
+        Args:
+            record (IdempotencyRecord | None): The incumbent record from the lost-race read.
+
+        Returns:
+            bool: True only for an ``in_progress`` record whose start clock predates the in-progress
+                TTL horizon (a fresh in-flight request, a completed record, a vanished row, or a row
+                with no known start clock are all NOT reclaimable).
+        """
+        # 1. Only an in-progress record with a known start clock can be judged stale.
+        if (
+            record is None
+            or record.state != IdempotencyState.in_progress
+            or record.created_at is None
+        ):
+            return False
+        # 2. Stale iff it started before the bounded in-progress window.
+        cutoff = datetime.now(UTC) - timedelta(
+            seconds=RUNTIME_CONFIG.IDEMPOTENCY_INPROGRESS_TTL_SECONDS
+        )
+        return record.created_at < cutoff
+
+    async def _reclaim(
+        self,
+        scope: Scope,
+        receive: Receive,
+        send: Send,
+        actor_scope: str,
+        template: str,
+        key: str,
+        fingerprint: str,
+    ) -> bool:
+        """
+        Atomically claim a stale in-progress record and, on success, run the handler once.
+
+        Args:
+            scope (Scope): The ASGI connection scope.
+            receive (Receive): The replay receive channel (re-feeds the buffered body).
+            send (Send): The ASGI send channel.
+            actor_scope (str): The resolved actor scope of the record.
+            template (str): The matched route TEMPLATE.
+            key (str): The client-supplied idempotency key.
+            fingerprint (str): sha256 hex of THIS request's body (becomes the new owner's fingerprint).
+
+        Returns:
+            bool: True when this request won the claim and executed the handler; False when the claim
+                was lost (the caller then re-reads + dispatches on the normal replay/reject path).
+        """
+        # 1. Try the atomic conditional claim (best-effort: a store error → treat as lost → 409/replay).
+        now = datetime.now(UTC)
+        try:
+            won = await CONTEXT.database.idempotency.reclaim_stale(
+                actor_scope=actor_scope,
+                method=scope["method"],
+                path=template,
+                idempotency_key=key,
+                request_fingerprint=fingerprint,
+                expires_at=now + timedelta(hours=RUNTIME_CONFIG.IDEMPOTENCY_TTL_HOURS),
+                claimed_at=now,
+                stale_before=now
+                - timedelta(seconds=RUNTIME_CONFIG.IDEMPOTENCY_INPROGRESS_TTL_SECONDS),
+            )
+        except Exception as error:
+            logger.warning(
+                f"Idempotency reclaim failed (swallowed) for {scope['method']} {template}: {error}"
+            )
+            return False
+
+        # 2. Won the claim → run the handler exactly once, exactly like a fresh insert would.
+        if won:
+            await self._execute(scope, receive, send, actor_scope, template, key)
+            return True
+        return False
+
+    async def _safe_get(
+        self, actor_scope: str, method: str, template: str, key: str
+    ) -> IdempotencyRecord | None:
+        """
+        Re-read the current record after a lost reclaim; swallow (log) any store failure.
+
+        Args:
+            actor_scope (str): The resolved actor scope.
+            method (str): The request's HTTP method.
+            template (str): The matched route TEMPLATE.
+            key (str): The client-supplied idempotency key.
+
+        Returns:
+            IdempotencyRecord | None: The freshest record, or None on a read failure (→ treated as
+                in-progress → 409 by the caller).
+        """
+        # 1. Best-effort point read — a failure degrades to 409 (never a correctness problem).
+        try:
+            return await CONTEXT.database.idempotency.get(
+                actor_scope=actor_scope, method=method, path=template, idempotency_key=key
+            )
+        except Exception as error:
+            logger.warning(
+                f"Idempotency re-read failed (swallowed) for {method} {template}: {error}"
+            )
+            return None
 
     async def _execute(
         self,
@@ -176,12 +294,24 @@ class IdempotencyMiddleware:
             await self._safe_drop(actor_scope, scope["method"], template, key)
             raise
 
-        # 3. Cache only a definitive (< 500) outcome; a 5xx is transient → drop the row so a retry
-        #    can re-run. Either way the buffered response is flushed to the client afterwards.
+        # 3. Cache only a definitive (< 500) outcome whose body fits the cache cap; a 5xx (transient)
+        #    or an over-cap response drops the row so a retry re-runs rather than caching an error or
+        #    bloating the store with unbounded bytes. Either way the buffered response is flushed below.
         status = buffer.status
-        if status is not None and status < _SERVER_ERROR_FLOOR:
+        cacheable = (
+            status is not None
+            and status < _SERVER_ERROR_FLOOR
+            and not buffer.exceeds(RUNTIME_CONFIG.IDEMPOTENCY_MAX_BODY_BYTES)
+        )
+        if cacheable:
             await self._safe_complete(actor_scope, scope["method"], template, key, buffer)
         else:
+            if status is not None and status < _SERVER_ERROR_FLOOR:
+                logger.warning(
+                    f"Idempotency response over the cache cap "
+                    f"({RUNTIME_CONFIG.IDEMPOTENCY_MAX_BODY_BYTES}B) on {scope['method']} {template}; "
+                    f"not cached (a retry re-executes)."
+                )
             await self._safe_drop(actor_scope, scope["method"], template, key)
 
         # 4. Flush the handler's exact response to the client (deferred until the decision was made).

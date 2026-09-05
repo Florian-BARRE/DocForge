@@ -13,6 +13,7 @@ until the ``fastapi_app`` fixture has registered app/ on sys.path (module-top im
 
 import hashlib
 import uuid
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -40,7 +41,7 @@ def _full():
     return _principal(user=user, key=key)
 
 
-def _record(*, state, fingerprint, status=None, body=None, media_type=None):
+def _record(*, state, fingerprint, status=None, body=None, media_type=None, created_at=None):
     from shared_libs.services.db.facades import IdempotencyRecord  # noqa: PLC0415
 
     return IdempotencyRecord(
@@ -49,6 +50,7 @@ def _record(*, state, fingerprint, status=None, body=None, media_type=None):
         response_status=status,
         response_body=body,
         response_media_type=media_type,
+        created_at=created_at,
     )
 
 
@@ -351,6 +353,99 @@ async def test_vanished_record_is_409(fastapi_app, monkeypatch) -> None:
     assert _status_of(sent) == 409
 
 
+# ── middleware: stale in-progress reclaim (crashed original execution) ─────────────────────────────
+
+
+async def test_stale_in_progress_is_reclaimed_and_reruns(fastapi_app, monkeypatch) -> None:
+    """A stale in-progress guard (owner crashed pre-cache) is reclaimed → the retry re-runs + caches."""
+    from shared_libs.services.db.postgresql.tables import IdempotencyState  # noqa: PLC0415
+
+    stale = _record(
+        state=IdempotencyState.in_progress,
+        fingerprint=_fingerprint(_BODY),
+        created_at=datetime.now(UTC) - timedelta(hours=1),  # far older than the in-progress TTL
+    )
+    idempotency = SimpleNamespace(
+        begin=AsyncMock(return_value=_begin(created=False, record=stale)),
+        reclaim_stale=AsyncMock(return_value=True),  # this retry wins the atomic claim
+        get=AsyncMock(),
+        complete=AsyncMock(),
+        delete=AsyncMock(),
+    )
+
+    sent, state = await _drive(
+        monkeypatch=monkeypatch, idempotency=idempotency, downstream_status=201
+    )
+
+    # 1. The stale guard was atomically reclaimed and the handler ran once with the full body.
+    idempotency.reclaim_stale.assert_awaited_once()
+    assert state["handler_called"] is True
+    assert state["handler_body"] == _BODY
+    # 2. The definitive 201 flowed to the client and was cached (a normal execution after reclaim).
+    assert _status_of(sent) == 201
+    idempotency.complete.assert_awaited_once()
+
+
+async def test_fresh_in_progress_is_not_reclaimed(fastapi_app, monkeypatch) -> None:
+    """A fresh in-flight guard (within the in-progress TTL) still 409s — never reclaimed/re-run."""
+    from shared_libs.services.db.postgresql.tables import IdempotencyState  # noqa: PLC0415
+
+    fresh = _record(
+        state=IdempotencyState.in_progress,
+        fingerprint=_fingerprint(_BODY),
+        created_at=datetime.now(UTC),  # brand new → genuinely in flight
+    )
+    idempotency = SimpleNamespace(
+        begin=AsyncMock(return_value=_begin(created=False, record=fresh)),
+        reclaim_stale=AsyncMock(return_value=True),
+        get=AsyncMock(),
+        complete=AsyncMock(),
+        delete=AsyncMock(),
+    )
+
+    sent, state = await _drive(monkeypatch=monkeypatch, idempotency=idempotency)
+
+    # 1. Staleness never triggered → no reclaim attempt, handler never ran, plain 409.
+    idempotency.reclaim_stale.assert_not_awaited()
+    assert state["handler_called"] is False
+    assert _status_of(sent) == 409
+
+
+async def test_lost_reclaim_race_falls_back_to_replay(fastapi_app, monkeypatch) -> None:
+    """Losing the reclaim race re-reads the incumbent: a now-completed record replays its cache."""
+    from shared_libs.services.db.postgresql.tables import IdempotencyState  # noqa: PLC0415
+
+    stale = _record(
+        state=IdempotencyState.in_progress,
+        fingerprint=_fingerprint(_BODY),
+        created_at=datetime.now(UTC) - timedelta(hours=1),
+    )
+    completed = _record(
+        state=IdempotencyState.completed,
+        fingerprint=_fingerprint(_BODY),
+        status=201,
+        body=b'{"cached":true}',
+        media_type="application/json",
+    )
+    idempotency = SimpleNamespace(
+        begin=AsyncMock(return_value=_begin(created=False, record=stale)),
+        reclaim_stale=AsyncMock(return_value=False),  # a concurrent retry won the claim
+        get=AsyncMock(return_value=completed),  # re-read shows it completed meanwhile
+        complete=AsyncMock(),
+        delete=AsyncMock(),
+    )
+
+    sent, state = await _drive(monkeypatch=monkeypatch, idempotency=idempotency)
+
+    # 1. Reclaim lost → re-read → the completed record replays verbatim without re-running the handler.
+    idempotency.reclaim_stale.assert_awaited_once()
+    idempotency.get.assert_awaited_once()
+    assert state["handler_called"] is False
+    assert _status_of(sent) == 201
+    assert _body_of(sent) == b'{"cached":true}'
+    assert _headers_of(sent).get(b"idempotency-replayed") == b"true"
+
+
 # ── middleware: not cached on failure ───────────────────────────────────────────────────────────
 
 
@@ -399,6 +494,73 @@ async def test_handler_exception_drops_row_and_propagates(fastapi_app, monkeypat
 
     idempotency.complete.assert_not_awaited()
     idempotency.delete.assert_awaited_once()
+
+
+async def test_over_cap_response_is_not_cached(fastapi_app, monkeypatch) -> None:
+    """A definitive response whose body exceeds the cap is served but NOT cached → the row is dropped."""
+    from config import RUNTIME_CONFIG  # noqa: PLC0415
+    from shared_libs.services.db.postgresql.tables import IdempotencyState  # noqa: PLC0415
+
+    # Cap above the (tiny) request body but below the response body: the request is guarded normally,
+    # only the response caching is what the cap must veto.
+    monkeypatch.setattr(RUNTIME_CONFIG, "IDEMPOTENCY_MAX_BODY_BYTES", 20)
+    big_response = b"x" * 100
+    idempotency = SimpleNamespace(
+        begin=AsyncMock(
+            return_value=_begin(
+                created=True,
+                record=_record(state=IdempotencyState.in_progress, fingerprint=_fingerprint(b"{}")),
+            )
+        ),
+        complete=AsyncMock(),
+        delete=AsyncMock(),
+    )
+
+    sent, state = await _drive(
+        monkeypatch=monkeypatch,
+        idempotency=idempotency,
+        body=b"{}",
+        downstream_status=201,
+        downstream_body=big_response,
+    )
+
+    # 1. The full (over-cap) response still reached the client verbatim.
+    assert state["handler_called"] is True
+    assert _status_of(sent) == 201
+    assert _body_of(sent) == big_response
+    # 2. It was NOT cached (over cap) — the guard row is dropped so a retry re-executes.
+    idempotency.complete.assert_not_awaited()
+    idempotency.delete.assert_awaited_once()
+
+
+async def test_under_cap_response_is_cached(fastapi_app, monkeypatch) -> None:
+    """A definitive response within the cap is cached for replay (the counterpart of the over-cap case)."""
+    from config import RUNTIME_CONFIG  # noqa: PLC0415
+    from shared_libs.services.db.postgresql.tables import IdempotencyState  # noqa: PLC0415
+
+    monkeypatch.setattr(RUNTIME_CONFIG, "IDEMPOTENCY_MAX_BODY_BYTES", 1024)
+    idempotency = SimpleNamespace(
+        begin=AsyncMock(
+            return_value=_begin(
+                created=True,
+                record=_record(state=IdempotencyState.in_progress, fingerprint=_fingerprint(b"{}")),
+            )
+        ),
+        complete=AsyncMock(),
+        delete=AsyncMock(),
+    )
+
+    sent, state = await _drive(
+        monkeypatch=monkeypatch,
+        idempotency=idempotency,
+        body=b"{}",
+        downstream_status=201,
+        downstream_body=b'{"ok":true}',
+    )
+
+    assert _status_of(sent) == 201
+    idempotency.complete.assert_awaited_once()
+    idempotency.delete.assert_not_awaited()
 
 
 # ── middleware: passthrough paths ─────────────────────────────────────────────────────────────

@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 
 # ====== Internal Project Imports ======
 from shared_libs.services.db.postgresql.tables import IdempotencyKey, IdempotencyState
@@ -25,6 +26,11 @@ class IdempotencyRecord:
         response_status (int | None): The cached response status (set once completed).
         response_body (bytes | None): The cached response body bytes (set once completed).
         response_media_type (str | None): The cached response content-type (set once completed).
+        created_at (datetime | None): When the in-progress guard was inserted (its "start clock").
+            Used to detect a STALE in-progress record (its owner crashed before caching a response)
+            so a retry can reclaim it instead of wedging on 409 until the TTL. None only when a fresh
+            insert has not been refreshed from the DB (a fresh row is never stale, so None reads as
+            not-stale).
     """
 
     state: IdempotencyState
@@ -32,6 +38,7 @@ class IdempotencyRecord:
     response_status: int | None
     response_body: bytes | None
     response_media_type: str | None
+    created_at: datetime | None = None
 
     @classmethod
     def from_row(cls, row: IdempotencyKey) -> IdempotencyRecord:
@@ -51,6 +58,7 @@ class IdempotencyRecord:
             response_status=row.response_status,
             response_body=row.response_body,
             response_media_type=row.response_media_type,
+            created_at=row.created_at,
         )
 
 
