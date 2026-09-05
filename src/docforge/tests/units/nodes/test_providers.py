@@ -7,6 +7,7 @@ import sys
 import shared_libs.pipelines.nodes  # noqa: F401 — auto-discovery
 from shared_libs.pipelines.nodes.ocr.base import OcrConsumes
 from shared_libs.pipelines.nodes.ocr.rapidocr.core import OcrRapidOcrConfig, OcrRapidOcrNode
+from shared_libs.pipelines.nodes.openai_compat import UsageAccumulator
 from shared_libs.pipelines.nodes.vlm.base import (
     BaseVlmConfig,
     BaseVlmHelpers,
@@ -70,7 +71,13 @@ class FakeVlm(BaseVlmNode):
     SUMMARY = "t"
     Config = BaseVlmConfig
 
-    async def _describe(self, image: bytes, context: str, system_prompt: str) -> tuple[str, float]:
+    async def _describe(
+        self,
+        image: bytes,
+        context: str,
+        system_prompt: str,
+        usage_sink: UsageAccumulator | None = None,
+    ) -> tuple[str, float]:
         assert "END your answer" in system_prompt  # table contract appended
         assert context == "ocr said: hello"
         return "A bar chart.\n```table\nA | B\n1 | 2\n```", 1.0

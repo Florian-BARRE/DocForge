@@ -12,6 +12,7 @@ from unittest.mock import AsyncMock
 import httpx
 import pytest
 
+from shared_libs.pipelines.nodes.openai_compat import UsageAccumulator
 from shared_libs.pipelines.nodes.vlm.base import BaseVlmConfig, BaseVlmNode
 from shared_libs.pipelines.nodes.vlm.base import node as node_module
 from shared_libs.public_models import FigureItem
@@ -25,7 +26,13 @@ class _FakeVlm(BaseVlmNode):
     SUMMARY = "test"
     Config = BaseVlmConfig
 
-    async def _describe(self, image: bytes, context: str, system_prompt: str) -> tuple[str, float]:
+    async def _describe(
+        self,
+        image: bytes,
+        context: str,
+        system_prompt: str,
+        usage_sink: UsageAccumulator | None = None,
+    ) -> tuple[str, float]:
         raise NotImplementedError  # replaced per test
 
 

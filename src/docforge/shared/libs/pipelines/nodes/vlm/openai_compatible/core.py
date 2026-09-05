@@ -11,8 +11,11 @@ import base64
 from langchain_core.messages import HumanMessage, SystemMessage
 
 # ====== Internal Project Imports ======
-from shared_libs.pipelines.base import NodeUsage
-from shared_libs.pipelines.nodes.openai_compat import EndpointReachability, OpenAICompatHelpers
+from shared_libs.pipelines.nodes.openai_compat import (
+    EndpointReachability,
+    OpenAICompatHelpers,
+    UsageAccumulator,
+)
 from shared_libs.pipelines.registry import NodeRegistry
 
 # ====== Local Project Imports ======
@@ -48,8 +51,14 @@ class VlmOpenAICompatibleNode(BaseVlmNode):
             timeout_seconds=config.preflight_timeout_seconds,
         )
 
-    async def _describe(self, image: bytes, context: str, system_prompt: str) -> tuple[str, float]:
-        """Run the multimodal chat call."""
+    async def _describe(
+        self,
+        image: bytes,
+        context: str,
+        system_prompt: str,
+        usage_sink: UsageAccumulator | None = None,
+    ) -> tuple[str, float]:
+        """Run the multimodal chat call, attributing every attempt's usage to the shared sink."""
         config: VlmOpenAICompatibleConfig = self.config
         # 1. Build the multimodal message: optional context text + the image as a data URL.
         encoded = base64.b64encode(image).decode("ascii")
@@ -62,21 +71,20 @@ class VlmOpenAICompatibleNode(BaseVlmNode):
             {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{encoded}"}}
         )
 
-        # 2. Invoke the endpoint (client built by the shared factory).
+        # 2. Invoke the endpoint (client built by the shared factory). The usage sink rides as a
+        #    callback so THIS attempt's tokens are folded into the base's per-run accumulator — a
+        #    local sink threaded across the retry loop, so a concurrent per-figure ForEach never clobbers.
         model = OpenAICompatHelpers.chat(
-            config, temperature=config.temperature, max_tokens=config.max_tokens
+            config,
+            temperature=config.temperature,
+            max_tokens=config.max_tokens,
+            usage_sink=usage_sink,
         )
         answer = await model.ainvoke(
             [SystemMessage(content=system_prompt), HumanMessage(content=content)]
         )
 
-        # 3. Stash this call's token usage for the base ``run`` to stamp on the output. Read with no
-        #    await before ``run`` lifts it, so a concurrent per-figure ForEach item cannot clobber it.
-        self._last_usage = NodeUsage.from_usage_metadata(
-            getattr(answer, "usage_metadata", None), config.model
-        )
-
-        # 4. No usable confidence from a chat VLM — non-empty answer = accepted.
+        # 3. No usable confidence from a chat VLM — non-empty answer = accepted.
         text = str(answer.content)
         return text, 1.0 if text.strip() else 0.0
 

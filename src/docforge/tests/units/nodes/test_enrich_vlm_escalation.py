@@ -12,6 +12,7 @@ import shared_libs.pipelines.ingest.nodes  # noqa: F401 — registers ingest + e
 import shared_libs.pipelines.nodes  # noqa: F401 — registers generic families (vlm)
 from shared_libs.pipelines.build import PipelineBuilder
 from shared_libs.pipelines.engine import FlowEngine
+from shared_libs.pipelines.nodes.openai_compat import UsageAccumulator
 from shared_libs.pipelines.nodes.vlm.base import BaseVlmConfig, BaseVlmNode
 from shared_libs.pipelines.registry import NodeRegistry
 from shared_libs.pipelines.validation import GraphValidator
@@ -33,7 +34,13 @@ class FakeVlmCheap(BaseVlmNode):
     SUMMARY = "test"
     Config = BaseVlmConfig
 
-    async def _describe(self, image: bytes, context: str, system_prompt: str) -> tuple[str, float]:
+    async def _describe(
+        self,
+        image: bytes,
+        context: str,
+        system_prompt: str,
+        usage_sink: UsageAccumulator | None = None,
+    ) -> tuple[str, float]:
         CALLS["vlm_cheap"] += 1
         # A hard figure yields a low-confidence description → escalation; an easy one is accepted.
         if b"HARD" in image:
@@ -48,7 +55,13 @@ class FakeVlmRobust(BaseVlmNode):
     SUMMARY = "test"
     Config = BaseVlmConfig
 
-    async def _describe(self, image: bytes, context: str, system_prompt: str) -> tuple[str, float]:
+    async def _describe(
+        self,
+        image: bytes,
+        context: str,
+        system_prompt: str,
+        usage_sink: UsageAccumulator | None = None,
+    ) -> tuple[str, float]:
         CALLS["vlm_robust"] += 1
         return "ROBUST DESC", 0.95
 

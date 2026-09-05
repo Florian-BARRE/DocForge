@@ -104,7 +104,21 @@ async def test_llm_without_usage_metadata_stays_none() -> None:
 
 
 def _vlm(monkeypatch, answer: AIMessage) -> VlmOpenAICompatibleNode:
-    monkeypatch.setattr(vlm_core.OpenAICompatHelpers, "chat", lambda *a, **k: _fake_model(answer))
+    """Build a VLM node whose chat client folds the answer's usage into the passed sink.
+
+    The live capture rides on the LangChain ``on_llm_end`` callback (the ``usage_sink`` the node
+    threads across its retry loop); a bare AsyncMock never fires it, so the fake ``chat`` records the
+    answer's usage into the sink itself — standing in for the callback the real client would fire.
+    """
+
+    def _chat(*args, usage_sink=None, **kwargs):
+        model = _fake_model(answer)
+        meta = answer.usage_metadata
+        if usage_sink is not None and meta is not None:
+            usage_sink.record(meta["input_tokens"], meta["output_tokens"])
+        return model
+
+    monkeypatch.setattr(vlm_core.OpenAICompatHelpers, "chat", _chat)
     return VlmOpenAICompatibleNode(
         id="vlm",
         config=vlm_core.VlmOpenAICompatibleConfig(base_url="http://x", model="gpt-4o", api_key="k"),

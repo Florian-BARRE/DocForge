@@ -16,6 +16,7 @@ from shared_libs.pipelines.build import PipelineBuilder
 from shared_libs.pipelines.engine import FlowEngine
 from shared_libs.pipelines.ingest.nodes.enrich.figure_classify import FigureClassifyNode
 from shared_libs.pipelines.nodes.ocr.base import BaseOcrConfig, BaseOcrNode
+from shared_libs.pipelines.nodes.openai_compat import UsageAccumulator
 from shared_libs.pipelines.nodes.vlm.base import BaseVlmConfig, BaseVlmNode
 from shared_libs.pipelines.registry import NodeRegistry
 from shared_libs.pipelines.validation import GraphValidator
@@ -78,7 +79,13 @@ class FakeVlm(BaseVlmNode):
     SUMMARY = "test"
     Config = BaseVlmConfig
 
-    async def _describe(self, image: bytes, context: str, system_prompt: str) -> tuple[str, float]:
+    async def _describe(
+        self,
+        image: bytes,
+        context: str,
+        system_prompt: str,
+        usage_sink: UsageAccumulator | None = None,
+    ) -> tuple[str, float]:
         CALLS["vlm"] += 1
         # The node prepends an always-on anti-deflection guard before the per-class prompt. Echo
         # the per-class first line (after the guard separator) so class-specific assertions hold,

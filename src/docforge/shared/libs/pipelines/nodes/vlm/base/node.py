@@ -15,7 +15,8 @@ import httpx
 import openai
 
 # ====== Internal Project Imports ======
-from shared_libs.pipelines.base import ActionNode, NodeUsage
+from shared_libs.pipelines.base import ActionNode
+from shared_libs.pipelines.nodes.openai_compat import UsageAccumulator
 from shared_libs.public_models import EnrichmentEntry
 
 # ====== Local Project Imports ======
@@ -51,13 +52,24 @@ class BaseVlmNode(ActionNode):
     Consumes = VlmConsumes
     Produces = VlmProduces
 
-    # Last paid-call token usage, stashed by ``_describe`` and lifted onto the output by ``run`` with
-    # no await between (race-free under a per-figure ForEach). None when the provider reported none.
-    _last_usage: NodeUsage | None = None
-
     @abstractmethod
-    async def _describe(self, image: bytes, context: str, system_prompt: str) -> tuple[str, float]:
-        """Run the provider's VLM on one image (+ text context) → (answer, confidence in [0, 1])."""
+    async def _describe(
+        self,
+        image: bytes,
+        context: str,
+        system_prompt: str,
+        usage_sink: UsageAccumulator | None = None,
+    ) -> tuple[str, float]:
+        """Run the provider's VLM on one image (+ text context) → (answer, confidence in [0, 1]).
+
+        Args:
+            image (bytes): The figure crop to describe.
+            context (str): Textual context (e.g. the figure's prior OCR text).
+            system_prompt (str): The composed instruction driving the description.
+            usage_sink (UsageAccumulator | None): The per-run accumulator to attach to the paid chat
+                call so EVERY attempt's token usage is summed (not just the final success). One sink
+                is threaded across the whole retry loop; ``None`` disables usage capture.
+        """
         ...
 
     @staticmethod
@@ -83,7 +95,11 @@ class BaseVlmNode(ActionNode):
         )
 
     async def _describe_with_retry(
-        self, image: bytes, context: str, system_prompt: str
+        self,
+        image: bytes,
+        context: str,
+        system_prompt: str,
+        usage_sink: UsageAccumulator | None,
     ) -> tuple[str, float]:
         """Call ``_describe`` with a bounded, transient-only retry below the graph's escalation.
 
@@ -91,11 +107,13 @@ class BaseVlmNode(ActionNode):
         re-raised, so the existing ScoreBelow/OnFailure chaining to the next provider (and the
         figure-skip terminal) still takes over. Only transient failures are retried; a non-transient
         error re-raises immediately. Each attempt is bounded by the provider's ``timeout_seconds``.
+        The ONE ``usage_sink`` is passed to every attempt so an attempt that billed then failed still
+        contributes its usage (not just the final success).
         """
         config: BaseVlmConfig = self.config
         for attempt in range(config.max_retries + 1):  # 1 initial call + max_retries retries
             try:
-                return await self._describe(image, context, system_prompt)
+                return await self._describe(image, context, system_prompt, usage_sink=usage_sink)
             except Exception as error:  # noqa: BLE001 — re-raised below unless a bounded transient
                 if not self._is_transient(error) or attempt == config.max_retries:
                     raise
@@ -128,9 +146,13 @@ class BaseVlmNode(ActionNode):
         )
 
         # 2. Run the provider (bounded transient retry below the graph's escalation) — the confidence
-        #    drives quality escalation, never discarded.
+        #    drives quality escalation, never discarded. ONE accumulator, keyed to the pricing model,
+        #    is threaded across every attempt so a paid attempt that billed then retried still counts.
+        #    The model id lives on the concrete provider's config (a base VLM config need not carry
+        #    one), read defensively so a usage-capture concern can never fail the node.
+        usage = UsageAccumulator(getattr(config, "model", ""))
         answer, confidence = await self._describe_with_retry(
-            data.figure.image, data.figure.read_text, prompt
+            data.figure.image, data.figure.read_text, prompt, usage_sink=usage
         )
 
         # 3. Post-process: pull the table rows out of the answer when they were requested.
@@ -138,8 +160,9 @@ class BaseVlmNode(ActionNode):
             BaseVlmHelpers.extract_table(answer) if config.extract_table else (answer.strip(), None)
         )
 
-        # 4. Emit the scored entry: everything the figure's run learned, in one entry. The paid-call
-        #    token usage the provider stashed rides along on the output for the engine to lift.
+        # 4. Emit the scored entry: everything the figure's run learned, in one entry. The summed
+        #    token usage across ALL attempts rides along on the output for the engine to lift (None
+        #    when no attempt carried usage — a usage-less provider stays free, unchanged).
         output = VlmProduces(
             entry=EnrichmentEntry(
                 block_id=data.figure.block_id,
@@ -150,7 +173,7 @@ class BaseVlmNode(ActionNode):
             ),
             score=confidence,
         )
-        output._usage = self._last_usage
+        output._usage = usage.usage
         return output
 
 
