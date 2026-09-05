@@ -6,9 +6,9 @@
 
 import type { FieldSpec, FieldType } from "../../api/collections";
 import { Chip } from "../../components/Chip";
-import { FormField } from "../../components/FormField";
-import { inputStyle } from "../../components/inputStyle";
 import { theme } from "../../theme";
+import { FilterValueControl } from "./FilterValueControl";
+import type { RangeValue } from "./filterValue";
 
 interface SearchFilterBuilderProps {
   fields: FieldSpec[];
@@ -33,8 +33,8 @@ export function SearchFilterBuilder({ fields, values, onFilterChange }: SearchFi
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: theme.space.s }}>
         {fields.map((field) => (
-          <div key={field.field_name} style={{ width: 160 }}>
-            <FieldFilterControl
+          <div key={field.field_name} style={{ minWidth: 160 }}>
+            <FilterValueControl
               field={field}
               value={values[field.field_name]}
               onChange={(v) => onFilterChange(field.field_name, v)}
@@ -65,76 +65,20 @@ export function SearchFilterBuilder({ fields, values, onFilterChange }: SearchFi
   );
 }
 
-/** Human-readable rendering of an active filter's value, for the chip row. */
+/** Human-readable rendering of an active filter's value, for the chip row — echoes the operator
+ *  (any-of / range) rather than just `String(value)`, now that a value may be an array or a
+ *  {gte/gt/lte/lt} mapping. */
 function formatFilterValue(fieldType: FieldType | undefined, value: unknown): string {
   if (fieldType === "bool") return value ? "yes" : "no";
+  if (Array.isArray(value)) return `any of ${value.join(", ")}`;
+  if (value !== null && typeof value === "object") {
+    const range = value as RangeValue;
+    const parts: string[] = [];
+    if (range.gte !== undefined) parts.push(`≥ ${range.gte}`);
+    if (range.gt !== undefined) parts.push(`> ${range.gt}`);
+    if (range.lte !== undefined) parts.push(`≤ ${range.lte}`);
+    if (range.lt !== undefined) parts.push(`< ${range.lt}`);
+    return parts.join(" and ") || "any";
+  }
   return String(value);
-}
-
-interface FieldFilterControlProps {
-  field: FieldSpec;
-  value: unknown;
-  onChange: (value: unknown | undefined) => void;
-}
-
-/** Renders the input matched to a single field's `field_type`, with omit-on-empty semantics. */
-function FieldFilterControl({ field, value, onChange }: FieldFilterControlProps) {
-  if (field.field_type === "enum") {
-    return (
-      <FormField label={field.field_name}>
-        <select
-          style={inputStyle}
-          value={value === undefined ? "" : String(value)}
-          onChange={(e) => onChange(e.target.value === "" ? undefined : e.target.value)}
-        >
-          <option value="">—</option>
-          {(field.enum_values ?? []).map((option) => (
-            <option key={option} value={option}>{option}</option>
-          ))}
-        </select>
-      </FormField>
-    );
-  }
-
-  if (field.field_type === "bool") {
-    return (
-      <FormField label={field.field_name}>
-        <select
-          style={inputStyle}
-          value={value === undefined ? "" : String(value)}
-          onChange={(e) => onChange(e.target.value === "" ? undefined : e.target.value === "true")}
-        >
-          <option value="">—</option>
-          <option value="true">yes</option>
-          <option value="false">no</option>
-        </select>
-      </FormField>
-    );
-  }
-
-  if (field.field_type === "integer" || field.field_type === "float") {
-    return (
-      <FormField label={field.field_name}>
-        <input
-          type="number"
-          style={inputStyle}
-          value={value === undefined ? "" : String(value)}
-          onChange={(e) => onChange(e.target.value === "" ? undefined : Number(e.target.value))}
-        />
-      </FormField>
-    );
-  }
-
-  // Every remaining type (string/text/keyword_list/datetime/text_list/integer_list/float_list)
-  // is filtered as a plain string.
-  return (
-    <FormField label={field.field_name}>
-      <input
-        type="text"
-        style={inputStyle}
-        value={value === undefined ? "" : String(value)}
-        onChange={(e) => onChange(e.target.value === "" ? undefined : e.target.value)}
-      />
-    </FormField>
-  );
 }

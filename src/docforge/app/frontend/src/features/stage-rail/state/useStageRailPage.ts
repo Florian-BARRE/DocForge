@@ -41,18 +41,23 @@ export function useStageRailPage({ initialBlob, onBlobChange, onSave }: UseStage
   const [debouncePending, setDebouncePending] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
   const onBlobChangeRef = useRef(onBlobChange);
   onBlobChangeRef.current = onBlobChange;
 
   // 1. Discover the design surface, load the palette (for node-card names/summaries/schemas) and
   //    the (possibly seeded) blob's stage view — validity is folded into the SAME /stages/view
-  //    response, so the open is one design GET + one view POST (no priming /inspect).
+  //    response, so the open is one design GET + one view POST (no priming /inspect). The whole
+  //    chain (discovery AND the inner design/view round-trip) funnels through one try/catch so a
+  //    failure anywhere lands in `loadError` instead of an unhandled rejection + eternal spinner.
   useEffect(() => {
     let cancelled = false;
-    listPipelineDesigns().then(async ({ pipelines }) => {
-      const descriptor = pipelines[0];
-      if (!descriptor) return;
+    setLoadError(null);
+    (async () => {
       try {
+        const { pipelines } = await listPipelineDesigns();
+        const descriptor = pipelines[0];
+        if (!descriptor) return;
         const design = await getDesign(descriptor.design_url);
         const seedBlob = initialBlob ?? design.blob;
         const viewResult = await viewStages(descriptor.stages_view_url, seedBlob);
@@ -70,12 +75,14 @@ export function useStageRailPage({ initialBlob, onBlobChange, onSave }: UseStage
       } catch (error) {
         if (!cancelled) setLoadError(error instanceof Error ? error.message : String(error));
       }
-    });
+    })();
     return () => {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [reloadKey]);
+
+  const retryLoad = useCallback(() => setReloadKey((k) => k + 1), []);
 
   // 2. blobLatestRef/stagesLatestRef are the true "current state" for the NEXT round-trip —
   //    written synchronously wherever a change happens, so a rapid sequence of gestures never
@@ -197,6 +204,6 @@ export function useStageRailPage({ initialBlob, onBlobChange, onSave }: UseStage
 
   return {
     palette, stages, valid, issues, notices, loadError, applyError, busy, debouncePending, saving, saveError,
-    actions, handleSave,
+    actions, handleSave, retryLoad,
   };
 }

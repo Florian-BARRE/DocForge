@@ -68,8 +68,12 @@ export function LayoutTab({ ir, pages, chunks, provenance, error, chunksError, o
   // so a fallback/escalation (e.g. docling failed → pp_structure succeeded) is visible per block.
   const parseChain = useMemo(() => {
     const PARSERS = new Set(["docling", "granite_docling", "pp_structure", "mineru", "marker", "dots_ocr", "azure", "mistral"]);
+    // Gate on the PARSE stage, not just the kind: several kinds (e.g. "mistral", "dots_ocr") are
+    // shared across families — a (ocr, mistral) crop-reader runs in ENRICH, a (llm, …) in
+    // contextualize/metagen — so a kind-only match would misclassify them as parsers. Only a node
+    // whose pipeline stage is "parse" is part of the extraction chain.
     const chain = (provenance?.stages ?? [])
-      .filter((stage) => stage.node_kind && PARSERS.has(stage.node_kind))
+      .filter((stage) => stage.stage === "parse" && stage.node_kind && PARSERS.has(stage.node_kind))
       .map((stage) => ({ kind: stage.node_kind as string, status: stage.status }));
     if (chain.length > 0) return chain;
     const fallback = provenance?.stages.find((stage) => stage.stage === "parse")?.node_kind;

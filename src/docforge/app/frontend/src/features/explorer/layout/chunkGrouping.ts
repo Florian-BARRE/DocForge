@@ -45,11 +45,17 @@ export function buildChunkByBlockId(chunks: ChunkInfo[]): Map<string, ChunkInfo>
  * Returns: page groups, ordered by first page; single-page groups for the common case.
  */
 export function buildPageGroups(pages: PageInfo[], blocks: IRBlock[], chunks: ChunkInfo[]): PageGroup[] {
-  // 1. Union-find over page numbers.
+  // 1. Union-find over page numbers. `find` is TOTAL: an unseeded key seeds itself as its own root
+  //    and returns immediately — never spinning (the old `parent.get(root) ?? root` looped forever on
+  //    a key absent from the map, since `undefined ?? root` re-yields the same non-root key).
   const parent = new Map<number, number>();
   const find = (n: number): number => {
+    if (parent.get(n) === undefined) {
+      parent.set(n, n);
+      return n;
+    }
     let root = n;
-    while (parent.get(root) !== root) root = parent.get(root) ?? root;
+    while (parent.get(root) !== root) root = parent.get(root)!;
     return root;
   };
   const union = (a: number, b: number) => {
@@ -57,13 +63,15 @@ export function buildPageGroups(pages: PageInfo[], blocks: IRBlock[], chunks: Ch
   };
   for (const page of pages) parent.set(page.page_number, page.page_number);
 
-  // 2. Bridge every pair of pages a single chunk touches.
+  // 2. Bridge every page a single chunk touches into one component. Chaining consecutive touched
+  //    pages (not just anchoring the rest to the first) keeps the intent obvious and connects them
+  //    all transitively; `find` seeds any page a block references that is not in `pages`.
   const pageOfBlock = new Map<string, number>();
   for (const block of blocks) pageOfBlock.set(block.id, block.page);
   for (const chunk of chunks) {
     const chunkPages = chunk.block_ids.map((id) => pageOfBlock.get(id)).filter((n): n is number => n != null);
     for (let i = 1; i < chunkPages.length; i += 1) {
-      if (parent.has(chunkPages[0]) && parent.has(chunkPages[i])) union(chunkPages[0], chunkPages[i]);
+      union(chunkPages[i - 1], chunkPages[i]);
     }
   }
 

@@ -8,6 +8,8 @@
 
 ## Journal
 
+- **2026-09-05 — Vague G / 0.14.17 (V8 frontend bugs, 5 items — 3 MOYENNE + 2 FAIBLE)** : (1) **WorkersPanel + JobsPage polling mort après 1 échec** — le `.catch` ne reprogrammait pas le timer → un blip figeait le panneau à vie ; désormais l'erreur est surfacée MAIS le `setTimeout(load)` est reprogrammé dans le catch → recovery auto au prochain succès. (2) **stage-rail loading éternel sur échec discovery** — `listPipelineDesigns().then(...)` avait un `try/catch` INTÉRIEUR seulement (l'échec de la discovery elle-même = rejection non gérée + spinner infini) ; toute la chaîne (discovery + design + view) passe dans un seul `try/catch` d'une IIFE async → `loadError` + `retryLoad` (reloadKey) exposés, StageRailPage câble le retry. (3) **Search Lab filtres any-of/range** — le builder ne produisait qu'égalité ; refactor (`FilterValueControl.tsx` + `filterValue.ts` purs) pour construire `in` (any-of) + `gte/gt/lte/lt` (range) à la forme wire réelle (models search vérifiés) ; SearchFilterBuilder -73 lignes. (4) **union-find `buildPageGroups`** (agent+**moi**) — `find()` bouclait à l'infini sur une clé non-seedée (`undefined ?? n` re-yield la même non-racine) → `find` rendu TOTAL (seed-on-demand) ; union chaînée sur pages consécutives (couvre >2 pages transitivement) ; +3 tests vitest (chunk multi-pages groupé, clé non-seedée ne hang pas). (5) **contamination parse-chain "mistral"** (moi) — `PARSERS.has(node_kind)` matchait un `(ocr, mistral)`/`(llm, …)` (kind partagé entre familles) ; gate ajouté sur `stage.stage === "parse"` (l'OCR crop-reader tourne en ENRICH, le LLM en contextualize/metagen) → plus de faux parser. Gate conteneur : **lint 0 err**, tsc clean, **vitest 5** (dont chunkGrouping 3), build ✓. **→ V8 : 61/188.**
+
 - **2026-09-05 — Vague F / 0.14.16 (V8 paddle_server, 4 items — clôt les serveurs modèles)** : (1) **bytes image/PDF invalides → 500 leak** (ocr + layout-parsing router) — nouveau `libs/validation.py` (`InvalidInputError` + `InputValidator.verify_image` Pillow / `verify_pdf` pypdfium2, deps AVX-free, import différé) validé **avant** le lock/l'inférence dans les services → routers renvoient **422** (message propre, fixe) pour un input client cassé, 500 réservé aux vraies fautes. (2) **`PADDLE_USE_DOC_UNWARPING` mort** → **retiré** (jamais lu ; les pipelines hardcodent `False` par contrat provenance bbox — un override serait un mensonge) + NOTE explicative ; refs stale nettoyées (`docs/configuration.md`, `services/paddle_server/.env{,.example}`). (3) **SIGILL no-AVX non gardé** — `CpuFeatures.supports_avx()` (lecture `/proc/cpuinfo` cachée, dégrade "présent" si non-probable) checké **en premier** dans `/health` → **503 unhealthy** avec raison sur CPU sans AVX (le conteneur n'annonce plus une readiness qu'il ne peut tenir ; aucune inférence lancée dans le healthcheck). (4) **`PADDLE_PIN_INFO` mort** → export retiré + docstring corrigée (le bloc engine reporte la version paddleocr **installée**, plus fiable qu'un pin déclaré). Gate paddle : format+lint+mypy clean, **51 passed** (+17). Vérifié par moi (gate rejoué + nettoyage refs). **→ V8 : 56/188 ; serveurs modèles (bge+paddle) 100%.**
 
 - **2026-09-05 — Vague E / 0.14.15 (V8 infra + bge_server, 11 items, 2 agents ||)** : **infra/compose (7)** — (1) **healthcheck `docforge_app`** : `GET /health` (public, hors `/api/v1`, zéro I/O) via `python -c urllib` (pas de curl dans l'image slim) ; `docforge_mcp` + `docforge_caddy` passent `depends_on: service_healthy` sur l'app. (2) **`.dockerignore` manquant** : `src/docforge/.dockerignore` créé (le contexte app/worker est `src/docforge/`, PAS `src/` — Docker ne lit `.dockerignore` qu'à la racine du contexte) → exclut `.venv` (~400 Mo), `node_modules`, `dist`, `.vite`, caches ; **safe** car l'image app build son propre `dist/` in-container (stage `ui-build` `npm ci`+`npm run build`, vérifié). (3) **Grafana pw drift** : export mort `GRAFANA_ADMIN_PASSWORD` retiré du Makefile + bloc `.env.example` racine réécrit vers `services/telemetry/.env` (mécanisme réel `env_file`). (4) **compose/README** : faux dir `compose/telemetry/` → `services/telemetry/` + règle path proxy/telemetry (`-f`, résolue depuis project dir) corrigée. (5) **headers dev.yml/gpu.yml** : exemples `-f` manuels (paths hors-repo) → pointent les fichiers-scénario ; claim "last-include wins" → FIRST-wins. (6) **robustesse** : `docforge_app` attend seaweedfs healthy ; healthchecks promtail/grafana + `deploy.resources.limits` sur les 4 services télémétrie + depends_on service_healthy. (7) **commentaires legacy** purgés (base.yml). Validé : `config -q` sur les 16 combos (4 scénarios × {none,proxy,telemetry,both}). **bge_server (4)** — (1) **`/embed_all` back-pressure** : compteur in-flight capé dans `BatchingEngine` → `QueueFullError` → **503 + Retry-After** au routeur (comme les 4 routes queued), plus d'OOM possible. (2) **thread-budget** : réconcilié avec le moteur 2-locks (embed+rerank = 2 forward passes concurrents) — doc/code cohérents. (3) **`/rerank` tri score-descendant** (parité TEI) — le client docforge `bge_reranker` remappe par `index` (vérifié), donc sûr. (4) **cluster doc/commentaires stale** (worker/engine/context/lifespan : "3 workers/1 lock" → "4 workers/2 locks"). Gate bge : format+lint+mypy clean, **33 passed** (+4). Reste V8 model-servers : les 4 items **paddle** (wave dédiée). **→ V8 : 52/188.**
@@ -119,8 +121,8 @@
 | V5 — Moteur & pipeline | 2 | 2 | 0 | 0 |
 | V6 — Frontend | 0 | 0 | 0 | 0 |
 | V7 — Documentation | 21 | 21 | 0 | 0 |
-| V8 — Outillage (.claude/tests/infra/télémétrie) | 188 | 56 | 3 | 129 |
-| **Total** | **247** | **114** | **3** | **130** |
+| V8 — Outillage (.claude/tests/infra/télémétrie) | 188 | 61 | 3 | 124 |
+| **Total** | **247** | **119** | **3** | **125** |
 
 
 ## V1 — Sécurité & authz (avant tout déploiement multi-tenant)  (30)
@@ -556,11 +558,11 @@
   `src/docforge/shared/libs/services/db/postgresql/apis/job_api.py:67` _(aussi: backend-api)_
 - [x] **🟠 MOYENNE** · `perf` — Search Lab fetches the entire unpaginated document list just to learn "has documents"  
   `src/docforge/app/frontend/src/features/search/SearchLabPage.tsx:48`
-- [ ] **🟠 MOYENNE** · `design` — Search Lab filter builder cannot express the documented any-of and range filter forms  
+- [x] **🟠 MOYENNE** · `design` — Search Lab filter builder cannot express the documented any-of and range filter forms  
   `src/docforge/app/frontend/src/features/search/SearchFilterBuilder.tsx:115`
-- [ ] **🟠 MOYENNE** · `bug` — Stage-rail initial load: unhandled rejection + eternal loading state on discovery failure  
+- [x] **🟠 MOYENNE** · `bug` — Stage-rail initial load: unhandled rejection + eternal loading state on discovery failure  
   `src/docforge/app/frontend/src/features/stage-rail/state/useStageRailPage.ts:52`
-- [ ] **🟠 MOYENNE** · `bug` — WorkersPanel and JobsPage stop polling permanently after one failed fetch  
+- [x] **🟠 MOYENNE** · `bug` — WorkersPanel and JobsPage stop polling permanently after one failed fetch  
   `src/docforge/app/frontend/src/features/monitoring/WorkersPanel.tsx:32`
 - [ ] **⚪ FAIBLE** · `design` — CancelledError terminal writes: a second cancellation mid-shield skips the job write, and Exception doesn't catch it  
   `src/docforge/worker/backend/libs/jobs/core.py:258`
@@ -570,7 +572,7 @@
   `src/docforge/app/frontend/src/features/explorer/layout/IrChunkGraph.tsx:1`
 - [ ] **⚪ FAIBLE** · `consistency` — Grouped low-severity smells: stale comments, per-render column rebuild, filtered-mode delete accounting, token violations, asymmetric editor hygiene  
   `src/docforge/app/frontend/src/features/corpus/CorpusPage.tsx:64`
-- [ ] **⚪ FAIBLE** · `bug` — Layout parse-chain contaminated: "mistral" in the PARSERS set matches the OCR and LLM node kinds  
+- [x] **⚪ FAIBLE** · `bug` — Layout parse-chain contaminated: "mistral" in the PARSERS set matches the OCR and LLM node kinds  
   `src/docforge/app/frontend/src/features/explorer/layout/LayoutTab.tsx:66`
 - [ ] **⚪ FAIBLE** · `consistency` — Low-severity smells in the Layout batch (grouped): hardcoded rgba shadow, bypassed displayPage, unreachable-degenerate unionBbox, dropped empty pages, page-load action error nukes the document page, >200-line files  
   `src/docforge/app/frontend/src/components/PageBoxOverlay.tsx:171`
@@ -590,7 +592,7 @@
   `src/docforge/app/frontend/src/features/explorer/layout/PageGroupRow.tsx:5`
 - [ ] **⚪ FAIBLE** · `divergence-doc` — Startup job reclaim keys on the container hostname, which changes on every container recreate — the crash/hard-kill cases it claims to cover never match  
   `src/docforge/shared/libs/services/db/facades/jobs_facade.py:344`
-- [ ] **⚪ FAIBLE** · `bug` — Union-find in buildPageGroups: only the leading page is unioned, and find() infinite-loops on an unseeded key  
+- [x] **⚪ FAIBLE** · `bug` — Union-find in buildPageGroups: only the leading page is unioned, and find() infinite-loops on an unseeded key  
   `src/docforge/app/frontend/src/features/explorer/layout/chunkGrouping.ts:50`
 
 ### IR & modèles

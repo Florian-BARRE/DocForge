@@ -29,7 +29,13 @@ export function WorkersPanel({ onNavigate }: { onNavigate: Navigate }) {
           setError(null);
           timer = window.setTimeout(load, POLL_MS);
         })
-        .catch((e) => { if (!cancelled) setError(e instanceof Error ? e.message : String(e)); });
+        .catch((e) => {
+          if (cancelled) return;
+          // A transient poll failure surfaces the error but must NOT kill the interval — the
+          // fleet view is always-live and has to recover on its own once the backend answers again.
+          setError(e instanceof Error ? e.message : String(e));
+          timer = window.setTimeout(load, POLL_MS);
+        });
     };
     load();
 
