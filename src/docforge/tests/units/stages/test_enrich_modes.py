@@ -17,6 +17,7 @@ from shared_libs.pipelines.ingest import IngestPipeline
 from shared_libs.pipelines.ingest.stages import (
     EnableStage,
     SetStageConfig,
+    StageSpecs,
     StageViewer,
     StateReader,
 )
@@ -119,6 +120,59 @@ def test_legacy_ocr_only_value_normalises_to_uniform(compiler, builder, validato
     blob, notices = _enable_uniform(compiler, treatment="ocr", mode="ocr_only")
     assert validator.validate(builder.build(blob)) == [], notices
     assert StateReader.read(blob).figure_enrich_mode == "uniform"
+
+
+def test_uniform_vlm_to_classified_preserves_the_vlm_chains(compiler, builder, validator) -> None:
+    """Switching uniform(vlm) -> classified must NOT silently route every visual class to the
+    zero-spend skip. The single uniform VLM chain (slot figure_describe_vlm) is mirrored onto each
+    classified VLM branch on read, so the per-class chains survive the mode switch (the regression
+    this guards: before the fix the classified state read back with NO vlm chains at all)."""
+    uni, _ = _enable_uniform(compiler, treatment="vlm")
+    assert StateReader.read(uni).uniform_treatment == "vlm"
+
+    # Flip to classified via the enrich stage config (as the studio POSTs it back).
+    cfg = {**_enrich_view(uni).config, "figure_enrich_mode": "classified"}
+    clf, notices = compiler.apply(uni, SetStageConfig(stage="enrich", config=cfg))
+
+    # 1. Every classified VLM branch carries a real chain — none was dropped to the skip.
+    state = StateReader.read(clf)
+    assert state.figure_enrich_mode == "classified"
+    vlm_slots = [b.slot for b in StageSpecs.FIGURE_BRANCHES if b.family == "vlm"]
+    assert vlm_slots, "test needs at least one classified VLM branch"
+    for slot in vlm_slots:
+        assert slot in state.chains and state.chains[slot].steps, f"{slot} chain was dropped"
+
+    # 2. The assembled classified body has real VLM steps (not an all-skip switch) and validates.
+    body = _body_of(clf)
+    assert any(getattr(n, "family", None) == "vlm" for n in body.nodes)
+    assert validator.validate(builder.build(clf)) == [], notices
+
+
+def test_uniform_vlm_classified_uniform_round_trip_keeps_the_chain(compiler) -> None:
+    """The full uniform(vlm) -> classified -> uniform(vlm) round trip keeps a real VLM chain on the
+    uniform slot instead of collapsing back to the stock describe default with no trace."""
+    uni, _ = _enable_uniform(compiler, treatment="vlm")
+    clf, _ = compiler.apply(
+        uni,
+        SetStageConfig(
+            stage="enrich",
+            config={**_enrich_view(uni).config, "figure_enrich_mode": "classified"},
+        ),
+    )
+    back, _ = compiler.apply(
+        clf,
+        SetStageConfig(
+            stage="enrich",
+            config={
+                **_enrich_view(clf).config,
+                "figure_enrich_mode": "uniform",
+                "uniform_treatment": "vlm",
+            },
+        ),
+    )
+    state = StateReader.read(back)
+    assert state.figure_enrich_mode == "uniform" and state.uniform_treatment == "vlm"
+    assert "figure_describe_vlm" in state.chains and state.chains["figure_describe_vlm"].steps
 
 
 def test_uniform_ocr_survives_a_multi_step_chain(compiler, builder, validator) -> None:

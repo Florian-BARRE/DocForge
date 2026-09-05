@@ -164,6 +164,36 @@ def test_binding_not_upstream(validator) -> None:
     assert "binding_not_upstream" in _codes(validator, graph)
 
 
+def test_unknown_slot_binding_is_flagged(validator) -> None:
+    """A binding to a slot the action node does NOT declare is a wiring typo. The resolver reads
+    only declared slots, so it would silently ignore it — the validator must surface it instead."""
+    graph = Group(
+        id="us",
+        children=[_p("a"), _cd("b")],
+        transitions=[Transition(from_node_id="a", to_node_id="b")],
+        bindings={
+            "a": {},
+            "b": {
+                "doc": FromNode(node_id="a", field_name="doc"),
+                "typo_slot": FromNode(node_id="a", field_name="doc"),
+            },
+        },
+    )
+    codes = _codes(validator, graph)
+    assert "unknown_slot" in codes
+
+
+def test_only_declared_slots_bound_raises_no_unknown_slot(validator) -> None:
+    """The healthy sequence (only the declared slot bound) raises no unknown_slot issue."""
+    graph = Group(
+        id="ks",
+        children=[_p("a"), _cd("b")],
+        transitions=[Transition(from_node_id="a", to_node_id="b")],
+        bindings={"a": {}, "b": {"doc": FromNode(node_id="a", field_name="doc")}},
+    )
+    assert "unknown_slot" not in _codes(validator, graph)
+
+
 def test_cycle_detected(validator) -> None:
     graph = Group(
         id="cy",

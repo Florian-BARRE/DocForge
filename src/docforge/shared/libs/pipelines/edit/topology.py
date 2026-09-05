@@ -79,6 +79,9 @@ class BlobTopology:
             for node in nodes:
                 ids.add(node.id)
                 if isinstance(node, ForEachNodeBlob):
+                    # The ForEach body is a group with its OWN id (e.g. ``loop_body``); include it so
+                    # a minted/remapped id can never collide with a body-group id it never scanned.
+                    ids.add(node.body.id)
                     walk(node.body.nodes)
                 elif isinstance(node, GroupNodeBlob):
                     walk(node.nodes)

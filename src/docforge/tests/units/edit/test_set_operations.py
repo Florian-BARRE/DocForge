@@ -1,9 +1,9 @@
 """SetBinding, SetAfter, SetCondition, SetConfig, SetLoopProp — the remaining edit operations
 not covered by the scratchpad's test_edit_api.py (which only exercised 4 of the 9)."""
 
-from shared_libs.pipelines.base import Always, FromNode, FromRunInput, OnFailure
+from shared_libs.pipelines.base import Always, FromNode, FromRunInput, OnFailure, Transition
 from shared_libs.pipelines.build import GroupNodeBlob
-from shared_libs.pipelines.build.blob import ForEachNodeBlob
+from shared_libs.pipelines.build.blob import ActionNodeBlob, ForEachNodeBlob
 from shared_libs.pipelines.edit import (
     EditError,
     SetAfter,
@@ -12,6 +12,22 @@ from shared_libs.pipelines.edit import (
     SetConfig,
     SetLoopProp,
 )
+
+
+def _convergence_blob() -> GroupNodeBlob:
+    """A tiny graph where 'c' is a convergence node — both 'a' and 'b' route into it."""
+    return GroupNodeBlob(
+        id="root",
+        nodes=[
+            ActionNodeBlob(id="a", family="enrich", kind="figure_entry"),
+            ActionNodeBlob(id="b", family="enrich", kind="figure_entry"),
+            ActionNodeBlob(id="c", family="enrich", kind="figure_entry"),
+        ],
+        transitions=[
+            Transition(from_node_id="a", to_node_id="c"),
+            Transition(from_node_id="b", to_node_id="c"),
+        ],
+    )
 
 
 def test_set_binding_none_unbinds_a_slot(editor, full_blob) -> None:
@@ -67,6 +83,21 @@ def test_set_after_reprositions_a_node_keeping_the_edge_condition(
 def test_set_after_none_detaches_the_node(editor, default_blob) -> None:
     detached = editor.apply(default_blob, [SetAfter(node_id="ctx_breadcrumb", from_node_id=None)])
     assert not any(t.to_node_id == "ctx_breadcrumb" for t in detached.transitions)
+
+
+def test_set_after_on_convergence_node_refuses_and_keeps_every_edge(editor) -> None:
+    """SetAfter replaces a node's SINGLE incoming edge. On a convergence node (several incoming
+    edges) the edge to replace is ambiguous, so it must refuse with EditError rather than silently
+    delete the other incoming edges (which used to leave a valid-but-wrong graph)."""
+    blob = _convergence_blob()
+    try:
+        editor.apply(blob, [SetAfter(node_id="c", from_node_id="a")])
+        raise AssertionError("set_after on a convergence node must raise EditError")
+    except EditError as exc:
+        assert "convergence" in str(exc) and "'c'" in str(exc)
+    # The caller's blob is never mutated: BOTH incoming edges of 'c' survive intact.
+    incoming = sorted(t.from_node_id for t in blob.transitions if t.to_node_id == "c")
+    assert incoming == ["a", "b"]
 
 
 def test_set_after_unknown_predecessor_raises_edit_error(editor, default_blob) -> None:

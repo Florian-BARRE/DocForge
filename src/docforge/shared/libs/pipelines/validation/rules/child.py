@@ -55,6 +55,19 @@ class ChildBindingRules:
         # 1. Action node: every declared CONSUMES slot must be bound; a FromFirst join is checked
         #    candidate by candidate (each one like a plain FromNode).
         if isinstance(child, ActionNode):
+            # 1a. A binding to a slot the node does NOT declare is a wiring typo. The resolver reads
+            #     only declared slots, so it would silently ignore such a binding — flag it here so
+            #     it fails fast at build like every other structural error (unlike a GROUP child,
+            #     whose input is a dynamic dict where any field name is legitimate).
+            declared_slots = set(child.Consumes.model_fields)
+            for bound_slot in node_bindings:
+                if bound_slot not in declared_slots:
+                    collector.record(
+                        ValidationCode.UNKNOWN_SLOT,
+                        location,
+                        f"binding to unknown input slot '{bound_slot}' "
+                        f"(node declares: {sorted(declared_slots)})",
+                    )
             for slot_name, field_info in child.Consumes.model_fields.items():
                 binding = node_bindings.get(slot_name)
                 if binding is None:
