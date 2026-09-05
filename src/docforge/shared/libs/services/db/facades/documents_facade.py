@@ -27,6 +27,7 @@ from shared_libs.services.db.postgresql.tables import (
     ChunkMetadata,
     Document,
     DocumentMetadata,
+    DocumentStatus,
     Page,
 )
 from shared_libs.services.db.qdrant import QdrantClient, QdrantIndexApi
@@ -64,10 +65,25 @@ class DocumentsFacade(LoggerClass):
         async with self._postgres.session() as session:
             return await DocumentApi.get_filterable_metadata_for_documents(session, document_ids)
 
-    async def list_for_collection(self, collection_id: uuid.UUID) -> list[Document]:
-        """Return a collection's documents, newest first."""
+    async def list_for_collection(
+        self,
+        collection_id: uuid.UUID,
+        status: DocumentStatus | None = None,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> list[Document]:
+        """Return a collection's documents, newest first — optionally status-filtered and paged."""
         async with self._postgres.session() as session:
-            return await DocumentApi.list_for_collection(session, collection_id)
+            return await DocumentApi.list_for_collection(
+                session, collection_id, status, limit, offset
+            )
+
+    async def count_for_collection(
+        self, collection_id: uuid.UUID, status: DocumentStatus | None = None
+    ) -> int:
+        """Count a collection's documents (optionally status-filtered) — the estimate scope size."""
+        async with self._postgres.session() as session:
+            return await DocumentApi.count_for_collection(session, collection_id, status)
 
     async def count_by_collections(
         self, collection_ids: Sequence[uuid.UUID]
@@ -109,11 +125,11 @@ class DocumentsFacade(LoggerClass):
         return rows, total
 
     async def resolve_query_ids(
-        self, collection_id: uuid.UUID, spec: DocumentQuerySpec
+        self, collection_id: uuid.UUID, spec: DocumentQuerySpec, limit: int | None = None
     ) -> list[uuid.UUID]:
-        """Return every document id matching a filter — the concrete target set of a filter-selector."""
+        """Return document ids matching a filter — the target set of a filter-selector (``limit``-bounded)."""
         async with self._postgres.session() as session:
-            return await DocumentQueryApi.resolve_ids(session, collection_id, spec)
+            return await DocumentQueryApi.resolve_ids(session, collection_id, spec, limit)
 
     async def get_metadata_for_documents(
         self, document_ids: Sequence[uuid.UUID]

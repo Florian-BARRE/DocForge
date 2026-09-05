@@ -42,6 +42,10 @@ def wired(fastapi_app, monkeypatch):
         "list_for_collection",
         AsyncMock(return_value=[_pending_doc(1_000_000, 20), _pending_doc(500_000, 10)]),
     )
+    # The whole-collection scope now counts the covered set cheaply (bounded read + linear scaling).
+    monkeypatch.setattr(
+        CONTEXT.database.documents, "count_for_collection", AsyncMock(return_value=2)
+    )
     return collection
 
 
@@ -80,6 +84,42 @@ def test_estimate_body_scope_all_includes_every_document(client, wired) -> None:
     response = client.post(f"/api/v1/collections/{COLLECTION_ID}/estimate", json={"scope": "all"})
     assert response.status_code == 200
     assert response.json()["document_count"] == 2
+
+
+def test_estimate_scope_is_bounded_and_scaled_to_true_count(
+    client, fastapi_app, monkeypatch
+) -> None:
+    """The whole-collection scope measures only a bounded sample and scales to the TRUE count.
+
+    ``count_for_collection`` reports 10 documents but only 2 rows are ever loaded (the sample); the
+    estimate must reflect all 10 via linear scaling (document_count seam), never just the 2 measured.
+    """
+    from backend.context import CONTEXT  # noqa: PLC0415
+
+    monkeypatch.setattr(
+        CONTEXT.database.collections,
+        "get",
+        AsyncMock(return_value=SimpleNamespace(pipeline=_default_pipeline_blob())),
+    )
+    monkeypatch.setattr(CONTEXT.database.collections, "get_schema", AsyncMock(return_value=[]))
+    # Only two rows are read (the bounded sample) even though the collection holds ten documents.
+    list_for_collection = AsyncMock(
+        return_value=[_pending_doc(1_000_000, 20), _pending_doc(500_000, 10)]
+    )
+    monkeypatch.setattr(CONTEXT.database.documents, "list_for_collection", list_for_collection)
+    monkeypatch.setattr(
+        CONTEXT.database.documents, "count_for_collection", AsyncMock(return_value=10)
+    )
+
+    response = client.post(f"/api/v1/collections/{COLLECTION_ID}/estimate")
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    # The estimate covers all ten documents, scaled from the two measured — not just the sample.
+    assert body["document_count"] == 10
+    assert body["volume"]["pages"] == 150  # (20 + 10) pages * (10 / 2) scaling
+    # A bounded read: the sample cap was passed through, never an unbounded whole-collection load.
+    assert list_for_collection.await_args.kwargs["limit"] > 0
 
 
 def test_estimate_unknown_collection_is_404(client, fastapi_app, monkeypatch) -> None:

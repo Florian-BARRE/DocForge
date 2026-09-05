@@ -84,3 +84,48 @@ def test_chunks_endpoint_returns_heading_path_and_resolved_page(
     assert body[0]["heading_path"] == ["Chapter 1", "Overview"]
     assert body[0]["page"] == 7
     documents.get_block_locations_for_chunks.assert_awaited_once_with([chunk_id])
+
+
+def test_provenance_does_not_shadow_success_with_a_later_failed_run(
+    client, fastapi_app, monkeypatch
+) -> None:
+    """A later FAILED re-ingest must not shadow the successful run that produced the persisted IR.
+
+    Provenance resolves the latest DONE job (``get_latest_successful_for_document``), never the plain
+    latest job — so a failed re-run queued after a successful ingest can never describe an IR it did
+    not produce. The route must use the successful seam and report that DONE job's id + trace.
+    """
+    import uuid  # noqa: PLC0415
+    from types import SimpleNamespace  # noqa: PLC0415
+    from unittest.mock import AsyncMock  # noqa: PLC0415
+
+    from backend.context import CONTEXT  # noqa: PLC0415
+
+    doc_id = uuid.uuid4()
+    successful_job_id = uuid.uuid4()
+    failed_job_id = uuid.uuid4()
+    document = SimpleNamespace(id=doc_id, collection_id=uuid.uuid4(), pipeline_version="v1")
+    successful_job = SimpleNamespace(id=successful_job_id, document_id=doc_id)
+    failed_job = SimpleNamespace(id=failed_job_id, document_id=doc_id)
+
+    documents = SimpleNamespace(get=AsyncMock(return_value=document))
+    jobs = SimpleNamespace(
+        # The plain latest job is the FAILED re-run — the route must NOT pick this one.
+        get_latest_for_document=AsyncMock(return_value=failed_job),
+        # The latest DONE job is the earlier successful run — the provenance source of truth.
+        get_latest_successful_for_document=AsyncMock(return_value=successful_job),
+        list_events=AsyncMock(return_value=[]),
+    )
+    monkeypatch.setattr(CONTEXT, "database", SimpleNamespace(documents=documents, jobs=jobs))
+
+    response = client.get(f"/api/v1/documents/{doc_id}/provenance")
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    # The successful run is the provenance; the later FAILED run never shadows it.
+    assert body["available"] is True
+    assert body["job_id"] == str(successful_job_id)
+    assert body["job_id"] != str(failed_job_id)
+    jobs.get_latest_successful_for_document.assert_awaited_once_with(doc_id)
+    jobs.get_latest_for_document.assert_not_awaited()
+    jobs.list_events.assert_awaited_once_with(successful_job_id)

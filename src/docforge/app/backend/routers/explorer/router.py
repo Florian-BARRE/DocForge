@@ -12,6 +12,9 @@ from collections import defaultdict
 # ====== Third-Party Library Imports ======
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 
+# ====== Internal Project Imports ======
+from config import RUNTIME_CONFIG
+
 # ====== Local Project Imports ======
 from ...context import CONTEXT
 from ...libs.auth import AuthPrincipal, AuthzGuard, Capability, require
@@ -74,19 +77,38 @@ async def _assert_chunk_scope(chunk_ids: list[uuid.UUID], principal: AuthPrincip
     dependencies=[Depends(require(Capability.READ))],
 )
 @auto_handle_errors
-async def list_documents(collection_id: uuid.UUID) -> list[DocumentListItem]:
+async def list_documents(
+    collection_id: uuid.UUID,
+    limit: int = Query(
+        default=RUNTIME_CONFIG.CORPUS_MAX_PAGE_SIZE,
+        ge=1,
+        description="Max documents to return (clamped to the server page ceiling). Returning exactly "
+        "this many signals more may exist — page with 'offset' (or use the corpus grid for filtering).",
+    ),
+    offset: int = Query(
+        default=0, ge=0, description="Documents to skip (paging; 0 = the first page)."
+    ),
+) -> list[DocumentListItem]:
     """
-    Return a collection's documents, newest first — the browse catalogue.
+    Return one bounded page of a collection's documents, newest first — the browse catalogue.
+
+    Bounded to avoid loading a 100k-document collection into memory in one call: ``limit`` is clamped
+    to the server page ceiling and defaults to it, and ``offset`` pages the id-stabilised order. For
+    filtered/sorted access at scale, use the corpus grid (``POST /collections/{id}/documents/query``).
 
     Returns:
-        list[DocumentListItem]: One row per document; 404 when the collection is unknown.
+        list[DocumentListItem]: One row per document (at most ``limit``); 404 when the collection is
+        unknown.
     """
     # 1. The collection must exist — an empty list would otherwise hide a bad id.
     if await CONTEXT.database.collections.get(collection_id) is None:
         raise HTTPException(status_code=404, detail=f"Collection {collection_id} not found.")
 
-    # 2. Straight read — map each row to its list item.
-    documents = await CONTEXT.database.documents.list_for_collection(collection_id)
+    # 2. Clamp the page size to the server ceiling, then read one bounded page.
+    bounded_limit = min(limit, RUNTIME_CONFIG.CORPUS_MAX_PAGE_SIZE)
+    documents = await CONTEXT.database.documents.list_for_collection(
+        collection_id, limit=bounded_limit, offset=offset
+    )
     return [ExplorerHelpers.list_item(document) for document in documents]
 
 
@@ -157,16 +179,20 @@ async def get_document_provenance(
     """
     Return a document's ingestion provenance — the parser/model pipeline that produced its IR + chunks.
 
-    The provenance IS the last ingestion job's per-stage trace (which parser/model ran at each stage,
-    with timing and any token/cost). When that job has been reaped/expired, ``available`` is False and
-    ``stages`` is empty — the IR still stands, only its run timeline could not be recovered.
+    The provenance IS the last SUCCESSFUL ingestion job's per-stage trace (which parser/model ran at
+    each stage, with timing and any token/cost). It is keyed on the latest DONE run — the one that
+    actually produced the IR/chunks on display — so a later FAILED or still-running re-ingest never
+    shadows it with a run that yielded nothing. When no successful run survives (only failures, or the
+    completed job was reaped/expired), ``available`` is False and ``stages`` is empty — the IR still
+    stands, only its run timeline could not be recovered.
 
     Returns:
         DocumentProvenance: The pipeline version and the ordered stage trace; 404 when unknown.
     """
-    # 1. Existence + scope guard, then the document's most recent ingestion job.
+    # 1. Existence + scope guard, then the document's most recent SUCCESSFUL ingestion job (the run
+    #    that produced the current persisted IR — never a later FAILED run that produced nothing).
     document = await _require_document(document_id, principal)
-    job = await CONTEXT.database.jobs.get_latest_for_document(document_id)
+    job = await CONTEXT.database.jobs.get_latest_successful_for_document(document_id)
 
     # 2. When a job survives, fold its stage-event rows into the ordered trace.
     stages: list[JobEvent] = []

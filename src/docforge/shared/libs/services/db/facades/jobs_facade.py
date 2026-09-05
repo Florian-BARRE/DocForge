@@ -44,9 +44,14 @@ class JobsFacade(LoggerClass):
             return await JobApi.get_with_names(session, job_id)
 
     async def get_latest_for_document(self, document_id: uuid.UUID) -> Job | None:
-        """The most recent ingestion job for a document — its last run's stage provenance."""
+        """The most recent ingestion job for a document — its last run (any status)."""
         async with self._postgres.session() as session:
             return await JobApi.get_latest_for_document(session, document_id)
+
+    async def get_latest_successful_for_document(self, document_id: uuid.UUID) -> Job | None:
+        """The most recent DONE job for a document — the run that produced its current persisted IR."""
+        async with self._postgres.session() as session:
+            return await JobApi.get_latest_successful_for_document(session, document_id)
 
     async def list_for_collection(self, collection_id: uuid.UUID) -> list[Job]:
         """Return a collection's jobs, newest first."""

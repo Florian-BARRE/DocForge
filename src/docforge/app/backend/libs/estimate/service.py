@@ -127,10 +127,15 @@ class CostEstimateService(LoggerClass):
             return documents, len(matched)
 
         # 2. No subset → the whole collection, narrowed by scope (pending = not-yet-ingested).
-        documents = await self._database.documents.list_for_collection(collection_id)
-        if request.scope == "pending":
-            documents = [d for d in documents if d.status == DocumentStatus.PENDING]
-        return documents, len(documents)
+        #    Bounded like the subset path: count the covered set cheaply, then measure only the first
+        #    N rows and let the estimator scale linearly (document_count seam) — so a 100k-doc scope
+        #    never loads 100k Document rows into memory.
+        status = DocumentStatus.PENDING if request.scope == "pending" else None
+        document_count = await self._database.documents.count_for_collection(collection_id, status)
+        documents = await self._database.documents.list_for_collection(
+            collection_id, status=status, limit=self._sample_cap
+        )
+        return documents, document_count
 
     @staticmethod
     def __selector(request: CollectionEstimateRequest) -> DocumentSelector | None:

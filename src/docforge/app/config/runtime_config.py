@@ -172,12 +172,16 @@ class RUNTIME_CONFIG(EnvConfigLoader):
     # only the first N (deterministic order) and reports ``capped=true`` + the total ``matched``, so a
     # single call can never silently flood the queue with 100k jobs. Raise it for a big planned re-run.
     CORPUS_MAX_REINGEST_FANOUT: int = env("CORPUS_MAX_REINGEST_FANOUT", cast=int, default=1000)
+    # Per-call cap on a bulk DELETE selection: a filter selector matching MORE than this deletes only
+    # the first N (deterministic order) and reports ``capped=true``, so one call never materialises a
+    # 100k-id set in memory. Delete is convergent — re-run the same selector to remove the remainder.
+    CORPUS_MAX_DELETE_SELECTION: int = env("CORPUS_MAX_DELETE_SELECTION", cast=int, default=10000)
 
     # ───── Cost estimate ─────
-    # When a cost estimate covers a document SUBSET (explicit ids or a corpus filter) matching MORE
-    # than this many documents, only the first N rows are measured and the estimate is scaled linearly
-    # to the full match count (via the sampler's document_count seam) — so a 100k-doc estimate never
-    # fetches 100k rows. The whole-collection scope path always measures every row (unbounded).
+    # When a cost estimate covers MORE than this many documents — whether an explicit id/filter SUBSET
+    # or the whole-collection scope — only the first N rows are measured and the estimate is scaled
+    # linearly to the full count (via the sampler's document_count seam), so a 100k-doc estimate never
+    # fetches 100k rows. The scope path counts the covered set cheaply and samples the first N.
     ESTIMATE_MAX_SAMPLE_DOCUMENTS: int = env(
         "ESTIMATE_MAX_SAMPLE_DOCUMENTS", cast=int, default=2000
     )

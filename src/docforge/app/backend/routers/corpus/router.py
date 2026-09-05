@@ -52,16 +52,23 @@ async def _require_scoped_collection(
 
 
 async def _resolve_targets(
-    collection_id: uuid.UUID, selector: DocumentSelector, principal: AuthPrincipal
+    collection_id: uuid.UUID,
+    selector: DocumentSelector,
+    principal: AuthPrincipal,
+    limit: int | None = None,
 ) -> list[uuid.UUID]:
-    """The shared bulk gate: collection exists (404), caller owns it (403), selector resolves (422)."""
+    """The shared bulk gate: collection exists (404), caller owns it (403), selector resolves (422).
+
+    A ``limit`` bounds the resolution so a destructive op never materialises an unbounded id set; the
+    caller probes with ``cap + 1`` to detect (and signal) that more matched than it will act on.
+    """
     # 1. Existence + scope before any resolution touches documents.
     await _require_scoped_collection(collection_id, principal)
     # 2. Resolve the selector against the schema; a bad field/op/id is a clean 422.
     schema = await CONTEXT.database.collections.get_schema(collection_id)
     try:
         return await DocumentSelectorResolver(CONTEXT.database).resolve(
-            collection_id, selector, schema
+            collection_id, selector, schema, limit
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
@@ -125,18 +132,32 @@ async def bulk_delete(
     """
     Delete every selected document everywhere (Qdrant points + PG cascade + orphan-only blob purge).
 
+    A filter selector matching MORE than the per-call selection cap deletes only the first N (a
+    deterministic, id-stable order) and reports ``capped=true`` — never a silent truncation and never
+    a 100k-id set held in memory. Delete is convergent: re-run the SAME selector to remove the rest.
+
     Returns:
-        BulkDeleteResponse: matched vs deleted; 404 unknown collection, 422 on a bad selector
+        BulkDeleteResponse: matched / deleted / capped; 404 unknown collection, 422 on a bad selector
             (unknown/foreign id, or an invalid filter field/operator).
     """
-    # 1. Existence + scope, then resolve the selector to a concrete, collection-scoped id set (422).
-    target_ids = await _resolve_targets(collection_id, selector, principal)
+    # 1. Existence + scope, then resolve the selector — bounded to the selection cap. Probing one past
+    #    the cap tells us whether more matched than this call will delete (the capped signal).
+    cap = RUNTIME_CONFIG.CORPUS_MAX_DELETE_SELECTION
+    resolved = await _resolve_targets(collection_id, selector, principal, limit=cap + 1)
+    capped = len(resolved) > cap
+    target_ids = resolved[:cap] if capped else resolved
 
-    # 2. Coherent cross-store bulk delete; report matched vs actually-deleted.
+    # 2. Coherent cross-store bulk delete; report matched vs actually-deleted (+ whether more remain).
     deleted = await CONTEXT.database.documents.delete_many(target_ids)
-    CONTEXT.logger.info(f"Bulk delete on {collection_id}: {deleted}/{len(target_ids)} removed")
+    CONTEXT.logger.info(
+        f"Bulk delete on {collection_id}: {deleted}/{len(target_ids)} removed (capped={capped})"
+    )
     return BulkDeleteResponse(
-        collection_id=str(collection_id), matched=len(target_ids), deleted=deleted
+        collection_id=str(collection_id),
+        matched=len(target_ids),
+        deleted=deleted,
+        capped=capped,
+        max_selection=cap,
     )
 
 

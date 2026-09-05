@@ -177,8 +177,48 @@ def test_bulk_delete_filter_no_match_is_zero(client, monkeypatch) -> None:
         f"/api/v1/collections/{COLLECTION_ID}/documents/delete", json={"filter": {}}
     )
     assert response.status_code == 200, response.text
-    assert response.json() == {"collection_id": str(COLLECTION_ID), "matched": 0, "deleted": 0}
+    body = response.json()
+    assert body["matched"] == 0 and body["deleted"] == 0 and body["capped"] is False
     delete_many.assert_awaited_once_with([])
+
+
+def test_bulk_delete_caps_selection_and_signals(client, monkeypatch) -> None:
+    """A filter matching MORE than the selection cap deletes only the first N and reports capped=true.
+
+    The resolution is bounded (never a 100k-id set in memory) and the truncation is SIGNALLED, not
+    silent — delete is convergent, so the caller re-runs the same selector for the remainder.
+    """
+    from backend.context import CONTEXT
+    from config import RUNTIME_CONFIG
+
+    monkeypatch.setattr(RUNTIME_CONFIG, "CORPUS_MAX_DELETE_SELECTION", 2)
+    # The bounded probe fetches cap + 1 ids; the DB honours the limit, so it returns 3 (2 kept + 1
+    # signalling more remain). The mock returns exactly what the limited query would.
+    matched = [uuid.uuid4() for _ in range(3)]
+    delete_many = AsyncMock(return_value=2)
+    resolve_query_ids = AsyncMock(return_value=matched)
+    monkeypatch.setattr(
+        CONTEXT,
+        "database",
+        SimpleNamespace(
+            collections=SimpleNamespace(
+                get=AsyncMock(return_value=SimpleNamespace(id=COLLECTION_ID)),
+                get_schema=AsyncMock(return_value=[]),
+            ),
+            documents=SimpleNamespace(resolve_query_ids=resolve_query_ids, delete_many=delete_many),
+        ),
+    )
+    response = client.post(
+        f"/api/v1/collections/{COLLECTION_ID}/documents/delete", json={"filter": {}}
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["capped"] is True and body["max_selection"] == 2
+    assert body["matched"] == 2 and body["deleted"] == 2
+    # Only the first N (the cap) are deleted; the probe id is dropped.
+    delete_many.assert_awaited_once_with(matched[:2])
+    # The read was bounded to cap + 1 (the probe), never an unbounded resolution.
+    assert resolve_query_ids.await_args.args[-1] == 3
 
 
 # -------------------- bulk set-enabled --------------------

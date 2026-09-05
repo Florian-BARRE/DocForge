@@ -91,11 +91,37 @@ class DocumentQueryApi:
 
     @classmethod
     async def resolve_ids(
-        cls, session: AsyncSession, collection_id: uuid.UUID, spec: DocumentQuerySpec
+        cls,
+        session: AsyncSession,
+        collection_id: uuid.UUID,
+        spec: DocumentQuerySpec,
+        limit: int | None = None,
     ) -> list[uuid.UUID]:
-        """Return every matching document id — the concrete target set a filter-selector expands to."""
-        # 1. Bare id projection over the same predicates (no ordering needed for a set).
-        statement = select(Document.id).where(*cls._conditions(collection_id, spec))
+        """
+        Return matching document ids — the concrete target set a filter-selector expands to.
+
+        A ``limit`` bounds the projection so a destructive bulk op never materialises a 100k-id set in
+        memory; the caller probes with ``cap + 1`` to detect (and signal) that more remain. The order
+        is id-stabilised so a repeated call after a bounded delete converges on the remainder instead
+        of re-reading an arbitrary window.
+
+        Args:
+            session (AsyncSession): The active DB session.
+            collection_id (uuid.UUID): The owning collection.
+            spec (DocumentQuerySpec): The fully-resolved filter.
+            limit (int | None): Cap the ids returned (None = every match, the unbounded selector need).
+
+        Returns:
+            list[uuid.UUID]: The matching ids (at most ``limit`` when set).
+        """
+        # 1. Bare id projection over the same predicates, stably ordered for convergent re-runs.
+        statement = (
+            select(Document.id)
+            .where(*cls._conditions(collection_id, spec))
+            .order_by(Document.created_at.desc(), Document.id.desc())
+        )
+        if limit is not None:
+            statement = statement.limit(limit)
         return list((await session.execute(statement)).scalars().all())
 
     # -------------------- statement assembly --------------------

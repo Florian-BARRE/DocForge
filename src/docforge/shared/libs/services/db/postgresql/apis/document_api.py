@@ -84,15 +84,69 @@ class DocumentApi:
 
     @staticmethod
     async def list_for_collection(
-        session: AsyncSession, collection_id: uuid.UUID
+        session: AsyncSession,
+        collection_id: uuid.UUID,
+        status: DocumentStatus | None = None,
+        limit: int | None = None,
+        offset: int = 0,
     ) -> list[Document]:
-        """Return the documents of a collection, newest first."""
-        result = await session.execute(
+        """
+        Return the documents of a collection, newest first — optionally status-filtered and paged.
+
+        The order is id-stabilised (``created_at`` desc, then ``id`` desc) so offset paging never
+        skips or duplicates a row when several documents share a creation timestamp.
+
+        Args:
+            session (AsyncSession): The active DB session.
+            collection_id (uuid.UUID): The owning collection.
+            status (DocumentStatus | None): Keep only documents in this status (None = every status).
+            limit (int | None): Cap the rows returned (None = unbounded, the full-list callers' need).
+            offset (int): Rows to skip for paging (0 = the first page).
+
+        Returns:
+            list[Document]: The matching documents, newest first (at most ``limit`` when set).
+        """
+        conditions = [Document.collection_id == collection_id]
+        if status is not None:
+            conditions.append(Document.status == status)
+        statement = (
             select(Document)
-            .where(Document.collection_id == collection_id)
-            .order_by(Document.created_at.desc())
+            .where(*conditions)
+            .order_by(Document.created_at.desc(), Document.id.desc())
+            .offset(offset)
         )
+        if limit is not None:
+            statement = statement.limit(limit)
+        result = await session.execute(statement)
         return list(result.scalars().all())
+
+    @staticmethod
+    async def count_for_collection(
+        session: AsyncSession,
+        collection_id: uuid.UUID,
+        status: DocumentStatus | None = None,
+    ) -> int:
+        """
+        Count a collection's documents (optionally status-filtered) — the estimate's true scope size.
+
+        Lets the cost estimate learn how many documents its whole-collection scope covers WITHOUT
+        loading them, so it can measure only a bounded sample and scale the projection linearly.
+
+        Args:
+            session (AsyncSession): The active DB session.
+            collection_id (uuid.UUID): The collection to count.
+            status (DocumentStatus | None): Count only this status (None = every status).
+
+        Returns:
+            int: The number of matching documents (0 when none).
+        """
+        conditions = [Document.collection_id == collection_id]
+        if status is not None:
+            conditions.append(Document.status == status)
+        result = await session.execute(
+            select(func.count()).select_from(Document).where(*conditions)
+        )
+        return int(result.scalar_one())
 
     @staticmethod
     async def count_by_collections(
