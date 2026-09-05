@@ -36,7 +36,7 @@ jobs:
       run:
         working-directory: src/docforge
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install uv
         uses: astral-sh/setup-uv@v5
         with:
@@ -94,7 +94,7 @@ jobs:
       TEST_POSTGRES_PASSWORD: docforge
       TEST_POSTGRES_ADMIN_DB: postgres
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install uv
         uses: astral-sh/setup-uv@v5
         with:
@@ -127,7 +127,7 @@ jobs:
       run:
         working-directory: ${{ matrix.working-directory }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install uv
         uses: astral-sh/setup-uv@v5
         with:
@@ -155,7 +155,7 @@ jobs:
       run:
         working-directory: src/bge_server
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install uv
         uses: astral-sh/setup-uv@v5
         with:
@@ -184,7 +184,7 @@ jobs:
       run:
         working-directory: src/paddle_server
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install uv
         uses: astral-sh/setup-uv@v5
         with:
@@ -207,7 +207,7 @@ jobs:
       run:
         working-directory: src/docforge/app/frontend
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
@@ -233,7 +233,7 @@ jobs:
     name: sdk-parity — SDK↔backend OpenAPI drift
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install uv
         uses: astral-sh/setup-uv@v5
         with:
