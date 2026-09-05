@@ -2,7 +2,7 @@
 ``pipeline``), validated on write exactly like the pipeline blob.
 
 A PATCH carrying a structurally broken search blob (a node kind the registry does not know) must be
-rejected 422 BEFORE storage — update_config is never reached, so the stored value cannot change. A
+rejected 422 BEFORE storage — apply_update is never reached, so the stored value cannot change. A
 valid search blob is stored verbatim. The empty ``{}`` sentinel ("use the stock default") is always
 allowed through, unvalidated. CONTEXT is patched with recording fakes so the endpoint runs without a
 store; ``from backend...`` imports are deferred until after the ``fastapi_app`` fixture put app/ on
@@ -12,6 +12,8 @@ sys.path.
 import uuid
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
+
+from shared_libs.services.db.facades import CollectionUpdateResult
 
 # A search blob naming a query node kind the registry does not know — BuildError at build time.
 BROKEN_SEARCH_BLOB = {
@@ -41,7 +43,7 @@ def _non_search_topology() -> dict:
 
 
 def _install_recording_context(monkeypatch, fastapi_app, stored_search: dict) -> SimpleNamespace:
-    """Patch CONTEXT.database.collections with a collection + a recording update_config spy."""
+    """Patch CONTEXT.database.collections with a collection + a recording apply_update spy."""
     # 1. Deferred import — app/ is on sys.path only after fastapi_app booted.
     from backend.context import CONTEXT  # noqa: PLC0415
 
@@ -61,14 +63,16 @@ def _install_recording_context(monkeypatch, fastapi_app, stored_search: dict) ->
         get=AsyncMock(return_value=collection),
         get_by_name=AsyncMock(return_value=None),
         get_schema=AsyncMock(return_value=[]),
-        update_config=AsyncMock(),
+        apply_update=AsyncMock(
+            return_value=CollectionUpdateResult(schema_applied=False, schema_reindex_required=False)
+        ),
     )
     monkeypatch.setattr(CONTEXT, "database", SimpleNamespace(collections=collections))
     return SimpleNamespace(collections=collections, collection=collection)
 
 
 def test_patch_broken_search_blob_is_422_and_not_stored(client, fastapi_app, monkeypatch) -> None:
-    """A structurally broken search blob is rejected 422 before update_config is ever reached."""
+    """A structurally broken search blob is rejected 422 before apply_update is ever reached."""
     spies = _install_recording_context(monkeypatch, fastapi_app, stored_search={})
 
     response = client.patch(
@@ -81,7 +85,7 @@ def test_patch_broken_search_blob_is_422_and_not_stored(client, fastapi_app, mon
     assert "does_not_exist" in response.text
 
     # 2. Nothing was stored — the config write was never reached.
-    spies.collections.update_config.assert_not_called()
+    spies.collections.apply_update.assert_not_called()
 
 
 def test_patch_valid_search_blob_is_stored(client, fastapi_app, monkeypatch) -> None:
@@ -96,8 +100,8 @@ def test_patch_valid_search_blob_is_stored(client, fastapi_app, monkeypatch) -> 
 
     # 1. Accepted, and the stored search blob is exactly what was sent.
     assert response.status_code == 200, response.text
-    spies.collections.update_config.assert_awaited_once()
-    assert spies.collections.update_config.await_args.kwargs["search"] == blob
+    spies.collections.apply_update.assert_awaited_once()
+    assert spies.collections.apply_update.await_args.args[1].search == blob
 
 
 def test_patch_empty_search_sentinel_is_allowed(client, fastapi_app, monkeypatch) -> None:
@@ -111,7 +115,7 @@ def test_patch_empty_search_sentinel_is_allowed(client, fastapi_app, monkeypatch
 
     # 1. Empty blob is always allowed and reaches storage as {}.
     assert response.status_code == 200, response.text
-    assert spies.collections.update_config.await_args.kwargs["search"] == {}
+    assert spies.collections.apply_update.await_args.args[1].search == {}
 
 
 def test_patch_non_search_topology_is_422_and_not_stored(client, fastapi_app, monkeypatch) -> None:
@@ -129,7 +133,7 @@ def test_patch_non_search_topology_is_422_and_not_stored(client, fastapi_app, mo
     assert "not a valid search pipeline" in response.text
 
     # 2. Nothing was stored — the config write was never reached.
-    spies.collections.update_config.assert_not_called()
+    spies.collections.apply_update.assert_not_called()
 
 
 def test_patch_non_empty_search_without_nodes_is_422(client, fastapi_app, monkeypatch) -> None:
@@ -145,4 +149,4 @@ def test_patch_non_empty_search_without_nodes_is_422(client, fastapi_app, monkey
     # 1. Only {} or a real topology (has "nodes") is a valid search value.
     assert response.status_code == 422, response.text
     assert "nodes" in response.text
-    spies.collections.update_config.assert_not_called()
+    spies.collections.apply_update.assert_not_called()

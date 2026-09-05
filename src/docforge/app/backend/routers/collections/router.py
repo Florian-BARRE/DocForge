@@ -16,7 +16,7 @@ from config import RUNTIME_CONFIG
 from shared_libs.pipelines.blob_secrets import restore_blob_secrets
 from shared_libs.pipelines.ingest import BlobNormalizationError, BlobNormalizer
 from shared_libs.pipelines.ingest.estimate import CostEstimate
-from shared_libs.services.db.facades import DuplicateCollectionNameError
+from shared_libs.services.db.facades import CollectionUpdateSpec, DuplicateCollectionNameError
 from shared_libs.services.db.postgresql.tables import Collection
 
 # ====== Local Project Imports ======
@@ -358,52 +358,14 @@ async def update_collection(
     if healed_search is not None and healed_search != {}:
         CollectionHelpers.validate_search_blob(healed_search)
 
-    # 3c. Validate the schema diff BEFORE any write — a bad field must 422 without having already
-    #     committed the identity/limits rename (the writes below are not one transaction).
+    # 3c. Validate the schema diff BEFORE any write — a bad field must 422 without touching the store.
     if request.fields is not None:
         CollectionHelpers.validate_fields(request.fields)
 
-    # 4. Identity/limits (no-op when untouched).
-    if any(
-        v is not None
-        for v in (
-            request.name,
-            request.supported_formats,
-            request.max_file_size_bytes,
-            request.job_timeout_seconds,
-        )
-    ):
-        await CONTEXT.database.collections.update_contract(
-            collection_id,
-            name=request.name,
-            supported_formats=request.supported_formats,
-            max_file_size_bytes=request.max_file_size_bytes,
-            job_timeout_seconds=request.job_timeout_seconds,
-        )
-
-    # 5. Schema evolution by DIFF — existing metadata values survive untouched fields; a searchable
-    #    change flips needs_reindex inside the facade, then the store is RECONCILED (not just flagged):
-    #    a newly filterable field gets its Qdrant payload index added live and the backfills repopulate
-    #    existing points; a newly semantic/lexical field needs a named vector Qdrant can't add live, so
-    #    a reindex is required to make it searchable.
-    if request.fields is not None:
-        try:
-            reindex = await CONTEXT.database.collections.update_schema(
-                collection_id, CollectionHelpers.to_field_rows(request.fields)
-            )
-        except ValueError as exc:
-            raise HTTPException(status_code=422, detail=str(exc))
-        await CollectionStoreSync.reconcile_and_backfill(collection_id)
-        if reindex:
-            CONTEXT.logger.warning(
-                f"Collection {collection_id}: searchable schema changed — reindex required"
-            )
-
-    # 6. Config blobs (append an immutable version snapshot). The pipeline is stored in its stamped
-    #    canonical form so subsequent runs/uploads fast-path. A pipeline edit that changes the EMBED
-    #    vector space (different embedder model/provider, toggled sparse) flips needs_reindex
-    #    — otherwise new documents would be embedded into a space incompatible with the stored ones,
-    #    silently degrading search. None leaves the flag as-is (a schema change may already have set it).
+    # 4. An embed-space change (different embedder model/provider, toggled sparse) forces a reindex —
+    #    a PURE comparison of the current vs stored blob, computed before the write. None leaves the
+    #    flag as-is (a schema change may already have set it inside the same transaction). Otherwise
+    #    new documents would embed into a space incompatible with the stored ones, degrading search.
     reindex_from_embed: bool | None = None
     if stored_pipeline is not None and CollectionBlobHelpers.embed_space_changed(
         current.pipeline, stored_pipeline
@@ -412,25 +374,57 @@ async def update_collection(
         CONTEXT.logger.warning(
             f"Collection {collection_id}: embed vector space changed — reindex required"
         )
-    if request.pipeline is not None or request.search is not None:
-        await CONTEXT.database.collections.update_config(
-            collection_id,
-            pipeline=stored_pipeline,
-            search=healed_search,
-            needs_reindex=reindex_from_embed,
-            note=request.note,
-        )
 
-    # 7. Cost-estimate overrides — set/replace/clear. Presence in the payload (not just non-null)
-    #    drives the write, so an explicit null CLEARS the overrides back to the global defaults, while
-    #    omitting the key leaves the stored overrides untouched. No secrets are involved (rates only).
-    if "estimate_overrides" in request.model_fields_set:
-        await CONTEXT.database.collections.set_estimate_overrides(
-            collection_id,
-            request.estimate_overrides.model_dump(mode="json", exclude_none=True)
-            if request.estimate_overrides is not None
-            else None,
-        )
+    # 5. Apply EVERY DB part in ONE transaction — a mid-sequence failure rolls the WHOLE patch back,
+    #    so a collection is never left half-updated (e.g. contract changed but schema not). The
+    #    pipeline is stored in its stamped canonical form (subsequent runs/uploads fast-path). A
+    #    vector-slug collision surfaces as ValueError → 422, before any write touches the DB.
+    spec = CollectionUpdateSpec(
+        contract_touched=any(
+            v is not None
+            for v in (
+                request.name,
+                request.supported_formats,
+                request.max_file_size_bytes,
+                request.job_timeout_seconds,
+            )
+        ),
+        name=request.name,
+        supported_formats=request.supported_formats,
+        max_file_size_bytes=request.max_file_size_bytes,
+        job_timeout_seconds=request.job_timeout_seconds,
+        schema_fields=CollectionHelpers.to_field_rows(request.fields)
+        if request.fields is not None
+        else None,
+        config_touched=request.pipeline is not None or request.search is not None,
+        pipeline=stored_pipeline,
+        search=healed_search,
+        embed_reindex=reindex_from_embed,
+        note=request.note,
+        apply_overrides="estimate_overrides" in request.model_fields_set,
+        estimate_overrides=request.estimate_overrides.model_dump(mode="json", exclude_none=True)
+        if request.estimate_overrides is not None
+        else None,
+    )
+    try:
+        result = await CONTEXT.database.collections.apply_update(collection_id, spec)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    except DuplicateCollectionNameError:
+        # A rename lost the UNIQUE race after the pre-check — same 409 the pre-check returns.
+        raise HTTPException(status_code=409, detail=f"Collection '{request.name}' already exists.")
+
+    # 6. Store-side follow-through AFTER the DB commit — reconcile the Qdrant store to the new schema
+    #    (a newly-filterable field gets its payload index added live; the backfills repopulate existing
+    #    points) then enqueue the repair backfills. Kept OUT of the DB transaction on purpose: it is
+    #    non-transactional and best-effort. A newly semantic/lexical field needs a named vector Qdrant
+    #    cannot add live, so a reindex is required to make it searchable.
+    if result.schema_applied:
+        await CollectionStoreSync.reconcile_and_backfill(collection_id)
+        if result.schema_reindex_required:
+            CONTEXT.logger.warning(
+                f"Collection {collection_id}: searchable schema changed — reindex required"
+            )
 
     updated = await CONTEXT.database.collections.get(collection_id)
     return CollectionHelpers.to_model(

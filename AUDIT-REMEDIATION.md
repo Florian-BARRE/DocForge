@@ -8,6 +8,8 @@
 
 ## Journal
 
+- **2026-09-05 — Vague I / 0.14.19 (V8 write-atomicité, 2 MOYENNE — code-reviewed)** : (A) **PATCH collection atomique** — le PATCH appliquait contract/schema/blob/override en commits SÉPARÉS (échec en cours = collection à moitié patchée). Nouveau `CollectionsFacade.apply_update(id, CollectionUpdateSpec) -> CollectionUpdateResult` : toutes les parties DB sur UNE session, commit unique (rollback total sur échec) ; diff schema extrait en `_apply_schema_diff(session,...)` (compose dans la tx partagée, chemin standalone inchangé) ; le reconcile/backfill Qdrant reste APRÈS le commit (non-transactionnel, best-effort). +fix parité race rename→**409** (`DuplicateCollectionNameError` mappé dans apply_update ET le routeur, comme create). (B) **toggle chunk cross-store convergent** — PG (source de vérité) commit d'ABORD, puis sync Qdrant idempotent ; échec Qdrant post-commit → **signal partial-failure** (`search_sync_pending`+`search_sync_error`, champ additif surfacé au routeur, jamais un faux 200) que le backfill/reconcile guérit. **`code-reviewer` : APPROVED WITH SUGGESTIONS** — atomicité A prouvée sur UNE session (les parties appellent `CollectionApi.*(session,...)`, pas les wrappers façade qui ouvriraient une 2e tx), B prouvé PG-first + idempotent + contrat additif ; A-1 (race rename 500→409) **appliqué + testé**. Suggestions `-m db` read-back (persistance) notées en follow-up (hors gate serviceless). Gate 4 projets : docforge **1435 passed**, sdk **557** (parité, champ additif), mcp 48, ruff clean. **→ V8 : 65/188 ; backend data-layer atomicité 100%.**
+
 - **2026-09-05 — Vague H / 0.14.18 (V8 backend data-layer, 2 MOYENNE ; atomicité 2/3 déférée)** : (item 4) **provenance renvoyait le dernier job même FAILED** — un job échoué/running postérieur masquait le run qui a réellement produit l'IR affichée. Nouveau `JobApi.get_latest_successful_for_document` (status==DONE, plus récent) + façade + routeur explorer/provenance ; None si aucun run DONE (surface = indisponible). +test (un FAILED tardif ne masque pas le run réussi). (item 1) **lectures whole-collection non bornées** — l'estimate default scope charge tout puis slice ; désormais borné **à la requête** via le knob existant `ESTIMATE_MAX_SAMPLE_DOCUMENTS` (`limit=cap` + slice ceinture-bretelles). Bulk DELETE : nouveau knob `CORPUS_MAX_DELETE_SELECTION` (10000) — au-delà, supprime les N premiers (ordre déterministe) et renvoie **`capped=true` + `max_selection`** (champ additif, re-run pour le reste ; SDK model + snapshot OpenAPI mis à jour, parité verte). Explorer document list borné. Gate 4 projets : docforge **1428 passed**, sdk **557** (parité OpenAPI incl.) + format corrigé (1 fichier laissé par l'agent), mcp 48, ruff clean. **Déféré (wave dédiée)** : update_collection atomique (PATCH multi-commit) + toggle chunk cross-store atomique — items durs (transaction unifiée / convergence PG↔Qdrant), à faire avec code-review. **→ V8 : 63/188.**
 
 - **2026-09-05 — Vague G / 0.14.17 (V8 frontend bugs, 5 items — 3 MOYENNE + 2 FAIBLE)** : (1) **WorkersPanel + JobsPage polling mort après 1 échec** — le `.catch` ne reprogrammait pas le timer → un blip figeait le panneau à vie ; désormais l'erreur est surfacée MAIS le `setTimeout(load)` est reprogrammé dans le catch → recovery auto au prochain succès. (2) **stage-rail loading éternel sur échec discovery** — `listPipelineDesigns().then(...)` avait un `try/catch` INTÉRIEUR seulement (l'échec de la discovery elle-même = rejection non gérée + spinner infini) ; toute la chaîne (discovery + design + view) passe dans un seul `try/catch` d'une IIFE async → `loadError` + `retryLoad` (reloadKey) exposés, StageRailPage câble le retry. (3) **Search Lab filtres any-of/range** — le builder ne produisait qu'égalité ; refactor (`FilterValueControl.tsx` + `filterValue.ts` purs) pour construire `in` (any-of) + `gte/gt/lte/lt` (range) à la forme wire réelle (models search vérifiés) ; SearchFilterBuilder -73 lignes. (4) **union-find `buildPageGroups`** (agent+**moi**) — `find()` bouclait à l'infini sur une clé non-seedée (`undefined ?? n` re-yield la même non-racine) → `find` rendu TOTAL (seed-on-demand) ; union chaînée sur pages consécutives (couvre >2 pages transitivement) ; +3 tests vitest (chunk multi-pages groupé, clé non-seedée ne hang pas). (5) **contamination parse-chain "mistral"** (moi) — `PARSERS.has(node_kind)` matchait un `(ocr, mistral)`/`(llm, …)` (kind partagé entre familles) ; gate ajouté sur `stage.stage === "parse"` (l'OCR crop-reader tourne en ENRICH, le LLM en contextualize/metagen) → plus de faux parser. Gate conteneur : **lint 0 err**, tsc clean, **vitest 5** (dont chunkGrouping 3), build ✓. **→ V8 : 61/188.**
@@ -123,8 +125,8 @@
 | V5 — Moteur & pipeline | 2 | 2 | 0 | 0 |
 | V6 — Frontend | 0 | 0 | 0 | 0 |
 | V7 — Documentation | 21 | 21 | 0 | 0 |
-| V8 — Outillage (.claude/tests/infra/télémétrie) | 188 | 63 | 3 | 122 |
-| **Total** | **247** | **121** | **3** | **123** |
+| V8 — Outillage (.claude/tests/infra/télémétrie) | 188 | 65 | 3 | 120 |
+| **Total** | **247** | **123** | **3** | **121** |
 
 
 ## V1 — Sécurité & authz (avant tout déploiement multi-tenant)  (30)
@@ -330,7 +332,7 @@
   `src/docforge/app/backend/routers/documents/router.py:125`
 - [x] **🟠 MOYENNE** · `perf` — Unbounded whole-collection reads: estimate default scope, explorer document list, and bulk delete have no cap  
   `src/docforge/app/backend/libs/estimate/service.py:130` _(aussi: money-math)_
-- [ ] **🟠 MOYENNE** · `design` — update_collection applies contract, schema, blob and override writes as separate commits — a mid-sequence failure leaves a half-applied PATCH  
+- [x] **🟠 MOYENNE** · `design` — update_collection applies contract, schema, blob and override writes as separate commits — a mid-sequence failure leaves a half-applied PATCH  
   `src/docforge/app/backend/routers/collections/router.py:348`
 - [x] **⚪ FAIBLE** · `bug` — GET /auth/whoami 500s on a malformed permissions blob instead of degrading like the authz gate  
   `src/docforge/app/backend/routers/auth/whoami.py:40`
@@ -495,7 +497,7 @@
 
 ### Données Postgres·Qdrant·S3
 
-- [ ] **🟠 MOYENNE** · `bug` — Bulk chunk toggle spanning collections is not atomic across the two stores  
+- [x] **🟠 MOYENNE** · `bug` — Bulk chunk toggle spanning collections is not atomic across the two stores  
   `src/docforge/shared/libs/services/db/facades/enablement_facade.py:117`
 - [x] **🟠 MOYENNE** · `perf` — Disabled-document exclusion list is unbounded and rides every prefetch branch of every search  
   `src/docforge/shared/libs/services/db/facades/search_facade.py:86`

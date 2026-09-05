@@ -62,12 +62,13 @@ async def test_toggle_embedded_chunk_flips_payload(monkeypatch) -> None:
     facade = EnablementFacade(_postgres_yielding(MagicMock()), MagicMock())
 
     # 2. Disable the chunk.
-    outcomes = await facade.set_chunks_enabled([chunk.id], False)
+    result = await facade.set_chunks_enabled([chunk.id], False)
 
     # 3. Override persisted, effective recomputed, payload flipped on the right collection.
     assert chunk.enabled_override is False
-    assert outcomes[0].enabled is False
-    assert outcomes[0].reindex_required is False
+    assert result.outcomes[0].enabled is False
+    assert result.outcomes[0].reindex_required is False
+    assert result.search_sync_pending is False
     name = DatabaseHelpers.qdrant_collection_name(collection_id)
     set_payload.assert_awaited_once_with(
         facade._qdrant.raw, name, {str(chunk.id): {"enabled": False}}
@@ -86,12 +87,12 @@ async def test_enable_never_embedded_chunk_requires_reindex(monkeypatch) -> None
     facade = EnablementFacade(_postgres_yielding(MagicMock()), MagicMock())
 
     # 2. Enable it.
-    outcomes = await facade.set_chunks_enabled([chunk.id], True)
+    result = await facade.set_chunks_enabled([chunk.id], True)
 
     # 3. The override is recorded, but NO point was flipped and the caller is told a reindex is due.
     assert chunk.enabled_override is True
-    assert outcomes[0].enabled is True
-    assert outcomes[0].reindex_required is True
+    assert result.outcomes[0].enabled is True
+    assert result.outcomes[0].reindex_required is True
     set_payload.assert_not_awaited()
 
 
@@ -100,6 +101,80 @@ async def test_unknown_chunk_ids_yield_no_outcomes(monkeypatch) -> None:
     monkeypatch.setattr(ef_module.ChunkApi, "get_by_ids", AsyncMock(return_value=[]))
     facade = EnablementFacade(_postgres_yielding(MagicMock()), MagicMock())
 
-    outcomes = await facade.set_chunks_enabled([uuid.uuid4()], True)
+    result = await facade.set_chunks_enabled([uuid.uuid4()], True)
 
-    assert outcomes == []
+    assert result.outcomes == []
+    assert result.search_sync_pending is False
+
+
+async def test_postgres_commits_before_qdrant_sync(monkeypatch) -> None:
+    """Postgres is the source of truth: its session must COMMIT (exit) before the Qdrant flip runs,
+    so a durable override precedes the derived-store write. Order is asserted via a call log."""
+    # 1. One embedded chunk + a session whose exit is recorded alongside the Qdrant call.
+    chunk = _chunk(is_indexed=True)
+    document = SimpleNamespace(id=chunk.document_id, collection_id=uuid.uuid4())
+    monkeypatch.setattr(ef_module.ChunkApi, "get_by_ids", AsyncMock(return_value=[chunk]))
+    monkeypatch.setattr(ef_module.DocumentApi, "get_by_ids", AsyncMock(return_value=[document]))
+
+    events: list[str] = []
+
+    @asynccontextmanager
+    async def _session():
+        yield MagicMock()
+        events.append("pg_commit")  # the session context exit == the Postgres commit
+
+    async def _set_payload(*_args, **_kwargs):
+        events.append("qdrant_sync")
+
+    postgres = MagicMock()
+    postgres.session = _session
+    monkeypatch.setattr(
+        ef_module.QdrantIndexApi, "set_payload", AsyncMock(side_effect=_set_payload)
+    )
+    facade = EnablementFacade(postgres, MagicMock())
+
+    # 2. Toggle → Postgres commit strictly precedes the Qdrant sync.
+    result = await facade.set_chunks_enabled([chunk.id], False)
+
+    assert events == ["pg_commit", "qdrant_sync"]
+    assert result.search_sync_pending is False
+
+
+async def test_qdrant_failure_after_pg_commit_is_partial_not_fatal(monkeypatch) -> None:
+    """The core Item-B path: Postgres commits, the Qdrant sync then FAILS. The override is durable
+    (chunk.enabled_override reflects the toggle), the caller gets search_sync_pending=True (never a
+    raised error / false success), and a re-run — reading the same PG truth — converges the store."""
+    # 1. One embedded chunk; the first Qdrant sync raises, a later re-run succeeds.
+    chunk = _chunk(is_indexed=True)
+    collection_id = uuid.uuid4()
+    document = SimpleNamespace(id=chunk.document_id, collection_id=collection_id)
+    monkeypatch.setattr(ef_module.ChunkApi, "get_by_ids", AsyncMock(return_value=[chunk]))
+    monkeypatch.setattr(ef_module.DocumentApi, "get_by_ids", AsyncMock(return_value=[document]))
+
+    calls: list[dict] = []
+
+    async def _set_payload(_client, _name, payloads):
+        calls.append(payloads)
+        if len(calls) == 1:
+            raise RuntimeError("qdrant unreachable")
+
+    monkeypatch.setattr(
+        ef_module.QdrantIndexApi, "set_payload", AsyncMock(side_effect=_set_payload)
+    )
+    facade = EnablementFacade(_postgres_yielding(MagicMock()), MagicMock())
+
+    # 2. First toggle: Postgres reflects the change; the Qdrant failure is surfaced as PENDING.
+    first = await facade.set_chunks_enabled([chunk.id], False)
+    assert chunk.enabled_override is False  # Postgres truth committed
+    assert first.outcomes[0].enabled is False
+    assert first.search_sync_pending is True
+    assert "qdrant unreachable" in (first.search_sync_error or "")
+
+    # 3. Re-running the SAME toggle reconciles the derived store (idempotent set_payload, PG-driven):
+    #    the second sync repeats the identical payload and converges — no pending signal.
+    second = await facade.set_chunks_enabled([chunk.id], False)
+    assert second.search_sync_pending is False
+    assert calls == [
+        {str(chunk.id): {"enabled": False}},
+        {str(chunk.id): {"enabled": False}},
+    ]

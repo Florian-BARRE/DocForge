@@ -146,12 +146,24 @@ class ChunkEnabledResult(BaseModel):
         enabled (bool): The recomputed EFFECTIVE state (override ?? role default).
         reindex_required (bool): True only when enabling a chunk that was never embedded — it has
             no Qdrant point, so it is NOT searchable until a later on-demand re-embed runs.
+        search_sync_pending (bool): True when Postgres committed the toggle but the Qdrant payload
+            flip failed — the search store is stale until a re-run/backfill reconciles it. Meaningful
+            on the SINGLE-chunk route (the whole response); in a bulk response the request-level flag
+            on ``BulkChunkEnabledResponse`` is authoritative and this stays False on nested results.
+        search_sync_error (str | None): The Qdrant failure message when ``search_sync_pending``.
     """
 
     chunk_id: str = Field(description="The toggled chunk's UUID.")
     enabled: bool = Field(description="The recomputed effective searchability state.")
     reindex_required: bool = Field(
         description="True when a never-embedded chunk was enabled — needs a deferred re-embed."
+    )
+    search_sync_pending: bool = Field(
+        default=False,
+        description="Postgres committed but the Qdrant sync failed — stale until reconciled.",
+    )
+    search_sync_error: str | None = Field(
+        default=None, description="The Qdrant failure message when search_sync_pending is set."
     )
 
 
@@ -162,6 +174,10 @@ class BulkChunkEnabledResponse(BaseModel):
     Attributes:
         results (list[ChunkEnabledResult]): One outcome per KNOWN chunk.
         not_found (list[str]): Requested ids with no matching chunk (skipped, not an error).
+        search_sync_pending (bool): True when Postgres committed the toggles but the Qdrant payload
+            sync failed — the search store is stale until a re-run/backfill reconciles it. The
+            request-level truth for the batch (never a false full-success).
+        search_sync_error (str | None): The Qdrant failure message when ``search_sync_pending``.
     """
 
     results: list[ChunkEnabledResult] = Field(
@@ -169,6 +185,13 @@ class BulkChunkEnabledResponse(BaseModel):
     )
     not_found: list[str] = Field(
         default_factory=list, description="Requested ids with no matching chunk."
+    )
+    search_sync_pending: bool = Field(
+        default=False,
+        description="Postgres committed but the Qdrant sync failed — stale until reconciled.",
+    )
+    search_sync_error: str | None = Field(
+        default=None, description="The Qdrant failure message when search_sync_pending is set."
     )
 
 
