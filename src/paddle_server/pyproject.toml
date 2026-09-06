@@ -15,7 +15,7 @@ dependencies = [
     # deps PP-StructureV3's OPTIONAL sub-pipelines need at runtime (Jinja2/premailer/beautifulsoup4
     # for table HTML serialization, latex2mathml/sentencepiece/tokenizers for formula recognition)
     # so every sub-pipeline toggle works without a rebuild, matching the same pin as paddleocr.
-    "paddlex[ocr]==3.7.0",
+    "paddlex[ocr]==3.7.2",
     # paddlepaddle itself is a DIRECT dependency (not just paddlex's transitive pull) so uv sources
     # below can steer it to the correct wheel index — same reasoning as bge_server's direct torch
     # declaration (uv sources are ignored for transitive deps).
