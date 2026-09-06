@@ -100,7 +100,7 @@ services:
 
   # ── Promtail — tails every container's Docker log and ships it to loki ──────
   promtail:
-    image: grafana/promtail:2.9.8
+    image: grafana/promtail:3.6.8
     container_name: docforge-promtail
     command: ["-config.file=/etc/promtail/promtail-config.yml"]
     volumes:
