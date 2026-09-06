@@ -21,7 +21,8 @@ export interface SearchRequest {
 
 /** One source block's location on the page — page + NORMALISED [0,1] bbox — enough to draw a box. */
 export interface BlockLocationModel {
-  page: number;
+  /** Null for a page-less document (no page render) — caught missing by `_contractParity.ts`, 2026-09. */
+  page: number | null;
   /** Bounding box [x0, y0, x1, y1] normalised to [0, 1]. */
   bbox: number[];
 }

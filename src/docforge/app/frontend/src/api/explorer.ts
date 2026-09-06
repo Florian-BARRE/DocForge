@@ -160,11 +160,17 @@ export interface ChunkEnabledPatch {
  *
  * `reindex_required` is true only when enabling a chunk that was never embedded — it has no
  * Qdrant point, so it is NOT searchable until a later on-demand re-embed runs.
+ *
+ * `search_sync_pending`/`search_sync_error` (caught missing by `_contractParity.ts`, 2026-09):
+ * meaningful on the single-chunk route — a bulk response's per-result entries always report
+ * `false` here, the REQUEST-level flag on `BulkChunkEnabledResponse` is authoritative for a batch.
  */
 export interface ChunkEnabledResult {
   chunk_id: string;
   enabled: boolean;
   reindex_required: boolean;
+  search_sync_pending: boolean;
+  search_sync_error: string | null;
 }
 
 /** Toggle several chunks' searchability to the same state in one call (the UI's multi-select). */
@@ -173,10 +179,20 @@ export interface BulkChunkEnabledPatch {
   enabled: boolean;
 }
 
-/** The per-chunk outcomes of a bulk toggle plus the ids that did not resolve to a chunk. */
+/**
+ * The per-chunk outcomes of a bulk toggle plus the ids that did not resolve to a chunk.
+ *
+ * `search_sync_pending`/`search_sync_error` (caught missing by `_contractParity.ts`, 2026-09):
+ * true when Postgres committed every toggle but the Qdrant payload sync failed — the search store
+ * is stale until a re-run/backfill reconciles it. This is the request-level truth for the whole
+ * batch (never a false full-success); the same fields on each nested `ChunkEnabledResult` stay
+ * `false`/`null`.
+ */
 export interface BulkChunkEnabledResponse {
   results: ChunkEnabledResult[];
   not_found: string[];
+  search_sync_pending: boolean;
+  search_sync_error: string | null;
 }
 
 export function listDocuments(collectionId: string): Promise<DocumentListItem[]> {
