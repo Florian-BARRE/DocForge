@@ -187,7 +187,7 @@ services:
 
   # ── Redis 7 — the arq job queue (transport only, no monitoring truth) ───────
   docforge_redis:
-    image: redis:7-bookworm
+    image: redis:8-bookworm
     container_name: docforge-redis
     # No host port in prod — internal to docforge_net only (app enqueue / worker listen).
     # Dev re-publishes 10042 via compose/overlays/compose.dev.yml.
