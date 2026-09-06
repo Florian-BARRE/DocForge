@@ -228,8 +228,13 @@ jobs:
       contents: read
       packages: write
     steps:
-      - name: Derive image version from the tag
-        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+      - name: Derive image version + lowercase owner from the tag
+        run: |
+          echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+          # GHCR repo paths must be lowercase; github.repository_owner (e.g. Florian-BARRE) is not,
+          # so a raw image-ref makes Trivy's pull silently fail (masked by continue-on-error) and
+          # report "no CVEs" for an image it never fetched. Lowercase it, like retag-latest does.
+          echo "OWNER_LC=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_ENV"
 
       - name: Set up Buildx
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
@@ -315,16 +320,22 @@ jobs:
           packages-dir: src/docforge_sdk/dist
 
   # 6. Non-blocking vulnerability scan of what was just published (after push, so it scans the
-  #    real pushed artifact, not a throwaway local build). A full IMAGE scan is only cheap for the
-  #    two small, single-variant images (app/mcp — no torch, always built, no GPU sibling); the
-  #    other three (worker/bge-server/paddle-server) ship huge CUDA -gpu variants (and their -cpu
-  #    siblings still carry sizeable ML deps), so pulling+unpacking them here would be slow. Those
-  #    instead get a cheap FILESYSTEM scan of their dependency manifests (uv.lock) — still catches
-  #    known-vulnerable dependency versions, without ever pulling an image. Day-0 baseline is
-  #    unvetted, so every step is non-blocking (`exit-code: 0` + `continue-on-error`): a brand-new
-  #    scanner must never be able to block a release. Flip to blocking once the baseline CVE list
-  #    has been triaged (see docs/PROD-HARDENING.md or a follow-up ADR). `v*`-only: `images` (via
-  #    `retag-latest`) is skipped on `sdk-v*`, so there is nothing new to scan.
+  #    real pushed artifact, not a throwaway local build). A full IMAGE scan (OS layer + deps) is
+  #    cheap for app/mcp (no torch, always built, no GPU sibling) AND for the -cpu variant of
+  #    worker/bge-server/paddle-server (~1.2-2 GB each, still fast to pull) — that -cpu image-ref
+  #    scan is what actually covers their OS base layer (python:3.12-slim-bookworm +
+  #    libgl1/libglib2.0-0/... installed via apt in each Dockerfile), which the older fs-only scan
+  #    below never touched. The -gpu variants are skipped here on purpose: they ship huge CUDA
+  #    payloads (multi-GiB) that would be slow to pull+unpack in this job, so they stay covered
+  #    only by the cheap FILESYSTEM scan of the shared dependency manifest (uv.lock) just below —
+  #    still catches known-vulnerable Python dependency versions (same lockfile drives both the
+  #    -cpu and -gpu build), without ever pulling an image. Day-0 baseline is unvetted, so every
+  #    step here is non-blocking (`exit-code: 0` + `continue-on-error`): a brand-new scanner must
+  #    never be able to block a release. FOLLOW-UP (not done here): flip the -cpu image scans to
+  #    blocking once the baseline HIGH/CRITICAL list has been triaged (see docs/PROD-HARDENING.md
+  #    or a follow-up ADR) — doing that blind, before triage, risks blocking a release on CVEs
+  #    nobody has assessed yet. `v*`-only: `images` (via `retag-latest`) is skipped on `sdk-v*`, so
+  #    there is nothing new to scan.
   security-scan:
     name: security-scan (Trivy, non-blocking)
     needs: retag-latest
@@ -341,8 +352,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - name: Derive image version from the tag
-        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+      - name: Derive image version + lowercase owner from the tag
+        run: |
+          echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+          # GHCR repo paths must be lowercase; github.repository_owner (e.g. Florian-BARRE) is not,
+          # so a raw image-ref makes Trivy's pull silently fail (masked by continue-on-error) and
+          # report "no CVEs" for an image it never fetched. Lowercase it, like retag-latest does.
+          echo "OWNER_LC=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_ENV"
 
       - name: Log in to GHCR (pull for scanning)
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
@@ -355,7 +371,7 @@ jobs:
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         continue-on-error: true
         with:
-          image-ref: ghcr.io/${{ github.repository_owner }}/docforge-app:${{ env.VERSION }}
+          image-ref: ghcr.io/${{ env.OWNER_LC }}/docforge-app:${{ env.VERSION }}
           severity: HIGH,CRITICAL
           exit-code: "0"
           format: table
@@ -365,11 +381,43 @@ jobs:
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         continue-on-error: true
         with:
-          image-ref: ghcr.io/${{ github.repository_owner }}/docforge-mcp:${{ env.VERSION }}
+          image-ref: ghcr.io/${{ env.OWNER_LC }}/docforge-mcp:${{ env.VERSION }}
           severity: HIGH,CRITICAL
           exit-code: "0"
           format: table
           output: trivy-mcp.txt
+
+      - name: Scan worker image, -cpu variant (HIGH/CRITICAL)
+        # Real image scan (not fs) so the OS base layer + apt packages baked into the runtime
+        # stage are covered, not just uv.lock. -cpu only — see job header comment.
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        continue-on-error: true
+        with:
+          image-ref: ghcr.io/${{ env.OWNER_LC }}/docforge-worker:${{ env.VERSION }}-cpu
+          severity: HIGH,CRITICAL
+          exit-code: "0"
+          format: table
+          output: trivy-worker-cpu.txt
+
+      - name: Scan bge-server image, -cpu variant (HIGH/CRITICAL)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        continue-on-error: true
+        with:
+          image-ref: ghcr.io/${{ env.OWNER_LC }}/docforge-bge-server:${{ env.VERSION }}-cpu
+          severity: HIGH,CRITICAL
+          exit-code: "0"
+          format: table
+          output: trivy-bge-server-cpu.txt
+
+      - name: Scan paddle-server image, -cpu variant (HIGH/CRITICAL)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        continue-on-error: true
+        with:
+          image-ref: ghcr.io/${{ env.OWNER_LC }}/docforge-paddle-server:${{ env.VERSION }}-cpu
+          severity: HIGH,CRITICAL
+          exit-code: "0"
+          format: table
+          output: trivy-paddle-server-cpu.txt
 
       - name: Scan docforge deps — filesystem (covers app + worker, one shared uv.lock)
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0

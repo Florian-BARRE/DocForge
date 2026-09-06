@@ -68,10 +68,15 @@ LABEL org.opencontainers.image.title="docforge-worker" \
 # - PYTHONUNBUFFERED: logs appear immediately in stdout/stderr
 # - PATH: make the uv-built venv the active Python environment
 # - TIKTOKEN_CACHE_DIR: point the tokenizer at the baked cache (no runtime download)
+# - MALLOC_ARENA_MAX: caps glibc malloc arenas at 2. No `cpus:` limit is set in compose, so
+#   glibc otherwise scales arenas to the HOST's core count — inflating RSS for this
+#   multi-threaded native stack (torch/OpenMP, OpenCV/rapidocr) well past what the process
+#   actually needs (this worker already runs at ~89% of its 5g compose memory limit).
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PATH="/opt/venv/bin:${PATH}" \
-    TIKTOKEN_CACHE_DIR=/opt/tiktoken_cache
+    TIKTOKEN_CACHE_DIR=/opt/tiktoken_cache \
+    MALLOC_ARENA_MAX=2
 
 # System shared libraries the model stack loads at runtime. docling's PDF/image path and the
 # OpenCV pulled by rapidocr-onnxruntime link against X11/GL client libs even when run headless —
