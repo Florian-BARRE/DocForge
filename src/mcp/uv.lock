@@ -283,8 +283,8 @@ requires-dist = [
     { name = "docforge-sdk", editable = "../docforge_sdk" },
     { name = "loggerplusplus", specifier = ">=1.0.0" },
     { name = "mcp", specifier = ">=1.28.1,<2" },
-    { name = "starlette", specifier = ">=1.6.0" },
-    { name = "uvicorn", extras = ["standard"], specifier = ">=0.32.0" },
+    { name = "starlette", specifier = ">=1.6.0,<2" },
+    { name = "uvicorn", extras = ["standard"], specifier = ">=0.32.0,<1" },
 ]
 
 [package.metadata.requires-dev]

@@ -21,15 +21,20 @@ dependencies = [
     # huggingface_hub is already a transitive dep (via FlagEmbedding/transformers), but is now
     # imported DIRECTLY by libs/bge_models/revision.py (snapshot_download for revision pinning),
     # so it must be declared explicitly — a direct import must be a direct dependency.
-    "huggingface_hub>=0.24.0",
-    # FastAPI + ASGI server.
-    "fastapi>=0.115.0",
-    "uvicorn[standard]>=0.30.0",
-    # Config & logging (same internal libraries as the rest of the DocForge stack).
+    # huggingface_hub is pre-1.0: cap below its next major (1.0), which the currently-locked
+    # version clears — the direct import in libs/bge_models/revision.py must not silently ride a
+    # breaking hub major on a routine lock refresh.
+    "huggingface_hub>=0.24.0,<1",
+    # FastAPI + ASGI server. Upper bounds guardrail a lock refresh away from a breaking major
+    # (both are pre-1.0, so the next major is 1.0); both caps clear the locked versions.
+    "fastapi>=0.115.0,<1",
+    "uvicorn[standard]>=0.30.0,<1",
+    # Config & logging (same internal libraries as the rest of the DocForge stack). Left unbounded
+    # on purpose: internally-versioned, not steered by an external release cadence.
     "configplusplus>=0.1.0",
     "loggerplusplus>=1.0.0",
     # ASCII startup banner printed by the lifespan.
-    "pyfiglet>=1.0.2",
+    "pyfiglet>=1.0.2,<2",
 ]
 
 # ── Torch variant extras ──────────────────────────────────────────────────────────────────────
