@@ -54,7 +54,7 @@ pipelines/ingest/nodes/
 ├── enrich/         figure_extract · figure_classify · figure_entry · vlm_entry · enrich_apply
 ├── chunk/          base · structure_aware · fixed_size · semantic (à plat — l'étape EST la famille)
 ├── contextualize/  base(helpers·enums) · breadcrumb · doc_meta · sliding · llm(=prep) · llm_apply* · keep_raw*
-├── metagen/        base · prep(chunk·document) · apply(chunk·document) · skip*
+├── metagen/        base · prep(chunk_prep·document_prep) · apply(chunk_apply·document_apply) · skip (kind `metagen_skip`)*
 └── deliver/        bundle (le terminal : assemble la sortie du run que le worker persiste)
 ```
 *(`*` = nodes internes de câblage, `SELECTABLE=False` — cachés du picker de méthodes de la palette.)*
