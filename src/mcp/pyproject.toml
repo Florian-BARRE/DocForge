@@ -11,10 +11,15 @@ dependencies = [
     "mcp>=1.28.1,<2",
     # Typed async+sync DocForge REST API client — brings httpx transitively.
     "docforge-sdk",
-    # ASGI server + framework for the streamable-HTTP transport and the auth middleware.
-    "uvicorn[standard]>=0.32.0",
-    "starlette>=1.6.0",
-    # Config & logging (internal libraries) — same sources as the main docforge app.
+    # ASGI server + framework for the streamable-HTTP transport and the auth middleware. Upper
+    # bounds guardrail a routine lock refresh away from a breaking major (uvicorn is pre-1.0, so
+    # its next major is 1.0; starlette's is 2.0) — both caps clear the currently-locked versions
+    # and move nothing. This server hand-wires an auth middleware on the starlette layer, so an
+    # unreviewed jump across a starlette major is exactly what we want to block here.
+    "uvicorn[standard]>=0.32.0,<1",
+    "starlette>=1.6.0,<2",
+    # Config & logging (internal libraries) — same sources as the main docforge app. Left
+    # unbounded on purpose: internally-versioned, not steered by an external release cadence.
     "loggerplusplus>=1.0.0",
     "configplusplus>=0.3.0",
 ]

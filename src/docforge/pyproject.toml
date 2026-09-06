@@ -10,34 +10,43 @@ description = "DocForge — document intelligence platform (multi-format → can
 requires-python = ">=3.12"
 license = "GPL-3.0-or-later"
 dependencies = [
+    # Upper bounds are deliberate guardrails: they pin each dependency below its next
+    # breaking release so an un-gated `uv lock --upgrade` can't silently jump a major
+    # (or a breaking pre-1.0 minor) line. Every cap is satisfied by the currently-locked
+    # version — adding them moves zero resolved versions. Internal libs (configplusplus,
+    # loggerplusplus) and transitively-driven deps (redis via arq, tiktoken via
+    # langchain-openai) are left unbounded on purpose — their version is not ours to steer.
     # Web framework (uvicorn + python-multipart come transitively via [standard])
-    "fastapi[standard]>=0.115.0",
-    "pydantic>=2.13.5",
+    "fastapi[standard]>=0.115.0,<1",
+    "pydantic>=2.13.5,<3",
     # Config & logging (internal libraries, pulled from the default index)
     "configplusplus>=0.3.0",
     "loggerplusplus>=1.0.0",
     # Startup banner (used by the FastAPI lifespan)
-    "pyfiglet>=1.0.2",
-    # Job queue — ArqRedis pool to enqueue worker jobs (pulls redis transitively)
-    "arq>=0.28.0",
+    "pyfiglet>=1.0.2,<2",
+    # Job queue — ArqRedis pool to enqueue worker jobs (pulls redis transitively). arq is pre-1.0:
+    # cap tight at the next minor, where its API can break.
+    "arq>=0.28.0,<0.29",
     # LLM — LangChain message types + adapted chat clients (per provider node)
-    "langchain-core>=1.6.1",
-    "langchain-openai>=1.6.0",
-    "langchain-mistralai>=1.1.6",
-    "sqlalchemy[asyncio]>=2.0.36",
-    "asyncpg>=0.31.0",
-    "alembic>=1.19.1",
-    "qdrant-client>=1.19.0",
-    "aioboto3>=15.5.0",
-    "pypdf>=6.14.2",
-    "httpx>=0.28.1",
-    # Token counting (chunker) — transitive via langchain-openai anyway; declared for intent
+    "langchain-core>=1.6.1,<2",
+    "langchain-openai>=1.6.0,<2",
+    "langchain-mistralai>=1.1.6,<2",
+    "sqlalchemy[asyncio]>=2.0.36,<3",
+    # asyncpg is pre-1.0: cap tight at the next minor.
+    "asyncpg>=0.31.0,<0.32",
+    "alembic>=1.19.1,<2",
+    "qdrant-client>=1.19.0,<2",
+    "aioboto3>=15.5.0,<16",
+    "pypdf>=6.14.2,<7",
+    "httpx>=0.28.1,<1",
+    # Token counting (chunker) — transitive via langchain-openai anyway; declared for intent.
+    # Left unbounded: its effective version is driven by langchain-openai's own resolution.
     "tiktoken>=0.14.0",
-    "limits>=3.13",
-    "prometheus-client>=0.21.0",
-    "msgpack>=1.1.0",
+    "limits>=3.13,<6",
+    "prometheus-client>=0.21.0,<1",
+    "msgpack>=1.1.0,<2",
     # Per-worker resource sampling (CPU/memory) written on each heartbeat tick
-    "psutil>=7.2.2",
+    "psutil>=7.2.2,<8",
 ]
 
 # Torch is a transitive dep of docling (worker group). Declared here as a DIRECT dep split across
@@ -92,13 +101,14 @@ dev = [
     "ruff>=0.16.5",
 ]
 worker = [
-    "docling>=2.124.0",
+    "docling>=2.124.0,<3",
     # docling pulls transformers transitively with NO upper bound; uv resolves the latest (5.x),
     # whose AutoProcessor API breaks docling 2.108 (ModuleNotFoundError at parse). Pin to 4.x.
+    # The <5 cap is also CVE-relevant (a deliberate security pin), not only an API-compat guard.
     "transformers>=4.46,<5",
-    "pillow>=12.3.0",
-    "pypdfium2>=5.13.0",
-    "rapidocr-onnxruntime>=1.4.4",
+    "pillow>=12.3.0,<13",
+    "pypdfium2>=5.13.0,<6",
+    "rapidocr-onnxruntime>=1.4.4,<2",
 ]
 
 [tool.ruff]
