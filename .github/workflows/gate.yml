@@ -227,6 +227,55 @@ jobs:
       - name: Build (vite build)
         run: npm run build
 
+  docker-build:
+    # No-push CPU sanity build of every one of the 5 Dockerfiles in this repo, on every push/PR.
+    # Before this job existed, the FIRST real `docker build` of any of them ran on an actual `v*`
+    # tag push (release-sdk.yml's `images` job) — a broken Dockerfile (renamed apt package, a COPY
+    # path typo, a stage-name typo) therefore only ever surfaced mid-release, blocking a real
+    # release rather than a PR. Builds THROUGH each Dockerfile's full `runtime` stage (verified: all
+    # 5 name their final stage `runtime`), not just the dependency-builder stage — the runtime stage
+    # (apt-get, chown, USER, the final COPYs) is exactly where these Dockerfiles tend to break, and a
+    # builder-only build would miss all of it. GPU legs are deliberately excluded: CUDA torch/paddle
+    # builds are multi-GiB and release-only (see release-sdk.yml's own runner-disk-pressure
+    # workaround for -gpu), not worth the extra CI minutes for a "does it still build" smoke check.
+    name: docker-build (${{ matrix.name }}, cpu, no-push)
+    runs-on: ubuntu-latest
+    strategy:
+      # fail-fast:false so one broken Dockerfile doesn't hide failures in its siblings.
+      fail-fast: false
+      matrix:
+        # Mirrors release-sdk.yml's `images` matrix 1:1 (same context/file/TORCH_VARIANT per image),
+        # CPU-only, plus an explicit `target` naming each Dockerfile's runtime stage. `file` is the
+        # REPO-RELATIVE Dockerfile path (context differs from the file's own location, same as
+        # release-sdk.yml).
+        include:
+          - { name: app,           context: src/docforge, file: src/docforge/app/Dockerfile,    target: runtime, torch: "" }
+          - { name: mcp,           context: src,           file: src/mcp/Dockerfile,               target: runtime, torch: "" }
+          - { name: worker,        context: src/docforge, file: src/docforge/worker/Dockerfile,   target: runtime, torch: cpu }
+          - { name: bge-server,    context: src,           file: src/bge_server/Dockerfile,        target: runtime, torch: cpu }
+          - { name: paddle-server, context: src,           file: src/paddle_server/Dockerfile,     target: runtime, torch: cpu }
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Build ${{ matrix.name }} (cpu, runtime stage, no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
+          target: ${{ matrix.target }}
+          push: false
+          load: false
+          platforms: linux/amd64
+          # Only pass TORCH_VARIANT for the images that declare the ARG (worker/bge-server/
+          # paddle-server); app/mcp have no such ARG, so their build-args stay empty.
+          build-args: ${{ matrix.torch && format('TORCH_VARIANT={0}', matrix.torch) || '' }}
+          # GHA layer cache, scoped per image so legs never clobber each other's cache entries.
+          # Separate scope from release-sdk.yml's own cache (that one is keyed `{name}{suffix}`,
+          # e.g. `worker-cpu`) so a gate run and a release build never invalidate each other.
+          cache-from: type=gha,scope=gate-build-${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=gate-build-${{ matrix.name }}
+
   sdk-parity:
     # Coherence gate: the docforge-sdk models + committed OpenAPI snapshot MUST match the backend's
     # CURRENT schema, or this job goes RED — SDK/backend drift can never merge (nor publish). The
