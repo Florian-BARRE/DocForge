@@ -147,7 +147,7 @@ services:
 
   # ── PostgreSQL 16 — the tabular source of truth ─────────────────────────────
   docforge_postgres:
-    image: postgres:16-bookworm
+    image: postgres:18-bookworm
     container_name: docforge-postgres
     # No host port in prod — data-plane services are reachable only on docforge_net;
     # operator access is `docker compose exec docforge_postgres psql ...`. Dev re-publishes
