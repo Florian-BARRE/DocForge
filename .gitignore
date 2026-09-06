@@ -54,7 +54,11 @@ Thumbs.db
 
 # ── Claude Code / AI dev tooling (kept LOCAL, never published) ──
 # The whole .claude/ tree (agents, rules, commands, agent-memory, session data, knowledge graph)
-# and the MCP client config are internal AI-assisted-workflow tooling — not part of the public repo.
+# and the MCP client config are internal AI-assisted-workflow tooling. This repo is PUBLIC, so this
+# tree is deliberately NOT committed (it holds internal notes, not product code). To guard against the
+# "single unversioned copy" loss risk, snapshot it with `scripts/backup-claude.sh` (timestamped tars
+# under /home/dev-center/backups, retained) — run it after meaningful .claude/ changes, and sync that
+# backup dir to a PRIVATE remote for off-VM durability. Never move .claude/ into this public repo.
 .claude/
 .mcp.json
 

@@ -79,6 +79,16 @@ jobs:
       contents: read
       packages: write
     strategy:
+      # fail-fast:false is deliberate: one image's build failure must NOT cancel the siblings that
+      # already succeeded, so a re-run only rebuilds the failed one (builds are idempotent by tag).
+      # KNOWN LIMITATION (partial-release window, audit-accepted): because the matrix pushes each
+      # image's version tag AND moves its mutable :latest independently, a mid-matrix failure — or the
+      # independent release-sdk.yml failing — can leave GHCR partially published with some :latest
+      # already moved while PyPI lags (or vice versa). Mitigations in place: version-guard blocks a
+      # tag whose version lies (the worst case), and the next successful release re-converges every tag
+      # (:latest is eventually-consistent). The clean fix (push only the immutable version tags in the
+      # matrix, then move ALL :latest in a single retag job that `needs` every matrix leg) is deferred
+      # as an untestable-without-a-real-release change; do it in a dedicated, separately-verified PR.
       fail-fast: false
       matrix:
         # Explicit include (not a cross-product): app/mcp have no torch variant and no suffix,

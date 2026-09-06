@@ -185,8 +185,8 @@
 | V5 — Moteur & pipeline | 2 | 2 | 0 | 0 |
 | V6 — Frontend | 0 | 0 | 0 | 0 |
 | V7 — Documentation | 21 | 21 | 0 | 0 |
-| V8 — Outillage (.claude/tests/infra/télémétrie) | 188 | 159 | 5 | 24 |
-| **Total** | **247** | **217** | **5** | **25** |
+| V8 — Outillage (.claude/tests/infra/télémétrie) | 188 | 170 | 1 | 17 |
+| **Total** | **247** | **228** | **1** | **18** |
 
 
 ## V1 — Sécurité & authz (avant tout déploiement multi-tenant)  (30)
@@ -259,7 +259,7 @@
 
 - [x] **🟠 MOYENNE** · `security` — hook logs retain secrets in plaintext with unbounded retention (full tool_input/tool_response of every call)  
   `.claude/hooks/hooks.py:117` _(local .claude, gitignored — hors release ; rétention déjà bornée V8 tranche 2, redaction ajoutée 2026-09-05)_
-- [ ] **⚪ FAIBLE** · `security` — settings.json runs every session in bypassPermissions with a blanket allow list  
+- [x] **⚪ FAIBLE** · `security` — settings.json runs every session in bypassPermissions with a blanket allow list  
   `.claude/settings.json:9`
 
 ### Serveurs modèles
@@ -424,7 +424,7 @@
 
 ### Infra .claude
 
-- [~] **🔴 HAUTE** · `design` — .claude/ is gitignored and untracked — the entire agent infrastructure (750KB of memory, 10 agents, rules, hooks) exists in a single unversioned copy that was already silently lost once  
+- [x] **🔴 HAUTE** · `design` — .claude/ is gitignored and untracked — the entire agent infrastructure (750KB of memory, 10 agents, rules, hooks) exists in a single unversioned copy that was already silently lost once  
   `.gitignore:58`
 - [x] **🔴 HAUTE** · `bug` — /dev, /test and /phase-status skills are hard-broken: nonexistent compose files, dirs and service names  
   `.claude/commands/dev.md:25`
@@ -434,15 +434,15 @@
   `.claude/hooks/hooks.py:88`
 - [x] **🟠 MOYENNE** · `divergence-doc` — Agent-memory rot: 26 files still teach rework-era paths, and 4+ memories document the ColBERT feature that no longer exists  
   `.claude/agent-memory/backend/colbert-named-vector.md:1`
-- [~] **🟠 MOYENNE** · `divergence-doc` — The 3 rpi skill commands still describe the deleted S0→S6 static engine (engine.py DAG, provider Protocols, S2_ENRICH_ENABLED, phase table)  
+- [x] **🟠 MOYENNE** · `divergence-doc` — The 3 rpi skill commands still describe the deleted S0→S6 static engine (engine.py DAG, provider Protocols, S2_ENRICH_ENABLED, phase table)  
   `.claude/commands/rpi/research.md:22`
-- [~] **🟠 MOYENNE** · `dead-code` — The knowledge graph orchestrator.md builds its whole long-term-memory protocol on does not exist — wrong path in the doc, and no file at the configured path either  
+- [x] **🟠 MOYENNE** · `dead-code` — The knowledge graph orchestrator.md builds its whole long-term-memory protocol on does not exist — wrong path in the doc, and no file at the configured path either  
   `.claude/rules/orchestrator.md:100`
 - [x] **🟠 MOYENNE** · `divergence-doc` — architecture.md claims per-node preflight() 'reste à ajouter' — it shipped, is on by default, and is CLAUDE.md invariant 4  
   `.claude/rules/architecture.md:76`
 - [x] **🟠 MOYENNE** · `consistency` — orchestrator.md contradicts itself and the tree: auto-improvement table routes pipeline updates to src/docforge-rework/PIPELINE.md  
   `.claude/rules/orchestrator.md:76`
-- [ ] **⚪ FAIBLE** · `consistency` — Grouped low-severity smells across .claude/: decorative paths filter, deprecated utcnow, stale lock/pycache, misnamed memory file  
+- [x] **⚪ FAIBLE** · `consistency` — Grouped low-severity smells across .claude/: decorative paths filter, deprecated utcnow, stale lock/pycache, misnamed memory file  
   `.claude/rules/brand.md:3`
 - [x] **⚪ FAIBLE** · `dead-code` — scripts/update_imports.py is a dead one-off targeting the deleted legacy layout, still tracked with no caller  
   `scripts/update_imports.py:15`
@@ -521,15 +521,15 @@
 
 - [x] **🟠 MOYENNE** · `divergence-doc` — CLAUDE.md release instructions contradict the workflows: 'Le SDK reste sur les tags sdk-v*' but release-sdk now fires on v* too  
   `CLAUDE.md:44` _(aussi: deps-licenses)_
-- [ ] **🟠 MOYENNE** · `perf` — Every v* tag runs the full monorepo gate twice in parallel (release-images + release-sdk each call gate.yml)  
+- [x] **🟠 MOYENNE** · `perf` — Every v* tag runs the full monorepo gate twice in parallel (release-images + release-sdk each call gate.yml)  
   `.github/workflows/release-sdk.yml:39`
-- [ ] **⚪ FAIBLE** · `consistency` — Comment/doc drift bundle: 'fully serviceless' gate runs a Postgres service container; docs/architecture.md and the release-images header describe an older gate/publish matrix  
+- [x] **⚪ FAIBLE** · `consistency` — Comment/doc drift bundle: 'fully serviceless' gate runs a Postgres service container; docs/architecture.md and the release-images header describe an older gate/publish matrix  
   `.github/workflows/gate.yml:11`
-- [ ] **⚪ FAIBLE** · `perf` — Every push to a PR branch runs the gate twice (push event + pull_request event, distinct concurrency groups)  
+- [x] **⚪ FAIBLE** · `perf` — Every push to a PR branch runs the gate twice (push event + pull_request event, distinct concurrency groups)  
   `.github/workflows/ci.yml:12`
 - [x] **⚪ FAIBLE** · `test-gap` — Lockstep version test and set_version.sh cover only 3 of 6 version declarations — frontend package.json, bge_server, paddle_server are outside the loop  
   `src/docforge/tests/units/test_version_alignment.py:30`
-- [ ] **⚪ FAIBLE** · `design` — Partial-release window: fail-fast:false image matrix + independent SDK publish can leave GHCR half-published with :latest moved  
+- [x] **⚪ FAIBLE** · `design` — Partial-release window: fail-fast:false image matrix + independent SDK publish can leave GHCR half-published with :latest moved  
   `.github/workflows/release-images.yml:51`
 
 ### Coûts & estimation
@@ -567,7 +567,7 @@
   `CLAUDE.md:115`
 - [x] **⚪ FAIBLE** · `dead-code` — Dead data-layer code: ArtifactCacheFacade.drop_for_document and ArtifactCacheApi.referenced_hashes have no production caller  
   `src/docforge/shared/libs/services/db/facades/artifact_cache_facade.py:137`
-- [ ] **⚪ FAIBLE** · `consistency` — Grouped low-severity naming inconsistencies in tables/indexes/constraints  
+- [x] **⚪ FAIBLE** · `consistency` — Grouped low-severity naming inconsistencies in tables/indexes/constraints  
   `src/docforge/shared/libs/services/db/postgresql/tables/observability/worker_heartbeat.py:20`
 - [x] **⚪ FAIBLE** · `consistency` — Grouped minor smells: stale docstrings, unbatched/sequential store calls, unbounded legacy listing, protected-member coupling  
   `src/docforge/shared/libs/services/db/facades/meta_vector_sync_facade.py:104`
@@ -580,7 +580,7 @@
 
 ### Dépendances & licences
 
-- [~] **🟠 MOYENNE** · `design` — Dependabot has no coverage for the ~14 container images pinned in compose files  
+- [x] **🟠 MOYENNE** · `design` — Dependabot has no coverage for the ~14 container images pinned in compose files  
   `.github/dependabot.yml:85`
 - [ ] **⚪ FAIBLE** · `consistency` — Licensing/version metadata nits: no license field in 4 pyprojects, no LICENSE in images, off-lockstep service versions, stale MinerU/Marker doc line  
   `src/docforge/pyproject.toml:6`
