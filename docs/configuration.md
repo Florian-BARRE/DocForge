@@ -64,6 +64,15 @@ at their `localhost` values here (they're used when running the app straight fro
 | `METRICS_ENABLED` | `true` | Exposes `GET /metrics` (Prometheus text; app + job-queue gauges). **Unauthenticated** — network-restrict it (see PROD-HARDENING §10). Set `false` to disable. Not in the OpenAPI document. |
 | `METRICS_SCRAPE_TIMEOUT_SECONDS` | `5.0` | Bounds the infra-gauge refresh (queue depth / job counts / live workers) per scrape. |
 
+### Provider egress allowlist (app + worker)
+
+| Variable | Default | Notes |
+|---|---|---|
+| `PROVIDER_EGRESS_ALLOWLIST` | *(empty → guard off)* | SSRF guard over the destinations a collection's provider `base_url` may reach. A `base_url` is operator/tenant-writable, so unguarded, the health sweep (`GET /collections/{id}/health`) doubles as an authenticated port-scanner of the internal network. **Empty = allow-all** (the default, so the in-stack providers work out of the box). Set it to comma-separated host globs and/or IP/CIDR entries (e.g. `bge_server,gotenberg,paddle_server,*.trusted.example,10.0.0.0/8`) to turn the guard on: a non-listed host is reported `blocked` by the health sweep (never probed) and refused by the worker preflight before the first spend. **Set the same value on app and worker.** Recommended for untrusted-tenant deployments — see [PROD-HARDENING.md](PROD-HARDENING.md). |
+
+> The guard is enforced at **preflight**, not per call inside the pipeline nodes (a node reads no
+> config, by design). Preflight gates before any spend; pair it with network-level egress control.
+
 ### Logging (all five required)
 
 | Variable | Default | Notes |
@@ -94,6 +103,7 @@ at their `localhost` values here (they're used when running the app straight fro
 |---|---|---|
 | `SEARCH_RUN_TIMEOUT_SECONDS` | `30.0` | Wall-clock cap for one inline search run. Guards a stuck/cold provider (a cold CPU embedder's first encode can breach a tight cap → 422). Raise on a slow/contended deployment. |
 | `SSE_POLL_INTERVAL_SECONDS` | `0.75` | Poll cadence for the live job SSE stream (poll-backed, no message bus). |
+| `SEARCH_MAX_DISABLED_DOC_EXCLUSIONS` | `2000` | Threshold at which hiding disabled documents flips strategy. Up to this many disabled documents, search excludes them with a `must_not document_id in {…}` clause; past it that clause would bloat every query, so the facade switches to the equivalent positive `document_id in {enabled}` inclusion (the smaller set on a mostly-archived collection). Purely a performance knob — results are identical either way. |
 
 ### Document grid & jobs list (app-only)
 
@@ -101,7 +111,15 @@ at their `localhost` values here (they're used when running the app straight fro
 |---|---|---|
 | `CORPUS_MAX_PAGE_SIZE` | `500` | Hard ceiling for one document-grid query page; a larger requested `limit` is clamped down to this. |
 | `CORPUS_MAX_REINGEST_FANOUT` | `1000` | Per-call cap on a bulk re-ingest fan-out: a selector matching more enqueues only the first N (deterministic order) and reports `capped=true` + total `matched`. |
+| `CORPUS_MAX_DELETE_SELECTION` | `10000` | Per-call cap on a bulk **delete** selection: a filter matching more deletes only the first N (deterministic order) and reports `capped=true`, so one call never materialises a 100k-id set in memory. Delete is convergent — re-run the same selector to remove the remainder. |
+| `EXPLORER_MAX_BULK_CHUNK_IDS` | `10000` | Per-call cap on the explorer's bulk chunk enable/disable payload (an explicit id list). An oversized list is rejected `422` at the model boundary. Mirrors the corpus bulk-selection ceiling. |
 | `JOBS_MAX_PAGE_SIZE` | `500` | Hard ceiling for one `GET /jobs` page (also the default); a larger requested `limit` is clamped down to this. |
+
+### Cost estimate (app-only)
+
+| Variable | Default | Notes |
+|---|---|---|
+| `ESTIMATE_MAX_SAMPLE_DOCUMENTS` | `2000` | Sampling ceiling for a dry-run cost estimate. When the covered set (an explicit id/filter subset, or a whole-collection scope) exceeds this, only the first N documents are measured and the result is scaled linearly to the full count — a 100k-document estimate never fetches 100k rows. Raise it for a more precise estimate on a heterogeneous corpus, at the cost of a slower call. |
 
 ### Idempotency & audit (app-only)
 
@@ -109,6 +127,7 @@ at their `localhost` values here (they're used when running the app straight fro
 |---|---|---|
 | `IDEMPOTENCY_ENABLED` | `true` | Master switch for `Idempotency-Key` replay protection on mutating routes. Off → the header is ignored. |
 | `IDEMPOTENCY_TTL_HOURS` | `24` | How long a stored idempotency record (and its cached response) is honoured before it expires and the key may be reused. |
+| `IDEMPOTENCY_INPROGRESS_TTL_SECONDS` | `300` | How long an **in-progress** guard may sit before a retry may reclaim it. If the first execution is killed before it caches a response, its guard row would otherwise wedge every retry with a `409` until the full TTL above elapsed; past this much shorter window a retry atomically re-claims the record and re-runs. A genuinely in-flight request inside the window still conflicts (`409`). Keep it comfortably above the slowest eligible handler (all are fast). |
 | `IDEMPOTENCY_MAX_BODY_BYTES` | `262144` (256 KiB) | Request bodies larger than this are not fingerprinted for idempotency (the route runs without replay protection). |
 | `AUDIT_ENABLED` | `true` | Master switch for the audit trail: records one row per mutating API action. Off → nothing is written and `GET /audit` returns empty. |
 | `AUDIT_MAX_PAGE_SIZE` | `200` | Hard ceiling for one `GET /audit` page (also the default); a larger requested `limit` is clamped down to this. |
@@ -152,6 +171,7 @@ blob whose last pointer was removed.
 | `WORKER_ARTIFACT_GC_INTERVAL_MINUTES` | `60` | Cache-GC cron cadence (runs on every Nth minute of the hour; also once at startup, so a backlog left while the sweep was off is cleared promptly). |
 | `CACHE_TTL_DAYS` | `30` | TTL (days) for a cached artefact, measured from its last hit (else its creation). A row untouched longer is evicted. `0` disables the TTL pass (the size cap still bounds growth). |
 | `CACHE_MAX_BYTES_PER_COLLECTION` | `5000000000` (5 GB) | Per-collection byte ceiling for cached artefacts. Over it, the least-recently-used rows are evicted until under. `0` disables the size cap. |
+| `CACHE_BLOB_GRACE_MINUTES` | `10` | Grace window the orphan-blob sweep leaves before reclaiming a stage-artefact blob: blobs younger than this are skipped, so a concurrent store (bytes + row first, pointer after) is never swept mid-flight. It only needs to exceed the store's put→pointer-commit gap (milliseconds); the generous default makes the race impossible in practice. **Lowering it risks reclaiming a blob still being written.** |
 
 ### Collection export / import (portable `.dcexport` bundles)
 
@@ -159,11 +179,15 @@ blob whose last pointer was removed.
 |---|---|---|
 | `IMPORT_STAGING_PREFIX` | `collection-imports` | S3 key prefix an uploaded import bundle is staged under before the worker consumes it (app-side). |
 | `IMPORT_MAX_BUNDLE_BYTES` | `5368709120` (5 GiB) | Hard ceiling on an uploaded import bundle; the spool aborts with a 413 past this and stages nothing (app-side). |
+| `IMPORT_STAGING_TTL_SECONDS` | `86400` (24 h) | How long a **staged** import bundle (the S3 object written before the worker runs) is retained before the transfer GC may reclaim it, along with its tracking row (app-side). A successful import deletes its staged object as soon as it finishes; this horizon is what stops a failed or abandoned import from leaking the object forever. The worker downloads the bundle at the very start of its run, so it never truncates an in-flight import. |
+| `IMPORT_MAX_DECOMPRESSION_RATIO` | `100` | Decompression-bomb guard on import: the extracted bundle may be at most this multiple of the compressed `.dcexport` size on disk (already capped by `IMPORT_MAX_BUNDLE_BYTES`). A hostile bundle is refused **mid-extraction**, before it can fill the worker's disk (worker-side). `100` is generous for real corpora — JSONL plus already-compressed blobs rarely exceed ~10x. |
+| `IMPORT_MAX_MEMBERS` | `500000` | Hard ceiling on the number of members (files) a bundle may contain — bounds inode/handle exhaustion from a bundle of millions of tiny entries, independently of their total size (worker-side). |
 | `EXPORT_BUNDLE_PREFIX` | `collection-exports` | S3 key prefix a produced export bundle is published under (worker-side). |
 | `EXPORT_COMPRESSION` | `zstd` | Bundle compression codec: `zstd` or `none` (worker-side). |
 | `EXPORT_TTL_SECONDS` | `604800` (7 days) | How long an exported bundle is retained before it may be GC'd (worker-side). |
 | `WORKER_TRANSFER_GC_ENABLED` | `true` | Reclaim expired export bundles (S3 object + `collection_transfer` row) on a cron. Set `false` to skip the sweep (cron not registered). |
 | `WORKER_TRANSFER_GC_INTERVAL_MINUTES` | `15` | Transfer-GC cron cadence (runs on every Nth minute of the hour; also once at startup). |
+| `WORKER_TRANSFER_REAP_STALE_SECONDS` | `10800` (3 h) | Staleness horizon for the stuck-**transfer** reaper: a `collection_transfer` row left RUNNING this long past its last write is marked `failed`, recovering a row that a worker hard-kill or arq timeout stranded (neither runs the task's cleanup, so the row would never turn terminal and its staged bundle would never be GC'd). A transfer row has no heartbeat, so this **must exceed** arq's hard job ceiling (`WORKER_JOB_TIMEOUT_MAX_SECONDS` + `WORKER_JOB_TIMEOUT_GRACE_SECONDS`) or a legitimately long transfer would be falsely reaped — the worker validates this at boot. Uses `WORKER_REAP_ENABLED` as its master switch. |
 
 ### Audit & idempotency GC (worker)
 

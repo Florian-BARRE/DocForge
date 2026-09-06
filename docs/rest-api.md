@@ -43,19 +43,21 @@ Everything is JSON in and JSON out, with two exceptions:
 | Resource | Prefix | Section |
 |---|---|---|
 | API keys | `/api/v1/auth/keys` | §2 |
+| Token self-introspection | `/api/v1/auth/whoami` | §2 |
 | Collections | `/api/v1/collections` | §3 |
 | Documents (admission) | `/api/v1/documents` | §4 |
 | Explorer (browse) | `/api/v1/collections/{id}/documents`, `/api/v1/documents/{id}/...`, `/api/v1/chunks/...` | §5 |
+| Document grid & bulk ops | `/api/v1/collections/{collection_id}/documents/query`, `…/delete`, `…/set-enabled`, `…/reingest` | §5 |
 | Search | `/api/v1/collections/{id}/search` | §6 |
 | Jobs | `/api/v1/jobs` | §7 |
 | Blobs | `/api/v1/blobs/{hash}` | §8 |
 | Pipelines (design) | `/api/v1/pipelines` | §9 |
-| Config snippets (granular export/import) | `/api/v1/collections/{id}/snippets/{kind}` | §10 |
-| Cost estimate (dry-run) | `/api/v1/collections/{id}/estimate` | §11 |
-| Collection transfers (export/import bundles) | `/api/v1/collections/{id}/export`, `/api/v1/collections/import`, `/api/v1/transfers/{id}` | Corpus grid, bulk operations, telemetry & introspection |
-| Audit trail | `/api/v1/audit` | §12 |
-| Idempotency (request header) | `Idempotency-Key` on mutating routes | §13 |
-| Request correlation (response header) | `X-Request-Id` on every response | §14 |
+| Config snippets (granular export/import) | `/api/v1/collections/{collection_id}/snippets/{kind}` | §10 |
+| Cost estimate (dry-run) | `/api/v1/collections/{collection_id}/estimate` | §11 |
+| Collection transfers (export/import bundles) | `/api/v1/collections/{id}/export`, `/api/v1/collections/import`, `/api/v1/transfers/{transfer_id}` | §12 |
+| Audit trail | `/api/v1/audit` | §13 |
+| Idempotency (request header) | `Idempotency-Key` on mutating routes | §14 |
+| Request correlation (response header) | `X-Request-Id` on every response | §15 |
 
 ---
 
@@ -203,6 +205,36 @@ curl -sX POST http://localhost:10040/api/v1/auth/keys/b1e2.../rotate \
 Rotation returns a new `CreatedKey` (new plaintext) and revokes the old key. A `404` means the
 key is unknown; a `409` means it was already revoked (a terminal state).
 
+### Token self-introspection
+
+`GET /api/v1/auth/whoami` — the **calling token's own** access. It requires only authentication (no
+capability), so even a `search`-only key may ask "what am I allowed to do" instead of discovering its
+rights by collecting `403`s. Written for agents (MCP especially) that must plan before acting.
+
+```bash
+curl -s http://localhost:10040/api/v1/auth/whoami \
+  -H "Authorization: Bearer df_ab12cd34ef56..."
+```
+
+Response is a `WhoAmI`:
+
+```json
+{
+  "authenticated": true,
+  "root": false,
+  "capabilities": ["read", "search"],
+  "collections": ["7f1c9d2e-4b8a-4c2f-9e3a-1a2b3c4d5e6f"]
+}
+```
+
+- `authenticated` — always `true` (an unauthenticated request never reaches this route).
+- `root` — `true` for full, unscoped access: auth disabled, or a `null`-permissions key. Then
+  `capabilities` lists every capability and `collections` is `["*"]`.
+- `capabilities` / `collections` — exactly what the key was granted (§"The key model").
+
+A key whose stored permissions blob is malformed is `403`, mirroring the authorization gate — never
+a `500`.
+
 ---
 
 ## 3. Collections
@@ -214,6 +246,7 @@ later), so declare the **full** schema up front.
 | Method | Path | Cap | Purpose |
 |---|---|---|---|
 | `GET` | `/api/v1/collections` | `read` | List all collections with their schema |
+| `GET` | `/api/v1/collections/contract-schema` | `read` | JSON Schema of the identity/limits contract (drives the create form) |
 | `GET` | `/api/v1/collections/{id}` | `read` | One collection's full contract |
 | `POST` | `/api/v1/collections` | `create` | Create a collection (`201`); a scoped creator is auto-granted ownership of it |
 | `PATCH` | `/api/v1/collections/{id}` | `write` | Patch identity/limits/schema/config |
@@ -305,6 +338,21 @@ optional and only the ones you set are overridden:
 Both objects are optional and every leaf inside them is optional; an omitted leaf falls back to
 the global default for that value.
 
+### Discover the contract schema
+
+`GET /api/v1/collections/contract-schema` — capability `read`. Returns the **JSON Schema** of the
+collection identity/limits contract (`name`, `supported_formats`, `max_file_size_bytes`,
+`job_timeout_seconds`, `preset`) — the same model `POST /api/v1/collections` composes, so the two can
+never drift. A UI feeds it straight to a schema-driven form and a new scalar contract field surfaces
+with no client change.
+
+```json
+{ "config_schema": { "title": "CollectionContractModel", "type": "object", "properties": { "...": {} } } }
+```
+
+The metadata schema (`fields[]`) is **not** part of this document — it is described in "The metadata
+FieldSpec" above.
+
 ### Create a collection
 
 ```bash
@@ -335,6 +383,63 @@ curl -sX PATCH http://localhost:10040/api/v1/collections/7f1c9d2e-... \
   -H "Content-Type: application/json" \
   -d '{"max_file_size_bytes": 104857600, "note": "raise upload ceiling to 100 MB"}'
 ```
+
+### Collection health
+
+`GET /api/v1/collections/{collection_id}/health` — capability `read`. An on-demand operational probe
+of one collection: it builds **both** graphs (ingest + search), sweeps every provider-hosted node for
+reachability, and reads the index size. **Zero spend** — nothing is enqueued and no provider work is
+paid for (probes only).
+
+The response is a `CollectionHealthResponse`:
+
+| Field | Meaning |
+|---|---|
+| `verdict` | The roll-up: `operational` \| `empty` \| `degraded` \| `ingest_unavailable` \| `down` |
+| `reason` | A jargon-free one-liner explaining the verdict (the banner text) |
+| `checked_at` | When the probe ran (server time, UTC) |
+| `ingest` | `{buildable, build_error, providers[]}` for the ingest graph |
+| `search` | `{buildable, search_operational, build_error, providers[], index}` for the search graph |
+
+`empty` is **neutral**, not a fault — the graphs build and providers answer, nothing is indexed yet.
+`ingest_unavailable` means new documents cannot be ingested while the existing index stays
+searchable; `down` means search itself cannot be served. `search.search_operational` is tri-state —
+`true`, `false`, or `"degraded"` (embedder reachable but the index is empty, or a configured reranker
+is unreachable). `search.index` carries `{vector_count, last_ingest_at}`.
+
+Each entry of `ingest.providers` / `search.providers` is a probe result:
+`{node_id, kind, family, side, status, endpoint, detail, latency_ms}`. `endpoint` is the probed base
+URL and is always **secret-free** (never the api_key); it is `null` when nothing was probed. With the
+egress allowlist enabled (`PROVIDER_EGRESS_ALLOWLIST`), a non-listed host is reported `blocked`
+without being contacted.
+
+```bash
+curl -s http://localhost:10040/api/v1/collections/7f1c9d2e-.../health
+```
+
+`404` when the collection is unknown.
+
+### Storage footprint
+
+`GET /api/v1/collections/{collection_id}/storage` — capability `read`. Measures how much hardware a
+collection occupies, per store, plus a per-document breakdown sorted heaviest-first (so it doubles as
+a top-N). Computed with grouped SQL aggregates and one Qdrant profile — no per-document N+1, no
+cache.
+
+| Field | Meaning |
+|---|---|
+| `s3` | **Exact** bytes: `{original_bytes, rendered_bytes, total_bytes, physical_unique_bytes, estimated:false}` |
+| `postgres` | **Estimated** row bytes per bucket (documents / ir_blocks / enrichment / chunks / metadata / observability) + `total_bytes` |
+| `qdrant` | **Estimated** `{points, dense_bytes, sparse_bytes, payload_bytes, total_bytes}` |
+| `grand_total_bytes` | S3 (logical) + Postgres + Qdrant |
+| `documents[]` | Per-document `{document_id, filename, s3, postgres, qdrant, total_bytes}` |
+
+Only S3 is exact (it reads the content-addressed blob registry, and `physical_unique_bytes` accounts
+for dedup). Postgres bytes come from `pg_column_size` and exclude index/TOAST/bloat; Qdrant bytes are
+count-based arithmetic and exclude index overhead. Every footprint carries an `estimated` flag saying
+which it is — the numbers are never presented as measured when they are not.
+
+`404` when the collection is unknown.
 
 ---
 
@@ -372,6 +477,32 @@ Response (`202`):
 - `404` when the collection is unknown; `422` for a stale-unmigratable pipeline blob, invalid
   `metadata` JSON, or an unknown metadata field name. Types/required-ness are validated inside
   the pipeline (surfaced via the job's error), not at admission.
+
+### Re-ingest a document
+
+`POST /api/v1/documents/{document_id}/reingest` — capability `write`. Re-runs the pipeline on a
+document that is **already stored**, instead of delete-and-re-upload (re-uploading the same bytes is
+refused as a duplicate). The worker refetches the original by its content hash and re-processes it
+with the collection's **current** pipeline, so this is how you apply a config change to existing
+documents.
+
+| Query param | Type | Default | Meaning |
+|---|---|---|---|
+| `force` | bool | `false` | Bypass the stage cache and recompute every stage from scratch. Use after a code change that did not bump a node's cache version. |
+
+```bash
+curl -sX POST "http://localhost:10040/api/v1/documents/d4c3.../reingest?force=true"
+```
+
+Response is an `UploadAccepted` (`202`) — `{document_id, job_id, duplicate}` — poll the job (§7). The
+run is idempotent: the previous chunks/IR/pages are purged and the vectors overwritten, while the
+user-declared metadata survives.
+
+- `404` when the document is unknown.
+- `409` when the document already has a queued/running ingestion job (two concurrent runs would
+  interleave their Qdrant delete-and-upsert and strand orphan points). Wait for it or cancel it.
+- `503` when the queue is unreachable — the freshly-minted job is marked `failed` rather than left
+  orphaned as `pending`.
 
 ### Enable / disable a document
 
@@ -463,6 +594,77 @@ curl -s "http://localhost:10040/api/v1/documents/d4c3.../html?download=true" -O 
 Responses are `text/markdown` and `text/html` respectively. `404` when the document is unknown,
 `403` when it belongs to a collection outside the caller's scope, `422` on a malformed document
 UUID.
+
+### The document grid & bulk operations
+
+The catalogue route above is the simple newest-first listing. At 10k–100k+ documents you want the
+**grid**: a filtered, sorted, paginated query plus bulk actions that take the *same* target model, so
+"select all 5 000 matching, deselect 3, act on the rest" never enumerates ids client-side.
+
+| Method | Path | Cap | Returns |
+|---|---|---|---|
+| `POST` | `/api/v1/collections/{collection_id}/documents/query` | `read` | `DocumentQueryResponse` — one page + the total match count |
+| `POST` | `/api/v1/collections/{collection_id}/documents/delete` | `write` | `BulkDeleteResponse` — delete everywhere (Postgres + Qdrant + orphan blobs) |
+| `POST` | `/api/v1/collections/{collection_id}/documents/set-enabled` | `write` | `BulkEnabledResponse` — bulk searchability toggle |
+| `POST` | `/api/v1/collections/{collection_id}/documents/reingest` | `write` | `BulkReingestResponse` — bulk full re-run (`202`) |
+
+All four fail fast in the same order: collection exists (`404`) → caller is scoped to it (`403`) →
+the request is structurally valid (`422`) — **before** any mutation or spend.
+
+**Query** takes `{filter, sort, pagination}` (all optional):
+
+- `filter` — AND-combined clauses over base columns (`filename`/`title` as `{contains, eq}`;
+  `status`, `format`, `language` as membership lists; `file_size`, `page_count` as `{gte, lte}`;
+  `created_at` as a datetime `{gte, lte}`; `enabled` as an exact bool) plus `metadata`, a list of
+  `{field, op, value}` predicates against the collection's own metadata fields (`op` is one of `eq`,
+  `contains`, `in`, `gte`, `lte`). An **empty** filter matches the whole collection.
+- `sort` — `{field, direction}`; `field` is a base column or a metadata field name. The server always
+  appends `id` as a secondary key so offset paging never skips or duplicates a row.
+- `pagination` — `{limit, offset}`; `limit` is clamped down to `CORPUS_MAX_PAGE_SIZE`.
+
+Every model is `extra="forbid"`: a typo in a filter key is a `422`, never a silently dropped
+predicate. An unknown/non-filterable metadata field, a mismatched operator or an unknown sort field
+is also `422`.
+
+```bash
+curl -sX POST http://localhost:10040/api/v1/collections/$CID/documents/query \
+  -H 'Content-Type: application/json' \
+  -d '{
+        "filter": {"status": ["failed"], "metadata": [{"field": "client", "op": "eq", "value": "ACME"}]},
+        "sort": {"field": "created_at", "direction": "desc"},
+        "pagination": {"limit": 50, "offset": 0}
+      }'
+```
+
+The response is `{total, limit, offset, rows}`; each row is a `DocumentListItem` plus a compact
+`metadata` map of `{field_name: value}` (bulk-loaded per page, never N+1). Read the *schema* of those
+metadata columns from `GET /api/v1/collections/{id}`.
+
+**The three bulk routes take a `DocumentSelector`** — an explicit id list **XOR** a filter:
+
+```json
+{ "document_ids": ["d4c3...", "a1b2..."] }
+```
+```json
+{ "filter": {"status": ["failed"]}, "exclude_ids": ["d4c3..."] }
+```
+
+Exactly one mode is allowed (`422` otherwise); `document_ids` must be non-empty, and `exclude_ids`
+(the deselected few) is only meaningful in filter mode. An empty `filter` means the whole collection.
+
+- **delete** → `{collection_id, matched, deleted, capped, max_selection}`. A filter matching more than
+  `CORPUS_MAX_DELETE_SELECTION` deletes only the first N in a deterministic order and reports
+  `capped: true` — never a silent truncation. Delete is convergent: re-run the same selector to remove
+  the remainder.
+- **set-enabled** → `?enabled=<bool>` is a **query** param. Returns
+  `{collection_id, enabled, matched, updated, reindex_implied}`; `updated` excludes rows already in
+  the target state, and `reindex_implied` is always `false` (a document toggle is a Postgres flag, not
+  a re-index).
+- **reingest** → `?force=<bool>` as on the single-document route. The stored pipeline is healed and
+  structurally validated **once** before any job is minted (`422`), so a broken collection surfaces
+  here instead of as N failed jobs. Returns `{collection_id, matched, enqueued, capped, max_fanout,
+  jobs}` (`202`) with one job handle per run; a match beyond `CORPUS_MAX_REINGEST_FANOUT` enqueues
+  only the first N and reports `capped: true` with the full `matched`.
 
 ---
 
@@ -569,7 +771,11 @@ request a cancellation).
 | `GET` | `/api/v1/jobs?collection_id={id}` | `read` | A collection's jobs, newest first — a paginated `JobPage` |
 | `GET` | `/api/v1/jobs/{job_id}` | `read` | One job's live state (poll this) |
 | `GET` | `/api/v1/jobs/{job_id}/events` | `read` | Per-node execution trace, in order |
+| `GET` | `/api/v1/jobs/{job_id}/stream` | `read` | Live progress as Server-Sent Events (see below) |
 | `GET` | `/api/v1/jobs/workers/live` | `read` | What every worker is doing right now |
+| `GET` | `/api/v1/jobs/queue` | `read` | Backlog depth — `{pending, running}` |
+| `GET` | `/api/v1/jobs/cost?collection_id={id}` | `read` | A collection's paid text-gen roll-up (`CollectionCost`) |
+| `GET` | `/api/v1/jobs/stage-durations?collection_id={id}` | `read` | Average per-stage wall-clock — the ETA basis (`StageDurations`) |
 | `POST` | `/api/v1/jobs/{job_id}/cancel` | `write` | Request cancellation of a queued/running job (`CancelResult`) |
 
 > `collection_id` is a **required query param** on `GET /api/v1/jobs` (it also scopes the key).
@@ -606,6 +812,45 @@ On `failed`, read `error` on the job (or `GET /api/v1/jobs/{id}/events` for the 
 each `JobEvent` has `stage, status` (`success`/`failed`/`skipped`), timestamps, `detail`).
 
 `GET /api/v1/jobs/workers/live` returns running jobs grouped by worker (empty when idle).
+
+### Live progress (Server-Sent Events)
+
+`GET /api/v1/jobs/{job_id}/stream` — capability `read`. Prefer this over polling `GET /jobs/{id}` for
+a live UI. The job is resolved and scope-checked **before** the stream opens, so an unknown id is a
+normal `404` and never an error buried mid-stream.
+
+The response is `text/event-stream`; each frame is `data: {...}\n\n` carrying a `kind`:
+
+- `kind: "event"` — one newly-landed stage event (the same shape as a `JobEvent`), in execution order.
+- `kind: "status"` — the full `JobStatus` snapshot, emitted only when it actually changes (so progress
+  flows through without a per-tick spam of identical frames). A `{"kind": "status", "status": "gone"}`
+  frame means the job row was deleted mid-stream.
+
+The feed is DB-poll-backed (no message bus): it re-reads the job row and its stage-event table every
+`SSE_POLL_INTERVAL_SECONDS` and emits only the delta. It closes as soon as the job reaches a terminal
+state (`done`/`failed`/`cancelled`), always after a final status frame.
+
+```bash
+curl -sN http://localhost:10040/api/v1/jobs/9a8b.../stream
+```
+
+### Telemetry
+
+`GET /api/v1/jobs/queue` — the backlog: `{pending, running}` (queued-but-unclaimed vs executing).
+Fleet-wide counts are **full-access only**; a collection-scoped key must pass `?collection_id=` (a
+query-less call from a scoped key is `403`, so single-tenant keys can never read cross-tenant totals).
+
+`GET /api/v1/jobs/cost` — requires `collection_id` as a query param. Returns a `CollectionCost`:
+`{collection_id, total_prompt_tokens, total_completion_tokens, cost_usd, document_count}`, the
+**post-hoc** roll-up of what the collection's jobs actually spent (the pre-hoc projection is §11).
+
+`GET /api/v1/jobs/stage-durations` — requires `collection_id` as a query param. Returns
+`{collection_id, stage_seconds}`, a stage id → average wall-clock seconds map computed over the
+collection's `done` jobs. A UI sums the not-yet-completed stages of a running job to estimate its
+remaining time.
+
+Both `cost` and `stage-durations` carry the collection in the **query string**, so the caller's
+collection scope is enforced on that value.
 
 ---
 
@@ -667,8 +912,8 @@ independently of the data it describes.
 
 | Method | Path | Cap | Purpose |
 |---|---|---|---|
-| `GET` | `/api/v1/collections/{id}/snippets/{kind}` | `read` | Export one config facet as a `CollectionSnippet` |
-| `POST` | `/api/v1/collections/{id}/snippets/{kind}` | `write` | Apply a `CollectionSnippet` onto this collection |
+| `GET` | `/api/v1/collections/{collection_id}/snippets/{kind}` | `read` | Export one config facet as a `CollectionSnippet` |
+| `POST` | `/api/v1/collections/{collection_id}/snippets/{kind}` | `write` | Apply a `CollectionSnippet` onto this collection |
 
 `{kind}` is one of `pipeline`, `search`, `schema`.
 
@@ -735,7 +980,7 @@ dollar cost against the same rate model the post-hoc job meter uses.
 
 | Method | Path | Cap | Returns |
 |---|---|---|---|
-| `POST` | `/api/v1/collections/{id}/estimate` | `read` | A `CostEstimate` — per-stage breakdown + totals |
+| `POST` | `/api/v1/collections/{collection_id}/estimate` | `read` | A `CostEstimate` — per-stage breakdown + totals |
 
 The body is optional; when omitted, `scope` defaults to `pending`.
 
@@ -784,14 +1029,78 @@ the reingest error contract), or when both `document_ids` and `filter` are set.
 
 ---
 
-## 12. Audit trail
+## 12. Collection transfers (portable `.dcexport` bundles)
+
+Where a snippet (§10) moves one config facet, a **transfer** moves a **whole collection** — schema,
+config, documents, IR, chunks and vectors — into a portable `.dcexport` bundle you can re-import on
+another server with **no recompute** (ids are remapped on import, never preserved). Both directions
+run **asynchronously**: the route returns `202` with a transfer handle you poll.
+
+| Method | Path | Cap | Purpose |
+|---|---|---|---|
+| `POST` | `/api/v1/collections/{collection_id}/export` | `read` | Start packaging a collection into a bundle (`202`) |
+| `POST` | `/api/v1/collections/import` | `create` | Import an uploaded bundle as a **new** collection (`202`) |
+| `GET` | `/api/v1/transfers/{transfer_id}` | `read` | Poll one transfer's live status |
+| `GET` | `/api/v1/transfers/{transfer_id}/download` | `read` | Stream a finished export's bundle bytes |
+
+Export and import both return a `TransferAccepted` — `{transfer_id, kind, status}` where `kind` is
+`export`/`import` and `status` is `pending`. The tracking row is created **before** the worker task is
+enqueued, so the id is pollable the instant the call returns.
+
+**Import** is `multipart/form-data`: `file` (the `.dcexport` bundle, required) and an optional
+`target_name` for the new collection. The upload is streamed straight to staging without being
+buffered in memory, so a multi-GB bundle imports with flat RAM. A **scoped** `create` key is
+auto-granted ownership of the collection its import produces.
+
+### Poll a transfer
+
+`GET /api/v1/transfers/{transfer_id}` returns a `TransferStatus`:
+
+| Field | Meaning |
+|---|---|
+| `transfer_id` / `kind` / `status` | The handle, the direction, and `pending`/`running`/`done`/`failed` |
+| `progress` / `stage` | Coarse 0–100 percentage and the current engine stage label |
+| `counts` | Per-table snapshot (`{"documents": n, "chunks": m, …}`) |
+| `error` | The failure message, verbatim, when `failed` |
+| `collection_id` / `collection_name` | Export → the source collection; import → the **new** collection once done |
+| `size_bytes` / `format_version` / `dense_dim` | The produced bundle's facts (done export only) |
+| `expires_at` | When a produced bundle may be garbage-collected |
+| `started_at` / `finished_at` / `created_at` / `updated_at` | Lifecycle timestamps |
+
+Scope follows the transfer's collection: an export is scoped to its source, a completed import to the
+collection it produced. An import still in flight has no collection yet, so its unguessable transfer
+id gates it until the produced id lands. `404` when the id is unknown.
+
+### Download a bundle
+
+`GET /api/v1/transfers/{transfer_id}/download` streams the bytes from object storage in bounded
+chunks (never whole in memory) as `application/zstd`, with a `Content-Disposition` attachment
+filename led by the collection name.
+
+Only a **done export with a live bundle** is downloadable. Everything else — an unknown id, an
+import, an unfinished or failed export, or an expired bundle — is a `404`; the collection scope is
+enforced *before* those cases are distinguished, so a foreign key learns nothing about the transfer's
+state.
+
+```bash
+TID=$(curl -sX POST http://localhost:10040/api/v1/collections/$CID/export | jq -r .transfer_id)
+curl -s http://localhost:10040/api/v1/transfers/$TID | jq .status
+curl -s http://localhost:10040/api/v1/transfers/$TID/download -O -J
+```
+
+Retention (`EXPORT_TTL_SECONDS`), staging lifetime and the reclaim crons are covered in
+[configuration.md](configuration.md).
+
+---
+
+## 13. Audit trail
 
 An append-only log of every **mutating** `/api/v1` request (`POST`/`PUT`/`PATCH`/`DELETE`). A
 middleware records exactly one row per routed mutating request **after** the response is sent
 (fail-safe — an audit write can never delay or fail the user's request); reads and non-API paths
 are never audited. Each row captures the actor, the low-cardinality route **template** (not the
 raw-id path), the final response status, the target resource (type + id parsed from the path), the
-client IP, and the request's correlation id (see §14).
+client IP, and the request's correlation id (see §15).
 
 | Method | Path | Cap | Returns |
 |---|---|---|---|
@@ -809,7 +1118,7 @@ optional filters):
 | `actor_key_id` | Filter to one acting API key (UUID) |
 | `target_type` | Filter to one target type (e.g. `collection`) |
 | `target_id` | Filter to one target id (pair with `target_type`) |
-| `correlation_id` | Filter to one request's correlation id (see §14) |
+| `correlation_id` | Filter to one request's correlation id (see §15) |
 | `created_from` | Lower bound (**inclusive**) on `created_at` |
 | `created_to` | Upper bound (**exclusive**) on `created_at` |
 
@@ -826,7 +1135,7 @@ The trail is gated by `AUDIT_ENABLED` (default `true`); with it off, no rows are
 
 ---
 
-## 13. Idempotency (`Idempotency-Key`)
+## 14. Idempotency (`Idempotency-Key`)
 
 Stripe-style safe retries on a small allow-list of mutating JSON endpoints. Send an
 `Idempotency-Key: <your-key>` request header on an eligible request; the first call runs once and
@@ -877,7 +1186,7 @@ curl -s -X POST http://localhost:10040/api/v1/collections \
 
 ---
 
-## 14. Request correlation (`X-Request-Id`)
+## 15. Request correlation (`X-Request-Id`)
 
 Every response carries an `X-Request-Id` header — a per-request correlation id that also tags every
 log line emitted while handling the request (so a response id maps straight to its logs in
@@ -890,7 +1199,7 @@ Loki/loguru). This is always on and needs no configuration.
   middleware wraps auth + rate-limiting).
 - **Client use** — log or surface the `X-Request-Id` from a response; quote it in a bug report to
   trace the exact request through the logs, or feed it to the audit trail's `correlation_id` filter
-  (§12) to pull the audit row for that request.
+  (§13) to pull the audit row for that request.
 
 ```bash
 curl -s -D - -o /dev/null http://localhost:10040/api/v1/collections | grep -i x-request-id
@@ -899,7 +1208,7 @@ curl -s -D - -o /dev/null http://localhost:10040/api/v1/collections | grep -i x-
 
 ---
 
-## 15. Errors
+## 16. Errors
 
 FastAPI's standard error envelope is used throughout:
 
@@ -919,40 +1228,12 @@ production.
 
 | Status | When |
 |---|---|
-| `400` / `422` | Validation failure — bad body, blank query, unknown metadata field, non-filterable filter, invalid search target, unmigratable/invalid pipeline blob, a config snippet with a version/kind mismatch or invalid graph/schema (§10), an estimate request with both `document_ids` and `filter` set (§11), or an `Idempotency-Key` reused with a different body (§13). |
+| `400` / `422` | Validation failure — bad body, blank query, unknown metadata field, non-filterable filter, invalid search target, unmigratable/invalid pipeline blob, a config snippet with a version/kind mismatch or invalid graph/schema (§10), an estimate request with both `document_ids` and `filter` set (§11), or an `Idempotency-Key` reused with a different body (§14). |
 | `401` | Auth on and the bearer is missing/invalid/revoked/expired (carries `WWW-Authenticate: Bearer`). |
-| `403` | Authenticated but lacking the capability, not scoped to the target collection/resource, or a scoped key on the full-access audit trail (§12). |
+| `403` | Authenticated but lacking the capability, not scoped to the target collection/resource, or a scoped key on the full-access audit trail (§13). |
 | `404` | Unknown collection / document / chunk / job / blob / pipeline key. |
-| `409` | Name clash (collection / key), rotating an already-revoked key, root not provisioned, a collection with no embed node on search, cancelling an already-terminal job (§7), or an `Idempotency-Key` whose request is still in progress (§13). |
+| `409` | Name clash (collection / key), rotating an already-revoked key, root not provisioned, a collection with no embed node on search, cancelling an already-terminal job (§7), re-ingesting a document that already has an active job (§4), or an `Idempotency-Key` whose request is still in progress (§14). |
 | `424` | Search only — the query embedder is a permanent config fault: `embedder_unreachable` or `embedder_auth_failed` (typed `{code, detail}`, §6). |
-| `503` | Search only — `embedder_overloaded`: the embedder answered its probe, so the failure was transient; retry (§6). |
+| `503` | Search — `embedder_overloaded`: the embedder answered its probe, so the failure was transient; retry (§6). Ingestion — the queue was unreachable, so the freshly-minted job was marked failed (§4). |
 | `504` | Search only — `search_timeout`: the run blew its wall-clock cap (§6). |
 | `500` | Unexpected server error (opaque). |
-
-## Corpus grid, bulk operations, telemetry & introspection
-
-These endpoints power the document grid, mass actions, job telemetry and token self-introspection. All are mirrored in the SDK (`client.corpus`, `client.jobs`, `client.collections`, `client.auth`) and the MCP server.
-
-### Document grid & bulk ops (`/collections/{id}/documents/*`)
-- `POST /collections/{id}/documents/query` → `DocumentQueryResponse` — one filtered/sorted/paginated page (`{filter, sort, pagination}`) + the total match count. Rows carry the catalogue fields + a `{field_name: value}` metadata map.
-- `POST /collections/{id}/documents/delete` → `BulkDeleteResponse` — bulk delete by `DocumentSelector` (`{document_ids:[…]}` XOR `{filter:{…}, exclude_ids:[…]}`); removes everywhere (PG + Qdrant + S3).
-- `POST /collections/{id}/documents/set-enabled?enabled=<bool>` → `BulkEnabledResponse` — bulk enable/disable searchability by selector.
-- `POST /collections/{id}/documents/reingest?force=<bool>` → `BulkReingestResponse` — bulk full re-ingest by selector (capped fan-out, one job handle per run).
-- `POST /documents/{id}/reingest?force=<bool>` → `UploadAccepted` — re-ingest a single document.
-
-### Job telemetry (`/jobs/*`)
-- `GET /jobs/cost?collection_id=` → `CollectionCost` — paid text-gen roll-up (tokens + USD).
-- `GET /jobs/queue[?collection_id=]` → `QueueDepth` — pending/running backlog (fleet-wide for a root token, else per-collection).
-- `GET /jobs/stage-durations?collection_id=` → `StageDurations` — average per-stage wall-clock (ETA basis).
-- `GET /jobs/{id}/stream` → Server-Sent Events live progress (SSE; not wrapped in the SDK — consume the stream directly).
-
-### Discovery & introspection
-- `GET /collections/contract-schema` → `CollectionContractSchemaResponse` — JSON Schema of the collection identity/limits contract (drives a discovery form).
-- `GET /auth/whoami` → `WhoAmI` — the **calling token's own** access: `capabilities` (read/write/search/create/admin) + collection `scope`. Requires only authentication, no specific capability — a client (an MCP agent especially) can discover what it may do without probing endpoints.
-
-### Collection transfers (portable `.dcexport` bundles)
-A collection can be exported to a portable bundle and re-imported on another server (no recompute — ids are remapped on import). Both the export and the import run **asynchronously** (`202` → a transfer handle you poll).
-- `POST /collections/{id}/export` (cap `read`) → `TransferAccepted` (`202`) — start packaging the whole collection into a `.dcexport` bundle.
-- `POST /collections/import` (cap `create`) → `TransferAccepted` (`202`) — import an uploaded bundle as a new collection.
-- `GET /transfers/{id}` (cap `read`) → `TransferStatus` — poll a transfer's progress/state.
-- `GET /transfers/{id}/download` (cap `read`) — stream a finished export's bundle bytes (`404` when the transfer has no bundle or it has expired).

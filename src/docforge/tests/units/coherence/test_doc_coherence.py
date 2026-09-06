@@ -20,6 +20,7 @@ Deliberately narrow: only objective, string-level facts are checked (a kind name
 token). Prose accuracy stays a human/review concern — see .claude/rules/methodology.md.
 """
 
+import json
 import pathlib
 import re
 import subprocess
@@ -149,6 +150,54 @@ def test_compose_files_keep_the_dependabot_covered_naming() -> None:
     ]
     assert not offenders, (
         f"Compose file(s) outside the Dependabot-covered `compose.*.yml` naming: {offenders}"
+    )
+
+
+# Routes deliberately absent from the REST doc (add ONLY with a reason — internal/debug surface).
+_UNDOCUMENTED_ROUTES: frozenset[str] = frozenset()
+# Env vars deliberately absent from configuration.md (add ONLY with a reason).
+_UNDOCUMENTED_ENV_VARS: frozenset[str] = frozenset()
+
+_ENV_DECL = re.compile(r'env\(\s*"([A-Z0-9_]+)"')
+
+
+def test_every_api_route_is_documented_in_rest_api_md() -> None:
+    """Every path in the committed OpenAPI snapshot appears literally in docs/rest-api.md.
+
+    The snapshot is itself drift-guarded against the live app by the sdk-parity gate, so
+    snapshot ⊆ rest-api.md transitively means app ⊆ rest-api.md — the audit's
+    "rest-api.md misses N live endpoints" class, which had already REGROWN to 16 routes within
+    days of being fixed, becomes impossible to regrow silently."""
+    snapshot = json.loads(
+        (_SRC_ROOT.parent / "docforge_sdk" / "tests" / "openapi_snapshot.json").read_text()
+    )
+    rest = (_REPO_ROOT / "docs" / "rest-api.md").read_text(encoding="utf-8")
+    missing = [
+        path for path in snapshot["paths"] if path not in rest and path not in _UNDOCUMENTED_ROUTES
+    ]
+    assert not missing, (
+        f"API route(s) absent from docs/rest-api.md: {missing}. Document the endpoint (path "
+        f"VERBATIM) in the same change that adds it, or exempt it in _UNDOCUMENTED_ROUTES with a "
+        f"reason."
+    )
+
+
+def test_every_env_var_is_documented_in_configuration_md() -> None:
+    """Every ``env("NAME")`` declared by the app/worker runtime configs appears literally in
+    docs/configuration.md — a new knob ships WITH its operator documentation (the audit's
+    undocumented-env-var class, 11 of which had regrown since the audit)."""
+    conf = (_REPO_ROOT / "docs" / "configuration.md").read_text(encoding="utf-8")
+    names: set[str] = set()
+    for config in (
+        _SRC_ROOT / "app" / "config" / "runtime_config.py",
+        _SRC_ROOT / "worker" / "config" / "runtime_config.py",
+    ):
+        names |= set(_ENV_DECL.findall(config.read_text(encoding="utf-8")))
+    missing = sorted(n for n in names if n not in conf and n not in _UNDOCUMENTED_ENV_VARS)
+    assert not missing, (
+        f"Env var(s) absent from docs/configuration.md: {missing}. Document the knob (name "
+        f"VERBATIM, default, when to change it) in the same change that adds it, or exempt it in "
+        f"_UNDOCUMENTED_ENV_VARS with a reason."
     )
 
 
