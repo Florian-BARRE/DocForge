@@ -2,8 +2,7 @@
 # The `block_enrichment` table — a GENERIC enrichment of ANY block (not just figures). One row per
 # (block, kind): a figure gets an `ocr` row AND a `vlm` row; a scanned text block gets an `ocr` row;
 # a table gets a `table_summary` row. Each holds the result (text and/or structured data) plus its
-# status. The model CHAIN that produced it — including the models that failed first — is recorded in
-# `enrichment_attempt`, one row per attempt.
+# status.
 
 # ====== Standard Library Imports ======
 from enum import StrEnum

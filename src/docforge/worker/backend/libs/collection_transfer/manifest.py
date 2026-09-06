@@ -46,6 +46,10 @@ class TransferCounts(BaseModel):
     blocks: int = 0
     enrichments: int = 0
     chunks: int = 0
+    # Retained ONLY so a legacy V1 manifest (which carried this count) still parses under the model's
+    # ``extra="forbid"`` — the entity_mention table was removed as dead. The table was always empty
+    # (write-dead), so every legacy bundle carries 0 here; new exports never populate it (stays 0),
+    # and the importer no longer restores the row-type, so count reconciliation stays 0 == 0.
     entity_mentions: int = 0
     points: int = 0
     blobs: int = 0

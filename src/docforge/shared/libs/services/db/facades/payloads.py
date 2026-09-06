@@ -20,8 +20,6 @@ from shared_libs.services.db.postgresql.tables import (
     ChunkMetadata,
     Document,
     DocumentMetadata,
-    EnrichmentAttempt,
-    EntityMention,
     Job,
     MetadataField,
     Page,
@@ -47,11 +45,9 @@ class IngestionPayload:
     block_tables: list[BlockTable] = field(default_factory=list)
     block_figures: list[BlockFigure] = field(default_factory=list)
     enrichments: list[BlockEnrichment] = field(default_factory=list)
-    attempts: list[EnrichmentAttempt] = field(default_factory=list)
     chunks: list[Chunk] = field(default_factory=list)
     composition: list[ChunkBlock] = field(default_factory=list)
     chunk_metadata: list[ChunkMetadata] = field(default_factory=list)
-    entities: list[EntityMention] = field(default_factory=list)
 
 
 @dataclass(slots=True)
@@ -62,9 +58,6 @@ class IRBundle:
     tables: list[BlockTable]
     figures: list[BlockFigure]
     enrichments: list[BlockEnrichment]
-    # The per-enrichment model-chain trace (one row per model tried, in order) — the "enriched by
-    # which model / OCR, and what escalated before it" provenance surfaced by the IR inspection view.
-    attempts: list[EnrichmentAttempt] = field(default_factory=list)
 
 
 @dataclass(slots=True)

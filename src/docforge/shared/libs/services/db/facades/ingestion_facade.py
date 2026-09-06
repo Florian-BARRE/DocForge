@@ -248,14 +248,12 @@ class IngestionFacade(LoggerClass):
                 block_tables=payload.block_tables,
                 block_figures=payload.block_figures,
                 enrichments=payload.enrichments,
-                attempts=payload.attempts,
             )
             await ChunkApi.persist_chunks(
                 session,
                 payload.chunks,
                 payload.composition,
                 metadata=payload.chunk_metadata,
-                entities=payload.entities,
             )
             # 4. The persisted truth is complete — unless a force-cancel raced in (guarded DONE).
             await DocumentApi.finalize_done(session, document_id)

@@ -25,8 +25,6 @@ from shared_libs.services.db.postgresql.tables import (
     Chunk,
     ChunkBlock,
     Document,
-    EnrichmentAttempt,
-    EntityMention,
     MetadataField,
     Page,
 )
@@ -154,7 +152,7 @@ class RowSerializer:
 
     @staticmethod
     def block_enrichment(row: BlockEnrichment) -> dict[str, Any]:
-        """An enrichment row — id emitted as a bundle join key (attempts reference it; remapped on import)."""
+        """An enrichment row — id emitted as a bundle join key (remapped on import)."""
         return {
             "id": str(row.id),
             "block_id": row.block_id,
@@ -162,21 +160,6 @@ class RowSerializer:
             "text": row.text,
             "data": row.data,
             "status": _enum(row.status),
-        }
-
-    @staticmethod
-    def enrichment_attempt(row: EnrichmentAttempt) -> dict[str, Any]:
-        """One model attempt in an enrichment's escalation chain."""
-        return {
-            "id": str(row.id),
-            "block_enrichment_id": str(row.block_enrichment_id),
-            "position": row.position,
-            "capability": row.capability,
-            "provider_id": row.provider_id,
-            "model": row.model,
-            "status": _enum(row.status),
-            "error": row.error,
-            "latency_ms": row.latency_ms,
         }
 
     @staticmethod
@@ -216,18 +199,6 @@ class RowSerializer:
             "field_name": field_name,
             "value": value,
             "origin": _enum(origin),
-        }
-
-    @staticmethod
-    def entity_mention(row: EntityMention) -> dict[str, Any]:
-        """A named entity found in a chunk — id emitted as a bundle join key (remapped on import)."""
-        return {
-            "id": str(row.id),
-            "chunk_id": str(row.chunk_id),
-            "entity_type": row.entity_type,
-            "surface_text": row.surface_text,
-            "normalized_value": row.normalized_value,
-            "span": row.span,
         }
 
     @staticmethod

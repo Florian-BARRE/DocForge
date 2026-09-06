@@ -237,7 +237,7 @@ class CollectionImporterV1:
         counts["pages"] = await self._restore_table(BundlePaths.PAGES, ctx, RowDeserializer.page)
         self._progress("documents", 40)
 
-        # 3. The IR — blocks, then their details, then enrichments + attempts (each a full-table tx).
+        # 3. The IR — blocks, then their details, then enrichments (each a full-table tx).
         counts["blocks"] = await self._restore_table(
             BundlePaths.IR_BLOCKS, ctx, RowDeserializer.block
         )
@@ -246,18 +246,15 @@ class CollectionImporterV1:
         counts["enrichments"] = await self._restore_table(
             BundlePaths.IR_ENRICHMENTS, ctx, RowDeserializer.block_enrichment
         )
-        await self._restore_table(
-            BundlePaths.IR_ENRICHMENT_ATTEMPTS, ctx, RowDeserializer.enrichment_attempt
-        )
         self._progress("ir", 60)
 
-        # 4. The chunks, their composition, generated metadata, entities.
+        # 4. The chunks, their composition, and generated metadata. A legacy bundle may still carry
+        #    ir_enrichment_attempts / entity_mentions files (both write-dead tables, since removed);
+        #    they are simply not restored — the reader never reads them, and the manifest's retained
+        #    entity_mentions count stays 0, so reconciliation holds (0 == 0).
         counts["chunks"] = await self._restore_table(BundlePaths.CHUNKS, ctx, RowDeserializer.chunk)
         await self._restore_table(BundlePaths.CHUNK_BLOCKS, ctx, RowDeserializer.chunk_block)
         await self._restore_metadata(BundlePaths.CHUNK_METADATA, ctx, chunk_scope=True)
-        counts["entity_mentions"] = await self._restore_table(
-            BundlePaths.ENTITY_MENTIONS, ctx, RowDeserializer.entity_mention
-        )
         self._progress("chunks", 80)
 
         # 5. The vectors — the point id is the chunk's NEW id (kept == chunk.id), and its payload

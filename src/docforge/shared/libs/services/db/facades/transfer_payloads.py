@@ -21,8 +21,6 @@ from shared_libs.services.db.postgresql.tables import (
     Chunk,
     ChunkBlock,
     Document,
-    EnrichmentAttempt,
-    EntityMention,
     Page,
 )
 
@@ -39,12 +37,10 @@ class DocumentExportRows:
     tables: list[BlockTable] = field(default_factory=list)
     figures: list[BlockFigure] = field(default_factory=list)
     enrichments: list[BlockEnrichment] = field(default_factory=list)
-    attempts: list[EnrichmentAttempt] = field(default_factory=list)
     chunks: list[Chunk] = field(default_factory=list)
     composition: list[ChunkBlock] = field(default_factory=list)
     # (chunk_id, field_name, value, origin) — same portability rule as document metadata.
     chunk_metadata: list[tuple[uuid.UUID, str, Any, FieldOrigin]] = field(default_factory=list)
-    entities: list[EntityMention] = field(default_factory=list)
 
 
 __all__ = ["DocumentExportRows"]

@@ -1,8 +1,8 @@
 # ====== Code Summary ======
 # IRApi — the data-access API for the IR domain: the blocks and their detail rows (table / figure),
-# plus the enrichments and their attempt traces. `persist_ir` inserts a whole document's IR in
-# foreign-key order (blocks → details/enrichments → attempts), flushing between levels so the
-# self-references (heading tree, caption↔figure) and cross-table FKs always resolve.
+# plus the enrichments. `persist_ir` inserts a whole document's IR in foreign-key order (blocks →
+# details/enrichments), flushing between levels so the self-references (heading tree, caption↔figure)
+# and cross-table FKs always resolve.
 
 # ====== Standard Library Imports ======
 import uuid
@@ -18,7 +18,6 @@ from ..tables import (
     BlockEnrichment,
     BlockFigure,
     BlockTable,
-    EnrichmentAttempt,
 )
 
 
@@ -36,7 +35,6 @@ class IRApi:
         block_tables: Sequence[BlockTable] = (),
         block_figures: Sequence[BlockFigure] = (),
         enrichments: Sequence[BlockEnrichment] = (),
-        attempts: Sequence[EnrichmentAttempt] = (),
     ) -> None:
         """
         Persist a document's whole IR in foreign-key order.
@@ -47,20 +45,16 @@ class IRApi:
             block_tables (Sequence[BlockTable]): Table detail rows (1:1 with TABLE blocks).
             block_figures (Sequence[BlockFigure]): Figure detail rows (1:1 with FIGURE blocks).
             enrichments (Sequence[BlockEnrichment]): The enrichment results.
-            attempts (Sequence[EnrichmentAttempt]): The enrichment model-chain traces.
         """
         # 1. Blocks first — details, enrichments and self-refs (heading tree, caption) point at them.
         session.add_all(list(blocks))
         await session.flush()
-        # 2. Details + enrichments — attempts point at the enrichments.
+        # 2. Details + enrichments.
         session.add_all([*block_tables, *block_figures, *enrichments])
-        await session.flush()
-        # 3. The enrichment traces.
-        session.add_all(list(attempts))
 
     @staticmethod
     async def delete_for_document(session: AsyncSession, document_id: uuid.UUID) -> None:
-        """Delete a document's IR (cascades details, enrichments, attempts) — the re-ingest purge."""
+        """Delete a document's IR (cascades details + enrichments) — the re-ingest purge."""
         await session.execute(delete(Block).where(Block.document_id == document_id))
 
     @staticmethod
@@ -100,20 +94,6 @@ class IRApi:
             select(BlockEnrichment)
             .join(Block, BlockEnrichment.block_id == Block.id)
             .where(Block.document_id == document_id)
-        )
-        return list(result.scalars().all())
-
-    @staticmethod
-    async def get_document_attempts(
-        session: AsyncSession, document_id: uuid.UUID
-    ) -> list[EnrichmentAttempt]:
-        """Return every enrichment-attempt trace of a document's enrichments (the export read)."""
-        result = await session.execute(
-            select(EnrichmentAttempt)
-            .join(BlockEnrichment, EnrichmentAttempt.block_enrichment_id == BlockEnrichment.id)
-            .join(Block, BlockEnrichment.block_id == Block.id)
-            .where(Block.document_id == document_id)
-            .order_by(EnrichmentAttempt.position)
         )
         return list(result.scalars().all())
 

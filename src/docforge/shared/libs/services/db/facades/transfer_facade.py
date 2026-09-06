@@ -96,13 +96,11 @@ class CollectionTransferFacade(LoggerClass):
                 tables=await IRApi.get_tables(session, document_id),
                 figures=await IRApi.get_figures(session, document_id),
                 enrichments=await IRApi.get_document_enrichments(session, document_id),
-                attempts=await IRApi.get_document_attempts(session, document_id),
                 chunks=await ChunkApi.get_for_document(session, document_id),
                 composition=await ChunkApi.get_composition_for_document(session, document_id),
                 chunk_metadata=await ChunkApi.get_metadata_with_names_for_document(
                     session, document_id
                 ),
-                entities=await ChunkApi.get_entities_for_document(session, document_id),
             )
 
     async def collect_blob_hashes(self, collection_id: uuid.UUID) -> list[str]:

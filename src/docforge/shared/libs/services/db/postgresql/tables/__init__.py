@@ -16,18 +16,16 @@ from .blobs import ArtifactCache, ArtifactType, Blob, BlobKind
 
 # ---------------------- IR (parse + enrich) ---------------------- #
 from .ir import (
-    AttemptStatus,
     Block,
     BlockEnrichment,
     BlockFigure,
     BlockTable,
-    EnrichmentAttempt,
     EnrichmentKind,
     EnrichmentStatus,
 )
 
 # ---------------------- Chunks ---------------------- #
-from .chunks import Chunk, ChunkBlock, ChunkMetadata, EntityMention
+from .chunks import Chunk, ChunkBlock, ChunkMetadata
 
 # ---------------------- Observability ---------------------- #
 from .observability import (
@@ -76,13 +74,10 @@ __all__ = [
     "BlockEnrichment",
     "EnrichmentKind",
     "EnrichmentStatus",
-    "EnrichmentAttempt",
-    "AttemptStatus",
     # chunks
     "Chunk",
     "ChunkBlock",
     "ChunkMetadata",
-    "EntityMention",
     # observability
     "Job",
     "JobStatus",

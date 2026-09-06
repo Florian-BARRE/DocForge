@@ -51,13 +51,6 @@ _PG_PER_DOCUMENT_SQL = text(
         JOIN document d ON bl.document_id = d.id
         WHERE d.collection_id = :cid
         UNION ALL
-        SELECT bl.document_id, 'enrichment', pg_column_size(ea.*)
-        FROM enrichment_attempt ea
-        JOIN block_enrichment be ON ea.block_enrichment_id = be.id
-        JOIN block bl ON be.block_id = bl.id
-        JOIN document d ON bl.document_id = d.id
-        WHERE d.collection_id = :cid
-        UNION ALL
         SELECT ch.document_id, 'chunks', pg_column_size(ch.*)
         FROM chunk ch JOIN document d ON ch.document_id = d.id
         WHERE d.collection_id = :cid
@@ -71,12 +64,6 @@ _PG_PER_DOCUMENT_SQL = text(
         SELECT ch.document_id, 'chunks', pg_column_size(cm.*)
         FROM chunk_metadata cm
         JOIN chunk ch ON cm.chunk_id = ch.id
-        JOIN document d ON ch.document_id = d.id
-        WHERE d.collection_id = :cid
-        UNION ALL
-        SELECT ch.document_id, 'chunks', pg_column_size(em.*)
-        FROM entity_mention em
-        JOIN chunk ch ON em.chunk_id = ch.id
         JOIN document d ON ch.document_id = d.id
         WHERE d.collection_id = :cid
         UNION ALL

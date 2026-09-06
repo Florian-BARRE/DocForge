@@ -157,7 +157,6 @@ class DocumentsFacade(LoggerClass):
                 tables=await IRApi.get_tables(session, document_id),
                 figures=await IRApi.get_figures(session, document_id),
                 enrichments=await IRApi.get_document_enrichments(session, document_id),
-                attempts=await IRApi.get_document_attempts(session, document_id),
             )
 
     async def get_chunks(self, document_id: uuid.UUID) -> list[Chunk]:

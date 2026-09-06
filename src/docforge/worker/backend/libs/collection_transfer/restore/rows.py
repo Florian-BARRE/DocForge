@@ -27,7 +27,6 @@ from loggerplusplus import loggerplusplus
 # ====== Internal Project Imports ======
 from shared_libs.public_models import FieldOrigin, FieldScope, FieldType
 from shared_libs.services.db.postgresql.tables import (
-    AttemptStatus,
     Blob,
     BlobKind,
     Block,
@@ -40,10 +39,8 @@ from shared_libs.services.db.postgresql.tables import (
     Document,
     DocumentMetadata,
     DocumentStatus,
-    EnrichmentAttempt,
     EnrichmentKind,
     EnrichmentStatus,
-    EntityMention,
     MetadataField,
     Page,
     SourceKind,
@@ -215,21 +212,6 @@ class RowDeserializer:
             status=EnrichmentStatus(data["status"]),
         )
 
-    @staticmethod
-    def enrichment_attempt(data: dict[str, Any], ctx: RemapContext) -> EnrichmentAttempt:
-        """One escalation-chain attempt — fresh id, enrichment remapped."""
-        return EnrichmentAttempt(
-            id=ctx.attempts[data["id"]],
-            block_enrichment_id=ctx.enrichments[data["block_enrichment_id"]],
-            position=data["position"],
-            capability=data["capability"],
-            provider_id=data["provider_id"],
-            model=data["model"],
-            status=AttemptStatus(data["status"]),
-            error=data["error"],
-            latency_ms=data["latency_ms"],
-        )
-
     @classmethod
     def chunk(cls, data: dict[str, Any], ctx: RemapContext) -> Chunk:
         """A chunk — fresh id (reused as its Qdrant point id), document + (optional) parent remapped."""
@@ -274,18 +256,6 @@ class RowDeserializer:
             field_id=field_id,
             value=data["value"],
             origin=FieldOrigin(data["origin"]),
-        )
-
-    @staticmethod
-    def entity_mention(data: dict[str, Any], ctx: RemapContext) -> EntityMention:
-        """A named entity — fresh id, chunk remapped."""
-        return EntityMention(
-            id=ctx.entities[data["id"]],
-            chunk_id=ctx.chunks[data["chunk_id"]],
-            entity_type=data["entity_type"],
-            surface_text=data["surface_text"],
-            normalized_value=data["normalized_value"],
-            span=data["span"],
         )
 
     @staticmethod

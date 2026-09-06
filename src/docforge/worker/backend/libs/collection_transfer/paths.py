@@ -29,11 +29,9 @@ class BundlePaths:
     IR_TABLES = "postgres/ir_tables.jsonl"
     IR_FIGURES = "postgres/ir_figures.jsonl"
     IR_ENRICHMENTS = "postgres/ir_enrichments.jsonl"
-    IR_ENRICHMENT_ATTEMPTS = "postgres/ir_enrichment_attempts.jsonl"
     CHUNKS = "postgres/chunks.jsonl"
     CHUNK_BLOCKS = "postgres/chunk_blocks.jsonl"
     CHUNK_METADATA = "postgres/chunk_metadata.jsonl"
-    ENTITY_MENTIONS = "postgres/entity_mentions.jsonl"
     BLOBS = "postgres/blobs.jsonl"
 
     # ── Qdrant ──
@@ -58,11 +56,9 @@ ORDERED_DATA_FILES = (
     BundlePaths.IR_TABLES,
     BundlePaths.IR_FIGURES,
     BundlePaths.IR_ENRICHMENTS,
-    BundlePaths.IR_ENRICHMENT_ATTEMPTS,
     BundlePaths.CHUNKS,
     BundlePaths.CHUNK_BLOCKS,
     BundlePaths.CHUNK_METADATA,
-    BundlePaths.ENTITY_MENTIONS,
     BundlePaths.BLOBS,
     BundlePaths.POINTS,
 )
