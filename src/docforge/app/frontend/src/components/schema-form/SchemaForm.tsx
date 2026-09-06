@@ -2,16 +2,18 @@
 // Generic JSON-Schema form — the rendering engine that makes any backend-described config
 // editable with zero per-node frontend code. Shared by every config surface (stage rail cards, the
 // collection wizard's Identity step). Two humanization affordances live here, on top of what
-// `SchemaField` already does per-property: a "Show technical details" toggle (progressive
-// disclosure — normal users get a plain form, power users can reveal the raw type/default) and a
-// "JSON" escape hatch that swaps the whole form for one raw-JSON editor bound to the same values.
+// `SchemaField` already does per-property: a "Show technical details" toggle — REAL progressive
+// disclosure, not just a badge — that hides numeric tuning fields (`isAdvancedField`) until
+// toggled on, and a "JSON" escape hatch that swaps the whole form for one raw-JSON editor bound to
+// the same values.
 
 import { useState } from "react";
 
-import type { JsonSchema } from "../../api/types";
+import type { JsonSchema, JsonSchemaProperty } from "../../api/types";
 import { theme } from "../../theme";
+import { isAdvancedField } from "./advancedFields";
 import { JsonField } from "./JsonField";
-import { SchemaField } from "./SchemaField";
+import { deref, SchemaField } from "./SchemaField";
 
 interface SchemaFormProps {
   schema: JsonSchema;
@@ -58,6 +60,27 @@ export function SchemaForm({
   if (!properties.length) return null;
   const required = new Set(schema.required ?? []);
 
+  // The basic/advanced split, computed once per render off the schema itself — see
+  // `isAdvancedField`'s doc for the exact heuristic. `basicProps` are ALWAYS rendered; `advancedProps`
+  // only when the toggle is on, and the toggle button itself only exists when there is something to
+  // hide (an all-basic schema, e.g. a pure method picker, never grows a dead "hides nothing" button).
+  const basicProps = properties.filter(([name, prop]) => !isAdvancedField(name, deref(prop, schema)));
+  const advancedProps = properties.filter(([name, prop]) => isAdvancedField(name, deref(prop, schema)));
+  const hasAdvancedFields = advancedProps.length > 0;
+
+  const renderField = ([name, prop]: [string, JsonSchemaProperty]) => (
+    <SchemaField
+      key={name}
+      name={name}
+      prop={prop}
+      schema={schema}
+      value={values[name]}
+      required={required.has(name)}
+      advanced={isAdvanced}
+      onChange={(value) => onChange(name, value)}
+    />
+  );
+
   // Translates one whole-object edit from the JSON escape hatch into the same per-key `onChange`
   // every control here already uses — a key missing from the new object is explicitly unset
   // (`undefined`, not deleted from the call signature) so an optional field can be cleared this way.
@@ -70,7 +93,7 @@ export function SchemaForm({
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: theme.space.s }}>
       <div style={{ display: "flex", justifyContent: "flex-end", gap: theme.space.xs }}>
-        {!isJsonMode && (
+        {!isJsonMode && hasAdvancedFields && (
           <button type="button" style={toggleButtonStyle(isAdvanced)} onClick={() => setAdvanced(!isAdvanced)}>
             {isAdvanced ? "Hide technical details" : "Show technical details"}
           </button>
@@ -82,20 +105,21 @@ export function SchemaForm({
       {isJsonMode ? (
         <JsonField value={values} onChange={applyJsonEdit} />
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: `repeat(${columns}, 1fr)`, gap: "10px 10px" }}>
-          {properties.map(([name, prop]) => (
-            <SchemaField
-              key={name}
-              name={name}
-              prop={prop}
-              schema={schema}
-              value={values[name]}
-              required={required.has(name)}
-              advanced={isAdvanced}
-              onChange={(value) => onChange(name, value)}
-            />
-          ))}
-        </div>
+        <>
+          <div style={{ display: "grid", gridTemplateColumns: `repeat(${columns}, 1fr)`, gap: "10px 10px" }}>
+            {basicProps.map(renderField)}
+          </div>
+          {hasAdvancedFields && isAdvanced && (
+            <div
+              style={{
+                display: "grid", gridTemplateColumns: `repeat(${columns}, 1fr)`, gap: "10px 10px",
+                marginTop: theme.space.xs, paddingTop: theme.space.s, borderTop: `1px solid ${theme.color.line}`,
+              }}
+            >
+              {advancedProps.map(renderField)}
+            </div>
+          )}
+        </>
       )}
     </div>
   );
