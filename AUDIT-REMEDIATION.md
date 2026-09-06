@@ -8,6 +8,8 @@
 
 ## Journal
 
+- **2026-09-06 — Sweep divergence-doc (no-release, 6 nits vérifiés)** : corrections de doc/commentaire, aucune image impactée. (1) `runtime_config.py` — le commentaire idempotency listait `create/rotate key` comme éligible alors qu'`eligibility.py` les EXCLUT délibérément (routes retournant un secret one-time) → commentaire corrigé. (2) `.claude/rules/architecture.md` — `preflight()` "reste à ajouter" alors qu'il est **livré, on par défaut** (invariant 4) → réécrit ; et le budget job "→ arq `_job_timeout` à l'enqueue" alors qu'`enqueue_job` n'accepte AUCUN `_job_timeout` (le worker lit `collection.job_timeout_seconds` et le passe au runner ; arq n'a qu'un cap uniforme worker-level) → corrigé. (3) `CLAUDE.md` — `uv run mypy .` documenté mais mypy non installé/non runnable → ligne corrigée (pas de gate mypy) ; arbre `migrations/` racine inexistant (seul `shared/migrations/`) → corrigé ; familles déjà à jour (deliver+structgen) → vérifié. **Commit no-release** (docs .claude gitignorées + 1 commentaire code). **V8 : 156 fait.**
+
 - **2026-09-06 — Vague AF / 0.14.41 (V8 enrichment-trace write-dead — REMOVE, décision arbitrée)** : les deux tables `enrichment_attempt` + `entity_mention` étaient **write-dead** (aucun producteur n'a jamais inséré une ligne : l'enrich ne trace pas les tentatives par-attempt sur l'IR, aucun extracteur NER n'existe). Option **persist** explorée puis **rejetée** : rien ne peuple l'IR (il aurait fallu bâtir tout un vertical de capture de trace moteur → enrich-stage → slot IR figure → translator, disproportionné pour une MOYENNE observabilité) → décision **REMOVE**. Migration `a2f8e1c4d7b9` (down_revision `d1a7c4f8b2e6`, **head unique**) : `upgrade` drop les 2 tables+index ; `downgrade` les recrée à l'identique (VERBATIM vs schéma initial, enum `native_enum=False` inline, FK CASCADE — vérifié colonne par colonne). Modèles supprimés + purge de toutes les refs (tables/apis/facades/payloads/footprint/API `PostgresFootprintModel`). **Export** cesse d'émettre les 2 row-types ; **import tolérant aux vieux bundles** : le count `entity_mentions` est **retenu à 0** dans `TransferCounts` (parse legacy sous `extra="forbid"`), le reader ne checksumme que `manifest.files` (les 2 fichiers legacy inutilisés sont ignorés), réconciliation 0==0. Gate : docforge **1639 passed** (fixture transfer nettoyée), ruff clean, drift **OK** (les descriptions footprint ne sont pas des schémas trackés). **→ 796 fait ; 656 [~]** (la moitié "enrichment-trace promise" est résolue ; la moitié "dead IR fields surfaced" à `explorer/models_ir.py:25` reste à traiter). **V8 : 150 fait.**
 
 - **2026-09-06 — Vague AE / 0.14.40 (V8 2 FAIBLE design, 2 agents || disjoints)** : (1) **ScopedSdkProvider eviction** (mcp) — `dict`→`OrderedDict` : hit `move_to_end` + éviction `popitem(last=False)` = vrai LRU (plus FIFO) ; le close du client évincé n'est plus fire-and-forget non-référencé — task tenue dans `_pending_closes` + done-callback qui log l'erreur, awaité au teardown. +4 tests (LRU discriminateur, close tracké, erreur loggée). (2) **`IoSlot.required`** (base) — `describe()` ne dérivait jamais `required` de l'optionalité → tout slot reporté required. Nouveau `SlotTypes.is_optional` + `required = field_info.is_required() and not is_optional` : `X | None`/défauté → False, mandatory → True ; type-label/list-ness inchangés. Drift **confirmé sans changement de schéma** (IoSlot shape byte-identique, seule la valeur runtime change). +7 tests. Gate : docforge **1639 passed** (+7), mcp **51** (+4), drift OK, ruff clean. **→ V8 : 149 fait.**
@@ -177,8 +179,8 @@
 | V5 — Moteur & pipeline | 2 | 2 | 0 | 0 |
 | V6 — Frontend | 0 | 0 | 0 | 0 |
 | V7 — Documentation | 21 | 21 | 0 | 0 |
-| V8 — Outillage (.claude/tests/infra/télémétrie) | 188 | 150 | 6 | 32 |
-| **Total** | **247** | **208** | **6** | **33** |
+| V8 — Outillage (.claude/tests/infra/télémétrie) | 188 | 156 | 6 | 26 |
+| **Total** | **247** | **214** | **6** | **27** |
 
 
 ## V1 — Sécurité & authz (avant tout déploiement multi-tenant)  (30)
@@ -390,7 +392,7 @@
   `src/docforge/app/backend/routers/auth/whoami.py:40`
 - [ ] **⚪ FAIBLE** · `consistency` — Grouped minor issues: unbounded bulk-chunk patch, transfer info disclosed before scope check, catch-all ValueError→422, READ-triggered export side effects, whole-blob buffering, duplicated lifespan step number  
   `src/docforge/app/backend/routers/explorer/models.py:134`
-- [ ] **⚪ FAIBLE** · `divergence-doc` — RUNTIME_CONFIG idempotency comment claims key create/rotate are eligible endpoints — eligibility.py deliberately excludes them  
+- [x] **⚪ FAIBLE** · `divergence-doc` — RUNTIME_CONFIG idempotency comment claims key create/rotate are eligible endpoints — eligibility.py deliberately excludes them  
   `src/docforge/app/config/runtime_config.py:118`
 
 ### Infra & compose
@@ -430,7 +432,7 @@
   `.claude/commands/rpi/research.md:22`
 - [~] **🟠 MOYENNE** · `dead-code` — The knowledge graph orchestrator.md builds its whole long-term-memory protocol on does not exist — wrong path in the doc, and no file at the configured path either  
   `.claude/rules/orchestrator.md:100`
-- [ ] **🟠 MOYENNE** · `divergence-doc` — architecture.md claims per-node preflight() 'reste à ajouter' — it shipped, is on by default, and is CLAUDE.md invariant 4  
+- [x] **🟠 MOYENNE** · `divergence-doc` — architecture.md claims per-node preflight() 'reste à ajouter' — it shipped, is on by default, and is CLAUDE.md invariant 4  
   `.claude/rules/architecture.md:76`
 - [x] **🟠 MOYENNE** · `consistency` — orchestrator.md contradicts itself and the tree: auto-improvement table routes pipeline updates to src/docforge-rework/PIPELINE.md  
   `.claude/rules/orchestrator.md:76`
@@ -481,7 +483,7 @@
 
 - [x] **🔴 HAUTE** · `bug` — Unit suite silently writes real rows into the live dev Postgres (audit middleware unmocked)  
   `src/docforge/tests/units/api/conftest.py:41`
-- [ ] **🟠 MOYENNE** · `divergence-doc` — CLAUDE.md documents `uv run mypy .` but mypy is neither installed nor runnable on this tree  
+- [x] **🟠 MOYENNE** · `divergence-doc` — CLAUDE.md documents `uv run mypy .` but mypy is neither installed nor runnable on this tree  
   `CLAUDE.md:48`
 - [x] **🟠 MOYENNE** · `test-gap` — ForEach max_concurrency is asserted as config plumbing but never as runtime behavior  
   `src/docforge/tests/units/stages/test_figure_concurrency.py:26`
@@ -502,7 +504,7 @@
 
 - [x] **🟠 MOYENNE** · `design` — Palette scoping (FAMILY_KINDS / FAMILIES / SELECTABLE) is advisory only — /edit accepts any registered kind and the write-time guard is pipeline-agnostic  
   `src/docforge/shared/libs/pipelines/edit/editor.py:74`
-- [ ] **⚪ FAIBLE** · `divergence-doc` — CLAUDE.md families list is stale vs the registered palette  
+- [x] **⚪ FAIBLE** · `divergence-doc` — CLAUDE.md families list is stale vs the registered palette  
   `CLAUDE.md:106`
 - [ ] **⚪ FAIBLE** · `consistency` — Grouped low-severity smells across the discovery/edit surface  
   `src/docforge/shared/libs/pipelines/registry.py:218`
@@ -555,7 +557,7 @@
   `src/docforge/shared/libs/services/db/facades/search_facade.py:86`
 - [x] **🟠 MOYENNE** · `bug` — Orphan-blob purge races a concurrent ingest sharing the same content hash  
   `src/docforge/shared/libs/services/db/postgresql/apis/blob_api.py:221`
-- [ ] **⚪ FAIBLE** · `divergence-doc` — CLAUDE.md structure tree names a `migrations/` root that does not exist  
+- [x] **⚪ FAIBLE** · `divergence-doc` — CLAUDE.md structure tree names a `migrations/` root that does not exist  
   `CLAUDE.md:115`
 - [x] **⚪ FAIBLE** · `dead-code` — Dead data-layer code: ArtifactCacheFacade.drop_for_document and ArtifactCacheApi.referenced_hashes have no production caller  
   `src/docforge/shared/libs/services/db/facades/artifact_cache_facade.py:137`
@@ -805,7 +807,7 @@
   `src/docforge/worker/backend/libs/jobs/progress.py:149`
 - [x] **⚪ FAIBLE** · `dead-code` — Minor smells: dead non-dict blob branch, worker entrypoint imports backend before config, relevance score dropped  
   `src/docforge/worker/backend/libs/jobs/core.py:163`
-- [ ] **⚪ FAIBLE** · `divergence-doc` — architecture.md claims the per-collection budget rides arq `_job_timeout` at enqueue — arq has no such kwarg and the code deliberately does otherwise  
+- [x] **⚪ FAIBLE** · `divergence-doc` — architecture.md claims the per-collection budget rides arq `_job_timeout` at enqueue — arq has no such kwarg and the code deliberately does otherwise  
   `.claude/rules/architecture.md:37` _(aussi: test-bodies)_
 - [x] **⚪ FAIBLE** · `divergence-doc` — page.is_scanned hardcoded False and source_kind/simhash never written by a run, vs PIPELINE.md's decided derivation-at-persistence  
   `src/docforge/worker/backend/libs/persistence/translator.py:317`

@@ -131,8 +131,10 @@ class RUNTIME_CONFIG(EnvConfigLoader):
 
     # ───── Idempotency (Idempotency-Key middleware, ON by default) ─────
     # ON out-of-box, but SAFE: the middleware only engages when a mutating request to an ELIGIBLE
-    # small-JSON endpoint (create/update collection, reingest, export, create/rotate key) carries an
-    # ``Idempotency-Key`` header — every other request is a transparent passthrough. On a first request
+    # small-JSON endpoint (create/update collection, the two reingest triggers, export) carries an
+    # ``Idempotency-Key`` header — every other request is a transparent passthrough. Key create/rotate
+    # are DELIBERATELY excluded (their response carries a one-time plaintext secret; caching it would
+    # persist the secret at rest — see ``eligibility.py``). On a first request
     # it INSERTs an in-progress guard row (the UNIQUE constraint is the concurrency guard), runs the
     # handler once, and caches a definitive (< 500) response; a retry with the same key+body replays the
     # cached response WITHOUT re-running the handler. Set false to disable entirely (full passthrough).
