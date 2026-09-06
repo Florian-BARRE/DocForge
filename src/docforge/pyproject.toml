@@ -12,27 +12,27 @@ license = "GPL-3.0-or-later"
 dependencies = [
     # Web framework (uvicorn + python-multipart come transitively via [standard])
     "fastapi[standard]>=0.115.0",
-    "pydantic>=2.10.0",
+    "pydantic>=2.13.5",
     # Config & logging (internal libraries, pulled from the default index)
-    "configplusplus>=0.1.0",
+    "configplusplus>=0.3.0",
     "loggerplusplus>=1.0.0",
     # Startup banner (used by the FastAPI lifespan)
     "pyfiglet>=1.0.2",
     # Job queue — ArqRedis pool to enqueue worker jobs (pulls redis transitively)
     "arq>=0.28.0",
     # LLM — LangChain message types + adapted chat clients (per provider node)
-    "langchain-core>=1.4.8",
-    "langchain-openai>=1.3.3",
-    "langchain-mistralai>=1.1.5",
+    "langchain-core>=1.6.1",
+    "langchain-openai>=1.6.0",
+    "langchain-mistralai>=1.1.6",
     "sqlalchemy[asyncio]>=2.0.36",
     "asyncpg>=0.31.0",
-    "alembic>=1.18.5",
-    "qdrant-client>=1.18.0",
+    "alembic>=1.19.1",
+    "qdrant-client>=1.19.0",
     "aioboto3>=15.5.0",
     "pypdf>=6.14.2",
     "httpx>=0.28.1",
     # Token counting (chunker) — transitive via langchain-openai anyway; declared for intent
-    "tiktoken>=0.13.0",
+    "tiktoken>=0.14.0",
     "limits>=3.13",
     "prometheus-client>=0.21.0",
     "msgpack>=1.1.0",
@@ -87,15 +87,15 @@ dev = [
     "pytest>=8.3.0",
     "pytest-asyncio>=0.24.0",
     "pytest-cov>=6.0.0",
-    "ruff>=0.8.0",
+    "ruff>=0.16.5",
 ]
 worker = [
-    "docling>=2.108.0",
+    "docling>=2.124.0",
     # docling pulls transformers transitively with NO upper bound; uv resolves the latest (5.x),
     # whose AutoProcessor API breaks docling 2.108 (ModuleNotFoundError at parse). Pin to 4.x.
     "transformers>=4.46,<5",
     "pillow>=12.3.0",
-    "pypdfium2>=5.11.0",
+    "pypdfium2>=5.13.0",
     "rapidocr-onnxruntime>=1.4.4",
 ]
 
