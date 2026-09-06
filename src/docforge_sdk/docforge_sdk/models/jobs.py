@@ -189,6 +189,8 @@ class WorkerActivity(BaseModel):
         busy (bool): It currently owns at least one RUNNING job.
         last_seen (datetime | None): Its last heartbeat tick (None when no heartbeat row exists).
         started_at (datetime | None): When the worker process registered (None when no heartbeat).
+        max_jobs (int | None): Its configured parallel-job capacity (arq concurrency); None means
+            unknown capacity (an old heartbeat row, or a worker on a build predating this field).
         jobs (list[JobStatus]): Its running jobs, live.
     """
 
@@ -205,6 +207,12 @@ class WorkerActivity(BaseModel):
     )
     started_at: datetime | None = Field(
         default=None, description="When the worker process registered (None when no heartbeat)."
+    )
+    max_jobs: int | None = Field(
+        default=None,
+        description="The worker's configured parallel-job capacity (arq concurrency, = "
+        "WORKER_CONCURRENCY). Null = unknown capacity: an old heartbeat row, or a worker on a build "
+        "predating this field. The UI pairs it with the running-jobs count as a 'N running / max' chip.",
     )
     jobs: list[JobStatus] = Field(default_factory=list, description="Its running jobs, live.")
 

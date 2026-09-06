@@ -823,7 +823,11 @@ done
 On `failed`, read `error` on the job (or `GET /api/v1/jobs/{id}/events` for the per-node trace —
 each `JobEvent` has `stage, status` (`success`/`failed`/`skipped`), timestamps, `detail`).
 
-`GET /api/v1/jobs/workers/live` returns running jobs grouped by worker (empty when idle).
+`GET /api/v1/jobs/workers/live` returns running jobs grouped by worker (empty when idle). Each
+`WorkerActivity` carries its liveness (`alive`, `busy`, `last_seen`, `started_at`) plus `max_jobs`
+— the worker's configured parallel-job capacity (arq concurrency, = `WORKER_CONCURRENCY`). `max_jobs`
+is `null` for a worker whose build predates this field (or a pre-column heartbeat row); a UI pairs it
+with the count of `jobs` as a "N running / max" capacity chip and never fabricates a number when null.
 
 ### Live progress (Server-Sent Events)
 

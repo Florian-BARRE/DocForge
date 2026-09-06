@@ -113,6 +113,11 @@ export interface WorkerActivity {
   last_seen: string | null;
   /** When the worker process registered; null when no heartbeat row exists. */
   started_at: string | null;
+  /**
+   * The worker's configured parallel-job capacity (arq concurrency, = WORKER_CONCURRENCY); null =
+   * unknown capacity (an old heartbeat row, or a worker on a build predating this field).
+   */
+  max_jobs: number | null;
   jobs: JobStatus[];
 }
 

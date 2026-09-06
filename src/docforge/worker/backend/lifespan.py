@@ -127,6 +127,7 @@ async def startup(ctx: dict[str, Any]) -> None:
         CONTEXT.worker_id,
         CONTEXT.worker_name,
         interval_seconds=RUNTIME_CONFIG.WORKER_HEARTBEAT_INTERVAL_SECONDS,
+        max_jobs=RUNTIME_CONFIG.WORKER_CONCURRENCY,
     )
     CONTEXT.heartbeat.start()
     CONTEXT.logger.info(

@@ -406,13 +406,14 @@ class JobApi:
         worker_name: str,
         last_seen: datetime,
         started_at: datetime,
+        max_jobs: int | None = None,
     ) -> None:
         """
         Register/refresh a worker's liveness row (keyed by its stable worker id).
 
         Upsert so a worker's first tick inserts and every later tick updates ``last_seen`` in place;
-        ``started_at`` and ``worker_name`` are refreshed too, so a same-hostname restart reports the
-        NEW process uptime and any changed friendly name.
+        ``started_at``, ``worker_name`` and ``max_jobs`` are refreshed too, so a same-hostname restart
+        reports the NEW process uptime, any changed friendly name and its current capacity.
 
         Args:
             session (AsyncSession): The active DB session.
@@ -420,12 +421,15 @@ class JobApi:
             worker_name (str): The worker's friendly display name (WORKER_NAME, defaults to hostname).
             last_seen (datetime): This tick's timestamp — its age is the liveness signal.
             started_at (datetime): When THIS worker process registered.
+            max_jobs (int | None): The worker's configured parallel-job capacity (arq concurrency);
+                None when an older-build worker does not report it.
         """
         statement = pg_insert(WorkerHeartbeat).values(
             worker_id=worker_id,
             worker_name=worker_name,
             last_seen=last_seen,
             started_at=started_at,
+            max_jobs=max_jobs,
         )
         await session.execute(
             statement.on_conflict_do_update(
@@ -434,6 +438,7 @@ class JobApi:
                     "worker_name": worker_name,
                     "last_seen": last_seen,
                     "started_at": started_at,
+                    "max_jobs": max_jobs,
                 },
             )
         )

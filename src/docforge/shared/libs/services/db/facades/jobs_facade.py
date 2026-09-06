@@ -218,11 +218,18 @@ class JobsFacade(LoggerClass):
             )
 
     async def upsert_heartbeat(
-        self, worker_id: str, worker_name: str, last_seen: datetime, started_at: datetime
+        self,
+        worker_id: str,
+        worker_name: str,
+        last_seen: datetime,
+        started_at: datetime,
+        max_jobs: int | None = None,
     ) -> None:
-        """Register/refresh a worker's liveness heartbeat row (idle-but-alive visibility)."""
+        """Register/refresh a worker's liveness heartbeat row (idle-but-alive visibility + capacity)."""
         async with self._postgres.session() as session:
-            await JobApi.upsert_heartbeat(session, worker_id, worker_name, last_seen, started_at)
+            await JobApi.upsert_heartbeat(
+                session, worker_id, worker_name, last_seen, started_at, max_jobs
+            )
 
     async def delete_heartbeat(self, worker_id: str) -> None:
         """De-register a worker on clean shutdown — its heartbeat row vanishes immediately."""

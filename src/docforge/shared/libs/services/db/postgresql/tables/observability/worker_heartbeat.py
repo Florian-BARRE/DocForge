@@ -7,7 +7,7 @@
 from datetime import datetime
 
 # ====== Third-Party Library Imports ======
-from sqlalchemy import DateTime, String
+from sqlalchemy import DateTime, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 # ====== Local Project Imports ======
@@ -28,6 +28,11 @@ class WorkerHeartbeat(Base):
     last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     # Set once when the worker first registers; lets the UI show process uptime.
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    # The worker's configured arq concurrency: how many ingestion jobs it can run at once. Paired with
+    # the live running-job count, it lets the UI render "N running / max" per worker. NULL when unknown:
+    # a heartbeat row written before this column landed, or a worker on an older build that does not
+    # report its capacity yet (the UI treats NULL as "unknown capacity").
+    max_jobs: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
 __all__ = ["WorkerHeartbeat"]

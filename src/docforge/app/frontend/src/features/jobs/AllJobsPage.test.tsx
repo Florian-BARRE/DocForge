@@ -83,7 +83,7 @@ describe("AllJobsPage", () => {
       status?.includes("running") ? runningPage : { total: 0, limit: 25, offset: 0, jobs: [] },
     );
     vi.mocked(getWorkersLive).mockResolvedValue({
-      workers: [{ worker_id: "w1", worker_name: "worker-a", alive: true, busy: true, last_seen: null, started_at: null, jobs: [runningJob] }],
+      workers: [{ worker_id: "w1", worker_name: "worker-a", alive: true, busy: true, last_seen: null, started_at: null, max_jobs: null, jobs: [runningJob] }],
     });
 
     renderWithProviders(<AllJobsPage onNavigate={vi.fn()} />);
