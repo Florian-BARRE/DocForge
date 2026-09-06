@@ -11,7 +11,7 @@ requires-python = ">=3.12"
 license = "GPL-3.0-or-later"
 dependencies = [
     # Web framework (uvicorn + python-multipart come transitively via [standard])
-    "fastapi[standard]>=0.115.0",
+    "fastapi[standard]>=0.141.1",
     "pydantic>=2.10.0",
     # Config & logging (internal libraries, pulled from the default index)
     "configplusplus>=0.1.0",
