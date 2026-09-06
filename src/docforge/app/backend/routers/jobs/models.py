@@ -303,18 +303,21 @@ class CollectionCost(BaseModel):
 
 
 class JobPage(BaseModel):
-    """One paginated page of a collection's jobs plus the total match count and the pagination echo.
+    """One paginated page of jobs (a collection's, or the fleet's) plus the total and pagination echo.
 
     A heavily re-ingested collection can hold thousands of job rows; the list is served bounded (the
-    server clamps ``limit`` to ``JOBS_MAX_PAGE_SIZE``) so the monitoring view never dumps them all.
+    server clamps ``limit`` to ``JOBS_MAX_PAGE_SIZE``) so neither the per-collection monitoring view
+    nor the fleet-wide "All Jobs" view ever dumps them all.
     """
 
     total: int = Field(
-        description="Total jobs in the collection (drives the pager; ignores paging)."
+        description="Total jobs matching the filter (drives the pager; ignores paging)."
     )
     limit: int = Field(description="The applied page size (after the server ceiling clamp).")
     offset: int = Field(description="The applied offset.")
-    jobs: list[JobStatus] = Field(description="The page of jobs, newest first.")
+    jobs: list[JobStatus] = Field(
+        description="The page of jobs, in the requested order (newest first by default)."
+    )
 
 
 __all__ = [

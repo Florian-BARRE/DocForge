@@ -270,15 +270,17 @@ async def test_list_jobs_scoped_key_foreign_query_is_403(fastapi_app, monkeypatc
     from backend.context import CONTEXT  # noqa: PLC0415
     from backend.routers.jobs.router import list_jobs  # noqa: PLC0415
 
-    jobs = SimpleNamespace(list_for_collection_with_names=AsyncMock(return_value=[]))
+    jobs = SimpleNamespace(list_jobs_with_names=AsyncMock(return_value=[]))
     monkeypatch.setattr(CONTEXT, "database", SimpleNamespace(jobs=jobs))
 
     with pytest.raises(HTTPException) as exc:
-        await list_jobs(collection_id=uuid.UUID(COLL_B), principal=_scoped(COLL_A))
+        await list_jobs(
+            collection_id=uuid.UUID(COLL_B), status=None, order="newest", principal=_scoped(COLL_A)
+        )
 
     assert exc.value.status_code == 403
     # The scope gate fires BEFORE any read of the foreign collection's rows.
-    jobs.list_for_collection_with_names.assert_not_called()
+    jobs.list_jobs_with_names.assert_not_called()
 
 
 async def test_list_jobs_scoped_key_owned_query_is_allowed(fastapi_app, monkeypatch) -> None:
@@ -286,13 +288,18 @@ async def test_list_jobs_scoped_key_owned_query_is_allowed(fastapi_app, monkeypa
     from backend.routers.jobs.router import list_jobs  # noqa: PLC0415
 
     jobs = SimpleNamespace(
-        list_for_collection_with_names=AsyncMock(return_value=[]),
-        count_for_collection=AsyncMock(return_value=0),
+        list_jobs_with_names=AsyncMock(return_value=[]),
+        count_jobs=AsyncMock(return_value=0),
     )
     monkeypatch.setattr(CONTEXT, "database", SimpleNamespace(jobs=jobs))
 
     page = await list_jobs(
-        collection_id=uuid.UUID(COLL_A), limit=500, offset=0, principal=_scoped(COLL_A)
+        collection_id=uuid.UUID(COLL_A),
+        status=None,
+        order="newest",
+        limit=500,
+        offset=0,
+        principal=_scoped(COLL_A),
     )
     assert page.total == 0 and page.jobs == []
 

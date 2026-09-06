@@ -48,14 +48,19 @@ async def test_list_jobs_clamps_limit_to_the_ceiling(fastapi_app, monkeypatch) -
 
     list_page = AsyncMock(return_value=[])
     jobs = SimpleNamespace(
-        list_for_collection_with_names=list_page,
-        count_for_collection=AsyncMock(return_value=4200),
+        list_jobs_with_names=list_page,
+        count_jobs=AsyncMock(return_value=4200),
     )
     monkeypatch.setattr(CONTEXT, "database", SimpleNamespace(jobs=jobs))
 
     # A client demands an unbounded page; the server clamps it to the ceiling.
     result = await list_jobs(
-        collection_id=uuid.UUID(COLL_A), limit=99_999, offset=10, principal=_full()
+        collection_id=uuid.UUID(COLL_A),
+        status=None,
+        order="newest",
+        limit=99_999,
+        offset=10,
+        principal=_full(),
     )
 
     ceiling = RUNTIME_CONFIG.JOBS_MAX_PAGE_SIZE
@@ -63,7 +68,74 @@ async def test_list_jobs_clamps_limit_to_the_ceiling(fastapi_app, monkeypatch) -
     assert result.offset == 10
     assert result.total == 4200
     # The facade is asked for exactly the clamped page (never the unbounded scan the client requested).
-    list_page.assert_awaited_once_with(uuid.UUID(COLL_A), ceiling, 10)
+    list_page.assert_awaited_once_with(
+        collection_id=uuid.UUID(COLL_A),
+        statuses=None,
+        limit=ceiling,
+        offset=10,
+        newest_first=True,
+    )
+
+
+# ── GET /jobs — fleet-wide scope + status filter + FIFO order ────────────────────────────────────
+
+
+async def test_list_jobs_fleetwide_denied_for_scoped_key(fastapi_app, monkeypatch) -> None:
+    from backend.context import CONTEXT  # noqa: PLC0415
+    from backend.routers.jobs.router import list_jobs  # noqa: PLC0415
+
+    jobs = SimpleNamespace(
+        list_jobs_with_names=AsyncMock(return_value=[]),
+        count_jobs=AsyncMock(return_value=0),
+    )
+    monkeypatch.setattr(CONTEXT, "database", SimpleNamespace(jobs=jobs))
+
+    # No collection_id = a fleet-wide listing; a collection-scoped key may not read cross-tenant rows.
+    with pytest.raises(HTTPException) as exc:
+        await list_jobs(collection_id=None, status=None, order="newest", principal=_scoped(COLL_A))
+
+    assert exc.value.status_code == 403
+    # The scope gate fires BEFORE any fleet-wide read.
+    jobs.list_jobs_with_names.assert_not_called()
+    jobs.count_jobs.assert_not_called()
+
+
+async def test_list_jobs_fleetwide_status_filter_and_fifo_for_full_key(
+    fastapi_app, monkeypatch
+) -> None:
+    from backend.context import CONTEXT  # noqa: PLC0415
+    from backend.routers.jobs.router import list_jobs  # noqa: PLC0415
+    from shared_libs.services.db.postgresql.tables import JobStatus  # noqa: PLC0415
+
+    list_page = AsyncMock(return_value=[])
+    jobs = SimpleNamespace(
+        list_jobs_with_names=list_page,
+        count_jobs=AsyncMock(return_value=7),
+    )
+    monkeypatch.setattr(CONTEXT, "database", SimpleNamespace(jobs=jobs))
+
+    # A full-access key lists the whole fleet's PENDING backlog in FIFO (oldest-first) order — the
+    # "what runs next" view: no collection scope, a status filter, order=oldest.
+    result = await list_jobs(
+        collection_id=None,
+        status=["pending"],
+        order="oldest",
+        limit=50,
+        offset=0,
+        principal=_full(),
+    )
+
+    assert result.total == 7
+    # collection_id threads through as None (fleet-wide); the status literals map to the enum; and
+    # order=oldest selects the FIFO (created_at ASC) sort the pending-backlog view needs.
+    list_page.assert_awaited_once_with(
+        collection_id=None,
+        statuses=[JobStatus.PENDING],
+        limit=50,
+        offset=0,
+        newest_first=False,
+    )
+    jobs.count_jobs.assert_awaited_once_with(None, [JobStatus.PENDING])
 
 
 # ── GET /jobs/queue — fleet-wide scope ───────────────────────────────────────────────────────────

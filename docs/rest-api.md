@@ -768,7 +768,7 @@ request a cancellation).
 
 | Method | Path | Cap | Returns |
 |---|---|---|---|
-| `GET` | `/api/v1/jobs?collection_id={id}` | `read` | A collection's jobs, newest first — a paginated `JobPage` |
+| `GET` | `/api/v1/jobs` | `read` | Jobs — a collection's (`?collection_id=`) or fleet-wide, filterable — a paginated `JobPage` |
 | `GET` | `/api/v1/jobs/{job_id}` | `read` | One job's live state (poll this) |
 | `GET` | `/api/v1/jobs/{job_id}/events` | `read` | Per-node execution trace, in order |
 | `GET` | `/api/v1/jobs/{job_id}/stream` | `read` | Live progress as Server-Sent Events (see below) |
@@ -778,13 +778,25 @@ request a cancellation).
 | `GET` | `/api/v1/jobs/stage-durations?collection_id={id}` | `read` | Average per-stage wall-clock — the ETA basis (`StageDurations`) |
 | `POST` | `/api/v1/jobs/{job_id}/cancel` | `write` | Request cancellation of a queued/running job (`CancelResult`) |
 
-> `collection_id` is a **required query param** on `GET /api/v1/jobs` (it also scopes the key).
+> `collection_id` is **optional** on `GET /api/v1/jobs`. **Present** → scoped to that collection (and
+> it scopes the key). **Omitted** → a **fleet-wide** listing across every collection (the "All Jobs"
+> view), which is **full-access only**: a collection-scoped key must name a collection it owns, else
+> `403` — the same gate `GET /api/v1/jobs/queue` applies to its fleet-wide counts. A **pending** job
+> has `worker_id: null` (arq assigns the worker at claim time — never fabricated).
 
-`GET /api/v1/jobs` is **paginated** (a collection can hold thousands of job rows): the optional
-`limit` (clamped down to the server's `JOBS_MAX_PAGE_SIZE`, its default) and `offset` query params
-page the list, and the response is a `JobPage` — `{ total, limit, offset, jobs }` where `total` is
-the full match count (drives the pager), `limit`/`offset` echo the applied values, and `jobs` is the
-page (newest first).
+`GET /api/v1/jobs` is **paginated + filterable** (a collection — or the fleet — can hold thousands of
+job rows). Query params:
+- `collection_id` (optional) — scope to one collection, or omit for fleet-wide (see the note above).
+- `status` (optional, **repeatable**) — filter to one or more of `pending`/`running`/`done`/`failed`/
+  `cancelled` (e.g. `?status=pending&status=running`). Omit for all statuses.
+- `order` (optional) — `newest` (default, `created_at` DESC — the monitoring view) or `oldest`
+  (`created_at` ASC — **FIFO / "what runs next"**, typically paired with `status=pending`).
+- `limit` (optional) — page size, clamped down to the server's `JOBS_MAX_PAGE_SIZE` (its default).
+- `offset` (optional) — rows to skip for paging.
+
+The response is a `JobPage` — `{ total, limit, offset, jobs }` where `total` is the full match count
+(drives the pager), `limit`/`offset` echo the applied values, and `jobs` is the page in the requested
+order (newest first by default).
 
 A `JobStatus` carries `job_id, document_id, collection_id, status` (`queued`/`running`/`done`/
 `failed`/`cancelled`), `progress` (0–100), `current_stage`, `error` (verbatim, only when failed),

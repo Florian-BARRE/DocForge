@@ -4,6 +4,7 @@
 
 # ====== Standard Library Imports ======
 import uuid
+from typing import Literal
 
 # ====== Third-Party Library Imports ======
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -11,6 +12,7 @@ from fastapi.responses import StreamingResponse
 
 # ====== Internal Project Imports ======
 from config import RUNTIME_CONFIG
+from shared_libs.services.db.postgresql.tables import JobStatus as JobStatusEnum
 
 # ====== Local Project Imports ======
 from ...context import CONTEXT
@@ -36,7 +38,21 @@ router = APIRouter(prefix="/jobs", tags=["jobs"])
 @router.get("", response_model=JobPage)
 @auto_handle_errors
 async def list_jobs(
-    collection_id: uuid.UUID,
+    collection_id: uuid.UUID | None = Query(
+        default=None,
+        description="Scope to one collection. Omit for a FLEET-WIDE listing (full-access keys only) — "
+        "the 'All Jobs' management view.",
+    ),
+    status: list[Literal["pending", "running", "done", "failed", "cancelled"]] | None = Query(
+        default=None,
+        description="Filter to these job statuses (repeat the param to pass several). Omit for all.",
+    ),
+    order: Literal["newest", "oldest"] = Query(
+        default="newest",
+        description="Sort by creation time: 'newest' = created_at DESC (default, the monitoring "
+        "view); 'oldest' = created_at ASC — the FIFO 'what runs next' order (pair with "
+        "status=pending for the queued backlog in claim order).",
+    ),
     limit: int = Query(
         default=RUNTIME_CONFIG.JOBS_MAX_PAGE_SIZE,
         ge=1,
@@ -46,26 +62,51 @@ async def list_jobs(
     principal: AuthPrincipal = Depends(require(Capability.READ)),
 ) -> JobPage:
     """
-    Return one page of a collection's jobs, newest first — the task table of the monitoring view.
+    Return one page of jobs — a collection's, or (with no ``collection_id``) the whole fleet's.
 
-    A heavily re-ingested collection can hold thousands of job rows, so the list is BOUNDED: ``limit``
-    is clamped to ``JOBS_MAX_PAGE_SIZE`` (and defaults to it) and the response carries the total so the
-    UI can page. The row join adds the document filename + collection name (no second round-trip).
+    Powers both the per-collection monitoring table and the fleet-wide "All Jobs" view. ``collection_id``
+    is OPTIONAL: present scopes to that collection, omitted lists across every collection and is
+    FULL-ACCESS only (a collection-scoped key must name a collection it owns — the same gate ``GET
+    /jobs/queue`` applies to its fleet-wide counts, so a scoped key can never read cross-tenant rows).
+    ``status`` filters by one or more job statuses (default = all). ``order`` defaults to newest-first
+    (created_at DESC); pass ``order=oldest`` for FIFO/oldest-first — the "what runs next" ordering the
+    UI needs, typically with ``status=pending``. The list is BOUNDED (``limit`` clamped to
+    ``JOBS_MAX_PAGE_SIZE``) and carries the total so the UI can page; the row join adds the document
+    filename + collection name (no second round-trip).
 
     Returns:
-        JobPage: total + limit/offset echo + the page of jobs.
+        JobPage: total + limit/offset echo + the page of jobs, in the requested order.
     """
-    # 1. The collection is a QUERY param, invisible to the path-scope gate — enforce it here.
-    AuthzGuard.assert_collection_scope(principal, str(collection_id))
+    # 1. Scope exactly as GET /jobs/queue does: a named collection passes the collection-scope gate; a
+    #    fleet-wide call (no collection_id) is full-access only — a scoped key must name a collection it
+    #    owns (403 otherwise), so it can never read cross-tenant fleet-wide rows.
+    if collection_id is not None:
+        AuthzGuard.assert_collection_scope(principal, str(collection_id))
+    elif AuthzGuard.scoped_collections(principal) is not None:
+        raise HTTPException(
+            status_code=403,
+            detail="collection_id is required for a collection-scoped key (fleet-wide job listing is "
+            "restricted to full-access keys).",
+        )
 
-    # 2. Clamp the page size so a client can never demand an unbounded scan of a huge job table.
+    # 2. Clamp the page size so a client can never demand an unbounded scan of the job table.
     page_size = min(limit, RUNTIME_CONFIG.JOBS_MAX_PAGE_SIZE)
 
-    # 3. One bounded page + the total, under the same collection predicate; the worker maintains every
-    #    row and the join carries the display names so the table shows "what is ingesting" in one call.
-    total = await CONTEXT.database.jobs.count_for_collection(collection_id)
-    jobs = await CONTEXT.database.jobs.list_for_collection_with_names(
-        collection_id, page_size, offset
+    # 3. Normalise the request filters for the data layer: the status literals map to the enum, and
+    #    'oldest' selects the FIFO (created_at ASC) sort.
+    statuses = [JobStatusEnum(value) for value in status] if status else None
+    newest_first = order == "newest"
+
+    # 4. One bounded page + its matching total, under the same optional collection+status predicate;
+    #    the join carries the display names so the table shows "what is ingesting" in one call. A
+    #    pending job's worker_id is NULL (arq assigns at claim) — never fabricated by this read.
+    total = await CONTEXT.database.jobs.count_jobs(collection_id, statuses)
+    jobs = await CONTEXT.database.jobs.list_jobs_with_names(
+        collection_id=collection_id,
+        statuses=statuses,
+        limit=page_size,
+        offset=offset,
+        newest_first=newest_first,
     )
     return JobPage(
         total=total,

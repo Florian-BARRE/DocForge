@@ -106,25 +106,27 @@ class JobStatus(BaseModel):
 
 class JobPage(BaseModel):
     """
-    One paginated page of a collection's jobs — the response of ``GET /jobs``.
+    One paginated page of jobs (a collection's, or the fleet's) — the response of ``GET /jobs``.
 
     The list is served bounded (the server clamps ``limit`` to its ceiling) so a heavily re-ingested
-    collection never dumps thousands of rows at once. Iterate ``jobs`` for the page; read ``total`` to
-    drive a pager.
+    collection — or the fleet-wide "All Jobs" view — never dumps thousands of rows at once. Iterate
+    ``jobs`` for the page; read ``total`` to drive a pager.
 
     Attributes:
-        total (int): Total jobs in the collection (ignores paging — drives the pager).
+        total (int): Total jobs matching the filter (ignores paging — drives the pager).
         limit (int): The applied page size (after the server ceiling clamp).
         offset (int): The applied offset.
-        jobs (list[JobStatus]): The page of jobs, newest first.
+        jobs (list[JobStatus]): The page of jobs, in the requested order (newest first by default).
     """
 
     total: int = Field(
-        description="Total jobs in the collection (ignores paging — drives the pager)."
+        description="Total jobs matching the filter (ignores paging — drives the pager)."
     )
     limit: int = Field(description="The applied page size (after the server ceiling clamp).")
     offset: int = Field(description="The applied offset.")
-    jobs: list[JobStatus] = Field(description="The page of jobs, newest first.")
+    jobs: list[JobStatus] = Field(
+        description="The page of jobs, in the requested order (newest first by default)."
+    )
 
 
 class JobEvent(BaseModel):

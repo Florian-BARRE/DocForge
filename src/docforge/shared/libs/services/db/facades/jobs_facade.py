@@ -72,6 +72,34 @@ class JobsFacade(LoggerClass):
         async with self._postgres.session() as session:
             return await JobApi.count_for_collection(session, collection_id)
 
+    async def list_jobs_with_names(
+        self,
+        collection_id: uuid.UUID | None = None,
+        statuses: Sequence[JobStatus] | None = None,
+        limit: int | None = None,
+        offset: int = 0,
+        newest_first: bool = True,
+    ) -> list[JobWithNames]:
+        """Return one page of jobs (fleet-wide or scoped, optional status filter), joined to names."""
+        async with self._postgres.session() as session:
+            return await JobApi.list_with_names(
+                session,
+                collection_id=collection_id,
+                statuses=statuses,
+                limit=limit,
+                offset=offset,
+                newest_first=newest_first,
+            )
+
+    async def count_jobs(
+        self,
+        collection_id: uuid.UUID | None = None,
+        statuses: Sequence[JobStatus] | None = None,
+    ) -> int:
+        """Count jobs matching the optional collection + status filter — the 'All Jobs' pager total."""
+        async with self._postgres.session() as session:
+            return await JobApi.count_jobs(session, collection_id=collection_id, statuses=statuses)
+
     async def list_active_with_names(self) -> list[JobWithNames]:
         """Return every RUNNING job joined to its display names — the fleet activity view."""
         async with self._postgres.session() as session:

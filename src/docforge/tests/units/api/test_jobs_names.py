@@ -65,13 +65,18 @@ async def test_list_jobs_carries_filename_collection_name_and_stage(
 
     entry = _with_names(_job(cancel_requested=True))
     jobs = SimpleNamespace(
-        list_for_collection_with_names=AsyncMock(return_value=[entry]),
-        count_for_collection=AsyncMock(return_value=1),
+        list_jobs_with_names=AsyncMock(return_value=[entry]),
+        count_jobs=AsyncMock(return_value=1),
     )
     monkeypatch.setattr(CONTEXT, "database", SimpleNamespace(jobs=jobs), raising=False)
 
     result = await list_jobs(
-        collection_id=uuid.UUID(COLL_A), limit=500, offset=0, principal=_full()
+        collection_id=uuid.UUID(COLL_A),
+        status=None,
+        order="newest",
+        limit=500,
+        offset=0,
+        principal=_full(),
     )
 
     # The list is now a paginated envelope: total + limit/offset echo + the page of jobs.
