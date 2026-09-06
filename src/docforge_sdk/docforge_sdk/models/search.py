@@ -153,7 +153,9 @@ class SearchCost(BaseModel):
         description="USD cost of the run's paid LLM spend, or None when a model that ran has no "
         "known rate."
     )
-    call_count: int = Field(description="Number of paid calls (usage-carrying leaves) the run made.")
+    call_count: int = Field(
+        description="Number of paid calls (usage-carrying leaves) the run made."
+    )
 
 
 class SearchResponse(BaseModel):
