@@ -88,6 +88,10 @@ export const theme = {
     // Modal backdrop scrim — same near-black value in both palettes (index.css), so a full-screen
     // dialog's overlay stays visually and semantically identical regardless of theme.
     overlay: "var(--overlay)",
+    // A much lighter version of the same near-black, behind the sidebar's TRANSIENT hover/focus
+    // overlay only (never behind a pinned/reflowed rail, see Sidebar.tsx) — marks it as a passing
+    // flyout rather than a modal-grade interruption.
+    overlaySubtle: "var(--overlay-subtle)",
   },
   radius: { s: 6, m: 10, l: 14, xl: 20, pill: 999 },
   space: { xs: 4, s: 8, m: 12, l: 16, xl: 24, xxl: 40 },

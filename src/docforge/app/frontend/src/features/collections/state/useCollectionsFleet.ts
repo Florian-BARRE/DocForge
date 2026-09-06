@@ -44,7 +44,15 @@ function matchesHealthFilter(filter: FleetHealthFilter, health: CollectionHealth
   return health.verdict === "down" || health.verdict === "degraded" || health.verdict === "ingest_unavailable";
 }
 
-export function useCollectionsFleet() {
+/**
+ * Load and derive the fleet dashboard's state.
+ *
+ * @param initialHealthFilter - The health filter to start on (a deep-linked `View.health` preset,
+ *   see shell/view.ts). Re-applied whenever it changes — the same mounted page instance is reused
+ *   across preset changes, so only a prop change (not a remount) signals that the user picked a
+ *   different preset.
+ */
+export function useCollectionsFleet(initialHealthFilter: FleetHealthFilter = "all") {
   const [collections, setCollections] = useState<Collection[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [healthById, setHealthById] = useState<Record<string, CollectionHealth>>({});
@@ -55,7 +63,8 @@ export function useCollectionsFleet() {
 
   const [searchQuery, setSearchQuery] = useState("");
   const [sortKey, setSortKey] = useState<FleetSortKey>("name");
-  const [healthFilter, setHealthFilter] = useState<FleetHealthFilter>("all");
+  const [healthFilter, setHealthFilter] = useState<FleetHealthFilter>(initialHealthFilter);
+  useEffect(() => setHealthFilter(initialHealthFilter), [initialHealthFilter]);
 
   const load = () => {
     setLoadError(null);

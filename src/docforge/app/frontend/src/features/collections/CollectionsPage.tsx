@@ -14,19 +14,22 @@ import type { Navigate } from "../../shell/view";
 import { theme } from "../../theme";
 import { CollectionCard } from "./CollectionCard";
 import { CollectionsToolbar } from "./CollectionsToolbar";
-import { useCollectionsFleet } from "./state/useCollectionsFleet";
+import { useCollectionsFleet, type FleetHealthFilter } from "./state/useCollectionsFleet";
 import { ImportPanel } from "./transfer/ImportPanel";
 
 interface CollectionsPageProps {
   onNavigate: Navigate;
+  /** Deep-linked health preset from the sidebar (View's optional `health` field) — undefined lands
+   *  on the unfiltered fleet list. */
+  initialHealthFilter?: FleetHealthFilter;
 }
 
-export function CollectionsPage({ onNavigate }: CollectionsPageProps) {
+export function CollectionsPage({ onNavigate, initialHealthFilter }: CollectionsPageProps) {
   const [showImport, setShowImport] = useState(false);
   const {
     collections, loadError, load, visibleEntries, totalCount,
     searchQuery, setSearchQuery, sortKey, setSortKey, healthFilter, setHealthFilter,
-  } = useCollectionsFleet();
+  } = useCollectionsFleet(initialHealthFilter);
 
   return (
     <div className="df-rise" style={{ padding: `${theme.space.xl}px`, overflowY: "auto", height: "100%", maxWidth: 1200, margin: "0 auto", width: "100%" }}>

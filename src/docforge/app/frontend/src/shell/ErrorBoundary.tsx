@@ -1,7 +1,7 @@
 // ====== Code Summary ======
 // Top-level render-error catcher. Wraps the routed view area in App.tsx so a throw in any single
 // page renders the branded <ErrorFallback> instead of white-screening the whole app; the shell
-// (TopBar) sits outside this boundary and survives a view crash.
+// (Sidebar) sits outside this boundary and survives a view crash.
 
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import { ErrorFallback } from "./ErrorFallback";

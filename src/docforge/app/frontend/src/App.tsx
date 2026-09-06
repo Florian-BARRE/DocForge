@@ -12,6 +12,7 @@ import { CollectionPipelinePage } from "./features/collections/CollectionPipelin
 import { CollectionSearchPage } from "./features/collections/CollectionSearchPage";
 import { CollectionShell } from "./features/collections/CollectionShell";
 import { CollectionsPage } from "./features/collections/CollectionsPage";
+import { ImportCollectionPage } from "./features/collections/ImportCollectionPage";
 import { CollectionWizard } from "./features/collections/wizard/CollectionWizard";
 import { CorpusPage } from "./features/corpus/CorpusPage";
 import { DocumentPage } from "./features/explorer/DocumentPage";
@@ -20,7 +21,8 @@ import { JobsPage } from "./features/monitoring/JobsPage";
 import { WorkersPanel } from "./features/monitoring/WorkersPanel";
 import { SearchLabPage } from "./features/search/SearchLabPage";
 import { ErrorBoundary } from "./shell/ErrorBoundary";
-import { TopBar } from "./shell/TopBar";
+import { Sidebar, SIDEBAR_EXPANDED_WIDTH, SIDEBAR_RAIL_WIDTH } from "./shell/sidebar/Sidebar";
+import { useSidebarPin } from "./shell/sidebar/useSidebarPin";
 import { ToastProvider } from "./shell/toast";
 import { parseViewFromHash } from "./shell/urlSync";
 import { useUrlSync } from "./shell/useUrlSync";
@@ -30,17 +32,31 @@ export function App() {
   // Bootstrap from the current URL hash so a refresh or a shared link restores the same view.
   const [view, setView] = useState<View>(() => parseViewFromHash(window.location.hash));
   useUrlSync(view, setView);
+  // Owned here (not inside Sidebar) because the spacer below needs the SAME pin state Sidebar
+  // renders with — a pinned sidebar REFLOWS the page (reserves its full expanded width) while a
+  // transient hover/focus expansion only overlays it (see Sidebar.tsx), so App must know which one
+  // is happening to size its spacer correctly.
+  const { pinned, togglePinned } = useSidebarPin();
 
   return (
     <ToastProvider>
-    <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
-      <TopBar view={view} onNavigate={setView} />
-      <div style={{ flex: 1, minHeight: 0 }}>
+    <div style={{ height: "100%", display: "flex" }}>
+      <Sidebar view={view} onNavigate={setView} pinned={pinned} onTogglePin={togglePinned} />
+      {/* Reserves the rail's width in normal flow: the collapsed 72px rail while unpinned (a
+          hover/focus expansion is `position: fixed` and overlays content instead of reflowing it),
+          or the full 240px once pinned — pinning is a deliberate persistent state, so content must
+          never sit masked underneath it. */}
+      <div style={{
+        width: pinned ? SIDEBAR_EXPANDED_WIDTH : SIDEBAR_RAIL_WIDTH, flexShrink: 0,
+        transition: "width .16s cubic-bezier(0.22, 1, 0.36, 1)",
+      }} />
+      <div style={{ flex: 1, minWidth: 0, minHeight: 0 }}>
       {/* Keyed by view.name so navigating away (shell nav, or the fallback's own action) always
           remounts a fresh boundary — a crashed view never keeps blocking an unrelated route. */}
       <ErrorBoundary key={view.name} onReset={() => setView({ name: "collections" })}>
-        {view.name === "collections" && <CollectionsPage onNavigate={setView} />}
+        {view.name === "collections" && <CollectionsPage onNavigate={setView} initialHealthFilter={view.health} />}
         {view.name === "new-collection" && <CollectionWizard onNavigate={setView} />}
+        {view.name === "import-collection" && <ImportCollectionPage onNavigate={setView} />}
         {view.name === "collection" && (
           <CollectionShell collectionId={view.collectionId} active="overview" onNavigate={setView}>
             <CollectionOverview collectionId={view.collectionId} onNavigate={setView} />

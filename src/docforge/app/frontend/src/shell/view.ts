@@ -4,8 +4,13 @@
 // `onNavigate` callback; App.tsx is the only place that switches on `view.name`.
 
 export type View =
-  | { name: "collections" }
+  // `health` is an optional deep-linkable preset (reachable via the URL, e.g. shared links — the
+  // sidebar itself no longer has dedicated shortcuts for it, CollectionsToolbar's own health tabs
+  // are the single source of truth) — absent (or "empty") means the unfiltered fleet list, matching
+  // CollectionsToolbar's own `FleetHealthFilter` values (see features/collections/state/useCollectionsFleet.ts).
+  | { name: "collections"; health?: "attention" | "operational" }
   | { name: "new-collection" }
+  | { name: "import-collection" }
   | { name: "collection"; collectionId: string }
   | { name: "collection-metadata"; collectionId: string }
   | { name: "collection-edit"; collectionId: string }

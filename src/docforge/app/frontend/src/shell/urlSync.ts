@@ -18,9 +18,13 @@ const DEFAULT_VIEW: View = { name: "collections" };
 export function serializeViewToHash(view: View): string {
   switch (view.name) {
     case "collections":
+      if (view.health === "attention") return "/collections/filter/attention";
+      if (view.health === "operational") return "/collections/filter/operational";
       return "/collections";
     case "new-collection":
       return "/collections/new";
+    case "import-collection":
+      return "/collections/import";
     case "collection":
       return `/collections/${encodeURIComponent(view.collectionId)}`;
     case "collection-metadata":
@@ -76,6 +80,12 @@ export function parseViewFromHash(hash: string): View {
   if (root !== "collections") return DEFAULT_VIEW;
   if (rest.length === 0) return { name: "collections" };
   if (rest[0] === "new" && rest.length === 1) return { name: "new-collection" };
+  if (rest[0] === "import" && rest.length === 1) return { name: "import-collection" };
+  if (rest[0] === "filter" && rest.length === 2) {
+    if (rest[1] === "attention") return { name: "collections", health: "attention" };
+    if (rest[1] === "operational") return { name: "collections", health: "operational" };
+    return { name: "collections" };
+  }
 
   const [collectionId, tab, subId] = rest;
   if (!collectionId) return DEFAULT_VIEW;

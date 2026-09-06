@@ -72,6 +72,9 @@
   /* Modal backdrop scrim — deliberately near-black in BOTH palettes (a dark scrim reads correctly
      against either paper or ink content), so it does not flip between themes like other tokens. */
   --overlay: rgba(0, 0, 0, 0.8);
+  /* Same near-black, much lower alpha — the sidebar's transient hover/focus overlay scrim (never
+     shown while pinned). Same value in both palettes for the same reason as --overlay above. */
+  --overlay-subtle: rgba(0, 0, 0, 0.24);
   color-scheme: light;
 }
 
@@ -125,6 +128,7 @@
   --shadow-2: 0 10px 30px -10px rgba(0, 0, 0, 0.6);
   --shadow-pop: 0 16px 44px -12px rgba(0, 0, 0, 0.7);
   --overlay: rgba(0, 0, 0, 0.8);
+  --overlay-subtle: rgba(0, 0, 0, 0.24);
   color-scheme: dark;
 }
 

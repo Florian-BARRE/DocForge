@@ -1,11 +1,16 @@
 // ====== Code Summary ======
-// The top bar's API token control — paste/save/clear the Bearer token used by every request (see
-// `apiFetch` in api/http.ts). Collapsed to a single button by default so it stays unobtrusive;
-// expands into an inline field on click. The token itself is never displayed once saved.
+// The API token control — paste/save/clear the Bearer token used by every request (see `apiFetch`
+// in api/http.ts). Collapsed to a single button by default so it stays unobtrusive; expands into an
+// inline field on click. The token itself is never displayed once saved.
 //
 // The trigger reads a currentColor key glyph, never an emoji. Below ~480px the "Token"/"Token
 // set" label hides (icon + the border colour already carry the state), which is one of the
 // widths saved by collapsing the top bar so the whole app stops scrolling horizontally on mobile.
+//
+// `compact` renders a bare icon-only button instead (no label, no inline editor — there isn't
+// room for one in the sidebar's ~72px collapsed rail): clicking it calls `onRequestExpand` so the
+// caller can widen its own chrome first (the sidebar pins itself open) before the full control with
+// its editor becomes reachable.
 
 import { useEffect, useState } from "react";
 import { API_TOKEN_CLEARED_EVENT, clearApiToken, getApiToken, setApiToken } from "../api/http";
@@ -26,7 +31,12 @@ function KeyGlyph() {
   );
 }
 
-export function TokenControl() {
+interface TokenControlProps {
+  compact?: boolean;
+  onRequestExpand?: () => void;
+}
+
+export function TokenControl({ compact = false, onRequestExpand }: TokenControlProps = {}) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState("");
   const [hasToken, setHasToken] = useState(() => Boolean(getApiToken()));
@@ -38,6 +48,24 @@ export function TokenControl() {
     window.addEventListener(API_TOKEN_CLEARED_EVENT, onCleared);
     return () => window.removeEventListener(API_TOKEN_CLEARED_EVENT, onCleared);
   }, []);
+
+  if (compact) {
+    return (
+      <button
+        onClick={onRequestExpand}
+        title={hasToken ? "API token set — expand sidebar to manage" : "No API token set — expand sidebar to add one"}
+        aria-label="API token"
+        style={{
+          display: "grid", placeItems: "center", width: 30, height: 26, flexShrink: 0,
+          background: "none", border: `1px solid ${hasToken ? theme.color.ok : theme.color.line}`,
+          color: hasToken ? theme.color.ok : theme.color.dim,
+          borderRadius: theme.radius.s, cursor: "pointer",
+        }}
+      >
+        <KeyGlyph />
+      </button>
+    );
+  }
 
   const save = () => {
     const value = draft.trim();
