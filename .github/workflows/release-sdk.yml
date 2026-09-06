@@ -424,3 +424,33 @@ jobs:
           name: trivy-reports
           path: trivy-*.txt
           retention-days: 30
+
+  # 7. Cut the GitHub Release for the tag — ONLY after the images (via retag-latest) AND the SDK
+  #    (publish) actually shipped. A version tag exists to produce a Release: building GHCR images
+  #    and a PyPI package WITHOUT a matching GitHub Release is pointless, and used to be a manual
+  #    step that got forgotten — so this makes the Release automatic on every `v*` tag. Idempotent
+  #    (a re-run leaves an existing Release untouched); `v*`-only (skipped on `sdk-v*`, which ships
+  #    no images); notes are auto-generated from the merged PRs/commits since the previous tag.
+  github-release:
+    needs: [retag-latest, publish]
+    if: startsWith(github.ref_name, 'v') && !startsWith(github.ref_name, 'sdk-v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the GitHub Release for the tag
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Create the GitHub Release (idempotent)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+            echo "Release ${GITHUB_REF_NAME} already exists — leaving it as-is."
+          else
+            gh release create "${GITHUB_REF_NAME}" \
+              --title "${GITHUB_REF_NAME}" \
+              --verify-tag \
+              --generate-notes
+          fi
