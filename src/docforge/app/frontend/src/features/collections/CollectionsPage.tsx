@@ -29,6 +29,7 @@ export function CollectionsPage({ onNavigate, initialHealthFilter }: Collections
   const {
     collections, loadError, load, visibleEntries, totalCount,
     searchQuery, setSearchQuery, sortKey, setSortKey, healthFilter, setHealthFilter,
+    availableTags, selectedTags, setSelectedTags,
   } = useCollectionsFleet(initialHealthFilter);
 
   return (
@@ -70,6 +71,9 @@ export function CollectionsPage({ onNavigate, initialHealthFilter }: Collections
             onHealthFilterChange={setHealthFilter}
             sortKey={sortKey}
             onSortKeyChange={setSortKey}
+            availableTags={availableTags}
+            selectedTags={selectedTags}
+            onSelectedTagsChange={setSelectedTags}
             visibleCount={visibleEntries.length}
             totalCount={totalCount}
           />
@@ -77,7 +81,7 @@ export function CollectionsPage({ onNavigate, initialHealthFilter }: Collections
             <EmptyState
               title="No collections match"
               subtitle="Try a different name, or clear the health filter."
-              action={<Button variant="secondary" onClick={() => { setSearchQuery(""); setHealthFilter("all"); }}>Clear filters</Button>}
+              action={<Button variant="secondary" onClick={() => { setSearchQuery(""); setHealthFilter("all"); setSelectedTags([]); }}>Clear filters</Button>}
             />
           ) : (
             <div className="df-stagger" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: theme.space.l }}>

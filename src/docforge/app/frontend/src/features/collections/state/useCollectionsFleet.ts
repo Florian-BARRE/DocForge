@@ -3,8 +3,8 @@
 // THREE cheap per-collection reads concurrently — the live health probe (verdict/parser/vector count/
 // last ingest), a lightweight document-count query, and the job queue depth (pending/running) — updating
 // each collection's slice INDEPENDENTLY as it resolves (progressive card population, never blocked on
-// the slowest one). Also owns the toolbar's derived state: text search (by name), a health-status
-// filter, and a sort key.
+// the slowest one). Also owns the toolbar's derived state: text search (by name AND tag), a
+// health-status filter, a tag filter (OR semantics — see `matchesTagFilter`), and a sort key.
 
 import { useEffect, useMemo, useState } from "react";
 import { getCollectionHealth, listCollections, type Collection, type CollectionHealth } from "../../../api/collections";
@@ -44,6 +44,14 @@ function matchesHealthFilter(filter: FleetHealthFilter, health: CollectionHealth
   return health.verdict === "down" || health.verdict === "degraded" || health.verdict === "ingest_unavailable";
 }
 
+/** OR semantics: a collection matches once it carries ANY of the selected tags — picked over AND
+ *  because tags here are exploratory groupings (e.g. "finance", "q3"), not a narrowing facet set;
+ *  requiring ALL of them would make picking a second tag almost always empty the list. */
+function matchesTagFilter(selectedTags: string[], tags: string[]): boolean {
+  if (selectedTags.length === 0) return true;
+  return selectedTags.some((tag) => tags.includes(tag));
+}
+
 /**
  * Load and derive the fleet dashboard's state.
  *
@@ -64,6 +72,7 @@ export function useCollectionsFleet(initialHealthFilter: FleetHealthFilter = "al
   const [searchQuery, setSearchQuery] = useState("");
   const [sortKey, setSortKey] = useState<FleetSortKey>("name");
   const [healthFilter, setHealthFilter] = useState<FleetHealthFilter>(initialHealthFilter);
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
   useEffect(() => setHealthFilter(initialHealthFilter), [initialHealthFilter]);
 
   const load = () => {
@@ -111,10 +120,26 @@ export function useCollectionsFleet(initialHealthFilter: FleetHealthFilter = "al
     }));
   }, [collections, healthById, healthErrorById, docCountById, docCountErrorById, runningById]);
 
+  // The tag vocabulary offered by the filter — derived from whatever the loaded fleet actually
+  // carries (never a hardcoded list), sorted for a stable render.
+  const availableTags: string[] = useMemo(() => {
+    if (!collections) return [];
+    const seen = new Set<string>();
+    for (const c of collections) for (const tag of c.tags) seen.add(tag);
+    return [...seen].sort((a, b) => a.localeCompare(b));
+  }, [collections]);
+
   const visibleEntries: FleetEntry[] = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
     const filtered = entries.filter((e) => {
-      if (query && !e.collection.name.toLowerCase().includes(query)) return false;
+      if (query) {
+        // The name box also matches a tag containing the query — a collection is just as findable
+        // by its label as by its name.
+        const nameMatch = e.collection.name.toLowerCase().includes(query);
+        const tagMatch = e.collection.tags.some((tag) => tag.toLowerCase().includes(query));
+        if (!nameMatch && !tagMatch) return false;
+      }
+      if (!matchesTagFilter(selectedTags, e.collection.tags)) return false;
       return matchesHealthFilter(healthFilter, e.health);
     });
 
@@ -135,7 +160,7 @@ export function useCollectionsFleet(initialHealthFilter: FleetHealthFilter = "al
       }
       return a.collection.name.localeCompare(b.collection.name);
     });
-  }, [entries, searchQuery, healthFilter, sortKey]);
+  }, [entries, searchQuery, healthFilter, selectedTags, sortKey]);
 
   return {
     collections, loadError, load,
@@ -143,6 +168,7 @@ export function useCollectionsFleet(initialHealthFilter: FleetHealthFilter = "al
     searchQuery, setSearchQuery,
     sortKey, setSortKey,
     healthFilter, setHealthFilter,
+    availableTags, selectedTags, setSelectedTags,
   };
 }
 

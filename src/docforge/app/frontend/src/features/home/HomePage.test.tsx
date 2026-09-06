@@ -35,7 +35,7 @@ const { getQueueDepth, getWorkersLive, listJobsPage } = await import("../../api/
 const collection: Collection = {
   id: "col-1", name: "Contracts", supported_formats: ["pdf"], max_file_size_bytes: 1000,
   job_timeout_seconds: null, needs_reindex: false, created_at: "2026-01-01T00:00:00Z",
-  pipeline: {}, search: {}, fields: [], estimate_overrides: null,
+  pipeline: {}, search: {}, fields: [], estimate_overrides: null, tags: [],
 };
 
 const downHealth: CollectionHealth = {

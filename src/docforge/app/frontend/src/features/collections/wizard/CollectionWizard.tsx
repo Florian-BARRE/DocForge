@@ -49,6 +49,7 @@ export function CollectionWizard({ onNavigate, mode = "create", initial, collect
   const [step, setStep] = useState(0);
   const [name, setName] = useState(prefill?.name ?? "");
   const [formats, setFormats] = useState<string[]>(prefill?.formats ?? []);
+  const [tags, setTags] = useState<string[]>(prefill?.tags ?? []);
   const [maxSizeMb, setMaxSizeMb] = useState(prefill?.maxSizeMb ?? 50);
   const [jobTimeoutSeconds, setJobTimeoutSeconds] = useState<number | null>(prefill?.jobTimeoutSeconds ?? null);
   const [preset, setPreset] = useState<CollectionPreset>("standard");
@@ -70,7 +71,7 @@ export function CollectionWizard({ onNavigate, mode = "create", initial, collect
     : ({ name: "collections" } as const);
 
   // Shared by the submit call below and the live preview panel — the two can never drift apart.
-  const draftPayload = buildWizardPayload({ extraContract, name, formats, maxSizeMb, jobTimeoutSeconds, fields });
+  const draftPayload = buildWizardPayload({ extraContract, name, formats, tags, maxSizeMb, jobTimeoutSeconds, fields });
 
   const handleSubmit = async () => {
     setSubmitting(true);
@@ -108,6 +109,7 @@ export function CollectionWizard({ onNavigate, mode = "create", initial, collect
                 mode={mode}
                 name={name} onNameChange={setName}
                 formats={formats} onFormatsChange={setFormats}
+                tags={tags} onTagsChange={setTags}
                 maxSizeMb={maxSizeMb} onMaxSizeMbChange={setMaxSizeMb}
                 jobTimeoutSeconds={jobTimeoutSeconds} onJobTimeoutSecondsChange={setJobTimeoutSeconds}
                 preset={preset} onPresetChange={setPreset}
@@ -125,7 +127,7 @@ export function CollectionWizard({ onNavigate, mode = "create", initial, collect
       {step === 2 && (
         <StepReview
           mode={mode}
-          name={name} formats={formats} maxSizeBytes={mbToBytes(maxSizeMb)} jobTimeoutSeconds={jobTimeoutSeconds} fields={fields}
+          name={name} formats={formats} tags={tags} maxSizeBytes={mbToBytes(maxSizeMb)} jobTimeoutSeconds={jobTimeoutSeconds} fields={fields}
           removedFieldNames={removed}
           onBack={() => setStep(1)} onSubmit={handleSubmit} submitting={submitting} issues={issues}
         />

@@ -14,7 +14,9 @@ import { LoadingState } from "../../../components/LoadingState";
 import { SchemaForm } from "../../../components/schema-form/SchemaForm";
 import { theme } from "../../../theme";
 import type { WizardMode } from "./CollectionWizard";
+import { FormatsField } from "./FormatsField";
 import { MaxFileSizeField } from "./MaxFileSizeField";
+import { TagsField } from "./TagsField";
 import { bytesToMb, mbToBytes } from "./wizardTypes";
 
 interface StepIdentityProps {
@@ -23,6 +25,8 @@ interface StepIdentityProps {
   onNameChange: (name: string) => void;
   formats: string[];
   onFormatsChange: (formats: string[]) => void;
+  tags: string[];
+  onTagsChange: (tags: string[]) => void;
   maxSizeMb: number;
   onMaxSizeMbChange: (mb: number) => void;
   /** `null` inherits the worker's global default job timeout. */
@@ -38,7 +42,7 @@ interface StepIdentityProps {
 }
 
 export function StepIdentity({
-  mode, name, onNameChange, formats, onFormatsChange, maxSizeMb, onMaxSizeMbChange,
+  mode, name, onNameChange, formats, onFormatsChange, tags, onTagsChange, maxSizeMb, onMaxSizeMbChange,
   jobTimeoutSeconds, onJobTimeoutSecondsChange, preset, onPresetChange, extra, onExtraChange, onNext,
 }: StepIdentityProps) {
   const [schema, setSchema] = useState<JsonSchema | null>(null);
@@ -74,9 +78,13 @@ export function StepIdentity({
   //    selects the stock blob at creation, the edit wizard has no analogous notion.
   //    `max_file_size_bytes` is always pulled out too — it gets its own MB-labeled control
   //    (`MaxFileSizeField`) below instead of the generic schema-driven raw-byte number input.
+  //    `supported_formats` is pulled out the same way — it gets the chip-multiselect
+  //    (`FormatsField`) below instead of the generic free-text `TagsInput` every other
+  //    string-array property renders through `SchemaField`.
   const properties = { ...schema.properties };
   if (mode === "edit") delete properties.preset;
   delete properties.max_file_size_bytes;
+  delete properties.supported_formats;
 
   // 1b. Required fields lead, optional fields follow — SchemaForm renders in object key order, so
   //     reordering the object here (relative order preserved within each group) is enough to group
@@ -161,7 +169,11 @@ export function StepIdentity({
           onJsonModeChange={setJsonMode}
         />
         {!jsonMode && (
-          <MaxFileSizeField valueMb={maxSizeMb} onChange={onMaxSizeMbChange} advanced={advanced} />
+          <>
+            <FormatsField values={formats} onChange={onFormatsChange} />
+            <TagsField values={tags} onChange={onTagsChange} />
+            <MaxFileSizeField valueMb={maxSizeMb} onChange={onMaxSizeMbChange} advanced={advanced} />
+          </>
         )}
         </div>
       </div>

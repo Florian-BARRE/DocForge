@@ -18,6 +18,7 @@ import { OverflowMenu } from "../../components/OverflowMenu";
 import { OverflowMenuItem } from "../../components/OverflowMenuItem";
 import { theme as t } from "../../theme";
 import { lastIngestLabel, parserBadge, probeVerdict } from "./collectionHealth";
+import { CollectionTagChips } from "./CollectionTagChips";
 import { DeleteCollectionDialog } from "./DeleteCollectionDialog";
 import { humanizeProviderLabel } from "./providerKindLabels";
 import { useDeleteCollection } from "./state/useDeleteCollection";
@@ -167,6 +168,8 @@ export function CollectionCard({ collection, health, healthError, docCount, jobR
         {parser && <Chip tone="info">{humanizeProviderLabel("parser", parser)}</Chip>}
         <Chip tone="neutral">{formatsSummary(collection.supported_formats)}</Chip>
       </div>
+
+      <CollectionTagChips tags={collection.tags} />
 
       {confirmingDelete && (
         <DeleteCollectionDialog

@@ -1,11 +1,12 @@
 // ====== Code Summary ======
-// One search hit: its score (as a premium ember badge, tooltip explains what it is), a human
-// citation (document title/filename · page · section path — SearchHitCitation), the chunk text
-// (reusing the explorer's truncatable ChunkText), and a small mono meta line (short document id,
-// chunk index, token count) demoted below the text. When the hit carries a block location, a "view
-// page" action opens the hit's source page with the matched block(s) boxed — the render blob is
-// looked up lazily (GET /documents/{id}/pages) on click, and degrades gracefully (text-only
-// lightbox) when the page has no render.
+// One search hit: its relevance (a coarse High/Medium/Low bucket — SearchRelevanceBadge — with the
+// raw fused score demoted behind a "technical score" toggle), a human citation (document title/
+// filename · page · section path — SearchHitCitation), the chunk text (reusing the explorer's
+// truncatable ChunkText), and a small mono meta line (short document id, chunk index, token count)
+// demoted below the text. When the hit carries a block location, a "view page" action opens the
+// hit's source page with the matched block(s) boxed — the render blob is looked up lazily (GET
+// /documents/{id}/pages) on click, and degrades gracefully (text-only lightbox) when the page has
+// no render.
 
 import { useState } from "react";
 import { getDocumentPages } from "../../api/explorer";
@@ -18,16 +19,12 @@ import { theme } from "../../theme";
 import { displayPage } from "../explorer/format";
 import { SearchHitCitation } from "./SearchHitCitation";
 import { SearchHitText } from "./SearchHitText";
-
-/** What the score actually is — a rank-fused signal, not a raw similarity, so it doesn't read
- *  as a plain [0,1] confidence and near-top ties are expected. */
-const SCORE_TOOLTIP =
-  "Fused rank-based relevance score (Reciprocal Rank Fusion across the searched semantic/lexical " +
-  "targets, reranked when the collection has a reranker configured) — higher is better. Not a raw " +
-  "similarity, so it is not directly comparable across different queries or target selections.";
+import { SearchRelevanceBadge } from "./SearchRelevanceBadge";
 
 interface SearchHitCardProps {
   hit: SearchHitModel;
+  /** Best score in this hit's result set — the bucket is relative to it, see searchRelevance.ts. */
+  topScore: number;
 }
 
 interface HitBoxState {
@@ -60,7 +57,7 @@ function primaryPageBoxes(hit: SearchHitModel): { page: number; boxes: OverlayBo
   return null;
 }
 
-export function SearchHitCard({ hit }: SearchHitCardProps) {
+export function SearchHitCard({ hit, topScore }: SearchHitCardProps) {
   const toast = useToast();
   const [hover, setHover] = useState(false);
   const [locating, setLocating] = useState(false);
@@ -102,16 +99,7 @@ export function SearchHitCard({ hit }: SearchHitCardProps) {
       }}
     >
       <div style={{ display: "flex", alignItems: "flex-start", gap: theme.space.s }}>
-        <strong
-          title={SCORE_TOOLTIP}
-          style={{
-            fontFamily: theme.font.mono, fontSize: theme.font.size.m, fontWeight: 700,
-            color: theme.color.accentSafe, background: theme.color.accentSoft,
-            borderRadius: theme.radius.pill, padding: "2px 10px", whiteSpace: "nowrap", cursor: "help",
-          }}
-        >
-          {hit.score.toFixed(4)}
-        </strong>
+        <SearchRelevanceBadge score={hit.score} topScore={topScore} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <SearchHitCitation hit={hit} />
         </div>
