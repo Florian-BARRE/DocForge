@@ -1,19 +1,25 @@
-# CI — runs the full quality gate on every push + PR, so "the suite is green" never depends on a
-# manual local run. The gate itself (format + lint + type-check + unit tests for every package,
-# frontend build, SDK↔backend OpenAPI coherence) lives in the reusable gate.yml, shared verbatim
-# with the release workflow — so what merges and what publishes are held to the EXACT same bar.
+# CI — runs the full quality gate so "the suite is green" never depends on a manual local run. The
+# gate itself (format + lint + type-check + unit tests for every package, frontend build, SDK↔backend
+# OpenAPI coherence) lives in the reusable gate.yml, shared verbatim with the release workflows — so
+# what merges and what publishes are held to the EXACT same bar.
 #
-# Note: `push: branches` matches branch pushes only, NOT tag pushes, so this CI never runs on a
-# release tag. A `v*`/`sdk-v*` tag is handled by the release workflows, which run this same gate
-# before publishing. (A unified `v*` tag does trigger release-images.yml AND release-sdk.yml, so the
-# shared gate runs twice for that tag — a known duplication tracked for de-duplication, harmless
-# beyond the extra minutes.)
+# Trigger scope (deliberate, avoids a double gate per commit): `push` is scoped to `main` only, and
+# `pull_request` covers every PR branch. A commit on a feature branch therefore gates ONCE — via its
+# PR — instead of twice (a branch push AND the PR event, which sit in distinct concurrency groups and
+# would both run). Direct pushes to `main` still gate on push. `push: branches` never matches tags, so
+# CI never runs on a release tag — a `v*`/`sdk-v*` tag is gated by the release workflows themselves.
+#
+# Note: a unified `v*` tag triggers release-images.yml AND release-sdk.yml, and each `needs` the same
+# reusable gate, so the gate runs twice for that tag. De-duplicating that would mean merging the two
+# release workflows into one — which is blocked until the PyPI Trusted Publisher (pinned to the
+# `release-sdk.yml` filename) is reconfigured by a maintainer. Left as a deliberate, documented
+# trade-off (parallel-lockstep resilience over a few CI minutes).
 
 name: CI
 
 on:
   push:
-    branches: ["**"]
+    branches: [main]
   pull_request:
 
 # Least-privilege floor: this workflow only ever calls the reusable gate, which itself only needs

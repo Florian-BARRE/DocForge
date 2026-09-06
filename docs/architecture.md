@@ -230,13 +230,16 @@ Search is **hybrid** and runs inline in the request as its own pure graph (`enco
 ## 6. Quality gates
 
 Nothing merges or publishes unless the whole monorepo is green. A **single reusable gate**
-(`.github/workflows/gate.yml`) is called by both CI (every push + PR) and the SDK release workflow —
-so what merges and what publishes are held to the exact same bar. It is fully serviceless: every unit
-suite mocks its stores, so no service containers and no `-m live` tests run in CI.
+(`.github/workflows/gate.yml`) is called by CI (main pushes + every PR) and by BOTH release workflows
+(`release-images.yml` and `release-sdk.yml`) — so what merges and what publishes are held to the exact
+same bar. The unit suites are serviceless (every store mocked); the ONE exception is the `db-tests`
+job, which spins a throwaway `postgres:16` service for the `-m db` suite. No docker image builds and no
+`-m live` tests run in CI.
 
 The gate covers **every package**:
 
-- **`docforge`** — ruff format + lint + the mocked unit suite.
+- **`docforge`** — ruff format + lint + the mocked unit suite, plus a `db-tests` job running the
+  `-m db` suite against a throwaway `postgres:16` service.
 - **`docforge_sdk`** and **`mcp`** — ruff format + lint + **mypy** + unit tests.
 - **`bge_server`** — ruff format + lint + mypy + tests (CPU-only torch wheel).
 - **frontend** — ESLint (`react-hooks/rules-of-hooks` is an error) + `tsc --noEmit` + vitest render

@@ -7,9 +7,10 @@
 #                                                 broken/incompatible tree can NEVER publish.
 #
 # It gates EVERY package in this monorepo — format + lint + type-check + full unit
-# suite — plus the frontend build and the SDK↔backend OpenAPI coherence check. Fully
-# serviceless: all unit suites mock their stores, so no service containers, no docker
-# builds, and no `-m live` test (which needs a running API) ever run here.
+# suite — plus the frontend build and the SDK↔backend OpenAPI coherence check. The UNIT
+# suites are serviceless (they mock every store); the ONE exception is the `db-tests` job,
+# which spins a throwaway `postgres:16` service for the `-m db` suite (tests/db/). No docker
+# IMAGE builds and no `-m live` test (which needs a running API) ever run here.
 # ============================================================================
 
 name: gate
