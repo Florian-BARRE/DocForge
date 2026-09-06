@@ -8,6 +8,8 @@
 
 ## Journal
 
+- **2026-09-06 — Vague AF / 0.14.41 (V8 enrichment-trace write-dead — REMOVE, décision arbitrée)** : les deux tables `enrichment_attempt` + `entity_mention` étaient **write-dead** (aucun producteur n'a jamais inséré une ligne : l'enrich ne trace pas les tentatives par-attempt sur l'IR, aucun extracteur NER n'existe). Option **persist** explorée puis **rejetée** : rien ne peuple l'IR (il aurait fallu bâtir tout un vertical de capture de trace moteur → enrich-stage → slot IR figure → translator, disproportionné pour une MOYENNE observabilité) → décision **REMOVE**. Migration `a2f8e1c4d7b9` (down_revision `d1a7c4f8b2e6`, **head unique**) : `upgrade` drop les 2 tables+index ; `downgrade` les recrée à l'identique (VERBATIM vs schéma initial, enum `native_enum=False` inline, FK CASCADE — vérifié colonne par colonne). Modèles supprimés + purge de toutes les refs (tables/apis/facades/payloads/footprint/API `PostgresFootprintModel`). **Export** cesse d'émettre les 2 row-types ; **import tolérant aux vieux bundles** : le count `entity_mentions` est **retenu à 0** dans `TransferCounts` (parse legacy sous `extra="forbid"`), le reader ne checksumme que `manifest.files` (les 2 fichiers legacy inutilisés sont ignorés), réconciliation 0==0. Gate : docforge **1639 passed** (fixture transfer nettoyée), ruff clean, drift **OK** (les descriptions footprint ne sont pas des schémas trackés). **→ 796 fait ; 656 [~]** (la moitié "enrichment-trace promise" est résolue ; la moitié "dead IR fields surfaced" à `explorer/models_ir.py:25` reste à traiter). **V8 : 150 fait.**
+
 - **2026-09-06 — Vague AE / 0.14.40 (V8 2 FAIBLE design, 2 agents || disjoints)** : (1) **ScopedSdkProvider eviction** (mcp) — `dict`→`OrderedDict` : hit `move_to_end` + éviction `popitem(last=False)` = vrai LRU (plus FIFO) ; le close du client évincé n'est plus fire-and-forget non-référencé — task tenue dans `_pending_closes` + done-callback qui log l'erreur, awaité au teardown. +4 tests (LRU discriminateur, close tracké, erreur loggée). (2) **`IoSlot.required`** (base) — `describe()` ne dérivait jamais `required` de l'optionalité → tout slot reporté required. Nouveau `SlotTypes.is_optional` + `required = field_info.is_required() and not is_optional` : `X | None`/défauté → False, mandatory → True ; type-label/list-ness inchangés. Drift **confirmé sans changement de schéma** (IoSlot shape byte-identique, seule la valeur runtime change). +7 tests. Gate : docforge **1639 passed** (+7), mcp **51** (+4), drift OK, ruff clean. **→ V8 : 149 fait.**
 
 - **2026-09-06 — Vague AD / 0.14.39 (V8 3 FAIBLE substantiels — vérifiés un par un)** : (1) **reclaim startup sur hostname** — VÉRIFIÉ réel (`worker_id = gethostname()`, pas de `container_name` → nouveau hostname au recreate → reclaim matche rien). Décision **B (contrat narrowé)**, PAS clé stable : une clé partagée laisserait un replica au démarrage reclamer les jobs RUNNING d'un sibling VIVANT (`--scale`) — la clé own-hostname est la seule sûre, couvre le restart même-conteneur (dev hot-reload) ; le crash/recreate est le job du **reaper heartbeat** par construction. Docstrings/contrat corrigés (plus d'overclaim). (2) **`BlobNormalizer.__heal` catch trop large** — VÉRIFIÉ (catchait ValidationError+ValueError+KeyError+TypeError+AttributeError → une régression moteur devenait un 422 "re-save your pipeline"). Narrowé à `ValidationError` (drift) + removed-kind nommé ; les exceptions reader/assembler re-levées (plus déguisées). (3) **semantic chunker unbatched** — VÉRIFIÉ **ne se reproduit PAS** : `_embed(windows)` est appelé UNE fois, langchain `aembed_documents` batche par chunk_size → finding stale ; **guard de régression ajouté** (pas de fake fix). +6 tests. Gate : **1632 passed** (+6), ruff clean, 0 changement OpenAPI. **→ V8 : 147 fait.**
@@ -175,8 +177,8 @@
 | V5 — Moteur & pipeline | 2 | 2 | 0 | 0 |
 | V6 — Frontend | 0 | 0 | 0 | 0 |
 | V7 — Documentation | 21 | 21 | 0 | 0 |
-| V8 — Outillage (.claude/tests/infra/télémétrie) | 188 | 149 | 5 | 34 |
-| **Total** | **247** | **207** | **5** | **35** |
+| V8 — Outillage (.claude/tests/infra/télémétrie) | 188 | 150 | 6 | 32 |
+| **Total** | **247** | **208** | **6** | **33** |
 
 
 ## V1 — Sécurité & authz (avant tout déploiement multi-tenant)  (30)
@@ -653,7 +655,7 @@
 
 - [x] **🟠 MOYENNE** · `divergence-doc` — Chunk table docstring promises deterministic UUID v5 point ids; translator mints random uuid4 per run  
   `src/docforge/shared/libs/services/db/postgresql/tables/chunks/chunk.py:28` _(aussi: db-layer)_
-- [ ] **🟠 MOYENNE** · `dead-code` — Dead IR/DB fields surfaced to the API as meaningful data, and an enrichment-trace promise never fulfilled  
+- [~] **🟠 MOYENNE** · `dead-code` — Dead IR/DB fields surfaced to the API as meaningful data, and an enrichment-trace promise never fulfilled  
   `src/docforge/app/backend/routers/explorer/models_ir.py:25`
 - [x] **🟠 MOYENNE** · `test-gap` — ENGINE_BLOB_VERSION bump is purely manual and already missed once; golden-blob test does not force it  
   `src/docforge/shared/libs/pipelines/ingest/stages/normalizer.py:36`
@@ -793,7 +795,7 @@
 
 - [x] **🟠 MOYENNE** · `consistency` — Enqueue-failure handling inconsistent: upload and single reingest can leave a forever-PENDING job no reaper covers  
   `src/docforge/app/backend/routers/documents/router.py:200`
-- [ ] **🟠 MOYENNE** · `dead-code` — Enrichment attempt trace and entity mentions are never persisted — the tables, read APIs and export path are write-dead on ingest  
+- [x] **🟠 MOYENNE** · `dead-code` — Enrichment attempt trace and entity mentions are never persisted — the tables, read APIs and export path are write-dead on ingest  
   `src/docforge/worker/backend/libs/jobs/core.py:188`
 - [x] **🟠 MOYENNE** · `bug` — No guard against two concurrent runs of the same document — interleaved Qdrant delete/upsert can strand orphan points  
   `src/docforge/app/backend/routers/documents/router.py:260`

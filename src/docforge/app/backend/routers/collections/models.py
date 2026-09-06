@@ -231,10 +231,8 @@ class PostgresFootprintModel(BaseModel):
 
     documents_bytes: int = Field(description="``document`` + ``page`` rows.")
     ir_blocks_bytes: int = Field(description="``block`` + ``block_table`` + ``block_figure`` rows.")
-    enrichment_bytes: int = Field(description="``block_enrichment`` + ``enrichment_attempt`` rows.")
-    chunks_bytes: int = Field(
-        description="``chunk`` + ``chunk_block`` + ``chunk_metadata`` + ``entity_mention`` rows."
-    )
+    enrichment_bytes: int = Field(description="``block_enrichment`` rows.")
+    chunks_bytes: int = Field(description="``chunk`` + ``chunk_block`` + ``chunk_metadata`` rows.")
     metadata_bytes: int = Field(description="``document_metadata`` rows.")
     observability_bytes: int = Field(description="``job`` + ``job_stage_event`` rows.")
     total_bytes: int = Field(description="Sum of every bucket.")

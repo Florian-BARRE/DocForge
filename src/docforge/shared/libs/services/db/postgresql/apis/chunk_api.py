@@ -1,8 +1,8 @@
 # ====== Code Summary ======
 # ChunkApi — the data-access API for the chunk domain: the chunks (enriched text), their composition
-# (chunk_block, the IR blocks that form each), and the chunk-level derived rows (generated metadata,
-# doc2query questions, entity mentions). `get_by_ids` is the hydration path after a Qdrant search;
-# `get_composition_for_document` lets a caller recompute the raw chunks from their blocks.
+# (chunk_block, the IR blocks that form each), and the chunk-level derived rows (generated metadata).
+# `get_by_ids` is the hydration path after a Qdrant search; `get_composition_for_document` lets a
+# caller recompute the raw chunks from their blocks.
 
 # ====== Standard Library Imports ======
 import uuid
@@ -23,7 +23,6 @@ from ..tables import (
     ChunkBlock,
     ChunkMetadata,
     Document,
-    EntityMention,
     MetadataField,
 )
 
@@ -41,7 +40,6 @@ class ChunkApi:
         composition: Sequence[ChunkBlock],
         *,
         metadata: Sequence[ChunkMetadata] = (),
-        entities: Sequence[EntityMention] = (),
     ) -> None:
         """
         Persist a document's chunks and everything hanging off them, in foreign-key order.
@@ -51,14 +49,13 @@ class ChunkApi:
             chunks (Sequence[Chunk]): The chunks (their ids double as Qdrant point ids).
             composition (Sequence[ChunkBlock]): The chunk ↔ block memberships.
             metadata (Sequence[ChunkMetadata]): Per-chunk generated metadata values.
-            entities (Sequence[EntityMention]): Extracted entity mentions.
         """
         # 1. Chunks first — the composition and derived rows reference them (and chunk.parent_id
         #    self-references, so all chunks must exist before the links resolve).
         session.add_all(list(chunks))
         await session.flush()
         # 2. Composition + derived rows.
-        session.add_all([*composition, *metadata, *entities])
+        session.add_all([*composition, *metadata])
 
     @staticmethod
     async def get_by_ids(session: AsyncSession, chunk_ids: Sequence[uuid.UUID]) -> list[Chunk]:
@@ -217,18 +214,6 @@ class ChunkApi:
             .join(Chunk, ChunkBlock.chunk_id == Chunk.id)
             .where(Chunk.document_id == document_id)
             .order_by(ChunkBlock.chunk_id, ChunkBlock.position)
-        )
-        return list(result.scalars().all())
-
-    @staticmethod
-    async def get_entities_for_document(
-        session: AsyncSession, document_id: uuid.UUID
-    ) -> list[EntityMention]:
-        """Return every entity mention of a document's chunks in ONE query (the export read)."""
-        result = await session.execute(
-            select(EntityMention)
-            .join(Chunk, EntityMention.chunk_id == Chunk.id)
-            .where(Chunk.document_id == document_id)
         )
         return list(result.scalars().all())
 

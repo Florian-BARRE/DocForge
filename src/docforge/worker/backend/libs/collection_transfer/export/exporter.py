@@ -216,8 +216,6 @@ class CollectionExporter:
             sinks["ir_figures"].write(RowSerializer.block_figure(figure))
         for enrichment in rows.enrichments:
             sinks["ir_enrichments"].write(RowSerializer.block_enrichment(enrichment))
-        for attempt in rows.attempts:
-            sinks["ir_enrichment_attempts"].write(RowSerializer.enrichment_attempt(attempt))
         for chunk in rows.chunks:
             sinks["chunks"].write(RowSerializer.chunk(chunk))
             live_chunk_ids.add(str(chunk.id))
@@ -227,8 +225,6 @@ class CollectionExporter:
             sinks["chunk_metadata"].write(
                 RowSerializer.chunk_metadata(chunk_id, name, value, origin)
             )
-        for entity in rows.entities:
-            sinks["entity_mentions"].write(RowSerializer.entity_mention(entity))
 
     async def _write_points(
         self, writer, collection_id: uuid.UUID, live_chunk_ids: set[str]
@@ -293,11 +289,9 @@ _DOCUMENT_SINKS = {
     "ir_tables": BundlePaths.IR_TABLES,
     "ir_figures": BundlePaths.IR_FIGURES,
     "ir_enrichments": BundlePaths.IR_ENRICHMENTS,
-    "ir_enrichment_attempts": BundlePaths.IR_ENRICHMENT_ATTEMPTS,
     "chunks": BundlePaths.CHUNKS,
     "chunk_blocks": BundlePaths.CHUNK_BLOCKS,
     "chunk_metadata": BundlePaths.CHUNK_METADATA,
-    "entity_mentions": BundlePaths.ENTITY_MENTIONS,
 }
 
 # The counts surfaced in the manifest: sink key → the TransferCounts field it feeds.
@@ -307,7 +301,6 @@ _COUNTED_SINKS = {
     "ir_blocks": "blocks",
     "ir_enrichments": "enrichments",
     "chunks": "chunks",
-    "entity_mentions": "entity_mentions",
 }
 
 

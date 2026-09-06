@@ -28,9 +28,7 @@ class RemapContext:
     pages: dict[str, uuid.UUID] = field(default_factory=dict)
     blocks: dict[str, str] = field(default_factory=dict)
     enrichments: dict[str, uuid.UUID] = field(default_factory=dict)
-    attempts: dict[str, uuid.UUID] = field(default_factory=dict)
     chunks: dict[str, uuid.UUID] = field(default_factory=dict)
-    entities: dict[str, uuid.UUID] = field(default_factory=dict)
 
     def remap_block_id(self, old_block_id: str, old_document_id: str) -> str:
         """Re-namespace a block id onto the NEW document id, preserving its suffix."""
@@ -69,12 +67,8 @@ class RemapBuilder:
             ctx.blocks[row["id"]] = ctx.remap_block_id(row["id"], row["document_id"])
         for row in reader.iter_rows(BundlePaths.IR_ENRICHMENTS):
             ctx.enrichments[row["id"]] = uuid.uuid4()
-        for row in reader.iter_rows(BundlePaths.IR_ENRICHMENT_ATTEMPTS):
-            ctx.attempts[row["id"]] = uuid.uuid4()
         for row in reader.iter_rows(BundlePaths.CHUNKS):
             ctx.chunks[row["id"]] = uuid.uuid4()
-        for row in reader.iter_rows(BundlePaths.ENTITY_MENTIONS):
-            ctx.entities[row["id"]] = uuid.uuid4()
         return ctx
 
 

@@ -179,11 +179,9 @@ def make_document_rows() -> DocumentExportRows:
         tables=[],
         figures=[],
         enrichments=[enrichment],
-        attempts=[],
         chunks=[chunk],
         composition=[ChunkBlock(chunk_id=CHUNK_ID, block_id=BLOCK_ID, position=0)],
         chunk_metadata=[(CHUNK_ID, "topic", "greetings", FieldOrigin.GENERATED)],
-        entities=[],
     )
 
 

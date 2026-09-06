@@ -36,8 +36,8 @@ class PostgresFootprint:
     Attributes:
         documents_bytes (int): ``document`` + ``page`` rows.
         ir_blocks_bytes (int): ``block`` + ``block_table`` + ``block_figure`` rows.
-        enrichment_bytes (int): ``block_enrichment`` + ``enrichment_attempt`` rows.
-        chunks_bytes (int): ``chunk`` + ``chunk_block`` + ``chunk_metadata`` + ``entity_mention`` rows.
+        enrichment_bytes (int): ``block_enrichment`` rows.
+        chunks_bytes (int): ``chunk`` + ``chunk_block`` + ``chunk_metadata`` rows.
         metadata_bytes (int): ``document_metadata`` rows.
         observability_bytes (int): ``job`` + ``job_stage_event`` rows.
         total_bytes (int): The sum of every bucket above.
