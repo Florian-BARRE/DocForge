@@ -23,6 +23,9 @@ conflicts = [[
     { package = "docforge-paddle-server", extra = "gpu" },
 ]]
 
+[manifest]
+overrides = [{ name = "opencv-contrib-python", marker = "sys_platform == 'never'" }]
+
 [[package]]
 name = "aiohappyeyeballs"
 version = "2.7.1"
@@ -533,6 +536,7 @@ dependencies = [
     { name = "configplusplus" },
     { name = "fastapi" },
     { name = "loggerplusplus" },
+    { name = "opencv-contrib-python-headless" },
     { name = "paddleocr" },
     { name = "paddlepaddle" },
     { name = "paddlex", extra = ["ocr"] },
@@ -562,6 +566,7 @@ requires-dist = [
     { name = "configplusplus", specifier = ">=0.1.0" },
     { name = "fastapi", specifier = ">=0.115.0" },
     { name = "loggerplusplus", specifier = ">=1.0.0" },
+    { name = "opencv-contrib-python-headless", specifier = "==4.10.0.84" },
     { name = "paddleocr", specifier = "==3.7.0" },
     { name = "paddlepaddle", specifier = "==3.3.1" },
     { name = "paddlepaddle", marker = "extra == 'cpu'" },
@@ -1658,7 +1663,7 @@ name = "opencv-contrib-python"
 version = "4.10.0.84"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "numpy" },
+    { name = "numpy", marker = "(platform_machine != 'aarch64' and sys_platform == 'linux') or (sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'linux' and sys_platform != 'win32') or (sys_platform == 'darwin' and extra == 'extra-22-docforge-paddle-server-cpu' and extra == 'extra-22-docforge-paddle-server-gpu') or (sys_platform == 'emscripten' and extra == 'extra-22-docforge-paddle-server-cpu' and extra == 'extra-22-docforge-paddle-server-gpu') or (sys_platform == 'win32' and extra == 'extra-22-docforge-paddle-server-cpu' and extra == 'extra-22-docforge-paddle-server-gpu') or (sys_platform == 'linux' and extra == 'extra-22-docforge-paddle-server-cpu' and extra == 'extra-22-docforge-paddle-server-gpu')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/1d/33/7b8ec6c4d45e678b26297e4a5e76464a93033a9adcc8c17eac01097065f6/opencv-contrib-python-4.10.0.84.tar.gz", hash = "sha256:4a3eae0ed9cadf1abe9293a6938a25a540e2fd6d7fc308595caa5896c8b36a0c", size = 150433857, upload-time = "2024-06-17T18:30:50.217Z" }
 wheels = [
@@ -1668,6 +1673,23 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/b0/e0/8f5d065ebb2e5941d289c5f653f944318f9e418bc5167bc6a346ab5e0f6a/opencv_contrib_python-4.10.0.84-cp37-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:a261223db41f6e512d76deaf21c8fcfb4fbbcbc2de62ca7f74a05f2c9ee489ef", size = 68681489, upload-time = "2024-06-17T18:30:32.918Z" },
     { url = "https://files.pythonhosted.org/packages/36/30/7041bd7350cb1a26fa80415a7664b6f04f7ccbf0c12b9318d564cdf35932/opencv_contrib_python-4.10.0.84-cp37-abi3-win32.whl", hash = "sha256:2a36257ec1375d1bec2a62177ea39828ff9804de6831ee39646bdc875c343cec", size = 34506122, upload-time = "2024-06-17T18:28:29.922Z" },
     { url = "https://files.pythonhosted.org/packages/a7/9e/7110d2c5d543ab03b9581dbb1f8e2429863e44e0c9b4960b766f230c1279/opencv_contrib_python-4.10.0.84-cp37-abi3-win_amd64.whl", hash = "sha256:47ec3160dae75f70e099b286d1a2e086d20dac8b06e759f60eaf867e6bdecba7", size = 45541421, upload-time = "2024-06-17T18:28:46.012Z" },
+]
+
+[[package]]
+name = "opencv-contrib-python-headless"
+version = "4.10.0.84"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/81/6f/b0192e6f3eceeaa9b2fc148717f19d077edd6be0166b10248db96b9324bc/opencv-contrib-python-headless-4.10.0.84.tar.gz", hash = "sha256:6351250db97e1f91f31afdec2436afb1c89594e3da02851e0f01e20ea16bbd9e", size = 150465571, upload-time = "2024-06-17T18:33:13.906Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/99/19/f6a151219a493767da14245b45304d3254bd3887ff4ef081da541353d9ad/opencv_contrib_python_headless-4.10.0.84-cp37-abi3-macosx_11_0_arm64.whl", hash = "sha256:be91c6c81e839613c6f3b15755bf71789839289d0e3440fab093e0708516ffcf", size = 63667534, upload-time = "2024-06-18T04:58:27.309Z" },
+    { url = "https://files.pythonhosted.org/packages/45/23/8559fbdaa944d9067c17451341dff464f1a76ed3cfbd0bb7d1a44b62d5a2/opencv_contrib_python_headless-4.10.0.84-cp37-abi3-macosx_12_0_x86_64.whl", hash = "sha256:252df47a7e1da280cef26ee0ecc1799841015ce3718214634bb15bc22d4cb308", size = 66278139, upload-time = "2024-06-17T19:34:53.514Z" },
+    { url = "https://files.pythonhosted.org/packages/93/c3/a399ad183bd94210e6a9002add4096ead4f0d0c36c0b1b65c3205a0baee5/opencv_contrib_python_headless-4.10.0.84-cp37-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:77eb20ee077ac0955704d391c00639df6063cb67cb62606c07b97d8b635feff6", size = 34727901, upload-time = "2024-06-17T20:00:57.798Z" },
+    { url = "https://files.pythonhosted.org/packages/00/fc/b01f878cef02f619a4686683db31451d0e3e961646e65ec09ea802c8ceda/opencv_contrib_python_headless-4.10.0.84-cp37-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:89c16eb5f888aee7bf664106e12c423705d29d1b094876b66aa4e33d4e8ec905", size = 55986159, upload-time = "2024-06-17T18:32:47.877Z" },
+    { url = "https://files.pythonhosted.org/packages/d2/af/65fa29ea39f410547c708b1007cd8846587715b95a2509361f699d044dca/opencv_contrib_python_headless-4.10.0.84-cp37-abi3-win32.whl", hash = "sha256:7581d7ffb7fff953436797dca2dfc5e70e100f721ea18ab84ebf11417ea21d0c", size = 34444721, upload-time = "2024-06-17T18:29:12.923Z" },
+    { url = "https://files.pythonhosted.org/packages/01/d4/dacf890940cb22279e1513b7ea41d97825a723153a5efce68bc52e7b3b6e/opencv_contrib_python_headless-4.10.0.84-cp37-abi3-win_amd64.whl", hash = "sha256:660ded6b77b07f875f56065016677bbb6a3abca13903b9320164691a46474a7d", size = 45449488, upload-time = "2024-06-17T18:29:20.223Z" },
 ]
 
 [[package]]
@@ -1818,7 +1840,7 @@ ocr = [
     { name = "jinja2" },
     { name = "latex2mathml" },
     { name = "lxml" },
-    { name = "opencv-contrib-python" },
+    { name = "opencv-contrib-python", marker = "sys_platform == 'never' or (extra == 'extra-22-docforge-paddle-server-cpu' and extra == 'extra-22-docforge-paddle-server-gpu')" },
     { name = "openpyxl" },
     { name = "premailer" },
     { name = "pyclipper" },
@@ -1835,7 +1857,7 @@ ocr = [
 ]
 ocr-core = [
     { name = "imagesize" },
-    { name = "opencv-contrib-python" },
+    { name = "opencv-contrib-python", marker = "sys_platform == 'never' or (extra == 'extra-22-docforge-paddle-server-cpu' and extra == 'extra-22-docforge-paddle-server-gpu')" },
     { name = "pyclipper" },
     { name = "pypdfium2" },
     { name = "python-bidi" },

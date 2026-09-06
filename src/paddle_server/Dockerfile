@@ -13,8 +13,9 @@
 # Goal:
 # - Sync the locked production dependencies from uv.lock into a virtual environment
 #   at /opt/venv, selecting the correct paddlepaddle wheel variant via TORCH_VARIANT.
-# - TORCH_VARIANT=cpu  (default) installs paddlepaddle 3.3.1 from plain PyPI (~100 MB CPU
-#   wheel, no CUDA payload). Target runtime image size: ~1.2-1.5 GB.
+# - TORCH_VARIANT=cpu  (default) installs paddlepaddle 3.3.1 from plain PyPI (~195 MB CPU
+#   wheel — the manylinux1 build, no CUDA payload). Measured runtime image size: ~2.0 GB
+#   (headless OpenCV + no X11 apt libs; was ~2.3 GB with the GUI OpenCV build).
 # - TORCH_VARIANT=gpu installs paddlepaddle-gpu 3.3.1 (CUDA 12.6, from Paddle's own package
 #   index) + its bundled CUDA/cuDNN runtime. Target runtime image size: ~4-5.5 GB. Requires
 #   the NVIDIA Container Toolkit on the host.
@@ -74,17 +75,13 @@ LABEL org.opencontainers.image.title="docforge-paddle-server" \
       org.opencontainers.image.source="https://github.com/Florian-BARRE/DocForge" \
       org.opencontainers.image.licenses="GPL-3.0-or-later"
 
-# opencv-contrib-python (a paddlex[ocr-core] dependency, non-headless build) dynamically links
-# against libGL/libglib/libSM/libXext/libXrender at import time — without these the very first
-# `import cv2` (triggered by importing paddleocr) fails with "libGL.so.1: cannot open shared
-# object file". libgomp1 is OpenMP's runtime, required by paddlepaddle's CPU math kernels.
+# libgomp1 is OpenMP's runtime, required by paddlepaddle's CPU math kernels — the one native
+# shared library this server actually needs. The five X11 libs (libGL/libglib/libSM/libXext/
+# libXrender) that a non-headless OpenCV links at `import cv2` are deliberately NOT installed:
+# pyproject.toml pins `opencv-contrib-python-headless` (and overrides the GUI build out of the
+# resolution), so no X11 link surface reaches this container.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libgomp1 \
-    libglib2.0-0 \
-    libgl1 \
-    libsm6 \
-    libxext6 \
-    libxrender1 \
     && rm -rf /var/lib/apt/lists/*
 
 # Runtime best practices:

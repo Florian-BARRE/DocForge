@@ -12,5 +12,20 @@ export default defineConfig({
     // plain local dev keeps the localhost default.
     proxy: { "/api": process.env.VITE_API_PROXY_TARGET ?? "http://127.0.0.1:8000" },
   },
-  build: { outDir: "dist" },
+  build: {
+    outDir: "dist",
+    rollupOptions: {
+      output: {
+        // Split heavy, rarely-co-loaded vendor code out of the app bundle so the initial
+        // load only pays for react/react-dom; TanStack (table+virtual) is only pulled in
+        // by the corpus grid feature, itself lazy-loaded below. Matched by module id (not
+        // the object-map form) because react-dom is actually imported via its `react-dom/client`
+        // subpath — an exact-package-name map misses that and silently emits an empty chunk.
+        manualChunks(id) {
+          if (id.includes("node_modules/react-dom") || id.includes("node_modules/react/")) return "vendor-react";
+          if (id.includes("node_modules/@tanstack")) return "vendor-tanstack";
+        },
+      },
+    },
+  },
 });

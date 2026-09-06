@@ -20,6 +20,12 @@ dependencies = [
     # below can steer it to the correct wheel index — same reasoning as bge_server's direct torch
     # declaration (uv sources are ignored for transitive deps).
     "paddlepaddle==3.3.1",
+    # OpenCV — the HEADLESS contrib build. paddlex[ocr-core] transitively requires the GUI
+    # variant `opencv-contrib-python`, whose wheel dynamically links libGL/libSM/libXext/…, forcing
+    # five X11 apt libs into a server image that never renders a window. We exclude the GUI build via
+    # a never-true marker in [tool.uv] override-dependencies below and pull the headless wheel here
+    # instead — same `cv2` module and API, no X11 link surface. Pinned to paddlex's resolved line.
+    "opencv-contrib-python-headless==4.10.0.84",
     # FastAPI + ASGI server.
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.30.0",
@@ -32,7 +38,7 @@ dependencies = [
 
 # ── Paddle variant extras ─────────────────────────────────────────────────────────────────────
 # Exactly ONE of these extras must be selected at install time:
-#   cpu  → CPU-only paddlepaddle wheel (plain PyPI, ~100 MB). Target image size: ~1.2-1.5 GB.
+#   cpu  → CPU-only paddlepaddle wheel (plain PyPI, ~195 MB manylinux1). Measured image size: ~2.0 GB.
 #   gpu  → CUDA 12.6 paddlepaddle-gpu wheel (Paddle's own CUDA index). Target image: ~4-5.5 GB.
 #
 # Declared as CONFLICTING extras in [tool.uv] below so uv enforces mutual exclusivity at lock
@@ -60,6 +66,14 @@ dev = [
 [tool.uv]
 # This app is run as scripts (uvicorn entrypoint:app), not installed as a package.
 package = false
+
+# Force the HEADLESS OpenCV build. paddlex[ocr]/[ocr-core] declare `opencv-contrib-python` (the
+# GUI/highgui wheel) as a required dependency; there is no extra to opt out. Overriding it with a
+# marker that is never satisfied (no platform is ever named "never") drops the GUI wheel from the
+# resolution entirely, while `opencv-contrib-python-headless` — declared as a direct project
+# dependency above — supplies the identical `cv2` module without the libGL/X11 link surface. This
+# removes five X11 apt packages from the runtime image (see Dockerfile).
+override-dependencies = ["opencv-contrib-python; sys_platform == 'never'"]
 
 # Declare cpu and gpu as mutually exclusive — uv enforces this at lock time.
 conflicts = [
