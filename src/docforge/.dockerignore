@@ -1,6 +1,6 @@
 # Build context exclusions for the app/worker Dockerfiles, built with src/docforge/ as their
 # context (see app/Dockerfile's and worker/Dockerfile's own "Build note" headers, and
-# compose/overlays/dev.yml's `build.context: ../../src/docforge`). Anything matched here is
+# compose/overlays/compose.dev.yml's `build.context: ../../src/docforge`). Anything matched here is
 # NEVER sent to the daemon. Note this is a SEPARATE file from ../.dockerignore (which only
 # covers the sibling `src` context used by mcp/bge_server/paddle_server) — Docker only reads
 # .dockerignore from the build context root, and app/worker's context root is this directory,

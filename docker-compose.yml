@@ -9,4 +9,4 @@
 name: docforge
 
 include:
-  - compose/prod-cpu.yml
+  - compose/compose.prod-cpu.yml

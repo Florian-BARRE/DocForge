@@ -91,7 +91,7 @@ WORKDIR /app/worker
 # Non-root runtime user with a real home directory: docling/rapidocr/huggingface_hub resolve
 # their model cache from $HOME/.cache/huggingface (HF_HOME) by default, so unlike the app/mcp
 # images this one needs a writable, addressable home — NOT nested under /app/worker or
-# /app/shared, because compose/overlays/dev.yml bind-mounts host source directly over both of
+# /app/shared, because compose/overlays/compose.dev.yml bind-mounts host source directly over both of
 # those paths, which would shadow (and in prod, simply never seed) a cache dir placed inside
 # them. --create-home materializes /home/appuser owned by the new user.
 RUN groupadd --gid 10001 appuser \

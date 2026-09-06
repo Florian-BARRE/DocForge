@@ -1,12 +1,12 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # DocForge — OPTIONAL observability add-on (Prometheus + Loki + Promtail + Grafana).
 # Layer on top of any scenario file, e.g.:
-#   docker compose -f compose/prod-cpu.yml -f compose/overlays/telemetry.yml --profile full up -d
-#   docker compose -f compose/dev-cpu.yml  -f compose/overlays/telemetry.yml --profile full up -d
+#   docker compose -f compose/compose.prod-cpu.yml -f compose/overlays/compose.telemetry.yml --profile full up -d
+#   docker compose -f compose/compose.dev-cpu.yml  -f compose/overlays/compose.telemetry.yml --profile full up -d
 #
 # WHEN TO USE THIS FILE: you want metrics/log dashboards without standing up your own
 # Prometheus/Grafana. NOT baked into any scenario file — opt-in add-on, same pattern as
-# overlays/proxy.yml. These 4 services carry NO `profiles:` key (unlike app/worker/frontend/
+# overlays/compose.proxy.yml. These 4 services carry NO `profiles:` key (unlike app/worker/frontend/
 # mcp, which are gated behind "full") — they start unconditionally whenever this overlay is
 # included, so `--profile full` still starts the rest of the stack exactly as before; the
 # telemetry containers just come along for free. Config lives under services/telemetry/ (the
@@ -42,7 +42,7 @@
 # stack off any public interface") that the previous unbound `"host:container"` mappings didn't
 # actually enforce. Override via `TELEMETRY_BIND_ADDR` (project-root .env) ONLY if you understand
 # the exposure — e.g. `TELEMETRY_BIND_ADDR=0.0.0.0` on a host already firewalled at the network
-# layer — and prefer routing through `compose/overlays/proxy.yml` or an SSH/VPN tunnel instead of
+# layer — and prefer routing through `compose/overlays/compose.proxy.yml` or an SSH/VPN tunnel instead of
 # widening the bind address.
 # ─────────────────────────────────────────────────────────────────────────────
 

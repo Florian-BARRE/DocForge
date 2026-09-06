@@ -7,13 +7,13 @@ it — this README is the index + the usage matrix + the Makefile targets.
 
 ```
 compose/
-  base.yml                 # ALL services + volumes + network — never used alone
+  compose.base.yml                 # ALL services + volumes + network — never used alone
   overlays/
-    gpu.yml                 # -gpu images + `gpus: all` for worker/bge_server/paddle_server
-    dev.yml                  # local build + source mounts + hot reload + Vite frontend
-    proxy.yml                 # OPTIONAL — Caddy TLS front door (add-on, not baked into scenarios)
-    telemetry.yml              # OPTIONAL — Prometheus + Loki + Promtail + Grafana (add-on)
-  dev-cpu.yml   dev-gpu.yml   prod-cpu.yml   prod-gpu.yml   # ready-made scenario files
+    compose.gpu.yml                 # -gpu images + `gpus: all` for worker/bge_server/paddle_server
+    compose.dev.yml                  # local build + source mounts + hot reload + Vite frontend
+    compose.proxy.yml                 # OPTIONAL — Caddy TLS front door (add-on, not baked into scenarios)
+    compose.telemetry.yml              # OPTIONAL — Prometheus + Loki + Promtail + Grafana (add-on)
+  compose.dev-cpu.yml  compose.dev-gpu.yml  compose.prod-cpu.yml  compose.prod-gpu.yml   # ready-made scenario files
   README.md                  # this file
 
 services/telemetry/          # config for the telemetry overlay (prometheus.yml, loki/promtail
@@ -22,7 +22,7 @@ services/telemetry/          # config for the telemetry overlay (prometheus.yml,
                               # services/caddy, services/docforge, etc.)
 ```
 
-The repo-root `docker-compose.yml` is a thin `include: [compose/prod-cpu.yml]` — a bare
+The repo-root `docker-compose.yml` is a thin `include: [compose/compose.prod-cpu.yml]` — a bare
 `docker compose --profile full up -d` at the repo root still gets you prod-CPU, unchanged from
 before this reorg.
 
@@ -30,10 +30,10 @@ before this reorg.
 
 | Scenario | Command | When |
 |---|---|---|
-| Prod CPU (default) | `docker compose -f compose/prod-cpu.yml --profile full up -d` | Normal CPU production/staging. Also the repo-root default. |
-| Prod GPU | `docker compose -f compose/prod-gpu.yml --profile full up -d` | Production/staging on a GPU host (NVIDIA Container Toolkit required). |
-| Dev CPU | `docker compose -f compose/dev-cpu.yml --profile full up -d --build` | Local development, CPU machine (the common case). |
-| Dev GPU | `docker compose -f compose/dev-gpu.yml --profile full up -d --build` | Local development on a GPU-equipped machine. |
+| Prod CPU (default) | `docker compose -f compose/compose.prod-cpu.yml --profile full up -d` | Normal CPU production/staging. Also the repo-root default. |
+| Prod GPU | `docker compose -f compose/compose.prod-gpu.yml --profile full up -d` | Production/staging on a GPU host (NVIDIA Container Toolkit required). |
+| Dev CPU | `docker compose -f compose/compose.dev-cpu.yml --profile full up -d --build` | Local development, CPU machine (the common case). |
+| Dev GPU | `docker compose -f compose/compose.dev-gpu.yml --profile full up -d --build` | Local development on a GPU-equipped machine. |
 
 `--profile full` is mandatory in every scenario — app/worker/frontend/mcp live under it (omitting
 it starts only the data-plane stores).
@@ -43,13 +43,13 @@ it starts only the data-plane stores).
 ```bash
 # TLS front door (Caddy, auto-HTTPS) — needs DOCFORGE_DOMAIN / DOCFORGE_ACME_EMAIL in the
 # project-root .env:
-docker compose -f compose/prod-cpu.yml -f compose/overlays/proxy.yml --profile full up -d
+docker compose -f compose/compose.prod-cpu.yml -f compose/overlays/compose.proxy.yml --profile full up -d
 
 # Observability stack (Prometheus/Loki/Promtail/Grafana):
-docker compose -f compose/prod-cpu.yml -f compose/overlays/telemetry.yml --profile full up -d
+docker compose -f compose/compose.prod-cpu.yml -f compose/overlays/compose.telemetry.yml --profile full up -d
 
 # Both, on any scenario:
-docker compose -f compose/prod-gpu.yml -f compose/overlays/proxy.yml -f compose/overlays/telemetry.yml --profile full up -d
+docker compose -f compose/compose.prod-gpu.yml -f compose/overlays/compose.proxy.yml -f compose/overlays/compose.telemetry.yml --profile full up -d
 ```
 
 ## Makefile targets (repo root)
@@ -61,7 +61,7 @@ alone and combined with every add-on combination.
 
 ## The telemetry stack
 
-Opt-in via `compose/overlays/telemetry.yml`. Four containers, **no `profiles:` gate** (unlike
+Opt-in via `compose/overlays/compose.telemetry.yml`. Four containers, **no `profiles:` gate** (unlike
 app/worker/frontend/mcp, which require `--profile full`) — they start unconditionally whenever
 the overlay is included, so combining it with `--profile full` still starts the rest of the
 stack exactly as before.
@@ -81,7 +81,7 @@ Chosen because `10040`–`10049` are already used by the core stack (see the por
 exactly why Prometheus reaches the app over the internal `docforge_net` (`docforge_app:8000`)
 rather than through a published port. Keep the telemetry stack itself off any public interface
 too (Grafana/Prometheus/Loki host ports are for an operator/VPN, not the public internet) —
-front Grafana with `compose/overlays/proxy.yml` or an OS firewall rule if you need remote access.
+front Grafana with `compose/overlays/compose.proxy.yml` or an OS firewall rule if you need remote access.
 
 **Grafana admin password**: lives in `services/telemetry/.env` (`GF_SECURITY_ADMIN_USER` /
 `GF_SECURITY_ADMIN_PASSWORD` — Grafana's own env vars, injected via `env_file`), the same
@@ -93,20 +93,20 @@ before exposing Grafana beyond localhost/an operator VPN. Open Grafana at
 ## The `../` path note
 
 This splits along the SAME line as the merge-order gotcha below: `include:`-ed files
-(`base.yml`, `overlays/dev.yml`, `overlays/gpu.yml`) resolve their relative paths **relative to
-that file's own directory**, while `-f`-layered add-ons (`overlays/proxy.yml`,
-`overlays/telemetry.yml`) resolve relative to the **project directory** — the first `-f` file's
+(`compose.base.yml`, `overlays/compose.dev.yml`, `overlays/compose.gpu.yml`) resolve their relative paths **relative to
+that file's own directory**, while `-f`-layered add-ons (`overlays/compose.proxy.yml`,
+`overlays/compose.telemetry.yml`) resolve relative to the **project directory** — the first `-f` file's
 own dir, i.e. `compose/` in every scenario file's invocation. Concretely:
 
-- `base.yml` lives in `compose/`, `include:`-ed → its paths use `../` (e.g.
+- `compose.base.yml` lives in `compose/`, `include:`-ed → its paths use `../` (e.g.
   `../services/docforge/.env`).
-- `overlays/dev.yml` / `overlays/gpu.yml` live one level deeper, in `compose/overlays/`, and are
+- `overlays/compose.dev.yml` / `overlays/compose.gpu.yml` live one level deeper, in `compose/overlays/`, and are
   also `include:`-ed → their paths use `../../` for anything under the repo root
   (`../../src/docforge`, `../../services/caddy/Caddyfile`).
-- `overlays/proxy.yml` / `overlays/telemetry.yml` also live in `compose/overlays/`, but are
+- `overlays/compose.proxy.yml` / `overlays/compose.telemetry.yml` also live in `compose/overlays/`, but are
   **never `include:`-ed** — always layered with a plain `-f` on top of an already-assembled
-  scenario file — so despite living in the same directory as dev.yml/gpu.yml, their paths
-  resolve like `base.yml`'s: a single `../` from `compose/` (e.g.
+  scenario file — so despite living in the same directory as compose.dev.yml/compose.gpu.yml, their paths
+  resolve like `compose.base.yml`'s: a single `../` from `compose/` (e.g.
   `../services/telemetry/prometheus.yml`, `../services/caddy/Caddyfile`), NOT `../../`. See each
   file's own header comment for the explicit reasoning.
 
@@ -120,13 +120,13 @@ service**, the merge picks, for any leaf both files set (a scalar like `image:`,
 list/map entry keyed by target like a `volumes:` mount), the value from whichever file is listed
 **first** — the opposite of `-f`'s last-wins. `-f` stacking is unaffected (confirmed correct
 last-wins); only `include:` behaves this way. This is why every scenario file's `include:` list
-puts the most-specific overlay **first** and `base.yml` **last** (e.g. `dev-gpu.yml`: `gpu.yml`,
-then `dev.yml`, then `base.yml`) — see each scenario file's own header comment and
-`compose/overlays/gpu.yml`'s header for the full reproduction and reasoning. `proxy.yml` and
-`telemetry.yml` are never `include:`d (always layered with a plain `-f` on top of an already-
+puts the most-specific overlay **first** and `compose.base.yml` **last** (e.g. `compose.dev-gpu.yml`: `compose.gpu.yml`,
+then `compose.dev.yml`, then `compose.base.yml`) — see each scenario file's own header comment and
+`compose/overlays/compose.gpu.yml`'s header for the full reproduction and reasoning. `compose.proxy.yml` and
+`compose.telemetry.yml` are never `include:`d (always layered with a plain `-f` on top of an already-
 assembled scenario file), so they don't need this ordering trick.
 
-If you add a new overlay that touches a service `base.yml` (or another overlay) also defines,
+If you add a new overlay that touches a service `compose.base.yml` (or another overlay) also defines,
 list it **before** the file(s) it needs to override in every scenario file that combines them,
 and re-run `make config-check-all` to prove the resolved values are what you expect — `config -q`
 only proves the YAML is valid, not that the merge picked the value you intended.

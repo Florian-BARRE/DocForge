@@ -1,5 +1,5 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# DocForge — optional Caddy TLS-termination front door (see compose/overlays/proxy.yml).
+# DocForge — optional Caddy TLS-termination front door (see compose/overlays/compose.proxy.yml).
 # Auto-HTTPS via Let's Encrypt for DOCFORGE_DOMAIN; HTTP->HTTPS redirect is automatic.
 # DOCFORGE_DOMAIN / DOCFORGE_ACME_EMAIL are injected from the project-root .env — see
 # docs/PROD-HARDENING.md's "Optional TLS reverse proxy" section.

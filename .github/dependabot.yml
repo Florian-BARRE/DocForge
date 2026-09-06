@@ -14,19 +14,19 @@
 # Every Python/npm group collapses minor+patch bumps into a single weekly PR to keep noise
 # down; majors still open their own PR (deliberately not grouped — those need a human look).
 #
-# ── KNOWN LIMITATION (compose image pins) ──────────────────────────────────
+# ── COMPOSE IMAGE PIN COVERAGE — ACTIVE ─────────────────────────────────────
 # Dependabot's docker-compose scanner only matches files whose NAME fits the glob
 # `(docker-)?compose(?>\.[\w-]+)?\.ya?ml` (e.g. docker-compose.yml, compose.prod.yml). This
-# repo's compose files use scenario names — `compose/base.yml`, `compose/overlays/*.yml`,
-# `compose/{prod,dev}-{cpu,gpu}.yml` — which do NOT match that glob, so the ~11 third-party
-# `image:` pins living inside them (postgres:16-bookworm, redis:7-bookworm, qdrant/qdrant,
-# chrislusf/seaweedfs, gotenberg/gotenberg:8, prom/prometheus, grafana/{loki,promtail,grafana},
-# caddy, node:22-bookworm-slim) are NOT auto-updated today. The only conventionally-named file
-# is the root `docker-compose.yml`, which is a pure `include:` (no image pins). The entries below
-# cover it and are staged over the compose dirs so they take effect the moment a file is renamed
-# to the recognised form; until then those pins need a rename or manual tracking. The GHCR
-# `ghcr.io/florian-barre/docforge-*` images are first-party (released by release-images.yml) and
-# are deliberately NOT tracked here.
+# repo's compose files used to use bare scenario names — `compose/base.yml`, `compose/overlays/
+# {gpu,dev,proxy,telemetry}.yml`, `compose/{prod,dev}-{cpu,gpu}.yml` — which did NOT match that
+# glob. They have since been renamed to `compose.*.yml` (e.g. `compose/compose.base.yml`,
+# `compose/overlays/compose.gpu.yml`, `compose/compose.prod-cpu.yml`) specifically so every file
+# fits the glob, so the ~11 third-party `image:` pins living inside them (postgres:16-bookworm,
+# redis:7-bookworm, qdrant/qdrant, chrislusf/seaweedfs, gotenberg/gotenberg:8, prom/prometheus,
+# grafana/{loki,promtail,grafana}, caddy, node:22-bookworm-slim) ARE now auto-updated, via the
+# `/compose` and `/compose/overlays` entries below (plus the root `docker-compose.yml`, which is a
+# pure `include:` with no image pins of its own). The GHCR `ghcr.io/florian-barre/docforge-*`
+# images are first-party (released by release-images.yml) and are deliberately NOT tracked here.
 # ============================================================================
 
 version: 2
@@ -129,9 +129,9 @@ updates:
     open-pull-requests-limit: 5
 
   # --- Docker Compose service images (`image:` pins in the compose files) ---
-  # See the KNOWN LIMITATION note in the header: only the root standard-named docker-compose.yml
-  # is matched by the scanner today; the /compose entries are staged for when a scenario file is
-  # renamed to the recognised `compose.*.yml` form. Grouped like every other ecosystem.
+  # See the header note: every compose file now fits the `compose.*.yml` glob, so the root
+  # docker-compose.yml plus the /compose and /compose/overlays entries below all get scanned.
+  # Grouped like every other ecosystem.
   - package-ecosystem: "docker-compose"
     directory: "/"
     schedule:

@@ -19,7 +19,7 @@ web UI and via `curl`. Every command here is verified against the repository.
 - Open ports in the `10040–10052` range (the stack publishes its dev ports there; the stock CPU
   stack uses `10040–10049`, and the optional telemetry overlay adds `10050–10052`).
 - **GPU is optional and deferred** — the default images build with CPU-only PyTorch. GPU is an
-  opt-in scenario (`compose/dev-gpu.yml`) and is not needed to complete this guide.
+  opt-in scenario (`compose/compose.dev-gpu.yml`) and is not needed to complete this guide.
 
 No local Python, Node, or Postgres install is required — everything runs in containers.
 
@@ -67,14 +67,14 @@ The few values worth knowing about:
 Start the **full stack** (API + worker + frontend + all stores) with hot reload:
 
 ```bash
-docker compose -f compose/dev-cpu.yml \
+docker compose -f compose/compose.dev-cpu.yml \
   --profile full up --build -d
 ```
 
 - **`--profile full` is mandatory.** The app, worker, and frontend live under that profile; without
   it only the backing stores start, and Compose rejects the project with
   `docforge_frontend depends on undefined service docforge_app`.
-- The `compose/dev-cpu.yml` scenario adds hot reload and **publishes the store ports to
+- The `compose/compose.dev-cpu.yml` scenario adds hot reload and **publishes the store ports to
   localhost** (Postgres, Redis, Qdrant, SeaweedFS, bge_server). Production keeps those internal.
 
 ### Ports (dev)
@@ -108,7 +108,7 @@ curl http://localhost:10047/health
 Watch the logs while the models load:
 
 ```bash
-docker compose -f compose/dev-cpu.yml logs -f docforge_bge_server
+docker compose -f compose/compose.dev-cpu.yml logs -f docforge_bge_server
 ```
 
 Once both `/health` checks pass, open the web UI at **http://localhost:10046** and the interactive
@@ -121,7 +121,7 @@ API reference at **http://localhost:10040/scalar**.
 On first boot, apply the Alembic migrations against the running app container:
 
 ```bash
-docker compose -f compose/dev-cpu.yml exec docforge_app \
+docker compose -f compose/compose.dev-cpu.yml exec docforge_app \
   sh -c 'alembic -c /app/shared/alembic.ini upgrade head'
 ```
 
@@ -288,7 +288,7 @@ Auth is **off by default**. When enabled, every `/api/v1/*` route requires a bea
 2. Recreate the app (and worker) so they pick up the new env:
 
    ```bash
-   docker compose -f compose/dev-cpu.yml \
+   docker compose -f compose/compose.dev-cpu.yml \
      --profile full up -d --force-recreate docforge_app docforge_worker
    ```
 
@@ -345,7 +345,7 @@ docker compose --profile full up -d
 | Only the stores came up, no app/worker/UI | Same cause — add `--profile full`. |
 | Search returns `409 Collection has no embed node` | The collection's pipeline has no embedder wired. Use the default pipeline (omit `pipeline` on create) or add an embed node. |
 | Search/upload hangs or 500s on first run | `bge_server` is still downloading models. Wait for `curl http://localhost:10047/health` to return 200. |
-| Port already in use on `up` | Another process holds a `10040–10052` port. Free it, or stop a previously running stack: `docker compose -f compose/dev-cpu.yml --profile full down`. |
+| Port already in use on `up` | Another process holds a `10040–10052` port. Free it, or stop a previously running stack: `docker compose -f compose/compose.dev-cpu.yml --profile full down`. |
 | `503` from Gotenberg on large office files | Cold LibreOffice spin-up; the API timeout is already raised to 180s — retry, or give the file a moment. |
 | DB errors right after first boot | Migrations not applied — run the [§4](#4-run-database-migrations) command. |
 | `401` on every `/api/v1/*` call | Auth is on. Send `Authorization: Bearer <token>`, or set `AUTH_ENABLED=false` and recreate the app. |
@@ -354,7 +354,7 @@ docker compose --profile full up -d
 To stop and remove the stack (keeping data volumes):
 
 ```bash
-docker compose -f compose/dev-cpu.yml --profile full down
+docker compose -f compose/compose.dev-cpu.yml --profile full down
 ```
 
 Add `-v` to also delete the volumes (Postgres/Qdrant/SeaweedFS/Redis data and the model cache) —

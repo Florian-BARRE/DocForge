@@ -1,6 +1,6 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # Grafana dashboard provisioning — loads every JSON file under the mounted dashboards/
-# directory (see compose/overlays/telemetry.yml's grafana volumes) into a "DocForge" folder.
+# directory (see compose/overlays/compose.telemetry.yml's grafana volumes) into a "DocForge" folder.
 # ─────────────────────────────────────────────────────────────────────────────
 apiVersion: 1
 

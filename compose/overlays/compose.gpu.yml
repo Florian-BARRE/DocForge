@@ -1,11 +1,11 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # DocForge — GPU overlay. Never used standalone — always pulled in via `include:` by
-# compose/prod-gpu.yml / compose/dev-gpu.yml (the ready-made scenario files — USE THOSE, run
+# compose/compose.prod-gpu.yml / compose/compose.dev-gpu.yml (the ready-made scenario files — USE THOSE, run
 # from the repo root):
-#   docker compose -f compose/prod-gpu.yml --profile full up -d
-#   docker compose -f compose/dev-gpu.yml  --profile full up -d --build
+#   docker compose -f compose/compose.prod-gpu.yml --profile full up -d
+#   docker compose -f compose/compose.dev-gpu.yml  --profile full up -d --build
 #
-# Do NOT hand-assemble this file with a plain `-f compose/base.yml -f compose/overlays/gpu.yml`:
+# Do NOT hand-assemble this file with a plain `-f compose/compose.base.yml -f compose/overlays/compose.gpu.yml`:
 # `-f` resolves every file's relative paths against the FIRST `-f` file's own directory
 # (compose/), not this file's directory (compose/overlays/) — the explicit `../../src/...`
 # `build.context` paths below (needed for the dev-gpu combo, see below) would then resolve
@@ -33,16 +33,16 @@
 # v5.1.1, when the SAME service is (re)defined by two `include:`d files, the FIRST file listed
 # wins any leaf value they both set (scalars, and list/map entries keyed by target — e.g.
 # `image:`, `build.context`, a `volumes:` entry with the same mount target), not the last one
-# as `-f` does. (`-f` stacking is unaffected — proxy.yml/telemetry.yml are always layered with
+# as `-f` does. (`-f` stacking is unaffected — compose.proxy.yml/compose.telemetry.yml are always layered with
 # `-f`, never `include:`d, so this quirk doesn't touch them.) Every scenario file therefore
-# lists this gpu overlay FIRST (before dev.yml, before base.yml) — see compose/prod-gpu.yml and
-# compose/dev-gpu.yml's include order (gpu, [dev,] base).
+# lists this gpu overlay FIRST (before compose.dev.yml, before compose.base.yml) — see compose/compose.prod-gpu.yml and
+# compose/compose.dev-gpu.yml's include order (gpu, [dev,] base).
 #
 # Because `include:` resolves EACH file's OWN relative paths before merging, a `build:` stanza
 # here with no explicit `context:`/`dockerfile:` would silently default to THIS file's own
 # directory (compose/overlays/) — wrong, and since this file is listed first it would WIN over
-# dev.yml's real context. So `context:`/`dockerfile:` below are spelled out explicitly,
-# duplicating dev.yml's values exactly (kept in sync manually) — precisely so the "first file
+# compose.dev.yml's real context. So `context:`/`dockerfile:` below are spelled out explicitly,
+# duplicating compose.dev.yml's values exactly (kept in sync manually) — precisely so the "first file
 # wins" quirk is harmless here: both files agree on the value.
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -52,7 +52,7 @@ services:
     # Service-level GPU grant — equivalent to `docker run --gpus all`.
     gpus: all
     build:
-      # Matches overlays/dev.yml's docforge_worker build context/dockerfile exactly — see the
+      # Matches overlays/compose.dev.yml's docforge_worker build context/dockerfile exactly — see the
       # header comment on why this duplication is required.
       context: ../../src/docforge
       dockerfile: worker/Dockerfile
@@ -64,7 +64,7 @@ services:
     # Service-level GPU grant — equivalent to `docker run --gpus all`.
     gpus: all
     build:
-      # Matches overlays/dev.yml's docforge_bge_server build context/dockerfile exactly — see
+      # Matches overlays/compose.dev.yml's docforge_bge_server build context/dockerfile exactly — see
       # the header comment on why this duplication is required.
       context: ../../src
       dockerfile: bge_server/Dockerfile
@@ -76,7 +76,7 @@ services:
     # Service-level GPU grant — equivalent to `docker run --gpus all`.
     gpus: all
     build:
-      # Matches overlays/dev.yml's docforge_paddle_server build context/dockerfile exactly —
+      # Matches overlays/compose.dev.yml's docforge_paddle_server build context/dockerfile exactly —
       # see the header comment on why this duplication is required.
       context: ../../src
       dockerfile: paddle_server/Dockerfile

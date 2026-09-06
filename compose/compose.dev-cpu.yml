@@ -5,25 +5,25 @@
 #
 # WHEN TO USE THIS FILE: local development on a CPU-only machine (the common case).
 #
-#   docker compose -f compose/dev-cpu.yml --profile full up -d --build
+#   docker compose -f compose/compose.dev-cpu.yml --profile full up -d --build
 #
 # `--profile full` is mandatory — app/worker/frontend/mcp live under it (see
-# compose/overlays/dev.yml's header comment for why).
+# compose/overlays/compose.dev.yml's header comment for why).
 #
 # Add-ons (layer with an extra -f, never baked in here):
-#   docker compose -f compose/dev-cpu.yml -f compose/overlays/telemetry.yml --profile full up -d --build
+#   docker compose -f compose/compose.dev-cpu.yml -f compose/overlays/compose.telemetry.yml --profile full up -d --build
 #
-# INCLUDE ORDER: dev.yml BEFORE base.yml — looks backwards, is not. Verified on this repo's
+# INCLUDE ORDER: compose.dev.yml BEFORE compose.base.yml — looks backwards, is not. Verified on this repo's
 # Compose v5.1.1: `include:`'s conflict resolution is FIRST-listed-file-wins for any leaf two
-# included files both set (e.g. the docforge_worker HF-cache volume mount target, which base.yml
-# points at a named volume and dev.yml points at the host's cache) — the opposite of `-f`'s
-# last-wins. Listing base.yml first (the "intuitive" order) would silently drop dev's host-cache
+# included files both set (e.g. the docforge_worker HF-cache volume mount target, which compose.base.yml
+# points at a named volume and compose.dev.yml points at the host's cache) — the opposite of `-f`'s
+# last-wins. Listing compose.base.yml first (the "intuitive" order) would silently drop dev's host-cache
 # bind mount and the model cache would go cold on every rebuild. See
-# compose/overlays/gpu.yml's header comment for the full explanation and evidence.
+# compose/overlays/compose.gpu.yml's header comment for the full explanation and evidence.
 # ─────────────────────────────────────────────────────────────────────────────
 
 name: docforge
 
 include:
-  - overlays/dev.yml
-  - base.yml
+  - overlays/compose.dev.yml
+  - compose.base.yml

@@ -6,22 +6,22 @@
 # thin root docker-compose.yml includes, so a bare `docker compose --profile full up -d`
 # at the repo root already gets you this scenario.
 #
-#   docker compose -f compose/prod-cpu.yml --profile full up -d
+#   docker compose -f compose/compose.prod-cpu.yml --profile full up -d
 #
 # Add-ons (layer with an extra -f, never baked in here):
-#   docker compose -f compose/prod-cpu.yml -f compose/overlays/proxy.yml --profile full up -d
-#   docker compose -f compose/prod-cpu.yml -f compose/overlays/telemetry.yml --profile full up -d
+#   docker compose -f compose/compose.prod-cpu.yml -f compose/overlays/compose.proxy.yml --profile full up -d
+#   docker compose -f compose/compose.prod-cpu.yml -f compose/overlays/compose.telemetry.yml --profile full up -d
 # ─────────────────────────────────────────────────────────────────────────────
 
 name: docforge
 
 include:
-  - base.yml
+  - compose.base.yml
 
 # Always pull the published GHCR image rather than reuse a same-named local one: a dev `--build` on
 # this host can leave an image under the very same tag (the dev overlays now tag `:dev`, but a GPU dev
 # build still occupies the prod `-gpu` tag), so without this a prod `up` could silently run stale dev
-# code. pull_policy lives here (not in base.yml) so it never fights the dev overlays' `build:`.
+# code. pull_policy lives here (not in compose.base.yml) so it never fights the dev overlays' `build:`.
 services:
   docforge_app:
     pull_policy: always

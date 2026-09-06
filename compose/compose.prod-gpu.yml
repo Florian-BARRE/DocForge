@@ -5,29 +5,29 @@
 #
 # WHEN TO USE THIS FILE: production/staging on a GPU host.
 #
-#   docker compose -f compose/prod-gpu.yml --profile full up -d
+#   docker compose -f compose/compose.prod-gpu.yml --profile full up -d
 #
 # Add-ons (layer with an extra -f, never baked in here):
-#   docker compose -f compose/prod-gpu.yml -f compose/overlays/proxy.yml --profile full up -d
-#   docker compose -f compose/prod-gpu.yml -f compose/overlays/telemetry.yml --profile full up -d
+#   docker compose -f compose/compose.prod-gpu.yml -f compose/overlays/compose.proxy.yml --profile full up -d
+#   docker compose -f compose/compose.prod-gpu.yml -f compose/overlays/compose.telemetry.yml --profile full up -d
 #
-# INCLUDE ORDER: gpu.yml BEFORE base.yml — looks backwards, is not. Verified on this repo's
+# INCLUDE ORDER: compose.gpu.yml BEFORE compose.base.yml — looks backwards, is not. Verified on this repo's
 # Compose v5.1.1: `include:`'s conflict resolution is FIRST-listed-file-wins for any leaf two
-# included files both set (e.g. `image:`) — the opposite of `-f`'s last-wins. Listing base.yml
+# included files both set (e.g. `image:`) — the opposite of `-f`'s last-wins. Listing compose.base.yml
 # first (the "intuitive" order) would let base's -cpu image silently win. See
-# compose/overlays/gpu.yml's header comment for the full explanation and evidence.
+# compose/overlays/compose.gpu.yml's header comment for the full explanation and evidence.
 # ─────────────────────────────────────────────────────────────────────────────
 
 name: docforge
 
 include:
-  - overlays/gpu.yml
-  - base.yml
+  - overlays/compose.gpu.yml
+  - compose.base.yml
 
 # Always pull the published GHCR image rather than reuse a same-named local one: a GPU dev `--build`
-# occupies the prod `-gpu` tag (gpu.yml's `image:` wins the dev-gpu include order over the dev `:dev`
+# occupies the prod `-gpu` tag (compose.gpu.yml's `image:` wins the dev-gpu include order over the dev `:dev`
 # tag), so without this a prod-gpu `up` could silently run stale dev code. pull_policy lives here (not
-# in base.yml / gpu.yml) so it never fights the dev overlays' `build:`.
+# in compose.base.yml / compose.gpu.yml) so it never fights the dev overlays' `build:`.
 services:
   docforge_app:
     pull_policy: always

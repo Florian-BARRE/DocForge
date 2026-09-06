@@ -45,14 +45,14 @@ cd src/docforge && uv run pytest tests/rag_eval/test_metrics.py
 
 Live smoke (stack up; a few papers):
 ```bash
-export DOCFORGE_TOKEN=$(docker compose -f compose/dev-cpu.yml \
+export DOCFORGE_TOKEN=$(docker compose -f compose/compose.dev-cpu.yml \
   exec -T docforge_app printenv AUTH_ROOT_TOKEN | tr -d '\r')
 cd src/docforge && uv run pytest tests/rag_eval/test_rag_eval_live.py -m live -s
 ```
 
 Chunk sweep — retrieval quality on real papers (default vs strict, big sections → same result):
 ```bash
-export DOCFORGE_TOKEN=$(docker compose -f compose/dev-cpu.yml \
+export DOCFORGE_TOKEN=$(docker compose -f compose/compose.dev-cpu.yml \
   exec -T docforge_app printenv AUTH_ROOT_TOKEN | tr -d '\r')
 cd src/docforge && uv run python -m tests.rag_eval.runner --corpus qasper --papers 8 --sweep
 ```

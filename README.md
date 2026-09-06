@@ -117,10 +117,10 @@ cp services/docforge/s3_config.json.example services/docforge/s3_config.json
 cp services/bge_server/.env.example              services/bge_server/.env
 
 # 2. Start the full stack with hot reload (--profile full is MANDATORY)
-docker compose -f compose/dev-cpu.yml --profile full up --build -d
+docker compose -f compose/compose.dev-cpu.yml --profile full up --build -d
 
 # 3. Apply database migrations
-docker compose -f compose/dev-cpu.yml exec docforge_app \
+docker compose -f compose/compose.dev-cpu.yml exec docforge_app \
   sh -c 'alembic -c /app/shared/alembic.ini upgrade head'
 ```
 

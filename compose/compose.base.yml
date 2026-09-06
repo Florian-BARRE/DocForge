@@ -2,7 +2,7 @@
 # DocForge stack — BASE service set (every service, every scenario builds on this).
 #
 # WHEN TO USE THIS FILE DIRECTLY: never on its own — always via one of the scenario
-# files at the repo root of compose/ (prod-cpu.yml, prod-gpu.yml, dev-cpu.yml, dev-gpu.yml),
+# files at the repo root of compose/ (compose.prod-cpu.yml, compose.prod-gpu.yml, compose.dev-cpu.yml, compose.dev-gpu.yml),
 # which `include:` this file plus the overlay(s) for their scenario. See compose/README.md
 # for the full usage matrix and the Makefile targets.
 #
@@ -151,7 +151,7 @@ services:
     container_name: docforge-postgres
     # No host port in prod — data-plane services are reachable only on docforge_net;
     # operator access is `docker compose exec docforge_postgres psql ...`. Dev re-publishes
-    # 10041 via compose/overlays/dev.yml.
+    # 10041 via compose/overlays/compose.dev.yml.
     # Tune off the stock 128MB profile for the 4g container: cache hot IR/chunk pages, tell the
     # planner the real OS-cache size, and cap connections (only app+worker connect, small pools).
     command:
@@ -190,7 +190,7 @@ services:
     image: redis:7-bookworm
     container_name: docforge-redis
     # No host port in prod — internal to docforge_net only (app enqueue / worker listen).
-    # Dev re-publishes 10042 via compose/overlays/dev.yml.
+    # Dev re-publishes 10042 via compose/overlays/compose.dev.yml.
     # Bound RAM below the container cap and refuse writes rather than silently EVICT queued jobs
     # (noeviction). Disable RDB snapshots (--save "") — the queue is transport-only; job truth lives
     # in Postgres, so the periodic fork+copy-on-write is wasted CPU/RAM.
@@ -217,7 +217,7 @@ services:
     image: qdrant/qdrant:v1.18.2
     container_name: docforge-qdrant
     # No host port in prod — REST API internal to docforge_net only. Dev re-publishes
-    # 10043 via compose/overlays/dev.yml.
+    # 10043 via compose/overlays/compose.dev.yml.
     volumes:
       - docforge_qdrant_data:/qdrant/storage
     healthcheck:
@@ -253,7 +253,7 @@ services:
       -volume.max=0
       -volume.index=leveldb
     # No host port in prod — S3 API internal to docforge_net only. Dev re-publishes
-    # 10044 via compose/overlays/dev.yml.
+    # 10044 via compose/overlays/compose.dev.yml.
     volumes:
       - docforge_seaweedfs_data:/data
       # S3 identity so authenticated clients (the app/worker sign with S3_ACCESS_KEY/SECRET)
@@ -285,7 +285,7 @@ services:
     # whose Chromium routes fetch caller-supplied URLs — a published host port is an SSRF pivot into
     # docforge_net (e.g. Qdrant's REST API). The containerized pipeline reaches it via the in-network
     # `gotenberg` alias (base_url http://gotenberg:3000), so no host port is needed in any scenario.
-    # Host-side uv-run dev republishes 10045 via compose/overlays/dev.yml, like the data-plane stores.
+    # Host-side uv-run dev republishes 10045 via compose/overlays/compose.dev.yml, like the data-plane stores.
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
       interval: 10s
@@ -309,7 +309,7 @@ services:
   #   Stores + embeddings only:  --profile bge    (bge alongside the stores, no app/worker)
   # A collection's embed node points at it via base_url:
   #   in-network  → http://bge_server:80   (the docforge_net alias below)
-  #   from host   → http://localhost:10047 (dev only — see compose/overlays/dev.yml)
+  #   from host   → http://localhost:10047 (dev only — see compose/overlays/compose.dev.yml)
   docforge_bge_server:
     image: ghcr.io/florian-barre/docforge-bge-server:${DOCFORGE_TAG:-latest}-cpu
     container_name: docforge-bge-server
@@ -323,7 +323,7 @@ services:
     env_file:
       - ../services/bge_server/.env
     # No host port in prod — internal to docforge_net only (collections point at
-    # http://bge_server:80). Dev re-publishes 10047 via compose/overlays/dev.yml.
+    # http://bge_server:80). Dev re-publishes 10047 via compose/overlays/compose.dev.yml.
     volumes:
       - docforge_bge_models:/models # HF cache (HF_HOME=/models) — weights persist across restarts
     healthcheck:
@@ -380,7 +380,7 @@ services:
   # default in every shipped blob, so the service being UP costs idle memory only, no traffic).
   # A collection's pp_structure node points at it via base_url:
   #   in-network  → http://paddle_server:80   (the docforge_net alias below)
-  #   from host   → http://localhost:10049 (dev only — see compose/overlays/dev.yml)
+  #   from host   → http://localhost:10049 (dev only — see compose/overlays/compose.dev.yml)
   docforge_paddle_server:
     image: ghcr.io/florian-barre/docforge-paddle-server:${DOCFORGE_TAG:-latest}-cpu
     container_name: docforge-paddle-server
@@ -394,7 +394,7 @@ services:
     env_file:
       - ../services/paddle_server/.env
     # No host port in prod — internal to docforge_net only (collections point at
-    # http://paddle_server:80). Dev re-publishes 10049 via compose/overlays/dev.yml.
+    # http://paddle_server:80). Dev re-publishes 10049 via compose/overlays/compose.dev.yml.
     volumes:
       - docforge_ppstructure_models:/models # PADDLE_PDX_CACHE_HOME — weights persist across restarts
     healthcheck:

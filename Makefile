@@ -8,8 +8,8 @@ COMPOSE       := docker compose
 PROFILE       := --profile full
 
 SCENARIO_DIR  := compose
-PROXY         := $(SCENARIO_DIR)/overlays/proxy.yml
-TELEMETRY     := $(SCENARIO_DIR)/overlays/telemetry.yml
+PROXY         := $(SCENARIO_DIR)/overlays/compose.proxy.yml
+TELEMETRY     := $(SCENARIO_DIR)/overlays/compose.telemetry.yml
 
 .PHONY: up-prod-cpu up-prod-gpu up-dev-cpu up-dev-gpu \
         up-prod-cpu-proxy up-prod-gpu-proxy up-dev-cpu-proxy up-dev-gpu-proxy \
@@ -19,59 +19,59 @@ TELEMETRY     := $(SCENARIO_DIR)/overlays/telemetry.yml
 
 # ── Plain scenarios ──────────────────────────────────────────────────────────
 up-prod-cpu:
-	$(COMPOSE) -f $(SCENARIO_DIR)/prod-cpu.yml $(PROFILE) up -d
+	$(COMPOSE) -f $(SCENARIO_DIR)/compose.prod-cpu.yml $(PROFILE) up -d
 
 up-prod-gpu:
-	$(COMPOSE) -f $(SCENARIO_DIR)/prod-gpu.yml $(PROFILE) up -d
+	$(COMPOSE) -f $(SCENARIO_DIR)/compose.prod-gpu.yml $(PROFILE) up -d
 
 up-dev-cpu:
-	$(COMPOSE) -f $(SCENARIO_DIR)/dev-cpu.yml $(PROFILE) up -d --build
+	$(COMPOSE) -f $(SCENARIO_DIR)/compose.dev-cpu.yml $(PROFILE) up -d --build
 
 up-dev-gpu:
-	$(COMPOSE) -f $(SCENARIO_DIR)/dev-gpu.yml $(PROFILE) up -d --build
+	$(COMPOSE) -f $(SCENARIO_DIR)/compose.dev-gpu.yml $(PROFILE) up -d --build
 
 # ── + TLS proxy add-on ───────────────────────────────────────────────────────
 up-prod-cpu-proxy:
-	$(COMPOSE) -f $(SCENARIO_DIR)/prod-cpu.yml -f $(PROXY) $(PROFILE) up -d
+	$(COMPOSE) -f $(SCENARIO_DIR)/compose.prod-cpu.yml -f $(PROXY) $(PROFILE) up -d
 
 up-prod-gpu-proxy:
-	$(COMPOSE) -f $(SCENARIO_DIR)/prod-gpu.yml -f $(PROXY) $(PROFILE) up -d
+	$(COMPOSE) -f $(SCENARIO_DIR)/compose.prod-gpu.yml -f $(PROXY) $(PROFILE) up -d
 
 up-dev-cpu-proxy:
-	$(COMPOSE) -f $(SCENARIO_DIR)/dev-cpu.yml -f $(PROXY) $(PROFILE) up -d --build
+	$(COMPOSE) -f $(SCENARIO_DIR)/compose.dev-cpu.yml -f $(PROXY) $(PROFILE) up -d --build
 
 up-dev-gpu-proxy:
-	$(COMPOSE) -f $(SCENARIO_DIR)/dev-gpu.yml -f $(PROXY) $(PROFILE) up -d --build
+	$(COMPOSE) -f $(SCENARIO_DIR)/compose.dev-gpu.yml -f $(PROXY) $(PROFILE) up -d --build
 
 # ── + telemetry add-on (Prometheus/Loki/Promtail/Grafana) ───────────────────
 up-prod-cpu-telemetry:
-	$(COMPOSE) -f $(SCENARIO_DIR)/prod-cpu.yml -f $(TELEMETRY) $(PROFILE) up -d
+	$(COMPOSE) -f $(SCENARIO_DIR)/compose.prod-cpu.yml -f $(TELEMETRY) $(PROFILE) up -d
 
 up-prod-gpu-telemetry:
-	$(COMPOSE) -f $(SCENARIO_DIR)/prod-gpu.yml -f $(TELEMETRY) $(PROFILE) up -d
+	$(COMPOSE) -f $(SCENARIO_DIR)/compose.prod-gpu.yml -f $(TELEMETRY) $(PROFILE) up -d
 
 up-dev-cpu-telemetry:
-	$(COMPOSE) -f $(SCENARIO_DIR)/dev-cpu.yml -f $(TELEMETRY) $(PROFILE) up -d --build
+	$(COMPOSE) -f $(SCENARIO_DIR)/compose.dev-cpu.yml -f $(TELEMETRY) $(PROFILE) up -d --build
 
 up-dev-gpu-telemetry:
-	$(COMPOSE) -f $(SCENARIO_DIR)/dev-gpu.yml -f $(TELEMETRY) $(PROFILE) up -d --build
+	$(COMPOSE) -f $(SCENARIO_DIR)/compose.dev-gpu.yml -f $(TELEMETRY) $(PROFILE) up -d --build
 
-# ── Teardown (add -f compose/overlays/proxy.yml / telemetry.yml manually if you layered them) ──
+# ── Teardown (add -f compose/overlays/compose.proxy.yml / compose.telemetry.yml manually if you layered them) ──
 down-prod-cpu:
-	$(COMPOSE) -f $(SCENARIO_DIR)/prod-cpu.yml $(PROFILE) down
+	$(COMPOSE) -f $(SCENARIO_DIR)/compose.prod-cpu.yml $(PROFILE) down
 
 down-prod-gpu:
-	$(COMPOSE) -f $(SCENARIO_DIR)/prod-gpu.yml $(PROFILE) down
+	$(COMPOSE) -f $(SCENARIO_DIR)/compose.prod-gpu.yml $(PROFILE) down
 
 down-dev-cpu:
-	$(COMPOSE) -f $(SCENARIO_DIR)/dev-cpu.yml $(PROFILE) down
+	$(COMPOSE) -f $(SCENARIO_DIR)/compose.dev-cpu.yml $(PROFILE) down
 
 down-dev-gpu:
-	$(COMPOSE) -f $(SCENARIO_DIR)/dev-gpu.yml $(PROFILE) down
+	$(COMPOSE) -f $(SCENARIO_DIR)/compose.dev-gpu.yml $(PROFILE) down
 
 # ── Operator helpers ─────────────────────────────────────────────────────────
 logs:
-	$(COMPOSE) -f $(SCENARIO_DIR)/prod-cpu.yml $(PROFILE) logs -f
+	$(COMPOSE) -f $(SCENARIO_DIR)/compose.prod-cpu.yml $(PROFILE) logs -f
 
 # Validation gate: every scenario file, alone and combined with every add-on, must resolve to
 # valid config. Run this after touching anything under compose/.
@@ -81,6 +81,6 @@ config-check-all:
 		for addons in "" "-f $(PROXY)" "-f $(TELEMETRY)" "-f $(PROXY) -f $(TELEMETRY)"; do \
 			echo "== $$scenario $$addons =="; \
 			DOCFORGE_DOMAIN=example.com DOCFORGE_ACME_EMAIL=ops@example.com \
-			$(COMPOSE) -f $(SCENARIO_DIR)/$$scenario.yml $$addons $(PROFILE) config -q && echo OK; \
+			$(COMPOSE) -f $(SCENARIO_DIR)/compose.$$scenario.yml $$addons $(PROFILE) config -q && echo OK; \
 		done; \
 	done

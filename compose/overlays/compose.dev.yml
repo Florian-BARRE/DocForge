@@ -1,29 +1,29 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # DocForge — development overlay. Never used standalone — always pulled in via `include:` by
-# compose/dev-cpu.yml / compose/dev-gpu.yml (the ready-made scenario files — USE THOSE, run from
+# compose/compose.dev-cpu.yml / compose/compose.dev-gpu.yml (the ready-made scenario files — USE THOSE, run from
 # the repo root):
-#   docker compose -f compose/dev-cpu.yml --profile full up -d --build
-#   docker compose -f compose/dev-gpu.yml --profile full up -d --build
+#   docker compose -f compose/compose.dev-cpu.yml --profile full up -d --build
+#   docker compose -f compose/compose.dev-gpu.yml --profile full up -d --build
 #
-# Do NOT hand-assemble this file with a plain `-f compose/base.yml -f compose/overlays/dev.yml`:
+# Do NOT hand-assemble this file with a plain `-f compose/compose.base.yml -f compose/overlays/compose.dev.yml`:
 # `-f` resolves every file's relative paths against the FIRST `-f` file's own directory
 # (compose/), not this file's directory (compose/overlays/) — the `../../` paths below would
 # then resolve OUTSIDE the repo entirely (Docker silently mounts an empty auto-created dir).
 # This file's paths only resolve correctly when Compose reads it via `include:`, which resolves
 # each included file's relative paths against ITS OWN directory first, before merging — see
-# compose/dev-cpu.yml's/compose/dev-gpu.yml's own `include:` list and compose/README.md's
+# compose/compose.dev-cpu.yml's/compose/compose.dev-gpu.yml's own `include:` list and compose/README.md's
 # "include: merge-order gotcha" section.
 #
-# GPU dev (compose/dev-gpu.yml): compose/overlays/gpu.yml must be listed BEFORE this file in
+# GPU dev (compose/compose.dev-gpu.yml): compose/overlays/compose.gpu.yml must be listed BEFORE this file in
 # the scenario's `include:` list to win (TORCH_VARIANT=cpu → gpu + grant the device) — verified
 # on this repo's Compose v5.1.1, `include:`'s conflict resolution is FIRST-listed-file-wins for
 # any leaf two included files both set, the OPPOSITE of `-f`'s last-wins. See
-# compose/overlays/gpu.yml's header comment for the full reproduction and reasoning.
+# compose/overlays/compose.gpu.yml's header comment for the full reproduction and reasoning.
 #
 # WHEN TO USE THIS FILE: local development with hot reload / source mounts, via the ready-made
 # scenario files above. Relative paths in this file resolve relative to THIS file's own
 # directory (compose/overlays/), per Compose's `include:` semantics — hence the `../../` prefix
-# on every host path (context/volumes), one level deeper than base.yml's `../`.
+# on every host path (context/volumes), one level deeper than compose.base.yml's `../`.
 #
 # What this changes vs production:
 #   - app/worker/mcp/bge_server BUILD locally from source (each `build:` here overrides the
@@ -124,14 +124,14 @@ services:
 
   # Gotenberg's host port is dev-only (prod reaches it via the in-network `gotenberg` alias). Host-side
   # uv-run dev needs it published to convert local files; prod must NOT expose this unauthenticated
-  # conversion API on the host (SSRF pivot into docforge_net) — see the base.yml gotenberg comment.
+  # conversion API on the host (SSRF pivot into docforge_net) — see the compose.base.yml gotenberg comment.
   docforge_gotenberg:
     ports:
       - "10045:3000"              # HTTP conversion API (host-side uv-run dev only)
 
   docforge_bge_server:
     # Own LOCAL dev tag (see docforge_app) so the CPU dev build never occupies the prod image name.
-    # (In dev-gpu, gpu.yml's `image:` wins by include order; prod-gpu's pull_policy: always covers it.)
+    # (In dev-gpu, compose.gpu.yml's `image:` wins by include order; prod-gpu's pull_policy: always covers it.)
     image: docforge-bge-server:dev
     # Build locally from source, overriding the prod GHCR image: pull in the base file.
     # CPU torch by default; the gpu override file flips TORCH_VARIANT to gpu.
@@ -145,7 +145,7 @@ services:
 
   docforge_paddle_server:
     # Own LOCAL dev tag (see docforge_app) so the CPU dev build never occupies the prod image name.
-    # (In dev-gpu, gpu.yml's `image:` wins by include order; prod-gpu's pull_policy: always covers it.)
+    # (In dev-gpu, compose.gpu.yml's `image:` wins by include order; prod-gpu's pull_policy: always covers it.)
     image: docforge-paddle-server:dev
     # Build locally from source, overriding the prod GHCR image: pull in the base file.
     # CPU paddlepaddle by default; the gpu override file flips TORCH_VARIANT to gpu.

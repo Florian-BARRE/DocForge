@@ -1,5 +1,5 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# Prometheus scrape config for the DocForge telemetry overlay (compose/overlays/telemetry.yml).
+# Prometheus scrape config for the DocForge telemetry overlay (compose/overlays/compose.telemetry.yml).
 # Scrapes the app's /metrics over the internal docforge_net — NOT the published host port,
 # since Prometheus itself joins docforge_net (see the overlay) and /metrics is unauthenticated
 # (see METRICS_ENABLED in docs/configuration.md); scraping in-network keeps it off any public

@@ -65,7 +65,7 @@ src/
   paddle_server/       # PP-StructureV3 layout-parsing sidecar (POST /layout-parsing, GET /health)
 services/              # per-service .env (gitignored) + .env.example templates
 compose/               # per-scenario compose files (base + overlays + prod/dev × cpu/gpu) — see compose/README.md
-docker-compose.yml     # thin root default: include: [compose/prod-cpu.yml]
+docker-compose.yml     # thin root default: include: [compose/compose.prod-cpu.yml]
 ```
 
 **`docforge`** — the product itself, a single `uv` project with three roots. `shared/libs/`
@@ -302,12 +302,12 @@ node in.
 ### Optional telemetry add-on
 
 Metrics/logs are **not** part of the core stack — they are an opt-in overlay,
-`compose/overlays/telemetry.yml`, layered with a plain `-f` on top of any scenario and **not gated by
+`compose/overlays/compose.telemetry.yml`, layered with a plain `-f` on top of any scenario and **not gated by
 `--profile full`** (its four containers start unconditionally whenever the overlay is included).
 
 ```mermaid
 flowchart LR
-    subgraph ADDON["compose/overlays/telemetry.yml — optional add-on"]
+    subgraph ADDON["compose/overlays/compose.telemetry.yml — optional add-on"]
         PROM["prometheus<br/>:10051"]
         LOKI["loki<br/>:10052"]
         PTAIL["promtail<br/>tails every container's Docker log"]

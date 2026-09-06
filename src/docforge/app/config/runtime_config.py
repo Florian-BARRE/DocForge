@@ -109,7 +109,7 @@ class RUNTIME_CONFIG(EnvConfigLoader):
     # out-of-box deployment (prod-cpu) has NO reverse proxy, so a client-supplied XFF would be
     # forgeable — an attacker could spoof it to evade IP-based rate limiting. The safe default keys on
     # the transport peer address. Turn it ON only when DocForge sits behind a proxy that OVERWRITES
-    # (never appends) XFF — e.g. the Caddy overlay (compose/overlays/proxy.yml).
+    # (never appends) XFF — e.g. the Caddy overlay (compose/overlays/compose.proxy.yml).
     RATE_LIMIT_TRUST_FORWARDED_FOR: bool = env(
         "RATE_LIMIT_TRUST_FORWARDED_FOR", cast=bool, default=False
     )

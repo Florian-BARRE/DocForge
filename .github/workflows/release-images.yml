@@ -17,6 +17,11 @@
 #   ghcr.io/<owner>/docforge-bge-server:1.2.3-cpu :latest-cpu
 #   ghcr.io/<owner>/docforge-bge-server:1.2.3-gpu :latest-gpu        (TORCH_VARIANT build-arg)
 #
+# The `images` matrix job pushes ONLY the version tags above; every `:latest`/`:latest-cpu`/
+# `:latest-gpu` is moved atomically, afterwards, by the `retag-latest` job (`needs: images` — see
+# its own header comment and the `strategy` comment on `images`), so `:latest` only ever moves once
+# the FULL image set for this release has built successfully.
+#
 # HOW TO RELEASE:
 #   Tag a commit with `v<version>` and push it. A `v*` tag is a UNIFIED LOCKSTEP release: it triggers
 #   BOTH this workflow (images) AND release-sdk.yml (PyPI) at the same version, so the tag must equal
@@ -81,14 +86,12 @@ jobs:
     strategy:
       # fail-fast:false is deliberate: one image's build failure must NOT cancel the siblings that
       # already succeeded, so a re-run only rebuilds the failed one (builds are idempotent by tag).
-      # KNOWN LIMITATION (partial-release window, audit-accepted): because the matrix pushes each
-      # image's version tag AND moves its mutable :latest independently, a mid-matrix failure — or the
-      # independent release-sdk.yml failing — can leave GHCR partially published with some :latest
-      # already moved while PyPI lags (or vice versa). Mitigations in place: version-guard blocks a
-      # tag whose version lies (the worst case), and the next successful release re-converges every tag
-      # (:latest is eventually-consistent). The clean fix (push only the immutable version tags in the
-      # matrix, then move ALL :latest in a single retag job that `needs` every matrix leg) is deferred
-      # as an untestable-without-a-real-release change; do it in a dedicated, separately-verified PR.
+      # PARTIAL-RELEASE WINDOW — FIXED (was audit-accepted as deferred, now delivered): this matrix
+      # pushes ONLY the immutable version tag (`:1.2.3[-cpu|-gpu]`) for each leg — it never moves a
+      # mutable `:latest` itself. `:latest`/`:latest-cpu`/`:latest-gpu` are moved by the separate
+      # `retag-latest` job below, which `needs: images` and therefore only runs once every leg in
+      # this matrix has succeeded. Net effect: `:latest` now moves atomically for the whole image
+      # set, never a partial subset — a mid-matrix failure simply never reaches the retag job.
       fail-fast: false
       matrix:
         # Explicit include (not a cross-product): app/mcp have no torch variant and no suffix,
@@ -127,11 +130,11 @@ jobs:
         uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
         with:
           images: ghcr.io/${{ github.repository_owner }}/docforge-${{ matrix.name }}
-          # Build the tag list by hand (rather than relying on the flavor `suffix`/`onlatest`
-          # interplay) so the result is unambiguous: exactly `<version><suffix>` and `latest<suffix>`.
+          # ONLY the immutable version tag — no `:latest` here. Moving `:latest` per-leg is exactly
+          # the partial-release window this workflow used to accept; it's now the retag-latest job's
+          # job, gated on every leg of this matrix succeeding. See the `strategy` comment above.
           tags: |
             type=raw,value=${{ env.VERSION }}${{ matrix.suffix }}
-            type=raw,value=latest${{ matrix.suffix }}
 
       - name: Free up runner disk (GPU only)
         # The CUDA images (~8.5 GB) + their build layers overflow the ~14 GB free on a stock
@@ -165,7 +168,61 @@ jobs:
           cache-from: ${{ matrix.torch != 'gpu' && format('type=gha,scope={0}{1}', matrix.name, matrix.suffix) || '' }}
           cache-to: ${{ matrix.torch != 'gpu' && format('type=gha,mode=max,scope={0}{1}', matrix.name, matrix.suffix) || '' }}
 
-  # 3. Non-blocking vulnerability scan of what was just published (after push, so it scans the
+  # 3. Move every `:latest` tag to the version just published — ONLY once every leg of the matrix
+  #    above has succeeded (`needs: images`, and a matrix job doesn't report success until ALL its
+  #    legs do, even with fail-fast:false). This is what makes the mutable `:latest` move
+  #    atomically for the whole image set: a mid-matrix failure never reaches this job, so GHCR can
+  #    never be left with some `:latest` moved and others lagging. `docker buildx imagetools create`
+  #    retags by manifest reference only — no rebuild, no pull of image layers.
+  retag-latest:
+    name: retag :latest (atomic, post-matrix)
+    needs: images
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Derive image version from the tag
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+
+      - name: Log in to GHCR
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Retag :latest / :latest-cpu / :latest-gpu for every image
+        run: |
+          set -euo pipefail
+          # GHCR repo paths must be lowercase; github.repository_owner isn't guaranteed to be
+          # (mirrors what docker/metadata-action does implicitly for the `images` job above).
+          owner="$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')"
+          # name:suffix pairs mirror the `images` build matrix 1:1 (the per-leg torch build-arg is
+          # irrelevant here — this only retags an already-pushed manifest, no rebuild).
+          images=(
+            "app:"
+            "mcp:"
+            "worker:-cpu"
+            "worker:-gpu"
+            "bge-server:-cpu"
+            "bge-server:-gpu"
+            "paddle-server:-cpu"
+            "paddle-server:-gpu"
+          )
+          for entry in "${images[@]}"; do
+            name="${entry%%:*}"
+            suffix="${entry#*:}"
+            src="ghcr.io/${owner}/docforge-${name}:${VERSION}${suffix}"
+            dst="ghcr.io/${owner}/docforge-${name}:latest${suffix}"
+            echo "Retagging ${src} -> ${dst}"
+            docker buildx imagetools create -t "${dst}" "${src}"
+          done
+
+  # 4. Non-blocking vulnerability scan of what was just published (after push, so it scans the
   #    real pushed artifact, not a throwaway local build). A full IMAGE scan is only cheap for the
   #    two small, single-variant images (app/mcp — no torch, always built, no GPU sibling); the
   #    other three (worker/bge-server/paddle-server) ship huge CUDA -gpu variants (and their -cpu
