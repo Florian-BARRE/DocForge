@@ -22,6 +22,7 @@ from backend.context import CONTEXT
 # ====== Internal Project Imports ======
 from shared_libs.pipelines.base import ForEach
 from shared_libs.pipelines.engine import ProgressEvent, ProgressPhase
+from shared_libs.pipelines.ingest.estimate import RateTable
 from shared_libs.services.db.postgresql.tables import JobStageEvent
 
 # ====== Local Project Imports ======
@@ -36,6 +37,7 @@ class JobProgressRecorder(LoggerClass):
         job_id: uuid.UUID,
         root_node_ids: list[str],
         planned_stage_ids: list[str] | None = None,
+        rates: RateTable | None = None,
     ) -> None:
         """
         Args:
@@ -47,9 +49,13 @@ class JobProgressRecorder(LoggerClass):
                 walks — the progress DENOMINATOR. Excludes escalation/fallback steps that run only on
                 a bad outcome, so the percentage is not understated by never-run nodes. Defaults to
                 ``root_node_ids`` (every stage) when not supplied.
+            rates (RateTable | None): The collection's effective rate table (defaults folded with its
+                per-collection rate overrides) the per-stage cost meter prices against — so actual
+                spend matches the estimate. Defaults to the canonical ``RateTable.default()``.
         """
         LoggerClass.__init__(self)
         self._job_id = job_id
+        self._rates = rates if rates is not None else RateTable.default()
         self._roots = set(root_node_ids)
         denominator = planned_stage_ids if planned_stage_ids is not None else root_node_ids
         self._total = max(1, len(denominator))
@@ -159,7 +165,7 @@ class JobProgressRecorder(LoggerClass):
 
         # 1. Total this stage's paid text-gen usage over its whole execution tree, priced per leaf.
         prompt_tokens, completion_tokens, cost_usd, usage_count = (
-            StageUsageSummer.summarize(record) if record else (0, 0, None, 0)
+            StageUsageSummer.summarize(record, self._rates) if record else (0, 0, None, 0)
         )
         has_usage = usage_count > 0
         cost_column = Decimal(str(cost_usd)) if (has_usage and cost_usd is not None) else None

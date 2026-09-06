@@ -88,6 +88,7 @@ def _wire(jobs_core, monkeypatch, database: SimpleNamespace, points, job_timeout
         max_file_size_bytes=100,
         job_timeout_seconds=job_timeout_seconds,
         pipeline={"nodes": []},
+        estimate_overrides=None,
     )
     database.documents.get = AsyncMock(return_value=document)
     database.collections.get = AsyncMock(return_value=collection)

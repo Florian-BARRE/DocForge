@@ -9,7 +9,7 @@ from loggerplusplus import loggerplusplus
 
 # ====== Internal Project Imports ======
 from shared_libs.pipelines.base import NodeExecutionRecord
-from shared_libs.pipelines.nodes.openai_compat import price_ocr_pages, price_usd
+from shared_libs.pipelines.ingest.estimate import RateTable
 
 
 class StageUsageSummer:
@@ -21,16 +21,21 @@ class StageUsageSummer:
         raise TypeError("StageUsageSummer is a static-only class and cannot be instantiated.")
 
     @classmethod
-    def summarize(cls, record: NodeExecutionRecord) -> tuple[int, int, float | None, int]:
+    def summarize(
+        cls, record: NodeExecutionRecord, rates: RateTable
+    ) -> tuple[int, int, float | None, int]:
         """
-        Total a stage's paid-call usage over its execution tree, priced per leaf.
+        Total a stage's paid-call usage over its execution tree, priced per leaf against ``rates``.
 
-        Cost is None when NO leaf's model is priceable (the UI shows tokens but a "—" cost) rather
-        than a fabricated zero; the summed cost otherwise (unpriceable leaves contribute tokens, no
-        cost).
+        The rate table is the collection's effective one (defaults folded with its per-collection rate
+        overrides) — the SAME numbers the pre-hoc estimator used, so actual spend and its estimate are
+        priced identically. Cost is None when NO leaf's model is priceable (the UI shows tokens but a
+        "—" cost) rather than a fabricated zero; the summed cost otherwise (unpriceable leaves
+        contribute tokens, no cost).
 
         Args:
             record (NodeExecutionRecord): The stage's record (recursed into its children).
+            rates (RateTable): The collection's effective rate table (defaults + rate overrides).
 
         Returns:
             tuple[int, int, float | None, int]: (prompt tokens, completion tokens, USD cost or None,
@@ -44,17 +49,17 @@ class StageUsageSummer:
 
         # 1. Price THIS node's own paid call (a leaf action stamps ``usage``; wrappers leave it None).
         #    Two billing shapes coexist: token-billed calls (LLM/VLM/structgen/embed) price against
-        #    ``price_usd``, while a per-page OCR call (``usage.pages`` set, no tokens) prices against
-        #    ``price_ocr_pages`` — its cost folds into the same total, contributing 0 tokens.
+        #    ``rates.token_cost``, while a per-page OCR call (``usage.pages`` set, no tokens) prices
+        #    against ``rates.ocr_cost`` — its cost folds into the same total, contributing 0 tokens.
         if record.usage is not None:
             usage = record.usage
             prompt += usage.prompt_tokens
             completion += usage.completion_tokens
             usage_count += 1
             leaf_cost = (
-                price_ocr_pages(usage.model, usage.pages)
+                rates.ocr_cost(usage.model, usage.pages)
                 if usage.pages > 0
-                else price_usd(usage.model, usage.prompt_tokens, usage.completion_tokens)
+                else rates.token_cost(usage.model, usage.prompt_tokens, usage.completion_tokens)
             )
             if leaf_cost is not None:
                 cost += leaf_cost
@@ -62,7 +67,7 @@ class StageUsageSummer:
 
         # 2. Fold in every child's total (per-figure/per-chunk calls are nested child records).
         for child in record.children:
-            child_prompt, child_completion, child_cost, child_count = cls.summarize(child)
+            child_prompt, child_completion, child_cost, child_count = cls.summarize(child, rates)
             prompt += child_prompt
             completion += child_completion
             usage_count += child_count

@@ -21,6 +21,10 @@ from sqlalchemy.dialects import postgresql
 
 from shared_libs.pipelines.base import NodeExecutionRecord, NodeStatus, NodeUsage
 from shared_libs.pipelines.engine import ProgressEvent, ProgressPhase
+from shared_libs.pipelines.ingest.estimate import RateTable
+
+# The canonical default rate table — what the meter prices against absent per-collection overrides.
+_RATES = RateTable.default()
 
 
 @pytest.fixture
@@ -77,7 +81,7 @@ async def _run_end(progress_module, monkeypatch, record: NodeExecutionRecord) ->
 
 def test_sum_usage_prices_mixed_models_per_leaf(usage_module) -> None:
     record = _group([_group([_leaf("gpt-4o-mini", 1_000_000, 0), _leaf("gpt-4o", 0, 1_000_000)])])
-    prompt, completion, cost, count = usage_module.StageUsageSummer.summarize(record)
+    prompt, completion, cost, count = usage_module.StageUsageSummer.summarize(record, _RATES)
 
     assert (prompt, completion, count) == (1_000_000, 1_000_000, 2)
     # gpt-4o-mini input (0.15) + gpt-4o output (10.00) — priced per leaf, not one model per stage.
@@ -86,15 +90,28 @@ def test_sum_usage_prices_mixed_models_per_leaf(usage_module) -> None:
 
 def test_sum_usage_unknown_model_gives_tokens_but_no_cost(usage_module) -> None:
     record = _group([_leaf("local-model", 100, 50)])
-    prompt, completion, cost, count = usage_module.StageUsageSummer.summarize(record)
+    prompt, completion, cost, count = usage_module.StageUsageSummer.summarize(record, _RATES)
 
     assert (prompt, completion, count) == (100, 50, 1)
     assert cost is None  # no priceable leaf -> "—", never a fabricated 0
 
 
+def test_sum_usage_prices_against_a_per_collection_rate_override(usage_module) -> None:
+    """The meter prices against the collection's EFFECTIVE table — a per-collection rate override
+    changes the metered cost, so actual spend matches the (equally-overridden) estimate (audit 543)."""
+    # A collection that negotiated gpt-4o-mini at 1.00/2.00 (vs the default 0.15/0.60).
+    rates = RateTable.from_overrides(
+        {"rates": {"models": {"gpt-4o-mini": {"input": 1.00, "output": 2.00}}}}
+    )
+    record = _group([_leaf("gpt-4o-mini", 1_000_000, 1_000_000)])
+    _, _, cost, _ = usage_module.StageUsageSummer.summarize(record, rates)
+
+    assert cost == pytest.approx(1.00 + 2.00)  # the OVERRIDE rate, not the 0.15 + 0.60 default
+
+
 def test_sum_usage_no_usage_is_empty(usage_module) -> None:
     record = _group([_group([])])
-    assert usage_module.StageUsageSummer.summarize(record) == (0, 0, None, 0)
+    assert usage_module.StageUsageSummer.summarize(record, _RATES) == (0, 0, None, 0)
 
 
 def _embed_leaf(model: str, prompt: int) -> NodeExecutionRecord:
@@ -118,7 +135,7 @@ def _free_leaf() -> NodeExecutionRecord:
 def test_sum_usage_prices_paid_embed_leaf(usage_module) -> None:
     # text-embedding-3-small = 0.02 USD / 1M input tokens; embeddings have no completion side.
     record = _group([_embed_leaf("text-embedding-3-small", 1_000_000)])
-    prompt, completion, cost, count = usage_module.StageUsageSummer.summarize(record)
+    prompt, completion, cost, count = usage_module.StageUsageSummer.summarize(record, _RATES)
 
     assert (prompt, completion, count) == (1_000_000, 0, 1)
     assert cost == pytest.approx(0.02)
@@ -126,12 +143,12 @@ def test_sum_usage_prices_paid_embed_leaf(usage_module) -> None:
 
 def test_sum_usage_free_embed_leaf_contributes_nothing(usage_module) -> None:
     record = _group([_free_leaf()])
-    assert usage_module.StageUsageSummer.summarize(record) == (0, 0, None, 0)
+    assert usage_module.StageUsageSummer.summarize(record, _RATES) == (0, 0, None, 0)
 
 
 def test_sum_usage_unknown_embed_model_tokens_no_cost(usage_module) -> None:
     record = _group([_embed_leaf("local-embed-model", 4_000)])
-    prompt, completion, cost, count = usage_module.StageUsageSummer.summarize(record)
+    prompt, completion, cost, count = usage_module.StageUsageSummer.summarize(record, _RATES)
 
     assert (prompt, completion, count) == (4_000, 0, 1)
     assert cost is None  # tokens shown, cost "—"
@@ -158,7 +175,7 @@ def _free_ocr_leaf() -> NodeExecutionRecord:
 def test_sum_usage_prices_paid_ocr_leaf_per_page_zero_tokens(usage_module) -> None:
     # mistral = 0.001 USD / page; 3 pages → cost = 3 × rate, and OCR contributes 0 tokens.
     record = _group([_ocr_leaf("mistral", 3)])
-    prompt, completion, cost, count = usage_module.StageUsageSummer.summarize(record)
+    prompt, completion, cost, count = usage_module.StageUsageSummer.summarize(record, _RATES)
 
     assert (prompt, completion, count) == (0, 0, 1)
     assert cost == pytest.approx(3 * 0.001)
@@ -166,12 +183,12 @@ def test_sum_usage_prices_paid_ocr_leaf_per_page_zero_tokens(usage_module) -> No
 
 def test_sum_usage_free_ocr_leaf_contributes_nothing(usage_module) -> None:
     record = _group([_free_ocr_leaf()])
-    assert usage_module.StageUsageSummer.summarize(record) == (0, 0, None, 0)
+    assert usage_module.StageUsageSummer.summarize(record, _RATES) == (0, 0, None, 0)
 
 
 def test_sum_usage_unknown_ocr_kind_pages_no_cost(usage_module) -> None:
     record = _group([_ocr_leaf("some-local-ocr", 5)])
-    prompt, completion, cost, count = usage_module.StageUsageSummer.summarize(record)
+    prompt, completion, cost, count = usage_module.StageUsageSummer.summarize(record, _RATES)
 
     assert (prompt, completion, count) == (0, 0, 1)  # pages carry no tokens
     assert cost is None  # unknown kind → "—", never fabricated
