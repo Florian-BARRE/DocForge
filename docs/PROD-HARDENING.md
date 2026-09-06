@@ -355,3 +355,27 @@ docker compose exec docforge_app sh -c 'alembic -c /app/shared/alembic.ini upgra
 # health
 curl -fsS http://localhost:10040/health && echo " API healthy"
 ```
+
+---
+
+## 13. Accepted dependency risks
+
+Vulnerabilities we knowingly ship, with the compensating control and the condition that would lift
+the acceptance. Re-evaluate on every dependency-hardening pass.
+
+### `transformers` pinned `<5` (worker image)
+
+- **Pin**: `worker` group, `transformers>=4.46,<5` (`src/docforge/pyproject.toml`). The cap is an API-compat
+  guard (docling's `AutoProcessor` path breaks on the 5.x API) **and** a deliberate security decision.
+- **Open CVEs blocked by staying on 4.x** — all are remote-code-execution / deserialization classes
+  triggered **at model load time**: PYSEC-2025-217, PYSEC-2026-2288, PYSEC-2026-2289, PYSEC-2026-2290,
+  CVE-2026-9856. None is reachable without loading an attacker-controlled model or config.
+- **Compensating control** — the attack surface (untrusted model loading) is not exposed:
+  - transformers is a *transitive, worker-only* dependency of docling; DocForge never calls it directly.
+  - docling loads only **pinned, first-party model IDs** it bundles/downloads from trusted sources — no
+    user-supplied model path or repo id ever reaches `from_pretrained`.
+  - **no `trust_remote_code=True`** anywhere (docling defaults it off; DocForge never overrides it), so
+    the remote-code execution vectors are inert.
+  - the worker is an internal sidecar with no public ingress; it processes documents, not model artifacts.
+- **Condition to lift** — when docling declares support for `transformers>=5` (its `AutoProcessor` usage
+  is 5.x-compatible), raise the cap to `<6` and re-lock; the CVEs are fixed in the 5.x line.

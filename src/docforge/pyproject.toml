@@ -67,17 +67,22 @@ package = false
 conflicts = [
     [{ extra = "cpu" }, { extra = "gpu" }],
 ]
+# setuptools is pulled transitively (torch build metadata) and otherwise resolves to 81.0.0 under
+# the torch extras, which carries PYSEC-2026-3447. Floor it at 83 across every resolution branch.
+constraint-dependencies = ["setuptools>=83"]
 
 [tool.uv.sources]
 # Route torch to the correct wheel index per active extra. pytorch-cpu = ~200 MB CPU-only wheel
-# (no nvidia-* payload); pytorch-cu128 = CUDA 12.8 wheels for a GPU host.
+# (no nvidia-* payload); pytorch-cu130 = CUDA 13.0 wheels for a GPU host. cu130 (not cu128/cu129) is
+# the only GPU index that still ships torch 2.14 — matching the cpu wheel — so the two variants stay
+# on the same minor; cu128 froze at 2.11 and cu129 stops at 2.13. Ada/RTX 40xx (sm_89) is supported.
 torch = [
     { index = "pytorch-cpu", extra = "cpu" },
-    { index = "pytorch-cu128", extra = "gpu" },
+    { index = "pytorch-cu130", extra = "gpu" },
 ]
 torchvision = [
     { index = "pytorch-cpu", extra = "cpu" },
-    { index = "pytorch-cu128", extra = "gpu" },
+    { index = "pytorch-cu130", extra = "gpu" },
 ]
 
 [[tool.uv.index]]
@@ -86,8 +91,8 @@ url = "https://download.pytorch.org/whl/cpu"
 explicit = true
 
 [[tool.uv.index]]
-name = "pytorch-cu128"
-url = "https://download.pytorch.org/whl/cu128"
+name = "pytorch-cu130"
+url = "https://download.pytorch.org/whl/cu130"
 explicit = true
 
 [dependency-groups]
