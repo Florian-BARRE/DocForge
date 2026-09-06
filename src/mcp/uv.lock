@@ -258,7 +258,7 @@ wheels = [
 
 [[package]]
 name = "docforge-mcp"
-version = "0.14.49"
+version = "0.14.50"
 source = { virtual = "." }
 dependencies = [
     { name = "configplusplus" },
