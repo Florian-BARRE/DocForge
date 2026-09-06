@@ -6,6 +6,7 @@
 
 # ====== Third-Party Library Imports ======
 from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi.responses import StreamingResponse
 
 # ====== Local Project Imports ======
 from ...context import CONTEXT
@@ -39,12 +40,13 @@ _INLINE_SAFE_MIME = frozenset(
 async def get_blob(
     content_hash: str,
     principal: AuthPrincipal = Depends(require(Capability.READ)),
-) -> Response:
+) -> StreamingResponse:
     """
     Stream a blob's bytes with its registered mime type (page render, figure crop, PDF, original).
 
     Returns:
-        Response: The raw bytes with the blob's stored media type; 404 when the hash is unknown.
+        StreamingResponse: The raw bytes with the blob's stored media type, streamed in bounded
+        windows (never buffered whole in memory); 404 when the hash is unknown.
     """
     # 1. A blob is content-addressed and has no single owner — a scoped key may reach it only
     #    through a collection it owns. Resolve its owning collections and gate the SCOPED key on
@@ -54,8 +56,9 @@ async def get_blob(
         collections = await CONTEXT.database.documents.collections_for_blob(content_hash)
         AuthzGuard.assert_any_collection_scope(principal, collections)
 
-    # 2. The registry lookup + S3 fetch happen inside the facade (mime type comes from the row).
-    result = await CONTEXT.database.documents.read_blob(content_hash)
+    # 2. Resolve the blob to a bounded byte-stream + its registered mime type (from the row). The
+    #    facade reads the registry first, so an unknown hash is a clean None before any S3 read.
+    result = await CONTEXT.database.documents.stream_blob(content_hash)
     if result is None:
         raise HTTPException(status_code=404, detail=f"Blob {content_hash} not found.")
 
@@ -63,12 +66,12 @@ async def get_blob(
     #    forbid MIME sniffing; for anything that is not an inert inline type (i.e. an uploaded
     #    HTML/SVG/text/office original), force a download and sandbox it so a browser can never
     #    render it as a live same-origin document that could read this origin's token.
-    data, mime_type = result
+    stream, mime_type = result
     headers = {"X-Content-Type-Options": "nosniff"}
     if mime_type not in _INLINE_SAFE_MIME:
         headers["Content-Disposition"] = "attachment"
         headers["Content-Security-Policy"] = "sandbox"
-    return Response(content=data, media_type=mime_type, headers=headers)
+    return StreamingResponse(stream, media_type=mime_type, headers=headers)
 
 
 __all__ = ["router"]

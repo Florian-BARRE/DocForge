@@ -59,6 +59,13 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 ###############################################################################
 FROM python:3.12-slim-bookworm AS runtime
 
+# OCI image metadata — declares the image's license + source (GPL-3.0 compliance: the
+# full license text lives in the PUBLIC source repo linked here).
+LABEL org.opencontainers.image.title="docforge-mcp" \
+      org.opencontainers.image.description="DocForge MCP server (pure HTTP client)" \
+      org.opencontainers.image.source="https://github.com/Florian-BARRE/DocForge" \
+      org.opencontainers.image.licenses="GPL-3.0-or-later"
+
 # PYTHONDONTWRITEBYTECODE: no .pyc files written to disk (smaller, immutable runtime).
 # PYTHONUNBUFFERED: flush stdout/stderr immediately so `docker logs` shows output in real time.
 # PATH: prepend the uv-built venv so its Python + console scripts are used by default.

@@ -1,8 +1,9 @@
 [project]
 name = "docforge-mcp"
-version = "0.14.44"
+version = "0.14.45"
 description = "DocForge MCP server — exposes the full DocForge REST API as MCP tools (pure HTTP client)"
 requires-python = ">=3.12"
+license = "GPL-3.0-or-later"
 dependencies = [
     # MCP server SDK — streamable_http_app() requires >= 1.8.0. Pinned >= 1.28.1 (clears the 1.28.0
     # WebSocket-transport advisory PYSEC-2026-3483, not on this server's http/stdio path) and < 2 so

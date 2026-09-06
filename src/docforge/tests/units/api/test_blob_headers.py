@@ -16,11 +16,16 @@ def _full_principal():
     return AuthPrincipal(user=SimpleNamespace(is_active=True), key=None, is_full_access=True)
 
 
+async def _one_chunk_stream():
+    """A minimal async byte-stream standing in for the facade's bounded S3 windows."""
+    yield b"bytes"
+
+
 async def _get_blob(monkeypatch, *, mime: str):
     from backend.context import CONTEXT  # noqa: PLC0415
     from backend.routers.blobs.router import get_blob  # noqa: PLC0415
 
-    documents = SimpleNamespace(read_blob=AsyncMock(return_value=(b"bytes", mime)))
+    documents = SimpleNamespace(stream_blob=AsyncMock(return_value=(_one_chunk_stream(), mime)))
     monkeypatch.setattr(CONTEXT, "database", SimpleNamespace(documents=documents))
     return await get_blob(content_hash="deadbeef", principal=_full_principal())
 

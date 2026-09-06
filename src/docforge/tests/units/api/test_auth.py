@@ -116,7 +116,12 @@ async def test_authenticate_auth_off_returns_synthetic_root(fastapi_app, monkeyp
     from config import RUNTIME_CONFIG  # noqa: PLC0415
 
     monkeypatch.setattr(RUNTIME_CONFIG, "AUTH_ENABLED", False)
-    auth = SimpleNamespace(get_key_by_hash=AsyncMock(), get_user=AsyncMock())
+    # `get_key_with_user` is the ACTUAL method `authenticate` calls on the enabled path (see
+    # dependency.py step 3) — asserting non-invocation on it (rather than an unrelated method
+    # name like `get_key_by_hash`, which is never called from `authenticate` in ANY path and so
+    # would pass vacuously regardless of the AUTH_ENABLED short-circuit) proves the disabled path
+    # truly never reaches the DB.
+    auth = SimpleNamespace(get_key_with_user=AsyncMock(), touch_key_last_used=AsyncMock())
     monkeypatch.setattr(CONTEXT, "database", SimpleNamespace(auth=auth))
 
     principal = await authenticate(_request())
@@ -124,7 +129,8 @@ async def test_authenticate_auth_off_returns_synthetic_root(fastapi_app, monkeyp
     assert principal.is_full_access is True
     assert principal.key is None
     assert principal.user is None
-    auth.get_key_by_hash.assert_not_called()
+    auth.get_key_with_user.assert_not_called()
+    auth.touch_key_last_used.assert_not_called()
 
 
 async def test_authenticate_missing_header_is_401(fastapi_app, monkeypatch) -> None:

@@ -56,6 +56,13 @@ RUN /opt/venv/bin/python -c "import tiktoken; tiktoken.get_encoding('cl100k_base
 ###############################################################################
 FROM python:3.12-slim-bookworm AS runtime
 
+# OCI image metadata — declares the image's license + source (GPL-3.0 compliance: the
+# full license text lives in the PUBLIC source repo linked here).
+LABEL org.opencontainers.image.title="docforge-worker" \
+      org.opencontainers.image.description="DocForge arq ingestion worker" \
+      org.opencontainers.image.source="https://github.com/Florian-BARRE/DocForge" \
+      org.opencontainers.image.licenses="GPL-3.0-or-later"
+
 # Runtime best practices:
 # - PYTHONDONTWRITEBYTECODE: no .pyc files written to disk
 # - PYTHONUNBUFFERED: logs appear immediately in stdout/stderr

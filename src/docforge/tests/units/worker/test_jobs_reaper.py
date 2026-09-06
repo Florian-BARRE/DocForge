@@ -62,10 +62,13 @@ async def test_list_stale_filters_running_and_uses_the_db_clock() -> None:
             dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}
         )
     ).lower()
-    # RUNNING-only: a PENDING/queued row is never a reap candidate.
-    assert "status" in sql and "running" in sql
-    # DB clock, not Python: the cutoff is now() minus an interval, so a worker/DB skew can't misjudge.
-    assert "now()" in sql and "make_interval" in sql
+    # RUNNING-only: the exact equality (not a loose "status"/"running" substring, which would
+    # also pass on e.g. a "current_stage" column or an unrelated "running" literal elsewhere)
+    # — a PENDING/queued row is never a reap candidate.
+    assert "job.status = 'running'" in sql
+    # DB clock, not Python: the cutoff is job.updated_at compared against now() minus an
+    # interval, so a worker/DB skew can't misjudge.
+    assert "job.updated_at < now() - make_interval" in sql
 
 
 async def test_list_stale_joins_heartbeats_so_a_live_worker_vetoes_the_reap() -> None:
@@ -96,12 +99,13 @@ async def test_list_stale_joins_heartbeats_so_a_live_worker_vetoes_the_reap() ->
             dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}
         )
     ).lower()
-    # The heartbeat table is joined (LEFT OUTER, so an absent heartbeat still surfaces the job).
-    assert "worker_heartbeats" in sql and "left outer join" in sql
+    # The heartbeat table is joined (LEFT OUTER on job.worker_id, so an absent heartbeat still
+    # surfaces the job rather than dropping it via an inner join).
+    assert "left outer join worker_heartbeats on worker_heartbeats.worker_id = job.worker_id" in sql
     # The veto predicate: reap only when the heartbeat is ABSENT (worker_id IS NULL) OR STALE
     # (last_seen older than its own now() - interval cutoff). A fresh last_seen fails both → vetoed.
     assert "worker_heartbeats.worker_id is null" in sql
-    assert "worker_heartbeats.last_seen" in sql
+    assert "worker_heartbeats.last_seen < now() - make_interval" in sql
     # TWO independent DB-clock cutoffs now: the silence cutoff on the job + the heartbeat cutoff.
     assert sql.count("make_interval") == 2
 
@@ -386,7 +390,7 @@ async def test_list_running_for_worker_matches_only_that_exact_worker_id() -> No
         )
     ).lower()
     # RUNNING-only, and keyed on an EXACT worker_id equality (never a broad/shared match).
-    assert "status" in sql and "running" in sql
+    assert "job.status = 'running'" in sql
     assert "job.worker_id = 'docforge-worker-abc123'" in sql
 
 

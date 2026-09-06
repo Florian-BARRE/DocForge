@@ -365,6 +365,29 @@ async def test_max_retries_zero_preserves_one_shot_behaviour() -> None:
     assert node.calls == 1
 
 
+@pytest.mark.parametrize(("max_retries", "expected_attempts"), [(0, 1), (1, 2), (3, 4)])
+async def test_max_retries_counts_retries_beyond_the_initial_call(
+    max_retries: int, expected_attempts: int
+) -> None:
+    # Contract: max_retries counts retries BEYOND the initial call → 1 + max_retries total attempts
+    # (matching the vlm/llm loops and TimeoutRetryConfig). A single always-failing text isolates the
+    # per-batch budget — a one-text batch has nothing to split, so no extra attempts creep in.
+    node = FlakyThenOk(
+        id="e",
+        config=BaseEmbedConfig(
+            model="m",
+            batch_size=8,
+            embed_sparse=False,
+            max_retries=max_retries,
+            retry_backoff_seconds=0.0,
+        ),
+        fail_times=99,  # always transiently fails, so the full attempt budget is spent
+    )
+    with pytest.raises(httpx.ReadTimeout):
+        await node.run(EmbedConsumes(chunks=[_chunk(0, "Body one.")], contract=CONTRACT))
+    assert node.calls == expected_attempts
+
+
 def _mock_bge_transport(calls: list[str]) -> httpx.MockTransport:
     """A MockTransport answering the bge_server routes, recording every path it served."""
 

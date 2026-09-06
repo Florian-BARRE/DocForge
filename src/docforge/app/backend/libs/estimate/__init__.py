@@ -1,4 +1,5 @@
 # ---------------------- Pre-hoc cost estimate (edge) ---------------------- #
+from .errors import EstimateInputError
 from .merger import EstimateOverrideMerger
 from .models import CollectionEstimateRequest
 from .overrides import (
@@ -13,6 +14,7 @@ from .service import CostEstimateService
 # ------------------- Public API ------------------- #
 __all__ = [
     "CollectionEstimateRequest",
+    "EstimateInputError",
     "DocumentSampler",
     "CostEstimateService",
     "EstimateOverrideMerger",

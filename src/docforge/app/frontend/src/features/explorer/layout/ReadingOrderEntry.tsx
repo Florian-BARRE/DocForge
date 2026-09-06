@@ -46,11 +46,21 @@ function ParserChain({ chain }: { chain: { kind: string; status: string }[] }) {
     >
       <span style={{ color: theme.color.mute }}>parsed</span>
       {chain.map((step, i) => {
-        const failed = step.status !== "success";
+        // Only an actual "failed" attempt reads as struck-through error ink — "skipped" (a
+        // deliberate stop, per brand.md) and "running" (still in flight) are honest, distinct
+        // states, not failures, so lumping them in with "failed" would misreport a healthy chain.
+        const color =
+          step.status === "failed"
+            ? theme.color.errorStrong
+            : step.status === "skipped"
+              ? theme.color.skipStrong
+              : step.status === "running"
+                ? theme.color.accent
+                : theme.color.text;
         return (
           <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>
             {i > 0 && <span style={{ color: theme.color.mute }}>→</span>}
-            <span style={{ color: failed ? theme.color.errorStrong : theme.color.text, textDecoration: failed ? "line-through" : "none" }}>
+            <span style={{ color, textDecoration: step.status === "failed" ? "line-through" : "none" }}>
               {step.kind}
             </span>
           </span>

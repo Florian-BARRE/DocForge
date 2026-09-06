@@ -5,7 +5,7 @@
 // ids). `toSelector` turns whichever mode is active into the exact `DocumentSelector` body the
 // bulk-op endpoints expect.
 
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import type { DocumentFilter, DocumentSelector } from "../../api/corpus";
 
 export type SelectionMode = "ids" | "filtered";
@@ -88,5 +88,12 @@ export function useSelection(): UseSelectionResult {
 
   const isEmpty = state.mode === "ids" && state.ids.size === 0;
 
-  return { mode: state.mode, isEmpty, isSelected, toggleRow, toggleAllOnPage, allOnPageSelected, selectAllFiltered, clear, count, toSelector };
+  // Memoized so consumers that gate their OWN memoization on this object (e.g. CorpusPage's grid
+  // columns) see a stable reference across renders where the selection itself hasn't changed —
+  // every field here already keys off `state` (or is permanently stable), so `state` is the only
+  // real dependency.
+  return useMemo(
+    () => ({ mode: state.mode, isEmpty, isSelected, toggleRow, toggleAllOnPage, allOnPageSelected, selectAllFiltered, clear, count, toSelector }),
+    [state, isEmpty, isSelected, toggleRow, toggleAllOnPage, allOnPageSelected, selectAllFiltered, clear, count, toSelector],
+  );
 }

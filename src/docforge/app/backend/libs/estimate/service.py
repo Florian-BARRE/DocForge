@@ -35,6 +35,7 @@ from shared_libs.services.db.postgresql.tables import (
 
 # ====== Local Project Imports ======
 from ...libs.corpus import DocumentSelector, DocumentSelectorResolver
+from .errors import EstimateInputError
 from .merger import EstimateOverrideMerger
 from .models import CollectionEstimateRequest
 from .overrides import EstimateOverrides
@@ -67,7 +68,9 @@ class CostEstimateService(LoggerClass):
 
         Raises:
             BlobNormalizationError: The stored pipeline blob cannot be read (surfaced as 422).
-            ValueError: A bad document id or corpus filter (surfaced as 422).
+            EstimateInputError: A bad document id or corpus filter (surfaced as 422). Narrow on
+                purpose — an unrelated ValueError from the pure estimator's arithmetic is NOT caught
+                here, so it surfaces as a 500 (a real bug) rather than being masked as a client 422.
         """
         # 1. Resolve the collection (None ⇒ 404 upstream).
         collection = await self._database.collections.get(collection_id)
@@ -119,9 +122,13 @@ class CostEstimateService(LoggerClass):
         #    existence + collection ownership + filter fields; raises ValueError → 422).
         selector = self.__selector(request)
         if selector is not None:
-            matched = await DocumentSelectorResolver(self._database).resolve(
-                collection_id, selector, schema
-            )
+            try:
+                matched = await DocumentSelectorResolver(self._database).resolve(
+                    collection_id, selector, schema
+                )
+            except ValueError as exc:
+                # A bad id/filter is the CALLER's fault → a typed 422, never a masked-away 500.
+                raise EstimateInputError(str(exc)) from exc
             sample = matched[: self._sample_cap]
             documents = await self._database.documents.get_by_ids(sample)
             return documents, len(matched)
@@ -140,11 +147,14 @@ class CostEstimateService(LoggerClass):
     @staticmethod
     def __selector(request: CollectionEstimateRequest) -> DocumentSelector | None:
         """Build the shared DocumentSelector for a subset request (None ⇒ whole-collection scope)."""
-        # 1. Explicit ids — a non-UUID string is a ValueError the router maps to 422.
+        # 1. Explicit ids — a non-UUID string is a CALLER fault, surfaced as a typed 422.
         if request.document_ids is not None:
-            return DocumentSelector(
-                document_ids=[uuid.UUID(value) for value in request.document_ids]
-            )
+            try:
+                return DocumentSelector(
+                    document_ids=[uuid.UUID(value) for value in request.document_ids]
+                )
+            except ValueError as exc:
+                raise EstimateInputError(f"document_ids: not a UUID ({exc}).") from exc
         # 2. Corpus filter — the grid's exact filter shape, resolved to matching ids downstream.
         if request.filter is not None:
             return DocumentSelector(filter=request.filter)

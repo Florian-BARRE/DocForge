@@ -142,6 +142,28 @@ def test_merged_assumptions_applies_only_the_provided_override_fields():
     assert merged.bytes_per_token == 4.0
 
 
+def test_merged_assumptions_overlap_override_is_consumed_when_chunker_is_silent():
+    """When the chunker config declares NO overlap_tokens, chunk_overlap_ratio falls back to the
+    merged base — so a caller's chunk_overlap_ratio override is honoured (it was previously dead,
+    hard-forced to 0). target_tokens present keeps the chunker authoritative for sizing."""
+    override = _overrides_cls()(assumptions={"chunk_overlap_ratio": 0.25})
+
+    merged = _merger().merged_assumptions(override, {"target_tokens": 800})
+
+    assert merged.target_chunk_tokens == 800
+    assert merged.chunk_overlap_ratio == 0.25
+
+
+def test_merged_assumptions_explicit_zero_overlap_tokens_keeps_the_chunker_authoritative():
+    """An EXPLICIT overlap_tokens=0 means the chunker declares 'no overlap' and wins — it must NOT
+    fall back to a caller's override (the explicit-vs-absent distinction)."""
+    override = _overrides_cls()(assumptions={"chunk_overlap_ratio": 0.9})
+
+    merged = _merger().merged_assumptions(override, {"target_tokens": 1024, "overlap_tokens": 0})
+
+    assert merged.chunk_overlap_ratio == 0.0
+
+
 def test_merged_assumptions_chunker_config_wins_over_an_assumption_override_for_sizing():
     """The pipeline's ACTUAL chunker config is authoritative for chunk sizing even when the
     override also names target_chunk_tokens/chunk_overlap_ratio (the documented precedence)."""

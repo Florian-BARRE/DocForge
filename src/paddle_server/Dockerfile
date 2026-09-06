@@ -67,6 +67,13 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 ###############################################################################
 FROM python:3.12-slim-bookworm AS runtime
 
+# OCI image metadata — declares the image's license + source (GPL-3.0 compliance: the
+# full license text lives in the PUBLIC source repo linked here).
+LABEL org.opencontainers.image.title="docforge-paddle-server" \
+      org.opencontainers.image.description="PaddleOCR PP-StructureV3 micro-service" \
+      org.opencontainers.image.source="https://github.com/Florian-BARRE/DocForge" \
+      org.opencontainers.image.licenses="GPL-3.0-or-later"
+
 # opencv-contrib-python (a paddlex[ocr-core] dependency, non-headless build) dynamically links
 # against libGL/libglib/libSM/libXext/libXrender at import time — without these the very first
 # `import cv2` (triggered by importing paddleocr) fails with "libGL.so.1: cannot open shared

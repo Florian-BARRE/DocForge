@@ -128,10 +128,10 @@ async def test_prune_stale_heartbeats_deletes_on_the_db_clock_and_returns_ids() 
         )
     ).lower()
     assert "delete from worker_heartbeats" in sql
-    # DB clock, not Python: the cutoff is now() minus an interval.
-    assert "now()" in sql and "make_interval" in sql
-    # The removed ids come back via RETURNING.
-    assert "returning" in sql and "worker_id" in sql
+    # DB clock, not Python: the cutoff is last_seen compared against now() minus an interval.
+    assert "worker_heartbeats.last_seen < now() - make_interval" in sql
+    # The removed ids come back via RETURNING worker_id specifically (not just any RETURNING).
+    assert "returning worker_heartbeats.worker_id" in sql
 
 
 async def test_delete_heartbeat_targets_the_worker_row() -> None:
@@ -153,4 +153,4 @@ async def test_delete_heartbeat_targets_the_worker_row() -> None:
         )
     ).lower()
     assert "delete from worker_heartbeats" in sql
-    assert "worker_id" in sql and "'w1'" in sql
+    assert "worker_heartbeats.worker_id = 'w1'" in sql

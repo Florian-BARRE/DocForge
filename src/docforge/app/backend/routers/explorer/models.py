@@ -12,6 +12,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 # ====== Internal Project Imports ======
+from config import RUNTIME_CONFIG
 from shared_libs.public_models import FieldOrigin
 from shared_libs.services.db.postgresql.tables import DocumentStatus, SourceKind
 
@@ -132,7 +133,9 @@ class BulkChunkEnabledPatch(BaseModel):
     """Toggle several chunks' searchability to the same state in one call (the UI's multi-select)."""
 
     chunk_ids: list[uuid.UUID] = Field(
-        min_length=1, description="The chunks to toggle (at least one)."
+        min_length=1,
+        max_length=RUNTIME_CONFIG.EXPLORER_MAX_BULK_CHUNK_IDS,
+        description="The chunks to toggle (at least one; capped at the server bulk-selection ceiling).",
     )
     enabled: bool = Field(description="The state to apply to every listed chunk.")
 

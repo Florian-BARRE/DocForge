@@ -96,7 +96,6 @@ class QueryNormalizeNode(ActionNode):
         spec = QuerySpec(
             text=text,
             filters=dict(data.filters.filters),
-            language=None,
             top_k=top_k,
             candidate_k=candidate_k,
             search_targets=targets,

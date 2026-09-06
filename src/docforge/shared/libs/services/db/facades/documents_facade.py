@@ -6,7 +6,7 @@
 
 # ====== Standard Library Imports ======
 import uuid
-from collections.abc import Sequence
+from collections.abc import AsyncIterator, Sequence
 
 # ====== Internal Project Imports ======
 from loggerplusplus import LoggerClass
@@ -221,15 +221,38 @@ class DocumentsFacade(LoggerClass):
             ids = await BlobApi.collections_for_hash(session, content_hash)
         return [str(collection_id) for collection_id in ids]
 
-    async def read_blob(self, content_hash: str) -> tuple[bytes, str] | None:
-        """Read a blob's bytes + mime type by content hash (original, PDF, render, crop)."""
+    async def stream_blob(
+        self, content_hash: str, chunk_size: int = 1024 * 1024
+    ) -> tuple[AsyncIterator[bytes], str] | None:
+        """
+        Resolve a blob (by content hash) to a bounded byte-stream + its registered mime type.
+
+        The bytes are pulled from S3 in bounded windows rather than buffered whole in memory, so a
+        large blob (a multi-page PDF or a big original) streams straight to the HTTP response. The
+        registry row is read first — an unknown hash returns None before any S3 read.
+
+        Args:
+            content_hash (str): The blob's content address (original, PDF, render or crop).
+            chunk_size (int): The per-read window in bytes.
+
+        Returns:
+            tuple[AsyncIterator[bytes], str] | None: The byte-stream generator + the stored mime
+            type, or None when the hash is unknown.
+        """
+        # 1. Resolve the registry row (mime type + S3 key); an unknown hash is a clean None.
         async with self._postgres.session() as session:
             row = await BlobApi.get(session, content_hash)
         if row is None:
             return None
+
+        # 2. Hand back a generator that keeps the S3 client open for the whole iteration.
+        return self.__stream_object(row.s3_key, chunk_size), row.mime_type
+
+    async def __stream_object(self, s3_key: str, chunk_size: int) -> AsyncIterator[bytes]:
+        """Yield an object's bytes from S3 in bounded windows (client scope held for the iteration)."""
         async with self._s3.client() as s3:
-            data = await S3ObjectApi.get(s3, self._s3.bucket, row.s3_key)
-        return data, row.mime_type
+            async for chunk in S3ObjectApi.stream(s3, self._s3.bucket, s3_key, chunk_size):
+                yield chunk
 
     # -------------------- deletion --------------------
     async def delete(self, document_id: uuid.UUID) -> bool:

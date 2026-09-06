@@ -7,6 +7,7 @@
 # service can surface the sampling accuracy.
 
 # ====== Standard Library Imports ======
+import math
 from collections.abc import Sequence
 
 # ====== Third-Party Library Imports ======
@@ -89,8 +90,13 @@ class DocumentSampler:
             pages = float(document.page_count)
             return pages, pages * a.tokens_per_page, True
 
-        # 3. Binary, not-yet-ingested: derive pages from byte size (the roughest path).
-        pages = document.file_size / a.bytes_per_page
+        # 3. Binary, not-yet-ingested: derive pages from byte size (the roughest path). Round a
+        #    partial trailing page UP and floor a non-empty document to at least one page — a real
+        #    document is never zero or a fractional page, so a tiny file must still carry a page of
+        #    cost instead of rounding down to ~0 (which under-counts the estimate).
+        if document.file_size <= 0:
+            return 0.0, 0.0, False
+        pages = float(max(1, math.ceil(document.file_size / a.bytes_per_page)))
         return pages, pages * a.tokens_per_page, False
 
 

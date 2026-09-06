@@ -316,13 +316,24 @@ async def test_get_job_trace_scoped_key_foreign_is_403(fastapi_app, monkeypatch)
 # ── blobs router ────────────────────────────────────────────────────────────────────────────────
 
 
+async def _blob_stream():
+    """A minimal async byte-stream standing in for the facade's bounded S3 windows."""
+    yield b"x"
+
+
+async def _drain(response) -> bytes:
+    """Collect a StreamingResponse's body from its async iterator."""
+    chunks = [chunk async for chunk in response.body_iterator]
+    return b"".join(bytes(chunk) for chunk in chunks)
+
+
 async def test_get_blob_scoped_key_foreign_is_403(fastapi_app, monkeypatch) -> None:
     from backend.context import CONTEXT  # noqa: PLC0415
     from backend.routers.blobs.router import get_blob  # noqa: PLC0415
 
     documents = SimpleNamespace(
         collections_for_blob=AsyncMock(return_value=[COLL_B]),
-        read_blob=AsyncMock(return_value=(b"x", "text/plain")),
+        stream_blob=AsyncMock(return_value=(_blob_stream(), "text/plain")),
     )
     monkeypatch.setattr(CONTEXT, "database", SimpleNamespace(documents=documents))
 
@@ -331,7 +342,7 @@ async def test_get_blob_scoped_key_foreign_is_403(fastapi_app, monkeypatch) -> N
 
     assert exc.value.status_code == 403
     # A denied scoped key never triggers the S3 byte fetch.
-    documents.read_blob.assert_not_called()
+    documents.stream_blob.assert_not_called()
 
 
 async def test_get_blob_scoped_key_owned_is_allowed(fastapi_app, monkeypatch) -> None:
@@ -340,13 +351,13 @@ async def test_get_blob_scoped_key_owned_is_allowed(fastapi_app, monkeypatch) ->
 
     documents = SimpleNamespace(
         collections_for_blob=AsyncMock(return_value=[COLL_A]),
-        read_blob=AsyncMock(return_value=(b"x", "text/plain")),
+        stream_blob=AsyncMock(return_value=(_blob_stream(), "text/plain")),
     )
     monkeypatch.setattr(CONTEXT, "database", SimpleNamespace(documents=documents))
 
     result = await get_blob(content_hash="deadbeef", principal=_scoped(COLL_A))
 
-    assert result.body == b"x"
+    assert await _drain(result) == b"x"
 
 
 async def test_get_blob_full_access_skips_scope_lookup(fastapi_app, monkeypatch) -> None:
@@ -355,13 +366,13 @@ async def test_get_blob_full_access_skips_scope_lookup(fastapi_app, monkeypatch)
 
     documents = SimpleNamespace(
         collections_for_blob=AsyncMock(return_value=[COLL_B]),
-        read_blob=AsyncMock(return_value=(b"x", "text/plain")),
+        stream_blob=AsyncMock(return_value=(_blob_stream(), "text/plain")),
     )
     monkeypatch.setattr(CONTEXT, "database", SimpleNamespace(documents=documents))
 
     result = await get_blob(content_hash="deadbeef", principal=_full())
 
-    assert result.body == b"x"
+    assert await _drain(result) == b"x"
     # Root never resolves owning collections — it reads any blob directly.
     documents.collections_for_blob.assert_not_called()
 

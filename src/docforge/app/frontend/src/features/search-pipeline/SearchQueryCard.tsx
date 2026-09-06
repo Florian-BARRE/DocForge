@@ -5,16 +5,30 @@
 // in the frame, greyed when off; when on, its provider config (endpoint, model, key, temperature)
 // is revealed inline. Forge orange marks the ONE active transform — "Off" reads as steel, not work.
 
+import type { Palette } from "../../api/types";
 import { NumberField } from "../../components/schema-form/NumberField";
+import { findNodeCard } from "../../components/schema-form/paletteLookup";
 import { SearchStageFrame } from "./SearchStageFrame";
 import type { QueryTransformKind } from "./state/blobOps";
 import { theme as t } from "../../theme";
 
-// Display-only fallbacks for the provider fields: a freshly-spliced node carries an EMPTY config,
-// and the backend applies these same endpoint defaults from `{}` — so the card shows the effective
-// value without writing it (leaving it unwritten lets the collection track backend default changes).
-const CONFIG_DEFAULTS = { base_url: "https://api.openai.com/v1", model: "gpt-4o-mini", temperature: 0 } as const;
+// Last-resort fallback only — the real values come from the active method's own `config_schema`
+// (`GET /pipelines/search`, already fetched as `palette` by the editor), so a backend default
+// change (e.g. a new stock model) shows up here with zero frontend edit. This mirrors
+// `QueryRewriteConfig`/`QueryHydeConfig` (both inherit `BaseQueryLlmConfig`) only as a safety net
+// for the unexpected case where the schema is missing a field.
+const FALLBACK_DEFAULTS = { base_url: "https://api.openai.com/v1", model: "gpt-4o-mini", temperature: 0 } as const;
 const REDACTED_PREFIX = "__redacted__";
+
+/** The active method's own schema default for one field, falling back when the schema lacks it. */
+function schemaDefault<T>(palette: Palette, kind: QueryTransformKind | null, field: keyof typeof FALLBACK_DEFAULTS, guard: (v: unknown) => v is T): T {
+  const card = kind ? findNodeCard(palette, "query", kind) : undefined;
+  const raw = card?.config_schema.properties?.[field]?.default;
+  return guard(raw) ? raw : (FALLBACK_DEFAULTS[field] as T);
+}
+
+const isString = (v: unknown): v is string => typeof v === "string";
+const isNumber = (v: unknown): v is number => typeof v === "number";
 
 interface Option {
   value: QueryTransformKind | null;
@@ -49,6 +63,8 @@ interface SearchQueryCardProps {
   active: QueryTransformKind | null;
   /** The active transform node's config (its provider knobs); null when off. */
   config: Record<string, unknown> | null;
+  /** The search pipeline's palette — source of the active method's own config-schema defaults. */
+  palette: Palette;
   onSelect: (kind: QueryTransformKind | null) => void;
   onChangeConfig: (field: string, value: unknown) => void;
   /** Folds this into step 1's own card body (a plain inset block, no second numbered frame) instead
@@ -57,8 +73,11 @@ interface SearchQueryCardProps {
   nested?: boolean;
 }
 
-export function SearchQueryCard({ active, config, onSelect, onChangeConfig, nested }: SearchQueryCardProps) {
+export function SearchQueryCard({ active, config, palette, onSelect, onChangeConfig, nested }: SearchQueryCardProps) {
   const enabled = active !== null;
+  const defaultBaseUrl = schemaDefault(palette, active, "base_url", isString);
+  const defaultModel = schemaDefault(palette, active, "model", isString);
+  const defaultTemperature = schemaDefault(palette, active, "temperature", isNumber);
 
   const selector = (
     <div
@@ -103,14 +122,14 @@ export function SearchQueryCard({ active, config, onSelect, onChangeConfig, nest
       <Field label="Endpoint URL">
         <input
           style={inputStyle}
-          value={String(config?.base_url ?? CONFIG_DEFAULTS.base_url)}
+          value={String(config?.base_url ?? defaultBaseUrl)}
           onChange={(e) => onChangeConfig("base_url", e.target.value)}
         />
       </Field>
       <Field label="Model">
         <input
           style={inputStyle}
-          value={String(config?.model ?? CONFIG_DEFAULTS.model)}
+          value={String(config?.model ?? defaultModel)}
           onChange={(e) => onChangeConfig("model", e.target.value)}
         />
       </Field>
@@ -128,7 +147,7 @@ export function SearchQueryCard({ active, config, onSelect, onChangeConfig, nest
       </Field>
       <Field label="Temperature">
         <NumberField
-          value={typeof config?.temperature === "number" ? (config.temperature as number) : CONFIG_DEFAULTS.temperature}
+          value={typeof config?.temperature === "number" ? config.temperature : defaultTemperature}
           min={0}
           style={inputStyle}
           onChange={(value) => onChangeConfig("temperature", value)}

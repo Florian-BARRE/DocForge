@@ -61,12 +61,16 @@ export function useCorpusQuery({ collectionId, filter, sort, limit, offset }: Us
     load(false);
 
     return () => { cancelled = true; window.clearTimeout(timer); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [collectionId, filter, sort, limit, offset, tick]);
 
   const patchRow = useCallback((id: string, patch: Partial<DocumentGridRow>) => {
     setRows((prev) => prev.map((row) => (row.id === id ? { ...row, ...patch } : row)));
   }, []);
 
-  return { rows, total, loading, error, refetch: () => setTick((t) => t + 1), patchRow };
+  // Stable identity (not a fresh closure per render) — CorpusPage's grid-columns memo depends on
+  // it, and an unstable `refetch` would defeat that memoization on every unrelated state update
+  // (e.g. the loading flag flipping mid-fetch).
+  const refetch = useCallback(() => setTick((t) => t + 1), []);
+
+  return { rows, total, loading, error, refetch, patchRow };
 }

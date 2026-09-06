@@ -69,6 +69,9 @@
   --shadow-1: 0 1px 2px rgba(31, 26, 15, 0.06);
   --shadow-2: 0 12px 30px -10px rgba(31, 26, 15, 0.16);
   --shadow-pop: 0 18px 46px -12px rgba(31, 26, 15, 0.22);
+  /* Modal backdrop scrim — deliberately near-black in BOTH palettes (a dark scrim reads correctly
+     against either paper or ink content), so it does not flip between themes like other tokens. */
+  --overlay: rgba(0, 0, 0, 0.8);
   color-scheme: light;
 }
 
@@ -121,6 +124,7 @@
   --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.45);
   --shadow-2: 0 10px 30px -10px rgba(0, 0, 0, 0.6);
   --shadow-pop: 0 16px 44px -12px rgba(0, 0, 0, 0.7);
+  --overlay: rgba(0, 0, 0, 0.8);
   color-scheme: dark;
 }
 

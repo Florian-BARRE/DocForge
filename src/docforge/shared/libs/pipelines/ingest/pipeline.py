@@ -1,9 +1,9 @@
 # ====== Code Summary ======
 # IngestPipeline — the class that TIES the ingestion pipeline together: it declares which node
 # families compose it (its dedicated nodes + the generic capability families it uses), triggers
-# their registration, and is the origin of the DESCRIBE the UI is populated from (the palette of
-# every block available to assemble an ingestion pipeline). It will also carry the default
-# topology as the stages are completed.
+# their registration, is the origin of the DESCRIBE the UI is populated from (the palette of
+# every block available to assemble an ingestion pipeline), and carries the default topology
+# (default_blob / light_blob) a new collection's editor opens on.
 
 # ====== Internal Project Imports ======
 import shared_libs.pipelines.ingest.nodes  # noqa: F401 — registers the dedicated nodes
@@ -26,8 +26,9 @@ from .stages import IngestAssembler, default_state, light_state
 class IngestPipeline:
     """Static entry point of the ingestion pipeline — its families, its palette, its topology."""
 
-    # The families an ingestion pipeline is assembled from: its DEDICATED nodes first, then the
-    # GENERIC capability families its enrichment relies on.
+    # The families an ingestion pipeline is assembled from: its DEDICATED stage families first
+    # (intake…metagen, plus the shared deliver terminal), then the GENERIC capability families its
+    # enrichment relies on (embed, ocr, vlm, llm, structgen).
     FAMILIES = (
         "intake",
         "converter",

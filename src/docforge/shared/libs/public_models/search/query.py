@@ -22,7 +22,6 @@ class QuerySpec(Artifact):
     Attributes:
         text (str): The cleaned query text (trimmed, case-folded, inline filters stripped).
         filters (dict): The structured filter map applied to the retrieval (field → value).
-        language (str | None): The detected query language (ISO code) or None when not detected.
         top_k (int): How many hits the caller asked for — the size of the delivered result set.
         candidate_k (int): The over-sampled retrieval depth (candidate pool before rerank/cut).
         search_targets (list[SearchTarget]): What to search — which fields (content and/or metadata)
@@ -38,9 +37,6 @@ class QuerySpec(Artifact):
     filters: dict = Field(
         default_factory=dict,
         description="Structured filter map applied to retrieval (field → value).",
-    )
-    language: str | None = Field(
-        default=None, description="Detected query language (ISO code) or None."
     )
     top_k: int = Field(
         description="How many hits the caller asked for (delivered result-set size)."

@@ -12,6 +12,7 @@ from loggerplusplus import loggerplusplus
 from backend import CONTEXT, create_app
 from backend.libs.estimate import CostEstimateService
 from backend.libs.health import CollectionHealthService
+from backend.libs.logbridge import UvicornLogBridge
 from backend.libs.metrics import MetricsService
 from backend.libs.search import SearchService
 from backend.utils.queue import QueueClient
@@ -42,6 +43,11 @@ def _build_app() -> FastAPI:
     #     because it needs shared_libs (unavailable that early in config's logging setup, which only
     #     seeds the neutral placeholder so the format token always resolves until this runs).
     CorrelationContext.install_log_patcher()
+
+    # 1c. Route uvicorn's own stdlib loggers (uvicorn / uvicorn.access / uvicorn.error) through
+    #     loggerplusplus so the server's access/error lines carry the SAME format + correlation id as
+    #     app logs, instead of uvicorn's default off-format output that bypasses the configured sinks.
+    UvicornLogBridge.install()
 
     # 2. Pipeline design services (stateless — one instance for the app's lifetime).
     CONTEXT.pipeline_builder = PipelineBuilder()

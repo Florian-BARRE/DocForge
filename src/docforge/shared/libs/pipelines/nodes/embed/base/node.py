@@ -123,30 +123,41 @@ class BaseEmbedderNode(ActionNode):
         behaviour: one timeout failed the embed node and discarded every vector already computed).
         So a transient error is retried with exponential backoff; if it still fails, the batch is
         halved and each half embedded independently — a smaller batch is lighter on a CPU-hosted
-        model and usually succeeds. A single-text batch that still fails is a genuine error and is
-        raised. max_retries=0 preserves the old one-shot behaviour (no retry, no split). Provider
-        hooks return outputs aligned 1:1 with their input, so ``concat`` on the halves preserves
-        order; a None sub-result (no sparse / no combined route) propagates as None. Shape-agnostic:
-        the same skeleton serves the single-axis hook and the combined (dense, sparse) one.
+        model and usually succeeds. A single-text batch that still fails is a genuine error and its
+        last transient failure is raised. Provider hooks return outputs aligned 1:1 with their input,
+        so ``concat`` on the halves preserves order; a None sub-result (no sparse / no combined route)
+        propagates as None. Shape-agnostic: the same skeleton serves the single-axis hook and the
+        combined (dense, sparse) one.
+
+        Retry contract: ``max_retries`` counts retries BEYOND the initial call, so the batch is tried
+        ``1 + max_retries`` times before the split — the documented ``TimeoutRetryConfig`` semantics
+        the vlm/llm loops also follow (``max_retries=0`` → a single one-shot attempt, no retry and no
+        split; ``max_retries=1`` → 2 attempts; ``max_retries=N`` → N+1). Every attempt is logged as
+        ``attempt/total``, the "current of total attempts" convention shared across the families.
         """
         config: BaseEmbedConfig = self.config
         if config.max_retries == 0:
-            return await embed_fn(texts)
-        for attempt in range(1, config.max_retries + 1):
+            return await embed_fn(texts)  # one-shot opt-out: no retry, no adaptive split
+        total_attempts = 1 + config.max_retries
+        last_error: Exception | None = None
+        for attempt in range(1, total_attempts + 1):
             try:
                 return await embed_fn(texts)
             except Exception as error:  # noqa: BLE001 — re-raised below unless transient
                 if not self.__is_transient(error):
                     raise
+                last_error = error
                 self.logger.warning(
                     f"Embedder '{self.KIND}' transient error on a {len(texts)}-text batch "
-                    f"(attempt {attempt}/{config.max_retries}): {error!r}"
+                    f"(attempt {attempt}/{total_attempts}): {error!r}"
                 )
-                if attempt < config.max_retries:
+                if attempt < total_attempts:
                     await asyncio.sleep(config.retry_backoff_seconds * attempt)
-        # Retries exhausted — split and embed the halves independently, or give up on a single text.
+        # Retries exhausted — split and embed the halves independently, or surface the genuine error
+        # on a single text (nothing left to split). ``last_error`` is always set here: the loop only
+        # falls through after every attempt raised a transient (a success returns, a hard error raises).
         if len(texts) <= 1:
-            return await embed_fn(texts)
+            raise last_error  # type: ignore[misc]
         mid = len(texts) // 2
         self.logger.warning(
             f"Embedder '{self.KIND}' still failing a {len(texts)}-text batch — splitting to "
@@ -255,6 +266,37 @@ class BaseEmbedderNode(ActionNode):
                 index: vector for (index, _), vector in zip(indexed, dense, strict=True)
             }
         return vectors
+
+    async def encode_query_dense(self, text: str) -> list[float]:
+        """Encode a single query string into its dense vector — the public query-encode entry point.
+
+        The search encode node calls this instead of reaching into the protected batch hook: it wraps
+        the one-text ``_embed_dense`` and returns the lone vector. Deliberately WITHOUT the resilient
+        retry/split wrapper (that serves large ingest batches); the caller bounds this single call with
+        its own per-axis timeout.
+
+        Args:
+            text (str): The query string to encode.
+
+        Returns:
+            list[float]: The query's dense vector.
+        """
+        return (await self._embed_dense([text]))[0]
+
+    async def encode_query_sparse(self, text: str) -> SparseVector | None:
+        """Encode a single query string into its sparse vector, or None when the provider has none.
+
+        The query-side companion of ``encode_query_dense``: it wraps the one-text ``_embed_sparse``
+        hook (whose default is None — no lexical axis) and returns the lone vector.
+
+        Args:
+            text (str): The query string to encode.
+
+        Returns:
+            SparseVector | None: The query's sparse vector, or None when the provider has no sparse axis.
+        """
+        vectors = await self._embed_sparse([text])
+        return vectors[0] if vectors else None
 
     async def run(self, data: EmbedConsumes) -> EmbedProduces:
         """
