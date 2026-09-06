@@ -169,6 +169,33 @@ class SearchHitModel(BaseModel):
     )
 
 
+class SearchCostModel(BaseModel):
+    """
+    The priced cost of a single search run's paid text-generation spend.
+
+    Search-time LLM calls (query rewrite / HyDE) are metered like ingestion: their token usage is
+    summed over the run and priced against the collection's OWN effective rates (the same numbers the
+    estimator and the ingest meter use). A stock search that runs no paid LLM reports zero tokens and
+    a 0.0 cost; ``cost_usd`` is null (never a fabricated 0) when a model that DID run has no known rate.
+
+    Attributes:
+        prompt_tokens (int): Input tokens billed across the run's paid calls.
+        completion_tokens (int): Output tokens billed across the run's paid calls.
+        cost_usd (float | None): USD cost, or null when a paid call's model has no known rate.
+        call_count (int): How many paid calls (leaves carrying usage) the run made.
+    """
+
+    prompt_tokens: int = Field(description="Input tokens billed across the run's paid calls.")
+    completion_tokens: int = Field(description="Output tokens billed across the run's paid calls.")
+    cost_usd: float | None = Field(
+        description="USD cost of the run's paid LLM spend, or null when a model that ran has no "
+        "known rate (tokens shown, cost '—')."
+    )
+    call_count: int = Field(
+        description="Number of paid calls (usage-carrying leaves) the run made."
+    )
+
+
 class SearchResponse(BaseModel):
     """
     The result of a hybrid search — the echoed query and its ranked hits.
@@ -177,12 +204,19 @@ class SearchResponse(BaseModel):
         query (str): The query that was searched (echoed for the client).
         hits (list[SearchHitModel]): The hydrated hits, best first.
         score_kind (str): What each hit's ``score`` represents — so the UI can label it correctly.
+        cost (SearchCostModel | None): The run's priced paid-LLM spend (rewrite/HyDE), or None when
+            the run made no paid call (a stock lexical/dense search with no query-side LLM).
         debug_info (dict | None): Non-fatal diagnostics about how the search ran. None when there
             is nothing to report.
     """
 
     query: str = Field(description="The query that was searched.")
     hits: list[SearchHitModel] = Field(default_factory=list, description="Ranked hits, best first.")
+    cost: SearchCostModel | None = Field(
+        default=None,
+        description="The run's priced search-time LLM spend (query rewrite / HyDE), or null when no "
+        "paid call was made.",
+    )
     score_kind: str = Field(
         default="rrf_fusion",
         description="What every hit's ``score`` represents, so the UI labels it honestly: "
@@ -203,5 +237,6 @@ __all__ = [
     "SearchRequest",
     "BlockLocationModel",
     "SearchHitModel",
+    "SearchCostModel",
     "SearchResponse",
 ]

@@ -83,7 +83,8 @@ def wired(fastapi_app, monkeypatch):
     monkeypatch.setattr(
         CONTEXT.database.collections, "get_schema", AsyncMock(return_value=_schema())
     )
-    search = AsyncMock(side_effect=lambda _cid, query, **_kw: _result(query))
+    # The service returns (SearchResult, usage-tuple); a stock search runs no paid LLM → count 0.
+    search = AsyncMock(side_effect=lambda _cid, query, **_kw: (_result(query), (0, 0, None, 0)))
     monkeypatch.setattr(CONTEXT.search_service, "search", search)
     return search
 
@@ -124,6 +125,48 @@ def test_search_delegates_to_service_and_shapes_hits(client, wired) -> None:
     assert hit["metadata"] == {"jurisdiction": "EU", "article_ref": "Article 5"}
     # 5. The section ancestry rides on the hit so a compliance result self-cites the clause.
     assert hit["heading_path"] == ["Chapter II", "Article 5 — Principles"]
+
+
+def test_search_stock_run_reports_no_cost(client, wired) -> None:
+    """A stock search that makes no paid LLM call (usage count 0) surfaces ``cost`` as null — never a
+    fabricated 0 — so the client can tell "free run" from "priced run"."""
+    response = client.post(
+        "/api/v1/collections/33333333-3333-3333-3333-333333333333/search",
+        json={"query": "how does it work"},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["cost"] is None
+
+
+def test_search_surfaces_the_metered_llm_cost(client, monkeypatch) -> None:
+    """When the run makes a paid query-side LLM call (rewrite/HyDE), its priced usage is surfaced on
+    the response ``cost`` (audit 539) — tokens + USD, from the service's summed meter."""
+    from backend.context import CONTEXT
+
+    collection = SimpleNamespace(pipeline=_pipeline_with_embed(), search={})
+    monkeypatch.setattr(CONTEXT.database.collections, "get", AsyncMock(return_value=collection))
+    monkeypatch.setattr(
+        CONTEXT.database.collections, "get_schema", AsyncMock(return_value=_schema())
+    )
+    # The service reports one paid call: 100 in / 50 out, priced at $0.0003.
+    monkeypatch.setattr(
+        CONTEXT.search_service,
+        "search",
+        AsyncMock(side_effect=lambda _cid, query, **_kw: (_result(query), (100, 50, 0.0003, 1))),
+    )
+
+    response = client.post(
+        "/api/v1/collections/33333333-3333-3333-3333-333333333333/search",
+        json={"query": "how does it work"},
+    )
+    assert response.status_code == 200, response.text
+    cost = response.json()["cost"]
+    assert cost == {
+        "prompt_tokens": 100,
+        "completion_tokens": 50,
+        "cost_usd": 0.0003,
+        "call_count": 1,
+    }
 
 
 def test_search_passes_list_filter_verbatim(client, wired) -> None:
@@ -403,7 +446,9 @@ def test_search_surfaces_degraded_note_in_debug_info(client, fastapi_app, monkey
             "degraded": "semantic unavailable — embedder busy, lexical-only results",
         },
     )
-    monkeypatch.setattr(CONTEXT.search_service, "search", AsyncMock(return_value=degraded))
+    monkeypatch.setattr(
+        CONTEXT.search_service, "search", AsyncMock(return_value=(degraded, (0, 0, None, 0)))
+    )
 
     response = client.post(
         "/api/v1/collections/33333333-3333-3333-3333-333333333333/search",

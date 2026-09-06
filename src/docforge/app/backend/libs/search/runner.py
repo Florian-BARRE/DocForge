@@ -21,7 +21,9 @@ from shared_libs.pipelines.base import (
 )
 from shared_libs.pipelines.build import GroupNodeBlob, PipelineBuilder
 from shared_libs.pipelines.engine import FlowEngine
+from shared_libs.pipelines.ingest.estimate import RateTable
 from shared_libs.pipelines.search import COLLECTION_READ_CAPABILITY, CollectionReadPort
+from shared_libs.pipelines.usage import UsageSummer
 from shared_libs.pipelines.validation import GraphValidator
 from shared_libs.public_models.search import SearchResult
 
@@ -149,10 +151,15 @@ class SearchRunner(LoggerClass):
         blob: GroupNodeBlob | dict,
         run_input: dict,
         read_port: CollectionReadPort,
+        rates: RateTable,
         timeout_seconds: float | None = None,
-    ) -> SearchResult:
+    ) -> tuple[SearchResult, tuple[int, int, float | None, int]]:
         """
-        Execute one search run end to end and return its terminal SearchResult.
+        Execute one search run end to end and return its SearchResult plus its priced usage.
+
+        Search-time LLM spend (query rewrite / HyDE) is stamped on the execution records by the query
+        nodes; here it is summed over the whole tree and priced against ``rates`` so the run's cost is
+        metered (and surfaced on the response) rather than being invisible.
 
         Args:
             blob (GroupNodeBlob | dict): The search pipeline blob (the stock default today).
@@ -160,10 +167,13 @@ class SearchRunner(LoggerClass):
                 contract}``.
             read_port (CollectionReadPort): The read-only capability bound onto the port-backed
                 nodes (the exclusion invariant lives inside it).
+            rates (RateTable): The collection's effective rate table (defaults + rate overrides) the
+                usage is priced against — the SAME numbers the estimator/ingest meter use.
             timeout_seconds (float | None): Wall-clock cap for the whole run (None = no cap).
 
         Returns:
-            SearchResult: The ranked answer to the query.
+            tuple[SearchResult, tuple[int, int, float | None, int]]: the ranked answer, and the run's
+                (prompt tokens, completion tokens, USD cost or None, priced-leaf count).
 
         Raises:
             SearchRunError: Invalid graph, failed run, or a final output that is not the
@@ -213,8 +223,11 @@ class SearchRunner(LoggerClass):
                 f"the pipeline's final node produced '{type(output).__name__}' — a search "
                 f"pipeline must end on a deliver/hits node producing a SearchResult"
             )
+        # 6. Meter the run's paid text-gen spend (rewrite/HyDE LLM calls stamp usage on the records),
+        #    priced against the collection's effective rates — so search cost is surfaced, not invisible.
+        usage = UsageSummer.summarize(record, rates)
         self.logger.info(f"Search delivered {len(result.hits)} hit(s)")
-        return result
+        return result, usage
 
 
 __all__ = ["SearchRunner", "SearchRunError", "SearchRunTimeout", "SearchUnavailableError"]

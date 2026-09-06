@@ -136,6 +136,26 @@ class SearchHit(BaseModel):
     )
 
 
+class SearchCost(BaseModel):
+    """
+    The priced cost of one search run's paid text-generation spend (query rewrite / HyDE).
+
+    Attributes:
+        prompt_tokens (int): Input tokens billed across the run's paid calls.
+        completion_tokens (int): Output tokens billed across the run's paid calls.
+        cost_usd (float | None): USD cost, or None when a paid call's model has no known rate.
+        call_count (int): How many paid calls (usage-carrying leaves) the run made.
+    """
+
+    prompt_tokens: int = Field(description="Input tokens billed across the run's paid calls.")
+    completion_tokens: int = Field(description="Output tokens billed across the run's paid calls.")
+    cost_usd: float | None = Field(
+        description="USD cost of the run's paid LLM spend, or None when a model that ran has no "
+        "known rate."
+    )
+    call_count: int = Field(description="Number of paid calls (usage-carrying leaves) the run made.")
+
+
 class SearchResponse(BaseModel):
     """
     The result of a hybrid search — the echoed query and its ranked hits.
@@ -144,6 +164,7 @@ class SearchResponse(BaseModel):
         query (str): The query that was searched (echoed for the client).
         hits (list[SearchHit]): The hydrated hits, best first.
         score_kind (str): What each hit's ``score`` represents — so the UI can label it correctly.
+        cost (SearchCost | None): The run's priced paid-LLM spend, or None when no paid call was made.
         debug_info (dict[str, Any] | None): Non-fatal diagnostics; None when there is nothing to report.
     """
 
@@ -156,10 +177,22 @@ class SearchResponse(BaseModel):
         "rank-based, not a similarity), 'dbsf_fusion' (Distribution-Based Score Fusion), or "
         "'cross_encoder_rerank' (a cross-encoder relevance score, when reranking is enabled).",
     )
+    cost: SearchCost | None = Field(
+        default=None,
+        description="The run's priced search-time LLM spend (query rewrite / HyDE), or None when no "
+        "paid call was made.",
+    )
     debug_info: dict[str, Any] | None = Field(
         default=None,
         description="Non-fatal diagnostics about how the search ran. None when empty.",
     )
 
 
-__all__ = ["SearchTarget", "SearchRequest", "BlockLocation", "SearchHit", "SearchResponse"]
+__all__ = [
+    "SearchTarget",
+    "SearchRequest",
+    "BlockLocation",
+    "SearchHit",
+    "SearchCost",
+    "SearchResponse",
+]
