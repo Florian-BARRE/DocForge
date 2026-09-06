@@ -74,7 +74,8 @@ class CollectionUpdateSpec:
 
     Attributes:
         contract_touched (bool): Apply the identity/limits fields below (each None = leave unchanged).
-        name / supported_formats / max_file_size_bytes / job_timeout_seconds: identity/limits values.
+        name / supported_formats / tags / max_file_size_bytes / job_timeout_seconds: identity/limits
+            values (tags None = leave unchanged, [] = clear back to untagged).
         schema_fields (list[MetadataField] | None): The desired metadata schema (None = don't touch
             the schema; a diff-update is applied otherwise).
         config_touched (bool): Apply the pipeline/search blobs below and append a version snapshot.
@@ -89,6 +90,7 @@ class CollectionUpdateSpec:
     contract_touched: bool = False
     name: str | None = None
     supported_formats: list[str] | None = None
+    tags: list[str] | None = None
     max_file_size_bytes: int | None = None
     job_timeout_seconds: float | None = None
     # metadata schema (None = don't touch the schema)

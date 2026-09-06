@@ -283,6 +283,7 @@ async def create_collection(
             Collection(
                 name=request.name,
                 supported_formats=request.supported_formats,
+                tags=request.tags or [],
                 max_file_size_bytes=request.max_file_size_bytes,
                 job_timeout_seconds=request.job_timeout_seconds,
                 pipeline=blob,
@@ -387,12 +388,14 @@ async def update_collection(
             for v in (
                 request.name,
                 request.supported_formats,
+                request.tags,
                 request.max_file_size_bytes,
                 request.job_timeout_seconds,
             )
         ),
         name=request.name,
         supported_formats=request.supported_formats,
+        tags=request.tags,
         max_file_size_bytes=request.max_file_size_bytes,
         job_timeout_seconds=request.job_timeout_seconds,
         schema_fields=CollectionHelpers.to_field_rows(request.fields)

@@ -157,16 +157,18 @@ class CollectionsFacade(LoggerClass):
         *,
         name: str | None = None,
         supported_formats: list[str] | None = None,
+        tags: list[str] | None = None,
         max_file_size_bytes: int | None = None,
         job_timeout_seconds: float | None = None,
     ) -> None:
-        """Patch the collection's identity/limits (None = leave unchanged)."""
+        """Patch the collection's identity/limits (None = leave unchanged; tags [] = clear)."""
         async with self._postgres.session() as session:
             await CollectionApi.update(
                 session,
                 collection_id,
                 name=name,
                 supported_formats=supported_formats,
+                tags=tags,
                 max_file_size_bytes=max_file_size_bytes,
                 job_timeout_seconds=job_timeout_seconds,
             )
@@ -413,6 +415,7 @@ class CollectionsFacade(LoggerClass):
                         collection_id,
                         name=spec.name,
                         supported_formats=spec.supported_formats,
+                        tags=spec.tags,
                         max_file_size_bytes=spec.max_file_size_bytes,
                         job_timeout_seconds=spec.job_timeout_seconds,
                     )

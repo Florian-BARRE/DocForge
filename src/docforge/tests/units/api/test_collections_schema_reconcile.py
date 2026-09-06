@@ -22,6 +22,7 @@ def _fake_collection() -> SimpleNamespace:
         id=FAKE_ID,
         name="c1",
         supported_formats=["pdf"],
+        tags=[],
         max_file_size_bytes=1_000_000,
         job_timeout_seconds=None,
         needs_reindex=False,

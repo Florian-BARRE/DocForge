@@ -90,6 +90,9 @@ class CollectionContractModel(BaseModel):
 
     name: str
     supported_formats: list[str]
+    # Defaulted so a bundle exported before tags existed imports cleanly (legacy bundle → untagged),
+    # never a KeyError on the missing key — the transfer coupling-map's tolerance requirement.
+    tags: list[str] = Field(default_factory=list)
     max_file_size_bytes: int
     job_timeout_seconds: float | None = None
     needs_reindex: bool = False

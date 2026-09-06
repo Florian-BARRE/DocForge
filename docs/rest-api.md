@@ -361,6 +361,7 @@ curl -sX POST http://localhost:10040/api/v1/collections \
   -d '{
         "name": "contracts",
         "supported_formats": ["pdf", "docx"],
+        "tags": ["legal", "demo"],
         "max_file_size_bytes": 52428800,
         "fields": [
           {"field_name": "client", "field_type": "string", "required": true, "filterable": true},
@@ -371,17 +372,20 @@ curl -sX POST http://localhost:10040/api/v1/collections \
 ```
 
 Returns the created `CollectionModel` (`201`). `409` on a name clash, `422` on a bad pipeline or
-colliding vector slugs.
+colliding vector slugs. `tags` is an optional list of free-form labels for grouping/filtering
+collections in the UI; omit it (or pass `[]`) to create the collection untagged. The response always
+carries `tags` (`[]` when untagged).
 
 ### Patch a collection
 
 `PATCH` is partial. `fields` is applied by **diff** (fields matched by name; omitted fields are
-removed; existing values survive untouched fields). A `note` records a version snapshot.
+removed; existing values survive untouched fields). `tags` is replaced **wholesale** when supplied
+(`[]` clears every label); omit it to leave the labels unchanged. A `note` records a version snapshot.
 
 ```bash
 curl -sX PATCH http://localhost:10040/api/v1/collections/7f1c9d2e-... \
   -H "Content-Type: application/json" \
-  -d '{"max_file_size_bytes": 104857600, "note": "raise upload ceiling to 100 MB"}'
+  -d '{"tags": ["legal", "archived"], "max_file_size_bytes": 104857600, "note": "raise upload ceiling to 100 MB"}'
 ```
 
 ### Collection health

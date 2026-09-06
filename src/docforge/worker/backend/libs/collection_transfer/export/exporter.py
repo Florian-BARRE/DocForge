@@ -135,6 +135,7 @@ class CollectionExporter:
         return CollectionContractModel(
             name=collection.name,
             supported_formats=list(collection.supported_formats),
+            tags=list(collection.tags),
             max_file_size_bytes=collection.max_file_size_bytes,
             job_timeout_seconds=collection.job_timeout_seconds,
             needs_reindex=collection.needs_reindex,

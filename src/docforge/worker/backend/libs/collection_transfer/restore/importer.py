@@ -207,6 +207,7 @@ class CollectionImporterV1:
         return Collection(
             name=name,
             supported_formats=list(contract.supported_formats),
+            tags=list(contract.tags),
             max_file_size_bytes=contract.max_file_size_bytes,
             job_timeout_seconds=contract.job_timeout_seconds,
             needs_reindex=contract.needs_reindex,

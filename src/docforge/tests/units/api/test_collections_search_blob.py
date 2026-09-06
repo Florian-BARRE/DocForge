@@ -52,6 +52,7 @@ def _install_recording_context(monkeypatch, fastapi_app, stored_search: dict) ->
         id=uuid.uuid4(),
         name="c1",
         supported_formats=["pdf"],
+        tags=[],
         max_file_size_bytes=1_000_000,
         job_timeout_seconds=None,
         needs_reindex=False,

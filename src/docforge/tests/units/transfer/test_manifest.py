@@ -50,6 +50,24 @@ def test_collection_contract_rejects_unknown_key() -> None:
         )
 
 
+def test_collection_contract_tolerates_legacy_bundle_without_tags() -> None:
+    """A bundle exported before ``tags`` existed omits the key entirely — it must import cleanly and
+    default to an empty (untagged) list, never a KeyError (the transfer coupling-map tolerance)."""
+    contract = CollectionContractModel.model_validate(
+        {"name": "n", "supported_formats": ["pdf"], "max_file_size_bytes": 1}
+    )
+    assert contract.tags == []
+
+
+def test_collection_contract_round_trips_tags() -> None:
+    """A current bundle carries its labels through the JSON round-trip verbatim."""
+    original = CollectionContractModel(
+        name="n", supported_formats=["pdf"], max_file_size_bytes=1, tags=["legal", "demo"]
+    )
+    restored = CollectionContractModel.model_validate_json(original.model_dump_json())
+    assert restored.tags == ["legal", "demo"]
+
+
 def test_is_supported_version_gates_on_v1() -> None:
     assert is_supported_version(1) is True
     assert is_supported_version(2) is False
