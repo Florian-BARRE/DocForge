@@ -12,6 +12,7 @@ import { Chip } from "../../components/Chip";
 import type { ChainView, Palette } from "../../api/types";
 import { theme } from "../../theme";
 import type { StageRailActions } from "./actions";
+import { ChainFlow } from "./ChainFlow";
 import { ChainStepList } from "./ChainStepList";
 import { familyIsScored } from "../../components/schema-form/paletteLookup";
 
@@ -44,11 +45,12 @@ export function ChainSection({ stageKey, chain, palette, actions }: ChainSection
         <strong style={{ color: theme.color.chain, fontSize: theme.font.size.m }}>
           ⛓ {isStageOwnedChain ? "Fallback chain" : chain.title}
         </strong>
-        <Chip tone={scored ? "info" : "dim"} title={scored ? "Escalates on a quality threshold or on failure" : "This family reports no quality score — escalates on failure only"}>
+        <Chip tone={scored ? "info" : "dim"} title={scored ? "Escalates to the next provider on a low quality score, or if the call fails" : "This family reports no quality score — escalates only if the provider call fails"}>
           {scored ? "quality-gated" : "failure-only"}
         </Chip>
         {!isStageOwnedChain && <span style={{ color: theme.color.dim, fontSize: theme.font.size.xs }}>{chain.description}</span>}
       </div>
+      <ChainFlow steps={chain.steps} family={chain.family} palette={palette} scored={scored} />
       <ChainStepList
         steps={chain.steps}
         family={chain.family}

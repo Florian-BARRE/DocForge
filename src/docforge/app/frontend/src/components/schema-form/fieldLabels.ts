@@ -65,6 +65,16 @@ const FIELD_COPY: Record<string, FieldCopy> = {
   // The `_seconds` suffix already renders as a unit adornment (humanizeFieldUnit) — repeating
   // "seconds" in the label itself would say it twice.
   axis_timeout_seconds: { label: "Axis timeout" },
+  // The hybrid-retrieve node's branch-fusion strategy — the backend's own description (mirrored in
+  // shared_libs/pipelines/search/nodes/retrieve/hybrid/core.py) is expert-only prose with no plain
+  // lead; this rewrite leads with a one-line plain-English summary before the same technical detail.
+  fusion: {
+    help: "Default (RRF) works well when dense and lexical results disagree; switch to DBSF to let "
+      + "exact keyword hits dominate. RRF (Reciprocal Rank Fusion) merges by rank, agnostic to each "
+      + "branch's score scale. DBSF (Distribution-Based Score Fusion) normalises each branch's score "
+      + "distribution first, so a confident axis can dominate. Tune per collection to shift the "
+      + "semantic ↔ lexical balance.",
+  },
 };
 
 /** snake_case → "Title Case" — the fallback for any field not curated in `FIELD_COPY` above. */

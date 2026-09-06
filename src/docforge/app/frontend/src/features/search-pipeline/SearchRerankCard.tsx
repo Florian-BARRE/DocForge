@@ -1,11 +1,14 @@
 // ====== Code Summary ======
 // The reranking step of the search rail — the one toggleable step (topology edit, see blobOps).
 // Drawn like an ingestion stage: a StageSwitch in the control slot, greyed when off, so the whole
-// canonical chain stays on screen whether or not reranking is enabled.
+// canonical chain stays on screen whether or not reranking is enabled. Carries a fixed scroll
+// anchor (there is only ever one instance of this card) so the minimap can jump-scroll to it —
+// see state/searchMinimapEntries.ts's `RERANK_MINIMAP_KEY`, which must match this literal.
 
 import { theme as t } from "../../theme";
 import { StageSwitch } from "../stage-rail/StageSwitch";
 import { SearchStageFrame } from "./SearchStageFrame";
+import { RERANK_MINIMAP_KEY } from "./state/searchMinimapEntries";
 import { StepNumberBadge } from "./StepNumberBadge";
 
 interface SearchRerankCardProps {
@@ -32,6 +35,7 @@ export function SearchRerankCard({ step, enabled, onToggle }: SearchRerankCardPr
       tag="rerank"
       summary="Re-ranks the top results with a cross-encoder (BGE)."
       enabled={enabled}
+      anchorKey={RERANK_MINIMAP_KEY}
     />
   );
 }

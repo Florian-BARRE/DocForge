@@ -73,6 +73,10 @@ class CollectionModel(BaseModel):
     id: str = Field(description="The collection's UUID.")
     name: str = Field(description="Unique human name.")
     supported_formats: list[str] = Field(description="Accepted upload extensions (e.g. pdf).")
+    tags: list[str] = Field(
+        default_factory=list,
+        description="Free-form labels for grouping/filtering collections in the UI ([] = untagged).",
+    )
     max_file_size_bytes: int = Field(description="Upload size ceiling, bytes.")
     job_timeout_seconds: float | None = Field(
         default=None,
@@ -127,6 +131,10 @@ class CreateCollectionRequest(BaseModel):
 
     name: str = Field(description="Unique human name.")
     supported_formats: list[str] = Field(description="Accepted upload extensions (e.g. pdf).")
+    tags: list[str] | None = Field(
+        default=None,
+        description="Free-form labels for grouping/filtering ([] / omitted = created untagged).",
+    )
     max_file_size_bytes: int = Field(description="Upload size ceiling, bytes.")
     job_timeout_seconds: float | None = Field(
         default=None,
@@ -173,6 +181,11 @@ class UpdateCollectionRequest(BaseModel):
     name: str | None = Field(default=None, description="New unique name.")
     supported_formats: list[str] | None = Field(
         default=None, description="New accepted upload extensions."
+    )
+    tags: list[str] | None = Field(
+        default=None,
+        description="Replace the collection's labels wholesale ([] clears them); omitted = leave "
+        "unchanged.",
     )
     max_file_size_bytes: int | None = Field(default=None, description="New size ceiling, bytes.")
     job_timeout_seconds: float | None = Field(

@@ -43,6 +43,14 @@ export function WorkerCard({ activity, onNavigate, onJobUpdated }: WorkerCardPro
   const state = liveness(activity);
   const color = COLOR_BY_LIVENESS[state];
 
+  // Capacity chip: N running against the worker's max. `max_jobs` null = unknown capacity (an old
+  // heartbeat row / a worker predating this field) — show the running count with "—" for the cap,
+  // never a fabricated number. A worker at/over its cap is the one "hot" signal → forge accent; a
+  // worker with spare capacity is at rest → steel/muted.
+  const running = activity.jobs.length;
+  const capacityLabel = activity.max_jobs === null ? `${running} / —` : `${running} / ${activity.max_jobs}`;
+  const atCapacity = activity.max_jobs !== null && running >= activity.max_jobs;
+
   return (
     <div
       style={{
@@ -68,8 +76,20 @@ export function WorkerCard({ activity, onNavigate, onJobUpdated }: WorkerCardPro
           )}
         </div>
         <span
+          title="running jobs / configured capacity"
           style={{
-            marginLeft: "auto", color, fontSize: theme.font.size.xs, fontWeight: theme.font.weight.semibold,
+            marginLeft: "auto", fontFamily: theme.font.mono, fontSize: theme.font.size.xs,
+            padding: `2px ${theme.space.s}px`, borderRadius: theme.radius.pill,
+            background: atCapacity ? theme.color.accentSoft : theme.color.surface2,
+            border: `1px solid ${atCapacity ? theme.color.accentLine : theme.color.line}`,
+            color: atCapacity ? theme.color.accentSafe : theme.color.mute,
+          }}
+        >
+          {capacityLabel}
+        </span>
+        <span
+          style={{
+            color, fontSize: theme.font.size.xs, fontWeight: theme.font.weight.semibold,
             textTransform: "uppercase", letterSpacing: "0.04em",
           }}
         >

@@ -106,25 +106,27 @@ class JobStatus(BaseModel):
 
 class JobPage(BaseModel):
     """
-    One paginated page of a collection's jobs — the response of ``GET /jobs``.
+    One paginated page of jobs (a collection's, or the fleet's) — the response of ``GET /jobs``.
 
     The list is served bounded (the server clamps ``limit`` to its ceiling) so a heavily re-ingested
-    collection never dumps thousands of rows at once. Iterate ``jobs`` for the page; read ``total`` to
-    drive a pager.
+    collection — or the fleet-wide "All Jobs" view — never dumps thousands of rows at once. Iterate
+    ``jobs`` for the page; read ``total`` to drive a pager.
 
     Attributes:
-        total (int): Total jobs in the collection (ignores paging — drives the pager).
+        total (int): Total jobs matching the filter (ignores paging — drives the pager).
         limit (int): The applied page size (after the server ceiling clamp).
         offset (int): The applied offset.
-        jobs (list[JobStatus]): The page of jobs, newest first.
+        jobs (list[JobStatus]): The page of jobs, in the requested order (newest first by default).
     """
 
     total: int = Field(
-        description="Total jobs in the collection (ignores paging — drives the pager)."
+        description="Total jobs matching the filter (ignores paging — drives the pager)."
     )
     limit: int = Field(description="The applied page size (after the server ceiling clamp).")
     offset: int = Field(description="The applied offset.")
-    jobs: list[JobStatus] = Field(description="The page of jobs, newest first.")
+    jobs: list[JobStatus] = Field(
+        description="The page of jobs, in the requested order (newest first by default)."
+    )
 
 
 class JobEvent(BaseModel):
@@ -187,6 +189,8 @@ class WorkerActivity(BaseModel):
         busy (bool): It currently owns at least one RUNNING job.
         last_seen (datetime | None): Its last heartbeat tick (None when no heartbeat row exists).
         started_at (datetime | None): When the worker process registered (None when no heartbeat).
+        max_jobs (int | None): Its configured parallel-job capacity (arq concurrency); None means
+            unknown capacity (an old heartbeat row, or a worker on a build predating this field).
         jobs (list[JobStatus]): Its running jobs, live.
     """
 
@@ -203,6 +207,12 @@ class WorkerActivity(BaseModel):
     )
     started_at: datetime | None = Field(
         default=None, description="When the worker process registered (None when no heartbeat)."
+    )
+    max_jobs: int | None = Field(
+        default=None,
+        description="The worker's configured parallel-job capacity (arq concurrency, = "
+        "WORKER_CONCURRENCY). Null = unknown capacity: an old heartbeat row, or a worker on a build "
+        "predating this field. The UI pairs it with the running-jobs count as a 'N running / max' chip.",
     )
     jobs: list[JobStatus] = Field(default_factory=list, description="Its running jobs, live.")
 

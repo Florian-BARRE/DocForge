@@ -53,6 +53,24 @@ export function isMetadataColumn(columnId: string): boolean {
   return columnId.startsWith(METADATA_PREFIX);
 }
 
+/** Whether a column's filter value actually constrains the query — an "empty" value (blank text,
+ *  no picks, no bound) means "not filtering on this column", the same rule `filterBuilder` applies
+ *  when it decides whether to emit a clause. Drives the Filters toggle's active-count badge. */
+export function isFilterValueActive(value: ColumnFilterValue): boolean {
+  switch (value.kind) {
+    case "text": return value.contains.trim() !== "";
+    case "enumMulti": return value.values.length > 0;
+    case "listIn": return value.values.length > 0;
+    case "bool": return value.value !== null;
+    case "numberRange": return value.gte.trim() !== "" || value.lte.trim() !== "";
+    case "dateRange": return value.gte.trim() !== "" || value.lte.trim() !== "";
+  }
+}
+
+export function countActiveFilters(state: ColumnFiltersState): number {
+  return Object.values(state).filter(isFilterValueActive).length;
+}
+
 // The selection checkbox and row-actions columns are structural chrome, not data — they stay
 // pinned first/last and are excluded from both drag-reorder and resize.
 export const PINNED_FIRST_COLUMN_ID = "__select";

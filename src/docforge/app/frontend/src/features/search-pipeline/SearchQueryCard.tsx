@@ -5,12 +5,19 @@
 // in the frame, greyed when off; when on, its provider config (endpoint, model, key, temperature)
 // is revealed inline. Forge orange marks the ONE active transform — "Off" reads as steel, not work.
 
+import { useState } from "react";
 import type { Palette } from "../../api/types";
 import { NumberField } from "../../components/schema-form/NumberField";
 import { findNodeCard } from "../../components/schema-form/paletteLookup";
 import { SearchStageFrame } from "./SearchStageFrame";
 import type { QueryTransformKind } from "./state/blobOps";
 import { theme as t } from "../../theme";
+
+// The DOM anchor for the rare fallback rendering (no `normalize` node to nest under, see
+// SearchPipelineRail) — not wired into the minimap's own step list (that fallback path is a
+// degraded custom-blob case, not one of the pipeline's 6 canonical steps), but still jump/track-able
+// on its own via the shared `stageAnchorId` convention if ever needed.
+const QUERY_FALLBACK_ANCHOR_KEY = "query-fallback";
 
 // Last-resort fallback only — the real values come from the active method's own `config_schema`
 // (`GET /pipelines/search`, already fetched as `palette` by the editor), so a backend default
@@ -74,6 +81,7 @@ interface SearchQueryCardProps {
 }
 
 export function SearchQueryCard({ active, config, palette, onSelect, onChangeConfig, nested }: SearchQueryCardProps) {
+  const [expanded, setExpanded] = useState(true);
   const enabled = active !== null;
   const defaultBaseUrl = schemaDefault(palette, active, "base_url", isString);
   const defaultModel = schemaDefault(palette, active, "model", isString);
@@ -183,6 +191,10 @@ export function SearchQueryCard({ active, config, palette, onSelect, onChangeCon
       tag="query"
       summary={SUMMARY_BY_MODE[active ?? "off"]}
       enabled={enabled}
+      anchorKey={QUERY_FALLBACK_ANCHOR_KEY}
+      collapsible={enabled}
+      expanded={expanded}
+      onToggleExpand={() => setExpanded((v) => !v)}
     >
       {fields}
     </SearchStageFrame>

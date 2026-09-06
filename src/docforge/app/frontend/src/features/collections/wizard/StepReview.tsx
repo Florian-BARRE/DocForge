@@ -16,6 +16,7 @@ interface StepReviewProps {
   mode: WizardMode;
   name: string;
   formats: string[];
+  tags: string[];
   maxSizeBytes: number;
   jobTimeoutSeconds: number | null;
   fields: DraftField[];
@@ -27,7 +28,7 @@ interface StepReviewProps {
 }
 
 export function StepReview({
-  mode, name, formats, maxSizeBytes, jobTimeoutSeconds, fields, removedFieldNames, onBack, onSubmit, submitting, issues,
+  mode, name, formats, tags, maxSizeBytes, jobTimeoutSeconds, fields, removedFieldNames, onBack, onSubmit, submitting, issues,
 }: StepReviewProps) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: theme.space.l }}>
@@ -41,6 +42,11 @@ export function StepReview({
         <div style={{ display: "flex", gap: 6, marginTop: theme.space.s, flexWrap: "wrap" }}>
           {formats.map((f) => <Chip key={f} tone="neutral">{f}</Chip>)}
         </div>
+        {tags.length > 0 && (
+          <div style={{ display: "flex", gap: 6, marginTop: theme.space.xs, flexWrap: "wrap" }}>
+            {tags.map((tag) => <Chip key={tag} tone="dim">{tag}</Chip>)}
+          </div>
+        )}
         <div style={{ color: theme.color.dim, fontSize: theme.font.size.m, marginTop: theme.space.s }}>
           Max file size: {bytesToMb(maxSizeBytes).toFixed(1)} MB · job timeout:{" "}
           {jobTimeoutSeconds !== null

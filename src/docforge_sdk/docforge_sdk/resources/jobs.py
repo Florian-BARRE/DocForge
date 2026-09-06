@@ -24,26 +24,42 @@ class _JobsSpecs(_ResourceMixin):
     _JOBS_PATH = "/jobs"
 
     def _list_spec(
-        self, collection_id: str, limit: int | None = None, offset: int | None = None
+        self,
+        collection_id: str | None = None,
+        status: list[str] | None = None,
+        order: str | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
     ) -> RequestSpec:
         """
-        Build the spec for listing a collection's jobs (a bounded, paginated page).
+        Build the spec for listing jobs (a bounded, paginated page) — scoped or fleet-wide.
 
         Args:
-            collection_id (str): The collection whose jobs to list (a QUERY parameter).
+            collection_id (str | None): Scope to one collection (a QUERY parameter). Omitted → a
+                FLEET-WIDE listing (full-access keys only) — the "All Jobs" view.
+            status (list[str] | None): Filter to these job statuses (pending/running/done/failed/
+                cancelled), passed as a repeated query param. Omitted → all statuses.
+            order (str | None): ``newest`` (created_at DESC, the default) or ``oldest`` (created_at
+                ASC — FIFO/"what runs next"). Omitted → the server default (newest).
             limit (int | None): Page size; the server clamps it to its ceiling. Omitted → the
                 server default (its ceiling).
             offset (int | None): Rows to skip for paging. Omitted → 0.
 
         Returns:
-            RequestSpec: A GET on the jobs collection filtered by ``collection_id`` (+ paging).
+            RequestSpec: A GET on the jobs collection with the optional scope/status/order/paging.
         """
-        params: dict[str, object] = {"collection_id": collection_id}
+        params: dict[str, object] = {}
+        if collection_id is not None:
+            params["collection_id"] = collection_id
+        if status is not None:
+            params["status"] = status
+        if order is not None:
+            params["order"] = order
         if limit is not None:
             params["limit"] = limit
         if offset is not None:
             params["offset"] = offset
-        return RequestSpec("GET", self._JOBS_PATH, params=params)
+        return RequestSpec("GET", self._JOBS_PATH, params=params or None)
 
     def _get_spec(self, job_id: str) -> RequestSpec:
         """
@@ -114,20 +130,32 @@ class AsyncJobs(AsyncResource, _JobsSpecs):
     """Asynchronous ingestion-job monitoring."""
 
     async def list(
-        self, collection_id: str, limit: int | None = None, offset: int | None = None
+        self,
+        collection_id: str | None = None,
+        status: list[str] | None = None,
+        order: str | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
     ) -> JobPage:
         """
-        List one bounded page of a collection's jobs, newest first.
+        List one bounded page of jobs — a collection's, or (with no ``collection_id``) the fleet's.
 
         Args:
-            collection_id (str): The collection whose jobs to list.
+            collection_id (str | None): Scope to one collection. Omitted → a FLEET-WIDE listing
+                (full-access keys only) — the "All Jobs" view.
+            status (list[str] | None): Filter to these statuses (pending/running/done/failed/
+                cancelled). Omitted → all statuses.
+            order (str | None): ``newest`` (default, created_at DESC) or ``oldest`` (created_at ASC —
+                FIFO/"what runs next", typically with ``status=['pending']``).
             limit (int | None): Page size; the server clamps it to its ceiling (default = ceiling).
             offset (int | None): Rows to skip for paging (default 0).
 
         Returns:
             JobPage: The page (``.jobs``) plus ``total``/``limit``/``offset`` for pagination.
         """
-        return await self._transport.request(self._list_spec(collection_id, limit, offset), JobPage)
+        return await self._transport.request(
+            self._list_spec(collection_id, status, order, limit, offset), JobPage
+        )
 
     async def get(self, job_id: str) -> JobStatus:
         """
@@ -197,20 +225,32 @@ class SyncJobs(SyncResource, _JobsSpecs):
     """Synchronous ingestion-job monitoring."""
 
     def list(
-        self, collection_id: str, limit: int | None = None, offset: int | None = None
+        self,
+        collection_id: str | None = None,
+        status: list[str] | None = None,
+        order: str | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
     ) -> JobPage:
         """
-        List one bounded page of a collection's jobs, newest first.
+        List one bounded page of jobs — a collection's, or (with no ``collection_id``) the fleet's.
 
         Args:
-            collection_id (str): The collection whose jobs to list.
+            collection_id (str | None): Scope to one collection. Omitted → a FLEET-WIDE listing
+                (full-access keys only) — the "All Jobs" view.
+            status (list[str] | None): Filter to these statuses (pending/running/done/failed/
+                cancelled). Omitted → all statuses.
+            order (str | None): ``newest`` (default, created_at DESC) or ``oldest`` (created_at ASC —
+                FIFO/"what runs next", typically with ``status=['pending']``).
             limit (int | None): Page size; the server clamps it to its ceiling (default = ceiling).
             offset (int | None): Rows to skip for paging (default 0).
 
         Returns:
             JobPage: The page (``.jobs``) plus ``total``/``limit``/``offset`` for pagination.
         """
-        return self._transport.request(self._list_spec(collection_id, limit, offset), JobPage)
+        return self._transport.request(
+            self._list_spec(collection_id, status, order, limit, offset), JobPage
+        )
 
     def get(self, job_id: str) -> JobStatus:
         """

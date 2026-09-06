@@ -48,10 +48,13 @@
   --capability: #3d454f; --capability-soft: rgba(61, 69, 79, 0.10); --capability-strong: #3d454f; /* steel — passive capability/origin tags (user/semantic/lexical/filter), same hue as --info */
 
   /* Categorical data-viz triad — three physical stores (S3/Postgres/Qdrant) on a footprint bar.
-     No hue borrows accent/ok/error/warn: warm steel (near-neutral), clay terracotta, olive-moss —
-     spread ~30° apart so they read as different colours, not just different shades of one grey. */
+     No hue borrows accent/ok/error/warn: warm steel (near-neutral), muted gold/ochre, olive-moss —
+     spread ~30-40° apart in hue so they read as different colours, not just different shades of one
+     grey. Postgres was previously a red-orange (~16° hue) that sat inside the same red-orange band as
+     --accent (~17.5°) and --error (~8°), reading as "hot/error" next to the real error ink on the
+     storage-footprint chart (2026-09 orange audit) — moved to a golden/ochre hue (~40-43°) instead. */
   --store-s3: #837563;       --store-s3-soft: rgba(131, 117, 99, 0.14);
-  --store-postgres: #974f35; --store-postgres-soft: rgba(151, 79, 53, 0.14);
+  --store-postgres: #8a6d23; --store-postgres-soft: rgba(138, 109, 35, 0.14);
   --store-qdrant: #6f7133;   --store-qdrant-soft: rgba(111, 113, 51, 0.14);
 
   /* Chunk grouping outline in the Layout view — ONE distinct teal for every chunk's dashed container
@@ -72,6 +75,9 @@
   /* Modal backdrop scrim — deliberately near-black in BOTH palettes (a dark scrim reads correctly
      against either paper or ink content), so it does not flip between themes like other tokens. */
   --overlay: rgba(0, 0, 0, 0.8);
+  /* Same near-black, much lower alpha — the sidebar's transient hover/focus overlay scrim (never
+     shown while pinned). Same value in both palettes for the same reason as --overlay above. */
+  --overlay-subtle: rgba(0, 0, 0, 0.24);
   color-scheme: light;
 }
 
@@ -110,7 +116,7 @@
 
   /* Same three hues, stepped lighter to stay legible on ink. */
   --store-s3: #aea393;       --store-s3-soft: rgba(174, 163, 147, 0.16);
-  --store-postgres: #c77c60; --store-postgres-soft: rgba(199, 124, 96, 0.18);
+  --store-postgres: #c9a355; --store-postgres-soft: rgba(201, 163, 85, 0.18);
   --store-qdrant: #b0b356;   --store-qdrant-soft: rgba(176, 179, 86, 0.18);
 
   /* Chunk grouping outline, stepped lighter for ink. */
@@ -125,6 +131,7 @@
   --shadow-2: 0 10px 30px -10px rgba(0, 0, 0, 0.6);
   --shadow-pop: 0 16px 44px -12px rgba(0, 0, 0, 0.7);
   --overlay: rgba(0, 0, 0, 0.8);
+  --overlay-subtle: rgba(0, 0, 0, 0.24);
   color-scheme: dark;
 }
 

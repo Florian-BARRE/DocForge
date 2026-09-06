@@ -74,13 +74,18 @@ class CollectionApi:
         *,
         name: str | None = None,
         supported_formats: list[str] | None = None,
+        tags: list[str] | None = None,
         max_file_size_bytes: int | None = None,
         job_timeout_seconds: float | None = None,
         pipeline: dict | None = None,
         search: dict | None = None,
         needs_reindex: bool | None = None,
     ) -> None:
-        """Patch the provided contract fields on a collection (None means 'leave unchanged')."""
+        """Patch the provided contract fields on a collection (None means 'leave unchanged').
+
+        ``tags`` follows the same convention: None leaves the current labels untouched, while an
+        explicit empty list clears them back to untagged.
+        """
         collection = await session.get(Collection, collection_id)
         if collection is None:
             return
@@ -88,6 +93,8 @@ class CollectionApi:
             collection.name = name
         if supported_formats is not None:
             collection.supported_formats = supported_formats
+        if tags is not None:
+            collection.tags = tags
         if max_file_size_bytes is not None:
             collection.max_file_size_bytes = max_file_size_bytes
         if job_timeout_seconds is not None:

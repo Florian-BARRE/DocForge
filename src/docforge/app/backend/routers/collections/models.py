@@ -55,6 +55,10 @@ class CollectionModel(BaseModel):
     id: str = Field(description="The collection's UUID.")
     name: str = Field(description="Unique human name.")
     supported_formats: list[str] = Field(description="Accepted upload extensions (e.g. pdf).")
+    tags: list[str] = Field(
+        default_factory=list,
+        description="Free-form labels for grouping/filtering collections in the UI ([] = untagged).",
+    )
     max_file_size_bytes: int = Field(description="Upload size ceiling, bytes.")
     job_timeout_seconds: float | None = Field(
         default=None,
@@ -131,6 +135,10 @@ class CollectionContractModel(BaseModel):
 class CreateCollectionRequest(CollectionContractModel):
     """Create a collection from A to Z — the identity/limits contract, schema and (optionally) its pipeline."""
 
+    tags: list[str] | None = Field(
+        default=None,
+        description="Free-form labels for grouping/filtering ([] / omitted = created untagged).",
+    )
     fields: list[FieldSpecModel] = Field(
         default_factory=list,
         description="The FULL schema, declared up front (vector space is fixed at creation).",
@@ -154,6 +162,11 @@ class UpdateCollectionRequest(BaseModel):
     name: str | None = Field(default=None, description="New unique name.")
     supported_formats: list[str] | None = Field(
         default=None, description="New accepted upload extensions."
+    )
+    tags: list[str] | None = Field(
+        default=None,
+        description="Replace the collection's labels wholesale ([] clears them); omitted = leave "
+        "unchanged.",
     )
     max_file_size_bytes: int | None = Field(default=None, description="New size ceiling, bytes.")
     job_timeout_seconds: float | None = Field(

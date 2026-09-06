@@ -94,6 +94,7 @@ def _fake_collection(pipeline: dict, search: dict) -> SimpleNamespace:
         id="11111111-1111-1111-1111-111111111111",
         name="c1",
         supported_formats=["pdf"],
+        tags=[],
         max_file_size_bytes=1_000_000,
         job_timeout_seconds=None,
         needs_reindex=False,

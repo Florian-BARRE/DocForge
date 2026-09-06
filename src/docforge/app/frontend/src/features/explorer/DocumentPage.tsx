@@ -4,15 +4,16 @@
 // cluster (toggle/re-ingest/delete) lives in `DocumentPageActions` — this component owns just the
 // document's own identity load + tab switching.
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { getDocument, type DocumentDetail } from "../../api/explorer";
-import { BackLink } from "../../components/BackLink";
+import type { BreadcrumbItem } from "../../components/Breadcrumb";
 import { Chip } from "../../components/Chip";
 import { ErrorState } from "../../components/ErrorState";
 import { LoadingState } from "../../components/LoadingState";
 import { PageBoxLightbox } from "../../components/PageBoxLightbox";
 import { PageHeader } from "../../components/PageHeader";
 import { TabNav, tabButtonId } from "../../components/TabNav";
+import { useCollectionBreadcrumbExtra } from "../../shell/collectionBreadcrumbExtra";
 import type { Navigate } from "../../shell/view";
 import { theme } from "../../theme";
 import { ChunksTab } from "./chunks/ChunksTab";
@@ -58,6 +59,17 @@ export function DocumentPage({ collectionId, documentId, onNavigate }: DocumentP
 
   const tabs = useDocumentTabs(documentId, activeTab);
 
+  // Grows the enclosing CollectionShell's own "Collections / {collection}" breadcrumb into this
+  // page's full trail (see useCollectionBreadcrumbExtra) — memoized so the context effect below
+  // doesn't refire every render. Contributed only once the filename is known; cleared (via the
+  // hook's own cleanup) on unmount or while `document` is still loading.
+  const breadcrumbExtra = useMemo<BreadcrumbItem[]>(() => [
+    { label: "Corpus", view: { name: "collection-documents", collectionId } },
+    { label: "Documents", view: { name: "collection-documents", collectionId } },
+    { label: document?.filename ?? "" },
+  ], [collectionId, document?.filename]);
+  useCollectionBreadcrumbExtra(document ? breadcrumbExtra : null);
+
   const jumpToBlock = (blockId: string) => {
     setFocusBlockId(blockId);
     setActiveTab("ir");
@@ -74,7 +86,6 @@ export function DocumentPage({ collectionId, documentId, onNavigate }: DocumentP
     <div className="df-rise" style={{ padding: `${theme.space.m}px ${theme.space.xl}px ${theme.space.xl}px`, overflowY: "auto", height: "100%", display: "flex", flexDirection: "column", maxWidth: activeTab === "layout" ? 1560 : 1200, margin: "0 auto", width: "100%" }}>
       <PageHeader
         compact
-        eyebrow={<BackLink label="Documents" onClick={() => onNavigate({ name: "collection-documents", collectionId })} />}
         title={<span style={{ wordBreak: "break-word" }}>{document.filename}</span>}
         subtitle={
           <span style={{ display: "inline-flex", alignItems: "center", gap: theme.space.s, flexWrap: "wrap" }}>

@@ -11,7 +11,6 @@ import type { IRBlock, IREnrichment } from "../../../api/explorer";
 import { humanizeEnumOption } from "../../../components/schema-form/fieldLabels";
 import { theme } from "../../../theme";
 import { displayPage } from "../format";
-import { AttemptChain } from "./AttemptChain";
 import { blockStyle } from "./blockColors";
 
 interface ReadingOrderEntryProps {
@@ -73,8 +72,6 @@ function ParserChain({ chain }: { chain: { kind: string; status: string }[] }) {
 /** Compact machine-fact line describing HOW this block was extracted and where it sits. */
 function ExtractionFacts({ block, parseChain }: { block: IRBlock; parseChain?: { kind: string; status: string }[] }) {
   const facts: string[] = [`p${displayPage(block.page)}`, `#${block.reading_order}`];
-  if (block.column_index > 0) facts.push(`col ${block.column_index}`);
-  if (block.confidence != null) facts.push(`conf ${(block.confidence * 100).toFixed(0)}%`);
   if (block.language) facts.push(block.language);
   return (
     <div style={{ display: "flex", alignItems: "center", gap: theme.space.xs, flexWrap: "wrap" }}>
@@ -178,7 +175,6 @@ export function ReadingOrderEntry({ block, index, enrichments, selected, related
               <span style={{ fontSize: theme.font.size.xs, color: theme.color.errorStrong }}>{enrichment.status}</span>
             )}
           </div>
-          <AttemptChain attempts={enrichment.attempts} />
           {enrichment.text && (
             <span style={{ fontSize: theme.font.size.xs, color: theme.color.dim, whiteSpace: "pre-wrap", wordBreak: "break-word", lineHeight: 1.4 }}>
               {enrichment.text}

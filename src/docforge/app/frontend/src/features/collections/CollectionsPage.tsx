@@ -14,19 +14,23 @@ import type { Navigate } from "../../shell/view";
 import { theme } from "../../theme";
 import { CollectionCard } from "./CollectionCard";
 import { CollectionsToolbar } from "./CollectionsToolbar";
-import { useCollectionsFleet } from "./state/useCollectionsFleet";
+import { useCollectionsFleet, type FleetHealthFilter } from "./state/useCollectionsFleet";
 import { ImportPanel } from "./transfer/ImportPanel";
 
 interface CollectionsPageProps {
   onNavigate: Navigate;
+  /** Deep-linked health preset from the sidebar (View's optional `health` field) — undefined lands
+   *  on the unfiltered fleet list. */
+  initialHealthFilter?: FleetHealthFilter;
 }
 
-export function CollectionsPage({ onNavigate }: CollectionsPageProps) {
+export function CollectionsPage({ onNavigate, initialHealthFilter }: CollectionsPageProps) {
   const [showImport, setShowImport] = useState(false);
   const {
     collections, loadError, load, visibleEntries, totalCount,
     searchQuery, setSearchQuery, sortKey, setSortKey, healthFilter, setHealthFilter,
-  } = useCollectionsFleet();
+    availableTags, selectedTags, setSelectedTags,
+  } = useCollectionsFleet(initialHealthFilter);
 
   return (
     <div className="df-rise" style={{ padding: `${theme.space.xl}px`, overflowY: "auto", height: "100%", maxWidth: 1200, margin: "0 auto", width: "100%" }}>
@@ -67,6 +71,9 @@ export function CollectionsPage({ onNavigate }: CollectionsPageProps) {
             onHealthFilterChange={setHealthFilter}
             sortKey={sortKey}
             onSortKeyChange={setSortKey}
+            availableTags={availableTags}
+            selectedTags={selectedTags}
+            onSelectedTagsChange={setSelectedTags}
             visibleCount={visibleEntries.length}
             totalCount={totalCount}
           />
@@ -74,7 +81,7 @@ export function CollectionsPage({ onNavigate }: CollectionsPageProps) {
             <EmptyState
               title="No collections match"
               subtitle="Try a different name, or clear the health filter."
-              action={<Button variant="secondary" onClick={() => { setSearchQuery(""); setHealthFilter("all"); }}>Clear filters</Button>}
+              action={<Button variant="secondary" onClick={() => { setSearchQuery(""); setHealthFilter("all"); setSelectedTags([]); }}>Clear filters</Button>}
             />
           ) : (
             <div className="df-stagger" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: theme.space.l }}>

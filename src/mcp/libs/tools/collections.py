@@ -37,6 +37,7 @@ def register(mcp: FastMCP, sdk: AsyncClient) -> None:
         name: str,
         supported_formats: list[str],
         max_file_size_bytes: int,
+        tags: list[str] | None = None,
         fields: list[dict[str, Any]] | None = None,
         pipeline: dict[str, Any] | None = None,
     ) -> Any:
@@ -45,11 +46,13 @@ def register(mcp: FastMCP, sdk: AsyncClient) -> None:
         front (each item: field_name, field_type, required, filterable, lexical, semantic,
         enum_values, origin, scope) — the vector space is fixed at creation and cannot grow
         later. `pipeline` is the ingestion graph blob; omit it to use the product default
-        (all stages wired).
+        (all stages wired). `tags` is an optional list of free-form labels for grouping and
+        filtering collections in the UI (omit for untagged).
         """
         request = CreateCollectionRequest(
             name=name,
             supported_formats=supported_formats,
+            tags=tags,
             max_file_size_bytes=max_file_size_bytes,
             # The LLM passes plain dicts at the tool boundary; validate each into the SDK's typed
             # FieldSpec so the request is correctly typed (and malformed fields fail fast here).
@@ -64,6 +67,7 @@ def register(mcp: FastMCP, sdk: AsyncClient) -> None:
         collection_id: str,
         name: str | None = None,
         supported_formats: list[str] | None = None,
+        tags: list[str] | None = None,
         max_file_size_bytes: int | None = None,
         fields: list[dict[str, Any]] | None = None,
         pipeline: dict[str, Any] | None = None,
@@ -74,6 +78,7 @@ def register(mcp: FastMCP, sdk: AsyncClient) -> None:
         Patch identity/limits, the metadata schema (applied by diff against field_name — an
         omitted field is removed), and/or the config blobs (pipeline / search graphs, each
         validated before storage). A change to the searchable schema flips needs_reindex.
+        `tags` replaces the collection's labels wholesale (omit to leave them unchanged).
         """
         # 1. Only carry the knobs the caller actually set — an omitted param means "no change",
         #    so it must stay unset on the request rather than serialise as an explicit null.
@@ -82,6 +87,7 @@ def register(mcp: FastMCP, sdk: AsyncClient) -> None:
             for key, value in {
                 "name": name,
                 "supported_formats": supported_formats,
+                "tags": tags,
                 "max_file_size_bytes": max_file_size_bytes,
                 "fields": fields,
                 "pipeline": pipeline,

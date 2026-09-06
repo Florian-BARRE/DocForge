@@ -70,6 +70,12 @@ export function SearchTargetPicker({ fields, selection, onToggle, emptyCollectio
           <span style={{ fontSize: theme.font.size.xs, color: theme.color.mute }}>No documents indexed yet</span>
         )}
       </div>
+      {/* One shared legend rather than repeating the same caption on every field's checkbox pair —
+          the jargon only needs translating once per page, and a per-field repeat would just be noise
+          once a collection has several searchable metadata fields. */}
+      <div style={{ fontSize: theme.font.size.xs, color: theme.color.mute }}>
+        semantic — meaning-based match · lexical — exact word match
+      </div>
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: theme.space.m }}>
         <TargetRow
@@ -117,13 +123,13 @@ function TargetRow({ label, supportsSemantic, supportsLexical, disabled, value, 
     >
       <span style={{ fontFamily: theme.font.mono, fontWeight: 600 }}>{label}</span>
       {supportsSemantic && (
-        <label style={{ display: "flex", alignItems: "center", gap: 3, fontSize: theme.font.size.xs, color: theme.color.dim, cursor: disabled ? "default" : "pointer" }}>
+        <label title="Meaning-based match" style={{ display: "flex", alignItems: "center", gap: 3, fontSize: theme.font.size.xs, color: theme.color.dim, cursor: disabled ? "default" : "pointer" }}>
           <input type="checkbox" disabled={disabled} checked={value.semantic} onChange={(e) => onToggle("semantic", e.target.checked)} />
           semantic
         </label>
       )}
       {supportsLexical && (
-        <label style={{ display: "flex", alignItems: "center", gap: 3, fontSize: theme.font.size.xs, color: theme.color.dim, cursor: disabled ? "default" : "pointer" }}>
+        <label title="Exact word match" style={{ display: "flex", alignItems: "center", gap: 3, fontSize: theme.font.size.xs, color: theme.color.dim, cursor: disabled ? "default" : "pointer" }}>
           <input type="checkbox" disabled={disabled} checked={value.lexical} onChange={(e) => onToggle("lexical", e.target.checked)} />
           lexical
         </label>

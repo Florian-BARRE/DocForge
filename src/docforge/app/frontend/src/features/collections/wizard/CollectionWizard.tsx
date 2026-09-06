@@ -17,12 +17,13 @@ import { DangerZone } from "./DangerZone";
 import { StepIdentity } from "./StepIdentity";
 import { StepReview } from "./StepReview";
 import { StepSchema } from "./StepSchema";
+import { WizardPreviewPanel } from "./WizardPreviewPanel";
 import { WizardSteps } from "./WizardSteps";
 import {
+  buildWizardPayload,
   draftFromCollection,
   mbToBytes,
   removedFieldNames,
-  toFieldSpec,
   type DraftField,
 } from "./wizardTypes";
 
@@ -48,6 +49,7 @@ export function CollectionWizard({ onNavigate, mode = "create", initial, collect
   const [step, setStep] = useState(0);
   const [name, setName] = useState(prefill?.name ?? "");
   const [formats, setFormats] = useState<string[]>(prefill?.formats ?? []);
+  const [tags, setTags] = useState<string[]>(prefill?.tags ?? []);
   const [maxSizeMb, setMaxSizeMb] = useState(prefill?.maxSizeMb ?? 50);
   const [jobTimeoutSeconds, setJobTimeoutSeconds] = useState<number | null>(prefill?.jobTimeoutSeconds ?? null);
   const [preset, setPreset] = useState<CollectionPreset>("standard");
@@ -68,18 +70,14 @@ export function CollectionWizard({ onNavigate, mode = "create", initial, collect
     ? ({ name: "collection", collectionId } as const)
     : ({ name: "collections" } as const);
 
+  // Shared by the submit call below and the live preview panel — the two can never drift apart.
+  const draftPayload = buildWizardPayload({ extraContract, name, formats, tags, maxSizeMb, jobTimeoutSeconds, fields });
+
   const handleSubmit = async () => {
     setSubmitting(true);
     setIssues([]);
     try {
-      const payload = {
-        ...extraContract,
-        name: name.trim(),
-        supported_formats: formats,
-        max_file_size_bytes: mbToBytes(maxSizeMb),
-        job_timeout_seconds: jobTimeoutSeconds,
-        fields: fields.map(toFieldSpec),
-      };
+      const payload = draftPayload;
       const result = mode === "edit" && collectionId
         ? await updateCollection(collectionId, payload)
         // `preset` selects the stock ingestion blob (light = fast, enrichment-free); create-only.
@@ -96,32 +94,40 @@ export function CollectionWizard({ onNavigate, mode = "create", initial, collect
   };
 
   return (
-    <div className="df-rise" style={{ padding: theme.space.xl, maxWidth: 900, margin: "0 auto", overflowY: "auto", height: "100%" }}>
+    <div className="df-rise" style={{ padding: theme.space.xl, maxWidth: 1200, margin: "0 auto", overflowY: "auto", height: "100%" }}>
       <PageHeader
         eyebrow={<BackLink label={mode === "edit" ? "Collection" : "Collections"} onClick={() => onNavigate(backTarget)} />}
         title={mode === "edit" ? `Edit collection — ${initial?.name}` : "New collection"}
         subtitle={mode === "edit" ? "Update the contract — schema changes apply on submit." : "Define the contract this collection ingests against."}
       />
       <WizardSteps labels={stepLabels} current={step} />
-      {step === 0 && (
-        <StepIdentity
-          mode={mode}
-          name={name} onNameChange={setName}
-          formats={formats} onFormatsChange={setFormats}
-          maxSizeMb={maxSizeMb} onMaxSizeMbChange={setMaxSizeMb}
-          jobTimeoutSeconds={jobTimeoutSeconds} onJobTimeoutSecondsChange={setJobTimeoutSeconds}
-          preset={preset} onPresetChange={setPreset}
-          extra={extraContract} onExtraChange={setExtraContract}
-          onNext={() => setStep(1)}
-        />
-      )}
-      {step === 1 && (
-        <StepSchema mode={mode} fields={fields} onFieldsChange={setFields} onBack={() => setStep(0)} onNext={() => setStep(2)} />
+      {(step === 0 || step === 1) && (
+        <div style={{ display: "flex", gap: theme.space.xl, alignItems: "flex-start", flexWrap: "wrap" }}>
+          <div style={{ flex: "1 1 480px", minWidth: 0 }}>
+            {step === 0 && (
+              <StepIdentity
+                mode={mode}
+                name={name} onNameChange={setName}
+                formats={formats} onFormatsChange={setFormats}
+                tags={tags} onTagsChange={setTags}
+                maxSizeMb={maxSizeMb} onMaxSizeMbChange={setMaxSizeMb}
+                jobTimeoutSeconds={jobTimeoutSeconds} onJobTimeoutSecondsChange={setJobTimeoutSeconds}
+                preset={preset} onPresetChange={setPreset}
+                extra={extraContract} onExtraChange={setExtraContract}
+                onNext={() => setStep(1)}
+              />
+            )}
+            {step === 1 && (
+              <StepSchema mode={mode} fields={fields} onFieldsChange={setFields} onBack={() => setStep(0)} onNext={() => setStep(2)} />
+            )}
+          </div>
+          <WizardPreviewPanel payload={draftPayload} />
+        </div>
       )}
       {step === 2 && (
         <StepReview
           mode={mode}
-          name={name} formats={formats} maxSizeBytes={mbToBytes(maxSizeMb)} jobTimeoutSeconds={jobTimeoutSeconds} fields={fields}
+          name={name} formats={formats} tags={tags} maxSizeBytes={mbToBytes(maxSizeMb)} jobTimeoutSeconds={jobTimeoutSeconds} fields={fields}
           removedFieldNames={removed}
           onBack={() => setStep(1)} onSubmit={handleSubmit} submitting={submitting} issues={issues}
         />

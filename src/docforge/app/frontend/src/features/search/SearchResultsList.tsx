@@ -14,6 +14,9 @@ export function SearchResultsList({ response }: SearchResultsListProps) {
   // human-readable note through debug_info.degraded — surface it so partial results are never
   // mistaken for the full-hybrid ranking.
   const degraded = typeof response.debug_info?.degraded === "string" ? response.debug_info.degraded : null;
+  // Results are returned ranked highest-first, so the first hit's score is the result set's own
+  // top — every hit's relevance bucket is computed relative to it (see searchRelevance.ts).
+  const topScore = response.hits[0]?.score ?? 0;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: theme.space.s }}>
@@ -44,7 +47,7 @@ export function SearchResultsList({ response }: SearchResultsListProps) {
       )}
 
       {response.hits.map((hit) => (
-        <SearchHitCard key={hit.chunk_id} hit={hit} />
+        <SearchHitCard key={hit.chunk_id} hit={hit} topScore={topScore} />
       ))}
     </div>
   );

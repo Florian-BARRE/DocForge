@@ -1,6 +1,8 @@
 // ====== Code Summary ======
-// The light/dark switch in the top bar — a compact segmented control (sun | moon) that flips the
-// palette via useTheme. Icon-only, with the active side lit by the accent-soft wash.
+// The light/dark switch — a segmented control (sun | moon) that flips the palette via useTheme,
+// active side lit by the accent-soft wash. `compact` swaps this for a single icon-only button
+// (current theme's icon, click toggles) for contexts too narrow for the two-button control — the
+// sidebar's collapsed rail (see SidebarFooter).
 
 import { theme as t } from "../theme";
 import { useTheme, type ThemeName } from "./useTheme";
@@ -23,8 +25,31 @@ function Moon() {
   );
 }
 
-export function ThemeToggle() {
-  const { theme, setTheme } = useTheme();
+interface ThemeToggleProps {
+  compact?: boolean;
+}
+
+export function ThemeToggle({ compact = false }: ThemeToggleProps = {}) {
+  const { theme, setTheme, toggle } = useTheme();
+
+  if (compact) {
+    const Icon = theme === "light" ? Sun : Moon;
+    return (
+      <button
+        onClick={toggle}
+        title={`Theme: ${theme} (click to switch)`}
+        aria-label="Toggle theme"
+        style={{
+          display: "grid", placeItems: "center", width: 30, height: 26, flexShrink: 0,
+          border: `1px solid ${t.color.line}`, borderRadius: t.radius.s, cursor: "pointer",
+          background: "transparent", color: t.color.dim,
+        }}
+      >
+        <Icon />
+      </button>
+    );
+  }
+
   const seg = (name: ThemeName): React.CSSProperties => {
     const active = theme === name;
     return {

@@ -44,7 +44,7 @@ async def test_stop_deletes_its_own_heartbeat_row() -> None:
     """A cleanly-stopped worker removes its own liveness row so it disappears from the fleet."""
     delete_heartbeat = AsyncMock()
     database = SimpleNamespace(jobs=SimpleNamespace(delete_heartbeat=delete_heartbeat))
-    writer = HeartbeatWriter(database, worker_id="w1", worker_name="w1", interval_seconds=10)
+    writer = HeartbeatWriter(database, worker_id="w1", worker_name="w1", interval_seconds=10, max_jobs=4)
 
     writer.start()
     await writer.stop()
@@ -56,7 +56,7 @@ async def test_stop_deletes_even_when_never_started() -> None:
     """stop() de-registers the row regardless of whether the beat loop ever ran."""
     delete_heartbeat = AsyncMock()
     database = SimpleNamespace(jobs=SimpleNamespace(delete_heartbeat=delete_heartbeat))
-    writer = HeartbeatWriter(database, worker_id="w1", worker_name="w1", interval_seconds=10)
+    writer = HeartbeatWriter(database, worker_id="w1", worker_name="w1", interval_seconds=10, max_jobs=4)
 
     await writer.stop()
 
@@ -67,12 +67,24 @@ async def test_stop_swallows_a_delete_error() -> None:
     """A DB blip during de-registration must never crash an otherwise-clean shutdown."""
     delete_heartbeat = AsyncMock(side_effect=RuntimeError("db down"))
     database = SimpleNamespace(jobs=SimpleNamespace(delete_heartbeat=delete_heartbeat))
-    writer = HeartbeatWriter(database, worker_id="w1", worker_name="w1", interval_seconds=10)
+    writer = HeartbeatWriter(database, worker_id="w1", worker_name="w1", interval_seconds=10, max_jobs=4)
 
     # No exception escapes stop().
     await writer.stop()
 
     delete_heartbeat.assert_awaited_once_with("w1")
+
+
+async def test_tick_reports_configured_capacity() -> None:
+    """Each heartbeat tick writes the worker's configured max_jobs (arq concurrency) capacity."""
+    upsert_heartbeat = AsyncMock()
+    database = SimpleNamespace(jobs=SimpleNamespace(upsert_heartbeat=upsert_heartbeat))
+    writer = HeartbeatWriter(database, worker_id="w1", worker_name="w1", interval_seconds=10, max_jobs=4)
+
+    # Drive exactly one tick deterministically (bypass the background loop).
+    await writer._HeartbeatWriter__tick()
+
+    assert upsert_heartbeat.await_args.args[-1] == 4
 
 
 # --------------------------------------------------------------------------- #

@@ -58,6 +58,7 @@ def make_collection() -> Collection:
     collection = Collection(
         name="DemoCollection",
         supported_formats=["pdf"],
+        tags=["demo"],
         max_file_size_bytes=1024,
         needs_reindex=False,
         pipeline=IngestPipeline.light_blob().model_dump(mode="json"),

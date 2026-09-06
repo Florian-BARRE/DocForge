@@ -1,10 +1,14 @@
 // ====== Code Summary ======
-// The grid shell — sticky header (sort row + filter row) above a virtualized, scrollable body.
-// Only the rendered window of rows gets real DOM nodes (TanStack Virtual), so a full page of up
-// to 200 rows — or, with metadata columns, many cells each — stays smooth to scroll. Column
-// widths are driven by TanStack's own sizing state via a `<colgroup>` (one write per resized
-// column instead of one per rendered cell, so dragging stays smooth under virtualization), and
-// header drag-and-drop reordering is owned here since it needs `table.setColumnOrder`.
+// The grid shell — sticky header (sort row) above a virtualized, scrollable body. Only the
+// rendered window of rows gets real DOM nodes (TanStack Virtual), so a full page of up to 200 rows
+// — or, with metadata columns, many cells each — stays smooth to scroll. Column widths are driven
+// by TanStack's own sizing state via a `<colgroup>` (one write per resized column instead of one
+// per rendered cell, so dragging stays smooth under virtualization), and header drag-and-drop
+// reordering is owned here since it needs `table.setColumnOrder`. The row-actions column
+// ("__actions") is pinned `position: sticky; right: 0` in both the header and body so it survives
+// horizontal scroll instead of being cropped past the viewport at a wide column count (see
+// TableHeaderCell's matching header-cell treatment). Per-column filters live in the separate,
+// toggleable CorpusFilterPanel, not in this table.
 
 import { flexRender, type Table } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -13,17 +17,14 @@ import type { DocumentGridRow } from "../../api/corpus";
 import { LoadingState } from "../../components/LoadingState";
 import { theme } from "../../theme";
 import { autoFitColumnWidth } from "./columnAutoFit";
-import { ColumnFilterCell } from "./ColumnFilterCell";
 import { ScrollEdgeFade } from "./ScrollEdgeFade";
 import { TableHeaderCell, type DropSide } from "./TableHeaderCell";
-import { isPinnedColumn, type ColumnFilterValue, type ColumnFiltersState } from "./types";
+import { isPinnedColumn, PINNED_LAST_COLUMN_ID } from "./types";
 import { useTrailingScrollFade } from "./useTrailingScrollFade";
 
 interface CorpusTableProps {
   table: Table<DocumentGridRow>;
   loading: boolean;
-  columnFilters: ColumnFiltersState;
-  onColumnFilterChange: (columnId: string, value: ColumnFilterValue) => void;
 }
 
 const ROW_HEIGHT = 40;
@@ -39,7 +40,7 @@ interface DragState {
   side: DropSide;
 }
 
-export function CorpusTable({ table, loading, columnFilters, onColumnFilterChange }: CorpusTableProps) {
+export function CorpusTable({ table, loading }: CorpusTableProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [drag, setDrag] = useState<DragState | null>(null);
   const [containerWidth, setContainerWidth] = useState(0);
@@ -83,6 +84,9 @@ export function CorpusTable({ table, loading, columnFilters, onColumnFilterChang
   const paddingTop = virtualItems.length ? virtualItems[0].start : 0;
   const paddingBottom = virtualItems.length ? virtualizer.getTotalSize() - virtualItems[virtualItems.length - 1].end : 0;
   const canScrollRight = useTrailingScrollFade(scrollRef, [tableWidth, columnCount, rows.length]);
+  // The sticky actions column no longer scrolls away, so the actual "more columns off-screen"
+  // crop boundary now sits just before it, not at the container's true right edge.
+  const actionsWidth = table.getColumn(PINNED_LAST_COLUMN_ID)?.getSize() ?? 0;
 
   const onHeaderDragStart = (columnId: string) => setDrag({ sourceId: columnId, overId: null, side: "after" });
 
@@ -172,32 +176,11 @@ export function CorpusTable({ table, loading, columnFilters, onColumnFilterChang
                   onAutoFit={onAutoFit}
                   onResizeStep={onResizeStep}
                   onReorderStep={onReorderStep}
+                  sticky={header.column.id === PINNED_LAST_COLUMN_ID}
                 />
               ))}
             </tr>
           ))}
-          <tr>
-            {table.getVisibleLeafColumns().map((column) => {
-              const filterKind = column.columnDef.meta?.filterKind;
-              return (
-                <th
-                  key={column.id}
-                  style={{ padding: "4px 8px", borderBottom: `1px solid ${theme.color.line}`, background: theme.color.surface2 }}
-                >
-                  {filterKind && (
-                    <ColumnFilterCell
-                      columnId={column.id}
-                      filterKind={filterKind}
-                      label={typeof column.columnDef.header === "string" ? column.columnDef.header : column.id}
-                      enumOptions={column.columnDef.meta?.enumOptions}
-                      value={columnFilters[column.id]}
-                      onChange={onColumnFilterChange}
-                    />
-                  )}
-                </th>
-              );
-            })}
-          </tr>
         </thead>
         <tbody>
           {loading && rows.length === 0 && (
@@ -228,6 +211,13 @@ export function CorpusTable({ table, loading, columnFilters, onColumnFilterChang
                       overflow: "hidden",
                       textAlign: cell.column.columnDef.meta?.align === "right" ? "right" : "left",
                       ...(cell.column.columnDef.meta?.mono ? { fontFamily: theme.font.mono, color: theme.color.dim, fontSize: theme.font.size.xs } : {}),
+                      // Pin the row-actions cell to the container's right edge — needs its own
+                      // opaque background (the row's own bg comes from the `df-row-hover` class on
+                      // the <tr>, which doesn't reach a sticky-repositioned descendant once other
+                      // cells have scrolled out from underneath it).
+                      ...(cell.column.id === PINNED_LAST_COLUMN_ID
+                        ? { position: "sticky", right: 0, background: theme.color.surface, borderLeft: `1px solid ${theme.color.line}` }
+                        : {}),
                     }}
                   >
                     {flexRender(cell.column.columnDef.cell, cell.getContext())}
@@ -239,7 +229,7 @@ export function CorpusTable({ table, loading, columnFilters, onColumnFilterChang
           {rows.length > 0 && paddingBottom > 0 && <tr aria-hidden style={{ height: paddingBottom }} />}
         </tbody>
       </table>
-      <ScrollEdgeFade visible={canScrollRight} />
+      <ScrollEdgeFade visible={canScrollRight} inset={actionsWidth} />
     </div>
   );
 }

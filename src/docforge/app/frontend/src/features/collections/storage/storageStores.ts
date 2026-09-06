@@ -1,6 +1,6 @@
 // ====== Code Summary ======
 // The three physical stores a collection's footprint spans, plus the categorical data-viz swatch
-// each one renders as (theme.color.store — warm steel / clay terracotta / olive-moss) — shared
+// each one renders as (theme.color.store — warm steel / muted gold-ochre / olive-moss) — shared
 // between the segmented bar, the legend and the per-store breakdown cards so a colour always means
 // the same store everywhere on the panel. Forge orange stays reserved for the single active/primary
 // thing (brand.md); these three are a deliberately distinct warm hue each, not shades of one grey.

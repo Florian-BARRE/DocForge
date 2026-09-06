@@ -19,14 +19,12 @@ function block(id: string, pageNumber: number, order: number): IRBlock {
     page: pageNumber,
     bbox: [0, 0, 1, 1],
     reading_order: order,
-    column_index: 0,
     parent_id: null,
     level: null,
     text: null,
     is_boilerplate: false,
     language: null,
-    confidence: null,
-  } as IRBlock;
+  };
 }
 
 function chunk(id: string, blockIds: string[]): ChunkInfo {

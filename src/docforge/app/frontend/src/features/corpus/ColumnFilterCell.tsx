@@ -32,7 +32,7 @@ export function ColumnFilterCell({ columnId, filterKind, label, enumOptions, val
     case "listIn":
       return <ListFilterInput ariaLabel={`Filter ${label}`} values={current.values} onChange={(values) => set({ kind: "listIn", values })} />;
     case "bool":
-      return <BoolTriStateSelect ariaLabel={`Filter ${label}`} value={current.value} onChange={(v) => set({ kind: "bool", value: v })} />;
+      return <BoolTriStateSelect label={label} value={current.value} onChange={(v) => set({ kind: "bool", value: v })} />;
     case "numberRange":
       return <NumberRangeInputs label={label} gte={current.gte} lte={current.lte} onChange={(next) => set({ kind: "numberRange", ...next })} />;
     case "dateRange":

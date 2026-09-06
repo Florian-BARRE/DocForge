@@ -21,14 +21,23 @@ def register(mcp: FastMCP, sdk: AsyncClient) -> None:
 
     @mcp.tool()
     async def list_jobs(
-        collection_id: str, limit: int | None = None, offset: int | None = None
+        collection_id: str | None = None,
+        status: list[str] | None = None,
+        order: str | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
     ) -> Any:
-        """List one page of a collection's ingestion jobs, newest first.
+        """List one page of ingestion jobs — a collection's, or (no collection_id) the whole fleet's.
 
-        The list is bounded server-side; ``total``/``limit``/``offset`` drive pagination and
-        ``jobs`` holds the page. Pass ``limit``/``offset`` to page a heavily re-ingested collection.
+        Omit ``collection_id`` for a FLEET-WIDE listing (full-access token only) — the "All Jobs"
+        view. ``status`` filters by one or more of pending/running/done/failed/cancelled. ``order``
+        is ``newest`` (default, created_at DESC) or ``oldest`` (created_at ASC — FIFO/"what runs
+        next", typically with status=["pending"]). The list is bounded server-side;
+        ``total``/``limit``/``offset`` drive pagination and ``jobs`` holds the page.
         """
-        page = await sdk.jobs.list(collection_id, limit=limit, offset=offset)
+        page = await sdk.jobs.list(
+            collection_id, status=status, order=order, limit=limit, offset=offset
+        )
         return page.model_dump(mode="json")
 
     @mcp.tool()

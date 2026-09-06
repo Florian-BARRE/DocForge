@@ -361,6 +361,7 @@ curl -sX POST http://localhost:10040/api/v1/collections \
   -d '{
         "name": "contracts",
         "supported_formats": ["pdf", "docx"],
+        "tags": ["legal", "demo"],
         "max_file_size_bytes": 52428800,
         "fields": [
           {"field_name": "client", "field_type": "string", "required": true, "filterable": true},
@@ -371,17 +372,20 @@ curl -sX POST http://localhost:10040/api/v1/collections \
 ```
 
 Returns the created `CollectionModel` (`201`). `409` on a name clash, `422` on a bad pipeline or
-colliding vector slugs.
+colliding vector slugs. `tags` is an optional list of free-form labels for grouping/filtering
+collections in the UI; omit it (or pass `[]`) to create the collection untagged. The response always
+carries `tags` (`[]` when untagged).
 
 ### Patch a collection
 
 `PATCH` is partial. `fields` is applied by **diff** (fields matched by name; omitted fields are
-removed; existing values survive untouched fields). A `note` records a version snapshot.
+removed; existing values survive untouched fields). `tags` is replaced **wholesale** when supplied
+(`[]` clears every label); omit it to leave the labels unchanged. A `note` records a version snapshot.
 
 ```bash
 curl -sX PATCH http://localhost:10040/api/v1/collections/7f1c9d2e-... \
   -H "Content-Type: application/json" \
-  -d '{"max_file_size_bytes": 104857600, "note": "raise upload ceiling to 100 MB"}'
+  -d '{"tags": ["legal", "archived"], "max_file_size_bytes": 104857600, "note": "raise upload ceiling to 100 MB"}'
 ```
 
 ### Collection health
@@ -768,7 +772,7 @@ request a cancellation).
 
 | Method | Path | Cap | Returns |
 |---|---|---|---|
-| `GET` | `/api/v1/jobs?collection_id={id}` | `read` | A collection's jobs, newest first — a paginated `JobPage` |
+| `GET` | `/api/v1/jobs` | `read` | Jobs — a collection's (`?collection_id=`) or fleet-wide, filterable — a paginated `JobPage` |
 | `GET` | `/api/v1/jobs/{job_id}` | `read` | One job's live state (poll this) |
 | `GET` | `/api/v1/jobs/{job_id}/events` | `read` | Per-node execution trace, in order |
 | `GET` | `/api/v1/jobs/{job_id}/stream` | `read` | Live progress as Server-Sent Events (see below) |
@@ -778,13 +782,25 @@ request a cancellation).
 | `GET` | `/api/v1/jobs/stage-durations?collection_id={id}` | `read` | Average per-stage wall-clock — the ETA basis (`StageDurations`) |
 | `POST` | `/api/v1/jobs/{job_id}/cancel` | `write` | Request cancellation of a queued/running job (`CancelResult`) |
 
-> `collection_id` is a **required query param** on `GET /api/v1/jobs` (it also scopes the key).
+> `collection_id` is **optional** on `GET /api/v1/jobs`. **Present** → scoped to that collection (and
+> it scopes the key). **Omitted** → a **fleet-wide** listing across every collection (the "All Jobs"
+> view), which is **full-access only**: a collection-scoped key must name a collection it owns, else
+> `403` — the same gate `GET /api/v1/jobs/queue` applies to its fleet-wide counts. A **pending** job
+> has `worker_id: null` (arq assigns the worker at claim time — never fabricated).
 
-`GET /api/v1/jobs` is **paginated** (a collection can hold thousands of job rows): the optional
-`limit` (clamped down to the server's `JOBS_MAX_PAGE_SIZE`, its default) and `offset` query params
-page the list, and the response is a `JobPage` — `{ total, limit, offset, jobs }` where `total` is
-the full match count (drives the pager), `limit`/`offset` echo the applied values, and `jobs` is the
-page (newest first).
+`GET /api/v1/jobs` is **paginated + filterable** (a collection — or the fleet — can hold thousands of
+job rows). Query params:
+- `collection_id` (optional) — scope to one collection, or omit for fleet-wide (see the note above).
+- `status` (optional, **repeatable**) — filter to one or more of `pending`/`running`/`done`/`failed`/
+  `cancelled` (e.g. `?status=pending&status=running`). Omit for all statuses.
+- `order` (optional) — `newest` (default, `created_at` DESC — the monitoring view) or `oldest`
+  (`created_at` ASC — **FIFO / "what runs next"**, typically paired with `status=pending`).
+- `limit` (optional) — page size, clamped down to the server's `JOBS_MAX_PAGE_SIZE` (its default).
+- `offset` (optional) — rows to skip for paging.
+
+The response is a `JobPage` — `{ total, limit, offset, jobs }` where `total` is the full match count
+(drives the pager), `limit`/`offset` echo the applied values, and `jobs` is the page in the requested
+order (newest first by default).
 
 A `JobStatus` carries `job_id, document_id, collection_id, status` (`queued`/`running`/`done`/
 `failed`/`cancelled`), `progress` (0–100), `current_stage`, `error` (verbatim, only when failed),
@@ -811,7 +827,11 @@ done
 On `failed`, read `error` on the job (or `GET /api/v1/jobs/{id}/events` for the per-node trace —
 each `JobEvent` has `stage, status` (`success`/`failed`/`skipped`), timestamps, `detail`).
 
-`GET /api/v1/jobs/workers/live` returns running jobs grouped by worker (empty when idle).
+`GET /api/v1/jobs/workers/live` returns running jobs grouped by worker (empty when idle). Each
+`WorkerActivity` carries its liveness (`alive`, `busy`, `last_seen`, `started_at`) plus `max_jobs`
+— the worker's configured parallel-job capacity (arq concurrency, = `WORKER_CONCURRENCY`). `max_jobs`
+is `null` for a worker whose build predates this field (or a pre-column heartbeat row); a UI pairs it
+with the count of `jobs` as a "N running / max" capacity chip and never fabricates a number when null.
 
 ### Live progress (Server-Sent Events)
 

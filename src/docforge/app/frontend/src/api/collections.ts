@@ -35,6 +35,8 @@ export interface Collection {
   id: string;
   name: string;
   supported_formats: string[];
+  /** Free-form labels for grouping/filtering collections in the UI (`[]` = untagged). */
+  tags: string[];
   max_file_size_bytes: number;
   /** Whole-ingest-job wall-clock budget override, in seconds; `null` inherits the worker's global default. */
   job_timeout_seconds: number | null;
@@ -53,6 +55,8 @@ export type CollectionPreset = "standard" | "light";
 export interface CreateCollectionRequest {
   name: string;
   supported_formats: string[];
+  /** Free-form labels; `[]`/omitted creates the collection untagged. */
+  tags?: string[] | null;
   max_file_size_bytes: number;
   /** `null`/omitted inherits the worker's global default job timeout. */
   job_timeout_seconds?: number | null;
@@ -70,6 +74,8 @@ export interface CreateCollectionRequest {
 export interface UpdateCollectionRequest {
   name?: string | null;
   supported_formats?: string[] | null;
+  /** Replace the collection's labels wholesale (`[]` clears them); omitted = leave unchanged. */
+  tags?: string[] | null;
   max_file_size_bytes?: number | null;
   /** `null` reverts to inheriting the worker's global default job timeout. */
   job_timeout_seconds?: number | null;

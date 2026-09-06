@@ -72,6 +72,34 @@ class JobsFacade(LoggerClass):
         async with self._postgres.session() as session:
             return await JobApi.count_for_collection(session, collection_id)
 
+    async def list_jobs_with_names(
+        self,
+        collection_id: uuid.UUID | None = None,
+        statuses: Sequence[JobStatus] | None = None,
+        limit: int | None = None,
+        offset: int = 0,
+        newest_first: bool = True,
+    ) -> list[JobWithNames]:
+        """Return one page of jobs (fleet-wide or scoped, optional status filter), joined to names."""
+        async with self._postgres.session() as session:
+            return await JobApi.list_with_names(
+                session,
+                collection_id=collection_id,
+                statuses=statuses,
+                limit=limit,
+                offset=offset,
+                newest_first=newest_first,
+            )
+
+    async def count_jobs(
+        self,
+        collection_id: uuid.UUID | None = None,
+        statuses: Sequence[JobStatus] | None = None,
+    ) -> int:
+        """Count jobs matching the optional collection + status filter — the 'All Jobs' pager total."""
+        async with self._postgres.session() as session:
+            return await JobApi.count_jobs(session, collection_id=collection_id, statuses=statuses)
+
     async def list_active_with_names(self) -> list[JobWithNames]:
         """Return every RUNNING job joined to its display names — the fleet activity view."""
         async with self._postgres.session() as session:
@@ -190,11 +218,18 @@ class JobsFacade(LoggerClass):
             )
 
     async def upsert_heartbeat(
-        self, worker_id: str, worker_name: str, last_seen: datetime, started_at: datetime
+        self,
+        worker_id: str,
+        worker_name: str,
+        last_seen: datetime,
+        started_at: datetime,
+        max_jobs: int | None = None,
     ) -> None:
-        """Register/refresh a worker's liveness heartbeat row (idle-but-alive visibility)."""
+        """Register/refresh a worker's liveness heartbeat row (idle-but-alive visibility + capacity)."""
         async with self._postgres.session() as session:
-            await JobApi.upsert_heartbeat(session, worker_id, worker_name, last_seen, started_at)
+            await JobApi.upsert_heartbeat(
+                session, worker_id, worker_name, last_seen, started_at, max_jobs
+            )
 
     async def delete_heartbeat(self, worker_id: str) -> None:
         """De-register a worker on clean shutdown — its heartbeat row vanishes immediately."""

@@ -32,13 +32,11 @@ function block(id: string, pageNumber: number, order: number): IRBlock {
     page: pageNumber,
     bbox: [0.1, 0.1, 0.9, 0.2],
     reading_order: order,
-    column_index: 0,
     parent_id: null,
     level: null,
     text: `block ${id}`,
     is_boilerplate: false,
     language: "en",
-    confidence: 0.99,
   };
 }
 
@@ -65,7 +63,7 @@ const loadedIR: DocumentIR = {
   tables: [],
   figures: [],
   enrichments: [
-    { id: "e1", block_id: "b1", kind: "ocr", text: "ocr text", data: null, status: "ok", attempts: [] },
+    { id: "e1", block_id: "b1", kind: "ocr", text: "ocr text", data: null, status: "ok" },
   ],
 };
 const loadedPages = [page(0)];

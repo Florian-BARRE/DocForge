@@ -2,7 +2,7 @@
 // One job's compact summary row — reused by both JobsPage (a collection's jobs) and WorkerCard
 // (a worker's currently running jobs), since both work off the same JobStatus shape.
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import type { JobStatus } from "../../api/jobs";
 import { theme } from "../../theme";
 import { ItemProgressChip } from "./ItemProgressChip";
@@ -17,6 +17,10 @@ interface JobRowProps {
   /** Applied to the row's own job when a cancel/stop/force call resolves — lets the parent's list
    *  reflect the new state immediately. */
   onUpdated: (patch: Partial<JobStatus>) => void;
+  /** An extra row rendered at the bottom, below the started/finished timestamps — e.g. the fleet-
+   *  wide All Jobs view's worker-attribution line (see features/jobs/WorkerAttributionLine.tsx).
+   *  Omitted everywhere else, so every other JobRow caller renders byte-identically to before. */
+  footer?: ReactNode;
 }
 
 function formatTimestamp(value: string | null): string {
@@ -30,7 +34,7 @@ function idleFor(updatedAt: string): string {
   return `${Math.floor(minutes / 60)}h ${minutes % 60}m ago`;
 }
 
-export function JobRow({ job, onClick, onUpdated }: JobRowProps) {
+export function JobRow({ job, onClick, onUpdated, footer }: JobRowProps) {
   const [hover, setHover] = useState(false);
   return (
     <div
@@ -79,6 +83,7 @@ export function JobRow({ job, onClick, onUpdated }: JobRowProps) {
           {job.error}
         </div>
       )}
+      {footer}
     </div>
   );
 }

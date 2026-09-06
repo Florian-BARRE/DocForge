@@ -406,13 +406,14 @@ class JobApi:
         worker_name: str,
         last_seen: datetime,
         started_at: datetime,
+        max_jobs: int | None = None,
     ) -> None:
         """
         Register/refresh a worker's liveness row (keyed by its stable worker id).
 
         Upsert so a worker's first tick inserts and every later tick updates ``last_seen`` in place;
-        ``started_at`` and ``worker_name`` are refreshed too, so a same-hostname restart reports the
-        NEW process uptime and any changed friendly name.
+        ``started_at``, ``worker_name`` and ``max_jobs`` are refreshed too, so a same-hostname restart
+        reports the NEW process uptime, any changed friendly name and its current capacity.
 
         Args:
             session (AsyncSession): The active DB session.
@@ -420,12 +421,15 @@ class JobApi:
             worker_name (str): The worker's friendly display name (WORKER_NAME, defaults to hostname).
             last_seen (datetime): This tick's timestamp — its age is the liveness signal.
             started_at (datetime): When THIS worker process registered.
+            max_jobs (int | None): The worker's configured parallel-job capacity (arq concurrency);
+                None when an older-build worker does not report it.
         """
         statement = pg_insert(WorkerHeartbeat).values(
             worker_id=worker_id,
             worker_name=worker_name,
             last_seen=last_seen,
             started_at=started_at,
+            max_jobs=max_jobs,
         )
         await session.execute(
             statement.on_conflict_do_update(
@@ -434,6 +438,7 @@ class JobApi:
                     "worker_name": worker_name,
                     "last_seen": last_seen,
                     "started_at": started_at,
+                    "max_jobs": max_jobs,
                 },
             )
         )
@@ -795,6 +800,29 @@ class JobApi:
         )
         return list(result.scalars().all())
 
+    @staticmethod
+    def _job_filters(collection_id: uuid.UUID | None, statuses: Sequence[JobStatus] | None):  # type: ignore[no-untyped-def]
+        """
+        Build the WHERE conditions shared by the fleet-wide list + count reads.
+
+        Both the optional collection scope and the optional status filter are additive: an omitted
+        ``collection_id`` (None) means fleet-wide, an omitted/empty ``statuses`` means every status.
+        Keeping the predicate in one place is what keeps the list and its total counting the same rows.
+
+        Args:
+            collection_id (uuid.UUID | None): Scope to one collection, or None for the whole fleet.
+            statuses (Sequence[JobStatus] | None): Restrict to these statuses, or None/empty for all.
+
+        Returns:
+            list: The SQLAlchemy conditions (possibly empty — an unfiltered, fleet-wide scan).
+        """
+        conditions = []
+        if collection_id is not None:
+            conditions.append(Job.collection_id == collection_id)
+        if statuses:
+            conditions.append(Job.status.in_(list(statuses)))
+        return conditions
+
     # -------------------- joined reads (job + display names) --------------------
     @staticmethod
     def _with_names_select():  # type: ignore[no-untyped-def]
@@ -878,6 +906,82 @@ class JobApi:
             cls._row_to_names(job, filename, title, collection_name)
             for job, filename, title, collection_name in result.all()
         ]
+
+    @classmethod
+    async def list_with_names(
+        cls,
+        session: AsyncSession,
+        collection_id: uuid.UUID | None = None,
+        statuses: Sequence[JobStatus] | None = None,
+        limit: int | None = None,
+        offset: int = 0,
+        newest_first: bool = True,
+    ) -> list[JobWithNames]:
+        """
+        Return one page of jobs (fleet-wide or scoped, optionally status-filtered), joined to names.
+
+        The generalised read behind ``GET /jobs`` — a superset of ``list_for_collection_with_names``:
+        an omitted ``collection_id`` lists across every collection (the "All Jobs" view), an omitted
+        ``statuses`` lists every status. ``newest_first`` picks the sort: ``created_at`` DESC (the
+        default, the monitoring view) or ASC — the oldest-first, FIFO order that surfaces "what runs
+        next" when paired with ``statuses=[PENDING]``. The order is always tie-broken by ``id`` so
+        paging never repeats or drops a row.
+
+        Args:
+            session (AsyncSession): The active DB session.
+            collection_id (uuid.UUID | None): Scope to one collection, or None for the whole fleet.
+            statuses (Sequence[JobStatus] | None): Restrict to these statuses, or None/empty for all.
+            limit (int | None): Page size (None = no bound); ``offset`` skips rows for paging.
+            offset (int): Rows to skip for paging.
+            newest_first (bool): True = created_at DESC (newest first); False = ASC (FIFO).
+
+        Returns:
+            list[JobWithNames]: The page of jobs, each joined to its display names.
+        """
+        order = (
+            (Job.created_at.desc(), Job.id.desc())
+            if newest_first
+            else (Job.created_at.asc(), Job.id.asc())
+        )
+        query = (
+            cls._with_names_select()
+            .where(*cls._job_filters(collection_id, statuses))
+            .order_by(*order)
+            .offset(offset)
+        )
+        if limit is not None:
+            query = query.limit(limit)
+        result = await session.execute(query)
+        return [
+            cls._row_to_names(job, filename, title, collection_name)
+            for job, filename, title, collection_name in result.all()
+        ]
+
+    @classmethod
+    async def count_jobs(
+        cls,
+        session: AsyncSession,
+        collection_id: uuid.UUID | None = None,
+        statuses: Sequence[JobStatus] | None = None,
+    ) -> int:
+        """
+        Count jobs matching the same optional collection + status filter — the pager's total.
+
+        Independent of limit/offset so the "All Jobs" pager knows the full match count. Uses the exact
+        same predicate as ``list_with_names`` so the total always agrees with the listed page.
+
+        Args:
+            session (AsyncSession): The active DB session.
+            collection_id (uuid.UUID | None): Scope to one collection, or None for the whole fleet.
+            statuses (Sequence[JobStatus] | None): Restrict to these statuses, or None/empty for all.
+
+        Returns:
+            int: The number of matching jobs.
+        """
+        result = await session.execute(
+            select(func.count()).select_from(Job).where(*cls._job_filters(collection_id, statuses))
+        )
+        return int(result.scalar_one())
 
 
 __all__ = ["JobApi", "JobWithNames"]

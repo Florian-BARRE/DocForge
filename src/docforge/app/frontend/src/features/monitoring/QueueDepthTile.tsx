@@ -1,7 +1,8 @@
 // ====== Code Summary ======
-// "N pending / M running" backlog tile for a collection's JobsPage — polls GET /jobs/queue while
-// mounted so backlog building up (uploads outrunning the worker) is visible before it becomes a
-// stall. Self-contained polling: independent of the jobs-list poll it sits above.
+// "N pending / M running" backlog tile — polls GET /jobs/queue while mounted so backlog building up
+// (uploads outrunning the worker) is visible before it becomes a stall. Self-contained polling:
+// independent of the jobs-list poll it sits above. Scoped to one collection's JobsPage when
+// `collectionId` is given; omitted, it reads the FLEET-WIDE backlog (Home/Monitoring dashboards).
 
 import { useEffect, useState } from "react";
 import { getQueueDepth, type QueueDepth } from "../../api/jobs";
@@ -10,7 +11,8 @@ import { theme } from "../../theme";
 const POLL_MS = 3000;
 
 interface QueueDepthTileProps {
-  collectionId: string;
+  /** Omit for the fleet-wide backlog across every collection. */
+  collectionId?: string;
 }
 
 export function QueueDepthTile({ collectionId }: QueueDepthTileProps) {

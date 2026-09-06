@@ -113,6 +113,11 @@ export interface WorkerActivity {
   last_seen: string | null;
   /** When the worker process registered; null when no heartbeat row exists. */
   started_at: string | null;
+  /**
+   * The worker's configured parallel-job capacity (arq concurrency, = WORKER_CONCURRENCY); null =
+   * unknown capacity (an old heartbeat row, or a worker on a build predating this field).
+   */
+  max_jobs: number | null;
   jobs: JobStatus[];
 }
 
@@ -134,15 +139,47 @@ export interface JobPage {
   jobs: JobStatus[];
 }
 
+/** Sort order for the jobs list: `newest` = created_at DESC (default), `oldest` = created_at ASC
+ *  (FIFO — the "what runs next" order, typically paired with `status: ["pending"]`). */
+export type JobOrder = "newest" | "oldest";
+
+/** Query filters for `GET /jobs`. Omit `collectionId` for a FLEET-WIDE listing (full-access keys
+ *  only) — the "All Jobs" management view. `status` is repeatable (any subset of the job statuses). */
+export interface JobListParams {
+  collectionId?: string;
+  status?: JobStatusValue[];
+  order?: JobOrder;
+  limit?: number;
+  offset?: number;
+}
+
 /**
- * List a collection's jobs, newest first.
+ * List one bounded page of jobs — a collection's, or (with no `collectionId`) the whole fleet's.
  *
- * The endpoint returns a BOUNDED, paginated envelope (`{total, limit, offset, jobs}`), not a bare
- * array — this unwraps it. Monitoring's job list has no pager UI yet, so callers get the first page
- * (server-clamped to `JOBS_MAX_PAGE_SIZE`) verbatim.
+ * Returns the BOUNDED, paginated envelope (`{total, limit, offset, jobs}`) verbatim so a caller can
+ * drive a pager. `status` filters by one or more job statuses; `order` picks newest-first (default)
+ * or oldest-first/FIFO. The page size is server-clamped to `JOBS_MAX_PAGE_SIZE`.
+ */
+export async function listJobsPage(params: JobListParams = {}): Promise<JobPage> {
+  const query = new URLSearchParams();
+  if (params.collectionId) query.set("collection_id", params.collectionId);
+  if (params.order) query.set("order", params.order);
+  if (params.limit !== undefined) query.set("limit", String(params.limit));
+  if (params.offset !== undefined) query.set("offset", String(params.offset));
+  // Repeat `status` once per value — the backend reads it as a repeated query param.
+  for (const status of params.status ?? []) query.append("status", status);
+  const qs = query.toString();
+  return apiFetch<JobPage>(`${BASE}${qs ? `?${qs}` : ""}`);
+}
+
+/**
+ * List a collection's jobs, newest first — the convenience unwrap for the per-collection views.
+ *
+ * Returns just the first page's rows (server-clamped to `JOBS_MAX_PAGE_SIZE`); callers that need the
+ * pager envelope, fleet-wide scope, a status filter or FIFO order use `listJobsPage` instead.
  */
 export async function listJobs(collectionId: string): Promise<JobStatus[]> {
-  const page = await apiFetch<JobPage>(`${BASE}?collection_id=${encodeURIComponent(collectionId)}`);
+  const page = await listJobsPage({ collectionId });
   return page.jobs;
 }
 
