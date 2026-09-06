@@ -22,6 +22,7 @@ token). Prose accuracy stays a human/review concern — see .claude/rules/method
 
 import pathlib
 import re
+import subprocess
 
 import pytest
 
@@ -94,15 +95,32 @@ def test_pipeline_md_documents_all_seven_stages() -> None:
     assert not missing, f"Stage name(s) absent from PIPELINE.md: {missing}"
 
 
+def _is_deliberately_local(ref: str) -> bool:
+    """A referenced path that does not exist may still be LEGITIMATE: docs instruct creating
+    local, gitignored files (``services/*/.env``, ``s3_config.json``…) that are absent on a fresh
+    CI checkout by design. Such a ref is fine when its tracked ``.example`` template exists, or
+    when git itself declares the path ignored (deliberately untracked)."""
+    if (_REPO_ROOT / f"{ref}.example").exists():
+        return True
+    probe = subprocess.run(
+        ["git", "-C", str(_REPO_ROOT), "check-ignore", "-q", ref],
+        capture_output=True,
+        check=False,
+    )
+    return probe.returncode == 0
+
+
 def _dead_refs_in(path: pathlib.Path) -> list[str]:
-    """Backticked repo-path references in ``path`` that point at nothing on disk."""
+    """Backticked repo-path references in ``path`` that point at nothing on disk (and are not
+    deliberately-local gitignored files the doc instructs creating)."""
     dead = []
     for match in _PATH_REF.finditer(path.read_text(encoding="utf-8")):
         ref = match.group(1).rstrip("/").rstrip(".")
         if ref in _DEAD_PATH_EXCEPTIONS:
             continue
-        if not (_REPO_ROOT / ref).exists():
-            dead.append(f"{path.relative_to(_REPO_ROOT)}: `{ref}`")
+        if (_REPO_ROOT / ref).exists() or _is_deliberately_local(ref):
+            continue
+        dead.append(f"{path.relative_to(_REPO_ROOT)}: `{ref}`")
     return dead
 
 
