@@ -6,8 +6,8 @@
 
 import { describe, expect, it } from "vitest";
 
-import type { IRBlock, IREnrichment, IRTable } from "../../../api/explorer";
-import { segmentChunkText, type ChunkMember } from "./chunkAssembly";
+import type { ChunkInfo, IRBlock, IREnrichment, IRTable } from "../../../api/explorer";
+import { chunkProvenance, segmentChunkText, type ChunkMember } from "./chunkAssembly";
 
 function block(id: string, blockType: string, text: string | null, order: number): IRBlock {
   return {
@@ -16,14 +16,12 @@ function block(id: string, blockType: string, text: string | null, order: number
     page: 1,
     bbox: [0, 0, 1, 1],
     reading_order: order,
-    column_index: 0,
     parent_id: null,
     level: null,
     text,
     is_boilerplate: false,
     language: null,
-    confidence: null,
-  } as IRBlock;
+  };
 }
 
 function table(blockId: string, cells: string[][], hasHeader: boolean): IRTable {
@@ -108,5 +106,30 @@ describe("segmentChunkText", () => {
       { text: "\n\n", added: true },
       { text: "Body content of chapter two.", blockType: "paragraph", blockIndex: 1, added: false },
     ]);
+  });
+});
+
+describe("chunkProvenance — degraded payload guard", () => {
+  // Regression test for the P0 Layout-tab crash: a chunk row whose `heading_path`/`metadata` arrays
+  // are absent (a stale/partial payload, not the normal `[]` the backend always sends) must degrade
+  // to "nothing added" instead of throwing `Cannot read properties of undefined (reading 'length')`.
+  it("does not throw when heading_path and metadata are missing from the chunk payload", () => {
+    const degradedChunk = {
+      id: "c1",
+      chunk_index: 0,
+      text: "chunk text",
+      token_count: 2,
+      is_indexed: true,
+      strategy: "recursive",
+      parent_id: null,
+      block_ids: [],
+      role: "body",
+      enabled: true,
+      page: null,
+      // heading_path and metadata deliberately OMITTED — the exact repro shape.
+    } as unknown as ChunkInfo;
+
+    expect(() => chunkProvenance(degradedChunk, [], new Map())).not.toThrow();
+    expect(chunkProvenance(degradedChunk, [], new Map())).toEqual([]);
   });
 });

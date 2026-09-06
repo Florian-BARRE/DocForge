@@ -158,12 +158,15 @@ export function chunkProvenance(
 ): ProvenanceItem[] {
   const items: ProvenanceItem[] = [];
 
-  // 1. Section breadcrumb prepended for retrieval context.
-  if (chunk.heading_path.length > 0) {
+  // 1. Section breadcrumb prepended for retrieval context. Guarded defensively — the backend always
+  //    sends `[]` rather than omitting the field, but a chunk row from a stale/partial payload must
+  //    degrade to "no breadcrumb" instead of throwing.
+  const headingPath = chunk.heading_path ?? [];
+  if (headingPath.length > 0) {
     items.push({
       id: `${chunk.id}-breadcrumb`,
       kind: "breadcrumb",
-      label: chunk.heading_path.join(" › "),
+      label: headingPath.join(" › "),
       detail: "Section breadcrumb prepended to the embedded text",
       stage: "contextualize",
       method: "breadcrumb",
@@ -187,7 +190,7 @@ export function chunkProvenance(
   }
 
   // 3. Generated metadata (the metagen stage).
-  for (const meta of chunk.metadata) {
+  for (const meta of chunk.metadata ?? []) {
     if (meta.origin === "generated") {
       items.push({
         id: `${chunk.id}-meta-${meta.field_name}`,

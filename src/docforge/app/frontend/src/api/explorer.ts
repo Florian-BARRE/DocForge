@@ -86,13 +86,11 @@ export interface IRBlock {
   page: number;
   bbox: number[];
   reading_order: number;
-  column_index: number;
   parent_id: string | null;
   level: number | null;
   text: string | null;
   is_boilerplate: boolean;
   language: string | null;
-  confidence: number | null;
 }
 
 /** A TABLE block's parsed structure (1:1 with its block). */
@@ -113,17 +111,6 @@ export interface IRFigure {
   caption_block_id: string | null;
 }
 
-/** One model attempt within an enrichment's escalation chain (the model-chain trace). */
-export interface IRAttempt {
-  position: number;
-  capability: string;
-  provider_id: string;
-  model: string;
-  status: string;
-  latency_ms: number | null;
-  error: string | null;
-}
-
 /** One enrichment applied to a block (OCR/VLM/classify/chart_to_data/table_summary). */
 export interface IREnrichment {
   id: string;
@@ -132,8 +119,6 @@ export interface IREnrichment {
   text: string | null;
   data: unknown;
   status: EnrichmentStatus;
-  /** The model-chain trace: every model tried, in order (including failures before a success). */
-  attempts: IRAttempt[];
 }
 
 /** The full IR of a document — raw blocks, table/figure details and every enrichment. */
