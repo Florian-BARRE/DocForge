@@ -2,20 +2,17 @@
 // The composition root: owns the current View and dispatches to the one matching page. Hand-
 // rolled routing (no router dependency) — a plain useState<View> is enough for this app's depth.
 
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import { AuthKeysPage } from "./features/auth/AuthKeysPage";
 import { KeyDetailPage } from "./features/auth/KeyDetailPage";
 import { CollectionDetailPage } from "./features/collections/CollectionDetailPage";
 import { CollectionEditPage } from "./features/collections/CollectionEditPage";
 import { CollectionOverview } from "./features/collections/CollectionOverview";
-import { CollectionPipelinePage } from "./features/collections/CollectionPipelinePage";
 import { CollectionSearchPage } from "./features/collections/CollectionSearchPage";
 import { CollectionShell } from "./features/collections/CollectionShell";
 import { CollectionsPage } from "./features/collections/CollectionsPage";
 import { ImportCollectionPage } from "./features/collections/ImportCollectionPage";
 import { CollectionWizard } from "./features/collections/wizard/CollectionWizard";
-import { CorpusPage } from "./features/corpus/CorpusPage";
-import { DocumentPage } from "./features/explorer/DocumentPage";
 import { HomePage } from "./features/home/HomePage";
 import { AllJobsPage } from "./features/jobs/AllJobsPage";
 import { JobDetailPage } from "./features/monitoring/JobDetailPage";
@@ -24,12 +21,23 @@ import { MonitoringPage } from "./features/monitoring/MonitoringPage";
 import { WorkersPanel } from "./features/monitoring/WorkersPanel";
 import { SearchLabPage } from "./features/search/SearchLabPage";
 import { ErrorBoundary } from "./shell/ErrorBoundary";
+import { LoadingState } from "./components/LoadingState";
 import { Sidebar, SIDEBAR_EXPANDED_WIDTH, SIDEBAR_RAIL_WIDTH } from "./shell/sidebar/Sidebar";
 import { useSidebarPin } from "./shell/sidebar/useSidebarPin";
 import { ToastProvider } from "./shell/toast";
 import { parseViewFromHash } from "./shell/urlSync";
 import { useUrlSync } from "./shell/useUrlSync";
 import type { View } from "./shell/view";
+
+// Lazy-loaded routes: each pulls in a heavy, rarely-co-used feature (TanStack table/virtual for
+// the corpus grid, the whole stage-rail canvas for the pipeline editor, the Sankey provenance
+// graph for the document explorer) — deferring them keeps the initial bundle to app shell + the
+// features most users hit first.
+const CorpusPage = lazy(() => import("./features/corpus/CorpusPage").then((m) => ({ default: m.CorpusPage })));
+const CollectionPipelinePage = lazy(() =>
+  import("./features/collections/CollectionPipelinePage").then((m) => ({ default: m.CollectionPipelinePage })),
+);
+const DocumentPage = lazy(() => import("./features/explorer/DocumentPage").then((m) => ({ default: m.DocumentPage })));
 
 export function App() {
   // Bootstrap from the current URL hash so a refresh or a shared link restores the same view.
@@ -74,7 +82,9 @@ export function App() {
         {view.name === "collection-edit" && <CollectionEditPage collectionId={view.collectionId} onNavigate={setView} />}
         {view.name === "collection-pipeline" && (
           <CollectionShell collectionId={view.collectionId} active="pipeline" onNavigate={setView}>
-            <CollectionPipelinePage collectionId={view.collectionId} onNavigate={setView} />
+            <Suspense fallback={<LoadingState label="loading pipeline editor…" />}>
+              <CollectionPipelinePage collectionId={view.collectionId} onNavigate={setView} />
+            </Suspense>
           </CollectionShell>
         )}
         {view.name === "collection-search-pipeline" && (
@@ -89,7 +99,9 @@ export function App() {
         )}
         {view.name === "collection-documents" && (
           <CollectionShell collectionId={view.collectionId} active="documents" onNavigate={setView}>
-            <CorpusPage collectionId={view.collectionId} onNavigate={setView} />
+            <Suspense fallback={<LoadingState label="loading corpus…" />}>
+              <CorpusPage collectionId={view.collectionId} onNavigate={setView} />
+            </Suspense>
           </CollectionShell>
         )}
         {view.name === "collection-search" && (
@@ -99,7 +111,9 @@ export function App() {
         )}
         {view.name === "document" && (
           <CollectionShell collectionId={view.collectionId} active="documents" onNavigate={setView}>
-            <DocumentPage collectionId={view.collectionId} documentId={view.documentId} onNavigate={setView} />
+            <Suspense fallback={<LoadingState label="loading document…" />}>
+              <DocumentPage collectionId={view.collectionId} documentId={view.documentId} onNavigate={setView} />
+            </Suspense>
           </CollectionShell>
         )}
         {view.name === "job" && <JobDetailPage jobId={view.jobId} collectionId={view.collectionId} onNavigate={setView} />}
