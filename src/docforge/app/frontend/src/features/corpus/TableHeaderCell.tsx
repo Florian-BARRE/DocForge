@@ -27,10 +27,14 @@ interface TableHeaderCellProps {
   onResizeStep: (columnId: string, nextSize: number) => void;
   /** Keyboard path for drag-reorder — Alt+Left/Right on the header's own sort button (mouse drag is unchanged). */
   onReorderStep: (columnId: string, direction: -1 | 1) => void;
+  /** Pins this header to the container's right edge (the "__actions" column) so it survives
+   *  horizontal scroll instead of being cropped past the viewport — see CorpusTable's matching
+   *  body-cell treatment. */
+  sticky?: boolean;
 }
 
 export function TableHeaderCell({
-  header, reorderable, isDragSource, dropSide, onDragStart, onDragOver, onDrop, onDragEnd, onAutoFit, onResizeStep, onReorderStep,
+  header, reorderable, isDragSource, dropSide, onDragStart, onDragOver, onDrop, onDragEnd, onAutoFit, onResizeStep, onReorderStep, sticky,
 }: TableHeaderCellProps) {
   const sorted = header.column.getIsSorted();
   const canSort = header.column.getCanSort();
@@ -62,7 +66,8 @@ export function TableHeaderCell({
       onDragEnd={onDragEnd}
       title={reorderable ? "Drag to reorder · focus the label + Alt+←/→ to reorder via keyboard" : undefined}
       style={{
-        position: "relative",
+        position: sticky ? "sticky" : "relative",
+        ...(sticky ? { right: 0, background: theme.color.surface, borderLeft: `1px solid ${theme.color.line}` } : {}),
         textAlign: header.column.columnDef.meta?.align === "right" ? "right" : "left",
         padding: `${theme.space.s}px ${theme.space.m}px`, borderBottom: `1px solid ${theme.color.lineStrong}`,
         fontSize: theme.font.size.xs, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em",

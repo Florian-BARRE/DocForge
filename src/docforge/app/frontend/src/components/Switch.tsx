@@ -2,13 +2,14 @@
 // A theme-tokened on/off switch — the reversible enable/disable control shared by documents and
 // chunks in the explorer (and any future toggle). A styled button, not a native checkbox/switch.
 //
-// ON reads in forge — a toggle's coloured-on-state is a universal, expected UI convention (unlike a
-// static per-row "enabled" badge, which stays steel per brand.md's "orange = the one active thing").
-// Design round 2026-09 standardised this to ONE canonical "on" look across the app (three different
-// on-treatments had drifted in from feature-level toggle copies — see agent-memory/frontend). A
-// switch that can never be turned off (a required/locked stage) is NOT "pale forge" — it gets its
-// own distinct steel + padlock treatment via the `locked` prop, so "can't turn this off" reads as a
-// different fact than "this happens to be on".
+// ON reads steel (theme.color.dim), NOT forge orange. Per brand.md, forge marks the ONE thing being
+// worked (a running job, the active tab, a primary action) — a switch's "on" state is a static,
+// simultaneously-true-for-many-rows fact (many toggles are on at once across a form/list), so it is
+// decoration, not the active-one signal (2026-09 orange audit: this exact "on"=forge convention was
+// the audit's #1 finding, cascading into every stage-enable and per-config boolean). A switch that
+// can never be turned off (a required/locked stage) shares the same steel fill but adds a padlock
+// glyph in the knob, so "can't turn this off" still reads as a distinct fact from "this happens to
+// be on".
 
 import { theme } from "../theme";
 
@@ -55,7 +56,7 @@ export function Switch({ checked, onChange, disabled, locked, title, id }: Switc
       style={{
         width: WIDTH, height: HEIGHT, borderRadius: HEIGHT / 2,
         border: "none", padding: 2, position: "relative", flexShrink: 0,
-        background: isLocked ? theme.color.dim : checked ? theme.color.accent : theme.color.lineStrong,
+        background: checked || isLocked ? theme.color.dim : theme.color.lineStrong,
         cursor: isInteractive ? "pointer" : "not-allowed",
         opacity: disabled && !isLocked ? 0.6 : 1,
         transition: `background .2s ease`,

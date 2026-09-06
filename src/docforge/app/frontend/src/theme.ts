@@ -61,7 +61,9 @@ export const theme = {
     capability: "var(--capability)", capabilitySoft: "var(--capability-soft)", capabilityStrong: "var(--capability-strong)",
 
     // Categorical data-viz triad — one hue per physical store on the storage-footprint panel.
-    // Warm steel / clay terracotta / olive-moss: three distinct warm hues, never the forge accent.
+    // Warm steel / muted gold-ochre / olive-moss: three distinct warm hues, never the forge accent
+    // or the error/warn status inks (postgres previously sat in the same red-orange band as accent
+    // and error — see index.css comment).
     store: {
       s3: "var(--store-s3)", s3Soft: "var(--store-s3-soft)",
       postgres: "var(--store-postgres)", postgresSoft: "var(--store-postgres-soft)",

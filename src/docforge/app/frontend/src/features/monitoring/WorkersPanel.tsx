@@ -9,7 +9,9 @@ import { LoadingState } from "../../components/LoadingState";
 import { PageHeader } from "../../components/PageHeader";
 import type { Navigate } from "../../shell/view";
 import { theme } from "../../theme";
+import { RecentJobsPanel } from "./RecentJobsPanel";
 import { WorkerCard } from "./WorkerCard";
+import { WorkersFleetSummary } from "./WorkersFleetSummary";
 
 const POLL_MS = 3000;
 
@@ -52,21 +54,9 @@ export function WorkersPanel({ onNavigate }: { onNavigate: Navigate }) {
     );
   };
 
-  const busyCount = workers?.filter((w) => w.busy).length ?? 0;
-  const aliveCount = workers?.filter((w) => w.alive).length ?? 0;
-  const idleCount = aliveCount - busyCount;
-  const offlineCount = (workers?.length ?? 0) - aliveCount;
-
   return (
     <div className="df-rise" style={{ padding: theme.space.xl, overflowY: "auto", height: "100%", maxWidth: 1200, margin: "0 auto", width: "100%" }}>
-      <PageHeader
-        title="Workers"
-        subtitle={
-          workers
-            ? `${busyCount} busy · ${idleCount} idle · ${offlineCount} offline (${workers.length} worker${workers.length === 1 ? "" : "s"} known)`
-            : " "
-        }
-      />
+      <PageHeader title="Workers" subtitle="Every worker process known to the fleet, live." />
       {error && <ErrorState message={error} />}
       {!error && !workers && <LoadingState label="loading fleet…" />}
       {workers && workers.length === 0 && (
@@ -74,17 +64,34 @@ export function WorkersPanel({ onNavigate }: { onNavigate: Navigate }) {
           style={{
             border: `1px dashed ${theme.color.lineStrong}`, borderRadius: theme.radius.l,
             padding: theme.space.xxl, textAlign: "center", color: theme.color.dim, fontSize: theme.font.size.l,
+            marginBottom: theme.space.xl,
           }}
         >
           No worker has ever heartbeated.
         </div>
       )}
       {workers && workers.length > 0 && (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: theme.space.l }}>
-          {workers.map((activity) => (
-            <WorkerCard key={activity.worker_id} activity={activity} onNavigate={onNavigate} onJobUpdated={updateJob} />
-          ))}
-        </div>
+        <>
+          <WorkersFleetSummary workers={workers} />
+          <div
+            style={{
+              display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: theme.space.l,
+              marginBottom: theme.space.xl,
+            }}
+          >
+            {workers.map((activity) => (
+              <WorkerCard key={activity.worker_id} activity={activity} onNavigate={onNavigate} onJobUpdated={updateJob} />
+            ))}
+          </div>
+        </>
+      )}
+      {!error && workers && (
+        <RecentJobsPanel
+          title="Recent activity across the fleet"
+          status={["running", "done"]}
+          emptyLabel="No running or completed jobs yet."
+          onNavigate={onNavigate}
+        />
       )}
     </div>
   );

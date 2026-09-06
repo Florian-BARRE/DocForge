@@ -19,10 +19,12 @@ import { BulkActionBar } from "./BulkActionBar";
 import { buildColumns } from "./columns/buildColumns";
 import { ColumnVisibilityMenu } from "./ColumnVisibilityMenu";
 import { CorpusEstimateAction } from "./CorpusEstimateAction";
+import { CorpusFilterPanel } from "./CorpusFilterPanel";
 import { CorpusTable } from "./CorpusTable";
+import { FilterToggleButton } from "./FilterToggleButton";
 import { buildDocumentFilter } from "./filterBuilder";
 import { Pager } from "./Pager";
-import { apiFieldName, type ColumnFiltersState, type ColumnFilterValue } from "./types";
+import { apiFieldName, countActiveFilters, type ColumnFiltersState, type ColumnFilterValue } from "./types";
 import { useColumnLayout } from "./useColumnLayout";
 import { useCorpusQuery } from "./useCorpusQuery";
 import { useSelection } from "./useSelection";
@@ -39,6 +41,7 @@ export function CorpusPage({ collectionId, onNavigate }: CorpusPageProps) {
   const [collectionError, setCollectionError] = useState<string | null>(null);
 
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>({});
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [sorting, setSorting] = useState<SortingState>([{ id: "created_at", desc: true }]);
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
   const [limit, setLimit] = useState(DEFAULT_LIMIT);
@@ -131,6 +134,7 @@ export function CorpusPage({ collectionId, onNavigate }: CorpusPageProps) {
   // upload affordance, same tone as the collection Overview's first-run hero.
   const hasActiveFilters = Object.keys(filter).length > 0;
   const isFirstRunEmpty = !query.loading && !query.error && query.total === 0 && !hasActiveFilters;
+  const activeFilterCount = countActiveFilters(columnFilters);
 
   const bulkDone = () => {
     selection.clear();
@@ -158,6 +162,11 @@ export function CorpusPage({ collectionId, onNavigate }: CorpusPageProps) {
           selectedCount={selection.count(query.total)}
           totalCount={query.total}
         />
+        <FilterToggleButton
+          open={filtersOpen}
+          activeCount={activeFilterCount}
+          onToggle={() => setFiltersOpen((v) => !v)}
+        />
         <ColumnVisibilityMenu
           table={table}
           onResetLayout={() => {
@@ -166,6 +175,15 @@ export function CorpusPage({ collectionId, onNavigate }: CorpusPageProps) {
           }}
         />
       </div>
+
+      {filtersOpen && (
+        <CorpusFilterPanel
+          table={table}
+          columnFilters={columnFilters}
+          onColumnFilterChange={onColumnFilterChange}
+          onClearAll={() => setColumnFilters({})}
+        />
+      )}
 
       {(showSelectAllPrompt || inFilteredMode) && (
         <div
@@ -207,12 +225,7 @@ export function CorpusPage({ collectionId, onNavigate }: CorpusPageProps) {
         />
       ) : (
         <>
-          <CorpusTable
-            table={table}
-            loading={query.loading}
-            columnFilters={columnFilters}
-            onColumnFilterChange={onColumnFilterChange}
-          />
+          <CorpusTable table={table} loading={query.loading} />
           <Pager total={query.total} limit={limit} offset={offset} onOffsetChange={setOffset} onLimitChange={(next) => { setLimit(next); setOffset(0); }} />
         </>
       )}

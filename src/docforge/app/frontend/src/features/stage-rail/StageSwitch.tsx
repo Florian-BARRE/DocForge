@@ -32,7 +32,7 @@ export function StageSwitch({ checked, disabled = false, title, onChange }: Stag
       <span
         style={{
           position: "relative", width: 34, height: 18, borderRadius: theme.radius.pill,
-          background: checked ? theme.color.accent : theme.color.line,
+          background: checked ? theme.color.dim : theme.color.line,
           transition: "background .15s ease",
         }}
       >

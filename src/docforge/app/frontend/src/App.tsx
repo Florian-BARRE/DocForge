@@ -105,7 +105,7 @@ export function App() {
         {view.name === "job" && <JobDetailPage jobId={view.jobId} collectionId={view.collectionId} onNavigate={setView} />}
         {view.name === "all-jobs" && <AllJobsPage onNavigate={setView} />}
         {view.name === "workers" && <WorkersPanel onNavigate={setView} />}
-        {view.name === "monitoring" && <MonitoringPage />}
+        {view.name === "monitoring" && <MonitoringPage onNavigate={setView} />}
         {view.name === "api-keys" && <AuthKeysPage onNavigate={setView} />}
         {view.name === "api-key" && <KeyDetailPage keyId={view.keyId} onNavigate={setView} />}
       </ErrorBoundary>

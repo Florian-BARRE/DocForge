@@ -4,7 +4,7 @@
 // to the backend. Also holds the edit-mode helpers: prefilling drafts from an existing
 // Collection, and diffing against the original schema to warn about field removal.
 
-import type { Collection, FieldSpec } from "../../../api/collections";
+import type { Collection, CreateCollectionRequest, FieldSpec } from "../../../api/collections";
 
 const BYTES_PER_MB = 1024 * 1024;
 
@@ -99,4 +99,32 @@ export function draftFromCollection(collection: Collection): {
 export function removedFieldNames(original: FieldSpec[], current: DraftField[]): string[] {
   const kept = new Set(current.map((f) => f.field_name));
   return original.filter((f) => !kept.has(f.field_name)).map((f) => f.field_name);
+}
+
+/** The named wizard state slices that assemble into the submitted contract — everything
+ *  `buildWizardPayload` needs, short of the create-only `preset`. */
+export interface WizardDraftSlices {
+  extraContract: Record<string, unknown>;
+  name: string;
+  formats: string[];
+  maxSizeMb: number;
+  jobTimeoutSeconds: number | null;
+  fields: DraftField[];
+}
+
+/**
+ * Assemble the exact collection contract payload the wizard would submit right now — named state
+ * + schema fields + whatever untyped contract fields StepIdentity's schema-driven form is
+ * carrying. Shared by the actual submit call and the live preview panel so the two can never
+ * drift apart (the preview is always byte-identical to what "Create"/"Save" would send).
+ */
+export function buildWizardPayload(draft: WizardDraftSlices): CreateCollectionRequest {
+  return {
+    ...draft.extraContract,
+    name: draft.name.trim(),
+    supported_formats: draft.formats,
+    max_file_size_bytes: mbToBytes(draft.maxSizeMb),
+    job_timeout_seconds: draft.jobTimeoutSeconds,
+    fields: draft.fields.map(toFieldSpec),
+  };
 }

@@ -11,8 +11,10 @@ import { queryDocuments } from "../../api/corpus";
 import { ErrorState } from "../../components/ErrorState";
 import type { Navigate } from "../../shell/view";
 import { theme } from "../../theme";
+import { SearchExampleQueries } from "./SearchExampleQueries";
 import { SearchFilterBuilder } from "./SearchFilterBuilder";
 import { SearchQueryBar } from "./SearchQueryBar";
+import { SearchResultSkeleton } from "./SearchResultSkeleton";
 import { SearchResultsList } from "./SearchResultsList";
 import { buildSearchIn, DEFAULT_TARGET_SELECTION, SearchTargetPicker, type TargetSelection } from "./SearchTargetPicker";
 
@@ -122,11 +124,13 @@ export function SearchLabPage({ collectionId }: SearchLabPageProps) {
           />
         )}
         {!error && response && <SearchResultsList response={response} />}
-        {/* Pre-search placeholder — sits exactly where the hit-card column will render, left-aligned
-            like the rest of this page (no extra centering/indent). */}
+        {/* Pre-search state — sits exactly where the hit-card column will render, left-aligned like
+            the rest of this page. Teaches with clickable example queries and previews the layout
+            with a skeleton instead of leaving the space bare. */}
         {!error && !response && !loading && (
-          <div style={{ color: theme.color.dim, fontSize: theme.font.size.s }}>
-            Run a query to see ranked hits.
+          <div style={{ display: "flex", flexDirection: "column", gap: theme.space.l }}>
+            <SearchExampleQueries onSelect={setQuery} />
+            <SearchResultSkeleton />
           </div>
         )}
       </div>

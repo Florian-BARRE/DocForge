@@ -1,11 +1,22 @@
 // ====== Code Summary ======
 // Render smoke-test for MonitoringPage — mounts through loading -> loaded for its fleet queue-depth
-// and throughput tiles, and asserts the telemetry note never renders a hardcoded host link.
+// and throughput tiles plus the recent-completed-jobs panel, asserts the telemetry note never
+// renders a hardcoded host link, and asserts navigating from the recent-jobs list works.
 
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import type { ReactElement } from "react";
 import { describe, expect, it, vi } from "vitest";
 import type { JobPage, QueueDepth } from "../../api/jobs";
+import type { Navigate } from "../../shell/view";
+import { ToastProvider } from "../../shell/toast";
 import { MonitoringPage } from "./MonitoringPage";
+
+// JobRow (rendered by RecentJobsPanel) renders JobCancelControl, which calls useToast()
+// unconditionally — needs a real provider (see agent-memory/frontend/quality-gate-lint-test.md's
+// ToastProvider harness gotcha).
+function renderWithProviders(ui: ReactElement) {
+  return render(<ToastProvider>{ui}</ToastProvider>);
+}
 
 vi.mock("../../api/jobs", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../api/jobs")>()),
@@ -34,12 +45,16 @@ describe("MonitoringPage", () => {
     vi.mocked(getQueueDepth).mockResolvedValue(queueDepth);
     vi.mocked(listJobsPage).mockResolvedValue(donePage);
 
-    expect(() => render(<MonitoringPage />)).not.toThrow();
+    const onNavigate: Navigate = vi.fn();
+    expect(() => renderWithProviders(<MonitoringPage onNavigate={onNavigate} />)).not.toThrow();
 
     await waitFor(() => expect(screen.getByText("2")).toBeInTheDocument());
     expect(screen.getByText("1", { exact: true })).toBeInTheDocument(); // throughput within the trailing window
 
     expect(screen.getByText(/docforge-overview/)).toBeInTheDocument();
-    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+
+    await waitFor(() => expect(screen.getByText("a.pdf")).toBeInTheDocument());
+    fireEvent.click(screen.getByText("a.pdf"));
+    expect(onNavigate).toHaveBeenCalledWith({ name: "job", collectionId: "col-1", jobId: "job-1" });
   });
 });

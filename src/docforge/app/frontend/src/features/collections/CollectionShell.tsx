@@ -125,7 +125,13 @@ interface SectionTabProps {
   onKeyDown: (e: React.KeyboardEvent) => void;
 }
 
+// Same underline idiom as TabNav's sub-tabs (see components/TabNav.tsx) — the audit flagged a
+// filled orange PILL here stacked directly above TabNav's orange UNDERLINE sub-tabs on the same
+// page (Search section: "Search"/"Search pipeline") as two competing active-tab affordances. One
+// idiom now: text colour + a bottom border, the active one alone carrying the forge underline.
 function SectionTab({ sectionKey, active, label, onClick, registerRef, onKeyDown }: SectionTabProps) {
+  const [hover, setHover] = useState(false);
+  const color = active ? t.color.accentSafe : hover ? t.color.text : t.color.dim;
   return (
     <button
       id={sectionTabId(sectionKey)}
@@ -135,13 +141,14 @@ function SectionTab({ sectionKey, active, label, onClick, registerRef, onKeyDown
       tabIndex={active ? 0 : -1}
       onClick={onClick}
       onKeyDown={onKeyDown}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
       style={{
-        background: active ? t.color.accentSoft : "transparent",
-        color: active ? t.color.accentSafe : t.color.dim,
-        border: `1px solid ${active ? t.color.accentLine : "transparent"}`,
-        borderRadius: t.radius.m, padding: "4px 13px",
-        fontSize: t.font.size.m, fontWeight: active ? 700 : 600, cursor: "pointer",
-        transition: "background .16s ease, color .16s ease, border-color .16s ease",
+        background: "none", border: "none", cursor: "pointer",
+        padding: `${t.space.s}px 2px`, marginBottom: -1, color,
+        borderBottom: `2px solid ${active ? t.color.accent : hover ? t.color.line : "transparent"}`,
+        fontSize: t.font.size.l, fontWeight: active ? 700 : 600,
+        transition: "color .15s ease, border-color .15s ease",
       }}
     >
       {label}
@@ -277,7 +284,7 @@ export function CollectionShell({ collectionId, active, onNavigate, children }: 
           role="tablist"
           aria-label="Collection sections"
           style={{
-            display: "flex", gap: t.space.xs,
+            display: "flex", gap: t.space.l,
             marginBottom: SUBTABS[section].length > 1 ? t.space.s : 0,
             borderBottom: SUBTABS[section].length > 1 ? "none" : `1px solid ${t.color.line}`,
             paddingBottom: SUBTABS[section].length > 1 ? 0 : t.space.s,
