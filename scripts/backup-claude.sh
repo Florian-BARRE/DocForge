@@ -27,8 +27,13 @@ fi
 mkdir -p "${BACKUP_DIR}"
 
 # 2. Timestamped tarball; exclude the local/secret/large paths (mirrors .claude/.gitignore).
+#    The root CLAUDE.md and .mcp.json are gitignored TOO (same public-repo decision) and live
+#    OUTSIDE .claude/ — include them so the whole local Claude setup survives together.
 STAMP="$(date +%Y-%m-%dT%H%M%S)"
 ARCHIVE="${BACKUP_DIR}/docforge-claude-${STAMP}.tar.gz"
+EXTRAS=()
+[[ -f "${REPO_ROOT}/CLAUDE.md" ]] && EXTRAS+=(CLAUDE.md)
+[[ -f "${REPO_ROOT}/.mcp.json" ]] && EXTRAS+=(.mcp.json)
 tar -czf "${ARCHIVE}" -C "${REPO_ROOT}" \
   --exclude='.claude/hooks/logs' \
   --exclude='.claude/worktrees' \
@@ -37,8 +42,8 @@ tar -czf "${ARCHIVE}" -C "${REPO_ROOT}" \
   --exclude='.claude/mcp-memory.json' \
   --exclude='.claude/scheduled_tasks.lock' \
   --exclude='**/__pycache__' \
-  .claude
-echo "backed up .claude/ -> ${ARCHIVE} ($(du -h "${ARCHIVE}" | cut -f1))"
+  .claude "${EXTRAS[@]}"
+echo "backed up .claude/ + ${EXTRAS[*]:-#} -> ${ARCHIVE} ($(du -h "${ARCHIVE}" | cut -f1))"
 
 # 3. Retention: keep the newest ${RETENTION} snapshots, prune older ones.
 mapfile -t OLD < <(ls -1t "${BACKUP_DIR}"/docforge-claude-*.tar.gz 2>/dev/null | tail -n +"$((RETENTION + 1))")
