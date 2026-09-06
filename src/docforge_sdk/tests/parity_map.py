@@ -104,6 +104,7 @@ from docforge_sdk.models.pipelines import (
 )
 from docforge_sdk.models.search import (
     BlockLocation,
+    SearchCost,
     SearchHit,
     SearchRequest,
     SearchResponse,
@@ -213,6 +214,7 @@ MODELS: dict[str, type[BaseModel]] = {
     "SearchRequest": SearchRequest,
     "BlockLocationModel": BlockLocation,
     "SearchHitModel": SearchHit,
+    "SearchCostModel": SearchCost,
     "SearchResponse": SearchResponse,
     # Jobs
     "JobStatus": JobStatus,

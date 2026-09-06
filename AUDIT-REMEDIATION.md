@@ -8,6 +8,8 @@
 
 ## Journal
 
+- **2026-09-06 — Vague AI / 0.14.44 (V8 search-time LLM cost sink, 539 CLÔTURÉ)** : la dépense LLM search-time (query rewrite / HyDE) n'était métrée NULLE PART (search tourne inline app-side, hors meter worker). Le nœud query stampe déjà son usage sur le record d'exécution ; il manquait la somme + l'exposition. Fix : le summer devient **partagé** (`shared/libs/pipelines/usage.py::UsageSummer`, réutilisé par les DEUX meters — le worker `StageUsageSummer` est désormais un alias mince, l'app search l'importe directement). `SearchRunner.run` prend un `RateTable` (construit par le service depuis `collection.estimate_overrides` — mêmes tarifs que l'estimateur/ingest, cohérent avec 543) et retourne `(SearchResult, usage)` ; le routeur expose un nouveau champ optionnel **`SearchResponse.cost`** (`SearchCostModel` : prompt/completion tokens, cost_usd, call_count), **null** quand aucun appel payant (search stock lexical/dense). Miroir SDK (`SearchCost` + parity map) + **snapshot OpenAPI régénéré** (97 schémas trackés, +1). +2 tests route (cost null / cost surfacé). Gate : docforge **1642 passed** (+2), SDK **561**, MCP **51**, ruff clean, drift OK. Les 2 volets de 539 sont couverts (undercount retry = VLM déjà corrigé en 0.14.35, LLM/query single-shot ; search-time sink = ici) → **539 CLÔTURÉ**. **V8 : 159 fait.**
+
 - **2026-09-06 — Vague AH / 0.14.43 (V8 pricing refresh, 545 — tarifs vérifiés sur sources officielles)** : la table `MODEL_PRICING`/`EMBED_PRICING`/`OCR_PAGE_PRICING` (canonique pour estimateur ET méter) était d'une génération en retard. Refresh depuis les pages de tarifs **officielles** (fetch direct, pas de chiffre deviné — la 1re recherche web synthétisée donnait un GPT-5 à $10/$50 FAUX, corrigé par le fetch de la page modèle : $1.25/$10). Ajoutés : GPT-5 (1.25/10), gpt-5-mini (0.25/2), gpt-5.5 (5/30), gpt-5.6-sol (4/20), gpt-5.6-terra (2/12), gpt-5.6-luna (0.20/1.20) ; embeddings mistral-embed (0.10) + codestral-embed (0.15) ; **OCR mistral corrigé 0.001 → 0.004** (Mistral OCR 4.1 = $4/1000 pages ; l'ancien 0.001 = tarif OCR 3 batch périmé). 4o/4.1 + text-embedding-3 conservés (toujours valides). Discounts cached-input / batch NON modélisés (le méter ne connaît pas le cache-hit ratio → tarif standard = borne haute sûre). Tests de prix mis à jour (0.001→0.004). Gate : **1640 passed**, ruff clean, drift OK (table interne, hors response models). **V8 : 158 fait.**
 
 - **2026-09-06 — Vague AG / 0.14.42 (V8 rate-overrides → meter, 543)** : le méter de coût réel (`StageUsageSummer.summarize`, worker) pricait via les tables GLOBALES (`price_usd`/`price_ocr_pages`), ignorant les rate-overrides par-collection — alors que l'estimateur, lui, price via un `RateTable` overridable → contrat "priced from identical numbers" rompu (une collection à tarif négocié voyait l'estimé refléter la remise mais pas le coût réel). Fix : **une seule** implémentation de fold — `RateTable.from_overrides(raw_jsonb)` en **shared** (défauts canoniques + overlay per-key models/embed/ocr) ; le merger app (`merged_rates`) **délègue** désormais à ce fold (plus de duplication → zéro drift possible) ; le worker `core.py` construit `RateTable.from_overrides(collection.estimate_overrides)` et le passe au `JobProgressRecorder` → `summarize(record, rates)` price via `rates.token_cost`/`ocr_cost`. +1 test méter (override change le coût métré), les 3 tests merger couvrent le fold côté app. Gate : **1640 passed** (+1), ruff clean, drift OK (interne au méter, hors response models). **NB 545 (pricing refresh) DÉFÉRÉ** : refresh nécessite des tarifs autoritatifs vérifiés (les modèles ont changé de génération — GPT-5.x en 2026-09) ; encoder des chiffres issus d'une recherche web = fabrication de valeurs monétaires → à confirmer par l'utilisateur. **V8 : 157 fait.**
@@ -183,8 +185,8 @@
 | V5 — Moteur & pipeline | 2 | 2 | 0 | 0 |
 | V6 — Frontend | 0 | 0 | 0 | 0 |
 | V7 — Documentation | 21 | 21 | 0 | 0 |
-| V8 — Outillage (.claude/tests/infra/télémétrie) | 188 | 158 | 6 | 24 |
-| **Total** | **247** | **216** | **6** | **25** |
+| V8 — Outillage (.claude/tests/infra/télémétrie) | 188 | 159 | 5 | 24 |
+| **Total** | **247** | **217** | **5** | **25** |
 
 
 ## V1 — Sécurité & authz (avant tout déploiement multi-tenant)  (30)
@@ -540,7 +542,7 @@
   `src/docforge/shared/libs/pipelines/ingest/estimate/estimator.py:201`
 - [x] **🟠 MOYENNE** · `divergence-doc` — Post-hoc $ meter counts only LLM/VLM/structgen — paid embed and paid OCR spend is never metered, while the estimate prices both  
   `src/docforge/worker/backend/libs/jobs/usage.py:51`
-- [~] **⚪ FAIBLE** · `design` — Meter undercounts on retries/failed paid attempts, and search-time LLM spend is metered nowhere  
+- [x] **⚪ FAIBLE** · `design` — Meter undercounts on retries/failed paid attempts, and search-time LLM spend is metered nowhere  
   `src/docforge/shared/libs/pipelines/nodes/openai_compat/client.py:52`
 - [x] **⚪ FAIBLE** · `bug` — Override validation gaps: negative embed/OCR rates and infinite assumption values are accepted  
   `src/docforge/app/backend/libs/estimate/overrides.py:32`

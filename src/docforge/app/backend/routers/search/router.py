@@ -23,7 +23,7 @@ from ...libs.search import (
 )
 from ...utils.error_handling import auto_handle_errors
 from .helpers import SearchHelpers
-from .models import SearchRequest, SearchResponse
+from .models import SearchCostModel, SearchRequest, SearchResponse
 
 router = APIRouter(tags=["search"])
 
@@ -98,7 +98,7 @@ async def search_collection(collection_id: uuid.UUID, request: SearchRequest) ->
     #    The subclasses are caught FIRST (Python matches except clauses in order), so only a real
     #    build/validate/output-contract failure keeps the alarming "invalid search graph" message.
     try:
-        result = await CONTEXT.search_service.search(
+        result, usage = await CONTEXT.search_service.search(
             collection_id,
             request.query,
             top_k=request.limit,
@@ -127,12 +127,25 @@ async def search_collection(collection_id: uuid.UUID, request: SearchRequest) ->
     #    surfaced as debug_info so a DEGRADED search (an encode axis was dropped — the note the
     #    pipeline threads through SearchResult.debug["degraded"]) is visible to the client instead of
     #    silently returning partial results. A healthy run carries only a minimal bag (hit count).
+    #    The metered search-time LLM spend (rewrite/HyDE) rides ``cost`` — None when no paid call ran.
+    prompt_tokens, completion_tokens, cost_usd, call_count = usage
+    cost = (
+        SearchCostModel(
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            cost_usd=cost_usd,
+            call_count=call_count,
+        )
+        if call_count > 0
+        else None
+    )
     return SearchResponse(
         query=request.query,
         hits=[SearchHelpers.to_hit_model(hit) for hit in result.hits],
         score_kind=SearchHelpers.score_kind(
             collection.search, rerank_degraded=SearchHelpers.rerank_degraded(result.debug)
         ),
+        cost=cost,
         debug_info=result.debug,
     )
 

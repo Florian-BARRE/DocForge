@@ -15,6 +15,7 @@ from typing import Any
 from loggerplusplus import LoggerClass
 
 # ====== Internal Project Imports ======
+from shared_libs.pipelines.ingest.estimate import RateTable
 from shared_libs.pipelines.search import (
     SearchBlobNormalizationError,
     SearchBlobNormalizer,
@@ -106,9 +107,9 @@ class SearchService(LoggerClass):
         filters: dict | None = None,
         search_targets: list[SearchTarget] | None = None,
         collection: Any | None = None,
-    ) -> SearchResult:
+    ) -> tuple[SearchResult, tuple[int, int, float | None, int]]:
         """
-        Run the search graph against a collection and return the ranked SearchResult.
+        Run the search graph against a collection and return the ranked SearchResult plus its cost.
 
         Args:
             collection_id (uuid.UUID): The collection to search.
@@ -119,7 +120,9 @@ class SearchService(LoggerClass):
                 and/or metadata). None searches content on both axes (unchanged default).
 
         Returns:
-            SearchResult: The ranked hits, best first.
+            tuple[SearchResult, tuple[int, int, float | None, int]]: the ranked hits (best first) and
+                the run's priced usage (prompt tokens, completion tokens, USD cost or None, count) —
+                any search-time LLM spend (rewrite/HyDE), priced against the collection's own rates.
 
         Raises:
             SearchServiceError: When the collection is unknown.
@@ -158,8 +161,13 @@ class SearchService(LoggerClass):
         #    SearchRunError (at build + validate); the SEARCH ROUTER maps that to a 422 at the HTTP
         #    boundary, so an invalid stored graph is never surfaced as a 500.
         blob = self.__resolve_blob(collection.search)
+
+        # 6. Price any search-time LLM spend against the collection's EFFECTIVE rates (canonical
+        #    defaults folded with its per-collection overrides) — the same numbers the estimator/ingest
+        #    meter use, so search cost is consistent with the rest of the platform's metering.
+        rates = RateTable.from_overrides(getattr(collection, "estimate_overrides", None))
         return await self._runner.run(
-            blob, run_input, read_port, timeout_seconds=self._timeout_seconds
+            blob, run_input, read_port, rates, timeout_seconds=self._timeout_seconds
         )
 
 
