@@ -15,7 +15,7 @@
 #   at /opt/venv, selecting the correct torch wheel variant via TORCH_VARIANT.
 # - TORCH_VARIANT=cpu  (default) installs torch 2.13.0+cpu (~200 MB) — no nvidia-* libs.
 #   Target runtime image size: ~2 GB.
-# - TORCH_VARIANT=gpu installs torch 2.11.0+cu128 (~2 GB) + all nvidia-cu12-* runtime libs.
+# - TORCH_VARIANT=gpu installs torch 2.13.0+cu129 (~2 GB) + all nvidia-cu12-* runtime libs.
 #   Target runtime image size: ~8.5 GB. Requires NVIDIA Container Toolkit on the host.
 # - Isolating dependency installation from application code means code-only changes do
 #   NOT invalidate this slow dependency layer.
@@ -28,7 +28,7 @@ FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim AS py-build
 #   docker build --build-arg TORCH_VARIANT=gpu -f src/bge_server/Dockerfile \
 #                -t docforge-bge-server:gpu src
 # The two values map to pyproject.toml [project.optional-dependencies] extras (cpu / gpu),
-# which steer uv to the correct torch wheel index (pytorch-cpu / pytorch-cu128). They are
+# which steer uv to the correct torch wheel index (pytorch-cpu / pytorch-cu129). They are
 # declared as conflicting extras so uv rejects any attempt to install both simultaneously.
 ARG TORCH_VARIANT=cpu
 
@@ -79,10 +79,14 @@ LABEL org.opencontainers.image.title="docforge-bge-server" \
 #   requiring `source /opt/venv/bin/activate`.
 # - HF_HOME: HuggingFace cache directory; docker compose mounts a named volume here so
 #   BGE-M3 and BGE-reranker-v2-m3 weights (~4.4 GiB total) persist across restarts.
+# - MALLOC_ARENA_MAX: caps glibc malloc arenas at 2. No `cpus:` limit is set in compose, so
+#   glibc otherwise scales arenas to the HOST's core count — inflating RSS for this
+#   multi-threaded native stack (torch/OpenMP) well past what the process actually needs.
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PATH="/opt/venv/bin:${PATH}" \
-    HF_HOME=/models
+    HF_HOME=/models \
+    MALLOC_ARENA_MAX=2
 
 # Working directory is set to the application root so that `config_loader`, `backend`,
 # and `libs` are all top-level names on sys.path — matching the pattern of the sibling

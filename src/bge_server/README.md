@@ -81,8 +81,8 @@ The Dockerfile supports two mutually exclusive torch variants selected at build 
 
 | Variant | Torch version | nvidia-* libs | Approximate image size | CUDA available |
 |---|---|---|---|---|
-| `cpu` (default) | 2.12.1+cpu | none | ~2 GB | no |
-| `gpu` | 2.11.0+cu128 | yes (cu12-*) | ~9.5 GB | yes (with --gpus) |
+| `cpu` (default) | 2.13.0+cpu | none | ~2 GB | no |
+| `gpu` | 2.13.0+cu129 | yes (cu12-*) | ~9.5 GB | yes (with --gpus) |
 
 ```bash
 # CPU variant (default) — used by docker compose build, no flags needed:

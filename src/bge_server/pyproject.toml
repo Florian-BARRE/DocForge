@@ -76,10 +76,10 @@ conflicts = [
 [tool.uv.sources]
 # Route torch to the correct wheel index depending on the active extra.
 # pytorch-cpu: CPU-only wheels (~200 MB), no CUDA runtime payload.
-# pytorch-cu128: CUDA 12.8 wheels, compatible with Ada (RTX 40xx, compute 8.9) and later.
+# pytorch-cu129: CUDA 12.9 wheels, compatible with Ada (RTX 40xx, compute 8.9) and later.
 torch = [
     { index = "pytorch-cpu", extra = "cpu" },
-    { index = "pytorch-cu128", extra = "gpu" },
+    { index = "pytorch-cu129", extra = "gpu" },
 ]
 
 [[tool.uv.index]]
@@ -89,10 +89,12 @@ url = "https://download.pytorch.org/whl/cpu"
 explicit = true
 
 [[tool.uv.index]]
-# CUDA 12.8 torch wheels — RTX 40xx (compute 8.9), RTX 30xx (compute 8.6), and later.
-# Also compatible with the default PyPI cu13x torch that was validated on the RTX 4050.
-name = "pytorch-cu128"
-url = "https://download.pytorch.org/whl/cu128"
+# CUDA 12.9 torch wheels — RTX 40xx (compute 8.9), RTX 30xx (compute 8.6), and later.
+# cu128 is frozen at torch 2.11 upstream (no newer builds published) and would permanently
+# drift from the cpu extra's resolved minor; cu129 tracks torch releases in lockstep with cpu
+# (both resolve to 2.13.0 as of this pin) and remains fully Ada-compatible.
+name = "pytorch-cu129"
+url = "https://download.pytorch.org/whl/cu129"
 explicit = true
 
 [tool.ruff]

@@ -96,10 +96,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # - PADDLE_PDX_CACHE_HOME: PaddleX's model cache root (verified against the paddlex 3.7.0
 #   wheel source — see config_loader.py); docker compose mounts a named volume here so every
 #   downloaded inference model (layout/OCR/table/formula/seal) persists across restarts.
+# - MALLOC_ARENA_MAX: caps glibc malloc arenas at 2. No `cpus:` limit is set in compose, so
+#   glibc otherwise scales arenas to the HOST's core count — inflating RSS for this
+#   multi-threaded native stack (paddlepaddle's OpenMP kernels, OpenCV) well past what the
+#   process actually needs.
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PATH="/opt/venv/bin:${PATH}" \
-    PADDLE_PDX_CACHE_HOME=/models
+    PADDLE_PDX_CACHE_HOME=/models \
+    MALLOC_ARENA_MAX=2
 
 # Working directory is set to the application root so that `config_loader`, `backend`, and
 # `libs` are all top-level names on sys.path — matches the sibling src/bge_server/ pattern.
