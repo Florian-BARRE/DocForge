@@ -43,6 +43,8 @@ function primaryPageBoxes(hit: SearchHitModel): { page: number; boxes: OverlayBo
   const locations: BlockLocationModel[] = hit.block_locations ?? [];
   if (locations.length) {
     const page = hit.page ?? locations[0].page;
+    // A page-less document (no render) reports every block location's page as null — nothing to view.
+    if (page == null) return null;
     const onPage = locations.filter((loc) => loc.page === page);
     const boxed = onPage.length ? onPage : [locations[0]];
     return {

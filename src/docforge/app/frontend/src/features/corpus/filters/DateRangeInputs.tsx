@@ -1,13 +1,11 @@
 // ====== Code Summary ======
-// Two date inputs (from/to) for a datetime-range column filter — created_at, or a datetime
-// metadata field. Kept as plain `<input type="date">` (a day-granularity bound is enough for
-// corpus triage) rather than a full datetime picker. Stacked (from above to) instead of
-// side-by-side: a native date input's own rendered value ("yyyy-mm-dd") needs more width than a
-// narrow grid column has to spare two of side by side without truncating.
+// Two DateInput fields (from/to) for a datetime-range column filter — created_at, or a datetime
+// metadata field. Day-granularity (not a full datetime picker) is enough for corpus triage.
+// Stacked (from above to) instead of side-by-side: a date field's own rendered value
+// ("yyyy-mm-dd") needs more width than a narrow grid column has to spare two of side by side
+// without truncating.
 
-import { inputStyle } from "../../../components/inputStyle";
-import { useTheme } from "../../../shell/useTheme";
-import { theme } from "../../../theme";
+import { DateInput } from "../../../components/DateInput";
 
 interface DateRangeInputsProps {
   gte: string;
@@ -18,31 +16,21 @@ interface DateRangeInputsProps {
 }
 
 export function DateRangeInputs({ gte, lte, onChange, label }: DateRangeInputsProps) {
-  // Native date-picker/spinner chrome (including the calendar-icon glyph) tracks `color-scheme`,
-  // not our CSS variables — without this it always renders light, looking foreign on the ink theme.
-  const { theme: activeTheme } = useTheme();
-  const cellInputStyle: React.CSSProperties = {
-    ...inputStyle, borderRadius: theme.radius.s, padding: "5px 6px",
-    fontSize: 11, fontFamily: theme.font.mono, colorScheme: activeTheme, width: "100%",
-  };
-
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-      <input
-        type="date"
+      <DateInput
         className="df-filter-input"
         value={gte}
-        aria-label={label ? `${label} from` : "from"}
-        onChange={(e) => onChange({ gte: e.target.value, lte })}
-        style={cellInputStyle}
+        ariaLabel={label ? `${label} from` : "from"}
+        onChange={(next) => onChange({ gte: next, lte })}
+        style={{ width: "100%" }}
       />
-      <input
-        type="date"
+      <DateInput
         className="df-filter-input"
         value={lte}
-        aria-label={label ? `${label} to` : "to"}
-        onChange={(e) => onChange({ gte, lte: e.target.value })}
-        style={cellInputStyle}
+        ariaLabel={label ? `${label} to` : "to"}
+        onChange={(next) => onChange({ gte, lte: next })}
+        style={{ width: "100%" }}
       />
     </div>
   );

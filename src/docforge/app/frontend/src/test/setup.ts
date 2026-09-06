@@ -30,3 +30,16 @@ if (typeof globalThis.IntersectionObserver === "undefined") {
 if (typeof Element.prototype.scrollIntoView !== "function") {
   Element.prototype.scrollIntoView = () => {};
 }
+
+// jsdom implements neither API — needed by the corpus grid (CorpusTable measures its scroll
+// wrapper's width via `ResizeObserver` to size the virtualized `<table>`; `@tanstack/react-virtual`
+// itself also expects the constructor to exist). Inert no-op: the tests that exercise the grid
+// assert on rendered rows/columns, not on real resize notifications.
+if (typeof globalThis.ResizeObserver === "undefined") {
+  class MockResizeObserver implements ResizeObserver {
+    disconnect(): void {}
+    observe(): void {}
+    unobserve(): void {}
+  }
+  globalThis.ResizeObserver = MockResizeObserver;
+}
