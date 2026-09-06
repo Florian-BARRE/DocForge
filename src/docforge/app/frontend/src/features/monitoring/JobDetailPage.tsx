@@ -9,7 +9,7 @@
 // `JobSummaryCard`. This component is pure top-level layout.
 
 import { jobDisplayName } from "../../api/jobs";
-import { BackLink } from "../../components/BackLink";
+import { Breadcrumb } from "../../components/Breadcrumb";
 import { ErrorState } from "../../components/ErrorState";
 import { LoadingState } from "../../components/LoadingState";
 import { PageHeader } from "../../components/PageHeader";
@@ -37,11 +37,20 @@ export function JobDetailPage({ jobId, collectionId, onNavigate }: JobDetailPage
   return (
     <div className="df-rise" style={{ padding: theme.space.xl, overflowY: "auto", height: "100%", maxWidth: 1200, margin: "0 auto", width: "100%" }}>
       <PageHeader
-        eyebrow={<BackLink label="Jobs" onClick={() => onNavigate({ name: "collection-jobs", collectionId })} />}
+        eyebrow={
+          <Breadcrumb
+            items={[
+              { label: "Collections", view: { name: "collections" } },
+              { label: job.collection_name ?? "Collection", view: { name: "collection", collectionId } },
+              { label: "Jobs", view: { name: "collection-jobs", collectionId } },
+              { label: jobDisplayName(job) },
+            ]}
+            onNavigate={onNavigate}
+          />
+        }
         title={<span>{jobDisplayName(job)}</span>}
         subtitle={
           <span style={{ display: "inline-flex", alignItems: "center", gap: theme.space.s, flexWrap: "wrap" }}>
-            {job.collection_name && <span>{job.collection_name}</span>}
             <span style={{ fontFamily: theme.font.mono, fontSize: theme.font.size.s, color: theme.color.mute }}>job {job.job_id}</span>
             <span style={{ fontFamily: theme.font.mono, fontSize: theme.font.size.s, color: theme.color.mute }}>doc {job.document_id}</span>
             <span>attempt {job.attempt}</span>

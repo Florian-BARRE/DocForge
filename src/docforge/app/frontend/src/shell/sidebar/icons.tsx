@@ -15,6 +15,16 @@ const LINE = {
   strokeLinejoin: "round" as const,
 };
 
+/** Home — a simple roof/house mark, the "step back and start here" entry. */
+export function HomeGlyph() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" {...LINE}>
+      <path d="M4 11.5 12 4l8 7.5" />
+      <path d="M6 10v9a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-9" />
+    </svg>
+  );
+}
+
 /** Collections section — a folded document (echoes ForgeMark's own paper shape). */
 export function CollectionsGlyph() {
   return (
@@ -33,6 +43,25 @@ export function WorkersGlyph() {
       <circle cx="9" cy="8" r="3" />
       <path d="M3 20a6 6 0 0 1 12 0" />
       <path d="M16 5.5a3 3 0 0 1 0 5.8M18.5 20a5.5 5.5 0 0 0-3-4.9" />
+    </svg>
+  );
+}
+
+/** All Jobs page — a stacked queue of three bars (the fleet-wide job list, as opposed to the
+ *  per-worker rack glyph below). */
+export function AllJobsGlyph() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" {...LINE}>
+      <path d="M4 6h16M4 12h16M4 18h10" />
+    </svg>
+  );
+}
+
+/** Monitoring page — a small pulse/heartbeat line, job-level health rather than host metrics. */
+export function MonitoringGlyph() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" {...LINE}>
+      <path d="M3 12h4l2 7 4-14 2 7h6" />
     </svg>
   );
 }

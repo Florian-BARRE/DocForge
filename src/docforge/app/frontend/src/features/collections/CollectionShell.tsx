@@ -8,7 +8,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { getCollection, type Collection } from "../../api/collections";
-import { BackLink } from "../../components/BackLink";
+import { Breadcrumb, type BreadcrumbItem } from "../../components/Breadcrumb";
 import { Button } from "../../components/Button";
 import { Chip } from "../../components/Chip";
 import { ErrorState } from "../../components/ErrorState";
@@ -22,6 +22,7 @@ import type { Navigate, View } from "../../shell/view";
 import { theme as t } from "../../theme";
 import { DeleteCollectionDialog } from "./DeleteCollectionDialog";
 import { useDeleteCollection } from "./state/useDeleteCollection";
+import { BreadcrumbExtraContext } from "../../shell/collectionBreadcrumbExtra";
 import { ExportPanel } from "./transfer/ExportPanel";
 import { UploadPanel } from "./UploadPanel";
 
@@ -157,6 +158,9 @@ export function CollectionShell({ collectionId, active, onNavigate, children }: 
   // the header action never opens a second upload panel next to that page's own inline one.
   const [uploadActionHidden, setUploadActionHidden] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  // Set by a nested page via `useCollectionBreadcrumbExtra` (namely DocumentPage) so this shell's
+  // own breadcrumb can grow into the page's full trail instead of that page stacking a second one.
+  const [breadcrumbExtra, setBreadcrumbExtra] = useState<BreadcrumbItem[] | null>(null);
   const { deleting, error: deleteError, remove } = useDeleteCollection();
 
   const hideUploadAction = useCallback((hide: boolean) => {
@@ -191,6 +195,19 @@ export function CollectionShell({ collectionId, active, onNavigate, children }: 
     }
   };
 
+  // "Collections / {collection}" alone, or — when a nested page (e.g. DocumentPage) contributed
+  // trailing segments via `useCollectionBreadcrumbExtra` — "Collections / {collection} / …extra".
+  const breadcrumbItems: BreadcrumbItem[] = breadcrumbExtra
+    ? [
+        { label: "Collections", view: { name: "collections" } },
+        { label: collection.name, view: { name: "collection", collectionId } },
+        ...breadcrumbExtra,
+      ]
+    : [
+        { label: "Collections", view: { name: "collections" } },
+        { label: collection.name },
+      ];
+
   const section = SECTION_OF[active];
   const maxSizeMb = (collection.max_file_size_bytes / (1024 * 1024)).toFixed(1);
   const subtitle = `${collection.supported_formats.join(", ")} · ${maxSizeMb} MB max · `
@@ -206,7 +223,7 @@ export function CollectionShell({ collectionId, active, onNavigate, children }: 
       <div style={{ padding: `${t.space.m}px ${t.space.xl}px 0`, maxWidth: 1200, margin: "0 auto", width: "100%" }}>
         <PageHeader
           compact
-          eyebrow={<BackLink label="Collections" onClick={() => onNavigate({ name: "collections" })} />}
+          eyebrow={<Breadcrumb items={breadcrumbItems} onNavigate={onNavigate} />}
           title={
             <span style={{ display: "inline-flex", alignItems: "center", gap: t.space.s }}>
               {collection.name}
@@ -292,7 +309,9 @@ export function CollectionShell({ collectionId, active, onNavigate, children }: 
       </div>
       <div role="tabpanel" id="collection-panel" aria-labelledby={activeTabId} style={{ flex: 1, minHeight: 0 }}>
         <HideHeaderUploadContext.Provider value={hideUploadAction}>
-          {children}
+          <BreadcrumbExtraContext.Provider value={setBreadcrumbExtra}>
+            {children}
+          </BreadcrumbExtraContext.Provider>
         </HideHeaderUploadContext.Provider>
       </div>
       {confirmingDelete && (

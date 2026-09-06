@@ -14,7 +14,10 @@
 
 import type { ReactNode } from "react";
 import type { View } from "../view";
-import { AdminGlyph, AllGlyph, ApiKeyGlyph, CollectionsGlyph, CreateGlyph, ImportGlyph, WorkersGlyph, WorkersPageGlyph } from "./icons";
+import {
+  AdminGlyph, AllGlyph, AllJobsGlyph, ApiKeyGlyph, CollectionsGlyph, CreateGlyph, HomeGlyph,
+  ImportGlyph, MonitoringGlyph, WorkersGlyph, WorkersPageGlyph,
+} from "./icons";
 
 export interface SidebarPage {
   key: string;
@@ -32,6 +35,20 @@ export interface SidebarSection {
 }
 
 export const SIDEBAR_SECTIONS: SidebarSection[] = [
+  {
+    // A single-page section (like "admin" below) — Home has no sub-pages of its own, it's a top-
+    // level destination. Sitting first in this array is what makes it "above Collections".
+    key: "home",
+    label: "Home",
+    icon: <HomeGlyph />,
+    pages: [
+      {
+        key: "home", label: "Home", icon: <HomeGlyph />,
+        view: { name: "home" },
+        isActive: (v) => v.name === "home",
+      },
+    ],
+  },
   {
     key: "collections",
     label: "Collections",
@@ -55,14 +72,25 @@ export const SIDEBAR_SECTIONS: SidebarSection[] = [
     ],
   },
   {
-    key: "workers",
-    label: "Workers & Jobs",
+    // Jobs leads (the flagship fleet-wide management page) — Workers/Monitoring follow.
+    key: "jobs",
+    label: "Jobs & Workers",
     icon: <WorkersGlyph />,
     pages: [
+      {
+        key: "all-jobs", label: "All Jobs", icon: <AllJobsGlyph />,
+        view: { name: "all-jobs" },
+        isActive: (v) => v.name === "all-jobs",
+      },
       {
         key: "workers", label: "Workers", icon: <WorkersPageGlyph />,
         view: { name: "workers" },
         isActive: (v) => v.name === "workers",
+      },
+      {
+        key: "monitoring", label: "Monitoring", icon: <MonitoringGlyph />,
+        view: { name: "monitoring" },
+        isActive: (v) => v.name === "monitoring",
       },
     ],
   },

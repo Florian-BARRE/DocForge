@@ -4,6 +4,9 @@
 // `onNavigate` callback; App.tsx is the only place that switches on `view.name`.
 
 export type View =
+  // The default landing page — a fleet-wide "step back and manage" dashboard (collections health
+  // breakdown, worker/queue summary, recent failures). See features/home/HomePage.tsx.
+  | { name: "home" }
   // `health` is an optional deep-linkable preset (reachable via the URL, e.g. shared links — the
   // sidebar itself no longer has dedicated shortcuts for it, CollectionsToolbar's own health tabs
   // are the single source of truth) — absent (or "empty") means the unfiltered fleet list, matching
@@ -21,7 +24,10 @@ export type View =
   | { name: "collection-search"; collectionId: string }
   | { name: "document"; collectionId: string; documentId: string }
   | { name: "job"; collectionId: string; jobId: string }
+  // Fleet-wide job management ("step back and manage" — the flagship of the three new pages).
+  | { name: "all-jobs" }
   | { name: "workers" }
+  | { name: "monitoring" }
   | { name: "api-keys" }
   | { name: "api-key"; keyId: string };
 

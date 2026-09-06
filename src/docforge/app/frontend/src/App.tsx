@@ -16,8 +16,11 @@ import { ImportCollectionPage } from "./features/collections/ImportCollectionPag
 import { CollectionWizard } from "./features/collections/wizard/CollectionWizard";
 import { CorpusPage } from "./features/corpus/CorpusPage";
 import { DocumentPage } from "./features/explorer/DocumentPage";
+import { HomePage } from "./features/home/HomePage";
+import { AllJobsPage } from "./features/jobs/AllJobsPage";
 import { JobDetailPage } from "./features/monitoring/JobDetailPage";
 import { JobsPage } from "./features/monitoring/JobsPage";
+import { MonitoringPage } from "./features/monitoring/MonitoringPage";
 import { WorkersPanel } from "./features/monitoring/WorkersPanel";
 import { SearchLabPage } from "./features/search/SearchLabPage";
 import { ErrorBoundary } from "./shell/ErrorBoundary";
@@ -53,7 +56,8 @@ export function App() {
       <div style={{ flex: 1, minWidth: 0, minHeight: 0 }}>
       {/* Keyed by view.name so navigating away (shell nav, or the fallback's own action) always
           remounts a fresh boundary — a crashed view never keeps blocking an unrelated route. */}
-      <ErrorBoundary key={view.name} onReset={() => setView({ name: "collections" })}>
+      <ErrorBoundary key={view.name} onReset={() => setView({ name: "home" })}>
+        {view.name === "home" && <HomePage onNavigate={setView} />}
         {view.name === "collections" && <CollectionsPage onNavigate={setView} initialHealthFilter={view.health} />}
         {view.name === "new-collection" && <CollectionWizard onNavigate={setView} />}
         {view.name === "import-collection" && <ImportCollectionPage onNavigate={setView} />}
@@ -99,7 +103,9 @@ export function App() {
           </CollectionShell>
         )}
         {view.name === "job" && <JobDetailPage jobId={view.jobId} collectionId={view.collectionId} onNavigate={setView} />}
+        {view.name === "all-jobs" && <AllJobsPage onNavigate={setView} />}
         {view.name === "workers" && <WorkersPanel onNavigate={setView} />}
+        {view.name === "monitoring" && <MonitoringPage />}
         {view.name === "api-keys" && <AuthKeysPage onNavigate={setView} />}
         {view.name === "api-key" && <KeyDetailPage keyId={view.keyId} onNavigate={setView} />}
       </ErrorBoundary>

@@ -25,6 +25,7 @@ describe("Sidebar", () => {
     renderSidebar();
     expect(screen.getByRole("navigation", { name: "Global navigation" })).toBeInTheDocument();
     // Section headers are always in the DOM (collapsed rail's only visible affordance)…
+    expect(screen.getByTitle("Home")).toBeInTheDocument();
     expect(screen.getByTitle("Collections")).toBeInTheDocument();
     // …but page labels only mount once expanded.
     expect(screen.queryByText("All")).not.toBeInTheDocument();
@@ -36,10 +37,20 @@ describe("Sidebar", () => {
     expect(screen.getByText("All")).toBeInTheDocument();
     expect(screen.getByText("Create")).toBeInTheDocument();
     expect(screen.getByText("Import")).toBeInTheDocument();
+    // The new Jobs & Workers section leads with the fleet-wide All Jobs page.
+    expect(screen.getByText("All Jobs")).toBeInTheDocument();
+    expect(screen.getByText("Monitoring")).toBeInTheDocument();
     // No more redundant health-preset shortcuts — the Collections page's own toolbar owns those.
     expect(screen.queryByText("À surveiller")).not.toBeInTheDocument();
     expect(screen.queryByText("Opérationnelles")).not.toBeInTheDocument();
     expect(screen.queryByText("Needs attention")).not.toBeInTheDocument();
+  });
+
+  it("navigates to Home on click, as the sidebar's first top-level entry", () => {
+    const { onNavigate } = renderSidebar();
+    fireEvent.mouseEnter(screen.getByRole("navigation", { name: "Global navigation" }));
+    fireEvent.click(screen.getByTitle("Home"));
+    expect(onNavigate).toHaveBeenCalledWith({ name: "home" });
   });
 
   it("expands on focus too (keyboard parity with hover)", () => {

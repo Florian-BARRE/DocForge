@@ -8,7 +8,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { listKeys, revokeKey, rotateKey, type ApiKeyInfo, type CreatedApiKey } from "../../api/auth";
 import { listCollections } from "../../api/collections";
-import { BackLink } from "../../components/BackLink";
+import { Breadcrumb } from "../../components/Breadcrumb";
 import { Button } from "../../components/Button";
 import { Chip } from "../../components/Chip";
 import { ErrorState } from "../../components/ErrorState";
@@ -105,7 +105,16 @@ export function KeyDetailPage({ keyId, onNavigate }: KeyDetailPageProps) {
   return (
     <div className="df-rise" style={{ padding: t.space.xl, maxWidth: 900, margin: "0 auto", overflowY: "auto", height: "100%", width: "100%" }}>
       <PageHeader
-        eyebrow={<BackLink label="API Keys" onClick={() => onNavigate({ name: "api-keys" })} />}
+        eyebrow={
+          <Breadcrumb
+            items={[
+              { label: "Admin" },
+              { label: "API Keys", view: { name: "api-keys" } },
+              { label: apiKey.name },
+            ]}
+            onNavigate={onNavigate}
+          />
+        }
         title={
           <span style={{ display: "inline-flex", alignItems: "center", gap: t.space.s, flexWrap: "wrap" }}>
             {apiKey.name}

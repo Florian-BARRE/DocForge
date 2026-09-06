@@ -87,7 +87,7 @@ export function Sidebar({ view, onNavigate, pinned, onTogglePin }: SidebarProps)
         }}
       >
         <button
-          onClick={() => onNavigate({ name: "collections" })}
+          onClick={() => onNavigate({ name: "home" })}
           title="DocForge home"
           style={{
             display: "flex", alignItems: "center", gap: t.space.s, flexShrink: 0,
