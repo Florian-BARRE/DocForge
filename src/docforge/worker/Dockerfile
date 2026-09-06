@@ -54,7 +54,7 @@ RUN /opt/venv/bin/python -c "import tiktoken; tiktoken.get_encoding('cl100k_base
 #     /app/worker          -> the worker (entrypoint, config, backend)
 # - Run the long-lived arq queue server as the container's process
 ###############################################################################
-FROM python:3.12-slim-bookworm AS runtime
+FROM python:3.14-slim-bookworm AS runtime
 
 # OCI image metadata — declares the image's license + source (GPL-3.0 compliance: the
 # full license text lives in the PUBLIC source repo linked here).
