@@ -8,6 +8,8 @@
 
 ## Journal
 
+- **2026-09-06 — Vague AG / 0.14.42 (V8 rate-overrides → meter, 543)** : le méter de coût réel (`StageUsageSummer.summarize`, worker) pricait via les tables GLOBALES (`price_usd`/`price_ocr_pages`), ignorant les rate-overrides par-collection — alors que l'estimateur, lui, price via un `RateTable` overridable → contrat "priced from identical numbers" rompu (une collection à tarif négocié voyait l'estimé refléter la remise mais pas le coût réel). Fix : **une seule** implémentation de fold — `RateTable.from_overrides(raw_jsonb)` en **shared** (défauts canoniques + overlay per-key models/embed/ocr) ; le merger app (`merged_rates`) **délègue** désormais à ce fold (plus de duplication → zéro drift possible) ; le worker `core.py` construit `RateTable.from_overrides(collection.estimate_overrides)` et le passe au `JobProgressRecorder` → `summarize(record, rates)` price via `rates.token_cost`/`ocr_cost`. +1 test méter (override change le coût métré), les 3 tests merger couvrent le fold côté app. Gate : **1640 passed** (+1), ruff clean, drift OK (interne au méter, hors response models). **NB 545 (pricing refresh) DÉFÉRÉ** : refresh nécessite des tarifs autoritatifs vérifiés (les modèles ont changé de génération — GPT-5.x en 2026-09) ; encoder des chiffres issus d'une recherche web = fabrication de valeurs monétaires → à confirmer par l'utilisateur. **V8 : 157 fait.**
+
 - **2026-09-06 — Sweep divergence-doc (no-release, 6 nits vérifiés)** : corrections de doc/commentaire, aucune image impactée. (1) `runtime_config.py` — le commentaire idempotency listait `create/rotate key` comme éligible alors qu'`eligibility.py` les EXCLUT délibérément (routes retournant un secret one-time) → commentaire corrigé. (2) `.claude/rules/architecture.md` — `preflight()` "reste à ajouter" alors qu'il est **livré, on par défaut** (invariant 4) → réécrit ; et le budget job "→ arq `_job_timeout` à l'enqueue" alors qu'`enqueue_job` n'accepte AUCUN `_job_timeout` (le worker lit `collection.job_timeout_seconds` et le passe au runner ; arq n'a qu'un cap uniforme worker-level) → corrigé. (3) `CLAUDE.md` — `uv run mypy .` documenté mais mypy non installé/non runnable → ligne corrigée (pas de gate mypy) ; arbre `migrations/` racine inexistant (seul `shared/migrations/`) → corrigé ; familles déjà à jour (deliver+structgen) → vérifié. **Commit no-release** (docs .claude gitignorées + 1 commentaire code). **V8 : 156 fait.**
 
 - **2026-09-06 — Vague AF / 0.14.41 (V8 enrichment-trace write-dead — REMOVE, décision arbitrée)** : les deux tables `enrichment_attempt` + `entity_mention` étaient **write-dead** (aucun producteur n'a jamais inséré une ligne : l'enrich ne trace pas les tentatives par-attempt sur l'IR, aucun extracteur NER n'existe). Option **persist** explorée puis **rejetée** : rien ne peuple l'IR (il aurait fallu bâtir tout un vertical de capture de trace moteur → enrich-stage → slot IR figure → translator, disproportionné pour une MOYENNE observabilité) → décision **REMOVE**. Migration `a2f8e1c4d7b9` (down_revision `d1a7c4f8b2e6`, **head unique**) : `upgrade` drop les 2 tables+index ; `downgrade` les recrée à l'identique (VERBATIM vs schéma initial, enum `native_enum=False` inline, FK CASCADE — vérifié colonne par colonne). Modèles supprimés + purge de toutes les refs (tables/apis/facades/payloads/footprint/API `PostgresFootprintModel`). **Export** cesse d'émettre les 2 row-types ; **import tolérant aux vieux bundles** : le count `entity_mentions` est **retenu à 0** dans `TransferCounts` (parse legacy sous `extra="forbid"`), le reader ne checksumme que `manifest.files` (les 2 fichiers legacy inutilisés sont ignorés), réconciliation 0==0. Gate : docforge **1639 passed** (fixture transfer nettoyée), ruff clean, drift **OK** (les descriptions footprint ne sont pas des schémas trackés). **→ 796 fait ; 656 [~]** (la moitié "enrichment-trace promise" est résolue ; la moitié "dead IR fields surfaced" à `explorer/models_ir.py:25` reste à traiter). **V8 : 150 fait.**
@@ -179,8 +181,8 @@
 | V5 — Moteur & pipeline | 2 | 2 | 0 | 0 |
 | V6 — Frontend | 0 | 0 | 0 | 0 |
 | V7 — Documentation | 21 | 21 | 0 | 0 |
-| V8 — Outillage (.claude/tests/infra/télémétrie) | 188 | 156 | 6 | 26 |
-| **Total** | **247** | **214** | **6** | **27** |
+| V8 — Outillage (.claude/tests/infra/télémétrie) | 188 | 157 | 6 | 25 |
+| **Total** | **247** | **215** | **6** | **26** |
 
 
 ## V1 — Sécurité & authz (avant tout déploiement multi-tenant)  (30)
@@ -540,7 +542,7 @@
   `src/docforge/shared/libs/pipelines/nodes/openai_compat/client.py:52`
 - [x] **⚪ FAIBLE** · `bug` — Override validation gaps: negative embed/OCR rates and infinite assumption values are accepted  
   `src/docforge/app/backend/libs/estimate/overrides.py:32`
-- [ ] **⚪ FAIBLE** · `consistency` — Per-collection rate overrides shape the estimate but never the meter — contradicting the 'priced from identical numbers' contract  
+- [x] **⚪ FAIBLE** · `consistency` — Per-collection rate overrides shape the estimate but never the meter — contradicting the 'priced from identical numbers' contract  
   `src/docforge/shared/libs/pipelines/ingest/estimate/rates.py:6`
 - [ ] **⚪ FAIBLE** · `consistency` — Pricing table is accurate but a generation behind (cutoff: Jan 2026)  
   `src/docforge/shared/libs/pipelines/nodes/openai_compat/pricing.py:13`

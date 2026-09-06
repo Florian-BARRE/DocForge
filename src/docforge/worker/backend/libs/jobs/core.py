@@ -27,6 +27,7 @@ from shared_libs.pipelines.ingest import (
     BlobNormalizer,
     IngestPipeline,
 )
+from shared_libs.pipelines.ingest.estimate import RateTable
 from shared_libs.pipelines.reachability import ProviderEgressPolicy
 from shared_libs.public_models import CollectionContract, MetadataFieldSpec, SourceDocument
 from shared_libs.services.db.postgresql.tables import JobStatus, MetadataField
@@ -241,7 +242,11 @@ async def ingest_document(
         #    nodes; ``_roots`` stays every top-level id so a step that DOES run is still traced.
         root_ids = [node.get("id", "") for node in blob.get("nodes", [])]
         planned_ids = StagePlanHelpers.planned_stage_ids(blob)
-        on_progress = JobProgressRecorder(job_uuid, root_ids, planned_ids)
+        # The meter prices against the collection's EFFECTIVE rates (canonical defaults folded with its
+        # per-collection rate overrides) — the SAME numbers the pre-hoc estimator used, so actual spend
+        # and its estimate stay priced from identical numbers.
+        rates = RateTable.from_overrides(collection.estimate_overrides)
+        on_progress = JobProgressRecorder(job_uuid, root_ids, planned_ids, rates)
         # Cooperative cancel: the guard wraps the recorder and re-reads the job's cancel flag at each
         # root-stage boundary, raising JobCancelledError to stop the run between nodes when requested.
         guarded_progress = CancellationGuard(job_uuid, root_ids, on_progress)

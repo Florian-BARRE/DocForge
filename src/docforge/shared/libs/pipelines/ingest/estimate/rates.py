@@ -45,6 +45,52 @@ class RateTable:
             ocr_per_page=dict(OCR_PAGE_PRICING),
         )
 
+    @classmethod
+    def from_overrides(cls, overrides: dict | None) -> "RateTable":
+        """
+        Build the effective rate table: the canonical defaults with a collection's rate overrides
+        merged in per-key. This is the ONE fold used by BOTH the pre-hoc estimator and the post-hoc
+        meter, so an estimate and its later actual are priced from identical numbers even when a
+        collection carries negotiated rates.
+
+        Args:
+            overrides (dict | None): The collection's stored ``estimate_overrides`` JSONB (or None).
+                Only its ``rates`` subtree is read: ``{"models": {id: {"input", "output"}}, "embed":
+                {id: rate}, "ocr": {kind: rate}}``. Any subtree may be absent → that map is the
+                default; a provided entry overlays only its own key (never a wholesale replace).
+
+        Returns:
+            RateTable: The defaults when no rate override is present, else the per-key merge.
+        """
+        # 1. Always start from the canonical source (keeps estimate ↔ actual consistent).
+        base = cls.default()
+        rates = (overrides or {}).get("rates")
+        if not rates:
+            return base
+
+        # 2. Copy each default map, then overlay only the provided entries.
+        chat = dict(base.chat)
+        for model, rate in (rates.get("models") or {}).items():
+            chat[model] = (rate["input"], rate["output"])
+        embed = dict(base.embed)
+        embed.update(rates.get("embed") or {})
+        ocr = dict(base.ocr_per_page)
+        ocr.update(rates.get("ocr") or {})
+        return cls(chat=chat, embed=embed, ocr_per_page=ocr)
+
+    def token_cost(
+        self, model: str, prompt_tokens: float, completion_tokens: float
+    ) -> float | None:
+        """
+        USD for a token-billed call, trying the chat rate first then the embed rate — the RateTable
+        sibling of ``openai_compat.price_usd`` (a paid embedding call has ``completion_tokens`` 0 and a
+        single input rate). None when the model is in neither map.
+        """
+        chat = self.chat_cost(model, prompt_tokens, completion_tokens)
+        if chat is not None:
+            return chat
+        return self.embed_cost(model, prompt_tokens)
+
     def chat_cost(self, model: str, prompt_tokens: float, completion_tokens: float) -> float | None:
         """USD for a chat/LLM/VLM call, or None when the model has no known rate."""
         rates = self.chat.get(model)

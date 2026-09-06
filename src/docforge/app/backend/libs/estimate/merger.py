@@ -35,25 +35,11 @@ class EstimateOverrideMerger:
         Returns:
             RateTable: The defaults when no rate override is present, else a per-key merge.
         """
-        # 1. Always start from the ONE canonical rate source (keeps estimate ↔ actual consistent).
-        base = RateTable.default()
-        if overrides is None or overrides.rates is None:
-            return base
-
-        # 2. Copy each default map, then overlay only the provided entries (never a wholesale replace).
-        chat = dict(base.chat)
-        if overrides.rates.models:
-            for model, rate in overrides.rates.models.items():
-                chat[model] = (rate.input, rate.output)
-        embed = dict(base.embed)
-        if overrides.rates.embed:
-            embed.update(overrides.rates.embed)
-        ocr = dict(base.ocr_per_page)
-        if overrides.rates.ocr:
-            ocr.update(overrides.rates.ocr)
-
-        # 3. Return the merged, immutable rate table.
-        return RateTable(chat=chat, embed=embed, ocr_per_page=ocr)
+        # Delegate to the ONE canonical fold in shared (RateTable.from_overrides) so the estimator here
+        # and the worker meter price from byte-identical rate tables — the "priced from identical
+        # numbers" contract. Dump the validated model to the stored JSONB shape the fold consumes.
+        raw = overrides.model_dump(mode="json") if overrides is not None else None
+        return RateTable.from_overrides(raw)
 
     @classmethod
     def merged_assumptions(
