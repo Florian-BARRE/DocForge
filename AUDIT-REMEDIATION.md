@@ -8,6 +8,8 @@
 
 ## Journal
 
+- **2026-09-06 — Vague AH / 0.14.43 (V8 pricing refresh, 545 — tarifs vérifiés sur sources officielles)** : la table `MODEL_PRICING`/`EMBED_PRICING`/`OCR_PAGE_PRICING` (canonique pour estimateur ET méter) était d'une génération en retard. Refresh depuis les pages de tarifs **officielles** (fetch direct, pas de chiffre deviné — la 1re recherche web synthétisée donnait un GPT-5 à $10/$50 FAUX, corrigé par le fetch de la page modèle : $1.25/$10). Ajoutés : GPT-5 (1.25/10), gpt-5-mini (0.25/2), gpt-5.5 (5/30), gpt-5.6-sol (4/20), gpt-5.6-terra (2/12), gpt-5.6-luna (0.20/1.20) ; embeddings mistral-embed (0.10) + codestral-embed (0.15) ; **OCR mistral corrigé 0.001 → 0.004** (Mistral OCR 4.1 = $4/1000 pages ; l'ancien 0.001 = tarif OCR 3 batch périmé). 4o/4.1 + text-embedding-3 conservés (toujours valides). Discounts cached-input / batch NON modélisés (le méter ne connaît pas le cache-hit ratio → tarif standard = borne haute sûre). Tests de prix mis à jour (0.001→0.004). Gate : **1640 passed**, ruff clean, drift OK (table interne, hors response models). **V8 : 158 fait.**
+
 - **2026-09-06 — Vague AG / 0.14.42 (V8 rate-overrides → meter, 543)** : le méter de coût réel (`StageUsageSummer.summarize`, worker) pricait via les tables GLOBALES (`price_usd`/`price_ocr_pages`), ignorant les rate-overrides par-collection — alors que l'estimateur, lui, price via un `RateTable` overridable → contrat "priced from identical numbers" rompu (une collection à tarif négocié voyait l'estimé refléter la remise mais pas le coût réel). Fix : **une seule** implémentation de fold — `RateTable.from_overrides(raw_jsonb)` en **shared** (défauts canoniques + overlay per-key models/embed/ocr) ; le merger app (`merged_rates`) **délègue** désormais à ce fold (plus de duplication → zéro drift possible) ; le worker `core.py` construit `RateTable.from_overrides(collection.estimate_overrides)` et le passe au `JobProgressRecorder` → `summarize(record, rates)` price via `rates.token_cost`/`ocr_cost`. +1 test méter (override change le coût métré), les 3 tests merger couvrent le fold côté app. Gate : **1640 passed** (+1), ruff clean, drift OK (interne au méter, hors response models). **NB 545 (pricing refresh) DÉFÉRÉ** : refresh nécessite des tarifs autoritatifs vérifiés (les modèles ont changé de génération — GPT-5.x en 2026-09) ; encoder des chiffres issus d'une recherche web = fabrication de valeurs monétaires → à confirmer par l'utilisateur. **V8 : 157 fait.**
 
 - **2026-09-06 — Sweep divergence-doc (no-release, 6 nits vérifiés)** : corrections de doc/commentaire, aucune image impactée. (1) `runtime_config.py` — le commentaire idempotency listait `create/rotate key` comme éligible alors qu'`eligibility.py` les EXCLUT délibérément (routes retournant un secret one-time) → commentaire corrigé. (2) `.claude/rules/architecture.md` — `preflight()` "reste à ajouter" alors qu'il est **livré, on par défaut** (invariant 4) → réécrit ; et le budget job "→ arq `_job_timeout` à l'enqueue" alors qu'`enqueue_job` n'accepte AUCUN `_job_timeout` (le worker lit `collection.job_timeout_seconds` et le passe au runner ; arq n'a qu'un cap uniforme worker-level) → corrigé. (3) `CLAUDE.md` — `uv run mypy .` documenté mais mypy non installé/non runnable → ligne corrigée (pas de gate mypy) ; arbre `migrations/` racine inexistant (seul `shared/migrations/`) → corrigé ; familles déjà à jour (deliver+structgen) → vérifié. **Commit no-release** (docs .claude gitignorées + 1 commentaire code). **V8 : 156 fait.**
@@ -181,8 +183,8 @@
 | V5 — Moteur & pipeline | 2 | 2 | 0 | 0 |
 | V6 — Frontend | 0 | 0 | 0 | 0 |
 | V7 — Documentation | 21 | 21 | 0 | 0 |
-| V8 — Outillage (.claude/tests/infra/télémétrie) | 188 | 157 | 6 | 25 |
-| **Total** | **247** | **215** | **6** | **26** |
+| V8 — Outillage (.claude/tests/infra/télémétrie) | 188 | 158 | 6 | 24 |
+| **Total** | **247** | **216** | **6** | **25** |
 
 
 ## V1 — Sécurité & authz (avant tout déploiement multi-tenant)  (30)
@@ -544,7 +546,7 @@
   `src/docforge/app/backend/libs/estimate/overrides.py:32`
 - [x] **⚪ FAIBLE** · `consistency` — Per-collection rate overrides shape the estimate but never the meter — contradicting the 'priced from identical numbers' contract  
   `src/docforge/shared/libs/pipelines/ingest/estimate/rates.py:6`
-- [ ] **⚪ FAIBLE** · `consistency` — Pricing table is accurate but a generation behind (cutoff: Jan 2026)  
+- [x] **⚪ FAIBLE** · `consistency` — Pricing table is accurate but a generation behind (cutoff: Jan 2026)  
   `src/docforge/shared/libs/pipelines/nodes/openai_compat/pricing.py:13`
 - [ ] **⚪ FAIBLE** · `design` — Sampler/estimator representativeness smells (grouped lows)  
   `src/docforge/app/backend/libs/estimate/sampler.py:85`
