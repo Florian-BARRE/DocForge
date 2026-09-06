@@ -1,9 +1,11 @@
 // ====== Code Summary ======
 // One step of the search rail, drawn in the shared SearchStageFrame (the ingestion StageCard's
 // shape): a step-number slot, node identity from the palette, and its config form — or a
-// "read-only" note when the node has no knobs (encode/hydrate/deliver today).
+// "read-only" note when the node has no knobs (encode/hydrate/deliver today). Carries its own
+// collapse state (starts expanded, like StageCard's default) and the step's stable scroll anchor
+// (its node id) so the search-pipeline minimap can jump-scroll to and highlight it.
 
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { findNodeCard, hasConfigFields } from "../../components/schema-form/paletteLookup";
 import type { ActionBlob, Palette } from "../../api/types";
 import { NodeConfigForm } from "./NodeConfigForm";
@@ -21,6 +23,7 @@ interface SearchNodeCardProps {
 }
 
 export function SearchNodeCard({ step, node, palette, onChangeConfig, extra }: SearchNodeCardProps) {
+  const [expanded, setExpanded] = useState(true);
   const card = findNodeCard(palette, node.family, node.kind);
   const configurable = hasConfigFields(card);
   return (
@@ -30,6 +33,10 @@ export function SearchNodeCard({ step, node, palette, onChangeConfig, extra }: S
       tag={node.family}
       summary={card?.summary}
       rightNote={configurable ? undefined : "read-only"}
+      anchorKey={node.id}
+      collapsible={configurable}
+      expanded={expanded}
+      onToggleExpand={() => setExpanded((v) => !v)}
     >
       {configurable && <NodeConfigForm node={node} palette={palette} onChange={onChangeConfig} />}
       {extra}

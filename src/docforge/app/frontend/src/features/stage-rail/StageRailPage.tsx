@@ -16,6 +16,7 @@ import { ErrorState } from "../../components/ErrorState";
 import { LoadingState } from "../../components/LoadingState";
 import { theme } from "../../theme";
 import { NoticesBar } from "./NoticesBar";
+import { IngestScopeBanner } from "./ScopeBanner";
 import { StageCard } from "./StageCard";
 import { StageConnector } from "./StageConnector";
 import { StageRailHeader } from "./StageRailHeader";
@@ -49,6 +50,7 @@ export function StageRailPage(props: StageRailPageProps) {
       >
         <StageRailMinimap stages={stages} activeKey={activeStageKey} />
         <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
+          <IngestScopeBanner />
           <StageRailHeader
             valid={rail.valid}
             busy={rail.busy}

@@ -9,60 +9,84 @@
 // rerank toggle since it's a single discrete action). Reusable standalone (fetches the product
 // default) OR embedded in a collection page (seeded with `initialBlob`, saved via `onSave`).
 // All state/effects live in `useSearchPipelineEditor`; the rail itself is `SearchPipelineRail` —
-// this component is pure top-level layout.
+// this component adds the sticky minimap + viewport tracking (mirroring the ingestion
+// `StageRailPage`, see SearchPipelineMinimap's own doc comment for why it's mirrored not imported)
+// and is otherwise pure top-level layout.
 
+import { useMemo, useRef } from "react";
 import { ApiIssueList } from "../../components/ApiIssueList";
 import { ErrorState } from "../../components/ErrorState";
 import { LoadingState } from "../../components/LoadingState";
 import type { GroupBlob } from "../../api/types";
 import { theme } from "../../theme";
+import { useActiveStageKey } from "../stage-rail/state/useActiveStageKey";
 import { SearchPipelineHeader } from "./SearchPipelineHeader";
+import { SearchPipelineMinimap } from "./SearchPipelineMinimap";
 import { SearchPipelineRail } from "./SearchPipelineRail";
+import { SearchScopeBanner } from "./SearchScopeBanner";
+import { deriveSearchMinimapEntries } from "./state/searchMinimapEntries";
 import { useSearchPipelineEditor, type UseSearchPipelineEditorProps } from "./state/useSearchPipelineEditor";
 
 export type SearchPipelineEditorProps = UseSearchPipelineEditorProps;
 
 export function SearchPipelineEditor(props: SearchPipelineEditorProps) {
   const editor = useSearchPipelineEditor(props);
+  // Hooks run unconditionally, BEFORE the loading/error early returns below (rules-of-hooks) —
+  // entries/keys fall back to `[]` while `editor.blob`/`editor.palette` are still null, so the
+  // viewport tracker mounts cleanly through the loading -> loaded transition.
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const minimapEntries = useMemo(
+    () =>
+      editor.blob && editor.palette
+        ? deriveSearchMinimapEntries(editor.blob, editor.palette, editor.railNodes, editor.hasAnchor)
+        : [],
+    [editor.blob, editor.palette, editor.railNodes, editor.hasAnchor],
+  );
+  const stepKeys = useMemo(() => minimapEntries.map((entry) => entry.key), [minimapEntries]);
+  const activeStepKey = useActiveStageKey(stepKeys, scrollRef);
 
   if (editor.loadError) return <ErrorState message={editor.loadError} />;
   if (!editor.palette || !editor.blob) return <LoadingState label="loading search pipeline…" />;
   const blob: GroupBlob = editor.blob;
 
   return (
-    <div style={{ height: "100%", overflowY: "auto", background: theme.color.bg }}>
+    <div ref={scrollRef} style={{ height: "100%", overflowY: "auto", background: theme.color.bg }}>
       <div
         className="df-rise"
         style={{
-          maxWidth: 860, margin: "0 auto", padding: `0 ${theme.space.l}px ${theme.space.l}px`,
-          display: "flex", flexDirection: "column", gap: theme.space.l,
+          maxWidth: 1080, margin: "0 auto", padding: `0 ${theme.space.l}px ${theme.space.l}px`,
+          display: "flex", alignItems: "flex-start", gap: theme.space.l,
         }}
       >
-        <SearchPipelineHeader
-          valid={editor.valid}
-          checking={editor.checking}
-          debouncePending={editor.debouncePending}
-          issueCount={editor.issues.length}
-          dirty={editor.dirty}
-          onReset={props.onResetToDefault ? editor.handleReset : undefined}
-          resetting={editor.resetting}
-          onSave={props.onSave ? editor.handleSave : undefined}
-          saving={editor.saving}
-          saveError={editor.saveError}
-        />
-        {editor.issues.length > 0 && <ApiIssueList issues={editor.issues} />}
-        <SearchPipelineRail
-          blob={blob}
-          palette={editor.palette}
-          railNodes={editor.railNodes}
-          hasAnchor={editor.hasAnchor}
-          hasQueryAnchor={editor.hasQueryAnchor}
-          queryKind={editor.queryKind}
-          queryConfig={editor.queryConfig}
-          onChangeNodeConfig={editor.setNodeConfig}
-          onSelectQueryTransform={editor.selectQueryTransform}
-          onToggleRerank={editor.toggleRerank}
-        />
+        <SearchPipelineMinimap entries={minimapEntries} activeKey={activeStepKey} />
+        <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: theme.space.l }}>
+          <SearchScopeBanner />
+          <SearchPipelineHeader
+            valid={editor.valid}
+            checking={editor.checking}
+            debouncePending={editor.debouncePending}
+            issueCount={editor.issues.length}
+            dirty={editor.dirty}
+            onReset={props.onResetToDefault ? editor.handleReset : undefined}
+            resetting={editor.resetting}
+            onSave={props.onSave ? editor.handleSave : undefined}
+            saving={editor.saving}
+            saveError={editor.saveError}
+          />
+          {editor.issues.length > 0 && <ApiIssueList issues={editor.issues} />}
+          <SearchPipelineRail
+            blob={blob}
+            palette={editor.palette}
+            railNodes={editor.railNodes}
+            hasAnchor={editor.hasAnchor}
+            hasQueryAnchor={editor.hasQueryAnchor}
+            queryKind={editor.queryKind}
+            queryConfig={editor.queryConfig}
+            onChangeNodeConfig={editor.setNodeConfig}
+            onSelectQueryTransform={editor.selectQueryTransform}
+            onToggleRerank={editor.toggleRerank}
+          />
+        </div>
       </div>
     </div>
   );
