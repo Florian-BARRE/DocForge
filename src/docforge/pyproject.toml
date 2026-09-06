@@ -5,7 +5,7 @@
 # structure grows, never speculatively.
 [project]
 name = "docforge"
-version = "0.14.47"
+version = "0.14.48"
 description = "DocForge — document intelligence platform (multi-format → canonical IR → chunk → embed → hybrid retrieval)"
 requires-python = ">=3.12"
 license = "GPL-3.0-or-later"

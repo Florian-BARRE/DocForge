@@ -169,7 +169,9 @@ class WorkersLiveHelpers:
                     busy=bool(jobs),
                     last_seen=last_seen,
                     started_at=heartbeat.started_at if heartbeat is not None else None,
-                    max_jobs=getattr(heartbeat, "max_jobs", None) if heartbeat is not None else None,
+                    max_jobs=getattr(heartbeat, "max_jobs", None)
+                    if heartbeat is not None
+                    else None,
                     jobs=jobs,
                 )
             )
