@@ -832,6 +832,11 @@ each `JobEvent` has `stage, status` (`success`/`failed`/`skipped`), timestamps, 
 — the worker's configured parallel-job capacity (arq concurrency, = `WORKER_CONCURRENCY`). `max_jobs`
 is `null` for a worker whose build predates this field (or a pre-column heartbeat row); a UI pairs it
 with the count of `jobs` as a "N running / max" capacity chip and never fabricates a number when null.
+Each `WorkerActivity` also carries live resource samples taken (via psutil) at its last heartbeat:
+`cpu_percent` (recent CPU utilisation percent — may exceed 100 on a multi-core host), `mem_mb`
+(resident memory in megabytes) and `mem_percent` (resident memory as a percent of host RAM). All three
+are `null` when not reported — an old heartbeat row, a worker on a build that does not sample resources,
+the first (unprimed) tick, or a psutil error — and a UI must render them as "unknown" rather than 0.
 
 ### Live progress (Server-Sent Events)
 

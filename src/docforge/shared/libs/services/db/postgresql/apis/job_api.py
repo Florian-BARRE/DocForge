@@ -407,13 +407,17 @@ class JobApi:
         last_seen: datetime,
         started_at: datetime,
         max_jobs: int | None = None,
+        cpu_percent: float | None = None,
+        mem_mb: float | None = None,
+        mem_percent: float | None = None,
     ) -> None:
         """
         Register/refresh a worker's liveness row (keyed by its stable worker id).
 
         Upsert so a worker's first tick inserts and every later tick updates ``last_seen`` in place;
-        ``started_at``, ``worker_name`` and ``max_jobs`` are refreshed too, so a same-hostname restart
-        reports the NEW process uptime, any changed friendly name and its current capacity.
+        ``started_at``, ``worker_name``, ``max_jobs`` and the resource samples are refreshed too, so a
+        same-hostname restart reports the NEW process uptime, any changed friendly name, its current
+        capacity and its live CPU/memory.
 
         Args:
             session (AsyncSession): The active DB session.
@@ -423,6 +427,11 @@ class JobApi:
             started_at (datetime): When THIS worker process registered.
             max_jobs (int | None): The worker's configured parallel-job capacity (arq concurrency);
                 None when an older-build worker does not report it.
+            cpu_percent (float | None): The worker process's recent CPU utilisation percent (may exceed
+                100 on a multi-core host); None when not sampled (older build or a psutil error).
+            mem_mb (float | None): The worker process's resident memory in megabytes; None when not sampled.
+            mem_percent (float | None): The worker process's resident memory as a percent of host RAM;
+                None when not sampled.
         """
         statement = pg_insert(WorkerHeartbeat).values(
             worker_id=worker_id,
@@ -430,6 +439,9 @@ class JobApi:
             last_seen=last_seen,
             started_at=started_at,
             max_jobs=max_jobs,
+            cpu_percent=cpu_percent,
+            mem_mb=mem_mb,
+            mem_percent=mem_percent,
         )
         await session.execute(
             statement.on_conflict_do_update(
@@ -439,6 +451,9 @@ class JobApi:
                     "last_seen": last_seen,
                     "started_at": started_at,
                     "max_jobs": max_jobs,
+                    "cpu_percent": cpu_percent,
+                    "mem_mb": mem_mb,
+                    "mem_percent": mem_percent,
                 },
             )
         )

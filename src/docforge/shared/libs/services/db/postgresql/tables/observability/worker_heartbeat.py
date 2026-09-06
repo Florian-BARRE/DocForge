@@ -7,7 +7,7 @@
 from datetime import datetime
 
 # ====== Third-Party Library Imports ======
-from sqlalchemy import DateTime, Integer, String
+from sqlalchemy import DateTime, Float, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 # ====== Local Project Imports ======
@@ -33,6 +33,18 @@ class WorkerHeartbeat(Base):
     # a heartbeat row written before this column landed, or a worker on an older build that does not
     # report its capacity yet (the UI treats NULL as "unknown capacity").
     max_jobs: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # The worker process's recent CPU utilisation percent, sampled (via psutil) at each heartbeat tick
+    # so it stays ~10s fresh. May exceed 100 on a multi-core host (percent-of-one-core semantics). NULL
+    # when unknown: a heartbeat row written before this column landed, or a worker on an older build that
+    # does not sample its resources yet.
+    cpu_percent: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # The worker process's resident memory (RSS) in megabytes, sampled at each heartbeat tick (~10s
+    # fresh). NULL when unknown (pre-column row or a worker on an older build that does not sample yet).
+    mem_mb: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # The worker process's resident memory as a percent of total host RAM, sampled at each heartbeat tick
+    # (~10s fresh). NULL when unknown (pre-column row or a worker on an older build that does not sample
+    # yet).
+    mem_percent: Mapped[float | None] = mapped_column(Float, nullable=True)
 
 
 __all__ = ["WorkerHeartbeat"]

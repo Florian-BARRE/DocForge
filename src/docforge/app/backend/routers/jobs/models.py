@@ -228,6 +228,10 @@ class WorkerActivity(BaseModel):
         started_at (datetime | None): When the worker process registered (None when no heartbeat).
         max_jobs (int | None): Its configured parallel-job capacity (arq concurrency); None means
             unknown capacity (an old heartbeat row, or a worker on a build predating this field).
+        cpu_percent (float | None): Its recent CPU utilisation percent, sampled at the last heartbeat
+            (may exceed 100 on a multi-core host); None = not reported.
+        mem_mb (float | None): Its resident memory in megabytes at the last heartbeat; None = not reported.
+        mem_percent (float | None): Its resident memory as a percent of host RAM; None = not reported.
         jobs (list[JobStatus]): Its running jobs, live.
     """
 
@@ -249,6 +253,23 @@ class WorkerActivity(BaseModel):
         description="The worker's configured parallel-job capacity (arq concurrency, = "
         "WORKER_CONCURRENCY). Null = unknown capacity: an old heartbeat row, or a worker on a build "
         "predating this field. The UI pairs it with the running-jobs count as a 'N running / max' chip.",
+    )
+    cpu_percent: float | None = Field(
+        default=None,
+        description="The worker process's recent CPU utilisation percent, sampled (via psutil) at the "
+        "last heartbeat tick — may exceed 100 on a multi-core host. Null = not reported: an old "
+        "heartbeat row, a build that does not sample resources, or the first (unprimed) tick / a "
+        "psutil error.",
+    )
+    mem_mb: float | None = Field(
+        default=None,
+        description="The worker process's resident memory (RSS) in megabytes at the last heartbeat "
+        "tick. Null = not reported (old row, non-sampling build, or a psutil error).",
+    )
+    mem_percent: float | None = Field(
+        default=None,
+        description="The worker process's resident memory as a percent of total host RAM at the last "
+        "heartbeat tick. Null = not reported (old row, non-sampling build, or a psutil error).",
     )
     jobs: list[JobStatus] = Field(default_factory=list, description="Its running jobs, live.")
 
