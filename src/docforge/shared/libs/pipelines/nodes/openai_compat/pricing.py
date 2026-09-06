@@ -11,11 +11,22 @@
 # ``price_usd``) and the pre-hoc estimator (projected spend) — so an estimate and its later actual
 # use the same numbers. LLM and VLM calls (structgen + contextualize + figure captioning) price here;
 # paid embeddings price against ``EMBED_PRICING`` below (an embedding call has input tokens only).
+# Rates verified 2026-09-06 against the providers' official pricing pages (OpenAI developers pricing;
+# gpt-5.5 is the <272K-context tier). Cached-input discounts are NOT modelled (the meter cannot know
+# a call's cache-hit ratio) — the standard non-cached input rate is used, a safe upper bound.
 MODEL_PRICING: dict[str, tuple[float, float]] = {
+    # GPT-4o / GPT-4.1 (still current, kept).
     "gpt-4o-mini": (0.15, 0.60),
     "gpt-4o": (2.50, 10.00),
     "gpt-4.1-mini": (0.40, 1.60),
     "gpt-4.1": (2.00, 8.00),
+    # GPT-5 generation.
+    "gpt-5": (1.25, 10.00),
+    "gpt-5-mini": (0.25, 2.00),
+    "gpt-5.5": (5.00, 30.00),
+    "gpt-5.6-sol": (4.00, 20.00),
+    "gpt-5.6-terra": (2.00, 12.00),
+    "gpt-5.6-luna": (0.20, 1.20),
 }
 
 # Embedding model id → USD per 1M tokens (a single input rate; embeddings have no completion side).
@@ -23,10 +34,13 @@ MODEL_PRICING: dict[str, tuple[float, float]] = {
 # paid embed leaf here — its ``completion_tokens`` is 0). The default bge_server embedder is local and
 # free: it stamps no usage, so it never reaches this table. A locally hosted embedder is priced 0 by
 # the estimator (a known-free provider), not looked up here; this table is for the paid, hosted ones.
+# Rates verified 2026-09-06 (OpenAI + Mistral official pricing).
 EMBED_PRICING: dict[str, float] = {
     "text-embedding-3-small": 0.02,
     "text-embedding-3-large": 0.13,
     "text-embedding-ada-002": 0.10,
+    "mistral-embed": 0.10,
+    "codestral-embed": 0.15,
 }
 
 # OCR provider kind → USD per page. OCR is priced per PAGE, not per token (that is how the hosted
@@ -34,8 +48,10 @@ EMBED_PRICING: dict[str, float] = {
 # estimator prices them 0 as known-local providers, and they stamp no usage on their records). An
 # absent paid kind prices to a null cost. Used by BOTH the pre-hoc estimator (projected spend) and
 # the post-hoc meter (``price_ocr_pages`` prices a paid OCR leaf's ``NodeUsage.pages`` here).
+# Rate verified 2026-09-06: Mistral OCR 4.1 standard API = $4 per 1000 pages (Document AI $5/1000 is a
+# different endpoint, not this per-page OCR call). The 50% batch-API discount is not modelled.
 OCR_PAGE_PRICING: dict[str, float] = {
-    "mistral": 0.001,  # Mistral OCR: ~$1 per 1000 pages.
+    "mistral": 0.004,  # Mistral OCR 4.1: $4 per 1000 pages.
 }
 
 

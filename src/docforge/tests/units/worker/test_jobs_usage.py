@@ -173,12 +173,12 @@ def _free_ocr_leaf() -> NodeExecutionRecord:
 
 
 def test_sum_usage_prices_paid_ocr_leaf_per_page_zero_tokens(usage_module) -> None:
-    # mistral = 0.001 USD / page; 3 pages → cost = 3 × rate, and OCR contributes 0 tokens.
+    # mistral = 0.004 USD / page; 3 pages → cost = 3 × rate, and OCR contributes 0 tokens.
     record = _group([_ocr_leaf("mistral", 3)])
     prompt, completion, cost, count = usage_module.StageUsageSummer.summarize(record, _RATES)
 
     assert (prompt, completion, count) == (0, 0, 1)
-    assert cost == pytest.approx(3 * 0.001)
+    assert cost == pytest.approx(3 * 0.004)
 
 
 def test_sum_usage_free_ocr_leaf_contributes_nothing(usage_module) -> None:

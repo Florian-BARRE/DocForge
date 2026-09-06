@@ -189,7 +189,7 @@ class TestEnrichOcr:
         assert ocr.calls == 50  # pages(100) * images_per_page(0.5)
         assert ocr.pages == 50
         assert ocr.rate_known is True
-        assert ocr.cost_usd == pytest.approx(50 * 0.001)  # OCR_PAGE_PRICING["mistral"]
+        assert ocr.cost_usd == pytest.approx(50 * 0.004)  # OCR_PAGE_PRICING["mistral"]
         assert est.total_cost_usd is not None and est.total_cost_usd > 0.0
         assert est.cost_complete is True
 
@@ -205,7 +205,7 @@ class TestEnrichOcr:
         ocr = next(s for s in est.stages if s.stage == "enrich_ocr")
         assert ocr.calls == 20  # pages(100) * scanned_page_ratio(0.2), no figures
         assert ocr.pages == 20
-        assert ocr.cost_usd == pytest.approx(20 * 0.001)
+        assert ocr.cost_usd == pytest.approx(20 * 0.004)
 
     def test_no_figures_and_no_scans_skips_the_ocr_stage(self) -> None:
         """With neither figures nor scanned pages there is no OCR spend, so the stage is omitted."""

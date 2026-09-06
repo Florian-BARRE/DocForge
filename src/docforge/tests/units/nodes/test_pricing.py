@@ -49,7 +49,7 @@ def test_unknown_embed_model_is_none() -> None:
 
 
 def test_ocr_pages_known_kind_prices_per_page() -> None:
-    # mistral = 0.001 USD / page; per-page billing, not per token.
+    # mistral = 0.004 USD / page; per-page billing, not per token.
     assert price_ocr_pages("mistral", 10) == pytest.approx(10 * OCR_PAGE_PRICING["mistral"])
 
 
