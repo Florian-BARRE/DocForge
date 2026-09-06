@@ -241,7 +241,8 @@ class NodeRegistry:
         living in the folder — no central list to maintain.
 
         Args:
-            package_name (str): Dotted name of the package to scan (e.g. ``"pipelines.nodes.llm"``).
+            package_name (str): Dotted name of the package to scan (e.g.
+                ``"shared_libs.pipelines.nodes.llm"`` — call sites pass ``__name__``).
         """
         package = importlib.import_module(package_name)
         for module_info in pkgutil.iter_modules(package.__path__, prefix=f"{package_name}."):

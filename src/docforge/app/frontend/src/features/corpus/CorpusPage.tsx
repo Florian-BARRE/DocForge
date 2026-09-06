@@ -59,8 +59,9 @@ export function CorpusPage({ collectionId, onNavigate }: CorpusPageProps) {
     return active ? { field: apiFieldName(active.id), direction: active.desc ? "desc" : "asc" } : null;
   }, [sorting]);
 
-  // A filter/sort/collection change invalidates both the current page window and any in-flight
+  // A filter/collection change invalidates both the current page window and any in-flight
   // selection (a filter-mode selector is only meaningful against the filter it was captured with).
+  // Sort does NOT reset either — re-sorting the same result set stays on the same page/selection.
   useEffect(() => {
     setOffset(0);
     selection.clear();
@@ -75,7 +76,10 @@ export function CorpusPage({ collectionId, onNavigate }: CorpusPageProps) {
 
   const onDelete = async (documentId: string) => {
     await deleteDocument(documentId);
-    if (selection.isSelected(documentId)) selection.toggleRow(documentId);
+    // Only "ids" mode needs a local update here — deleting a row already shrinks `query.total` on
+    // refetch, so also adding it to "filtered" mode's `excludeIds` would double-subtract the same
+    // removed document from `selection.count`.
+    if (selection.mode === "ids" && selection.isSelected(documentId)) selection.toggleRow(documentId);
     query.refetch();
   };
 

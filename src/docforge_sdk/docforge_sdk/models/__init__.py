@@ -98,7 +98,6 @@ from .health import (
 from .ir import (
     DocumentIRModel,
     DocumentProvenance,
-    IRAttempt,
     IRBlock,
     IREnrichment,
     IRFigure,
@@ -233,7 +232,6 @@ __all__ = [
     "IRBlock",
     "IRTable",
     "IRFigure",
-    "IRAttempt",
     "IREnrichment",
     "DocumentIRModel",
     "DocumentProvenance",

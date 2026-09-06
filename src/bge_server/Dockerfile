@@ -64,6 +64,13 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 ###############################################################################
 FROM python:3.12-slim-bookworm AS runtime
 
+# OCI image metadata — declares the image's license + source (GPL-3.0 compliance: the
+# full license text lives in the PUBLIC source repo linked here).
+LABEL org.opencontainers.image.title="docforge-bge-server" \
+      org.opencontainers.image.description="BGE-M3 embed + rerank micro-service" \
+      org.opencontainers.image.source="https://github.com/Florian-BARRE/DocForge" \
+      org.opencontainers.image.licenses="GPL-3.0-or-later"
+
 # Runtime best practices:
 # - PYTHONDONTWRITEBYTECODE: suppresses .pyc file creation inside the container.
 # - PYTHONUNBUFFERED: log lines appear immediately in stdout/stderr — critical for

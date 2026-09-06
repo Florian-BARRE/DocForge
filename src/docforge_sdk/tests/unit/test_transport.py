@@ -13,6 +13,9 @@ import respx
 
 # ====== Local Project Imports ======
 from docforge_sdk._exceptions import (
+    APIConnectionError,
+    APIStatusError,
+    APITimeoutError,
     AuthError,
     ConflictError,
     NotFoundError,
@@ -98,6 +101,83 @@ def test_status_error_carries_code_and_body() -> None:
         transport.request(RequestSpec("GET", "/auth/keys"), CreatedKey)
     assert info.value.status_code == 404
     assert info.value.body == {"detail": "gone"}
+    transport.close()
+
+
+@respx.mock
+@pytest.mark.parametrize("status", [500, 502, 503])
+def test_sync_5xx_maps_to_generic_api_status_error(status: int) -> None:
+    """5xx isn't in ``_STATUS_TO_EXCEPTION`` (no dedicated subclass) — it must still map to the
+    generic ``APIStatusError`` fallback rather than going unmapped/uncaught."""
+    respx.get(f"{API}/auth/keys").mock(return_value=httpx.Response(status, json={"detail": "boom"}))
+    transport = SyncTransport(BASE, 5.0)
+    with pytest.raises(APIStatusError) as info:
+        transport.request(RequestSpec("GET", "/auth/keys"), CreatedKey)
+    assert info.value.status_code == status
+    assert info.value.body == {"detail": "boom"}
+    # Not accidentally a more specific 4xx subclass.
+    assert type(info.value) is APIStatusError
+    transport.close()
+
+
+@respx.mock
+@pytest.mark.parametrize("status", [500, 503])
+async def test_async_5xx_maps_to_generic_api_status_error(status: int) -> None:
+    respx.get(f"{API}/auth/keys").mock(return_value=httpx.Response(status, json={"detail": "boom"}))
+    transport = AsyncTransport(BASE, 5.0)
+    with pytest.raises(APIStatusError) as info:
+        await transport.request(RequestSpec("GET", "/auth/keys"), CreatedKey)
+    assert info.value.status_code == status
+    assert type(info.value) is APIStatusError
+    await transport.aclose()
+
+
+@respx.mock
+def test_sync_connect_error_maps_to_api_connection_error() -> None:
+    """A transport-level failure (refused connection, DNS, network drop) never leaks a raw
+    ``httpx.TransportError`` — it is mapped to the SDK's ``APIConnectionError``."""
+    respx.get(f"{API}/auth/keys").mock(side_effect=httpx.ConnectError("connection refused"))
+    transport = SyncTransport(BASE, 5.0)
+    with pytest.raises(APIConnectionError):
+        transport.request(RequestSpec("GET", "/auth/keys"), CreatedKey)
+    transport.close()
+
+
+@respx.mock
+def test_sync_timeout_maps_to_api_timeout_error() -> None:
+    respx.get(f"{API}/auth/keys").mock(side_effect=httpx.ConnectTimeout("timed out"))
+    transport = SyncTransport(BASE, 5.0)
+    with pytest.raises(APITimeoutError):
+        transport.request(RequestSpec("GET", "/auth/keys"), CreatedKey)
+    transport.close()
+
+
+@respx.mock
+async def test_async_connect_error_maps_to_api_connection_error() -> None:
+    respx.get(f"{API}/auth/keys").mock(side_effect=httpx.ConnectError("connection refused"))
+    transport = AsyncTransport(BASE, 5.0)
+    with pytest.raises(APIConnectionError):
+        await transport.request(RequestSpec("GET", "/auth/keys"), CreatedKey)
+    await transport.aclose()
+
+
+@respx.mock
+async def test_async_timeout_maps_to_api_timeout_error() -> None:
+    respx.get(f"{API}/auth/keys").mock(side_effect=httpx.ConnectTimeout("timed out"))
+    transport = AsyncTransport(BASE, 5.0)
+    with pytest.raises(APITimeoutError):
+        await transport.request(RequestSpec("GET", "/auth/keys"), CreatedKey)
+    await transport.aclose()
+
+
+@respx.mock
+def test_sync_stream_get_maps_transport_errors_too() -> None:
+    """``stream_get`` bypasses ``_send`` (httpx streaming needs its own context manager) — prove it
+    carries the SAME transport-error mapping, not a raw httpx exception."""
+    respx.get(f"{API}/documents/doc-1/blob").mock(side_effect=httpx.ConnectError("refused"))
+    transport = SyncTransport(BASE, 5.0)
+    with pytest.raises(APIConnectionError):
+        list(transport.stream_get("/documents/doc-1/blob"))
     transport.close()
 
 

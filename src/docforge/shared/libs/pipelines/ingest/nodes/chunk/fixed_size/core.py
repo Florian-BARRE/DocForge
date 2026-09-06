@@ -72,12 +72,20 @@ class ChunkerFixedSizeNode(BaseChunkerNode):
             # 2. Window full: close and seed the next one with the overlap tail.
             if current and current_tokens + passage.token_count > config.chunk_tokens:
                 groups.append(current)
-                current = (
+                seed = (
                     self._overlap_seed(current, config.overlap_tokens)
                     if config.overlap_tokens
                     else []
                 )
-                current_tokens = sum(p.token_count for p in current)
+                seed_tokens = sum(p.token_count for p in seed)
+                # Cap-overshoot guard: the repeated overlap tail must not push the new window past
+                # chunk_tokens. When the incoming passage plus the seed would exceed the cap, start
+                # the window clean — the passage alone always fits (it is <= chunk_tokens after the
+                # explode above), so the window stays within the cap instead of overshooting by the
+                # whole seed.
+                if seed_tokens + passage.token_count > config.chunk_tokens:
+                    seed, seed_tokens = [], 0
+                current, current_tokens = seed, seed_tokens
             current.append(passage)
             current_tokens += passage.token_count
         if current:

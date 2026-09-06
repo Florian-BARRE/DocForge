@@ -21,6 +21,9 @@ from starlette.types import Receive, Scope, Send
 # ====== Internal Project Imports ======
 from config import RUNTIME_CONFIG
 
+# ====== Local Project Imports ======
+from ..logsafe import LogSafeHelpers
+
 
 class RateLimitEngine(LoggerClass):
     """Reusable per-caller moving-window limiter: consume a hit, or emit the 429 for an over-budget key."""
@@ -60,8 +63,11 @@ class RateLimitEngine(LoggerClass):
         try:
             return await self._limiter.hit(self.__item(), key)
         except Exception:
+            # An IP bucket key can embed a client-controlled X-Forwarded-For value — sanitise it so a
+            # crafted header cannot forge log records, and never treat it as a trusted identifier.
             self.logger.warning(
-                f"Rate limiter unavailable; failing open for this request (key={key})"
+                f"Rate limiter unavailable; failing open for this request "
+                f"(key={LogSafeHelpers.sanitize(key)})"
             )
             return True
 
@@ -81,8 +87,10 @@ class RateLimitEngine(LoggerClass):
             reset_time, _ = await self._limiter.get_window_stats(self.__item(), key)
             retry_after = max(1, math.ceil(reset_time - time.time()))
         except Exception:
+            # Sanitise the (possibly XFF-derived, client-controlled) key before logging it.
             self.logger.warning(
-                f"Rate limiter window-stats unavailable; using default Retry-After (key={key})"
+                f"Rate limiter window-stats unavailable; using default Retry-After "
+                f"(key={LogSafeHelpers.sanitize(key)})"
             )
             retry_after = 60
 

@@ -3,6 +3,7 @@ name = "docforge-paddle-server"
 version = "1.0.0"
 description = "PaddleOCR PP-StructureV3 layout-parsing micro-service — PDF/image in, reading-ordered blocks (text/table-html/formula-latex) out"
 requires-python = ">=3.12"
+license = "GPL-3.0-or-later"
 dependencies = [
     # paddleocr ships the PPStructureV3 pipeline class and unconditionally depends on
     # paddlex[ocr-core] (layout+OCR+PDF-reading via pypdfium2). Pinned exact — the

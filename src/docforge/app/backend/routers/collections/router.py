@@ -23,7 +23,7 @@ from shared_libs.services.db.postgresql.tables import Collection
 from ...context import CONTEXT
 from ...libs.auth import AuthPrincipal, AuthzGuard, Capability, require
 from ...libs.corpus import DocumentFilter, DocumentSelector, DocumentSelectorResolver
-from ...libs.estimate import CollectionEstimateRequest
+from ...libs.estimate import CollectionEstimateRequest, EstimateInputError
 from ...libs.health import CollectionHealthResponse
 from ...libs.logsafe import LogSafeHelpers
 from ...libs.reingest import BulkReingestAccepted, BulkReingestRequest, BulkReingestService
@@ -225,12 +225,14 @@ async def estimate_collection(
     payload = request or CollectionEstimateRequest()
 
     # 2. Run the estimate; an unreadable blob or a bad id/filter is a 422 (mirrors reingest), unknown
-    #    a 404. The ValueError path covers a non-UUID id, an unknown/foreign id, and a bad filter.
+    #    a 404. The catch is NARROW on purpose: EstimateInputError is only the caller-input faults
+    #    (non-UUID id, unknown/foreign id, bad filter). An unrelated ValueError from the estimator's
+    #    arithmetic is deliberately NOT swallowed here — it surfaces as a 500 (a real bug), never a 422.
     try:
         estimate = await CONTEXT.estimate_service.estimate(collection_id, payload)
     except BlobNormalizationError as exc:
         raise HTTPException(status_code=422, detail=f"Collection {collection_id}: {exc}")
-    except ValueError as exc:
+    except EstimateInputError as exc:
         raise HTTPException(status_code=422, detail=f"Collection {collection_id}: {exc}")
     if estimate is None:
         raise HTTPException(status_code=404, detail=f"Collection {collection_id} not found.")

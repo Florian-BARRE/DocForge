@@ -276,10 +276,11 @@ async def test_avg_stage_durations_query_shape() -> None:
 
     sql = _sql(session)
     assert "avg(" in sql and "extract(epoch from" in sql
-    assert "group by" in sql and "job_stage_event.stage" in sql
+    assert "group by job_stage_event.stage" in sql
     # DONE jobs only, and only events with both timestamps.
-    assert "done" in sql
-    assert "started_at is not null" in sql and "finished_at is not null" in sql
+    assert "job.status = 'done'" in sql
+    assert "job_stage_event.started_at is not null" in sql
+    assert "job_stage_event.finished_at is not null" in sql
 
 
 async def test_collection_cost_query_shape_and_unpack() -> None:

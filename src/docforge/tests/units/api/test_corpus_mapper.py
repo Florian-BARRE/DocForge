@@ -250,7 +250,11 @@ def test_builder_statement_is_id_stabilised_and_carries_metadata_exists() -> Non
     )
     statement = DocumentQueryApi._apply_order(DocumentQueryApi._filtered(uuid.uuid4(), spec), spec)
     sql = str(statement)
-    # The metadata predicate compiled to a correlated EXISTS over document_metadata.
-    assert "EXISTS" in sql and "document_metadata" in sql
-    # The ordering is stabilised by document.id as the final key.
-    assert "ORDER BY" in sql and "document.id" in sql
+    # The metadata predicate compiled to a correlated EXISTS over document_metadata, correlated
+    # back to the outer document row (not an uncorrelated/broken subquery).
+    assert "EXISTS (SELECT 1" in sql
+    assert "document_metadata.document_id = document.id" in sql
+    # The ordering is stabilised by document.id ASC as the FINAL tie-breaking key (after the
+    # requested created_at DESC), not merely present somewhere unrelated in the statement.
+    assert "ORDER BY document.created_at DESC" in sql
+    assert sql.rstrip().endswith("document.id ASC")

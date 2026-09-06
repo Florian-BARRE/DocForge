@@ -31,7 +31,7 @@ from .models import (
     MetadataValue,
     PageInfo,
 )
-from .models_ir import DocumentIRModel, IRAttempt, IRBlock, IREnrichment, IRFigure, IRTable
+from .models_ir import DocumentIRModel, IRBlock, IREnrichment, IRFigure, IRTable
 
 
 class ExplorerHelpers:
@@ -122,21 +122,6 @@ class ExplorerHelpers:
     @classmethod
     def ir(cls, bundle: IRBundle) -> DocumentIRModel:
         """Map the full IR bundle (raw blocks + details + enrichments) to its response model."""
-        # Group the model-chain trace by its owning enrichment so each enrichment carries its own
-        # ordered attempts (the "which model / OCR ran, and what escalated first" provenance).
-        attempts_by_enrichment: dict[str, list[IRAttempt]] = {}
-        for attempt in bundle.attempts:
-            attempts_by_enrichment.setdefault(str(attempt.block_enrichment_id), []).append(
-                IRAttempt(
-                    position=attempt.position,
-                    capability=attempt.capability,
-                    provider_id=attempt.provider_id,
-                    model=attempt.model,
-                    status=attempt.status,
-                    latency_ms=attempt.latency_ms,
-                    error=attempt.error,
-                )
-            )
         return DocumentIRModel(
             blocks=[
                 IRBlock(
@@ -145,13 +130,11 @@ class ExplorerHelpers:
                     page=block.page,
                     bbox=list(block.bbox),
                     reading_order=block.reading_order,
-                    column_index=block.column_index,
                     parent_id=block.parent_id,
                     level=block.level,
                     text=block.text,
                     is_boilerplate=block.is_boilerplate,
                     language=block.language,
-                    confidence=block.confidence,
                 )
                 for block in bundle.blocks
             ],
@@ -182,7 +165,6 @@ class ExplorerHelpers:
                     text=enrichment.text,
                     data=enrichment.data,
                     status=enrichment.status,
-                    attempts=attempts_by_enrichment.get(str(enrichment.id), []),
                 )
                 for enrichment in bundle.enrichments
             ],

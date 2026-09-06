@@ -17,6 +17,7 @@ import { BlockTypeLegend } from "./BlockTypeLegend";
 import { buildChunkByBlockId, buildPageGroups } from "./chunkGrouping";
 import { PageGroupRow } from "./PageGroupRow";
 import { PageScrubber, type PageScrubEntry } from "./PageScrubber";
+import { PARSER_KINDS } from "./parserKinds";
 
 /** Anchor id + short label ("3" or "3–4") for a page group, shared by the scrubber and its row. */
 function pageGroupNav(group: { pages: { page_number: number }[] }): PageScrubEntry {
@@ -75,13 +76,12 @@ export function LayoutTab({ ir, pages, chunks, provenance, error, chunksError, o
   // separate pipeline panel. Every parse-family stage the pipeline ran, in order, with its outcome —
   // so a fallback/escalation (e.g. docling failed → pp_structure succeeded) is visible per block.
   const parseChain = useMemo(() => {
-    const PARSERS = new Set(["docling", "granite_docling", "pp_structure", "mineru", "marker", "dots_ocr", "azure", "mistral"]);
-    // Gate on the PARSE stage, not just the kind: several kinds (e.g. "mistral", "dots_ocr") are
-    // shared across families — a (ocr, mistral) crop-reader runs in ENRICH, a (llm, …) in
-    // contextualize/metagen — so a kind-only match would misclassify them as parsers. Only a node
-    // whose pipeline stage is "parse" is part of the extraction chain.
+    // Gate on the PARSE stage, not just the kind: a kind can be shared across families (e.g. a
+    // future (ocr, mistral) crop-reader runs in ENRICH, a (llm, …) in contextualize/metagen) — so
+    // a kind-only match could misclassify a same-named node as a parser. Only a node whose
+    // pipeline stage is "parse" is part of the extraction chain.
     const chain = (provenance?.stages ?? [])
-      .filter((stage) => stage.stage === "parse" && stage.node_kind && PARSERS.has(stage.node_kind))
+      .filter((stage) => stage.stage === "parse" && stage.node_kind && PARSER_KINDS.has(stage.node_kind))
       .map((stage) => ({ kind: stage.node_kind as string, status: stage.status }));
     if (chain.length > 0) return chain;
     const fallback = provenance?.stages.find((stage) => stage.stage === "parse")?.node_kind;

@@ -189,6 +189,10 @@ class RUNTIME_CONFIG(EnvConfigLoader):
     # the first N (deterministic order) and reports ``capped=true``, so one call never materialises a
     # 100k-id set in memory. Delete is convergent — re-run the same selector to remove the remainder.
     CORPUS_MAX_DELETE_SELECTION: int = env("CORPUS_MAX_DELETE_SELECTION", cast=int, default=10000)
+    # Per-call cap on a bulk chunk enable/disable payload: the explorer multi-select PATCH carries an
+    # explicit list of chunk ids, so an oversized list is rejected 422 at the model boundary (never a
+    # 100k-id set materialised in one request). Mirrors the corpus bulk-selection ceiling.
+    EXPLORER_MAX_BULK_CHUNK_IDS: int = env("EXPLORER_MAX_BULK_CHUNK_IDS", cast=int, default=10000)
 
     # ───── Cost estimate ─────
     # When a cost estimate covers MORE than this many documents — whether an explicit id/filter SUBSET

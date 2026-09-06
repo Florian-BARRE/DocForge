@@ -42,7 +42,7 @@ export function CreatedKeyModal({ createdKey, onClose }: CreatedKeyModalProps) {
   return (
     <div
       style={{
-        position: "fixed", inset: 0, background: "rgba(0,0,0,.8)", backdropFilter: "blur(2px)", zIndex: 100,
+        position: "fixed", inset: 0, background: theme.color.overlay, backdropFilter: "blur(2px)", zIndex: 100,
         display: "flex", alignItems: "center", justifyContent: "center", padding: theme.space.l,
       }}
     >

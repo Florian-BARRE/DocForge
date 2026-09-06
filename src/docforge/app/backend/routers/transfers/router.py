@@ -184,7 +184,13 @@ async def download_transfer(
     if row is None:
         raise HTTPException(status_code=404, detail=f"Transfer {transfer_id} not found.")
 
-    # 2. Downloadable only when it is a DONE export with a stored bundle key — otherwise 404 (an
+    # 2. Scope by the source collection BEFORE disclosing anything about the transfer's state: a
+    #    foreign scoped key must not learn (via the distinct 404 reasons below) whether this id is a
+    #    done export, an import, or an expired bundle. Still present unless the collection was deleted.
+    if row.collection_id is not None:
+        AuthzGuard.assert_collection_scope(principal, str(row.collection_id))
+
+    # 3. Downloadable only when it is a DONE export with a stored bundle key — otherwise 404 (an
     #    import, or an export not yet finished/failed, has nothing to hand back).
     is_export = row.kind == TransferKind.EXPORT
     is_done = row.status == TransferState.DONE
@@ -193,14 +199,10 @@ async def download_transfer(
             status_code=404, detail=f"Transfer {transfer_id} has no downloadable export bundle."
         )
 
-    # 3. Expired bundles are gone (the object may already be GC'd) — surface a clean 404, not a
+    # 4. Expired bundles are gone (the object may already be GC'd) — surface a clean 404, not a
     #    later S3 read error mid-stream.
     if row.expires_at is not None and row.expires_at < datetime.now(UTC):
         raise HTTPException(status_code=404, detail=f"Transfer {transfer_id}'s bundle has expired.")
-
-    # 4. Scope by the source collection (still present unless the collection was later deleted).
-    if row.collection_id is not None:
-        AuthzGuard.assert_collection_scope(principal, str(row.collection_id))
 
     # 5. Stream the bytes straight from S3 behind auth; the attachment filename leads with the name.
     filename = TransferHelpers.download_filename(row.collection_name, row.finished_at)

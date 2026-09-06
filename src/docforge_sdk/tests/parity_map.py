@@ -73,7 +73,6 @@ from docforge_sdk.models.health import (
 from docforge_sdk.models.ir import (
     DocumentIRModel,
     DocumentProvenance,
-    IRAttempt,
     IRBlock,
     IREnrichment,
     IRFigure,
@@ -205,7 +204,6 @@ MODELS: dict[str, type[BaseModel]] = {
     "IRBlock": IRBlock,
     "IRTable": IRTable,
     "IRFigure": IRFigure,
-    "IRAttempt": IRAttempt,
     "IREnrichment": IREnrichment,
     "DocumentIRModel": DocumentIRModel,
     "DocumentProvenance": DocumentProvenance,

@@ -83,7 +83,7 @@ def lifespan() -> Any:
             log_step(5, "Authentication bootstrap")
             await AuthBootstrap.ensure_root_credential()
 
-            # 6. Yield — the app is now serving.
+            # 7. Yield — the app is now serving.
             yield
 
         finally:

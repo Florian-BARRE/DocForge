@@ -28,13 +28,11 @@ class IRBlock(BaseModel):
     page: int = Field(description="0-based page the block sits on (first page = 0).")
     bbox: list[float] = Field(description="Bounding box [x0, y0, x1, y1] in page coordinates.")
     reading_order: int = Field(description="Global reading-order rank within the document.")
-    column_index: int = Field(description="Column the block belongs to (multi-column layouts).")
     parent_id: str | None = Field(default=None, description="Parent block in the heading tree.")
     level: int | None = Field(default=None, description="Heading level (None for non-headings).")
     text: str | None = Field(default=None, description="Native extracted text (None for figures).")
     is_boilerplate: bool = Field(description="Flagged repeated header/footer/watermark.")
     language: str | None = Field(default=None, description="Per-block detected language.")
-    confidence: float | None = Field(default=None, description="Parser confidence (None if n/a).")
 
 
 class IRTable(BaseModel):
@@ -60,22 +58,10 @@ class IRFigure(BaseModel):
     )
 
 
-class IRAttempt(BaseModel):
-    """One model attempt within an enrichment's escalation chain (the model-chain trace)."""
-
-    position: int = Field(description="0-based order in the chain (0 = first model tried).")
-    capability: str = Field(description="The generic capability invoked (ocr / vlm / llm / …).")
-    provider_id: str = Field(description="Provider/node kind that ran (e.g. rapidocr, mistral).")
-    model: str = Field(description="The concrete model identifier the provider used.")
-    status: str = Field(description="ok / failed — whether this attempt produced the result.")
-    latency_ms: int | None = Field(default=None, description="Attempt wall-clock latency (ms).")
-    error: str | None = Field(default=None, description="Failure reason when this attempt failed.")
-
-
 class IREnrichment(BaseModel):
     """One enrichment applied to a block (OCR/VLM/classify/chart_to_data/table_summary)."""
 
-    id: str = Field(description="The enrichment UUID (use it to fetch the model-chain trace).")
+    id: str = Field(description="The enrichment UUID.")
     block_id: str = Field(description="The enriched block.")
     kind: EnrichmentKind = Field(description="What the enrichment produced.")
     text: str | None = Field(
@@ -85,10 +71,6 @@ class IREnrichment(BaseModel):
         default=None, description="Structured result (chart cells, classification)."
     )
     status: EnrichmentStatus = Field(description="ok / failed / skipped.")
-    attempts: list[IRAttempt] = Field(
-        default_factory=list,
-        description="The model-chain trace: every model tried, in order (including failures).",
-    )
 
 
 class DocumentIRModel(BaseModel):
@@ -127,7 +109,6 @@ __all__ = [
     "IRBlock",
     "IRTable",
     "IRFigure",
-    "IRAttempt",
     "IREnrichment",
     "DocumentIRModel",
     "DocumentProvenance",

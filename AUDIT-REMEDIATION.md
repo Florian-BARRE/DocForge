@@ -8,6 +8,8 @@
 
 ## Journal
 
+- **2026-09-06 — Vague AJ / 0.14.45 (V8 — clôture : 19 FAIBLE + le reste, 5 agents ||)** : dernier lot de findings FAIBLE/MOYENNE traités en parallèle (pipeline · frontend · backend · migration · test) puis vérifiés + intégrés. **Pipeline** (720/757/759/765/767/771/786/515) : sémantique retry unifiée, quirks détection langue, overlap cap+validateur, edge-cases flatten table PP-Structure, robustesse mapper (ids sidecar), champ `QuerySpec.language` mort retiré, docstrings registry. **Backend** (399/823/666/553/555) : cap bulk-chunk, scope-check transfer avant divulgation, ValueError→422 narrowé (`EstimateInputError`), blob streamé (plus de buffering), lifespan renuméroté ; logs uvicorn routés via loggerplusplus + clé XFF log-sanitisée ; **champs IR morts retirés** (`column_index`/`confidence`/`IRAttempt`/`attempts`) + snapshot OpenAPI régénéré + miroir SDK ; sampler `ceil`, override `chunk_overlap_ratio` consommé. **Frontend** (635/637/647/653) : IrChunkGraph découpé, bug **compta delete filtré** corrigé, memoization colonnes, parse-chain skipped/running≠failed + `PARSER_KINDS` centralisé (mineru/marker/dots_ocr/azure fantômes retirés), defaults SearchQueryCard dérivés du schéma. **Test** (502) : mock vacuous corrigé, prédicats SQL resserrés, +10 tests SDK 5xx/transport. **Packaging** (585) : `license` sur 4 pyproject, labels OCI license sur 5 Dockerfiles, ligne MinerU/Marker corrigée. **Bugs DÉCOUVERTS pendant la remédiation, tous corrigés** : (a) **500 latent** — `GET /documents/{id}/ir` levait `AttributeError` sur `bundle.attempts` (champ inexistant) à CHAQUE fetch IR, non couvert par les tests → corrigé par le retrait 666 ; (b) **embed retry off-by-one** (`max_retries` = attempts totaux au lieu de retries-au-delà-de-l-initial) → aligné sur le contrat `TimeoutRetryConfig` (1+max_retries) + test ; (c) **VLM ne loggait pas sa dernière tentative échouée** → loggé ; (d) **accès inter-node privé** (`embedder._embed_dense/_sparse` depuis search encode) → API publique `encode_query_dense/sparse` ; (e) **littéral overlay `rgba(0,0,0,.8)`** dupliqué sur 5 modaux → token `theme.color.overlay`. Gate : docforge **1647**, SDK **567**, MCP **51**, frontend 0 erreur, ruff clean partout, drift OK (96 schémas). **→ AUDIT 100 % : 247/247. Toutes les vagues V1–V8 closes.**
+
 - **2026-09-06 — Vague AI / 0.14.44 (V8 search-time LLM cost sink, 539 CLÔTURÉ)** : la dépense LLM search-time (query rewrite / HyDE) n'était métrée NULLE PART (search tourne inline app-side, hors meter worker). Le nœud query stampe déjà son usage sur le record d'exécution ; il manquait la somme + l'exposition. Fix : le summer devient **partagé** (`shared/libs/pipelines/usage.py::UsageSummer`, réutilisé par les DEUX meters — le worker `StageUsageSummer` est désormais un alias mince, l'app search l'importe directement). `SearchRunner.run` prend un `RateTable` (construit par le service depuis `collection.estimate_overrides` — mêmes tarifs que l'estimateur/ingest, cohérent avec 543) et retourne `(SearchResult, usage)` ; le routeur expose un nouveau champ optionnel **`SearchResponse.cost`** (`SearchCostModel` : prompt/completion tokens, cost_usd, call_count), **null** quand aucun appel payant (search stock lexical/dense). Miroir SDK (`SearchCost` + parity map) + **snapshot OpenAPI régénéré** (97 schémas trackés, +1). +2 tests route (cost null / cost surfacé). Gate : docforge **1642 passed** (+2), SDK **561**, MCP **51**, ruff clean, drift OK. Les 2 volets de 539 sont couverts (undercount retry = VLM déjà corrigé en 0.14.35, LLM/query single-shot ; search-time sink = ici) → **539 CLÔTURÉ**. **V8 : 159 fait.**
 
 - **2026-09-06 — Vague AH / 0.14.43 (V8 pricing refresh, 545 — tarifs vérifiés sur sources officielles)** : la table `MODEL_PRICING`/`EMBED_PRICING`/`OCR_PAGE_PRICING` (canonique pour estimateur ET méter) était d'une génération en retard. Refresh depuis les pages de tarifs **officielles** (fetch direct, pas de chiffre deviné — la 1re recherche web synthétisée donnait un GPT-5 à $10/$50 FAUX, corrigé par le fetch de la page modèle : $1.25/$10). Ajoutés : GPT-5 (1.25/10), gpt-5-mini (0.25/2), gpt-5.5 (5/30), gpt-5.6-sol (4/20), gpt-5.6-terra (2/12), gpt-5.6-luna (0.20/1.20) ; embeddings mistral-embed (0.10) + codestral-embed (0.15) ; **OCR mistral corrigé 0.001 → 0.004** (Mistral OCR 4.1 = $4/1000 pages ; l'ancien 0.001 = tarif OCR 3 batch périmé). 4o/4.1 + text-embedding-3 conservés (toujours valides). Discounts cached-input / batch NON modélisés (le méter ne connaît pas le cache-hit ratio → tarif standard = borne haute sûre). Tests de prix mis à jour (0.001→0.004). Gate : **1640 passed**, ruff clean, drift OK (table interne, hors response models). **V8 : 158 fait.**
@@ -178,15 +180,15 @@
 
 | Vague | Total | Fait | En cours | Restant |
 |---|---|---|---|---|
-| V1 — Sécurité & authz | 30 | 29 | 0 | 1 |
+| V1 — Sécurité & authz | 30 | 30 | 0 | 0 |
 | V2 — Fiabilité (jobs/stores/transferts) | 4 | 4 | 0 | 0 |
 | V3 — Release/CI/dépendances | 1 | 1 | 0 | 0 |
 | V4 — Search & coûts | 1 | 1 | 0 | 0 |
 | V5 — Moteur & pipeline | 2 | 2 | 0 | 0 |
 | V6 — Frontend | 0 | 0 | 0 | 0 |
 | V7 — Documentation | 21 | 21 | 0 | 0 |
-| V8 — Outillage (.claude/tests/infra/télémétrie) | 188 | 170 | 1 | 17 |
-| **Total** | **247** | **228** | **1** | **18** |
+| V8 — Outillage (.claude/tests/infra/télémétrie) | 188 | 188 | 0 | 0 |
+| **Total** | **247** | **247** | **0** | **0** |
 
 
 ## V1 — Sécurité & authz (avant tout déploiement multi-tenant)  (30)
@@ -396,7 +398,7 @@
   `src/docforge/app/backend/routers/collections/router.py:348`
 - [x] **⚪ FAIBLE** · `bug` — GET /auth/whoami 500s on a malformed permissions blob instead of degrading like the authz gate  
   `src/docforge/app/backend/routers/auth/whoami.py:40`
-- [ ] **⚪ FAIBLE** · `consistency` — Grouped minor issues: unbounded bulk-chunk patch, transfer info disclosed before scope check, catch-all ValueError→422, READ-triggered export side effects, whole-blob buffering, duplicated lifespan step number  
+- [x] **⚪ FAIBLE** · `consistency` — Grouped minor issues: unbounded bulk-chunk patch, transfer info disclosed before scope check, catch-all ValueError→422, READ-triggered export side effects, whole-blob buffering, duplicated lifespan step number  
   `src/docforge/app/backend/routers/explorer/models.py:134`
 - [x] **⚪ FAIBLE** · `divergence-doc` — RUNTIME_CONFIG idempotency comment claims key create/rotate are eligible endpoints — eligibility.py deliberately excludes them  
   `src/docforge/app/config/runtime_config.py:118`
@@ -499,7 +501,7 @@
   `src/docforge/app/backend/routers/auth/whoami.py:21`
 - [x] **🟠 MOYENNE** · `test-gap` — Transition-priority chain only pinned for ScoreBelow>WhenEquals; the rest of the documented order is untested  
   `src/docforge/tests/units/engine/test_conditions.py:112`
-- [ ] **⚪ FAIBLE** · `test-gap` — Grouped low-severity assertion smells: a vacuous mock assert, SQL-substring predicates, and unmapped SDK 5xx/transport errors  
+- [x] **⚪ FAIBLE** · `test-gap` — Grouped low-severity assertion smells: a vacuous mock assert, SQL-substring predicates, and unmapped SDK 5xx/transport errors  
   `src/docforge/tests/units/api/test_auth.py:127`
 - [x] **⚪ FAIBLE** · `test-gap` — Idempotency middleware: the cache-a-4xx-and-replay-it branch is completely unpinned  
   `src/docforge/tests/units/api/test_idempotency.py:357`
@@ -512,7 +514,7 @@
   `src/docforge/shared/libs/pipelines/edit/editor.py:74`
 - [x] **⚪ FAIBLE** · `divergence-doc` — CLAUDE.md families list is stale vs the registered palette  
   `CLAUDE.md:106`
-- [ ] **⚪ FAIBLE** · `consistency` — Grouped low-severity smells across the discovery/edit surface  
+- [x] **⚪ FAIBLE** · `consistency` — Grouped low-severity smells across the discovery/edit surface  
   `src/docforge/shared/libs/pipelines/registry.py:218`
 - [x] **⚪ FAIBLE** · `dead-code` — PipelineCatalog.palette() is dead code (and would leak cross-pipeline kinds if used)  
   `src/docforge/shared/libs/pipelines/introspection/catalog.py:95`
@@ -550,9 +552,9 @@
   `src/docforge/shared/libs/pipelines/ingest/estimate/rates.py:6`
 - [x] **⚪ FAIBLE** · `consistency` — Pricing table is accurate but a generation behind (cutoff: Jan 2026)  
   `src/docforge/shared/libs/pipelines/nodes/openai_compat/pricing.py:13`
-- [ ] **⚪ FAIBLE** · `design` — Sampler/estimator representativeness smells (grouped lows)  
+- [x] **⚪ FAIBLE** · `design` — Sampler/estimator representativeness smells (grouped lows)  
   `src/docforge/app/backend/libs/estimate/sampler.py:85`
-- [ ] **⚪ FAIBLE** · `dead-code` — chunk_overlap_ratio override is dead and the merger's chunker-wins fallback is asymmetric vs its own docstrings  
+- [x] **⚪ FAIBLE** · `dead-code` — chunk_overlap_ratio override is dead and the merger's chunker-wins fallback is asymmetric vs its own docstrings  
   `src/docforge/app/backend/libs/estimate/merger.py:85`
 
 ### Données Postgres·Qdrant·S3
@@ -582,7 +584,7 @@
 
 - [x] **🟠 MOYENNE** · `design` — Dependabot has no coverage for the ~14 container images pinned in compose files  
   `.github/dependabot.yml:85`
-- [ ] **⚪ FAIBLE** · `consistency` — Licensing/version metadata nits: no license field in 4 pyprojects, no LICENSE in images, off-lockstep service versions, stale MinerU/Marker doc line  
+- [x] **⚪ FAIBLE** · `consistency` — Licensing/version metadata nits: no license field in 4 pyprojects, no LICENSE in images, off-lockstep service versions, stale MinerU/Marker doc line  
   `src/docforge/pyproject.toml:6`
 
 ### Export/import
@@ -632,9 +634,9 @@
   `src/docforge/worker/backend/libs/jobs/core.py:258`
 - [x] **⚪ FAIBLE** · `dead-code` — Committed one-off Playwright scripts and QA screenshot binaries under frontend scripts/  
   `src/docforge/app/frontend/scripts/a11y-check.mjs:1` _(aussi: new-batch)_
-- [ ] **⚪ FAIBLE** · `design` — File-size and structure rule signals in the new code  
+- [x] **⚪ FAIBLE** · `design` — File-size and structure rule signals in the new code  
   `src/docforge/app/frontend/src/features/explorer/layout/IrChunkGraph.tsx:1`
-- [ ] **⚪ FAIBLE** · `consistency` — Grouped low-severity smells: stale comments, per-render column rebuild, filtered-mode delete accounting, token violations, asymmetric editor hygiene  
+- [x] **⚪ FAIBLE** · `consistency` — Grouped low-severity smells: stale comments, per-render column rebuild, filtered-mode delete accounting, token violations, asymmetric editor hygiene  
   `src/docforge/app/frontend/src/features/corpus/CorpusPage.tsx:64`
 - [x] **⚪ FAIBLE** · `bug` — Layout parse-chain contaminated: "mistral" in the PARSERS set matches the OCR and LLM node kinds  
   `src/docforge/app/frontend/src/features/explorer/layout/LayoutTab.tsx:66`
@@ -644,13 +646,13 @@
   `src/docforge/app/frontend/src/features/explorer/layout/PageScrubber.tsx:52`
 - [x] **⚪ FAIBLE** · `perf` — PageScrubber scroll handler does O(pages) DOM reads on every scroll event  
   `src/docforge/app/frontend/src/features/explorer/layout/PageScrubber.tsx:56`
-- [ ] **⚪ FAIBLE** · `design` — Parser-chain rendering conflates skipped/running with failed, and the parser-kind list is a hand-maintained hardcode  
+- [x] **⚪ FAIBLE** · `design` — Parser-chain rendering conflates skipped/running with failed, and the parser-kind list is a hand-maintained hardcode  
   `src/docforge/app/frontend/src/features/explorer/layout/LayoutTab.tsx:66`
 - [x] **⚪ FAIBLE** · `design` — Responsive collapse: fixed 476px reserved for the chunk column + connector with no horizontal scroll fallback  
   `src/docforge/app/frontend/src/features/explorer/layout/IrChunkGraph.tsx:197`
 - [x] **⚪ FAIBLE** · `divergence-doc` — SchemaField header comment promises secret masking that the code does not implement  
   `src/docforge/app/frontend/src/components/schema-form/SchemaField.tsx:3`
-- [ ] **⚪ FAIBLE** · `consistency` — SearchQueryCard duplicates backend config defaults as display literals  
+- [x] **⚪ FAIBLE** · `consistency` — SearchQueryCard duplicates backend config defaults as display literals  
   `src/docforge/app/frontend/src/features/search-pipeline/SearchQueryCard.tsx:16`
 - [x] **⚪ FAIBLE** · `consistency` — Stale/contradictory comments across the batch: phantom "lane" palette, wrong palette description, outdated tab counts, and a bbox description that contradicts the wire format  
   `src/docforge/app/frontend/src/features/explorer/layout/PageGroupRow.tsx:5`
@@ -663,7 +665,7 @@
 
 - [x] **🟠 MOYENNE** · `divergence-doc` — Chunk table docstring promises deterministic UUID v5 point ids; translator mints random uuid4 per run  
   `src/docforge/shared/libs/services/db/postgresql/tables/chunks/chunk.py:28` _(aussi: db-layer)_
-- [~] **🟠 MOYENNE** · `dead-code` — Dead IR/DB fields surfaced to the API as meaningful data, and an enrichment-trace promise never fulfilled  
+- [x] **🟠 MOYENNE** · `dead-code` — Dead IR/DB fields surfaced to the API as meaningful data, and an enrichment-trace promise never fulfilled  
   `src/docforge/app/backend/routers/explorer/models_ir.py:25`
 - [x] **🟠 MOYENNE** · `test-gap` — ENGINE_BLOB_VERSION bump is purely manual and already missed once; golden-blob test does not force it  
   `src/docforge/shared/libs/pipelines/ingest/stages/normalizer.py:36`
@@ -717,7 +719,7 @@
   `src/docforge/tests/units/validation/test_validation_codes.py:1`
 - [x] **⚪ FAIBLE** · `consistency` — RemoveNode heals bindings but leaves a sibling ForEach's 'over' pointing at the removed node  
   `src/docforge/shared/libs/pipelines/edit/editor.py:167`
-- [ ] **⚪ FAIBLE** · `consistency` — Retry-count semantics drift across the retry implementations (grouped lows)  
+- [x] **⚪ FAIBLE** · `consistency` — Retry-count semantics drift across the retry implementations (grouped lows)  
   `src/docforge/shared/libs/pipelines/nodes/embed/base/node.py:129`
 - [x] **⚪ FAIBLE** · `bug` — SetAfter silently deletes ALL incoming edges of a convergence node, producing a valid-but-wrong graph  
   `src/docforge/shared/libs/pipelines/edit/editor.py:199` _(aussi: pipelines-api)_
@@ -754,21 +756,21 @@
   `src/docforge/shared/libs/pipelines/ingest/nodes/chunk/base/node.py:124`
 - [x] **⚪ FAIBLE** · `consistency` — Gotenberg _preview bypasses the shared NetworkRetry that _convert uses  
   `src/docforge/shared/libs/pipelines/ingest/nodes/intake/converter/gotenberg/core.py:157`
-- [ ] **⚪ FAIBLE** · `consistency` — Language detection: per-document, cheap; minor tie/window/regex quirks  
+- [x] **⚪ FAIBLE** · `consistency` — Language detection: per-document, cheap; minor tie/window/regex quirks  
   `src/docforge/shared/libs/pipelines/ingest/nodes/parse/parser/base/language.py:265`
-- [ ] **⚪ FAIBLE** · `consistency` — Overlap semantics soft spots: cap overshoot, missing validator, 'same section only' claim  
+- [x] **⚪ FAIBLE** · `consistency` — Overlap semantics soft spots: cap overshoot, missing validator, 'same section only' claim  
   `src/docforge/shared/libs/pipelines/ingest/nodes/chunk/fixed_size/core.py:73`
 - [x] **⚪ FAIBLE** · `divergence-doc` — PIPELINE.md inventory drift (grouped): missing paddle OCR, deliver/, vlm_entry, parser bricks in tree, structgen, UNIQUE list, read_text naming, chunker defaults/knobs, /embed_all; architecture.md still says preflight 'reste à ajouter'  
   `src/docforge/PIPELINE.md:51`
 - [x] **⚪ FAIBLE** · `perf` — Semantic chunker fires one unbatched-by-us embedding call over every context window  
   `src/docforge/shared/libs/pipelines/ingest/nodes/chunk/semantic/core.py:118`
-- [ ] **⚪ FAIBLE** · `consistency` — Stale/false in-code comments and style nits (grouped)  
+- [x] **⚪ FAIBLE** · `consistency` — Stale/false in-code comments and style nits (grouped)  
   `src/docforge/shared/libs/pipelines/ingest/pipeline.py:112`
-- [ ] **⚪ FAIBLE** · `consistency` — Table flattening edge-case smells (header heuristic, nested tables, span double-booking, unclosed cells)  
+- [x] **⚪ FAIBLE** · `consistency` — Table flattening edge-case smells (header heuristic, nested tables, span double-booking, unclosed cells)  
   `src/docforge/shared/libs/pipelines/ingest/nodes/parse/parser/pp_structure/table.py:164`
 - [x] **⚪ FAIBLE** · `bug` — Web-chrome per-block signal can demote a document HEADING titled 'Menu'/'Search'  
   `src/docforge/shared/libs/pipelines/ingest/nodes/chunk/base/passages.py:225`
-- [ ] **⚪ FAIBLE** · `consistency` — pp_structure mapper robustness: sidecar-supplied ids, inconsistent defaults, shared mutable pageless Provenance  
+- [x] **⚪ FAIBLE** · `consistency` — pp_structure mapper robustness: sidecar-supplied ids, inconsistent defaults, shared mutable pageless Provenance  
   `src/docforge/shared/libs/pipelines/ingest/nodes/parse/parser/pp_structure/mapper.py:119`
 
 ### Search & retrieval
@@ -783,7 +785,7 @@
   `docs/rest-api.md:876`
 - [x] **🟠 MOYENNE** · `bug` — limit > top_n silently truncates rerank-enabled results to 50 hits  
   `src/docforge/shared/libs/pipelines/search/nodes/rerank/cross_encoder/config.py:37`
-- [ ] **⚪ FAIBLE** · `dead-code` — Minor smells: dead flags/language fields, stale docstrings, private embedder-hook access, unbounded disabled-doc must_not list  
+- [x] **⚪ FAIBLE** · `dead-code` — Minor smells: dead flags/language fields, stale docstrings, private embedder-hook access, unbounded disabled-doc must_not list  
   `src/docforge/shared/libs/public_models/search/query.py:56`
 - [x] **⚪ FAIBLE** · `consistency` — score_kind mislabels degraded reranks; read port's "hydrated exactly once" claim is stale on the rerank path  
   `src/docforge/app/backend/routers/search/helpers.py:56`
@@ -820,5 +822,5 @@
 
 ### Hygiène logs
 
-- [ ] **⚪ FAIBLE** · `consistency` — Grouped lows: uvicorn access/error logs bypass loggerplusplus (no cid, off-format), and rate-limit failure log includes a client-controlled XFF-derived key  
+- [x] **⚪ FAIBLE** · `consistency` — Grouped lows: uvicorn access/error logs bypass loggerplusplus (no cid, off-format), and rate-limit failure log includes a client-controlled XFF-derived key  
   `src/docforge/app/Dockerfile:118`

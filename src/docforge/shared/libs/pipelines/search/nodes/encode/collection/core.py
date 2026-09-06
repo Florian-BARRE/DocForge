@@ -127,7 +127,7 @@ class EncodeCollectionNode(ActionNode):
         #    it still propagates through wait_for and becomes the runner's timeout path.
         dense: list[float] = []
         try:
-            dense = (await asyncio.wait_for(embedder._embed_dense([text]), timeout=timeout))[0]
+            dense = await asyncio.wait_for(embedder.encode_query_dense(text), timeout=timeout)
         except Exception as exc:
             self.logger.warning(f"Dense query encode failed ({type(exc).__name__}: {exc})")
             notes.append(_DENSE_UNAVAILABLE)
@@ -137,10 +137,7 @@ class EncodeCollectionNode(ActionNode):
         sparse = None
         if config.embed_sparse:
             try:
-                sparse_vectors = await asyncio.wait_for(
-                    embedder._embed_sparse([text]), timeout=timeout
-                )
-                sparse = sparse_vectors[0] if sparse_vectors else None
+                sparse = await asyncio.wait_for(embedder.encode_query_sparse(text), timeout=timeout)
             except Exception as exc:
                 self.logger.warning(f"Sparse query encode failed ({type(exc).__name__}: {exc})")
                 notes.append(_SPARSE_UNAVAILABLE)

@@ -40,7 +40,7 @@ class PpStructureIRMapper:
         cls,
         raw: dict[str, Any],
         page_index: int,
-        reading_order: int,
+        block_index: int,
         doc_id: str,
         dims: tuple[float, float],
     ) -> Block | None:
@@ -76,8 +76,10 @@ class PpStructureIRMapper:
         else:
             text = raw.get("text") or None
 
-        # 4. Namespace the id by doc_id + page + the block's own reading order → globally unique/stable.
-        block_id = f"{doc_id}:p{page_index}:b{reading_order}"
+        # 4. Namespace the id by doc_id + page + a monotonic block index (NOT the sidecar's own
+        #    reading_order, which is untrusted and may repeat within a page and collide) → the id is
+        #    globally unique and stable across re-parses.
+        block_id = f"{doc_id}:p{page_index}:b{block_index}"
         return Block(
             id=block_id,
             block_type=block_type,
@@ -115,9 +117,9 @@ class PpStructureIRMapper:
                 page.get("blocks") or [], key=lambda item: item.get("reading_order", 0)
             )
             for raw in raw_blocks:
-                block = cls.__map_block(
-                    raw, page_index, raw.get("reading_order", len(blocks)), doc_id, dims
-                )
+                # The global counter (len(blocks)) is BOTH the block's IR reading_order and the id's
+                # index component, so the id can never collide on a repeated sidecar reading_order.
+                block = cls.__map_block(raw, page_index, len(blocks), doc_id, dims)
                 if block is not None:
                     block.reading_order = len(blocks)
                     blocks.append(block)

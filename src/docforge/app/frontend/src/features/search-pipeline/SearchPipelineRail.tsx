@@ -39,6 +39,7 @@ export function SearchPipelineRail({
       nested
       active={queryKind}
       config={queryConfig?.config ?? null}
+      palette={palette}
       onSelect={onSelectQueryTransform}
       onChangeConfig={(field, value) => {
         if (queryKind) onChangeNodeConfig(queryKind, field, value);
@@ -84,6 +85,7 @@ export function SearchPipelineRail({
           <SearchQueryCard
             active={queryKind}
             config={queryConfig?.config ?? null}
+            palette={palette}
             onSelect={onSelectQueryTransform}
             onChangeConfig={(field, value) => {
               if (queryKind) onChangeNodeConfig(queryKind, field, value);

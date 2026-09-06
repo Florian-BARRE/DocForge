@@ -6,7 +6,7 @@
 # optional overlap repeats the tail of the previous chunk. The go-to for well-structured documents.
 
 # ====== Third-Party Library Imports ======
-from pydantic import Field
+from pydantic import Field, model_validator
 
 # ====== Internal Project Imports ======
 from shared_libs.pipelines.registry import NodeRegistry
@@ -33,10 +33,13 @@ class ChunkerStructureAwareConfig(BaseChunkerConfig):
         default=64,
         ge=0,
         description="When > 0, a chunk produced by a SIZE cut starts with the previous chunk's "
-        "trailing passages up to this many tokens (same section only) — so a fact split across "
-        "the cut survives in at least one chunk. Applies ONLY when a section overflows target_tokens "
-        "and is split by size; a section-boundary cut is a semantic restart and never overlaps, so "
-        "well-structured documents whose sections fit under the target are unaffected (0 chunks change).",
+        "trailing passages up to this many tokens — so a fact split across the cut survives in at "
+        "least one chunk. Applies ONLY when a section overflows target_tokens and is split by size; "
+        "a section-boundary cut is a semantic restart and never overlaps. Under the default "
+        "hard_section_boundaries the previous chunk is single-section, so the repeated tail stays "
+        "within one section; with hard_section_boundaries off a size-cut chunk may span sections and "
+        "the tail then follows the chunk, not a section. Documents whose sections fit under the "
+        "target are unaffected (0 chunks change).",
     )
     hard_section_boundaries: bool = Field(
         default=True,
@@ -46,6 +49,20 @@ class ChunkerStructureAwareConfig(BaseChunkerConfig):
         "boundaries are only preferred cuts. Either way, a coalesced chunk reports the COMMON "
         "heading_path prefix of its passages.",
     )
+
+    @model_validator(mode="after")
+    def check_overlap(self) -> "ChunkerStructureAwareConfig":
+        """An overlap as large as the HARD cap would never advance a size cut — refuse it.
+
+        Mirrors the fixed-size chunker's guard, bounded against ``max_tokens`` (the hard cap a chunk
+        can reach) rather than ``target_tokens`` (the soft goal): only ``max_tokens`` limits how much a
+        size-cut chunk can hold, so an ``overlap_tokens`` at or above it could seed a full chunk of pure
+        repeat with no room for new content — no forward progress. A small ``target_tokens`` under the
+        default overlap stays legal (the overlap tail is still bounded by the chunk's real content).
+        """
+        if self.overlap_tokens >= self.max_tokens:
+            raise ValueError("overlap_tokens must be smaller than max_tokens")
+        return self
 
 
 @NodeRegistry.register("chunker")

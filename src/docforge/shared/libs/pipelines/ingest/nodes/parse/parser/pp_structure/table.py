@@ -42,6 +42,10 @@ class _TableCollector(HTMLParser):
         self._row: list[_SpanCell] | None = None
         self._cell: _SpanCell | None = None
         self._text_parts: list[str] = []
+        # Nesting depth of <table> tags. Only the OUTERMOST table (depth 1) contributes rows/cells;
+        # a nested table's <tr>/<td> are ignored as structure and their text folds into the enclosing
+        # cell, so a table-in-a-cell never corrupts the outer grid.
+        self._table_depth: int = 0
 
     @staticmethod
     def _span(attrs: dict[str, str | None], name: str) -> int:
@@ -51,8 +55,22 @@ class _TableCollector(HTMLParser):
         except (TypeError, ValueError):
             return 1
 
+    def _flush_cell(self) -> None:
+        """Flush the open cell's accumulated text into the current row, then clear it."""
+        if self._cell is not None and self._row is not None:
+            self._cell.text = " ".join("".join(self._text_parts).split())
+            self._row.append(self._cell)
+        self._cell = None
+
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         """Open a row on <tr> or a cell on <td>/<th>, capturing its span attributes."""
+        if tag == "table":
+            self._table_depth += 1
+            return
+        if (
+            self._table_depth > 1
+        ):  # inside a nested table — ignore its structure (text still folds in)
+            return
         if tag == "tr":
             self._row = []
         elif tag in ("td", "th"):
@@ -69,17 +87,33 @@ class _TableCollector(HTMLParser):
                 self.has_header_tag = True
 
     def handle_data(self, data: str) -> None:
-        """Accumulate text while inside a cell."""
+        """Accumulate text while inside a cell (nested-table text included, folded into that cell)."""
         if self._cell is not None:
             self._text_parts.append(data)
 
     def handle_endtag(self, tag: str) -> None:
         """Close the current cell (flush its text) or the current row (append it to ``rows``)."""
-        if tag in ("td", "th") and self._cell is not None and self._row is not None:
-            self._cell.text = " ".join("".join(self._text_parts).split())
-            self._row.append(self._cell)
-            self._cell = None
+        if tag == "table":
+            self._table_depth = max(0, self._table_depth - 1)
+            return
+        if self._table_depth > 1:  # nested-table tags close silently
+            return
+        if tag in ("td", "th"):
+            self._flush_cell()
         elif tag == "tr" and self._row is not None:
+            # A row can close with a cell still open (an unclosed <td>): flush it before the row.
+            self._flush_cell()
+            self.rows.append(self._row)
+            self._row = None
+
+    def finalize(self) -> None:
+        """Flush any cell/row left dangling by malformed HTML (an unclosed <td> or <tr>).
+
+        Called once after ``feed``/``close``: without it, content of a final unclosed cell or an
+        unterminated last row would be silently dropped instead of landing in the grid.
+        """
+        self._flush_cell()
+        if self._row:
             self.rows.append(self._row)
             self._row = None
 
@@ -146,6 +180,11 @@ class PpStructureTableFlattener:
                             )
                             return None
                         ensure(target_row, target_col)
+                        # Double-booking guard: never overwrite a slot another span already claimed
+                        # (a colspan crossing a rowspan reservation in malformed HTML) — the prior
+                        # owner keeps the slot, this span just skips it.
+                        if matrix[target_row][target_col] is not None:
+                            continue
                         top_left = delta_row == 0 and delta_col == 0
                         matrix[target_row][target_col] = cell.text if top_left else ""
                 col += cell.colspan
@@ -172,6 +211,7 @@ class PpStructureTableFlattener:
             collector = _TableCollector()
             collector.feed(html)
             collector.close()
+            collector.finalize()  # recover any cell/row left open by malformed HTML
         except Exception as error:  # stdlib parser is lenient; guard the pathological case anyway
             cls.logger.warning(f"PP-Structure table HTML parse failed: {error}")
             return None
@@ -183,7 +223,10 @@ class PpStructureTableFlattener:
             return None
         n_rows = len(cells)
         n_cols = max((len(row) for row in cells), default=0)
-        has_header = collector.has_header_tag or n_rows > 1
+        # An explicit <th>/<thead> is the trusted signal; absent one, a MULTI-COLUMN grid of more than
+        # one row is treated as headed (first row = header). A single-column list of rows is not — a
+        # vertical enumeration has no header row to promote.
+        has_header = collector.has_header_tag or (n_rows > 1 and n_cols > 1)
         cls.logger.debug(f"PP-Structure table flattened: {n_rows}x{n_cols}")
         return TableData(cells=cells, n_rows=n_rows, n_cols=n_cols, has_header=has_header)
 

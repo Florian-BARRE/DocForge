@@ -79,7 +79,6 @@ from .models.health import HealthStatus
 from .models.ir import (
     DocumentIRModel,
     DocumentProvenance,
-    IRAttempt,
     IRBlock,
     IREnrichment,
     IRFigure,
@@ -181,7 +180,6 @@ __all__ = [
     "IRBlock",
     "IRTable",
     "IRFigure",
-    "IRAttempt",
     "IREnrichment",
     "DocumentIRModel",
     "DocumentProvenance",

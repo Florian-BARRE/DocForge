@@ -111,17 +111,22 @@ class BaseVlmNode(ActionNode):
         contributes its usage (not just the final success).
         """
         config: BaseVlmConfig = self.config
-        for attempt in range(config.max_retries + 1):  # 1 initial call + max_retries retries
+        total_attempts = 1 + config.max_retries  # the initial call + max_retries retries
+        for attempt in range(1, total_attempts + 1):
             try:
                 return await self._describe(image, context, system_prompt, usage_sink=usage_sink)
             except Exception as error:  # noqa: BLE001 — re-raised below unless a bounded transient
-                if not self._is_transient(error) or attempt == config.max_retries:
+                if not self._is_transient(error):
                     raise
+                # Log EVERY transient attempt, the final one included, before it re-raises — so the
+                # logs show all N attempts (attempt/total), the convention the embed loop uses too.
                 self.logger.warning(
                     f"VLM '{self.KIND}' transient error "
-                    f"(attempt {attempt + 1}/{config.max_retries + 1}): {error!r}"
+                    f"(attempt {attempt}/{total_attempts}): {error!r}"
                 )
-                await asyncio.sleep(config.retry_backoff_seconds * (attempt + 1))
+                if attempt >= total_attempts:
+                    raise
+                await asyncio.sleep(config.retry_backoff_seconds * attempt)
         # Unreachable: the loop either returns a result or raises on the final attempt.
         raise AssertionError("unreachable")
 

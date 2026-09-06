@@ -10,11 +10,20 @@
 import re
 
 # Word tokenizer: runs of letters (incl. accented) and the apostrophe (French elisions: l', d', qu').
-_WORD = re.compile(r"[a-zà-ÿ']+")
+# The Latin-1 letter run is SPLIT around U+00F7 (÷) so the division sign — the one non-letter inside
+# the à-ÿ block — is never treated as a word character; œ (U+0153, outside Latin-1) is added back so
+# genuine French words ("cœur", "œuvre") tokenize. Both the straight (') and curly (’) apostrophes
+# are accepted so a curly-apostrophe elision tokenizes exactly like its straight-quote form.
+_WORD = re.compile(r"[a-zà-öø-ÿœ'’]+")
 
 # At most this many leading words are scored — enough signal for a confident call, bounded cost on a
 # long document (a language is dominant from its first paragraphs).
 _MAX_WORDS = 400
+
+# Only this many leading characters are lowercased and scanned for the leading words. It comfortably
+# covers _MAX_WORDS words of real text (even single-letter words fit) while bounding the cost of
+# ``text.lower()`` on a very long document — we never need the whole body to name its language.
+_MAX_SCAN_CHARS = _MAX_WORDS * 32
 
 
 class LanguageDetector:
@@ -262,16 +271,26 @@ class LanguageDetector:
         """
         if not text or not text.strip():
             return ""
-        words = _WORD.findall(text.lower())[:_MAX_WORDS]
+        # Scan only the leading window (bounded lower() cost), then keep the first _MAX_WORDS words.
+        words = _WORD.findall(text[:_MAX_SCAN_CHARS].lower())[:_MAX_WORDS]
         if not words:
             return ""
-        # Count stop-word hits per language over the scored words.
+        # Count stop-word hits per language over the scored words, tracking whether the leader is a
+        # STRICT winner (a tie means two languages are equally likely — see the ambiguity guard).
         best_code = ""
         best_hits = 0
+        tied = False
         for code, stopwords in cls._STOPWORDS.items():
             hits = sum(1 for word in words if word in stopwords)
             if hits > best_hits:
-                best_code, best_hits = code, hits
+                best_code, best_hits, tied = code, hits, False
+            elif hits == best_hits and hits > 0:
+                tied = True
+        # Ambiguity guard: two languages tied for the top (heavy stop-word overlap, e.g. es/it/pt on a
+        # short text) is too little distinguishing signal to name one — fall back rather than guess by
+        # dictionary order.
+        if tied:
+            return ""
         # Confidence floor: enough of the text must be recognised function words to trust the call.
         if best_hits / len(words) < cls._MIN_RATIO:
             return ""
