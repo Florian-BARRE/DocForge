@@ -7,7 +7,8 @@
 #   * empty  — providers reachable, graphs build, but nothing indexed yet (NEUTRAL, not a fault).
 #   * ingest_unavailable — the ingest pipeline is structurally invalid, so NEW documents cannot be
 #     ingested; an existing index is still searchable, so this is NOT a global outage.
-#   * degraded — a provider actually used is unreachable/misconfigured (a real runtime fault).
+#   * degraded — a real runtime fault worth attention: a provider actually used is unreachable, OR
+#     one or more documents failed ingestion (both flip the collection into the "needs attention" bucket).
 #   * down — search itself cannot be served (broken search graph or unreachable query embedder).
 
 # ====== Standard Library Imports ======
@@ -108,6 +109,12 @@ class HealthVerdictResolver:
             f"({down.family}): {down.detail}."
         )
 
+    @staticmethod
+    def __failed_docs_reason(failed_count: int) -> str:
+        """Name how many documents failed ingestion so the banner is actionable."""
+        plural = "s" if failed_count != 1 else ""
+        return f"{failed_count} document{plural} failed ingestion — reingest or inspect the jobs."
+
     @classmethod
     def overall(
         cls,
@@ -117,6 +124,7 @@ class HealthVerdictResolver:
         ingest_providers: list[ProviderProbeResult],
         search_providers: list[ProviderProbeResult],
         vector_count: int,
+        failed_count: int = 0,
     ) -> HealthRollup:
         """
         Roll the raw signals up into the overall verdict + a human-readable reason.
@@ -131,6 +139,9 @@ class HealthVerdictResolver:
             ingest_providers (list[ProviderProbeResult]): The ingest-side reachability sweep.
             search_providers (list[ProviderProbeResult]): The search-side sweep (embedder + reranker).
             vector_count (int): The collection's indexed vector count.
+            failed_count (int): The collection's count of FAILED documents (latest per-document
+                state). Any failure flips an otherwise-healthy collection to ``degraded`` so it
+                surfaces in the "needs attention" bucket — even when the index is empty.
 
         Returns:
             HealthRollup: The verdict (operational / empty / degraded / ingest_unavailable / down)
@@ -154,14 +165,20 @@ class HealthVerdictResolver:
         if down is not None:
             return HealthRollup(HealthVerdict.DEGRADED, cls.__degraded_reason(down))
 
-        # 4. Everything reachable and buildable, but nothing indexed yet → NEUTRAL empty/pending.
+        # 4. Graphs build and every provider is reachable, but documents actually FAILED to ingest →
+        #    the collection needs attention (reuse DEGRADED). Ranked above empty/operational because a
+        #    failure is a fault even when nothing landed in the index.
+        if failed_count > 0:
+            return HealthRollup(HealthVerdict.DEGRADED, cls.__failed_docs_reason(failed_count))
+
+        # 5. Everything reachable and buildable, but nothing indexed yet → NEUTRAL empty/pending.
         if vector_count == 0:
             return HealthRollup(
                 HealthVerdict.EMPTY,
                 "No documents are indexed yet — the collection is ready to ingest.",
             )
 
-        # 5. Index populated, providers reachable, both graphs build.
+        # 6. Index populated, providers reachable, both graphs build.
         return HealthRollup(
             HealthVerdict.OPERATIONAL,
             f"Operational — {vector_count} vectors indexed and all providers reachable.",

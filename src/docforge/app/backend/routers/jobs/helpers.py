@@ -172,6 +172,13 @@ class WorkersLiveHelpers:
                     max_jobs=getattr(heartbeat, "max_jobs", None)
                     if heartbeat is not None
                     else None,
+                    cpu_percent=getattr(heartbeat, "cpu_percent", None)
+                    if heartbeat is not None
+                    else None,
+                    mem_mb=getattr(heartbeat, "mem_mb", None) if heartbeat is not None else None,
+                    mem_percent=getattr(heartbeat, "mem_percent", None)
+                    if heartbeat is not None
+                    else None,
                     jobs=jobs,
                 )
             )

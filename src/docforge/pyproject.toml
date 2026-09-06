@@ -36,6 +36,8 @@ dependencies = [
     "limits>=3.13",
     "prometheus-client>=0.21.0",
     "msgpack>=1.1.0",
+    # Per-worker resource sampling (CPU/memory) written on each heartbeat tick
+    "psutil>=7.2.2",
 ]
 
 # Torch is a transitive dep of docling (worker group). Declared here as a DIRECT dep split across

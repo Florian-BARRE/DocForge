@@ -1,12 +1,12 @@
 // ====== Code Summary ======
-// The job detail page's top card: progress bar, stage/ETA/timestamps line, token+cost totals (when
-// any paid calls ran), and the failed-node breadcrumb + error text (when the job failed). Pure
-// render over the metrics `useJobDetail` derives — no state of its own.
+// The job detail page's top card: progress bar, stage/ETA/timestamps line, and token+cost totals
+// (when any paid calls ran). A failed job's error is promoted to the page-level `JobFailureBanner`
+// instead — this card only keeps the flat cancellation detail for a cancelled job. Pure render over
+// the metrics `useJobDetail` derives — no state of its own.
 
 import type { JobStatus } from "../../api/jobs";
 import { Chip } from "../../components/Chip";
 import { theme } from "../../theme";
-import { FailedNodeBreadcrumb } from "./FailedNodeBreadcrumb";
 import { ItemProgressChip } from "./ItemProgressChip";
 import { ProgressBar } from "./ProgressBar";
 import { humanizeStageId } from "./stageLabels";
@@ -70,20 +70,11 @@ export function JobSummaryCard({
           </span>
         </div>
       )}
-      {job.error && (
+      {job.status !== "failed" && job.error && (
         <div style={{ marginTop: theme.space.s }}>
-          <FailedNodeBreadcrumb job={job} />
-          <div
-            style={{
-              // A cancelled job's `error` is just the cancellation detail, not a failure — never the
-              // error-red token for it (brand.md: cancelled reads as a deliberate stop, not a failure).
-              color: job.status !== "failed" ? theme.color.skip : job.failed_node_id ? theme.color.dim : theme.color.error,
-              fontSize: theme.font.size.xs,
-              marginTop: job.failed_node_id ? theme.space.xs : 0,
-            }}
-          >
-            {job.error}
-          </div>
+          {/* A cancelled job's `error` is just the cancellation detail, not a failure — never the
+              error-red token for it (brand.md: cancelled reads as a deliberate stop, not a failure). */}
+          <div style={{ color: theme.color.skip, fontSize: theme.font.size.xs }}>{job.error}</div>
         </div>
       )}
     </div>

@@ -128,9 +128,12 @@ class CollectionHealthService(LoggerClass):
         ingest_providers = await self.__sweep_ingest(ingest_build)
         search_providers = await self.__sweep_search(stored_pipeline, search_build)
 
-        # 4. Index facts — raw vector count + the last successful ingest timestamp.
+        # 4. Index facts — raw vector count, last successful ingest, and any failed documents. The
+        #    failed count is the LATEST per-document state (flips back to DONE on reingest), so it
+        #    never over-reports the way lingering per-run job rows would.
         vector_count = await self._database.collections.vector_count(collection_id)
         last_ingest_at = await self._database.jobs.last_successful_ingest_at(collection_id)
+        failed_docs = await self._database.documents.count_failed(collection_id)
 
         # 5. Roll the raw signals up into the headline verdict + reason and the search tri-state.
         rollup = HealthVerdictResolver.overall(
@@ -139,6 +142,7 @@ class CollectionHealthService(LoggerClass):
             ingest_providers=ingest_providers,
             search_providers=search_providers,
             vector_count=vector_count,
+            failed_count=failed_docs,
         )
         search_operational = HealthVerdictResolver.search(
             search_buildable=search_build.buildable,

@@ -85,6 +85,13 @@ class DocumentsFacade(LoggerClass):
         async with self._postgres.session() as session:
             return await DocumentApi.count_for_collection(session, collection_id, status)
 
+    async def count_failed(self, collection_id: uuid.UUID) -> int:
+        """Count a collection's FAILED documents — the health verdict's ingestion-failure signal."""
+        async with self._postgres.session() as session:
+            return await DocumentApi.count_for_collection(
+                session, collection_id, DocumentStatus.FAILED
+            )
+
     async def count_by_collections(
         self, collection_ids: Sequence[uuid.UUID]
     ) -> dict[uuid.UUID, int]:

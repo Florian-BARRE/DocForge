@@ -95,6 +95,64 @@ def test_down_when_search_graph_unbuildable(fastapi_app) -> None:
     assert rollup.verdict is HealthVerdict.DOWN
 
 
+def test_degraded_when_documents_failed_ingestion(fastapi_app) -> None:
+    # Graphs build, every provider is reachable, index populated — but a document FAILED to ingest.
+    # That must flip the collection to "needs attention" (degraded), not report Operational.
+    from backend.libs.health import HealthVerdict, HealthVerdictResolver  # noqa: PLC0415
+
+    rollup = HealthVerdictResolver.overall(
+        ingest_buildable=True,
+        search_buildable=True,
+        ingest_providers=[],
+        search_providers=[_ok_embedder()],
+        vector_count=42,
+        failed_count=3,
+    )
+    assert rollup.verdict is HealthVerdict.DEGRADED
+    assert "3 documents failed ingestion" in rollup.reason
+    assert "reingest" in rollup.reason.lower()
+
+
+def test_failed_docs_flip_even_an_empty_index_to_needs_attention(fastapi_app) -> None:
+    # A collection whose only documents all FAILED has an empty index — it is a fault, not neutral.
+    from backend.libs.health import HealthVerdict, HealthVerdictResolver  # noqa: PLC0415
+
+    rollup = HealthVerdictResolver.overall(
+        ingest_buildable=True,
+        search_buildable=True,
+        ingest_providers=[],
+        search_providers=[_ok_embedder()],
+        vector_count=0,
+        failed_count=1,
+    )
+    assert rollup.verdict is HealthVerdict.DEGRADED
+    assert "1 document failed ingestion" in rollup.reason
+
+
+def test_no_failed_docs_leaves_verdict_unaffected(fastapi_app) -> None:
+    # The default (0 failed) preserves the prior operational/empty behaviour exactly.
+    from backend.libs.health import HealthVerdict, HealthVerdictResolver  # noqa: PLC0415
+
+    operational = HealthVerdictResolver.overall(
+        ingest_buildable=True,
+        search_buildable=True,
+        ingest_providers=[],
+        search_providers=[_ok_embedder()],
+        vector_count=42,
+        failed_count=0,
+    )
+    assert operational.verdict is HealthVerdict.OPERATIONAL
+    empty = HealthVerdictResolver.overall(
+        ingest_buildable=True,
+        search_buildable=True,
+        ingest_providers=[],
+        search_providers=[_ok_embedder()],
+        vector_count=0,
+        failed_count=0,
+    )
+    assert empty.verdict is HealthVerdict.EMPTY
+
+
 def test_degraded_when_an_ingest_provider_is_unreachable(fastapi_app) -> None:
     # Both graphs build and search serves, but a used ingest provider (e.g. a VLM) is unreachable →
     # a real runtime fault worth surfacing, but not down (search still works).

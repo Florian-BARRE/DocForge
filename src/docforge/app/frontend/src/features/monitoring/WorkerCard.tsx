@@ -8,6 +8,8 @@ import type { Navigate } from "../../shell/view";
 import type { JobStatus, WorkerActivity } from "../../api/jobs";
 import { theme } from "../../theme";
 import { JobRow } from "./JobRow";
+import { WorkerResourceReadout } from "./WorkerResourceReadout";
+import { formatSince, formatUptime, liveness, LIVENESS_COLOR } from "./workerLiveness";
 
 interface WorkerCardProps {
   activity: WorkerActivity;
@@ -16,32 +18,9 @@ interface WorkerCardProps {
   onJobUpdated: (jobId: string, patch: Partial<JobStatus>) => void;
 }
 
-type Liveness = "busy" | "idle" | "offline";
-
-function liveness(activity: WorkerActivity): Liveness {
-  if (!activity.alive) return "offline";
-  return activity.busy ? "busy" : "idle";
-}
-
-// Busy = the one thing being worked → forge orange. Idle-alive = present but at rest → neutral
-// steel (never green — green is reserved for "done"). Offline = absent → muted warm grey.
-const COLOR_BY_LIVENESS: Record<Liveness, string> = {
-  busy: theme.color.accent,
-  idle: theme.color.info,
-  offline: theme.color.mute,
-};
-
-function formatSince(value: string | null): string {
-  if (!value) return "no heartbeat recorded";
-  const seconds = Math.floor((Date.now() - new Date(value).getTime()) / 1000);
-  if (seconds < 5) return "just now";
-  if (seconds < 60) return `${seconds}s ago`;
-  return `${Math.floor(seconds / 60)}m ago`;
-}
-
 export function WorkerCard({ activity, onNavigate, onJobUpdated }: WorkerCardProps) {
   const state = liveness(activity);
-  const color = COLOR_BY_LIVENESS[state];
+  const color = LIVENESS_COLOR[state];
 
   // Capacity chip: N running against the worker's max. `max_jobs` null = unknown capacity (an old
   // heartbeat row / a worker predating this field) — show the running count with "—" for the cap,
@@ -100,8 +79,9 @@ export function WorkerCard({ activity, onNavigate, onJobUpdated }: WorkerCardPro
         title={activity.started_at ? `registered ${new Date(activity.started_at).toLocaleString()}` : undefined}
         style={{ color: theme.color.mute, fontSize: theme.font.size.xs, fontFamily: theme.font.mono }}
       >
-        last seen {formatSince(activity.last_seen)}
+        last seen {formatSince(activity.last_seen)} · uptime {formatUptime(activity.started_at)}
       </span>
+      <WorkerResourceReadout activity={activity} />
       {activity.jobs.length === 0 && (
         <span style={{ color: theme.color.dim, fontSize: theme.font.size.s }}>
           {state === "offline" ? "no recent heartbeat" : "no running job"}

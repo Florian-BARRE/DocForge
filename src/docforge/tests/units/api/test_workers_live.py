@@ -80,11 +80,24 @@ def _running_job(collection_id: str, worker_id: str):
     return SimpleNamespace(job=job, document_filename="report.pdf", collection_name="my-collection")
 
 
-def _heartbeat(worker_id: str, worker_name: str | None = None):
+def _heartbeat(
+    worker_id: str,
+    worker_name: str | None = None,
+    *,
+    cpu_percent: float | None = None,
+    mem_mb: float | None = None,
+    mem_percent: float | None = None,
+):
     """A fresh heartbeat row for one worker (worker_name defaults to the id when omitted)."""
     now = datetime.now(UTC)
     return SimpleNamespace(
-        worker_id=worker_id, worker_name=worker_name or worker_id, last_seen=now, started_at=now
+        worker_id=worker_id,
+        worker_name=worker_name or worker_id,
+        last_seen=now,
+        started_at=now,
+        cpu_percent=cpu_percent,
+        mem_mb=mem_mb,
+        mem_percent=mem_percent,
     )
 
 

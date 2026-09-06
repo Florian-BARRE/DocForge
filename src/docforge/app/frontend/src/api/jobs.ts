@@ -118,6 +118,16 @@ export interface WorkerActivity {
    * unknown capacity (an old heartbeat row, or a worker on a build predating this field).
    */
   max_jobs: number | null;
+  /**
+   * Recent CPU utilisation percent, sampled (via psutil) at the last heartbeat tick — may exceed
+   * 100 on a multi-core host; null = not reported (old row, non-sampling build, first unprimed tick,
+   * or a psutil error).
+   */
+  cpu_percent: number | null;
+  /** Resident memory (RSS) in megabytes at the last heartbeat tick; null = not reported. */
+  mem_mb: number | null;
+  /** Resident memory as a percent of total host RAM at the last heartbeat tick; null = not reported. */
+  mem_percent: number | null;
   jobs: JobStatus[];
 }
 

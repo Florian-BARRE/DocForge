@@ -17,9 +17,21 @@ import type { Navigate } from "../../shell/view";
 import { theme } from "../../theme";
 import { JobCancelControl } from "./JobCancelControl";
 import { JobEventItem } from "./JobEventItem";
+import { JobFailureBanner } from "./JobFailureBanner";
+import { JobRerunControl } from "./JobRerunControl";
 import { JobStatusChip } from "./JobStatusChip";
 import { JobSummaryCard } from "./JobSummaryCard";
 import { useJobDetail } from "./state/useJobDetail";
+
+// Shared "steel link" look for the document/collection context chips below — a plain <button>
+// reset so the click target isn't fenced to a Chip's non-interactive <span>, at rest colour per
+// brand.md (chrome at rest is steel/muted, never the forge accent — that's reserved for the ONE
+// active/primary action, here the Re-run button).
+const contextLinkStyle: React.CSSProperties = {
+  background: "none", border: "none", padding: 0, cursor: "pointer",
+  color: theme.color.dim, fontSize: theme.font.size.s, textDecoration: "underline",
+  textDecorationColor: theme.color.line, textUnderlineOffset: 3,
+};
 
 interface JobDetailPageProps {
   jobId: string;
@@ -52,7 +64,23 @@ export function JobDetailPage({ jobId, collectionId, onNavigate }: JobDetailPage
         subtitle={
           <span style={{ display: "inline-flex", alignItems: "center", gap: theme.space.s, flexWrap: "wrap" }}>
             <span style={{ fontFamily: theme.font.mono, fontSize: theme.font.size.s, color: theme.color.mute }}>job {job.job_id}</span>
-            <span style={{ fontFamily: theme.font.mono, fontSize: theme.font.size.s, color: theme.color.mute }}>doc {job.document_id}</span>
+            <button
+              type="button"
+              style={contextLinkStyle}
+              title="Open this document"
+              onClick={() => onNavigate({ name: "document", collectionId, documentId: job.document_id })}
+            >
+              {jobDisplayName(job)}{" "}
+              <span style={{ fontFamily: theme.font.mono, fontSize: theme.font.size.xs }}>({job.document_id.slice(0, 8)})</span>
+            </button>
+            <button
+              type="button"
+              style={contextLinkStyle}
+              title="Open this collection"
+              onClick={() => onNavigate({ name: "collection", collectionId })}
+            >
+              {job.collection_name ?? "Collection"}
+            </button>
             <span>attempt {job.attempt}</span>
             <JobStatusChip status={job.status} />
             {live && running && (
@@ -62,9 +90,12 @@ export function JobDetailPage({ jobId, collectionId, onNavigate }: JobDetailPage
               </span>
             )}
             <JobCancelControl job={job} onUpdated={patchJob} />
+            <JobRerunControl job={job} collectionId={collectionId} onNavigate={onNavigate} />
           </span>
         }
       />
+
+      <JobFailureBanner job={job} />
 
       <JobSummaryCard
         job={job}

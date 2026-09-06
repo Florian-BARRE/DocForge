@@ -41,7 +41,7 @@ describe("WorkersPanel", () => {
     const runningJob = jobFixture({});
     const workers: WorkersLive = {
       workers: [
-        { worker_id: "w1", worker_name: "worker-a", alive: true, busy: true, last_seen: new Date().toISOString(), started_at: null, max_jobs: 4, jobs: [runningJob] },
+        { worker_id: "w1", worker_name: "worker-a", alive: true, busy: true, last_seen: new Date().toISOString(), started_at: null, max_jobs: 4, cpu_percent: 42.5, mem_mb: 512, mem_percent: 6.4, jobs: [runningJob] },
       ],
     };
     const recentPage: JobPage = { total: 1, limit: 8, offset: 0, jobs: [runningJob] };
