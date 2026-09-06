@@ -131,7 +131,7 @@ services:
 
   # ── Grafana — dashboards over Prometheus + Loki, provisioned on boot ────────
   grafana:
-    image: grafana/grafana:11.3.0
+    image: grafana/grafana:13.2.1
     container_name: docforge-grafana
     # Admin credentials live in services/telemetry/.env (GF_SECURITY_ADMIN_USER / _PASSWORD) —
     # the discoverable per-service config home (like services/caddy, services/docforge). Change
