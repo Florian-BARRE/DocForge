@@ -1,12 +1,53 @@
 # ============================================================================
-# Release workflow for the `docforge-sdk` package (src/docforge_sdk).
+# UNIFIED release workflow: PyPI (`docforge-sdk`) AND the GHCR Docker images, from ONE top-level
+# workflow file.
 #
-# NOTHING PUBLISHES UNLESS THE FULL QUALITY GATE IS GREEN. The `publish` job `needs` the reusable
-# `gate` (format + lint + type-check + every package's unit suite + frontend build + SDK↔backend
-# OpenAPI coherence) — the SAME gate that guards every merge. So a tag on a broken or
-# backend-incompatible tree runs the gate, fails, and never reaches the publish step.
+# WHY IT'S ONE FILE (and why it must stay named `release-sdk.yml`):
+#   PyPI Trusted Publishing (OIDC) matches the token's `job_workflow_ref` subject against the
+#   TOP-LEVEL workflow file that triggered the run — not a workflow it was `workflow_call`-ed from.
+#   An earlier attempt (0.14.5) introduced a `release.yml` orchestrator that wrapped this file as a
+#   reusable (`workflow_call`) workflow to de-duplicate the shared gate; that broke the OIDC subject
+#   PyPI expects, so every publish was rejected, and it was reverted in 0.14.6. The image jobs from
+#   the former `release-images.yml` are therefore absorbed HERE instead — into the file PyPI already
+#   trusts — rather than the SDK job being extracted out. `release-images.yml` no longer exists.
 #
-# Publishing goes to PyPI via Trusted Publishing (OIDC) — NO API token is stored in the repo.
+# NOTHING PUBLISHES OR BUILDS UNLESS THE FULL QUALITY GATE IS GREEN. Both `publish` and `images`
+# `needs` the reusable `gate` (format + lint + type-check + every package's unit suite + frontend
+# build + SDK↔backend OpenAPI coherence) — the SAME gate that guards every merge. Because `gate` is
+# declared ONCE in this file, a `v*` tag now runs it a SINGLE time (previously it ran twice: once per
+# top-level workflow that used to call it).
+#
+# Publishing to PyPI goes via Trusted Publishing (OIDC) — NO API token is stored in the repo.
+# Pushing to GHCR goes via the built-in GITHUB_TOKEN (packages: write) — NO stored secret either.
+#
+# ---------------------------------------------------------------------------
+# TAG SEMANTICS:
+#   - `v<version>`     — UNIFIED LOCKSTEP release: publishes the SDK to PyPI AND builds/pushes every
+#                        Docker image (app/mcp/worker/bge-server/paddle-server, cpu+gpu where
+#                        applicable) to GHCR, at the same version. Both `version-guard` (images side)
+#                        and the SDK tag-version check (publish side) must agree with the tag, or the
+#                        respective side fails fast — see each guard's own comment.
+#   - `sdk-v<version>` — SDK-only escape hatch: publishes to PyPI, does NOT touch images (the
+#                        `version-guard`/`images`/`retag-latest`/`security-scan` jobs are all
+#                        `if:`-gated to skip on this prefix).
+#
+# WHAT THE IMAGE SIDE PUBLISHES (on tag `v1.2.3`, owner `<owner>`):
+#   ghcr.io/<owner>/docforge-app:1.2.3        + :latest              (CPU only, bundles the UI, no torch)
+#   ghcr.io/<owner>/docforge-mcp:1.2.3        + :latest              (CPU only, no torch)
+#   ghcr.io/<owner>/docforge-worker:1.2.3-cpu     :latest-cpu
+#   ghcr.io/<owner>/docforge-worker:1.2.3-gpu     :latest-gpu        (TORCH_VARIANT build-arg)
+#   ghcr.io/<owner>/docforge-bge-server:1.2.3-cpu :latest-cpu
+#   ghcr.io/<owner>/docforge-bge-server:1.2.3-gpu :latest-gpu        (TORCH_VARIANT build-arg)
+#   ghcr.io/<owner>/docforge-paddle-server:1.2.3-cpu :latest-cpu
+#   ghcr.io/<owner>/docforge-paddle-server:1.2.3-gpu :latest-gpu     (TORCH_VARIANT build-arg)
+#
+# The `images` matrix job pushes ONLY the version tags above; every `:latest`/`:latest-cpu`/
+# `:latest-gpu` is moved atomically, afterwards, by the `retag-latest` job (`needs: images` — see
+# its own header comment and the `strategy` comment on `images`), so `:latest` only ever moves once
+# the FULL image set for this release has built successfully.
+#
+# After every image push, a `security-scan` job runs Trivy against what was just published — see
+# that job's own header comment for what it covers and why it's non-blocking.
 #
 # ---------------------------------------------------------------------------
 # ONE-TIME MANUAL SETUP (maintainer, before the first release):
@@ -19,9 +60,10 @@
 #   3. Create a GitHub Environment named `pypi` on this repo.
 #
 # HOW TO RELEASE:
-#   Tag a commit with `sdk-v<version>` (dedicated prefix so it never fires for other packages) and
-#   push it. The version MUST match docforge_sdk/_version.py; a guard step fails the run on mismatch.
-#     git tag sdk-v0.1.0 && git push origin sdk-v0.1.0
+#   Unified (SDK + images):  git tag v1.2.3 && git push origin v1.2.3
+#   SDK-only escape hatch:   git tag sdk-v0.1.0 && git push origin sdk-v0.1.0
+#   The version MUST match: docforge_sdk/_version.py (publish job) and, for a `v*` tag,
+#   src/docforge/pyproject.toml (version-guard job) — mismatches fail fast before anything ships.
 # ============================================================================
 
 name: release-sdk
@@ -29,22 +71,209 @@ name: release-sdk
 on:
   push:
     tags:
-      # Unified lockstep release: a single `v*` tag ships the images (release-images.yml) AND the SDK
-      # at the same version. `sdk-v*` is kept as a legacy/SDK-only escape hatch.
       - "v*"
       - "sdk-v*"
 
-# Workflow-level floor is read-only; `id-token: write` for PyPI Trusted Publishing is granted ONLY
-# on the `publish` job below, never workflow-wide.
+# Workflow-level floor is read-only. `id-token: write` (PyPI) and `packages: write` (GHCR) are
+# granted ONLY on the specific jobs that need them below, never workflow-wide.
 permissions:
   contents: read
 
 jobs:
-  # 1. Run the exact same gate that guards every merge — the publish job depends on it.
+  # 1. Run the exact same gate that guards every merge — every publish/build job below depends on
+  #    it, directly or transitively. Declared ONCE: both the images side and the SDK side share this
+  #    single run, which is the entire point of this merge (previously each lived in its own
+  #    top-level workflow and each called `gate.yml` independently, running it twice per `v*` tag).
   gate:
     uses: ./.github/workflows/gate.yml
 
-  # 2. Build + publish, ONLY after the gate is fully green.
+  # 2. Fail fast if the pushed tag disagrees with the tree's declared version, BEFORE the build
+  #    matrix moves any mutable :latest tag. Without this a `git tag v0.14.0` on a tree still at
+  #    0.13.0 (the gate only checks the three version sources agree with EACH OTHER, not with the
+  #    tag) would publish all 8 images tagged 0.14.0 + latest while containing 0.13.0 code, then the
+  #    SDK publish job's own guard would fail — leaving GHCR and PyPI diverged with image tags that
+  #    lie. `v*`-only: a `sdk-v*` tag has no image release to guard.
+  version-guard:
+    if: startsWith(github.ref_name, 'v') && !startsWith(github.ref_name, 'sdk-v')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: Verify tag matches the declared version
+        run: |
+          set -euo pipefail
+          pkg_version="$(grep -oP '^version\s*=\s*"\K[^"]+' src/docforge/pyproject.toml)"
+          tag_version="${GITHUB_REF_NAME#v}"
+          echo "Declared version: ${pkg_version}"
+          echo "Tag version:      ${tag_version}"
+          if [ "${pkg_version}" != "${tag_version}" ]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} does not match src/docforge/pyproject.toml version ${pkg_version}"
+            exit 1
+          fi
+
+  # 3. Build + push every image, ONLY after the gate is fully green AND the tag matches the version.
+  #    `v*`-only: a `sdk-v*` tag never reaches this job (version-guard, its dependency, already
+  #    skipped — but the same `if:` is repeated here too since `needs` alone does not skip a job
+  #    whose dependency was itself skipped-vs-failed ambiguously; being explicit keeps the condition
+  #    self-evident from this job alone).
+  images:
+    needs: [gate, version-guard]
+    if: startsWith(github.ref_name, 'v') && !startsWith(github.ref_name, 'sdk-v')
+    runs-on: ubuntu-latest
+    # Elevated scopes live HERE, not at the workflow level: contents:read for checkout,
+    # packages:write for the GHCR push — no other job in this workflow gets either (except
+    # retag-latest and security-scan below, which need their own narrower slice).
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      # fail-fast:false is deliberate: one image's build failure must NOT cancel the siblings that
+      # already succeeded, so a re-run only rebuilds the failed one (builds are idempotent by tag).
+      # PARTIAL-RELEASE WINDOW — FIXED (was audit-accepted as deferred, now delivered): this matrix
+      # pushes ONLY the immutable version tag (`:1.2.3[-cpu|-gpu]`) for each leg — it never moves a
+      # mutable `:latest` itself. `:latest`/`:latest-cpu`/`:latest-gpu` are moved by the separate
+      # `retag-latest` job below, which `needs: images` and therefore only runs once every leg in
+      # this matrix has succeeded. Net effect: `:latest` now moves atomically for the whole image
+      # set, never a partial subset — a mid-matrix failure simply never reaches the retag job.
+      fail-fast: false
+      matrix:
+        # Explicit include (not a cross-product): app/mcp have no torch variant and no suffix,
+        # while worker/bge-server/paddle-server ship both a CPU and a GPU build via the
+        # TORCH_VARIANT arg. `file` is the REPO-RELATIVE Dockerfile path (context differs from the
+        # file's location).
+        include:
+          - { name: app,        context: src/docforge, file: src/docforge/app/Dockerfile,        torch: "",    suffix: "" }
+          - { name: mcp,        context: src,          file: src/mcp/Dockerfile,                  torch: "",    suffix: "" }
+          - { name: worker,     context: src/docforge, file: src/docforge/worker/Dockerfile,      torch: cpu,   suffix: "-cpu" }
+          - { name: worker,     context: src/docforge, file: src/docforge/worker/Dockerfile,      torch: gpu,   suffix: "-gpu" }
+          - { name: bge-server, context: src,          file: src/bge_server/Dockerfile,           torch: cpu,   suffix: "-cpu" }
+          - { name: bge-server, context: src,          file: src/bge_server/Dockerfile,           torch: gpu,   suffix: "-gpu" }
+          - { name: paddle-server, context: src,       file: src/paddle_server/Dockerfile,        torch: cpu,   suffix: "-cpu" }
+          - { name: paddle-server, context: src,       file: src/paddle_server/Dockerfile,        torch: gpu,   suffix: "-gpu" }
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Derive image version from the tag
+        # Strip the leading `v` so tag `v1.2.3` → version `1.2.3` (mirrors the SDK `publish` job's
+        # `${GITHUB_REF_NAME#sdk-v}` tag→version extraction below).
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+
+      - name: Log in to GHCR
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute image tags + labels
+        id: meta
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/docforge-${{ matrix.name }}
+          # ONLY the immutable version tag — no `:latest` here. Moving `:latest` per-leg is exactly
+          # the partial-release window this workflow used to accept; it's now the retag-latest job's
+          # job, gated on every leg of this matrix succeeding. See the `strategy` comment above.
+          tags: |
+            type=raw,value=${{ env.VERSION }}${{ matrix.suffix }}
+
+      - name: Free up runner disk (GPU only)
+        # The CUDA images (~8.5 GB) + their build layers overflow the ~14 GB free on a stock
+        # ubuntu-latest runner, which kills the build mid-export (unretrievable logs). Reclaim
+        # ~30 GB by dropping preinstalled toolchains this build never uses. CPU builds are small
+        # and skip this. See docker/build-push-action GPU-image disk-pressure notes.
+        if: matrix.torch == 'gpu'
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android \
+                      /usr/local/share/boost /usr/local/lib/node_modules \
+                      "${AGENT_TOOLSDIRECTORY:-/opt/hostedtoolcache}"
+          sudo docker image prune --all --force || true
+          df -h /
+
+      - name: Build + push
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
+          push: true
+          platforms: linux/amd64
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # Only pass TORCH_VARIANT for the images that declare it (worker, bge-server,
+          # paddle-server); app/mcp have no such ARG, so their build-args stay empty.
+          build-args: ${{ matrix.torch && format('TORCH_VARIANT={0}', matrix.torch) || '' }}
+          # GHA layer cache for the small images only. The GPU builds (CUDA torch, ~8.5 GB) blow past
+          # the 10 GB per-repo GHA cache limit — mode=max there corrupts the cache export and fails the
+          # build with Azure "BlobNotFound" — so caching is disabled for the gpu variant (empty = off).
+          # Per-entry scope keeps the cpu/gpu builds of the same image from clobbering each other.
+          cache-from: ${{ matrix.torch != 'gpu' && format('type=gha,scope={0}{1}', matrix.name, matrix.suffix) || '' }}
+          cache-to: ${{ matrix.torch != 'gpu' && format('type=gha,mode=max,scope={0}{1}', matrix.name, matrix.suffix) || '' }}
+
+  # 4. Move every `:latest` tag to the version just published — ONLY once every leg of the matrix
+  #    above has succeeded (`needs: images`, and a matrix job doesn't report success until ALL its
+  #    legs do, even with fail-fast:false). This is what makes the mutable `:latest` move
+  #    atomically for the whole image set: a mid-matrix failure never reaches this job, so GHCR can
+  #    never be left with some `:latest` moved and others lagging. `docker buildx imagetools create`
+  #    retags by manifest reference only — no rebuild, no pull of image layers. `v*`-only: `images`
+  #    (its sole dependency) is itself skipped on `sdk-v*`, so this job is too.
+  retag-latest:
+    name: retag :latest (atomic, post-matrix)
+    needs: images
+    if: startsWith(github.ref_name, 'v') && !startsWith(github.ref_name, 'sdk-v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Derive image version from the tag
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+
+      - name: Log in to GHCR
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Retag :latest / :latest-cpu / :latest-gpu for every image
+        run: |
+          set -euo pipefail
+          # GHCR repo paths must be lowercase; github.repository_owner isn't guaranteed to be
+          # (mirrors what docker/metadata-action does implicitly for the `images` job above).
+          owner="$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')"
+          # name:suffix pairs mirror the `images` build matrix 1:1 (the per-leg torch build-arg is
+          # irrelevant here — this only retags an already-pushed manifest, no rebuild).
+          images=(
+            "app:"
+            "mcp:"
+            "worker:-cpu"
+            "worker:-gpu"
+            "bge-server:-cpu"
+            "bge-server:-gpu"
+            "paddle-server:-cpu"
+            "paddle-server:-gpu"
+          )
+          for entry in "${images[@]}"; do
+            name="${entry%%:*}"
+            suffix="${entry#*:}"
+            src="ghcr.io/${owner}/docforge-${name}:${VERSION}${suffix}"
+            dst="ghcr.io/${owner}/docforge-${name}:latest${suffix}"
+            echo "Retagging ${src} -> ${dst}"
+            docker buildx imagetools create -t "${dst}" "${src}"
+          done
+
+  # 5. Build + publish the SDK to PyPI, ONLY after the gate is fully green. Deliberately independent
+  #    of the image jobs above (`needs: gate` only, not `images`/`retag-latest`) — the SDK and the
+  #    images are separate artifacts with separate consumers, and gating one on the other would mean
+  #    a slow/failed GPU image build could block an otherwise-ready PyPI release (or vice versa).
+  #    Runs for BOTH `v*` (unified release — ships the SDK alongside the images) and `sdk-v*`
+  #    (SDK-only escape hatch) — no `if:` here, unlike the image-side jobs above.
   publish:
     needs: gate
     runs-on: ubuntu-latest
@@ -84,3 +313,114 @@ jobs:
         uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
         with:
           packages-dir: src/docforge_sdk/dist
+
+  # 6. Non-blocking vulnerability scan of what was just published (after push, so it scans the
+  #    real pushed artifact, not a throwaway local build). A full IMAGE scan is only cheap for the
+  #    two small, single-variant images (app/mcp — no torch, always built, no GPU sibling); the
+  #    other three (worker/bge-server/paddle-server) ship huge CUDA -gpu variants (and their -cpu
+  #    siblings still carry sizeable ML deps), so pulling+unpacking them here would be slow. Those
+  #    instead get a cheap FILESYSTEM scan of their dependency manifests (uv.lock) — still catches
+  #    known-vulnerable dependency versions, without ever pulling an image. Day-0 baseline is
+  #    unvetted, so every step is non-blocking (`exit-code: 0` + `continue-on-error`): a brand-new
+  #    scanner must never be able to block a release. Flip to blocking once the baseline CVE list
+  #    has been triaged (see docs/PROD-HARDENING.md or a follow-up ADR). `v*`-only: `images` (via
+  #    `retag-latest`) is skipped on `sdk-v*`, so there is nothing new to scan.
+  security-scan:
+    name: security-scan (Trivy, non-blocking)
+    needs: retag-latest
+    if: startsWith(github.ref_name, 'v') && !startsWith(github.ref_name, 'sdk-v')
+    runs-on: ubuntu-latest
+    # Job-level guard: the scan must NEVER fail a release. step-level continue-on-error cannot
+    # catch a "Set up job" failure (e.g. an unresolvable action ref), so mark the whole job
+    # non-blocking too — the release is judged solely on the image build+push jobs above.
+    continue-on-error: true
+    permissions:
+      contents: read # actions/checkout
+      packages: read # pull the just-pushed app/mcp images from GHCR for scanning
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Derive image version from the tag
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+
+      - name: Log in to GHCR (pull for scanning)
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Scan app image (HIGH/CRITICAL)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        continue-on-error: true
+        with:
+          image-ref: ghcr.io/${{ github.repository_owner }}/docforge-app:${{ env.VERSION }}
+          severity: HIGH,CRITICAL
+          exit-code: "0"
+          format: table
+          output: trivy-app.txt
+
+      - name: Scan mcp image (HIGH/CRITICAL)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        continue-on-error: true
+        with:
+          image-ref: ghcr.io/${{ github.repository_owner }}/docforge-mcp:${{ env.VERSION }}
+          severity: HIGH,CRITICAL
+          exit-code: "0"
+          format: table
+          output: trivy-mcp.txt
+
+      - name: Scan docforge deps — filesystem (covers app + worker, one shared uv.lock)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        continue-on-error: true
+        with:
+          scan-type: fs
+          scan-ref: src/docforge
+          severity: HIGH,CRITICAL
+          exit-code: "0"
+          format: table
+          output: trivy-docforge-deps.txt
+
+      - name: Scan bge_server deps — filesystem
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        continue-on-error: true
+        with:
+          scan-type: fs
+          scan-ref: src/bge_server
+          severity: HIGH,CRITICAL
+          exit-code: "0"
+          format: table
+          output: trivy-bge-server-deps.txt
+
+      - name: Scan paddle_server deps — filesystem
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        continue-on-error: true
+        with:
+          scan-type: fs
+          scan-ref: src/paddle_server
+          severity: HIGH,CRITICAL
+          exit-code: "0"
+          format: table
+          output: trivy-paddle-server-deps.txt
+
+      - name: Publish scan reports to the job summary
+        if: always()
+        run: |
+          shopt -s nullglob
+          for f in trivy-*.txt; do
+            {
+              echo "## $f"
+              echo '```'
+              cat "$f"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          done
+
+      - name: Upload scan reports as a build artifact
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: trivy-reports
+          path: trivy-*.txt
+          retention-days: 30

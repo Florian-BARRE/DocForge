@@ -9,16 +9,15 @@
 # would both run). Direct pushes to `main` still gate on push. `push: branches` never matches tags, so
 # CI never runs on a release tag — a `v*`/`sdk-v*` tag is gated by the release workflows themselves.
 #
-# Note: a unified `v*` tag triggers release-images.yml AND release-sdk.yml, and each `needs` the same
-# reusable gate, so the gate runs twice for that tag. De-duplicating means merging into ONE workflow.
-# The naive way — a release.yml orchestrator wrapping release-sdk.yml as a reusable (workflow_call) —
-# was tried in 0.14.5 and REVERTED in 0.14.6: PyPI Trusted Publishing matches the OIDC subject against
-# the TOP-LEVEL workflow, so wrapping release-sdk.yml made PyPI reject the upload. The SAFE fix is to
-# absorb the image build/retag jobs INTO the top-level release-sdk.yml itself (keeping that trusted
-# filename, gating the image jobs on `startsWith(github.ref_name,'v')` so `sdk-v*` stays SDK-only) —
-# but that is untestable without cutting a real release, so it's deferred to a dedicated release-tested
-# change rather than shipped blind on a 15-green-release pipeline. Deliberate trade-off: a few CI
-# minutes vs. the known-good two-workflow topology.
+# Note: a unified `v*` tag triggers release-sdk.yml ONLY — it now absorbs both the PyPI publish job
+# and the GHCR image build/retag/scan jobs (formerly a separate release-images.yml), so the shared
+# reusable gate runs ONCE per tag, not twice. The naive way to get there — a release.yml orchestrator
+# wrapping release-sdk.yml as a reusable (workflow_call) workflow — was tried in 0.14.5 and REVERTED
+# in 0.14.6: PyPI Trusted Publishing matches the OIDC subject against the TOP-LEVEL workflow, so
+# wrapping release-sdk.yml made PyPI reject the upload. The image jobs were instead absorbed INTO the
+# top-level release-sdk.yml itself (keeping that trusted filename), gated on
+# `startsWith(github.ref_name,'v') && !startsWith(github.ref_name,'sdk-v')` so a `sdk-v*` tag stays
+# SDK-only. See release-sdk.yml's own header comment for the full topology.
 
 name: CI
 

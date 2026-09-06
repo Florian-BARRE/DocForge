@@ -3,8 +3,9 @@
 #
 # Called by:
 #   - ci.yml         (every push + PR)         → gate must be green to merge.
-#   - release-sdk.yml (a pushed sdk-v* tag)     → publish `needs` this gate, so a
-#                                                 broken/incompatible tree can NEVER publish.
+#   - release-sdk.yml (a pushed v*/sdk-v* tag) → the single unified release workflow (PyPI publish
+#                                                 AND GHCR image jobs) `needs` this ONE gate run, so
+#                                                 a broken/incompatible tree can NEVER publish or build.
 #
 # It gates EVERY package in this monorepo — format + lint + type-check + full unit
 # suite — plus the frontend build and the SDK↔backend OpenAPI coherence check. The UNIT

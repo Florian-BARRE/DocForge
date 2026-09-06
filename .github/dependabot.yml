@@ -7,7 +7,7 @@
 #                       pyproject.toml + uv.lock — mirrors the gate.yml job split)
 #   - npm            : the frontend (package.json + package-lock.json)
 #   - docker         : base images in each Dockerfile (FROM lines), one entry per directory
-#                       that holds a Dockerfile — matches the release-images.yml build matrix
+#                       that holds a Dockerfile — matches the release-sdk.yml `images` build matrix
 #   - docker-compose : the pinned service images (postgres/redis/qdrant/seaweedfs/gotenberg,
 #                       and the telemetry/proxy stacks) declared as `image:` in the compose files
 #
@@ -26,7 +26,8 @@
 # grafana/{loki,promtail,grafana}, caddy, node:22-bookworm-slim) ARE now auto-updated, via the
 # `/compose` and `/compose/overlays` entries below (plus the root `docker-compose.yml`, which is a
 # pure `include:` with no image pins of its own). The GHCR `ghcr.io/florian-barre/docforge-*`
-# images are first-party (released by release-images.yml) and are deliberately NOT tracked here.
+# images are first-party (released by release-sdk.yml's `images` job) and are deliberately NOT
+# tracked here.
 # ============================================================================
 
 version: 2

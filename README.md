@@ -166,7 +166,7 @@ src/
   paddle_server/       # PP-StructureV3 layout-parsing sidecar (POST /layout-parsing) — AVX-only,
                        #   enable_mkldnn=False (handled), needs a generous memory limit
 services/              # per-service .env (gitignored) + .env.example templates
-.github/workflows/     # gated CI (gate.yml) + GHCR image release (release-images.yml) + PyPI release (release-sdk.yml)
+.github/workflows/     # gated CI (gate.yml) + unified release (release-sdk.yml: PyPI + GHCR images)
 ```
 
 Ports (dev): API `10040` · postgres `10041` · redis `10042` · qdrant `10043` · seaweedfs `10044` ·

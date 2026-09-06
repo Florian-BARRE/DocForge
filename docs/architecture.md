@@ -230,9 +230,10 @@ Search is **hybrid** and runs inline in the request as its own pure graph (`enco
 ## 6. Quality gates
 
 Nothing merges or publishes unless the whole monorepo is green. A **single reusable gate**
-(`.github/workflows/gate.yml`) is called by CI (main pushes + every PR) and by BOTH release workflows
-(`release-images.yml` and `release-sdk.yml`) — so what merges and what publishes are held to the exact
-same bar. The unit suites are serviceless (every store mocked); the ONE exception is the `db-tests`
+(`.github/workflows/gate.yml`) is called by CI (main pushes + every PR) and by the unified
+`release-sdk.yml` release workflow (PyPI publish AND GHCR image jobs, absorbed into ONE top-level
+workflow so the gate runs once per tag, not twice) — so what merges and what publishes are held to
+the exact same bar. The unit suites are serviceless (every store mocked); the ONE exception is the `db-tests`
 job, which spins a throwaway `postgres:16` service for the `-m db` suite. No docker image builds and no
 `-m live` tests run in CI.
 
