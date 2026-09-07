@@ -13,9 +13,12 @@ import { DocumentPage } from "./DocumentPage";
 vi.mock("../../api/explorer", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../api/explorer")>()),
   getDocument: vi.fn(),
+  // The overview tab warms pages too (its System metadata panel's page-scan summary) — mocked here
+  // so the render smoke-test doesn't hit an unmocked fetch.
+  getDocumentPages: vi.fn(),
 }));
 
-const { getDocument } = await import("../../api/explorer");
+const { getDocument, getDocumentPages } = await import("../../api/explorer");
 
 const warnedDocument: DocumentDetail = {
   id: "doc-1",
@@ -43,6 +46,7 @@ const warnedDocument: DocumentDetail = {
 describe("DocumentPage — done-with-warning document", () => {
   it("renders the 0-chunk warning affordance without throwing", async () => {
     vi.mocked(getDocument).mockResolvedValue(warnedDocument);
+    vi.mocked(getDocumentPages).mockResolvedValue([]);
 
     expect(() =>
       render(
@@ -54,7 +58,9 @@ describe("DocumentPage — done-with-warning document", () => {
 
     expect(screen.getByText("loading document…")).toBeInTheDocument();
 
-    await waitFor(() => expect(screen.getByText("empty-scan.pdf")).toBeInTheDocument());
+    // The System metadata panel's "Source" group also shows the filename (see SystemMetadataPanel),
+    // so this now matches twice — scope to the page's own <h1> title, which is unique.
+    await waitFor(() => expect(screen.getByRole("heading", { name: "empty-scan.pdf" })).toBeInTheDocument());
     expect(screen.queryByText("loading document…")).not.toBeInTheDocument();
 
     // The warn-toned "0 chunks" Chip, titled with the full warning_reason.
@@ -63,7 +69,10 @@ describe("DocumentPage — done-with-warning document", () => {
     expect(warningChip.closest("span")?.getAttribute("title")).toBe(warnedDocument.warning_reason);
 
     // The status chip itself stays "done" (a warning is never a failure) but is titled to flag it.
-    const statusChip = screen.getByText("done");
-    expect(statusChip.closest("span")?.getAttribute("title")).toBe("Completed with a warning");
+    // It now renders twice — once in the page header, once inside the System metadata panel's own
+    // "Status" group (same DocumentStatusChip) — both must carry the warning title.
+    const statusChips = screen.getAllByText("done");
+    expect(statusChips).toHaveLength(2);
+    for (const chip of statusChips) expect(chip.closest("span")?.getAttribute("title")).toBe("Completed with a warning");
   });
 });

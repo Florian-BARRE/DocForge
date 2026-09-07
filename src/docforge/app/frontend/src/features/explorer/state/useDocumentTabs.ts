@@ -77,9 +77,13 @@ export function useDocumentTabs(documentId: string, activeTab: DocumentTabKey) {
   };
 
   // Fetch each tab's payload once, the first time it is activated — never all four upfront. The
-  // chunks tab additionally warms pages + IR so a chunk can be located on its source page (the
-  // "view on page" box overlay joins chunk.block_ids → IR block bbox → the page render).
+  // overview tab additionally warms pages (for its System metadata page-scan summary) and the
+  // chunks tab warms pages + IR so a chunk can be located on its source page (the "view on page"
+  // box overlay joins chunk.block_ids → IR block bbox → the page render).
   useEffect(() => {
+    // The overview tab's System metadata panel folds in a page-scan/language summary — warm pages
+    // here too (cheap list, not the IR) so that summary is populated on the default landing tab.
+    if (activeTab === "overview" && pages === null && !pagesError) loadPages();
     if (activeTab === "pages" && pages === null && !pagesError) loadPages();
     if (activeTab === "ir" && ir === null && !irError) loadIr();
     // The Layout tab joins pages + IR + chunks (page render + located blocks + their chunk grouping) —

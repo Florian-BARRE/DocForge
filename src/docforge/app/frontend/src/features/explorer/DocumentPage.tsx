@@ -130,7 +130,7 @@ export function DocumentPage({ collectionId, documentId, onNavigate }: DocumentP
         aria-labelledby={tabButtonId("document-tabs", activeTab)}
         style={{ marginTop: theme.space.m, flex: 1, minHeight: 0 }}
       >
-        {activeTab === "overview" && <OverviewTab document={document} />}
+        {activeTab === "overview" && <OverviewTab document={document} pages={tabs.pages} />}
         {activeTab === "pages" &&
           (tabs.pagesError ? (
             <ErrorState message={tabs.pagesError} onRetry={tabs.loadPages} />
