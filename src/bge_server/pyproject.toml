@@ -67,6 +67,10 @@ dev = [
 # Only its dependencies are resolved — no build backend / wheel required.
 package = false
 
+# Cap torch below 2.14 so the cpu and gpu extras resolve the SAME minor (2.13): cu126 offers both
+# 2.13 and 2.14, and without this cap the gpu extra would jump to 2.14 while the cpu stays 2.13.
+constraint-dependencies = ["torch<2.14"]
+
 # Declare the cpu and gpu torch extras as mutually exclusive — uv enforces this at lock time
 # and raises an error if both are requested simultaneously.
 conflicts = [
@@ -76,10 +80,13 @@ conflicts = [
 [tool.uv.sources]
 # Route torch to the correct wheel index depending on the active extra.
 # pytorch-cpu: CPU-only wheels (~200 MB), no CUDA runtime payload.
-# pytorch-cu129: CUDA 12.9 wheels, compatible with Ada (RTX 40xx, compute 8.9) and later.
+# pytorch-cu126: CUDA 12.6 wheels — REQUIRED for the deployment GPU (Tesla V100, Volta, sm_70).
+# cu129/cu130 DROP Volta kernels (V100 gets "no kernel image for this GPU" at inference); cu126
+# still ships sm_70 AND torch 2.13 (matching the cpu extra). Do NOT bump the index past cu126
+# while the target GPU is a V100 — see agent-memory/bge-server + docs/deployment-resources.md.
 torch = [
     { index = "pytorch-cpu", extra = "cpu" },
-    { index = "pytorch-cu129", extra = "gpu" },
+    { index = "pytorch-cu126", extra = "gpu" },
 ]
 
 [[tool.uv.index]]
@@ -89,12 +96,11 @@ url = "https://download.pytorch.org/whl/cpu"
 explicit = true
 
 [[tool.uv.index]]
-# CUDA 12.9 torch wheels — RTX 40xx (compute 8.9), RTX 30xx (compute 8.6), and later.
-# cu128 is frozen at torch 2.11 upstream (no newer builds published) and would permanently
-# drift from the cpu extra's resolved minor; cu129 tracks torch releases in lockstep with cpu
-# (both resolve to 2.13.0 as of this pin) and remains fully Ada-compatible.
-name = "pytorch-cu129"
-url = "https://download.pytorch.org/whl/cu129"
+# CUDA 12.6 torch wheels — ships sm_70 kernels for the Tesla V100 (Volta) prod GPU AND torch
+# 2.13.0 (matching the cpu extra). cu129/cu130 build newer CUDA but DROPPED Volta/sm_70, so the
+# V100 has no runnable kernels there. Keep cu126 as long as the deployment GPU is a V100.
+name = "pytorch-cu126"
+url = "https://download.pytorch.org/whl/cu126"
 explicit = true
 
 [tool.ruff]
