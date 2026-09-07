@@ -81,6 +81,17 @@ class BaseDoclingParserNode(BaseParserNode):
             return DoclingIRMapper.map_document(
                 result.document, doc_id=source_hash, source_hash=source_hash
             )
+        except Exception as exc:
+            # 3b. Docling collapses the real failure into a generic `RuntimeError("Pipeline X failed")
+            #     from <cause>` (base_pipeline.py). Re-raise with that chained cause in the MESSAGE so
+            #     job.error / the run breadcrumb name the ACTUAL error (e.g. a GPU torch.compile/CUDA
+            #     failure) instead of the opaque wrapper — every docling failure otherwise reads
+            #     identically and can't be diagnosed without shell access to prod. `from exc` keeps the
+            #     full chained traceback in the worker logs.
+            cause = exc.__cause__ or exc.__context__
+            if cause is not None and cause is not exc:
+                raise RuntimeError(f"{exc}: {type(cause).__name__}: {cause}") from exc
+            raise
         finally:
             # 4. A leftover temp file is harmless; Windows may still hold the handle briefly.
             try:

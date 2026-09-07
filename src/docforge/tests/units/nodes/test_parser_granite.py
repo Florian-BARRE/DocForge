@@ -158,6 +158,39 @@ def test_build_converter_swaps_in_vlm_pipeline_with_the_pinned_revision(
     assert pdf_option.pipeline_options.force_backend_text is False
 
 
+# ==================== error surfacing — the chained docling cause ====================
+
+
+def test_docling_convert_error_surfaces_the_chained_cause() -> None:
+    """Docling wraps the real failure in a generic RuntimeError('Pipeline X failed') from <cause>;
+    the base node must re-raise with that cause in the MESSAGE so job.error names the actual error
+    (here a torch.compile 'No working C++ compiler' — the granite prod incident) not the wrapper."""
+
+    class _RaisingConverter:
+        def convert(self, _path: str) -> None:
+            try:
+                raise ValueError("No working C++ compiler found")
+            except ValueError as inner:
+                raise RuntimeError("Pipeline VlmPipeline failed") from inner
+
+    node = ParserGraniteDoclingNode(id="p", config=ParserGraniteDoclingConfig())
+    # Inject the raising converter under the FULL cache key (pipeline discriminator prefixed) so
+    # __converter() returns it instead of building the real docling converter.
+    cache_key = (node._PIPELINE, *node._cache_key())
+    ParserGraniteDoclingNode._converters[cache_key] = _RaisingConverter()
+    try:
+        source = IntakeResult(source_hash="h", source_format="pdf", pdf_content=b"%PDF-1.4 fake")
+        with pytest.raises(RuntimeError) as excinfo:
+            asyncio.run(node.run(BaseParserNode.Consumes(source=source)))
+        message = str(excinfo.value)
+        # The opaque wrapper AND the real chained cause both appear — no more blind "VlmPipeline failed".
+        assert "Pipeline VlmPipeline failed" in message
+        assert "ValueError" in message
+        assert "No working C++ compiler found" in message
+    finally:
+        ParserGraniteDoclingNode._converters.pop(cache_key, None)
+
+
 # ==================== mapper reuse — the "unchanged mapper" guarantee ====================
 
 

@@ -72,11 +72,19 @@ LABEL org.opencontainers.image.title="docforge-worker" \
 #   glibc otherwise scales arenas to the HOST's core count — inflating RSS for this
 #   multi-threaded native stack (torch/OpenMP, OpenCV/rapidocr) well past what the process
 #   actually needs (this worker already runs at ~89% of its 5g compose memory limit).
+# - TORCHDYNAMO_DISABLE: docling's VlmPipeline (granite-docling parser) UNCONDITIONALLY calls
+#   torch.compile() on the VLM model (hf_transformers_model.py, py<3.14). torch.compile needs a
+#   compile backend this SLIM runtime deliberately lacks — no C++ compiler for the CPU Inductor
+#   (fails with "InvalidCxxCompiler: No working C++ compiler"), and Triton chokes on the prod GPU
+#   (Tesla V100, sm_70). It fails lazily at the FIRST generate() → docling's opaque "Pipeline
+#   VlmPipeline failed". We never want torch.compile here; disabling dynamo makes it a no-op so the
+#   model runs eager everywhere (correct, only marginally slower for a 258M model).
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PATH="/opt/venv/bin:${PATH}" \
     TIKTOKEN_CACHE_DIR=/opt/tiktoken_cache \
-    MALLOC_ARENA_MAX=2
+    MALLOC_ARENA_MAX=2 \
+    TORCHDYNAMO_DISABLE=1
 
 # System shared libraries the model stack loads at runtime. docling's PDF/image path and the
 # OpenCV pulled by rapidocr-onnxruntime link against X11/GL client libs even when run headless —
