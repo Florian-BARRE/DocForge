@@ -19,6 +19,9 @@ from .idempotency_gc import gc_idempotency_keys
 # ---------------------- Stage-artifact cache retention ---------------------- #
 from .artifact_cache_gc import gc_artifact_cache
 
+# ---------------------- Execution-trace retention ---------------------- #
+from .trace_gc import gc_trace_payloads
+
 # ---------------------- Live progress ---------------------- #
 from .progress import JobProgressRecorder
 
@@ -42,6 +45,7 @@ __all__ = [
     "gc_audit_log",
     "gc_idempotency_keys",
     "gc_artifact_cache",
+    "gc_trace_payloads",
     "JobProgressRecorder",
     "CancellationGuard",
     "JobCancelledError",

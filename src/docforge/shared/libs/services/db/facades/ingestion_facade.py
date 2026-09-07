@@ -49,6 +49,7 @@ from shared_libs.services.db.s3 import S3Client, S3Object, S3ObjectApi
 # ====== Local Project Imports ======
 from .helpers import DatabaseHelpers
 from .payloads import AdmissionResult, IngestionPayload, ReingestOutcome, ReingestResult
+from .trace_purge import TracePurgeHelper
 
 # The document UNIQUE constraint a concurrent duplicate upload violates. Its name is stable via the
 # schema naming convention (uq_<table>_<first-column>) → ``UniqueConstraint(collection_id, source_hash,
@@ -188,10 +189,16 @@ class IngestionFacade(LoggerClass):
                 return ReingestResult(
                     outcome=ReingestOutcome.ALREADY_ACTIVE, active_job_id=active.id
                 )
-            # 3. Mint the fresh job and reset the document to PENDING (one transaction).
+            # 3. Capture the document's PRIOR job ids (before minting the fresh one) — the run being
+            #    replaced; their full-trace payloads are reclaimed after the commit.
+            prior_job_ids = await JobApi.list_job_ids_for_document(session, document_id)
+            # 4. Mint the fresh job and reset the document to PENDING (one transaction).
             job = Job(document_id=document.id, collection_id=document.collection_id)
             created_job = await JobApi.create(session, job)
             await DocumentApi.set_status(session, document_id, DocumentStatus.PENDING)
+        # 5. Reclaim the superseded runs' full-trace payloads (best-effort — the old job rows survive
+        #    a reingest, so this also clears their now-dangling refs; a failure never blocks the run).
+        await TracePurgeHelper.purge(self._postgres, self._s3, prior_job_ids)
         return ReingestResult(outcome=ReingestOutcome.ADMITTED, document=document, job=created_job)
 
     async def store_blobs(self, objects: Sequence[S3Object], rows: Sequence[Blob]) -> None:
@@ -213,10 +220,11 @@ class IngestionFacade(LoggerClass):
     def __trace_object(payload: dict, key_prefix: str, max_payload_bytes: int) -> S3Object:
         """Serialise one full trace payload to a content-addressed S3 object (truncated over the cap).
 
-        The key is ``{key_prefix}/{sha256}`` so an unchanged IR reused across hops content-addresses to
-        the SAME object (stored once), and a later GC can prefix-delete the whole ``trace/{job_id}/``
-        space. A payload whose serialised form exceeds ``max_payload_bytes`` is replaced by a compact
-        truncation marker (the row's shape summary already describes the true payload).
+        The key is ``{key_prefix}{sha256}`` (the prefix ends with ``/``) so an unchanged IR reused
+        across hops content-addresses to the SAME object (stored once), and a later GC can
+        prefix-delete the whole ``trace/{job_id}/`` space. A payload whose serialised form exceeds
+        ``max_payload_bytes`` is replaced by a compact truncation marker (the row's shape summary
+        already describes the true payload).
         """
         raw = json.dumps(payload, default=str).encode()
         if len(raw) > max_payload_bytes:
@@ -227,7 +235,7 @@ class IngestionFacade(LoggerClass):
             }
             raw = json.dumps(marker).encode()
         digest = hashlib.sha256(raw).hexdigest()
-        return S3Object(key=f"{key_prefix}/{digest}", data=raw, content_type="application/json")
+        return S3Object(key=f"{key_prefix}{digest}", data=raw, content_type="application/json")
 
     async def store_trace_payloads(
         self, job_id: uuid.UUID, record: NodeExecutionRecord, max_payload_bytes: int
@@ -254,7 +262,7 @@ class IngestionFacade(LoggerClass):
                 payloads (a side is absent when the node had no full payload or the store missed).
         """
         # 1. Collect every full payload the engine attached (full tier only), keyed by node_path/side.
-        prefix = f"trace/{job_id}"
+        prefix = DatabaseHelpers.trace_prefix(job_id)
         pending: list[tuple[str, str, S3Object]] = []
         for node in ExecutionTreeFlattener.flatten(record):
             if node.record.resolved_input is not None:

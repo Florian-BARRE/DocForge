@@ -19,6 +19,7 @@ from .libs.jobs import (
     gc_audit_log,
     gc_expired_transfers,
     gc_idempotency_keys,
+    gc_trace_payloads,
     import_collection,
     ingest_document,
     reap_stuck_jobs,
@@ -94,6 +95,16 @@ def create_worker_settings() -> type:
         if RUNTIME_CONFIG.WORKER_ARTIFACT_GC_ENABLED
         else []
     )
+    # The trace-retention GC prefix-deletes the object-store payloads of jobs older than
+    # WORKER_TRACE_RETENTION_DAYS every WORKER_TRACE_GC_INTERVAL_MINUTES AND once at startup. Only
+    # registered when retention is a positive window — at 0 (keep-forever) there is no cron at all, so
+    # an out-of-box deployment never deletes trace payloads (same convention as the audit GC).
+    trace_gc_minutes = set(range(0, 60, max(1, RUNTIME_CONFIG.WORKER_TRACE_GC_INTERVAL_MINUTES)))
+    trace_gc_crons = (
+        [cron(with_correlation(gc_trace_payloads), minute=trace_gc_minutes, run_at_startup=True)]
+        if RUNTIME_CONFIG.WORKER_TRACE_RETENTION_DAYS > 0
+        else []
+    )
 
     class WorkerSettings:
         """The queue server: listens on Redis, runs up to max_jobs tasks in parallel."""
@@ -111,6 +122,7 @@ def create_worker_settings() -> type:
             + audit_gc_crons
             + idempotency_gc_crons
             + artifact_gc_crons
+            + trace_gc_crons
         )
         on_startup = startup
         on_shutdown = shutdown

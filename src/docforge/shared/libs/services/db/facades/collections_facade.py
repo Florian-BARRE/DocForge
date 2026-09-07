@@ -14,7 +14,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared_libs.services.db.postgresql import PostgresClient
-from shared_libs.services.db.postgresql.apis import BlobApi, CollectionApi
+from shared_libs.services.db.postgresql.apis import BlobApi, CollectionApi, JobApi
 from shared_libs.services.db.postgresql.tables import Collection, ConfigVersion, MetadataField
 from shared_libs.services.db.qdrant import QdrantClient, QdrantCollectionApi
 from shared_libs.services.db.s3 import S3Client, S3ObjectApi
@@ -22,6 +22,7 @@ from shared_libs.services.db.s3 import S3Client, S3ObjectApi
 # ====== Local Project Imports ======
 from .helpers import DatabaseHelpers
 from .payloads import CollectionUpdateResult, CollectionUpdateSpec
+from .trace_purge import TracePurgeHelper
 
 # The collection-name UNIQUE constraint two concurrent creates race on. Name is stable via the schema
 # naming convention (uq_<table>_<column>) → the ``unique=True`` on ``collection.name``. asyncpg carries
@@ -477,6 +478,9 @@ class CollectionsFacade(LoggerClass):
             collection = await CollectionApi.get(session, collection_id)
             if collection is None:
                 return False
+            # Capture the collection's job ids BEFORE the cascade removes them — their trace payloads
+            # are reclaimed from the object store after the commit (the DB rows cascade; only S3 needs it).
+            trace_job_ids = await JobApi.list_job_ids_for_collection(session, collection_id)
             candidates = await BlobApi.collect_hashes_for_collection(session, collection_id)
             await CollectionApi.delete(session, collection_id)
             await session.flush()
@@ -487,6 +491,8 @@ class CollectionsFacade(LoggerClass):
         if orphans:
             async with self._s3.client() as s3:
                 await S3ObjectApi.delete_many(s3, self._s3.bucket, orphans)
+        # 4. Reclaim the collection's runs' full-trace payloads (best-effort — never fails the delete).
+        await TracePurgeHelper.purge(self._postgres, self._s3, trace_job_ids)
         self.logger.info(f"Collection {collection_id} deleted ({len(orphans)} blobs purged)")
         return True
 

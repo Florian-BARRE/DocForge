@@ -71,7 +71,14 @@ def _patch_apis(
     monkeypatch.setattr(
         df_module.DatabaseHelpers, "qdrant_collection_name", staticmethod(lambda cid: f"c_{cid}")
     )
-    return {"qdrant": qdrant_delete, "pg_delete": pg_delete}
+    # The batch captures its documents' job ids (before the cascade) and best-effort purges their
+    # full-trace payloads after the commit — both are mocked so the delete path stays serviceless.
+    monkeypatch.setattr(
+        df_module.JobApi, "list_job_ids_for_documents", AsyncMock(return_value=["job-1"])
+    )
+    trace_purge = AsyncMock(return_value=0)
+    monkeypatch.setattr(df_module.TracePurgeHelper, "purge", trace_purge)
+    return {"qdrant": qdrant_delete, "pg_delete": pg_delete, "trace_purge": trace_purge}
 
 
 async def _run_delete_many(facade: DocumentsFacade, ids) -> int:
@@ -111,6 +118,8 @@ def test_delete_many_processes_in_bounded_batches(monkeypatch) -> None:
     assert total == 3
     # Coherent order within each batch: Qdrant points purged BEFORE the Postgres cascade.
     assert order.index("qdrant") < order.index("pg_delete")
+    # Each batch reclaims its documents' full-trace payloads (best-effort, after the commit).
+    assert mocks["trace_purge"].await_count == 2
 
 
 def test_delete_many_deduplicates_ids(monkeypatch) -> None:

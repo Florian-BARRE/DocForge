@@ -30,6 +30,7 @@ from .facades import (
     MetaVectorSyncFacade,
     SearchFacade,
     StorageFootprintFacade,
+    TracePayloadFacade,
     TransferTrackerFacade,
 )
 
@@ -48,6 +49,8 @@ class Database(LoggerClass):
         meta_vectors (MetaVectorSyncFacade): Populate document-scope metadata named vectors on points.
         search (SearchFacade): Hybrid filtered search + Postgres hydration.
         jobs (JobsFacade): Ingestion job lifecycle + stage timeline.
+        trace_payloads (TracePayloadFacade): Full execution-trace payload read (fetch route), purge
+            by job (deletion/reingest hooks) and retention GC.
         auth (AuthFacade): User accounts + API keys.
         storage (StorageFootprintFacade): On-demand material footprint (S3 + Postgres + Qdrant).
         transfer (CollectionTransferFacade): The collection export/import store gateway (streamed
@@ -80,6 +83,7 @@ class Database(LoggerClass):
         self.meta_vectors = MetaVectorSyncFacade(postgres, qdrant)
         self.search = SearchFacade(postgres, qdrant)
         self.jobs = JobsFacade(postgres)
+        self.trace_payloads = TracePayloadFacade(postgres, s3)
         self.auth = AuthFacade(postgres)
         self.storage = StorageFootprintFacade(postgres, qdrant)
         self.transfer = CollectionTransferFacade(postgres, qdrant, s3)

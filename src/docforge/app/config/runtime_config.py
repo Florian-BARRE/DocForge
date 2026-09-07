@@ -217,6 +217,13 @@ class RUNTIME_CONFIG(EnvConfigLoader):
     # this (and defaults to it), so a heavily re-ingested collection with thousands of job rows can
     # never be dumped unbounded in one call.
     JOBS_MAX_PAGE_SIZE: int = env("JOBS_MAX_PAGE_SIZE", cast=int, default=500)
+    # Read cap (bytes) for the full execution-trace payload fetch route: a stored payload larger than
+    # this is reported ``truncated`` (size only, no body) instead of being streamed back. Defaults
+    # comfortably above the worker's per-payload capture cap (WORKER_TRACE_PAYLOAD_MAX_BYTES, 1 MiB)
+    # so a normally-captured payload is always served whole; the cap only guards a legacy/oversized object.
+    TRACE_PAYLOAD_READ_MAX_BYTES: int = env(
+        "TRACE_PAYLOAD_READ_MAX_BYTES", cast=int, default=4194304
+    )
 
     # ───── Audit trail ─────
     # Record one append-only audit_log row per mutating /api/v1 request. ON out-of-box (the trail is

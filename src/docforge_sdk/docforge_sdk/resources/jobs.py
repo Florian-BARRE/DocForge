@@ -8,6 +8,7 @@ from .._requestspec import RequestSpec
 from ..models.jobs import (
     CancelResult,
     CollectionCost,
+    JobEventPayload,
     JobPage,
     JobStatus,
     JobTrace,
@@ -84,6 +85,24 @@ class _JobsSpecs(_ResourceMixin):
             RequestSpec: A GET on the job's ``/events`` sub-resource.
         """
         return RequestSpec("GET", f"{self._JOBS_PATH}/{job_id}/events")
+
+    def _get_event_payload_spec(self, job_id: str, event_id: str, slot: str) -> RequestSpec:
+        """
+        Build the spec for fetching one stage-event's full raw input/output payload.
+
+        Args:
+            job_id (str): The job's UUID.
+            event_id (str): The stage-event row's UUID (JobEvent.event_id).
+            slot (str): Which side to fetch — "input" or "output".
+
+        Returns:
+            RequestSpec: A GET on the event's ``/payload`` sub-resource, scoped by slot.
+        """
+        return RequestSpec(
+            "GET",
+            f"{self._JOBS_PATH}/{job_id}/events/{event_id}/payload",
+            params={"slot": slot},
+        )
 
     def _live_workers_spec(self) -> RequestSpec:
         """
@@ -181,6 +200,24 @@ class AsyncJobs(AsyncResource, _JobsSpecs):
         """
         return await self._transport.request(self._get_events_spec(job_id), JobTrace)
 
+    async def get_event_payload(
+        self, job_id: str, event_id: str, slot: str = "output"
+    ) -> JobEventPayload:
+        """
+        Fetch one stage-event's full raw input or output payload (opt-in ``full`` trace tier).
+
+        Args:
+            job_id (str): The job's UUID.
+            event_id (str): The stage-event row's UUID (JobEvent.event_id).
+            slot (str): Which side to fetch — "input" or "output" (default "output").
+
+        Returns:
+            JobEventPayload: The node's full raw payload for the requested slot.
+        """
+        return await self._transport.request(
+            self._get_event_payload_spec(job_id, event_id, slot), JobEventPayload
+        )
+
     async def live_workers(self) -> WorkersLive:
         """
         Fetch everything running right now, grouped by worker.
@@ -275,6 +312,24 @@ class SyncJobs(SyncResource, _JobsSpecs):
             JobTrace: The ordered per-node trace.
         """
         return self._transport.request(self._get_events_spec(job_id), JobTrace)
+
+    def get_event_payload(
+        self, job_id: str, event_id: str, slot: str = "output"
+    ) -> JobEventPayload:
+        """
+        Fetch one stage-event's full raw input or output payload (opt-in ``full`` trace tier).
+
+        Args:
+            job_id (str): The job's UUID.
+            event_id (str): The stage-event row's UUID (JobEvent.event_id).
+            slot (str): Which side to fetch — "input" or "output" (default "output").
+
+        Returns:
+            JobEventPayload: The node's full raw payload for the requested slot.
+        """
+        return self._transport.request(
+            self._get_event_payload_spec(job_id, event_id, slot), JobEventPayload
+        )
 
     def live_workers(self) -> WorkersLive:
         """

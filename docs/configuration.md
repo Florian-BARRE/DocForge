@@ -114,6 +114,7 @@ at their `localhost` values here (they're used when running the app straight fro
 | `CORPUS_MAX_DELETE_SELECTION` | `10000` | Per-call cap on a bulk **delete** selection: a filter matching more deletes only the first N (deterministic order) and reports `capped=true`, so one call never materialises a 100k-id set in memory. Delete is convergent — re-run the same selector to remove the remainder. |
 | `EXPLORER_MAX_BULK_CHUNK_IDS` | `10000` | Per-call cap on the explorer's bulk chunk enable/disable payload (an explicit id list). An oversized list is rejected `422` at the model boundary. Mirrors the corpus bulk-selection ceiling. |
 | `JOBS_MAX_PAGE_SIZE` | `500` | Hard ceiling for one `GET /jobs` page (also the default); a larger requested `limit` is clamped down to this. |
+| `TRACE_PAYLOAD_READ_MAX_BYTES` | `4194304` (4 MiB) | Read cap for the full execution-trace payload fetch route (`GET /jobs/{job_id}/events/{event_id}/payload`): a stored payload larger than this is reported `truncated` (size only, no body) instead of being returned. Defaults comfortably above the worker's per-payload capture cap (`WORKER_TRACE_PAYLOAD_MAX_BYTES`, 1 MiB) so a normally-captured payload is always served whole; the cap only guards a legacy/oversized object. |
 
 ### Cost estimate (app-only)
 
@@ -145,7 +146,9 @@ at their `localhost` values here (they're used when running the app straight fro
 | `WORKER_NAME` | *(empty → hostname)* | Friendly display name for this worker in the fleet view (`GET /jobs/workers/live`). Set per replica (e.g. `gpu-box-1`) when running several. |
 | `WORKER_TRACE_MAX_VERBOSITY` | `shape` | Operator ceiling on execution-trace capture: a per-collection `trace_verbosity` is clamped to `min(collection, ceiling)`. `shape` (default) captures only the cheap inline shape summary of each node's input/output (no raw content at rest) and forbids `full` fleet-wide; set `full` to allow collections to opt into storing raw payloads in the object store. |
 | `WORKER_TRACE_PAYLOAD_MAX_BYTES` | `1048576` (1 MiB) | Per-payload byte cap for the **full** trace tier: a node input/output whose serialised payload exceeds this is stored truncated behind a marker (its shape summary is unaffected). Only consulted at the `full` level. |
-| `WORKER_TRACE_RETENTION_DAYS` | `14` | Retention (days) for stored full-trace payloads, consumed by the trace-GC cron (a later wave) to prefix-delete a job's `trace/{job_id}/` object-store space once its jobs age past this. `0` disables the age pass. |
+| `WORKER_TRACE_RETENTION_DAYS` | `14` | Retention (days) for stored full-trace payloads, consumed by the `gc_trace_payloads` cron to prefix-delete a job's `trace/{job_id}/` object-store space once its jobs age past this. `0` = keep-forever: the cron is then **not registered** (same convention as the audit GC), so an out-of-box deployment never deletes trace payloads behind the operator's back. |
+| `WORKER_TRACE_GC_INTERVAL_MINUTES` | `60` | How often the trace-retention GC runs (minutes), plus once at startup. Only consulted when `WORKER_TRACE_RETENTION_DAYS > 0` (the cron is otherwise absent). Lower it to reclaim aged payloads more promptly; raise it to reduce object-store churn. |
+| `WORKER_TRACE_GC_BATCH_SIZE` | `500` | Maximum jobs whose payloads one GC pass reclaims — bounds a single sweep's work/round-trips so a large backlog of aged jobs is drained across successive runs rather than in one unbounded batch. Raise it to drain a big backlog faster, lower it to keep each pass lighter. |
 
 ### Worker liveness & stuck-job reaper
 

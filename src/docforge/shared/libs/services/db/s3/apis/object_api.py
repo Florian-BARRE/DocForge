@@ -35,6 +35,16 @@ class S3ObjectApi:
             return await stream.read()
 
     @staticmethod
+    async def head_size(client: Any, bucket: str, key: str) -> int:
+        """Return an object's size in bytes without downloading its body (a HEAD probe).
+
+        Lets a size-capped reader (the trace-payload fetch route) reject an over-cap object before it
+        streams a single byte of the body.
+        """
+        response = await client.head_object(Bucket=bucket, Key=key)
+        return int(response["ContentLength"])
+
+    @staticmethod
     async def put_file(client: Any, bucket: str, key: str, path: Any, content_type: str) -> int:
         """
         Upload a file's bytes at ``path`` under ``key`` WITHOUT loading it into memory.
@@ -111,6 +121,43 @@ class S3ObjectApi:
     async def delete(client: Any, bucket: str, key: str) -> None:
         """Delete an object by key (no error if it is already absent)."""
         await client.delete_object(Bucket=bucket, Key=key)
+
+    @staticmethod
+    async def delete_prefix(client: Any, bucket: str, prefix: str) -> int:
+        """
+        Delete EVERY object under a key prefix — the whole-namespace purge (trace payloads, etc.).
+
+        Content-addressed families stored under a shared prefix (e.g. one job's ``trace/{job_id}/``
+        payloads) have no enumerated key list, so this lists them by prefix (paginated, 1000 keys per
+        page) and batches them into ``delete_objects`` calls. Idempotent: an already-empty prefix
+        deletes nothing. Returns the number of objects removed.
+
+        Args:
+            client (Any): The S3 client from S3Client.client().
+            bucket (str): The bucket to purge within.
+            prefix (str): The key prefix whose objects are all deleted (e.g. ``trace/<job_id>/``).
+
+        Returns:
+            int: The count of objects deleted (0 when the prefix was already empty).
+        """
+        deleted = 0
+        continuation: str | None = None
+        while True:
+            kwargs: dict[str, Any] = {"Bucket": bucket, "Prefix": prefix}
+            if continuation is not None:
+                kwargs["ContinuationToken"] = continuation
+            listing = await client.list_objects_v2(**kwargs)
+            keys = [item["Key"] for item in listing.get("Contents", [])]
+            if keys:
+                await client.delete_objects(
+                    Bucket=bucket,
+                    Delete={"Objects": [{"Key": key} for key in keys], "Quiet": True},
+                )
+                deleted += len(keys)
+            if not listing.get("IsTruncated"):
+                break
+            continuation = listing.get("NextContinuationToken")
+        return deleted
 
     @staticmethod
     async def delete_many(client: Any, bucket: str, keys: Sequence[str]) -> None:

@@ -23,6 +23,7 @@ from .models import (
     CancelResult,
     CollectionCost,
     JobEvent,
+    JobEventPayload,
     JobPage,
     JobStatus,
     JobTrace,
@@ -263,6 +264,67 @@ async def get_job_trace(
     # 3. The trace rows the worker landed at each stage end.
     events = await CONTEXT.database.jobs.list_events(job_id)
     return JobTrace(job_id=str(job_id), events=[JobEvent.from_row(e) for e in events])
+
+
+@router.get("/{job_id}/events/{event_id}/payload", response_model=JobEventPayload)
+@auto_handle_errors
+async def get_event_payload(
+    job_id: uuid.UUID,
+    event_id: uuid.UUID,
+    slot: Literal["input", "output"] = Query(
+        description="Which side of the node to fetch: 'input' (its resolved input) or 'output' "
+        "(its produced output)."
+    ),
+    principal: AuthPrincipal = Depends(require(Capability.READ)),
+) -> JobEventPayload:
+    """
+    Return ONE trace node's FULL raw payload for a slot — the on-demand deep-dive of the trace.
+
+    The trace list (``GET /{job_id}/events``) carries only the cheap shape summaries; this serves the
+    full raw payload one slot at a time, and only when the collection opted into the full-capture tier
+    (``trace_verbosity='full'``) so the payload was stored. Same READ capability + collection-scope
+    gate as the other job routes (resolved off the job's own collection). A row that only carries a
+    shape summary — or whose stored payload has aged out — is a typed 404, never a 500; an object over
+    the server read cap is returned ``truncated`` (size only, no body).
+
+    Returns:
+        JobEventPayload: The slot's full payload (or a truncated marker) for the addressed trace node.
+    """
+    # 1. Load the job to derive its collection; unknown id is a 404 (before any scope decision).
+    job = await CONTEXT.database.jobs.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail=f"Job {job_id} not found.")
+
+    # 2. No collection in the path — scope the read by the job's own collection.
+    AuthzGuard.assert_collection_scope(principal, str(job.collection_id))
+
+    # 3. Fetch the slot's full payload through the façade (never touches S3 from the router). The read
+    #    is capped: an over-cap object comes back flagged truncated with no body.
+    result = await CONTEXT.database.trace_payloads.read_payload(
+        job_id, event_id, slot, RUNTIME_CONFIG.TRACE_PAYLOAD_READ_MAX_BYTES
+    )
+
+    # 4. Two typed 404s (not a 500): an unknown row id, and a row that has only a shape summary — no
+    #    full payload was stored for this slot (or it aged out), so there is nothing to return.
+    if not result.found:
+        raise HTTPException(
+            status_code=404, detail=f"Trace event {event_id} not found for job {job_id}."
+        )
+    if not result.has_full:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No full {slot} payload stored for event {event_id} (shape summary only).",
+        )
+    return JobEventPayload(
+        job_id=str(job_id),
+        event_id=str(event_id),
+        slot=slot,
+        stage=result.stage,
+        node_path=result.node_path,
+        truncated=result.truncated,
+        size_bytes=result.size_bytes,
+        payload=result.payload,
+    )
 
 
 @router.get("/{job_id}/stream")

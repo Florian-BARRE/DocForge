@@ -81,6 +81,7 @@ from docforge_sdk.models.ir import (
 from docforge_sdk.models.jobs import (
     CancelResult,
     JobEvent,
+    JobEventPayload,
     JobPage,
     JobStatus,
     JobTrace,
@@ -218,6 +219,7 @@ MODELS: dict[str, type[BaseModel]] = {
     "JobStatus": JobStatus,
     "JobPage": JobPage,
     "JobEvent": JobEvent,
+    "JobEventPayload": JobEventPayload,
     "JobTrace": JobTrace,
     "WorkerActivity": WorkerActivity,
     "WorkersLive": WorkersLive,

@@ -778,7 +778,8 @@ request a cancellation).
 |---|---|---|---|
 | `GET` | `/api/v1/jobs` | `read` | Jobs — a collection's (`?collection_id=`) or fleet-wide, filterable — a paginated `JobPage` |
 | `GET` | `/api/v1/jobs/{job_id}` | `read` | One job's live state (poll this) |
-| `GET` | `/api/v1/jobs/{job_id}/events` | `read` | Per-node execution trace, in order |
+| `GET` | `/api/v1/jobs/{job_id}/events` | `read` | Per-node execution trace, in order (each event carries its score + shape summaries + `has_full_*` flags) |
+| `GET` | `/api/v1/jobs/{job_id}/events/{event_id}/payload?slot=input\|output` | `read` | One node's FULL raw input/output payload (opt-in `full` trace tier), fetched on demand (`JobEventPayload`); `404` when only a shape summary exists |
 | `GET` | `/api/v1/jobs/{job_id}/stream` | `read` | Live progress as Server-Sent Events (see below) |
 | `GET` | `/api/v1/jobs/workers/live` | `read` | What every worker is doing right now |
 | `GET` | `/api/v1/jobs/queue` | `read` | Backlog depth — `{pending, running}` |

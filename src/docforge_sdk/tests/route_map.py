@@ -75,6 +75,7 @@ ROUTES: set[tuple[str, str]] = {
     ("GET", "/api/v1/jobs"),
     ("GET", "/api/v1/jobs/{job_id}"),
     ("GET", "/api/v1/jobs/{job_id}/events"),
+    ("GET", "/api/v1/jobs/{job_id}/events/{event_id}/payload"),
     ("GET", "/api/v1/jobs/workers/live"),
     ("POST", "/api/v1/jobs/{job_id}/cancel"),
     ("GET", "/api/v1/jobs/cost"),

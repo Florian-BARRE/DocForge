@@ -12,6 +12,7 @@ from .payloads import (
     ReingestResult,
 )
 from .transfer_payloads import DocumentExportRows
+from .trace_payloads import TracePayloadRead
 from .idempotency_payloads import IdempotencyBegin, IdempotencyRecord
 from .storage_footprint_payloads import (
     CollectionFootprint,
@@ -31,6 +32,7 @@ from .artifact_cache_facade import ArtifactCacheFacade, ArtifactCacheGcSummary
 from .meta_vector_sync_facade import MetaVectorSyncFacade
 from .search_facade import SearchFacade
 from .jobs_facade import JobsFacade
+from .trace_payload_facade import TracePayloadFacade
 from .auth_facade import AuthFacade
 from .storage_footprint_facade import StorageFootprintFacade
 from .transfer_facade import CollectionTransferFacade
@@ -51,6 +53,7 @@ __all__ = [
     "ReingestOutcome",
     "ReingestResult",
     "DocumentExportRows",
+    "TracePayloadRead",
     "IdempotencyBegin",
     "IdempotencyRecord",
     "CollectionFootprint",
@@ -69,6 +72,7 @@ __all__ = [
     "MetaVectorSyncFacade",
     "SearchFacade",
     "JobsFacade",
+    "TracePayloadFacade",
     "AuthFacade",
     "StorageFootprintFacade",
     "CollectionTransferFacade",

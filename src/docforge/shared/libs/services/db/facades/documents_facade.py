@@ -20,6 +20,7 @@ from shared_libs.services.db.postgresql.apis import (
     DocumentQueryApi,
     DocumentQuerySpec,
     IRApi,
+    JobApi,
 )
 from shared_libs.services.db.postgresql.tables import (
     Chunk,
@@ -36,6 +37,7 @@ from shared_libs.services.db.s3 import S3Client, S3ObjectApi
 # ====== Local Project Imports ======
 from .helpers import DatabaseHelpers
 from .payloads import IRBundle
+from .trace_purge import TracePurgeHelper
 
 
 class DocumentsFacade(LoggerClass):
@@ -277,7 +279,10 @@ class DocumentsFacade(LoggerClass):
             name = DatabaseHelpers.qdrant_collection_name(document.collection_id)
             # 2. Derived index first — no orphan points that search could still return.
             await QdrantIndexApi.delete_by_document(self._qdrant.raw, name, document_id)
-            # 3. Gather purge candidates, cascade-delete, keep only true orphans.
+            # 3. Gather purge candidates, cascade-delete, keep only true orphans. The document's job
+            #    ids are captured BEFORE the cascade removes them — their trace payloads are purged
+            #    from the object store after the commit (the DB rows cascade; only S3 needs it).
+            trace_job_ids = await JobApi.list_job_ids_for_document(session, document_id)
             candidates = await BlobApi.collect_hashes_for_document(session, document_id)
             # Drop the document's stage-cache pointer rows too (its cached parse is now unreachable);
             # the orphaned S3 bytes are reclaimed by the cache GC's global orphan sweep.
@@ -292,6 +297,8 @@ class DocumentsFacade(LoggerClass):
         if orphans:
             async with self._s3.client() as s3:
                 await S3ObjectApi.delete_many(s3, self._s3.bucket, orphans)
+        # 5. Reclaim the document's runs' full-trace payloads (best-effort — never fails the delete).
+        await TracePurgeHelper.purge(self._postgres, self._s3, trace_job_ids)
         self.logger.info(f"Document {document_id} deleted ({len(orphans)} blobs purged)")
         return True
 
@@ -346,7 +353,9 @@ class DocumentsFacade(LoggerClass):
                 name = DatabaseHelpers.qdrant_collection_name(collection_id)
                 await QdrantIndexApi.delete_by_documents(self._qdrant.raw, name, ids)
 
-            # 3. Candidates (batched), set-based cascade delete, then keep only true orphans.
+            # 3. Candidates (batched), set-based cascade delete, then keep only true orphans. Capture
+            #    the batch's job ids BEFORE the cascade so their trace payloads can be reclaimed after.
+            trace_job_ids = await JobApi.list_job_ids_for_documents(session, live_ids)
             candidates = await BlobApi.collect_hashes_for_documents(session, live_ids)
             # Drop the batch's stage-cache pointer rows; the cache GC sweeps the orphaned S3 bytes.
             await ArtifactCacheApi.delete_for_documents(session, live_ids)
@@ -360,6 +369,8 @@ class DocumentsFacade(LoggerClass):
         if orphans:
             async with self._s3.client() as s3:
                 await S3ObjectApi.delete_many(s3, self._s3.bucket, orphans)
+        # 5. Reclaim the batch's runs' full-trace payloads (best-effort — never fails the delete).
+        await TracePurgeHelper.purge(self._postgres, self._s3, trace_job_ids)
         return deleted
 
 

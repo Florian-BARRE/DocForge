@@ -758,6 +758,126 @@ class JobApi:
         return sorted(result.scalars().all(), key=cls._trace_sort_key)
 
     @staticmethod
+    async def get_event(
+        session: AsyncSession, job_id: uuid.UUID, event_id: uuid.UUID
+    ) -> JobStageEvent | None:
+        """
+        Fetch ONE stage-event row addressed by (job_id, event_id), or None.
+
+        The full-payload fetch route addresses a single trace node by its row id; the ``job_id`` is
+        AND-ed into the predicate (not merely trusted from the path) so an event id can never be read
+        under the wrong job — the collection-scope gate is enforced on the job, so binding the row to
+        that job closes any cross-job id-guessing.
+
+        Args:
+            session (AsyncSession): The active DB session.
+            job_id (uuid.UUID): The job the row must belong to.
+            event_id (uuid.UUID): The stage-event row's id.
+
+        Returns:
+            JobStageEvent | None: The row, or None when no row has that id under that job.
+        """
+        result = await session.execute(
+            select(JobStageEvent).where(
+                JobStageEvent.id == event_id, JobStageEvent.job_id == job_id
+            )
+        )
+        return result.scalars().first()
+
+    @staticmethod
+    async def list_trace_job_ids_before(
+        session: AsyncSession, cutoff: datetime, limit: int
+    ) -> list[uuid.UUID]:
+        """
+        Return job ids older than ``cutoff`` that still carry stored full-trace payloads (bounded).
+
+        The trace-retention GC purges the object-store payloads of aged jobs; the keys are job-prefixed
+        (``trace/{job_id}/``), so a purge operates by job id. A job qualifies when it was created before
+        the cutoff AND at least one of its stage-event rows still flags a stored full payload
+        (``has_full_input``/``has_full_output``) — a job whose payloads were already purged (refs
+        cleared) no longer matches, so the pass converges instead of re-purging forever. ``limit``
+        bounds one GC batch.
+
+        Args:
+            session (AsyncSession): The active DB session.
+            cutoff (datetime): Jobs created strictly before this are eligible.
+            limit (int): Maximum job ids to return in one batch.
+
+        Returns:
+            list[uuid.UUID]: The eligible job ids (at most ``limit``), oldest first.
+        """
+        result = await session.execute(
+            select(Job.id)
+            .join(JobStageEvent, JobStageEvent.job_id == Job.id)
+            .where(
+                Job.created_at < cutoff,
+                or_(
+                    JobStageEvent.has_full_input.is_(True),
+                    JobStageEvent.has_full_output.is_(True),
+                ),
+            )
+            .group_by(Job.id, Job.created_at)
+            .order_by(Job.created_at.asc())
+            .limit(limit)
+        )
+        return list(result.scalars().all())
+
+    @staticmethod
+    async def list_job_ids_for_document(
+        session: AsyncSession, document_id: uuid.UUID
+    ) -> list[uuid.UUID]:
+        """Return every job id of a document — the ids whose trace payloads a delete/reingest purges."""
+        result = await session.execute(select(Job.id).where(Job.document_id == document_id))
+        return list(result.scalars().all())
+
+    @staticmethod
+    async def list_job_ids_for_documents(
+        session: AsyncSession, document_ids: Sequence[uuid.UUID]
+    ) -> list[uuid.UUID]:
+        """Return every job id across a SET of documents — the bulk-delete trace-purge id set."""
+        if not document_ids:
+            return []
+        result = await session.execute(
+            select(Job.id).where(Job.document_id.in_(list(document_ids)))
+        )
+        return list(result.scalars().all())
+
+    @staticmethod
+    async def list_job_ids_for_collection(
+        session: AsyncSession, collection_id: uuid.UUID
+    ) -> list[uuid.UUID]:
+        """Return every job id of a collection — the ids whose trace payloads a collection delete purges."""
+        result = await session.execute(select(Job.id).where(Job.collection_id == collection_id))
+        return list(result.scalars().all())
+
+    @staticmethod
+    async def clear_trace_refs(session: AsyncSession, job_ids: Sequence[uuid.UUID]) -> None:
+        """
+        Drop the full-trace object-store references on every stage-event row of the given jobs.
+
+        Run right AFTER the GC deleted the jobs' ``trace/{job_id}/`` object-store space: the rows must
+        no longer advertise a payload that is gone, so the refs are nulled and the ``has_full_*`` flags
+        cleared. This both keeps the fetch route honest (it now reports the payload unavailable) and
+        makes the retention pass converge (a cleared job no longer matches ``list_trace_job_ids_before``).
+
+        Args:
+            session (AsyncSession): The active DB session.
+            job_ids (Sequence[uuid.UUID]): The jobs whose trace refs are cleared (empty → no-op).
+        """
+        if not job_ids:
+            return
+        await session.execute(
+            update(JobStageEvent)
+            .where(JobStageEvent.job_id.in_(list(job_ids)))
+            .values(
+                input_ref=None,
+                output_ref=None,
+                has_full_input=False,
+                has_full_output=False,
+            )
+        )
+
+    @staticmethod
     async def list_active(session: AsyncSession) -> list[Job]:
         """Return every RUNNING job — the live view of what the workers are doing."""
         result = await session.execute(

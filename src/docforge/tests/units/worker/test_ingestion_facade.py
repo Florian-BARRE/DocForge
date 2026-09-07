@@ -361,6 +361,13 @@ async def test_reingest_admits_a_fresh_job_when_the_document_is_idle(monkeypatch
     monkeypatch.setattr(facade_module.JobApi, "create", create)
     set_status = AsyncMock()
     monkeypatch.setattr(facade_module.DocumentApi, "set_status", set_status)
+    # Reingest replaces the run, so it reclaims the document's PRIOR jobs' full-trace payloads
+    # (best-effort, after the commit). Both the id-gather and the purge are mocked here.
+    monkeypatch.setattr(
+        facade_module.JobApi, "list_job_ids_for_document", AsyncMock(return_value=["old-job"])
+    )
+    trace_purge = AsyncMock(return_value=0)
+    monkeypatch.setattr(facade_module.TracePurgeHelper, "purge", trace_purge)
 
     facade = IngestionFacade(_postgres_yielding(MagicMock()), MagicMock(), MagicMock())
     result = await facade.reingest(doc_id)
@@ -369,6 +376,9 @@ async def test_reingest_admits_a_fresh_job_when_the_document_is_idle(monkeypatch
     assert result.document is document and result.job is job
     create.assert_awaited_once()
     set_status.assert_awaited_once()
+    # The prior run's trace payloads are purged with the captured job ids.
+    trace_purge.assert_awaited_once()
+    assert trace_purge.await_args.args[-1] == ["old-job"]
 
 
 async def test_reingest_refuses_a_document_that_already_has_an_active_job(monkeypatch) -> None:

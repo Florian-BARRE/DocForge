@@ -66,6 +66,24 @@ class DatabaseHelpers:
         return f"col_{canonical.hex}"
 
     @staticmethod
+    def trace_prefix(job_id: uuid.UUID | str) -> str:
+        """
+        The object-store key prefix owning a job's full execution-trace payloads.
+
+        Defined once so the WRITE side (``IngestionFacade.store_trace_payloads``, which keys each
+        payload ``{prefix}/{sha256}``), the READ side (the payload-fetch route), the retention GC and
+        every deletion purge all agree on the same namespace — a drift here would strand payloads the
+        GC/purge could never reach. The trailing slash makes it a safe list/delete prefix.
+
+        Args:
+            job_id (uuid.UUID | str): The job whose trace namespace is addressed.
+
+        Returns:
+            str: The ``trace/<job_id>/`` key prefix.
+        """
+        return f"trace/{job_id}/"
+
+    @staticmethod
     def validate_vector_slugs(fields: Sequence[MetadataField]) -> None:
         """
         Fail fast when two searchable fields would collide on one Qdrant vector name.

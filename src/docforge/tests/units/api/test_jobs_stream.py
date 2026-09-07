@@ -42,6 +42,7 @@ def _job(status: str, progress: int, stage: str | None) -> SimpleNamespace:
 def _event(stage: str, status: str) -> SimpleNamespace:
     """A stage-event row stand-in."""
     return SimpleNamespace(
+        id="44444444-4444-4444-4444-444444444444",
         stage=stage,
         status=status,
         node_kind="action",
@@ -56,6 +57,10 @@ def _event(stage: str, status: str) -> SimpleNamespace:
         depth=0,
         parent_path=None,
         item_index=None,
+        input_summary=None,
+        output_summary=None,
+        has_full_input=None,
+        has_full_output=None,
     )
 
 

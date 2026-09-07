@@ -215,6 +215,31 @@ class JobEvent(BaseModel):
         description="Zero-based ForEach item index when this node runs inside a fan-out; None "
         "outside any fan-out (and for legacy rows).",
     )
+    event_id: str = Field(
+        description="The stage-event row's UUID — the stable handle the full-payload fetch route "
+        "addresses (GET /jobs/{job_id}/events/{event_id}/payload)."
+    )
+    input_summary: dict | None = Field(
+        default=None,
+        description="Bounded SHAPE descriptor of the node's resolved input (type/fields/sizes/hash) "
+        "— never the raw content. None when trace capture was off, the node had no input, or for "
+        "legacy rows.",
+    )
+    output_summary: dict | None = Field(
+        default=None,
+        description="Bounded SHAPE descriptor of the node's output — never the raw content. None "
+        "when trace capture was off, the node produced nothing, or for legacy rows.",
+    )
+    has_full_input: bool | None = Field(
+        default=None,
+        description="Whether a FULL raw input payload was stored in the object store (the opt-in "
+        "full tier) and can be fetched via the payload route. None/false both mean unavailable.",
+    )
+    has_full_output: bool | None = Field(
+        default=None,
+        description="Whether a FULL raw output payload was stored and can be fetched via the payload "
+        "route. None/false both mean unavailable.",
+    )
 
     @classmethod
     def from_row(cls, event: Any) -> "JobEvent":
@@ -234,7 +259,42 @@ class JobEvent(BaseModel):
             depth=event.depth,
             parent_path=event.parent_path,
             item_index=event.item_index,
+            event_id=str(event.id),
+            input_summary=event.input_summary,
+            output_summary=event.output_summary,
+            has_full_input=event.has_full_input,
+            has_full_output=event.has_full_output,
         )
+
+
+class JobEventPayload(BaseModel):
+    """One stage-event's FULL raw input or output payload, fetched on demand from the object store.
+
+    The execution-trace list (``JobEvent``) carries only the cheap, bounded shape summaries; the FULL
+    raw payload of a node (stored only when the collection opted into ``trace_verbosity='full'``) is
+    served one slot at a time by ``GET /jobs/{job_id}/events/{event_id}/payload?slot=input|output`` so
+    a heavy IR is never inlined into the trace response. The stored payload is the node's resolved JSON
+    (from the engine's trace capture); ``payload`` is therefore an arbitrary JSON value.
+    """
+
+    job_id: str = Field(description="The job the traced node belongs to.")
+    event_id: str = Field(description="The stage-event row's UUID the payload was read from.")
+    slot: str = Field(description="Which side was fetched: 'input' or 'output'.")
+    stage: str = Field(description="The node's stage id (its own id segment) — a display label.")
+    node_path: str | None = Field(
+        default=None,
+        description="The node's materialized tree path (None for legacy rows without one).",
+    )
+    truncated: bool = Field(
+        description="True when the stored object exceeds the read cap (or was stored past the "
+        "capture cap): ``payload`` is then None and only ``size_bytes`` describes it."
+    )
+    size_bytes: int = Field(description="The stored payload object's size in bytes.")
+    payload: Any = Field(
+        default=None,
+        description="The node's full raw payload (arbitrary JSON), or None when truncated past the "
+        "read cap.",
+    )
 
 
 class JobTrace(BaseModel):
@@ -391,6 +451,7 @@ __all__ = [
     "JobStatus",
     "JobPage",
     "JobEvent",
+    "JobEventPayload",
     "JobTrace",
     "WorkerActivity",
     "WorkersLive",

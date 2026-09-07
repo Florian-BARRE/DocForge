@@ -209,10 +209,17 @@ class RUNTIME_CONFIG(EnvConfigLoader):
     WORKER_TRACE_PAYLOAD_MAX_BYTES = env(
         "WORKER_TRACE_PAYLOAD_MAX_BYTES", cast=int, default=1048576
     )
-    # Retention (days) for stored full-trace payloads — consumed by the trace-GC cron (a later wave)
-    # to prefix-delete a job's ``trace/{job_id}/`` object-store space once its jobs age past this.
-    # Declared now so the knob ships with the capture vertical it bounds. 0 disables the age pass.
+    # Retention (days) for stored full-trace payloads — consumed by the trace-GC cron to prefix-delete
+    # a job's ``trace/{job_id}/`` object-store space once its jobs age past this. 0 = keep-forever: the
+    # cron is then NOT registered (same convention as the audit GC), so an out-of-box deployment never
+    # deletes trace payloads behind the operator's back.
     WORKER_TRACE_RETENTION_DAYS = env("WORKER_TRACE_RETENTION_DAYS", cast=int, default=14)
+    # How often the trace-retention GC runs (minutes) — AND once at startup. Only consulted when
+    # retention is a positive window (the cron is otherwise absent).
+    WORKER_TRACE_GC_INTERVAL_MINUTES = env("WORKER_TRACE_GC_INTERVAL_MINUTES", cast=int, default=60)
+    # Maximum jobs whose payloads one GC pass reclaims — bounds a single sweep's work/round-trips so a
+    # large backlog of aged jobs is drained across successive runs rather than in one unbounded batch.
+    WORKER_TRACE_GC_BATCH_SIZE = env("WORKER_TRACE_GC_BATCH_SIZE", cast=int, default=500)
 
     # ───── Stuck-job reaper ─────
     # A dev worker hot-reload (or a crash) drops the in-flight arq task, but the DB job row stays

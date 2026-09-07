@@ -89,6 +89,7 @@ from .models.ir import (
 from .models.jobs import (
     CancelResult,
     JobEvent,
+    JobEventPayload,
     JobPage,
     JobStatus,
     JobTrace,
@@ -193,6 +194,7 @@ __all__ = [
     "JobStatus",
     "JobPage",
     "JobEvent",
+    "JobEventPayload",
     "JobTrace",
     "WorkerActivity",
     "WorkersLive",

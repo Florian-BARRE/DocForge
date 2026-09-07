@@ -147,7 +147,9 @@ def test_job_status_maps_failure_breadcrumb(job_model) -> None:
 def test_job_event_maps_tokens_and_cost(jobs_models) -> None:
     """JobEvent.from_row lifts the per-stage token/cost columns; a NULL cost stays None."""
     JobEvent = jobs_models.JobEvent
+    event_id = uuid.uuid4()
     row = SimpleNamespace(
+        id=event_id,
         stage="metagen",
         status="success",
         node_kind="llm",
@@ -162,6 +164,10 @@ def test_job_event_maps_tokens_and_cost(jobs_models) -> None:
         depth=0,
         parent_path=None,
         item_index=None,
+        input_summary={"type": "DocumentIR", "hash": "abc"},
+        output_summary={"type": "Chunks", "item_count": 12},
+        has_full_input=True,
+        has_full_output=False,
     )
 
     event = JobEvent.from_row(row)
@@ -170,12 +176,20 @@ def test_job_event_maps_tokens_and_cost(jobs_models) -> None:
     assert event.node_kind == "llm"
     assert event.score == pytest.approx(0.82)
     assert (event.node_path, event.depth) == ("metagen", 0)
+    # The stable row id is exposed as event_id (the handle the payload-fetch route addresses), and the
+    # shape summaries + has_full flags surface for the UI's "load payload" affordance.
+    assert event.event_id == str(event_id)
+    assert event.input_summary == {"type": "DocumentIR", "hash": "abc"}
+    assert event.output_summary == {"type": "Chunks", "item_count": 12}
+    assert event.has_full_input is True
+    assert event.has_full_output is False
 
 
 def test_job_event_null_meter_stays_none(jobs_models) -> None:
     """A stage that made no paid call surfaces None tokens + None cost (not a fabricated 0)."""
     JobEvent = jobs_models.JobEvent
     row = SimpleNamespace(
+        id=uuid.uuid4(),
         stage="chunk",
         status="success",
         node_kind=None,
@@ -190,6 +204,10 @@ def test_job_event_null_meter_stays_none(jobs_models) -> None:
         depth=0,
         parent_path=None,
         item_index=None,
+        input_summary=None,
+        output_summary=None,
+        has_full_input=None,
+        has_full_output=None,
     )
 
     event = JobEvent.from_row(row)
@@ -198,3 +216,8 @@ def test_job_event_null_meter_stays_none(jobs_models) -> None:
     assert event.cost_usd is None
     assert event.node_kind is None
     assert event.score is None
+    # A legacy / trace-off row carries no summaries or full-payload flags (None passes through).
+    assert event.input_summary is None
+    assert event.output_summary is None
+    assert event.has_full_input is None
+    assert event.has_full_output is None
