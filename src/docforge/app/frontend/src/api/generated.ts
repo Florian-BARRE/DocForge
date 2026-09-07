@@ -4139,7 +4139,11 @@ export interface components {
         };
         /**
          * JobEvent
-         * @description One node of the job's execution trace — written by the worker at each stage end.
+         * @description One node of the job's execution trace — written by the worker.
+         *
+         *     The trace is the FULL per-node execution tree: root stages carry live status/timing/usage, and
+         *     every nested node (group children, per-item ForEach body instances) is persisted after the run.
+         *     The list stays FLAT — the UI rebuilds the tree from ``node_path`` + ``depth`` + ``parent_path``.
          */
         JobEvent: {
             /**
@@ -4153,6 +4157,11 @@ export interface components {
              */
             cost_usd?: number | null;
             /**
+             * Depth
+             * @description Depth in the execution tree: 0 = root stage, larger = more nested. None for legacy rows (the UI treats it as 0).
+             */
+            depth?: number | null;
+            /**
              * Detail
              * @description Duration, or the error when failed.
              */
@@ -4163,18 +4172,38 @@ export interface components {
              */
             finished_at?: string | null;
             /**
+             * Item Index
+             * @description Zero-based ForEach item index when this node runs inside a fan-out; None outside any fan-out (and for legacy rows).
+             */
+            item_index?: number | null;
+            /**
              * Node Kind
              * @description The stage's structural kind (action/group/foreach) or the node's concrete kind — None for rows written before this column landed.
              */
             node_kind?: string | null;
+            /**
+             * Node Path
+             * @description Materialized path of this node in the execution tree — root = bare node id, nested = dotted path (e.g. 'enrich.figures[3].vlm'). None for legacy rows (pre-tree).
+             */
+            node_path?: string | null;
+            /**
+             * Parent Path
+             * @description node_path of this node's parent — None for root stages and legacy rows.
+             */
+            parent_path?: string | null;
             /**
              * Prompt Tokens
              * @description Paid input tokens for this stage (None when it made no paid call).
              */
             prompt_tokens?: number | null;
             /**
+             * Score
+             * @description Quality score in [0, 1] of a scored-family node (parser/ocr/…), what a ScoreBelow edge compares to its threshold. None for non-scored nodes and legacy rows.
+             */
+            score?: number | null;
+            /**
              * Stage
-             * @description The pipeline node id.
+             * @description The pipeline node id (the node's own id segment).
              */
             stage: string;
             /**
@@ -4376,12 +4405,12 @@ export interface components {
         };
         /**
          * JobTrace
-         * @description A job's full per-node trace, in execution order.
+         * @description A job's full per-node execution tree, flat — the UI rebuilds the tree from node_path/depth.
          */
         JobTrace: {
             /**
              * Events
-             * @description One entry per stage run.
+             * @description Every node of the run, flat and pre-order (parent before children, ForEach items by index) — the UI nests them via node_path/depth.
              */
             events?: components["schemas"]["JobEvent"][];
             /**

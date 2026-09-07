@@ -829,7 +829,14 @@ done
 ```
 
 On `failed`, read `error` on the job (or `GET /api/v1/jobs/{id}/events` for the per-node trace —
-each `JobEvent` has `stage, status` (`success`/`failed`/`skipped`), timestamps, `detail`).
+each `JobEvent` has `stage, status` (`success`/`failed`/`skipped`), timestamps, `detail`). The trace
+is the FULL execution tree: alongside root stages it now carries every nested node (group children,
+per-item ForEach body instances). Each `JobEvent` additionally exposes `score` (a scored node's
+`[0, 1]` quality, `null` otherwise), `node_path` (materialized path — root = bare id, nested =
+`enrich.figures[3].vlm`), `depth` (`0` = root stage), `parent_path`, and `item_index` (ForEach item
+index, `null` outside a fan-out). The list stays FLAT and pre-order (parent before its children,
+ForEach items by ascending index); a client rebuilds the tree from `node_path`/`depth`. Legacy rows
+predating this leave the five fields `null`.
 
 `GET /api/v1/jobs/workers/live` returns running jobs grouped by worker (empty when idle). Each
 `WorkerActivity` carries its liveness (`alive`, `busy`, `last_seen`, `started_at`) plus `max_jobs`

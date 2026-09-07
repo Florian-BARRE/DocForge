@@ -14,6 +14,7 @@ from loggerplusplus import LoggerClass
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # ====== Internal Project Imports ======
+from shared_libs.pipelines.base import NodeExecutionRecord
 from shared_libs.services.db.postgresql import PostgresClient
 from shared_libs.services.db.postgresql.apis import DocumentApi, JobApi
 from shared_libs.services.db.postgresql.apis.job_api import JobWithNames
@@ -168,6 +169,17 @@ class JobsFacade(LoggerClass):
         """Return a job's per-node trace, in execution order."""
         async with self._postgres.session() as session:
             return await JobApi.list_events(session, job_id)
+
+    async def persist_execution_tree(self, job_id: uuid.UUID, record: NodeExecutionRecord) -> None:
+        """Persist the run's FULL per-node execution tree onto the job's stage timeline.
+
+        Walks the outermost execution record into materialized-path rows and reconciles them with the
+        live stage timeline: the open root rows are filled with their tree coordinates + score, every
+        nested node (group children, per-item ForEach body instances) is inserted. Idempotent, so the
+        worker may call it on both the success and the empty-chunk-warning paths.
+        """
+        async with self._postgres.session() as session:
+            await JobApi.persist_execution_tree(session, job_id, record)
 
     async def list_active(self) -> list[Job]:
         """Return every RUNNING job — the workers' live activity."""

@@ -162,9 +162,14 @@ class JobStatus(BaseModel):
 
 
 class JobEvent(BaseModel):
-    """One node of the job's execution trace — written by the worker at each stage end."""
+    """One node of the job's execution trace — written by the worker.
 
-    stage: str = Field(description="The pipeline node id.")
+    The trace is the FULL per-node execution tree: root stages carry live status/timing/usage, and
+    every nested node (group children, per-item ForEach body instances) is persisted after the run.
+    The list stays FLAT — the UI rebuilds the tree from ``node_path`` + ``depth`` + ``parent_path``.
+    """
+
+    stage: str = Field(description="The pipeline node id (the node's own id segment).")
     status: str = Field(description="success / failed / skipped.")
     node_kind: str | None = Field(
         default=None,
@@ -186,6 +191,30 @@ class JobEvent(BaseModel):
         description="USD cost of this stage (None when it made no paid call OR its model is "
         "unpriced — the tokens are still reported).",
     )
+    score: float | None = Field(
+        default=None,
+        description="Quality score in [0, 1] of a scored-family node (parser/ocr/…), what a "
+        "ScoreBelow edge compares to its threshold. None for non-scored nodes and legacy rows.",
+    )
+    node_path: str | None = Field(
+        default=None,
+        description="Materialized path of this node in the execution tree — root = bare node id, "
+        "nested = dotted path (e.g. 'enrich.figures[3].vlm'). None for legacy rows (pre-tree).",
+    )
+    depth: int | None = Field(
+        default=None,
+        description="Depth in the execution tree: 0 = root stage, larger = more nested. None for "
+        "legacy rows (the UI treats it as 0).",
+    )
+    parent_path: str | None = Field(
+        default=None,
+        description="node_path of this node's parent — None for root stages and legacy rows.",
+    )
+    item_index: int | None = Field(
+        default=None,
+        description="Zero-based ForEach item index when this node runs inside a fan-out; None "
+        "outside any fan-out (and for legacy rows).",
+    )
 
     @classmethod
     def from_row(cls, event: Any) -> "JobEvent":
@@ -200,14 +229,23 @@ class JobEvent(BaseModel):
             prompt_tokens=event.prompt_tokens,
             completion_tokens=event.completion_tokens,
             cost_usd=None if event.cost_usd is None else float(event.cost_usd),
+            score=event.score,
+            node_path=event.node_path,
+            depth=event.depth,
+            parent_path=event.parent_path,
+            item_index=event.item_index,
         )
 
 
 class JobTrace(BaseModel):
-    """A job's full per-node trace, in execution order."""
+    """A job's full per-node execution tree, flat — the UI rebuilds the tree from node_path/depth."""
 
     job_id: str = Field(description="The traced job.")
-    events: list[JobEvent] = Field(default_factory=list, description="One entry per stage run.")
+    events: list[JobEvent] = Field(
+        default_factory=list,
+        description="Every node of the run, flat and pre-order (parent before children, ForEach "
+        "items by index) — the UI nests them via node_path/depth.",
+    )
 
 
 class WorkerActivity(BaseModel):

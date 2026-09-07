@@ -113,6 +113,9 @@ class FlowEngine(LoggerClass):
                 cached = None
             if cached is not None:
                 self.logger.debug(f"Node '{node.id}' served from cache")
+                # Lift the score off the cached output too (mirror of the fresh-run lift below): the
+                # cached artefact carries the same ``score`` a ScoreBelow edge reads, so the record
+                # must report it identically whether the stage ran or was served from cache.
                 return cached, NodeExecutionRecord(
                     node_id=node.id,
                     kind=node.KIND,
@@ -120,6 +123,7 @@ class FlowEngine(LoggerClass):
                     duration_ms=(perf_counter() - started) * 1000,
                     resolved_input=RecordTrace.dump(node_input) if self._trace_payloads else None,
                     output=RecordTrace.dump(cached) if self._trace_payloads else None,
+                    score=getattr(cached, "score", None),
                 )
 
         # 2. Run the node, capturing success or failure.
@@ -136,10 +140,11 @@ class FlowEngine(LoggerClass):
             self.logger.warning(f"Node '{node.id}' failed: {type(exc).__name__}: {exc}")
 
         # 3. Build the execution record (byte payloads stripped — a trace, not a store). Token usage
-        #    rides on the RETURNED output (a paid text-gen node stamps ``_usage`` on it): lifting it
-        #    from the output — not from the node — is race-free under a ForEach that runs one node
-        #    instance concurrently over items, and needs no reset between runs. ``getattr`` keeps the
-        #    read defensive (a usage-capture miss must never fail a node).
+        #    AND the quality score both ride on the RETURNED output (a paid text-gen node stamps
+        #    ``_usage``; a scored node carries ``score``): lifting them from the output — not the node —
+        #    is race-free under a ForEach that runs one node instance concurrently over items, and needs
+        #    no reset between runs. ``getattr`` keeps each read defensive (a capture miss must never
+        #    fail a node); a non-scored output simply has no ``score``, yielding None.
         record = NodeExecutionRecord(
             node_id=node.id,
             kind=node.KIND,
@@ -153,6 +158,7 @@ class FlowEngine(LoggerClass):
             ),
             error=error,
             usage=getattr(node_output, "_usage", None) if node_output is not None else None,
+            score=getattr(node_output, "score", None) if node_output is not None else None,
         )
         if status == NodeStatus.SUCCESS:
             self.logger.debug(f"Node '{node.id}' succeeded in {record.duration_ms:.1f}ms")

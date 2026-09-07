@@ -109,6 +109,10 @@ class NodeExecutionRecord(BaseModel):
         error (ErrorInfo | None): Error details when the node failed.
         usage (NodeUsage | None): Billed accounting (tokens or pages) for a paid leaf; None for
             every other node (groups, foreach wrappers, and free/local leaves).
+        score (float | None): Quality score of a ``scored``-family node (its ``ScoredOutput.score``,
+            a [0, 1] self-assessment a ScoreBelow edge compares to its threshold). Lifted from the
+            produced output exactly like ``usage``, so it survives ``trace_payloads=False``. None for
+            every non-scored node (groups, foreach wrappers, and plain-output leaves).
         children (list[NodeExecutionRecord]): Child records when the node is a group.
     """
 
@@ -120,6 +124,7 @@ class NodeExecutionRecord(BaseModel):
     output: dict[str, Any] | None = None
     error: ErrorInfo | None = None
     usage: NodeUsage | None = None
+    score: float | None = None
     children: list["NodeExecutionRecord"] = Field(default_factory=list)
 
 

@@ -79,6 +79,20 @@ export interface JobEvent {
   completion_tokens: number | null;
   /** USD cost of this stage; null when no usage or the model has no known price. */
   cost_usd: number | null;
+  /** Quality score in [0, 1] of a scored-family node (parser/ocr/…) — what a ScoreBelow edge
+   *  compares to its threshold. Null for non-scored nodes and legacy rows. */
+  score: number | null;
+  /** Materialized tree path — root = bare node id (e.g. "parse"), nested = dotted path (e.g.
+   *  "enrich.figures.figbody[0].vlm"). Null for legacy rows (pre-tree). */
+  node_path: string | null;
+  /** Depth in the execution tree: 0 = root stage, larger = more nested. Null for legacy rows —
+   *  the UI treats that as depth 0. */
+  depth: number | null;
+  /** node_path of this node's parent; null for root stages and legacy rows. */
+  parent_path: string | null;
+  /** Zero-based ForEach item index when this node runs inside a fan-out; null outside any
+   *  fan-out (and for legacy rows). */
+  item_index: number | null;
 }
 
 /** Per-stage average wall-clock (seconds) across the collection's completed jobs — the ETA basis. */

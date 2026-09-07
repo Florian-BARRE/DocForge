@@ -74,7 +74,7 @@ const loadedProvenance: DocumentProvenance = {
   job_id: "job-1",
   available: true,
   stages: [
-    { stage: "parse", status: "success", node_kind: "docling", started_at: null, finished_at: null, detail: null, prompt_tokens: null, completion_tokens: null, cost_usd: null },
+    { stage: "parse", status: "success", node_kind: "docling", started_at: null, finished_at: null, detail: null, prompt_tokens: null, completion_tokens: null, cost_usd: null, score: null, node_path: null, depth: null, parent_path: null, item_index: null },
   ],
 };
 

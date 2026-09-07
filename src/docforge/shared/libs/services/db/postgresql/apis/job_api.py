@@ -6,6 +6,7 @@
 # `record_event` appends to the stage timeline the live-status UI reads.
 
 # ====== Standard Library Imports ======
+import re
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -18,7 +19,12 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # ====== Internal Project Imports ======
+from shared_libs.pipelines.base import NodeExecutionRecord
+
 from ..tables import Collection, Document, Job, JobStageEvent, JobStatus, WorkerHeartbeat
+
+# ====== Local Project Imports ======
+from .execution_tree import ExecutionTreeFlattener
 
 
 @dataclass(frozen=True)
@@ -400,6 +406,92 @@ class JobApi:
         )
 
     @staticmethod
+    async def persist_execution_tree(
+        session: AsyncSession, job_id: uuid.UUID, record: NodeExecutionRecord
+    ) -> None:
+        """
+        Persist the FULL per-node execution tree onto the job's stage timeline (materialized path).
+
+        Walks the run's outermost record into flat materialized-path rows (every node — nested group
+        children and per-item ForEach body instances included) and reconciles them with the stage
+        timeline by ``(job_id, node_path)``:
+
+        - A node whose path already has a row — the live ROOT rows the ``JobProgressRecorder`` opened
+          at each stage START (now stamped with ``node_path = node_id``), or a row from a previous
+          persist — is UPDATED in place with its tree coordinates + score only. Its status/timing and
+          the subtree-aggregated token/cost meter the recorder wrote are left untouched.
+        - A node with no row yet — every NESTED node, which the live recorder only counted — is
+          INSERTED with its own status/kind/duration/error/usage/score and tree coordinates.
+
+        Idempotent: a second call finds every path already present and simply re-updates it, so the
+        empty-chunk warning path and a normal success path can both call it without duplicating rows.
+
+        Args:
+            session (AsyncSession): The active DB session.
+            job_id (uuid.UUID): The job whose trace is being materialized.
+            record (NodeExecutionRecord): The run's outermost execution record (the pipeline group).
+        """
+        # 1. Flatten the tree into parent-before-child materialized-path rows.
+        flat = ExecutionTreeFlattener.flatten(record)
+        if not flat:
+            return
+
+        # 2. The paths already on the timeline (the live root rows + any prior persist), so each node
+        #    is reconciled to at most one row — never duplicated.
+        existing = await session.execute(
+            select(JobStageEvent.node_path, JobStageEvent.id).where(
+                JobStageEvent.job_id == job_id, JobStageEvent.node_path.is_not(None)
+            )
+        )
+        row_id_by_path = {path: row_id for path, row_id in existing.all()}
+
+        # 3. Reconcile each node: fill tree coordinates + score on an existing row, insert the rest.
+        for node in flat:
+            rec = node.record
+            score = rec.score
+            existing_id = row_id_by_path.get(node.node_path)
+            if existing_id is not None:
+                await session.execute(
+                    update(JobStageEvent)
+                    .where(JobStageEvent.id == existing_id)
+                    .values(
+                        depth=node.depth,
+                        parent_path=node.parent_path,
+                        item_index=node.item_index,
+                        score=score,
+                    )
+                )
+                continue
+            # A nested node the recorder never opened a row for: insert it whole. Duration/error go
+            # into ``detail`` (the record carries a relative duration, not absolute timestamps, so
+            # started_at/finished_at stay NULL — this keeps nested rows out of the timestamp-gated
+            # avg_stage_durations read). Raw token counts are reported when present; per-leaf USD
+            # pricing stays at the aggregating root row, so cost_usd is left NULL here.
+            usage = rec.usage
+            detail = (
+                f"{rec.error.error_type}: {rec.error.message}"
+                if rec.error is not None
+                else f"{rec.duration_ms:.0f} ms"
+            )
+            session.add(
+                JobStageEvent(
+                    job_id=job_id,
+                    stage=rec.node_id[:64],
+                    status=rec.status.value,
+                    node_kind=rec.kind,
+                    detail=detail,
+                    prompt_tokens=usage.prompt_tokens if usage is not None else None,
+                    completion_tokens=usage.completion_tokens if usage is not None else None,
+                    node_path=node.node_path,
+                    depth=node.depth,
+                    parent_path=node.parent_path,
+                    item_index=node.item_index,
+                    score=score,
+                )
+            )
+        await session.flush()
+
+    @staticmethod
     async def upsert_heartbeat(
         session: AsyncSession,
         worker_id: str,
@@ -598,14 +690,45 @@ class JobApi:
         return int(prompt), int(completion), float(cost), int(count)
 
     @staticmethod
-    async def list_events(session: AsyncSession, job_id: uuid.UUID) -> list[JobStageEvent]:
-        """Return a job's per-node trace, in execution order."""
-        result = await session.execute(
-            select(JobStageEvent)
-            .where(JobStageEvent.job_id == job_id)
-            .order_by(JobStageEvent.created_at.asc())
+    def _trace_sort_key(event: JobStageEvent) -> tuple:  # type: ignore[type-arg]
+        """
+        Natural-order sort key for a stage-event row, giving a stable pre-order tree walk.
+
+        Ordering by the materialized ``node_path`` yields a pre-order DFS (a parent's path is a
+        lexical prefix of every descendant's, so the parent leads its subtree). Each maximal digit
+        run compares NUMERICALLY so ForEach body items sort by ascending index (``[2]`` before
+        ``[10]`` — a plain string sort inverts them). Legacy rows (``node_path`` NULL, written before
+        the tree columns landed) have no path, so they fall back to insertion order (``created_at``)
+        and lead the list.
+
+        Args:
+            event (JobStageEvent): One stage-event row.
+
+        Returns:
+            tuple: A comparable key — ``(0, created_at)`` for legacy rows, ``(1, natural-tokens)`` for
+                path-carrying rows (the leading discriminator keeps the two groups from cross-typing).
+        """
+        if event.node_path is None:
+            return (0, event.created_at)
+        tokens = tuple(
+            int(chunk) if chunk.isdigit() else chunk
+            for chunk in re.split(r"(\d+)", event.node_path)
+            if chunk != ""
         )
-        return list(result.scalars().all())
+        return (1, tokens)
+
+    @classmethod
+    async def list_events(cls, session: AsyncSession, job_id: uuid.UUID) -> list[JobStageEvent]:
+        """Return a job's per-node trace as a stable pre-order tree walk (parent before children).
+
+        The full tree is materialized on the rows (``node_path``/``depth``/``parent_path``/
+        ``item_index``), so this sorts by a natural key on ``node_path`` (see ``_trace_sort_key``):
+        a parent precedes its children and ForEach body items sort by ascending index. Legacy rows
+        with no path lead the list in insertion order. Sorting in Python keeps the numeric ForEach
+        order a SQL string ``ORDER BY`` cannot express; the per-job row count is small.
+        """
+        result = await session.execute(select(JobStageEvent).where(JobStageEvent.job_id == job_id))
+        return sorted(result.scalars().all(), key=cls._trace_sort_key)
 
     @staticmethod
     async def list_active(session: AsyncSession) -> list[Job]:

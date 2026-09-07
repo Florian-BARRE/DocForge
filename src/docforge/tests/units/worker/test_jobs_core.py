@@ -18,6 +18,7 @@ def _fake_database() -> SimpleNamespace:
             mark_failed=AsyncMock(),
             force_terminate=AsyncMock(),
             is_cancel_requested=AsyncMock(return_value=False),
+            persist_execution_tree=AsyncMock(),
         ),
         documents=SimpleNamespace(get=AsyncMock(), get_metadata=AsyncMock(return_value=[])),
         collections=SimpleNamespace(get=AsyncMock(), get_schema=AsyncMock(return_value=[])),

@@ -157,12 +157,19 @@ def test_job_event_maps_tokens_and_cost(jobs_models) -> None:
         prompt_tokens=800,
         completion_tokens=210,
         cost_usd=Decimal("0.045000"),
+        score=0.82,
+        node_path="metagen",
+        depth=0,
+        parent_path=None,
+        item_index=None,
     )
 
     event = JobEvent.from_row(row)
     assert (event.prompt_tokens, event.completion_tokens) == (800, 210)
     assert event.cost_usd == pytest.approx(0.045)
     assert event.node_kind == "llm"
+    assert event.score == pytest.approx(0.82)
+    assert (event.node_path, event.depth) == ("metagen", 0)
 
 
 def test_job_event_null_meter_stays_none(jobs_models) -> None:
@@ -178,6 +185,11 @@ def test_job_event_null_meter_stays_none(jobs_models) -> None:
         prompt_tokens=None,
         completion_tokens=None,
         cost_usd=None,
+        score=None,
+        node_path="chunk",
+        depth=0,
+        parent_path=None,
+        item_index=None,
     )
 
     event = JobEvent.from_row(row)
@@ -185,3 +197,4 @@ def test_job_event_null_meter_stays_none(jobs_models) -> None:
     assert event.completion_tokens is None
     assert event.cost_usd is None
     assert event.node_kind is None
+    assert event.score is None

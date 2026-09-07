@@ -1,12 +1,21 @@
 // ====== Code Summary ======
-// One entry of the job's per-node timeline: stage, status, duration (or the error/note the
-// worker attached as `detail`). Each item carries its own left rail segment + a status-colored
-// node marker, so stacking them (JobDetailPage) reads as one continuous vertical timeline.
+// One entry of the job's per-node execution tree: stage, status, duration (or the error/note the
+// worker attached as `detail`), and — for a nested node — its indent (`depth`) and ForEach
+// `item_index`. Each item carries its own left rail segment + a status-colored node marker, so
+// stacking them (JobDetailPage) reads as one continuous vertical timeline; a nested node's rail
+// segment is additionally inset per `depth` so the tree shape (group children, ForEach item
+// instances) is legible under its parent stage. `depth`/`node_path` are null on legacy rows
+// (pre-tree) — those render flat at depth 0, same as before.
 
 import type { JobEvent } from "../../api/jobs";
+import { Chip } from "../../components/Chip";
 import { theme } from "../../theme";
 import { JobStatusChip } from "./JobStatusChip";
 import { humanizeStageId } from "./stageLabels";
+
+// Per-level indent for a nested node's rail segment — wide enough to read as a tree, narrow
+// enough that a few levels of ForEach-inside-group nesting still fit the panel width.
+const INDENT_PER_DEPTH = theme.space.xl;
 
 const NODE_COLOR_BY_STATUS: Record<string, string> = {
   running: theme.color.accent,
@@ -39,12 +48,15 @@ function usageLabel(event: JobEvent): string | null {
 
 export function JobEventItem({ event }: { event: JobEvent }) {
   const nodeColor = NODE_COLOR_BY_STATUS[event.status] ?? theme.color.dim;
+  // Legacy rows (written before the execution-tree columns landed) carry a null depth — treat
+  // that as a root-level (depth 0) row rather than crashing the indent math.
+  const depth = event.depth ?? 0;
   return (
     <div
       style={{
         display: "flex", flexWrap: "wrap", alignItems: "center", gap: theme.space.s,
         padding: `${theme.space.s}px 0`, borderLeft: `2px solid ${theme.color.line}`,
-        paddingLeft: theme.space.m, position: "relative",
+        paddingLeft: theme.space.m, marginLeft: depth * INDENT_PER_DEPTH, position: "relative",
       }}
     >
       <span
@@ -54,9 +66,17 @@ export function JobEventItem({ event }: { event: JobEvent }) {
           boxShadow: `0 0 0 3px ${theme.color.bg}`,
         }}
       />
-      <strong title={event.stage} style={{ fontSize: theme.font.size.m, color: theme.color.text, minWidth: 140 }}>
+      <strong title={event.node_path ?? event.stage} style={{ fontSize: theme.font.size.m, color: theme.color.text, minWidth: 140 }}>
         {humanizeStageId(event.stage)}
       </strong>
+      {event.item_index !== null && (
+        <span
+          title={`ForEach item index (this node ran once per item, this is instance #${event.item_index})`}
+          style={{ fontFamily: theme.font.mono, fontSize: theme.font.size.xs, color: theme.color.dim }}
+        >
+          item[{event.item_index}]
+        </span>
+      )}
       {event.node_kind && (
         <span style={{ fontFamily: theme.font.mono, fontSize: theme.font.size.xs, color: theme.color.mute }}>
           {event.node_kind}
@@ -64,6 +84,11 @@ export function JobEventItem({ event }: { event: JobEvent }) {
       )}
       <JobStatusChip status={event.status} />
       <span style={{ color: theme.color.dim, fontSize: theme.font.size.xs, fontFamily: theme.font.mono }}>{durationLabel(event)}</span>
+      {event.score !== null && (
+        <Chip tone="neutral" title="Quality score this node produced — what a ScoreBelow escalation edge compares to its threshold.">
+          <span style={{ fontFamily: theme.font.mono }}>score {event.score.toFixed(2)}</span>
+        </Chip>
+      )}
       {usageLabel(event) && (
         <span
           title="Tokens billed by this stage's paid model calls (and their cost)."

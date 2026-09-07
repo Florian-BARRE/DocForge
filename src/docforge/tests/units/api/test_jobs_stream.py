@@ -51,6 +51,11 @@ def _event(stage: str, status: str) -> SimpleNamespace:
         prompt_tokens=None,
         completion_tokens=None,
         cost_usd=None,
+        score=None,
+        node_path=stage,
+        depth=0,
+        parent_path=None,
+        item_index=None,
     )
 
 

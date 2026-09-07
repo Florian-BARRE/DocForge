@@ -267,7 +267,7 @@ async def ingest_document(
             if CONTEXT.RUNTIME_CONFIG.WORKER_CACHE_ENABLED and not force
             else None
         )
-        bundle, _record = await runner.run(
+        bundle, record = await runner.run(
             blob,
             source,
             contract,
@@ -281,6 +281,14 @@ async def ingest_document(
         )
         if cache_hook is not None and cache_hook.report:
             CONTEXT.logger.info(f"Stage cache for document {document_id}: {cache_hook.report}")
+
+        # Persist the FULL per-node execution tree (every node, nested + per-item ForEach instances,
+        # each with its quality score) onto the job's stage timeline. Done right after the run returns
+        # — before translate/persist, which may fail — so the trace is materialized whenever the run
+        # itself completed (a normal success AND the zero-chunk warning path both reach here). A run
+        # that FAILED never returns a record here (the runner raises inside run(), discarding it), so
+        # a failed run keeps only the live root rows the recorder closed — acceptable, not complicated.
+        await database.jobs.persist_execution_tree(job_uuid, record)
         strategy = next(
             (
                 node.get("kind", "")

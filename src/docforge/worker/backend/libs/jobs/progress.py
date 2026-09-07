@@ -116,6 +116,9 @@ class JobProgressRecorder(LoggerClass):
                 self._items_active = False
 
         # 2. Open the stage-event row (finalized at END; closed as failed if the run is cut first).
+        #    Stamp its execution-tree coordinates as a ROOT node (node_path = its own id, depth 0, no
+        #    parent) so the post-run persist_execution_tree matches it by (job_id, node_path) and
+        #    fills its score in place instead of inserting a duplicate root row.
         self._started[node_id] = now
         row = await CONTEXT.database.jobs.record_event(
             JobStageEvent(
@@ -125,6 +128,9 @@ class JobProgressRecorder(LoggerClass):
                 node_kind=event.kind,
                 started_at=now,
                 finished_at=None,
+                node_path=node_id,
+                depth=0,
+                parent_path=None,
             )
         )
         self._open_event_id = row.id
@@ -197,6 +203,9 @@ class JobProgressRecorder(LoggerClass):
                     prompt_tokens=prompt_tokens if has_usage else None,
                     completion_tokens=completion_tokens if has_usage else None,
                     cost_usd=cost_column,
+                    node_path=node_id,
+                    depth=0,
+                    parent_path=None,
                 )
             )
 
