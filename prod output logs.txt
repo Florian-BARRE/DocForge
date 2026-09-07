@@ -1,0 +1,195 @@
+REDIS
+1:C 07 Sep 2026 06:18:03.435 # WARNING Memory overcommit must be enabled! Without it, a background save or replication may fail under low memory condition. Being disabled, it can also cause failures without low memory condition, see https://github.com/jemalloc/jemalloc/issues/1328. To fix this issue add 'vm.overcommit_memory = 1' to /etc/sysctl.conf and then reboot or run the command 'sysctl vm.overcommit_memory=1' for this to take effect.
+1:C 07 Sep 2026 06:18:03.435 * oO0OoO0OoO0Oo Redis is starting oO0OoO0OoO0Oo
+1:C 07 Sep 2026 06:18:03.435 * Redis version=7.4.11, bits=64, commit=00000000, modified=0, pid=1, just started
+1:C 07 Sep 2026 06:18:03.435 * Configuration loaded
+1:M 07 Sep 2026 06:18:03.436 * monotonic clock: POSIX clock_gettime
+1:M 07 Sep 2026 06:18:03.437 * Running mode=standalone, port=6379.
+1:M 07 Sep 2026 06:18:03.437 * Server initialized
+1:M 07 Sep 2026 06:18:03.437 * Ready to accept connections tcp
+
+Paddle:
+    ____            __    ____        _____                          
+   / __ \____ _____/ /___/ / /__     / ___/___  ______   _____  _____
+  / /_/ / __ `/ __  / __  / / _ \    \__ \/ _ \/ ___/ | / / _ \/ ___/
+ / ____/ /_/ / /_/ / /_/ / /  __/   ___/ /  __/ /   | |/ /  __/ /    
+/_/    \__,_/\__,_/\__,_/_/\___/   /____/\___/_/    |___/\___/_/     
+                                                                     
+2026-09-07 06:21:20.409 |   INFO   | [PaddleServer] | 
+[1/3] Runtime configuration...
+2026-09-07 06:21:20.410 |   INFO   | [PaddleServer] | 
+╔════════════════════════════════════════════╗
+║             PADDLESERVERCONFIG             ║
+╚════════════════════════════════════════════╝
+▶ LOGGING
+    LOGGING_CONSOLE_LEVEL  = 'INFO'
+    LOGGING_ENABLE_CONSOLE = True
+    LOGGING_ENABLE_FILE    = False
+    LOGGING_FILE_LEVEL     = 'DEBUG'
+    LOGGING_LPP_FORMAT     = 'ShortFormat'
+▶ PADDLE
+    PADDLE_LOCK_WAIT_TIMEOUT_SECONDS    = 290.0
+    PADDLE_MAX_BODY_BYTES               = 104857600
+    PADDLE_OCR_LANG                     = 'en'
+    PADDLE_OCR_USE_TEXTLINE_ORIENTATION = False
+    PADDLE_PDX_CACHE_HOME               = '/models'
+    PADDLE_PDX_MODEL_SOURCE             = 'huggingface'
+    PADDLE_USE_DOC_ORIENTATION_CLASSIFY = False
+    PADDLE_USE_FORMULA_RECOGNITION      = False
+    PADDLE_USE_SEAL_RECOGNITION         = False
+    PADDLE_USE_TABLE_RECOGNITION        = True
+▶ PATH
+    PATH_ROOT_DIR = '/app/paddle_server'
+2026-09-07 06:21:20.410 |   INFO   | [PaddleServer] | 
+[2/3] Building PP-StructureV3 pipeline...
+2026-09-07 06:21:30.970 |   INFO   | [PpStructureService] | Building PPStructureV3 pipeline: table=True, formula=False, seal=False, doc_orientation_classify=False, doc_unwarping=False (always), model_cache_home=/models, model_source=huggingface
+/opt/venv/lib/python3.12/site-packages/paddle/utils/cpp_extension/extension_utils.py:712: UserWarning: No ccache found. Please be aware that recompiling all source files may be required. You can download and install ccache from: https://github.com/ccache/ccache/blob/master/doc/INSTALL.md
+  warnings.warn(warning_message)
+2026-09-07 06:21:35.971 |   INFO   | [   PaddleServer   ] | Shutting down Paddle Server...
+2026-09-07 06:21:35.971 |   INFO   | [PpStructureService] | PPStructureV3 pipeline unloaded
+2026-09-07 06:21:35.971 |   INFO   | [ PaddleOcrService ] | PaddleOCR pipeline unloaded
+ERROR:    Traceback (most recent call last):
+  File "/opt/venv/lib/python3.12/site-packages/paddleocr/_pipelines/base.py", line 105, in _create_paddlex_pipeline
+    return create_pipeline(config=self._merged_paddlex_config, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/paddlex/inference/pipelines/__init__.py", line 169, in create_pipeline
+    pipeline = BasePipeline.get(pipeline_name)(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/paddlex/utils/deps.py", line 207, in _wrapper
+    require_extra(extra, obj_name=pipeline_name, alt=alt)
+  File "/opt/venv/lib/python3.12/site-packages/paddlex/utils/deps.py", line 200, in require_extra
+    raise DependencyError(msg)
+paddlex.utils.deps.DependencyError: `PP-StructureV3` requires additional dependencies. To install them, run `pip install "paddlex[ocr]==<PADDLEX_VERSION>"` if you’re installing `paddlex` from an index, or `pip install -e "/path/to/PaddleX[ocr]"` if you’re installing `paddlex` locally.
+The above exception was the direct cause of the following exception:
+Traceback (most recent call last):
+  File "/opt/venv/lib/python3.12/site-packages/starlette/routing.py", line 638, in lifespan
+    async with self.lifespan_context(app) as maybe_state:
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/contextlib.py", line 210, in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/fastapi/routing.py", line 240, in merged_lifespan
+    async with original_context(app) as maybe_original_state:
+               ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/contextlib.py", line 210, in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/fastapi/routing.py", line 240, in merged_lifespan
+    async with original_context(app) as maybe_original_state:
+               ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/contextlib.py", line 210, in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/fastapi/routing.py", line 240, in merged_lifespan
+    async with original_context(app) as maybe_original_state:
+               ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/contextlib.py", line 210, in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/app/paddle_server/backend/lifespan.py", line 69, in _lifespan
+    CONTEXT.ppstructure.build()
+  File "/app/paddle_server/libs/ppstructure/service.py", line 115, in build
+    self._pipeline = PPStructureV3(
+                     ^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/paddleocr/_pipelines/pp_structurev3.py", line 142, in __init__
+    super().__init__(**kwargs)
+  File "/opt/venv/lib/python3.12/site-packages/paddleocr/_pipelines/base.py", line 67, in __init__
+    self.paddlex_pipeline = self._create_paddlex_pipeline()
+                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.12/site-packages/paddleocr/_pipelines/base.py", line 107, in _create_paddlex_pipeline
+    raise RuntimeError(
+RuntimeError: A dependency error occurred during pipeline creation. Please refer to the installation documentation to ensure all required dependencies are installed.
+ERROR:    Application startup failed. Exiting.
+
+BGE SERVER 
+INFO:     Started server process [1]
+INFO:     Waiting for application startup.
+2026-09-07 06:18:09.269 |   INFO   | [BGEServer] | 
+    ____  ____________   _____                          
+   / __ )/ ____/ ____/  / ___/___  ______   _____  _____
+  / __  / / __/ __/     \__ \/ _ \/ ___/ | / / _ \/ ___/
+ / /_/ / /_/ / /___    ___/ /  __/ /   | |/ /  __/ /    
+/_____/\____/_____/   /____/\___/_/    |___/\___/_/     
+                                                        
+2026-09-07 06:18:09.269 |   INFO   | [BGEServer] | 
+[1/4] Runtime configuration...
+2026-09-07 06:18:09.270 |   INFO   | [BGEServer] | 
+╔════════════════════════════════════════════╗
+║              BGESERVERCONFIG               ║
+╚════════════════════════════════════════════╝
+▶ BGE
+    BGE_DEVICE            = 'cuda'
+    BGE_FP16              = True
+    BGE_KEEPWARM_SECONDS  = 45
+    BGE_M3_MAX_LENGTH     = 2048
+    BGE_M3_MODEL          = 'BAAI/bge-m3'
+    BGE_M3_REVISION       = '5617a9f61b028005a4858fdac845db406aefb181'
+    BGE_MAX_BATCH_SIZE    = 32
+    BGE_MAX_QUEUE_SIZE    = 256
+    BGE_MAX_REQUEST_ITEMS = 512
+    BGE_MAX_TEXT_CHARS    = 16384
+    BGE_MAX_WAIT_MS       = 10
+    BGE_RERANKER_MODEL    = 'BAAI/bge-reranker-v2-m3'
+    BGE_RERANKER_REVISION = '953dc6f6f85a1b2dbfca4c34a2796e7dde08d41e'
+    BGE_TORCH_NUM_THREADS = 0
+▶ LOGGING
+    LOGGING_CONSOLE_LEVEL  = 'INFO'
+    LOGGING_ENABLE_CONSOLE = True
+    LOGGING_ENABLE_FILE    = False
+    LOGGING_FILE_LEVEL     = 'DEBUG'
+    LOGGING_LPP_FORMAT     = 'ShortFormat'
+▶ PATH
+    PATH_ROOT_DIR = '/app/bge_server'
+2026-09-07 06:18:09.270 |   INFO   | [BGEServer] | 
+[2/4] Loading BGE models...
+2026-09-07 06:18:18.480 |   INFO   | [DeviceResolver] | Device resolved: policy=cuda -> device=cuda, use_fp16=True
+2026-09-07 06:18:18.481 |   INFO   | [BgeModelsService] | Device policy 'cuda' resolved -> device=cuda, use_fp16=True
+2026-09-07 06:18:51.207 |   INFO   | [BgeModelsService] | torch intra-op threads set to 4 (BGE_TORCH_NUM_THREADS=0, max_concurrency=2, cpu_budget=8, source=affinity)
+2026-09-07 06:18:51.207 |   INFO   | [ModelRevisionResolver] | Resolving pinned revision for BAAI/bge-m3 -> revision=5617a9f61b028005a4858fdac845db406aefb181
+2026-09-07 06:18:51.211 |   INFO   | [ModelRevisionResolver] | Model BAAI/bge-m3 pinned to revision=5617a9f61b028005a4858fdac845db406aefb181 -> path=/models/hub/models--BAAI--bge-m3/snapshots/5617a9f61b028005a4858fdac845db406aefb181
+2026-09-07 06:18:51.211 |   INFO   | [ModelRevisionResolver] | Resolving pinned revision for BAAI/bge-reranker-v2-m3 -> revision=953dc6f6f85a1b2dbfca4c34a2796e7dde08d41e
+2026-09-07 06:18:51.214 |   INFO   | [ModelRevisionResolver] | Model BAAI/bge-reranker-v2-m3 pinned to revision=953dc6f6f85a1b2dbfca4c34a2796e7dde08d41e -> path=/models/hub/models--BAAI--bge-reranker-v2-m3/snapshots/953dc6f6f85a1b2dbfca4c34a2796e7dde08d41e
+2026-09-07 06:18:51.214 |   INFO   | [  BgeModelsService   ] | Loading embed model: BAAI/bge-m3 (revision=5617a9f61b028005a4858fdac845db406aefb181, source=/models/hub/models--BAAI--bge-m3/snapshots/5617a9f61b028005a4858fdac845db406aefb181, device=cuda, fp16=True)
+2026-09-07 06:18:55.394 |   INFO   | [  BgeModelsService   ] | Embed model loaded -> BAAI/bge-m3 (source=/models/hub/models--BAAI--bge-m3/snapshots/5617a9f61b028005a4858fdac845db406aefb181)
+2026-09-07 06:18:55.395 |   INFO   | [  BgeModelsService   ] | Loading reranker: BAAI/bge-reranker-v2-m3 (revision=953dc6f6f85a1b2dbfca4c34a2796e7dde08d41e, source=/models/hub/models--BAAI--bge-reranker-v2-m3/snapshots/953dc6f6f85a1b2dbfca4c34a2796e7dde08d41e, device=cuda, fp16=True)
+2026-09-07 06:18:57.744 |   INFO   | [  BgeModelsService   ] | Reranker loaded -> BAAI/bge-reranker-v2-m3 (source=/models/hub/models--BAAI--bge-reranker-v2-m3/snapshots/953dc6f6f85a1b2dbfca4c34a2796e7dde08d41e)
+2026-09-07 06:18:57.745 |   INFO   | [      BGEServer      ] | 
+[3/4] Starting batching engine...
+2026-09-07 06:18:57.750 |   INFO   | [  BatchQueueWorker   ] | [dense] BatchQueueWorker started
+2026-09-07 06:18:57.750 |   INFO   | [  BatchQueueWorker   ] | [sparse] BatchQueueWorker started
+2026-09-07 06:18:57.750 |   INFO   | [  BatchQueueWorker   ] | [colbert] BatchQueueWorker started
+2026-09-07 06:18:57.750 |   INFO   | [  BatchQueueWorker   ] | [rerank] BatchQueueWorker started
+2026-09-07 06:18:57.750 |   INFO   | [   BatchingEngine    ] | BatchingEngine started (max_batch_size=32, max_wait_ms=10, max_queue_size=256)
+2026-09-07 06:18:57.750 |   INFO   | [      BGEServer      ] | 
+[4/4] Warmup pass...
+/opt/venv/lib/python3.12/site-packages/torch/cuda/__init__.py:422: UserWarning: Found GPU0 Tesla V100-PCIE-16GB which is of compute capability (CC) 7.0.
+The following list shows the CCs this version of PyTorch was built for and the hardware CCs it supports:
+- 7.5 which supports hardware CC >=7.5,<8.0
+- 8.0 which supports hardware CC >=8.0,<9.0 except {8.7}
+- 8.6 which supports hardware CC >=8.6,<9.0 except {8.7}
+- 9.0 which supports hardware CC >=9.0,<10.0
+- 10.0 which supports hardware CC >=10.0,<11.0 except {10.1}
+- 12.0 which supports hardware CC >=12.0,<13.0
+Your installed torch==2.13.0+cu129 does not include kernels for this GPU. Reinstall the same version against a CUDA build that does, e.g.:
+  For CUDA 12.6 use pip install torch==2.13.0 --index-url https://download.pytorch.org/whl/cu126
+  _warn_unsupported_code(d, device_cc, code_ccs)
+You're using a XLMRobertaTokenizerFast tokenizer. Please note that with a fast tokenizer, using the `__call__` method is faster than using a method to encode the text followed by a call to the `pad` method to get a padded encoding.
+2026-09-07 06:18:58.354 | WARNING  | [      BGEServer      ] | Warmup pass failed (non-fatal, continuing startup): list index out of range
+2026-09-07 06:18:58.354 |   INFO   | [      BGEServer      ] | Keep-warm every 45s enabled
+2026-09-07 06:18:58.354 |   INFO   | [      BGEServer      ] | 
+BGE Server ready
+  embed   : BAAI/bge-m3
+  rerank  : BAAI/bge-reranker-v2-m3
+  policy  : cuda -> device: cuda
+  fp16    : requested=True, active=True
+  max_len : 2048
+  batching: max_batch=32, wait_ms=10, queue=256
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:80 (Press CTRL+C to quit)
+INFO:     127.0.0.1:44300 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48876 - "GET /health HTTP/1.1" 200 OK
+2026-09-07 06:19:43.375 | WARNING  | [      BGEServer      ] | Keep-warm round failed (non-fatal): list index out of range
+INFO:     127.0.0.1:44260 - "GET /health HTTP/1.1" 200 OK
+2026-09-07 06:20:28.393 | WARNING  | [      BGEServer      ] | Keep-warm round failed (non-fatal): list index out of range
+INFO:     127.0.0.1:35696 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44286 - "GET /health HTTP/1.1" 200 OK
