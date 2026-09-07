@@ -82,7 +82,11 @@ export function PageBoxOverlay({ renderBlobHash, width, height, boxes, alt, styl
   const aspectRatio = width && height ? `${width} / ${height}` : undefined;
 
   return (
-    <div style={{ position: "relative", display: "inline-block", lineHeight: 0 }}>
+    // `alignSelf: flex-start` + `width: fit-content` keep this wrapper shrink-wrapped to the image
+    // even inside a flex column (whose default `align-items: stretch` would otherwise stretch it to
+    // the full column width). The boxes are positioned in % of THIS wrapper, so it MUST equal the
+    // rendered image box or every box drifts/overflows when the image is height-constrained (narrow).
+    <div style={{ position: "relative", display: "inline-block", width: "fit-content", alignSelf: "flex-start", lineHeight: 0 }}>
       <BlobImage
         hash={renderBlobHash}
         alt={alt}

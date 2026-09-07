@@ -89,8 +89,8 @@ export function ChunkColumnCard({ chunk, members, enrichmentsByBlock, tablesByBl
       style={{
         display: "flex",
         flexDirection: "column",
-        gap: theme.space.s,
-        padding: theme.space.m,
+        gap: theme.space.xs,
+        padding: theme.space.s,
         borderRadius: theme.radius.m,
         borderTop: `${selected ? 2 : 1}px solid ${edge}`,
         borderRight: `${selected ? 2 : 1}px solid ${edge}`,

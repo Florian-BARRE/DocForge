@@ -20,7 +20,7 @@ import { IrBlocksColumn } from "./IrBlocksColumn";
 import { useIrChunkPlacement } from "./useIrChunkPlacement";
 
 const CHUNK_WIDTH = 384;
-const CONNECTOR = 92; // px — the strand-bundle zone between the two columns
+const CONNECTOR = 64; // px — the strand-bundle zone between the two columns (tight; ribbons still read)
 
 interface IrChunkGraphProps {
   blocks: IRBlock[];
@@ -75,7 +75,7 @@ export function IrChunkGraph({
   // overflowing into the page body (which must never scroll sideways).
   return (
     <div style={{ overflowX: "auto" }}>
-      <div ref={containerRef} style={{ position: "relative", minWidth: CONNECTOR + CHUNK_WIDTH + 240, minHeight: placement?.height ?? undefined }}>
+      <div ref={containerRef} style={{ position: "relative", minWidth: CONNECTOR + CHUNK_WIDTH + 180, minHeight: placement?.height ?? undefined }}>
         <svg
           style={{ position: "absolute", inset: 0, width: "100%", height: placement?.height ?? 0, pointerEvents: "none", overflow: "visible", zIndex: 0 }}
           aria-hidden="true"

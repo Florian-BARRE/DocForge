@@ -120,11 +120,11 @@ export function PageGroupRow({ pages, blocks, enrichmentsByBlock, tablesByBlock,
         return {
           bbox: padOut(block.bbox),
           color: active ? theme.color.accent : blockStyle(block.block_type).color,
-          // The number badge is a solid tab that sits over the page content, so at most ONE ever
-          // shows: only the block clicked directly (selectedBlockId). Idle and chunk-selection both
-          // stay clean — the active chunk's region is conveyed by the orange outlines below, not by
-          // numbering every member block (which used to pile badges over the text).
-          label: selectedBlockId === block.id ? String(index + 1) : undefined,
+          // The number tab sits ABOVE the box's corner (never over the page content), so every block
+          // carries its reading-order number — this is what lets the eye map a page box to its card
+          // in the numbered IR-blocks column. During a chunk/block selection the non-active boxes
+          // dim, and a dimmed box hides its label, so the selection still reads cleanly.
+          label: String(index + 1),
           active,
           dim: hasSelection && !active,
           variant: "block" as const,
@@ -139,16 +139,30 @@ export function PageGroupRow({ pages, blocks, enrichmentsByBlock, tablesByBlock,
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pages, blocks, chunkByBlockId, activeChunkId, selectedBlockId, hasSelection, indexByBlockId]);
 
-  const maxPageHeight = pages.length > 1 ? `${Math.floor(80 / pages.length)}vh` : "82vh";
+  // One page fills the row; several stack in the sticky column. Divide the viewport budget across
+  // them, but never below a legible floor (a many-page row then grows past one screen and scrolls
+  // in place instead of shrinking each page to an unreadable strip — the old `80/N` did the latter,
+  // e.g. 16vh for 5 pages, which left the widened column mostly empty and piled the block-number
+  // tabs on top of each other).
+  // Keep the cap tall enough that the COLUMN WIDTH (not the height) is what bounds a portrait page,
+  // so the image fills its column edge-to-edge instead of leaving a dead strip. A many-page group
+  // then scrolls in place rather than shrinking each page to an unreadable band.
+  const maxPageHeight = pages.length > 1 ? `${Math.max(82, Math.floor(80 / pages.length))}vh` : "86vh";
 
   return (
     <section
       id={rowId}
       style={{
         display: "grid",
-        gridTemplateColumns: "minmax(200px, 320px) minmax(0, 1fr)",
+        // The page render is the primary subject — its column is sized so the image FILLS it (width
+        // then binds, no dead strip beside a height-capped image), while still leaving the IR↔chunk
+        // graph more than its min-width so it never has to scroll sideways on a normal viewport.
+        gridTemplateColumns: "minmax(420px, 620px) minmax(0, 1fr)",
         gap: theme.space.l,
-        alignItems: "start",
+        // Multi-page group: stretch the page column to the graph's height so the page renders SPREAD
+        // down beside the blocks they belong to (justify below) instead of pooling the empty space in
+        // one dead block bottom-left. Single page: keep it top-aligned so its lone render can stick.
+        alignItems: pages.length > 1 ? "stretch" : "start",
         borderTop: `1px solid ${theme.color.line}`,
         paddingTop: theme.space.l,
         // Clear the sticky page navigator when scrolled to via a nav chip.
@@ -156,7 +170,13 @@ export function PageGroupRow({ pages, blocks, enrichmentsByBlock, tablesByBlock,
       }}
     >
       {/* LEFT — every page in the row, stacked so a spanning chunk's two pages are seen together. */}
-      <div style={{ position: "sticky", top: theme.space.m, display: "flex", flexDirection: "column", gap: theme.space.m }}>
+      <div
+        style={
+          pages.length > 1
+            ? { display: "flex", flexDirection: "column", justifyContent: "space-between", gap: theme.space.m }
+            : { position: "sticky", top: theme.space.m, display: "flex", flexDirection: "column", gap: theme.space.m }
+        }
+      >
         {pages.map((page) => (
           <div key={page.page_number} style={{ display: "flex", flexDirection: "column", gap: theme.space.xs }}>
             <div style={{ fontSize: theme.font.size.s, fontWeight: theme.font.weight.semibold, color: theme.color.text }}>
