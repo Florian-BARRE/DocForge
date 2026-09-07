@@ -69,20 +69,21 @@ conflicts = [
 ]
 # setuptools is pulled transitively (torch build metadata) and otherwise resolves to 81.0.0 under
 # the torch extras, which carries PYSEC-2026-3447. Floor it at 83 across every resolution branch.
-constraint-dependencies = ["setuptools>=83"]
+constraint-dependencies = ["setuptools>=83", "torch<2.14", "torchvision<0.29"]
 
 [tool.uv.sources]
-# Route torch to the correct wheel index per active extra. pytorch-cpu = ~200 MB CPU-only wheel
-# (no nvidia-* payload); pytorch-cu130 = CUDA 13.0 wheels for a GPU host. cu130 (not cu128/cu129) is
-# the only GPU index that still ships torch 2.14 — matching the cpu wheel — so the two variants stay
-# on the same minor; cu128 froze at 2.11 and cu129 stops at 2.13. Ada/RTX 40xx (sm_89) is supported.
+# Route torch to the correct wheel index per active extra. pytorch-cpu = ~200 MB CPU-only wheel;
+# pytorch-cu126 = CUDA 12.6 wheels — REQUIRED for the Tesla V100 (Volta, sm_70) prod GPU. cu129/cu130
+# ship newer CUDA but DROPPED Volta kernels (the V100 gets "no kernel image for this GPU"), so we pin
+# cu126, which ships sm_70 AND torch 2.13. torch is capped <2.14 (constraint above) so the cpu extra
+# also resolves 2.13 and both variants stay on the same minor. Do NOT bump past cu126 on a V100.
 torch = [
     { index = "pytorch-cpu", extra = "cpu" },
-    { index = "pytorch-cu130", extra = "gpu" },
+    { index = "pytorch-cu126", extra = "gpu" },
 ]
 torchvision = [
     { index = "pytorch-cpu", extra = "cpu" },
-    { index = "pytorch-cu130", extra = "gpu" },
+    { index = "pytorch-cu126", extra = "gpu" },
 ]
 
 [[tool.uv.index]]
@@ -91,8 +92,8 @@ url = "https://download.pytorch.org/whl/cpu"
 explicit = true
 
 [[tool.uv.index]]
-name = "pytorch-cu130"
-url = "https://download.pytorch.org/whl/cu130"
+name = "pytorch-cu126"
+url = "https://download.pytorch.org/whl/cu126"
 explicit = true
 
 [dependency-groups]
