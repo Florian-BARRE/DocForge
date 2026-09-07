@@ -95,5 +95,8 @@ def lifespan() -> Any:
                 CONTEXT.ppstructure.unload()
             if hasattr(CONTEXT, "paddleocr"):
                 CONTEXT.paddleocr.unload()
+            # Lazily built (may never have loaded) — unload() is a safe no-op when it was not.
+            if hasattr(CONTEXT, "paddleocr_vl"):
+                CONTEXT.paddleocr_vl.unload()
 
     return _lifespan

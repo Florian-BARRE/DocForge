@@ -10,7 +10,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 
 # ====== Local Project Imports ======
 from .lifespan import lifespan
-from .routers import health_router, layout_parsing_router, ocr_router
+from .routers import health_router, layout_parsing_router, ocr_router, vl_parsing_router
 
 # Below this response size (bytes), gzip's CPU cost isn't worth the saved bandwidth — small
 # /health responses skip compression entirely. A multi-page /layout-parsing response (reading-
@@ -22,9 +22,9 @@ def create_app() -> FastAPI:
     """
     Create and configure the FastAPI application instance.
 
-    Registers the health, layout-parsing and OCR routers at the root (no versioned prefix — matches
-    the sibling bge_server convention). Response gzip compression is transparent to callers — it
-    does not change any API shape, only the Content-Encoding of large responses.
+    Registers the health, layout-parsing, VL-parsing and OCR routers at the root (no versioned prefix
+    — matches the sibling bge_server convention). Response gzip compression is transparent to callers
+    — it does not change any API shape, only the Content-Encoding of large responses.
 
     Returns:
         FastAPI: Fully configured application ready for uvicorn.
@@ -42,6 +42,7 @@ def create_app() -> FastAPI:
 
     app.include_router(health_router)
     app.include_router(layout_parsing_router)
+    app.include_router(vl_parsing_router)
     app.include_router(ocr_router)
 
     return app

@@ -21,6 +21,7 @@ from loggerplusplus import loggerplusplus
 # ====== Internal Project Imports ======
 from backend import CONTEXT, create_app
 from libs.paddleocr import PaddleOcrService
+from libs.paddleocr_vl import PaddleOcrVlService
 from libs.ppstructure import PpStructureService
 
 _logger = loggerplusplus.bind(identifier="PaddleEntrypoint")
@@ -58,7 +59,20 @@ def _build_app() -> FastAPI:
         lock_wait_timeout_seconds=PaddleServerConfig.PADDLE_LOCK_WAIT_TIMEOUT_SECONDS,
     )
 
-    # 4. Create the FastAPI app (lifespan registered inside create_app)
+    # 4. Instantiate the PaddleOCR-VL 1.6 service (NOT built — it builds LAZILY on the first
+    # /vl-parse request so default PP-Structure deployments never pay its heavy VLM download/load).
+    # Heavy sub-pipelines default OFF; overridable per request. Reuses the shared model cache +
+    # lock-wait timeout (no new env var).
+    CONTEXT.paddleocr_vl = PaddleOcrVlService(
+        use_chart_recognition=False,
+        use_seal_recognition=False,
+        use_ocr_for_image_block=False,
+        model_cache_home=PaddleServerConfig.PADDLE_PDX_CACHE_HOME,
+        model_source=PaddleServerConfig.PADDLE_PDX_MODEL_SOURCE,
+        lock_wait_timeout_seconds=PaddleServerConfig.PADDLE_LOCK_WAIT_TIMEOUT_SECONDS,
+    )
+
+    # 5. Create the FastAPI app (lifespan registered inside create_app)
     fastapi_app = create_app()
     _logger.debug(
         f"Paddle server wired: table={PaddleServerConfig.PADDLE_USE_TABLE_RECOGNITION}, "

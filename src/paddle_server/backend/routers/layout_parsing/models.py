@@ -1,8 +1,10 @@
 # ====== Code Summary ======
-# Pydantic response models for POST /layout-parsing — the sidecar's OWN contract (not PaddleX's
-# `paddlex --serve` basic-serving shape, see the research plan §B.4). Request body is raw PDF
-# bytes (Content-Type: application/pdf), not a pydantic model — sub-pipeline toggles are query
-# parameters instead (see router.py).
+# Pydantic response models for the sidecar's layout-parsing contract (not PaddleX's `paddlex --serve`
+# basic-serving shape, see the research plan §B.4). SHARED by two routes that emit the identical wire
+# shape: POST /layout-parsing (PP-StructureV3) and POST /vl-parse (PaddleOCR-VL-v1.6) — which is the
+# whole point of the shared shape (one DocForge IR mapper serves both). Request body is raw PDF bytes
+# (Content-Type: application/pdf), not a pydantic model — sub-pipeline toggles are query parameters
+# instead (see each router.py).
 
 # ====== Third-Party Library Imports ======
 from pydantic import BaseModel, Field
@@ -18,7 +20,8 @@ class LayoutBlockResponse(BaseModel):
     block with no in-region text — the DocForge FigureRenderNode crops it from the bbox instead).
 
     Attributes:
-        label (str): PP-StructureV3 layout label (e.g. "doc_title", "paragraph_title", "text",
+        label (str): layout label from the sidecar pipeline that produced this response
+            (PP-StructureV3 or PaddleOCR-VL-v1.6) — e.g. "doc_title", "paragraph_title", "text",
             "table", "formula", "image", "chart", "header", "footer", "seal", ...).
         bbox (list[int]): `[x1, y1, x2, y2]` in PIXELS, top-left origin — the same pixel space
             as `image_width`/`image_height` on the parent page.
@@ -29,7 +32,10 @@ class LayoutBlockResponse(BaseModel):
         latex (str | None): Recognized formula LaTeX — set only for `label == "formula"`.
     """
 
-    label: str = Field(..., description="PP-StructureV3 layout label.")
+    label: str = Field(
+        ...,
+        description="Layout label from the sidecar pipeline (PP-StructureV3 or PaddleOCR-VL-v1.6).",
+    )
     bbox: list[int] = Field(..., description="[x1, y1, x2, y2] in pixels, top-left origin.")
     reading_order: int = Field(..., description="0-based position in this page's reading order.")
     text: str | None = Field(
@@ -65,13 +71,17 @@ class EngineInfoResponse(BaseModel):
 
     Attributes:
         paddleocr (str): Installed `paddleocr` package version.
-        pipeline (str): Always "PP-StructureV3".
+        pipeline (str): The sidecar pipeline that produced this response — "PP-StructureV3"
+            (/layout-parsing) or "PaddleOCR-VL-v1.6" (/vl-parse).
         sub_pipelines (dict): PaddleX's own `model_settings` — which optional sub-pipelines
-            actually ran for this request (table/formula/seal/doc-preprocessor/...).
+            actually ran for this request (table/formula/seal/chart/doc-preprocessor/...).
     """
 
     paddleocr: str = Field(..., description="Installed paddleocr package version.")
-    pipeline: str = Field(default="PP-StructureV3", description="Always 'PP-StructureV3'.")
+    pipeline: str = Field(
+        default="PP-StructureV3",
+        description="Sidecar pipeline: 'PP-StructureV3' or 'PaddleOCR-VL-v1.6'.",
+    )
     sub_pipelines: dict = Field(..., description="Which optional sub-pipelines actually ran.")
 
 

@@ -17,7 +17,7 @@ flowchart LR
     end
 
     subgraph S2["Étape 2 — PARSE ✅"]
-        s2["docling (défaut) → granite_docling / pp_structure (escalade)"]
+        s2["docling (défaut) → granite_docling / pp_structure / paddleocr_vl (escalade)"]
     end
 
     subgraph S3["Étape 3 — ENRICH ✅"]
@@ -50,7 +50,7 @@ flowchart LR
 ```
 pipelines/ingest/nodes/
 ├── intake/         admission · format_probe · pdf_probe · content_address · converter/gotenberg
-├── parse/          parser/docling · parser/granite_docling · parser/pp_structure · figure_render
+├── parse/          parser/docling · parser/granite_docling · parser/pp_structure · parser/paddleocr_vl · figure_render
 ├── enrich/         figure_extract · figure_classify · figure_entry · vlm_entry · enrich_apply
 ├── chunk/          base · structure_aware · fixed_size · semantic (à plat — l'étape EST la famille)
 ├── contextualize/  base(helpers·enums) · breadcrumb · doc_meta · sliding · llm(=prep) · llm_apply* · keep_raw*
@@ -163,8 +163,10 @@ flowchart TB
         DOC["<b>docling</b> ✅ (défaut)<br/>─────────────<br/>convert off-thread · cache modèles process-wide<br/>mapper → IR (blocs, tables, figures, bbox,<br/>arbre de titres) · score qualité<br/>⚙️ do_ocr=true · do_table_structure=true"]:::choice
         GRA["<b>granite_docling</b> ✅<br/>─────────────<br/>pipeline VLM Docling IN-WORKER (DocTags, 258M)<br/>réutilise le même DoclingIRMapper + score<br/>⚙️ revision épinglée · force_backend_text=false · max_new_tokens=4096"]:::choice
         PPS["<b>pp_structure</b> ✅<br/>─────────────<br/>PP-StructureV3 en RÉSEAU → sidecar paddle_server<br/>(POST /layout-parsing) · mapper HTML → IR<br/>⚙️ base_url · use_table_recognition=true · timeout_seconds=300"]:::choice
+        VL["<b>paddleocr_vl</b> ✅<br/>─────────────<br/>PaddleOCR-VL 1.6 (VLM) en RÉSEAU → sidecar paddle_server<br/>(POST /vl-parse, build LAZY) · MÊME mapper HTML → IR que pp_structure<br/>⚙️ base_url · use_chart/seal/ocr_for_image_block=false · timeout_seconds=600"]:::choice
         DOC -. "ScoreBelow(seuil) → escalade" .-> GRA
         GRA -. "ScoreBelow → escalade" .-> PPS
+        PPS -. "ScoreBelow → escalade" .-> VL
     end
 
     FR["<b>figure_render</b> (render) ✅<br/>─────────────<br/>rasterise les pages (pypdfium2, off-thread)<br/>EMBARQUE le crop PNG de chaque figure<br/>dans l'IR (Block.figure.crop)<br/>⚙️ scale=2.0 · render_pages=true"]:::node
@@ -183,6 +185,7 @@ flowchart TB
 | **parser / docling** | `do_ocr`=true · `do_table_structure`=true | `source : IntakeResult` ← étape 1 | `ir : DocumentIR` + `score` (part des blocs avec contenu : texte **ou** table ; figures = non → signal scan) |
 | **parser / granite_docling** | `revision` (épinglée) · `force_backend_text`=false · `max_new_tokens`=4096 | `source : IntakeResult` ← étape 1 | `ir : DocumentIR` + `score` (VLM DocTags in-worker — MÊME mapper/score que docling, GPU en pratique) |
 | **parser / pp_structure** | `base_url` (requis) · `api_key` · `use_table_recognition`=true · `use_formula/seal/orientation/unwarping`=false · `timeout_seconds`=300 (+ hérite `TimeoutRetryConfig` : `max_retries`, `retry_backoff_seconds`, `preflight_timeout_seconds`) | `source : IntakeResult` ← étape 1 | `ir : DocumentIR` + `score` (POST /layout-parsing au sidecar `paddle_server` — parser RÉSEAU) |
+| **parser / paddleocr_vl** | `base_url` (requis) · `api_key` · `use_chart_recognition/seal_recognition/ocr_for_image_block`=false · `timeout_seconds`=600 (VLM lent ; + hérite `TimeoutRetryConfig` : `max_retries`, `retry_backoff_seconds`, `preflight_timeout_seconds`) | `source : IntakeResult` ← étape 1 | `ir : DocumentIR` + `score` (POST /vl-parse au sidecar `paddle_server` — parser VLM RÉSEAU, build LAZY sidecar ; MÊME contrat + mapper HTML→IR que pp_structure) |
 | **parse / figure_render** | `scale`=2.0 · `render_pages`=true | `ingest : IntakeResult` ← étape 1 · `ir : DocumentIR` ← parser | `ir : DocumentIR` **complété** (crops embarqués) · `pages : PageRenders` |
 
 **Contrat de la famille** (`BaseParserNode`) : tout parseur consomme `{source: IntakeResult}` et produit `{ir, score}` ; pas de PDF → IR vide + score 0 (dégradation) ; l'escalade se câble dans le graphe par `ScoreBelow(threshold)` — rien à changer au moteur.
@@ -511,8 +514,8 @@ re-ingest efface donc un avertissement périmé). Le compteur est stampé pour *
 - **Configs** : chaque node = une `NodeConfig` (`extra="forbid"` → un typo dans le blob **fait échouer le build**, jamais ignoré). Tout node **RÉSEAU** hérite la surface partagée `TimeoutConfig` (`timeout_seconds`, `preflight_timeout_seconds`) — et `TimeoutRetryConfig` (+ `max_retries`, `retry_backoff_seconds`) pour ceux qui retentent — chaque famille ne re-déclarant que le DÉFAUT dont elle a besoin ; **par collection dans le blob**. Un budget wall-clock de tout le job d'ingest est porté par le champ collection **`job_timeout_seconds`** (nullable ; NULL = défaut worker `WORKER_JOB_TIMEOUT_SECONDS`, migration `b1c7e9a4d2f8`) ; plusieurs cadences worker sont passées en env `RUNTIME_CONFIG` (grâce, timeout Qdrant, heartbeat, health-check, intervalle du reaper, poll SSE app-side).
 - **`UNIQUE_IN_GRAPH`** (le flag de multiplicité, exposé par `describe()` et rejeté par le validateur en
   doublon — `duplicate_unique_node`) : **True** quand une 2e instance du kind est une erreur de câblage —
-  logique d'étape et structurel (les 4 nodes intake · gotenberg · les 3 parseurs docling · granite_docling ·
-  pp_structure — chacun unique par kind, mais empilables en escalade car kinds DIFFÉRENTS · figure_render ·
+  logique d'étape et structurel (les 4 nodes intake · gotenberg · les 4 parseurs docling · granite_docling ·
+  pp_structure · paddleocr_vl — chacun unique par kind, mais empilables en escalade car kinds DIFFÉRENTS · figure_render ·
   figure_extract · enrich_apply · les 3 chunkers · breadcrumb · doc_meta · sliding · deliver/bundle · les 2
   embedders bge_server · openai_compatible). **False** (défaut) quand la répétition est
   légitime : providers en escalade du MÊME kind avec configs différentes (ocr/vlm/llm), terminaux multi-branches
