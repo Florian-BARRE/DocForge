@@ -1076,6 +1076,36 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/jobs/{job_id}/events/{event_id}/payload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Event Payload
+         * @description Return ONE trace node's FULL raw payload for a slot — the on-demand deep-dive of the trace.
+         *
+         *     The trace list (``GET /{job_id}/events``) carries only the cheap shape summaries; this serves the
+         *     full raw payload one slot at a time, and only when the collection opted into the full-capture tier
+         *     (``trace_verbosity='full'``) so the payload was stored. Same READ capability + collection-scope
+         *     gate as the other job routes (resolved off the job's own collection). A row that only carries a
+         *     shape summary — or whose stored payload has aged out — is a typed 404, never a 500; an object over
+         *     the server read cap is returned ``truncated`` (size only, no body).
+         *
+         *     Returns:
+         *         JobEventPayload: The slot's full payload (or a truncated marker) for the addressed trace node.
+         */
+        get: operations["get_event_payload_api_v1_jobs__job_id__events__event_id__payload_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/jobs/{job_id}/stream": {
         parameters: {
             query?: never;
@@ -2514,6 +2544,13 @@ export interface components {
              * @description Free-form labels for grouping/filtering collections in the UI ([] = untagged).
              */
             tags?: string[];
+            /**
+             * Trace Verbosity
+             * @description Execution-trace capture level for this collection's ingest runs: 'shape' (default) keeps only the cheap inline shape summary of each node's input/output; 'full' also stores the raw payload in the object store (clamped by the operator ceiling WORKER_TRACE_MAX_VERBOSITY).
+             * @default shape
+             * @enum {string}
+             */
+            trace_verbosity: CollectionListItemTrace_verbosity;
         };
         /**
          * CollectionListVerdict
@@ -2599,6 +2636,13 @@ export interface components {
              * @description Free-form labels for grouping/filtering collections in the UI ([] = untagged).
              */
             tags?: string[];
+            /**
+             * Trace Verbosity
+             * @description Execution-trace capture level for this collection's ingest runs: 'shape' (default) keeps only the cheap inline shape summary of each node's input/output; 'full' also stores the raw payload in the object store (clamped by the operator ceiling WORKER_TRACE_MAX_VERBOSITY).
+             * @default shape
+             * @enum {string}
+             */
+            trace_verbosity: CollectionModelTrace_verbosity;
         };
         /**
          * CollectionSnippet
@@ -2765,6 +2809,13 @@ export interface components {
              * @description Free-form labels for grouping/filtering ([] / omitted = created untagged).
              */
             tags?: string[] | null;
+            /**
+             * Trace Verbosity
+             * @description Execution-trace capture level: 'shape' (default) keeps only the cheap inline shape summary of each node's input/output; 'full' also stores the raw payload in the object store (opt-in, clamped by the operator ceiling WORKER_TRACE_MAX_VERBOSITY).
+             * @default shape
+             * @enum {string}
+             */
+            trace_verbosity: CreateCollectionRequestTrace_verbosity;
         };
         /**
          * CreatedKey
@@ -4167,10 +4218,32 @@ export interface components {
              */
             detail?: string | null;
             /**
+             * Event Id
+             * @description The stage-event row's UUID — the stable handle the full-payload fetch route addresses (GET /jobs/{job_id}/events/{event_id}/payload).
+             */
+            event_id: string;
+            /**
              * Finished At
              * @description Node end.
              */
             finished_at?: string | null;
+            /**
+             * Has Full Input
+             * @description Whether a FULL raw input payload was stored in the object store (the opt-in full tier) and can be fetched via the payload route. None/false both mean unavailable.
+             */
+            has_full_input?: boolean | null;
+            /**
+             * Has Full Output
+             * @description Whether a FULL raw output payload was stored and can be fetched via the payload route. None/false both mean unavailable.
+             */
+            has_full_output?: boolean | null;
+            /**
+             * Input Summary
+             * @description Bounded SHAPE descriptor of the node's resolved input (type/fields/sizes/hash) — never the raw content. None when trace capture was off, the node had no input, or for legacy rows.
+             */
+            input_summary?: {
+                [key: string]: unknown;
+            } | null;
             /**
              * Item Index
              * @description Zero-based ForEach item index when this node runs inside a fan-out; None outside any fan-out (and for legacy rows).
@@ -4186,6 +4259,13 @@ export interface components {
              * @description Materialized path of this node in the execution tree — root = bare node id, nested = dotted path (e.g. 'enrich.figures[3].vlm'). None for legacy rows (pre-tree).
              */
             node_path?: string | null;
+            /**
+             * Output Summary
+             * @description Bounded SHAPE descriptor of the node's output — never the raw content. None when trace capture was off, the node produced nothing, or for legacy rows.
+             */
+            output_summary?: {
+                [key: string]: unknown;
+            } | null;
             /**
              * Parent Path
              * @description node_path of this node's parent — None for root stages and legacy rows.
@@ -4216,6 +4296,58 @@ export interface components {
              * @description success / failed / skipped.
              */
             status: string;
+        };
+        /**
+         * JobEventPayload
+         * @description One stage-event's FULL raw input or output payload, fetched on demand from the object store.
+         *
+         *     The execution-trace list (``JobEvent``) carries only the cheap, bounded shape summaries; the FULL
+         *     raw payload of a node (stored only when the collection opted into ``trace_verbosity='full'``) is
+         *     served one slot at a time by ``GET /jobs/{job_id}/events/{event_id}/payload?slot=input|output`` so
+         *     a heavy IR is never inlined into the trace response. The stored payload is the node's resolved JSON
+         *     (from the engine's trace capture); ``payload`` is therefore an arbitrary JSON value.
+         */
+        JobEventPayload: {
+            /**
+             * Event Id
+             * @description The stage-event row's UUID the payload was read from.
+             */
+            event_id: string;
+            /**
+             * Job Id
+             * @description The job the traced node belongs to.
+             */
+            job_id: string;
+            /**
+             * Node Path
+             * @description The node's materialized tree path (None for legacy rows without one).
+             */
+            node_path?: string | null;
+            /**
+             * Payload
+             * @description The node's full raw payload (arbitrary JSON), or None when truncated past the read cap.
+             */
+            payload?: unknown;
+            /**
+             * Size Bytes
+             * @description The stored payload object's size in bytes.
+             */
+            size_bytes: number;
+            /**
+             * Slot
+             * @description Which side was fetched: 'input' or 'output'.
+             */
+            slot: string;
+            /**
+             * Stage
+             * @description The node's stage id (its own id segment) — a display label.
+             */
+            stage: string;
+            /**
+             * Truncated
+             * @description True when the stored object exceeds the read cap (or was stored past the capture cap): ``payload`` is then None and only ``size_bytes`` describes it.
+             */
+            truncated: boolean;
         };
         /**
          * JobPage
@@ -6248,6 +6380,11 @@ export interface components {
              * @description Replace the collection's labels wholesale ([] clears them); omitted = leave unchanged.
              */
             tags?: string[] | null;
+            /**
+             * Trace Verbosity
+             * @description New execution-trace capture level ('shape' or 'full'). Omitted = leave the current value unchanged. 'full' is clamped by the operator ceiling WORKER_TRACE_MAX_VERBOSITY.
+             */
+            trace_verbosity?: UpdateCollectionRequestTrace_verbosityAnyOf0 | null;
         };
         /**
          * UploadAccepted
@@ -7941,6 +8078,41 @@ export interface operations {
             };
         };
     };
+    get_event_payload_api_v1_jobs__job_id__events__event_id__payload_get: {
+        parameters: {
+            query: {
+                /** @description Which side of the node to fetch: 'input' (its resolved input) or 'output' (its produced output). */
+                slot: PathsApiV1JobsJob_idEventsEvent_idPayloadGetParametersQuerySlot;
+            };
+            header?: never;
+            path: {
+                event_id: string;
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobEventPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     stream_job_api_v1_jobs__job_id__stream_get: {
         parameters: {
             query?: never;
@@ -8362,6 +8534,10 @@ export enum PathsApiV1JobsGetParametersQueryStatusAnyOf0 {
     failed = "failed",
     cancelled = "cancelled"
 }
+export enum PathsApiV1JobsJob_idEventsEvent_idPayloadGetParametersQuerySlot {
+    input = "input",
+    output = "output"
+}
 export enum AddLoopOp {
     add_loop = "add_loop"
 }
@@ -8382,10 +8558,18 @@ export enum CollectionEstimateRequestScope {
     pending = "pending",
     all = "all"
 }
+export enum CollectionListItemTrace_verbosity {
+    shape = "shape",
+    full = "full"
+}
 export enum CollectionListVerdict {
     empty = "empty",
     operational = "operational",
     cannot_ingest = "cannot_ingest"
+}
+export enum CollectionModelTrace_verbosity {
+    shape = "shape",
+    full = "full"
 }
 export enum CollectionSnippetKind {
     pipeline = "pipeline",
@@ -8395,6 +8579,10 @@ export enum CollectionSnippetKind {
 export enum CreateCollectionRequestPresetAnyOf0 {
     standard = "standard",
     light = "light"
+}
+export enum CreateCollectionRequestTrace_verbosity {
+    shape = "shape",
+    full = "full"
 }
 export enum DisableStageAction {
     disable_stage = "disable_stage"
@@ -8553,6 +8741,10 @@ export enum StageKind {
     toggle = "toggle",
     provider = "provider",
     stack = "stack"
+}
+export enum UpdateCollectionRequestTrace_verbosityAnyOf0 {
+    shape = "shape",
+    full = "full"
 }
 export enum ValidationCode {
     no_single_entry = "no_single_entry",

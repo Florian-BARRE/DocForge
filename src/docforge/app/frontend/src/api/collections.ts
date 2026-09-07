@@ -47,6 +47,12 @@ export interface Collection {
   fields: FieldSpec[];
   /** Per-collection PARTIAL cost-estimate overrides (rates/assumptions); `null` = use the global defaults. */
   estimate_overrides: EstimateOverrides | null;
+  /** Execution-trace capture level for this collection's ingest runs: `shape` (default) keeps only
+   *  the cheap inline shape summary of each node's input/output; `full` also stores the raw payload
+   *  in the object store (clamped by the operator ceiling `WORKER_TRACE_MAX_VERBOSITY`). No UI
+   *  surface sets this yet — mirrored here only to keep the OpenAPI contract-parity guard truthful;
+   *  a settings toggle is a separate, out-of-scope follow-up. */
+  trace_verbosity: "shape" | "full";
 }
 
 /** Stock ingestion pipeline a new collection starts on when no explicit `pipeline` is posted. */

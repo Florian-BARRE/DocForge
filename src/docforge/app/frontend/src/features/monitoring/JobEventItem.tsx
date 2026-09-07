@@ -6,10 +6,17 @@
 // segment is additionally inset per `depth` so the tree shape (group children, ForEach item
 // instances) is legible under its parent stage. `depth`/`node_path` are null on legacy rows
 // (pre-tree) — those render flat at depth 0, same as before.
+//
+// A node that captured any input/output trace data (a shape summary and/or a fetchable full
+// payload) gets an expand toggle — JobEventDetail renders the summary + lazy payload buttons
+// on a full-width line below, via a `flexBasis: 100%` child of this row's own flex-wrap container
+// (no restructuring of the marker/rail positioning needed).
 
+import { useState } from "react";
 import type { JobEvent } from "../../api/jobs";
 import { Chip } from "../../components/Chip";
 import { theme } from "../../theme";
+import { JobEventDetail } from "./JobEventDetail";
 import { JobStatusChip } from "./JobStatusChip";
 import { humanizeStageId } from "./stageLabels";
 
@@ -46,11 +53,17 @@ function usageLabel(event: JobEvent): string | null {
   return `${tokens.toLocaleString()} tok${cost}`;
 }
 
-export function JobEventItem({ event }: { event: JobEvent }) {
+export function JobEventItem({ event, jobId }: { event: JobEvent; jobId: string }) {
+  // Hook first, before any conditional logic below — rules-of-hooks.
+  const [expanded, setExpanded] = useState(false);
   const nodeColor = NODE_COLOR_BY_STATUS[event.status] ?? theme.color.dim;
   // Legacy rows (written before the execution-tree columns landed) carry a null depth — treat
   // that as a root-level (depth 0) row rather than crashing the indent math.
   const depth = event.depth ?? 0;
+  // Nothing to expand into when trace capture never ran for this node (legacy rows, or capture off).
+  const canExpand = Boolean(
+    event.input_summary || event.output_summary || event.has_full_input || event.has_full_output,
+  );
   return (
     <div
       style={{
@@ -103,6 +116,25 @@ export function JobEventItem({ event }: { event: JobEvent }) {
         >
           {event.detail}
         </span>
+      )}
+      {canExpand && (
+        <button
+          type="button"
+          aria-expanded={expanded}
+          aria-label={expanded ? "Collapse node detail" : "Expand node detail"}
+          onClick={() => setExpanded((prev) => !prev)}
+          style={{
+            marginLeft: "auto", background: "none", border: "none", cursor: "pointer",
+            color: theme.color.mute, fontSize: theme.font.size.s, padding: 0, lineHeight: 1,
+          }}
+        >
+          {expanded ? "▾" : "▸"}
+        </button>
+      )}
+      {canExpand && expanded && (
+        <div style={{ flexBasis: "100%", width: "100%" }}>
+          <JobEventDetail jobId={jobId} event={event} />
+        </div>
       )}
     </div>
   );

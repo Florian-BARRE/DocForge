@@ -40,7 +40,7 @@ import type {
 } from "./explorer";
 import type { AssumptionOverrides, Collection, EstimateOverrides, FieldSpec, ModelRateOverride, RateOverrides } from "./collections";
 import type { DocumentGridRow } from "./corpus";
-import type { JobEvent, JobPage, JobStatus, WorkerActivity } from "./jobs";
+import type { JobEvent, JobEventPayload, JobPage, JobStatus, WorkerActivity } from "./jobs";
 import type { BlockLocationModel, SearchHitModel } from "./search";
 
 type Schemas = components["schemas"];
@@ -149,6 +149,16 @@ export type _CollectionParity = Expect<
 // ---------- jobs.ts — JobStatus / JobPage / WorkerActivity + the JobEvent trace row ----------
 
 export type _JobEventParity = Expect<Equal<Normalize<JobEvent>, Normalize<Schemas["JobEvent"]>>>;
+
+// `JobEventPayload.slot` is DELIBERATELY narrower than the backend contract: the Pydantic field is a
+// plain `str` (the route's own `Literal["input", "output"]` query param isn't reflected onto the
+// response model), while the client narrows it to the 2 values the route ever actually returns. Same
+// directional-assertion pattern as `ChunkInfo.role` below — full equality would permanently fail on
+// this one intentional narrowing.
+export type _JobEventPayloadParity = Expect<
+  Equal<Normalize<Omit<JobEventPayload, "slot">>, Normalize<Omit<Schemas["JobEventPayload"], "slot">>>
+>;
+export type _JobEventPayloadSlotStillAString = Expect<AssignableTo<JobEventPayload["slot"], string>>;
 export type _JobStatusParity = Expect<Equal<Normalize<JobStatus>, Normalize<Schemas["JobStatus"]>>>;
 export type _JobPageParity = Expect<Equal<Normalize<JobPage>, Normalize<Schemas["JobPage"]>>>;
 export type _WorkerActivityParity = Expect<Equal<Normalize<WorkerActivity>, Normalize<Schemas["WorkerActivity"]>>>;

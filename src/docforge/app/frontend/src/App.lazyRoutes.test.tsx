@@ -43,6 +43,7 @@ const baseCollection: Collection = {
   search: {},
   fields: [],
   estimate_overrides: null,
+  trace_verbosity: "shape",
 };
 
 function emptyQueryResponse(): DocumentQueryResponse {

@@ -118,7 +118,7 @@ export function JobDetailPage({ jobId, collectionId, onNavigate }: JobDetailPage
             borderRadius: theme.radius.l, boxShadow: theme.shadow.sm, padding: `${theme.space.m}px ${theme.space.l}px`,
           }}
         >
-          {events.map((event, index) => <JobEventItem key={index} event={event} />)}
+          {events.map((event, index) => <JobEventItem key={index} event={event} jobId={jobId} />)}
         </div>
       )}
     </div>

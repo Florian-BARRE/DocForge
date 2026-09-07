@@ -38,6 +38,7 @@ function collectionFixture(id: string, name: string, tags: string[]): Collection
     search: {},
     fields: [],
     estimate_overrides: null,
+    trace_verbosity: "shape",
   };
 }
 

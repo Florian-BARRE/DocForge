@@ -93,6 +93,38 @@ export interface JobEvent {
   /** Zero-based ForEach item index when this node runs inside a fan-out; null outside any
    *  fan-out (and for legacy rows). */
   item_index: number | null;
+  /** The stage-event row's UUID — the stable handle `getEventPayload` addresses. */
+  event_id: string;
+  /** Bounded SHAPE descriptor of the node's resolved input (e.g. `{type, fields, sizes, hash}`) —
+   *  NEVER the raw content. Null when trace capture was off, the node had no input, or legacy rows. */
+  input_summary: Record<string, unknown> | null;
+  /** Bounded SHAPE descriptor of the node's output — never the raw content. Null when trace
+   *  capture was off, the node produced nothing, or for legacy rows. */
+  output_summary: Record<string, unknown> | null;
+  /** Whether a FULL raw input payload was stored (the opt-in full-capture tier) and can be fetched
+   *  via `getEventPayload`. Null/false both mean unavailable. */
+  has_full_input: boolean | null;
+  /** Whether a FULL raw output payload was stored and can be fetched via `getEventPayload`. */
+  has_full_output: boolean | null;
+}
+
+/** Which side of a traced node's payload to fetch. */
+export type JobEventPayloadSlot = "input" | "output";
+
+/** One trace node's FULL raw input or output payload, fetched on demand (never inlined in the trace
+ *  list) — the on-demand deep-dive behind a node's "Load input"/"Load output" button. */
+export interface JobEventPayload {
+  job_id: string;
+  event_id: string;
+  slot: JobEventPayloadSlot;
+  stage: string;
+  node_path: string | null;
+  /** True when the stored object exceeded the server's read cap — `payload` is then null and only
+   *  `size_bytes` describes it. */
+  truncated: boolean;
+  size_bytes: number;
+  /** The node's full raw payload (arbitrary JSON), or null when `truncated`. */
+  payload: unknown;
 }
 
 /** Per-stage average wall-clock (seconds) across the collection's completed jobs — the ETA basis. */
@@ -237,6 +269,21 @@ export function cancelJob(jobId: string, force: boolean): Promise<CancelResult> 
 
 export function getJobTrace(jobId: string): Promise<JobTrace> {
   return apiFetch(`${BASE}/${jobId}/events`);
+}
+
+/**
+ * Fetch one trace node's FULL raw payload for a single slot — the lazy deep-dive behind a node's
+ * "Load input"/"Load output" button (never fetched automatically; a full IR can be heavy).
+ *
+ * Throws `HttpError` 404 when the addressed event only carries a shape summary (no full payload was
+ * captured for that slot, or it aged out) — callers should render a dim "no full payload" state.
+ */
+export function getEventPayload(
+  jobId: string,
+  eventId: string,
+  slot: JobEventPayloadSlot,
+): Promise<JobEventPayload> {
+  return apiFetch(`${BASE}/${jobId}/events/${eventId}/payload?slot=${slot}`);
 }
 
 export function getStageDurations(collectionId: string): Promise<StageDurations> {
