@@ -1,14 +1,15 @@
 // ====== Code Summary ======
 // One trace node's lazy "Load input"/"Load output" affordance for a single slot — fetches the FULL
-// raw payload on click (never automatically; a captured IR can be heavy) and renders it as
-// scrollable pretty JSON. Owns its own loading/error/truncated/no-full-payload states so
-// JobEventDetail stays a thin layout shell around it.
+// raw payload on click (never automatically; a captured IR can be heavy) and delegates its rendering
+// to `TracePayloadView` (clickable blob references, readable text, raw-JSON toggle). Owns its own
+// loading/error/truncated/no-full-payload states so JobEventDetail stays a thin layout shell.
 
 import { useState } from "react";
 import { HttpError } from "../../api/http";
 import { getEventPayload, type JobEventPayload, type JobEventPayloadSlot } from "../../api/jobs";
 import { Button } from "../../components/Button";
 import { theme } from "../../theme";
+import { TracePayloadView } from "./TracePayloadView";
 
 type LoadState = "idle" | "loading" | "error" | "empty";
 
@@ -58,18 +59,7 @@ export function JobEventPayloadButton({ jobId, eventId, slot }: JobEventPayloadB
           payload too large — {payload.size_bytes.toLocaleString()} bytes
         </span>
       )}
-      {payload && !payload.truncated && (
-        <pre
-          style={{
-            margin: 0, maxWidth: "100%", maxHeight: 320, overflowX: "auto", overflowY: "auto",
-            background: theme.color.surface2, border: `1px solid ${theme.color.line}`,
-            borderRadius: theme.radius.s, padding: theme.space.s,
-            fontFamily: theme.font.mono, fontSize: theme.font.size.xs, color: theme.color.text,
-          }}
-        >
-          {JSON.stringify(payload.payload, null, 2)}
-        </pre>
-      )}
+      {payload && !payload.truncated && <TracePayloadView payload={payload.payload} />}
     </div>
   );
 }

@@ -106,7 +106,10 @@ describe("JobEventItem (trace tree)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Load output" }));
     expect(getEventPayloadSpy).toHaveBeenCalledWith(JOB_ID, "event-parse", "output");
 
-    await waitFor(() => expect(screen.getByText(/"blocks": 3/)).toBeInTheDocument());
+    // Rendered via TracePayloadView's formatted (non-raw) mode by default — a `key:` / value pair,
+    // not the old escaped-JSON one-liner.
+    await waitFor(() => expect(screen.getByText("blocks:")).toBeInTheDocument());
+    expect(screen.getByText("3")).toBeInTheDocument();
   });
 
   it("shows a dim 'no full payload' state when the fetch 404s despite has_full_output", async () => {

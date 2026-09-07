@@ -17,6 +17,7 @@ import type { WizardMode } from "./CollectionWizard";
 import { FormatsField } from "./FormatsField";
 import { MaxFileSizeField } from "./MaxFileSizeField";
 import { TagsField } from "./TagsField";
+import { TraceVerbosityField } from "./TraceVerbosityField";
 import { bytesToMb, mbToBytes } from "./wizardTypes";
 
 interface StepIdentityProps {
@@ -80,11 +81,16 @@ export function StepIdentity({
   //    (`MaxFileSizeField`) below instead of the generic schema-driven raw-byte number input.
   //    `supported_formats` is pulled out the same way — it gets the chip-multiselect
   //    (`FormatsField`) below instead of the generic free-text `TagsInput` every other
-  //    string-array property renders through `SchemaField`.
+  //    string-array property renders through `SchemaField`. `trace_verbosity` is pulled out too —
+  //    it was previously only reachable as a bare enum select buried under "Show technical
+  //    details"; it gets a first-class radiogroup (`TraceVerbosityField`) below instead, visible
+  //    without expanding advanced.
+  const traceVerbosityProp = schema.properties?.trace_verbosity;
   const properties = { ...schema.properties };
   if (mode === "edit") delete properties.preset;
   delete properties.max_file_size_bytes;
   delete properties.supported_formats;
+  delete properties.trace_verbosity;
 
   // 1b. Required fields lead, optional fields follow — SchemaForm renders in object key order, so
   //     reordering the object here (relative order preserved within each group) is enough to group
@@ -173,6 +179,13 @@ export function StepIdentity({
             <FormatsField values={formats} onChange={onFormatsChange} />
             <TagsField values={tags} onChange={onTagsChange} />
             <MaxFileSizeField valueMb={maxSizeMb} onChange={onMaxSizeMbChange} advanced={advanced} />
+            {traceVerbosityProp && (
+              <TraceVerbosityField
+                value={typeof extra.trace_verbosity === "string" ? extra.trace_verbosity : undefined}
+                prop={traceVerbosityProp}
+                onChange={(next) => onExtraChange({ ...extra, trace_verbosity: next })}
+              />
+            )}
           </>
         )}
         </div>

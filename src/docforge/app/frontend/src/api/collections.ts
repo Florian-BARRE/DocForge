@@ -49,9 +49,9 @@ export interface Collection {
   estimate_overrides: EstimateOverrides | null;
   /** Execution-trace capture level for this collection's ingest runs: `shape` (default) keeps only
    *  the cheap inline shape summary of each node's input/output; `full` also stores the raw payload
-   *  in the object store (clamped by the operator ceiling `WORKER_TRACE_MAX_VERBOSITY`). No UI
-   *  surface sets this yet — mirrored here only to keep the OpenAPI contract-parity guard truthful;
-   *  a settings toggle is a separate, out-of-scope follow-up. */
+   *  in the object store (clamped by the operator ceiling `WORKER_TRACE_MAX_VERBOSITY`). Set via the
+   *  wizard's first-class `TraceVerbosityField` (StepIdentity) — plumbed through the contract's
+   *  `extraContract` overflow bag, same as every other schema-driven field with no named slot. */
   trace_verbosity: "shape" | "full";
 }
 

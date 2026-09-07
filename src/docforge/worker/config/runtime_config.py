@@ -198,11 +198,14 @@ class RUNTIME_CONFIG(EnvConfigLoader):
 
     # ───── Execution-trace capture ─────
     # The operator CEILING on execution-trace verbosity: a per-collection ``trace_verbosity`` is
-    # honoured only up to this bound (the worker clamps ``min(collection, ceiling)``). "shape"
-    # (default) captures only the cheap inline shape summary of each node's input/output — no raw
-    # content at rest, and forbids "full" fleet-wide regardless of a collection's own setting. Set to
-    # "full" to allow a collection to opt into storing raw payloads in the object store.
-    WORKER_TRACE_MAX_VERBOSITY = env("WORKER_TRACE_MAX_VERBOSITY", default="shape")
+    # honoured only up to this bound (the worker clamps ``min(collection, ceiling)``). Default "full"
+    # is PERMISSIVE — it lets the per-collection ``trace_verbosity`` be authoritative (that column
+    # itself defaults to "shape", so a collection still captures only cheap summaries until it opts
+    # into "full"; nothing raw is at rest without that opt-in). This ceiling exists as a fleet-wide
+    # kill-switch: set it to "shape" to FORBID full-payload capture everywhere regardless of any
+    # collection's own setting (privacy/cost governance). A shape default here silently no-ops every
+    # collection's "full" opt-in, which is why it defaults permissive.
+    WORKER_TRACE_MAX_VERBOSITY = env("WORKER_TRACE_MAX_VERBOSITY", default="full")
     # Per-payload byte cap for the FULL trace tier: a node input/output whose serialised payload
     # exceeds this is stored truncated behind a marker (its shape summary is unaffected). Bounds the
     # object-store cost of a run that opted into full capture. Only consulted at the "full" level.
