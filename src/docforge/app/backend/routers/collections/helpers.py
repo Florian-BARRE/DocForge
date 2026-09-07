@@ -68,6 +68,7 @@ class CollectionHelpers:
             tags=list(collection.tags),
             max_file_size_bytes=collection.max_file_size_bytes,
             job_timeout_seconds=collection.job_timeout_seconds,
+            trace_verbosity=getattr(collection, "trace_verbosity", None) or "shape",
             needs_reindex=collection.needs_reindex,
             created_at=collection.created_at,
             pipeline=redact_blob_secrets(cls.public_pipeline(collection.pipeline)),

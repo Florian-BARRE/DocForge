@@ -1,12 +1,12 @@
 """The engine lifts a scored node's quality score onto its execution record — like ``_usage``,
-independently of ``trace_payloads`` — and leaves it None for a non-scored node."""
+independently of the trace level — and leaves it None for a non-scored node."""
 
 import asyncio
 
 import pytest
 
 from shared_libs.pipelines.base import Group
-from shared_libs.pipelines.engine import FlowEngine
+from shared_libs.pipelines.engine import FlowEngine, TraceLevel
 
 from .conftest import Cfg, Producer, Scorer
 
@@ -25,12 +25,13 @@ def test_non_scored_node_record_score_is_none(engine) -> None:
     assert record.children[0].score is None
 
 
-def test_score_survives_trace_payloads_false() -> None:
-    """The score is lifted off the output even when payloads are stripped (the runner's mode)."""
-    engine = FlowEngine(trace_payloads=False)
+def test_score_survives_trace_off() -> None:
+    """The score is lifted off the output even when nothing is captured (the search runner's mode)."""
+    engine = FlowEngine(trace_level=TraceLevel.OFF)
     group = Group(id="g", children=[Scorer(id="sc", config=Cfg(), score=0.42)])
     _, record = asyncio.run(engine.execute(group, {}))
     leaf = record.children[0]
-    # Payloads are stripped (a trace, not a store) yet the score still rides on the record.
+    # Nothing captured (a trace, not a store) yet the score still rides on the record.
     assert leaf.output is None
+    assert leaf.output_summary is None
     assert leaf.score == pytest.approx(0.42)

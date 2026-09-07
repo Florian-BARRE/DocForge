@@ -60,6 +60,8 @@ def _fake_context(database: SimpleNamespace) -> SimpleNamespace:
             WORKER_JOB_TIMEOUT_MAX_SECONDS=7200.0,
             WORKER_CACHE_ENABLED=True,
             PROVIDER_EGRESS_ALLOWLIST="",
+            WORKER_TRACE_MAX_VERBOSITY="shape",
+            WORKER_TRACE_PAYLOAD_MAX_BYTES=1048576,
         ),
         logger=MagicMock(),
     )
@@ -88,6 +90,7 @@ def _wire(jobs_core, monkeypatch, database: SimpleNamespace, points, job_timeout
         supported_formats=["pdf"],
         max_file_size_bytes=100,
         job_timeout_seconds=job_timeout_seconds,
+        trace_verbosity="shape",
         pipeline={"nodes": []},
         estimate_overrides=None,
     )
@@ -203,6 +206,104 @@ async def test_upstream_run_failure_stays_failed_never_a_warning(jobs_core, monk
     database.ingestion.save.assert_not_awaited()
 
 
+async def test_run_failure_persists_the_partial_execution_tree_then_marks_failed(
+    jobs_core, monkeypatch
+) -> None:
+    """A run that fails AT a node carries its PARTIAL execution tree out on the PipelineRunError; the
+    worker persists that tree (the failed node's row present with status=error, plus its group
+    ancestor) BEFORE marking both truths FAILED — so a FAILED job's trace shows the same nested tree a
+    success gets, not just the live root rows. Mirrors the success path's persist_execution_tree call."""
+    import pytest  # noqa: PLC0415
+    from runner import PipelineRunError  # noqa: PLC0415
+
+    from shared_libs.pipelines.base import (  # noqa: PLC0415
+        ErrorInfo,
+        NodeExecutionRecord,
+        NodeStatus,
+    )
+
+    database = _fake_database()
+    document_id, context = _wire(jobs_core, monkeypatch, database, points=[MagicMock()])
+
+    # The engine returns this full partial tree to the runner (root group wrapping the failed leaf);
+    # the runner carries it out on the PipelineRunError instead of discarding it.
+    failed_leaf = NodeExecutionRecord(
+        node_id="parse",
+        kind="parser",
+        status=NodeStatus.FAILED,
+        duration_ms=1.0,
+        error=ErrorInfo(error_type="RuntimeError", message="stage exploded"),
+    )
+    partial = NodeExecutionRecord(
+        node_id="pipeline",
+        kind="group",
+        status=NodeStatus.FAILED,
+        duration_ms=2.0,
+        children=[failed_leaf],
+    )
+    context.runner.run = AsyncMock(
+        side_effect=PipelineRunError("pipeline run failed: stage exploded", record=partial)
+    )
+
+    job_id = uuid.uuid4()
+    with pytest.raises(PipelineRunError, match="stage exploded"):
+        await jobs_core.ingest_document({}, str(document_id), str(job_id))
+
+    database.jobs.persist_execution_tree.assert_awaited_once_with(job_id, partial)
+    database.ingestion.mark_failed.assert_awaited_once_with(document_id)
+    database.jobs.mark_failed.assert_awaited_once()
+    database.jobs.mark_done.assert_not_awaited()
+
+
+async def test_run_failure_persist_error_never_masks_the_real_job_failure(
+    jobs_core, monkeypatch
+) -> None:
+    """The partial-tree persist is best-effort: a persist hiccup is logged and swallowed, and the
+    ORIGINAL run failure still re-raises (so arq accounts the attempt) with both truths marked FAILED."""
+    import pytest  # noqa: PLC0415
+    from runner import PipelineRunError  # noqa: PLC0415
+
+    from shared_libs.pipelines.base import NodeExecutionRecord, NodeStatus  # noqa: PLC0415
+
+    database = _fake_database()
+    database.jobs.persist_execution_tree = AsyncMock(side_effect=RuntimeError("persist boom"))
+    document_id, context = _wire(jobs_core, monkeypatch, database, points=[MagicMock()])
+
+    partial = NodeExecutionRecord(
+        node_id="pipeline", kind="group", status=NodeStatus.FAILED, duration_ms=1.0
+    )
+    context.runner.run = AsyncMock(
+        side_effect=PipelineRunError("pipeline run failed: boom", record=partial)
+    )
+
+    with pytest.raises(PipelineRunError, match="boom"):
+        await jobs_core.ingest_document({}, str(document_id), str(uuid.uuid4()))
+
+    database.jobs.persist_execution_tree.assert_awaited_once()
+    database.jobs.mark_failed.assert_awaited_once()
+    database.ingestion.mark_failed.assert_awaited_once_with(document_id)
+
+
+async def test_run_failure_without_a_partial_record_skips_the_tree_persist(
+    jobs_core, monkeypatch
+) -> None:
+    """Legacy / None-safe: a failure carrying NO partial record (a pre-run error like an invalid
+    graph/preflight, or a non-runner exception) skips the tree persist cleanly — the live root rows
+    stand exactly as today, and both truths are still marked FAILED."""
+    import pytest  # noqa: PLC0415
+
+    database = _fake_database()
+    document_id, context = _wire(jobs_core, monkeypatch, database, points=[MagicMock()])
+    context.runner.run = AsyncMock(side_effect=RuntimeError("early boom"))
+
+    with pytest.raises(RuntimeError, match="early boom"):
+        await jobs_core.ingest_document({}, str(document_id), str(uuid.uuid4()))
+
+    database.jobs.persist_execution_tree.assert_not_awaited()
+    database.jobs.mark_failed.assert_awaited_once()
+    database.ingestion.mark_failed.assert_awaited_once_with(document_id)
+
+
 async def test_claim_transitions_the_document_to_processing(jobs_core, monkeypatch) -> None:
     """The worker flips the DOCUMENT PENDING → PROCESSING as it claims the job, so it no longer
     reads 'pending' for the whole run — mark_running only moves the JOB row."""
@@ -280,6 +381,31 @@ def test_resolve_run_budget_prefers_collection_then_default_then_rejects_over_ce
     assert resolve(7200.0, 30.0, 7200.0) == 7200.0  # exactly the ceiling is allowed
     with pytest.raises(ValueError, match="WORKER_JOB_TIMEOUT_MAX_SECONDS"):
         resolve(7200.1, 30.0, 7200.0)
+
+
+def test_resolve_trace_level_clamps_the_collection_request_to_the_operator_ceiling(
+    jobs_core,
+) -> None:
+    """Effective level = min(collection request, operator ceiling) in the off < shape < full
+    ordering — a full request under a shape ceiling is clamped down, never let through."""
+    from shared_libs.pipelines.engine import TraceLevel  # noqa: PLC0415
+
+    resolve = jobs_core._resolve_trace_level
+    assert resolve("full", "shape") == TraceLevel.SHAPE  # collection wants full, ceiling forbids
+    assert resolve("shape", "full") == TraceLevel.SHAPE  # collection asks for less than the ceiling
+    assert resolve("full", "full") == TraceLevel.FULL  # both agree on full
+    assert resolve("off", "full") == TraceLevel.OFF  # collection explicitly wants nothing
+
+
+def test_resolve_trace_level_defaults_unrecognised_values_to_shape(jobs_core) -> None:
+    """An unset/garbage collection verbosity or ceiling degrades to SHAPE (never a crash, never
+    silently unlocking FULL)."""
+    from shared_libs.pipelines.engine import TraceLevel  # noqa: PLC0415
+
+    resolve = jobs_core._resolve_trace_level
+    assert resolve(None, "full") == TraceLevel.SHAPE
+    assert resolve("bogus", "full") == TraceLevel.SHAPE
+    assert resolve("full", "bogus") == TraceLevel.SHAPE
 
 
 async def test_dequeue_skip_guard_bails_on_a_cancelled_job(jobs_core, monkeypatch) -> None:

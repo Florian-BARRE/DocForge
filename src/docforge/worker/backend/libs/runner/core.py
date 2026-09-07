@@ -14,7 +14,7 @@ from shared_libs.pipelines.base import (
     NodeExecutionRecord,
 )
 from shared_libs.pipelines.build import GroupNodeBlob, PipelineBuilder
-from shared_libs.pipelines.engine import CacheHook, FlowEngine, ProgressCallback
+from shared_libs.pipelines.engine import CacheHook, FlowEngine, ProgressCallback, TraceLevel
 from shared_libs.pipelines.reachability import (
     ProbeStatus,
     ProviderEgressPolicy,
@@ -41,15 +41,26 @@ class PipelineRunError(Exception):
     persists WHERE it died (node / kind / item / error type) alongside the free-text message.
     """
 
-    def __init__(self, message: str, breadcrumb: FailureBreadcrumb | None = None) -> None:
+    def __init__(
+        self,
+        message: str,
+        breadcrumb: FailureBreadcrumb | None = None,
+        record: NodeExecutionRecord | None = None,
+    ) -> None:
         """
         Args:
             message (str): The human-readable failure reason.
             breadcrumb (FailureBreadcrumb | None): The structured failing-node breadcrumb, when the
                 failure was located to a node (None for pre-run errors like an invalid graph).
+            record (NodeExecutionRecord | None): The PARTIAL execution tree the engine already built
+                up to (and including) the failing node — carried out on the exception so the worker
+                can persist the SAME nested trace a successful run gets (the failed node's record
+                carries its ``status=error`` + error). None for a pre-run failure (invalid graph /
+                preflight) where no node ran and there is no tree to persist.
         """
         super().__init__(message)
         self.breadcrumb = breadcrumb
+        self.record = record
 
 
 class PipelineRunner(LoggerClass):
@@ -64,7 +75,6 @@ class PipelineRunner(LoggerClass):
         LoggerClass.__init__(self)
         self._builder = PipelineBuilder()
         self._validator = GraphValidator()
-        self._engine = FlowEngine(trace_payloads=False)
         self._sweep = ReachabilitySweep()
 
     async def __preflight(self, group: Group, egress_policy: ProviderEgressPolicy | None) -> None:
@@ -110,6 +120,7 @@ class PipelineRunner(LoggerClass):
         preflight_enabled: bool = True,
         cache_hook: CacheHook | None = None,
         egress_policy: ProviderEgressPolicy | None = None,
+        trace_level: TraceLevel = TraceLevel.SHAPE,
     ) -> tuple[RunBundle, NodeExecutionRecord]:
         """
         Execute one ingestion run end to end.
@@ -130,6 +141,9 @@ class PipelineRunner(LoggerClass):
                 during preflight. When set (a non-empty allowlist) a node whose base_url host is not
                 allowed is refused BEFORE the first spend; None / empty allowlist → probe every
                 provider leaf as before (guard OFF).
+            trace_level (TraceLevel): How much of each node's input/output the engine captures onto
+                the execution record — the worker's already-clamped effective level (``shape`` by
+                default: cheap inline shape summaries; ``full`` adds the object-store payload).
 
         Returns:
             tuple[RunBundle, NodeExecutionRecord]: The delivery and the full execution trace.
@@ -155,9 +169,12 @@ class PipelineRunner(LoggerClass):
         # 3. A FRESH run input per job — the run MUTATES what it carries (the ir, by design).
         run_input = {"source": source, "contract": contract}
 
-        # 4. Execute under the wall-clock cap.
+        # 4. Execute under the wall-clock cap. A FRESH engine per run carries this run's effective
+        #    trace level (per-collection, clamped by the operator ceiling) — the engine is stateless
+        #    beyond that level, so building one here (not at __init__) is free.
         self.logger.info(f"Running ingestion pipeline '{group.id}' for '{source.filename}'")
-        output, record = await self._engine.execute(
+        engine = FlowEngine(trace_level=trace_level)
+        output, record = await engine.execute(
             group,
             run_input,
             timeout_seconds=timeout_seconds,
@@ -174,14 +191,20 @@ class PipelineRunner(LoggerClass):
                 if breadcrumb is not None
                 else (record.error.message if record.error else "see the execution record")
             )
-            raise PipelineRunError(f"pipeline run failed: {reason}", breadcrumb=breadcrumb)
+            # Carry the PARTIAL record out on the exception (the engine returned the full tree it
+            # built up to the failing node): the worker persists it so a FAILED job's trace shows
+            # the same nested tree a success gets, not just the live root rows.
+            raise PipelineRunError(
+                f"pipeline run failed: {reason}", breadcrumb=breadcrumb, record=record
+            )
 
         # 5. The OUTPUT CONTRACT: the final node must deliver the RunBundle.
         bundle = getattr(output, "bundle", None)
         if not isinstance(bundle, RunBundle):
             raise PipelineRunError(
                 f"the pipeline's final node produced '{type(output).__name__}' — an ingestion "
-                f"pipeline must end on a deliver/bundle node producing a RunBundle"
+                f"pipeline must end on a deliver/bundle node producing a RunBundle",
+                record=record,
             )
 
         # 6. ZERO-CHUNK DELIVERY is NOT a failure — it is a SUCCESS-with-warning the worker branches on.

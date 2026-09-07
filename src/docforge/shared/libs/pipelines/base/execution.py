@@ -104,15 +104,23 @@ class NodeExecutionRecord(BaseModel):
         kind (str): The node's KIND, to resolve its labels/schema from the registry.
         status (NodeStatus): Outcome of the execution.
         duration_ms (float): Wall-clock execution time in milliseconds.
-        resolved_input (dict | None): The input the node consumed, serialised.
-        output (dict | None): The output the node produced, serialised.
+        resolved_input (dict | None): The FULL stripped input the node consumed (heavy bytes/vectors
+            replaced by size placeholders). Populated ONLY at the ``full`` trace level; None at
+            ``shape``/``off`` — at ``shape`` the cheap ``input_summary`` carries the trace instead.
+        output (dict | None): The FULL stripped output the node produced. Same tiering as
+            ``resolved_input``: full tier only, else None (``output_summary`` covers the shape tier).
+        input_summary (dict | None): The cheap SHAPE descriptor of the resolved input (type, top-level
+            fields, list lengths, byte/char sizes, a shape fingerprint). Captured at ``shape`` AND
+            ``full``; None at ``off``. Always inline on the row — no raw content at rest.
+        output_summary (dict | None): The SHAPE descriptor of the produced output; same tiering as
+            ``input_summary``.
         error (ErrorInfo | None): Error details when the node failed.
         usage (NodeUsage | None): Billed accounting (tokens or pages) for a paid leaf; None for
             every other node (groups, foreach wrappers, and free/local leaves).
         score (float | None): Quality score of a ``scored``-family node (its ``ScoredOutput.score``,
             a [0, 1] self-assessment a ScoreBelow edge compares to its threshold). Lifted from the
-            produced output exactly like ``usage``, so it survives ``trace_payloads=False``. None for
-            every non-scored node (groups, foreach wrappers, and plain-output leaves).
+            produced output exactly like ``usage``, so it survives ``TraceLevel.OFF`` (no captured
+            payload). None for every non-scored node (groups, foreach wrappers, plain-output leaves).
         children (list[NodeExecutionRecord]): Child records when the node is a group.
     """
 
@@ -122,6 +130,8 @@ class NodeExecutionRecord(BaseModel):
     duration_ms: float
     resolved_input: dict[str, Any] | None = None
     output: dict[str, Any] | None = None
+    input_summary: dict[str, Any] | None = None
+    output_summary: dict[str, Any] | None = None
     error: ErrorInfo | None = None
     usage: NodeUsage | None = None
     score: float | None = None

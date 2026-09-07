@@ -9,8 +9,10 @@ from datetime import datetime
 
 # ====== Third-Party Library Imports ======
 from decimal import Decimal
+from typing import Any
 
-from sqlalchemy import DateTime, Float, ForeignKey, Integer, Numeric, String, Text, Uuid
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, Numeric, String, Text, Uuid
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 # ====== Local Project Imports ======
@@ -82,6 +84,56 @@ class JobStageEvent(Base, UUIDPrimaryKey, CreatedAtMixin):
     Stored as double precision (SQLAlchemy ``Float``): a ``[0, 1]`` quality score needs no exact-decimal
     representation, unlike the monetary ``cost_usd`` (``Numeric``); this matches the FLOAT resource
     samples elsewhere in the observability domain.
+    """
+
+    # ── Trace-payload columns (Phase 2) ───────────────────────────────────────────────────────────
+    # Per-node input/output trace. The INLINE summaries are a cheap, bounded SHAPE descriptor of the
+    # node's resolved input/output (never the raw content, only a content hash) captured by default
+    # when trace capture is on. The REFs point at the FULL raw payload stored in the object store by
+    # content hash — an opt-in per-collection tier — the DB keeping only the reference, not the bytes.
+    # All are nullable with NO server_default: legacy rows and trace-off rows read NULL / false-ish.
+    input_summary: Mapped[Any | None] = mapped_column(JSONB, nullable=True)
+    """Bounded shape descriptor of the node's resolved input.
+
+    A small JSONB summary of the input's SHAPE (e.g. ``{type, fields, sizes, item_count, hash}``) — the
+    content hash, never the content itself. NULL when trace capture was off for the run or the node had
+    no input (and for legacy rows written before this column existed).
+    """
+
+    output_summary: Mapped[Any | None] = mapped_column(JSONB, nullable=True)
+    """Bounded shape descriptor of the node's output.
+
+    Same JSONB shape summary as ``input_summary`` but for the node's produced output; content hash only,
+    never the content. NULL when trace capture was off, the node produced nothing, or for legacy rows.
+    """
+
+    input_ref: Mapped[str | None] = mapped_column(Text, nullable=True)
+    """Object-store reference (content-hash key) to the FULL raw input payload.
+
+    Set only when the collection opted into the full-capture tier and the raw input was stored in the
+    object store; this is a REFERENCE (content-hash key), not the payload itself, and is garbage-collected
+    together with the job. NULL when full capture was off or for legacy rows.
+    """
+
+    output_ref: Mapped[str | None] = mapped_column(Text, nullable=True)
+    """Object-store reference (content-hash key) to the FULL raw output payload.
+
+    Same as ``input_ref`` but for the node's raw output payload; a reference GC'd with the job, never the
+    content. NULL when full capture was off or for legacy rows.
+    """
+
+    has_full_input: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    """Whether a full raw input payload was stored in the object store.
+
+    Drives the UI "load payload" affordance for the input side. NULL (legacy rows) and ``False`` both mean
+    no full payload is available; ``True`` means ``input_ref`` resolves to a stored payload.
+    """
+
+    has_full_output: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    """Whether a full raw output payload was stored in the object store.
+
+    Same as ``has_full_input`` but for the output side; drives the UI "load payload" affordance and pairs
+    with ``output_ref``. NULL/legacy and ``False`` both mean no full payload is available.
     """
 
 

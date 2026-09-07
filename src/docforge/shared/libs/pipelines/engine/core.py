@@ -37,7 +37,7 @@ from .errors import EngineInvariantError
 from .navigation import GraphNavigator
 from .progress import ProgressCallback, ProgressEvent, ProgressPhase
 from .resolver import InputResolver, ResolutionError
-from .trace import RecordTrace
+from .trace import RecordTrace, TraceLevel
 
 
 class FlowEngine(LoggerClass):
@@ -50,20 +50,43 @@ class FlowEngine(LoggerClass):
 
     Deliberately keeps the execution loop whole (one tightly-coupled unit: running + recording +
     progress). Its stateless concerns are delegated to helpers — graph navigation to GraphNavigator,
-    trace payload-stripping to RecordTrace — while the loop itself is not fragmented across modules.
+    trace payload capture to RecordTrace — while the loop itself is not fragmented across modules.
     """
 
-    def __init__(self, trace_payloads: bool = True) -> None:
+    def __init__(self, trace_level: TraceLevel = TraceLevel.FULL) -> None:
         """
         Args:
-            trace_payloads (bool): When True (default), each node's resolved input + output is
-                serialised (payload-stripped) into its execution record — a debugging aid. The
-                ingestion/search runners DISCARD the record, so they pass False to skip ~2 full-IR
-                ``model_dump`` + strip traversals at *every* node hop (the IR flows through ~10
-                IR-carrying hops per document). Set True only when a caller actually reads the trace.
+            trace_level (TraceLevel): How much of each node's input/output is captured onto its
+                execution record. ``off`` captures nothing (the search runner's mode — the record is
+                discarded, so no per-hop trace work is spent). ``shape`` attaches only the cheap
+                SHALLOW shape descriptor (the ingest default — no deep ``model_dump`` at every
+                IR-carrying hop, no raw content at rest). ``full`` attaches that summary AND the full
+                payload-stripped dump (the worker persists the latter to the object store). Defaults
+                to ``full`` so a direct caller that reads the record gets everything.
         """
         LoggerClass.__init__(self)
-        self._trace_payloads = trace_payloads
+        self._trace_level = trace_level
+
+    def __trace(self, payload: Any) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+        """
+        Capture one payload side for a record at the engine's trace level: ``(full_dump, summary)``.
+
+        ``off`` → ``(None, None)``; ``shape`` → only the cheap summary; ``full`` → both the summary
+        and the full payload-stripped dump. A None payload (a node that produced nothing) yields
+        ``(None, None)`` regardless of level.
+
+        Args:
+            payload (Any): The node's resolved input or produced output (a model / list / scalar).
+
+        Returns:
+            tuple[dict | None, dict | None]: The full stripped dump (full tier only) and the shape
+                summary (shape + full tiers).
+        """
+        if payload is None:
+            return None, None
+        summary = RecordTrace.summarize(payload) if self._trace_level.captures_summary else None
+        full = RecordTrace.dump(payload) if self._trace_level.captures_full else None
+        return full, summary
 
     async def __run_action(
         self,
@@ -116,13 +139,17 @@ class FlowEngine(LoggerClass):
                 # Lift the score off the cached output too (mirror of the fresh-run lift below): the
                 # cached artefact carries the same ``score`` a ScoreBelow edge reads, so the record
                 # must report it identically whether the stage ran or was served from cache.
+                cached_in_full, cached_in_summary = self.__trace(node_input)
+                cached_out_full, cached_out_summary = self.__trace(cached)
                 return cached, NodeExecutionRecord(
                     node_id=node.id,
                     kind=node.KIND,
                     status=NodeStatus.SUCCESS,
                     duration_ms=(perf_counter() - started) * 1000,
-                    resolved_input=RecordTrace.dump(node_input) if self._trace_payloads else None,
-                    output=RecordTrace.dump(cached) if self._trace_payloads else None,
+                    resolved_input=cached_in_full,
+                    output=cached_out_full,
+                    input_summary=cached_in_summary,
+                    output_summary=cached_out_summary,
                     score=getattr(cached, "score", None),
                 )
 
@@ -145,17 +172,17 @@ class FlowEngine(LoggerClass):
         #    is race-free under a ForEach that runs one node instance concurrently over items, and needs
         #    no reset between runs. ``getattr`` keeps each read defensive (a capture miss must never
         #    fail a node); a non-scored output simply has no ``score``, yielding None.
+        input_full, input_summary = self.__trace(node_input)
+        output_full, output_summary = self.__trace(node_output)
         record = NodeExecutionRecord(
             node_id=node.id,
             kind=node.KIND,
             status=status,
             duration_ms=(perf_counter() - started) * 1000,
-            resolved_input=RecordTrace.dump(node_input) if self._trace_payloads else None,
-            output=(
-                RecordTrace.dump(node_output)
-                if (self._trace_payloads and node_output is not None)
-                else None
-            ),
+            resolved_input=input_full,
+            output=output_full,
+            input_summary=input_summary,
+            output_summary=output_summary,
             error=error,
             usage=getattr(node_output, "_usage", None) if node_output is not None else None,
             score=getattr(node_output, "score", None) if node_output is not None else None,
@@ -473,17 +500,16 @@ class FlowEngine(LoggerClass):
 
             node = next_node
 
-        # 4. Emit the group's own record wrapping its children (byte payloads stripped).
+        # 4. Emit the group's own record wrapping its children (heavy payloads stripped at the full
+        #    tier, the cheap shape summary at the shape tier).
+        group_full, group_summary = self.__trace(group_output)
         record = NodeExecutionRecord(
             node_id=group.id,
             kind=group.KIND,
             status=group_status,
             duration_ms=(perf_counter() - started) * 1000,
-            output=(
-                RecordTrace.dump(group_output)
-                if (self._trace_payloads and group_output is not None)
-                else None
-            ),
+            output=group_full,
+            output_summary=group_summary,
             children=child_records,
         )
         return group_output, record

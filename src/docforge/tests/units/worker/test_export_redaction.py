@@ -105,6 +105,7 @@ def _collection() -> SimpleNamespace:
         tags=[],
         max_file_size_bytes=1_000_000,
         job_timeout_seconds=None,
+        trace_verbosity="shape",
         needs_reindex=False,
         pipeline=_leaky_pipeline(),
         search=_leaky_search(),

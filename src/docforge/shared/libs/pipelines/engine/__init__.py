@@ -1,6 +1,9 @@
 # ---------------------- Engine ---------------------- #
 from .core import FlowEngine
 
+# ---------------------- Trace capture ---------------------- #
+from .trace import RecordTrace, TraceLevel
+
 # ---------------------- Run context ---------------------- #
 from .context import RunContext
 
@@ -19,6 +22,8 @@ from .progress import ProgressCallback, ProgressEvent, ProgressPhase
 # ------------------- Public API ------------------- #
 __all__ = [
     "FlowEngine",
+    "RecordTrace",
+    "TraceLevel",
     "RunContext",
     "CacheHook",
     "ENGINE_CACHE_EPOCH",

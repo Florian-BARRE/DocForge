@@ -95,6 +95,9 @@ class CollectionContractModel(BaseModel):
     tags: list[str] = Field(default_factory=list)
     max_file_size_bytes: int
     job_timeout_seconds: float | None = None
+    # Defaulted so a bundle exported before trace verbosity existed imports cleanly (legacy bundle →
+    # "shape", today's behaviour), never a KeyError — the transfer coupling-map's tolerance requirement.
+    trace_verbosity: str = "shape"
     needs_reindex: bool = False
     pipeline: dict = Field(default_factory=dict)
     search: dict = Field(default_factory=dict)

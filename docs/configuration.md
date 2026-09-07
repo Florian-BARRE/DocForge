@@ -143,6 +143,9 @@ at their `localhost` values here (they're used when running the app straight fro
 | `WORKER_HEAVY_THREADS` | `4` | Bounded thread pool for the heavy CPU stages (docling/ocr/render/chunk) dispatched via `asyncio.to_thread`. |
 | `WORKER_PREFLIGHT_ENABLED` | `true` | Provider-reachability preflight (fail-fast before spend). Safe on by default: the stock pipeline ships its provider-hosted stages (enrich/metagen) OFF, so only real in-stack nodes are probed; a stage you opt in is preflighted before its first spend. Set `false` to skip reachability checks. |
 | `WORKER_NAME` | *(empty → hostname)* | Friendly display name for this worker in the fleet view (`GET /jobs/workers/live`). Set per replica (e.g. `gpu-box-1`) when running several. |
+| `WORKER_TRACE_MAX_VERBOSITY` | `shape` | Operator ceiling on execution-trace capture: a per-collection `trace_verbosity` is clamped to `min(collection, ceiling)`. `shape` (default) captures only the cheap inline shape summary of each node's input/output (no raw content at rest) and forbids `full` fleet-wide; set `full` to allow collections to opt into storing raw payloads in the object store. |
+| `WORKER_TRACE_PAYLOAD_MAX_BYTES` | `1048576` (1 MiB) | Per-payload byte cap for the **full** trace tier: a node input/output whose serialised payload exceeds this is stored truncated behind a marker (its shape summary is unaffected). Only consulted at the `full` level. |
+| `WORKER_TRACE_RETENTION_DAYS` | `14` | Retention (days) for stored full-trace payloads, consumed by the trace-GC cron (a later wave) to prefix-delete a job's `trace/{job_id}/` object-store space once its jobs age past this. `0` disables the age pass. |
 
 ### Worker liveness & stuck-job reaper
 

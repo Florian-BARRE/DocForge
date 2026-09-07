@@ -8,6 +8,8 @@
 # upsert (the run remints chunk ids, so a plain upsert would orphan the previous run's points).
 
 # ====== Standard Library Imports ======
+import hashlib
+import json
 import uuid
 from collections.abc import Sequence
 
@@ -15,6 +17,7 @@ from collections.abc import Sequence
 from loggerplusplus import LoggerClass
 from sqlalchemy.exc import IntegrityError
 
+from shared_libs.pipelines.base import NodeExecutionRecord
 from shared_libs.services.db.postgresql import PostgresClient
 from shared_libs.services.db.postgresql.apis import (
     BlobApi,
@@ -23,6 +26,10 @@ from shared_libs.services.db.postgresql.apis import (
     DocumentApi,
     IRApi,
     JobApi,
+)
+from shared_libs.services.db.postgresql.apis.execution_tree import (
+    ExecutionTreeFlattener,
+    TraceRefs,
 )
 from shared_libs.services.db.postgresql.tables import (
     Blob,
@@ -201,6 +208,86 @@ class IngestionFacade(LoggerClass):
         # 2. The registry rows — one bulk insert (idempotent per content hash).
         async with self._postgres.session() as session:
             await BlobApi.register_many(session, rows)
+
+    @staticmethod
+    def __trace_object(payload: dict, key_prefix: str, max_payload_bytes: int) -> S3Object:
+        """Serialise one full trace payload to a content-addressed S3 object (truncated over the cap).
+
+        The key is ``{key_prefix}/{sha256}`` so an unchanged IR reused across hops content-addresses to
+        the SAME object (stored once), and a later GC can prefix-delete the whole ``trace/{job_id}/``
+        space. A payload whose serialised form exceeds ``max_payload_bytes`` is replaced by a compact
+        truncation marker (the row's shape summary already describes the true payload).
+        """
+        raw = json.dumps(payload, default=str).encode()
+        if len(raw) > max_payload_bytes:
+            marker = {
+                "_truncated": True,
+                "original_bytes": len(raw),
+                "preview": raw[:max_payload_bytes].decode(errors="replace"),
+            }
+            raw = json.dumps(marker).encode()
+        digest = hashlib.sha256(raw).hexdigest()
+        return S3Object(key=f"{key_prefix}/{digest}", data=raw, content_type="application/json")
+
+    async def store_trace_payloads(
+        self, job_id: uuid.UUID, record: NodeExecutionRecord, max_payload_bytes: int
+    ) -> dict[str, TraceRefs]:
+        """
+        Store each node's FULL input/output payload in the object store (the full trace tier).
+
+        Walks the execution tree, serialises every full payload the engine attached (it does so ONLY
+        at ``TraceLevel.FULL``), content-addresses it under a job-prefixed key ``trace/{job_id}/{hash}``
+        (an unchanged IR reused across hops is stored once; a later GC prefix-deletes the whole job),
+        and returns the per-node-path references the tree-persist step stamps onto the rows.
+
+        Best-effort by contract: a store failure is logged and dropped (that node simply keeps no
+        ref / ``has_full`` false) — trace capture must NEVER fail an ingestion that already produced
+        its bundle. A payload over ``max_payload_bytes`` is stored truncated behind a marker.
+
+        Args:
+            job_id (uuid.UUID): The job whose trace payloads are stored (its key prefix).
+            record (NodeExecutionRecord): The run's outermost execution record.
+            max_payload_bytes (int): Per-payload byte cap; a larger serialised payload is truncated.
+
+        Returns:
+            dict[str, TraceRefs]: Per node_path, the object-store keys of its stored input/output
+                payloads (a side is absent when the node had no full payload or the store missed).
+        """
+        # 1. Collect every full payload the engine attached (full tier only), keyed by node_path/side.
+        prefix = f"trace/{job_id}"
+        pending: list[tuple[str, str, S3Object]] = []
+        for node in ExecutionTreeFlattener.flatten(record):
+            if node.record.resolved_input is not None:
+                obj = self.__trace_object(node.record.resolved_input, prefix, max_payload_bytes)
+                pending.append((node.node_path, "input", obj))
+            if node.record.output is not None:
+                obj = self.__trace_object(node.record.output, prefix, max_payload_bytes)
+                pending.append((node.node_path, "output", obj))
+        if not pending:
+            return {}
+
+        # 2. One S3 client scope for the whole batch; each put is best-effort (a miss just drops that
+        #    payload's ref). Content-addressed keys make repeated puts of the same bytes idempotent.
+        input_by_path: dict[str, str] = {}
+        output_by_path: dict[str, str] = {}
+        async with self._s3.client() as s3:
+            for node_path, side, obj in pending:
+                try:
+                    await S3ObjectApi.put_many(s3, self._s3.bucket, [obj])
+                except Exception as exc:
+                    self.logger.warning(
+                        f"Trace payload store failed for {node_path}/{side} (job {job_id}); "
+                        f"dropping its ref: {exc}"
+                    )
+                    continue
+                (input_by_path if side == "input" else output_by_path)[node_path] = obj.key
+
+        # 3. Fold the two sides into one TraceRefs per node_path.
+        paths = set(input_by_path) | set(output_by_path)
+        return {
+            path: TraceRefs(input_ref=input_by_path.get(path), output_ref=output_by_path.get(path))
+            for path in paths
+        }
 
     async def save(
         self,

@@ -32,6 +32,13 @@ class Collection(Base, UUIDPrimaryKey, TimestampedMixin):
     job_timeout_seconds: Mapped[float | None] = mapped_column(
         Float, nullable=True, server_default=None
     )
+    # Per-collection execution-trace verbosity: "shape" (default) captures only the cheap inline
+    # shape summary of each node's input/output; "full" additionally stores the raw payload in the
+    # object store (opt-in, clamped by the operator ceiling WORKER_TRACE_MAX_VERBOSITY). Non-null with
+    # a "shape" server default so every row (legacy included) reads a concrete level, never NULL.
+    trace_verbosity: Mapped[str] = mapped_column(
+        String(16), nullable=False, server_default=text("'shape'"), default="shape"
+    )
     # Per-collection PARTIAL override of the cost-estimate inputs. NULL = use the global defaults
     # (hardcoded RateTable in nodes/openai_compat/pricing.py + EstimateAssumptions in
     # ingest/estimate/models.py). A set value is a partial dict merged over those defaults, shape:

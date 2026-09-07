@@ -286,6 +286,7 @@ async def create_collection(
                 tags=request.tags or [],
                 max_file_size_bytes=request.max_file_size_bytes,
                 job_timeout_seconds=request.job_timeout_seconds,
+                trace_verbosity=request.trace_verbosity,
                 pipeline=blob,
                 search={},
             ),
@@ -391,6 +392,7 @@ async def update_collection(
                 request.tags,
                 request.max_file_size_bytes,
                 request.job_timeout_seconds,
+                request.trace_verbosity,
             )
         ),
         name=request.name,
@@ -398,6 +400,7 @@ async def update_collection(
         tags=request.tags,
         max_file_size_bytes=request.max_file_size_bytes,
         job_timeout_seconds=request.job_timeout_seconds,
+        trace_verbosity=request.trace_verbosity,
         schema_fields=CollectionHelpers.to_field_rows(request.fields)
         if request.fields is not None
         else None,

@@ -196,6 +196,24 @@ class RUNTIME_CONFIG(EnvConfigLoader):
     # control, NOT per-call inside the pure nodes. See docs/PROD-HARDENING.md.
     PROVIDER_EGRESS_ALLOWLIST = env("PROVIDER_EGRESS_ALLOWLIST", required=False, default="")
 
+    # ───── Execution-trace capture ─────
+    # The operator CEILING on execution-trace verbosity: a per-collection ``trace_verbosity`` is
+    # honoured only up to this bound (the worker clamps ``min(collection, ceiling)``). "shape"
+    # (default) captures only the cheap inline shape summary of each node's input/output — no raw
+    # content at rest, and forbids "full" fleet-wide regardless of a collection's own setting. Set to
+    # "full" to allow a collection to opt into storing raw payloads in the object store.
+    WORKER_TRACE_MAX_VERBOSITY = env("WORKER_TRACE_MAX_VERBOSITY", default="shape")
+    # Per-payload byte cap for the FULL trace tier: a node input/output whose serialised payload
+    # exceeds this is stored truncated behind a marker (its shape summary is unaffected). Bounds the
+    # object-store cost of a run that opted into full capture. Only consulted at the "full" level.
+    WORKER_TRACE_PAYLOAD_MAX_BYTES = env(
+        "WORKER_TRACE_PAYLOAD_MAX_BYTES", cast=int, default=1048576
+    )
+    # Retention (days) for stored full-trace payloads — consumed by the trace-GC cron (a later wave)
+    # to prefix-delete a job's ``trace/{job_id}/`` object-store space once its jobs age past this.
+    # Declared now so the knob ships with the capture vertical it bounds. 0 disables the age pass.
+    WORKER_TRACE_RETENTION_DAYS = env("WORKER_TRACE_RETENTION_DAYS", cast=int, default=14)
+
     # ───── Stuck-job reaper ─────
     # A dev worker hot-reload (or a crash) drops the in-flight arq task, but the DB job row stays
     # RUNNING forever and its document PROCESSING. Job.updated_at freezes when progress stops, so a

@@ -77,6 +77,7 @@ class CollectionApi:
         tags: list[str] | None = None,
         max_file_size_bytes: int | None = None,
         job_timeout_seconds: float | None = None,
+        trace_verbosity: str | None = None,
         pipeline: dict | None = None,
         search: dict | None = None,
         needs_reindex: bool | None = None,
@@ -99,6 +100,8 @@ class CollectionApi:
             collection.max_file_size_bytes = max_file_size_bytes
         if job_timeout_seconds is not None:
             collection.job_timeout_seconds = job_timeout_seconds
+        if trace_verbosity is not None:
+            collection.trace_verbosity = trace_verbosity
         if pipeline is not None:
             collection.pipeline = pipeline
         if search is not None:

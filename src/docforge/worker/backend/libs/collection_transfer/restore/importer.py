@@ -210,6 +210,7 @@ class CollectionImporterV1:
             tags=list(contract.tags),
             max_file_size_bytes=contract.max_file_size_bytes,
             job_timeout_seconds=contract.job_timeout_seconds,
+            trace_verbosity=contract.trace_verbosity,
             needs_reindex=contract.needs_reindex,
             pipeline=contract.pipeline,
             search=contract.search,

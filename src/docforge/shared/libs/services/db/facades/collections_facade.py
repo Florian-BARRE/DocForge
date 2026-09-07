@@ -160,6 +160,7 @@ class CollectionsFacade(LoggerClass):
         tags: list[str] | None = None,
         max_file_size_bytes: int | None = None,
         job_timeout_seconds: float | None = None,
+        trace_verbosity: str | None = None,
     ) -> None:
         """Patch the collection's identity/limits (None = leave unchanged; tags [] = clear)."""
         async with self._postgres.session() as session:
@@ -171,6 +172,7 @@ class CollectionsFacade(LoggerClass):
                 tags=tags,
                 max_file_size_bytes=max_file_size_bytes,
                 job_timeout_seconds=job_timeout_seconds,
+                trace_verbosity=trace_verbosity,
             )
 
     async def set_estimate_overrides(
@@ -418,6 +420,7 @@ class CollectionsFacade(LoggerClass):
                         tags=spec.tags,
                         max_file_size_bytes=spec.max_file_size_bytes,
                         job_timeout_seconds=spec.job_timeout_seconds,
+                        trace_verbosity=spec.trace_verbosity,
                     )
 
                 # 3. Metadata schema by DIFF (may flip needs_reindex=True on the shared row).

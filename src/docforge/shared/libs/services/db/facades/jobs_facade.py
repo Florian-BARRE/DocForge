@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shared_libs.pipelines.base import NodeExecutionRecord
 from shared_libs.services.db.postgresql import PostgresClient
 from shared_libs.services.db.postgresql.apis import DocumentApi, JobApi
+from shared_libs.services.db.postgresql.apis.execution_tree import TraceRefs
 from shared_libs.services.db.postgresql.apis.job_api import JobWithNames
 from shared_libs.services.db.postgresql.tables import (
     DocumentStatus,
@@ -170,16 +171,23 @@ class JobsFacade(LoggerClass):
         async with self._postgres.session() as session:
             return await JobApi.list_events(session, job_id)
 
-    async def persist_execution_tree(self, job_id: uuid.UUID, record: NodeExecutionRecord) -> None:
+    async def persist_execution_tree(
+        self,
+        job_id: uuid.UUID,
+        record: NodeExecutionRecord,
+        refs: dict[str, TraceRefs] | None = None,
+    ) -> None:
         """Persist the run's FULL per-node execution tree onto the job's stage timeline.
 
         Walks the outermost execution record into materialized-path rows and reconciles them with the
-        live stage timeline: the open root rows are filled with their tree coordinates + score, every
-        nested node (group children, per-item ForEach body instances) is inserted. Idempotent, so the
-        worker may call it on both the success and the empty-chunk-warning paths.
+        live stage timeline: the open root rows are filled with their tree coordinates + score + trace
+        capture, every nested node (group children, per-item ForEach body instances) is inserted. The
+        shape summaries ride on the record; the full-payload ``refs`` (object-store keys the worker
+        stored beforehand) are stamped when present. Idempotent, so the worker may call it on both the
+        success and the empty-chunk-warning paths.
         """
         async with self._postgres.session() as session:
-            await JobApi.persist_execution_tree(session, job_id, record)
+            await JobApi.persist_execution_tree(session, job_id, record, refs=refs)
 
     async def list_active(self) -> list[Job]:
         """Return every RUNNING job — the workers' live activity."""

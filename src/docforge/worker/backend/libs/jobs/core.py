@@ -20,6 +20,7 @@ from runner.cache import StageCacheHook
 # ====== Internal Project Imports (worker) ======
 from backend.context import CONTEXT
 from shared_libs.observability import ConfigDumpHelpers
+from shared_libs.pipelines.engine import TraceLevel
 
 # ====== Internal Project Imports ======
 from shared_libs.pipelines.ingest import (
@@ -70,6 +71,28 @@ def _resolve_run_budget(
             f"the per-collection budget (the engine budget must stay under arq's outer cap)"
         )
     return budget
+
+
+def _resolve_trace_level(collection_verbosity: str | None, ceiling: str) -> TraceLevel:
+    """Resolve the run's effective trace level: the collection's request clamped by the ceiling.
+
+    The per-collection ``trace_verbosity`` ("shape"/"full", None → "shape") is honoured only up to the
+    operator ceiling ``WORKER_TRACE_MAX_VERBOSITY`` — so an operator can forbid "full" fleet-wide. An
+    unrecognised value degrades to "shape" (the safe default: no raw content at rest), never a crash.
+
+    Args:
+        collection_verbosity (str | None): The collection's ``trace_verbosity`` column (None → shape).
+        ceiling (str): The operator ceiling (WORKER_TRACE_MAX_VERBOSITY).
+
+    Returns:
+        TraceLevel: ``min(collection, ceiling)`` in the off < shape < full ordering.
+    """
+    valid = {level.value for level in TraceLevel}
+    requested = (
+        TraceLevel(collection_verbosity) if collection_verbosity in valid else TraceLevel.SHAPE
+    )
+    cap = TraceLevel(ceiling) if ceiling in valid else TraceLevel.SHAPE
+    return requested.clamp(cap)
 
 
 async def _commit_terminal_cancel_write(
@@ -259,6 +282,12 @@ async def ingest_document(
             CONTEXT.job_timeout_seconds,
             CONTEXT.RUNTIME_CONFIG.WORKER_JOB_TIMEOUT_MAX_SECONDS,
         )
+        # Effective execution-trace level: the collection's per-run request clamped by the operator
+        # ceiling. Drives how much the engine captures onto the record (shape summaries always, the
+        # full payload only when the collection opted in AND the ceiling allows it).
+        trace_level = _resolve_trace_level(
+            collection.trace_verbosity, CONTEXT.RUNTIME_CONFIG.WORKER_TRACE_MAX_VERBOSITY
+        )
         # Stage cache: attached ONLY when enabled AND this is not a forced full recompute. When it is
         # None the engine runs byte-for-byte as if the cache did not exist. A cacheable stage (parse)
         # is served from / stored into the per-collection cache; the report surfaces hit/miss/stored.
@@ -278,6 +307,7 @@ async def ingest_document(
                 CONTEXT.RUNTIME_CONFIG.PROVIDER_EGRESS_ALLOWLIST
             ),
             cache_hook=cache_hook,
+            trace_level=trace_level,
         )
         if cache_hook is not None and cache_hook.report:
             CONTEXT.logger.info(f"Stage cache for document {document_id}: {cache_hook.report}")
@@ -288,7 +318,15 @@ async def ingest_document(
         # itself completed (a normal success AND the zero-chunk warning path both reach here). A run
         # that FAILED never returns a record here (the runner raises inside run(), discarding it), so
         # a failed run keeps only the live root rows the recorder closed — acceptable, not complicated.
-        await database.jobs.persist_execution_tree(job_uuid, record)
+        # For the FULL trace tier, store each node's raw payload in the object store FIRST (best-effort,
+        # content-addressed, job-prefixed) so the tree-persist stamps the refs; the shape summaries ride
+        # on the record itself. A store miss just drops that ref — never fails an already-delivered run.
+        trace_refs = None
+        if trace_level.captures_full:
+            trace_refs = await database.ingestion.store_trace_payloads(
+                job_uuid, record, CONTEXT.RUNTIME_CONFIG.WORKER_TRACE_PAYLOAD_MAX_BYTES
+            )
+        await database.jobs.persist_execution_tree(job_uuid, record, refs=trace_refs)
         strategy = next(
             (
                 node.get("kind", "")
@@ -382,6 +420,22 @@ async def ingest_document(
         # exception; other failures (rehydrate/persist) fall back to the exception's own type.
         CONTEXT.logger.exception(f"Ingestion failed for document {document_id}: {exc}")
         breadcrumb = getattr(exc, "breadcrumb", None)
+        # Persist the PARTIAL per-node execution tree the runner carried out on the failure (the
+        # nested tree up to AND including the failing node, each with its score/error/timing), so a
+        # FAILED job's trace shows the same tree a success gets — not just the live root rows. It
+        # reconciles with those rows by (job_id, node_path) exactly like the success path. Best-effort
+        # BEFORE the terminal writes: a persist hiccup must NEVER mask the real job error below (it is
+        # logged and swallowed). None when the failure was too early to build a tree (invalid graph,
+        # preflight, rehydrate) or came from a non-runner exception — skipped cleanly, rows stand.
+        partial_record = getattr(exc, "record", None)
+        if partial_record is not None:
+            try:
+                await database.jobs.persist_execution_tree(job_uuid, partial_record)
+            except Exception as persist_exc:
+                CONTEXT.logger.warning(
+                    f"Persisting the partial execution tree failed for document {document_id} "
+                    f"(the job is still marked failed): {persist_exc}"
+                )
         await database.ingestion.mark_failed(doc_uuid)
         # Redact any ``scheme://user:pass@host`` userinfo a provider exception may echo (a
         # credential-bearing base_url surfaced in a transport/auth error) before it is persisted on

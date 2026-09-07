@@ -20,7 +20,7 @@ from shared_libs.pipelines.base import (
     NodeStatus,
 )
 from shared_libs.pipelines.build import GroupNodeBlob, PipelineBuilder
-from shared_libs.pipelines.engine import FlowEngine
+from shared_libs.pipelines.engine import FlowEngine, TraceLevel
 from shared_libs.pipelines.ingest.estimate import RateTable
 from shared_libs.pipelines.search import COLLECTION_READ_CAPABILITY, CollectionReadPort
 from shared_libs.pipelines.usage import UsageSummer
@@ -72,7 +72,9 @@ class SearchRunner(LoggerClass):
         LoggerClass.__init__(self)
         self._builder = PipelineBuilder()
         self._validator = GraphValidator()
-        self._engine = FlowEngine(trace_payloads=False)
+        # Search runs INLINE in the request and DISCARDS the record, so it captures nothing — no
+        # per-hop trace work is spent (the ingest worker is the only trace consumer).
+        self._engine = FlowEngine(trace_level=TraceLevel.OFF)
 
     @staticmethod
     def __failed_node_reason(record: NodeExecutionRecord) -> str | None:

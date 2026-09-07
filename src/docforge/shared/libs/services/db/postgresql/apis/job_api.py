@@ -24,7 +24,7 @@ from shared_libs.pipelines.base import NodeExecutionRecord
 from ..tables import Collection, Document, Job, JobStageEvent, JobStatus, WorkerHeartbeat
 
 # ====== Local Project Imports ======
-from .execution_tree import ExecutionTreeFlattener
+from .execution_tree import ExecutionTreeFlattener, TraceRefs
 
 
 @dataclass(frozen=True)
@@ -407,7 +407,10 @@ class JobApi:
 
     @staticmethod
     async def persist_execution_tree(
-        session: AsyncSession, job_id: uuid.UUID, record: NodeExecutionRecord
+        session: AsyncSession,
+        job_id: uuid.UUID,
+        record: NodeExecutionRecord,
+        refs: dict[str, TraceRefs] | None = None,
     ) -> None:
         """
         Persist the FULL per-node execution tree onto the job's stage timeline (materialized path).
@@ -418,10 +421,16 @@ class JobApi:
 
         - A node whose path already has a row — the live ROOT rows the ``JobProgressRecorder`` opened
           at each stage START (now stamped with ``node_path = node_id``), or a row from a previous
-          persist — is UPDATED in place with its tree coordinates + score only. Its status/timing and
-          the subtree-aggregated token/cost meter the recorder wrote are left untouched.
+          persist — is UPDATED in place with its tree coordinates + score + trace capture (shape
+          summaries always, full-payload refs when present). Its status/timing and the subtree-
+          aggregated token/cost meter the recorder wrote are left untouched.
         - A node with no row yet — every NESTED node, which the live recorder only counted — is
-          INSERTED with its own status/kind/duration/error/usage/score and tree coordinates.
+          INSERTED with its own status/kind/duration/error/usage/score, tree coordinates and trace.
+
+        The trace capture is advisory: ``input_summary``/``output_summary`` (the cheap shape tier) are
+        written inline from the record whenever they were captured; ``input_ref``/``output_ref`` +
+        ``has_full_*`` are written from ``refs`` for the full tier (the worker stored the payloads in
+        the object store BEFORE this call). A node absent from ``refs`` simply keeps ``has_full`` false.
 
         Idempotent: a second call finds every path already present and simply re-updates it, so the
         empty-chunk warning path and a normal success path can both call it without duplicating rows.
@@ -430,11 +439,14 @@ class JobApi:
             session (AsyncSession): The active DB session.
             job_id (uuid.UUID): The job whose trace is being materialized.
             record (NodeExecutionRecord): The run's outermost execution record (the pipeline group).
+            refs (dict[str, TraceRefs] | None): Per-node-path object-store references to the full
+                input/output payloads (full trace tier only); None at the shape/off tiers.
         """
         # 1. Flatten the tree into parent-before-child materialized-path rows.
         flat = ExecutionTreeFlattener.flatten(record)
         if not flat:
             return
+        refs = refs or {}
 
         # 2. The paths already on the timeline (the live root rows + any prior persist), so each node
         #    is reconciled to at most one row — never duplicated.
@@ -445,10 +457,13 @@ class JobApi:
         )
         row_id_by_path = {path: row_id for path, row_id in existing.all()}
 
-        # 3. Reconcile each node: fill tree coordinates + score on an existing row, insert the rest.
+        # 3. Reconcile each node: fill tree coordinates + score + trace on an existing row, insert the
+        #    rest. The trace refs (full tier) come from the pre-stored object-store keys; the shape
+        #    summaries ride on the record itself. ``has_full_*`` is derived from whether a ref exists.
         for node in flat:
             rec = node.record
             score = rec.score
+            node_refs = refs.get(node.node_path, TraceRefs())
             existing_id = row_id_by_path.get(node.node_path)
             if existing_id is not None:
                 await session.execute(
@@ -459,6 +474,12 @@ class JobApi:
                         parent_path=node.parent_path,
                         item_index=node.item_index,
                         score=score,
+                        input_summary=rec.input_summary,
+                        output_summary=rec.output_summary,
+                        input_ref=node_refs.input_ref,
+                        output_ref=node_refs.output_ref,
+                        has_full_input=node_refs.input_ref is not None,
+                        has_full_output=node_refs.output_ref is not None,
                     )
                 )
                 continue
@@ -487,6 +508,12 @@ class JobApi:
                     parent_path=node.parent_path,
                     item_index=node.item_index,
                     score=score,
+                    input_summary=rec.input_summary,
+                    output_summary=rec.output_summary,
+                    input_ref=node_refs.input_ref,
+                    output_ref=node_refs.output_ref,
+                    has_full_input=node_refs.input_ref is not None,
+                    has_full_output=node_refs.output_ref is not None,
                 )
             )
         await session.flush()

@@ -86,6 +86,15 @@ class CollectionModel(BaseModel):
             "worker's global WORKER_JOB_TIMEOUT_SECONDS default."
         ),
     )
+    trace_verbosity: Literal["shape", "full"] = Field(
+        default="shape",
+        description=(
+            "Execution-trace capture level for this collection's ingest runs: 'shape' (default) "
+            "keeps only the cheap inline shape summary of each node's input/output; 'full' also "
+            "stores the raw payload in the object store (clamped by the operator ceiling "
+            "WORKER_TRACE_MAX_VERBOSITY)."
+        ),
+    )
     needs_reindex: bool = Field(description="True when a config change requires reindexing.")
     created_at: datetime | None = Field(default=None, description="Creation timestamp.")
     pipeline: dict[str, Any] = Field(description="The ingestion pipeline blob (the graph).")
@@ -144,6 +153,15 @@ class CreateCollectionRequest(BaseModel):
             "worker's global WORKER_JOB_TIMEOUT_SECONDS default."
         ),
     )
+    trace_verbosity: Literal["shape", "full"] = Field(
+        default="shape",
+        description=(
+            "Execution-trace capture level for this collection's ingest runs: 'shape' (default) "
+            "keeps only the cheap inline shape summary of each node's input/output; 'full' also "
+            "stores the raw payload in the object store (clamped by the operator ceiling "
+            "WORKER_TRACE_MAX_VERBOSITY)."
+        ),
+    )
     fields: list[FieldSpec] = Field(
         default_factory=list,
         description="The FULL schema, declared up front (vector space is fixed at creation).",
@@ -194,6 +212,14 @@ class UpdateCollectionRequest(BaseModel):
         description=(
             "New per-collection whole-ingest-job wall-clock budget, seconds. Omitted = leave the "
             "current value unchanged; a set value overrides the global WORKER_JOB_TIMEOUT_SECONDS."
+        ),
+    )
+    trace_verbosity: Literal["shape", "full"] | None = Field(
+        default=None,
+        description=(
+            "New execution-trace capture level ('shape' or 'full'); omitted = leave the current "
+            "value unchanged. 'full' also stores raw node payloads, clamped by the operator "
+            "ceiling WORKER_TRACE_MAX_VERBOSITY."
         ),
     )
     fields: list[FieldSpec] | None = Field(

@@ -138,6 +138,7 @@ class CollectionExporter:
             tags=list(collection.tags),
             max_file_size_bytes=collection.max_file_size_bytes,
             job_timeout_seconds=collection.job_timeout_seconds,
+            trace_verbosity=getattr(collection, "trace_verbosity", None) or "shape",
             needs_reindex=collection.needs_reindex,
             pipeline=redact_blob_secrets(collection.pipeline) or {},
             search=redact_blob_secrets(collection.search) or {},
