@@ -23,8 +23,6 @@ export function serializeViewToHash(view: View): string {
       return "/home";
     case "all-jobs":
       return "/jobs";
-    case "monitoring":
-      return "/monitoring";
     case "collections":
       if (view.health === "attention") return "/collections/filter/attention";
       if (view.health === "operational") return "/collections/filter/operational";
@@ -79,7 +77,6 @@ export function parseViewFromHash(hash: string): View {
 
   if (root === "home") return rest.length === 0 ? { name: "home" } : DEFAULT_VIEW;
   if (root === "jobs") return rest.length === 0 ? { name: "all-jobs" } : DEFAULT_VIEW;
-  if (root === "monitoring") return rest.length === 0 ? { name: "monitoring" } : DEFAULT_VIEW;
   if (root === "workers") return rest.length === 0 ? { name: "workers" } : DEFAULT_VIEW;
 
   if (root === "api-keys") {

@@ -1,6 +1,12 @@
 // ====== Code Summary ======
-// The fleet-wide live view: every worker with a RUNNING job, polled continuously while this
-// page is open (there is no "settled" state for a fleet monitor — it is always live).
+// The fleet-wide live view: every worker with a RUNNING job, polled continuously while this page is
+// open (there is no "settled" state for a fleet monitor — it is always live). Also folds in what
+// used to be the separate Monitoring page: a top tile row (fleet queue depth + throughput) above the
+// fleet summary, and a telemetry footnote below the recent-activity panel — the former Monitoring
+// page's live-per-worker grid (LiveWorkersGrid/WorkerLiveCard) was a strict SUBSET of the WorkerCard
+// grid already rendered here, so it was deleted rather than folded in (see
+// agent-memory/frontend for the consolidation note). A compact top-right toggle switches the card
+// grid between list/2-col/3-col/auto layouts, persisted per-viewer (useWorkersLayout).
 
 import { useEffect, useState } from "react";
 import { getWorkersLive, type JobStatus, type WorkerActivity } from "../../api/jobs";
@@ -9,8 +15,13 @@ import { LoadingState } from "../../components/LoadingState";
 import { PageHeader } from "../../components/PageHeader";
 import type { Navigate } from "../../shell/view";
 import { theme } from "../../theme";
+import { QueueDepthTile } from "./QueueDepthTile";
 import { RecentJobsPanel } from "./RecentJobsPanel";
+import { gridTemplateColumnsFor, useWorkersLayout } from "./state/useWorkersLayout";
+import { TelemetryNote } from "./TelemetryNote";
+import { ThroughputTile } from "./ThroughputTile";
 import { WorkerCard } from "./WorkerCard";
+import { WorkerLayoutToggle } from "./WorkerLayoutToggle";
 import { WorkersFleetSummary } from "./WorkersFleetSummary";
 
 const POLL_MS = 3000;
@@ -18,6 +29,7 @@ const POLL_MS = 3000;
 export function WorkersPanel({ onNavigate }: { onNavigate: Navigate }) {
   const [workers, setWorkers] = useState<WorkerActivity[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const { layout, setLayout } = useWorkersLayout();
 
   useEffect(() => {
     let cancelled = false;
@@ -56,7 +68,20 @@ export function WorkersPanel({ onNavigate }: { onNavigate: Navigate }) {
 
   return (
     <div className="df-rise" style={{ padding: theme.space.xl, overflowY: "auto", height: "100%", maxWidth: 1200, margin: "0 auto", width: "100%" }}>
-      <PageHeader title="Workers" subtitle="Every worker process known to the fleet, live." />
+      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-end", gap: theme.space.l }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <PageHeader title="Workers" subtitle="Live worker resources, queue depth, and fleet health." />
+        </div>
+        <div style={{ marginBottom: theme.space.xl }}>
+          <WorkerLayoutToggle layout={layout} onChange={setLayout} />
+        </div>
+      </div>
+
+      <div style={{ display: "flex", flexWrap: "wrap", gap: theme.space.l, marginBottom: theme.space.xl }}>
+        <QueueDepthTile />
+        <ThroughputTile />
+      </div>
+
       {error && <ErrorState message={error} />}
       {!error && !workers && <LoadingState label="loading fleet…" />}
       {workers && workers.length === 0 && (
@@ -75,7 +100,7 @@ export function WorkersPanel({ onNavigate }: { onNavigate: Navigate }) {
           <WorkersFleetSummary workers={workers} />
           <div
             style={{
-              display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: theme.space.l,
+              display: "grid", gridTemplateColumns: gridTemplateColumnsFor(layout), gap: theme.space.l,
               marginBottom: theme.space.xl,
             }}
           >
@@ -93,6 +118,10 @@ export function WorkersPanel({ onNavigate }: { onNavigate: Navigate }) {
           onNavigate={onNavigate}
         />
       )}
+
+      <div style={{ marginTop: theme.space.xl }}>
+        <TelemetryNote />
+      </div>
     </div>
   );
 }

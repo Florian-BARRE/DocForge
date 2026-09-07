@@ -17,7 +17,6 @@ import { HomePage } from "./features/home/HomePage";
 import { AllJobsPage } from "./features/jobs/AllJobsPage";
 import { JobDetailPage } from "./features/monitoring/JobDetailPage";
 import { JobsPage } from "./features/monitoring/JobsPage";
-import { MonitoringPage } from "./features/monitoring/MonitoringPage";
 import { WorkersPanel } from "./features/monitoring/WorkersPanel";
 import { SearchLabPage } from "./features/search/SearchLabPage";
 import { ErrorBoundary } from "./shell/ErrorBoundary";
@@ -119,7 +118,6 @@ export function App() {
         {view.name === "job" && <JobDetailPage jobId={view.jobId} collectionId={view.collectionId} onNavigate={setView} />}
         {view.name === "all-jobs" && <AllJobsPage onNavigate={setView} />}
         {view.name === "workers" && <WorkersPanel onNavigate={setView} />}
-        {view.name === "monitoring" && <MonitoringPage onNavigate={setView} />}
         {view.name === "api-keys" && <AuthKeysPage onNavigate={setView} />}
         {view.name === "api-key" && <KeyDetailPage keyId={view.keyId} onNavigate={setView} />}
       </ErrorBoundary>

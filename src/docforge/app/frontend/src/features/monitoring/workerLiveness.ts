@@ -1,7 +1,6 @@
 // ====== Code Summary ======
 // Shared worker-liveness helpers — the two-signal state (alive/busy → busy/idle/offline), its
-// tone color, and the relative-time formatters used by both WorkerCard (Workers page) and
-// WorkerLiveCard (Monitoring page's live dashboard) so the two surfaces read identically.
+// tone color, and the relative-time formatters used by WorkerCard on the Workers page.
 
 import type { WorkerActivity } from "../../api/jobs";
 import { theme } from "../../theme";

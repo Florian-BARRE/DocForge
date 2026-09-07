@@ -39,7 +39,7 @@ describe("Sidebar", () => {
     expect(screen.getByText("Import")).toBeInTheDocument();
     // The new Jobs & Workers section leads with the fleet-wide All Jobs page.
     expect(screen.getByText("All Jobs")).toBeInTheDocument();
-    expect(screen.getByText("Monitoring")).toBeInTheDocument();
+    expect(screen.getByText("Workers")).toBeInTheDocument();
     // No more redundant health-preset shortcuts — the Collections page's own toolbar owns those.
     expect(screen.queryByText("À surveiller")).not.toBeInTheDocument();
     expect(screen.queryByText("Opérationnelles")).not.toBeInTheDocument();

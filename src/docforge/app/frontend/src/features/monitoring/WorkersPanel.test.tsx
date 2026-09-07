@@ -3,11 +3,13 @@
 // fleet summary/recent-activity backfill panels, and asserts it never throws (JobRow inside both
 // the worker card and the recent-activity panel renders JobCancelControl, which calls useToast()
 // unconditionally — needs a real ToastProvider, see agent-memory/frontend/quality-gate-lint-test.md).
+// Also covers the tiles folded in from the former Monitoring page (queue depth, throughput) and the
+// worker-card layout toggle, now that this page absorbed both.
 
 import { render, screen, waitFor } from "@testing-library/react";
 import type { ReactElement } from "react";
-import { describe, expect, it, vi } from "vitest";
-import type { JobPage, JobStatus, WorkersLive } from "../../api/jobs";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { JobPage, JobStatus, QueueDepth, WorkersLive } from "../../api/jobs";
 import type { Navigate } from "../../shell/view";
 import { ToastProvider } from "../../shell/toast";
 import { WorkersPanel } from "./WorkersPanel";
@@ -20,9 +22,10 @@ vi.mock("../../api/jobs", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../api/jobs")>()),
   getWorkersLive: vi.fn(),
   listJobsPage: vi.fn(),
+  getQueueDepth: vi.fn(),
 }));
 
-const { getWorkersLive, listJobsPage } = await import("../../api/jobs");
+const { getWorkersLive, listJobsPage, getQueueDepth } = await import("../../api/jobs");
 
 function jobFixture(overrides: Partial<JobStatus>): JobStatus {
   return {
@@ -37,7 +40,11 @@ function jobFixture(overrides: Partial<JobStatus>): JobStatus {
 }
 
 describe("WorkersPanel", () => {
-  it("mounts through loading -> loaded, showing the fleet summary + recent activity panels", async () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it("mounts through loading -> loaded, showing the fleet summary + recent activity panels, and the folded-in queue/throughput tiles", async () => {
     const runningJob = jobFixture({});
     const workers: WorkersLive = {
       workers: [
@@ -45,8 +52,12 @@ describe("WorkersPanel", () => {
       ],
     };
     const recentPage: JobPage = { total: 1, limit: 8, offset: 0, jobs: [runningJob] };
+    // Deliberately distinct from any digit the layout toggle itself renders ("2"/"3" column labels)
+    // so the assertions below can't collide with the toggle's own button text.
+    const queueDepth: QueueDepth = { pending: 5, running: 7 };
     vi.mocked(getWorkersLive).mockResolvedValue(workers);
     vi.mocked(listJobsPage).mockResolvedValue(recentPage);
+    vi.mocked(getQueueDepth).mockResolvedValue(queueDepth);
 
     const onNavigate: Navigate = vi.fn();
     expect(() => renderWithProviders(<WorkersPanel onNavigate={onNavigate} />)).not.toThrow();
@@ -55,5 +66,16 @@ describe("WorkersPanel", () => {
     expect(screen.getByText("Fleet capacity")).toBeInTheDocument();
     expect(screen.getByText("Recent activity across the fleet")).toBeInTheDocument();
     await waitFor(() => expect(screen.getAllByText("report.pdf").length).toBeGreaterThan(0));
+
+    // The queue-depth tile folded in from the former Monitoring page.
+    await waitFor(() => expect(screen.getByText("5")).toBeInTheDocument());
+    expect(screen.getByText("pending")).toBeInTheDocument();
+
+    // The telemetry footnote, also folded in.
+    expect(screen.getByText(/docforge-overview/)).toBeInTheDocument();
+
+    // The layout toggle, defaulting to Auto.
+    const autoSegment = screen.getByRole("radio", { name: "Auto" });
+    expect(autoSegment).toHaveAttribute("aria-checked", "true");
   });
 });

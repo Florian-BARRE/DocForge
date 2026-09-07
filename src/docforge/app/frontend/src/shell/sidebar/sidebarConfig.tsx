@@ -16,7 +16,7 @@ import type { ReactNode } from "react";
 import type { View } from "../view";
 import {
   AdminGlyph, AllGlyph, AllJobsGlyph, ApiKeyGlyph, CollectionsGlyph, CreateGlyph, HomeGlyph,
-  ImportGlyph, MonitoringGlyph, WorkersGlyph, WorkersPageGlyph,
+  ImportGlyph, WorkersGlyph, WorkersPageGlyph,
 } from "./icons";
 
 export interface SidebarPage {
@@ -72,7 +72,8 @@ export const SIDEBAR_SECTIONS: SidebarSection[] = [
     ],
   },
   {
-    // Jobs leads (the flagship fleet-wide management page) — Workers/Monitoring follow.
+    // Jobs leads (the flagship fleet-wide management page) — Workers follows; Workers now folds in
+    // the former Monitoring page's live worker resources + queue depth/throughput tiles.
     key: "jobs",
     label: "Jobs & Workers",
     icon: <WorkersGlyph />,
@@ -86,11 +87,6 @@ export const SIDEBAR_SECTIONS: SidebarSection[] = [
         key: "workers", label: "Workers", icon: <WorkersPageGlyph />,
         view: { name: "workers" },
         isActive: (v) => v.name === "workers",
-      },
-      {
-        key: "monitoring", label: "Monitoring", icon: <MonitoringGlyph />,
-        view: { name: "monitoring" },
-        isActive: (v) => v.name === "monitoring",
       },
     ],
   },

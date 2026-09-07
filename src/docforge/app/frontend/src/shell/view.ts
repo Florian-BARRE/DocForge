@@ -27,7 +27,6 @@ export type View =
   // Fleet-wide job management ("step back and manage" — the flagship of the three new pages).
   | { name: "all-jobs" }
   | { name: "workers" }
-  | { name: "monitoring" }
   | { name: "api-keys" }
   | { name: "api-key"; keyId: string };
 

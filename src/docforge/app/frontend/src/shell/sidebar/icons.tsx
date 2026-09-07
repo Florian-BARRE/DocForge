@@ -57,15 +57,6 @@ export function AllJobsGlyph() {
   );
 }
 
-/** Monitoring page — a small pulse/heartbeat line, job-level health rather than host metrics. */
-export function MonitoringGlyph() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" {...LINE}>
-      <path d="M3 12h4l2 7 4-14 2 7h6" />
-    </svg>
-  );
-}
-
 /** Admin section — a key next to a gear-free "settings" mark, reused across the API Keys page. */
 export function AdminGlyph() {
   return (
