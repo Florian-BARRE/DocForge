@@ -29,6 +29,8 @@ def _document(**overrides) -> SimpleNamespace:
         title="Q3 report",
         language="en",
         enabled=True,
+        chunk_count=7,
+        warning_reason=None,
     )
     base.update(overrides)
     return SimpleNamespace(**base)

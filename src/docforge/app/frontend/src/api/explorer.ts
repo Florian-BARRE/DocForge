@@ -37,6 +37,10 @@ export interface DocumentListItem {
   language: string | null;
   /** The document-level searchability toggle — disabling hides every chunk regardless of role. */
   enabled: boolean;
+  /** Chunks persisted at ingestion (0 = empty; null = unknown/legacy or not yet run). */
+  chunk_count: number | null;
+  /** Non-fatal warning on a DONE document (e.g. a 0-chunk run); null when none. */
+  warning_reason: string | null;
 }
 
 /** One resolved metadata value — the schema field name, its stored value, and who filled it. */
@@ -67,6 +71,10 @@ export interface DocumentDetail {
   metadata: MetadataValue[];
   /** The document-level searchability toggle — disabling hides every chunk regardless of role. */
   enabled: boolean;
+  /** Chunks persisted at ingestion (0 = empty; null = unknown/legacy or not yet run). */
+  chunk_count: number | null;
+  /** Non-fatal warning on a DONE document (e.g. a 0-chunk run); null when none. */
+  warning_reason: string | null;
 }
 
 /** One page's geometry, routing and its render blob reference. */

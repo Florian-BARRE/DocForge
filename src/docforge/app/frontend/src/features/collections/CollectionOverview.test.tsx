@@ -89,6 +89,8 @@ function documentFixture(id: string): DocumentListItem {
     title: `Document ${id}`,
     language: "en",
     enabled: true,
+    chunk_count: 5,
+    warning_reason: null,
   };
 }
 

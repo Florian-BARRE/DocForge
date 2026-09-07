@@ -45,6 +45,14 @@ class DocumentListItem(BaseModel):
     enabled: bool = Field(
         description="Document-level searchability toggle; False hides all its chunks from retrieval."
     )
+    chunk_count: int | None = Field(
+        default=None,
+        description="Chunks persisted at ingestion (0 = empty; None = unknown/legacy or not yet run).",
+    )
+    warning_reason: str | None = Field(
+        default=None,
+        description="Non-fatal warning on a DONE document (e.g. a 0-chunk run); None when none.",
+    )
 
 
 class DocumentDetail(BaseModel):
@@ -70,6 +78,14 @@ class DocumentDetail(BaseModel):
     created_at: datetime | None = Field(default=None, description="Admission timestamp.")
     enabled: bool = Field(
         description="Document-level searchability toggle; False hides all its chunks from retrieval."
+    )
+    chunk_count: int | None = Field(
+        default=None,
+        description="Chunks persisted at ingestion (0 = empty; None = unknown/legacy or not yet run).",
+    )
+    warning_reason: str | None = Field(
+        default=None,
+        description="Non-fatal warning on a DONE document (e.g. a 0-chunk run); None when none.",
     )
     metadata: list[MetadataValue] = Field(
         default_factory=list, description="Document-level values (declared and generated)."

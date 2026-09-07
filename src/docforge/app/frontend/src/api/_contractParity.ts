@@ -39,6 +39,7 @@ import type {
   PageInfo,
 } from "./explorer";
 import type { AssumptionOverrides, Collection, EstimateOverrides, FieldSpec, ModelRateOverride, RateOverrides } from "./collections";
+import type { DocumentGridRow } from "./corpus";
 import type { JobEvent, JobPage, JobStatus, WorkerActivity } from "./jobs";
 import type { BlockLocationModel, SearchHitModel } from "./search";
 
@@ -108,6 +109,10 @@ export type _BulkChunkEnabledResponseParity = Expect<
 // than a full equality that would permanently fail on this one intentional narrowing.
 export type _ChunkInfoParity = Expect<Equal<Normalize<Omit<ChunkInfo, "role">>, Normalize<Omit<Schemas["ChunkInfo"], "role">>>>;
 export type _ChunkInfoRoleStillAString = Expect<AssignableTo<ChunkInfo["role"], string>>;
+
+// ---------- corpus.ts — the grid row (extends DocumentListItem with a metadata value map) ----------
+
+export type _DocumentGridRowParity = Expect<Equal<Normalize<DocumentGridRow>, Normalize<Schemas["DocumentGridRow"]>>>;
 
 // ---------- collections.ts — Collection + its nested field-schema/estimate-override types ----------
 

@@ -44,6 +44,8 @@ class DocumentListItem(BaseModel):
         title (str): Learned title ('' before parse).
         language (str | None): Detected language (None before parse).
         enabled (bool): Document-level searchability toggle.
+        chunk_count (int | None): Chunks persisted at ingestion (0 = empty; None = unknown/legacy).
+        warning_reason (str | None): Non-fatal warning on a DONE document (e.g. a 0-chunk run).
     """
 
     id: str = Field(description="The document's UUID.")
@@ -56,6 +58,14 @@ class DocumentListItem(BaseModel):
     title: str = Field(description="Learned title ('' before parse).")
     language: str | None = Field(default=None, description="Detected language (None before parse).")
     enabled: bool = Field(description="Document-level searchability toggle.")
+    chunk_count: int | None = Field(
+        default=None,
+        description="Chunks persisted at ingestion (0 = empty; None = unknown/legacy or not yet run).",
+    )
+    warning_reason: str | None = Field(
+        default=None,
+        description="Non-fatal warning on a DONE document (e.g. a 0-chunk run); None when none.",
+    )
 
 
 class DocumentDetail(BaseModel):
@@ -80,6 +90,8 @@ class DocumentDetail(BaseModel):
         pipeline_version (str): Pipeline config identity the run used.
         created_at (datetime | None): Admission timestamp.
         enabled (bool): Document-level searchability toggle.
+        chunk_count (int | None): Chunks persisted at ingestion (0 = empty; None = unknown/legacy).
+        warning_reason (str | None): Non-fatal warning on a DONE document (e.g. a 0-chunk run).
         metadata (list[MetadataValue]): Document-level values (declared and generated).
     """
 
@@ -102,6 +114,14 @@ class DocumentDetail(BaseModel):
     pipeline_version: str = Field(description="Pipeline config identity the run used.")
     created_at: datetime | None = Field(default=None, description="Admission timestamp.")
     enabled: bool = Field(description="Document-level searchability toggle.")
+    chunk_count: int | None = Field(
+        default=None,
+        description="Chunks persisted at ingestion (0 = empty; None = unknown/legacy or not yet run).",
+    )
+    warning_reason: str | None = Field(
+        default=None,
+        description="Non-fatal warning on a DONE document (e.g. a 0-chunk run); None when none.",
+    )
     metadata: list[MetadataValue] = Field(
         default_factory=list, description="Document-level values (declared and generated)."
     )

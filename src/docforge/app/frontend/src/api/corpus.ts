@@ -84,6 +84,10 @@ export interface DocumentGridRow {
   title: string;
   language: string | null;
   enabled: boolean;
+  /** Chunks persisted at ingestion (0 = empty; null = unknown/legacy or not yet run). */
+  chunk_count: number | null;
+  /** Non-fatal warning on a DONE document (e.g. a 0-chunk run); null when none. */
+  warning_reason: string | null;
   metadata: Record<string, unknown>;
 }
 

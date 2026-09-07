@@ -49,7 +49,12 @@ export function buildBaseColumns({ onOpen, onEnabledChanged, supportedFormats }:
       header: "Status",
       size: 120,
       meta: { filterKind: "enumMulti", enumOptions: ["pending", "processing", "done", "failed", "cancelled"], group: "document" },
-      cell: ({ row }) => <CorpusStatusChip status={row.original.status} />,
+      cell: ({ row }) => (
+        <CorpusStatusChip
+          status={row.original.status}
+          hasWarning={!!row.original.warning_reason || row.original.chunk_count === 0}
+        />
+      ),
     },
     {
       id: "format",
@@ -58,6 +63,26 @@ export function buildBaseColumns({ onOpen, onEnabledChanged, supportedFormats }:
       size: 100,
       meta: { filterKind: "enumMulti", enumOptions: supportedFormats, group: "document" },
       cell: ({ row }) => <Chip tone="neutral">{row.original.format}</Chip>,
+    },
+    {
+      // Display-only — not wired into the server filter/sort contract (chunk_count is absent from
+      // both `DocumentFilter` and the backend's sortable-column set), so no `filterKind` and sorting
+      // disabled rather than sending a field the API would reject.
+      id: "chunk_count",
+      accessorKey: "chunk_count",
+      header: "Chunks",
+      size: 90,
+      minSize: 90,
+      enableSorting: false,
+      meta: { mono: true, align: "right", group: "document" },
+      cell: ({ row }) => {
+        const { chunk_count, warning_reason } = row.original;
+        return (
+          <span title={warning_reason ?? undefined} style={{ color: warning_reason || chunk_count === 0 ? theme.color.warnStrong : undefined }}>
+            {chunk_count === null ? "—" : chunk_count}
+          </span>
+        );
+      },
     },
     {
       id: "page_count",

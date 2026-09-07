@@ -460,6 +460,17 @@ ordonnée, sparse présent (bge fake) / sauté proprement (dense-only), vecteurs
 la valeur existe (non-sémantique et doc-scope ignorés), blob validé+exécuté, **records : vecteurs réels en sortie
 vive, `'<100 numbers>'` dans la trace**.
 
+**Livraison à 0 chunk = SUCCESS-avec-avertissement (pas FAILED).** Un run qui atteint le terminal `deliver/bundle`
+avec `bundle.chunks == []` a **fini tout le graphe proprement** : le runner ne rend son `RunBundle` qu'après un run
+dont l'`output` n'est pas `None`, ce qui n'arrive que si **tout node à politique FAIL a réussi** — une VRAIE panne
+amont (exception de parse, item d'un ForEach qui échoue…) rend `output=None` et **lève AVANT** le contrôle 0-chunk
+(→ le job reste **FAILED**, jamais ce chemin). Les seuls moyens d'arriver ici à 0 chunk sont donc bénins : un input
+sans contenu (PDF image-only avec OCR off, page scannée blanche) ou une dégradation fail-soft (OCR SKIP qui a
+tout perdu). Le runner reste **pur** : il ne décide pas — il rend le bundle tel quel et le **worker** persiste le
+document **DONE** avec `document.warning_reason` = « 0 chunks — rien de récupérable » et `document.chunk_count=0`
+(dénormalisé pour la grille/overview, sans COUNT N+1). Un run normal (chunks > 0) passe `warning_reason=None` (un
+re-ingest efface donc un avertissement périmé). Le compteur est stampé pour **tous** les documents à la persistance.
+
 ---
 
 ## 4. Les artefacts (le vocabulaire qui circule)

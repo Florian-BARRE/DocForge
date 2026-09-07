@@ -186,17 +186,35 @@ class DocumentApi:
             document.status = status
 
     @staticmethod
-    async def finalize_done(session: AsyncSession, document_id: uuid.UUID) -> None:
+    async def finalize_done(
+        session: AsyncSession,
+        document_id: uuid.UUID,
+        *,
+        warning_reason: str | None = None,
+        chunk_count: int | None = None,
+    ) -> None:
         """
         Mark a document DONE at the end of a successful run — UNLESS it was CANCELLED meanwhile.
 
         A force-cancel can commit CANCELLED in the sub-second window while the persist tail runs;
         guarding the terminal DONE write keeps a force-cancelled document from flipping back to DONE
         (mirrors the ``JobApi.mark_done`` CANCELLED guard on the job side).
+
+        Args:
+            session (AsyncSession): The unit of work.
+            document_id (uuid.UUID): The document to finalize.
+            warning_reason (str | None): A non-fatal, human-readable warning to surface on the DONE
+                document (e.g. a 0-chunk run that produced nothing retrievable). None clears it — a
+                normal run with chunks passes None so a re-ingest wipes a stale warning.
+            chunk_count (int | None): The number of chunks persisted for the document (0 for the
+                empty case). Denormalized so the grid/overview need no COUNT. None leaves it unchanged.
         """
         document = await session.get(Document, document_id)
         if document is not None and document.status != DocumentStatus.CANCELLED:
             document.status = DocumentStatus.DONE
+            document.warning_reason = warning_reason
+            if chunk_count is not None:
+                document.chunk_count = chunk_count
 
     @staticmethod
     async def mark_processing(session: AsyncSession, document_id: uuid.UUID) -> None:

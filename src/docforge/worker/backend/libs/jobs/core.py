@@ -294,9 +294,24 @@ async def ingest_document(
         ).hexdigest()
         translated = RunTranslator.translate(doc_uuid, bundle, schema, strategy, config_hash)
 
+        # A run that completed the whole graph but delivered zero chunks is a SUCCESS-with-warning, not
+        # a failure: the runner only returns here once every FAIL-policy node succeeded (a real upstream
+        # failure raised before this), so zero chunks means benign empty content (an image-only PDF with
+        # OCR off, a fail-soft OCR that dropped every page). Persist the document DONE with a visible
+        # "0 chunks" warning rather than marking it FAILED; a normal run (chunks > 0) passes None so a
+        # re-ingest wipes any stale warning.
+        warning_reason = (
+            None
+            if bundle.chunks
+            else (
+                "Ingestion completed but produced 0 chunks — nothing retrievable was created "
+                "(the document may be empty or image-only with no extractable text)."
+            )
+        )
+
         # 4. Persist in the safe order: blobs (S3) → the one-tx save (PG) → the vectors (Qdrant).
         await database.ingestion.store_blobs(translated.objects, translated.blob_rows)
-        await database.ingestion.save(doc_uuid, translated.payload)
+        await database.ingestion.save(doc_uuid, translated.payload, warning_reason=warning_reason)
         if translated.points:
             await database.ingestion.index(
                 document.collection_id,

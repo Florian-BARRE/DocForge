@@ -59,6 +59,8 @@ def _document(*, enabled: bool = True) -> SimpleNamespace:
         pipeline_version="v1",
         created_at=None,
         enabled=enabled,
+        chunk_count=3,
+        warning_reason=None,
     )
 
 

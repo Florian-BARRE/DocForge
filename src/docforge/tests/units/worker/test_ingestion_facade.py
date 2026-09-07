@@ -156,7 +156,27 @@ async def test_save_sets_status_done(monkeypatch) -> None:
     )
     await facade.save(document_id, IngestionPayload())
 
-    finalize_done.assert_awaited_once_with(ANY, document_id)
+    # DONE with the denormalized chunk count (0 for an empty payload) and no warning by default.
+    finalize_done.assert_awaited_once_with(ANY, document_id, warning_reason=None, chunk_count=0)
+
+
+async def test_save_stamps_warning_and_chunk_count_on_finalize(monkeypatch) -> None:
+    """A 0-chunk run reaches ``save`` with a warning_reason; a run with chunks stamps its count.
+    Either way the count is denormalized (len of the payload's chunks) and the warning threads
+    straight through to ``finalize_done``."""
+    document_id = uuid.uuid4()
+    _patch_save_apis(monkeypatch, [])
+    finalize_done = AsyncMock()
+    monkeypatch.setattr(facade_module.DocumentApi, "finalize_done", finalize_done)
+
+    facade = IngestionFacade(
+        _postgres_yielding(_session_with_flush()), MagicMock(), _s3_yielding(MagicMock())
+    )
+    await facade.save(document_id, IngestionPayload(), warning_reason="0 chunks — empty")
+
+    finalize_done.assert_awaited_once_with(
+        ANY, document_id, warning_reason="0 chunks — empty", chunk_count=0
+    )
 
 
 async def test_save_purges_superseded_blobs_but_keeps_shared_ones(monkeypatch) -> None:

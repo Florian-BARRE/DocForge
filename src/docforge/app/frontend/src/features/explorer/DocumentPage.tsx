@@ -92,8 +92,13 @@ export function DocumentPage({ collectionId, documentId, onNavigate }: DocumentP
             <span>
               {document.format.toUpperCase()} · {document.page_count ?? "—"} page(s) · {formatBytes(document.file_size)} · created {formatDateTime(document.created_at)}
             </span>
-            <DocumentStatusChip status={document.status} />
+            <DocumentStatusChip status={document.status} hasWarning={!!document.warning_reason} />
             {!document.enabled && <Chip tone="warn">disabled</Chip>}
+            {document.warning_reason && (
+              <Chip tone="warn" title={document.warning_reason}>
+                {document.chunk_count === 0 ? "0 chunks" : "warning"}
+              </Chip>
+            )}
           </span>
         }
         actions={

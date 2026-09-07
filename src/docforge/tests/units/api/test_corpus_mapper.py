@@ -160,6 +160,8 @@ def test_grid_row_builds_metadata_map_and_drops_unknown_fields() -> None:
         title="t",
         language="en",
         enabled=True,
+        chunk_count=3,
+        warning_reason=None,
     )
     rows = [
         SimpleNamespace(field_id=1, value="Ada", origin="user"),

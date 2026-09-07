@@ -158,9 +158,11 @@ async def test_failed_run_surfaces_the_engine_error(runner, contract) -> None:
         await runner.run(BLOB, source, contract, timeout_seconds=30)
 
 
-async def test_empty_delivery_zero_chunks_is_a_loud_failure(runner, contract) -> None:
-    """A run that chunks nothing (empty/failed parse, all-OCR-fail, unbound chunker) must fail
-    loudly, never mark a green job with no retrievable output."""
+async def test_empty_delivery_zero_chunks_is_a_success_not_a_failure(runner, contract) -> None:
+    """A run that completed the whole graph but chunked nothing (content-free input, fail-soft OCR)
+    is a SUCCESS the runner delivers as-is — the worker resolves it to DONE-with-warning. Only a real
+    upstream FAILURE (which returns output=None and raises above) stays FAILED, so the runner never
+    conflates the two."""
     empty_blob = {
         "node_type": "group",
         "id": "empty_ingest",
@@ -190,8 +192,9 @@ async def test_empty_delivery_zero_chunks_is_a_loud_failure(runner, contract) ->
         },
     }
     source = SourceDocument(filename="blank.pdf", content=b"x", declared_meta={})
-    with pytest.raises(PipelineRunError, match="zero chunks"):
-        await runner.run(empty_blob, source, contract, timeout_seconds=30)
+    bundle, record = await runner.run(empty_blob, source, contract, timeout_seconds=30)
+    assert bundle.chunks == []
+    assert record.status.value == "success"
 
 
 async def test_legitimate_empty_vectors_with_chunks_is_not_a_failure(runner, contract) -> None:

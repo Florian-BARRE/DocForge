@@ -16,6 +16,7 @@ from sqlalchemy import (
     Index,
     Integer,
     String,
+    Text,
     UniqueConstraint,
     text,
 )
@@ -88,6 +89,23 @@ class Document(Base, UUIDPrimaryKey, TimestampedMixin):
     # The user's document-level searchability toggle — a plain on/off (documents have no role).
     # Disabling hides every chunk of the document from retrieval regardless of chunk-level state.
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+    warning_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    """Human-readable non-fatal warning surfaced on a successfully-ingested document.
+
+    Set when ingestion completed (status DONE) but something worth flagging happened — e.g.
+    "ingestion completed but produced 0 chunks — nothing retrievable". This is a
+    success-with-warning signal and is deliberately distinct from ``job.error`` / a FAILED
+    status: the document is persisted and usable, the warning is merely advisory for the UI.
+    NULL means no warning.
+    """
+    chunk_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    """Number of chunks persisted for this document at ingestion.
+
+    Denormalized here so the corpus grid and collection overview can display a per-document
+    chunk count without an N+1 COUNT over the ``chunk`` table. NULL means unknown / not yet
+    recorded (legacy rows ingested before this column existed); 0 means the document was
+    legitimately ingested with no chunks.
+    """
 
 
 __all__ = ["Document", "DocumentStatus", "SourceKind"]

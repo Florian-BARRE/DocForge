@@ -142,6 +142,12 @@ export function FactsGrid({ document }: { document: DocumentDetail }) {
         <Fact label="Title" value={document.title || "—"} />
         <Fact label="Language" value={document.language || "—"} />
         <Fact label="Pipeline version" value={document.pipeline_version} mono />
+        <Fact
+          label="Chunks"
+          value={document.chunk_count === null ? "—" : String(document.chunk_count)}
+          mono
+          hint={document.warning_reason ?? undefined}
+        />
         <Fact label="Admitted" value={formatDateTime(document.created_at)} />
         <Fact label="Source hash" value={document.source_hash} mono hint="sha256 of the original uploaded file" />
         <Fact

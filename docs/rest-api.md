@@ -564,11 +564,15 @@ curl -s http://localhost:10040/api/v1/documents/d4c3...
 ```
 
 A `DocumentListItem` carries `id, filename, format, status` (`pending`/`processing`/`done`/
-`failed`), `page_count`, `file_size`, `created_at`, `title`, `language`, `enabled`.
+`failed`), `page_count`, `file_size`, `created_at`, `title`, `language`, `enabled`, `chunk_count`
+(chunks persisted at ingestion — `0` = empty, `null` = unknown/legacy), and `warning_reason` (a
+non-fatal warning on a `done` document — e.g. a run that completed but produced `0` chunks; `null`
+when none). A `0`-chunk run resolves to `done`-with-`warning_reason`, never `failed`.
 
 `DocumentDetail` adds `collection_id`, `mime_type`, `source_kind`, `source_hash`,
 `pdf_blob_hash`, `simhash`, `pipeline_version`, and a `metadata` array of resolved
-`{field_name, value, origin}` values.
+`{field_name, value, origin}` values (it also carries the same `chunk_count` and
+`warning_reason`).
 
 `ChunkInfo` carries `id, chunk_index, text, token_count, is_indexed, role, enabled, strategy,
 parent_id, block_ids[], metadata[]`. Pages (`PageInfo`) reference a `render_blob_hash` you fetch

@@ -79,6 +79,8 @@ class ExplorerHelpers:
             title=document.title,
             language=document.language,
             enabled=document.enabled,
+            chunk_count=document.chunk_count,
+            warning_reason=document.warning_reason,
         )
 
     @staticmethod
@@ -102,6 +104,8 @@ class ExplorerHelpers:
             pipeline_version=document.pipeline_version,
             created_at=document.created_at,
             enabled=document.enabled,
+            chunk_count=document.chunk_count,
+            warning_reason=document.warning_reason,
             metadata=metadata,
         )
 

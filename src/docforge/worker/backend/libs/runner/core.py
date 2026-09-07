@@ -184,24 +184,19 @@ class PipelineRunner(LoggerClass):
                 f"pipeline must end on a deliver/bundle node producing a RunBundle"
             )
 
-        # 6. The DELIVERY CONTRACT: a run that chunked NOTHING delivered nothing retrievable. Causes
-        #    span a mis-wired chunker (chunks slot unbound), an empty/failed parse, every page failing
-        #    OCR, AND a genuinely content-free input (an image-only PDF with OCR off, a blank scanned
-        #    page). The chunker treats the last case as a warn-and-continue, but at the job edge all of
-        #    them are the same user-visible outcome: a green job whose document is INVISIBLE to search
-        #    (silent data loss). Surface it as a loud, actionable failure instead — an operator can
-        #    then enable OCR / fix the source and reingest. Deliberately keyed on chunks, NOT vectors:
-        #    an embed stage legitimately yields zero vectors for an all-furniture document (embed keeps
-        #    only enabled/searchable chunks), and a pipeline with no embed stage yields none by design
-        #    (Postgres-complete) — neither is a failure, and distinguishing them from a mis-wire would
-        #    duplicate the node's embed policy into the worker. Zero CHUNKS has no retrievable outcome.
-        if not bundle.chunks:
-            raise PipelineRunError(
-                "the pipeline delivered zero chunks — nothing retrievable was produced "
-                "(an empty or failed parse, every page failing OCR, a document with no extractable "
-                "text content, or an unbound chunker slot)"
-            )
-
+        # 6. ZERO-CHUNK DELIVERY is NOT a failure — it is a SUCCESS-with-warning the worker branches on.
+        #    Reaching this point means the whole graph ran to completion (``output`` is not None): every
+        #    FAIL-policy node succeeded, so a real upstream FAILURE (parse exception, an item failing a
+        #    ForEach, …) never gets here — it already returned ``output is None`` above and raised. The
+        #    only ways to arrive with zero chunks are therefore benign "clean run, empty content" cases:
+        #    a genuinely content-free input (an image-only PDF with OCR off, a blank scanned page), or a
+        #    fail-soft degrade (SKIP-policy OCR that dropped every page) — the document ran fine, it just
+        #    has nothing retrievable. The runner stays PURE and does not decide the outcome: it returns
+        #    the bundle as-is and lets the worker detect ``not bundle.chunks`` to persist the document
+        #    DONE with a visible "0 chunks" warning (an operator can then enable OCR / fix the source and
+        #    reingest). Keyed on chunks, NOT vectors: an embed stage legitimately yields zero vectors for
+        #    an all-furniture document (embed keeps only enabled chunks) and a pipeline with no embed
+        #    stage yields none by design — neither is even a warning.
         vector_sets = len(bundle.embeddings.items) if bundle.embeddings else 0
         self.logger.info(
             f"Run delivered: {len(bundle.chunks)} chunk(s), "

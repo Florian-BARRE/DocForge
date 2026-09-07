@@ -70,6 +70,8 @@ function documentRowFixture(id: string): DocumentGridRow {
     title: `Document ${id}`,
     language: "en",
     enabled: true,
+    chunk_count: 5,
+    warning_reason: null,
     metadata: {},
   };
 }

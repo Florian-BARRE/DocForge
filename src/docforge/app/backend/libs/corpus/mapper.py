@@ -256,6 +256,8 @@ class CorpusMapper:
             title=document.title,
             language=document.language,
             enabled=document.enabled,
+            chunk_count=document.chunk_count,
+            warning_reason=document.warning_reason,
             metadata=values,
         )
 

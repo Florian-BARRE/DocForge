@@ -202,7 +202,12 @@ class IngestionFacade(LoggerClass):
         async with self._postgres.session() as session:
             await BlobApi.register_many(session, rows)
 
-    async def save(self, document_id: uuid.UUID, payload: IngestionPayload) -> None:
+    async def save(
+        self,
+        document_id: uuid.UUID,
+        payload: IngestionPayload,
+        warning_reason: str | None = None,
+    ) -> None:
         """
         Persist everything a pipeline run produced, in ONE transaction.
 
@@ -220,6 +225,9 @@ class IngestionFacade(LoggerClass):
         Args:
             document_id (uuid.UUID): The admitted document.
             payload (IngestionPayload): The run's rows + learned facts.
+            warning_reason (str | None): A non-fatal warning to stamp on the DONE document — set by
+                the worker when a run completed cleanly but delivered zero chunks (nothing
+                retrievable). None (the normal path) clears any stale warning on re-ingest.
         """
         async with self._postgres.session() as session:
             # 0. Snapshot the blobs the document references NOW — the supersede candidates, gathered
@@ -255,8 +263,15 @@ class IngestionFacade(LoggerClass):
                 payload.composition,
                 metadata=payload.chunk_metadata,
             )
-            # 4. The persisted truth is complete — unless a force-cancel raced in (guarded DONE).
-            await DocumentApi.finalize_done(session, document_id)
+            # 4. The persisted truth is complete — unless a force-cancel raced in (guarded DONE). The
+            #    chunk count is denormalized here (0 for the empty case) and the optional warning is
+            #    stamped so a 0-chunk run reads as DONE-with-warning, not FAILED.
+            await DocumentApi.finalize_done(
+                session,
+                document_id,
+                warning_reason=warning_reason,
+                chunk_count=len(payload.chunks),
+            )
             # 5. Purge the blobs this run superseded: flush so the FRESH pages/figures/PDF hashes are
             #    visible to the reference re-check, then delete only the old hashes nothing references
             #    anymore (a byte-identical render re-used across runs, or the source, is kept).

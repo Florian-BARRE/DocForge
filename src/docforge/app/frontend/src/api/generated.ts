@@ -2875,6 +2875,11 @@ export interface components {
          */
         DocumentDetail: {
             /**
+             * Chunk Count
+             * @description Chunks persisted at ingestion (0 = empty; None = unknown/legacy or not yet run).
+             */
+            chunk_count?: number | null;
+            /**
              * Collection Id
              * @description Owning collection.
              */
@@ -2958,6 +2963,11 @@ export interface components {
              * @description Learned title ('' before parse).
              */
             title: string;
+            /**
+             * Warning Reason
+             * @description Non-fatal warning on a DONE document (e.g. a 0-chunk run); None when none.
+             */
+            warning_reason?: string | null;
         };
         /**
          * DocumentEnabledResponse
@@ -3029,6 +3039,11 @@ export interface components {
          */
         DocumentGridRow: {
             /**
+             * Chunk Count
+             * @description Chunks persisted at ingestion (0 = empty; None = unknown/legacy or not yet run).
+             */
+            chunk_count?: number | null;
+            /**
              * Created At
              * @description Admission timestamp.
              */
@@ -3082,6 +3097,11 @@ export interface components {
              * @description Learned title ('' before parse).
              */
             title: string;
+            /**
+             * Warning Reason
+             * @description Non-fatal warning on a DONE document (e.g. a 0-chunk run); None when none.
+             */
+            warning_reason?: string | null;
         };
         /**
          * DocumentIRModel
@@ -3114,6 +3134,11 @@ export interface components {
          * @description One row of a collection's document catalogue (the browse list).
          */
         DocumentListItem: {
+            /**
+             * Chunk Count
+             * @description Chunks persisted at ingestion (0 = empty; None = unknown/legacy or not yet run).
+             */
+            chunk_count?: number | null;
             /**
              * Created At
              * @description Admission timestamp.
@@ -3161,6 +3186,11 @@ export interface components {
              * @description Learned title ('' before parse).
              */
             title: string;
+            /**
+             * Warning Reason
+             * @description Non-fatal warning on a DONE document (e.g. a 0-chunk run); None when none.
+             */
+            warning_reason?: string | null;
         };
         /**
          * DocumentProvenance

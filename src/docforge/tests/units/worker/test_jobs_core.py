@@ -150,6 +150,58 @@ async def test_happy_path_calls_both_hooks_with_the_document_id(jobs_core, monke
     database.jobs.mark_failed.assert_not_awaited()
 
 
+async def test_zero_chunk_run_marks_done_with_a_visible_warning(jobs_core, monkeypatch) -> None:
+    """A run that completed the whole graph but delivered 0 chunks is DONE-with-warning: save()
+    receives the 0-chunk warning_reason, index() is skipped (no points), and the job is marked DONE
+    (never FAILED). This is the 'clean run, empty content' case, split from an upstream failure."""
+    database = _fake_database()
+    document_id, context = _wire(jobs_core, monkeypatch, database, points=[])
+    bundle = MagicMock()
+    bundle.chunks = []
+    context.runner.run = AsyncMock(return_value=(bundle, MagicMock()))
+
+    await jobs_core.ingest_document({}, str(document_id), str(uuid.uuid4()))
+
+    database.jobs.mark_done.assert_awaited_once()
+    database.jobs.mark_failed.assert_not_awaited()
+    database.ingestion.index.assert_not_awaited()
+    warning = database.ingestion.save.await_args.kwargs["warning_reason"]
+    assert warning is not None and "0 chunks" in warning
+
+
+async def test_run_with_chunks_saves_without_a_warning(jobs_core, monkeypatch) -> None:
+    """The normal path: a run delivering chunks is saved with warning_reason=None, so a re-ingest
+    that now yields chunks wipes any stale 0-chunk warning from a previous run."""
+    database = _fake_database()
+    document_id, context = _wire(jobs_core, monkeypatch, database, points=[MagicMock()])
+    bundle = MagicMock()
+    bundle.chunks = [MagicMock()]
+    context.runner.run = AsyncMock(return_value=(bundle, MagicMock()))
+
+    await jobs_core.ingest_document({}, str(document_id), str(uuid.uuid4()))
+
+    assert database.ingestion.save.await_args.kwargs["warning_reason"] is None
+    database.jobs.mark_done.assert_awaited_once()
+
+
+async def test_upstream_run_failure_stays_failed_never_a_warning(jobs_core, monkeypatch) -> None:
+    """A real upstream node failure (the runner raises) keeps the FAILED path: both truths marked
+    FAILED, the job re-raised for arq, and NO document was ever saved (no DONE-with-warning)."""
+    import pytest  # noqa: PLC0415
+
+    database = _fake_database()
+    document_id, context = _wire(jobs_core, monkeypatch, database, points=[MagicMock()])
+    context.runner.run = AsyncMock(side_effect=RuntimeError("stage exploded"))
+
+    with pytest.raises(RuntimeError, match="stage exploded"):
+        await jobs_core.ingest_document({}, str(document_id), str(uuid.uuid4()))
+
+    database.ingestion.mark_failed.assert_awaited_once_with(document_id)
+    database.jobs.mark_failed.assert_awaited_once()
+    database.jobs.mark_done.assert_not_awaited()
+    database.ingestion.save.assert_not_awaited()
+
+
 async def test_claim_transitions_the_document_to_processing(jobs_core, monkeypatch) -> None:
     """The worker flips the DOCUMENT PENDING → PROCESSING as it claims the job, so it no longer
     reads 'pending' for the whole run — mark_running only moves the JOB row."""
