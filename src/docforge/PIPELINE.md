@@ -17,7 +17,7 @@ flowchart LR
     end
 
     subgraph S2["Étape 2 — PARSE ✅"]
-        s2["docling (défaut) → granite_docling / pp_structure / paddleocr_vl / mineru (escalade)"]
+        s2["docling (défaut) → granite_docling / pp_structure / paddleocr_vl / mineru / dots_ocr (escalade)"]
     end
 
     subgraph S3["Étape 3 — ENRICH ✅"]
@@ -164,11 +164,13 @@ flowchart TB
         GRA["<b>granite_docling</b> ✅<br/>─────────────<br/>pipeline VLM Docling IN-WORKER (DocTags, 258M)<br/>réutilise le même DoclingIRMapper + score<br/>⚙️ revision épinglée · force_backend_text=false · max_new_tokens=4096"]:::choice
         PPS["<b>pp_structure</b> ✅<br/>─────────────<br/>PP-StructureV3 en RÉSEAU → sidecar paddle_server<br/>(POST /layout-parsing) · mapper HTML → IR<br/>⚙️ base_url · use_table_recognition=true · timeout_seconds=300"]:::choice
         VL["<b>paddleocr_vl</b> ✅<br/>─────────────<br/>PaddleOCR-VL 1.6 (VLM) en RÉSEAU → sidecar paddle_server<br/>(POST /vl-parse, build LAZY) · MÊME mapper HTML → IR que pp_structure<br/>⚙️ base_url · use_chart/seal/ocr_for_image_block=false · timeout_seconds=600"]:::choice
-        MIN["<b>mineru</b> ✅<br/>─────────────<br/>MinerU2.5-Pro (VLM, 1.2B) GPU-ONLY en RÉSEAU → sidecar mineru_server<br/>(POST /parse) · content_list → IR (bbox déjà [0,1])<br/>⚙️ base_url · timeout_seconds=600 · MinerU-OSL (Apache)"]:::choice
+        MIN["<b>mineru</b> ✅<br/>─────────────<br/>MinerU2.5-Pro (VLM, 1.2B) GPU-ONLY en RÉSEAU → sidecar mineru_server<br/>(POST /parse) · content_list → IR (bbox déjà [0,1])<br/>⚙️ base_url · timeout_seconds=900 · MinerU-OSL (Apache)"]:::choice
         DOC -. "ScoreBelow(seuil) → escalade" .-> GRA
         GRA -. "ScoreBelow → escalade" .-> PPS
         PPS -. "ScoreBelow → escalade" .-> VL
+        DOTS["<b>dots_ocr</b> ✅<br/>─────────────<br/>dots.ocr (VLM 3B) GPU-ONLY en RÉSEAU → sidecar dots_ocr_server<br/>(POST /parse, vLLM) · JSON par-élément → IR (bbox px ÷ dims page)<br/>⚙️ base_url · timeout_seconds=900 · MIT"]:::choice
         VL -. "ScoreBelow → escalade" .-> MIN
+        MIN -. "ScoreBelow → escalade" .-> DOTS
     end
 
     FR["<b>figure_render</b> (render) ✅<br/>─────────────<br/>rasterise les pages (pypdfium2, off-thread)<br/>EMBARQUE le crop PNG de chaque figure<br/>dans l'IR (Block.figure.crop)<br/>⚙️ scale=2.0 · render_pages=true"]:::node
@@ -188,7 +190,8 @@ flowchart TB
 | **parser / granite_docling** | `revision` (épinglée) · `force_backend_text`=false · `max_new_tokens`=4096 | `source : IntakeResult` ← étape 1 | `ir : DocumentIR` + `score` (VLM DocTags in-worker — MÊME mapper/score que docling, GPU en pratique) |
 | **parser / pp_structure** | `base_url` (requis) · `api_key` · `use_table_recognition`=true · `use_formula/seal/orientation/unwarping`=false · `timeout_seconds`=300 (+ hérite `TimeoutRetryConfig` : `max_retries`, `retry_backoff_seconds`, `preflight_timeout_seconds`) | `source : IntakeResult` ← étape 1 | `ir : DocumentIR` + `score` (POST /layout-parsing au sidecar `paddle_server` — parser RÉSEAU) |
 | **parser / paddleocr_vl** | `base_url` (requis) · `api_key` · `use_chart_recognition/seal_recognition/ocr_for_image_block`=false · `timeout_seconds`=600 (VLM lent ; + hérite `TimeoutRetryConfig` : `max_retries`, `retry_backoff_seconds`, `preflight_timeout_seconds`) | `source : IntakeResult` ← étape 1 | `ir : DocumentIR` + `score` (POST /vl-parse au sidecar `paddle_server` — parser VLM RÉSEAU, build LAZY sidecar ; MÊME contrat + mapper HTML→IR que pp_structure) |
-| **parser / mineru** | `base_url` (requis) · `api_key` · `timeout_seconds`=600 (VLM lent ; + hérite `TimeoutRetryConfig` : `max_retries`, `retry_backoff_seconds`, `preflight_timeout_seconds`) | `source : IntakeResult` ← étape 1 | `ir : DocumentIR` + `score` (POST /parse au sidecar dédié `mineru_server` — MinerU2.5-Pro VLM **GPU-ONLY** RÉSEAU ; content_list→IR, bbox déjà normalisé [0,1] ; profil compose opt-in `mineru`) |
+| **parser / mineru** | `base_url` (requis) · `api_key` · `timeout_seconds`=900 (VLM lent ; + hérite `TimeoutRetryConfig` : `max_retries`, `retry_backoff_seconds`, `preflight_timeout_seconds`) | `source : IntakeResult` ← étape 1 | `ir : DocumentIR` + `score` (POST /parse au sidecar dédié `mineru_server` — MinerU2.5-Pro VLM **GPU-ONLY** RÉSEAU ; content_list→IR, bbox déjà normalisé [0,1] ; profil compose opt-in `mineru`) |
+| **parser / dots_ocr** | `base_url` (requis) · `api_key` · `timeout_seconds`=900 (VLM lent ; + hérite `TimeoutRetryConfig` : `max_retries`, `retry_backoff_seconds`, `preflight_timeout_seconds`) | `source : IntakeResult` ← étape 1 | `ir : DocumentIR` + `score` (POST /parse au sidecar dédié `dots_ocr_server` — dots.ocr VLM 3B **GPU-ONLY** servi via vLLM ; JSON par-élément→IR, bbox pixels ÷ dims page rendue → [0,1] ; profil compose opt-in `dots_ocr` ; MIT) |
 | **parse / figure_render** | `scale`=2.0 · `render_pages`=true | `ingest : IntakeResult` ← étape 1 · `ir : DocumentIR` ← parser | `ir : DocumentIR` **complété** (crops embarqués) · `pages : PageRenders` |
 
 **Contrat de la famille** (`BaseParserNode`) : tout parseur consomme `{source: IntakeResult}` et produit `{ir, score}` ; pas de PDF → IR vide + score 0 (dégradation) ; l'escalade se câble dans le graphe par `ScoreBelow(threshold)` — rien à changer au moteur.
@@ -518,7 +521,7 @@ re-ingest efface donc un avertissement périmé). Le compteur est stampé pour *
 - **`UNIQUE_IN_GRAPH`** (le flag de multiplicité, exposé par `describe()` et rejeté par le validateur en
   doublon — `duplicate_unique_node`) : **True** quand une 2e instance du kind est une erreur de câblage —
   logique d'étape et structurel (les 4 nodes intake · gotenberg · les 4 parseurs docling · granite_docling ·
-  pp_structure · paddleocr_vl · mineru — chacun unique par kind, mais empilables en escalade car kinds DIFFÉRENTS · figure_render ·
+  pp_structure · paddleocr_vl · mineru · dots_ocr — chacun unique par kind, mais empilables en escalade car kinds DIFFÉRENTS · figure_render ·
   figure_extract · enrich_apply · les 3 chunkers · breadcrumb · doc_meta · sliding · deliver/bundle · les 2
   embedders bge_server · openai_compatible). **False** (défaut) quand la répétition est
   légitime : providers en escalade du MÊME kind avec configs différentes (ocr/vlm/llm), terminaux multi-branches

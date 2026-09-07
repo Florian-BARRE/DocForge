@@ -1,0 +1,37 @@
+[
+  {
+    "category": "Title",
+    "bbox": [100, 80, 900, 140],
+    "reading_order": 0,
+    "text": "Attention Is All You Need"
+  },
+  {
+    "category": "Text",
+    "bbox": [100, 160, 900, 220],
+    "reading_order": 1,
+    "text": "The dominant sequence transduction models are based on recurrent networks."
+  },
+  {
+    "category": "Section-header",
+    "bbox": [100, 240, 500, 280],
+    "reading_order": 2,
+    "text": "3.1 Encoder and Decoder Stacks"
+  },
+  {
+    "category": "Table",
+    "bbox": [120, 300, 880, 520],
+    "reading_order": 3,
+    "text": "<table><tr><th>Layer</th><th>Complexity</th></tr><tr><td>Self-Attention</td><td>O(n^2)</td></tr></table>"
+  },
+  {
+    "category": "Formula",
+    "bbox": [200, 540, 800, 620],
+    "reading_order": 4,
+    "text": "\\mathrm{softmax}(x)"
+  },
+  {
+    "category": "Picture",
+    "bbox": [150, 640, 850, 900],
+    "reading_order": 5
+  }
+]

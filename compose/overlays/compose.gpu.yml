@@ -96,3 +96,17 @@ services:
       dockerfile: mineru_server/Dockerfile
       args:
         TORCH_VARIANT: gpu
+
+  # dots.ocr is GPU-ONLY: even in the base file its image is already the -gpu tag. This overlay adds the
+  # actual device grant + the GPU build args. It only ever runs under the opt-in `dots_ocr` profile.
+  docforge_dots_ocr_server:
+    image: ghcr.io/florian-barre/docforge-dots-ocr-server:${DOCFORGE_TAG:-latest}-gpu
+    # Service-level GPU grant — equivalent to `docker run --gpus all`.
+    gpus: all
+    build:
+      # Matches overlays/compose.dev.yml's docforge_dots_ocr_server build context/dockerfile exactly —
+      # see the header comment on why this duplication is required.
+      context: ../../src
+      dockerfile: dots_ocr_server/Dockerfile
+      args:
+        TORCH_VARIANT: gpu

@@ -284,6 +284,54 @@ selects the `pp_structure` brick. See [architecture.md](architecture.md) and
 
 ---
 
+## `services/mineru_server/.env` — MinerU2.5-Pro layout-parsing sidecar (GPU-only, opt-in)
+
+MinerU2.5-Pro is a **GPU-only** VLM document parser served by the `mineru_server` sidecar. It is reached
+in-network at `http://mineru_server:80` (dev host port `10053`) and is only exercised when a collection's
+parse stage escalates to the `mineru` parser. It is **off by default**: it never starts under `--profile
+full` — enable it with the opt-in compose profile `--profile mineru`.
+
+> **Build variant** is chosen at **image build time**, not via `.env`: `docker compose build mineru_server`
+> (CPU image — import/health only; the VLM backend needs CUDA) or with `--build-arg TORCH_VARIANT=gpu`
+> (CUDA 12.6 for Tesla V100 sm_70).
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `MINERU_MODEL_CACHE_HOME` | `/models` | Directory MinerU caches downloaded weights under (named volume so they persist). |
+| `MINERU_MODEL_SOURCE` | `huggingface` | Model hoster: `huggingface` \| `modelscope`. |
+| `MINERU_BACKEND` | `vlm-transformers` | Inference backend — the MinerU2.5-Pro VLM. |
+| `MINERU_LANG` | `ch` | OCR/recognition language hint passed to MinerU. |
+| `MINERU_REQUIRE_GPU` | `true` | Fail fast at startup if no CUDA device is visible (the VLM backend is GPU-only). |
+| `MINERU_LOCK_WAIT_TIMEOUT_SECONDS` | `590` | Max seconds a `/parse` request waits for the shared predict lock before HTTP 503. Must be `> 0`. |
+| `MINERU_MAX_BODY_BYTES` | `104857600` | Hard ceiling (bytes, 100 MiB) on the `/parse` request body; oversized → HTTP 413. |
+| `LOGGING_*` | see file | Same five logging knobs (defaults `INFO`/`DEBUG`/`true`/`false`/`ShortFormat`). |
+
+---
+
+## `services/dots_ocr_server/.env` — dots.ocr layout-parsing sidecar (GPU-only, opt-in)
+
+dots.ocr is a **GPU-only** 3B VLM document parser (served via vLLM) behind the `dots_ocr_server` sidecar,
+reached in-network at `http://dots_ocr_server:80` (dev host port `10054`), exercised only when a
+collection's parse stage escalates to the `dots_ocr` parser. **Off by default** — never starts under
+`--profile full`; enable with the opt-in compose profile `--profile dots_ocr`.
+
+> **Build variant** is chosen at **image build time**: `docker compose build dots_ocr_server` (CPU image —
+> import/health only; the VLM needs CUDA) or with `--build-arg TORCH_VARIANT=gpu` (CUDA 12.6, Tesla V100
+> sm_70). MIT-licensed model `rednote-hilab/dots.mocr`.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `DOTS_OCR_MODEL_CACHE_HOME` | `/models` | Directory the model weights cache under (named volume so they persist). |
+| `DOTS_OCR_MODEL_PATH` | `rednote-hilab/dots.ocr` | HF repo / local path of the dots.ocr VLM weights. |
+| `DOTS_OCR_RENDER_DPI` | `200` | DPI at which PDF pages are rasterised to images before inference. |
+| `DOTS_OCR_MAX_PAGES` | `0` | Per-request page cap (`0` = no cap). |
+| `DOTS_OCR_MAX_TOKENS` | `16384` | Max generation tokens per page for the VLM. |
+| `DOTS_OCR_REQUIRE_GPU` | `true` | Fail fast at startup if no CUDA device is visible (the VLM is GPU-only). |
+| `DOTS_OCR_MAX_BODY_BYTES` | `104857600` | Hard ceiling (bytes, 100 MiB) on the `/parse` request body; oversized → HTTP 413. |
+| `LOGGING_*` | see file | Same five logging knobs (defaults `INFO`/`DEBUG`/`true`/`false`/`ShortFormat`). |
+
+---
+
 ## Ports (dev)
 
 | Service | Host port |
@@ -301,6 +349,8 @@ selects the `pp_structure` brick. See [architecture.md](architecture.md) and
 | Grafana (optional telemetry add-on) | `10050` |
 | Prometheus (optional telemetry add-on) | `10051` |
 | Loki (optional telemetry add-on) | `10052` |
+| mineru_server (GPU-only, opt-in `mineru` profile) | `10053` |
+| dots_ocr_server (GPU-only, opt-in `dots_ocr` profile) | `10054` |
 
 Production closes the data-plane ports (postgres/redis/qdrant/seaweedfs) **and Gotenberg** — the latter
 is an unauthenticated conversion API and an SSRF pivot, so it is reached only via the in-network

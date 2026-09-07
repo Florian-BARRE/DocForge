@@ -92,6 +92,24 @@ class MineruContentListNormalizer:
                     "blocks": blocks,
                 }
             )
+
+        # 3. Surface a schema mismatch. Every block's bbox drives its figure crop + provenance; if most
+        #    blocks fell back to the full-page box, the installed MinerU almost certainly omits `bbox`
+        #    from content_list (a version/schema drift the CPU box could never verify) — crops would then
+        #    all be the whole page. Warn LOUDLY instead of silently emitting useless provenance.
+        total = sum(len(page["blocks"]) for page in pages)
+        full_page = sum(
+            1
+            for page in pages
+            for block in page["blocks"]
+            if block.get("bbox") == [0, 0, _BBOX_BASIS, _BBOX_BASIS]
+        )
+        if total and full_page / total > 0.5:
+            cls.logger.warning(
+                f"{full_page}/{total} MinerU blocks have no usable bbox (full-page fallback) — the "
+                f"content_list schema likely omits `bbox`; figure crops/provenance will be wrong. "
+                f"Validate the installed MinerU output on this GPU deployment."
+            )
         return pages
 
     # ── Block mapping ──────────────────────────────────────────────────────────────
@@ -117,8 +135,9 @@ class MineruContentListNormalizer:
             out += cls.__caption_blocks(raw.get("table_caption"), bbox)
             return out
         if block_type == "equation":
-            latex = raw.get("text") if raw.get("text_format") == "latex" else raw.get("text")
-            return [cls.__block("formula", bbox, latex=str(latex or ""))]
+            # MinerU emits the equation body in `text` with `text_format: "latex"`; the content is the
+            # same string regardless, so take it directly (no format branch — it never differed).
+            return [cls.__block("formula", bbox, latex=str(raw.get("text") or ""))]
         if block_type in ("image", "chart"):
             out = [cls.__block(block_type, bbox, text="")]
             out += cls.__caption_blocks(raw.get("image_caption"), bbox)

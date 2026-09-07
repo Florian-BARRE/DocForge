@@ -477,6 +477,45 @@ services:
         aliases:
           - mineru_server        # so a collection's default base_url http://mineru_server:80 resolves
 
+  # ── dots.ocr per-element layout VLM sidecar (opt-in, GPU-only escalation parser) ──────────────
+  docforge_dots_ocr_server:
+    image: ghcr.io/florian-barre/docforge-dots-ocr-server:${DOCFORGE_TAG:-latest}-gpu
+    container_name: docforge-dots-ocr-server
+    profiles: ["dots_ocr"]
+    # Same reason as the other model hosts: Docker's embedded resolver has no external upstream on
+    # this VM, so without a pin the first-parse model download (rednote-hilab/dots.ocr -> huggingface.co)
+    # fails to resolve.
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
+    env_file:
+      - ../services/dots_ocr_server/.env
+    # No host port in prod — internal to docforge_net only (collections point at
+    # http://dots_ocr_server:80). Dev re-publishes 10054 via compose/overlays/compose.dev.yml.
+    volumes:
+      - docforge_dots_ocr_models:/models # DOTS_OCR_MODEL_CACHE_HOME/HF_HOME — weights persist across restarts
+    healthcheck:
+      # stdlib probe (the slim runtime has no curl); generous start_period for the first model
+      # download (dots.ocr VLM weights) + lazy vLLM load. /health returns 503 until a CUDA GPU is
+      # visible (DOTS_OCR_REQUIRE_GPU), so this only goes healthy on a GPU host — as intended.
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:80/health', timeout=5).status == 200 else 1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 600s
+    deploy:
+      resources:
+        # The dots.ocr VLM plus its vLLM host-side buffers peak several GB of RAM.
+        limits:
+          memory: 16g
+        reservations:
+          memory: 1g
+    restart: unless-stopped
+    networks:
+      docforge_net:
+        aliases:
+          - dots_ocr_server      # so a collection's default base_url http://dots_ocr_server:80 resolves
+
 volumes:
   docforge_postgres_data:
   docforge_redis_data:
@@ -486,6 +525,7 @@ volumes:
   docforge_worker_hf_cache:
   docforge_ppstructure_models:
   docforge_mineru_models:
+  docforge_dots_ocr_models:
 
 networks:
   docforge_net:
