@@ -317,17 +317,21 @@ collection's parse stage escalates to the `dots_ocr` parser. **Off by default** 
 
 > **Build variant** is chosen at **image build time**: `docker compose build dots_ocr_server` (CPU image —
 > import/health only; the VLM needs CUDA) or with `--build-arg TORCH_VARIANT=gpu` (CUDA 12.6, Tesla V100
-> sm_70). MIT-licensed model `rednote-hilab/dots.mocr`.
+> sm_70). MIT-licensed model `rednote-hilab/dots.ocr`.
 
 | Variable | Default | Meaning |
 |---|---|---|
 | `DOTS_OCR_MODEL_CACHE_HOME` | `/models` | Directory the model weights cache under (named volume so they persist). |
 | `DOTS_OCR_MODEL_PATH` | `rednote-hilab/dots.ocr` | HF repo / local path of the dots.ocr VLM weights. |
 | `DOTS_OCR_RENDER_DPI` | `200` | DPI at which PDF pages are rasterised to images before inference. |
-| `DOTS_OCR_MAX_PAGES` | `0` | Per-request page cap (`0` = no cap). |
+| `DOTS_OCR_MAX_PAGES` | `0` | Per-request page cap (`0` = no cap); pages past the cap are not even rendered. |
 | `DOTS_OCR_MAX_TOKENS` | `16384` | Max generation tokens per page for the VLM. |
+| `DOTS_OCR_IMAGE_FACTOR` | `28` | Qwen2-VL smart-resize granularity — each resized page side is a multiple of this. |
+| `DOTS_OCR_MIN_PIXELS` | `3136` | Lower bound on the smart-resized page pixel count (the frame the model sees). |
+| `DOTS_OCR_MAX_PIXELS` | `11289600` | Upper bound on the smart-resized page pixel count (bbox divisor + vLLM processor budget). |
 | `DOTS_OCR_REQUIRE_GPU` | `true` | Fail fast at startup if no CUDA device is visible (the VLM is GPU-only). |
 | `DOTS_OCR_MAX_BODY_BYTES` | `104857600` | Hard ceiling (bytes, 100 MiB) on the `/parse` request body; oversized → HTTP 413. |
+| `DOTS_OCR_LOCK_WAIT_TIMEOUT_SECONDS` | `590` | Max seconds a `/parse` waits for the single predict lock before HTTP 503 (back-pressure). |
 | `LOGGING_*` | see file | Same five logging knobs (defaults `INFO`/`DEBUG`/`true`/`false`/`ShortFormat`). |
 
 ---

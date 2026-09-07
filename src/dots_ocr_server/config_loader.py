@@ -70,15 +70,27 @@ class DotsOcrServerConfig(EnvConfigLoader):
     DOTS_OCR_MODEL_PATH: str = env("DOTS_OCR_MODEL_PATH", default="rednote-hilab/dots.ocr")
 
     # ───── Rendering ─────
-    # DPI each PDF page is rasterised to before it is sent to the VLM. Higher DPI = sharper small text
+    # DPI each PDF page is rasterised to before the smart-resize. Higher DPI = sharper small text
     # (better recognition) but larger images (slower inference, more VRAM). 200 DPI is a sensible
-    # document default. The RENDERED width/height in pixels become the bbox normalization divisor.
+    # document default. The rendered page is then smart-resized (below); those RESIZED dims — not these
+    # raw render dims — become the bbox normalization divisor.
     DOTS_OCR_RENDER_DPI: int = env("DOTS_OCR_RENDER_DPI", cast=int, default=200)
     # Hard ceiling on the number of pages parsed from one PDF — a runaway page count would exhaust GPU
     # time/VRAM. Pages beyond the cap are dropped (logged). 0 disables the cap.
     DOTS_OCR_MAX_PAGES: int = env("DOTS_OCR_MAX_PAGES", cast=int, default=0)
     # Max new tokens the VLM may emit per page (the JSON layout list). Large enough for a dense page.
     DOTS_OCR_MAX_TOKENS: int = env("DOTS_OCR_MAX_TOKENS", cast=int, default=16384)
+
+    # ───── Smart-resize (Qwen2-VL) ─────
+    # dots.ocr is a Qwen2-VL-family VLM: its image processor resizes every page to dims that are a
+    # multiple of IMAGE_FACTOR and whose pixel count fits [MIN_PIXELS, MAX_PIXELS] BEFORE the encoder,
+    # and returns bboxes in THAT resized frame. The sidecar resizes to the same dims itself (so those
+    # dims are the honest bbox divisor) and pins MIN/MAX on the vLLM processor so it does not re-resize
+    # differently. Defaults follow the dots.ocr repo consts — verify against the model card on first
+    # GPU deploy.
+    DOTS_OCR_IMAGE_FACTOR: int = env("DOTS_OCR_IMAGE_FACTOR", cast=int, default=28)
+    DOTS_OCR_MIN_PIXELS: int = env("DOTS_OCR_MIN_PIXELS", cast=int, default=3136)
+    DOTS_OCR_MAX_PIXELS: int = env("DOTS_OCR_MAX_PIXELS", cast=int, default=11289600)
 
     # ───── Request limits ─────
     # Hard ceiling (BYTES) on a request body the /parse route will buffer. The route reads the whole
@@ -121,6 +133,13 @@ class DotsOcrServerConfig(EnvConfigLoader):
             raise ValueError(f"DOTS_OCR_RENDER_DPI must be > 0, got {cls.DOTS_OCR_RENDER_DPI}")
         if cls.DOTS_OCR_MAX_TOKENS <= 0:
             raise ValueError(f"DOTS_OCR_MAX_TOKENS must be > 0, got {cls.DOTS_OCR_MAX_TOKENS}")
+        if cls.DOTS_OCR_IMAGE_FACTOR <= 0:
+            raise ValueError(f"DOTS_OCR_IMAGE_FACTOR must be > 0, got {cls.DOTS_OCR_IMAGE_FACTOR}")
+        if not 0 < cls.DOTS_OCR_MIN_PIXELS <= cls.DOTS_OCR_MAX_PIXELS:
+            raise ValueError(
+                f"require 0 < DOTS_OCR_MIN_PIXELS <= DOTS_OCR_MAX_PIXELS, got "
+                f"{cls.DOTS_OCR_MIN_PIXELS} / {cls.DOTS_OCR_MAX_PIXELS}"
+            )
 
 
 # ─── Apply logging configuration AFTER class definition ───

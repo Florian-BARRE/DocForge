@@ -162,6 +162,17 @@ def test_non_list_json_degrades_to_empty_page() -> None:
     assert page["blocks"] == []
 
 
+def test_list_of_non_objects_degrades_to_empty_page() -> None:
+    """A valid JSON list whose elements are NOT objects degrades to empty — never crashes the sort.
+
+    Regression: the reading-order sort key called `.get()` on each raw element before the dict
+    guard, so a model emitting `["heading", "para"]` (or `[1, 2]`) raised AttributeError mid-sort
+    and 500-ed the whole PDF instead of degrading the page.
+    """
+    page = _page(raw=json.dumps(["heading", "para", 3]))
+    assert page["blocks"] == []
+
+
 def test_empty_output_yields_no_blocks() -> None:
     """An empty model output produces an empty block list (a degenerate but valid page)."""
     page = _page(raw="")

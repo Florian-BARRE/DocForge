@@ -1,0 +1,95 @@
+{
+  "n_pages": 2,
+  "engine": {
+    "dots_ocr": "1.0.0",
+    "model": "rednote-hilab/dots.ocr",
+    "backend": "vllm"
+  },
+  "pages": [
+    {
+      "page_index": 0,
+      "image_width": 2000,
+      "image_height": 1000,
+      "blocks": [
+        {
+          "label": "Title",
+          "bbox": [200, 80, 1800, 140],
+          "reading_order": 0,
+          "text": "Attention Is All You Need"
+        },
+        {
+          "label": "Text",
+          "bbox": [200, 160, 1800, 220],
+          "reading_order": 1,
+          "text": "The dominant sequence transduction models are based on recurrent networks."
+        },
+        {
+          "label": "Section-header",
+          "bbox": [200, 240, 1000, 280],
+          "reading_order": 2,
+          "text": "3.1 Encoder and Decoder Stacks"
+        },
+        {
+          "label": "Table",
+          "bbox": [240, 300, 1760, 520],
+          "reading_order": 3,
+          "html": "<table><tr><th>Layer</th><th>Complexity</th></tr><tr><td>Self-Attention</td><td>O(n^2)</td></tr><tr><td rowspan=\"2\">Recurrent</td><td>O(n)</td></tr><tr><td>O(1)</td></tr></table>"
+        },
+        {
+          "label": "Caption",
+          "bbox": [240, 300, 1760, 520],
+          "reading_order": 4,
+          "text": "Table 1: Maximum path lengths."
+        }
+      ]
+    },
+    {
+      "page_index": 1,
+      "image_width": 1000,
+      "image_height": 2000,
+      "blocks": [
+        {
+          "label": "Formula",
+          "bbox": [200, 100, 800, 180],
+          "reading_order": 0,
+          "latex": "\\mathrm{Attention}(Q, K, V) = \\mathrm{softmax}\\left(\\frac{QK^T}{\\sqrt{d_k}}\\right)V"
+        },
+        {
+          "label": "Picture",
+          "bbox": [150, 220, 850, 700],
+          "reading_order": 1
+        },
+        {
+          "label": "List-item",
+          "bbox": [100, 720, 900, 760],
+          "reading_order": 2,
+          "text": "First bullet point."
+        },
+        {
+          "label": "Section-header",
+          "bbox": [100, 840, 700, 880],
+          "reading_order": 3,
+          "text": "3.2.1 Scaled Dot-Product Attention"
+        },
+        {
+          "label": "Footnote",
+          "bbox": [100, 1820, 900, 1870],
+          "reading_order": 4,
+          "text": "1. See the appendix for details."
+        },
+        {
+          "label": "Page-footer",
+          "bbox": [100, 1900, 900, 1960],
+          "reading_order": 5,
+          "text": "Page 2"
+        },
+        {
+          "label": "Watermark",
+          "bbox": [0, 0, 50, 50],
+          "reading_order": 6,
+          "text": "unmapped"
+        }
+      ]
+    }
+  ]
+}

@@ -9,9 +9,14 @@
 # shared per-page contract.
 #
 # GPU FIRST-DEPLOY VALIDATION (do this on the first GPU deploy, it could NOT be tested here):
+#   * GPU GATE: confirm returned bboxes land in the SMART_RESIZED frame the model actually saw (the
+#     dims this engine reports as image_width/image_height), NOT the raw render — spot-check one crop
+#     against its page. A wrong divisor uniformly mis-scales every crop (the #1 risk of this brick).
 #   * confirm the model id DOTS_OCR_MODEL_PATH (default "rednote-hilab/dots.ocr") + that vLLM >=0.11
 #     loads it with trust_remote_code=True on the target CUDA GPU (Tesla V100 sm_70 → torch cu126);
 #   * confirm `_PROMPT_LAYOUT_ALL_EN` matches the current dots.ocr model card's layout prompt verbatim;
+#   * confirm the smart-resize knobs (factor/min_pixels/max_pixels) match the model card, and that the
+#     `mm_processor_kwargs` pinned on the vLLM engine keep its processor from re-resizing differently;
 #   * confirm `LLM.chat(...)` with an image_url data-URI message returns the per-page JSON string in
 #     `outputs[i].outputs[0].text` for the installed vLLM version;
 #   * confirm the element JSON schema ({category, bbox pixels, text, reading_order}) matches
@@ -26,6 +31,9 @@ from typing import Any
 
 # ====== Third-Party Library Imports ======
 from loggerplusplus import LoggerClass
+
+# ====== Local Project Imports ======
+from .resize import SmartResize
 
 # The layout prompt dots.ocr expects for a full-page parse. It asks the model to return, for every
 # layout element, its category + pixel bbox + text (HTML for tables, LaTeX for formulas) in reading
@@ -53,19 +61,34 @@ class DotsOcrEngine(LoggerClass):
     serializes every `analyze()` behind a lock and runs it off the event loop.
     """
 
-    def __init__(self, model_path: str, render_dpi: int, max_pages: int, max_tokens: int) -> None:
+    def __init__(
+        self,
+        model_path: str,
+        render_dpi: int,
+        max_pages: int,
+        max_tokens: int,
+        image_factor: int,
+        min_pixels: int,
+        max_pixels: int,
+    ) -> None:
         """
         Args:
             model_path (str): HuggingFace id or local path of the dots.ocr weights vLLM loads.
-            render_dpi (int): DPI each PDF page is rasterised to before inference.
+            render_dpi (int): DPI each PDF page is rasterised to before the smart-resize.
             max_pages (int): Hard ceiling on pages parsed from one PDF (0 = no cap).
             max_tokens (int): Max new tokens the VLM may emit per page.
+            image_factor (int): Qwen2-VL dimension granularity (28) each resized side is a multiple of.
+            min_pixels (int): Lower bound on the smart-resized pixel count.
+            max_pixels (int): Upper bound on the smart-resized pixel count.
         """
         LoggerClass.__init__(self)
         self._model_path = model_path
         self._render_dpi = render_dpi
         self._max_pages = max_pages
         self._max_tokens = max_tokens
+        self._image_factor = image_factor
+        self._min_pixels = min_pixels
+        self._max_pixels = max_pixels
         self._llm: Any | None = None
 
     @property
@@ -92,14 +115,9 @@ class DotsOcrEngine(LoggerClass):
             tuple[list[dict[str, Any]], int]: One dict per page
                 (`{page_index, image_width, image_height, raw_output}`) and the PDF page count.
         """
-        # 1. Render every page to a PNG + capture its pixel dims (the bbox normalization divisor).
-        pages = self._render_pages(pdf_bytes)
-        n_pages = len(pages)
-        if self._max_pages > 0 and n_pages > self._max_pages:
-            self.logger.warning(
-                f"PDF has {n_pages} pages; capping at DOTS_OCR_MAX_PAGES={self._max_pages}."
-            )
-            pages = pages[: self._max_pages]
+        # 1. Render + smart-resize each page (capped BEFORE rendering so a runaway page count can't
+        #    OOM), capturing the RESIZED pixel dims — the frame the model sees, hence the bbox divisor.
+        pages, n_pages = self._render_pages(pdf_bytes)
 
         # 2. Lazy-load the vLLM engine, then run one chat conversation per page (batched).
         llm = self._ensure_model()
@@ -125,12 +143,18 @@ class DotsOcrEngine(LoggerClass):
 
     # ── Rendering (CPU, pypdfium2) ───────────────────────────────────────────────────
 
-    def _render_pages(self, pdf_bytes: bytes) -> list[tuple[int, bytes, int, int]]:
+    def _render_pages(self, pdf_bytes: bytes) -> tuple[list[tuple[int, bytes, int, int]], int]:
         """
-        Rasterise every PDF page to a PNG, returning (page_index, png_bytes, width_px, height_px).
+        Rasterise + smart-resize the PDF pages, returning (rendered pages, total page count).
 
-        The rendered pixel width/height become the bbox normalization divisor the DocForge mapper uses,
-        so they are captured here and flow through the contract unchanged.
+        Each page is rendered at DOTS_OCR_RENDER_DPI, then smart-resized to the Qwen2-VL frame the
+        model's vision encoder sees; those RESIZED width/height become the bbox normalization divisor
+        the DocForge mapper uses, so they are captured here and flow through the contract. Rendering
+        STOPS at DOTS_OCR_MAX_PAGES (0 = no cap) so a runaway page count never rasterises unbounded.
+
+        Returns:
+            tuple[list[tuple[int, bytes, int, int]], int]: The per-page
+                (page_index, png_bytes, resized_width, resized_height), and the PDF's total page count.
         """
         import pypdfium2 as pdfium  # noqa: PLC0415
 
@@ -139,17 +163,33 @@ class DotsOcrEngine(LoggerClass):
         rendered: list[tuple[int, bytes, int, int]] = []
         document = pdfium.PdfDocument(pdf_bytes)
         try:
-            for page_index in range(len(document)):
+            total_pages = len(document)
+            limit = total_pages
+            if self._max_pages > 0 and total_pages > self._max_pages:
+                self.logger.warning(
+                    f"PDF has {total_pages} pages; rendering only the first "
+                    f"DOTS_OCR_MAX_PAGES={self._max_pages}."
+                )
+                limit = self._max_pages
+            for page_index in range(limit):
                 page = document[page_index]
-                bitmap = page.render(scale=scale)
-                image = bitmap.to_pil()
-                width, height = image.width, image.height
+                image = page.render(scale=scale).to_pil()
+                # Smart-resize to the frame the model actually sees (multiple of factor, within the
+                # pixel budget), so the bboxes it returns are measured against these exact dims.
+                target_height, target_width = SmartResize.dims(
+                    image.height,
+                    image.width,
+                    factor=self._image_factor,
+                    min_pixels=self._min_pixels,
+                    max_pixels=self._max_pixels,
+                )
+                image = image.resize((target_width, target_height))
                 buffer = io.BytesIO()
                 image.save(buffer, format="PNG")
-                rendered.append((page_index, buffer.getvalue(), width, height))
+                rendered.append((page_index, buffer.getvalue(), target_width, target_height))
         finally:
             document.close()
-        return rendered
+        return rendered, total_pages
 
     # ── vLLM engine (GPU) ────────────────────────────────────────────────────────────
 
@@ -160,7 +200,17 @@ class DotsOcrEngine(LoggerClass):
 
             self.logger.info(f"Loading dots.ocr via vLLM: {self._model_path} (first parse) ...")
             # trust_remote_code: dots.ocr ships a custom HF model class vLLM must import.
-            self._llm = LLM(model=self._model_path, trust_remote_code=True)
+            # mm_processor_kwargs pins the SAME min/max pixel budget the sidecar smart-resized to, so
+            # vLLM's own image processor does not resize the page to different dims than the divisor
+            # this engine reports — the two must agree or every crop is mis-scaled.
+            self._llm = LLM(
+                model=self._model_path,
+                trust_remote_code=True,
+                mm_processor_kwargs={
+                    "min_pixels": self._min_pixels,
+                    "max_pixels": self._max_pixels,
+                },
+            )
         return self._llm
 
     def _build_conversation(self, png_bytes: bytes) -> list[dict[str, Any]]:

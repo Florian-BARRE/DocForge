@@ -45,14 +45,20 @@ class DotsOcrService(LoggerClass):
         render_dpi: int,
         max_pages: int,
         max_tokens: int,
+        image_factor: int,
+        min_pixels: int,
+        max_pixels: int,
         lock_wait_timeout_seconds: float,
     ) -> None:
         """
         Args:
             model_path (str): The dots.ocr model id/path forwarded to the engine.
-            render_dpi (int): DPI each PDF page is rasterised to before inference.
+            render_dpi (int): DPI each PDF page is rasterised to before the smart-resize.
             max_pages (int): Hard ceiling on pages parsed from one PDF (0 = no cap).
             max_tokens (int): Max new tokens the VLM may emit per page.
+            image_factor (int): Qwen2-VL dimension granularity each resized side is a multiple of.
+            min_pixels (int): Lower bound on the smart-resized pixel count.
+            max_pixels (int): Upper bound on the smart-resized pixel count.
             lock_wait_timeout_seconds (float): Max seconds a parse_pdf() call waits for the predict
                 lock before raising TimeoutError (-> HTTP 503).
         """
@@ -62,6 +68,9 @@ class DotsOcrService(LoggerClass):
             render_dpi=render_dpi,
             max_pages=max_pages,
             max_tokens=max_tokens,
+            image_factor=image_factor,
+            min_pixels=min_pixels,
+            max_pixels=max_pixels,
         )
         self._lock_wait_timeout_seconds = lock_wait_timeout_seconds
         # Serializes every analyze() call — dots.ocr VLM inference is not concurrency-safe on one GPU.

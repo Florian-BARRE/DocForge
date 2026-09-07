@@ -42,6 +42,9 @@ def _build_app() -> FastAPI:
         render_dpi=DotsOcrServerConfig.DOTS_OCR_RENDER_DPI,
         max_pages=DotsOcrServerConfig.DOTS_OCR_MAX_PAGES,
         max_tokens=DotsOcrServerConfig.DOTS_OCR_MAX_TOKENS,
+        image_factor=DotsOcrServerConfig.DOTS_OCR_IMAGE_FACTOR,
+        min_pixels=DotsOcrServerConfig.DOTS_OCR_MIN_PIXELS,
+        max_pixels=DotsOcrServerConfig.DOTS_OCR_MAX_PIXELS,
         lock_wait_timeout_seconds=DotsOcrServerConfig.DOTS_OCR_LOCK_WAIT_TIMEOUT_SECONDS,
     )
 

@@ -212,7 +212,17 @@ class DotsOcrPageNormalizer:
                 f"expected a list of elements."
             )
             return []
-        return parsed
+        # Keep only object elements: the model can emit a valid JSON array of non-objects
+        # (e.g. `["heading","para"]`). Downstream sorts/maps assume dict elements, so drop the
+        # rest HERE (with a warning) rather than let a `.get()` on a str/int raise mid-sort and
+        # 500 the whole PDF — a malformed page degrades to its usable blocks, never a hard fail.
+        elements = [element for element in parsed if isinstance(element, dict)]
+        if len(elements) != len(parsed):
+            cls.logger.warning(
+                f"Page {page_index}: dropped {len(parsed) - len(elements)} non-object element(s) "
+                f"from dots.ocr output (expected objects)."
+            )
+        return elements
 
     @staticmethod
     def __int(value: Any, default: int) -> int:
