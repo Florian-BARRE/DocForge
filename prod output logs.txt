@@ -1,58 +1,52 @@
-worker faield:
-
-
-    return await func(ctx, *args, **kwargs)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/app/worker/backend/libs/jobs/core.py", line 270, in ingest_document
-    bundle, _record = await runner.run(
-                      ^^^^^^^^^^^^^^^^^
-  File "/app/worker/backend/libs/runner/core.py", line 177, in run
-    raise PipelineRunError(f"pipeline run failed: {reason}", breadcrumb=breadcrumb)
-backend.libs.runner.core.PipelineRunError: pipeline run failed: parse (granite_docling): RuntimeError: Pipeline VlmPipeline failed
-08:28:57:  21.94s → 94be4d2b61cd4e7ca4c2fd635c1fea47:ingest_document('13c4682b-55ab-4c17-a254-01a65bada5d5', '07d5e3fc-d683-466a-b8c9-6804f6626799',…) delayed=21.94s
-2026-09-07 08:28:57.201 |   INFO   | [     PipelineBuilder     ] | Building pipeline 'ingest_pipeline' | cid=97dbef377003488aa5a7e2d2e3ed7507
-2026-09-07 08:28:57.419 |   INFO   | [     PipelineRunner      ] | Running ingestion pipeline 'ingest_pipeline' for 'NI-2023-01 Rémunération (1).pdf' | cid=97dbef377003488aa5a7e2d2e3ed7507
-2026-09-07 08:28:57.419 |   INFO   | [       FlowEngine        ] | Running pipeline 'ingest_pipeline' | cid=97dbef377003488aa5a7e2d2e3ed7507
-2026-09-07 08:29:02.585 | WARNING  | [       FlowEngine        ] | Node 'parse' failed: RuntimeError: Pipeline VlmPipeline failed | cid=97dbef377003488aa5a7e2d2e3ed7507
-2026-09-07 08:29:02.592 |   INFO   | [       FlowEngine        ] | Pipeline 'ingest_pipeline' finished: failed in 5172.8ms | cid=97dbef377003488aa5a7e2d2e3ed7507
-2026-09-07 08:29:02.592 |  ERROR   | [         WORKER          ] | Ingestion failed for document 13c4682b-55ab-4c17-a254-01a65bada5d5: pipeline run failed: parse (granite_docling): RuntimeError: Pipeline VlmPipeline failed | cid=97dbef377003488aa5a7e2d2e3ed7507
+    WORKER_TRACE_GC_BATCH_SIZE             = 500
+    WORKER_TRACE_GC_INTERVAL_MINUTES       = 60
+    WORKER_TRACE_MAX_VERBOSITY             = 'shape'
+    WORKER_TRACE_PAYLOAD_MAX_BYTES         = 1048576
+    WORKER_TRACE_RETENTION_DAYS            = 14
+    WORKER_TRANSFER_GC_ENABLED             = True
+    WORKER_TRANSFER_GC_INTERVAL_MINUTES    = 15
+    WORKER_TRANSFER_REAP_STALE_SECONDS     = 10800
+ | cid=-
+2026-09-07 11:17:49.518 |   INFO   | [      WORKER      ] | 
+[2/3] Store clients (Postgres / Qdrant / S3)... | cid=-
+2026-09-07 11:17:49.528 |   INFO   | [     S3Client     ] | S3Client configured for http://docforge-seaweedfs:8333 (bucket 'docforge-objects') | cid=-
+2026-09-07 11:17:49.713 |   INFO   | [  PostgresClient  ] | PostgresClient connected | cid=-
+2026-09-07 11:17:50.170 |   INFO   | [   QdrantClient   ] | QdrantClient connected to http://docforge_qdrant:6333 | cid=-
+2026-09-07 11:17:50.170 |   INFO   | [     Database     ] | Database facade ready (postgres + qdrant + s3) | cid=-
+2026-09-07 11:17:50.668 |   INFO   | [      WORKER      ] | 
+[3/3] Pipeline runner... | cid=-
+2026-09-07 11:17:50.827 |   INFO   | [ HeartbeatWriter  ] | Heartbeat writer started for '3b1ffc3764ef' (every 10s) | cid=-
+2026-09-07 11:17:50.827 |   INFO   | [      WORKER      ] | Worker '3b1ffc3764ef' ready — 1 parallel job(s), listening on the queue | cid=-
+11:17:51:   0.49s → cron:gc_expired_transfers()
+11:17:51:   0.01s ← cron:gc_expired_transfers ● []
+11:17:51:   0.99s → cron:gc_artifact_cache()
+11:17:51:   0.04s ← cron:gc_artifact_cache ● 0
+11:17:52:   1.49s → cron:reap_stuck_jobs() delayed=1.49s
+11:17:52:   0.01s ← cron:reap_stuck_jobs ● []
+11:17:52:   1.99s → cron:gc_idempotency_keys() delayed=1.99s
+11:17:52:   0.01s ← cron:gc_idempotency_keys ● 0
+11:17:53:   2.49s → cron:gc_trace_payloads() delayed=2.49s
+11:17:53:   0.02s ← cron:gc_trace_payloads ● 0
+11:17:53:   3.00s → cron:reap_stuck_transfers() delayed=3.00s
+11:17:53:   0.01s ← cron:reap_stuck_transfers ● []
+11:18:20: recording health: Sep-07 11:18:20 j_complete=6 j_failed=0 j_retried=0 j_ongoing=0 queued=0
+11:19:23:   0.22s → 9cce7ea1a1524ea7977274a59dc6de11:ingest_document('670a125f-58f6-4ee0-9d84-d77e62c4a7ad', '3d3be955-320c-4536-9a7a-c570823480ce',…)
+2026-09-07 11:19:23.164 |   INFO   | [ PipelineBuilder  ] | Building pipeline 'ingest_pipeline' | cid=73e90d8848954268ba75f6def5003844
+2026-09-07 11:19:23.384 |   INFO   | [  PipelineRunner  ] | Running ingestion pipeline 'ingest_pipeline' for 'Accord relatif au fonctionnement des CSE d'établissement et du CSE central_biffé.pdf' | cid=73e90d8848954268ba75f6def5003844
+2026-09-07 11:19:23.384 |   INFO   | [    FlowEngine    ] | Running pipeline 'ingest_pipeline' | cid=73e90d8848954268ba75f6def5003844
+2026-09-07 11:19:40.083 |   INFO   | [ParserGraniteDoclingNode] | Docling converter built for ('vlm', '982fe3b40f2fa73c365bdb1bcacf6c81b7184bfe', False, 4096) | cid=73e90d8848954268ba75f6def5003844
+11:19:51: recording health: Sep-07 11:19:51 j_complete=6 j_failed=0 j_retried=0 j_ongoing=1 queued=2
+`generation_config` default values have been modified to match model-specific defaults: {'use_cache': False}. If this is not desired, please set these values explicitly.
+2026-09-07 11:20:06.997 | WARNING  | [       FlowEngine       ] | Node 'parse' failed: RuntimeError: Pipeline VlmPipeline failed | cid=73e90d8848954268ba75f6def5003844
+2026-09-07 11:20:07.009 |   INFO   | [       FlowEngine       ] | Pipeline 'ingest_pipeline' finished: failed in 43624.5ms | cid=73e90d8848954268ba75f6def5003844
+2026-09-07 11:20:07.009 |  ERROR   | [         WORKER         ] | Ingestion failed for document 670a125f-58f6-4ee0-9d84-d77e62c4a7ad: pipeline run failed: parse (granite_docling): RuntimeError: Pipeline VlmPipeline failed | cid=73e90d8848954268ba75f6def5003844
 Traceback (most recent call last):
-  File "/app/worker/backend/libs/jobs/core.py", line 270, in ingest_document
-    bundle, _record = await runner.run(
-  File "/app/worker/backend/libs/runner/core.py", line 177, in run
-    raise PipelineRunError(f"pipeline run failed: {reason}", breadcrumb=breadcrumb)
+  File "/app/worker/backend/libs/jobs/core.py", line 299, in ingest_document
+    bundle, record = await runner.run(
+  File "/app/worker/backend/libs/runner/core.py", line 197, in run
+    raise PipelineRunError(
 backend.libs.runner.core.PipelineRunError: pipeline run failed: parse (granite_docling): RuntimeError: Pipeline VlmPipeline failed
-08:29:02:   5.50s ! 94be4d2b61cd4e7ca4c2fd635c1fea47:ingest_document failed, PipelineRunError: pipeline run failed: parse (granite_docling): RuntimeError: Pipeline VlmPipeline failed
-Traceback (most recent call last):
-  File "/opt/venv/lib/python3.12/site-packages/arq/worker.py", line 599, in run_job
-    result = await asyncio.wait_for(task, timeout_s)
-             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/usr/local/lib/python3.12/asyncio/tasks.py", line 520, in wait_for
-    return await fut
-           ^^^^^^^^^
-  File "/app/worker/backend/libs/jobs/correlation.py", line 45, in wrapper
-    return await func(ctx, *args, **kwargs)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/app/worker/backend/libs/jobs/core.py", line 270, in ingest_document
-    bundle, _record = await runner.run(
-                      ^^^^^^^^^^^^^^^^^
-  File "/app/worker/backend/libs/runner/core.py", line 177, in run
-    raise PipelineRunError(f"pipeline run failed: {reason}", breadcrumb=breadcrumb)
-backend.libs.runner.core.PipelineRunError: pipeline run failed: parse (granite_docling): RuntimeError: Pipeline VlmPipeline failed
-08:29:02:  26.82s → 1491cc0d38f04837b5b5913f2c100689:ingest_document('786097e0-c1b1-4aa4-9c15-49829559e5ec', '8b99b16d-9d96-49c4-81da-57e0e0c3d7df',…) delayed=26.82s
-2026-09-07 08:29:02.733 |   INFO   | [     PipelineBuilder     ] | Building pipeline 'ingest_pipeline' | cid=7780635b1ce4477ca74e57bcd440e92a
-2026-09-07 08:29:03.006 |   INFO   | [     PipelineRunner      ] | Running ingestion pipeline 'ingest_pipeline' for 'Accord relatif à la GEPP 2025_biffé.pdf' | cid=7780635b1ce4477ca74e57bcd440e92a
-2026-09-07 08:29:03.006 |   INFO   | [       FlowEngine        ] | Running pipeline 'ingest_pipeline' | cid=7780635b1ce4477ca74e57bcd440e92a
-2026-09-07 08:29:10.519 | WARNING  | [       FlowEngine        ] | Node 'parse' failed: RuntimeError: Pipeline VlmPipeline failed | cid=7780635b1ce4477ca74e57bcd440e92a
-2026-09-07 08:29:10.529 |   INFO   | [       FlowEngine        ] | Pipeline 'ingest_pipeline' finished: failed in 7522.6ms | cid=7780635b1ce4477ca74e57bcd440e92a
-2026-09-07 08:29:10.530 |  ERROR   | [         WORKER          ] | Ingestion failed for document 786097e0-c1b1-4aa4-9c15-49829559e5ec: pipeline run failed: parse (granite_docling): RuntimeError: Pipeline VlmPipeline failed | cid=7780635b1ce4477ca74e57bcd440e92a
-Traceback (most recent call last):
-  File "/app/worker/backend/libs/jobs/core.py", line 270, in ingest_document
-    bundle, _record = await runner.run(
-  File "/app/worker/backend/libs/runner/core.py", line 177, in run
-    raise PipelineRunError(f"pipeline run failed: {reason}", breadcrumb=breadcrumb)
-backend.libs.runner.core.PipelineRunError: pipeline run failed: parse (granite_docling): RuntimeError: Pipeline VlmPipeline failed
-08:29:10:   7.91s ! 1491cc0d38f04837b5b5913f2c100689:ingest_document failed, PipelineRunError: pipeline run failed: parse (granite_docling): RuntimeError: Pipeline VlmPipeline failed
+11:20:07:  44.02s ! 9cce7ea1a1524ea7977274a59dc6de11:ingest_document failed, PipelineRunError: pipeline run failed: parse (granite_docling): RuntimeError: Pipeline VlmPipeline failed
 Traceback (most recent call last):
   File "/opt/venv/lib/python3.12/site-packages/arq/worker.py", line 599, in run_job
     result = await asyncio.wait_for(task, timeout_s)
@@ -63,27 +57,26 @@ Traceback (most recent call last):
   File "/app/worker/backend/libs/jobs/correlation.py", line 45, in wrapper
     return await func(ctx, *args, **kwargs)
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/app/worker/backend/libs/jobs/core.py", line 270, in ingest_document
-    bundle, _record = await runner.run(
-                      ^^^^^^^^^^^^^^^^^
-  File "/app/worker/backend/libs/runner/core.py", line 177, in run
-    raise PipelineRunError(f"pipeline run failed: {reason}", breadcrumb=breadcrumb)
+  File "/app/worker/backend/libs/jobs/core.py", line 299, in ingest_document
+    bundle, record = await runner.run(
+                     ^^^^^^^^^^^^^^^^^
+  File "/app/worker/backend/libs/runner/core.py", line 197, in run
+    raise PipelineRunError(
 backend.libs.runner.core.PipelineRunError: pipeline run failed: parse (granite_docling): RuntimeError: Pipeline VlmPipeline failed
-08:29:10:  30.80s → 906f96e1ff14401cbbe12a2e839c14ac:ingest_document('d6add792-3c5f-45b0-ad78-16cccd0783a3', '636583e2-a129-4ed8-9527-24534e2219e5',…) delayed=30.80s
-2026-09-07 08:29:10.782 |   INFO   | [     PipelineBuilder     ] | Building pipeline 'ingest_pipeline' | cid=d2cc7d0858c94748bb921123e73c8933
-2026-09-07 08:29:10.986 |   INFO   | [     PipelineRunner      ] | Running ingestion pipeline 'ingest_pipeline' for 'Accord relatif au télétravail du 3 avril 2023_biffé.pdf' | cid=d2cc7d0858c94748bb921123e73c8933
-2026-09-07 08:29:10.987 |   INFO   | [       FlowEngine        ] | Running pipeline 'ingest_pipeline' | cid=d2cc7d0858c94748bb921123e73c8933
-08:29:13: recording health: Sep-07 08:29:13 j_complete=46 j_failed=12 j_retried=0 j_ongoing=1 queued=1
-2026-09-07 08:29:15.971 | WARNING  | [       FlowEngine        ] | Node 'parse' failed: RuntimeError: Pipeline VlmPipeline failed | cid=d2cc7d0858c94748bb921123e73c8933
-2026-09-07 08:29:15.978 |   INFO   | [       FlowEngine        ] | Pipeline 'ingest_pipeline' finished: failed in 4991.5ms | cid=d2cc7d0858c94748bb921123e73c8933
-2026-09-07 08:29:15.979 |  ERROR   | [         WORKER          ] | Ingestion failed for document d6add792-3c5f-45b0-ad78-16cccd0783a3: pipeline run failed: parse (granite_docling): RuntimeError: Pipeline VlmPipeline failed | cid=d2cc7d0858c94748bb921123e73c8933
+11:20:07:  43.71s → 502669db3c2d4d1ba37efdd5b48baab9:ingest_document('af783f30-659b-489b-86f2-a140c594a2f8', '68a4cb58-751e-49db-90c5-1e6e33535e74',…) delayed=43.71s
+2026-09-07 11:20:07.981 |   INFO   | [    PipelineBuilder     ] | Building pipeline 'ingest_pipeline' | cid=37b0645a95854716823d5aa23d0b563c
+2026-09-07 11:20:08.178 |   INFO   | [     PipelineRunner     ] | Running ingestion pipeline 'ingest_pipeline' for 'Plaquette Accord - Egalité Femme-Homme.pdf' | cid=37b0645a95854716823d5aa23d0b563c
+2026-09-07 11:20:08.178 |   INFO   | [       FlowEngine       ] | Running pipeline 'ingest_pipeline' | cid=37b0645a95854716823d5aa23d0b563c
+2026-09-07 11:20:10.985 | WARNING  | [       FlowEngine       ] | Node 'parse' failed: RuntimeError: Pipeline VlmPipeline failed | cid=37b0645a95854716823d5aa23d0b563c
+2026-09-07 11:20:10.996 |   INFO   | [       FlowEngine       ] | Pipeline 'ingest_pipeline' finished: failed in 2817.6ms | cid=37b0645a95854716823d5aa23d0b563c
+2026-09-07 11:20:10.996 |  ERROR   | [         WORKER         ] | Ingestion failed for document af783f30-659b-489b-86f2-a140c594a2f8: pipeline run failed: parse (granite_docling): RuntimeError: Pipeline VlmPipeline failed | cid=37b0645a95854716823d5aa23d0b563c
 Traceback (most recent call last):
-  File "/app/worker/backend/libs/jobs/core.py", line 270, in ingest_document
-    bundle, _record = await runner.run(
-  File "/app/worker/backend/libs/runner/core.py", line 177, in run
-    raise PipelineRunError(f"pipeline run failed: {reason}", breadcrumb=breadcrumb)
+  File "/app/worker/backend/libs/jobs/core.py", line 299, in ingest_document
+    bundle, record = await runner.run(
+  File "/app/worker/backend/libs/runner/core.py", line 197, in run
+    raise PipelineRunError(
 backend.libs.runner.core.PipelineRunError: pipeline run failed: parse (granite_docling): RuntimeError: Pipeline VlmPipeline failed
-08:29:15:   5.27s ! 906f96e1ff14401cbbe12a2e839c14ac:ingest_document failed, PipelineRunError: pipeline run failed: parse (granite_docling): RuntimeError: Pipeline VlmPipeline failed
+11:20:11:   3.54s ! 502669db3c2d4d1ba37efdd5b48baab9:ingest_document failed, PipelineRunError: pipeline run failed: parse (granite_docling): RuntimeError: Pipeline VlmPipeline failed
 Traceback (most recent call last):
   File "/opt/venv/lib/python3.12/site-packages/arq/worker.py", line 599, in run_job
     result = await asyncio.wait_for(task, timeout_s)
@@ -94,10 +87,14 @@ Traceback (most recent call last):
   File "/app/worker/backend/libs/jobs/correlation.py", line 45, in wrapper
     return await func(ctx, *args, **kwargs)
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/app/worker/backend/libs/jobs/core.py", line 270, in ingest_document
-    bundle, _record = await runner.run(
-                      ^^^^^^^^^^^^^^^^^
-  File "/app/worker/backend/libs/runner/core.py", line 177, in run
-    raise PipelineRunError(f"pipeline run failed: {reason}", breadcrumb=breadcrumb)
+  File "/app/worker/backend/libs/jobs/core.py", line 299, in ingest_document
+    bundle, record = await runner.run(
+                     ^^^^^^^^^^^^^^^^^
+  File "/app/worker/backend/libs/runner/core.py", line 197, in run
+    raise PipelineRunError(
 backend.libs.runner.core.PipelineRunError: pipeline run failed: parse (granite_docling): RuntimeError: Pipeline VlmPipeline failed
-08:29:43: recording health: Sep-07 08:29:43 j_complete=46 j_failed=13 j_retried=0 j_ongoing=0 queued=0
+11:20:11:  12.03s → cron:reap_stuck_jobs() delayed=11.37s
+11:20:11:   0.01s ← cron:reap_stuck_jobs ● []
+11:20:11:  12.52s → cron:reap_stuck_transfers() delayed=11.87s
+11:20:11:   0.00s ← cron:reap_stuck_transfers ● []
+11:20:21: recording health: Sep-07 11:20:21 j_complete=8 j_failed=2 j_retried=0 j_ongoing=0 queued=0
