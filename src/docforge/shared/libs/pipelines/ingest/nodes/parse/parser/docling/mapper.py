@@ -22,7 +22,7 @@ from shared_libs.public_models import (
 )
 
 # ====== Local Project Imports ======
-from ..base import BaseParserHelpers, LanguageDetector
+from ..base import BaseParserHelpers
 from .helpers import DoclingParseHelpers
 
 
@@ -130,20 +130,13 @@ class DoclingIRMapper:
         # 3. Build the heading tree (parent_id) — breadcrumbs and section chunking walk it later.
         BaseParserHelpers.assign_heading_tree(blocks)
 
-        # 4. Language: detect a NORMALIZED ISO 639-1 code from the actual extracted text (never the
-        #    LLM). Docling's own hint is unreliable (usually empty), so it is only a fallback when
-        #    the text is too sparse to identify.
-        text = " ".join(block.text for block in blocks if block.text and block.text.strip())
-        language = LanguageDetector.detect(text) or (getattr(docling_doc, "language", "") or "")
-
-        cls.logger.debug(
-            f"Docling→IR: {doc_id} → {n_pages} pages, {len(blocks)} blocks, lang={language!r}"
-        )
+        # 4. Language is left UNSET here (""): the dedicated docmeta/language node owns detection
+        #    downstream (parser-agnostic, per-collection configurable), so no parser hint leaks in.
+        cls.logger.debug(f"Docling→IR: {doc_id} → {n_pages} pages, {len(blocks)} blocks")
         return DocumentIR(
             doc_id=doc_id,
             source_hash=source_hash,
             n_pages=n_pages,
-            language=language,
             blocks=blocks,
         )
 

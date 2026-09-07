@@ -80,10 +80,11 @@ def test_two_step_parse_chain_builds_and_validates(compiler, builder, validator)
 
 
 def test_two_step_parse_chain_wires_escalation_and_best_first_join(builder, validator) -> None:
-    # A minimal pipeline (render + enrich off) so the parse chain feeds the chunk head DIRECTLY —
-    # the clearest view of the escalation topology and the convergence anchor.
+    # A minimal pipeline (language + render + enrich off) so the parse chain feeds the chunk head
+    # DIRECTLY — the clearest view of the escalation topology and the convergence anchor.
     state = default_state().model_copy(
         update={
+            "language_on": False,
             "render_on": False,
             "enrich_on": False,
             "parse_chain": ChainSpec(
@@ -198,10 +199,10 @@ def test_set_provider_parse_is_one_step_chain_sugar(compiler) -> None:
     state = StateReader.read(swapped)
     assert len(state.parse_chain.steps) == 1
     assert state.parse_chain.steps[0].kind == "docling"
-    # A single provider stays the stock lone 'parse' node with a plain FromNode anchor (render is
-    # on in the default, so the parse anchor surfaces on figures.ir).
+    # A single provider stays the stock lone 'parse' node with a plain FromNode anchor (language is
+    # on in the default and reads parse directly, so the parse anchor surfaces on language.ir).
     assert any(n.id == "parse" for n in swapped.nodes)
-    assert swapped.bindings["figures"]["ir"] == FromNode(node_id="parse", field_name="ir")
+    assert swapped.bindings["language"]["ir"] == FromNode(node_id="parse", field_name="ir")
 
 
 def test_empty_parse_chain_is_kept_with_a_required_notice(compiler) -> None:

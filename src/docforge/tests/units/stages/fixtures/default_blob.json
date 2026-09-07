@@ -125,6 +125,13 @@
       },
       "ir": {
         "field_name": "ir",
+        "node_id": "language",
+        "source": "node"
+      }
+    },
+    "language": {
+      "ir": {
+        "field_name": "ir",
         "node_id": "parse",
         "source": "node"
       }
@@ -197,6 +204,13 @@
       "family": "parser",
       "id": "parse",
       "kind": "docling",
+      "node_type": "action"
+    },
+    {
+      "config": {},
+      "family": "docmeta",
+      "id": "language",
+      "kind": "language",
       "node_type": "action"
     },
     {
@@ -292,6 +306,13 @@
         "kind": "on_success"
       },
       "from_node_id": "parse",
+      "to_node_id": "language"
+    },
+    {
+      "condition": {
+        "kind": "on_success"
+      },
+      "from_node_id": "language",
       "to_node_id": "figures"
     },
     {

@@ -60,10 +60,19 @@ pipelines/ingest/nodes/
 *(`*` = nodes internes de câblage, `SELECTABLE=False` — cachés du picker de méthodes de la palette.)*
 
 Les **familles** (palette UI) suivent les étapes — chaque nom est UNIQUE et sans ambiguïté : `intake` ·
-`converter` · `parser` · `render` (figure_render) · `enrich` · `chunker` · `contextualize` · `metagen` ·
+`converter` · `parser` · `docmeta` (language) · `render` (figure_render) · `enrich` · `chunker` · `contextualize` · `metagen` ·
 `deliver` (bundle — le terminal qui assemble la sortie du run) — plus les capacités
 génériques `embed` · `ocr` · `vlm` · `llm` · `structgen`. Convention kinds : jamais de redondance famille+kind (`(ocr, mistral)` comme
 `(llm, mistral)` ; `(contextualize, llm)` — pas de suffixes `_ocr`/`_context`).
+
+> **Famille `docmeta` — métadonnées système du document, en NODES VISIBLES du graphe.** La détection
+> de langue n'est plus enfouie dans le mapper du parser : `(docmeta, language)` est un node dédié,
+> **placé après PARSE, avant `render`/`enrich`** (chaîne `parse → language → render → enrich`), qui
+> **stampe `DocumentIR.language`** — que `figure_extract` recopie sur chaque `FigureItem.language`,
+> d'où le `lang=auto` de Tesseract. Config : `mode` (`auto` = détecteur stop-words offline sur le texte
+> de l'IR · `fixed` = force `default_language`) + `default_language` (ISO 639-1 forcé, ou fallback quand
+> `auto` ne trouve rien). Togglable (le node peut être absent → `language` reste `""`). L'extraction hors
+> du parser a **bumpé `ENGINE_BLOB_VERSION` (v3)**.
 
 > **Tout appel d'interface standard est une CHAÎNE externalisée (P1–P6, terminé).** Un node d'action qui
 > appelle un `parser`/`ocr`/`vlm`/`embed`/`llm`/`structgen` ne cache plus l'appel : il délègue à une **chaîne =

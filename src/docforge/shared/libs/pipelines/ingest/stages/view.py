@@ -71,6 +71,7 @@ class StageViewer:
     def __enabled(cls, key: str, state: PipelineState) -> bool:
         """Whether a stage is currently part of the pipeline."""
         return {
+            StageKey.LANGUAGE: state.language_on,
             StageKey.RENDER: state.render_on,
             StageKey.ENRICH: state.enrich_on,
             StageKey.CONTEXTUALIZE: bool(state.stack),
@@ -120,6 +121,7 @@ class StageViewer:
                 "figure_enrich_mode": state.figure_enrich_mode,
                 "uniform_treatment": state.uniform_treatment,
             },
+            StageKey.LANGUAGE: state.language_config,
             StageKey.RENDER: state.render_config,
             StageKey.CHUNK: state.chunker_config,
             StageKey.METAGEN_CHUNK: state.metachunk_config,

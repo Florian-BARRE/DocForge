@@ -41,6 +41,7 @@ from .state import ChainSpec, PipelineState, default_state
 
 # Stage key → the PipelineState boolean that toggles it.
 _TOGGLES = {
+    StageKey.LANGUAGE: "language_on",
     StageKey.RENDER: "render_on",
     StageKey.ENRICH: "enrich_on",
     StageKey.METAGEN_CHUNK: "metachunk_on",
@@ -74,6 +75,7 @@ _METAGEN_CHAINS = {
 
 # Stage key → the state config field its primary node exposes (chain stages edit their chain head).
 _CONFIGS = {
+    StageKey.LANGUAGE: "language_config",
     StageKey.RENDER: "render_config",
     StageKey.ENRICH: "classify_config",
     StageKey.CHUNK: "chunker_config",

@@ -25,6 +25,8 @@ class PipelineState(BaseModel):
         intake_configs (dict): Config per fixed intake node id (convert base_url, admission policy…).
         parse_chain (ChainSpec): The parser as a scored fallback chain — a single provider is a
             1-step chain (its head is the selected parser).
+        language_on (bool): Whether the document language-detection stage is enabled (default on).
+        language_config (dict): The language node's config (mode auto/fixed + default_language).
         render_on (bool): Whether the figure-render stage is enabled.
         render_config (dict): The figure-render node's config.
         enrich_on (bool): Whether the per-figure enrichment stage is enabled.
@@ -64,6 +66,8 @@ class PipelineState(BaseModel):
     parse_chain: ChainSpec = Field(
         default_factory=lambda: ChainSpec(family="parser", steps=[ChainStep(kind="docling")])
     )
+    language_on: bool = True
+    language_config: dict = Field(default_factory=dict)
     render_on: bool = True
     render_config: dict = Field(default_factory=dict)
     enrich_on: bool = True

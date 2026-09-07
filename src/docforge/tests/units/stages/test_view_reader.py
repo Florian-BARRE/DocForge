@@ -1,4 +1,4 @@
-"""The stage VIEW/READ layer: the default blob's canonical shape, the full 10-stage catalog,
+"""The stage VIEW/READ layer: the default blob's canonical shape, the full 11-stage catalog,
 and the compiler's dependency-cascade correctness (enrich requires render).
 
 Sections 1, 2, 4a, 4b of the scratchpad's test_stage_layer.py — the only sections not already
@@ -29,6 +29,7 @@ EXPECTED_TOP_LEVEL_IDS = [
     "pdf_probe",
     "address",
     "parse",
+    "language",
     "figures",
     "chunk",
     "ctx_meta",
@@ -42,6 +43,7 @@ EXPECTED_TOP_LEVEL_IDS = [
 DEFAULT_ENABLED_STAGES = {
     "intake",
     "parse",
+    "language",
     "render",
     "chunk",
     "contextualize",
@@ -53,6 +55,7 @@ DEFAULT_DISABLED_STAGES = {"enrich", "metagen_chunk", "metagen_document"}
 EXPECTED_STAGE_ORDER = [
     "intake",
     "parse",
+    "language",
     "render",
     "enrich",
     "chunk",
@@ -79,10 +82,10 @@ def test_default_blob_has_the_canonical_top_level_node_ids_and_zero_issues(
     assert issues == [], issues
 
 
-def test_stage_catalog_lists_all_ten_stages_in_run_order_with_provider_stages_off(
+def test_stage_catalog_lists_all_eleven_stages_in_run_order_with_provider_stages_off(
     builder, validator
 ) -> None:
-    """The catalog always lists all ten stages in run order (disabled ones stay visible/greyed);
+    """The catalog always lists all eleven stages in run order (disabled ones stay visible/greyed);
     only the reachable core ships enabled — the provider-hosted stages default off (opt-in)."""
     default = IngestPipeline.default_blob()
     keys = [stage.key for stage in StageViewer.catalog(StateReader.read(default)).stages]
@@ -122,11 +125,12 @@ def test_disable_enrich_alone_rebinds_chunk_ir_to_render_with_no_render_notice(
     assert not any("render" in note for note in enrich_notices), enrich_notices
 
 
-def test_disable_render_cascades_enrich_off_with_a_notice_and_falls_back_to_parse(
+def test_disable_render_cascades_enrich_off_with_a_notice_and_falls_back_to_language(
     builder, validator, compiler
 ) -> None:
     """Disabling render must cascade-disable enrich (enrich `requires` render) — WITH a notice —
-    and chunk.ir must fall all the way back to parse.ir; bundle.pages becomes unbound.
+    and chunk.ir must fall back to language.ir (the nearest still-enabled IR producer, since the
+    language stage ships on); bundle.pages becomes unbound.
 
     enrich ships OFF by default, so enable it first to exercise the render→enrich cascade."""
     default, _ = compiler.apply(IngestPipeline.default_blob(), EnableStage(stage="enrich"))
@@ -139,7 +143,7 @@ def test_disable_render_cascades_enrich_off_with_a_notice_and_falls_back_to_pars
     stages = _view(off_render, builder, validator)
     assert stages["enrich"].enabled is False
     assert stages["render"].enabled is False
-    assert off_render.bindings["chunk"]["ir"] == FromNode(node_id="parse", field_name="ir")
+    assert off_render.bindings["chunk"]["ir"] == FromNode(node_id="language", field_name="ir")
     assert "pages" not in off_render.bindings["bundle"], "no render -> bundle.pages unbound"
 
 

@@ -12,7 +12,7 @@ import asyncio
 from types import SimpleNamespace
 
 from shared_libs.pipelines.base import NodeConfig
-from shared_libs.pipelines.ingest.nodes.parse.parser.base import BaseParserNode, LanguageDetector
+from shared_libs.pipelines.ingest.nodes.parse.parser.base import BaseParserNode
 from shared_libs.pipelines.ingest.nodes.parse.parser.docling.mapper import DoclingIRMapper
 from shared_libs.public_models import BlockType, DocumentIR, IntakeResult
 
@@ -146,23 +146,12 @@ def test_non_native_source_without_pdf_view_degrades_to_empty_ir() -> None:
     assert out.score == 0.0
 
 
-# ==================== FIX 2 — parse-time ISO language detection ====================
+# ==================== Language is no longer a parser side-effect ====================
 
 
-def test_language_detector_normalizes_fr_and_en_to_iso_codes() -> None:
-    """The lightweight detector returns a normalized ISO 639-1 code — "fr" for French, "en" for
-    English — from the actual text, never a free-text label."""
-    assert LanguageDetector.detect(_FR_TEXT) == "fr"
-    assert LanguageDetector.detect(_EN_TEXT) == "en"
-    # No signal → "" (the caller falls back), never a wrong guess.
-    assert LanguageDetector.detect("") == ""
-    assert LanguageDetector.detect("   ") == ""
-    assert LanguageDetector.detect("1234 5678 9012") == ""
-
-
-def test_mapper_sets_document_language_from_detected_text_not_the_hint() -> None:
-    """document.language is populated from a real detection over the extracted block text, so a
-    French document resolves to "fr" even when Docling's own hint disagrees or is empty."""
+def test_mapper_leaves_language_unset_now_the_docmeta_node_owns_it() -> None:
+    """The parser mapper no longer detects language: it emits language="" and the dedicated
+    docmeta/language node fills DocumentIR.language downstream (see test_docmeta_language.py)."""
     fr_items = [
         _item("title", "Charte de protection des données", "#/texts/0"),
         _item("text", _FR_TEXT, "#/texts/1"),
@@ -170,29 +159,8 @@ def test_mapper_sets_document_language_from_detected_text_not_the_hint() -> None
     doc = SimpleNamespace(
         num_pages=lambda: 0,
         pages={},
-        language="",
+        language="de",  # even a docling hint is ignored — the mapper never reads it anymore.
         iterate_items=lambda: ((it, 0) for it in fr_items),
     )
     ir = DoclingIRMapper.map_document(doc, doc_id="d", source_hash="h")
-    assert ir.language == "fr"
-
-    en_items = [_item("text", _EN_TEXT, "#/texts/0")]
-    en_doc = SimpleNamespace(
-        num_pages=lambda: 0,
-        pages={},
-        language="",
-        iterate_items=lambda: ((it, 0) for it in en_items),
-    )
-    assert DoclingIRMapper.map_document(en_doc, doc_id="d", source_hash="h").language == "en"
-
-
-def test_mapper_falls_back_to_docling_hint_when_text_is_undetectable() -> None:
-    """When there is no textual signal to detect from, the parser's own language hint is kept."""
-    items = [_item("text", "42 42 42", "#/texts/0")]
-    doc = SimpleNamespace(
-        num_pages=lambda: 0,
-        pages={},
-        language="de",
-        iterate_items=lambda: ((it, 0) for it in items),
-    )
-    assert DoclingIRMapper.map_document(doc, doc_id="d", source_hash="h").language == "de"
+    assert ir.language == ""

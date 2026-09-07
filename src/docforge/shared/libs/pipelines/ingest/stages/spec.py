@@ -39,6 +39,7 @@ class StageKey(StrEnum):
 
     INTAKE = "intake"
     PARSE = "parse"
+    LANGUAGE = "language"
     RENDER = "render"
     ENRICH = "enrich"
     CHUNK = "chunk"
@@ -154,6 +155,17 @@ class StageSpecs:
             title="Parse",
             description="Turn the PDF into the canonical document IR (blocks, tables, figures, "
             "heading tree) with the chosen parser.",
+        ),
+        StageMeta(
+            key=StageKey.LANGUAGE,
+            kind=StageKind.TOGGLE,
+            removable=True,
+            family="docmeta",
+            primary_node="language",
+            title="Detect language",
+            description="Resolve the document's ISO 639-1 language from the parsed text (or force a "
+            "fixed code) and stamp it onto the IR, so figure OCR (tesseract lang=auto) and the "
+            "catalog can use it.",
         ),
         StageMeta(
             key=StageKey.RENDER,

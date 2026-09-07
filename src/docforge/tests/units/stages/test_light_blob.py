@@ -26,8 +26,8 @@ _ENRICHMENT_NODE_IDS = {
     "meta_doc_apply",  # document metagen
 }
 
-# render stays on (it is local, free) alongside the mandatory core.
-_LIGHT_ENABLED_STAGES = {"intake", "parse", "render", "chunk", "embed", "deliver"}
+# render + language stay on (both local, free) alongside the mandatory core.
+_LIGHT_ENABLED_STAGES = {"intake", "parse", "language", "render", "chunk", "embed", "deliver"}
 
 
 def test_light_blob_builds_and_validates_clean() -> None:

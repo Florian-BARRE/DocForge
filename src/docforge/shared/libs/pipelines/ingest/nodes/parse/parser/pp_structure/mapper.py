@@ -23,7 +23,7 @@ from shared_libs.public_models import (
 )
 
 # ====== Local Project Imports ======
-from ..base import BaseParserHelpers, LanguageDetector
+from ..base import BaseParserHelpers
 from .helpers import PpStructureParseHelpers
 
 
@@ -127,19 +127,14 @@ class PpStructureIRMapper:
         # 2. Build the heading tree (parent_id) — breadcrumbs and section chunking walk it later.
         BaseParserHelpers.assign_heading_tree(blocks)
 
-        # 3. Language: detect a NORMALIZED ISO 639-1 code from the extracted text (never a model hint).
-        text = " ".join(block.text for block in blocks if block.text and block.text.strip())
-        language = LanguageDetector.detect(text)
-
+        # 3. Language is left UNSET here (""): the dedicated docmeta/language node owns detection
+        #    downstream (parser-agnostic, per-collection configurable), so no parser hint leaks in.
         n_pages = int(response.get("n_pages") or len(pages) or 0)
-        cls.logger.debug(
-            f"PP-Structure→IR: {doc_id} → {n_pages} pages, {len(blocks)} blocks, lang={language!r}"
-        )
+        cls.logger.debug(f"PP-Structure→IR: {doc_id} → {n_pages} pages, {len(blocks)} blocks")
         return DocumentIR(
             doc_id=doc_id,
             source_hash=source_hash,
             n_pages=n_pages,
-            language=language,
             blocks=blocks,
         )
 

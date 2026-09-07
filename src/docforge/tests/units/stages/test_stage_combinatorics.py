@@ -104,8 +104,9 @@ def test_every_combination_rebindings_match_the_toggle_state(combo) -> None:
     bindings = blob.bindings
 
     # 1. chunk.ir reads the nearest enabled producer of the IR spine: apply (enrich) > figures
-    #    (render) > parse.
-    expected_ir_source = "apply" if enrich_on else ("figures" if render_on else "parse")
+    #    (render) > language (always on in these combos) > parse. Language ships on by default and
+    #    is not one of the 5 toggles here, so it is the fallback anchor when render + enrich are off.
+    expected_ir_source = "apply" if enrich_on else ("figures" if render_on else "language")
     assert bindings["chunk"]["ir"].node_id == expected_ir_source, combo
 
     # 2. bundle.pages exists iff render is on.

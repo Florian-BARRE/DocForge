@@ -1,10 +1,11 @@
 # ====== Code Summary ======
-# LanguageDetector — a lightweight, dependency-free language identifier run at PARSE time, so the
-# canonical DocumentIR carries a NORMALIZED ISO 639-1 code ("fr"/"en"/…) derived from the actual
-# extracted text rather than an unreliable parser hint or a free-text LLM guess. It scores the text
-# against small, distinctive stop-word sets per supported language and picks the best match; too
-# little signal (empty/undetectable text) yields "" so the caller can fall back. No heavy model or
-# extra package is pulled in — the corpus is FR/EN-centric and this stays conservative and cheap.
+# LanguageDetector — a lightweight, dependency-free language identifier run by the docmeta/language
+# node (post-parse, pre-enrich), so the canonical DocumentIR carries a NORMALIZED ISO 639-1 code
+# ("fr"/"en"/…) derived from the actual extracted text rather than an unreliable parser hint or a
+# free-text LLM guess. It scores the text against small, distinctive stop-word sets per supported
+# language and picks the best match; too little signal (empty/undetectable text) yields "" so the
+# node can fall back to its configured default. No heavy model or extra package is pulled in — the
+# corpus is FR/EN-centric and this stays conservative and cheap.
 
 # ====== Standard Library Imports ======
 import re

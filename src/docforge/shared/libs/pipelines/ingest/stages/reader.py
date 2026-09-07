@@ -69,6 +69,8 @@ class StateReader:
         state = PipelineState(
             intake_configs=cls.__intake_configs(actions),
             parse_chain=cls.__linear_chain(blob, ordered, "parser", "docling"),
+            language_on=cls.__by_family(ordered, "docmeta") is not None,
+            language_config=cls.__config_of(cls.__by_family(ordered, "docmeta")),
             render_on=cls.__by_family(ordered, "render") is not None,
             render_config=cls.__config_of(cls.__by_family(ordered, "render")),
             enrich_on=enrich_loop is not None,

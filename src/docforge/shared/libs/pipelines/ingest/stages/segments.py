@@ -79,6 +79,12 @@ class SegmentBuilder:
             list[Segment]: The stage segments, in the order they run.
         """
         segments = [cls.__intake(state), cls.__parse(state)]
+        if state.language_on:
+            segments.append(
+                cls.__single(
+                    "language", "language", "docmeta", "language", state.language_config, "ir"
+                )
+            )
         if state.render_on:
             segments.append(
                 cls.__single(

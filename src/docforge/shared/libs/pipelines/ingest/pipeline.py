@@ -33,6 +33,7 @@ class IngestPipeline:
         "intake",
         "converter",
         "parser",
+        "docmeta",
         "render",
         "enrich",
         "chunker",

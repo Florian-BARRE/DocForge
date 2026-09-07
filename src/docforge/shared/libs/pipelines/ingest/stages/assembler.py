@@ -72,7 +72,10 @@ class IngestAssembler:
         #    stock stage (FromNode) and a chain occupying that slot (a best-first FromFirst) rebind
         #    every downstream consumer identically, and exits can never drift from the convergence.
         by_key = {segment.key: segment for segment in segments}
-        ir_pre_enrich = (by_key.get("render") or by_key["parse"]).output
+        # The IR spine runs parse → language → render → enrich; each anchor reads the nearest
+        # ENABLED producer, so any of language/render/enrich can be off without a consumer changing.
+        ir_after_parse = (by_key.get("language") or by_key["parse"]).output
+        ir_pre_enrich = (by_key.get("render") or by_key.get("language") or by_key["parse"]).output
         ir_final = by_key["enrich"].output if "enrich" in by_key else ir_pre_enrich
         positions = ContextualizeStack.positions(state)
         chunks_pre_meta = (by_key.get("contextualize") or by_key["chunk"]).output
@@ -86,10 +89,13 @@ class IngestAssembler:
         for segment in segments:
             bindings.update(segment.bindings)
         cls.__bind_intake(bindings, state)
+        if state.language_on:
+            # The language node reads the parsed IR and stamps DocumentIR.language before render.
+            bindings["language"] = {"ir": by_key["parse"].output}
         if state.render_on:
             bindings["figures"] = {
                 "ingest": FromNode(node_id="address", field_name="ingest"),
-                "ir": by_key["parse"].output,
+                "ir": ir_after_parse,
             }
         if state.enrich_on:
             bindings["extract"] = {"ir": ir_pre_enrich}

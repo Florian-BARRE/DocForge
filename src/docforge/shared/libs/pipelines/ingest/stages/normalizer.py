@@ -43,7 +43,13 @@ from .reader import StateReader
 # BEFORE it wrongly fast-pathed as "current" and validated as invalid (missing_binding on address).
 # Bumping to 2 forces every v1 blob back through the heal round-trip, re-emitting the source_probe
 # wiring; blobs already carrying it round-trip identically (no drift).
-ENGINE_BLOB_VERSION = 2
+#
+# v3: language detection was extracted out of the parser mappers into a dedicated, visible
+# ``docmeta/language`` node wired into the default blob between parse and render (the parser now
+# emits DocumentIR.language=""). The stock topology gained the ``language`` node + its IR-spine
+# bindings, so every v2-stamped blob must re-heal to add it (a v2 blob whose language node is absent
+# would otherwise leave DocumentIR.language empty). Blobs already carrying it round-trip identically.
+ENGINE_BLOB_VERSION = 3
 
 
 class BlobNormalizationError(Exception):
