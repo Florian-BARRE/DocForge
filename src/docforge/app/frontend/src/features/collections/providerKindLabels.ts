@@ -30,6 +30,7 @@ const KIND_LABELS: Record<string, string> = {
   pp_structure: "PP-StructureV3",
   rapidocr: "RapidOCR",
   paddle: "PaddleOCR",
+  tesseract: "Tesseract (local)",
   mistral: "Mistral",
   openai_compatible: "OpenAI-compatible",
   bge_server: "BGE-M3",

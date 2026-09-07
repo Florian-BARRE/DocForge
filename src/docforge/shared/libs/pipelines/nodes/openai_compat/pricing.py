@@ -44,7 +44,7 @@ EMBED_PRICING: dict[str, float] = {
 }
 
 # OCR provider kind → USD per page. OCR is priced per PAGE, not per token (that is how the hosted
-# OCR providers bill). The local ``rapidocr``/``paddle`` kinds are free and are not listed here (the
+# OCR providers bill). The local ``rapidocr``/``paddle``/``tesseract`` kinds are free and are not listed here (the
 # estimator prices them 0 as known-local providers, and they stamp no usage on their records). An
 # absent paid kind prices to a null cost. Used by BOTH the pre-hoc estimator (projected spend) and
 # the post-hoc meter (``price_ocr_pages`` prices a paid OCR leaf's ``NodeUsage.pages`` here).
@@ -92,7 +92,7 @@ def price_ocr_pages(kind: str, pages: int) -> float | None:
 
     Hosted OCR bills per page, not per token, so this is the page-shaped sibling of ``price_usd``:
     the post-hoc meter routes a leaf whose ``NodeUsage.pages`` is set here. A free/local OCR kind
-    (rapidocr, paddle) stamps no usage and never reaches this helper; an unknown paid kind prices to
+    (rapidocr, paddle, tesseract) stamps no usage and never reaches this helper; an unknown paid kind prices to
     None so the caller can surface "—" instead of a fabricated cost.
 
     Args:

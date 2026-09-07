@@ -89,6 +89,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 # System shared libraries the model stack loads at runtime. docling's PDF/image path and the
 # OpenCV pulled by rapidocr-onnxruntime link against X11/GL client libs even when run headless —
 # without them the parse stage dies at import (e.g. "libxcb.so.1: cannot open shared object file").
+# The tesseract packages back the (ocr, tesseract) provider: pytesseract is a thin wrapper that
+# shells out to the `tesseract` binary, so it must be present in the image; tesseract-ocr-osd is the
+# orientation/script-detection data; and each tesseract-ocr-<lang> pack is a language model — this
+# curated set (eng/fra/deu/spa/ita/por/nld) is what delivers the broad-language OCR. Add more of the
+# same tesseract-ocr-<lang> packs to widen coverage.
 # --no-install-recommends keeps the layer minimal; the apt lists are dropped to shrink the image.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         libgl1 \
@@ -97,6 +102,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libxrender1 \
         libxext6 \
         libsm6 \
+        tesseract-ocr \
+        tesseract-ocr-osd \
+        tesseract-ocr-eng \
+        tesseract-ocr-fra \
+        tesseract-ocr-deu \
+        tesseract-ocr-spa \
+        tesseract-ocr-ita \
+        tesseract-ocr-por \
+        tesseract-ocr-nld \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app/worker

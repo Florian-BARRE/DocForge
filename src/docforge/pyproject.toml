@@ -115,6 +115,7 @@ worker = [
     "pillow>=12.3.0,<13",
     "pypdfium2>=5.13.0,<6",
     "rapidocr-onnxruntime>=1.4.4,<2",
+    "pytesseract>=0.3,<0.4",
 ]
 
 [tool.ruff]
