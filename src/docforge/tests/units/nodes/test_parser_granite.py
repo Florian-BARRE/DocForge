@@ -150,7 +150,11 @@ def test_build_converter_swaps_in_vlm_pipeline_with_the_pinned_revision(
     assert vlm_options.repo_id == "ibm-granite/granite-docling-258M"
     assert vlm_options.revision == "deadbeef"
     assert vlm_options.max_new_tokens == 2048
-    # 3. force_backend_text is threaded onto the VLM pipeline options.
+    # 3. 8-bit is forced OFF: docling's default granite spec ships load_in_8bit=True (bitsandbytes
+    #    int8), which is absent from the image and unsupported on the V100 (sm_70) prod GPU — it
+    #    fails fast at model load. The 258M model loads full-precision everywhere.
+    assert vlm_options.load_in_8bit is False
+    # 4. force_backend_text is threaded onto the VLM pipeline options.
     assert pdf_option.pipeline_options.force_backend_text is False
 
 

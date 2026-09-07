@@ -67,8 +67,17 @@ class ParserGraniteDoclingNode(BaseDoclingParserNode):
         config: ParserGraniteDoclingConfig = self.config
         # 2. Pin the model revision + per-page token budget onto the granite transformers spec so the
         #    HF download is reproducible; device stays "auto" (invariant #7 — no device knob here).
+        #    Force load_in_8bit OFF: docling's default granite spec ships load_in_8bit=True, which
+        #    pulls bitsandbytes int8 — not installed in the image, and unsupported on the prod GPU
+        #    (Tesla V100, sm_70 < the CC 7.5 bitsandbytes int8 requires). It fails fast at model load
+        #    with docling's opaque "Pipeline VlmPipeline failed". The 258M model loads full-precision
+        #    everywhere (tiny), so 8-bit buys nothing here.
         vlm_options = vlm_model_specs.GRANITEDOCLING_TRANSFORMERS.model_copy(
-            update={"revision": config.revision, "max_new_tokens": config.max_new_tokens}
+            update={
+                "revision": config.revision,
+                "max_new_tokens": config.max_new_tokens,
+                "load_in_8bit": False,
+            }
         )
         pipeline_options = VlmPipelineOptions(
             vlm_options=vlm_options, force_backend_text=config.force_backend_text
