@@ -2,7 +2,9 @@
 // The landing page: every collection as a fleet-dashboard card (name, live health, doc/chunk counts,
 // last ingest, parser), with a search/sort/health-filter toolbar above the grid, "New collection" to
 // open the wizard, and click a card to open its detail page. State (list load, per-card health/doc-
-// count fan-out, search/sort/filter) lives in useCollectionsFleet.
+// count fan-out, search/sort/filter) lives in useCollectionsFleet. A top-right ViewModeToggle
+// switches the card grid between list/grid-N/auto layouts, persisted per-viewer (useViewMode,
+// storage key docforge_view_collections — independent of the same toggle on the Workers page).
 
 import { useState } from "react";
 import { Button } from "../../components/Button";
@@ -10,6 +12,8 @@ import { EmptyState } from "../../components/EmptyState";
 import { ErrorState } from "../../components/ErrorState";
 import { LoadingState } from "../../components/LoadingState";
 import { PageHeader } from "../../components/PageHeader";
+import { gridTemplateColumnsFor, useViewMode } from "../../components/viewMode/useViewMode";
+import { ViewModeToggle } from "../../components/viewMode/ViewModeToggle";
 import type { Navigate } from "../../shell/view";
 import { theme } from "../../theme";
 import { CollectionCard } from "./CollectionCard";
@@ -24,6 +28,8 @@ interface CollectionsPageProps {
   initialHealthFilter?: FleetHealthFilter;
 }
 
+const GRID_MIN_PX = 300;
+
 export function CollectionsPage({ onNavigate, initialHealthFilter }: CollectionsPageProps) {
   const [showImport, setShowImport] = useState(false);
   const {
@@ -31,6 +37,7 @@ export function CollectionsPage({ onNavigate, initialHealthFilter }: Collections
     searchQuery, setSearchQuery, sortKey, setSortKey, healthFilter, setHealthFilter,
     availableTags, selectedTags, setSelectedTags,
   } = useCollectionsFleet(initialHealthFilter);
+  const { mode, setMode } = useViewMode("docforge_view_collections");
 
   return (
     <div className="df-rise" style={{ padding: `${theme.space.xl}px`, overflowY: "auto", height: "100%", maxWidth: 1200, margin: "0 auto", width: "100%" }}>
@@ -39,6 +46,7 @@ export function CollectionsPage({ onNavigate, initialHealthFilter }: Collections
         subtitle={collections ? `${totalCount} collection${totalCount === 1 ? "" : "s"} — each with its own schema, ingestion and search pipeline` : " "}
         actions={
           <>
+            <ViewModeToggle mode={mode} onChange={setMode} label="Collections" />
             <Button variant="secondary" onClick={() => setShowImport((v) => !v)}>
               {showImport ? "Cancel import" : "Import collection"}
             </Button>
@@ -84,7 +92,7 @@ export function CollectionsPage({ onNavigate, initialHealthFilter }: Collections
               action={<Button variant="secondary" onClick={() => { setSearchQuery(""); setHealthFilter("all"); setSelectedTags([]); }}>Clear filters</Button>}
             />
           ) : (
-            <div className="df-stagger" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: theme.space.l }}>
+            <div className="df-stagger" style={{ display: "grid", gridTemplateColumns: gridTemplateColumnsFor(mode, GRID_MIN_PX), gap: theme.space.l }}>
               {visibleEntries.map(({ collection, health, healthError, docCount, jobRunning }) => (
                 <CollectionCard
                   key={collection.id}

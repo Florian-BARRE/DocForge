@@ -6,30 +6,32 @@
 // page's live-per-worker grid (LiveWorkersGrid/WorkerLiveCard) was a strict SUBSET of the WorkerCard
 // grid already rendered here, so it was deleted rather than folded in (see
 // agent-memory/frontend for the consolidation note). A compact top-right toggle switches the card
-// grid between list/2-col/3-col/auto layouts, persisted per-viewer (useWorkersLayout).
+// grid between list/grid-N/auto layouts via the shared ViewModeToggle, persisted per-viewer
+// (useViewMode, storage key docforge_view_workers).
 
 import { useEffect, useState } from "react";
 import { getWorkersLive, type JobStatus, type WorkerActivity } from "../../api/jobs";
 import { ErrorState } from "../../components/ErrorState";
 import { LoadingState } from "../../components/LoadingState";
 import { PageHeader } from "../../components/PageHeader";
+import { gridTemplateColumnsFor, useViewMode } from "../../components/viewMode/useViewMode";
+import { ViewModeToggle } from "../../components/viewMode/ViewModeToggle";
 import type { Navigate } from "../../shell/view";
 import { theme } from "../../theme";
 import { QueueDepthTile } from "./QueueDepthTile";
 import { RecentJobsPanel } from "./RecentJobsPanel";
-import { gridTemplateColumnsFor, useWorkersLayout } from "./state/useWorkersLayout";
 import { TelemetryNote } from "./TelemetryNote";
 import { ThroughputTile } from "./ThroughputTile";
 import { WorkerCard } from "./WorkerCard";
-import { WorkerLayoutToggle } from "./WorkerLayoutToggle";
 import { WorkersFleetSummary } from "./WorkersFleetSummary";
 
 const POLL_MS = 3000;
+const GRID_MIN_PX = 320;
 
 export function WorkersPanel({ onNavigate }: { onNavigate: Navigate }) {
   const [workers, setWorkers] = useState<WorkerActivity[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const { layout, setLayout } = useWorkersLayout();
+  const { mode, setMode } = useViewMode("docforge_view_workers");
 
   useEffect(() => {
     let cancelled = false;
@@ -73,7 +75,7 @@ export function WorkersPanel({ onNavigate }: { onNavigate: Navigate }) {
           <PageHeader title="Workers" subtitle="Live worker resources, queue depth, and fleet health." />
         </div>
         <div style={{ marginBottom: theme.space.xl }}>
-          <WorkerLayoutToggle layout={layout} onChange={setLayout} />
+          <ViewModeToggle mode={mode} onChange={setMode} label="Workers" />
         </div>
       </div>
 
@@ -100,7 +102,7 @@ export function WorkersPanel({ onNavigate }: { onNavigate: Navigate }) {
           <WorkersFleetSummary workers={workers} />
           <div
             style={{
-              display: "grid", gridTemplateColumns: gridTemplateColumnsFor(layout), gap: theme.space.l,
+              display: "grid", gridTemplateColumns: gridTemplateColumnsFor(mode, GRID_MIN_PX), gap: theme.space.l,
               marginBottom: theme.space.xl,
             }}
           >

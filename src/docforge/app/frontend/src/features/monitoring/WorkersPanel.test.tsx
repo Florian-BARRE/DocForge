@@ -52,8 +52,6 @@ describe("WorkersPanel", () => {
       ],
     };
     const recentPage: JobPage = { total: 1, limit: 8, offset: 0, jobs: [runningJob] };
-    // Deliberately distinct from any digit the layout toggle itself renders ("2"/"3" column labels)
-    // so the assertions below can't collide with the toggle's own button text.
     const queueDepth: QueueDepth = { pending: 5, running: 7 };
     vi.mocked(getWorkersLive).mockResolvedValue(workers);
     vi.mocked(listJobsPage).mockResolvedValue(recentPage);
@@ -74,8 +72,8 @@ describe("WorkersPanel", () => {
     // The telemetry footnote, also folded in.
     expect(screen.getByText(/docforge-overview/)).toBeInTheDocument();
 
-    // The layout toggle, defaulting to Auto.
-    const autoSegment = screen.getByRole("radio", { name: "Auto" });
-    expect(autoSegment).toHaveAttribute("aria-checked", "true");
+    // The view-mode toggle, defaulting to grid.
+    const gridButton = screen.getByRole("button", { name: /Workers grid view/ });
+    expect(gridButton).toHaveAttribute("aria-pressed", "true");
   });
 });
