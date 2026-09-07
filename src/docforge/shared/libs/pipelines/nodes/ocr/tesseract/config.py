@@ -15,11 +15,13 @@ class OcrTesseractConfig(BaseOcrConfig):
     """Tesseract language + page-segmentation knobs (local, offline; escalation lives on the graph)."""
 
     lang: str = Field(
-        default="eng",
-        description="Tesseract language code(s) to load, '+'-joined for multi-language OCR "
-        "(e.g. 'eng', 'eng+fra'). This is the whole point of the provider — broad language "
-        "support. Each code must have its data pack installed in the worker image "
-        "(tesseract-ocr-<code>).",
+        default="auto",
+        description="Tesseract language code(s) to load. 'auto' (the recommended default) uses "
+        "DocForge's already-detected document language — the figure's ISO 639-1 code is mapped "
+        "to its Tesseract pack (falling back to 'eng' when the language is unknown or has no "
+        "shipped pack). An explicit code is honoured verbatim and may be '+'-joined for "
+        "multi-language OCR (e.g. 'eng', 'eng+fra'). Each explicit code must have its data pack "
+        "installed in the worker image (tesseract-ocr-<code>).",
     )
     psm: int = Field(
         default=3,
@@ -28,6 +30,13 @@ class OcrTesseractConfig(BaseOcrConfig):
         description="Tesseract page-segmentation mode (--psm). 3 = fully automatic page "
         "segmentation (the default, best for a whole figure crop); 6 assumes a single uniform "
         "block of text.",
+    )
+    oem: int = Field(
+        default=3,
+        ge=0,
+        le=3,
+        description="Tesseract OCR engine mode (--oem). 0 = legacy engine only, 1 = LSTM neural "
+        "engine only, 2 = legacy + LSTM, 3 = default (whichever is available).",
     )
 
 

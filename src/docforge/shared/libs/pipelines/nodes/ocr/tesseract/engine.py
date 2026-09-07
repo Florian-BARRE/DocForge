@@ -20,11 +20,57 @@ class TesseractEngine:
 
     logger = loggerplusplus.bind(identifier="TesseractEngine")
 
+    # The SINGLE source of truth for language resolution: ISO 639-1 → Tesseract pack code, restricted
+    # to the packs SHIPPED in the worker image. Adding a language pack later is one edit here (plus the
+    # matching tesseract-ocr-<code> in the worker Dockerfile). ``lang='auto'`` maps DocForge's detected
+    # language through this map; an unknown/unmapped language falls back to ``FALLBACK_PACK``.
+    ISO_TO_PACK: dict[str, str] = {
+        "en": "eng",
+        "fr": "fra",
+        "de": "deu",
+        "es": "spa",
+        "it": "ita",
+        "pt": "por",
+        "nl": "nld",
+    }
+    FALLBACK_PACK = "eng"
+
     def __new__(cls, *args: object, **kwargs: object) -> None:
         raise TypeError("TesseractEngine is a static-only class and cannot be instantiated.")
 
     @classmethod
-    def __run_sync(cls, image: bytes, lang: str, psm: int) -> dict[str, Any]:
+    def resolve_lang(cls, config_lang: str, figure_language: str) -> str:
+        """
+        Resolve the effective Tesseract language code from the config and the figure's language.
+
+        An explicit config code (e.g. 'eng', 'eng+fra') is honoured verbatim. The special value
+        'auto' maps DocForge's already-detected figure language (ISO 639-1, region suffix stripped)
+        to its shipped Tesseract pack, falling back to English when the language is empty, unmapped,
+        or its pack is not among the shipped set.
+
+        Args:
+            config_lang (str): The node's configured ``lang`` ('auto' or an explicit code string).
+            figure_language (str): The figure's detected ISO 639-1 language ('' when unknown).
+
+        Returns:
+            str: The Tesseract language code to load.
+        """
+        # 1. An explicit code wins — passed through verbatim (incl. '+'-joined multi-language).
+        if config_lang.strip().lower() != "auto":
+            return config_lang
+
+        # 2. 'auto' → map the detected language (lower-cased, region suffix like 'en-US' stripped).
+        iso = figure_language.strip().lower().split("-")[0]
+        pack = cls.ISO_TO_PACK.get(iso)
+        if pack is None:
+            cls.logger.debug(
+                f"tesseract auto: language '{figure_language}' has no pack, falling back to eng"
+            )
+            return cls.FALLBACK_PACK
+        return pack
+
+    @classmethod
+    def __run_sync(cls, image: bytes, lang: str, psm: int, oem: int) -> dict[str, Any]:
         """Synchronous OCR (runs in a worker thread) → Tesseract's word-level data dict."""
         # 1. Lazy-import the native stack so the OCR family imports even when it is absent (mirrors
         #    rapidocr): a missing package is surfaced as a clear, actionable error, never a bare
@@ -47,7 +93,7 @@ class TesseractEngine:
             return pytesseract.image_to_data(
                 pil_image,
                 lang=lang,
-                config=f"--psm {psm}",
+                config=f"--oem {oem} --psm {psm}",
                 output_type=pytesseract.Output.DICT,
             )
         except pytesseract.TesseractNotFoundError as error:
@@ -61,7 +107,7 @@ class TesseractEngine:
             ) from error
 
     @classmethod
-    async def read(cls, image: bytes, lang: str, psm: int) -> dict[str, Any]:
+    async def read(cls, image: bytes, lang: str, psm: int, oem: int) -> dict[str, Any]:
         """
         Run local Tesseract OCR off the event loop and return the raw word-level data.
 
@@ -69,11 +115,12 @@ class TesseractEngine:
             image (bytes): The crop to read.
             lang (str): Tesseract language code(s), '+'-joined for multi-language OCR.
             psm (int): Tesseract page-segmentation mode.
+            oem (int): Tesseract OCR engine mode.
 
         Returns:
             dict[str, Any]: Tesseract's parallel-list data (``text`` words + their ``conf`` scores).
         """
-        return await asyncio.to_thread(cls.__run_sync, image, lang, psm)
+        return await asyncio.to_thread(cls.__run_sync, image, lang, psm, oem)
 
     @staticmethod
     def to_text(data: dict[str, Any]) -> tuple[str, float]:

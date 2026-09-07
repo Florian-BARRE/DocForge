@@ -66,8 +66,15 @@ class FigureExtractNode(ActionNode):
                 continue
             x0, y0, x1, y1 = block.provenance.bbox
             coverage = max(0.0, min(1.0, abs(x1 - x0) * abs(y1 - y0)))
+            # The block's own language wins when it differs from the document; else the document's.
+            language = block.language or data.ir.language or ""
             figures.append(
-                FigureItem(block_id=block.id, image=block.figure.crop, page_coverage=coverage)
+                FigureItem(
+                    block_id=block.id,
+                    image=block.figure.crop,
+                    page_coverage=coverage,
+                    language=language,
+                )
             )
 
         # 2. Report the work list size — the enrich loop's fan-out.

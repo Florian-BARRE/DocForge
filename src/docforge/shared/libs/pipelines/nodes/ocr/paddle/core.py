@@ -44,8 +44,12 @@ class OcrPaddleNode(BaseOcrNode):
             path="/health",
         )
 
-    async def _read(self, image: bytes) -> tuple[str, float]:
-        """Call the sidecar's OCR endpoint on one image, with a bounded transient retry."""
+    async def _read(self, image: bytes, language: str) -> tuple[str, float]:
+        """Call the sidecar's OCR endpoint on one image, with a bounded transient retry.
+
+        ``language`` is part of the family contract but unused here — the paddle_server sidecar
+        owns its own language configuration (only Tesseract consumes the detected language).
+        """
         config: OcrPaddleConfig = self.config
         headers = {"Content-Type": "image/png"}
         if config.api_key:

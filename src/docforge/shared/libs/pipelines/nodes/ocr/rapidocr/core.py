@@ -27,8 +27,12 @@ class OcrRapidOcrNode(BaseOcrNode):
     )
     Config = OcrRapidOcrConfig
 
-    async def _read(self, image: bytes) -> tuple[str, float]:
-        """Read the crop through the process-shared engine → (text, mean confidence)."""
+    async def _read(self, image: bytes, language: str) -> tuple[str, float]:
+        """Read the crop through the process-shared engine → (text, mean confidence).
+
+        ``language`` is part of the family contract but unused here — RapidOCR is not
+        language-parametrised (only Tesseract consumes the detected language).
+        """
         return RapidOcrEngine.to_text(await RapidOcrEngine.read(image))
 
 

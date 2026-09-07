@@ -28,6 +28,8 @@ class FigureItem(Artifact):
         kind (str): The figure class stamped by the classifier ('' until classified).
         read_text (str): The text a provider read/extracted from the figure image (OCR reading),
             carried to the terminal.
+        language (str): The figure's ISO 639-1 language — the block's if set, else the document's;
+            feeds a language-aware OCR provider (e.g. Tesseract ``lang=auto``).
     """
 
     block_id: str
@@ -39,6 +41,13 @@ class FigureItem(Artifact):
         description=(
             "The text a provider read/extracted from the figure image (OCR reading), carried to "
             "the terminal."
+        ),
+    )
+    language: str = Field(
+        default="",
+        description=(
+            "The figure's ISO 639-1 language — the block's if set, else the document's; feeds a "
+            "language-aware OCR provider (e.g. Tesseract lang=auto)."
         ),
     )
 

@@ -53,7 +53,7 @@ class FakeOcrCheap(BaseOcrNode):
     SUMMARY = "test"
     Config = BaseOcrConfig
 
-    async def _read(self, image: bytes) -> tuple[str, float]:
+    async def _read(self, image: bytes, language: str) -> tuple[str, float]:
         CALLS["ocr_cheap"] += 1
         if b"HARD" in image:
             return "g@rb1ed", 0.2
@@ -67,7 +67,7 @@ class FakeOcrRobust(BaseOcrNode):
     SUMMARY = "test"
     Config = BaseOcrConfig
 
-    async def _read(self, image: bytes) -> tuple[str, float]:
+    async def _read(self, image: bytes, language: str) -> tuple[str, float]:
         CALLS["ocr_robust"] += 1
         return "ROBUST READ", 0.95
 

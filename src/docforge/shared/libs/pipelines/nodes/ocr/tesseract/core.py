@@ -28,10 +28,15 @@ class OcrTesseractNode(BaseOcrNode):
     )
     Config = OcrTesseractConfig
 
-    async def _read(self, image: bytes) -> tuple[str, float]:
-        """Read the crop through the process-shared engine → (text, mean confidence)."""
+    async def _read(self, image: bytes, language: str) -> tuple[str, float]:
+        """Read the crop through the process-shared engine → (text, mean confidence).
+
+        With ``lang='auto'`` the effective pack is resolved from the figure's detected language;
+        an explicit config code is honoured verbatim (both via the engine's single-source map).
+        """
         config: OcrTesseractConfig = self.config
-        data = await TesseractEngine.read(image, lang=config.lang, psm=config.psm)
+        lang = TesseractEngine.resolve_lang(config.lang, language)
+        data = await TesseractEngine.read(image, lang=lang, psm=config.psm, oem=config.oem)
         return TesseractEngine.to_text(data)
 
 

@@ -26,8 +26,15 @@ class BaseOcrNode(ActionNode):
     _last_usage: NodeUsage | None = None
 
     @abstractmethod
-    async def _read(self, image: bytes) -> tuple[str, float]:
-        """Run the provider's OCR on one image → (text, confidence in [0, 1])."""
+    async def _read(self, image: bytes, language: str) -> tuple[str, float]:
+        """
+        Run the provider's OCR on one image → (text, confidence in [0, 1]).
+
+        Args:
+            image (bytes): The crop to read.
+            language (str): The figure's detected ISO 639-1 language ('' when unknown). Only a
+                language-aware provider (e.g. Tesseract ``lang=auto``) uses it; the others ignore it.
+        """
         ...
 
     async def run(self, data: OcrConsumes) -> OcrProduces:
@@ -41,8 +48,9 @@ class BaseOcrNode(ActionNode):
             OcrProduces: An updated COPY of the figure (instances are shared across concurrent
             items) with ``read_text`` set to the reading, scored by the provider's confidence.
         """
-        # 1. Run the provider's engine on the crop.
-        text, score = await self._read(data.figure.image)
+        # 1. Run the provider's engine on the crop, handing it the figure's detected language (a
+        #    language-aware provider uses it; the others ignore it).
+        text, score = await self._read(data.figure.image, data.figure.language)
         self.logger.debug(f"OCR '{self.KIND}' read {len(text)} chars (score {score:.2f})")
 
         # 2. Relay an updated copy — the item itself is never mutated. A paid per-page provider

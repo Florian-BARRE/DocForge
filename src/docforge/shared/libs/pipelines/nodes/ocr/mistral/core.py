@@ -44,8 +44,12 @@ class OcrMistralNode(BaseOcrNode):
             timeout_seconds=config.preflight_timeout_seconds,
         )
 
-    async def _read(self, image: bytes) -> tuple[str, float]:
-        """Call the OCR endpoint on one image, with a bounded transient retry."""
+    async def _read(self, image: bytes, language: str) -> tuple[str, float]:
+        """Call the OCR endpoint on one image, with a bounded transient retry.
+
+        ``language`` is part of the family contract but unused here — the Mistral OCR API
+        auto-detects the script (only Tesseract consumes the detected language).
+        """
         config: OcrMistralConfig = self.config
         # 1. The API takes the image as a data URL document.
         encoded = base64.b64encode(image).decode("ascii")

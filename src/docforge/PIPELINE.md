@@ -275,7 +275,7 @@ flowchart TB
 | `ocr` | **rapidocr** ✅ | — (local, modèles embarqués) | `{figure}` → `{figure(read_text rempli), score=confiance réelle}` (**testé : 0.97 sur vraie image**) — l'escalade = transition `ScoreBelow` |
 | `ocr` | **mistral** ✅ | `base_url` · `api_key` · `model` · `timeout_seconds` | idem — queue robuste (API /ocr, data-url) |
 | `ocr` | **paddle** ✅ | `base_url` · `api_key` · `timeout_seconds` | idem — OCR d'un crop via le sidecar in-stack `paddle_server` (PaddleOCR det+rec) |
-| `ocr` | **tesseract** ✅ | `lang` · `psm` | idem — OCR local/offline (binaire Tesseract, `pytesseract`), large support multi-langue via `lang` (ex. `eng+fra`), `score`=confiance moyenne par mot normalisée [0,1] |
+| `ocr` | **tesseract** ✅ | `lang` · `oem` · `psm` | idem — OCR local/offline (binaire Tesseract, `pytesseract`), large support multi-langue ; `lang=auto` (défaut) utilise la langue de document déjà détectée (ISO 639-1 → pack Tesseract, fallback `eng`), un code explicite (`eng+fra`) est honoré verbatim ; `oem`=moteur (0 legacy·1 LSTM·2 both·3 défaut), `psm`=segmentation de page ; `score`=confiance moyenne par mot normalisée [0,1] |
 | `vlm` | **openai_compatible** ✅ | `base_url` · `api_key` · `model` · **`system_prompt`** · `max_tokens` · `temperature` · **`extract_table`** · `timeout_seconds` | `{figure}` → `{entry}` — **ferme la branche** (description + table parsée + ocr_text/kind portés) |
 
 **Prouvé e2e via blob** (6 figures, les 5 classes) : heuristiques (3 appels modèle économisés sur 6),
