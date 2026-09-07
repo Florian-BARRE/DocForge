@@ -100,7 +100,11 @@ export function PageGroupRow({ pages, blocks, enrichmentsByBlock, tablesByBlock,
         return {
           bbox: unionBbox(bboxes, 0.012),
           color: active ? theme.color.accent : theme.color.chunkOutline,
-          label: `Chunk ${chunk.chunk_index}`,
+          // Like the block numbers, the "Chunk N" tab is an opaque label that would sit over the
+          // page content, so it shows ONLY for the active chunk. Idle reads as clean outlines (thin
+          // type-coloured blocks inside dashed chunk regions); clicking a chunk — in the page or in
+          // the trace columns — reveals its tab and highlights it, per the "click to trace" model.
+          label: active ? `Chunk ${chunk.chunk_index}` : undefined,
           active,
           dim: hasSelection && !active,
           variant: "group" as const,
@@ -116,7 +120,11 @@ export function PageGroupRow({ pages, blocks, enrichmentsByBlock, tablesByBlock,
         return {
           bbox: padOut(block.bbox),
           color: active ? theme.color.accent : blockStyle(block.block_type).color,
-          label: String(index + 1),
+          // The number badge is a solid tab that sits over the page content, so at most ONE ever
+          // shows: only the block clicked directly (selectedBlockId). Idle and chunk-selection both
+          // stay clean — the active chunk's region is conveyed by the orange outlines below, not by
+          // numbering every member block (which used to pile badges over the text).
+          label: selectedBlockId === block.id ? String(index + 1) : undefined,
           active,
           dim: hasSelection && !active,
           variant: "block" as const,
