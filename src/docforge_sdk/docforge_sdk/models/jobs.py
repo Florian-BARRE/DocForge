@@ -203,13 +203,13 @@ class JobEvent(BaseModel):
         description="The stage-event row's UUID — the stable handle the full-payload fetch route "
         "addresses (GET /jobs/{job_id}/events/{event_id}/payload)."
     )
-    input_summary: dict | None = Field(
+    input_summary: dict[str, Any] | None = Field(
         default=None,
         description="Bounded SHAPE descriptor of the node's resolved input (type/fields/sizes/hash) "
         "— never the raw content. None when trace capture was off, the node had no input, or for "
         "legacy rows.",
     )
-    output_summary: dict | None = Field(
+    output_summary: dict[str, Any] | None = Field(
         default=None,
         description="Bounded SHAPE descriptor of the node's output — never the raw content. None "
         "when trace capture was off, the node produced nothing, or for legacy rows.",
