@@ -1,0 +1,78 @@
+{
+  "n_pages": 2,
+  "engine": {
+    "mineru": "2.5.0",
+    "pipeline": "MinerU2.5-Pro-2605-1.2B",
+    "backend": "vlm-transformers"
+  },
+  "pages": [
+    {
+      "page_index": 0,
+      "image_width": 1000,
+      "image_height": 1000,
+      "blocks": [
+        {
+          "label": "title",
+          "bbox": [100, 80, 900, 140],
+          "reading_order": 0,
+          "text": "Attention Is All You Need"
+        },
+        {
+          "label": "text",
+          "bbox": [100, 160, 900, 220],
+          "reading_order": 1,
+          "text": "The dominant sequence transduction models are based on recurrent networks."
+        },
+        {
+          "label": "paragraph_title",
+          "bbox": [100, 240, 500, 280],
+          "reading_order": 2,
+          "text": "3.1 Encoder and Decoder Stacks"
+        },
+        {
+          "label": "table",
+          "bbox": [120, 300, 880, 520],
+          "reading_order": 3,
+          "html": "<table><tr><th>Layer</th><th>Complexity</th></tr><tr><td>Self-Attention</td><td>O(n^2)</td></tr><tr><td rowspan=\"2\">Recurrent</td><td>O(n)</td></tr><tr><td>O(1)</td></tr></table>"
+        },
+        {
+          "label": "caption",
+          "bbox": [120, 300, 880, 520],
+          "reading_order": 4,
+          "text": "Table 1: Maximum path lengths."
+        }
+      ]
+    },
+    {
+      "page_index": 1,
+      "image_width": 1000,
+      "image_height": 1000,
+      "blocks": [
+        {
+          "label": "formula",
+          "bbox": [200, 100, 800, 180],
+          "reading_order": 0,
+          "latex": "\\mathrm{Attention}(Q, K, V) = \\mathrm{softmax}\\left(\\frac{QK^T}{\\sqrt{d_k}}\\right)V"
+        },
+        {
+          "label": "image",
+          "bbox": [150, 220, 850, 700],
+          "reading_order": 1,
+          "text": ""
+        },
+        {
+          "label": "subsection",
+          "bbox": [100, 840, 700, 880],
+          "reading_order": 2,
+          "text": "3.2.1 Scaled Dot-Product Attention"
+        },
+        {
+          "label": "seal",
+          "bbox": [0, 0, 50, 50],
+          "reading_order": 3,
+          "text": "unmapped"
+        }
+      ]
+    }
+  ]
+}

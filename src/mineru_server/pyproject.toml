@@ -1,0 +1,114 @@
+[project]
+name = "docforge-mineru-server"
+version = "1.0.0"
+description = "MinerU2.5-Pro VLM layout-parsing micro-service — PDF in, reading-ordered blocks (text/table-html/formula-latex) out"
+requires-python = ">=3.12"
+license = "GPL-3.0-or-later"
+dependencies = [
+    # FastAPI + ASGI server. The MinerU engine itself (mineru + torch) is NOT a base dependency — it
+    # lives in the cpu/gpu extras below so the default sync set stays light and offline-installable
+    # (the normalizer + contract are pure and unit-testable without CUDA/torch/mineru).
+    "fastapi>=0.115.0,<1",
+    "uvicorn[standard]>=0.30.0,<1",
+    # pypdfium2 is used by libs/validation.py to reject an undecodable PDF as a 422 before the
+    # expensive GPU parse. AVX-free, lightweight, no CUDA — a base dependency on purpose.
+    "pypdfium2>=4.30.0",
+    # Config & logging (same internal libraries as the rest of the DocForge stack).
+    "configplusplus>=0.1.0",
+    "loggerplusplus>=1.0.0",
+    # ASCII startup banner printed by the lifespan.
+    "pyfiglet>=1.0.2,<2",
+]
+
+# ── MinerU + torch variant extras ────────────────────────────────────────────────────────────────
+# Exactly ONE of these extras must be selected at install time:
+#   cpu  → mineru[core] + CPU torch. NOTE: MinerU2.5-Pro's VLM backend REQUIRES CUDA; the cpu extra
+#          exists ONLY to build/import-test the wiring on a CPU host — it CANNOT actually parse. The
+#          service reports /health UNHEALTHY on a CPU host (MINERU_REQUIRE_GPU, on by default).
+#   gpu  → mineru[core] + CUDA 12.6 torch — REQUIRED for the deployment GPU (Tesla V100, Volta, sm_70).
+#          cu129/cu130 DROP Volta kernels, so cu126 is pinned (same reasoning as bge_server).
+#
+# `mineru[core]` ships the dependency-light `vlm-transformers` backend (the MINERU_BACKEND default).
+# The faster `vlm-vllm-engine` / `vlm-sglang-engine` backends need the heavy `mineru[vllm]` /
+# `mineru[sglang]` extras — add them (+ flip MINERU_BACKEND) at deploy time on the GPU host; they are
+# deliberately NOT locked here because vllm/sglang resolution is GPU-host-specific and would bloat the
+# base image. The declared extras are CONFLICTING (see [tool.uv]) so uv enforces mutual exclusivity.
+[project.optional-dependencies]
+cpu = ["mineru[core]>=2.5.0,<3", "torch"]
+gpu = ["mineru[core]>=2.5.0,<3", "torch"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.24.0",
+    "ruff>=0.8.0",
+    "mypy>=1.13.0",
+    "httpx>=0.28.0",   # For FastAPI TestClient
+]
+
+[tool.uv]
+# This app is run as scripts (uvicorn entrypoint:app), not installed as a package.
+package = false
+
+# Declare the cpu and gpu extras as mutually exclusive — uv enforces this at lock time and raises an
+# error if both are requested simultaneously.
+conflicts = [
+    [{ extra = "cpu" }, { extra = "gpu" }],
+]
+
+[tool.uv.sources]
+# Route torch to the correct wheel index depending on the active extra.
+# pytorch-cpu: CPU-only wheels (~200 MB), no CUDA runtime payload (wiring build-test only).
+# pytorch-cu126: CUDA 12.6 wheels — REQUIRED for the deployment GPU (Tesla V100, Volta, sm_70).
+# cu129/cu130 DROP Volta kernels (V100 gets "no kernel image for this GPU"); cu126 still ships sm_70.
+# Do NOT bump the index past cu126 while the target GPU is a V100 — see bge_server's pyproject.
+torch = [
+    { index = "pytorch-cpu", extra = "cpu" },
+    { index = "pytorch-cu126", extra = "gpu" },
+]
+
+[[tool.uv.index]]
+# CPU-only torch wheels — the wiring build-test variant.
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[[tool.uv.index]]
+# CUDA 12.6 torch wheels — ships sm_70 kernels for the Tesla V100 (Volta) prod GPU. cu129/cu130
+# DROPPED Volta/sm_70, so the V100 has no runnable kernels there. Keep cu126 while the GPU is a V100.
+name = "pytorch-cu126"
+url = "https://download.pytorch.org/whl/cu126"
+explicit = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+ignore = [
+    "F541",   # f-string without placeholder (loggerplusplus convention)
+    "E501",   # line too long (handled by formatter)
+]
+
+[tool.ruff.lint.per-file-ignores]
+# config_loader.py reads DEV_MODE via an `import os` placed AFTER loggerplusplus.remove() so a
+# temporary debug sink exists before the config class is evaluated — a deliberate bootstrap ordering
+# (see the python.md runtime-config pattern), not a stray mid-file import.
+"config_loader.py" = ["E402"]
+# entrypoint.py MUST import MineruServerConfig FIRST (its class body calls sys.path.append so
+# `from backend.*` / `from libs.*` resolve) — isort would reorder it after third-party and break the
+# import bootstrap, so the block-sort rule is disabled here on purpose.
+"entrypoint.py" = ["I001"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["config_loader", "libs", "backend"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true

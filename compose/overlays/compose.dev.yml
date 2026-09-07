@@ -157,6 +157,21 @@ services:
     ports:
       - "10049:80"                # Operator access: http://localhost:10049/health
 
+  docforge_mineru_server:
+    # Own LOCAL dev tag so the dev build never occupies the prod image name. GPU-ONLY: the CPU dev
+    # build only import-tests the wiring (cannot parse); use dev-gpu to actually run MinerU. Only ever
+    # started under the opt-in `mineru` profile.
+    image: docforge-mineru-server:dev
+    # Build locally from source, overriding the prod GHCR image pull in the base file.
+    # CPU torch by default; the gpu override file flips TORCH_VARIANT to gpu.
+    build:
+      context: ../../src          # mineru_server lives at src/mineru_server (sibling of docforge)
+      dockerfile: mineru_server/Dockerfile
+      args:
+        TORCH_VARIANT: cpu
+    ports:
+      - "10053:80"                # Operator access: http://localhost:10053/health
+
   # ── Vite dev server — hot-reloading frontend, dev-only service ───────────────
   docforge_frontend:
     image: node:22-bookworm-slim
