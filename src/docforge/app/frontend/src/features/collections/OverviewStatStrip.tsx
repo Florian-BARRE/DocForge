@@ -81,19 +81,23 @@ export function OverviewStatStrip({ collection, docs, fields, health, jobs, coll
           sub="per upload"
           onClick={() => onNavigate({ name: "collection-edit", collectionId })}
         />
-        <StatChip
-          label="Job timeout"
-          value={
-            // Only the machine value (a duration) is mono per brand.md — "default" is prose, not a
-            // number, and reads in the app's normal Archivo voice like everywhere else.
-            collection.job_timeout_seconds !== null
-              ? <span style={{ fontFamily: t.font.mono }}>{collection.job_timeout_seconds}s</span>
-              : "default"
-          }
-          sub="whole-ingest-job wall-clock budget"
-          onClick={() => onNavigate({ name: "collection-edit", collectionId })}
-        />
       </div>
+      {/* A rarely-relevant technical knob — a footnote, not a stat tile, so it doesn't compete with
+          the strip above for attention. Still a click-through to where it's edited. */}
+      <button
+        onClick={() => onNavigate({ name: "collection-edit", collectionId })}
+        title="Whole-ingest-job wall-clock budget"
+        style={{
+          display: "inline-flex", alignItems: "baseline", gap: t.space.xs, marginBottom: t.space.xl,
+          background: "none", border: "none", padding: 0, cursor: "pointer",
+          color: t.color.mute, fontSize: t.font.size.xs,
+        }}
+      >
+        <span>Job timeout:</span>
+        <span style={{ fontFamily: t.font.mono, color: t.color.dim }}>
+          {collection.job_timeout_seconds !== null ? `${collection.job_timeout_seconds}s` : "default"}
+        </span>
+      </button>
     </>
   );
 }

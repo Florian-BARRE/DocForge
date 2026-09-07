@@ -6,6 +6,7 @@
 
 import type { ColumnDef } from "@tanstack/react-table";
 import type { DocumentGridRow } from "../../../api/corpus";
+import { DOCUMENT_STATUSES } from "../../../api/explorer";
 import { Chip } from "../../../components/Chip";
 import { theme } from "../../../theme";
 import { CorpusEnabledToggle } from "../CorpusEnabledToggle";
@@ -48,7 +49,7 @@ export function buildBaseColumns({ onOpen, onEnabledChanged, supportedFormats }:
       accessorKey: "status",
       header: "Status",
       size: 120,
-      meta: { filterKind: "enumMulti", enumOptions: ["pending", "processing", "done", "failed", "cancelled"], group: "document" },
+      meta: { filterKind: "enumMulti", enumOptions: DOCUMENT_STATUSES, group: "document" },
       cell: ({ row }) => (
         <CorpusStatusChip
           status={row.original.status}

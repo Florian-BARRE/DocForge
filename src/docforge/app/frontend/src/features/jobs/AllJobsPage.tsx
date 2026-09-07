@@ -24,7 +24,7 @@ interface AllJobsPageProps {
 }
 
 export function AllJobsPage({ onNavigate }: AllJobsPageProps) {
-  const [tab, setTab] = useState<JobFleetTab>("pending");
+  const [tab, setTab] = useState<JobFleetTab>("all");
   const [offset, setOffset] = useState(0);
 
   const order = tab === "pending" ? "oldest" : "newest";

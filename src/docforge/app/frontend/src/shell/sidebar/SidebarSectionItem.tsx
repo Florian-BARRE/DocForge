@@ -42,7 +42,8 @@ export function SidebarSectionItem({
         aria-current={!expanded && isSectionActive ? "page" : undefined}
         title={section.label}
         style={{
-          display: "flex", alignItems: "center", gap: t.space.s, width: "100%",
+          display: "flex", alignItems: "center", justifyContent: expanded ? "flex-start" : "center",
+          gap: t.space.s, width: "100%",
           background: isSectionActive && !expanded ? t.color.accentSoft : softActive && !expanded ? t.color.surface2 : "transparent",
           color: isSectionActive ? t.color.accentSafe : softActive ? t.color.text : t.color.dim,
           border: "none", borderRadius: t.radius.m, cursor: "pointer",

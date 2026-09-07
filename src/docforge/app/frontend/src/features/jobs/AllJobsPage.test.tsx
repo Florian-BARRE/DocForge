@@ -1,7 +1,8 @@
 // ====== Code Summary ======
-// Render smoke-test for AllJobsPage — mounts through loading -> loaded on the default Pending tab
-// (worker column shows the honest "—", never a fabricated id) and covers switching to Running
-// (worker column joins the live worker feed instead).
+// Render smoke-test for AllJobsPage — mounts through loading -> loaded on the default "All" tab
+// (the full fleet queue, newest-first, no status filter; worker column shows the honest "—", never
+// a fabricated id) and covers switching to Pending (FIFO oldest-first) and Running (worker column
+// joins the live worker feed instead).
 
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactElement } from "react";
@@ -59,9 +60,9 @@ function jobFixture(overrides: Partial<JobStatus>): JobStatus {
 const emptyWorkers: WorkersLive = { workers: [] };
 
 describe("AllJobsPage", () => {
-  it("mounts through loading -> loaded on the Pending tab, showing an honest '—' worker (never fabricated)", async () => {
-    const pendingPage: JobPage = { total: 1, limit: 25, offset: 0, jobs: [jobFixture({ status: "pending" })] };
-    vi.mocked(listJobsPage).mockResolvedValue(pendingPage);
+  it("mounts through loading -> loaded on the default 'All' tab, showing an honest '—' worker (never fabricated)", async () => {
+    const allPage: JobPage = { total: 1, limit: 25, offset: 0, jobs: [jobFixture({ status: "pending" })] };
+    vi.mocked(listJobsPage).mockResolvedValue(allPage);
     vi.mocked(getWorkersLive).mockResolvedValue(emptyWorkers);
 
     const onNavigate: Navigate = vi.fn();
@@ -71,9 +72,23 @@ describe("AllJobsPage", () => {
     await waitFor(() => expect(screen.getByText("report.pdf")).toBeInTheDocument());
     expect(screen.queryByText("loading jobs…")).not.toBeInTheDocument();
 
-    // Pending order is FIFO (oldest-first) and never claims a worker before claim time.
-    expect(listJobsPage).toHaveBeenCalledWith(expect.objectContaining({ status: ["pending"], order: "oldest" }));
+    // The "All" tab carries no status filter and reads newest-first — the full queue, in order.
+    expect(listJobsPage).toHaveBeenCalledWith(expect.objectContaining({ status: undefined, order: "newest" }));
     expect(screen.getByText(/worker —/)).toBeInTheDocument();
+  });
+
+  it("switches to the Pending tab, which filters to FIFO oldest-first order", async () => {
+    const pendingPage: JobPage = { total: 1, limit: 25, offset: 0, jobs: [jobFixture({ status: "pending" })] };
+    vi.mocked(listJobsPage).mockResolvedValue(pendingPage);
+    vi.mocked(getWorkersLive).mockResolvedValue(emptyWorkers);
+
+    renderWithProviders(<AllJobsPage onNavigate={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText("report.pdf")).toBeInTheDocument());
+    fireEvent.click(screen.getByText("Pending"));
+
+    await waitFor(() =>
+      expect(listJobsPage).toHaveBeenCalledWith(expect.objectContaining({ status: ["pending"], order: "oldest" })),
+    );
   });
 
   it("shows the real worker on the Running tab, joined from the live worker feed", async () => {

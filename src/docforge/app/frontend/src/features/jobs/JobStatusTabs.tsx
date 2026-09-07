@@ -17,11 +17,11 @@ export const TAB_STATUS: Record<JobFleetTab, JobStatusValue[] | undefined> = {
 };
 
 const TABS: { key: JobFleetTab; label: string }[] = [
+  { key: "all", label: "All" },
   { key: "pending", label: "Pending" },
   { key: "running", label: "Running" },
   { key: "done", label: "Done" },
   { key: "failed", label: "Failed" },
-  { key: "all", label: "All" },
 ];
 
 interface JobStatusTabsProps {

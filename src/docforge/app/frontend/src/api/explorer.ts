@@ -13,6 +13,10 @@ const BLOBS_BASE = "/api/v1/blobs";
 const CHUNKS_BASE = "/api/v1/chunks";
 
 export type DocumentStatus = "pending" | "processing" | "done" | "failed" | "cancelled";
+
+/** Every `DocumentStatus` value, single-sourced so a status filter/enum control never drifts from
+ *  the type above (the corpus grid's status column and the estimate subset filter both use it). */
+export const DOCUMENT_STATUSES: DocumentStatus[] = ["pending", "processing", "done", "failed", "cancelled"];
 export type SourceKind = "digital_born" | "scanned" | "mixed";
 export type EnrichmentKind = "classify" | "ocr" | "vlm" | "chart_to_data" | "table_summary";
 export type EnrichmentStatus = "ok" | "failed" | "skipped";

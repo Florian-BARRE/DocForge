@@ -12,13 +12,19 @@ import { ErrorState } from "../../../components/ErrorState";
 import { LoadingState } from "../../../components/LoadingState";
 import { TabNav } from "../../../components/TabNav";
 import { theme as t } from "../../../theme";
+import { buildDocumentFilter } from "../../corpus/filterBuilder";
+import { countActiveFilters, type ColumnFiltersState } from "../../corpus/types";
 import { CostEstimateCaveats } from "./CostEstimateCaveats";
 import { CostEstimateHeadline } from "./CostEstimateHeadline";
 import { CostEstimateStageTable } from "./CostEstimateStageTable";
 import { EstimateOverridesEditor } from "./EstimateOverridesEditor";
+import { EstimateSubsetFilterPanel } from "./EstimateSubsetFilterPanel";
 
 interface CostEstimatePanelProps {
   collectionId: string;
+  /** The collection's registered file formats — feeds the "Selected documents" filter's Format
+   *  control, mirroring the corpus grid's own column options. */
+  supportedFormats: string[];
   /** The collection's stored per-collection cost-estimate overrides — surfaced in the editable
    *  "Assumptions & rates" section below the result. */
   estimateOverrides: EstimateOverrides | null;
@@ -27,21 +33,42 @@ interface CostEstimatePanelProps {
   onOverridesSaved: (overrides: EstimateOverrides | null) => void;
 }
 
-const SCOPE_TABS: { key: EstimateScope; label: string }[] = [
+/** The panel's own scope selector — a superset of the API's `EstimateScope`: "filter" is a local
+ *  UI state (a subset selector, not a whole-collection default) that resolves to a `filter` body
+ *  on run, never sent to the endpoint as a `scope` value. */
+type PanelScope = EstimateScope | "filter";
+
+const SCOPE_TABS: { key: PanelScope; label: string }[] = [
   { key: "pending", label: "Pending only" },
   { key: "all", label: "Whole collection" },
+  { key: "filter", label: "Selected documents" },
 ];
 
-export function CostEstimatePanel({ collectionId, estimateOverrides, onOverridesSaved }: CostEstimatePanelProps) {
-  const [scope, setScope] = useState<EstimateScope>("pending");
+/** What the run button is about to cover — shown so the chosen perimeter is never a guess. */
+function scopeCaption(scope: PanelScope, activeFilterCount: number): string {
+  if (scope === "pending") return "Not-yet-ingested documents only.";
+  if (scope === "all") return "Every document in the collection.";
+  if (activeFilterCount === 0) return "No filters applied yet — matches the whole collection.";
+  return `Documents matching ${activeFilterCount} filter${activeFilterCount === 1 ? "" : "s"} below.`;
+}
+
+export function CostEstimatePanel({ collectionId, supportedFormats, estimateOverrides, onOverridesSaved }: CostEstimatePanelProps) {
+  const [scope, setScope] = useState<PanelScope>("pending");
+  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>({});
   const [estimate, setEstimate] = useState<CostEstimate | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const activeFilterCount = countActiveFilters(columnFilters);
+
   const run = () => {
     setLoading(true);
     setError(null);
-    estimateCollectionCost(collectionId, scope)
+    const request =
+      scope === "filter"
+        ? estimateCollectionCost(collectionId, "pending", { filter: buildDocumentFilter(columnFilters) })
+        : estimateCollectionCost(collectionId, scope);
+    request
       .then(setEstimate)
       .catch((e) => setError(e instanceof Error ? e.message : String(e)))
       .finally(() => setLoading(false));
@@ -71,7 +98,16 @@ export function CostEstimatePanel({ collectionId, estimateOverrides, onOverrides
         </div>
       </div>
 
-      <div style={{ padding: t.space.l }}>
+      <div style={{ padding: t.space.l, display: "flex", flexDirection: "column", gap: t.space.l }}>
+        <div style={{ color: t.color.dim, fontSize: t.font.size.s }}>{scopeCaption(scope, activeFilterCount)}</div>
+        {scope === "filter" && (
+          <EstimateSubsetFilterPanel
+            columnFilters={columnFilters}
+            onColumnFilterChange={(columnId, value) => setColumnFilters((prev) => ({ ...prev, [columnId]: value }))}
+            onClearAll={() => setColumnFilters({})}
+            supportedFormats={supportedFormats}
+          />
+        )}
         {error && <ErrorState message={error} onRetry={run} />}
         {!error && loading && <LoadingState label="running dry-run estimate…" />}
         {!error && !loading && !estimate && (
