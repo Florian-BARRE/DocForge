@@ -254,6 +254,8 @@ jobs:
           - { name: worker,        context: src/docforge, file: src/docforge/worker/Dockerfile,   target: runtime, torch: cpu }
           - { name: bge-server,    context: src,           file: src/bge_server/Dockerfile,        target: runtime, torch: cpu }
           - { name: paddle-server, context: src,           file: src/paddle_server/Dockerfile,     target: runtime, torch: cpu }
+          - { name: mineru-server, context: src,           file: src/mineru_server/Dockerfile,     target: runtime, torch: cpu }
+          - { name: dots-ocr-server, context: src,         file: src/dots_ocr_server/Dockerfile,   target: runtime, torch: cpu }
     steps:
       - uses: actions/checkout@v4
       - name: Set up Buildx

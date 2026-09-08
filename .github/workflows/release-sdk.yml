@@ -40,6 +40,10 @@
 #   ghcr.io/<owner>/docforge-bge-server:1.2.3-gpu :latest-gpu        (TORCH_VARIANT build-arg)
 #   ghcr.io/<owner>/docforge-paddle-server:1.2.3-cpu :latest-cpu
 #   ghcr.io/<owner>/docforge-paddle-server:1.2.3-gpu :latest-gpu     (TORCH_VARIANT build-arg)
+#   ghcr.io/<owner>/docforge-mineru-server:1.2.3-cpu :latest-cpu
+#   ghcr.io/<owner>/docforge-mineru-server:1.2.3-gpu :latest-gpu     (TORCH_VARIANT build-arg; GPU parser sidecar)
+#   ghcr.io/<owner>/docforge-dots-ocr-server:1.2.3-cpu :latest-cpu
+#   ghcr.io/<owner>/docforge-dots-ocr-server:1.2.3-gpu :latest-gpu   (TORCH_VARIANT build-arg; GPU parser sidecar)
 #
 # The `images` matrix job pushes ONLY the version tags above; every `:latest`/`:latest-cpu`/
 # `:latest-gpu` is moved atomically, afterwards, by the `retag-latest` job (`needs: images` — see
@@ -150,6 +154,10 @@ jobs:
           - { name: bge-server, context: src,          file: src/bge_server/Dockerfile,           torch: gpu,   suffix: "-gpu" }
           - { name: paddle-server, context: src,       file: src/paddle_server/Dockerfile,        torch: cpu,   suffix: "-cpu" }
           - { name: paddle-server, context: src,       file: src/paddle_server/Dockerfile,        torch: gpu,   suffix: "-gpu" }
+          - { name: mineru-server, context: src,       file: src/mineru_server/Dockerfile,        torch: cpu,   suffix: "-cpu" }
+          - { name: mineru-server, context: src,       file: src/mineru_server/Dockerfile,        torch: gpu,   suffix: "-gpu" }
+          - { name: dots-ocr-server, context: src,     file: src/dots_ocr_server/Dockerfile,      torch: cpu,   suffix: "-cpu" }
+          - { name: dots-ocr-server, context: src,     file: src/dots_ocr_server/Dockerfile,      torch: gpu,   suffix: "-gpu" }
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -263,6 +271,10 @@ jobs:
             "bge-server:-gpu"
             "paddle-server:-cpu"
             "paddle-server:-gpu"
+            "mineru-server:-cpu"
+            "mineru-server:-gpu"
+            "dots-ocr-server:-cpu"
+            "dots-ocr-server:-gpu"
           )
           for entry in "${images[@]}"; do
             name="${entry%%:*}"
