@@ -38,9 +38,7 @@ class CapabilitiesService(LoggerClass):
     def __sidecar_targets(self) -> dict[str, str]:
         """Build ``sidecar name → base URL`` from the specs, reading each URL from RUNTIME_CONFIG."""
         # 1. Each spec names the RUNTIME_CONFIG attribute holding its /health base URL.
-        return {
-            sidecar.name: getattr(self._config, sidecar.config_attr) for sidecar in SIDECARS
-        }
+        return {sidecar.name: getattr(self._config, sidecar.config_attr) for sidecar in SIDECARS}
 
     def __service_rows(self, probes: dict[str, ProbeResult]) -> list[ServiceInfo]:
         """Assemble the ServiceInfo rows: probed sidecars first, then config-derived infra stores."""

@@ -24,7 +24,7 @@ class ProbeResult:
     Attributes:
         reachable (bool): True only when /health answered HTTP 200 (deployed AND ready).
         device (str | None): The device the sidecar advertised in its /health JSON (``"cuda"``/``"cpu"``),
-            or None when it exposes none (the case today) or the probe failed.
+            or None when the sidecar omits it or the probe failed.
         detail (str | None): A short note when not reachable (unreachable / not-ready), else None.
     """
 
@@ -58,9 +58,7 @@ class SidecarProbe(LoggerClass):
         self._cached_at: float = 0.0
         self._lock = asyncio.Lock()
 
-    async def __probe_one(
-        self, client: httpx.AsyncClient, name: str, base_url: str
-    ) -> ProbeResult:
+    async def __probe_one(self, client: httpx.AsyncClient, name: str, base_url: str) -> ProbeResult:
         """
         Probe a single sidecar's /health (never raises — a failure is reported as unreachable).
 
@@ -87,7 +85,8 @@ class SidecarProbe(LoggerClass):
                 reachable=False, device=None, detail=f"not ready (HTTP {response.status_code})"
             )
 
-        # 3. Surface the device only if the sidecar exposes one today (none do yet → None).
+        # 3. Surface the device the sidecar advertises on /health (bge/paddle/mineru/dots emit
+        #    "cuda"/"cpu"); None when a sidecar omits the field.
         device = self.__read_device(response)
         return ProbeResult(reachable=True, device=device, detail=None)
 

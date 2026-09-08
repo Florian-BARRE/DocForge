@@ -135,13 +135,27 @@ class RUNTIME_CONFIG(EnvConfigLoader):
     # a sidecar whose profile is OFF simply fails the probe → reported unreachable. The probe is
     # SHORT-timeout and its whole result map is memoised for CACHE_TTL seconds, so a burst of
     # /capabilities calls costs at most one probe round per window (cheap + deterministic).
-    CAPABILITIES_BGE_SERVER_URL: str = env("CAPABILITIES_BGE_SERVER_URL", default="http://bge_server:80")
-    CAPABILITIES_PADDLE_SERVER_URL: str = env("CAPABILITIES_PADDLE_SERVER_URL", default="http://paddle_server:80")
-    CAPABILITIES_MINERU_SERVER_URL: str = env("CAPABILITIES_MINERU_SERVER_URL", default="http://mineru_server:80")
-    CAPABILITIES_DOTS_OCR_SERVER_URL: str = env("CAPABILITIES_DOTS_OCR_SERVER_URL", default="http://dots_ocr_server:80")
-    CAPABILITIES_GOTENBERG_URL: str = env("CAPABILITIES_GOTENBERG_URL", default="http://gotenberg:3000")
-    CAPABILITIES_PROBE_TIMEOUT_SECONDS: float = env("CAPABILITIES_PROBE_TIMEOUT_SECONDS", cast=float, default="2.0")
-    CAPABILITIES_CACHE_TTL_SECONDS: float = env("CAPABILITIES_CACHE_TTL_SECONDS", cast=float, default="10.0")
+    CAPABILITIES_BGE_SERVER_URL: str = env(
+        "CAPABILITIES_BGE_SERVER_URL", default="http://bge_server:80"
+    )
+    CAPABILITIES_PADDLE_SERVER_URL: str = env(
+        "CAPABILITIES_PADDLE_SERVER_URL", default="http://paddle_server:80"
+    )
+    CAPABILITIES_MINERU_SERVER_URL: str = env(
+        "CAPABILITIES_MINERU_SERVER_URL", default="http://mineru_server:80"
+    )
+    CAPABILITIES_DOTS_OCR_SERVER_URL: str = env(
+        "CAPABILITIES_DOTS_OCR_SERVER_URL", default="http://dots_ocr_server:80"
+    )
+    CAPABILITIES_GOTENBERG_URL: str = env(
+        "CAPABILITIES_GOTENBERG_URL", default="http://gotenberg:3000"
+    )
+    CAPABILITIES_PROBE_TIMEOUT_SECONDS: float = env(
+        "CAPABILITIES_PROBE_TIMEOUT_SECONDS", cast=float, default="2.0"
+    )
+    CAPABILITIES_CACHE_TTL_SECONDS: float = env(
+        "CAPABILITIES_CACHE_TTL_SECONDS", cast=float, default="10.0"
+    )
 
     # ───── Idempotency (Idempotency-Key middleware, ON by default) ─────
     # ON out-of-box, but SAFE: the middleware only engages when a mutating request to an ELIGIBLE

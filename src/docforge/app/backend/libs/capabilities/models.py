@@ -96,7 +96,9 @@ class CapabilitiesResponse(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    version: str = Field(description="Running app/image version (FASTAPI_APP_VERSION / DOCFORGE_TAG).")
+    version: str = Field(
+        description="Running app/image version (FASTAPI_APP_VERSION / DOCFORGE_TAG)."
+    )
     auth_enabled: bool = Field(description="Whether API-key bearer auth gates /api/v1.")
     gpu_present: bool | None = Field(
         default=None,
