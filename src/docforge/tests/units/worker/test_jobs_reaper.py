@@ -110,6 +110,53 @@ async def test_list_stale_joins_heartbeats_so_a_live_worker_vetoes_the_reap() ->
     assert sql.count("make_interval") == 2
 
 
+async def test_list_over_budget_reaps_a_live_worker_job_past_its_own_budget() -> None:
+    """
+    The JOB-LEVEL watchdog predicate (the incident's exact fix): a RUNNING job on a LIVE worker whose
+    total age exceeds its per-collection effective budget + grace is a candidate even though the
+    heartbeat is FRESH — the condition ``list_stale`` can never catch (a fresh heartbeat vetoes it).
+    Proven on the compiled SQL because the unit suite has no real Postgres.
+    """
+    captured: dict[str, object] = {}
+
+    class _CapturingSession:
+        async def execute(self, statement):
+            captured["statement"] = statement
+            result = MagicMock()
+            result.all.return_value = []
+            return result
+
+    from shared_libs.services.db.postgresql.apis import JobApi  # noqa: PLC0415
+
+    await JobApi.list_over_budget(
+        _CapturingSession(),
+        default_budget_seconds=1800.0,
+        grace_seconds=300.0,
+        heartbeat_stale_seconds=180,
+    )
+
+    sql = str(
+        captured["statement"].compile(
+            dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}
+        )
+    ).lower()
+    # RUNNING-only, and it needs a real start time to age from.
+    assert "job.status = 'running'" in sql
+    assert "job.started_at is not null" in sql
+    # The effective budget is the per-COLLECTION override coalesced onto the global default — the
+    # budget is the job's REAL budget, so a long-but-within-budget parse is never falsely reaped.
+    assert "coalesce(collection.job_timeout_seconds, 1800.0)" in sql
+    # DB-clock age cutoff: started_at older than now() - make_interval(budget + grace).
+    assert "job.started_at < now() - make_interval" in sql
+    # It joins the collection (for the budget) AND requires a FRESH heartbeat (inner join + last_seen
+    # within the stale cutoff) — this path targets a LIVE worker, disjoint from list_stale's dead one.
+    assert "join collection on collection.id = job.collection_id" in sql
+    assert "join worker_heartbeats on worker_heartbeats.worker_id = job.worker_id" in sql
+    assert "worker_heartbeats.last_seen >= now() - make_interval" in sql
+    # TWO DB-clock cutoffs: the budget age cutoff on the job + the heartbeat freshness cutoff.
+    assert sql.count("make_interval") == 2
+
+
 # --------------------------------------------------------------------------- #
 # JobsFacade.reap_stale — the orchestration
 # --------------------------------------------------------------------------- #
@@ -150,11 +197,16 @@ async def test_reap_stale_fails_each_stale_job_and_its_document(monkeypatch) -> 
     assert {call.args[1] for call in mark_terminal.await_args_list} == {stale[0].id, stale[1].id}
     for call in mark_terminal.await_args_list:
         assert call.kwargs["status"] == JobStatus.FAILED
+        # A dead worker heartbeat means the PROCESS is gone → attributed worker_killed (OOM-forward),
+        # never auto-retried (the reaper marks FAILED terminal; the doc stays re-ingestable).
+        assert call.kwargs["error_type"] == "worker_killed"
     # The operator-clear reason names the minutes and the presumed cause, and — because the reaper's
     # terminal status is FAILED — it must read like a REAP, never a "cancelled:" (that prefix belongs
     # to the CANCELLED cancel path; a failed chip carrying "cancelled:" is the contradiction QA caught).
     reason = mark_terminal.await_args_list[0].kwargs["reason"]
     assert "20m" in reason and "orphaned" in reason
+    # The worker_killed reason is OOM-forward and actionable (the operator's levers).
+    assert "out-of-memory" in reason and "WORKER_CONCURRENCY" in reason
     assert reason.startswith("reaped:")
     assert not reason.lower().startswith("cancelled")
     assert set_status.await_count == 2
@@ -210,6 +262,74 @@ async def test_terminate_does_not_clobber_a_newer_jobs_document_state(monkeypatc
     set_status.assert_not_awaited()
 
 
+async def test_reap_over_budget_fails_each_wedged_job_with_budget_exceeded(monkeypatch) -> None:
+    """
+    The JOB-LEVEL watchdog orchestration (the regression guard for the live incident): a RUNNING job
+    on a LIVE worker (fresh heartbeat) past its budget is failed budget_exceeded, its stage named in
+    the reason and its document flagged FAILED — through the SAME _terminate path. list_over_budget
+    yields (job, effective_budget) pairs so the reason can name the exceeded budget.
+    """
+    over_budget = [
+        (SimpleNamespace(id=uuid.uuid4(), document_id=uuid.uuid4(), current_stage="parse"), 900.0),
+    ]
+    doc_by_job = {job.id: job.document_id for job, _ in over_budget}
+    monkeypatch.setattr(
+        facade_module.JobApi, "list_over_budget", AsyncMock(return_value=over_budget)
+    )
+    mark_terminal = AsyncMock(
+        side_effect=lambda session, job_id, **kw: SimpleNamespace(
+            id=job_id, document_id=doc_by_job[job_id]
+        )
+    )
+    get_latest = AsyncMock(
+        side_effect=lambda session, document_id: SimpleNamespace(
+            id=next(job.id for job, _ in over_budget if job.document_id == document_id)
+        )
+    )
+    set_status = AsyncMock()
+    monkeypatch.setattr(facade_module.JobApi, "mark_terminal", mark_terminal)
+    monkeypatch.setattr(facade_module.JobApi, "get_latest_for_document", get_latest)
+    monkeypatch.setattr(facade_module.DocumentApi, "set_status", set_status)
+
+    facade = JobsFacade(_postgres_yielding(MagicMock()))
+    reaped = await facade.reap_over_budget(
+        default_budget_seconds=1800.0, grace_seconds=300.0, heartbeat_stale_seconds=180
+    )
+
+    job = over_budget[0][0]
+    assert reaped == [job.id]
+    mark_terminal.assert_awaited_once()
+    call = mark_terminal.await_args_list[0]
+    assert call.kwargs["status"] == JobStatus.FAILED
+    # Attributed budget_exceeded — NOT worker_killed (the worker is alive) and NOT auto-retried.
+    assert call.kwargs["error_type"] == "budget_exceeded"
+    reason = call.kwargs["reason"]
+    # The reason names the wedged STAGE and the exceeded budget, reads like a REAP (never "cancelled:").
+    assert "parse" in reason and "900s" in reason
+    assert reason.startswith("reaped:")
+    assert not reason.lower().startswith("cancelled")
+    # The document is mirrored FAILED (re-ingestable).
+    set_status.assert_awaited_once()
+    assert set_status.await_args_list[0].args[2] == DocumentStatus.FAILED
+
+
+async def test_reap_over_budget_is_a_noop_when_nothing_is_over_budget(monkeypatch) -> None:
+    monkeypatch.setattr(facade_module.JobApi, "list_over_budget", AsyncMock(return_value=[]))
+    mark_terminal = AsyncMock()
+    set_status = AsyncMock()
+    monkeypatch.setattr(facade_module.JobApi, "mark_terminal", mark_terminal)
+    monkeypatch.setattr(facade_module.DocumentApi, "set_status", set_status)
+
+    facade = JobsFacade(_postgres_yielding(MagicMock()))
+    reaped = await facade.reap_over_budget(
+        default_budget_seconds=1800.0, grace_seconds=300.0, heartbeat_stale_seconds=180
+    )
+
+    assert reaped == []
+    mark_terminal.assert_not_awaited()
+    set_status.assert_not_awaited()
+
+
 # --------------------------------------------------------------------------- #
 # reap_stuck_jobs — the cron coroutine
 # --------------------------------------------------------------------------- #
@@ -222,17 +342,24 @@ def _reaper_module(worker_jobs_modules):
 
 
 def _fake_context(
-    *, enabled: bool, reap_stale: AsyncMock, prune: AsyncMock | None = None
+    *,
+    enabled: bool,
+    reap_stale: AsyncMock,
+    reap_over_budget: AsyncMock | None = None,
+    prune: AsyncMock | None = None,
 ) -> SimpleNamespace:
     return SimpleNamespace(
         RUNTIME_CONFIG=SimpleNamespace(
             WORKER_REAP_ENABLED=enabled,
             WORKER_REAP_STALE_SECONDS=1200,
             WORKER_PRUNE_STALE_SECONDS=180,
+            WORKER_JOB_TIMEOUT_SECONDS=1800.0,
+            WORKER_OVER_BUDGET_GRACE_SECONDS=300.0,
         ),
         database=SimpleNamespace(
             jobs=SimpleNamespace(
                 reap_stale=reap_stale,
+                reap_over_budget=reap_over_budget or AsyncMock(return_value=[]),
                 prune_stale_heartbeats=prune or AsyncMock(return_value=[]),
             )
         ),
@@ -244,36 +371,60 @@ async def test_reap_stuck_jobs_reaps_and_returns_ids_when_enabled(
     worker_jobs_modules, monkeypatch
 ) -> None:
     reaper = _reaper_module(worker_jobs_modules)
-    reaped_ids = [uuid.uuid4(), uuid.uuid4()]
-    reap_stale = AsyncMock(return_value=reaped_ids)
+    killed_ids = [uuid.uuid4(), uuid.uuid4()]
+    over_budget_ids = [uuid.uuid4()]
+    reap_stale = AsyncMock(return_value=killed_ids)
+    reap_over_budget = AsyncMock(return_value=over_budget_ids)
     prune = AsyncMock(return_value=["worker-dead-1"])
     monkeypatch.setattr(
-        reaper, "CONTEXT", _fake_context(enabled=True, reap_stale=reap_stale, prune=prune)
+        reaper,
+        "CONTEXT",
+        _fake_context(
+            enabled=True,
+            reap_stale=reap_stale,
+            reap_over_budget=reap_over_budget,
+            prune=prune,
+        ),
     )
 
     result = await reaper.reap_stuck_jobs({})
 
-    # The reap now carries BOTH cutoffs: the silence threshold AND the heartbeat-veto cutoff (a fresh
+    # Dead-worker path: BOTH cutoffs — the silence threshold AND the heartbeat-veto cutoff (a fresh
     # heartbeat vetoes the reap), so it is called with (WORKER_REAP_STALE_SECONDS, WORKER_PRUNE_STALE_SECONDS).
     reap_stale.assert_awaited_once_with(1200, 180)
-    # The reaper cron now ALSO prunes crashed workers' stale heartbeats (moved off GET /workers/live).
+    # Job-level watchdog path: the default budget, the over-budget grace, and the SAME heartbeat cutoff
+    # reap_stale uses (WORKER_PRUNE_STALE_SECONDS) so the fresh/stale boundary is shared — the two paths
+    # stay disjoint (a job is a dead-worker orphan OR a live-worker wedge, never both).
+    reap_over_budget.assert_awaited_once_with(1800.0, 300.0, 180)
+    # The reaper cron ALSO prunes crashed workers' stale heartbeats (moved off GET /workers/live).
     prune.assert_awaited_once_with(180)
-    assert result == [str(job_id) for job_id in reaped_ids]
+    # The returned ids are the UNION of both reap paths (killed-worker first, over-budget appended).
+    assert result == [str(job_id) for job_id in killed_ids + over_budget_ids]
 
 
 async def test_reap_stuck_jobs_is_a_noop_when_disabled(worker_jobs_modules, monkeypatch) -> None:
     reaper = _reaper_module(worker_jobs_modules)
     reap_stale = AsyncMock(return_value=[uuid.uuid4()])
+    reap_over_budget = AsyncMock(return_value=[uuid.uuid4()])
     prune = AsyncMock(return_value=[uuid.uuid4()])
     monkeypatch.setattr(
-        reaper, "CONTEXT", _fake_context(enabled=False, reap_stale=reap_stale, prune=prune)
+        reaper,
+        "CONTEXT",
+        _fake_context(
+            enabled=False,
+            reap_stale=reap_stale,
+            reap_over_budget=reap_over_budget,
+            prune=prune,
+        ),
     )
 
     result = await reaper.reap_stuck_jobs({})
 
     assert result == []
     reap_stale.assert_not_awaited()
-    # Disabled reaper prunes nothing either (the cron isn't registered; a direct call is a full no-op).
+    # Neither reap condition nor the prune runs when disabled (the cron isn't registered; a direct
+    # call is a full no-op).
+    reap_over_budget.assert_not_awaited()
     prune.assert_not_awaited()
 
 

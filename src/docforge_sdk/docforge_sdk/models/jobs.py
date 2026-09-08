@@ -40,7 +40,9 @@ class JobStatus(BaseModel):
         failed_node_id (str | None): The deepest node that raised — only set on a failed job.
         failed_node_kind (str | None): That node's kind/family label — only set on a failed job.
         failed_item_index (int | None): The fan-out item index the failure sits in (None outside one).
-        error_type (str | None): The exception class name of the failure (e.g. "TimeoutError").
+        error_type (str | None): Structured cause of the failure — usually the raising exception's
+            class name (e.g. "TimeoutError"), plus the reaper's attributed "worker_killed" (process
+            lost — crash/OOM) and "budget_exceeded" (a stage wedged past the budget on a live worker).
     """
 
     job_id: str = Field(description="The job row's UUID.")
@@ -101,7 +103,13 @@ class JobStatus(BaseModel):
         default=None, description="Fan-out item index the failure sits in (None outside a fan-out)."
     )
     error_type: str | None = Field(
-        default=None, description="Exception class name of the failure (e.g. 'TimeoutError')."
+        default=None,
+        description=(
+            "Structured cause of the failure. Usually the raising exception's class name (e.g. "
+            "'TimeoutError'); the reaper also attributes 'worker_killed' (the worker process was "
+            "lost — crash/OOM-kill) and 'budget_exceeded' (a stage wedged past the job's time budget "
+            "on a live worker). Set only on a failed job."
+        ),
     )
 
 

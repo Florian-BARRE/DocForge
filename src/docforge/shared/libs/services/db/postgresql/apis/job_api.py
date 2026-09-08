@@ -323,6 +323,7 @@ class JobApi:
         status: JobStatus,
         reason: str,
         finished_at: datetime,
+        error_type: str | None = None,
     ) -> Job | None:
         """
         Force a job to a terminal ``status`` with a reason — the shared stop/terminate primitive.
@@ -340,6 +341,10 @@ class JobApi:
             status (JobStatus): The terminal status (CANCELLED or FAILED).
             reason (str): The human-readable reason recorded on the job and its open stage row.
             finished_at (datetime): When the job was terminated.
+            error_type (str | None): The structured cause stamped on ``error_type`` when the
+                terminate is an ATTRIBUTED failure (the reaper's ``worker_killed`` /
+                ``budget_exceeded``); None leaves the column untouched (a plain cancel carries no
+                exception-class attribution).
 
         Returns:
             Job | None: The terminated job (so the caller can read its ``document_id``), or None.
@@ -351,6 +356,10 @@ class JobApi:
         job.error = reason
         job.finished_at = finished_at
         job.cancel_requested = True
+        # Attribute the failure cause when the caller supplied one (the reaper's watchdog paths); a
+        # None leaves any prior value untouched so a plain cancel does not fabricate an error_type.
+        if error_type is not None:
+            job.error_type = error_type
         await session.execute(
             update(JobStageEvent)
             .where(JobStageEvent.job_id == job_id, JobStageEvent.finished_at.is_(None))
@@ -989,6 +998,74 @@ class JobApi:
             .order_by(Job.updated_at.asc())
         )
         return list(result.scalars().all())
+
+    @staticmethod
+    async def list_over_budget(
+        session: AsyncSession,
+        default_budget_seconds: float,
+        grace_seconds: float,
+        heartbeat_stale_seconds: float,
+    ) -> list[tuple[Job, float]]:
+        """
+        Return RUNNING jobs on a LIVE worker whose total age blew past their own budget — the watchdog.
+
+        The JOB-LEVEL liveness backstop that closes the heartbeat veto's blind spot: a worker can be
+        ALIVE (its arq event loop heartbeats every ~10s) while ONE of its jobs is dead-wedged — an OOM
+        killed the parse thread, or a native call hung, and arq's async cancel cannot kill a wedged
+        native thread. Its heartbeat is fresh, so ``list_stale`` VETOes the reap and the slot stays
+        wedged forever. Liveness measured only at the WORKER level never catches this; this measures it
+        at the JOB level instead.
+
+        A job qualifies when its total wall-clock age (``now() - started_at``) exceeds its EFFECTIVE
+        budget — the per-collection ``job_timeout_seconds`` when set, else the worker's global
+        ``default_budget_seconds`` — PLUS ``grace_seconds``. The grace keeps the watchdog conservative:
+        the engine's own per-run budget fires AT the effective budget, so a job the engine is about to
+        cancel cleanly is never falsely reaped — only a job that blew past budget + grace (the engine's
+        cancel demonstrably failed) is caught. The budget is the job's REAL per-collection budget, so a
+        genuinely long docling parse WITHIN its collection's budget is never touched.
+
+        Mutually exclusive with ``list_stale`` by heartbeat freshness on the SAME cutoff: this path
+        requires a FRESH heartbeat (an inner join + ``last_seen`` within ``heartbeat_stale_seconds``),
+        while ``list_stale`` requires an absent/stale one. A job therefore lands in exactly one path —
+        a live-worker wedge here (``budget_exceeded``) or a dead-worker orphan there
+        (``worker_killed``) — never both, so there is no double reap and the attribution is unambiguous.
+
+        Args:
+            session (AsyncSession): The active DB session.
+            default_budget_seconds (float): The worker's global default budget for a collection that
+                sets no per-collection ``job_timeout_seconds`` (WORKER_JOB_TIMEOUT_SECONDS).
+            grace_seconds (float): Extra margin added on top of the effective budget before a job is
+                reaped, so a run the engine is about to cancel at its budget is never falsely caught.
+            heartbeat_stale_seconds (float): The SAME cutoff ``list_stale`` uses — a heartbeat within
+                it is FRESH (a live worker), which is exactly what this path targets.
+
+        Returns:
+            list[tuple[Job, float]]: Each over-budget job paired with its effective budget in seconds
+                (the per-collection value or the default, WITHOUT the grace) so the caller can name the
+                exceeded budget in the failure reason. Oldest ``started_at`` first.
+        """
+        # The effective budget is a per-row expression (the collection's override or the global
+        # default); make_interval turns budget + grace into the DB-clock cutoff so a worker/DB skew can
+        # never mis-classify, exactly like list_stale's cutoffs.
+        effective_budget = func.coalesce(Collection.job_timeout_seconds, default_budget_seconds)
+        result = await session.execute(
+            select(Job, effective_budget)
+            .join(Collection, Collection.id == Job.collection_id)
+            .join(WorkerHeartbeat, WorkerHeartbeat.worker_id == Job.worker_id)
+            .where(
+                Job.status == JobStatus.RUNNING,
+                Job.started_at.is_not(None),
+                Job.started_at
+                < func.now() - func.make_interval(0, 0, 0, 0, 0, 0, effective_budget + grace_seconds),
+                # FRESH heartbeat only: a live worker. The inner join already requires a heartbeat row;
+                # this keeps only a heartbeat within the stale cutoff — a stale one is the worker_killed
+                # path (list_stale), so the two paths never overlap.
+                WorkerHeartbeat.last_seen
+                >= func.now() - func.make_interval(0, 0, 0, 0, 0, 0, heartbeat_stale_seconds),
+            )
+            .order_by(Job.started_at.asc())
+        )
+        return [(job, float(budget)) for job, budget in result.all()]
 
     @staticmethod
     async def list_running_for_worker(session: AsyncSession, worker_id: str) -> list[Job]:

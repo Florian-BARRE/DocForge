@@ -173,7 +173,8 @@ Backs the public `GET /capabilities` endpoint (outside `/api/v1`, unauthenticate
 | `WORKER_PRUNE_STALE_SECONDS` | `180` | A heartbeat frozen past this is pruned (worker deleted + dropped from the fleet view). Read by **both** app and worker (same env → consistent "off" window). Keep well above the alive threshold. |
 | `WORKER_HEALTH_CHECK_INTERVAL_SECONDS` | `30` | arq writes a health record to Redis every N seconds; `arq … --check` reads it for the container healthcheck. |
 | `WORKER_REAP_ENABLED` | `true` | Stuck-job reaper cron: fails RUNNING jobs idle past the stale cutoff and releases their document to FAILED. Set `false` to skip the reaper (cron not registered). |
-| `WORKER_REAP_STALE_SECONDS` | `1200` | A RUNNING job idle longer than this is reaped. **Must be `>= 60`** (the worker refuses to boot below that). 1200s (20m) sits above the slowest observed single-doc run. |
+| `WORKER_REAP_STALE_SECONDS` | `1200` | A RUNNING job idle longer than this **on a dead/absent-heartbeat worker** is reaped (`worker_killed`). **Must be `>= 60`** (the worker refuses to boot below that). 1200s (20m) sits above the slowest observed single-doc run. |
+| `WORKER_OVER_BUDGET_GRACE_SECONDS` | `300.0` | Job-level watchdog grace. The reaper's **second, heartbeat-independent** condition fails a RUNNING job **on a live worker** whose total age exceeds its effective budget (per-collection `job_timeout_seconds`, else `WORKER_JOB_TIMEOUT_SECONDS`) **plus this grace** — the backstop for a wedged native stage arq's async cancel cannot kill, which a fresh heartbeat would otherwise protect forever (`budget_exceeded`). Generous so a job the engine is about to cancel cleanly at its budget is never falsely reaped; it never shortens a job's real budget. |
 | `WORKER_REAP_INTERVAL_MINUTES` | `5` | Reaper cron cadence (runs on every Nth minute of the hour; also once at startup). |
 
 ### Artifact cache & partial re-run

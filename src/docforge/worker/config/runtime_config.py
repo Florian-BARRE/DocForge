@@ -233,6 +233,17 @@ class RUNTIME_CONFIG(EnvConfigLoader):
     # the reaper entirely (the cron is then not even registered).
     WORKER_REAP_ENABLED = env("WORKER_REAP_ENABLED", cast=bool, default=True)
     WORKER_REAP_STALE_SECONDS = env("WORKER_REAP_STALE_SECONDS", cast=int, default=1200)
+    # The JOB-LEVEL watchdog grace (seconds). The reaper's SECOND, heartbeat-independent condition
+    # fails a RUNNING job on a LIVE worker whose total age exceeds its EFFECTIVE budget (the
+    # per-collection job_timeout_seconds, else WORKER_JOB_TIMEOUT_SECONDS) PLUS this grace — the
+    # backstop for a wedged native stage arq's async cancel cannot kill (an alive worker holding a
+    # dead-wedged slot the heartbeat veto would otherwise protect forever). Attributed budget_exceeded.
+    # Generous by default so a job the engine is about to cancel cleanly AT its budget is never falsely
+    # reaped; only a job that blew past budget + grace (the engine's own cancel demonstrably failed) is
+    # caught. Raise it to be even more conservative on a slow host; it never shortens a job's real budget.
+    WORKER_OVER_BUDGET_GRACE_SECONDS = env(
+        "WORKER_OVER_BUDGET_GRACE_SECONDS", cast=float, default=300.0
+    )
     # A worker heartbeat frozen past this cutoff is PRUNED by the reaper cron (crashed workers that
     # never de-registered). This ran on the read path (GET /jobs/workers/live) before — a fleet-wide
     # DELETE on every poll — and now lives in the cron alone. MUST stay well above the app's

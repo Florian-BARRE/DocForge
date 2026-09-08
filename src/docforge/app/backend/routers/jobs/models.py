@@ -104,7 +104,13 @@ class JobStatus(BaseModel):
         default=None, description="Fan-out item index the failure sits in (None outside a fan-out)."
     )
     error_type: str | None = Field(
-        default=None, description="Exception class name of the failure (e.g. 'TimeoutError')."
+        default=None,
+        description=(
+            "Structured cause of the failure. Usually the raising exception's class name (e.g. "
+            "'TimeoutError'); the reaper also attributes 'worker_killed' (the worker process was "
+            "lost — crash/OOM-kill) and 'budget_exceeded' (a stage wedged past the job's time budget "
+            "on a live worker). Set only on a failed job."
+        ),
     )
 
     @classmethod
