@@ -10,6 +10,7 @@ from loggerplusplus import loggerplusplus
 
 # ====== Internal Project Imports ======
 from backend import CONTEXT, create_app
+from backend.libs.capabilities import CapabilitiesService, SidecarProbe
 from backend.libs.estimate import CostEstimateService
 from backend.libs.health import CollectionHealthService
 from backend.libs.logbridge import UvicornLogBridge
@@ -102,6 +103,17 @@ def _build_app() -> FastAPI:
         CONTEXT.queue,
         scrape_timeout_seconds=RUNTIME_CONFIG.METRICS_SCRAPE_TIMEOUT_SECONDS,
         worker_alive_threshold_seconds=RUNTIME_CONFIG.WORKER_ALIVE_THRESHOLD_SECONDS,
+    )
+
+    # 3e. Capabilities — the public deployment self-description (GET /capabilities). The probe carries
+    #     its own short TTL cache so a burst of discovery calls costs at most one sidecar round per
+    #     window; both the probe timeout and the cache TTL are per-deployment knobs.
+    CONTEXT.capabilities_service = CapabilitiesService(
+        RUNTIME_CONFIG,
+        SidecarProbe(
+            timeout_seconds=RUNTIME_CONFIG.CAPABILITIES_PROBE_TIMEOUT_SECONDS,
+            cache_ttl_seconds=RUNTIME_CONFIG.CAPABILITIES_CACHE_TTL_SECONDS,
+        ),
     )
 
     # 3. Create the FastAPI application with all routers registered.

@@ -16,6 +16,8 @@ class HealthResponse(BaseModel):
         ready (bool): True only when BOTH the PP-StructureV3 layout pipeline and the PaddleOCR
             pipeline are built AND the host can actually run inference.
         detail (str | None): Human-readable reason when not ready (diagnostics only); None on "ok".
+        device (str): Runtime compute device — "cuda" when a GPU is present, else "cpu". Read by the
+            DocForge app's GET /capabilities probe to decide whether this sidecar runs on a GPU.
     """
 
     status: str = Field(
@@ -28,4 +30,7 @@ class HealthResponse(BaseModel):
     )
     detail: str | None = Field(
         default=None, description="Reason the service is not ready; None when status is 'ok'."
+    )
+    device: str = Field(
+        ..., description="Runtime compute device: 'cuda' when a GPU is present, else 'cpu'."
     )

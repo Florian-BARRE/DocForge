@@ -24,6 +24,7 @@ from shared_libs.services.db import Database
 
 # ====== Local Project Imports ======
 if TYPE_CHECKING:
+    from .libs.capabilities import CapabilitiesService
     from .libs.estimate import CostEstimateService
     from .libs.health import CollectionHealthService
     from .libs.metrics import MetricsService
@@ -70,3 +71,7 @@ class CONTEXT:
     # ── Metrics (Prometheus /metrics — infra-gauge refresh + exposition rendering) ──
     # Backs GET /metrics; the HTTP request series are fed passively by HttpMetricsMiddleware.
     metrics_service: MetricsService
+
+    # ── Capabilities (public GET /capabilities — deployment self-description) ──
+    # Reports version/auth/GPU + sidecar reachability (short-cached probe) + the per-family kind matrix.
+    capabilities_service: CapabilitiesService

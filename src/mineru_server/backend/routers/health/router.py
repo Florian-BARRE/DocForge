@@ -52,6 +52,7 @@ async def health(response: Response) -> HealthResponse:
             status="unhealthy",
             ready=False,
             detail="No CUDA GPU visible; MinerU's VLM backend requires one.",
+            device=GpuFeatures.device(),
         )
 
-    return HealthResponse(status="ok", ready=True)
+    return HealthResponse(status="ok", ready=True, device=GpuFeatures.device())

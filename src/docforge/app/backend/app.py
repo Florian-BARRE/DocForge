@@ -23,6 +23,7 @@ from .routers import (
     auth_router,
     auth_whoami_router,
     blobs_router,
+    capabilities_router,
     collections_router,
     corpus_router,
     documents_router,
@@ -106,6 +107,11 @@ def create_app(
     # middleware leaves them untouched: scalar docs + the orchestration liveness probe).
     app.include_router(router=scalar_router, prefix=f"/scalar")
     app.include_router(router=health_router)
+
+    # Public deployment discovery — GET /capabilities, also outside /api/v1 so the authN middleware
+    # leaves it untouched (credential-free discovery even when AUTH_ENABLED). In the OpenAPI schema
+    # (unlike the trivial /health probe): it is the SDK-mirrored, documented discovery surface.
+    app.include_router(router=capabilities_router)
 
     # Ops scrape surface — Prometheus /metrics, also outside /api/v1 (auth- and rate-limit-exempt by
     # placement; network-restrict it at the proxy). Excluded from the OpenAPI schema.

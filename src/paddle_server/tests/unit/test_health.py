@@ -79,6 +79,7 @@ def test_health_reports_unhealthy_without_avx(monkeypatch) -> None:
     assert body["status"] == "unhealthy"
     assert body["ready"] is False
     assert "AVX" in body["detail"]
+    assert body["device"] in {"cpu", "cuda"}
 
 
 def test_health_reports_loading_while_pipelines_build(monkeypatch) -> None:
@@ -87,7 +88,9 @@ def test_health_reports_loading_while_pipelines_build(monkeypatch) -> None:
     CONTEXT.paddleocr = _StubReadyService(ready=True)  # type: ignore[assignment]
     response = _client().get("/health")
     assert response.status_code == 503
-    assert response.json()["status"] == "loading"
+    body = response.json()
+    assert body["status"] == "loading"
+    assert body["device"] in {"cpu", "cuda"}
 
 
 def test_health_reports_ok_when_avx_present_and_pipelines_ready(monkeypatch) -> None:
@@ -100,3 +103,4 @@ def test_health_reports_ok_when_avx_present_and_pipelines_ready(monkeypatch) -> 
     assert body["status"] == "ok"
     assert body["ready"] is True
     assert body["detail"] is None
+    assert body["device"] in {"cpu", "cuda"}

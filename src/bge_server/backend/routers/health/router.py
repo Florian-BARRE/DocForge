@@ -17,6 +17,7 @@ from loggerplusplus import loggerplusplus
 
 # ====== Internal Project Imports ======
 from backend.context import CONTEXT
+from backend.libs.utils.device_probe import DeviceProbe
 from backend.libs.utils.error_handling import auto_handle_errors
 
 # ====== Local Project Imports ======
@@ -64,6 +65,7 @@ async def health(response: Response) -> HealthResponse:
             ready=False,
             embed_model=CONTEXT.CONFIG.BGE_M3_MODEL,
             rerank_model=CONTEXT.CONFIG.BGE_RERANKER_MODEL,
+            device=DeviceProbe.device(),
         )
 
     # 3. Both models loaded — return 200 OK
@@ -72,4 +74,5 @@ async def health(response: Response) -> HealthResponse:
         ready=True,
         embed_model=CONTEXT.CONFIG.BGE_M3_MODEL,
         rerank_model=CONTEXT.CONFIG.BGE_RERANKER_MODEL,
+        device=DeviceProbe.device(),
     )

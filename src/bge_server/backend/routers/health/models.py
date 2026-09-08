@@ -18,6 +18,8 @@ class HealthResponse(BaseModel):
         ready (bool): True only when both models are loaded and inference requests will be served.
         embed_model (str): HuggingFace model ID of the embedding model (from config).
         rerank_model (str): HuggingFace model ID of the reranking model (from config).
+        device (str): Runtime compute device — "cuda" when a GPU is present, else "cpu". Read by the
+            DocForge app's GET /capabilities probe to decide whether this sidecar runs on a GPU.
     """
 
     status: str = Field(..., description="'ok' when ready, 'loading' during startup.")
@@ -26,3 +28,6 @@ class HealthResponse(BaseModel):
     )
     embed_model: str = Field(..., description="HuggingFace model ID of the embed model.")
     rerank_model: str = Field(..., description="HuggingFace model ID of the rerank model.")
+    device: str = Field(
+        ..., description="Runtime compute device: 'cuda' when a GPU is present, else 'cpu'."
+    )

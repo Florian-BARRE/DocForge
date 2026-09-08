@@ -20,6 +20,9 @@ from .auth import CreatedKey, CreateKeyRequest, KeyInfo, RotateKeyRequest, WhoAm
 # ------------------- Blobs models ------------------- #
 from .blobs import BlobContent
 
+# ------------------- Capabilities models ------------------- #
+from .capabilities import CapabilitiesResponse, CapabilityMatrix, ServiceInfo
+
 # ------------------- Collections models ------------------- #
 from .collections import (
     BulkReingestAccepted,
@@ -253,6 +256,9 @@ __all__ = [
     "CancelResult",
     # Blobs
     "BlobContent",
+    "CapabilitiesResponse",
+    "CapabilityMatrix",
+    "ServiceInfo",
     # Pipelines
     "PipelineSurface",
     "PipelineIndexResponse",

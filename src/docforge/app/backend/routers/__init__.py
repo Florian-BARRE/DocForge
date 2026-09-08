@@ -38,6 +38,9 @@ from .scalar.router import router as scalar_router
 # -------------------- Health (public liveness probe) ------------------- #
 from .health.router import router as health_router
 
+# -------------------- Capabilities (public deployment discovery) ------------------- #
+from .capabilities.router import router as capabilities_router
+
 # -------------------- Metrics (Prometheus scrape endpoint) ------------------- #
 from .metrics.router import router as metrics_router
 
@@ -60,6 +63,7 @@ __all__ = [
     "pipelines_router",
     "scalar_router",
     "health_router",
+    "capabilities_router",
     "metrics_router",
     "audit_router",
 ]

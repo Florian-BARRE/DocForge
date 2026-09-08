@@ -64,6 +64,20 @@ at their `localhost` values here (they're used when running the app straight fro
 | `METRICS_ENABLED` | `true` | Exposes `GET /metrics` (Prometheus text; app + job-queue gauges). **Unauthenticated** — network-restrict it (see PROD-HARDENING §10). Set `false` to disable. Not in the OpenAPI document. |
 | `METRICS_SCRAPE_TIMEOUT_SECONDS` | `5.0` | Bounds the infra-gauge refresh (queue depth / job counts / live workers) per scrape. |
 
+### Capabilities discovery (app-only)
+
+Backs the public `GET /capabilities` endpoint (outside `/api/v1`, unauthenticated like `/health`): it reports the running version, auth state, GPU presence and, per family, the pipeline kinds this deployment can run **now**. A kind hosted by an OPTIONAL sidecar is listed only while that sidecar's `/health` answers; the URLs below are the probe targets, memoised behind a short TTL so a burst of calls costs at most one probe round.
+
+| Variable | Default | Notes |
+|---|---|---|
+| `CAPABILITIES_BGE_SERVER_URL` | `http://bge_server:80` | `/health` probe target for the embed/rerank sidecar (enables `embed:bge_server`, `rerank:cross_encoder`). |
+| `CAPABILITIES_PADDLE_SERVER_URL` | `http://paddle_server:80` | `/health` probe target for the PaddleX sidecar (enables `parser:pp_structure`, `parser:paddleocr_vl`, `ocr:paddle`). |
+| `CAPABILITIES_MINERU_SERVER_URL` | `http://mineru_server:80` | `/health` probe target for the MinerU sidecar (enables `parser:mineru`). |
+| `CAPABILITIES_DOTS_OCR_SERVER_URL` | `http://dots_ocr_server:80` | `/health` probe target for the dots.ocr sidecar (enables `parser:dots_ocr`). |
+| `CAPABILITIES_GOTENBERG_URL` | `http://gotenberg:3000` | `/health` probe target for the Gotenberg converter (enables `converter:gotenberg`). |
+| `CAPABILITIES_PROBE_TIMEOUT_SECONDS` | `2.0` | Per-probe HTTP timeout — short so an undeployed sidecar fails fast. |
+| `CAPABILITIES_CACHE_TTL_SECONDS` | `10.0` | How long a probe-result map is reused before the next refresh. |
+
 ### Provider egress allowlist (app + worker)
 
 | Variable | Default | Notes |

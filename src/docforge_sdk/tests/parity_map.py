@@ -12,6 +12,11 @@ from pydantic import BaseModel
 from docforge_sdk.models._shared import KeyPermissions
 from docforge_sdk.models.audit import AuditEntry, AuditPage
 from docforge_sdk.models.auth import CreatedKey, CreateKeyRequest, KeyInfo, RotateKeyRequest, WhoAmI
+from docforge_sdk.models.capabilities import (
+    CapabilitiesResponse,
+    CapabilityMatrix,
+    ServiceInfo,
+)
 from docforge_sdk.models.collections import (
     BulkReingestAccepted,
     BulkReingestRequest,
@@ -244,6 +249,10 @@ MODELS: dict[str, type[BaseModel]] = {
     # Collection config snippets (granular pipeline/search/schema export-import).
     "CollectionSnippet": CollectionSnippet,
     "SnippetImportResult": SnippetImportResult,
+    # Capabilities (deployment self-description — GET /capabilities).
+    "CapabilitiesResponse": CapabilitiesResponse,
+    "ServiceInfo": ServiceInfo,
+    "CapabilityMatrix": CapabilityMatrix,
 }
 
 # Every schema nested inside the pipeline engine's OPAQUE graph JSON (the blob / palette / issues /

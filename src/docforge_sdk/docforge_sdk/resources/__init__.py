@@ -10,6 +10,9 @@ from .auth import AsyncAuth, SyncAuth
 # ------------------- Blobs resource ------------------- #
 from .blobs import AsyncBlobs, SyncBlobs
 
+# ------------------- Capabilities resource ------------------- #
+from .capabilities import AsyncCapabilities, SyncCapabilities
+
 # ------------------- Collections resource ------------------- #
 from .collections import AsyncCollections, SyncCollections
 
@@ -56,6 +59,8 @@ __all__ = [
     "SyncJobs",
     "AsyncBlobs",
     "SyncBlobs",
+    "AsyncCapabilities",
+    "SyncCapabilities",
     "AsyncPipelines",
     "SyncPipelines",
     "AsyncTransfers",

@@ -290,7 +290,7 @@ class DotsOcrEngine(LoggerClass):
             generated = self._model.generate(
                 **inputs, max_new_tokens=self._max_tokens, do_sample=False
             )
-        trimmed = [out[len(inp):] for inp, out in zip(inputs.input_ids, generated)]
+        trimmed = [out[len(inp) :] for inp, out in zip(inputs.input_ids, generated)]
         decoded = self._processor.batch_decode(
             trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False
         )

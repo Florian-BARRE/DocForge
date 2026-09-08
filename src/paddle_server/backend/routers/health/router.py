@@ -14,6 +14,7 @@ from loggerplusplus import loggerplusplus
 # ====== Internal Project Imports ======
 from backend.context import CONTEXT
 from backend.libs.utils.cpu_features import CpuFeatures
+from backend.libs.utils.device_probe import DeviceProbe
 from backend.libs.utils.error_handling import auto_handle_errors
 
 # ====== Local Project Imports ======
@@ -55,6 +56,7 @@ async def health(response: Response) -> HealthResponse:
             status="unhealthy",
             ready=False,
             detail="CPU lacks AVX support required by PaddlePaddle; inference would crash.",
+            device=DeviceProbe.device(),
         )
 
     # 2. Readiness: both pipelines must be built before the sidecar serves any request.
@@ -67,6 +69,11 @@ async def health(response: Response) -> HealthResponse:
 
     if not pipeline_ready:
         response.status_code = 503
-        return HealthResponse(status="loading", ready=False, detail="Pipelines are still building.")
+        return HealthResponse(
+            status="loading",
+            ready=False,
+            detail="Pipelines are still building.",
+            device=DeviceProbe.device(),
+        )
 
-    return HealthResponse(status="ok", ready=True)
+    return HealthResponse(status="ok", ready=True, device=DeviceProbe.device())

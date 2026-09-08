@@ -11,6 +11,7 @@ from . import (
     audit,
     auth,
     blobs,
+    capabilities,
     collections,
     corpus,
     documents,
@@ -25,6 +26,7 @@ from . import (
 # Every domain tool module, in catalogue order. Each exposes register(mcp, sdk).
 _MODULES = (
     health,
+    capabilities,
     auth,
     collections,
     corpus,

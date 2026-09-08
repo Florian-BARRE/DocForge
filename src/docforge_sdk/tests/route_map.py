@@ -12,6 +12,8 @@
 # probe is deliberately absent: it is registered with include_in_schema=False, so it never appears in
 # the OpenAPI document this set is diffed against.
 ROUTES: set[tuple[str, str]] = {
+    # Capabilities — resources/capabilities.py (bare-root, like /health, outside /api/v1)
+    ("GET", "/capabilities"),
     # Audit — resources/audit.py
     ("GET", "/api/v1/audit"),
     # Auth — resources/auth.py

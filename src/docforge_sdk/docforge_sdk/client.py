@@ -12,6 +12,7 @@ from ._transport_sync import SyncTransport
 from .resources.audit import AsyncAudit, SyncAudit
 from .resources.auth import AsyncAuth, SyncAuth
 from .resources.blobs import AsyncBlobs, SyncBlobs
+from .resources.capabilities import AsyncCapabilities, SyncCapabilities
 from .resources.collections import AsyncCollections, SyncCollections
 from .resources.corpus import AsyncCorpus, SyncCorpus
 from .resources.documents import AsyncDocuments, SyncDocuments
@@ -31,6 +32,7 @@ class AsyncClient:
     Attributes:
         auth (AsyncAuth): API-key management resource.
         health (AsyncHealth): Liveness probe.
+        capabilities (AsyncCapabilities): Public deployment discovery.
         collections (AsyncCollections): Collection CRUD.
         documents (AsyncDocuments): Document admission + searchability control.
         explorer (AsyncExplorer): Document/chunk read surface + IR + toggles.
@@ -57,6 +59,7 @@ class AsyncClient:
         self.audit = AsyncAudit(self._transport)
         self.auth = AsyncAuth(self._transport)
         self.health = AsyncHealth(self._transport)
+        self.capabilities = AsyncCapabilities(self._transport)
         self.collections = AsyncCollections(self._transport)
         self.documents = AsyncDocuments(self._transport)
         self.explorer = AsyncExplorer(self._transport)
@@ -93,6 +96,7 @@ class Client:
     Attributes:
         auth (SyncAuth): API-key management resource.
         health (SyncHealth): Liveness probe.
+        capabilities (SyncCapabilities): Public deployment discovery.
         collections (SyncCollections): Collection CRUD.
         documents (SyncDocuments): Document admission + searchability control.
         explorer (SyncExplorer): Document/chunk read surface + IR + toggles.
@@ -119,6 +123,7 @@ class Client:
         self.audit = SyncAudit(self._transport)
         self.auth = SyncAuth(self._transport)
         self.health = SyncHealth(self._transport)
+        self.capabilities = SyncCapabilities(self._transport)
         self.collections = SyncCollections(self._transport)
         self.documents = SyncDocuments(self._transport)
         self.explorer = SyncExplorer(self._transport)

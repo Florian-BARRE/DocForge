@@ -10,14 +10,17 @@ from docforge_sdk import AsyncClient
 # ====== Internal Project Imports ======
 from libs.server import build_mcp
 
-# 57 = health(1) + auth(5) + collections(12) + documents(5) + explorer(8) + search(1)
+# 58 = health(1) + capabilities(1) + auth(5) + collections(12) + documents(5) + explorer(8) + search(1)
 #    + jobs(8) + audit(1) + blobs(1) + pipelines(6) + transfers(4) + corpus(4)
 # collections went 10 -> 12 with collection_health + reingest_collection (finding 359, 2026-09).
-EXPECTED_TOOL_COUNT = 57
+# 57 -> 58 with get_capabilities, wrapping GET /capabilities (deployment self-description).
+EXPECTED_TOOL_COUNT = 58
 
 EXPECTED_TOOL_NAMES = {
     # health
     "ping",
+    # capabilities
+    "get_capabilities",
     # auth
     "create_api_key",
     "list_api_keys",

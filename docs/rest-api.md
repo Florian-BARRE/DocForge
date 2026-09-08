@@ -24,6 +24,7 @@ Two surfaces live **outside** `/api/v1` and are always public (no auth, see §2)
 | Path | What it is |
 |---|---|
 | `GET /health` | Liveness probe. Returns `{"status": "ok"}` with HTTP 200. Never touches a store. |
+| `GET /capabilities` | Deployment discovery — version, auth state, GPU presence, optional-sidecar reachability and the available pipeline kinds per family (see §16). |
 | `GET /scalar` | Interactive API reference (the Scalar viewer) — reads the OpenAPI document client-side. |
 | `GET /openapi.json` | The raw OpenAPI 3 schema (FastAPI default). |
 | `GET /docs` | Swagger UI (FastAPI default). |
@@ -1245,7 +1246,66 @@ curl -s -D - -o /dev/null http://localhost:10040/api/v1/collections | grep -i x-
 
 ---
 
-## 16. Errors
+## 16. Capabilities discovery
+
+`GET /capabilities` is a **public** (`/health`-style, outside `/api/v1`, no auth) self-description of
+what **this** deployment can actually do right now. It answers "which version am I, is auth on, is a
+GPU present, which optional sidecars are up, and which pipeline kinds can I run now?" in one call —
+so a client or UI can adapt without hardcoding the deployment's shape.
+
+It never spends and never runs the engine: the pipeline kinds are read live from the node registry
+palette, and each optional sidecar's reachability comes from a **short-cached** `GET /health` probe
+(timeout `CAPABILITIES_PROBE_TIMEOUT_SECONDS`, memoised for `CAPABILITIES_CACHE_TTL_SECONDS`), so a
+burst of calls costs at most one probe round per window.
+
+```
+GET /capabilities
+```
+
+```json
+{
+  "version": "1.2.3",
+  "auth_enabled": false,
+  "gpu_present": null,
+  "services": [
+    { "name": "bge_server", "role": "embed", "reachable": true, "device": null,
+      "provides": ["embed:bge_server", "rerank:cross_encoder"], "detail": null },
+    { "name": "mineru_server", "role": "parse", "reachable": false, "device": null,
+      "provides": ["parser:mineru"], "detail": "unreachable" },
+    { "name": "qdrant", "role": "vector", "reachable": true, "device": null,
+      "provides": [], "detail": "declared (not probed)" }
+  ],
+  "capabilities": {
+    "parsers": ["docling", "granite_docling"],
+    "ocr": ["mistral", "rapidocr", "tesseract"],
+    "embed": ["bge_server", "openai_compatible"],
+    "chunkers": ["fixed_size", "semantic", "structure_aware"],
+    "vlm": ["openai_compatible"],
+    "llm": ["mistral", "openai_compatible"],
+    "rerank": ["cross_encoder"],
+    "contextualize": ["breadcrumb", "doc_meta", "llm", "sliding"],
+    "metagen": []
+  }
+}
+```
+
+Field notes:
+
+- `version` — the running app/image version (`FASTAPI_APP_VERSION`, falling back to `DOCFORGE_TAG`).
+- `auth_enabled` — whether API-key bearer auth gates `/api/v1` here.
+- `gpu_present` — `true` when any reachable sidecar reports device `"cuda"`, `false` when reachable
+  sidecars report only non-cuda devices, `null` when no device information is available.
+- `services[]` — the infra **stores** (reachability derived from config presence — declared, not
+  live-probed) and the optional **sidecars** (reachability from the cached `/health` probe). `provides`
+  lists the capability ids (`"family:kind"`) a service unlocks; empty for infra stores.
+- `capabilities.<family>` — the **selectable** pipeline kinds available now: an in-worker or
+  per-collection-key kind is always listed; a sidecar-gated kind (e.g. `parser:mineru`) appears only
+  while its sidecar is reachable. `metagen` has no provider kind of its own (it delegates to `llm`),
+  so it is legitimately empty.
+
+---
+
+## 17. Errors
 
 FastAPI's standard error envelope is used throughout:
 

@@ -51,6 +51,19 @@ class GpuFeatures:
         return cls._cuda_available
 
     @classmethod
+    def device(cls) -> str:
+        """
+        The runtime compute device string, derived from CUDA visibility (memoized via cuda_available).
+
+        Feeds the GET /health `device` field, which the DocForge app's GET /capabilities probe reads
+        (it checks `device == "cuda"`). The value is exactly "cuda" or "cpu".
+
+        Returns:
+            str: "cuda" when a CUDA GPU is visible, else "cpu".
+        """
+        return "cuda" if cls.cuda_available() else "cpu"
+
+    @classmethod
     def _probe(cls) -> bool:
         """
         Detect a CUDA GPU cheaply (driver nodes), falling back to torch.cuda, degrading to False.
