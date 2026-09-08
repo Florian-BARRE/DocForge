@@ -241,7 +241,7 @@ services:
 
   # ── SeaweedFS — S3-compatible blob store (content-addressed objects) ────────
   docforge_seaweedfs:
-    image: chrislusf/seaweedfs:4.45
+    image: chrislusf/seaweedfs:4.46
     container_name: docforge-seaweedfs
     command: >
       server
