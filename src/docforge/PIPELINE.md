@@ -196,6 +196,8 @@ flowchart TB
 
 **Contrat de la famille** (`BaseParserNode`) : tout parseur consomme `{source: IntakeResult}` et produit `{ir, score}` ; pas de PDF → IR vide + score 0 (dégradation) ; l'escalade se câble dans le graphe par `ScoreBelow(threshold)` — rien à changer au moteur.
 
+**Isolation du convert in-worker (`docling` · `granite_docling`)** : leur convert natif (lourd, non tuable en thread) tourne dans un **sous-processus TUABLE** que le worker gère (`DoclingSubprocessPool`, fork — modèles chargés une fois, ré-utilisés à chaud, ré-engendrés après un échec), borné par deux caps par-collection sur le blob : `parse_timeout_seconds` (le child est SIGKILL au-delà) et `parse_memory_mb` (cap RLIMIT_AS optionnel, `0` = off ; **laisser `0` sur granite/GPU** — un RLIMIT_AS casse les réservations virtuelles CUDA, on s'appuie alors sur le time-cap + le kill GPU-OOM). Un OOM / hang / crash du parse devient donc un **échec de job propre et attribué** (`ParseSubprocessError`, le worker survit, slot libéré, aucun lock laissé bloqué) au lieu de figer le worker. Les parseurs **sidecar** (`pp_structure` · `paddleocr_vl` · `mineru` · `dots_ocr`) sont déjà hors-process en HTTP → non concernés.
+
 **Doctrine scans (persona-hardening — OCR-default)** : `do_ocr=true` **par défaut** — c'est l'OCR *interne* de
 docling (local, in-stack, aucune API externe), qui ne s'applique qu'aux régions bitmap sans couche texte : un
 PDF/HTML digital-born (déjà porteur de texte) reste intouché, un scan ou une photo rend du texte cherchable

@@ -164,7 +164,11 @@ def test_build_converter_swaps_in_vlm_pipeline_with_the_pinned_revision(
 def test_docling_convert_error_surfaces_the_chained_cause() -> None:
     """Docling wraps the real failure in a generic RuntimeError('Pipeline X failed') from <cause>;
     the base node must re-raise with that cause in the MESSAGE so job.error names the actual error
-    (here a torch.compile 'No working C++ compiler' — the granite prod incident) not the wrapper."""
+    (here a torch.compile 'No working C++ compiler' — the granite prod incident) not the wrapper.
+
+    Drives ``_convert_to_ir`` DIRECTLY — the pure convert body that runs inside the killable parse
+    subprocess (and where the docling error-unwrap lives), so the assertion is on the exact code the
+    child executes, no subprocess/converter-cache round-trip needed."""
 
     class _RaisingConverter:
         def convert(self, _path: str) -> None:
@@ -179,9 +183,8 @@ def test_docling_convert_error_surfaces_the_chained_cause() -> None:
     cache_key = (node._PIPELINE, *node._cache_key())
     ParserGraniteDoclingNode._converters[cache_key] = _RaisingConverter()
     try:
-        source = IntakeResult(source_hash="h", source_format="pdf", pdf_content=b"%PDF-1.4 fake")
         with pytest.raises(RuntimeError) as excinfo:
-            asyncio.run(node.run(BaseParserNode.Consumes(source=source)))
+            node._convert_to_ir(b"%PDF-1.4 fake", ".pdf", "h")
         message = str(excinfo.value)
         # The opaque wrapper AND the real chained cause both appear — no more blind "VlmPipeline failed".
         assert "Pipeline VlmPipeline failed" in message

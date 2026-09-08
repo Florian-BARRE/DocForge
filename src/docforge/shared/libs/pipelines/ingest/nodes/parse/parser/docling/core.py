@@ -2,8 +2,8 @@
 # The standard Docling parser node — the modular layout→OCR→TableFormer pipeline, first concrete child
 # of BaseDoclingParserNode. It implements ONLY the two Docling-family seams: _build_converter (a
 # PdfPipelineOptions DocumentConverter honouring the do_ocr / do_table_structure knobs) and _cache_key
-# (those two axes). All parse plumbing (temp file, worker thread, locks), the IR mapping via
-# DoclingIRMapper, scoring and the native/PDF degradation are inherited from the base.
+# (those two axes). All parse plumbing (temp file, the killable parse subprocess, converter cache),
+# the IR mapping via DoclingIRMapper, scoring and the native/PDF degradation are inherited from the base.
 
 # ====== Standard Library Imports ======
 import threading
@@ -31,8 +31,10 @@ class ParserDoclingNode(BaseDoclingParserNode):
     SUMMARY = "Parse a PDF (or html/md natively) into the canonical IR with Docling."
     HOW_IT_WORKS = (
         "Runs Docling's DocumentConverter on the PDF view — or on the ORIGINAL html/md bytes, "
-        "whose heading tree a PDF round-trip would flatten — in a worker thread (CPU-bound), and "
-        "maps its blocks, tables, figures and provenance into the DocumentIR."
+        "whose heading tree a PDF round-trip would flatten — in a KILLABLE subprocess (the heavy "
+        "native convert is bounded by a time + memory cap so an OOM/hang fails the job cleanly "
+        "instead of wedging the worker), and maps its blocks, tables, figures and provenance into "
+        "the DocumentIR."
     )
     Config = ParserDoclingConfig
     UNIQUE_IN_GRAPH = True

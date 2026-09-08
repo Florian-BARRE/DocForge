@@ -10,12 +10,12 @@
 # ====== Third-Party Library Imports ======
 from pydantic import Field
 
-# ====== Internal Project Imports ======
-from shared_libs.pipelines.base import NodeConfig
+# ====== Local Project Imports ======
+from ..docling_base import BaseDoclingParserConfig
 
 
-class ParserDoclingConfig(NodeConfig):
-    """Docling PDF pipeline options."""
+class ParserDoclingConfig(BaseDoclingParserConfig):
+    """Docling PDF pipeline options (+ the shared killable-subprocess time/memory caps)."""
 
     do_ocr: bool = Field(
         default=True,

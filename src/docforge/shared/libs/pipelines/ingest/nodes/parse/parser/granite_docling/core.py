@@ -2,8 +2,11 @@
 # The Granite-Docling parser node — Docling's VLM pipeline. A single 258M vision-language model reads
 # rendered page images and predicts DocTags, replacing the modular layout→OCR→TableFormer stack. It
 # implements ONLY the two Docling-family seams: _build_converter (a DocumentConverter that swaps in
-# VlmPipeline + a revision-pinned GRANITEDOCLING_TRANSFORMERS spec) and _cache_key. All parse plumbing,
-# the IR mapping (same DoclingIRMapper) and scoring are inherited unchanged from BaseDoclingParserNode.
+# VlmPipeline + a revision-pinned GRANITEDOCLING_TRANSFORMERS spec) and _cache_key. All parse plumbing
+# — including the KILLABLE parse subprocess (a GPU/CUDA OOM or a native hang kills the isolated child,
+# which the worker respawns, instead of wedging it) — plus the IR mapping (same DoclingIRMapper) and
+# scoring are inherited unchanged from BaseDoclingParserNode. On the GPU, leave parse_memory_mb=0: an
+# RLIMIT_AS cap breaks CUDA's large virtual reservations, so the time cap + GPU-OOM kill guard it.
 
 # ====== Standard Library Imports ======
 import threading
@@ -35,8 +38,10 @@ class ParserGraniteDoclingNode(BaseDoclingParserNode):
         "Renders each PDF page to an image and runs the granite-docling-258M vision-language model "
         "(Docling's VlmPipeline) to predict DocTags, then maps the resulting DoclingDocument's "
         "blocks, tables, figures and provenance into the DocumentIR via the SAME mapper as the "
-        "standard parser. GPU-recommended (minutes/page on CPU); weights fetch once, at runtime, into "
-        "the worker HF-cache volume."
+        "standard parser — all inside a KILLABLE subprocess (a CUDA OOM or a native hang kills the "
+        "isolated child and fails the job cleanly, never wedging the worker; on the GPU leave "
+        "parse_memory_mb=0 and rely on the time cap + GPU-OOM kill). GPU-recommended (minutes/page on "
+        "CPU); weights fetch once, at runtime, into the worker HF-cache volume."
     )
     Config = ParserGraniteDoclingConfig
     UNIQUE_IN_GRAPH = True

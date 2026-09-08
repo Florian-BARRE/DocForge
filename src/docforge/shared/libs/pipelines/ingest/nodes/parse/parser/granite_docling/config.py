@@ -8,16 +8,16 @@
 # ====== Third-Party Library Imports ======
 from pydantic import Field
 
-# ====== Internal Project Imports ======
-from shared_libs.pipelines.base import NodeConfig
+# ====== Local Project Imports ======
+from ..docling_base import BaseDoclingParserConfig
 
 # Default: ibm-granite/granite-docling-258M `main` at 2025-09-23. Pinned so runtime downloads are
 # reproducible across worker rebuilds and independent of a moving HF branch tag.
 _DEFAULT_REVISION = "982fe3b40f2fa73c365bdb1bcacf6c81b7184bfe"
 
 
-class ParserGraniteDoclingConfig(NodeConfig):
-    """Granite-Docling VLM pipeline options."""
+class ParserGraniteDoclingConfig(BaseDoclingParserConfig):
+    """Granite-Docling VLM pipeline options (+ the shared killable-subprocess time/memory caps)."""
 
     revision: str = Field(
         default=_DEFAULT_REVISION,

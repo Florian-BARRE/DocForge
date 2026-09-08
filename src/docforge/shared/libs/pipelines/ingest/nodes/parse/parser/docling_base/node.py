@@ -1,15 +1,18 @@
 # ====== Code Summary ======
-# BaseDoclingParserNode — the shared scaffold behind every Docling-family parser (the standard
-# modular pipeline and the Granite VLM pipeline). It owns the parse plumbing common to both: a
-# PROCESS-WIDE, per-concrete-class DocumentConverter cache (building one loads native/model weights —
-# tens of seconds — so it happens once per option set, not per document), the temp-file write + the
-# CPU-bound convert() run in a worker thread under a lock (convert() is not documented thread-safe),
-# and the map to the canonical IR via the UNCHANGED DoclingIRMapper. Children implement ONLY
-# _build_converter (their engine) and _cache_key (its option axes). I/O, scoring and the native/PDF
-# degradation stay in BaseParserNode.
+# BaseDoclingParserNode — the shared scaffold behind every Docling-family parser (the standard modular
+# pipeline and the Granite VLM pipeline). It owns the parse plumbing common to both: a PROCESS-WIDE,
+# per-concrete-class DocumentConverter cache (building one loads native/model weights — tens of
+# seconds — so it happens once per option set, not per document), the temp-file write + the convert()
+# call, and the map to the canonical IR via the UNCHANGED DoclingIRMapper. The heavy convert runs in a
+# KILLABLE subprocess the worker manages (DoclingSubprocessPool), NOT a worker thread: a thread that
+# OOMs or hangs mid-convert can never be killed and wedges the worker (and, holding the old convert
+# lock, deadlocks every future parse); a subprocess is SIGKILLed on a time/memory cap and respawned,
+# so one pathological document becomes a clean, attributed single-job failure. The pure convert body
+# (`_convert_to_ir`) is what runs INSIDE that child. Children implement ONLY _build_converter (their
+# engine) and _cache_key (its option axes). I/O, scoring and the native/PDF degradation stay in
+# BaseParserNode; the subprocess caps live on BaseDoclingParserConfig.
 
 # ====== Standard Library Imports ======
-import asyncio
 import tempfile
 import threading
 from abc import abstractmethod
@@ -22,10 +25,12 @@ from shared_libs.public_models import DocumentIR, IntakeResult
 # ====== Local Project Imports ======
 from ..base import BaseParserNode
 from ..docling.mapper import DoclingIRMapper
+from .config import BaseDoclingParserConfig
+from .subprocess import DoclingSubprocessPool
 
 
 class BaseDoclingParserNode(BaseParserNode):
-    """Abstract Docling-family parser: shared converter cache + parse plumbing + IR mapping."""
+    """Abstract Docling-family parser: shared converter cache + killable-subprocess parse + IR mapping."""
 
     # A stable discriminator for the pipeline flavour this node runs (e.g. "standard", "vlm"). It is
     # the FIRST element of every cache key so two Docling flavours can never share a cached converter —
@@ -37,8 +42,9 @@ class BaseDoclingParserNode(BaseParserNode):
     # never reaches this lookup.
     _NATIVE_SUFFIX: dict[str, str] = {"html": ".html", "md": ".md"}
 
-    # Process-wide converter CACHE + locks. Declared here so the shared methods type-check; EACH
-    # concrete subclass REDEFINES these three so the standard and VLM caches never share a dict/lock.
+    # Process-wide converter CACHE + locks (they live in the PARSE SUBPROCESS, where convert() runs).
+    # Declared here so the shared methods type-check; EACH concrete subclass REDEFINES these three so
+    # the standard and VLM caches never share a dict/lock.
     _converters: dict[tuple[Any, ...], Any] = {}
     _build_lock: threading.Lock = threading.Lock()
     _convert_lock: threading.Lock = threading.Lock()
@@ -64,18 +70,33 @@ class BaseDoclingParserNode(BaseParserNode):
                 self.logger.info(f"Docling converter built for {key}")
         return self._converters[key]
 
-    def __parse_sync(self, content: bytes, suffix: str, source_hash: str) -> DocumentIR:
-        """Synchronous Docling parse (runs in a worker thread): convert the bytes, map to the IR."""
-        # 1. Resolve the shared converter (built once per option set).
+    def _convert_to_ir(self, content: bytes, suffix: str, source_hash: str) -> DocumentIR:
+        """Convert the bytes and map to the IR — the PURE parse body that runs in the parse subprocess.
+
+        This is the heavy, native step (docling ``convert()`` + IR mapping). It is invoked by the
+        subprocess child, not the worker thread, so an OOM or a native hang here kills the isolated
+        child (which the worker respawns) instead of wedging the worker. It stays a plain sync method
+        so it is equally callable in-process (tests exercising the docling error-unwrap directly).
+
+        Args:
+            content (bytes): The PDF (or native html/md) bytes to convert.
+            suffix (str): The temp-file extension Docling picks its backend from.
+            source_hash (str): The IR document id / source hash.
+
+        Returns:
+            DocumentIR: The mapped canonical IR (no figure crops yet — figure_render embeds those).
+        """
+        # 1. Resolve the shared converter (built once per option set, cached in THIS process).
         converter = self.__converter()
 
-        # 2. Docling needs a file path and picks its backend from the extension — write the bytes to
-        #    a temp file with the format's suffix, convert, always clean up.
+        # 2. Docling needs a file path and picks its backend from the extension — write the bytes to a
+        #    temp file with the format's suffix, convert, always clean up.
         with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
             tmp.write(content)
             tmp_path = Path(tmp.name)
         try:
-            # 3. Serialize conversions — the shared converter is not documented thread-safe.
+            # 3. Serialize conversions — the shared converter is not documented thread-safe (harmless,
+            #    uncontended, in the single-threaded child; still correct if called in-process).
             with self._convert_lock:
                 result = converter.convert(str(tmp_path))
             return DoclingIRMapper.map_document(
@@ -87,7 +108,7 @@ class BaseDoclingParserNode(BaseParserNode):
             #     job.error / the run breadcrumb name the ACTUAL error (e.g. a GPU torch.compile/CUDA
             #     failure) instead of the opaque wrapper — every docling failure otherwise reads
             #     identically and can't be diagnosed without shell access to prod. `from exc` keeps the
-            #     full chained traceback in the worker logs.
+            #     full chained traceback in the child's logs; the message crosses back to the parent.
             cause = exc.__cause__ or exc.__context__
             if cause is not None and cause is not exc:
                 raise RuntimeError(f"{exc}: {type(cause).__name__}: {cause}") from exc
@@ -100,17 +121,29 @@ class BaseDoclingParserNode(BaseParserNode):
                 self.logger.warning(f"Could not remove temp file {tmp_path}; leaving it behind")
 
     async def _parse(self, source: IntakeResult) -> DocumentIR:
-        """Run the CPU-bound Docling conversion off the event loop and map it to the IR.
+        """Run the CPU/GPU-bound Docling conversion in a KILLABLE subprocess and map it to the IR.
 
         Parses the PDF view when one exists; otherwise the ORIGINAL bytes of a natively-parsed format
-        (NATIVE_FORMATS), whose heading tree a PDF round-trip would flatten.
+        (NATIVE_FORMATS), whose heading tree a PDF round-trip would flatten. Delegates the actual
+        convert to the process-wide subprocess pool, bounded by the node's per-collection time/memory
+        caps — a document too heavy for docling fails cleanly (attributed) without ever wedging the
+        worker.
         """
         if source.pdf_content is not None:
             content, suffix = source.pdf_content, ".pdf"
         else:
             content = source.source_content or b""
             suffix = self._NATIVE_SUFFIX[source.source_format]
-        return await asyncio.to_thread(self.__parse_sync, content, suffix, source.source_hash)
+        config: BaseDoclingParserConfig = self.config
+        return await DoclingSubprocessPool.instance().parse(
+            node_class=type(self),
+            config=self.config,
+            content=content,
+            suffix=suffix,
+            source_hash=source.source_hash,
+            timeout_seconds=config.parse_timeout_seconds,
+            memory_mb=config.parse_memory_mb,
+        )
 
 
 __all__ = ["BaseDoclingParserNode"]
