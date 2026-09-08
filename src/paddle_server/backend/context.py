@@ -6,6 +6,7 @@
 # ====== Internal Project Imports ======
 from config_loader import PaddleServerConfig
 from libs.paddleocr import PaddleOcrService
+from libs.paddleocr_vl import PaddleOcrVlService
 from libs.ppstructure import PpStructureService
 
 
@@ -29,3 +30,9 @@ class CONTEXT:
     # Holds the built PaddleOCR text det+rec pipeline — a SEPARATE instance from ppstructure
     # (pure OCR capability, no layout). Owns its own predict lock.
     paddleocr: PaddleOcrService
+
+    # ── PaddleOCR-VL 1.6 pipeline service ────────────────────────────────────────────
+    # Holds the PaddleOCR-VL 1.6 layout-parsing pipeline, built LAZILY on the first /vl-parse
+    # request (NOT at lifespan — the VLM is heavy and this parser is an off-by-default escalation
+    # head). Owns its own predict + init locks; deliberately not part of the /health readiness gate.
+    paddleocr_vl: PaddleOcrVlService

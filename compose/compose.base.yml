@@ -431,6 +431,91 @@ services:
         aliases:
           - paddle_server        # so a collection's default base_url http://paddle_server:80 resolves
 
+  # ── MinerU2.5-Pro VLM layout-parsing sidecar — OPT-IN, GPU-ONLY escalation parser ───────────
+  # OPT-IN profile `mineru` (NOT `full`): MinerU2.5-Pro's VLM backend REQUIRES CUDA, so this service
+  # never starts with `--profile full` on a CPU host — activate it deliberately on a GPU host with
+  # `--profile full --profile mineru`. The base image tag is `-gpu` (unlike the other torch services,
+  # which default `-cpu`) because a CPU MinerU cannot parse. A collection's mineru parser node points
+  # at it via base_url:
+  #   in-network → http://mineru_server:80 (the docforge_net alias below)
+  #   from host  → http://localhost:10053 (dev only — see compose/overlays/compose.dev.yml)
+  docforge_mineru_server:
+    image: ghcr.io/florian-barre/docforge-mineru-server:${DOCFORGE_TAG:-latest}-gpu
+    container_name: docforge-mineru-server
+    profiles: ["mineru"]
+    # Same reason as the other model hosts: Docker's embedded resolver has no external upstream on
+    # this VM, so without a pin the first-parse model download (MINERU_MODEL_SOURCE=huggingface ->
+    # huggingface.co) fails to resolve.
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
+    env_file:
+      - ../services/mineru_server/.env
+    # No host port in prod — internal to docforge_net only (collections point at
+    # http://mineru_server:80). Dev re-publishes 10053 via compose/overlays/compose.dev.yml.
+    volumes:
+      - docforge_mineru_models:/models # MINERU_MODEL_CACHE_HOME/HF_HOME — weights persist across restarts
+    healthcheck:
+      # stdlib probe (the slim runtime has no curl); generous start_period for the first model
+      # download (MinerU2.5-Pro VLM weights) + lazy load. /health returns 503 until a CUDA GPU is
+      # visible (MINERU_REQUIRE_GPU), so this only goes healthy on a GPU host — as intended.
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:80/health', timeout=5).status == 200 else 1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 600s
+    deploy:
+      resources:
+        # The MinerU2.5-Pro VLM (min 8 GB VRAM) plus its host-side buffers peak several GB of RAM.
+        limits:
+          memory: 16g
+        reservations:
+          memory: 1g
+    restart: unless-stopped
+    networks:
+      docforge_net:
+        aliases:
+          - mineru_server        # so a collection's default base_url http://mineru_server:80 resolves
+
+  # ── dots.ocr per-element layout VLM sidecar (opt-in, GPU-only escalation parser) ──────────────
+  docforge_dots_ocr_server:
+    image: ghcr.io/florian-barre/docforge-dots-ocr-server:${DOCFORGE_TAG:-latest}-gpu
+    container_name: docforge-dots-ocr-server
+    profiles: ["dots_ocr"]
+    # Same reason as the other model hosts: Docker's embedded resolver has no external upstream on
+    # this VM, so without a pin the first-parse model download (rednote-hilab/dots.ocr -> huggingface.co)
+    # fails to resolve.
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
+    env_file:
+      - ../services/dots_ocr_server/.env
+    # No host port in prod — internal to docforge_net only (collections point at
+    # http://dots_ocr_server:80). Dev re-publishes 10054 via compose/overlays/compose.dev.yml.
+    volumes:
+      - docforge_dots_ocr_models:/models # DOTS_OCR_MODEL_CACHE_HOME/HF_HOME — weights persist across restarts
+    healthcheck:
+      # stdlib probe (the slim runtime has no curl); generous start_period for the first model
+      # download (dots.ocr VLM weights) + lazy vLLM load. /health returns 503 until a CUDA GPU is
+      # visible (DOTS_OCR_REQUIRE_GPU), so this only goes healthy on a GPU host — as intended.
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:80/health', timeout=5).status == 200 else 1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 600s
+    deploy:
+      resources:
+        # The dots.ocr VLM plus its vLLM host-side buffers peak several GB of RAM.
+        limits:
+          memory: 16g
+        reservations:
+          memory: 1g
+    restart: unless-stopped
+    networks:
+      docforge_net:
+        aliases:
+          - dots_ocr_server      # so a collection's default base_url http://dots_ocr_server:80 resolves
+
 volumes:
   docforge_postgres_data:
   docforge_redis_data:
@@ -439,6 +524,8 @@ volumes:
   docforge_bge_models:
   docforge_worker_hf_cache:
   docforge_ppstructure_models:
+  docforge_mineru_models:
+  docforge_dots_ocr_models:
 
 networks:
   docforge_net:

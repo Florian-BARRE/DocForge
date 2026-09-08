@@ -1,0 +1,56 @@
+[
+  {
+    "type": "title",
+    "text": "Attention Is All You Need",
+    "text_level": 1,
+    "page_idx": 0,
+    "bbox": [100, 80, 900, 140]
+  },
+  {
+    "type": "text",
+    "text": "The dominant sequence transduction models are based on complex recurrent networks.",
+    "page_idx": 0,
+    "bbox": [100, 160, 900, 220]
+  },
+  {
+    "type": "text",
+    "text": "3.1 Encoder and Decoder Stacks",
+    "text_level": 2,
+    "page_idx": 0,
+    "bbox": [100, 240, 500, 280]
+  },
+  {
+    "type": "table",
+    "table_body": "<table><tr><th>Layer</th><th>Complexity</th></tr><tr><td>Self-Attention</td><td>O(n^2)</td></tr><tr><td rowspan=\"2\">Recurrent</td><td>O(n)</td></tr><tr><td>O(1)</td></tr></table>",
+    "table_caption": ["Table 1: Maximum path lengths."],
+    "page_idx": 0,
+    "bbox": [120, 300, 880, 520]
+  },
+  {
+    "type": "equation",
+    "text": "\\mathrm{Attention}(Q, K, V) = \\mathrm{softmax}\\left(\\frac{QK^T}{\\sqrt{d_k}}\\right)V",
+    "text_format": "latex",
+    "page_idx": 1,
+    "bbox": [200, 100, 800, 180]
+  },
+  {
+    "type": "image",
+    "img_path": "images/fig1.jpg",
+    "image_caption": ["Figure 1: The Transformer architecture."],
+    "page_idx": 1,
+    "bbox": [150, 220, 850, 700]
+  },
+  {
+    "type": "list",
+    "list_items": ["First point.", "Second point.", "Third point."],
+    "page_idx": 1,
+    "bbox": [100, 720, 900, 820]
+  },
+  {
+    "type": "text",
+    "text": "3.2.1 Scaled Dot-Product Attention",
+    "text_level": 4,
+    "page_idx": 1,
+    "bbox": [100, 840, 700, 880]
+  }
+]
