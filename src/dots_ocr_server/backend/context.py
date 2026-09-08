@@ -20,7 +20,7 @@ class CONTEXT:
     CONFIG: type[DotsOcrServerConfig]
 
     # ── dots.ocr parse service ───────────────────────────────────────────────────
-    # Holds the dots.ocr per-element layout VLM parse pipeline. The heavy vLLM model loads LAZILY inside
+    # Holds the dots.ocr per-element layout VLM parse pipeline. The heavy transformers model loads LAZILY inside
     # the engine on the first /parse request (not at lifespan startup), so a deployment that never
     # escalates to this parser never pays the model download/load. Owns the asyncio.Lock that serializes
     # every parse.

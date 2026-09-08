@@ -5,7 +5,7 @@
 # IR mapper family (DotsOcrIRMapper) reuses the pp_structure span-aware table flattener + bbox
 # normalization, so a shared contract means a shared mapper style — one place to maintain.
 #
-# What this module owns (all PURE, no vllm/torch import — unit-testable from a canned JSON string):
+# What this module owns (all PURE, no transformers/torch import — unit-testable from a canned JSON string):
 #   * JSON PARSING: the model returns a JSON string (optionally wrapped in a ```json fence); parse it
 #     defensively into a list of elements, degrading a malformed page to an empty block list + a warning.
 #   * CATEGORY -> CONTENT SLOT: dots.ocr emits `category` + `text`; Table's text is HTML, Formula's is

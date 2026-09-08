@@ -4,8 +4,8 @@
 # count fits within [min_pixels, max_pixels], BEFORE the vision encoder. The model therefore returns
 # bounding boxes in that RESIZED frame, not in the frame we rendered. To keep the bbox normalization
 # divisor honest, the sidecar resizes each page to exactly these dims itself and reports them as the
-# page's image_width/image_height, and pins the same min/max on the vLLM processor so it does not
-# re-resize differently. Isolating this here (no PIL/torch/vllm import) makes it deterministic and
+# page's image_width/image_height, and pins the same min/max on the transformers processor so it does not
+# re-resize differently. Isolating this here (no PIL/torch/transformers import) makes it deterministic and
 # unit-testable on this CPU-only VM.
 
 # ====== Standard Library Imports ======

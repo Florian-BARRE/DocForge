@@ -7,7 +7,7 @@
 # -> HTTP 500.
 #
 # pypdfium2 is AVX-free, lightweight, and a BASE dependency (it also renders the pages this sidecar
-# feeds to the VLM), so importing this module never touches vllm/torch/CUDA — it stays unit-testable on
+# feeds to the VLM), so importing this module never touches transformers/torch/CUDA — it stays unit-testable on
 # this CPU-only VM.
 
 # ====== Standard Library Imports ======

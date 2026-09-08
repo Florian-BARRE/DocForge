@@ -1,7 +1,7 @@
 # ====== Code Summary ======
 # Provides the FastAPI lifespan context manager: logs the banner + config and validates config
 # fail-fast at startup. NO model is built at startup — dots.ocr's VLM is heavy (GPU-only) and this
-# parser is an off-by-default escalation head, so the vLLM model loads LAZILY on the first /parse
+# parser is an off-by-default escalation head, so the transformers model loads LAZILY on the first /parse
 # request (inside the engine). Uses a hasattr guard in the finally block so a partial startup never
 # raises during teardown — mirrors src/mineru_server's lifespan discipline.
 
@@ -58,7 +58,7 @@ def lifespan() -> Any:
             logger.info(f"{banner}")
 
             # 2. Log runtime configuration, then validate fail-fast. There is no model build here —
-            #    dots.ocr's vLLM model loads lazily on the first /parse request (see the module docstring).
+            #    dots.ocr's transformers model loads lazily on the first /parse request (see the module docstring).
             _log_step(1, "Runtime configuration")
             logger.info(f"{CONTEXT.CONFIG}")
             CONTEXT.CONFIG.validate()

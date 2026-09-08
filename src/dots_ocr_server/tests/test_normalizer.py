@@ -1,9 +1,9 @@
 """Unit tests for the dots.ocr per-page output -> sidecar-contract normalizer.
 
-Everything is offline: the normalizer is pure (no vllm/torch/CUDA import) and runs over a synthetic
+Everything is offline: the normalizer is pure (no transformers/torch/CUDA import) and runs over a synthetic
 dots.ocr page output (a JSON string listing layout elements, built from the documented schema:
 category / bbox pixels / text / reading_order). This is the fully-tested half of the brick; the ONE
-untested seam is libs/dots_ocr/engine.py's real render + vLLM call (GPU-only — see its docstring).
+untested seam is libs/dots_ocr/engine.py's real render + transformers call (GPU-only — see its docstring).
 """
 
 import json

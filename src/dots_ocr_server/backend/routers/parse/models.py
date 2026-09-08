@@ -65,14 +65,16 @@ class ParseEngineResponse(BaseModel):
     Engine/provenance metadata for a `POST /parse` response.
 
     Attributes:
-        dots_ocr (str): Installed vllm package version (the engine that ran dots.ocr).
+        dots_ocr (str): Installed transformers package version (the engine that ran dots.ocr).
         model (str): The dots.ocr model id/path that produced this response.
-        backend (str): The inference backend id used ("vllm").
+        backend (str): The inference backend id used ("transformers").
     """
 
-    dots_ocr: str = Field(..., description="Installed vllm package version.")
+    dots_ocr: str = Field(..., description="Installed transformers package version.")
     model: str = Field(..., description="dots.ocr model id/path that produced this response.")
-    backend: str = Field(default="vllm", description="Inference backend id used for this parse.")
+    backend: str = Field(
+        default="transformers", description="Inference backend id used for this parse."
+    )
 
 
 class ParseResponse(BaseModel):

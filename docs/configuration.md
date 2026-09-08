@@ -310,14 +310,15 @@ full` — enable it with the opt-in compose profile `--profile mineru`.
 
 ## `services/dots_ocr_server/.env` — dots.ocr layout-parsing sidecar (GPU-only, opt-in)
 
-dots.ocr is a **GPU-only** 3B VLM document parser (served via vLLM) behind the `dots_ocr_server` sidecar,
-reached in-network at `http://dots_ocr_server:80` (dev host port `10054`), exercised only when a
-collection's parse stage escalates to the `dots_ocr` parser. **Off by default** — never starts under
-`--profile full`; enable with the opt-in compose profile `--profile dots_ocr`.
+dots.ocr is a **GPU-only** 3B VLM document parser (served via HuggingFace `transformers`, fp16 + SDPA)
+behind the `dots_ocr_server` sidecar, reached in-network at `http://dots_ocr_server:80` (dev host port
+`10054`), exercised only when a collection's parse stage escalates to the `dots_ocr` parser. **Off by
+default** — never starts under `--profile full`; enable with the opt-in compose profile `--profile dots_ocr`.
 
 > **Build variant** is chosen at **image build time**: `docker compose build dots_ocr_server` (CPU image —
 > import/health only; the VLM needs CUDA) or with `--build-arg TORCH_VARIANT=gpu` (CUDA 12.6, Tesla V100
-> sm_70). MIT-licensed model `rednote-hilab/dots.ocr`.
+> sm_70). Served via `transformers`, not vLLM — vLLM ≥0.11 dropped Volta (sm_70) support; transformers on
+> torch cu126 still runs on the V100. MIT-licensed model `rednote-hilab/dots.ocr`.
 
 | Variable | Default | Meaning |
 |---|---|---|
@@ -328,7 +329,7 @@ collection's parse stage escalates to the `dots_ocr` parser. **Off by default** 
 | `DOTS_OCR_MAX_TOKENS` | `16384` | Max generation tokens per page for the VLM. |
 | `DOTS_OCR_IMAGE_FACTOR` | `28` | Qwen2-VL smart-resize granularity — each resized page side is a multiple of this. |
 | `DOTS_OCR_MIN_PIXELS` | `3136` | Lower bound on the smart-resized page pixel count (the frame the model sees). |
-| `DOTS_OCR_MAX_PIXELS` | `11289600` | Upper bound on the smart-resized page pixel count (bbox divisor + vLLM processor budget). |
+| `DOTS_OCR_MAX_PIXELS` | `11289600` | Upper bound on the smart-resized page pixel count (bbox divisor + transformers processor budget). |
 | `DOTS_OCR_REQUIRE_GPU` | `true` | Fail fast at startup if no CUDA device is visible (the VLM is GPU-only). |
 | `DOTS_OCR_MAX_BODY_BYTES` | `104857600` | Hard ceiling (bytes, 100 MiB) on the `/parse` request body; oversized → HTTP 413. |
 | `DOTS_OCR_LOCK_WAIT_TIMEOUT_SECONDS` | `590` | Max seconds a `/parse` waits for the single predict lock before HTTP 503 (back-pressure). |

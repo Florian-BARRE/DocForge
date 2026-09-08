@@ -7,10 +7,10 @@
 # lock within lock_wait_timeout gets a TimeoutError -> HTTP 503.
 #
 # This service is PURE-ish glue: validate the PDF (client error -> 422), run the untested dots.ocr
-# engine seam (render + vLLM, libs/dots_ocr/engine.py) off-thread under the lock to get per-page raw
-# outputs, then hand each to the fully-tested DotsOcrPageNormalizer to produce the shared sidecar
-# contract. Splitting the untested engine call from the tested normalization is what keeps this brick
-# verifiable offline.
+# engine seam (render + transformers, libs/dots_ocr/engine.py) off-thread under the lock to get
+# per-page raw outputs, then hand each to the fully-tested DotsOcrPageNormalizer to produce the shared
+# sidecar contract. Splitting the untested engine call from the tested normalization is what keeps this
+# brick verifiable offline.
 
 # ====== Standard Library Imports ======
 from __future__ import annotations
@@ -34,8 +34,8 @@ class DotsOcrService(LoggerClass):
     """
     Manages the lifecycle of the dots.ocr VLM parse pipeline behind a serialized predict lock.
 
-    The heavy vLLM model is loaded lazily by the engine on the first parse_pdf() call; this service
-    only guards concurrency + validation and adapts the engine's per-page raw outputs into the
+    The heavy transformers model is loaded lazily by the engine on the first parse_pdf() call; this
+    service only guards concurrency + validation and adapts the engine's per-page raw outputs into the
     sidecar's `{pages, n_pages, engine}` contract.
     """
 
@@ -130,7 +130,7 @@ class DotsOcrService(LoggerClass):
             ) from exc
 
         try:
-            # 3. Run the (heavy, GPU-only) render + vLLM engine off the event loop.
+            # 3. Run the (heavy, GPU-only) render + transformers engine off the event loop.
             t0 = time.perf_counter()
             page_outputs, n_pages = await asyncio.to_thread(self._engine.analyze, pdf_bytes)
             elapsed = time.perf_counter() - t0
@@ -157,24 +157,24 @@ class DotsOcrService(LoggerClass):
             "pages": pages,
             "n_pages": effective_pages,
             "engine": {
-                "dots_ocr": self._vllm_version(),
+                "dots_ocr": self._transformers_version(),
                 "model": self.model_path,
-                "backend": "vllm",
+                "backend": "transformers",
             },
         }
 
     @staticmethod
-    def _vllm_version() -> str:
+    def _transformers_version() -> str:
         """
-        Best-effort installed vllm version string for the response's engine block.
+        Best-effort installed transformers version string for the response's engine block.
 
         Returns:
-            str: `vllm.__version__`, or "unknown" if the attribute/package is unavailable.
+            str: `transformers.__version__`, or "unknown" if the attribute/package is unavailable.
         """
         try:
-            import vllm  # noqa: PLC0415
+            import transformers  # noqa: PLC0415
 
-            return str(getattr(vllm, "__version__", "unknown"))
+            return str(getattr(transformers, "__version__", "unknown"))
         except Exception:  # noqa: BLE001 — this must never break a successful parse response
             return "unknown"
 

@@ -4,7 +4,7 @@
 # Responsibilities (in strict order):
 #   1. Import DotsOcrServerConfig FIRST — registers sys.path and configures logging sinks.
 #   2. Inject config into CONTEXT.
-#   3. Instantiate DotsOcrService and inject into CONTEXT (the vLLM model itself loads LAZILY on the
+#   3. Instantiate DotsOcrService and inject into CONTEXT (the transformers model itself loads LAZILY on the
 #      first /parse request — see libs/dots_ocr/engine.py).
 #   4. Call create_app() and assign the result to the module-level `app` variable.
 # No business logic here — only wiring and assembly.
@@ -35,7 +35,7 @@ def _build_app() -> FastAPI:
     # 1. Inject config into CONTEXT so lifespan and routes can read it.
     CONTEXT.CONFIG = DotsOcrServerConfig
 
-    # 2. Instantiate the parse service (the heavy vLLM model loads LAZILY inside the engine on the
+    # 2. Instantiate the parse service (the heavy transformers model loads LAZILY inside the engine on the
     #    first /parse request, so this wiring step is cheap and never touches CUDA).
     CONTEXT.dots_ocr = DotsOcrService(
         model_path=DotsOcrServerConfig.DOTS_OCR_MODEL_PATH,

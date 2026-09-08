@@ -7,10 +7,12 @@
 #   docker build --build-arg TORCH_VARIANT=gpu -f src/dots_ocr_server/Dockerfile \
 #                -t docforge-dots-ocr-server:gpu src
 #
-# GPU-ONLY SERVICE: dots.ocr's per-element layout VLM (rednote-hilab/dots.ocr) is served by vLLM and
-# REQUIRES CUDA. The default `cpu` variant exists only to build/import-test the wiring on a CPU host —
-# it CANNOT actually parse (vllm is not even installed on cpu), and the service reports /health
-# UNHEALTHY on a CPU host. Ship the `gpu` variant to production.
+# GPU-ONLY SERVICE: dots.ocr's per-element layout VLM (rednote-hilab/dots.ocr) is served by HuggingFace
+# `transformers` (fp16 + SDPA) and REQUIRES CUDA. WHY transformers, not vLLM: the prod GPU is a Tesla
+# V100 (Volta, sm_70) and vLLM >=0.11 dropped Volta support (needs sm_75+); transformers on torch cu126
+# still runs on sm_70. The default `cpu` variant exists only to build/import-test the wiring on a CPU
+# host — it CANNOT actually parse (transformers/accelerate are not even installed on cpu), and the
+# service reports /health UNHEALTHY on a CPU host. Ship the `gpu` variant to production.
 ###############################################################################
 
 ###############################################################################
@@ -18,11 +20,11 @@
 #
 # Goal:
 # - Sync the locked production dependencies from uv.lock into a virtual environment at /opt/venv,
-#   selecting the correct vllm+torch wheel variant via TORCH_VARIANT.
-# - TORCH_VARIANT=cpu  (default) installs torch CPU only, NO vllm (wiring build-test only).
-# - TORCH_VARIANT=gpu installs vllm (>=0.11, which ships the dots.ocr integration) + torch/torchvision
-#   from the CUDA 12.6 index — REQUIRED for the Tesla V100 sm_70 prod GPU; cu129/cu130 drop Volta
-#   kernels + the CUDA runtime libs. Target runtime image size: multi-GiB. Requires the NVIDIA
+#   selecting the correct torch wheel variant via TORCH_VARIANT.
+# - TORCH_VARIANT=cpu  (default) installs torch CPU only, NO transformers/accelerate (wiring build-test).
+# - TORCH_VARIANT=gpu installs HuggingFace transformers (+ accelerate + qwen-vl-utils) + torch/torchvision
+#   from the CUDA 12.6 index — REQUIRED for the Tesla V100 sm_70 prod GPU (vLLM >=0.11 dropped Volta;
+#   cu129/cu130 drop Volta kernels too). Target runtime image size: multi-GiB. Requires the NVIDIA
 #   Container Toolkit on the host.
 # - The arg is named TORCH_VARIANT (same as worker/bge_server/mineru_server) so the release matrix +
 #   compose build.args need zero per-service special-casing.
@@ -31,11 +33,12 @@
 ###############################################################################
 FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim AS py-build
 
-# ── Build-time argument: vllm+torch variant selector ──────────────────────────
+# ── Build-time argument: torch variant selector ──────────────────────────
 # Default is "cpu" (wiring build-test). Pass --build-arg TORCH_VARIANT=gpu at build time to produce the
 # CUDA-capable production image. The two values map to pyproject.toml
 # [project.optional-dependencies] extras (cpu / gpu), which steer uv to the correct torch wheel index
-# (pytorch-cpu / pytorch-cu126). They are declared as conflicting extras so uv rejects installing both.
+# (pytorch-cpu / pytorch-cu126) and gate transformers/accelerate/qwen-vl-utils onto gpu only. They are
+# declared as conflicting extras so uv rejects installing both.
 ARG TORCH_VARIANT=cpu
 
 WORKDIR /workspace
@@ -47,12 +50,13 @@ ENV UV_PROJECT_ENVIRONMENT=/opt/venv
 # application source code changes.
 COPY dots_ocr_server/pyproject.toml dots_ocr_server/uv.lock /workspace/dots_ocr_server/
 
-# Sync the locked production dependencies, activating the selected vllm+torch variant extra.
+# Sync the locked production dependencies, activating the selected torch variant extra.
 # --frozen: fail if uv.lock is out of sync with pyproject.toml (CI safety net).
 # --no-dev: omit development-only groups (pytest, ruff, mypy, httpx).
 # --no-install-project: the project itself is not a package (package = false in pyproject.toml).
 # --extra ${TORCH_VARIANT}: activates either the `cpu` or `gpu` optional-dependency extra, which gates
-#   the correct torch wheel (+ vllm on gpu). The two extras are mutually exclusive (conflicting).
+#   the correct torch wheel (+ transformers/accelerate/qwen-vl-utils on gpu). The two extras are
+#   mutually exclusive (conflicting).
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --no-install-project --extra "${TORCH_VARIANT}" --project /workspace/dots_ocr_server
 
@@ -92,8 +96,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # - PYTHONUNBUFFERED: log lines appear immediately in stdout/stderr — critical for monitoring
 #   model-load/download progress, which can take minutes on first run.
 # - PATH: make the uv-built virtual environment the active Python installation.
-# - HF_HOME / DOTS_OCR_MODEL_CACHE_HOME: vLLM caches the dots.ocr weights here; docker compose mounts a
-#   named volume so weights persist across restarts.
+# - HF_HOME / DOTS_OCR_MODEL_CACHE_HOME: transformers caches the dots.ocr weights here; docker compose
+#   mounts a named volume so weights persist across restarts.
 # - MALLOC_ARENA_MAX: caps glibc malloc arenas at 2 — the multi-threaded native stack (torch/OpenMP)
 #   otherwise scales arenas to the HOST's core count, inflating RSS well past what is needed.
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -123,7 +127,8 @@ RUN chown appuser:appuser /app/dots_ocr_server
 RUN mkdir -p /models && chown appuser:appuser /models
 
 # Copy the prebuilt virtual environment from the builder stage, owned by the runtime user. This layer
-# is the largest (vllm + torch + transformers) and changes only when pyproject.toml / uv.lock change.
+# is the largest (torch + transformers + accelerate) and changes only when pyproject.toml / uv.lock
+# change.
 COPY --from=py-build --chown=appuser:appuser /opt/venv /opt/venv
 
 # Copy application source code into the working directory, owned by the runtime user so it can create

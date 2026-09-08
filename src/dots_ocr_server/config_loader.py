@@ -60,13 +60,13 @@ class DotsOcrServerConfig(EnvConfigLoader):
     LOGGING_LPP_FORMAT: str = env("LOGGING_LPP_FORMAT", default="ShortFormat")
 
     # ───── Model cache ─────
-    # vLLM resolves the dots.ocr weights (rednote-hilab/dots.ocr, ~3B) from HuggingFace on the first
-    # parse and caches them under HF_HOME. Mounted as a named volume in compose so weights persist
-    # across container recreations (mirrors bge_server's HF_HOME and mineru_server's model cache). vLLM
-    # reads HF_HOME itself; this value is surfaced in the boot log and used to pre-create the mount.
+    # transformers resolves the dots.ocr weights (rednote-hilab/dots.ocr, ~3B) from HuggingFace on the
+    # first parse and caches them under HF_HOME. Mounted as a named volume in compose so weights persist
+    # across container recreations (mirrors bge_server's HF_HOME and mineru_server's model cache).
+    # transformers reads HF_HOME itself; this value is surfaced in the boot log + used to pre-create the mount.
     DOTS_OCR_MODEL_CACHE_HOME: str = env("DOTS_OCR_MODEL_CACHE_HOME", default="/models")
-    # HuggingFace model id (or a local path) vLLM loads. dots.ocr's official weights repo. Configurable
-    # so a first-GPU deploy can pin an exact revision or point at a local mirror without a rebuild.
+    # HuggingFace model id (or a local path) transformers loads. dots.ocr's official weights repo.
+    # Configurable so a first-GPU deploy can pin an exact revision or point at a local mirror without a rebuild.
     DOTS_OCR_MODEL_PATH: str = env("DOTS_OCR_MODEL_PATH", default="rednote-hilab/dots.ocr")
 
     # ───── Rendering ─────
@@ -85,9 +85,9 @@ class DotsOcrServerConfig(EnvConfigLoader):
     # dots.ocr is a Qwen2-VL-family VLM: its image processor resizes every page to dims that are a
     # multiple of IMAGE_FACTOR and whose pixel count fits [MIN_PIXELS, MAX_PIXELS] BEFORE the encoder,
     # and returns bboxes in THAT resized frame. The sidecar resizes to the same dims itself (so those
-    # dims are the honest bbox divisor) and pins MIN/MAX on the vLLM processor so it does not re-resize
-    # differently. Defaults follow the dots.ocr repo consts — verify against the model card on first
-    # GPU deploy.
+    # dims are the honest bbox divisor) and pins MIN/MAX on the transformers processor so it does not
+    # re-resize differently. Defaults follow the dots.ocr repo consts — verify against the model card on
+    # first GPU deploy.
     DOTS_OCR_IMAGE_FACTOR: int = env("DOTS_OCR_IMAGE_FACTOR", cast=int, default=28)
     DOTS_OCR_MIN_PIXELS: int = env("DOTS_OCR_MIN_PIXELS", cast=int, default=3136)
     DOTS_OCR_MAX_PIXELS: int = env("DOTS_OCR_MAX_PIXELS", cast=int, default=11289600)
@@ -109,8 +109,8 @@ class DotsOcrServerConfig(EnvConfigLoader):
     )
 
     # ───── GPU gate ─────
-    # dots.ocr's VLM requires CUDA — CPU is unsupported (vllm is not even installed on the cpu build)
-    # and would fail at model load. When True (default), /health reports UNHEALTHY on a host with no
+    # dots.ocr's VLM requires CUDA — CPU is unsupported (transformers is not even installed on the cpu
+    # build) and would fail at model load. When True (default), /health reports UNHEALTHY on a host with no
     # visible CUDA device so the container never advertises a readiness it cannot honor. Set False only
     # for a deliberate CPU smoke-test of the wiring (never for real parsing).
     DOTS_OCR_REQUIRE_GPU: bool = env("DOTS_OCR_REQUIRE_GPU", cast=bool, default="true")
