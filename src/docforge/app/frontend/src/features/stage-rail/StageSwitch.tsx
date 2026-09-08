@@ -1,8 +1,8 @@
 // ====== Code Summary ======
 // The on/off switch every stage card uses to enable/disable itself — a plain checkbox styled as
 // a pill, disabled (with a tooltip explaining why) for stages that can never be turned off. ON
-// reads in steel: several stages are enabled at once, and forge orange is reserved for the one
-// thing actively being worked, not a static at-rest state — see brand.md.
+// reads in forge orange (the pipeline's "this block is in use" cue, matching the card's orange
+// title + spine); OFF is neutral grey.
 
 import { theme } from "../../theme";
 
@@ -32,7 +32,7 @@ export function StageSwitch({ checked, disabled = false, title, onChange }: Stag
       <span
         style={{
           position: "relative", width: 34, height: 18, borderRadius: theme.radius.pill,
-          background: checked ? theme.color.dim : theme.color.line,
+          background: checked ? theme.color.accent : theme.color.line,
           transition: "background .15s ease",
         }}
       >

@@ -39,7 +39,9 @@ export function StageCardHeader({ stage, palette, collapsible, expanded, onToggl
       style={{ flex: 1, minWidth: 0, cursor: collapsible ? "pointer" : "default" }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: theme.space.s, flexWrap: "wrap" }}>
-        <strong style={{ fontFamily: theme.font.display, fontSize: theme.font.size.xl, fontWeight: 700 }}>{stage.title}</strong>
+        {/* An enabled (in-use) stage reads in forge orange — the pipeline's "this block is on" cue;
+            a disabled one greys out. accentSafe (not raw accent) so the title keeps AA contrast on paper. */}
+        <strong style={{ fontFamily: theme.font.display, fontSize: theme.font.size.xl, fontWeight: 700, color: stage.enabled ? theme.color.accentSafe : theme.color.dim }}>{stage.title}</strong>
         {stage.requires.length > 0 && (
           <Chip tone="dim" title={`Enabling this also enables: ${stage.requires.join(", ")}`}>
             needs {stage.requires.join(", ")}

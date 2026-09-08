@@ -67,13 +67,13 @@ export function StageCard({ stage, palette, actions }: StageCardProps) {
         transition: "opacity .15s ease, border-color .15s ease",
       }}
     >
-      {/* Left hairline — reads "this stage is part of the pipeline" at a glance. Steel, not forge:
-          several stages are enabled at once, and orange is reserved for the one thing actively
-          being worked (a running job, the primary action) — not every at-rest "on" state. */}
+      {/* Left spine — the "this block is IN USE" cue, in forge orange so an enabled pipeline reads at
+          a glance (product owner's call: the used stages should pop, not sit in neutral steel). A
+          disabled stage shows no spine. */}
       <div
         style={{
-          position: "absolute", left: 0, top: 0, bottom: 0, width: 3,
-          background: stage.enabled ? theme.color.dim : "transparent",
+          position: "absolute", left: 0, top: 0, bottom: 0, width: 4,
+          background: stage.enabled ? theme.color.accent : "transparent",
         }}
       />
       <div style={{ display: "flex", alignItems: "flex-start", gap: theme.space.m }}>
