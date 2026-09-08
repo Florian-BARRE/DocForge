@@ -329,6 +329,12 @@ class JobsFacade(LoggerClass):
         document terminal, in the SAME transaction. Session-scoped so the reaper can loop it over many
         stale jobs in one unit of work.
 
+        ``mark_terminal`` is a CONDITIONAL transition (it flips only a still-live job and RETURNs it, or
+        None when the job already went terminal). A None therefore means a concurrent writer — the
+        worker finishing the same job the live-worker watchdog was reaping — already closed it: this
+        returns without touching the document, so a fully-ingested document is never flipped to FAILED
+        under that race. The document mirror runs ONLY on a winning transition (``job is not None``).
+
         Args:
             session (AsyncSession): The active DB session (the caller owns the transaction).
             job_id (uuid.UUID): The job to terminate.

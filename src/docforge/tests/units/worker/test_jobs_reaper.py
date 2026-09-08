@@ -505,6 +505,103 @@ async def test_mark_running_refuses_to_resurrect_a_terminal_job() -> None:
 
 
 # --------------------------------------------------------------------------- #
+# JobApi terminal transitions — the CONCURRENCY FIX (conditional UPDATE, wave A)
+# --------------------------------------------------------------------------- #
+#
+# The live-worker watchdog (reap_over_budget) can terminate a RUNNING job while its worker races to
+# finish the SAME job, so the three terminal helpers are now DB-level CONDITIONAL UPDATEs guarded on
+# the committed status (whoever commits first wins; the loser's WHERE matches nothing — a clean no-op,
+# instead of overwriting a committed outcome off a stale identity-map row). These lock the guard on
+# the compiled SQL so the ALWAYS-RUN unit suite ratchets it; the BEHAVIOURAL proof — that the guard
+# actually no-ops the race against committed data — lives in the real-Postgres
+# tests/db/test_jobs_terminal_transition_execution.py (a mock can't catch a WHERE-clause bug).
+
+
+class _RecordingSession:
+    """Captures every executed statement and hands back a preset result per call (rowcount / RETURNING
+    row), so a helper's post-UPDATE branching can be steered without a real DB."""
+
+    def __init__(self, results: list[object]) -> None:
+        self._results = results
+        self.statements: list[object] = []
+
+    async def execute(self, statement):  # noqa: ANN001, ANN201
+        self.statements.append(statement)
+        return self._results[len(self.statements) - 1]
+
+
+def _compiled(statement) -> str:  # noqa: ANN001
+    """The statement compiled to literal Postgres SQL (lowercased) for substring assertions."""
+    return str(
+        statement.compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True})
+    ).lower()
+
+
+async def test_mark_done_is_a_conditional_update_guarded_on_running() -> None:
+    """mark_done is an ``UPDATE job ... WHERE id = :id AND status = 'running'`` — never a blind write,
+    so a late completion can never overwrite a job the reaper already made terminal."""
+    import datetime as _dt  # noqa: PLC0415
+
+    from shared_libs.services.db.postgresql.apis import JobApi  # noqa: PLC0415
+
+    session = _RecordingSession([MagicMock()])
+    await JobApi.mark_done(session, uuid.uuid4(), finished_at=_dt.datetime.now(_dt.UTC))
+
+    sql = _compiled(session.statements[0])
+    assert sql.startswith("update job set")
+    assert "job.status = 'running'" in sql
+
+
+async def test_mark_failed_guards_the_update_and_skips_stage_events_on_noop() -> None:
+    """mark_failed's job UPDATE is guarded on status = 'running'; when it transitions NOTHING (rowcount
+    0, a concurrent reap won), it must not touch the stage-event timeline — so only ONE statement runs."""
+    import datetime as _dt  # noqa: PLC0415
+
+    from shared_libs.services.db.postgresql.apis import JobApi  # noqa: PLC0415
+
+    # rowcount 0 → the job was already terminal → the stage-event close must be skipped.
+    session = _RecordingSession([SimpleNamespace(rowcount=0)])
+    await JobApi.mark_failed(
+        session, uuid.uuid4(), error="boom", finished_at=_dt.datetime.now(_dt.UTC)
+    )
+
+    assert len(session.statements) == 1  # the stage-event UPDATE was NOT issued
+    sql = _compiled(session.statements[0])
+    assert sql.startswith("update job set")
+    assert "job.status = 'running'" in sql
+
+
+async def test_mark_terminal_is_a_conditional_returning_update_admitting_pending() -> None:
+    """mark_terminal is an ``UPDATE ... WHERE status IN ('pending', 'running') ... RETURNING``: it
+    serializes on the row lock (RETURNING no-op when the job already went terminal) yet still admits a
+    QUEUED (pending) job so a queued job can be force-cancelled before it ran. A None RETURNING row
+    short-circuits before the stage-event close (only ONE statement runs)."""
+    import datetime as _dt  # noqa: PLC0415
+
+    from shared_libs.services.db.postgresql.apis import JobApi  # noqa: PLC0415
+
+    # RETURNING yields no row → the transition was a no-op → the stage-event close is skipped.
+    no_row = MagicMock()
+    no_row.scalars.return_value.first.return_value = None
+    session = _RecordingSession([no_row])
+    returned = await JobApi.mark_terminal(
+        session,
+        uuid.uuid4(),
+        status=JobStatus.FAILED,
+        reason="reaped",
+        finished_at=_dt.datetime.now(_dt.UTC),
+        error_type="budget_exceeded",
+    )
+
+    assert returned is None
+    assert len(session.statements) == 1  # the stage-event UPDATE was NOT issued
+    sql = _compiled(session.statements[0])
+    assert sql.startswith("update job set")
+    assert "job.status in ('pending', 'running')" in sql
+    assert "returning" in sql
+
+
+# --------------------------------------------------------------------------- #
 # reclaim_worker_jobs — startup hygiene, SAME-HOSTNAME restart ONLY
 # --------------------------------------------------------------------------- #
 #

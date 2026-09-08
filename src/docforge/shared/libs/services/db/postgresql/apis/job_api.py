@@ -227,18 +227,24 @@ class JobApi:
     @staticmethod
     async def mark_done(session: AsyncSession, job_id: uuid.UUID, finished_at: datetime) -> None:
         """
-        Complete the job successfully — unless it was already CANCELLED.
+        Complete the job successfully — only while it is still RUNNING (a race-safe transition).
 
-        A CANCELLED job is terminal on purpose (a force-terminate, or a cooperative stop the worker
-        may have honoured just before finishing): a late ``mark_done`` from the still-running task
-        must NOT resurrect it to DONE, so this is a no-op once the job reads CANCELLED.
+        Expressed as a DB-level CONDITIONAL UPDATE (``WHERE id = :id AND status = 'running'``) rather
+        than a load-then-mutate: the live-worker watchdog (``reap_over_budget``) can terminate the SAME
+        job in the same millisecond, so the two writers must serialize on the row lock — whoever commits
+        first wins, and the loser's ``WHERE`` matches nothing (a clean no-op). This also removes the
+        identity-map staleness a Python status guard could never fix: the reaper's own session may still
+        hold a cached RUNNING copy of the row from its candidate SELECT, so only a DB-level ``WHERE``
+        re-evaluates the truly-committed status. A job already terminal (reaped FAILED, force-terminated
+        CANCELLED, or already DONE) is uniformly NOT re-completed — a late ``mark_done`` from the
+        still-running task can never resurrect it to DONE (strictly safer than the old CANCELLED-only
+        guard, which let a reaped FAILED row flip back to DONE).
         """
-        job = await session.get(Job, job_id)
-        if job is None or job.status == JobStatus.CANCELLED:
-            return
-        job.status = JobStatus.DONE
-        job.progress = 100
-        job.finished_at = finished_at
+        await session.execute(
+            update(Job)
+            .where(Job.id == job_id, Job.status == JobStatus.RUNNING)
+            .values(status=JobStatus.DONE, progress=100, finished_at=finished_at)
+        )
 
     @staticmethod
     async def mark_failed(
@@ -254,11 +260,20 @@ class JobApi:
         """
         Fail the job with its free-text error AND the structured failure breadcrumb.
 
-        Also closes the job's currently-OPEN stage-event row (``finished_at IS NULL``) as failed, so
-        a run cut mid-stage — a wall-clock timeout, a hard cancel or the reaper — leaves a red row on
-        the exact stage it died in rather than an all-green trace with a silent gap. A normal node
-        failure has already finalized its own stage row (via the END event), so this find-open update
-        simply matches nothing and is a no-op.
+        A DB-level CONDITIONAL UPDATE (``WHERE id = :id AND status = 'running'``) so it serializes on
+        the row lock against a concurrent live-worker reap of the same job (whoever commits first wins;
+        the loser is a clean no-op) and never relies on a possibly-stale identity-map copy of the row —
+        the same race-free reason as ``mark_done``. A job already terminal (reaped FAILED, force-
+        terminated CANCELLED) is not overwritten. This is the normal node-failure path too: the job is
+        RUNNING then, so the ``WHERE`` matches and it fails exactly as before.
+
+        Only when the job ACTUALLY transitioned here (rowcount 1) does it also close the job's
+        currently-OPEN stage-event row (``finished_at IS NULL``) as failed, so a run cut mid-stage — a
+        wall-clock timeout, a hard cancel or the reaper — leaves a red row on the exact stage it died in
+        rather than an all-green trace with a silent gap. (A normal node failure has already finalized
+        its own stage row via the END event, so that find-open update simply matches nothing.) If a
+        concurrent writer already made the job terminal (rowcount 0) the stage timeline is left
+        untouched — it belongs to whoever won the transition.
 
         Args:
             session (AsyncSession): The active DB session.
@@ -270,18 +285,23 @@ class JobApi:
             failed_item_index (int | None): The fan-out item index the failure sits in (None outside).
             error_type (str | None): The exception class name (e.g. "TimeoutError").
         """
-        job = await session.get(Job, job_id)
-        # A CANCELLED job is terminal on purpose — a late failure write from the still-running task
-        # (e.g. the run raising after a force-terminate) must not overwrite the cancellation.
-        if job is None or job.status == JobStatus.CANCELLED:
+        result = await session.execute(
+            update(Job)
+            .where(Job.id == job_id, Job.status == JobStatus.RUNNING)
+            .values(
+                status=JobStatus.FAILED,
+                error=error,
+                finished_at=finished_at,
+                failed_node_id=failed_node_id,
+                failed_node_kind=failed_node_kind,
+                failed_item_index=failed_item_index,
+                error_type=error_type,
+            )
+        )
+        # A concurrent writer (the live-worker reaper) already made the job terminal — the transition
+        # was a no-op, so its stage timeline is not ours to rewrite.
+        if result.rowcount != 1:
             return
-        job.status = JobStatus.FAILED
-        job.error = error
-        job.finished_at = finished_at
-        job.failed_node_id = failed_node_id
-        job.failed_node_kind = failed_node_kind
-        job.failed_item_index = failed_item_index
-        job.error_type = error_type
         await session.execute(
             update(JobStageEvent)
             .where(JobStageEvent.job_id == job_id, JobStageEvent.finished_at.is_(None))
@@ -326,14 +346,25 @@ class JobApi:
         error_type: str | None = None,
     ) -> Job | None:
         """
-        Force a job to a terminal ``status`` with a reason — the shared stop/terminate primitive.
+        Force a non-terminal job to a terminal ``status`` with a reason — the shared stop primitive.
 
         Both the force-terminate (CANCELLED) and the cron reaper (FAILED) transition a job the same
         way: set the terminal status + reason + finish time, raise ``cancel_requested`` as a backstop
         stop signal for a still-alive worker, and CLOSE the job's currently-open stage-event row (the
         stage it was cut in) as terminal, so the trace shows a red/stopped stage rather than a silent
-        gap. Idempotent enough for concurrent reaping: re-terminating a terminal row simply rewrites
-        the same outcome.
+        gap.
+
+        Expressed as a DB-level CONDITIONAL UPDATE guarded on the job still being LIVE
+        (``status IN ('pending', 'running')``) with ``RETURNING``, NOT a load-then-mutate: the live-
+        worker watchdog (``reap_over_budget``) targets a job while its worker races to finish it, so the
+        two writers MUST serialize on the row lock. The guard is the ONLY concurrency-safe transition —
+        an in-Python ``if terminal: return`` check would read a STALE row: the reaper's own session
+        cached the RUNNING job in its identity map when ``list_over_budget`` selected it, so a later
+        ``session.get`` never re-reads the worker's committed DONE. Only ``RETURNING`` on a committed-
+        data ``WHERE`` re-evaluates the real status. The guard admits ``pending`` too so a QUEUED job
+        can still be force-cancelled before it ever ran; it excludes the terminal states, so terminating
+        an already-terminal job is a no-op (you cannot cancel a finished job — the "worker finished
+        first" race returns None, and the caller then skips the document mirror).
 
         Args:
             session (AsyncSession): The active DB session.
@@ -347,19 +378,37 @@ class JobApi:
                 exception-class attribution).
 
         Returns:
-            Job | None: The terminated job (so the caller can read its ``document_id``), or None.
+            Job | None: The freshly-terminated job (so the caller can read its ``document_id``) when
+                THIS call won the transition, or None when the job was already terminal / unknown (the
+                caller must then NOT mirror the document).
         """
-        job = await session.get(Job, job_id)
+        # 1. Build the values written on a winning transition. error_type is set only when the caller
+        #    supplied one (the reaper's watchdog paths); a None leaves any prior value untouched so a
+        #    plain cancel does not fabricate an error_type.
+        values: dict[str, object] = {
+            "status": status,
+            "error": reason,
+            "finished_at": finished_at,
+            "cancel_requested": True,
+        }
+        if error_type is not None:
+            values["error_type"] = error_type
+        # 2. Conditional transition on committed data: only a still-live (pending/running) row flips,
+        #    and RETURNING hands back the fresh ORM row (populate_existing refreshes the identity-map
+        #    copy the reaper's candidate SELECT may hold).
+        result = await session.execute(
+            update(Job)
+            .where(Job.id == job_id, Job.status.in_([JobStatus.PENDING, JobStatus.RUNNING]))
+            .values(**values)
+            .returning(Job)
+            .execution_options(populate_existing=True)
+        )
+        job = result.scalars().first()
+        # 3. No row transitioned — the job was already terminal (a concurrent reap, or a worker that
+        #    finished first) or the id is unknown. Return None so the caller skips the document mirror.
         if job is None:
             return None
-        job.status = status
-        job.error = reason
-        job.finished_at = finished_at
-        job.cancel_requested = True
-        # Attribute the failure cause when the caller supplied one (the reaper's watchdog paths); a
-        # None leaves any prior value untouched so a plain cancel does not fabricate an error_type.
-        if error_type is not None:
-            job.error_type = error_type
+        # 4. Won the transition: close the stage row it was cut in as terminal (a silent-gap guard).
         await session.execute(
             update(JobStageEvent)
             .where(JobStageEvent.job_id == job_id, JobStageEvent.finished_at.is_(None))
@@ -1056,7 +1105,8 @@ class JobApi:
                 Job.status == JobStatus.RUNNING,
                 Job.started_at.is_not(None),
                 Job.started_at
-                < func.now() - func.make_interval(0, 0, 0, 0, 0, 0, effective_budget + grace_seconds),
+                < func.now()
+                - func.make_interval(0, 0, 0, 0, 0, 0, effective_budget + grace_seconds),
                 # FRESH heartbeat only: a live worker. The inner join already requires a heartbeat row;
                 # this keeps only a heartbeat within the stale cutoff — a stale one is the worker_killed
                 # path (list_stale), so the two paths never overlap.

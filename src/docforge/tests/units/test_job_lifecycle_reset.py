@@ -19,13 +19,19 @@ from shared_libs.services.db.postgresql.tables import JobStatus
 
 
 class _StubSession:
-    """Minimal async session: ``get`` returns the preset job row; ``execute`` is unused here."""
+    """Minimal async session: ``get`` returns the preset job row (mark_running's load-then-mutate);
+    ``execute`` is a no-op returning a rowcount-1 result — the terminal transitions (mark_done/
+    mark_failed) are now DB-level conditional UPDATEs that never touch the fetched row, so the stub
+    only needs to accept the statement without applying it."""
 
     def __init__(self, job: SimpleNamespace) -> None:
         self._job = job
 
     async def get(self, _model: object, _pk: uuid.UUID) -> SimpleNamespace:
         return self._job
+
+    async def execute(self, _statement: object) -> SimpleNamespace:
+        return SimpleNamespace(rowcount=1)
 
 
 def _failed_job(status: JobStatus) -> SimpleNamespace:
@@ -69,8 +75,11 @@ async def test_mark_running_clears_prior_breadcrumb_and_counter_on_fresh_attempt
 
 
 async def test_failed_then_rerun_to_done_has_cleared_breadcrumb() -> None:
-    # A job that failed AT A NODE is re-run: mark_running (fresh attempt) clears the breadcrumb, and a
-    # subsequent mark_done leaves it cleared — so a DONE re-run never looks like it failed at a node.
+    # A job that failed AT A NODE is re-run: mark_running (fresh attempt) clears the breadcrumb. A
+    # subsequent mark_done is now a DB-level conditional UPDATE (it no longer mutates the fetched row),
+    # so the breadcrumb the reset cleared stays cleared — a DONE re-run never looks like it failed at a
+    # node. (That mark_done actually flips status→DONE only against committed data is proven in the
+    # real-DB execution test tests/db/test_jobs_terminal_transition_execution.py.)
     job = _failed_job(JobStatus.PENDING)
     session = _StubSession(job)
 
@@ -79,7 +88,6 @@ async def test_failed_then_rerun_to_done_has_cleared_breadcrumb() -> None:
     )
     await JobApi.mark_done(session, job.id, finished_at=datetime.now(UTC))
 
-    assert job.status == JobStatus.DONE
     assert job.failed_node_id is None and job.failed_node_kind is None
     assert job.failed_item_index is None and job.error_type is None
     assert job.items_done is None and job.items_total is None
